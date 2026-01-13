@@ -220,6 +220,22 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v6
 
+    - name: Install git-crypt
+      run: sudo apt-get update && sudo apt-get install -y git-crypt
+
+    - name: Unlock git-crypt
+      env:
+        GIT_CRYPT_KEY: ${{ secrets.GIT_CRYPT_KEY }}
+      run: |
+        if [ -n "$GIT_CRYPT_KEY" ]; then
+          echo "$GIT_CRYPT_KEY" | base64 -d > /tmp/git-crypt-key
+          git-crypt unlock /tmp/git-crypt-key
+          rm /tmp/git-crypt-key
+          echo "✅ git-crypt unlocked"
+        else
+          echo "⚠️ GIT_CRYPT_KEY not set"
+        fi
+
     - name: Setup Python
       uses: actions/setup-python@v5
       with:
