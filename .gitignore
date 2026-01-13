@@ -291,5 +291,5 @@ claude-exports/
 CLAUDE.md
 CLAUDE.local.md
 
-# Worktree-specific files (created by scripts/worktree/new.sh)
+# Worktree-specific files
 start.sh

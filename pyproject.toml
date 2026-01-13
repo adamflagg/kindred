@@ -7,7 +7,7 @@ name = "kindred"
 version = "1.0.0"
 description = "Kindred finds campers who belong together and places them in the right cabins."
 readme = "README.md"
-requires-python = ">=3.12,<3.14"  # Upper bound: OR-Tools lacks 3.14 wheels
+requires-python = ">=3.12"
 license = {text = "MIT"}
 authors = [
     {name = "Kindred Contributors"},
@@ -19,6 +19,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
     # Web framework
@@ -33,7 +34,8 @@ dependencies = [
     "requests>=2.31.0",
     # AI/ML
     "openai>=2.0.0",
-    "ortools>=9.14",
+    # TODO: Switch back to "ortools>=9.15" once PyPI wheels are published
+    "ortools @ https://github.com/google/or-tools/releases/download/v9.15/ortools-9.15.6755-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
     # Data processing
     "pandas>=2.0.0",
     "numpy>=1.26.0",
@@ -170,7 +172,6 @@ disallow_untyped_calls = true
 module = [
     "pocketbase.*",
     "networkx.*",
-    "ortools.*",
     "openai.*",
     "jellyfish.*",
     "fuzzywuzzy.*",
@@ -178,6 +179,11 @@ module = [
     "community.*",
 ]
 ignore_missing_imports = true
+
+# OR-Tools 9.15 ships partial type stubs that don't cover CamelCase compat aliases
+[[tool.mypy.overrides]]
+module = ["ortools.*"]
+follow_imports = "skip"
 
 # Test files - allow some flexibility
 [[tool.mypy.overrides]]

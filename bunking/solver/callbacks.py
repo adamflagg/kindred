@@ -14,7 +14,7 @@ from .logging import ConstraintLogger
 logger = logging.getLogger(__name__)
 
 
-class SolverProgressCallback(cp_model.CpSolverSolutionCallback):
+class SolverProgressCallback(cp_model.CpSolverSolutionCallback):  # type: ignore[misc]
     """Callback to log solver progress in real-time."""
 
     def __init__(self, constraint_logger: ConstraintLogger, debug_mode: bool = False) -> None:
