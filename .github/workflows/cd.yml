@@ -299,8 +299,15 @@ jobs:
           echo "Checking if image ${{ matrix.image }}:${DOCKER_TAG} already exists..."
 
           # Query GitHub Packages API for existing version
-          EXISTING=$(gh api "/users/${{ env.USERNAME }}/packages/container/${{ matrix.image }}/versions" \
-            --jq ".[] | select(.metadata.container.tags[] == \"${DOCKER_TAG}\") | .id" 2>/dev/null | head -1 || echo "")
+          # Note: gh api returns 404 JSON to stdout (not stderr) when package doesn't exist,
+          # so we must check exit code explicitly
+          if gh api "/users/${{ env.USERNAME }}/packages/container/${{ matrix.image }}/versions" \
+               --jq ".[] | select(.metadata.container.tags[] == \"${DOCKER_TAG}\") | .id" \
+               > /tmp/existing_id 2>/dev/null; then
+            EXISTING=$(head -1 /tmp/existing_id)
+          else
+            EXISTING=""
+          fi
 
           if [ -n "$EXISTING" ]; then
             echo "build=false" >> $GITHUB_OUTPUT

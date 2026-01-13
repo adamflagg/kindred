@@ -161,7 +161,8 @@ fi
 # Install dependencies (fast with caching)
 echo -e "${BLUE}Installing dependencies...${NC}"
 uv sync --frozen &
-(cd frontend && npm install --prefer-offline) &
+npm ci --prefer-offline &  # Root deps (commitlint)
+(cd frontend && npm ci --prefer-offline) &
 wait
 
 # Build PocketBase
