@@ -34,7 +34,7 @@ jobs:
   # Detect what changed to optimize builds
   detect-changes:
     name: Detect Changed Files
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     outputs:
       api: ${{ steps.filter.outputs.api }}
       docker: ${{ steps.filter.outputs.docker }}
@@ -120,7 +120,7 @@ jobs:
     name: Verify CI Passed
     needs: detect-changes
     if: github.event_name != 'workflow_dispatch'
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     permissions:
       checks: read
     steps:
@@ -215,12 +215,26 @@ jobs:
     name: Smoke Test (Manual)
     needs: detect-changes
     if: github.event_name == 'workflow_dispatch'
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
     - name: Checkout code
       uses: actions/checkout@v6
 
-    # uv manages dependencies
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
     - name: Verify Python imports
       run: |
         uv sync --frozen -q
@@ -242,7 +256,7 @@ jobs:
       (needs.verify-ci.result == 'success' || needs.verify-ci.result == 'skipped') &&
       (needs.smoke-test.result == 'success' || needs.smoke-test.result == 'skipped') &&
       !(needs.verify-ci.result == 'failure' || needs.smoke-test.result == 'failure')
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
@@ -297,6 +311,10 @@ jobs:
     - name: Checkout code
       if: steps.check.outputs.build == 'true'
       uses: actions/checkout@v6
+
+    - name: Install git-crypt
+      if: steps.check.outputs.build == 'true'
+      run: sudo apt-get update && sudo apt-get install -y git-crypt
 
     - name: Unlock git-crypt for branding assets
       if: steps.check.outputs.build == 'true' && env.GIT_CRYPT_KEY != ''
@@ -411,7 +429,7 @@ jobs:
   integration-test:
     name: Integration Test
     needs: build-and-push
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     if: success()
     permissions:
       contents: read
@@ -560,7 +578,7 @@ jobs:
   summary:
     name: Build Summary
     needs: [build-and-push, integration-test]
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     if: always()
     steps:
     - name: Check build status
@@ -588,7 +606,7 @@ jobs:
   create-release:
     name: Create GitHub Release
     needs: [build-and-push, integration-test]
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     # Only run on tag pushes, not release events (release already exists) or manual triggers
     if: success() && startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
     permissions:

@@ -18,7 +18,7 @@ cd "$PROJECT_ROOT"
 # Parse args
 DRY_RUN=false
 SKIP_TESTS=false
-GITHUB_BUILD=false
+GITHUB_BUILD=true  # Default to GitHub Actions for public repo
 CUSTOM_VERSION=""
 
 while [[ $# -gt 0 ]]; do
@@ -26,13 +26,15 @@ while [[ $# -gt 0 ]]; do
         --dry-run) DRY_RUN=true; shift ;;
         --skip-tests) SKIP_TESTS=true; shift ;;
         --github-build) GITHUB_BUILD=true; shift ;;
+        --local-build) GITHUB_BUILD=false; shift ;;
         --version) CUSTOM_VERSION="$2"; shift 2 ;;
         -h|--help)
             echo "Usage: $0 [options]"
             echo "Options:"
             echo "  --dry-run       Preview release without creating tag"
             echo "  --skip-tests    Skip test suite (not recommended)"
-            echo "  --github-build  Build via GitHub Actions CD (default: local build)"
+            echo "  --github-build  Build via GitHub Actions CD (default for public repo)"
+            echo "  --local-build   Build locally instead of via GitHub Actions"
             echo "  --version X     Override git-cliff version suggestion"
             exit 0
             ;;

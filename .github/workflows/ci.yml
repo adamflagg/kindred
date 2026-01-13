@@ -35,7 +35,7 @@ jobs:
   # Validate commit message format (conventional commits with scopes)
   commit-lint:
     name: Commit Message Lint
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     # Skip for Dependabot PRs (uses its own commit format)
     if: github.actor != 'dependabot[bot]'
     steps:
@@ -43,6 +43,11 @@ jobs:
       uses: actions/checkout@v6
       with:
         fetch-depth: 0  # Full history for commit range
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
 
     - name: Install commitlint
       run: npm install --save-dev @commitlint/cli @commitlint/config-conventional
@@ -67,7 +72,7 @@ jobs:
   # Detect what changed to optimize CI runs
   detect-changes:
     name: Detect Changed Files
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
@@ -114,12 +119,17 @@ jobs:
   # Secret scanning (runs unconditionally on all pushes/PRs)
   secret-scan:
     name: Secret Scanning
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
     - name: Checkout code
       uses: actions/checkout@v6
       with:
         fetch-depth: 0  # Full history for better scanning
+
+    - name: Install gitleaks
+      run: |
+        curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.22.1/gitleaks_8.22.1_linux_x64.tar.gz | \
+          sudo tar xz -C /usr/local/bin gitleaks
 
     - name: Run Gitleaks
       run: |
@@ -155,10 +165,45 @@ jobs:
       needs.detect-changes.outputs.tests == 'true' ||
       needs.detect-changes.outputs.scripts == 'true' ||
       needs.detect-changes.outputs.docker == 'true'
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
     - name: Checkout code
       uses: actions/checkout@v6
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'npm'
+        cache-dependency-path: |
+          package-lock.json
+          frontend/package-lock.json
+          pocketbase/package-lock.json
+
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24'
+        cache: true
+        cache-dependency-path: pocketbase/go.sum
+
+    - name: Install CI tools
+      run: |
+        # git-crypt
+        sudo apt-get update && sudo apt-get install -y git-crypt shellcheck
+        # golangci-lint
+        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | \
+          sh -s -- -b $(go env GOPATH)/bin v1.62.2
+        # govulncheck
+        go install golang.org/x/vuln/cmd/govulncheck@latest
 
     - name: Unlock git-crypt for config files
       env:
@@ -291,10 +336,35 @@ jobs:
     needs: [detect-changes, quick-checks]
     # Always run unless quick-checks failed (still need detect-changes for job ordering)
     if: always() && needs.quick-checks.result != 'failure'
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
     - name: Checkout code
       uses: actions/checkout@v6
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24'
+        cache: true
+        cache-dependency-path: pocketbase/go.sum
+
+    - name: Install git-crypt
+      run: sudo apt-get update && sudo apt-get install -y git-crypt
 
     - name: Unlock git-crypt for config files
       env:
@@ -335,11 +405,10 @@ jobs:
       working-directory: ./frontend
       run: npm run test -- --run
 
-  # Submit dependencies to GitHub's dependency graph (replaces GitHub's automatic submission)
-  # This enables Dependabot security alerts without using GitHub-hosted runners
+  # Submit dependencies to GitHub's dependency graph
   dependency-submission:
     name: Dependency Submission
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     # Only submit on main branch pushes (not PRs, not other branches)
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
@@ -356,7 +425,7 @@ jobs:
     name: CI Summary
     needs: [commit-lint, detect-changes, secret-scan, quick-checks, tests, dependency-submission]
     if: always()
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
     - name: Check status
       run: |
