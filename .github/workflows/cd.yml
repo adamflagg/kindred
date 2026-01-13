@@ -390,10 +390,16 @@ jobs:
           DOCKER_TAG=${TAG_NAME#v}
           TAGS="${TAGS},${IMAGE}:${DOCKER_TAG}"
 
-          # Add minor version tag (e.g., 0.7 from 0.7.0)
+          # Add minor version tag (e.g., 1.0 from 1.0.0)
           MINOR_TAG=$(echo "$DOCKER_TAG" | cut -d. -f1-2)
           if [[ "$MINOR_TAG" != "$DOCKER_TAG" ]]; then
             TAGS="${TAGS},${IMAGE}:${MINOR_TAG}"
+          fi
+
+          # Add major version tag (e.g., 1 from 1.0.0)
+          MAJOR_TAG=$(echo "$DOCKER_TAG" | cut -d. -f1)
+          if [[ "$MAJOR_TAG" != "$MINOR_TAG" ]]; then
+            TAGS="${TAGS},${IMAGE}:${MAJOR_TAG}"
           fi
         fi
         echo "tags=$TAGS" >> $GITHUB_OUTPUT
