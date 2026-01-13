@@ -1,0 +1,212 @@
+# Dependabot version updates configuration
+# Docs: https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+#
+# Note: Dependabot reads from pyproject.toml. After merging Dependabot PRs,
+# run `uv lock` locally to update uv.lock and push the changes.
+
+version: 2
+updates:
+  # Python dependencies (reads from pyproject.toml)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/New_York"
+    commit-message:
+      prefix: "fix(deps)"
+      prefix-development: "chore(deps)"
+    labels:
+      - "dependencies"
+      - "python"
+    groups:
+      # Group all production dependencies together
+      python-prod:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "pytest*"
+          - "ruff"
+          - "mypy*"
+          - "coverage*"
+          - "pip-audit"
+          - "playwright"
+          - "radon"
+          - "types-*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Group all dev/test dependencies together
+      python-dev:
+        patterns:
+          - "pytest*"
+          - "ruff"
+          - "mypy*"
+          - "coverage*"
+          - "pip-audit"
+          - "playwright"
+          - "radon"
+          - "types-*"
+        update-types:
+          - "minor"
+          - "patch"
+    open-pull-requests-limit: 5
+
+  # Go dependencies (pocketbase)
+  - package-ecosystem: "gomod"
+    directory: "/pocketbase"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/New_York"
+    commit-message:
+      prefix: "fix(pb)"
+      prefix-development: "chore(pb)"
+    labels:
+      - "dependencies"
+      - "go"
+    groups:
+      go-all:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    open-pull-requests-limit: 5
+
+  # Frontend npm dependencies
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/New_York"
+    commit-message:
+      prefix: "fix(frontend)"
+      prefix-development: "chore(frontend)"
+    labels:
+      - "dependencies"
+      - "javascript"
+    groups:
+      # React ecosystem updates together
+      react:
+        patterns:
+          - "react*"
+          - "@types/react*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Testing framework updates
+      testing:
+        patterns:
+          - "vitest"
+          - "@testing-library/*"
+          - "@vitest/*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Build tooling (Vite, TypeScript, etc.)
+      build-tools:
+        patterns:
+          - "vite"
+          - "@vitejs/*"
+          - "typescript"
+          - "eslint*"
+          - "@eslint/*"
+          - "@typescript-eslint/*"
+        update-types:
+          - "minor"
+          - "patch"
+      # TailwindCSS ecosystem
+      tailwind:
+        patterns:
+          - "tailwindcss"
+          - "@tailwindcss/*"
+        update-types:
+          - "minor"
+          - "patch"
+      # All other minor/patch updates
+      npm-minor:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "react*"
+          - "@types/react*"
+          - "vitest"
+          - "@testing-library/*"
+          - "@vitest/*"
+          - "vite"
+          - "@vitejs/*"
+          - "typescript"
+          - "eslint*"
+          - "@eslint/*"
+          - "@typescript-eslint/*"
+          - "tailwindcss"
+          - "@tailwindcss/*"
+        update-types:
+          - "minor"
+          - "patch"
+    open-pull-requests-limit: 5
+
+  # Root npm dependencies (commitlint, cytoscape types)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/New_York"
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - "dependencies"
+      - "javascript"
+    groups:
+      root-npm:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    open-pull-requests-limit: 3
+
+  # Docker base images
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/New_York"
+    commit-message:
+      prefix: "fix(docker)"
+    labels:
+      - "dependencies"
+      - "docker"
+    open-pull-requests-limit: 3
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/New_York"
+    commit-message:
+      prefix: "chore(ci)"
+    labels:
+      - "dependencies"
+      - "ci"
+    groups:
+      actions:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    open-pull-requests-limit: 3
+

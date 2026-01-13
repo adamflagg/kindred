@@ -1,0 +1,644 @@
+// Package sync provides synchronization services between CampMinder and PocketBase
+package sync
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"strings"
+	"unicode"
+
+	"github.com/camp/kindred/pocketbase/campminder"
+	"github.com/pocketbase/pocketbase/core"
+)
+
+// PersonsSync handles syncing person records from CampMinder
+type PersonsSync struct {
+	BaseSyncService
+
+	// Track data quality issues
+	missingDataStats map[string]int
+	skippedStaff     int
+}
+
+// NewPersonsSync creates a new persons sync service
+func NewPersonsSync(app core.App, client *campminder.Client) *PersonsSync {
+	return &PersonsSync{
+		BaseSyncService:  NewBaseSyncService(app, client),
+		missingDataStats: make(map[string]int),
+	}
+}
+
+// Name returns the name of this sync service
+func (s *PersonsSync) Name() string {
+	return "persons"
+}
+
+// getPersonIDsFromAttendees gets unique person IDs from attendees for a specific year
+func (s *PersonsSync) getPersonIDsFromAttendees(year int) ([]int, error) {
+	// Query attendees for this year
+	filter := fmt.Sprintf("year = %d", year)
+	attendees, err := s.App.FindRecordsByFilter("attendees", filter, "", 0, 0)
+	if err != nil {
+		return nil, fmt.Errorf("querying attendees: %w", err)
+	}
+
+	// Extract unique person IDs
+	personIDMap := make(map[int]bool)
+	for _, attendee := range attendees {
+		if cmPersonID, ok := attendee.Get("person_id").(float64); ok {
+			personIDMap[int(cmPersonID)] = true
+		}
+	}
+
+	// Convert map to slice
+	personIDs := make([]int, 0, len(personIDMap))
+	for id := range personIDMap {
+		personIDs = append(personIDs, id)
+	}
+
+	return personIDs, nil
+}
+
+// Sync performs the persons synchronization
+func (s *PersonsSync) Sync(ctx context.Context) error {
+	s.LogSyncStart("persons")
+	s.Stats = Stats{}        // Reset stats
+	s.SyncSuccessful = false // Reset sync status
+	s.ClearProcessedKeys()   // Reset processed tracking
+
+	// Get the year we're syncing for
+	year := s.Client.GetSeasonID()
+
+	// Get unique person IDs from attendees for this year
+	personIDs, err := s.getPersonIDsFromAttendees(year)
+	if err != nil {
+		return fmt.Errorf("getting person IDs from attendees: %w", err)
+	}
+
+	if len(personIDs) == 0 {
+		slog.Info("No attendees found, skipping persons sync", "year", year)
+		s.SyncSuccessful = true
+		return nil
+	}
+
+	slog.Info("Found unique persons from attendees", "count", len(personIDs), "year", year)
+
+	// Pre-load all existing persons by cm_id for this year
+	existingPersons := make(map[int]*core.Record)
+	filter := fmt.Sprintf("year = %d", year)
+	allPersons, err := s.App.FindRecordsByFilter("persons", filter, "", 0, 0)
+	if err != nil {
+		slog.Warn("Error loading existing persons", "year", year, "error", err)
+		// Continue with empty map
+	} else {
+		for _, record := range allPersons {
+			if cmID, ok := record.Get("cm_id").(float64); ok {
+				existingPersons[int(cmID)] = record
+			}
+		}
+		slog.Info("Loaded existing persons from database", "count", len(existingPersons), "year", year)
+	}
+
+	// Process persons in batches (CampMinder API can handle multiple IDs)
+	batchSize := 500
+	for i := 0; i < len(personIDs); i += batchSize {
+		// Check context cancellation
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		// Get batch
+		end := i + batchSize
+		if end > len(personIDs) {
+			end = len(personIDs)
+		}
+		batch := personIDs[i:end]
+
+		slog.Info("Processing persons batch", "start", i+1, "end", end, "total", len(personIDs))
+
+		// Fetch persons for this batch
+		persons, err := s.Client.GetPersons(batch)
+		if err != nil {
+			return fmt.Errorf("fetching persons batch: %w", err)
+		}
+
+		// Mark sync as successful once we've successfully fetched data
+		if i == 0 && len(persons) > 0 {
+			s.SyncSuccessful = true
+		}
+
+		// Process each person
+		for _, personData := range persons {
+			if err := s.processPerson(personData, existingPersons, year); err != nil {
+				slog.Error("Error processing person", "error", err)
+				s.Stats.Errors++
+			}
+		}
+	}
+
+	// Delete orphans for this year only
+	if err := s.deleteOrphans(year); err != nil {
+		slog.Warn("Failed to delete orphaned persons", "error", err)
+		// Don't fail the sync for orphan deletion
+	}
+
+	// Force WAL checkpoint to ensure data is flushed
+	if err := s.ForceWALCheckpoint(); err != nil {
+		slog.Warn("WAL checkpoint failed", "error", err)
+		// Don't fail the sync if checkpoint fails
+	}
+
+	// Report results
+	s.printDataQualitySummary()
+	s.LogSyncComplete("Persons")
+
+	// Update attendee relations now that persons are synced
+	if err := s.updateAttendeeRelations(year); err != nil {
+		slog.Warn("Failed to update attendee relations", "error", err)
+		// Don't fail the sync if relation update fails
+	}
+
+	return nil
+}
+
+// processPerson processes a single person using pre-loaded existing persons
+func (s *PersonsSync) processPerson(
+	personData map[string]interface{},
+	existingPersons map[int]*core.Record,
+	year int,
+) error {
+	// Transform to PocketBase format
+	pbData, err := s.transformPersonToPB(personData, year)
+	if err != nil {
+		return err
+	}
+
+	// Skip if transformation returned nil (e.g., staff member)
+	if pbData == nil {
+		s.skippedStaff++
+		s.Stats.Skipped++
+		return nil
+	}
+
+	// Get person ID
+	personID, ok := personData["ID"].(float64)
+	if !ok {
+		return fmt.Errorf("missing person ID")
+	}
+	personIDInt := int(personID)
+
+	// Check if person already exists
+	existing := existingPersons[personIDInt]
+
+	// Track this person as processed for orphan detection with year
+	s.TrackProcessedKey(personIDInt, year)
+
+	// Fields to compare for updates
+	compareFields := []string{"cm_id", "first_name", "last_name", "preferred_name",
+		"birthdate", "gender", "age", "grade", "school", "years_at_camp",
+		"last_year_attended", "gender_identity_id", "gender_identity_name", "gender_identity_write_in",
+		"gender_pronoun_id", "gender_pronoun_name", "gender_pronoun_write_in", "phone_numbers",
+		"email_addresses", "address", "household_id", "is_camper", "year", "parent_names"}
+
+	if existing != nil {
+		// Check if update is needed
+		needsUpdate := false
+		for _, field := range compareFields {
+			if value, exists := pbData[field]; exists {
+				if !s.FieldEquals(existing.Get(field), value) {
+					slog.Debug("Person field differs",
+						"personID", personIDInt,
+						"field", field,
+						"existing", existing.Get(field),
+						"new", value,
+					)
+					needsUpdate = true
+					break
+				}
+			}
+		}
+
+		if needsUpdate {
+			// Update existing record
+			for field, value := range pbData {
+				existing.Set(field, value)
+			}
+
+			if err := s.App.Save(existing); err != nil {
+				return fmt.Errorf("updating person %d: %w", personIDInt, err)
+			}
+			s.Stats.Updated++
+		} else {
+			s.Stats.Skipped++
+		}
+	} else {
+		// Create new person record
+		collection, err := s.App.FindCollectionByNameOrId("persons")
+		if err != nil {
+			return fmt.Errorf("finding persons collection: %w", err)
+		}
+
+		record := core.NewRecord(collection)
+		for field, value := range pbData {
+			record.Set(field, value)
+		}
+
+		if err := s.App.Save(record); err != nil {
+			return fmt.Errorf("creating person %d: %w", personIDInt, err)
+		}
+		s.Stats.Created++
+	}
+
+	return nil
+}
+
+// transformPersonToPB transforms CampMinder person data to PocketBase format
+//
+//nolint:gocyclo // data transform function with many field mappings
+func (s *PersonsSync) transformPersonToPB(cmPerson map[string]interface{}, year int) (map[string]interface{}, error) {
+	// Skip if no CamperDetails (means they're not a camper)
+	camperDetails, ok := cmPerson["CamperDetails"].(map[string]interface{})
+	if !ok || camperDetails == nil {
+		name := s.getPersonName(cmPerson)
+		slog.Debug("Skipping person - no CamperDetails (not a camper)",
+			"name", name,
+			"personID", cmPerson["ID"],
+		)
+		s.missingDataStats["skipped_no_camper_details"]++
+		return nil, nil
+	}
+
+	pbData := make(map[string]interface{})
+
+	// Extract base fields
+	if id, ok := cmPerson["ID"].(float64); ok {
+		pbData["cm_id"] = int(id)
+	}
+
+	// Name fields - fix ALL CAPS names from CampMinder while preserving mixed-case
+	if nameData, ok := cmPerson["Name"].(map[string]interface{}); ok {
+		firstName := s.getString(nameData, "First", fmt.Sprintf("MISSING_FIRST_%.0f", cmPerson["ID"]))
+		lastName := s.getString(nameData, "Last", fmt.Sprintf("MISSING_LAST_%.0f", cmPerson["ID"]))
+
+		// Only convert ALL CAPS to Title Case - preserves McDonald, DeVos, O'Brien, etc.
+		pbData["first_name"] = s.fixAllCapsName(firstName)
+		pbData["last_name"] = s.fixAllCapsName(lastName)
+
+		if preferred := s.getString(nameData, "Preferred", ""); preferred != "" {
+			pbData["preferred_name"] = s.fixAllCapsName(preferred)
+		}
+
+		if pbData["first_name"] == "" || strings.HasPrefix(pbData["first_name"].(string), "MISSING_") {
+			s.missingDataStats["missing_name"]++
+		}
+		if pbData["last_name"] == "" || strings.HasPrefix(pbData["last_name"].(string), "MISSING_") {
+			s.missingDataStats["missing_name"]++
+		}
+	}
+
+	// Date of birth - store as string directly from CampMinder
+	if dob, ok := cmPerson["DateOfBirth"].(string); ok && dob != "" {
+		pbData["birthdate"] = dob
+	}
+
+	// Gender
+	if genderID, ok := cmPerson["GenderID"].(float64); ok {
+		// Map gender (CampMinder: 0=Female, 1=Male, 3=Undefined)
+		switch int(genderID) {
+		case 1:
+			pbData["gender"] = "M"
+		case 0:
+			pbData["gender"] = "F"
+		default:
+			pbData["gender"] = "Other"
+		}
+	}
+
+	// Age - preserve full float precision for CampMinder format (e.g., 12.03 = 12 years, 3 months)
+	// Adjust age for historical years (e.g., if current age is 12.03 in 2025, it should be 11.03 for 2024)
+	if age, ok := cmPerson["Age"].(float64); ok && age > 0 {
+		// Calculate year difference and adjust age accordingly
+		currentYear := s.Client.GetSeasonID() // This is the current CampMinder year
+		yearDiff := float64(currentYear - year)
+		adjustedAge := age - yearDiff
+
+		if adjustedAge < 6 {
+			pbData["age"] = 6.0 // Clamp to minimum
+		} else {
+			pbData["age"] = adjustedAge // Store year-appropriate age
+		}
+	} else {
+		pbData["age"] = 10.0 // Default age
+		s.missingDataStats["missing_age"]++
+	}
+
+	// Grade from CamperDetails
+	grade := s.getFloat(camperDetails, "CampGradeID", 0)
+	if grade == 0 {
+		grade = s.getFloat(camperDetails, "SchoolGradeID", 0)
+	}
+
+	if grade > 0 {
+		// CampMinder uses 0-indexed grade IDs where 0=K, 1=1st, 2=2nd, etc.
+		actualGrade := int(grade) - 1
+		pbData["grade"] = max(1, min(actualGrade, 12)) // Grades 1-12
+	} else {
+		pbData["grade"] = 0 // Default for missing grades
+		s.missingDataStats["missing_grade"]++
+	}
+
+	// Extract V2 fields from CamperDetails
+	pbData["school"] = s.getString(camperDetails, "School", "")
+	pbData["years_at_camp"] = s.getInt(camperDetails, "YearsAtCamp", 0)
+
+	// Cap last_year_attended at current year (since we only sync enrolled attendees)
+	lastYear := s.getInt(camperDetails, "LastYearAttended", 0)
+	if lastYear > year {
+		pbData["last_year_attended"] = year
+	} else {
+		pbData["last_year_attended"] = lastYear
+	}
+
+	// Gender identity and pronouns
+	pbData["gender_identity_id"] = s.getInt(cmPerson, "GenderIdentityID", 0)
+	pbData["gender_identity_name"] = s.getString(cmPerson, "GenderIdentityName", "")
+	pbData["gender_identity_write_in"] = s.getString(cmPerson, "GenderIdentityWriteIn", "")
+	pbData["gender_pronoun_id"] = s.getInt(cmPerson, "GenderPronounID", 0)
+	pbData["gender_pronoun_name"] = s.getString(cmPerson, "GenderPronounName", "")
+	pbData["gender_pronoun_write_in"] = s.getString(cmPerson, "GenderPronounWriteIn", "")
+
+	// Contact details
+	if contactDetails, ok := cmPerson["ContactDetails"].(map[string]interface{}); ok {
+		// Store phone numbers and emails as JSON
+		if phones := contactDetails["PhoneNumbers"]; phones != nil {
+			if phoneJSON, err := json.Marshal(phones); err == nil {
+				pbData["phone_numbers"] = string(phoneJSON)
+			}
+		}
+		if emails := contactDetails["Emails"]; emails != nil {
+			if emailJSON, err := json.Marshal(emails); err == nil {
+				pbData["email_addresses"] = string(emailJSON)
+			}
+		}
+	}
+
+	// Extract address from primary household
+	if households, ok := cmPerson["Households"].(map[string]interface{}); ok {
+		if primary, ok := households["PrimaryChildhoodHousehold"].(map[string]interface{}); ok {
+			if billing, ok := primary["BillingAddress"].(map[string]interface{}); ok {
+				address := s.extractAddress(billing)
+				if address != nil {
+					if addressJSON, err := json.Marshal(address); err == nil {
+						pbData["address"] = string(addressJSON)
+					}
+				}
+			}
+		}
+	}
+
+	// Extract household ID from FamilyPersons
+	if familyPersons, ok := cmPerson["FamilyPersons"].([]interface{}); ok {
+		for _, fp := range familyPersons {
+			if fpMap, ok := fp.(map[string]interface{}); ok {
+				if familyID, ok := fpMap["FamilyID"].(float64); ok && familyID > 0 {
+					pbData["household_id"] = int(familyID)
+					break
+				}
+			}
+		}
+	}
+
+	// Extract parent/guardian names from Relatives array
+	// Used for name resolution when bunk requests reference parents' last names
+	if relatives, ok := cmPerson["Relatives"].([]interface{}); ok {
+		parents := make([]map[string]interface{}, 0)
+		for _, rel := range relatives {
+			if relMap, ok := rel.(map[string]interface{}); ok {
+				// Only include guardians (parents, legal guardians, etc.)
+				isGuardian, _ := relMap["IsGuardian"].(bool)
+				if !isGuardian {
+					continue
+				}
+
+				parentData := make(map[string]interface{})
+
+				// Extract name
+				if nameData, ok := relMap["Name"].(map[string]interface{}); ok {
+					firstName := s.getString(nameData, "First", "")
+					lastName := s.getString(nameData, "Last", "")
+					if firstName != "" || lastName != "" {
+						parentData["first"] = s.fixAllCapsName(firstName)
+						parentData["last"] = s.fixAllCapsName(lastName)
+					}
+				}
+
+				// Extract relationship type (Mother, Father, Guardian, etc.)
+				if relType := s.getString(relMap, "RelationshipType", ""); relType != "" {
+					parentData["relationship"] = relType
+				}
+
+				// Extract primary flag
+				isPrimary, _ := relMap["IsPrimary"].(bool)
+				parentData["is_primary"] = isPrimary
+
+				// Only add if we have name data
+				if _, hasFirst := parentData["first"]; hasFirst {
+					parents = append(parents, parentData)
+				}
+			}
+		}
+
+		if len(parents) > 0 {
+			if parentsJSON, err := json.Marshal(parents); err == nil {
+				pbData["parent_names"] = string(parentsJSON)
+			}
+		}
+	}
+
+	// Mark as camper (since we filtered out staff already)
+	pbData["is_camper"] = true
+
+	// Add year to make persons year-scoped
+	pbData["year"] = year
+
+	s.missingDataStats["total_campers"]++
+
+	return pbData, nil
+}
+
+// Helper methods
+
+func (s *PersonsSync) getPersonName(person map[string]interface{}) string {
+	if nameData, ok := person["Name"].(map[string]interface{}); ok {
+		first := s.getString(nameData, "First", "")
+		last := s.getString(nameData, "Last", "")
+		return fmt.Sprintf("%s %s", first, last)
+	}
+	return "Unknown"
+}
+
+func (s *PersonsSync) getString(data map[string]interface{}, key, defaultValue string) string {
+	if val, ok := data[key].(string); ok {
+		return val
+	}
+	return defaultValue
+}
+
+func (s *PersonsSync) getInt(data map[string]interface{}, key string, defaultValue int) int {
+	if val, ok := data[key].(float64); ok {
+		return int(val)
+	}
+	return defaultValue
+}
+
+func (s *PersonsSync) getFloat(data map[string]interface{}, key string, defaultValue float64) float64 {
+	if val, ok := data[key].(float64); ok {
+		return val
+	}
+	return defaultValue
+}
+
+// isAllUppercase checks if a string contains only uppercase letters (ignoring non-letters)
+func (s *PersonsSync) isAllUppercase(name string) bool {
+	hasLetter := false
+	for _, r := range name {
+		if unicode.IsLetter(r) {
+			hasLetter = true
+			if !unicode.IsUpper(r) {
+				return false
+			}
+		}
+	}
+	return hasLetter // Must have at least one letter
+}
+
+// fixAllCapsName converts ALL CAPS names to Title Case, preserving mixed-case names
+func (s *PersonsSync) fixAllCapsName(name string) string {
+	if name == "" {
+		return ""
+	}
+
+	// Only convert if the name is ALL UPPERCASE
+	// This preserves legitimate spellings like McDonald, DeVos, O'Brien
+	if !s.isAllUppercase(name) {
+		return name
+	}
+
+	// Convert to title case
+	words := strings.Fields(strings.ToLower(name))
+	for i, word := range words {
+		if len(word) > 0 {
+			words[i] = strings.ToUpper(word[:1]) + word[1:]
+		}
+	}
+	return strings.Join(words, " ")
+}
+
+func (s *PersonsSync) extractAddress(billing map[string]interface{}) map[string]interface{} {
+	address := make(map[string]interface{})
+	hasData := false
+
+	if street := s.getString(billing, "Street1", ""); street != "" {
+		address["street"] = street
+		hasData = true
+	}
+	if city := s.getString(billing, "City", ""); city != "" {
+		address["city"] = city
+		hasData = true
+	}
+
+	// Try both State and StateProvince field names
+	state := s.getString(billing, "State", "")
+	if state == "" {
+		state = s.getString(billing, "StateProvince", "")
+	}
+	if state != "" {
+		address["state"] = state
+		hasData = true
+	}
+
+	if zip := s.getString(billing, "Zip", ""); zip != "" {
+		address["zip"] = zip
+		hasData = true
+	}
+
+	if hasData {
+		return address
+	}
+	return nil
+}
+
+func (s *PersonsSync) printDataQualitySummary() {
+	slog.Info("Data Quality Summary",
+		"totalCampers", s.missingDataStats["total_campers"],
+		"staffSkipped", s.skippedStaff,
+		"noCamperDetails", s.missingDataStats["skipped_no_camper_details"],
+		"missingNames", s.missingDataStats["missing_name"],
+		"missingAges", s.missingDataStats["missing_age"],
+		"missingGrades", s.missingDataStats["missing_grade"],
+	)
+}
+
+// deleteOrphans deletes persons that exist in PocketBase but weren't processed from CampMinder
+func (s *PersonsSync) deleteOrphans(year int) error {
+	filter := fmt.Sprintf("year = %d", year)
+
+	return s.DeleteOrphans(
+		"persons",
+		func(record *core.Record) (string, bool) {
+			cmID, ok := record.Get("cm_id").(float64)
+			if !ok || cmID == 0 {
+				return "", false
+			}
+
+			// Use CompositeKey to match how we track processed persons
+			return CompositeKey(int(cmID), year), true
+		},
+		"person",
+		filter,
+	)
+}
+
+// updateAttendeeRelations updates attendee records to populate the person relation field
+func (s *PersonsSync) updateAttendeeRelations(year int) error {
+	slog.Info("Updating attendee person relations")
+
+	// Query attendees with person_id but no person relation
+	filter := fmt.Sprintf("year = %d && person_id > 0 && person = ''", year)
+	records, err := s.App.FindRecordsByFilter("attendees", filter, "", 0, 0)
+	if err != nil {
+		return fmt.Errorf("querying attendees for relation update: %w", err)
+	}
+
+	if len(records) == 0 {
+		slog.Info("No attendee relations to update")
+		return nil
+	}
+
+	updated := 0
+	errors := 0
+	for _, attendee := range records {
+		personCMID, _ := attendee.Get("person_id").(float64)
+		if personCMID > 0 {
+			// Lookup the person by CM ID and year
+			personFilter := fmt.Sprintf("cm_id = %d && year = %d", int(personCMID), year)
+			personRecords, err := s.App.FindRecordsByFilter("persons", personFilter, "", 1, 0)
+			if err == nil && len(personRecords) > 0 {
+				attendee.Set("person", personRecords[0].Id)
+				if err := s.App.Save(attendee); err != nil {
+					slog.Error("Error updating attendee relation", "personCMID", int(personCMID), "error", err)
+					errors++
+				} else {
+					updated++
+				}
+			}
+		}
+	}
+
+	slog.Info("Updated attendee person relations", "updated", updated, "errors", errors)
+	return nil
+}

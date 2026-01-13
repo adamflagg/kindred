@@ -1,0 +1,13 @@
+{
+  "camp_name": "Kindred",
+  "camp_name_short": "Kindred",
+  "camp_description": "a cabin assignment system that puts relationships first",
+  "camp_tagline": "where campers find their people",
+  "sso_display_name": "Staff SSO",
+  "page_title": "Kindred",
+  "page_description": "Cabin assignments that put relationships first",
+  "logo": {
+    "large": null,
+    "nav": null
+  }
+}

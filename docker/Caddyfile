@@ -1,0 +1,53 @@
+# Production Caddyfile for combined container deployment
+# Routes to local services: PocketBase (8090) and FastAPI (8000)
+#
+# Note on logging:
+# - Console format: TIMESTAMP LEVEL LOGGER MESSAGE (Caddy's fixed format)
+# - Project standard: TIMESTAMP [source] LEVEL message (Python/Go format)
+# - Startup JSON logs from automaxprocs/automemlimit are unavoidable (run before config loads)
+# - TZ=UTC in Dockerfile ensures UTC timestamps
+{
+	admin off
+	log {
+		format console {
+			time_format iso8601
+		}
+		level INFO
+	}
+}
+
+:8080 {
+	# PocketBase-specific patterns (explicit)
+	# These /api/* routes go to PocketBase (port 8090)
+	# Note: Must include both root paths and wildcards (e.g., /api/collections AND /api/collections/*)
+	@pocketbase path /api/collections /api/collections/* /api/files/* /api/realtime /api/custom/* /api/oauth2-redirect /api/settings /api/logs /api/logs/* /api/backups /api/backups/*
+
+	# PocketBase routes (database, auth, sync, file uploads)
+	handle @pocketbase {
+		reverse_proxy 127.0.0.1:8090 {
+			header_up Host {host}
+		}
+	}
+
+	# PocketBase admin UI
+	handle /_/* {
+		reverse_proxy 127.0.0.1:8090 {
+			header_up Host {host}
+		}
+	}
+
+	# Health check (standard path for load balancers)
+	handle /health {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	# FastAPI catch-all for /api/* (solver, scenarios, validation, social-graph, config, etc.)
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	# Frontend static files (served by PocketBase from /pb_public)
+	handle {
+		reverse_proxy 127.0.0.1:8090
+	}
+}

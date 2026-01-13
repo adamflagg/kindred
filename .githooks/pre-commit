@@ -1,0 +1,44 @@
+#!/bin/bash
+# Pre-commit hook: Warns early if main is behind origin
+# Catches Dependabot divergence at FIRST commit, not after hours of work
+#
+# This is the early warning. Pre-push is the backup safety net.
+
+set -e
+
+# Only check on main branch
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+if [ "$BRANCH" != "main" ]; then
+    exit 0
+fi
+
+# Fetch latest (silently, allow offline)
+git fetch origin main --quiet 2>/dev/null || exit 0
+
+LOCAL=$(git rev-parse HEAD)
+REMOTE=$(git rev-parse origin/main 2>/dev/null || echo "")
+BASE=$(git merge-base HEAD origin/main 2>/dev/null || echo "")
+
+# Can't determine state - allow commit
+[ -z "$REMOTE" ] || [ -z "$BASE" ] && exit 0
+
+# Check if behind
+if [ "$LOCAL" != "$REMOTE" ] && [ "$LOCAL" = "$BASE" ]; then
+    BEHIND_COUNT=$(git rev-list --count HEAD..origin/main)
+
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  ⚠️  HEADS UP: main is ${BEHIND_COUNT} commit(s) behind origin"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "You're about to commit on main while behind. Recent upstream:"
+    git log --oneline HEAD..origin/main | head -3
+    echo ""
+    echo "Options:"
+    echo "  1. Pull first (recommended):  git pull --rebase origin main"
+    echo "  2. Continue anyway:           git commit --no-verify"
+    echo ""
+    exit 1
+fi
+
+exit 0

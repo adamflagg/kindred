@@ -1,0 +1,59 @@
+# Kindred Production Docker Compose
+# Single-container architecture: Caddy + PocketBase + FastAPI
+# Usage: docker-compose up -d
+
+services:
+  kindred:
+    image: ghcr.io/adamflagg/kindred:${IMAGE_TAG:-latest}
+    container_name: kindred
+    restart: unless-stopped
+    volumes:
+      - ${APPDATA_DIR}/bunking/pocketbase:/pb_data
+    environment:
+      # PocketBase Admin (first-run setup)
+      - POCKETBASE_ADMIN_EMAIL=${POCKETBASE_ADMIN_EMAIL}
+      - POCKETBASE_ADMIN_PASSWORD=${POCKETBASE_ADMIN_PASSWORD}
+      # OIDC (OAuth2 auto-discovery)
+      - OIDC_ISSUER=${OIDC_ISSUER:-}
+      - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
+      - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
+      # CampMinder API
+      - CAMPMINDER_API_KEY=${CAMPMINDER_API_KEY}
+      - CAMPMINDER_PRIMARY_KEY=${CAMPMINDER_PRIMARY_KEY}
+      - CAMPMINDER_CLIENT_ID=${CAMPMINDER_CLIENT_ID}
+      - CAMPMINDER_SEASON_ID=${CAMPMINDER_SEASON_ID}
+      # AI
+      - AI_PROVIDER=${AI_PROVIDER:-}
+      - AI_API_KEY=${AI_API_KEY:-}
+      - AI_MODEL=${AI_MODEL:-}
+      # System
+      - TZ=${TZ:-America/Los_Angeles}
+    networks:
+      - ${PROXY_NETWORK:-web-proxy}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8080/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+    labels:
+      ## Traefik - Main router (public app, OAuth-protected)
+      traefik.enable: true
+      traefik.docker.network: ${PROXY_NETWORK:-web-proxy}
+      traefik.http.routers.kindred.entrypoints: https
+      traefik.http.routers.kindred.rule: Host(`${SUB_KINDRED:-${SUB_BUNKING}}.${DOMAIN_NAME}`)
+      traefik.http.routers.kindred.middlewares: chain-full@file
+      traefik.http.routers.kindred.service: kindred
+      ## Traefik - Admin router (PocketBase admin UI - IP restricted)
+      traefik.http.routers.kindred-admin.entrypoints: https
+      traefik.http.routers.kindred-admin.rule: Host(`${SUB_KINDRED:-${SUB_BUNKING}}.${DOMAIN_NAME}`) && PathPrefix(`/_/`)
+      traefik.http.routers.kindred-admin.middlewares: chain-full@file,private@file
+      traefik.http.routers.kindred-admin.service: kindred
+      traefik.http.routers.kindred-admin.priority: 100
+      ## Traefik - Service
+      traefik.http.services.kindred.loadbalancer.server.port: 8080
+
+networks:
+  web-proxy:
+    name: ${PROXY_NETWORK:-web-proxy}
+    external: true

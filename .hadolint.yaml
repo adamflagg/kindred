@@ -1,0 +1,11 @@
+# Hadolint configuration for Dockerfile linting
+# See: https://github.com/hadolint/hadolint#configure
+
+# Ignore rules:
+# - DL3008: Pin versions in apt-get install (impractical for build tools)
+ignored:
+  - DL3008
+
+# Treat these as warnings instead of errors
+warning:
+  - DL3009  # Delete apt cache after install

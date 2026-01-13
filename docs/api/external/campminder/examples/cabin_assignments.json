@@ -1,0 +1,272 @@
+{
+  "endpoint": "GET /bunks?clientid=337&seasonid=2025&sessionid=1002",
+  "description": "Current cabin assignments for Session 2 - Adventure",
+  "session_info": {
+    "SessionID": 1002,
+    "SessionName": "Session 2 - Adventure", 
+    "TotalCampers": 202,
+    "CabinsNeeded": 17,
+    "CabinsAllocated": 17,
+    "CapacityStatus": "Within Limits"
+  },
+  "cabin_assignments": [
+    {
+      "CabinID": 101,
+      "CabinName": "River Cabin 1 - Gryffindor",
+      "Location": "River Side",
+      "Capacity": 12,
+      "CurrentOccupancy": 12,
+      "AgeRange": "13-15",
+      "GradeRange": "7-9",
+      "Gender": "Mixed",
+      "Campers": [
+        {
+          "PersonID": 500001,
+          "Name": "Hermione Granger",
+          "Age": 14,
+          "Grade": 8,
+          "BunkNumber": 1,
+          "SatisfiedRequests": [
+            {
+              "Type": "bunk_with",
+              "Target": "Luna Lovegood (PersonID: 500015)",
+              "Status": "Satisfied"
+            },
+            {
+              "Type": "age_preference", 
+              "Preference": "older",
+              "Status": "Satisfied - cabin avg age 14.2"
+            }
+          ]
+        },
+        {
+          "PersonID": 500015,
+          "Name": "Luna Lovegood",
+          "Age": 14,
+          "Grade": 8,
+          "BunkNumber": 2,
+          "SatisfiedRequests": [
+            {
+              "Type": "bunk_with",
+              "Target": "Hermione Granger (PersonID: 500001)",
+              "Status": "Satisfied"
+            }
+          ]
+        },
+        {
+          "PersonID": 500003,
+          "Name": "Leia Organa",
+          "Age": 15,
+          "Grade": 9,
+          "BunkNumber": 3,
+          "SatisfiedRequests": [
+            {
+              "Type": "age_preference",
+              "Preference": "older", 
+              "Status": "Satisfied - oldest in cabin"
+            }
+          ]
+        },
+        {
+          "PersonID": 500020,
+          "Name": "Rey Skywalker",
+          "Age": 15,
+          "Grade": 9,
+          "BunkNumber": 4,
+          "SatisfiedRequests": [
+            {
+              "Type": "bunk_with",
+              "Target": "Leia Organa (PersonID: 500003)",
+              "Status": "Satisfied"
+            }
+          ]
+        }
+      ],
+      "CabinStats": {
+        "AverageAge": 14.2,
+        "GradeDistribution": {"7": 2, "8": 4, "9": 6},
+        "RequestSatisfactionRate": "100%",
+        "SpecialAccommodations": []
+      }
+    },
+    {
+      "CabinID": 102,
+      "CabinName": "River Cabin 2 - Fellowship",
+      "Location": "River Side",
+      "Capacity": 12,
+      "CurrentOccupancy": 12,
+      "AgeRange": "13-14",
+      "GradeRange": "7-8", 
+      "Gender": "Male",
+      "Campers": [
+        {
+          "PersonID": 500004,
+          "Name": "Frodo Baggins",
+          "Age": 13,
+          "Grade": 7,
+          "BunkNumber": 1,
+          "SatisfiedRequests": [
+            {
+              "Type": "bunk_with",
+              "Target": "Sam Gamgee (PersonID: 500021)",
+              "Status": "Satisfied"
+            },
+            {
+              "Type": "bunk_with",
+              "Target": "Merry Brandybuck (PersonID: 500022)",
+              "Status": "Satisfied"
+            }
+          ]
+        },
+        {
+          "PersonID": 500021,
+          "Name": "Sam Gamgee",
+          "Age": 13,
+          "Grade": 7,
+          "BunkNumber": 2,
+          "SatisfiedRequests": [
+            {
+              "Type": "bunk_with",
+              "Target": "Frodo Baggins (PersonID: 500004)", 
+              "Status": "Satisfied"
+            }
+          ]
+        },
+        {
+          "PersonID": 500022,
+          "Name": "Merry Brandybuck",
+          "Age": 14,
+          "Grade": 8,
+          "BunkNumber": 3,
+          "SatisfiedRequests": [
+            {
+              "Type": "bunk_with",
+              "Target": "Frodo Baggins (PersonID: 500004)",
+              "Status": "Satisfied"
+            },
+            {
+              "Type": "bunk_with",
+              "Target": "Pippin Took (PersonID: 500023)",
+              "Status": "Satisfied"
+            }
+          ]
+        },
+        {
+          "PersonID": 500023,
+          "Name": "Pippin Took",
+          "Age": 13,
+          "Grade": 7,
+          "BunkNumber": 4,
+          "SatisfiedRequests": [
+            {
+              "Type": "bunk_with",
+              "Target": "Merry Brandybuck (PersonID: 500022)",
+              "Status": "Satisfied"
+            }
+          ]
+        }
+      ],
+      "CabinStats": {
+        "AverageAge": 13.3,
+        "GradeDistribution": {"7": 8, "8": 4},
+        "RequestSatisfactionRate": "100%",
+        "SpecialAccommodations": [
+          "Quiet cabin environment for Frodo (anxiety management)"
+        ]
+      }
+    },
+    {
+      "CabinID": 103,
+      "CabinName": "River Cabin 3 - Rebellion",
+      "Location": "River Side", 
+      "Capacity": 12,
+      "CurrentOccupancy": 12,
+      "AgeRange": "13-15",
+      "GradeRange": "7-9",
+      "Gender": "Mixed",
+      "Campers": [
+        {
+          "PersonID": 500002,
+          "Name": "Luke Skywalker", 
+          "Age": 13,
+          "Grade": 7,
+          "BunkNumber": 1,
+          "SatisfiedRequests": [
+            {
+              "Type": "bunk_with",
+              "Target": "Han Solo (PersonID: 500025)",
+              "Status": "Satisfied"
+            },
+            {
+              "Type": "not_bunk_with",
+              "Target": "Darth Vader",
+              "Status": "Satisfied - not in same cabin"
+            }
+          ]
+        },
+        {
+          "PersonID": 500025,
+          "Name": "Han Solo",
+          "Age": 15,
+          "Grade": 9,
+          "BunkNumber": 2,
+          "SatisfiedRequests": [
+            {
+              "Type": "bunk_with",
+              "Target": "Luke Skywalker (PersonID: 500002)",
+              "Status": "Satisfied"
+            },
+            {
+              "Type": "bunk_with",
+              "Target": "Chewbacca (PersonID: 500026)",
+              "Status": "Satisfied"
+            }
+          ]
+        },
+        {
+          "PersonID": 500026,
+          "Name": "Chewbacca",
+          "Age": 14,
+          "Grade": 8,
+          "BunkNumber": 3,
+          "SatisfiedRequests": [
+            {
+              "Type": "bunk_with",
+              "Target": "Han Solo (PersonID: 500025)",
+              "Status": "Satisfied"
+            }
+          ]
+        }
+      ],
+      "CabinStats": {
+        "AverageAge": 14.1,
+        "GradeDistribution": {"7": 4, "8": 4, "9": 4},
+        "RequestSatisfactionRate": "100%",
+        "SpecialAccommodations": []
+      }
+    }
+  ],
+  "capacity_summary": {
+    "TotalCabinsUsed": 17,
+    "TotalCabinsAvailable": 20,
+    "RemainingCapacity": 3,
+    "OverallOccupancyRate": "85%",
+    "RequestSatisfactionRate": "100%",
+    "CabinDistribution": {
+      "RiverSide": 12,
+      "RidgeSide": 5
+    }
+  },
+  "constraint_satisfaction": {
+    "HardConstraints": {
+      "EveryCanperHasRequest": "✅ SATISFIED",
+      "CabinCapacityLimits": "✅ SATISFIED", 
+      "GenderSeparation": "✅ SATISFIED"
+    },
+    "SoftConstraints": {
+      "GradeCohesion": "95% - mostly single grade cabins",
+      "AgeDistribution": "92% - balanced age ranges",
+      "CabinBalancing": "98% - even occupancy"
+    }
+  }
+}

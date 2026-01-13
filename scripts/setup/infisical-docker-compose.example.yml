@@ -1,0 +1,99 @@
+# Infisical Self-Hosted Docker Compose
+# Deploy at your own domain (e.g., https://vault.example.com)
+#
+# This is a reference for your Unraid/server setup.
+# Adjust paths and add Traefik labels as needed for your infrastructure.
+#
+# Docs: https://infisical.com/docs/self-hosting/deployment-options/docker-compose
+
+version: "3.9"
+
+services:
+  # Main Infisical application
+  infisical:
+    image: infisical/infisical:latest
+    container_name: infisical
+    restart: unless-stopped
+    depends_on:
+      - infisical-db
+      - infisical-redis
+    environment:
+      # Generate with: openssl rand -hex 32
+      - ENCRYPTION_KEY=${INFISICAL_ENCRYPTION_KEY}
+      # Generate with: openssl rand -base64 32
+      - AUTH_SECRET=${INFISICAL_AUTH_SECRET}
+      # Database connection
+      - DB_CONNECTION_URI=postgres://infisical:${INFISICAL_DB_PASSWORD}@infisical-db:5432/infisical
+      # Redis connection
+      - REDIS_URL=redis://infisical-redis:6379
+      # Site URL (your domain)
+      - SITE_URL=https://vault.example.com
+      # Optional: SMTP for email notifications
+      # - SMTP_HOST=smtp.example.com
+      # - SMTP_PORT=587
+      # - SMTP_USERNAME=
+      # - SMTP_PASSWORD=
+      # - SMTP_FROM_ADDRESS=vault@flagg.cloud
+    ports:
+      - "8180:8080"  # Or expose via Traefik
+    networks:
+      - infisical-net
+      - web-proxy  # Your Traefik network
+    labels:
+      # Traefik labels (adjust for your setup)
+      - "traefik.enable=true"
+      - "traefik.http.routers.infisical.rule=Host(`vault.example.com`)"
+      - "traefik.http.routers.infisical.entrypoints=websecure"
+      - "traefik.http.routers.infisical.tls.certresolver=letsencrypt"
+      - "traefik.http.services.infisical.loadbalancer.server.port=8080"
+
+  # PostgreSQL database
+  infisical-db:
+    image: postgres:15-alpine
+    container_name: infisical-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=infisical
+      - POSTGRES_PASSWORD=${INFISICAL_DB_PASSWORD}
+      - POSTGRES_DB=infisical
+    volumes:
+      - infisical-db-data:/var/lib/postgresql/data
+    networks:
+      - infisical-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U infisical"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for session/cache
+  infisical-redis:
+    image: redis:7-alpine
+    container_name: infisical-redis
+    restart: unless-stopped
+    networks:
+      - infisical-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  infisical-net:
+    driver: bridge
+  web-proxy:
+    external: true  # Your existing Traefik network
+
+volumes:
+  infisical-db-data:
+
+# Required environment variables (create .env file):
+#
+# # Generate these:
+# # openssl rand -hex 32
+# INFISICAL_ENCRYPTION_KEY=your-32-byte-hex-key
+# # openssl rand -base64 32
+# INFISICAL_AUTH_SECRET=your-base64-secret
+# # Strong password for postgres
+# INFISICAL_DB_PASSWORD=your-db-password

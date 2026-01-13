@@ -1,0 +1,71 @@
+#!/bin/bash
+# Commit-msg hook: Validates commit messages against conventional commits with scopes
+# Catches invalid commit messages locally before they fail CI
+#
+# Uses commitlint if available, otherwise falls back to regex validation
+
+set -e
+
+COMMIT_MSG_FILE="$1"
+COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
+
+# Skip merge commits and fixup/squash commits
+if [[ "$COMMIT_MSG" =~ ^(Merge|fixup!|squash!) ]]; then
+    exit 0
+fi
+
+# Try commitlint first (preferred - matches CI exactly)
+if command -v npx &> /dev/null && [ -f "commitlint.config.js" ]; then
+    if ! npx --no-install commitlint --edit "$COMMIT_MSG_FILE" 2>/dev/null; then
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "  ❌ COMMIT MESSAGE INVALID"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        echo "Format: type(scope): description"
+        echo ""
+        echo "Valid types: feat, fix, perf, refactor, docs, style, test, build, config, chore, ci, revert"
+        echo ""
+        echo "Valid scopes: frontend, api, sync, pb, solver, docker, ci, auth, logging, release, config, deps, tests, scripts"
+        echo ""
+        echo "Examples:"
+        echo "  feat(frontend): add dark mode toggle"
+        echo "  fix(api): handle null response from CampMinder"
+        echo "  fix(scripts): auto-detect requirements.txt changes"
+        echo ""
+        exit 1
+    fi
+    exit 0
+fi
+
+# Fallback: regex validation if commitlint not available
+# Matches: type(scope): description
+VALID_TYPES="feat|fix|perf|refactor|docs|style|test|build|config|chore|ci|revert"
+VALID_SCOPES="frontend|api|sync|pb|solver|docker|ci|auth|logging|release|config|deps|tests|scripts"
+PATTERN="^($VALID_TYPES)\(($VALID_SCOPES)\)(!)?:\s.+"
+
+# Get first line (header)
+FIRST_LINE=$(echo "$COMMIT_MSG" | head -n1)
+
+if ! echo "$FIRST_LINE" | grep -qE "$PATTERN"; then
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  ❌ COMMIT MESSAGE INVALID"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "Your message: $FIRST_LINE"
+    echo ""
+    echo "Format: type(scope): description"
+    echo ""
+    echo "Valid types: $VALID_TYPES"
+    echo "Valid scopes: $VALID_SCOPES"
+    echo ""
+    echo "Examples:"
+    echo "  feat(frontend): add dark mode toggle"
+    echo "  fix(api): handle null response from CampMinder"
+    echo "  fix(scripts): auto-detect requirements.txt changes"
+    echo ""
+    exit 1
+fi
+
+exit 0

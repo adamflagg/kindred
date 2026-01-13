@@ -1,0 +1,382 @@
+name: CI - Tests & Linting
+
+on:
+  # Allow manual triggering
+  workflow_dispatch:
+  # Run on every push (except docs-only changes and tags)
+  push:
+    branches:
+      - '**'
+    tags-ignore:
+      - '**'  # Skip CI on tag pushes (already tested on branch)
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - 'LICENSE'
+  # Run on pull requests (except docs-only changes)
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - 'LICENSE'
+
+# Permissions needed for Dependabot PRs (paths-filter needs to read commits)
+permissions:
+  contents: read
+  pull-requests: read
+
+# Cancel in-progress runs when a new commit is pushed
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Validate commit message format (conventional commits with scopes)
+  commit-lint:
+    name: Commit Message Lint
+    runs-on: self-hosted
+    # Skip for Dependabot PRs (uses its own commit format)
+    if: github.actor != 'dependabot[bot]'
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 0  # Full history for commit range
+
+    - name: Install commitlint
+      run: npm install --save-dev @commitlint/cli @commitlint/config-conventional
+
+    - name: Validate commits
+      run: |
+        # For PRs, check all commits in the PR
+        # For pushes, check just the pushed commits
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          npx commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
+        else
+          # For direct pushes, check the last commit
+          # Handle initial commit (no parent) gracefully
+          if git rev-parse HEAD~1 >/dev/null 2>&1; then
+            npx commitlint --from HEAD~1 --to HEAD --verbose
+          else
+            echo "⚠️ Initial commit detected (no parent) - skipping commit lint"
+            echo "   Commit message: $(git log -1 --format=%s)"
+          fi
+        fi
+
+  # Detect what changed to optimize CI runs
+  detect-changes:
+    name: Detect Changed Files
+    runs-on: self-hosted
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      tests: ${{ steps.filter.outputs.tests }}
+      scripts: ${{ steps.filter.outputs.scripts }}
+      docker: ${{ steps.filter.outputs.docker }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    - name: Check for file changes
+      uses: dorny/paths-filter@v3
+      id: filter
+      with:
+        filters: |
+          backend:
+            - 'scripts/**/*.py'
+            - 'bunking/**/*.py'
+            - 'pyproject.toml'
+            - 'uv.lock'
+            - 'campminder/**'
+            - 'pocketbase/**'
+            - 'go.mod'
+            - 'go.sum'
+            - '.golangci.yml'
+          frontend:
+            - 'frontend/**'
+            - 'package*.json'
+            - 'tsconfig*.json'
+          tests:
+            - 'tests/**'
+            - 'frontend/src/**/*.test.*'
+            - 'frontend/src/**/*.spec.*'
+            - 'pocketbase/**/*_test.go'
+          scripts:
+            - 'scripts/**/*.sh'
+            - '.githooks/**'
+            - '.shellcheckrc'
+          docker:
+            - 'Dockerfile'
+            - 'docker/**'
+            - '.hadolint.yaml'
+
+  # Secret scanning (runs unconditionally on all pushes/PRs)
+  secret-scan:
+    name: Secret Scanning
+    runs-on: self-hosted
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 0  # Full history for better scanning
+
+    - name: Run Gitleaks
+      run: |
+        # Dynamically exclude git-crypt files (runner may have them unlocked)
+        # Extract patterns from .gitattributes and create temporary config
+        CRYPT_PATTERNS=$(grep "filter=git-crypt" .gitattributes | awk '{print $1}' | sed 's/\./\\./g; s/\*\*/.*/' || true)
+
+        if [ -n "$CRYPT_PATTERNS" ]; then
+          echo "📁 Excluding git-crypt patterns from scan:"
+          echo "$CRYPT_PATTERNS" | sed 's/^/   /'
+
+          # Generate allowlist entries
+          ENTRIES=$(echo "$CRYPT_PATTERNS" | awk '{printf "    \x27\x27\x27%s\x27\x27\x27,\n", $0}')
+
+          # Insert into config (after "paths = [" line)
+          awk -v entries="$ENTRIES" '
+            /^paths = \[/ { print; print "    # git-crypt encrypted files (from .gitattributes)"; print entries; next }
+            { print }
+          ' .gitleaks.toml > /tmp/gitleaks-config.toml
+
+          gitleaks detect --source . --config /tmp/gitleaks-config.toml --verbose
+        else
+          gitleaks detect --source . --config .gitleaks.toml --verbose
+        fi
+
+  # Quick checks (skip if only docs changed)
+  quick-checks:
+    name: Linting & Type Checks
+    needs: detect-changes
+    if: |
+      needs.detect-changes.outputs.backend == 'true' ||
+      needs.detect-changes.outputs.frontend == 'true' ||
+      needs.detect-changes.outputs.tests == 'true' ||
+      needs.detect-changes.outputs.scripts == 'true' ||
+      needs.detect-changes.outputs.docker == 'true'
+    runs-on: self-hosted
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    - name: Unlock git-crypt for config files
+      env:
+        GIT_CRYPT_KEY: ${{ secrets.GIT_CRYPT_KEY }}
+      run: |
+        if [ -n "$GIT_CRYPT_KEY" ]; then
+          echo "$GIT_CRYPT_KEY" | base64 -d > /tmp/git-crypt-key
+          git-crypt unlock /tmp/git-crypt-key
+          rm /tmp/git-crypt-key
+          echo "✅ git-crypt unlocked - config files available"
+        else
+          echo "⚠️ GIT_CRYPT_KEY not set - skipping unlock"
+        fi
+
+    # Python checks (uv manages dependencies)
+    - name: Install Python dependencies
+      if: needs.detect-changes.outputs.backend == 'true'
+      run: uv sync --frozen
+
+    - name: Python formatting check
+      if: needs.detect-changes.outputs.backend == 'true'
+      run: uv run ruff format --check .
+
+    - name: Python linting
+      if: needs.detect-changes.outputs.backend == 'true'
+      run: uv run ruff check .
+
+    - name: Python type check (mypy)
+      if: needs.detect-changes.outputs.backend == 'true'
+      run: uv run mypy . --explicit-package-bases
+
+    - name: Security audit (pip-audit)
+      if: needs.detect-changes.outputs.backend == 'true'
+      run: uv run pip-audit --desc || echo "::warning::pip-audit found vulnerabilities"
+
+    - name: JSON config validation
+      if: needs.detect-changes.outputs.backend == 'true'
+      run: |
+        echo "Validating JSON config files..."
+        for f in config/*.json bunking/*.json; do
+          if [ -f "$f" ]; then
+            python -m json.tool "$f" > /dev/null && echo "✓ $f" || { echo "✗ $f is invalid JSON"; exit 1; }
+          fi
+        done
+
+    # Go checks (tools pre-installed on runner)
+    - name: Go formatting check
+      if: needs.detect-changes.outputs.backend == 'true'
+      run: |
+        if [ -n "$(gofmt -l pocketbase)" ]; then
+          echo "Go files need formatting. Please run: gofmt -w pocketbase"
+          gofmt -d pocketbase
+          exit 1
+        fi
+
+    - name: Go vet
+      if: needs.detect-changes.outputs.backend == 'true'
+      working-directory: ./pocketbase
+      run: go vet ./...
+
+    - name: Go linting
+      if: needs.detect-changes.outputs.backend == 'true'
+      working-directory: ./pocketbase
+      run: golangci-lint run --config ../.golangci.yml
+
+    - name: Go build check
+      if: needs.detect-changes.outputs.backend == 'true'
+      working-directory: ./pocketbase
+      run: go build -o /dev/null ./...
+
+    - name: Security audit (govulncheck)
+      if: needs.detect-changes.outputs.backend == 'true'
+      working-directory: ./pocketbase
+      run: govulncheck ./... || echo "::warning::govulncheck found vulnerabilities"
+
+    # PocketBase JS linting (migrations and hooks)
+    - name: Install PocketBase JS linting dependencies
+      if: needs.detect-changes.outputs.backend == 'true'
+      working-directory: ./pocketbase
+      run: npm ci
+
+    - name: PocketBase JS linting
+      if: needs.detect-changes.outputs.backend == 'true'
+      working-directory: ./pocketbase
+      run: npm run lint
+
+    # Shell script linting (warning+ severity - info is too noisy)
+    - name: Shell script linting (shellcheck)
+      if: needs.detect-changes.outputs.scripts == 'true' || needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.docker == 'true'
+      run: |
+        echo "Checking shell scripts..."
+        shellcheck --severity=warning scripts/*.sh scripts/**/*.sh .githooks/* docker/*.sh frontend/*.sh tests/shell/*.sh
+
+    # Dockerfile linting (stdin, no mounts - avoids self-hosted runner volume mount issues)
+    - name: Dockerfile linting (hadolint)
+      if: needs.detect-changes.outputs.docker == 'true'
+      run: docker run --rm -i hadolint/hadolint /bin/hadolint --ignore DL3008 - < Dockerfile
+
+    # Caddyfile validation (stdin, no mounts - avoids self-hosted runner volume mount issues)
+    - name: Caddyfile validation
+      if: needs.detect-changes.outputs.docker == 'true'
+      run: |
+        docker run --rm -i caddy:2 caddy adapt --adapter caddyfile --config - < docker/Caddyfile > /dev/null
+        docker run --rm -i caddy:2 caddy adapt --adapter caddyfile --config - < frontend/Caddyfile > /dev/null
+
+    # Frontend checks (Node.js pre-installed on runner)
+    - name: Install frontend dependencies
+      if: needs.detect-changes.outputs.frontend == 'true'
+      working-directory: ./frontend
+      run: npm ci
+
+    - name: TypeScript type check
+      if: needs.detect-changes.outputs.frontend == 'true'
+      working-directory: ./frontend
+      run: npm run type-check
+
+    - name: TypeScript linting
+      if: needs.detect-changes.outputs.frontend == 'true'
+      working-directory: ./frontend
+      run: npm run lint
+
+    - name: Security audit (npm)
+      if: needs.detect-changes.outputs.frontend == 'true'
+      working-directory: ./frontend
+      run: npm audit --audit-level=high || echo "::warning::npm audit found vulnerabilities"
+
+  # Always run tests - fast enough (~1 min) to catch hidden failures
+  tests:
+    name: Run Tests
+    needs: [detect-changes, quick-checks]
+    # Always run unless quick-checks failed (still need detect-changes for job ordering)
+    if: always() && needs.quick-checks.result != 'failure'
+    runs-on: self-hosted
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    - name: Unlock git-crypt for config files
+      env:
+        GIT_CRYPT_KEY: ${{ secrets.GIT_CRYPT_KEY }}
+      run: |
+        if [ -n "$GIT_CRYPT_KEY" ]; then
+          echo "$GIT_CRYPT_KEY" | base64 -d > /tmp/git-crypt-key
+          git-crypt unlock /tmp/git-crypt-key
+          rm /tmp/git-crypt-key
+          echo "✅ git-crypt unlocked - config files available"
+        else
+          echo "⚠️ GIT_CRYPT_KEY not set - skipping unlock"
+        fi
+
+    # Backend tests (Python) - uv manages dependencies
+    - name: Install Python dependencies
+      run: uv sync --frozen
+
+    - name: Create logs directory
+      run: mkdir -p logs
+
+    - name: Run Python unit tests (no external deps)
+      env:
+        SKIP_POCKETBASE_TESTS: true
+      run: uv run pytest tests/unit/ -v --tb=short --ignore=tests/unit/api/
+
+    # Backend tests (Go) - tools pre-installed
+    - name: Run Go tests
+      working-directory: ./pocketbase
+      run: go test ./... -v
+
+    # Frontend tests - Node.js pre-installed
+    - name: Install frontend dependencies
+      working-directory: ./frontend
+      run: npm ci
+
+    - name: Run frontend tests
+      working-directory: ./frontend
+      run: npm run test -- --run
+
+  # Submit dependencies to GitHub's dependency graph (replaces GitHub's automatic submission)
+  # This enables Dependabot security alerts without using GitHub-hosted runners
+  dependency-submission:
+    name: Dependency Submission
+    runs-on: self-hosted
+    # Only submit on main branch pushes (not PRs, not other branches)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write  # Required for dependency submission API
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    - name: Submit dependencies
+      uses: advanced-security/component-detection-dependency-submission-action@v0.1.0
+
+  # Summary job
+  summary:
+    name: CI Summary
+    needs: [commit-lint, detect-changes, secret-scan, quick-checks, tests, dependency-submission]
+    if: always()
+    runs-on: self-hosted
+    steps:
+    - name: Check status
+      run: |
+        # commit-lint is skipped for Dependabot PRs
+        if [ "${{ needs.commit-lint.result }}" != "success" ] && [ "${{ needs.commit-lint.result }}" != "skipped" ]; then
+          echo "❌ Commit message format invalid! Use: type(scope): description"
+          echo "   See CLAUDE.md for allowed scopes."
+          exit 1
+        fi
+        if [ "${{ needs.secret-scan.result }}" != "success" ]; then
+          echo "❌ Secret scanning failed! Check for leaked credentials."
+          echo "   If these are intentional dev/test values, add them to .gitleaks.toml"
+          exit 1
+        fi
+        if [ "${{ needs.tests.result }}" != "success" ] && [ "${{ needs.tests.result }}" != "skipped" ]; then
+          echo "❌ Tests failed!"
+          exit 1
+        fi
+        if [ "${{ needs.quick-checks.result }}" != "success" ] && [ "${{ needs.quick-checks.result }}" != "skipped" ]; then
+          echo "❌ Linting/type checks failed!"
+          exit 1
+        fi
+        echo "✅ All CI checks passed!"
