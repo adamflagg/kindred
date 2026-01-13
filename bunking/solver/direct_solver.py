@@ -704,7 +704,7 @@ class DirectBunkingSolver:
         status = solver.Solve(self.model, callback)
 
         # If infeasible, export the model and try to find conflicts
-        if status == cp_model.INFEASIBLE:  # type: ignore[comparison-overlap]
+        if status == cp_model.INFEASIBLE:
             logger.error("Model is INFEASIBLE - exporting model for analysis")
             try:
                 with open(model_export_path, "w") as f:
@@ -725,16 +725,16 @@ class DirectBunkingSolver:
             except Exception as e:
                 logger.error(f"Failed to export model: {e}")
 
-        if status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:  # type: ignore[comparison-overlap]
+        if status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
             logger.warning(f"Solver failed with status: {solver.StatusName(status)}")
 
             # Log failure details
-            if status == cp_model.INFEASIBLE:  # type: ignore[comparison-overlap]
+            if status == cp_model.INFEASIBLE:
                 self.constraint_logger.log_progress("SOLVER FAILED: Problem is INFEASIBLE!")
                 logger.error("The constraints cannot be satisfied. Check feasibility warnings above.")
-            elif status == cp_model.MODEL_INVALID:  # type: ignore[comparison-overlap]
+            elif status == cp_model.MODEL_INVALID:
                 self.constraint_logger.log_progress("SOLVER FAILED: Model is INVALID!")
-            elif status == cp_model.UNKNOWN:  # type: ignore[comparison-overlap]
+            elif status == cp_model.UNKNOWN:
                 self.constraint_logger.log_progress("SOLVER FAILED: Status UNKNOWN (timeout?)")
 
             # Save logs even on failure
