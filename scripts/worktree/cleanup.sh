@@ -3,6 +3,7 @@
 #
 # Usage:
 #   ./scripts/worktree/cleanup.sh <feature-name> [--keep-branch]
+#   ./scripts/worktree/cleanup.sh --all-merged
 #   ./scripts/worktree/cleanup.sh fix-auth-bug
 #   ./scripts/worktree/cleanup.sh fix-auth-bug --keep-branch
 
@@ -20,16 +21,55 @@ REPO_NAME="$(basename "$MAIN_REPO")"
 REPO_PARENT="$(dirname "$MAIN_REPO")"
 WORKTREES_DIR="$REPO_PARENT/${REPO_NAME}-worktrees"
 
+# Check if a PR for this branch was merged (the only safe heuristic)
+is_pr_merged() {
+    local branch="$1"
+    local state
+    state=$(gh pr list --head "$branch" --state merged --json state --jq '.[0].state' 2>/dev/null)
+    [ "$state" = "MERGED" ]
+}
+
+# Handle --all-merged flag
+if [ "$1" = "--all-merged" ]; then
+    if [ ! -d "$WORKTREES_DIR" ]; then
+        echo -e "${YELLOW}No worktrees directory found${NC}"
+        exit 0
+    fi
+
+    MERGED_COUNT=0
+    for dir in "$WORKTREES_DIR"/*/; do
+        [ -d "$dir" ] || continue
+        name=$(basename "$dir")
+        branch="feature/$name"
+
+        # Only clean if a merged PR exists for this branch
+        if is_pr_merged "$branch"; then
+            echo -e "${GREEN}Cleaning up merged worktree: $name${NC}"
+            "$0" "$name"
+            ((MERGED_COUNT++)) || true
+        fi
+    done
+
+    if [ "$MERGED_COUNT" -eq 0 ]; then
+        echo -e "${YELLOW}No merged worktrees to clean up${NC}"
+        echo -e "Worktrees are only auto-cleaned when their PR is merged on GitHub"
+    else
+        echo -e "${GREEN}Cleaned up $MERGED_COUNT worktree(s)${NC}"
+    fi
+    exit 0
+fi
+
 FEATURE_NAME="${1:-}"
 KEEP_BRANCH=false
 [ "$2" = "--keep-branch" ] && KEEP_BRANCH=true
 
 if [ -z "$FEATURE_NAME" ]; then
     echo -e "${RED}Usage: $0 <feature-name> [--keep-branch]${NC}"
+    echo -e "       $0 --all-merged"
     echo -e ""
     echo -e "Active worktrees:"
     if [ -d "$WORKTREES_DIR" ]; then
-        ls -1 "$WORKTREES_DIR" 2>/dev/null | sed 's/^/  /'
+        ls -1 "$WORKTREES_DIR" 2>/dev/null | grep -v README | sed 's/^/  /' || echo -e "  (none)"
     else
         echo -e "  (none)"
     fi
