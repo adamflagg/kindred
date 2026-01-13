@@ -1,0 +1,1218 @@
+/* ============================================
+   CAMP BUNKING - FOREST LODGE DESIGN SYSTEM
+   A warm, grounded design system inspired by
+   mountain lodge aesthetics and forest depths
+   ============================================ */
+
+@import "tailwindcss";
+
+/* Configure dark mode to use .dark class instead of prefers-color-scheme */
+@variant dark (&:where(.dark, .dark *));
+
+/* ============================================
+   THEME CONFIGURATION
+   ============================================ */
+@theme {
+  /* Camp Forest Palette - Deepened & Warmed */
+  --color-forest-900: oklch(18% 0.08 160);      /* #0a2e1f - Deep forest shadow */
+  --color-forest-800: oklch(23% 0.10 162);      /* #0d3d28 - Night forest */
+  --color-forest-700: oklch(28% 0.12 164);      /* #124d33 - Dense canopy */
+  --color-forest-600: oklch(35% 0.13 166);      /* #1a6644 - Forest floor */
+  --color-forest-500: oklch(42% 0.14 168);      /* #006d4a - Camp Primary */
+  --color-forest-400: oklch(55% 0.12 158);      /* #3d9970 - Sunlit leaves */
+  --color-forest-300: oklch(68% 0.10 152);      /* #84c992 - Morning dew */
+  --color-forest-200: oklch(82% 0.06 148);      /* #c5e6cd - Misty meadow */
+  --color-forest-100: oklch(94% 0.02 145);      /* #eef7f0 - Dawn light */
+  --color-forest-50: oklch(97% 0.01 145);       /* #f7fbf8 - First light */
+
+  /* Amber/Campfire Accents */
+  --color-amber-600: oklch(62% 0.18 65);        /* #c98418 - Deep amber */
+  --color-amber-500: oklch(72% 0.17 75);        /* #fdbe59 - Camp Secondary */
+  --color-amber-400: oklch(80% 0.14 80);        /* #ffd280 - Golden hour */
+  --color-amber-300: oklch(88% 0.09 85);        /* #ffe6b3 - Candlelight */
+  --color-amber-200: oklch(94% 0.04 88);        /* #fff4dc - Morning sun */
+
+  /* Warm Earth Tones */
+  --color-bark-900: oklch(18% 0.04 58);         /* #1f1a15 - Charcoal bark */
+  --color-bark-800: oklch(23% 0.04 56);         /* #2a2420 - Deep bark */
+  --color-bark-700: oklch(28% 0.04 55);         /* #3d3228 - Dark bark */
+  --color-bark-600: oklch(38% 0.04 52);         /* #554840 - Redwood */
+  --color-bark-500: oklch(48% 0.035 50);        /* #6b5d52 - Cedar */
+  --color-bark-400: oklch(62% 0.025 48);        /* #8b7d72 - Weathered wood */
+  --color-bark-300: oklch(78% 0.015 46);        /* #c4b8ad - Driftwood */
+  --color-bark-200: oklch(88% 0.01 44);         /* #ddd5cc - Light driftwood */
+  --color-bark-100: oklch(94% 0.005 42);        /* #f0ebe6 - Pale bark */
+  --color-bark-50: oklch(97% 0.003 40);         /* #f8f5f2 - Bark mist */
+
+  /* Cream/Paper Tones */
+  --color-parchment-100: oklch(98% 0.008 85);   /* #fdfcfa - Fresh paper */
+  --color-parchment-200: oklch(96% 0.02 82);    /* #fbf1e3 - Camp Cream */
+  --color-parchment-300: oklch(92% 0.025 78);   /* #f0e4d4 - Aged parchment */
+  --color-parchment-400: oklch(86% 0.03 72);    /* #e0d2c0 - Weathered paper */
+
+  /* Dynamic Theme Colors (HSL-based for Tailwind compatibility) */
+  --color-background: oklch(from hsl(var(--background)) l c h);
+  --color-foreground: oklch(from hsl(var(--foreground)) l c h);
+  --color-card: oklch(from hsl(var(--card)) l c h);
+  --color-card-foreground: oklch(from hsl(var(--card-foreground)) l c h);
+  --color-popover: oklch(from hsl(var(--popover)) l c h);
+  --color-popover-foreground: oklch(from hsl(var(--popover-foreground)) l c h);
+  --color-primary: oklch(from hsl(var(--primary)) l c h);
+  --color-primary-foreground: oklch(from hsl(var(--primary-foreground)) l c h);
+  --color-secondary: oklch(from hsl(var(--secondary)) l c h);
+  --color-secondary-foreground: oklch(from hsl(var(--secondary-foreground)) l c h);
+  --color-muted: oklch(from hsl(var(--muted)) l c h);
+  --color-muted-foreground: oklch(from hsl(var(--muted-foreground)) l c h);
+  --color-accent: oklch(from hsl(var(--accent)) l c h);
+  --color-accent-foreground: oklch(from hsl(var(--accent-foreground)) l c h);
+  --color-destructive: oklch(from hsl(var(--destructive)) l c h);
+  --color-destructive-foreground: oklch(from hsl(var(--destructive-foreground)) l c h);
+  --color-border: oklch(from hsl(var(--border)) l c h);
+  --color-input: oklch(from hsl(var(--input)) l c h);
+  --color-ring: oklch(from hsl(var(--ring)) l c h);
+
+  /* Pill radius - explicit to avoid Tailwind v4 infinity bug */
+  --radius-pill: 9999px;
+
+  /* Typography Scale - More Expressive */
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --font-size-2xs: 0.6875rem;
+  --line-height-2xs: 1.6;
+  --font-size-xs: 0.75rem;
+  --line-height-xs: 1.6;
+  --font-size-sm: 0.875rem;
+  --line-height-sm: 1.6;
+  --font-size-base: 1rem;
+  --line-height-base: 1.6;
+  --font-size-lg: 1.125rem;
+  --line-height-lg: 1.5;
+  --font-size-xl: 1.25rem;
+  --line-height-xl: 1.4;
+  --font-size-2xl: 1.5rem;
+  --line-height-2xl: 1.35;
+  --font-size-3xl: 1.875rem;
+  --line-height-3xl: 1.25;
+  --font-size-4xl: 2.25rem;
+  --line-height-4xl: 1.15;
+  --font-size-5xl: 3rem;
+  --line-height-5xl: 1.1;
+  --font-size-6xl: 3.75rem;
+  --line-height-6xl: 1.05;
+
+  /* Generous Container */
+  --width-content: 1320px;
+  --breakpoint-3xl: 1920px;
+}
+
+/* ============================================
+   LIGHT THEME - Dawn at the Lodge
+   ============================================ */
+@layer base {
+  :root {
+    /* Core semantic colors */
+    --background: 42 35% 97%;           /* Warm parchment */
+    --foreground: 160 60% 12%;          /* Deep forest text */
+    --card: 0 0% 100%;                  /* Pure white cards */
+    --card-foreground: 160 60% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 160 60% 12%;
+    --primary: 160 100% 21%;            /* Camp forest green */
+    --primary-foreground: 42 35% 97%;
+    --secondary: 160 35% 88%;           /* Soft sage */
+    --secondary-foreground: 160 60% 15%;
+    --muted: 42 25% 92%;                /* Muted parchment */
+    --muted-foreground: 160 15% 40%;
+    --accent: 42 92% 62%;               /* Golden amber */
+    --accent-foreground: 160 60% 12%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 42 20% 86%;               /* Warm border */
+    --input: 42 20% 86%;
+    --ring: 160 100% 21%;
+    --radius: 1rem;                     /* Softer corners */
+
+    /* Custom Lodge Tokens */
+    --shadow-color: 160 40% 10%;
+    --glow-color: 42 92% 62%;
+  }
+
+  .dark {
+    /* Dark theme - Twilight in the Forest */
+    --background: 160 50% 6%;           /* Deep forest night */
+    --foreground: 42 30% 92%;           /* Warm cream text */
+    --card: 160 40% 9%;                 /* Dark lodge wood */
+    --card-foreground: 42 30% 92%;
+    --popover: 160 40% 9%;
+    --popover-foreground: 42 30% 92%;
+    --primary: 160 50% 55%;             /* Moonlit sage */
+    --primary-foreground: 160 50% 6%;
+    --secondary: 160 30% 18%;           /* Forest shadow */
+    --secondary-foreground: 42 30% 88%;
+    --muted: 160 25% 14%;               /* Deep shadow */
+    --muted-foreground: 160 15% 60%;
+    --accent: 42 85% 55%;               /* Campfire glow */
+    --accent-foreground: 160 50% 6%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 160 25% 18%;
+    --input: 160 25% 18%;
+    --ring: 160 50% 55%;
+
+    --shadow-color: 160 80% 3%;
+    --glow-color: 42 85% 55%;
+  }
+}
+
+/* ============================================
+   BASE STYLES - The Foundation
+   ============================================ */
+@layer base {
+  /* Prevent overscroll bounce */
+  html, body {
+    overscroll-behavior: none;
+    overflow-x: hidden;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    font-feature-settings: "liga" 1, "calt" 1, "kern" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    letter-spacing: -0.011em;
+  }
+
+  /* Ambient Background - Subtle Topographic Lines */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.025;
+    background-image:
+      repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 60px,
+        currentColor 60px,
+        currentColor 61px
+      ),
+      repeating-linear-gradient(
+        90deg,
+        transparent,
+        transparent 60px,
+        currentColor 60px,
+        currentColor 61px
+      );
+    mask-image: radial-gradient(ellipse 100% 80% at 50% 20%, black, transparent);
+    z-index: -1;
+  }
+
+  /* Warm gradient overlay */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse 80% 50% at 20% 100%, hsl(var(--accent) / 0.04), transparent 50%),
+      radial-gradient(ellipse 60% 40% at 80% 10%, hsl(var(--primary) / 0.03), transparent 40%);
+    z-index: -1;
+  }
+
+  /* Typography - Display Headings with Character */
+  h1, h2, h3, .font-display {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    font-feature-settings: "ss01" 1, "ss02" 1;
+  }
+
+  h1 {
+    @apply text-4xl md:text-5xl;
+    line-height: 1.1;
+  }
+
+  h2 {
+    @apply text-3xl md:text-4xl;
+    line-height: 1.15;
+  }
+
+  h3 {
+    @apply text-2xl md:text-3xl;
+    line-height: 1.2;
+  }
+
+  h4 {
+    font-family: var(--font-sans);
+    @apply text-xl font-semibold;
+  }
+
+  h5, h6 {
+    font-family: var(--font-sans);
+    @apply text-lg font-semibold;
+  }
+
+  /* Selection styling */
+  ::selection {
+    background: hsl(var(--primary) / 0.2);
+    color: hsl(var(--primary));
+  }
+
+  /* Focus states - warm ring */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: hsl(var(--muted) / 0.5);
+    border-radius: var(--radius);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: var(--radius);
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.4);
+    background-clip: content-box;
+  }
+
+  /* iOS Safe Area Support */
+  .safe-area-top { padding-top: env(safe-area-inset-top); }
+  .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
+  .safe-area-left { padding-left: env(safe-area-inset-left); }
+  .safe-area-right { padding-right: env(safe-area-inset-right); }
+
+  /* Touch-friendly */
+  .touch-manipulation { touch-action: manipulation; }
+
+  /* Theme transition optimization */
+  html.transitioning,
+  html.transitioning * {
+    transition: none !important;
+  }
+
+  /* Scroll performance */
+  .overflow-auto,
+  .overflow-y-auto,
+  .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+    will-change: scroll-position;
+  }
+
+  /* Table row containment */
+  table tbody tr {
+    contain: layout style;
+  }
+}
+
+/* ============================================
+   COMPONENTS - Lodge-Inspired Elements
+   ============================================ */
+@layer components {
+  /* Primary Button - Solid Forest */
+  .btn-primary {
+    @apply relative inline-flex items-center justify-center gap-2;
+    @apply px-6 py-3 font-semibold text-sm;
+    @apply bg-primary text-primary-foreground;
+    @apply rounded-xl;
+    @apply transition-all duration-300 ease-out;
+    box-shadow:
+      0 1px 2px hsl(var(--shadow-color) / 0.1),
+      0 4px 12px hsl(var(--shadow-color) / 0.15),
+      inset 0 1px 0 hsl(0 0% 100% / 0.1);
+  }
+
+  .btn-primary:hover {
+    @apply bg-primary/90;
+    transform: translateY(-1px);
+    box-shadow:
+      0 2px 4px hsl(var(--shadow-color) / 0.1),
+      0 8px 24px hsl(var(--shadow-color) / 0.2),
+      inset 0 1px 0 hsl(0 0% 100% / 0.15);
+  }
+
+  .btn-primary:active {
+    transform: translateY(0);
+    box-shadow:
+      0 1px 2px hsl(var(--shadow-color) / 0.15),
+      inset 0 1px 2px hsl(var(--shadow-color) / 0.1);
+  }
+
+  /* Secondary Button - Soft Sage */
+  .btn-secondary {
+    @apply relative inline-flex items-center justify-center gap-2;
+    @apply px-6 py-3 font-semibold text-sm;
+    @apply bg-secondary text-secondary-foreground;
+    @apply rounded-xl border border-border/50;
+    @apply transition-all duration-300 ease-out;
+    box-shadow: 0 1px 3px hsl(var(--shadow-color) / 0.05);
+  }
+
+  .btn-secondary:hover {
+    @apply bg-secondary/80 border-primary/30;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px hsl(var(--shadow-color) / 0.1);
+  }
+
+  /* Ghost Button */
+  .btn-ghost {
+    @apply relative inline-flex items-center justify-center gap-2;
+    @apply px-4 py-2 font-medium text-sm;
+    @apply text-muted-foreground hover:text-foreground;
+    @apply rounded-lg;
+    @apply transition-all duration-200;
+  }
+
+  .btn-ghost:hover {
+    @apply bg-muted/60;
+  }
+
+  /* Accent Button - Golden Amber */
+  .btn-accent {
+    @apply relative inline-flex items-center justify-center gap-2;
+    @apply px-6 py-3 font-semibold text-sm;
+    @apply bg-accent text-accent-foreground;
+    @apply rounded-xl;
+    @apply transition-all duration-300 ease-out;
+    box-shadow:
+      0 1px 2px hsl(var(--shadow-color) / 0.08),
+      0 4px 12px hsl(var(--glow-color) / 0.2),
+      inset 0 1px 0 hsl(0 0% 100% / 0.2);
+  }
+
+  .btn-accent:hover {
+    @apply bg-accent/90;
+    transform: translateY(-1px);
+    box-shadow:
+      0 2px 4px hsl(var(--shadow-color) / 0.1),
+      0 8px 24px hsl(var(--glow-color) / 0.3),
+      inset 0 1px 0 hsl(0 0% 100% / 0.25);
+  }
+
+  /* Lodge Card - The Core Container */
+  .card-lodge {
+    @apply relative bg-card rounded-2xl;
+    @apply border-2 border-border;
+    @apply transition-all duration-300 ease-out;
+    box-shadow:
+      0 1px 2px hsl(var(--shadow-color) / 0.06),
+      0 4px 16px hsl(var(--shadow-color) / 0.08);
+  }
+
+  .card-lodge:hover {
+    @apply border-primary/50;
+    box-shadow:
+      0 2px 4px hsl(var(--shadow-color) / 0.08),
+      0 12px 32px hsl(var(--shadow-color) / 0.12);
+  }
+
+  /* Card with subtle texture */
+  .card-textured {
+    @apply relative bg-card rounded-2xl border-2 border-border;
+    @apply transition-all duration-300 ease-out;
+    background-image:
+      linear-gradient(to bottom, hsl(var(--card)), hsl(var(--card))),
+      url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    background-blend-mode: normal, overlay;
+    box-shadow:
+      0 1px 2px hsl(var(--shadow-color) / 0.06),
+      0 4px 16px hsl(var(--shadow-color) / 0.08);
+  }
+
+  .card-textured::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    opacity: 0.015;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    pointer-events: none;
+  }
+
+  /* Navigation Link - Active states */
+  .nav-link-lodge {
+    @apply relative px-4 py-2 font-semibold text-sm;
+    @apply text-white/70 rounded-xl;
+    @apply transition-all duration-200;
+  }
+
+  .nav-link-lodge:hover {
+    @apply text-white bg-white/10;
+  }
+
+  .nav-link-lodge.active {
+    @apply text-primary-foreground bg-primary;
+    box-shadow:
+      0 1px 2px hsl(var(--shadow-color) / 0.1),
+      0 4px 12px hsl(var(--shadow-color) / 0.15);
+  }
+
+  /* Badge/Tag Pills */
+  .tag-lodge {
+    @apply inline-flex items-center gap-1.5;
+    @apply px-3 py-1.5 text-xs font-semibold;
+    @apply rounded-lg;
+    @apply bg-muted/80 text-muted-foreground;
+    @apply border border-border/50;
+  }
+
+  .tag-lodge.tag-primary {
+    @apply bg-primary/10 text-primary border-primary/20;
+  }
+
+  .tag-lodge.tag-accent {
+    @apply bg-accent/20 text-accent-foreground border-accent/30;
+  }
+
+  .tag-lodge.tag-success {
+    @apply bg-forest-200 text-forest-700 border-forest-300;
+  }
+
+  /* Section Title with Decorative Line */
+  .section-title {
+    @apply relative font-display font-semibold text-2xl;
+    @apply flex items-center gap-4;
+  }
+
+  .section-title::after {
+    content: '';
+    @apply flex-1 h-px;
+    background: linear-gradient(90deg, hsl(var(--border)), transparent);
+  }
+
+  /* Input Fields */
+  .input-lodge {
+    @apply w-full px-4 py-3;
+    @apply bg-background text-foreground;
+    @apply border border-border rounded-xl;
+    @apply transition-all duration-200;
+    @apply placeholder:text-muted-foreground/60;
+  }
+
+  .input-lodge:focus {
+    @apply border-primary/50 ring-2 ring-primary/10;
+    outline: none;
+  }
+
+  /* Listbox (Headless UI styled dropdowns) */
+  .listbox-button {
+    @apply w-full flex items-center justify-between gap-2;
+    @apply bg-background text-foreground;
+    @apply border border-border rounded-xl;
+    @apply px-4 py-3 text-left;
+    @apply cursor-pointer transition-colors;
+    @apply hover:border-primary/50;
+    @apply focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .listbox-button-compact {
+    @apply flex items-center gap-2;
+    @apply bg-background text-foreground;
+    @apply border border-border rounded-xl;
+    @apply px-3 py-2 text-sm font-medium;
+    @apply cursor-pointer transition-colors shadow-sm;
+    @apply hover:border-primary/50;
+    @apply focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10;
+  }
+
+  .listbox-options {
+    @apply absolute z-50 mt-1;
+    @apply max-h-60 overflow-auto;
+    @apply bg-background text-foreground;
+    @apply border border-border rounded-xl;
+    @apply py-1 shadow-lg;
+    @apply focus:outline-none;
+  }
+
+  .listbox-option {
+    @apply relative cursor-pointer select-none;
+    @apply px-4 py-2 text-sm;
+    @apply hover:bg-muted;
+  }
+
+  /* Headless UI data attributes for state */
+  .listbox-option[data-focus] {
+    @apply bg-muted;
+  }
+
+  .listbox-option[data-selected] {
+    @apply font-semibold;
+  }
+
+  .listbox-option[data-disabled] {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  /* Stat Card */
+  .stat-card {
+    @apply relative p-4 rounded-xl;
+    @apply bg-gradient-to-br from-muted/50 to-muted/30;
+    @apply border border-border/50;
+  }
+
+  .stat-card-value {
+    @apply text-3xl font-display font-bold tracking-tight;
+    @apply bg-gradient-to-br from-foreground to-foreground/70;
+    @apply bg-clip-text text-transparent;
+  }
+
+  .stat-card-label {
+    @apply text-xs font-semibold uppercase tracking-wider;
+    @apply text-muted-foreground;
+  }
+
+  /* Progress Bar */
+  .progress-lodge {
+    @apply relative h-2 w-full overflow-hidden rounded-full;
+    @apply bg-muted;
+  }
+
+  .progress-lodge-fill {
+    @apply h-full rounded-full;
+    @apply bg-gradient-to-r from-primary to-primary/80;
+    @apply transition-all duration-500 ease-out;
+  }
+
+  /* Spinner */
+  .spinner-lodge {
+    @apply h-6 w-6 animate-spin;
+    @apply border-2 border-muted border-t-primary rounded-full;
+  }
+
+  /* Satisfaction indicators - compact status icons */
+  .sat-icon {
+    @apply w-4 h-4 rounded-full text-[10px] font-bold;
+    @apply flex items-center justify-center flex-shrink-0;
+    @apply shadow-sm transition-transform;
+  }
+  .sat-icon:hover {
+    @apply scale-110;
+  }
+  .sat-icon-met {
+    @apply bg-forest-600 text-white;
+  }
+  .dark .sat-icon-met {
+    @apply bg-forest-500;
+  }
+  .sat-icon-unmet {
+    @apply bg-amber-600 text-white;
+  }
+  .dark .sat-icon-unmet {
+    @apply bg-amber-500;
+  }
+  .sat-icon-unknown {
+    @apply bg-bark-300 text-bark-700;
+  }
+  .dark .sat-icon-unknown {
+    @apply bg-bark-600 text-bark-200;
+  }
+  .sat-spinner {
+    @apply w-3.5 h-3.5 animate-spin rounded-full;
+    @apply border-2 border-forest-200 border-t-forest-600;
+  }
+  .dark .sat-spinner {
+    @apply border-forest-700 border-t-forest-400;
+  }
+
+  /* Divider with pine needle motif */
+  .divider-pine {
+    @apply relative h-px w-full;
+    @apply bg-border;
+  }
+
+  .divider-pine::before {
+    content: '🌲';
+    @apply absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2;
+    @apply bg-background px-3 text-sm opacity-30;
+  }
+}
+
+/* ============================================
+   UTILITIES - Helpful Additions
+   ============================================ */
+@layer utilities {
+  /* CRITICAL: Override rounded-full to fix Tailwind v4 infinity bug */
+  /* Tailwind v4 generates border-radius: 3.40282e38px for rounded-full */
+  .rounded-full {
+    border-radius: 9999px !important;
+  }
+
+  /* Rounded Pill - Explicit alternative */
+  .rounded-pill {
+    border-radius: 9999px;
+  }
+
+  /* Lodge shadows */
+  .shadow-lodge-sm {
+    box-shadow:
+      0 1px 2px hsl(var(--shadow-color) / 0.04),
+      0 2px 8px hsl(var(--shadow-color) / 0.06);
+  }
+
+  .shadow-lodge {
+    box-shadow:
+      0 1px 2px hsl(var(--shadow-color) / 0.04),
+      0 4px 16px hsl(var(--shadow-color) / 0.08);
+  }
+
+  .shadow-lodge-lg {
+    box-shadow:
+      0 2px 4px hsl(var(--shadow-color) / 0.04),
+      0 8px 32px hsl(var(--shadow-color) / 0.12);
+  }
+
+  .shadow-lodge-xl {
+    box-shadow:
+      0 4px 8px hsl(var(--shadow-color) / 0.05),
+      0 16px 48px hsl(var(--shadow-color) / 0.15);
+  }
+
+  /* Glow effects */
+  .glow-accent {
+    box-shadow:
+      0 0 20px hsl(var(--glow-color) / 0.2),
+      0 0 40px hsl(var(--glow-color) / 0.1);
+  }
+
+  .glow-primary {
+    box-shadow:
+      0 0 20px hsl(var(--primary) / 0.15),
+      0 0 40px hsl(var(--primary) / 0.08);
+  }
+
+  /* Animations */
+  .animate-fade-in {
+    animation: fadeIn 0.4s ease-out;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.5s ease-out;
+  }
+
+  .animate-slide-down {
+    animation: slideDown 0.5s ease-out;
+  }
+
+  .animate-scale-in {
+    animation: scaleIn 0.3s ease-out;
+  }
+
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+
+  .animate-slide-in-right {
+    animation: slideInRight 0.3s ease-out;
+  }
+
+  .animate-slide-in-left {
+    animation: slideInLeft 0.3s ease-out;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes slideDown {
+    from {
+      opacity: 0;
+      transform: translateY(-16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes scaleIn {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes slideInRight {
+    from {
+      transform: translateX(100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes slideInLeft {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes slideOutRight {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(100%);
+    }
+  }
+
+  @keyframes slideOutLeft {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-100%);
+    }
+  }
+
+  .animate-slide-out-right {
+    animation: slideOutRight 0.3s ease-in forwards;
+  }
+
+  .animate-slide-out-left {
+    animation: slideOutLeft 0.3s ease-in forwards;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% {
+      box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.4), 0 0 8px rgba(245, 158, 11, 0.3);
+    }
+    50% {
+      box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.6), 0 0 16px rgba(245, 158, 11, 0.5),
+                  0 0 24px rgba(245, 158, 11, 0.2);
+    }
+  }
+
+  /* Synchronized pending lock group glow - all elements pulse together */
+  .pending-lock-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+    /* All elements using this class share the same animation timeline */
+  }
+
+  /* Stagger delays for lists */
+  .stagger-1 { animation-delay: 0.05s; }
+  .stagger-2 { animation-delay: 0.1s; }
+  .stagger-3 { animation-delay: 0.15s; }
+  .stagger-4 { animation-delay: 0.2s; }
+  .stagger-5 { animation-delay: 0.25s; }
+  .stagger-6 { animation-delay: 0.3s; }
+
+  /* Backdrop blur with fallback - forest tinted */
+  .backdrop-lodge {
+    @apply backdrop-blur-xl;
+    @apply bg-forest-800/85 text-white;
+  }
+
+  /* Text gradient */
+  .text-gradient-forest {
+    @apply bg-gradient-to-r from-primary via-forest-400 to-primary;
+    @apply bg-clip-text text-transparent;
+  }
+
+  .text-gradient-amber {
+    @apply bg-gradient-to-r from-amber-600 via-accent to-amber-500;
+    @apply bg-clip-text text-transparent;
+  }
+
+  /* Theme-aware transitions */
+  .theme-transition {
+    @apply transition-[background-color,border-color,color] duration-200;
+  }
+
+  /* Legacy animate-in/out for compatibility */
+  .animate-in {
+    animation: slideUp 0.3s ease-out;
+  }
+
+  .animate-out {
+    animation: fadeOut 0.2s ease-in;
+  }
+
+  @keyframes fadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+
+  /* ============================================
+     TOAST NOTIFICATIONS - Sierra Lodge Style
+     ============================================ */
+
+  /* Base toast styling - overrides react-hot-toast defaults */
+  [data-sonner-toaster], .toast-lodge {
+    font-family: var(--font-sans) !important;
+  }
+
+  /* Custom toast container styling */
+  .toast-lodge {
+    @apply flex items-start gap-3 px-5 py-4 rounded-xl;
+    @apply border;
+    @apply text-sm font-medium leading-relaxed;
+    box-shadow:
+      0 2px 4px hsl(var(--shadow-color) / 0.04),
+      0 8px 32px hsl(var(--shadow-color) / 0.12);
+    min-width: 320px;
+    max-width: 420px;
+  }
+
+  /* Light mode toast */
+  .toast-lodge {
+    @apply bg-white border-forest-200;
+    @apply text-forest-800;
+  }
+
+  .dark .toast-lodge {
+    @apply bg-forest-800 border-forest-600;
+    @apply text-parchment-100;
+  }
+
+  /* Toast icon container */
+  .toast-lodge-icon {
+    @apply flex-shrink-0 w-6 h-6 flex items-center justify-center;
+    @apply text-lg;
+  }
+
+  /* Toast content */
+  .toast-lodge-content {
+    @apply flex-1 min-w-0;
+  }
+
+  .toast-lodge-title {
+    @apply font-semibold text-sm mb-0.5;
+  }
+
+  .toast-lodge-message {
+    @apply text-sm opacity-90;
+  }
+
+  /* Success toast variant */
+  .toast-lodge-success {
+    @apply border-l-4 border-l-forest-500;
+  }
+
+  .toast-lodge-success .toast-lodge-icon {
+    @apply text-forest-500;
+  }
+
+  .dark .toast-lodge-success {
+    @apply border-l-forest-400;
+  }
+
+  .dark .toast-lodge-success .toast-lodge-icon {
+    @apply text-forest-400;
+  }
+
+  /* Error toast variant */
+  .toast-lodge-error {
+    @apply border-l-4 border-l-red-500;
+  }
+
+  .toast-lodge-error .toast-lodge-icon {
+    @apply text-red-500;
+  }
+
+  .dark .toast-lodge-error {
+    @apply border-l-red-400;
+  }
+
+  .dark .toast-lodge-error .toast-lodge-icon {
+    @apply text-red-400;
+  }
+
+  /* Info/Loading toast variant */
+  .toast-lodge-info {
+    @apply border-l-4 border-l-amber-500;
+  }
+
+  .toast-lodge-info .toast-lodge-icon {
+    @apply text-amber-500;
+  }
+
+  .dark .toast-lodge-info {
+    @apply border-l-amber-400;
+  }
+
+  .dark .toast-lodge-info .toast-lodge-icon {
+    @apply text-amber-400;
+  }
+
+  /* Sync-specific toast styling */
+  .toast-lodge-sync {
+    @apply border-l-4 border-l-forest-500;
+    @apply bg-gradient-to-r from-forest-50 to-white;
+  }
+
+  .dark .toast-lodge-sync {
+    @apply border-l-forest-400;
+    @apply bg-gradient-to-r from-forest-800 to-forest-700;
+  }
+
+  /* Toast progress bar (for timed toasts) */
+  .toast-progress {
+    @apply absolute bottom-0 left-0 h-1 bg-forest-500 rounded-b-xl;
+    @apply transition-all ease-linear;
+  }
+
+  .dark .toast-progress {
+    @apply bg-forest-400;
+  }
+
+  /* Toast enter/exit animations */
+  @keyframes toastSlideIn {
+    from {
+      opacity: 0;
+      transform: translateY(-24px) scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes toastSlideOut {
+    from {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(-16px) scale(0.96);
+    }
+  }
+
+  .toast-enter {
+    animation: toastSlideIn 0.35s cubic-bezier(0.21, 1.02, 0.73, 1) forwards;
+  }
+
+  .toast-exit {
+    animation: toastSlideOut 0.25s ease-in forwards;
+  }
+}
+
+/* ============================================
+   RESPONSIVE UTILITIES
+   ============================================ */
+@layer utilities {
+  /* Navigation responsive text */
+  .nav-text-icon-only { @apply inline sm:hidden; }
+  .nav-text-short { @apply hidden sm:inline; }
+  .nav-text-full { @apply hidden; }
+
+  @media (min-width: 640px) and (max-width: 900px) {
+    .nav-btn-icon-only span {
+      display: none !important;
+    }
+  }
+
+  @media (min-width: 1200px) {
+    .nav-text-short { display: none !important; }
+    .nav-text-full { display: inline !important; }
+  }
+
+  /* Stats display */
+  .stat-label-icon { @apply inline md:hidden; }
+  .stat-label-short { @apply hidden md:inline lg:hidden; }
+  .stat-label-full { @apply hidden lg:inline; }
+
+  /* Spacing */
+  .nav-spacing { @apply space-x-2 md:space-x-3 lg:space-x-4; }
+
+  /* Visibility */
+  .show-tablet { @apply hidden md:block; }
+  .show-desktop { @apply hidden lg:block; }
+  .hide-tablet { @apply block md:hidden; }
+  .hide-desktop { @apply block lg:hidden; }
+
+  @media (max-width: 900px) {
+    .hide-nav-medium { display: none !important; }
+  }
+
+  @media (min-width: 901px) {
+    .show-nav-medium { display: block !important; }
+  }
+
+  /* Touch targets */
+  @media (max-width: 640px) {
+    button, a, select, input[type="button"], input[type="submit"] {
+      min-height: 44px;
+      min-width: 44px;
+    }
+
+    .nav-mobile-spacing {
+      padding-left: 0.5rem;
+      padding-right: 0.5rem;
+    }
+  }
+
+  /* Safe area insets */
+  .safe-area-inset {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  /* Extra small breakpoint */
+  @media (min-width: 480px) {
+    .xs\:block { display: block !important; }
+    .xs\:hidden { display: none !important; }
+  }
+}
+
+/* ============================================
+   CUSTOM GRIDS - Data Tables
+   ============================================ */
+.request-table-grid {
+  display: grid;
+  grid-template-columns: 40px 260px 260px 220px 80px 100px 100px 120px;
+  min-width: 1080px;
+}
+
+/* Mobile card layout for request review panel */
+@media (max-width: 767px) {
+  .request-card-mobile {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    grid-template-rows: auto auto auto;
+    gap: 0.5rem;
+    padding: 1rem;
+    border-bottom: 1px solid hsl(var(--border));
+    align-items: start;
+  }
+
+  .request-card-mobile .card-checkbox {
+    grid-row: 1 / 3;
+    align-self: center;
+    padding-top: 0.25rem;
+  }
+
+  .request-card-mobile .card-main {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .request-card-mobile .card-badges {
+    grid-column: 3;
+    grid-row: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.25rem;
+  }
+
+  .request-card-mobile .card-request {
+    grid-column: 2 / 4;
+    grid-row: 2;
+  }
+
+  .request-card-mobile .card-actions {
+    grid-column: 1 / 4;
+    grid-row: 3;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.25rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid hsl(var(--border) / 0.5);
+    margin-top: 0.25rem;
+  }
+
+  .request-card-mobile .card-actions button {
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+/* ============================================
+   SPECIAL EFFECTS
+   ============================================ */
+
+/* Pine tree decorative element */
+.deco-pine::before {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 24px;
+  background: currentColor;
+  opacity: 0.1;
+  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+}
+
+/* Mountain silhouette background */
+.bg-mountains {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 320'%3E%3Cpath fill='%23006d4a' fill-opacity='0.05' d='M0,224L48,213.3C96,203,192,181,288,181.3C384,181,480,203,576,197.3C672,192,768,160,864,165.3C960,171,1056,213,1152,213.3C1248,213,1344,171,1392,149.3L1440,128L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z'%3E%3C/path%3E%3C/svg%3E");
+  background-position: bottom;
+  background-repeat: no-repeat;
+  background-size: 100% auto;
+}
+
+/* Sunrise gradient for headers */
+.bg-sunrise {
+  background: linear-gradient(
+    180deg,
+    hsl(var(--background)) 0%,
+    hsl(var(--accent) / 0.03) 50%,
+    hsl(var(--background)) 100%
+  );
+}
+
+/* Forest gradient overlay */
+.overlay-forest {
+  position: relative;
+}
+
+.overlay-forest::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    135deg,
+    hsl(var(--primary) / 0.02) 0%,
+    transparent 50%,
+    hsl(var(--accent) / 0.02) 100%
+  );
+  pointer-events: none;
+  border-radius: inherit;
+}

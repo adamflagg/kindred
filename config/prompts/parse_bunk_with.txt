@@ -1,0 +1,130 @@
+You are parsing the "share_bunk_with" field from a parent registration form for {camp_name},
+a residential summer camp where campers live in overnight cabins ("bunks") with 8-12 campers.
+
+=== SOURCE CONTEXT ===
+
+This is PARENT-SUBMITTED content from a registration form. Parents may:
+- Be emotional and informal
+- Use nicknames or first names only
+- Reference siblings casually ("my twin", "her brother")
+- Include multiple unrelated requests in one field
+- Embed negative requests within positive ones ("but NOT with Jake")
+- Use priority indicators ("1. Mia 2. Lily")
+- Reference past camp experiences ("same bunk as last year")
+
+{requester_info}
+
+Field content: "{request_text}"
+
+TASK: Extract ALL structured bunk requests from this parent-submitted text.
+
+CRITICAL RULE: If the field contains ONLY a person's name (like "Noah Chen" or "Emma Smith"),
+this is ALWAYS a bunk_with request. Never return an empty list for simple name-only inputs.
+A name alone means "bunk this person with the named friend."
+
+=== REQUEST TYPES ===
+
+This field commonly contains:
+
+1. "bunk_with" - Wants to share a cabin with specific person(s)
+   target_name = person's name, "SIBLING", or "LAST_YEAR_BUNKMATES"
+
+2. "not_bunk_with" - Embedded negatives (look for "NOT", "don't", "please avoid", "separate from")
+   target_name = person's name or "SIBLING"
+
+3. "age_preference" - Preference for older/younger cabinmates (no specific person named)
+   target_name = "older", "younger", or "unclear"
+   Use when text says "prefers older kids" without naming anyone specific
+
+IMPORTANT: Parents often embed negative requests in this field. Extract BOTH positive and negative.
+
+=== SPECIAL PLACEHOLDERS ===
+
+Use these EXACT strings as target_name when appropriate:
+- "SIBLING" - For family references: twins, sister, brother, sibling, my twin, "bunk together" (for twins)
+- "LAST_YEAR_BUNKMATES" - For prior cabin references: "last year's bunk", "same cabin as 2024", "B-4 bunkmates"
+
+These placeholders will be expanded to actual names by the system later.
+
+=== PRIORITY INDICATORS ===
+
+Parents may indicate priority. Capture in keywords_found:
+- Numbered lists: "1. Mia 2. Lily" (list_position tracks order)
+- Priority words: "first choice", "most important", "priority", "if possible"
+- Must/critical: "MUST be with", "essential", "critical"
+
+=== FIELD-SPECIFIC PATTERNS ===
+
+Example 1 - Simple name (just a name = bunk_with):
+Input: "Emma Wilson"
+Output: 1 bunk_with request for "Emma Wilson"
+
+Example 1b - Another simple name:
+Input: "Noah Chen"
+Output: 1 bunk_with request for "Noah Chen"
+
+Example 1c - Name with hyphen:
+Input: "Liam Patel"
+Output: 1 bunk_with request for "Liam Patel"
+
+Example 2 - Multiple names with priority:
+Input: "1. Sophia Martinez (Cousin). 2. Olivia Rose Thompson"
+Output: 2 bunk_with requests, list_position 0 and 1, "Cousin" in parse_notes for first
+
+Example 3 - Embedded negative:
+Input: "Wants to be with Mia. PLEASE DO NOT put with Jake - he bullied Lucas last year"
+Output: 2 requests - bunk_with "Mia", not_bunk_with "Jake" with bullying context in parse_notes
+
+Example 4 - Historical reference:
+Input: "2024 Session 3 B-4 LOVED each other. Would be so special if they could be back together"
+Output: 1 bunk_with request with target_name "LAST_YEAR_BUNKMATES", parse_notes: "2024 Session 3 B-4"
+
+Example 5 - Complex with siblings:
+Input: "Would prefer to be separate from Ava if possible. Not because they aren't thick as thieves, but precisely b/c they are! As twins, they have to do everything together"
+Output: 1 not_bunk_with "SIBLING" request with context in parse_notes
+
+Example 6 - Age preference with name:
+Input: "Better with younger kids who are a little gentler. Ethan is citizenship oriented"
+Output: 1 age_preference "younger" request (no person named, just preference)
+
+=== TEMPORAL CONFLICTS (CRITICAL!) ===
+
+When text shows someone CHANGED THEIR MIND, you MUST output BOTH requests
+and mark the OLD/EARLIER one as superseded.
+
+SIGNALS: "then changed", "now wants", "changed minds", "previously wanted", date progression
+
+RULE: The EARLIER/FIRST request is SUPERSEDED. The LATER/CURRENT one survives.
+
+Example: "Wanted to be without Zoe and then changed to bunk together"
+- Request 1: not_bunk_with "Zoe", temporal_info: {{is_superseded: true, supersedes_reason: "then changed to bunk together"}}
+- Request 2: bunk_with "SIBLING", temporal_info: {{is_superseded: false}}
+
+=== FAMILY CAMP (SKIP) ===
+
+IGNORE Family Camp content entirely:
+- "FC1", "FC2", "FC-1", "FC-2" prefixes indicate Family Camp sessions
+- "Family Camp" mentions are not relevant to summer bunking
+- If field ONLY contains FC content, return an empty requests array
+- If mixed with summer camp content, extract ONLY the summer camp requests
+
+=== INVALID TARGETS (DO NOT EXTRACT) ===
+
+- Physical preferences: "upper bunk", "near window", "bottom bed"
+- Vague descriptions: "friendly kids", "quiet cabin", "similar interests"
+- Generic groups: "campers", "children", "kids", "friends"
+- The requester themselves (self-reference)
+- Parent names mentioned as context, not bunking targets
+
+=== OUTPUT REQUIREMENTS ===
+
+For each valid request, provide:
+- request_type: "bunk_with" | "not_bunk_with" | "age_preference"
+- target_name: Person's name, placeholder, or age value
+- confidence: 0.0-1.0 (use LOW confidence for uncertain extractions)
+- temporal_info: null OR {{date_mentioned, is_superseded, supersedes_reason}}
+- keywords_found: Priority words like "must", "important", "critical", "first choice"
+- source_type: "parent" (always for this field)
+- parse_notes: Brief explanation including any context (cousin, school friend, etc.)
+- reasoning: Why you categorized this request this way
+- list_position: Position in multi-request fields (0-indexed)

@@ -1,0 +1,116 @@
+{
+  "description": "Cabin capacity analysis across all sessions for 2025 season",
+  "physical_infrastructure": {
+    "TotalCabins": 20,
+    "RiverSideCabins": 12,
+    "RidgeSideCabins": 8,
+    "CabinsPerSize": {
+      "12_campers": 18,
+      "13_campers": 2
+    },
+    "TotalBedCapacity": 244
+  },
+  "session_capacity_analysis": [
+    {
+      "SessionID": 1001,
+      "SessionName": "Session 1 - Discovery",
+      "EnrolledCampers": 132,
+      "CabinsNeeded": 11,
+      "CapacityStatus": "✅ WITHIN CAPACITY",
+      "RemainingCabins": 9,
+      "Utilization": "55%"
+    },
+    {
+      "SessionID": 1002,
+      "SessionName": "Session 2 - Adventure", 
+      "EnrolledCampers": 202,
+      "CabinsNeeded": 17,
+      "CapacityStatus": "✅ WITHIN CAPACITY",
+      "RemainingCabins": 3,
+      "Utilization": "85%"
+    },
+    {
+      "SessionID": 1003,
+      "SessionName": "Session 2a - Quest Leaders",
+      "EnrolledCampers": 78,
+      "CabinsNeeded": 7,
+      "CapacityStatus": "✅ WITHIN CAPACITY",
+      "RemainingCabins": 13,
+      "Utilization": "35%",
+      "Note": "Runs concurrent with Session 2 - separate allocation needed"
+    },
+    {
+      "SessionID": 1004,
+      "SessionName": "Session 3 - Expedition",
+      "EnrolledCampers": 253,
+      "CabinsNeeded": 22,
+      "CapacityStatus": "❌ OVER CAPACITY",
+      "CabinShortage": 2,
+      "Utilization": "110%"
+    },
+    {
+      "SessionID": 1005,
+      "SessionName": "Session 4 - Grand Adventure",
+      "EnrolledCampers": 300,
+      "CabinsNeeded": 25,
+      "CapacityStatus": "❌ OVER CAPACITY",
+      "CabinShortage": 5,
+      "Utilization": "125%"
+    }
+  ],
+  "capacity_constraints": {
+    "critical_sessions": [
+      {
+        "session": "Session 3",
+        "shortage": 2,
+        "solutions": [
+          "Use 13-camper capacity in 2 cabins",
+          "Implement ridge-side allocation",
+          "Consider off-site quest programs"
+        ]
+      },
+      {
+        "session": "Session 4", 
+        "shortage": 5,
+        "solutions": [
+          "Sequential scheduling (cannot run with other large sessions)",
+          "Temporary cabin structures",
+          "Reduce enrollment cap to 240 campers"
+        ]
+      }
+    ],
+    "embedded_session_conflicts": {
+      "Session 2 + 2a": {
+        "total_cabins_needed": 24,
+        "available_cabins": 20,
+        "status": "❌ IMPOSSIBLE - 4 cabin shortage",
+        "solution": "Sequential scheduling required"
+      }
+    }
+  },
+  "allocation_strategy": {
+    "river_side_priority": {
+      "sessions": ["Session 2", "Session 3", "Session 4"],
+      "reasoning": "Main sessions get preferred locations"
+    },
+    "ridge_side_usage": {
+      "sessions": ["Session 1", "Session 2a", "Session 2b"],
+      "reasoning": "Smaller sessions use secondary locations"
+    },
+    "capacity_management": [
+      "Prioritize returning campers for popular sessions",
+      "Balance age/grade distribution across cabins",
+      "Reserve overflow capacity for special accommodations",
+      "Maintain gender separation requirements"
+    ]
+  },
+  "optimization_results": {
+    "Session_2_Example": {
+      "CabinsAllocated": 17,
+      "AverageOccupancy": 11.9,
+      "RequestSatisfactionRate": "100%",
+      "GradeCohesionScore": 0.95,
+      "AgeBalanceScore": 0.92
+    }
+  }
+}

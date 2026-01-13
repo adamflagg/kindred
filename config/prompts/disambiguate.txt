@@ -1,0 +1,20 @@
+Help identify which person "{target_name}" refers to.
+
+Requester: {requester_name} (ID: {requester_cm_id})
+School: {requester_school}
+
+Possible matches for "{target_name}":
+{candidates_text}
+
+Context:
+- Local resolution confidence: {local_confidence}
+- Ambiguity reason: {ambiguity_reason}
+
+Select the most likely match based on available information.
+Consider:
+- School proximity (same school = more likely to know each other)
+- Grade similarity (campers usually request peers within 1-2 grades)
+- Social connections (mutual friends increase likelihood)
+- Name spelling (fuzzy matches may indicate typos)
+
+If no match seems confident, select the closest match but set confidence appropriately low.

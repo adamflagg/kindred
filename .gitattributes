@@ -1,0 +1,57 @@
+# Git attributes for the bunking repository
+
+# Auto-detect text files and normalize line endings
+* text=auto
+
+# Explicitly declare text files
+*.md text
+*.txt text
+*.json text
+*.yaml text
+*.yml text
+*.toml text
+*.py text
+*.go text
+*.ts text
+*.tsx text
+*.js text
+*.jsx text
+*.css text
+*.html text
+*.sh text eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+
+# =============================================================================
+# git-crypt: Encrypted files
+# These files are committed but encrypted in the repository.
+# Run `git-crypt unlock` with the key to access them.
+# =============================================================================
+
+# Camp-specific branding (theme, colors, camp name)
+config/branding.local.json filter=git-crypt diff=git-crypt
+
+# Staff list with real names
+config/staff_list.json filter=git-crypt diff=git-crypt
+
+# Local assets (logos, images)
+local/** filter=git-crypt diff=git-crypt
+
+# Private Claude instructions
+CLAUDE.local.md filter=git-crypt diff=git-crypt
+
+# Secrets manager configuration (Infisical credentials)
+scripts/vault.config filter=git-crypt diff=git-crypt
+
+# Vite local config (private FQDNs, HMR settings)
+frontend/vite.config.local.ts filter=git-crypt diff=git-crypt

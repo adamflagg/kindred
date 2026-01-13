@@ -1,0 +1,72 @@
+{
+  "endpoint": "GET /sessions/1002/season/2025/attendees",
+  "description": "Attendees for Session 2 - Adventure (202 total campers)",
+  "response": {
+    "ClientID": 337,
+    "SessionID": 1002,
+    "ProgramID": 2001,
+    "SeasonID": 2025,
+    "PersonsStatus": [
+      {
+        "PersonID": 500001,
+        "StatusID": 2,
+        "StatusName": "Enrolled",
+        "Memo": "Returning camper - loves archery",
+        "PostDate": "2025-03-15T10:30:00Z",
+        "EffectiveDate": "2025-07-01",
+        "LastUpdatedUTC": "2025-06-01T14:22:33Z"
+      },
+      {
+        "PersonID": 500002, 
+        "StatusID": 2,
+        "StatusName": "Enrolled",
+        "Memo": "First-time camper - nervous about swimming",
+        "PostDate": "2025-04-02T16:45:00Z",
+        "EffectiveDate": "2025-07-01",
+        "LastUpdatedUTC": "2025-06-01T14:22:33Z"
+      },
+      {
+        "PersonID": 500003,
+        "StatusID": 2,
+        "StatusName": "Enrolled", 
+        "Memo": "Bunking requests: wants to be with Luke Skywalker",
+        "PostDate": "2025-03-28T09:15:00Z",
+        "EffectiveDate": "2025-07-01",
+        "LastUpdatedUTC": "2025-06-01T14:22:33Z"
+      },
+      {
+        "PersonID": 500004,
+        "StatusID": 2,
+        "StatusName": "Enrolled",
+        "Memo": "Leadership track - mentor role",
+        "PostDate": "2025-02-14T11:20:00Z", 
+        "EffectiveDate": "2025-07-01",
+        "LastUpdatedUTC": "2025-06-01T14:22:33Z"
+      },
+      {
+        "PersonID": 500005,
+        "StatusID": 4,
+        "StatusName": "Applied",
+        "Memo": "Waiting for medical forms",
+        "PostDate": "2025-05-20T13:30:00Z",
+        "EffectiveDate": "2025-07-01", 
+        "LastUpdatedUTC": "2025-06-15T09:45:12Z"
+      }
+    ]
+  },
+  "attendee_mapping": {
+    "500001": "Hermione Granger (Age 14, Grade 8)",
+    "500002": "Frodo Baggins (Age 13, Grade 7)", 
+    "500003": "Leia Organa (Age 15, Grade 9)",
+    "500004": "Aragorn Strider (Age 16, Grade 10)",
+    "500005": "Katniss Everdeen (Age 14, Grade 8)"
+  },
+  "status_codes": {
+    "2": "Enrolled - Confirmed attendance",
+    "4": "Applied - Pending final approval",
+    "8": "WaitList - Awaiting availability",
+    "16": "LeftEarly - Departed before session end",
+    "32": "Cancelled - Cancelled enrollment",
+    "64": "Dismissed - Removed from program"
+  }
+}

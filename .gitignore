@@ -1,0 +1,292 @@
+# =============================================================================
+# Credentials and Secrets
+# =============================================================================
+*.credentials*
+.credentials*
+.credentials
+.credentials.json
+credentials*
+**/credentials*
+api/.credentials*
+*.key
+*.pem
+*.p12
+*.pfx
+config.json
+secrets.json
+.env
+.env.*
+!.env.example
+
+# CampMinder token cache
+.campminder_token_cache.json
+
+# CSV history tracking backups
+csv_history/*.backup.*
+
+# =============================================================================
+# Python
+# =============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+!frontend/dist/
+downloads/
+eggs/
+.eggs/
+lib/
+!frontend/src/lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+*.pyc
+*.pyo
+*.pyd
+.python-version
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual Environments
+.venv
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# =============================================================================
+# Node.js
+# =============================================================================
+node_modules/
+
+# =============================================================================
+# Frontend build artifacts
+# =============================================================================
+frontend/dist/
+*.min.js
+*.min.css
+
+# =============================================================================
+# PocketBase
+# Ignore everything except migrations, hooks, and Go extension files
+# =============================================================================
+pocketbase/*
+!pocketbase/pb_migrations/
+pocketbase/pb_migrations/*_updated_users.js
+!pocketbase/pb_hooks/
+!pocketbase/go.mod
+!pocketbase/go.sum
+!pocketbase/main.go
+!pocketbase/sync/
+!pocketbase/logging/
+!pocketbase/campminder/
+!pocketbase/ratelimit/
+!pocketbase/config/
+!pocketbase/README.md
+# JS tooling for migrations/hooks linting
+!pocketbase/package.json
+!pocketbase/package-lock.json
+!pocketbase/eslint.config.js
+
+# =============================================================================
+# Database files
+# =============================================================================
+*.db
+*.db-*
+*.db.backup*
+*.sqlite
+*.sqlite3
+
+# =============================================================================
+# Archive directories
+# =============================================================================
+scripts/archive/
+archives/
+old/
+deprecated/
+backups/
+
+# =============================================================================
+# IDEs and Editors
+# =============================================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+.*.swp
+.*.swo
+.*.swn
+*~
+
+# =============================================================================
+# Testing and Coverage
+# =============================================================================
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# =============================================================================
+# Linting and Type Checking Caches
+# =============================================================================
+.mypy_cache/
+.ruff_cache/
+.eslintcache
+*.tsbuildinfo
+
+# =============================================================================
+# MCP and AI Tool Caches
+# =============================================================================
+.serena/
+*.pkl
+*.cache
+.playwright-mcp/
+.claude/
+
+# =============================================================================
+# Jupyter Notebooks
+# =============================================================================
+.ipynb_checkpoints
+
+# =============================================================================
+# Log files
+# =============================================================================
+*.log
+logs/
+*.log.*
+solver_service_optimized.log
+
+# =============================================================================
+# Temporary files
+# =============================================================================
+*.tmp
+*.temp
+temp/
+tmp/
+
+# =============================================================================
+# Output files that may contain sensitive data
+# =============================================================================
+*.csv
+*.json
+*.xlsx
+*.xls
+!requirements.txt
+!requirements-*.txt
+!package.json
+!package-lock.json
+!**/sample_*.csv
+!config/staff_list.example.json
+!config/branding.json
+!config/branding.local.json
+!config/staff_list.json
+!**/example_*.json
+!campminder/**/*.json
+!docs/api/external/campminder/examples/*.json
+!ruff.toml
+!tsconfig.json
+!tsconfig.node.json
+!vite.config.ts
+
+# Temporary outputs folder
+outputs/
+
+# RClone drive mount
+drive/
+
+# =============================================================================
+# OS generated files
+# =============================================================================
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.AppleDouble
+.LSOverride
+Icon
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msm
+*.msp
+
+# Linux
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# =============================================================================
+# Backup files
+# =============================================================================
+*.bak
+*.backup
+*.old
+*.orig
+
+# =============================================================================
+# Binary and executable files
+# =============================================================================
+*.exe
+*.dll
+*.dylib
+*.jar
+*.war
+*.ear
+
+# =============================================================================
+# Compressed files
+# =============================================================================
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# =============================================================================
+# Local development
+# =============================================================================
+requirements/
+claude-exports/
+
+# =============================================================================
+# git-crypt encrypted files (DO NOT add to .gitignore)
+# These are committed but encrypted. See .gitattributes for the list.
+# - config/staff_list.json
+# - config/branding.local.json
+# - local/
+# - CLAUDE.local.md
+# - scripts/vault.config
+# - frontend/vite.config.local.ts
+# =============================================================================
+
+# Config files (symlinked from dotfiles)
+CLAUDE.md
+CLAUDE.local.md

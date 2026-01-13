@@ -1,0 +1,86 @@
+version: "2"
+
+run:
+  go: "1.24"
+  timeout: 10m
+  build-tags:
+    - pocketbase
+  exclude-dirs:
+    - vendor
+    - third_party
+    - testdata
+    - pb_data
+    - pb_public
+    - backups
+
+linters:
+  enable:
+    # Core linters
+    - govet
+    - errcheck
+    - staticcheck
+    - ineffassign
+    - unused
+    # Code quality
+    - misspell
+    - unconvert
+    - whitespace
+    - nakedret
+    - prealloc
+    - goprintffuncname
+    # Additional linters
+    - bodyclose
+    - dupl
+    - goconst
+    - gocritic
+    - gocyclo
+    - gosec
+    - lll
+    - revive
+
+linters-settings:
+  govet:
+    enable:
+      - shadow
+  gocyclo:
+    min-complexity: 15
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+  misspell:
+    locale: US
+  lll:
+    line-length: 120
+  nakedret:
+    max-func-lines: 30
+  dupl:
+    threshold: 100
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - experimental
+      - opinionated
+      - performance
+      - style
+    disabled-checks:
+      - dupImport
+      - ifElseChain
+      - octalLiteral
+      - whyNoLint
+      - wrapperFunc
+
+issues:
+  max-issues-per-linter: 50
+  max-same-issues: 10
+  exclude-use-default: false
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - errcheck
+        - dupl
+        - gosec
+    - path: _test\.go
+      linters:
+        - revive
+      text: "unused-parameter"

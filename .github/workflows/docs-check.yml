@@ -1,0 +1,79 @@
+name: Documentation Check
+
+# This workflow runs ONLY for documentation changes
+# It's much faster than the full CI pipeline
+
+on:
+  # Allow manual triggering
+  workflow_dispatch:
+  push:
+    branches:
+      - '**'
+    tags-ignore:
+      - '**'  # Skip on tag pushes (already tested on branch)
+    paths:
+      - 'docs/**'
+      - '*.md'
+      - 'LICENSE'
+  pull_request:
+    paths:
+      - 'docs/**'
+      - '*.md'
+      - 'LICENSE'
+
+jobs:
+  docs-lint:
+    name: Documentation Linting
+    runs-on: self-hosted
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+      
+    - name: Check markdown files
+      run: |
+        echo "Checking markdown files for basic issues..."
+        
+        # Check for broken internal links
+        echo "Checking for broken internal links..."
+        for file in $(find . -name "*.md" -not -path "./node_modules/*" -not -path "./venv/*"); do
+          # Extract markdown links [text](link)
+          grep -Eo '\[([^]]+)\]\(([^)]+)\)' "$file" | grep -Eo '\]\(([^)]+)\)' | sed 's/](\(.*\))/\1/' | while read -r link; do
+            # Skip external links
+            if [[ "$link" =~ ^https?:// ]]; then
+              continue
+            fi
+            # Skip anchors
+            if [[ "$link" =~ ^# ]]; then
+              continue
+            fi
+            # Check if internal file exists
+            if [[ "$link" =~ ^/ ]]; then
+              # Absolute path from repo root
+              check_path="${link#/}"
+            else
+              # Relative path
+              dir=$(dirname "$file")
+              check_path="$dir/$link"
+            fi
+            # Remove any anchors
+            check_path="${check_path%%#*}"
+            if [ ! -f "$check_path" ]; then
+              echo "Broken link in $file: $link (resolved to $check_path)"
+            fi
+          done
+        done
+        
+        echo "Documentation check complete!"
+    
+    - name: Summary
+      run: |
+        echo "## Documentation Check Complete"
+        echo ""
+        echo "This was a documentation-only change, so we skipped:"
+        echo "- Python dependency installation"
+        echo "- Frontend dependency installation"
+        echo "- All code tests"
+        echo "- Docker image builds"
+        echo "- Integration tests"
+        echo ""
+        echo "Time saved: ~19 minutes! ⚡"

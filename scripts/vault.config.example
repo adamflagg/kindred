@@ -1,0 +1,15 @@
+# Infisical Configuration
+# Copy this file to vault.config (gitignored) and set your values
+
+# Your Infisical instance URL
+INFISICAL_DOMAIN="https://vault.example.com"
+
+# Project ID (find in Infisical: Project Settings → General → Project ID)
+INFISICAL_PROJECT_ID=""
+
+# Machine Identity credentials (Access Control → Machine Identities → Universal Auth)
+INFISICAL_CLIENT_ID=""
+INFISICAL_CLIENT_SECRET=""
+
+# Default environment (dev, staging, prod)
+INFISICAL_ENV="dev"

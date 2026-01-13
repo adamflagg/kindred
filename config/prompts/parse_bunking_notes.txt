@@ -1,0 +1,131 @@
+You are parsing the "bunking_notes" field for {camp_name},
+a residential summer camp where campers live in overnight cabins ("bunks") with 8-12 campers.
+
+=== SOURCE CONTEXT ===
+
+This is STAFF-WRITTEN narrative content, often with:
+- Multi-year historical context ("2019 - Bunk with younger kids")
+- Behavioral observations about the camper
+- Conflict history between campers
+- Staff action items ("Jordan will reach out")
+- Multiple entries from different years concatenated
+- Both positive (bunk_with) AND negative (not_bunk_with) requests embedded in prose
+
+Staff signatures have been pre-stripped. Focus on extracting actionable bunking requests.
+
+{requester_info}
+
+Field content: "{request_text}"
+
+TASK: Extract ALL actionable bunking requests from this staff narrative.
+
+=== REQUEST TYPES ===
+
+This field may contain ANY request type:
+
+1. "bunk_with" - Staff recommends bunking with specific person(s)
+   Keywords: "bunk with", "should be with", "recommend with", "would do well with"
+
+2. "not_bunk_with" - Staff recommends separation
+   Keywords: "not with", "separate from", "avoid", "neg request", "don't bunk with"
+
+3. "age_preference" - Age/grade recommendations
+   Keywords: "bunk older", "same age/younger", "would do better with younger kids"
+
+=== SPECIAL PLACEHOLDERS ===
+
+Use these EXACT strings as target_name when appropriate:
+- "SIBLING" - For twin/sibling bunking notes
+- "LAST_YEAR_BUNKMATES" - For "same bunk as last year" references
+
+=== NARRATIVE EXTRACTION RULES ===
+
+1. Extract EXPLICIT requests only - don't infer from behavioral observations
+   - "Less emotionally mature" = context, NOT a request
+   - "bunk with younger kids" = request (age_preference)
+
+2. Historical year prefixes indicate when note was written, not session qualifier
+   - "2019 - Bunk with younger kids" = age_preference still valid unless superseded
+
+3. Staff action items are NOT requests
+   - "Jordan will reach out" = skip
+   - "Call mom before session" = skip
+
+4. Counselor recommendations ARE requests
+   - "Counselors recommend NOT bunking with Lucas" = not_bunk_with
+
+=== FIELD-SPECIFIC PATTERNS ===
+
+Example 1 - Age preference from old note:
+Input: "2019 - Bunk with younger kids (emotionally immature)"
+Output: 1 age_preference "younger", parse_notes: "Staff note from 2019 - emotional maturity concern"
+
+Example 2 - Negative with context:
+Input: "Neg request: Sofia Petrov. They are still friends. Maya has a harder time making new friends when with Sofia"
+Output: 1 not_bunk_with "Sofia Petrov", parse_notes: "friendship dynamics - harder to make new friends when together"
+
+Example 3 - Staff recommendation for separation:
+Input: "Counselors recommend he NOT be bunked with Lucas Wright or Ben Goldstein and would greatly benefit from being bunked with a younger and different group"
+Output: 3 requests - 2 not_bunk_with (Lucas Wright, Ben Goldstein), 1 age_preference "younger"
+
+Example 4 - Multi-year progression:
+Input: "'25 bunking - continue to bunk separately from Ava Collins. See '24 notes."
+Output: 1 not_bunk_with "Ava Collins", parse_notes: "continuing from 2024"
+
+Example 5 - Must bunk with sibling:
+Input: "Must bunk with twin sister, plus ideally also a friend request"
+Output: 1 bunk_with "SIBLING", keywords_found: ["must"]
+
+Example 6 - Mixed requests in narrative:
+Input: "Tough relationship with Chloe Davis and wants to not be with her. Mom shared that it'll be fine if she can be with Mia as well."
+Output: 2 requests - not_bunk_with "Chloe Davis", bunk_with "Mia"
+
+Example 7 - Behavioral context (no request):
+Input: "Emma is very sensitive and last year needed a lot of support. Be aware of her sensitivity."
+Output: 0 requests (behavioral observation only, no bunking action)
+
+Example 8 - Superseded request:
+Input: "Wanted to be without Zoe and then changed a day later in June to say bunk together"
+Output: 2 requests:
+- not_bunk_with "Zoe", temporal_info: {{is_superseded: true, supersedes_reason: "changed to bunk together"}}
+- bunk_with "SIBLING", temporal_info: {{is_superseded: false}}
+
+Example 9 - Unit placement (not bunk request):
+Input: "Same unit as twin Lily Thompson if possible"
+Output: 0 requests (unit placement, not cabin assignment - note in parse_notes if helpful)
+
+=== TEMPORAL CONFLICTS (CRITICAL!) ===
+
+Staff notes often contain historical changes. When text shows a CHANGE:
+
+RULE: The EARLIER/FIRST request is SUPERSEDED. The LATER/CURRENT one survives.
+
+SIGNALS: "then changed", "now", "changed minds", "previously", date prefixes (6/4...6/5)
+
+=== FAMILY CAMP (SKIP) ===
+
+IGNORE Family Camp content:
+- "FC1", "FC2" sessions are not summer camp
+- "Family Camp" references should be skipped
+
+=== INVALID EXTRACTIONS ===
+
+DO NOT extract:
+- Staff action items: "Jordan will call", "reach out before session"
+- Behavioral observations without bunking recommendation
+- Physical needs: "Needs bottom bunk", "cabin with bathroom"
+- Unit placement: "Same unit as..." (different from cabin/bunk)
+- Generic notes: "Would benefit from experienced counselors"
+
+=== OUTPUT REQUIREMENTS ===
+
+For each valid request, provide:
+- request_type: "bunk_with" | "not_bunk_with" | "age_preference"
+- target_name: Person's name, placeholder, or age value
+- confidence: 0.0-1.0 (lower for old notes, inferred requests)
+- temporal_info: null OR {{date_mentioned, is_superseded, supersedes_reason}}
+- keywords_found: Priority words like "must", "recommend", "counselors noted"
+- source_type: "staff" (always for this field)
+- parse_notes: Include historical context, reasoning, staff perspective
+- reasoning: Why this is an actionable bunking request
+- list_position: Position in multi-request content (0-indexed)

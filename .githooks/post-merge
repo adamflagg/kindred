@@ -1,0 +1,32 @@
+#!/bin/bash
+# Post-merge hook: Auto-cleanup worktrees for merged branches
+# Runs after `git pull` or `git merge`
+
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+MAIN_REPO="$(git rev-parse --show-toplevel)"
+REPO_NAME="$(basename "$MAIN_REPO")"
+REPO_PARENT="$(dirname "$MAIN_REPO")"
+WORKTREES_DIR="$REPO_PARENT/${REPO_NAME}-worktrees"
+
+# Only proceed if worktrees directory exists
+[ -d "$WORKTREES_DIR" ] || exit 0
+
+# Check each worktree for merged branches
+for dir in "$WORKTREES_DIR"/*/; do
+    [ -d "$dir" ] || continue
+    name=$(basename "$dir")
+    branch="claude/$name"
+
+    # Check if branch exists and is merged to main
+    if git branch --merged main 2>/dev/null | grep -q "$branch"; then
+        echo -e ""
+        echo -e "${GREEN}Branch '$branch' has been merged to main${NC}"
+        echo -e "${YELLOW}Worktree can be cleaned up: $dir${NC}"
+        echo -e ""
+        echo -e "Run: ./scripts/worktree/cleanup.sh $name"
+        echo -e ""
+    fi
+done

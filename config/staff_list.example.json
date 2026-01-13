@@ -1,0 +1,8 @@
+{
+    "_comment": "Copy this file to staff_list.json and add real staff names",
+    "_format": "Use first_name as the name used in notes (nickname if appropriate), last_name for full identification",
+    "staff": [
+        {"first_name": "Leia", "last_name": "Organa"},
+        {"first_name": "Obi-Wan", "last_name": "Kenobi"}
+    ]
+}
