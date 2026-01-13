@@ -1,0 +1,30 @@
+{
+  "endpoint": "POST /auth/login",
+  "description": "Authenticate and obtain JWT token",
+  "request": {
+    "headers": {
+      "Content-Type": "application/json",
+      "Ocp-Apim-Subscription-Key": "8d4eaabd8931442dab92cdc392b9b469"
+    },
+    "body": {
+      "apiKey": "5S3/wvTO123DZwlf03/H-uyIgpGPZDIiTElmu9IBqFjQtlSwf1KKxeNW/1rJI",
+      "clientId": 337
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzMzciLCJjbGllbnRfaWQiOjMzNywiaWF0IjoxNzM0OTg3NjAwLCJleHAiOjE3MzQ5OTEyMDB9.XYZ123_sample_token_signature",
+      "expires": "2025-12-23T16:00:00Z",
+      "clientId": 337,
+      "permissions": [
+        "sessions:read",
+        "persons:read", 
+        "bunks:read",
+        "bunks:write",
+        "divisions:read",
+        "staff:read"
+      ]
+    }
+  }
+}

@@ -1,0 +1,86 @@
+You are parsing bunk requests for {camp_name}, a residential summer camp where
+campers live in overnight cabins ("bunks") with 8-12 other campers of similar age.
+
+Bunk assignments significantly impact each camper's summer experience. Requests come from:
+- PARENTS: May be emotional, use nicknames, reference siblings informally
+- STAFF: More factual, may include dates, reference past years
+
+{requester_info}
+
+Field content: "{request_text}"
+
+TASK: Extract structured bunk requests from this text.
+
+=== REQUEST TYPES ===
+
+1. "bunk_with" - Camper wants to share a cabin with specific person(s)
+   target_name = person's name, "SIBLING", or "LAST_YEAR_BUNKMATES"
+
+2. "not_bunk_with" - Camper should NOT share a cabin with specific person(s)
+   target_name = person's name or "SIBLING"
+
+3. "age_preference" - Preference for older/younger cabinmates (no specific person named)
+   target_name = "older", "younger", or "unclear"
+   Use this when text says "prefers older kids" or "wants younger bunkmates" without naming anyone
+
+=== SPECIAL PLACEHOLDERS ===
+
+Use these EXACT strings as target_name when appropriate:
+- "SIBLING" - For family references: twins, sister, brother, sibling, my twin, "bunk together" (for twins)
+- "LAST_YEAR_BUNKMATES" - For prior cabin references: last year's bunk, same cabin as 2024
+
+These placeholders will be expanded to actual names by the system later.
+
+=== TEMPORAL CONFLICTS (CRITICAL!) ===
+
+When text shows someone CHANGED THEIR MIND, you MUST output BOTH requests
+and mark the OLD/EARLIER one as superseded.
+
+SIGNALS to look for: "then changed", "now wants", "changed minds", "previously wanted", date progression (6/4...6/5)
+
+RULE: The EARLIER/FIRST request is SUPERSEDED. The LATER/CURRENT one survives.
+
+Example: "Wanted to be without Zoe and then changed to bunk together"
+- Request 1: not_bunk_with "Zoe", temporal_info: {{is_superseded: true, supersedes_reason: "then changed to bunk together"}}
+- Request 2: bunk_with "SIBLING", temporal_info: {{is_superseded: false}}
+
+Example: "6/4 wants separate bunks | 6/5 changed minds, want together"
+- Request 1: not_bunk_with "SIBLING", temporal_info: {{is_superseded: true, date_mentioned: "6/4", supersedes_reason: "changed minds on 6/5"}}
+- Request 2: bunk_with "SIBLING", temporal_info: {{is_superseded: false, date_mentioned: "6/5"}}
+
+The words "then", "now", or "changed" signal the SWITCH - everything before is OLD/superseded.
+
+=== FAMILY CAMP (SKIP) ===
+
+IGNORE Family Camp content entirely:
+- "FC1", "FC2", "FC-1", "FC-2" prefixes indicate Family Camp sessions
+- "Family Camp" mentions are not relevant to summer bunking
+- If field ONLY contains FC content, return an empty requests array
+- If mixed with summer camp content, extract ONLY the summer camp requests
+
+=== MULTI-PERSON SPLITTING ===
+
+Split multi-name requests into separate entries:
+- "wants to be with Mia, Ava, and Lily" becomes 3 separate bunk_with requests
+- Use list_position to track order (0, 1, 2...)
+
+=== INVALID TARGETS (DO NOT EXTRACT) ===
+
+- Physical preferences: "upper bunk", "near window", "bottom bed"
+- Vague descriptions: "friendly kids", "quiet cabin", "similar interests", "noise sensitive"
+- Generic groups: "campers", "children", "kids", "friends"
+- The requester themselves (self-reference)
+- Parent/staff names mentioned only as context, not as bunking targets
+
+=== OUTPUT REQUIREMENTS ===
+
+For each valid request, provide:
+- request_type: "bunk_with" | "not_bunk_with" | "age_preference"
+- target_name: Person's name, placeholder ("SIBLING", "LAST_YEAR_BUNKMATES"), or age value ("older", "younger", "unclear")
+- confidence: 0.0-1.0 (use LOW confidence for uncertain extractions)
+- temporal_info: null OR {{date_mentioned, is_superseded, supersedes_reason}}
+- keywords_found: Priority words like "must", "important", "critical", "first choice"
+- source_type: "parent" | "counselor" | "staff"
+- parse_notes: Brief explanation of what was extracted
+- reasoning: Why you categorized this request this way
+- list_position: Position in multi-request fields (0-indexed)

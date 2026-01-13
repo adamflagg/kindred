@@ -1,0 +1,115 @@
+You are parsing the "internal_bunk_notes" field for {camp_name},
+a residential summer camp where campers live in overnight cabins ("bunks") with 8-12 campers.
+
+=== SOURCE CONTEXT ===
+
+This is STAFF SHORTHAND - brief action-oriented notes. Characteristics:
+- Very concise (often under 100 characters)
+- Uses abbreviations: "CO" (Checkout), "Ses" (Session), "w/" (with)
+- May reference other campers or twin siblings
+- Often contains quick bunking directives
+- Less historical context than bunking_notes
+
+{requester_info}
+
+Field content: "{request_text}"
+
+TASK: Extract bunking requests from this staff shorthand.
+
+=== REQUEST TYPES ===
+
+This field may contain:
+
+1. "bunk_with" - Should be bunked with specific person(s)
+   Keywords: "with", "must be with", "bunk with", "together"
+
+2. "not_bunk_with" - Should NOT be bunked with specific person(s)
+   Keywords: "not with", "separate from", "away from"
+
+3. "age_preference" - Age/grade preference
+   Keywords: "bunk older", "same age/younger", "bunk with 5th/6th"
+
+=== SPECIAL PLACEHOLDERS ===
+
+- "SIBLING" - For twin/sibling references
+- "LAST_YEAR_BUNKMATES" - For prior cabin references
+
+=== STAFF SHORTHAND PATTERNS ===
+
+Example 1 - Age shorthand:
+Input: "same age/younger"
+Output: 1 age_preference "younger"
+
+Example 2 - Simple age directive:
+Input: "Bunk older"
+Output: 1 age_preference "older"
+
+Example 3 - Grade range:
+Input: "Bunk with 5th/6th"
+Output: 1 age_preference "younger" (relative to camper's grade context)
+
+Example 4 - Twin requirement:
+Input: "Must be bunked with twin sister"
+Output: 1 bunk_with "SIBLING", keywords_found: ["must"]
+
+Example 5 - CO reference with friend:
+Input: "CO noted friends with Riley Brooks"
+Output: 1 bunk_with "Riley Brooks", parse_notes: "CO noted friendship"
+
+Example 6 - Session-specific friend:
+Input: "Nora Kim (Ses 3)"
+Output: 1 bunk_with "Nora Kim", parse_notes: "Session 3"
+
+Example 7 - Negative reference:
+Input: "not with Ava Mitchell's friends from last year"
+Output: 1 not_bunk_with with target_name: unclear, parse_notes: "Ava Mitchell's 2024 friend group", confidence: 0.5
+
+Example 8 - Priority first choice:
+Input: "Zoe Parker is her first choice but she might have to cancel. If Zoe cancels - MUST be with Lily Chen"
+Output: 2 bunk_with requests - "Zoe Parker" (conditional), "Lily Chen" with "must" keyword
+
+Example 9 - Unit placement (NOT a bunk request):
+Input: "Same unit as twin Max Thompson"
+Output: 0 requests (unit ≠ cabin placement)
+
+Example 10 - Physical need (NOT a bunk request):
+Input: "Needs bottom bunk"
+Output: 0 requests (physical accommodation, not bunking)
+
+Example 11 - Friend from prior year:
+Input: "Noah Garcia was in 2024 bunk"
+Output: 1 bunk_with "Noah Garcia", parse_notes: "prior bunkmate 2024"
+
+Example 12 - Multiple notes concatenated:
+Input: "Bunk older. CO noted friends with Emma. Must be with twin."
+Output: 3 requests - age_preference "older", bunk_with "Emma", bunk_with "SIBLING"
+
+=== INVALID EXTRACTIONS ===
+
+DO NOT extract:
+- Physical needs: "Needs bottom bunk", "needs cabin with bathroom and electricity"
+- Unit placement: "Same unit as..." (unit ≠ cabin)
+- Staff instructions: "Reach out to mom", "call before session"
+- General notes: "Keep in unit with 9th/10th" (grade range, not specific person)
+- Counselor notes without bunking content
+
+=== HANDLING AMBIGUITY ===
+
+Staff shorthand can be ambiguous. Use confidence scoring:
+- Clear name + directive: 0.9-1.0
+- CO/friend reference: 0.8-0.9
+- Abbreviated or unclear: 0.5-0.7
+- Very ambiguous: 0.3-0.5 (flag for review)
+
+=== OUTPUT REQUIREMENTS ===
+
+For each valid request, provide:
+- request_type: "bunk_with" | "not_bunk_with" | "age_preference"
+- target_name: Person's name, placeholder, or age value
+- confidence: 0.0-1.0 (lower for abbreviated/unclear content)
+- temporal_info: null (rarely needed for internal notes)
+- keywords_found: Priority words like "must", "first choice"
+- source_type: "staff" (always for this field)
+- parse_notes: Expand abbreviations, note context
+- reasoning: How you interpreted the shorthand
+- list_position: Position in multi-request content (0-indexed)

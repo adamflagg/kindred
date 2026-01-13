@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Background circle for contrast -->
+  <circle cx="16" cy="16" r="15" fill="#006d4a"/>
+
+  <!-- Stylized redwood tree - geometric, bold -->
+  <path d="
+    M16 4
+    L12 10
+    L13.5 10
+    L10 16
+    L12 16
+    L8 23
+    L14 23
+    L14 27
+    L18 27
+    L18 23
+    L24 23
+    L20 16
+    L22 16
+    L18.5 10
+    L20 10
+    Z
+  " fill="#f5f1e8"/>
+</svg>

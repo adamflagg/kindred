@@ -1,0 +1,87 @@
+# Gitleaks configuration for Kindred
+# https://github.com/gitleaks/gitleaks
+#
+# This config allowlists known development credentials, test fixtures,
+# and example data that are intentionally in the codebase.
+
+title = "Kindred Gitleaks Config"
+
+[extend]
+# Extend the default gitleaks config
+useDefault = true
+
+[allowlist]
+description = "Global allowlist for development and test patterns"
+
+# Allowlist specific secret values that are intentionally public
+# These are LOCAL DEVELOPMENT ONLY credentials, never used in production
+regexes = [
+    # Local dev PocketBase password (documented in .env.example)
+    '''campbunking123''',
+
+    # Test API keys used in unit tests
+    '''test-key-\d+''',
+    '''test_api_key_\d+''',
+    '''fake[-_]?key''',
+    '''dummy[-_]?key''',
+    '''mock[-_]?key''',
+
+    # Local dev email
+    '''admin@camp\.local''',
+
+    # Example/placeholder values
+    '''your[-_].*[-_]here''',
+    '''example\.com''',
+    '''your[-_]?password''',
+    '''changeme''',
+    '''placeholder''',
+]
+
+# Allowlist paths that contain intentional test/example secrets
+# NOTE: git-crypt encrypted files are dynamically added by CI from .gitattributes
+paths = [
+    # Test files
+    '''tests/.*''',
+    '''.*_test\.go$''',
+    '''.*\.test\.(ts|tsx|js|jsx)$''',
+    '''.*\.spec\.(ts|tsx|js|jsx)$''',
+    '''.*fixtures.*''',
+    '''.*__mocks__.*''',
+
+    # Documentation with examples
+    '''docs/.*''',
+    '''.*\.md$''',
+
+    # API specs with example tokens
+    '''.*\.yaml$''',
+    '''.*\.yml$''',
+
+    # Example/sample files
+    '''.*\.example.*''',
+    '''.*\.sample.*''',
+
+    # PocketBase internal data (should be gitignored, but just in case)
+    '''pocketbase/pb_data/.*''',
+
+    # Generated type definitions
+    '''.*types\.d\.ts$''',
+
+    # Shell scripts with dev setup
+    '''scripts/.*\.sh$''',
+]
+
+# Allowlist specific commits if needed (add commit SHAs here)
+# commits = []
+
+# Stopwords - strings that if found in the secret will cause it to be ignored
+stopwords = [
+    "example",
+    "sample",
+    "test",
+    "fake",
+    "mock",
+    "dummy",
+    "placeholder",
+    "localhost",
+    "127.0.0.1",
+]

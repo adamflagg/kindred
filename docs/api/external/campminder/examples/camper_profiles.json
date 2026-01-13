@@ -1,0 +1,267 @@
+{
+  "endpoint": "GET /persons?clientid=337&seasonid=2025&pagenumber=1&pagesize=5",
+  "description": "Sample camper profiles with bunking request data",
+  "response": {
+    "TotalCount": 202,
+    "Next": "/persons?pagenumber=2",
+    "Results": [
+      {
+        "PersonID": 500001,
+        "ClientID": 337,
+        "FirstName": "Hermione",
+        "LastName": "Granger", 
+        "PreferredName": "Hermione",
+        "DateOfBirth": "2010-09-19",
+        "Age": 14,
+        "GradeID": 8,
+        "GenderID": 2,
+        "GenderName": "Female",
+        "SchoolName": "Hogwarts Academy",
+        "Email": "hermione.granger@hogwarts.edu",
+        "ParentEmail": "j.granger@london.co.uk",
+        "EmergencyContacts": [
+          {
+            "Name": "Jean Granger", 
+            "Relationship": "Mother",
+            "Phone": "+44-20-7946-0958",
+            "Email": "j.granger@london.co.uk"
+          }
+        ],
+        "CustomFields": [
+          {
+            "FieldName": "Bunking Preferences",
+            "Value": "I would love to bunk with Luna Lovegood and Ginny Weasley. We've been friends since first year and always have the best time together!"
+          },
+          {
+            "FieldName": "Cabin Requests",
+            "Value": "Please put me with other academic-minded campers who enjoy reading"
+          },
+          {
+            "FieldName": "Age Preference", 
+            "Value": "Same age or older - I get along better with mature campers"
+          }
+        ],
+        "SessionAssignments": [
+          {
+            "SessionID": 1002,
+            "SessionName": "Session 2 - Adventure",
+            "StatusID": 2,
+            "StatusName": "Enrolled"
+          }
+        ]
+      },
+      {
+        "PersonID": 500002,
+        "ClientID": 337,
+        "FirstName": "Luke",
+        "LastName": "Skywalker",
+        "PreferredName": "Luke",
+        "DateOfBirth": "2011-03-15",
+        "Age": 13,
+        "GradeID": 7,
+        "GenderID": 1,
+        "GenderName": "Male",
+        "SchoolName": "Tatooine Elementary",
+        "Email": "luke.skywalker@rebels.galaxy",
+        "ParentEmail": "owen.lars@moisture.farm",
+        "EmergencyContacts": [
+          {
+            "Name": "Owen Lars",
+            "Relationship": "Uncle/Guardian", 
+            "Phone": "+1-555-TATOO-01",
+            "Email": "owen.lars@moisture.farm"
+          }
+        ],
+        "CustomFields": [
+          {
+            "FieldName": "Bunking Preferences",
+            "Value": "Want to room with Han Solo and Chewbacca - we're going on a quest together"
+          },
+          {
+            "FieldName": "Special Requests",
+            "Value": "NOT with Darth Vader please - we don't get along"
+          },
+          {
+            "FieldName": "Cabin Type",
+            "Value": "Adventure-themed cabin preferred"
+          }
+        ],
+        "SessionAssignments": [
+          {
+            "SessionID": 1002,
+            "SessionName": "Session 2 - Adventure",
+            "StatusID": 2,
+            "StatusName": "Enrolled"
+          }
+        ]
+      },
+      {
+        "PersonID": 500003,
+        "ClientID": 337,
+        "FirstName": "Leia",
+        "LastName": "Organa",
+        "PreferredName": "Princess Leia",
+        "DateOfBirth": "2009-05-25",
+        "Age": 15,
+        "GradeID": 9,
+        "GenderID": 2,
+        "GenderName": "Female", 
+        "SchoolName": "Alderaan Leadership Academy",
+        "Email": "leia.organa@rebellion.gov",
+        "ParentEmail": "bail.organa@alderaan.gov",
+        "EmergencyContacts": [
+          {
+            "Name": "Bail Organa",
+            "Relationship": "Adoptive Father",
+            "Phone": "+1-555-REBEL-01", 
+            "Email": "bail.organa@alderaan.gov"
+          }
+        ],
+        "CustomFields": [
+          {
+            "FieldName": "Bunking Preferences",
+            "Value": "I prefer to bunk with strong, independent campers like Rey and Wonder Woman"
+          },
+          {
+            "FieldName": "Leadership Role",
+            "Value": "Would like to be a cabin leader if possible"
+          },
+          {
+            "FieldName": "Age Group",
+            "Value": "Prefer older campers - natural leader"
+          }
+        ],
+        "SessionAssignments": [
+          {
+            "SessionID": 1002,
+            "SessionName": "Session 2 - Adventure", 
+            "StatusID": 2,
+            "StatusName": "Enrolled"
+          }
+        ]
+      },
+      {
+        "PersonID": 500004,
+        "ClientID": 337,
+        "FirstName": "Frodo",
+        "LastName": "Baggins",
+        "PreferredName": "Frodo",
+        "DateOfBirth": "2011-09-22",
+        "Age": 13,
+        "GradeID": 7,
+        "GenderID": 1,
+        "GenderName": "Male",
+        "SchoolName": "Shire Elementary",
+        "Email": "frodo.baggins@theshire.com",
+        "ParentEmail": "bilbo.baggins@bagsend.shire",
+        "EmergencyContacts": [
+          {
+            "Name": "Bilbo Baggins",
+            "Relationship": "Uncle/Guardian",
+            "Phone": "+1-555-SHIRE-01",
+            "Email": "bilbo.baggins@bagsend.shire"
+          }
+        ],
+        "CustomFields": [
+          {
+            "FieldName": "Bunking Preferences", 
+            "Value": "Must bunk with Sam Gamgee, Merry Brandybuck, and Pippin Took - we're the Fellowship!"
+          },
+          {
+            "FieldName": "Special Needs",
+            "Value": "Quiet cabin please - gets overwhelmed by too much noise"
+          },
+          {
+            "FieldName": "Dietary Requirements",
+            "Value": "Seven meals per day preferred (hobbit metabolism)"
+          }
+        ],
+        "SessionAssignments": [
+          {
+            "SessionID": 1002,
+            "SessionName": "Session 2 - Adventure",
+            "StatusID": 2,
+            "StatusName": "Enrolled"
+          }
+        ]
+      },
+      {
+        "PersonID": 500005,
+        "ClientID": 337,
+        "FirstName": "Katniss",
+        "LastName": "Everdeen",
+        "PreferredName": "Katniss",
+        "DateOfBirth": "2010-08-12",
+        "Age": 14,
+        "GradeID": 8,
+        "GenderID": 2,
+        "GenderName": "Female",
+        "SchoolName": "District 12 High",
+        "Email": "katniss.everdeen@district12.panem",
+        "ParentEmail": "prim.everdeen@district12.panem",
+        "EmergencyContacts": [
+          {
+            "Name": "Primrose Everdeen",
+            "Relationship": "Sister/Guardian",
+            "Phone": "+1-555-DIST12-01",
+            "Email": "prim.everdeen@district12.panem"
+          }
+        ],
+        "CustomFields": [
+          {
+            "FieldName": "Bunking Preferences",
+            "Value": "Want to room with Peeta Mellark and Rue. NOT with any Careers please."
+          },
+          {
+            "FieldName": "Activity Preferences",
+            "Value": "Archery program - expert level"
+          },
+          {
+            "FieldName": "Safety Concerns",
+            "Value": "Protective of younger campers"
+          }
+        ],
+        "SessionAssignments": [
+          {
+            "SessionID": 1002,
+            "SessionName": "Session 2 - Adventure",
+            "StatusID": 4,
+            "StatusName": "Applied"
+          }
+        ]
+      }
+    ]
+  },
+  "parsed_requests": {
+    "500001": {
+      "positive": ["Luna Lovegood", "Ginny Weasley"],
+      "negative": [],
+      "age_preference": "older",
+      "priority_type": "positive"
+    },
+    "500002": {
+      "positive": ["Han Solo", "Chewbacca"],
+      "negative": ["Darth Vader"],
+      "age_preference": null,
+      "priority_type": "positive"
+    },
+    "500003": {
+      "positive": ["Rey", "Wonder Woman"],
+      "negative": [],
+      "age_preference": "older",
+      "priority_type": "positive"
+    },
+    "500004": {
+      "positive": ["Sam Gamgee", "Merry Brandybuck", "Pippin Took"],
+      "negative": [],
+      "age_preference": null,
+      "priority_type": "positive"
+    },
+    "500005": {
+      "positive": ["Peeta Mellark", "Rue"],
+      "negative": ["Careers"],
+      "age_preference": null,
+      "priority_type": "positive"
+    }
+  }
+}

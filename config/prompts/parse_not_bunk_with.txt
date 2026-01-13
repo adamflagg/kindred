@@ -1,0 +1,106 @@
+You are parsing the "do_not_share_bunk_with" field for {camp_name},
+a residential summer camp where campers live in overnight cabins ("bunks") with 8-12 campers.
+
+=== SOURCE CONTEXT ===
+
+This is STAFF-ENTERED content, summarized after conversations with parents or other staff insights.
+Staff entries are typically:
+- More structured and professional than raw parent input
+- May include brief rationale in parentheses
+- Sometimes include session-specific qualifiers
+- May note flexibility ("if possible", "ideal but ok if not")
+- Often contain just names with minimal context
+
+{requester_info}
+
+Field content: "{request_text}"
+
+TASK: Extract ALL separation requests from this field. ALL requests are "not_bunk_with" type.
+
+=== REQUEST TYPES ===
+
+This field ONLY contains separation requests:
+
+"not_bunk_with" - Camper should NOT share a cabin with specific person(s)
+   target_name = person's name or "SIBLING"
+
+IMPORTANT: Do NOT extract bunk_with or age_preference from this field.
+Even if text mentions friendship ("still friends"), the intent is separation.
+
+=== SPECIAL PLACEHOLDERS ===
+
+Use "SIBLING" when the text references:
+- Family members: twin, sister, brother, sibling
+- Family names: "other Miller kids", "Miller twins"
+
+=== FIELD-SPECIFIC PATTERNS ===
+
+Example 1 - Simple name:
+Input: "Maya Anderson"
+Output: 1 not_bunk_with for "Maya Anderson"
+
+Example 2 - Name with alternate/nickname:
+Input: "Riley 'Alex' Cooper"
+Output: 1 not_bunk_with for "Riley Cooper", parse_notes: "Also known as 'Alex'"
+
+Example 3 - Name with parenthetical alternate:
+Input: "Nico (Nicholas) Park"
+Output: 1 not_bunk_with for "Nico Park", parse_notes: "Also known as Nicholas"
+
+Example 4 - Multiple names with separators:
+Input: "Chloe Bennett & Bella Torres"
+Output: 2 not_bunk_with requests, one for each name
+
+Example 5 - Name with staff rationale:
+Input: "Emma Johnson (neg relationship together at hebrew school) - ok if together but Jordan call if so"
+Output: 1 not_bunk_with for "Emma Johnson", parse_notes: "neg relationship at hebrew school; ok if together with staff call"
+
+Example 6 - Session-specific qualifier:
+Input: "Neg req Harper Collins in Ses 3"
+Output: 1 not_bunk_with for "Harper Collins", parse_notes: "Session 3 specific"
+
+Example 7 - Multiple with uncertainty markers:
+Input: "Kai Williams (Ses 4), Daniel Garcia-Lopez (?) Ryan Murphy (Ses 2) Marco Silva (?)"
+Output: 4 not_bunk_with requests, confidence lower for (?) entries, session info in parse_notes
+
+Example 8 - Family reference:
+Input: "Not with Lily Chen/other Miller kids if possible (they go to school together)"
+Output: 2 not_bunk_with requests - "Lily Chen" and a second with target_name "SIBLING" for family reference
+
+Example 9 - Flexibility note:
+Input: "Isla Reyes-Kim, Leo Nakamura (ideal if all 3 are in separate cabins but ok if not)"
+Output: 2 not_bunk_with requests with "flexibility noted" in parse_notes
+
+Example 10 - Staff friendship note (still negative intent):
+Input: "Sofia Petrov (mom understands that they will be together)"
+Output: 1 not_bunk_with for "Sofia Petrov", parse_notes: "low priority - mom understands if bunked together"
+
+=== TEMPORAL CONFLICTS ===
+
+Temporal conflicts are rare in this field, but if present:
+
+RULE: The EARLIER/FIRST request is SUPERSEDED. The LATER/CURRENT one survives.
+
+Example: "Previously wanted separate from Mia, now ok to bunk together"
+- Request 1: not_bunk_with "Mia", temporal_info: {{is_superseded: true}}
+- Request 2: (no second request - the separation request was canceled)
+
+=== INVALID TARGETS (DO NOT EXTRACT) ===
+
+- Physical preferences: "Different unit than..." (unless a person name follows)
+- Vague descriptions: "younger kids", "certain kids"
+- Generic groups: "campers", "friends"
+- The requester themselves
+
+=== OUTPUT REQUIREMENTS ===
+
+For each valid request, provide:
+- request_type: "not_bunk_with" (always for this field)
+- target_name: Person's name or "SIBLING"
+- confidence: 0.0-1.0 (lower for (?) entries, uncertain names)
+- temporal_info: null OR {{date_mentioned, is_superseded, supersedes_reason}}
+- keywords_found: Priority words if present
+- source_type: "staff" (always for this field)
+- parse_notes: Include rationale, session qualifier, flexibility notes
+- reasoning: Why you extracted this name
+- list_position: Position in multi-name fields (0-indexed)

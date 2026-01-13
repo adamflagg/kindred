@@ -1,0 +1,192 @@
+/* ============================================
+   BUNKING SYSTEM - TYPOGRAPHY SYSTEM
+   Sierra Lodge Modern - Distinctive & Warm
+   ============================================ */
+
+/*
+ * Fraunces - Display font with character
+ * A "wonky" serif with optical sizing, perfect for headings
+ * Has personality without being unreadable
+ */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500&display=swap');
+
+/*
+ * DM Sans - Warm humanist sans-serif
+ * Clean but not clinical, geometric with soft touches
+ * Excellent readability for UI and body text
+ */
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400;1,9..40,500&display=swap');
+
+/*
+ * JetBrains Mono - For code/data displays
+ * Crisp, modern monospace with ligatures
+ */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/*
+ * Open Sans - Used for CampMinder branding
+ * Clean, modern sans-serif
+ */
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@700;800&display=swap');
+
+/* Fallback font stacks */
+@font-face {
+  font-family: 'Fraunces-fallback';
+  src: local('Georgia'), local('Times New Roman'), local('serif');
+  font-display: swap;
+  ascent-override: 95%;
+  descent-override: 22%;
+  line-gap-override: 0%;
+  size-adjust: 105%;
+}
+
+@font-face {
+  font-family: 'DM Sans-fallback';
+  src: local('-apple-system'), local('BlinkMacSystemFont'), local('Segoe UI'), local('Helvetica Neue'), local('Arial');
+  font-display: swap;
+  ascent-override: 92%;
+  descent-override: 23%;
+  line-gap-override: 0%;
+  size-adjust: 102%;
+}
+
+/* Font-specific utility classes */
+.font-display {
+  font-family: 'Fraunces', 'Fraunces-fallback', Georgia, serif;
+  font-optical-sizing: auto;
+}
+
+.font-body {
+  font-family: 'DM Sans', 'DM Sans-fallback', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-optical-sizing: auto;
+}
+
+.font-mono {
+  font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Monaco, 'Cascadia Code', monospace;
+}
+
+/* Legacy compatibility mappings */
+.font-proxima-nova {
+  font-family: 'DM Sans', 'DM Sans-fallback', -apple-system, sans-serif !important;
+}
+
+.font-p22-mackinac {
+  font-family: 'Fraunces', 'Fraunces-fallback', Georgia, serif !important;
+  font-weight: 600;
+}
+
+/* Base body font */
+body {
+  font-family: 'DM Sans', 'DM Sans-fallback', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-optical-sizing: auto;
+}
+
+/* Display headings use Fraunces */
+h1, h2, h3,
+.font-display,
+.title-decorated {
+  font-family: 'Fraunces', 'Fraunces-fallback', Georgia, serif;
+  font-optical-sizing: auto;
+}
+
+/* Font weight mappings */
+.font-light { font-weight: 300; }
+.font-normal { font-weight: 400; }
+.font-medium { font-weight: 500; }
+.font-semibold { font-weight: 600; }
+.font-bold { font-weight: 700; }
+
+/* Special text treatments - Lodge style */
+.text-decorated {
+  position: relative;
+  display: inline-block;
+}
+
+.text-decorated::before {
+  content: '◆';
+  color: var(--color-amber-500, #fdbe59);
+  margin-right: 0.75rem;
+  font-size: 0.6em;
+  vertical-align: middle;
+}
+
+.text-decorated::after {
+  content: '◆';
+  color: var(--color-amber-500, #fdbe59);
+  margin-left: 0.75rem;
+  font-size: 0.6em;
+  vertical-align: middle;
+}
+
+/* Pine needle divider decoration */
+.text-pine-divider {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.text-pine-divider::before,
+.text-pine-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, currentColor 20%, currentColor 80%, transparent);
+  opacity: 0.2;
+}
+
+/* Letter spacing adjustments for headers */
+h1, h2 {
+  letter-spacing: -0.025em;
+}
+
+h3, h4 {
+  letter-spacing: -0.015em;
+}
+
+h5, h6 {
+  letter-spacing: -0.01em;
+}
+
+/* Numeric styling for data displays */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.oldstyle-nums {
+  font-variant-numeric: oldstyle-nums;
+}
+
+/* Small caps for labels */
+.small-caps {
+  font-variant-caps: small-caps;
+  letter-spacing: 0.05em;
+}
+
+/* Responsive typography adjustments */
+@media (max-width: 768px) {
+  h1 {
+    font-size: 2.25rem;
+    line-height: 1.15;
+  }
+
+  h2 {
+    font-size: 1.875rem;
+    line-height: 1.2;
+  }
+
+  h3 {
+    font-size: 1.5rem;
+    line-height: 1.25;
+  }
+}
+
+/* Print typography */
+@media print {
+  body {
+    font-family: Georgia, 'Times New Roman', serif;
+  }
+
+  h1, h2, h3 {
+    font-family: Georgia, 'Times New Roman', serif;
+  }
+}

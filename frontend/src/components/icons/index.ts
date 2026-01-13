@@ -1,0 +1,1 @@
+export { CampMinderIcon } from './CampMinderIcon';

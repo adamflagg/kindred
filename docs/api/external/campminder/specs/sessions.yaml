@@ -1,0 +1,995 @@
+openapi: 3.0.0
+info:
+  title: Sessions API
+  description: "This API will give access to sessions data"
+  version: "2023-12-04"
+  contact:
+    url: https://campminder.com
+paths:
+  /:
+    get:
+      summary: "List Sessions"
+      description: "Returns the session objects, containing seasonal properties, that match the provided criteria."
+      operationId: ListSessions
+      responses:
+        "200":
+          description: "A successful response."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  TotalCount:
+                    type: integer
+                    description: The total number of records returned in the call.
+                  Next:
+                    type: string
+                    description: The link to the next page of records.
+                  Results:
+                    type: array
+                    description: The array of records returned.
+                    items:
+                      $ref: "#/components/schemas/SessionResponse"
+        "400":
+          description: This request is invalid. It is either missing required parameters or one of the supplied parameters is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 400
+                message: "'pagenumber' is invalid"
+        "401":
+          description: This request lacks valid credentials, please try again making sure to supply a valid token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 401
+                message: Unauthorized
+        "403":
+          description: The supplied credentials do not have permission to make this request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 403
+                message: Forbidden
+        "500":
+          description: Our server could not process this request. If the issue persists, contact CampMinder support.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 500
+                message: Internal Server Error
+      parameters:
+        - name: Authorization
+          in: header
+          description: The JWT token should be in the format `Bearer {token}`.
+          required: true
+          schema:
+            type: string
+            example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+        - name: X-Request-ID
+          in: header
+          required: false
+          description: "If supplied, we can use this to identify exact requests during troubleshooting. Must be globally unique to be useful."
+          schema:
+            type: string
+            example: DEEE3D21-F0FA-459E-87BB-A565DBCC0784
+        - name: clientid
+          in: query
+          required: true
+          description: "The CampMinder id of the camp. This value can be retrieved from the response of a successful call to Auth/Login"
+          schema:
+            type: integer
+            format: integer
+            example: 754
+        - name: seasonid
+          in: query
+          required: true
+          description: "The season for which you want to retrieve the sessions."
+          schema:
+            type: integer
+            format: integer
+            example: 2020
+        - name: pagenumber
+          in: query
+          required: true
+          description: "Set a minimum value of 1."
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000000000
+            format: integer
+            example: 1
+        - name: pagesize
+          in: query
+          required: true
+          description: "The maximum number of records to retrieve per page. Valid range is 1 to 1000."
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            format: integer
+            example: 100 
+      tags:
+        - Sessions
+  /programs:
+    get:
+      summary: "List Programs"
+      description: "Returns the program objects, containing seasonal programSeason objects, that match the provided criteria."
+      operationId: ListPrograms
+      responses:
+        "200":
+          description: "A successful response."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  TotalCount:
+                    type: integer
+                    description: The total number of records returned in the call.
+                  Next:
+                    type: string
+                    description: The link to the next page of records.
+                  Results:
+                    type: array
+                    description: The array of records returned.
+                    items:
+                      $ref: "#/components/schemas/ProgramResponse"
+        "400":
+          description: This request is invalid. It is either missing required parameters or one of the supplied parameters is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 400
+                message: "'pagenumber' is invalid"
+        "401":
+          description: This request lacks valid credentials, please try again making sure to supply a valid token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 401
+                message: Unauthorized
+        "403":
+          description: The supplied credentials do not have permission to make this request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 403
+                message: Forbidden
+        "500":
+          description: Our server could not process this request. If the issue persists, contact CampMinder support.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 500
+                message: Internal Server Error
+      parameters:
+        - name: Authorization
+          in: header
+          description: The JWT token should be in the format `Bearer {token}`.
+          required: true
+          schema:
+            type: string
+            example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+        - name: X-Request-ID
+          in: header
+          required: false
+          description: "If supplied, we can use this to identify exact requests during troubleshooting. Must be globally unique to be useful."
+          schema:
+            type: string
+            example: DEEE3D21-F0FA-459E-87BB-A565DBCC0784
+        - name: clientid
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: integer
+            example: 754
+        - name: seasonid
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: integer
+            example: 2020
+        - name: includeinactive
+          in: query
+          required: false
+          schema:
+            type: boolean
+            format: boolean
+            example: true
+        - name: pagenumber
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000000000
+            format: integer
+            example: 1
+        - name: pagesize
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            format: integer
+            example: 100 
+      tags:
+        - Sessions
+  /groups:
+    get:
+      summary: "List Session Groups"
+      description: "Returns the session group objects. These objects are high-level categories for sessions"
+      operationId: ListGroups
+      responses:
+        "200":
+          description: "A successful response."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  TotalCount:
+                    type: integer
+                    description: The total number of records returned in the call.
+                  Next:
+                    type: string
+                    description: The link to the next page of records.
+                  Results:
+                    type: array
+                    description: The array of records returned.
+                    items:
+                      $ref: "#/components/schemas/GroupResponse"
+        "400":
+          description: This request is invalid. It is either missing required parameters or one of the supplied parameters is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 400
+                message: "'pagenumber' is invalid"
+        "401":
+          description: This request lacks valid credentials, please try again making sure to supply a valid token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 401
+                message: Unauthorized
+        "403":
+          description: The supplied credentials do not have permission to make this request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 403
+                message: Forbidden
+        "500":
+          description: Our server could not process this request. If the issue persists, contact CampMinder support.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 500
+                message: Internal Server Error
+      parameters:
+        - name: Authorization
+          in: header
+          description: The JWT token should be in the format `Bearer {token}`.
+          required: true
+          schema:
+            type: string
+            example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+        - name: X-Request-ID
+          in: header
+          required: false
+          description: "If supplied, we can use this to identify exact requests during troubleshooting. Must be globally unique to be useful."
+          schema:
+            type: string
+            example: DEEE3D21-F0FA-459E-87BB-A565DBCC0784
+        - name: clientid
+          in: query
+          required: true
+          description: "The CampMinder id of the camp. This value can be retrieved from the response of a successful call to Auth/Login"
+          schema:
+            type: integer
+            format: integer
+            example: 754
+        - name: seasonid
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: integer
+            example: 2020
+        - name: pagenumber
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000000000
+            format: integer
+            example: 1
+        - name: pagesize
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            format: integer
+            example: 100 
+      tags:
+        - Sessions
+  /{id}/season/{seasonid}/attendees:
+    get:
+      summary: "List Session Attendees by Session"
+      description: "Returns the attendees of the session that match the provided criteria."
+      operationId: ListSessionAttendees
+      responses:
+        "200":
+          description: "A successful response."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionSeasonAttendeeResponse"
+        "400":
+          description: This request is invalid. It is either missing required parameters or one of the supplied parameters is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 400
+                message: "'pagenumber' is invalid"
+        "401":
+          description: This request lacks valid credentials, please try again making sure to supply a valid token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 401
+                message: Unauthorized
+        "403":
+          description: The supplied credentials do not have permission to make this request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 403
+                message: Forbidden
+        "500":
+          description: Our server could not process this request. If the issue persists, contact CampMinder support.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 500
+                message: Internal Server Error
+      parameters:
+        - name: Authorization
+          in: header
+          description: The JWT token should be in the format `Bearer {token}`.
+          required: true
+          schema:
+            type: string
+            example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+        - name: X-Request-ID
+          in: header
+          required: false
+          description: "If supplied, we can use this to identify exact requests during troubleshooting. Must be globally unique to be useful."
+          schema:
+            type: string
+            example: DEEE3D21-F0FA-459E-87BB-A565DBCC0784
+        - name: clientid
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: integer
+            example: 754
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: integer
+            example: 1234
+        - name: seasonid
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: integer
+            example: 2020
+        - name: programid
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: integer
+            example: 2
+        - name: status
+          in: query
+          required: false
+          description: "The status of the attendee as it relates to the session. Enrolled = 2, Applied = 4, WaitList = 8,LeftEarly = 16, Cancelled = 32, Dismissed = 64, Inquiry = 128, Withdrawn = 256, Incomplete = 512"
+          schema:
+            type: integer
+            format: integer
+            example: 4
+        - name: lastupdated
+          in: query
+          required: false
+          description: "A datetime, formatted as an RFC3339 string, representing the cutoff before which you are not interested in the results."
+          schema:
+            type: string
+            minimum: 0
+            maximum: 0
+            format: string
+            example: 2023-01-17T21:45:43.8792Z
+        - name: postdate
+          in: query
+          required: false
+          description: "A datetime, formatted as an RFC3339 string, representing the post date before which you are not interested in the results."
+          schema:
+            type: string
+            minimum: 0
+            maximum: 0
+            format: string
+            example: 2023-01-17T21:45:43.8792Z 
+      tags:
+        - Sessions
+  /attendees:
+    get:
+      summary: "List Session Attendees"
+      description: "Returns the attendees of the session that match the provided criteria."
+      operationId: ListAttendees
+      responses:
+        "200":
+          description: "A successful response."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  TotalCount:
+                    type: integer
+                    description: The total number of records returned in the call.
+                  Next:
+                    type: string
+                    description: The link to the next page of records.
+                  Results:
+                    type: array
+                    description: The array of records returned.
+                    items:
+                      $ref: "#/components/schemas/AttendeeResponse"
+        "400":
+          description: This request is invalid. It is either missing required parameters or one of the supplied parameters is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 400
+                message: "'pagenumber' is invalid"
+        "401":
+          description: This request lacks valid credentials, please try again making sure to supply a valid token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 401
+                message: Unauthorized
+        "403":
+          description: The supplied credentials do not have permission to make this request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 403
+                message: Forbidden
+        "500":
+          description: Our server could not process this request. If the issue persists, contact CampMinder support.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 500
+                message: Internal Server Error
+      parameters:
+        - name: Authorization
+          in: header
+          description: The JWT token should be in the format `Bearer {token}`.
+          required: true
+          schema:
+            type: string
+            example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+        - name: X-Request-ID
+          in: header
+          required: false
+          description: "If supplied, we can use this to identify exact requests during troubleshooting. Must be globally unique to be useful."
+          schema:
+            type: string
+            example: DEEE3D21-F0FA-459E-87BB-A565DBCC0784
+        - name: clientid
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: integer
+            example: 754
+        - name: seasonid
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: integer
+            example: 2022
+        - name: sessionids
+          in: query
+          required: false
+          explode: true
+          schema:
+              type: array
+              items:
+                type: integer
+                format: int64
+              example:
+                - 12345
+                - 12355
+        - name: programids
+          in: query
+          required: false
+          explode: true
+          schema:
+              type: array
+              items:
+                type: integer
+                format: int64
+              example:
+                - 32155
+                - 32165
+        - name: status
+          in: query
+          required: false
+          description: "The status of the attendee as it relates to the session. You may pass multiple values as a flag, this will return results that satisfy any single value of the provided values. Enrolled = 2, Applied = 4, WaitList = 8,LeftEarly = 16, Cancelled = 32, Dismissed = 64, Inquiry = 128, Withdrawn = 256, Incomplete = 512"
+          schema:
+            type: integer
+            format: integer
+            example: 2
+        - name: pagenumber
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000000000
+            format: integer
+            example: 1
+        - name: pagesize
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            format: integer
+            example: 100
+        - name: personids
+          in: query
+          required: false
+          explode: true
+          schema:
+              type: array
+              items:
+                type: integer
+                format: int64
+              example:
+                - 1255889
+                - 18966624
+        - name: lastupdated
+          in: query
+          required: false
+          description: "A datetime, formatted as an RFC3339 string, representing the cutoff before which you are not interested in the results."
+          schema:
+            type: string
+            minimum: 0
+            maximum: 0
+            format: string
+            example: 2023-01-17T21:45:43.8792Z
+        - name: postdate
+          in: query
+          required: false
+          description: "A datetime, formatted as an RFC3339 string, representing the post date before which you are not interested in the results."
+          schema:
+            type: string
+            minimum: 0
+            maximum: 0
+            format: string
+            example: 2023-01-T21:45:43.8792Z 
+      tags:
+        - Sessions
+security:
+  - apiKeyHeader: []
+  - apiKeyQuery: []
+  - jwtBearerAuth: []
+servers:
+  - url: https://api.campminder.com/sessions
+tags:
+  - name: Sessions
+components:
+  securitySchemes:
+    apiKeyHeader:
+      type: apiKey
+      description: Required for protected endpoints. Only one of the two apiKey security schemes is required.
+      name: Ocp-Apim-Subscription-Key
+      in: header
+    apiKeyQuery:
+      type: apiKey
+      description: Required for protected endpoints. Only one of the two apiKey security schemes is required.
+      name: subscription-key
+      in: query
+    jwtBearerAuth:
+      type: http
+      description: Use the auth service to generate a valid JWT token.
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    AttendeeResponse:
+      type: object
+      properties:
+        ClientID:
+          type: integer
+          description: ""
+        PersonID:
+          type: integer
+          example: 158966
+          description: "The personID of the attendee."
+        SeasonID:
+          type: integer
+          example: 2022
+          description: ""
+        SessionProgramStatus:
+          type: array
+          items:
+            allOf: 
+              - $ref: '#/components/schemas/SessionProgramStatus'
+    GroupResponse:
+      type: object
+      properties:
+        ClientID:
+          type: integer
+          example: 754
+          description: ""
+        ID:
+          type: integer
+          example: 123123
+          description: ""
+        Self:
+          type: string
+          example: "/v1/sessions/group/123123"
+          description: ""
+        Name:
+          type: string
+          example: "name"
+          description: ""
+        Description:
+          type: string
+          example: sweet thing
+          description: ""
+        IsActive:
+          type: boolean
+          example: true
+          description: ""
+        SortOrder:
+          type: integer
+          example: 42
+          description: ""
+    PersonStatus:
+      type: object
+      properties:
+        PersonID:
+          type: integer
+          description: "The personID of the attendee."
+        StatusID:
+          type: integer
+          example: 4
+          description: "The status of the attendee as it relates to the sessionprogram. Enrolled = 2, Applied = 4, WaitList = 8,LeftEarly = 16, Cancelled = 32, Dismissed = 64, Inquiry = 128, Withdrawn = 256, Incomplete = 512"
+        StatusName:
+          type: string
+          example: "Applied"
+          description: "The status of the attendee as it relates to the sessionprogram. Enrolled = 2, Applied = 4, WaitList = 8,LeftEarly = 16, Cancelled = 32, Dismissed = 64, Inquiry = 128, Withdrawn = 256, Incomplete = 512"
+        Memo:
+          type: string
+          description: "A field to capture a memo regarding this session assignment."
+        PostDate:
+          type: string
+          example: "2023-01-17T21:45:43.8792Z"
+          description: "The date time, formatted as an RFC3339 string, that this session assignment was created."
+        EffectiveDate:
+          type: string
+          example: "2023-01-17"
+          description: "The date time, formatted as an ISO8601 Date (YYYY-MM-DD), to which this session assignment is to be effective."
+        LastUpdatedUTC:
+          type: string
+          example: "2023-01-17T21:45:43.8792Z"
+          description: "The UTC datetime, formatted as an RFC3339 string, of when this session assignment was last updated or modified."
+    ProgramResponse:
+      type: object
+      properties:
+        ClientID:
+          type: integer
+          example: 754
+          description: "The CampMinder id of the camp. This value can be retrieved from the response of a successful call to Auth/Login"
+        ID:
+          type: integer
+          example: 123123
+          description: "The ID of the program."
+        Self:
+          type: string
+          example: "/v1/sessions/programs/123123"
+          description: "Self reference link for the program."
+        Name:
+          type: string
+          example: "Archery"
+          description: "The name of the program."
+        Description:
+          type: string
+          example: Shooting arrows
+          description: "The description of the program."
+        IsActive:
+          type: boolean
+          example: true
+          description: "Indicates whether the program is active or not."
+        SortOrder:
+          type: integer
+          example: 42
+          description: "The sort order of the program."
+        IsDay:
+          type: boolean
+          example: true
+          description: "If true, this is a day-camp program."
+        IsResidential:
+          type: boolean
+          example: true
+          description: "If true, this is a residential-camp program."
+        IsForChilden:
+          type: boolean
+          example: true
+          description: "If true, this is a program is for children."
+        IsForAdults:
+          type: boolean
+          example: true
+          description: "If true, this is a program is for adults."
+        ProgramSeasons:
+          type: array
+          items:
+            allOf: 
+              - $ref: '#/components/schemas/ProgramSeason'
+    ProgramSeason:
+      type: object
+      properties:
+        ID:
+          type: integer
+          example: 12123
+          description: "The ID of the program season."
+        SeasonID:
+          type: integer
+          example: 2021
+          description: "The season to which these program seasons apply. Note: This value is seasonal."
+        SessionID:
+          type: integer
+          example: 125458
+          description: "The ID of the session to which this program season is belongs. Note: This value is seasonal."
+        Description:
+          type: string
+          example: "Some Program season"
+          description: "The description of the program season. Note: This value is seasonal."
+        StartDate:
+          type: string
+          example: "2023-01-17T21:45:43.8792Z"
+          description: "The date time, formatted as an RFC3339 string, that this program starts. Note: This value is seasonal."
+        EndDate:
+          type: string
+          example: "2023-01-17T21:45:43.8792Z"
+          description: "The date time, formatted as an RFC3339 string, that this program ends. Note: This value is seasonal."
+        StartAge:
+          type: number
+          example: 14.6
+          description: "If set, this program season is limited by age and this field represents the lower bound of the range of ages. This is formatted as 'Years.Months' so if they are three months past their seventh birthday, this value will be '7.3'. Note: This value is seasonal."
+        EndAge:
+          type: number
+          example: 15.6
+          description: "If set, this program season is limited by age and this field represents the upper bound of the range of ages. This is formatted as 'Years.Months' so if they are three months past their seventh birthday, this value will be '7.3'. Note: This value is seasonal."
+        StartGradeID:
+          type: integer
+          example: 6
+          description: "If set, this program season is limited by grade and this field represents the lower bound of the range of grades. Note: This value is seasonal."
+        EndGradeID:
+          type: integer
+          example: 7
+          description: "If set, this program season is limited by grade and this field represents the upper bound of the range of grades. Note: This value is seasonal."
+        GenderID:
+          type: integer
+          example: 1"
+          description: "If set, this program season is limited to the specified gender. Note: This value is seasonal."
+    SessionProgramStatus:
+      type: object
+      properties:
+        SessionID:
+          type: integer
+          example: 123123
+          description: "The ID of the session the person is associated with."
+        ProgramID:
+          type: integer
+          example: 123123
+          description: "The ID of the program the person is associated with."
+        StatusID:
+          type: integer
+          example: 2
+          description: "The status of the attendee as it relates to the sessionprogram. Enrolled = 2, Applied = 4, WaitList = 8,LeftEarly = 16, Cancelled = 32, Dismissed = 64, Inquiry = 128, Withdrawn = 256, Incomplete = 512"
+        StatusName:
+          type: string
+          example: "Enrolled"
+          description: "The status of the attendee as it relates to the sessionprogram. Enrolled = 2, Applied = 4, WaitList = 8,LeftEarly = 16, Cancelled = 32, Dismissed = 64, Inquiry = 128, Withdrawn = 256, Incomplete = 512"
+        Memo:
+          type: string
+          example: first session
+          description: "A field to capture a memo regarding this session assignment."
+        PostDate:
+          type: string
+          example: "2"
+          description: "The date time, formatted as an RFC3339 string, that this session assignment was created."
+        EffectiveDate:
+          type: string
+          example: "2"
+          description: "The date time, formatted as an ISO8601 Date (YYYY-MM-DD), to which this session assignment is to be effective."
+        LastUpdatedUTC:
+          type: string
+          example: "2"
+          description: "The UTC datetime, formatted as an RFC3339 string, of when this session assignment was last updated or modified."
+    SessionResponse:
+      type: object
+      properties:
+        ClientID:
+          type: integer
+          example: 754
+          description: "The CampMinder id of the camp. This value can be retrieved from the response of a successful call to Auth/Login"
+        ID:
+          type: integer
+          example: 123123
+          description: "sessionID"
+        Self:
+          type: string
+          example: "/v1/sessions/123123"
+          description: "Self reference link for the session."
+        Name:
+          type: string
+          example: "name"
+          description: "The name of the session."
+        Description:
+          type: string
+          example: sweet thing
+          description: "The description of the session."
+        IsActive:
+          type: boolean
+          example: true
+          description: "Indicates whether the session is active or not."
+        SortOrder:
+          type: integer
+          example: 42
+          description: "The sort order of the session."
+        SeasonID:
+          type: integer
+          example: 2021
+          description: "The season that the seasonal values of this session apply. Note: This value is seasonal."
+        GroupID:
+          type: integer
+          example: 123
+          description: "The id of the group that this session is a part of. Note: This value is seasonal."
+        IsDay:
+          type: boolean
+          example: true
+          description: "If true, this is a day-camp program. Note: This value is seasonal."
+        IsResidential:
+          type: boolean
+          example: true
+          description: "If true, this is a residential-camp program. Note: This value is seasonal."
+        IsForChilden:
+          type: boolean
+          example: true
+          description: "If true, this is a program is for children. Note: This value is seasonal."
+        IsForAdults:
+          type: boolean
+          example: true
+          description: "If true, this is a program is for adults. Note: This value is seasonal."
+        StartDate:
+          type: string
+          example: "2016-12-29T12:03:28.817"
+          description: "The date time, formatted as an RFC3339 string, that this program starts. Note: If this session has programs, this value is not used and this value of the program is used instead. Note: This value is seasonal."
+        EndDate:
+          type: string
+          example: "2017-12-29T12:03:28.817"
+          description: "The date time, formatted as an RFC3339 string, that this program ends. Note: If this session has programs, this value is not used and this value of the program is used instead. Note: This value is seasonal."
+        StartAge:
+          type: number
+          example: 13.9
+          description: "The date time, formatted as an RFC3339 string, that this program starts. Note: If this session has programs, this value is not used and this value of the program is used instead. Note: This value is seasonal."
+        EndAge:
+          type: number
+          example: 14.2
+          description: "If set, this session is limited by age and this field represents the upper bound of the range of ages. This is formatted as 'Years.Months' so if they are three months past their seventh birthday, this value will be '7.3'. Note: If this session has programs, this value is not used and this value of the program is used instead. Note: This value is seasonal."
+        StartGradeID:
+          type: integer
+          example: 6
+          description: "If set, this session is limited by grade and this field represents the lower bound of the range of grades. Note: If this session has programs, this value is not used and this value of the program is used instead. Note: This value is seasonal."
+        EndGradeID:
+          type: integer
+          example: 7
+          description: "If set, this session is limited by grade and this field represents the upper bound of the range of grades. Note: If this session has programs, this value is not used and this value of the program is used instead. Note: This value is seasonal."
+        GenderID:
+          type: integer
+          example: 1
+          description: "If set, this session is limited to the specified gender. Note: If this session has programs, this value is not used and this value of the program is used instead. Note: This value is seasonal."
+    SessionSeasonAttendeeResponse:
+      type: object
+      properties:
+        ClientID:
+          type: integer
+          example: 754
+          description: ""
+        SessionID:
+          type: integer
+          example: 123123
+          description: "The ID of the session the person is associated with."
+        ProgramID:
+          type: integer
+          example: 123123
+          description: "The ID of the program the person is associated with."
+        SeasonID:
+          type: integer
+          example: 2012
+          description: ""
+        PersonsStatus:
+          type: array
+          items:
+            allOf: 
+              - $ref: '#/components/schemas/PersonStatus'
+    Response:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        message:
+          type: string

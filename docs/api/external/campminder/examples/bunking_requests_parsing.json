@@ -1,0 +1,145 @@
+{
+  "description": "Examples of how our system parses bunking requests from CampMinder custom fields",
+  "parsing_patterns": {
+    "positive_requests": {
+      "patterns": [
+        "want to bunk with",
+        "room with", 
+        "cabin with",
+        "would love to stay with",
+        "hope to be with"
+      ],
+      "examples": [
+        {
+          "input": "I want to bunk with Hermione and Luna",
+          "parsed": {
+            "type": "bunk_with",
+            "targets": ["Hermione", "Luna"],
+            "count": 2
+          }
+        },
+        {
+          "input": "Room with Harry Potter please - we're best friends!",
+          "parsed": {
+            "type": "bunk_with", 
+            "targets": ["Harry Potter"],
+            "count": 1
+          }
+        }
+      ]
+    },
+    "negative_requests": {
+      "patterns": [
+        "not with",
+        "don't want to room with",
+        "please separate from",
+        "away from",
+        "NOT with"
+      ],
+      "examples": [
+        {
+          "input": "NOT with Draco Malfoy - we don't get along",
+          "parsed": {
+            "type": "not_bunk_with",
+            "targets": ["Draco Malfoy"],
+            "count": 1
+          }
+        },
+        {
+          "input": "Please keep me away from Voldemort and his followers",
+          "parsed": {
+            "type": "not_bunk_with",
+            "targets": ["Voldemort"],
+            "count": 1
+          }
+        }
+      ]
+    },
+    "age_preferences": {
+      "patterns": [
+        "same age",
+        "older campers",
+        "younger kids", 
+        "mature campers",
+        "age group"
+      ],
+      "examples": [
+        {
+          "input": "Prefer older campers - I'm mature for my age",
+          "parsed": {
+            "type": "age_preference",
+            "preference": "older"
+          }
+        },
+        {
+          "input": "Same age friends only please",
+          "parsed": {
+            "type": "age_preference", 
+            "preference": "same_age"
+          }
+        },
+        {
+          "input": "Like helping younger kids",
+          "parsed": {
+            "type": "age_preference",
+            "preference": "younger"
+          }
+        }
+      ]
+    }
+  },
+  "name_resolution": {
+    "description": "How we map names to PersonIDs",
+    "strategies": [
+      "Exact match on FirstName + LastName",
+      "Fuzzy matching for nicknames (e.g., 'Hermione' → 'Hermione Granger')",
+      "PreferredName matching",
+      "Common name variations (e.g., 'Luke' → 'Luke Skywalker')"
+    ],
+    "examples": [
+      {
+        "input_name": "Hermione", 
+        "resolved_to": {
+          "PersonID": 500001,
+          "FullName": "Hermione Granger",
+          "confidence": 0.95
+        }
+      },
+      {
+        "input_name": "Princess Leia",
+        "resolved_to": {
+          "PersonID": 500003,
+          "FullName": "Leia Organa", 
+          "PreferredName": "Princess Leia",
+          "confidence": 1.0
+        }
+      }
+    ]
+  },
+  "priority_detection": {
+    "description": "How we determine if campers prioritize positive or negative requests",
+    "rules": [
+      "If more positive than negative requests → priority_type: 'positive'",
+      "If more negative than positive requests → priority_type: 'negative'", 
+      "If equal or unclear → priority_type: 'positive' (default)"
+    ],
+    "examples": [
+      {
+        "camper": "Hermione Granger",
+        "requests": {
+          "positive": 2,
+          "negative": 0
+        },
+        "priority_type": "positive"
+      },
+      {
+        "camper": "Harry Potter",
+        "requests": {
+          "positive": 1,
+          "negative": 3
+        },
+        "priority_type": "negative"  
+      }
+    ]
+  }
+}

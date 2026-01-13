@@ -1,0 +1,22 @@
+{
+  "endpoint": "GET /sessions?clientid=337&seasonid=2025",
+  "description": "Example authenticated request using JWT token",
+  "request": {
+    "headers": {
+      "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzMzciLCJjbGllbnRfaWQiOjMzNywiaWF0IjoxNzM0OTg3NjAwLCJleHAiOjE3MzQ5OTEyMDB9.XYZ123_sample_token_signature",
+      "Ocp-Apim-Subscription-Key": "8d4eaabd8931442dab92cdc392b9b469",
+      "X-Request-ID": "CAMP-2025-REQ-001"
+    },
+    "query_params": {
+      "clientid": 337,
+      "seasonid": 2025,
+      "pagenumber": 1,
+      "pagesize": 100
+    }
+  },
+  "notes": [
+    "Authorization header format: 'Bearer {token}'",
+    "X-Request-ID is optional but helpful for troubleshooting",
+    "All query parameters are case-sensitive"
+  ]
+}

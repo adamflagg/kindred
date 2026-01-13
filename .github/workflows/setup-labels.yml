@@ -1,0 +1,52 @@
+name: Setup Repository Labels
+
+on:
+  # Run manually or on first push to set up labels
+  workflow_dispatch:
+  # Also runs on repo creation (first push to main)
+  push:
+    branches: [main]
+    paths:
+      - '.github/dependabot.yml'
+
+permissions:
+  issues: write
+
+jobs:
+  create-labels:
+    name: Create Standard Labels
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create Dependabot labels
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const labels = [
+              { name: 'dependencies', description: 'Dependency updates', color: '0366d6' },
+              { name: 'python', description: 'Python/pip updates', color: '3572A5' },
+              { name: 'javascript', description: 'JavaScript/npm updates', color: 'f1e05a' },
+              { name: 'go', description: 'Go module updates', color: '00ADD8' },
+              { name: 'docker', description: 'Docker base image updates', color: '2496ED' },
+              { name: 'ci', description: 'CI/CD and GitHub Actions', color: '5319e7' },
+              { name: 'security', description: 'Security updates', color: 'd73a4a' },
+              { name: 'needs-review', description: 'Requires manual review before merge', color: 'fbca04' },
+            ];
+
+            for (const label of labels) {
+              try {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label.name,
+                  description: label.description,
+                  color: label.color,
+                });
+                console.log(`Created label: ${label.name}`);
+              } catch (error) {
+                if (error.status === 422) {
+                  console.log(`Label already exists: ${label.name}`);
+                } else {
+                  throw error;
+                }
+              }
+            }

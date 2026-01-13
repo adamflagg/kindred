@@ -1,0 +1,13 @@
+# Shellcheck configuration for Kindred project
+# https://www.shellcheck.net/wiki/
+
+# Default shell dialect
+shell=bash
+
+# Disabled checks:
+# SC1090: Can't follow non-constant source (expected for dynamic config loading)
+# SC1091: Not following sourced files (may not exist in CI environment)
+# SC2015: A && B || C is not if-then-else (intentional cleanup patterns)
+# SC2034: Unused variables (common for color definitions, loop counters, config vars)
+# SC2317: Command appears unreachable (false positive for trap handlers and eval-called functions)
+disable=SC1090,SC1091,SC2015,SC2034,SC2317

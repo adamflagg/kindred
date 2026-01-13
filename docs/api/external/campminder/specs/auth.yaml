@@ -1,0 +1,121 @@
+openapi: 3.0.0
+info:
+  title: Auth API
+  description: "This API will give access to auth data"
+  version: "2023-11-30"
+  contact:
+    url: https://campminder.com
+paths:
+  /apikey:
+    get:
+      summary: "Get JWT With ApiKey"
+      description: "Returns a short lived JWT token."
+      operationId: ApiKey
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiKeyResponse"
+        "400":
+          description: This request is invalid. It is either missing required parameters or one of the supplied parameters is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 400
+                message: "'pagenumber' is invalid"
+        "401":
+          description: This request lacks valid credentials, please try again making sure to supply a valid token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 401
+                message: Unauthorized
+        "403":
+          description: The supplied credentials do not have permission to make this request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 403
+                message: Forbidden
+        "500":
+          description: Our server could not process this request. If the issue persists, contact CampMinder support.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 500
+                message: Internal Server Error
+      parameters:
+        - name: Authorization
+          in: header
+          description: The API Key should be the entire Authorization header (no bearer prefix).
+          required: true
+          schema:
+            type: string
+            example: "0MU82calg-SEYTYApPGR12algPF0ztjVPQIF0hrvAHSAxsL"
+        - name: X-Request-ID
+          in: header
+          required: false
+          description: "If supplied, we can use this to identify exact requests during troubleshooting. Must be globally unique to be useful."
+          schema:
+            type: string
+            example: DEEE3D21-F0FA-459E-87BB-A565DBCC0784 
+      tags:
+        - Auth
+      security:
+        - apiKeyHeader: []
+        - apiKeyQuery: []
+security:
+  - apiKeyHeader: []
+  - apiKeyQuery: []
+  - jwtBearerAuth: []
+servers:
+  - url: https://api.campminder.com/auth
+tags:
+  - name: Auth
+components:
+  securitySchemes:
+    apiKeyHeader:
+      type: apiKey
+      description: Required for protected endpoints. Only one of the two apiKey security schemes is required.
+      name: Ocp-Apim-Subscription-Key
+      in: header
+    apiKeyQuery:
+      type: apiKey
+      description: Required for protected endpoints. Only one of the two apiKey security schemes is required.
+      name: subscription-key
+      in: query
+    jwtBearerAuth:
+      type: http
+      description: Use the auth service to generate a valid JWT token.
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ApiKeyResponse:
+      type: object
+      properties:
+        Token:
+          type: string
+          example: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3MDA2ODk4MTYsImp0aSI6IjRkMzI4MTUyLWU2NDEtNDgwNS1hMDE5LTlhYTEzMjdhZGRiOSIsImlhdCI6MTcwMDY4NjIxNiwibmJmIjoxNzAwNjg2MjE2LCJzdWIiOiI3fHNlcnZpY2VhY2NvdW50IiwicGVyc29uSUQiOiIiLCJjbGllbnRJRCI6IiIsInJvbGVzIjpbImlkZW50aXR5aWQuNyIsImlkZW50aXR5dHlwZS5zZXJ2aWNlYWNjb3VudCIsImNsaWVudC43NTQiLCJwZXJzb24uKiIsImNsaWVudC5hcHBsaWNhdGlvbiIsInMucGVyIiwicy5ibmsiLCJzLmRpdiIsInMuc3RmIiwicy5zZXMiXSwib3JpZ2luIjoic2VydmljZSIsImRldmljZUlEIjoiZGE4MGIwMGEtNmEzOC00N2YxLTgwNjEtMGY0NjY0NDRiZmUyIn0.BLrYmna53ciqT84TU_IZLRhxTvUZfwYamYhEz2LSdn479zWfFdpkosUYtnNxjtCBuZ80UH-gusqwRkdNtKTrz5GQ2xivanmGyQP26ge04ps7-qMJldVeueI1MZAz1L9bxIaZEl9TQA30I6L4WI9cY_gDbjIuwI16PsNjypz4oqeEB9tUez-VWeYg0xHAJkGYqxgBIFQn54u-h2q7MpcAObmxnvp0IuuSQ0fGbb9zsz9_GAE_Zk7UpCAD_lRM4ooSQK-bvDMrNAiOvjcUBnVBb4JvmOTaJAdyV7Nbx9i_obq065PMr_uIR4vVTHKkIbbcA65WjuN4b5_2iVf73ypJbPRQQClcV1qNuSVJhdMfvLTdIA2oC1FSNgkBGgphKpovauKEDU-7SliAW9tZoeMn0GmSD9TOPGMRly1f3rN6Mop9PTc-h7AW3aQGLNNNpZ583Pa-P_fohSnAOIP3lTkrP9Aoy6P8L4hUw_mdLtvVI-mLQO0dOH7kR8GvvF1PFUe6GDP834YkSSRg1lLS4SMz0AWgAQLI-2EEFF10gmhuC1zXZsJGQ-OU8z-mdrLAnlA6q1id0__0LsOvNLiI_REj9zl00Eh3RdyQhcqdrKdS2BXue4lyWTWSXNYVteBNP9bQh4NZ1k8VKueUA7sZ-VnsbGlzDpZQocpwdCr1lBjwkks"
+          description: "A short lived JWT Token with which to authenticate all subsequent requests to the API."
+        ClientIDs:
+          type: string
+          example: "123,456,789"
+          description: "A comma separated list of Campminder client ids for which this JWT Token is valid."
+    Response:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        message:
+          type: string

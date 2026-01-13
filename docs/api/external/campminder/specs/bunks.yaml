@@ -1,0 +1,580 @@
+openapi: 3.0.0
+info:
+  title: Bunks API
+  description: "This API will give access to bunks data"
+  version: "2024-08-15"
+  contact:
+    url: https://campminder.com
+paths:
+  /:
+    get:
+      summary: "List Bunks"
+      description: "Returns a list of bunks that match the supplied criteria."
+      operationId: ListBunks
+      responses:
+        "200":
+          description: "A successful response."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  TotalCount:
+                    type: integer
+                    description: The total number of records returned in the call.
+                  Next:
+                    type: string
+                    description: The link to the next page of records.
+                  Results:
+                    type: array
+                    description: The array of records returned.
+                    items:
+                      $ref: "#/components/schemas/BunkResponse"
+        "400":
+          description: This request is invalid. It is either missing required parameters or one of the supplied parameters is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 400
+                message: "'pagenumber' is invalid"
+        "401":
+          description: This request lacks valid credentials, please try again making sure to supply a valid token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 401
+                message: Unauthorized
+        "403":
+          description: The supplied credentials do not have permission to make this request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 403
+                message: Forbidden
+        "500":
+          description: Our server could not process this request. If the issue persists, contact CampMinder support.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 500
+                message: Internal Server Error
+      parameters:
+        - name: Authorization
+          in: header
+          description: The JWT token should be in the format `Bearer {token}`.
+          required: true
+          schema:
+            type: string
+            example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+        - name: X-Request-ID
+          in: header
+          required: false
+          description: "If supplied, we can use this to identify exact requests during troubleshooting. Must be globally unique to be useful."
+          schema:
+            type: string
+            example: DEEE3D21-F0FA-459E-87BB-A565DBCC0784
+        - name: clientid
+          in: query
+          required: true
+          description: "The CampMinder id of the camp. This value can be retrieved from the response of a successful call to Auth/Login"
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000000000
+            format: integer
+            example: 754
+        - name: seasonid
+          in: query
+          required: true
+          description: "The season for which you want to retrieve the bunks."
+          schema:
+            type: integer
+            format: integer
+            example: 2023
+        - name: orderascending
+          in: query
+          required: true
+          description: "Indicates if the results are sorted in ascending order or not. When set to false, the results are sorted in descending order."
+          schema:
+            type: boolean
+            format: boolean
+            example: true
+        - name: orderby
+          in: query
+          required: true
+          description: "The name of the field by which you want the results to be sorted. Results can be sorted by Name and SortOrder fields. By default, the results are sorted by SortOrder in the descending order."
+          schema:
+            type: string
+            format: string
+            example: "Name"
+        - name: pagenumber
+          in: query
+          required: true
+          description: "Set a minimum value of 1."
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000000000
+            format: integer
+            example: 1
+        - name: pagesize
+          in: query
+          required: true
+          description: "The maximum number of records to retrieve per page. Valid range is 1 to 1000."
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            format: integer
+            example: 10
+        - name: includeinactive
+          in: query
+          required: false
+          description: "If supplied, bunk assignments that are not active are also returned as results."
+          schema:
+            type: boolean
+            format: boolean
+            example: false 
+      tags:
+        - Bunks
+  /plans:
+    get:
+      summary: "List Bunk Plans"
+      description: "Returns a list of bunk plans that match the supplied criteria."
+      operationId: ListBunkPlans
+      responses:
+        "200":
+          description: "A successful response."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  TotalCount:
+                    type: integer
+                    description: The total number of records returned in the call.
+                  Next:
+                    type: string
+                    description: The link to the next page of records.
+                  Results:
+                    type: array
+                    description: The array of records returned.
+                    items:
+                      $ref: "#/components/schemas/BunkPlanResponse"
+        "400":
+          description: This request is invalid. It is either missing required parameters or one of the supplied parameters is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 400
+                message: "'pagenumber' is invalid"
+        "401":
+          description: This request lacks valid credentials, please try again making sure to supply a valid token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 401
+                message: Unauthorized
+        "403":
+          description: The supplied credentials do not have permission to make this request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 403
+                message: Forbidden
+        "500":
+          description: Our server could not process this request. If the issue persists, contact CampMinder support.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 500
+                message: Internal Server Error
+      parameters:
+        - name: Authorization
+          in: header
+          description: The JWT token should be in the format `Bearer {token}`.
+          required: true
+          schema:
+            type: string
+            example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+        - name: X-Request-ID
+          in: header
+          required: false
+          description: "If supplied, we can use this to identify exact requests during troubleshooting. Must be globally unique to be useful."
+          schema:
+            type: string
+            example: DEEE3D21-F0FA-459E-87BB-A565DBCC0784
+        - name: clientid
+          in: query
+          required: true
+          description: "The CampMinder id of the camp. This value can be retrieved from the response of a successful call to Auth/Login."
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000000000
+            format: integer
+            example: 754
+        - name: seasonid
+          in: query
+          required: true
+          description: "The season for which you want to retrieve the bunk plans."
+          schema:
+            type: integer
+            format: integer
+            example: 2023
+        - name: orderascending
+          in: query
+          required: true
+          description: "If supplied, the results are ordered, ascending, by OrderBy. Otherwise they are ordered, by OrderBy, descending."
+          schema:
+            type: boolean
+            format: boolean
+            example: true
+        - name: orderby
+          in: query
+          required: false
+          description: "The only valid value is 'Name'. If 'Name' is not supplied, they are ordered by 'SortOrder'."
+          schema:
+            type: string
+            format: string
+            example: "Name"
+        - name: pagenumber
+          in: query
+          required: true
+          description: "Set a minimum value of 1."
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000000000
+            format: integer
+            example: 1
+        - name: pagesize
+          in: query
+          required: true
+          description: "The maximum number of records to retrieve per page. Valid range is 1 to 1000."
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            format: integer
+            example: 50
+        - name: includeinactive
+          in: query
+          required: false
+          description: "Input parameter that allows to indicate if inactive bunk plans should be included in the results."
+          schema:
+            type: boolean
+            format: boolean
+            example: false 
+      tags:
+        - Bunks
+  /assignments:
+    get:
+      summary: "List Bunk Assignments"
+      description: "Returns a list of bunk assignments that match the supplied criteria."
+      operationId: Assignments
+      responses:
+        "200":
+          description: "Lists bunks and their assignments for the selected season."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  TotalCount:
+                    type: integer
+                    description: The total number of records returned in the call.
+                  Next:
+                    type: string
+                    description: The link to the next page of records.
+                  Results:
+                    type: array
+                    description: The array of records returned.
+                    items:
+                      $ref: "#/components/schemas/AssignmentsResponse"
+        "400":
+          description: This request is invalid. It is either missing required parameters or one of the supplied parameters is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 400
+                message: "'pagenumber' is invalid"
+        "401":
+          description: This request lacks valid credentials, please try again making sure to supply a valid token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 401
+                message: Unauthorized
+        "403":
+          description: The supplied credentials do not have permission to make this request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 403
+                message: Forbidden
+        "500":
+          description: Our server could not process this request. If the issue persists, contact CampMinder support.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+              example:
+                code: 500
+                message: Internal Server Error
+      parameters:
+        - name: Authorization
+          in: header
+          description: The JWT token should be in the format `Bearer {token}`.
+          required: true
+          schema:
+            type: string
+            example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+        - name: X-Request-ID
+          in: header
+          required: false
+          description: "If supplied, we can use this to identify exact requests during troubleshooting. Must be globally unique to be useful."
+          schema:
+            type: string
+            example: DEEE3D21-F0FA-459E-87BB-A565DBCC0784
+        - name: clientid
+          in: query
+          required: true
+          description: "The CampMinder id of the camp. This value can be retrieved from the response of a successful call to Auth/Login."
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000000000
+            format: integer
+            example: 754
+        - name: seasonid
+          in: query
+          required: true
+          description: "The season for which you want to retrieve the bunk assignments."
+          schema:
+            type: integer
+            format: integer
+            example: 2023
+        - name: bunkplanids
+          in: query
+          required: true
+          description: "An array of bunkplan ids for which the bunk assignments are returned."
+          explode: true
+          schema:
+              type: array
+              items:
+                type: integer
+                format: int64
+              example:
+                - 122455
+                - 257987
+        - name: bunkids
+          in: query
+          required: true
+          description: "An array of bunk ids for which the bunk assignments are returned."
+          explode: true
+          schema:
+              type: array
+              items:
+                type: integer
+                format: int64
+              example:
+                - 100545
+                - 102785
+        - name: pagenumber
+          in: query
+          required: true
+          description: "Set a minimum value of 1."
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000000000
+            format: integer
+            example: 1
+        - name: pagesize
+          in: query
+          required: true
+          description: "The maximum number of records to retrieve per page. Valid range is 1 to 1000."
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            format: integer
+            example: 20
+        - name: lastupdated
+          in: query
+          required: false
+          description: "A datetime, formatted as an RFC3339 string, representing the cutoff before which you are not interested in the results."
+          schema:
+            type: string
+            minimum: 0
+            maximum: 0
+            format: string
+            example: 2022-10-12T07:20:50.52Z
+        - name: includedeleted
+          in: query
+          required: false
+          description: "Whether or not we include results that have been deleted. Defaults to false, where deleted records are not returned."
+          schema:
+            type: boolean
+            format: boolean
+            example: false 
+      tags:
+        - Bunks
+security:
+  - apiKeyHeader: []
+  - apiKeyQuery: []
+  - jwtBearerAuth: []
+servers:
+  - url: https://api.campminder.com/bunks
+tags:
+  - name: Bunks
+components:
+  securitySchemes:
+    apiKeyHeader:
+      type: apiKey
+      description: Required for protected endpoints. Only one of the two apiKey security schemes is required.
+      name: Ocp-Apim-Subscription-Key
+      in: header
+    apiKeyQuery:
+      type: apiKey
+      description: Required for protected endpoints. Only one of the two apiKey security schemes is required.
+      name: subscription-key
+      in: query
+    jwtBearerAuth:
+      type: http
+      description: Use the auth service to generate a valid JWT token.
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Assignment:
+      type: object
+      properties:
+        ID:
+          type: integer
+          example: 1158976
+          description: "Assignment ID."
+        PersonID:
+          type: integer
+          example: 1555866
+          description: "The ID of the person assigned to the bunk."
+        LastUpdatedUTC:
+          type: string
+          example: "2019-10-12T07:20:14Z"
+          description: "The UTC datetime as an RFC3339 string of when this bunk assignment was last updated or modified."
+        IsDeleted:
+          type: boolean
+          example: true
+          description: "True if this assignment was deleted."
+    AssignmentsResponse:
+      type: object
+      properties:
+        ClientID:
+          type: integer
+          example: 754
+          description: "The CampMinder id of the camp. This value can be retrieved from the response of a successful call to Auth/Login."
+        BunkPlanID:
+          type: integer
+          example: 123568
+          description: "The bunk plan ID of the bunk assignment."
+        BunkID:
+          type: integer
+          example: 155863
+          description: "The bunk ID of the bunk assignment."
+        Assignments:
+          type: array
+          items:
+            allOf: 
+              - $ref: '#/components/schemas/Assignment'
+    BunkPlanResponse:
+      type: object
+      properties:
+        ClientID:
+          type: integer
+          example: 754
+          description: "The CampMinder id of the camp. This value can be retrieved from the response of a successful call to Auth/Login."
+        ID:
+          type: integer
+          example: 255896
+          description: "BunkPlanID"
+        Name:
+          type: string
+          example: "Apache"
+          description: "The name of the bunk plan."
+        Code:
+          type: string
+          example: APAC
+          description: "The shorthand abbreviation of the bunk plan."
+        IsActive:
+          type: boolean
+          example: true
+          description: "Indicates whether the bunk plan is active or not."
+        SessionIDs:
+          type: array
+          items:
+            type: integer
+        BunkIDs:
+          type: array
+          items:
+            type: integer
+    BunkResponse:
+      type: object
+      properties:
+        ClientID:
+          type: integer
+          example: 754
+          description: "The CampMinder id of the camp. This value can be retrieved from the response of a successful call to Auth/Login."
+        ID:
+          type: integer
+          example: 1558636
+          description: "BunkID"
+        Name:
+          type: string
+          example: "Apache"
+          description: "The name of the bunk."
+        Code:
+          type: string
+          example: APAC
+          description: "The shorthand abbreviation of the bunk."
+        IsActive:
+          type: boolean
+          example: true
+          description: "Indicates whether the bunk is active or not."
+        SortOrder:
+          type: integer
+          example: 2
+          description: "Returns the sort order of the bunk."
+        AreaID:
+          type: integer
+          example: 2
+          description: "Returns the AreaID for the bunk. Bunk Area is the physical location of the bunk."
+    Response:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        message:
+          type: string

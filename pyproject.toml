@@ -1,0 +1,186 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kindred"
+version = "1.0.0"
+description = "Kindred finds campers who belong together and places them in the right cabins."
+readme = "README.md"
+requires-python = ">=3.12,<3.14"  # Upper bound: OR-Tools lacks 3.14 wheels
+license = {text = "MIT"}
+authors = [
+    {name = "Kindred Contributors"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    # Web framework
+    "fastapi>=0.128.0",
+    "uvicorn[standard]>=0.40.0",
+    "python-multipart>=0.0.20",
+    # Database
+    "pocketbase>=0.15.0",
+    # HTTP clients
+    "httpx>=0.28.0",
+    "aiohttp>=3.9.0",
+    "requests>=2.31.0",
+    # AI/ML
+    "openai>=2.0.0",
+    "ortools>=9.14",
+    # Data processing
+    "pandas>=2.0.0",
+    "numpy>=1.26.0",
+    "networkx>=3.0",
+    "python-louvain>=0.16",
+    # Configuration & validation
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "PyYAML>=6.0",
+    # Auth
+    "PyJWT[crypto]>=2.8.0",
+    # CLI & utilities
+    "typer>=0.12.0",
+    "rich>=13.0.0",
+    "tqdm>=4.65.0",
+    # Scheduling
+    "APScheduler>=3.10.0",
+    "croniter>=2.0.0",
+    # File processing
+    "openpyxl>=3.1.0",
+    "PyPDF2>=3.0.0",
+    # System
+    "psutil>=5.9.0",
+]
+
+[tool.uv]
+dev-dependencies = [
+    # Testing
+    "pytest>=9.0.0",
+    "pytest-asyncio>=1.0.0",
+    "pytest-cov>=6.0.0",
+    "coverage>=7.0.0",
+    "playwright>=1.48.0",
+    # Linting & formatting
+    "ruff>=0.14.0",
+    # Type checking
+    "mypy>=1.13.0",
+    "types-requests>=2.32.0",
+    "types-PyYAML>=6.0.0",
+    "types-psutil>=6.0.0",
+    "pandas-stubs>=2.0.0",
+    # Security
+    "pip-audit>=2.7.0",
+    # Code metrics
+    "radon>=6.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["bunking*", "campminder*", "config*", "scripts*"]
+exclude = ["tests*", "docs*", "htmlcov*"]
+
+[tool.ruff]
+# See ruff.toml
+
+# Native TOML configuration (pytest 9.0+)
+# Note: [tool.pytest] and [tool.pytest.ini_options] cannot coexist
+[tool.pytest]
+minversion = "9.0"
+
+# Strict mode - catch configuration and marker issues early
+strict = true
+strict_config = true
+strict_markers = true
+
+# Test discovery
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+# Command-line defaults
+addopts = [
+    "-v",
+    "--tb=short",
+    "--color=yes",
+    "--strict-markers",
+    "-ra",  # Show extra test summary for all except passed
+]
+
+# Markers for categorizing tests
+markers = [
+    "unit: Unit tests that run without external dependencies",
+    "integration: Tests that require database or external services",
+    "e2e: End-to-end tests",
+    "performance: Performance and load tests",
+    "slow: Tests that take more than 30 seconds",
+    "mock: Tests that use mocks extensively",
+    "requires_config: Tests that need specific config files",
+    "ai_required: Tests that require AI API tokens (skip in CI)",
+    "pocketbase_required: Tests that require PocketBase connection (skip in CI)",
+]
+
+# Note: For test timeouts, use pytest-timeout plugin with --timeout flag
+# Note: Performance profiling scripts should be excluded with --ignore when needed
+
+[tool.coverage.run]
+source = ["scripts/sync", "bunking"]
+omit = [
+    "*/test/*",
+    "*/tests/*",
+    "*/__pycache__/*",
+    "*/venv/*",
+    "*/site-packages/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+
+[tool.mypy]
+python_version = "3.12"
+# Strict mode - catch type errors, async/sync mismatches, missing attributes
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+check_untyped_defs = true
+no_implicit_optional = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_calls = true
+
+# Third-party packages without type stubs
+[[tool.mypy.overrides]]
+module = [
+    "pocketbase.*",
+    "networkx.*",
+    "ortools.*",
+    "openai.*",
+    "jellyfish.*",
+    "fuzzywuzzy.*",
+    "Levenshtein.*",
+    "community.*",
+]
+ignore_missing_imports = true
+
+# Test files - allow some flexibility
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+disallow_untyped_calls = false

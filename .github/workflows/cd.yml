@@ -1,0 +1,631 @@
+name: CD - Build & Deploy Docker Images
+
+on:
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Optional additional tag (latest is always pushed)'
+        required: false
+        type: string
+      no_cache:
+        description: 'Disable Docker layer cache (force full rebuild)'
+        required: false
+        type: boolean
+        default: false
+
+  # On version tags only (semver pattern)
+  # Use: git tag -a v0.1.0 -m "Release message" && git push --tags
+  # Note: release.sh creates the GitHub release, so we don't trigger on release events
+  push:
+    tags:
+      - 'v*'
+
+env:
+  REGISTRY: ghcr.io
+  USERNAME: adamflagg
+
+# Prevent multiple CD runs for the same ref
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Detect what changed to optimize builds
+  detect-changes:
+    name: Detect Changed Files
+    runs-on: self-hosted
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      docker: ${{ steps.filter.outputs.docker }}
+      initial_commit: ${{ steps.get-base-sha.outputs.initial_commit }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+
+    - name: Get base SHA for comparison
+      id: get-base-sha
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        echo "Checking for last successful CD run..."
+        echo "Current commit SHA: ${{ github.sha }}"
+
+        LAST_SUCCESS_SHA=$(gh run list \
+          --workflow cd.yml \
+          --branch main \
+          --status success \
+          --limit 5 \
+          --json headSha \
+          --jq '.[] | select(.headSha != "${{ github.sha }}") | .headSha' | head -1 || echo "")
+
+        if [ -n "$LAST_SUCCESS_SHA" ]; then
+          echo "Found previous successful run: $LAST_SUCCESS_SHA"
+          BASE_SHA=$LAST_SUCCESS_SHA
+          echo "initial_commit=false" >> $GITHUB_OUTPUT
+        elif git rev-parse HEAD~1 >/dev/null 2>&1; then
+          echo "No previous successful runs found, falling back to HEAD~1"
+          BASE_SHA=$(git rev-parse HEAD~1)
+          echo "Using previous commit: $BASE_SHA"
+          echo "initial_commit=false" >> $GITHUB_OUTPUT
+        else
+          echo "⚠️ Initial commit detected (no parent) - building all images"
+          # For initial commit, use HEAD as base (no changes detected by paths-filter)
+          # but set flag to force all builds
+          BASE_SHA=${{ github.sha }}
+          echo "initial_commit=true" >> $GITHUB_OUTPUT
+        fi
+
+        echo "base_sha=$BASE_SHA" >> $GITHUB_OUTPUT
+        echo "Comparing changes from $BASE_SHA to ${{ github.sha }}"
+
+        if [ "$BASE_SHA" != "${{ github.sha }}" ]; then
+          echo "=== Change Detection Summary ==="
+          echo "Files changed:"
+          git diff --name-only $BASE_SHA HEAD 2>/dev/null | head -20
+          echo "Total files changed: $(git diff --name-only $BASE_SHA HEAD 2>/dev/null | wc -l)"
+        else
+          echo "=== Initial commit - all files are new ==="
+        fi
+
+    - name: Check for file changes
+      uses: dorny/paths-filter@v3
+      id: filter
+      with:
+        base: ${{ steps.get-base-sha.outputs.base_sha }}
+        filters: |
+          api:
+            - 'api/**'
+            - 'bunking/**'
+            - 'campminder/**'
+            - 'pocketbase/**'
+            - 'frontend/**'
+            - 'config/*.json'
+            - 'pyproject.toml'
+            - 'uv.lock'
+            - 'Dockerfile'
+            - 'docker/supervisord.conf'
+            - 'docker/combined-entrypoint.sh'
+            - 'docker/Caddyfile'
+          docker:
+            - 'Dockerfile'
+            - 'docker-compose*.yml'
+            - '.dockerignore'
+
+  # Verify CI and docs checks passed for tag pushes
+  # This reuses results from the branch push - no duplicate runs
+  verify-ci:
+    name: Verify CI Passed
+    needs: detect-changes
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: self-hosted
+    permissions:
+      checks: read
+    steps:
+    - name: Check CI and docs status for this commit
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        echo "Checking check runs for ${{ github.sha }}..."
+
+        # Helper to get check status by name
+        get_check_status() {
+          local check_name="$1"
+          gh api repos/${{ github.repository }}/commits/${{ github.sha }}/check-runs \
+            --jq ".check_runs[] | select(.name == \"$check_name\") | {status: .status, conclusion: .conclusion}"
+        }
+
+        # Wait for CI Summary (required)
+        echo "=== Verifying CI Summary ==="
+        for i in {1..20}; do
+          CI_RESULTS=$(get_check_status "CI Summary")
+          SUCCESS_COUNT=$(echo "$CI_RESULTS" | jq -s '[.[] | select(.status == "completed" and .conclusion == "success")] | length')
+          FAILED_COUNT=$(echo "$CI_RESULTS" | jq -s '[.[] | select(.status == "completed" and .conclusion != "success")] | length')
+          PENDING_COUNT=$(echo "$CI_RESULTS" | jq -s '[.[] | select(.status != "completed")] | length')
+          TOTAL_COUNT=$(echo "$CI_RESULTS" | jq -s 'length')
+
+          echo "  Attempt $i/20: CI runs: $TOTAL_COUNT (Success: $SUCCESS_COUNT, Failed: $FAILED_COUNT, Pending: $PENDING_COUNT)"
+
+          if [ "$TOTAL_COUNT" -eq 0 ]; then
+            echo "  No CI Summary checks found yet, waiting..."
+            sleep 30
+            continue
+          fi
+
+          if [ "$SUCCESS_COUNT" -gt 0 ]; then
+            echo "✅ CI Summary passed"
+            break
+          fi
+
+          if [ "$PENDING_COUNT" -eq 0 ] && [ "$SUCCESS_COUNT" -eq 0 ]; then
+            echo "❌ CI Summary failed"
+            exit 1
+          fi
+
+          sleep 30
+        done
+
+        if [ "$SUCCESS_COUNT" -eq 0 ]; then
+          echo "❌ CI timed out after 10 minutes"
+          exit 1
+        fi
+
+        # Check docs if Documentation Linting check exists (means docs were changed)
+        echo ""
+        echo "=== Checking Documentation Linting (if applicable) ==="
+        DOCS_RESULTS=$(get_check_status "Documentation Linting")
+        DOCS_COUNT=$(echo "$DOCS_RESULTS" | jq -s 'length')
+
+        if [ "$DOCS_COUNT" -eq 0 ]; then
+          echo "ℹ️  No docs check found (no doc changes in this commit)"
+        else
+          DOCS_SUCCESS=$(echo "$DOCS_RESULTS" | jq -s '[.[] | select(.status == "completed" and .conclusion == "success")] | length')
+          DOCS_FAILED=$(echo "$DOCS_RESULTS" | jq -s '[.[] | select(.status == "completed" and .conclusion != "success")] | length')
+
+          if [ "$DOCS_SUCCESS" -gt 0 ]; then
+            echo "✅ Documentation Linting passed"
+          elif [ "$DOCS_FAILED" -gt 0 ]; then
+            echo "❌ Documentation Linting failed"
+            exit 1
+          else
+            echo "⏳ Documentation Linting still running, waiting..."
+            for j in {1..10}; do
+              sleep 15
+              DOCS_RESULTS=$(get_check_status "Documentation Linting")
+              DOCS_SUCCESS=$(echo "$DOCS_RESULTS" | jq -s '[.[] | select(.status == "completed" and .conclusion == "success")] | length')
+              if [ "$DOCS_SUCCESS" -gt 0 ]; then
+                echo "✅ Documentation Linting passed"
+                break
+              fi
+            done
+            if [ "$DOCS_SUCCESS" -eq 0 ]; then
+              echo "❌ Documentation Linting did not complete successfully"
+              exit 1
+            fi
+          fi
+        fi
+
+        echo ""
+        echo "✅ All required checks passed for this commit"
+
+  # Smoke test for manual triggers
+  smoke-test:
+    name: Smoke Test (Manual)
+    needs: detect-changes
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: self-hosted
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    # uv manages dependencies
+    - name: Verify Python imports
+      run: |
+        uv sync --frozen -q
+        uv run python -c "import bunking; import api; print('✅ Python imports OK')"
+
+    - name: Verify TypeScript compiles
+      working-directory: ./frontend
+      run: |
+        npm ci
+        npm run type-check
+        echo "✅ TypeScript OK"
+
+  # Build and push Docker image (single combined container)
+  build-and-push:
+    name: Build & Push Image
+    needs: [detect-changes, verify-ci, smoke-test]
+    if: |
+      always() &&
+      (needs.verify-ci.result == 'success' || needs.verify-ci.result == 'skipped') &&
+      (needs.smoke-test.result == 'success' || needs.smoke-test.result == 'skipped') &&
+      !(needs.verify-ci.result == 'failure' || needs.smoke-test.result == 'failure')
+    runs-on: self-hosted
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+
+    strategy:
+      matrix:
+        include:
+          - image: kindred
+            dockerfile: Dockerfile
+            context: .
+            changed: ${{ needs.detect-changes.outputs.api }}
+
+    steps:
+    - name: Check if build needed
+      id: check
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        # For tag pushes, check if image was already pushed locally by release.sh
+        if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          DOCKER_TAG=${TAG_NAME#v}
+          echo "Checking if image ${{ matrix.image }}:${DOCKER_TAG} already exists..."
+
+          # Query GitHub Packages API for existing version
+          EXISTING=$(gh api "/users/${{ env.USERNAME }}/packages/container/${{ matrix.image }}/versions" \
+            --jq ".[] | select(.metadata.container.tags[] == \"${DOCKER_TAG}\") | .id" 2>/dev/null | head -1 || echo "")
+
+          if [ -n "$EXISTING" ]; then
+            echo "build=false" >> $GITHUB_OUTPUT
+            echo "✅ Image ${{ matrix.image }}:${DOCKER_TAG} already exists (pushed by local release)"
+            echo "   Skipping redundant build"
+            exit 0
+          else
+            echo "Image not found, will build..."
+          fi
+        fi
+
+        # Standard change detection for non-tag pushes or when image doesn't exist
+        if [ "${{ matrix.changed }}" == "true" ] || \
+           [ "${{ github.event_name }}" == "workflow_dispatch" ] || \
+           [[ "${{ github.ref }}" == refs/tags/* ]] || \
+           [ "${{ needs.detect-changes.outputs.docker }}" == "true" ] || \
+           [ "${{ needs.detect-changes.outputs.initial_commit }}" == "true" ]; then
+          echo "build=true" >> $GITHUB_OUTPUT
+        else
+          echo "build=false" >> $GITHUB_OUTPUT
+          echo "Skipping ${{ matrix.image }} - no changes detected"
+        fi
+
+    - name: Checkout code
+      if: steps.check.outputs.build == 'true'
+      uses: actions/checkout@v6
+
+    - name: Unlock git-crypt for branding assets
+      if: steps.check.outputs.build == 'true' && env.GIT_CRYPT_KEY != ''
+      env:
+        GIT_CRYPT_KEY: ${{ secrets.GIT_CRYPT_KEY }}
+      run: |
+        echo "$GIT_CRYPT_KEY" | base64 -d > /tmp/git-crypt-key
+        git-crypt unlock /tmp/git-crypt-key
+        rm /tmp/git-crypt-key
+        echo "✅ git-crypt unlocked - branding assets available"
+
+    - name: Prepare local assets for Docker build
+      if: steps.check.outputs.build == 'true'
+      run: |
+        # Ensure local/ directory exists for Docker COPY (even if empty)
+        mkdir -p local/assets
+        if [ -f local/assets/camp-tawonga-logo.png ]; then
+          echo "✅ Local assets found and decrypted"
+          ls -la local/assets/
+        else
+          echo "ℹ️  No local assets (git-crypt not unlocked or files not committed)"
+          echo "   Using default branding"
+        fi
+
+    - name: Set up Docker Buildx
+      if: steps.check.outputs.build == 'true'
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to GitHub Container Registry
+      if: steps.check.outputs.build == 'true'
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Determine tags
+      if: steps.check.outputs.build == 'true'
+      id: tags
+      run: |
+        IMAGE="${{ env.REGISTRY }}/${{ env.USERNAME }}/${{ matrix.image }}"
+        TAGS="${IMAGE}:latest"
+        if [ -n "${{ github.event.inputs.tag }}" ]; then
+          TAGS="${TAGS},${IMAGE}:${{ github.event.inputs.tag }}"
+        fi
+        if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          # Strip 'refs/tags/' prefix, then strip 'v' prefix for Docker tag
+          # Git tags remain v0.7.0, Docker tags become 0.7.0, 0.7, latest
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          DOCKER_TAG=${TAG_NAME#v}
+          TAGS="${TAGS},${IMAGE}:${DOCKER_TAG}"
+
+          # Add minor version tag (e.g., 0.7 from 0.7.0)
+          MINOR_TAG=$(echo "$DOCKER_TAG" | cut -d. -f1-2)
+          if [[ "$MINOR_TAG" != "$DOCKER_TAG" ]]; then
+            TAGS="${TAGS},${IMAGE}:${MINOR_TAG}"
+          fi
+        fi
+        echo "tags=$TAGS" >> $GITHUB_OUTPUT
+        echo "Using tags: $TAGS"
+
+    - name: Get version and build date
+      if: steps.check.outputs.build == 'true'
+      id: version
+      run: |
+        if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          VERSION=${GITHUB_REF#refs/tags/}
+        else
+          VERSION="dev"
+        fi
+        BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "build_date=$BUILD_DATE" >> $GITHUB_OUTPUT
+        echo "Version: $VERSION"
+        echo "Build Date: $BUILD_DATE"
+
+    - name: Build and push Docker image
+      if: steps.check.outputs.build == 'true'
+      id: build
+      uses: docker/build-push-action@v6
+      with:
+        context: ${{ matrix.context }}
+        file: ${{ matrix.dockerfile }}
+        push: true
+        tags: ${{ steps.tags.outputs.tags }}
+        cache-from: ${{ github.event.inputs.no_cache == 'true' && '' || 'type=gha' }}
+        cache-to: type=gha,mode=max
+        platforms: linux/amd64
+        no-cache: ${{ github.event.inputs.no_cache == 'true' }}
+        build-args: |
+          VERSION=${{ steps.version.outputs.version }}
+          BUILD_DATE=${{ steps.version.outputs.build_date }}
+
+    - name: Run Trivy vulnerability scanner
+      if: steps.check.outputs.build == 'true'
+      uses: aquasecurity/trivy-action@0.33.1
+      with:
+        image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/${{ matrix.image }}:latest
+        format: 'sarif'
+        output: 'trivy-results-${{ matrix.image }}.sarif'
+        severity: 'CRITICAL,HIGH'
+        exit-code: '0'
+
+    - name: Upload Trivy scan results to GitHub Security
+      if: steps.check.outputs.build == 'true'
+      continue-on-error: true
+      uses: github/codeql-action/upload-sarif@v4
+      with:
+        sarif_file: 'trivy-results-${{ matrix.image }}.sarif'
+
+  # Integration test - verify services work together
+  integration-test:
+    name: Integration Test
+    needs: build-and-push
+    runs-on: self-hosted
+    if: success()
+    permissions:
+      contents: read
+      packages: read
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Pull built image
+      run: |
+        echo "Pulling latest image..."
+        docker pull ${{ env.REGISTRY }}/${{ env.USERNAME }}/kindred:latest
+
+        # Tag for local testing
+        docker tag ${{ env.REGISTRY }}/${{ env.USERNAME }}/kindred:latest ghcr.io/adamflagg/kindred:ci-test
+
+    - name: Create CI environment file
+      run: |
+        # Use run_id for unique paths to support parallel runners
+        CI_DIR="/tmp/kindred-ci-${{ github.run_id }}"
+
+        cat > .env.ci << EOF
+        IMAGE_TAG=ci-test
+        APPDATA_DIR=${CI_DIR}
+        POCKETBASE_ADMIN_EMAIL=ci@test.local
+        POCKETBASE_ADMIN_PASSWORD=ci-test-password
+        AUTH_MODE=bypass
+        EOF
+
+        mkdir -p ${CI_DIR}/kindred/pocketbase
+
+    - name: Create test network
+      run: docker network create app-bridge-${{ github.run_id }} || true
+
+    - name: Start test stack
+      run: |
+        # Use run_id for isolation when multiple CD runs share Docker daemon
+        export COMPOSE_PROJECT_NAME=kindred-ci-${{ github.run_id }}
+        export IMAGE_TAG=ci-test
+        export APPDATA_DIR=/tmp/kindred-ci-${{ github.run_id }}
+        export POCKETBASE_ADMIN_EMAIL=ci@test.local
+        export POCKETBASE_ADMIN_PASSWORD=ci-test-password
+        export AUTH_MODE=bypass
+        export PROXY_NETWORK=app-bridge-${{ github.run_id }}
+
+        docker compose up -d
+
+        echo "=== Initial service status ==="
+        docker compose ps
+
+        echo "Waiting for service to become healthy..."
+        MAX_ATTEMPTS=30
+        SLEEP_TIME=5
+
+        for i in $(seq 1 $MAX_ATTEMPTS); do
+          echo "Attempt $i/$MAX_ATTEMPTS..."
+
+          HEALTHY=$(docker compose ps kindred --format json | jq -r '.[0].Health' | grep -c "healthy" || true)
+
+          echo "  Kindred: $([ "$HEALTHY" = "1" ] && echo "✓ healthy" || echo "✗ not ready")"
+
+          if [ "$HEALTHY" = "1" ]; then
+            echo "✅ Service is healthy!"
+            break
+          fi
+
+          if [ $i -eq $MAX_ATTEMPTS ]; then
+            echo "❌ Service failed to become healthy after $((MAX_ATTEMPTS * SLEEP_TIME)) seconds"
+            docker compose ps
+            docker compose logs --tail=50
+            exit 1
+          fi
+
+          sleep $SLEEP_TIME
+        done
+
+        docker compose ps
+
+    - name: Test service endpoints
+      run: |
+        # Container name follows pattern: {project}-{service}-{instance}
+        CONTAINER_NAME="kindred-ci-${{ github.run_id }}-kindred-1"
+        KINDRED_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${CONTAINER_NAME})
+
+        echo "Kindred IP: $KINDRED_IP"
+
+        test_endpoint() {
+          local url=$1
+          local name=$2
+          local max_retries=5
+          local retry_delay=2
+
+          echo "Testing $name..."
+          for i in $(seq 1 $max_retries); do
+            if curl -f -s -o /dev/null -w "%{http_code}" "$url" | grep -q "200"; then
+              echo "✓ $name is responding correctly"
+              return 0
+            else
+              echo "  Attempt $i/$max_retries failed for $name"
+              if [ $i -lt $max_retries ]; then
+                sleep $retry_delay
+              fi
+            fi
+          done
+          echo "❌ $name failed after $max_retries attempts"
+          curl -v "$url" || true
+          return 1
+        }
+
+        echo "=== Testing via Caddy (main entry point) ==="
+        test_endpoint "http://${KINDRED_IP}:8080/health" "Health check" || exit 1
+        test_endpoint "http://${KINDRED_IP}:8080/api/config" "FastAPI config" || exit 1
+        test_endpoint "http://${KINDRED_IP}:8080/api/collections/_superusers/records" "PocketBase collections" || exit 1
+
+        echo "✅ All integration tests passed!"
+
+    - name: Show logs on failure
+      if: failure()
+      run: |
+        export COMPOSE_PROJECT_NAME=kindred-ci-${{ github.run_id }}
+        echo "=== Docker Compose Status ==="
+        docker compose ps
+        echo ""
+        echo "=== Kindred Logs ==="
+        docker compose logs kindred
+
+    - name: Stop test stack
+      if: always()
+      run: |
+        export COMPOSE_PROJECT_NAME=kindred-ci-${{ github.run_id }}
+        docker compose down -v
+        docker network rm app-bridge-${{ github.run_id }} || true
+        rm -rf /tmp/kindred-ci-${{ github.run_id }}
+
+  # Summary job
+  summary:
+    name: Build Summary
+    needs: [build-and-push, integration-test]
+    runs-on: self-hosted
+    if: always()
+    steps:
+    - name: Check build status
+      run: |
+        if [ "${{ needs.build-and-push.result }}" != "success" ] && [ "${{ needs.build-and-push.result }}" != "skipped" ]; then
+          echo "❌ Docker image builds failed!"
+          exit 1
+        fi
+
+        if [ "${{ needs.integration-test.result }}" != "success" ] && [ "${{ needs.integration-test.result }}" != "skipped" ]; then
+          echo "❌ Integration tests failed!"
+          exit 1
+        fi
+
+        if [ "${{ needs.build-and-push.result }}" == "skipped" ]; then
+          echo "ℹ️  Docker build skipped (no relevant file changes)"
+        else
+          echo "✅ All CD checks passed successfully!"
+          echo ""
+          echo "Image pushed:"
+          echo "- ghcr.io/${{ env.USERNAME }}/kindred (Caddy + PocketBase + FastAPI)"
+        fi
+
+  # Auto-generate release notes from conventional commits
+  create-release:
+    name: Create GitHub Release
+    needs: [build-and-push, integration-test]
+    runs-on: self-hosted
+    # Only run on tag pushes, not release events (release already exists) or manual triggers
+    if: success() && startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
+    permissions:
+      contents: write
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 0  # Need full history for git-cliff
+
+    - name: Install git-cliff
+      uses: kenji-miyake/setup-git-cliff@v2
+
+    - name: Generate changelog
+      id: changelog
+      run: |
+        # Get the current tag
+        CURRENT_TAG=${GITHUB_REF#refs/tags/}
+        echo "Current tag: $CURRENT_TAG"
+
+        # Get the previous tag
+        PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+        echo "Previous tag: $PREV_TAG"
+
+        if [ -n "$PREV_TAG" ]; then
+          echo "Generating changelog from $PREV_TAG to $CURRENT_TAG"
+          git cliff $PREV_TAG..$CURRENT_TAG --strip header > RELEASE_NOTES.md
+        else
+          echo "No previous tag found, generating changelog for all commits"
+          git cliff --latest --strip header > RELEASE_NOTES.md
+        fi
+
+        echo "=== Generated Release Notes ==="
+        cat RELEASE_NOTES.md
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        body_path: RELEASE_NOTES.md
+        generate_release_notes: false

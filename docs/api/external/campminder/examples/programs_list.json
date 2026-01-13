@@ -1,0 +1,128 @@
+{
+  "endpoint": "GET /sessions/programs?clientid=337&seasonid=2025",
+  "description": "Activity programs available across sessions",
+  "response": {
+    "TotalCount": 12,
+    "Next": null,
+    "Results": [
+      {
+        "ClientID": 337,
+        "ID": 2001,
+        "Self": "/v1/sessions/programs/2001",
+        "Name": "Archery Masters",
+        "Description": "Traditional archery with modern recurve bows",
+        "IsActive": true,
+        "SortOrder": 1,
+        "IsDay": false,
+        "IsResidential": true,
+        "IsForChildren": true,
+        "IsForAdults": false,
+        "ProgramSeasons": [
+          {
+            "ID": 3001,
+            "SeasonID": 2025,
+            "SessionID": 1002,
+            "Description": "Beginner to advanced archery instruction",
+            "StartDate": "2025-07-01T15:00:00Z",
+            "EndDate": "2025-07-21T11:00:00Z",
+            "StartAge": 10.0,
+            "EndAge": 17.0,
+            "StartGradeID": 5,
+            "EndGradeID": 12,
+            "GenderID": null
+          }
+        ]
+      },
+      {
+        "ClientID": 337,
+        "ID": 2002,
+        "Self": "/v1/sessions/programs/2002",
+        "Name": "Waterfront Adventures", 
+        "Description": "Swimming, sailing, and water safety",
+        "IsActive": true,
+        "SortOrder": 2,
+        "IsDay": false,
+        "IsResidential": true,
+        "IsForChildren": true,
+        "IsForAdults": false,
+        "ProgramSeasons": [
+          {
+            "ID": 3002,
+            "SeasonID": 2025,
+            "SessionID": 1002,
+            "Description": "Lake activities and swim instruction",
+            "StartDate": "2025-07-01T15:00:00Z",
+            "EndDate": "2025-07-21T11:00:00Z",
+            "StartAge": 8.0,
+            "EndAge": 17.0,
+            "StartGradeID": 3,
+            "EndGradeID": 12,
+            "GenderID": null
+          }
+        ]
+      },
+      {
+        "ClientID": 337,
+        "ID": 2003,
+        "Self": "/v1/sessions/programs/2003",
+        "Name": "Quest Expeditions",
+        "Description": "Multi-day wilderness adventures",
+        "IsActive": true,
+        "SortOrder": 3,
+        "IsDay": false,
+        "IsResidential": true,
+        "IsForChildren": true,
+        "IsForAdults": false,
+        "ProgramSeasons": [
+          {
+            "ID": 3003,
+            "SeasonID": 2025,
+            "SessionID": 1003,
+            "Description": "Leadership development through adventure",
+            "StartDate": "2025-07-01T15:00:00Z",
+            "EndDate": "2025-07-21T11:00:00Z", 
+            "StartAge": 15.0,
+            "EndAge": 17.0,
+            "StartGradeID": 9,
+            "EndGradeID": 12,
+            "GenderID": null
+          }
+        ]
+      },
+      {
+        "ClientID": 337,
+        "ID": 2004,
+        "Self": "/v1/sessions/programs/2004",
+        "Name": "Arts & Crafts Studio",
+        "Description": "Creative expression through various media",
+        "IsActive": true,
+        "SortOrder": 4,
+        "IsDay": false,
+        "IsResidential": true,
+        "IsForChildren": true,
+        "IsForAdults": false,
+        "ProgramSeasons": [
+          {
+            "ID": 3004,
+            "SeasonID": 2025,
+            "SessionID": 1002,
+            "Description": "Pottery, painting, and woodworking",
+            "StartDate": "2025-07-01T15:00:00Z",
+            "EndDate": "2025-07-21T11:00:00Z",
+            "StartAge": 8.0,
+            "EndAge": 16.0,
+            "StartGradeID": 3,
+            "EndGradeID": 11,
+            "GenderID": null
+          }
+        ]
+      }
+    ]
+  },
+  "program_popularity": {
+    "2001": "High - Archery always fills up first",
+    "2002": "Very High - Required for all campers",
+    "2003": "Medium - Limited to older campers",
+    "2004": "High - Popular rainy day activity"
+  }
+}

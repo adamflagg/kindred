@@ -1,0 +1,43 @@
+{
+	admin localhost:2019
+}
+
+:8080 {
+	# PocketBase-specific patterns (explicit)
+	# These are the only /api/* routes that go to PocketBase
+	# Note: Must include both root paths and wildcards (e.g., /api/collections AND /api/collections/*)
+	@pocketbase path /api/collections /api/collections/* /api/files/* /api/realtime /api/custom/* /api/oauth2-redirect /api/settings /api/logs /api/logs/* /api/backups /api/backups/*
+
+	# PocketBase routes
+	handle @pocketbase {
+		reverse_proxy 127.0.0.1:8090 {
+			header_up Host {host}
+		}
+	}
+
+	# PocketBase admin UI
+	handle /_/* {
+		reverse_proxy 127.0.0.1:8090 {
+			header_up Host {host}
+		}
+	}
+
+	# Health check (standard path for load balancers)
+	handle /health {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	# FastAPI catch-all for /api/* (solver, scenarios, validation, social-graph, config, etc.)
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	# Frontend static files (requires npm run build)
+	# In dev, use :3000 (Vite) directly for HMR
+	# :8080 only works after building to pb_public
+	handle {
+		root * {$FRONTEND_BUILD_PATH:./pocketbase/pb_public}
+		try_files {path} /index.html
+		file_server
+	}
+}

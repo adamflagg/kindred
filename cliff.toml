@@ -1,0 +1,37 @@
+[changelog]
+body = """
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim | upper_first }}
+{% for commit in commits -%}
+* {{ commit.id }}: {{ commit.raw_message | split(pat="\n") | first | trim }}{% if commit.remote.pr_number %} (#{{ commit.remote.pr_number }}){% endif %}{% if commit.remote.username %} (@{{ commit.remote.username }}){% endif %}
+{% endfor %}
+{% endfor %}
+"""
+trim = true
+
+[remote.github]
+owner = "adamflagg"
+repo = "bunking"
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+commit_parsers = [
+    { message = "^Merge", skip = true },
+    { message = "^feat", group = "Features" },
+    { message = "^fix", group = "Bug Fixes" },
+    { message = "^perf", group = "Performance" },
+    { message = "^refactor", group = "Refactoring" },
+    { message = "^docs", group = "Documentation" },
+    { message = "^style", group = "Styling" },
+    { message = "^test", group = "Testing" },
+    { message = "^build", group = "Build" },
+    { message = "^config", group = "Configuration" },
+    { message = "^chore", skip = true },
+    { message = "^ci", skip = true },
+]
+tag_pattern = "v[0-9].*"
+
+[bump]
+breaking_always_bump_major = false
+features_always_bump_minor = true

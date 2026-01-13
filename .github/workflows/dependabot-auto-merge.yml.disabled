@@ -1,0 +1,67 @@
+name: Dependabot Auto-Merge
+
+on:
+  # Allow manual triggering
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  dependabot-auto-merge:
+    name: Auto-Merge Dependabot PRs
+    runs-on: self-hosted
+    # Only run for PRs created by Dependabot (checks author, not event trigger)
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+
+    steps:
+    - name: Fetch Dependabot metadata
+      id: metadata
+      uses: dependabot/fetch-metadata@v2
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Determine auto-merge eligibility
+      id: check
+      run: |
+        echo "Update type: ${{ steps.metadata.outputs.update-type }}"
+        echo "Dependency names: ${{ steps.metadata.outputs.dependency-names }}"
+        echo "Package ecosystem: ${{ steps.metadata.outputs.package-ecosystem }}"
+
+        # Auto-merge minor and patch updates only
+        # Major updates require manual review
+        if [[ "${{ steps.metadata.outputs.update-type }}" == "version-update:semver-minor" ]] || \
+           [[ "${{ steps.metadata.outputs.update-type }}" == "version-update:semver-patch" ]]; then
+          echo "eligible=true" >> $GITHUB_OUTPUT
+          echo "✅ Eligible for auto-merge (minor/patch update)"
+        else
+          echo "eligible=false" >> $GITHUB_OUTPUT
+          echo "⚠️ Not eligible for auto-merge (major update requires manual review)"
+        fi
+
+    - name: Approve PR
+      if: steps.check.outputs.eligible == 'true'
+      run: |
+        gh pr review "$PR_URL" --approve --body "Auto-approved: ${{ steps.metadata.outputs.update-type }} update for ${{ steps.metadata.outputs.dependency-names }}"
+      env:
+        PR_URL: ${{ github.event.pull_request.html_url }}
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Enable auto-merge
+      if: steps.check.outputs.eligible == 'true'
+      run: |
+        gh pr merge "$PR_URL" --auto --squash
+      env:
+        PR_URL: ${{ github.event.pull_request.html_url }}
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Add label for major updates
+      if: steps.check.outputs.eligible == 'false'
+      run: |
+        gh pr edit "$PR_URL" --add-label "needs-review"
+      env:
+        PR_URL: ${{ github.event.pull_request.html_url }}
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
