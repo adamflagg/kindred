@@ -498,7 +498,10 @@ jobs:
         AUTH_MODE=bypass
         EOF
 
-        mkdir -p ${CI_DIR}/kindred/pocketbase
+        # Create directory matching docker-compose volume mount path
+        mkdir -p ${CI_DIR}/bunking/pocketbase
+        # Set ownership to match container user (1000:1000)
+        sudo chown -R 1000:1000 ${CI_DIR}/bunking/pocketbase
 
     - name: Create test network
       run: docker network create app-bridge-${{ github.run_id }} || true
@@ -584,6 +587,22 @@ jobs:
         test_endpoint "http://${KINDRED_IP}:8080/api/collections/_superusers/records" "PocketBase collections" || exit 1
 
         echo "✅ All integration tests passed!"
+
+    - name: Verify non-root user and write permissions
+      run: |
+        CONTAINER_NAME="kindred-ci-${{ github.run_id }}-kindred-1"
+
+        # Verify container runs as non-root
+        CONTAINER_USER=$(docker exec ${CONTAINER_NAME} id -u)
+        if [ "$CONTAINER_USER" = "0" ]; then
+          echo "❌ Container is running as root!"
+          exit 1
+        fi
+        echo "✓ Container running as UID: $CONTAINER_USER"
+
+        # Verify database is writable (migration already proved this, but explicit test)
+        docker exec ${CONTAINER_NAME} sh -c "touch /pb_data/write_test && rm /pb_data/write_test"
+        echo "✓ Database directory is writable by non-root user"
 
     - name: Show logs on failure
       if: failure()

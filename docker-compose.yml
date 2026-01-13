@@ -7,6 +7,7 @@ services:
     image: ghcr.io/adamflagg/kindred:${IMAGE_TAG:-latest}
     container_name: kindred
     restart: unless-stopped
+    user: "${PUID:-1000}:${PGID:-1000}"
     volumes:
       - ${APPDATA_DIR}/bunking/pocketbase:/pb_data
     environment:
