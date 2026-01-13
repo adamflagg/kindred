@@ -300,7 +300,7 @@ def find_infeasibility_cause(
     all_enabled_status = cp_solver.StatusName(status)
     logger.info(f"All constraints enabled: {all_enabled_status}")
 
-    if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:  # type: ignore[comparison-overlap]
+    if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
         return "No infeasibility found - problem is solvable!"
 
     # Test disabling each constraint type
@@ -320,7 +320,7 @@ def find_infeasibility_cause(
         results[constraint] = cp_solver.StatusName(status)
         logger.info(f"With {constraint} disabled: {results[constraint]}")
 
-        if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:  # type: ignore[comparison-overlap]
+        if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
             logger.info(f"FOUND IT! Disabling {constraint} makes the problem feasible.")
             return f"The {constraint} constraint is causing infeasibility"
 
