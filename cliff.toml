@@ -11,7 +11,7 @@ trim = true
 
 [remote.github]
 owner = "adamflagg"
-repo = "bunking"
+repo = "kindred"
 
 [git]
 conventional_commits = true
