@@ -1,5 +1,5 @@
 #!/bin/bash
-# Post-merge hook: Auto-cleanup worktrees for merged branches
+# Post-merge hook: Notify about worktrees ready for cleanup
 # Runs after `git pull` or `git merge`
 
 GREEN='\033[0;32m'
@@ -14,19 +14,39 @@ WORKTREES_DIR="$REPO_PARENT/${REPO_NAME}-worktrees"
 # Only proceed if worktrees directory exists
 [ -d "$WORKTREES_DIR" ] || exit 0
 
-# Check each worktree for merged branches
+# Check if a PR for this branch was merged
+is_pr_merged() {
+    local branch="$1"
+    local state
+    state=$(gh pr list --head "$branch" --state merged --json state --jq '.[0].state' 2>/dev/null)
+    [ "$state" = "MERGED" ]
+}
+
+# Collect worktrees with merged PRs
+MERGED_WORKTREES=()
+
 for dir in "$WORKTREES_DIR"/*/; do
     [ -d "$dir" ] || continue
     name=$(basename "$dir")
-    branch="claude/$name"
+    branch="feature/$name"
 
-    # Check if branch exists and is merged to main
-    if git branch --merged main 2>/dev/null | grep -q "$branch"; then
-        echo -e ""
-        echo -e "${GREEN}Branch '$branch' has been merged to main${NC}"
-        echo -e "${YELLOW}Worktree can be cleaned up: $dir${NC}"
-        echo -e ""
-        echo -e "Run: ./scripts/worktree/cleanup.sh $name"
-        echo -e ""
+    if is_pr_merged "$branch"; then
+        MERGED_WORKTREES+=("$name")
     fi
 done
+
+# Report merged worktrees
+if [ ${#MERGED_WORKTREES[@]} -gt 0 ]; then
+    echo -e ""
+    echo -e "${GREEN}Worktrees ready for cleanup (PR merged):${NC}"
+    for name in "${MERGED_WORKTREES[@]}"; do
+        echo -e "  ${YELLOW}$name${NC}"
+    done
+    echo -e ""
+    if [ ${#MERGED_WORKTREES[@]} -eq 1 ]; then
+        echo -e "Run: ./scripts/worktree/cleanup.sh ${MERGED_WORKTREES[0]}"
+    else
+        echo -e "Run: ./scripts/worktree/cleanup.sh --all-merged"
+    fi
+    echo -e ""
+fi
