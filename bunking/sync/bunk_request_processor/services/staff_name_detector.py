@@ -98,7 +98,7 @@ class StaffNameDetector:
             else:
                 logger.debug(f"Staff list not found at {config_path}, using empty list")
                 self.staff_list = []
-        except (OSError, json.JSONDecodeError) as e:
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as e:
             logger.warning(f"Failed to load staff list from {config_path}: {e}")
             self.staff_list = []
 
