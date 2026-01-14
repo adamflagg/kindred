@@ -1,0 +1,23 @@
+# Kindred CI Docker Compose Override
+# For GitHub Actions integration testing
+# Usage: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d
+#
+# This override:
+# - Uses internal bridge network (no external Traefik network required)
+# - Exposes port 8080 directly for testing
+# - Removes Traefik labels (not needed in CI)
+
+services:
+  kindred:
+    # Clear Traefik labels - not needed in CI
+    labels: []
+    # Expose port directly for testing
+    ports:
+      - "8080:8080"
+    # Override to use internal network
+    networks:
+      - kindred-ci
+
+networks:
+  kindred-ci:
+    driver: bridge
