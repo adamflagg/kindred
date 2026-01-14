@@ -70,6 +70,32 @@ class TestStaffListLoading:
         detector = StaffNameDetector(staff_list_path=non_existent_path)
         assert detector.staff_list == []
 
+    def test_handles_encrypted_binary_file_gracefully(self):
+        """Should not crash if config file is git-crypt encrypted (binary data).
+
+        When git-crypt files are not unlocked, they contain binary data that
+        cannot be decoded as UTF-8. The detector should handle this gracefully
+        by using an empty staff list instead of crashing with UnicodeDecodeError.
+        """
+        from bunking.sync.bunk_request_processor.services.staff_name_detector import (
+            StaffNameDetector,
+        )
+
+        # Create a temp file with binary data simulating git-crypt encrypted content
+        # Git-crypt files start with the magic bytes: 00 47 49 54 43 52 59 50 54 (GITCRYPT)
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".json", delete=False) as f:
+            # Write git-crypt header followed by encrypted binary garbage
+            f.write(b"\x00GITCRYPT\x00\x80\x81\x82\x83\x84\x85\x86\x87\x88\x89")
+            temp_path = Path(f.name)
+
+        try:
+            # Should not raise UnicodeDecodeError
+            detector = StaffNameDetector(staff_list_path=temp_path)
+            # Should fall back to empty staff list
+            assert detector.staff_list == []
+        finally:
+            temp_path.unlink()
+
 
 class TestDynamicPatternGeneration:
     """Test generating detection patterns from staff list"""
