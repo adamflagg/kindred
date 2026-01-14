@@ -20,6 +20,7 @@ DRY_RUN=false
 SKIP_TESTS=false
 GITHUB_BUILD=true  # Default to GitHub Actions for public repo
 CUSTOM_VERSION=""
+ALLOW_DIRTY=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -28,6 +29,7 @@ while [[ $# -gt 0 ]]; do
         --github-build) GITHUB_BUILD=true; shift ;;
         --local-build) GITHUB_BUILD=false; shift ;;
         --version) CUSTOM_VERSION="$2"; shift 2 ;;
+        --allow-dirty) ALLOW_DIRTY=true; shift ;;
         -h|--help)
             echo "Usage: $0 [options]"
             echo "Options:"
@@ -37,6 +39,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --local-build   Build locally instead of via GitHub Actions"
             echo "  --version X     Override git-cliff version suggestion"
             echo "                  If version exists, will delete and re-release"
+            echo "  --allow-dirty   Allow uncommitted changes (for testing)"
             exit 0
             ;;
         *) echo "Unknown option: $1"; exit 1 ;;
@@ -119,11 +122,17 @@ echo -e "${GREEN}✓ GitHub CLI authenticated${NC}"
 
 # Check clean working tree
 if [[ -n $(git status --porcelain) ]]; then
-    echo -e "${RED}✗ Working tree not clean${NC}"
-    git status --short
-    exit 1
+    if [[ "$ALLOW_DIRTY" == "true" ]]; then
+        echo -e "${YELLOW}⚠ Working tree not clean (--allow-dirty)${NC}"
+        git status --short
+    else
+        echo -e "${RED}✗ Working tree not clean${NC}"
+        git status --short
+        exit 1
+    fi
+else
+    echo -e "${GREEN}✓ Working tree clean${NC}"
 fi
-echo -e "${GREEN}✓ Working tree clean${NC}"
 
 # Check on main branch (handle both "main" and "heads/main" formats)
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
@@ -402,9 +411,10 @@ echo -e "${GREEN}✓ Version $NEW_VERSION available${NC}"
 # ===== CHANGELOG PREVIEW =====
 echo -e "\n${YELLOW}▶ Release notes preview:${NC}"
 echo "─────────────────────────────────────────────────"
-# For re-releases, use explicit range since --unreleased might use wrong tag in dry-run
+# For re-releases, use explicit range and --tag to force all commits into single release
+# (ignores intermediate tags that may exist in dry-run mode)
 if [[ "$RE_RELEASE" == "true" ]]; then
-    git_cliff "$LAST_TAG"..HEAD --strip header || echo "(no conventional commits)"
+    git_cliff "$LAST_TAG"..HEAD --tag "$NEW_VERSION" --strip header || echo "(no conventional commits)"
 else
     git_cliff --unreleased --strip header || echo "(no conventional commits)"
 fi
@@ -474,9 +484,9 @@ fi
 echo -e "\n${YELLOW}▶ Creating release...${NC}"
 
 # Generate changelog for release notes
-# For re-releases, use explicit range to ensure correct commits are included
+# For re-releases, use explicit range and --tag to group all commits under new version
 if [[ "$RE_RELEASE" == "true" ]]; then
-    CHANGELOG=$(git_cliff "$LAST_TAG"..HEAD --strip header || true)
+    CHANGELOG=$(git_cliff "$LAST_TAG"..HEAD --tag "$NEW_VERSION" --strip header || true)
 else
     CHANGELOG=$(git_cliff --unreleased --strip header || true)
 fi
