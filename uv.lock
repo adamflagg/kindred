@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.12"
 
 [[package]]
@@ -901,7 +901,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.26.0" },
     { name = "openai", specifier = ">=2.0.0" },
     { name = "openpyxl", specifier = ">=3.1.0" },
-    { name = "ortools", url = "https://github.com/google/or-tools/releases/download/v9.15/ortools-9.15.6755-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl" },
+    { name = "ortools", url = "https://github.com/google/or-tools/releases/download/v9.15/ortools-9.15.6755-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl" },
     { name = "pandas", specifier = ">=2.0.0" },
     { name = "pocketbase", specifier = ">=0.15.0" },
     { name = "psutil", specifier = ">=5.9.0" },
@@ -1323,7 +1323,7 @@ wheels = [
 [[package]]
 name = "ortools"
 version = "9.15.6755"
-source = { url = "https://github.com/google/or-tools/releases/download/v9.15/ortools-9.15.6755-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl" }
+source = { url = "https://github.com/google/or-tools/releases/download/v9.15/ortools-9.15.6755-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl" }
 dependencies = [
     { name = "absl-py" },
     { name = "immutabledict" },
@@ -1333,7 +1333,7 @@ dependencies = [
     { name = "typing-extensions" },
 ]
 wheels = [
-    { url = "https://github.com/google/or-tools/releases/download/v9.15/ortools-9.15.6755-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:033836c0eb33bc72697a299e0caedbb25fc9d1cee0b13832d69cb30405f57b3e" },
+    { url = "https://github.com/google/or-tools/releases/download/v9.15/ortools-9.15.6755-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:7181183cdcafe2b0d83ca5505b65048c7953dc7b5ad479361dded607964cc1b3" },
 ]
 
 [package.metadata]

@@ -13,7 +13,7 @@ from ..core.models import (
     RequestSource,
     RequestType,
 )
-from .ai_service import (
+from .ai_types import (
     AIProvider,
     AIRequestContext,
     AIServiceConfig,

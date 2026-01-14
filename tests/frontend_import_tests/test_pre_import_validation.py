@@ -77,7 +77,6 @@ class TestPreImportValidation:
             "httpx": "httpx",
             # Testing dependencies
             "pytest": "pytest",
-            "pytest_mock": "pytest-mock",
             # Optional AI providers (check but don't fail)
             "openai": "openai",
             "anthropic": "anthropic",

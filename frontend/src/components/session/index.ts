@@ -2,13 +2,14 @@
  * Session components barrel export
  */
 
+export { default as SessionHeader, type SessionHeaderProps } from './SessionHeader';
+
+// Re-export session utilities for backward compatibility
 export {
-  default as SessionHeader,
   parseSessionName,
   sortSessionsLogically,
   filterSelectableSessions,
-  type SessionHeaderProps,
-} from './SessionHeader';
+} from '../../utils/sessionUtils';
 
 export {
   default as AreaFilterBar,

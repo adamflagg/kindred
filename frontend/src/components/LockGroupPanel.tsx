@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { X, Trash2, Users, ChevronRight, AlertTriangle } from 'lucide-react';
 import clsx from 'clsx';
@@ -100,6 +100,8 @@ function LockGroupPanel({
   const setExpandedGroupId = setLocalExpandedGroupId;
 
   const [isClosing, setIsClosing] = useState(false);
+  // Track previous requestClose value for render-time comparison
+  const [prevRequestClose, setPrevRequestClose] = useState(requestClose);
 
   // Handle close with animation - called directly from event handlers, not effects
   const handleClose = useCallback(() => {
@@ -110,12 +112,14 @@ function LockGroupPanel({
     }, 280); // Slightly less than animation duration
   }, [onClose]);
 
-  // Handle external close request (animated)
-  useEffect(() => {
-    if (requestClose && isOpen && !isClosing) {
-      handleClose();
-    }
-  }, [requestClose, isOpen, isClosing, handleClose]);
+  // Handle external close request during render (React pattern for responding to prop changes)
+  if (requestClose && !prevRequestClose && isOpen && !isClosing) {
+    setPrevRequestClose(requestClose);
+    // Schedule the close animation (setTimeout is fine during render for one-time effects)
+    setTimeout(() => handleClose(), 0);
+  } else if (requestClose !== prevRequestClose) {
+    setPrevRequestClose(requestClose);
+  }
 
   // Fetch lock groups for the scenario, session, and year
   const { data: groups = [], isLoading: groupsLoading } = useQuery({

@@ -32,6 +32,9 @@ export const ScenarioProvider: React.FC<ScenarioProviderProps> = ({ children }) 
   const [currentScenario, setCurrentScenario] = useState<Scenario | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<number | undefined>(undefined);
   const currentYear = useYear();
+  // Track previous values for render-time validation
+  const [prevSessionId, setPrevSessionId] = useState<number | undefined>(undefined);
+  const [prevScenariosRef, setPrevScenariosRef] = useState<Scenario[]>([]);
 
   const isProductionMode = currentScenario === null;
 
@@ -159,55 +162,46 @@ export const ScenarioProvider: React.FC<ScenarioProviderProps> = ({ children }) 
     syncToLocalStorage(currentSessionId, currentScenario?.id ?? null);
   }, [currentScenario?.id, currentSessionId]);
 
-  // Pure function to determine validated scenario state
-  // Uses useEffectEvent to read currentScenario without adding it as a dependency
-  // Returns the scenario to set (or null to clear), or undefined if no change needed
-  const getValidatedScenario = useEffectEvent((availableScenarios: Scenario[]): Scenario | null | undefined => {
-    // Get stored scenario for THIS session
+  // Validate scenario exists when scenarios list or session changes (render-time check)
+  // Avoids setState in useEffect by checking during render
+  const scenariosChanged = scenarios !== prevScenariosRef;
+  const sessionIdChanged = currentSessionId !== prevSessionId;
+  if (scenariosChanged || sessionIdChanged) {
+    if (scenariosChanged) setPrevScenariosRef(scenarios);
+    if (sessionIdChanged) setPrevSessionId(currentSessionId);
+
+    // Inline validation logic (can't use useEffectEvent from render)
     const stored = localStorage.getItem('scenarioBySession');
     const scenarioBySession: Record<string, string> = stored ? JSON.parse(stored) : {};
     const storedScenarioId = currentSessionId ? scenarioBySession[currentSessionId] : null;
 
-    // If we have a current scenario, check if it exists in the new session's scenarios
+    let validatedResult: Scenario | null | undefined = undefined;
+
     if (currentScenario) {
-      const stillExists = availableScenarios.find(s => s.id === currentScenario.id);
+      // Check if current scenario exists in the new session's scenarios
+      const stillExists = scenarios.find(s => s.id === currentScenario.id);
       if (!stillExists) {
-        // Current scenario doesn't exist in this session - try to restore this session's saved scenario
+        // Try to restore this session's saved scenario
         if (storedScenarioId) {
-          const savedScenario = availableScenarios.find(s => s.id === storedScenarioId);
-          if (savedScenario) {
-            return savedScenario;
-          }
+          const savedScenario = scenarios.find(s => s.id === storedScenarioId);
+          validatedResult = savedScenario ?? null;
+        } else {
+          validatedResult = null;
         }
-        // No saved scenario for this session - reset to production
-        return null;
       }
-      // Current scenario is valid, no change needed
-      return undefined;
-    }
-
-    // No current scenario - try to restore from localStorage for this session
-    if (storedScenarioId && availableScenarios.length > 0) {
-      const scenario = availableScenarios.find(s => s.id === storedScenarioId);
+    } else if (storedScenarioId && scenarios.length > 0) {
+      // No current scenario - try to restore from localStorage
+      const scenario = scenarios.find(s => s.id === storedScenarioId);
       if (scenario) {
-        return scenario;
+        validatedResult = scenario;
       }
     }
 
-    // No restoration possible, stay as-is
-    return undefined;
-  });
-
-  // Validate scenario exists when scenarios list or session changes
-  // Only depends on scenarios + currentSessionId, not currentScenario (avoids re-run loop)
-  // setState is called here, not inside useEffectEvent
-  useEffect(() => {
-    const validatedResult = getValidatedScenario(scenarios);
     // undefined means no change needed, null/Scenario means update
     if (validatedResult !== undefined) {
       setCurrentScenario(validatedResult);
     }
-  }, [scenarios, currentSessionId]);
+  }
   
   const value: ScenarioContextType = {
     currentScenario,

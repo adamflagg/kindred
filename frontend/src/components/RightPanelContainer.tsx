@@ -1,4 +1,4 @@
-import { useState, useRef, lazy, Suspense, Activity } from 'react';
+import { useState, lazy, Suspense, Activity } from 'react';
 import { Users, User, Loader2 } from 'lucide-react';
 import type { Camper } from '../types/app-types';
 import UnassignedCampers from './UnassignedCampers';
@@ -24,15 +24,19 @@ export default function RightPanelContainer({
   // Track manual tab selection (when no camper is selected)
   const [manualView, setManualView] = useState<RightPanelView>('unassigned');
   // Track the last selected camper to keep the panel mounted (preserves state)
-  const lastCamperIdRef = useRef<string | null>(null);
+  const [lastCamperId, setLastCamperId] = useState<string | null>(null);
 
-  // Update ref when camper changes (ref updates don't trigger re-renders)
-  if (selectedCamperId && selectedCamperId !== lastCamperIdRef.current) {
-    lastCamperIdRef.current = selectedCamperId;
+  // Update last camper during render when selection changes (React pattern for derived state)
+  // This avoids useEffect and cascading renders
+  if (selectedCamperId && selectedCamperId !== lastCamperId) {
+    setLastCamperId(selectedCamperId);
   }
 
   // Derive active view: auto-switch to details when camper selected, otherwise use manual choice
   const activeView: RightPanelView = selectedCamperId ? 'camper-details' : manualView;
+
+  // The camper to display - current selection or last selected (for preserving state)
+  const displayCamperId = selectedCamperId ?? lastCamperId;
 
   // Handle closing details - switch back to unassigned view
   const handleCloseDetails = () => {
@@ -108,8 +112,8 @@ export default function RightPanelContainer({
         </Activity>
 
         {/* Camper Details - lazy loaded, preserves expanded sections and loaded data */}
-        <Activity mode={activeView === 'camper-details' && (selectedCamperId || lastCamperIdRef.current) ? 'visible' : 'hidden'}>
-          {(selectedCamperId || lastCamperIdRef.current) ? (
+        <Activity mode={activeView === 'camper-details' && displayCamperId ? 'visible' : 'hidden'}>
+          {displayCamperId ? (
             <Suspense fallback={
               <div className="card-lodge p-8 text-center">
                 <Loader2 className="h-8 w-8 mx-auto animate-spin text-primary mb-4" />
@@ -117,7 +121,7 @@ export default function RightPanelContainer({
               </div>
             }>
               <CamperDetailsPanel
-                camperId={selectedCamperId || lastCamperIdRef.current!}
+                camperId={displayCamperId}
                 onClose={handleCloseDetails}
                 embedded={true}
               />
@@ -126,7 +130,7 @@ export default function RightPanelContainer({
         </Activity>
 
         {/* Placeholder when no camper has been selected yet */}
-        {activeView === 'camper-details' && !selectedCamperId && !lastCamperIdRef.current && (
+        {activeView === 'camper-details' && !displayCamperId && (
           <div className="card-lodge p-8 text-center">
             <User className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
             <p className="text-muted-foreground">

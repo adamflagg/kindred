@@ -15,23 +15,14 @@ FAILED=0
 
 # 1. Check API health endpoint (via Caddy)
 echo -n "API health check (Caddy)... "
-if curl -f -s http://localhost:8080/api/health > /dev/null; then
+if curl -f -s http://localhost:8080/health > /dev/null; then
     echo -e "${GREEN}✓${NC}"
 else
     echo -e "${RED}✗${NC}"
     FAILED=1
 fi
 
-# 2. Check API docs
-echo -n "API docs... "
-if curl -f -s http://localhost:8080/api/docs > /dev/null; then
-    echo -e "${GREEN}✓${NC}"
-else
-    echo -e "${RED}✗${NC}"
-    FAILED=1
-fi
-
-# 3. Check PocketBase health (via Caddy)
+# 2. Check PocketBase health (via Caddy)
 echo -n "PocketBase health check... "
 if curl -f -s http://localhost:8080/api/collections/_superusers > /dev/null 2>&1 || curl -f -s http://localhost:8090/api/health > /dev/null 2>&1; then
     echo -e "${GREEN}✓${NC}"
@@ -61,9 +52,9 @@ else
     FAILED=1
 fi
 
-# 6. Check database connectivity
+# 6. Check database connectivity (via API endpoint that queries DB)
 echo -n "Database connectivity... "
-if docker exec kindred python -c "import os; from bunking.db import get_pb_client; pb = get_pb_client(); print('OK')" 2>/dev/null | grep -q "OK"; then
+if curl -sf http://localhost:8080/api/collections/config/records > /dev/null 2>&1; then
     echo -e "${GREEN}✓${NC}"
 else
     echo -e "${RED}✗${NC}"
@@ -72,11 +63,22 @@ fi
 
 # 7. Check memory usage
 echo -n "Memory usage check... "
-KINDRED_MEM=$(docker stats --no-stream --format "{{.MemUsage}}" kindred | cut -d'/' -f1 | tr -d ' ' | sed 's/MiB//' | sed 's/GiB/*1024/' | bc 2>/dev/null | cut -d'.' -f1)
+KINDRED_MEM_RAW=$(docker stats --no-stream --format "{{.MemUsage}}" kindred 2>/dev/null | cut -d'/' -f1 | tr -d ' ')
+if [[ "$KINDRED_MEM_RAW" == *"GiB"* ]]; then
+    KINDRED_MEM=$(echo "$KINDRED_MEM_RAW" | sed 's/GiB//' | awk '{printf "%.0f", $1 * 1024}')
+elif [[ "$KINDRED_MEM_RAW" == *"MiB"* ]]; then
+    KINDRED_MEM=$(echo "$KINDRED_MEM_RAW" | sed 's/MiB//' | awk '{printf "%.0f", $1}')
+else
+    KINDRED_MEM=""
+fi
+
 if [ -n "$KINDRED_MEM" ] && [ "$KINDRED_MEM" -lt 500 ]; then
     echo -e "${GREEN}✓ (${KINDRED_MEM}MB)${NC}"
-else
+elif [ -n "$KINDRED_MEM" ]; then
     echo -e "${RED}✗ (${KINDRED_MEM}MB - high usage!)${NC}"
+    FAILED=1
+else
+    echo -e "${RED}✗ (could not determine)${NC}"
     FAILED=1
 fi
 

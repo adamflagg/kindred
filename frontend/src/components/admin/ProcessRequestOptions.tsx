@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Brain, Loader2, AlertTriangle, ChevronDown } from 'lucide-react';
 import { Modal } from '../ui/Modal';
@@ -52,6 +52,18 @@ export default function ProcessRequestOptions({
   const [limitValue, setLimitValue] = useState<string>('');
   const [forceReprocess, setForceReprocess] = useState(false);
   const [sourceFields, setSourceFields] = useState<string[]>([]);
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+
+  // Reset form when modal closes (render-time check to avoid setState in effect)
+  if (!isOpen && prevIsOpen) {
+    setPrevIsOpen(isOpen);
+    setSession('all');
+    setLimitValue('');
+    setForceReprocess(false);
+    setSourceFields([]);
+  } else if (isOpen !== prevIsOpen) {
+    setPrevIsOpen(isOpen);
+  }
 
   // Fetch sessions dynamically from database (adapts to each year)
   const { data: sessions } = useQuery({
@@ -94,15 +106,6 @@ export default function ProcessRequestOptions({
     return options;
   }, [sessions]);
 
-  // Reset form when modal opens/closes
-  useEffect(() => {
-    if (!isOpen) {
-      setSession('all');
-      setLimitValue('');
-      setForceReprocess(false);
-      setSourceFields([]);
-    }
-  }, [isOpen]);
 
   const handleSourceFieldToggle = (field: string) => {
     setSourceFields((prev) =>

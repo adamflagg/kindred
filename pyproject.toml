@@ -35,7 +35,7 @@ dependencies = [
     # AI/ML
     "openai>=2.0.0",
     # TODO: Switch back to "ortools>=9.15" once PyPI wheels are published
-    "ortools @ https://github.com/google/or-tools/releases/download/v9.15/ortools-9.15.6755-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+    "ortools @ https://github.com/google/or-tools/releases/download/v9.15/ortools-9.15.6755-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
     # Data processing
     "pandas>=2.0.0",
     "numpy>=1.26.0",
@@ -154,7 +154,7 @@ exclude_lines = [
 ]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.14"
 # Strict mode - catch type errors, async/sync mismatches, missing attributes
 strict = true
 warn_return_any = true

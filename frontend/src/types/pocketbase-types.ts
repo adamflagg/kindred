@@ -56,7 +56,7 @@ export type AuthSystemFields<T = unknown> = {
 
 // Record types for each collection
 
-export type AuthoriginsRecord = {
+export interface AuthoriginsRecord {
 	collectionRef: string
 	created?: IsoDateString
 	fingerprint: string
@@ -65,7 +65,7 @@ export type AuthoriginsRecord = {
 	updated?: IsoDateString
 }
 
-export type ExternalauthsRecord = {
+export interface ExternalauthsRecord {
 	collectionRef: string
 	created?: IsoDateString
 	id: string
@@ -75,7 +75,7 @@ export type ExternalauthsRecord = {
 	updated?: IsoDateString
 }
 
-export type MfasRecord = {
+export interface MfasRecord {
 	collectionRef: string
 	created?: IsoDateString
 	id: string
@@ -84,7 +84,7 @@ export type MfasRecord = {
 	updated?: IsoDateString
 }
 
-export type OtpsRecord = {
+export interface OtpsRecord {
 	collectionRef: string
 	created?: IsoDateString
 	id: string
@@ -94,7 +94,7 @@ export type OtpsRecord = {
 	updated?: IsoDateString
 }
 
-export type SuperusersRecord = {
+export interface SuperusersRecord {
 	created?: IsoDateString
 	email: string
 	emailVisibility?: boolean
@@ -117,7 +117,7 @@ export enum AttendeesStatusOptions {
 	"incomplete" = "incomplete",
 	"unknown" = "unknown",
 }
-export type AttendeesRecord = {
+export interface AttendeesRecord {
 	created?: IsoDateString
 	enrollment_date?: IsoDateString
 	id: string
@@ -131,7 +131,7 @@ export type AttendeesRecord = {
 	year: number
 }
 
-export type BunkAssignmentsRecord = {
+export interface BunkAssignmentsRecord {
 	bunk?: RecordIdString
 	bunk_plan?: RecordIdString
 	cm_id?: number
@@ -143,7 +143,7 @@ export type BunkAssignmentsRecord = {
 	year: number
 }
 
-export type BunkAssignmentsDraftRecord = {
+export interface BunkAssignmentsDraftRecord {
 	assignment_locked?: boolean
 	bunk?: RecordIdString
 	bunk_plan?: RecordIdString
@@ -156,7 +156,7 @@ export type BunkAssignmentsDraftRecord = {
 	year: number
 }
 
-export type BunkPlansRecord = {
+export interface BunkPlansRecord {
 	bunk: RecordIdString
 	cm_id: number
 	code?: string
@@ -185,7 +185,7 @@ export enum BunkRequestsSourceOptions {
 	"staff" = "staff",
 	"notes" = "notes",
 }
-export type BunkRequestsRecord<Tai_p1_reasoning = unknown, Tai_p3_reasoning = unknown, Tconfidence_explanation = unknown, Tkeywords_found = unknown, Tmetadata = unknown> = {
+export interface BunkRequestsRecord<Tai_p1_reasoning = unknown, Tai_p3_reasoning = unknown, Tconfidence_explanation = unknown, Tkeywords_found = unknown, Tmetadata = unknown> {
 	age_preference_target?: string
 	ai_p1_reasoning?: null | Tai_p1_reasoning
 	ai_p3_reasoning?: null | Tai_p3_reasoning
@@ -225,7 +225,7 @@ export type BunkRequestsRecord<Tai_p1_reasoning = unknown, Tai_p3_reasoning = un
 	year: number
 }
 
-export type BunksRecord = {
+export interface BunksRecord {
 	cm_id: number
 	created?: IsoDateString
 	gender?: string
@@ -250,7 +250,7 @@ export enum CampSessionsSessionTypeOptions {
 	"teen" = "teen",
 	"other" = "other",
 }
-export type CampSessionsRecord = {
+export interface CampSessionsRecord {
 	cm_id: number
 	created?: IsoDateString
 	end_date: IsoDateString
@@ -263,7 +263,7 @@ export type CampSessionsRecord = {
 	year: number
 }
 
-export type ConfigRecord<Tmetadata = unknown, Tvalue = unknown> = {
+export interface ConfigRecord<Tmetadata = unknown, Tvalue = unknown> {
 	category: string
 	config_key: string
 	created?: IsoDateString
@@ -275,7 +275,7 @@ export type ConfigRecord<Tmetadata = unknown, Tvalue = unknown> = {
 	value: null | Tvalue
 }
 
-export type ConfigSectionsRecord = {
+export interface ConfigSectionsRecord {
 	created?: IsoDateString
 	description?: string
 	display_order: number
@@ -286,13 +286,13 @@ export type ConfigSectionsRecord = {
 	updated?: IsoDateString
 }
 
-export type LockedGroupMembersRecord = {
+export interface LockedGroupMembersRecord {
 	added_by?: string
 	attendee: string // relation to attendees
 	group: string // relation to locked_groups
 }
 
-export type LockedGroupsRecord = {
+export interface LockedGroupsRecord {
 	color: string
 	created_by?: string
 	name?: string // optional friendly name for the group
@@ -308,7 +308,7 @@ export enum OriginalBunkRequestsFieldOptions {
 	"internal_notes" = "internal_notes",
 	"socialize_with" = "socialize_with",
 }
-export type OriginalBunkRequestsRecord = {
+export interface OriginalBunkRequestsRecord {
 	content: string
 	created?: IsoDateString
 	field: OriginalBunkRequestsFieldOptions
@@ -319,7 +319,7 @@ export type OriginalBunkRequestsRecord = {
 	year: number
 }
 
-export type PersonsRecord<Taddress = unknown, Temail_addresses = unknown, Tphone_numbers = unknown, Traw_data = unknown> = {
+export interface PersonsRecord<Taddress = unknown, Temail_addresses = unknown, Tphone_numbers = unknown, Traw_data = unknown> {
 	address?: null | Taddress
 	age?: number
 	birthdate?: string
@@ -349,7 +349,7 @@ export type PersonsRecord<Taddress = unknown, Temail_addresses = unknown, Tphone
 	years_at_camp?: number
 }
 
-export type SavedScenariosRecord<Tmetadata = unknown> = {
+export interface SavedScenariosRecord<Tmetadata = unknown> {
 	created?: IsoDateString
 	description?: string
 	id: string
@@ -368,7 +368,7 @@ export enum SolverRunsStatusOptions {
 	"failed" = "failed",
 	"error" = "error",
 }
-export type SolverRunsRecord<Tassignment_counts = unknown, Tdetails = unknown, Terror = unknown, Tlogs = unknown, Trequest_data = unknown, Tresult = unknown, Tstats = unknown> = {
+export interface SolverRunsRecord<Tassignment_counts = unknown, Tdetails = unknown, Terror = unknown, Tlogs = unknown, Trequest_data = unknown, Tresult = unknown, Tstats = unknown> {
 	assignment_counts?: null | Tassignment_counts
 	completed_at?: IsoDateString
 	created?: IsoDateString
@@ -391,7 +391,7 @@ export type SolverRunsRecord<Tassignment_counts = unknown, Tdetails = unknown, T
 	updated?: IsoDateString
 }
 
-export type UsersRecord = {
+export interface UsersRecord {
 	avatar?: string
 	created?: IsoDateString
 	email: string
@@ -429,7 +429,7 @@ export type UsersResponse<Texpand = unknown> = Required<UsersRecord> & AuthSyste
 
 // Types containing all Records and Responses, useful for creating typing helper functions
 
-export type CollectionRecords = {
+export interface CollectionRecords {
 	_authOrigins: AuthoriginsRecord
 	_externalAuths: ExternalauthsRecord
 	_mfas: MfasRecord
@@ -453,7 +453,7 @@ export type CollectionRecords = {
 	users: UsersRecord
 }
 
-export type CollectionResponses = {
+export interface CollectionResponses {
 	_authOrigins: AuthoriginsResponse
 	_externalAuths: ExternalauthsResponse
 	_mfas: MfasResponse

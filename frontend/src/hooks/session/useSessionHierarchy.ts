@@ -128,6 +128,7 @@ export function useSessionHierarchy(options: UseSessionHierarchyOptions): UseSes
   const currentYear = useYear();
   const { user } = useAuth();
   const [selectedSession, setSelectedSession] = useState<string>('');
+  const [prevResolvedSessionId, setPrevResolvedSessionId] = useState<number | null>(null);
 
   // Fetch all sessions to resolve friendly URLs
   const { data: allSessionsForLookup = [], isLoading: sessionsLoading } = useQuery({
@@ -206,12 +207,14 @@ export function useSessionHierarchy(options: UseSessionHierarchyOptions): UseSes
   const isViewingMainSession = session?.session_type === 'main';
   const showAgArea = shouldShowAgArea(agSessions, isViewingMainSession);
 
-  // Set default selected session when resolvedSession changes
-  useEffect(() => {
+  // Set default selected session when resolvedSession changes (render-time check)
+  const currentResolvedSessionId = resolvedSession?.cm_id ?? null;
+  if (currentResolvedSessionId !== prevResolvedSessionId) {
+    setPrevResolvedSessionId(currentResolvedSessionId);
     if (resolvedSession) {
       setSelectedSession(resolvedSession.cm_id.toString());
     }
-  }, [resolvedSession]);
+  }
 
   // Redirect numeric IDs to friendly URLs
   useEffect(() => {

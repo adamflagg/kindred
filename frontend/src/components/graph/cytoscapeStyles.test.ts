@@ -8,6 +8,7 @@ import {
   type GraphNodeData,
   type GraphEdgeData,
 } from './cytoscapeStyles';
+import { expectDefined } from '../../test/testUtils';
 
 describe('getCytoscapeStyles', () => {
   it('returns an array of style definitions', () => {
@@ -106,8 +107,9 @@ describe('createGraphElements', () => {
       { request: true, historical: true, sibling: true, school: true }
     );
     expect(parentNodes).toHaveLength(1);
-    expect(parentNodes[0]!.data.id).toBe('bunk-100');
-    expect(parentNodes[0]!.data.label).toBe('Cabin A');
+    const parent = expectDefined(parentNodes[0], 'parent node');
+    expect(parent.data.id).toBe('bunk-100');
+    expect(parent.data.label).toBe('Cabin A');
   });
 
   it('creates camper nodes with correct data', () => {
@@ -119,11 +121,10 @@ describe('createGraphElements', () => {
     );
     expect(nodes).toHaveLength(3);
 
-    const alice = nodes.find((n) => n.data.id === '1');
-    expect(alice).toBeDefined();
-    expect(alice!.data.name).toBe('Alice');
-    expect(alice!.data.grade).toBe(5);
-    expect(alice!.data.parent).toBe('bunk-100');
+    const alice = expectDefined(nodes.find((n) => n.data.id === '1'), 'alice node');
+    expect(alice.data.name).toBe('Alice');
+    expect(alice.data.grade).toBe(5);
+    expect(alice.data.parent).toBe('bunk-100');
   });
 
   it('assigns parent to nodes with bunk_cm_id', () => {
@@ -134,11 +135,11 @@ describe('createGraphElements', () => {
       { request: true, historical: true, sibling: true, school: true }
     );
 
-    const alice = nodes.find((n) => n.data.id === '1');
-    const charlie = nodes.find((n) => n.data.id === '3');
+    const alice = expectDefined(nodes.find((n) => n.data.id === '1'), 'alice');
+    const charlie = expectDefined(nodes.find((n) => n.data.id === '3'), 'charlie');
 
-    expect(alice!.data.parent).toBe('bunk-100');
-    expect(charlie!.data.parent).toBeUndefined();
+    expect(alice.data.parent).toBe('bunk-100');
+    expect(charlie.data.parent).toBeUndefined();
   });
 
   it('filters edges based on showEdges settings', () => {
@@ -150,7 +151,8 @@ describe('createGraphElements', () => {
     );
 
     expect(edges).toHaveLength(1);
-    expect(edges[0]!.data.edge_type).toBe('request');
+    const edge = expectDefined(edges[0], 'first edge');
+    expect(edge.data.edge_type).toBe('request');
   });
 
   it('includes all edges when all types are enabled', () => {
@@ -172,11 +174,13 @@ describe('createGraphElements', () => {
       { request: true, historical: true, sibling: true, school: true }
     );
 
-    const requestEdge = edges.find((e) => e.data.edge_type === 'request');
-    expect(requestEdge).toBeDefined();
-    expect(requestEdge!.data.source).toBe('1');
-    expect(requestEdge!.data.target).toBe('2');
-    expect(requestEdge!.data.confidence).toBe(0.9);
-    expect(requestEdge!.data.is_reciprocal).toBe(true);
+    const requestEdge = expectDefined(
+      edges.find((e) => e.data.edge_type === 'request'),
+      'request edge'
+    );
+    expect(requestEdge.data.source).toBe('1');
+    expect(requestEdge.data.target).toBe('2');
+    expect(requestEdge.data.confidence).toBe(0.9);
+    expect(requestEdge.data.is_reciprocal).toBe(true);
   });
 });

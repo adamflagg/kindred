@@ -1,0 +1,61 @@
+# Kindred Local Testing Docker Compose
+# For local development and pre-release testing
+# Usage: docker compose -f docker-compose.local.yml up -d --build
+#
+# This file:
+# - Builds from local Dockerfile (not GHCR)
+# - Uses internal bridge network (no Traefik required)
+# - Exposes port 8080 directly
+# - Uses local volume for PocketBase data
+# - Works with your .env file
+
+services:
+  kindred:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kindred:local
+    container_name: kindred
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - kindred-local-data:/pb_data
+    environment:
+      # PocketBase Admin (first-run setup)
+      - POCKETBASE_ADMIN_EMAIL=${POCKETBASE_ADMIN_EMAIL:-admin@test.local}
+      - POCKETBASE_ADMIN_PASSWORD=${POCKETBASE_ADMIN_PASSWORD:-testpassword123}
+      # OIDC (OAuth2 auto-discovery) - optional for local testing
+      - OIDC_ISSUER=${OIDC_ISSUER:-}
+      - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
+      - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
+      # CampMinder API - optional, can skip with SKIP_CAMPMINDER=true
+      - CAMPMINDER_API_KEY=${CAMPMINDER_API_KEY:-}
+      - CAMPMINDER_PRIMARY_KEY=${CAMPMINDER_PRIMARY_KEY:-}
+      - CAMPMINDER_CLIENT_ID=${CAMPMINDER_CLIENT_ID:-}
+      - CAMPMINDER_SEASON_ID=${CAMPMINDER_SEASON_ID:-2025}
+      - SKIP_CAMPMINDER=${SKIP_CAMPMINDER:-false}
+      # AI - optional for local testing
+      - AI_PROVIDER=${AI_PROVIDER:-}
+      - AI_API_KEY=${AI_API_KEY:-}
+      - AI_MODEL=${AI_MODEL:-}
+      # Auth mode - default to 'bypass' for local testing without OIDC
+      - AUTH_MODE=${AUTH_MODE:-bypass}
+      # System
+      - TZ=${TZ:-America/Los_Angeles}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    networks:
+      - kindred-local
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8080/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+
+networks:
+  kindred-local:
+    driver: bridge
+
+volumes:
+  kindred-local-data:
