@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { pb } from '../lib/pocketbase';
@@ -66,6 +66,7 @@ interface LockGroupContextValue {
 
 const LockGroupContext = createContext<LockGroupContextValue | undefined>(undefined);
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useLockGroupContext() {
   const context = useContext(LockGroupContext);
   if (!context) {
@@ -91,13 +92,15 @@ export function LockGroupProvider({ children }: LockGroupProviderProps) {
   const [pendingDelays, setPendingDelays] = useState<Map<string, number>>(new Map());
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [isLockPanelOpen, setIsLockPanelOpen] = useState(false);
+  const [prevScenarioId, setPrevScenarioId] = useState(scenarioId);
 
-  // Clear pending campers when scenario changes
-  useEffect(() => {
+  // Clear pending campers when scenario changes (render-time check)
+  if (scenarioId !== prevScenarioId) {
+    setPrevScenarioId(scenarioId);
     setPendingCampers([]);
     setPendingDelays(new Map());
     setSelectedGroupId(null);
-  }, [scenarioId]);
+  }
 
   // Fetch lock groups for the scenario, session, and year
   // Only enabled in draft mode (when scenarioId is set)

@@ -56,6 +56,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() =>
     resolveTheme(getInitialTheme())
   );
+  const [prevTheme, setPrevTheme] = useState<Theme>(theme);
 
   // Apply theme to document
   const applyTheme = useCallback((resolved: ResolvedTheme) => {
@@ -76,13 +77,14 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  // Handle theme changes
-  useEffect(() => {
+  // Handle theme changes (render-time check to avoid setState in effect)
+  if (theme !== prevTheme) {
+    setPrevTheme(theme);
     const resolved = resolveTheme(theme);
     setResolvedTheme(resolved);
     applyTheme(resolved);
     localStorage.setItem('theme', theme);
-  }, [theme, applyTheme]);
+  }
 
   // Listen for system theme changes when in system mode
   useEffect(() => {

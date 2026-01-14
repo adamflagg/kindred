@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Clock, CheckCircle, XCircle, Loader2, Info } from 'lucide-react';
 import { type SyncStatus } from '../../hooks/useSyncStatusAPI';
@@ -297,9 +297,17 @@ export function PortalTooltip({ children, content, className = "w-64" }: PortalT
     }
   }, [className]);
 
+  // useLayoutEffect for synchronous DOM measurements before paint
+  useLayoutEffect(() => {
+    if (isVisible) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- DOM measurement requires sync state update
+      updatePosition();
+    }
+  }, [isVisible, updatePosition]);
+
+  // Regular useEffect for event listeners
   useEffect(() => {
     if (isVisible) {
-      updatePosition();
       window.addEventListener('scroll', updatePosition, true);
       window.addEventListener('resize', updatePosition);
       return () => {
@@ -372,10 +380,17 @@ export function ScaleTooltip({ scaleType, value, metadata }: ScaleTooltipProps) 
     }
   }, []);
 
+  // useLayoutEffect for synchronous DOM measurements before paint
+  useLayoutEffect(() => {
+    if (!scale || scaleType === 'unknown' || !isVisible) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- DOM measurement requires sync state update
+    updatePosition();
+  }, [isVisible, scale, scaleType, updatePosition]);
+
+  // Regular useEffect for event listeners
   useEffect(() => {
     if (!scale || scaleType === 'unknown' || !isVisible) return;
 
-    updatePosition();
     window.addEventListener('scroll', updatePosition, true);
     window.addEventListener('resize', updatePosition);
     return () => {

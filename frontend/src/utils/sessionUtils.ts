@@ -81,3 +81,37 @@ export type ValidTab = typeof VALID_TABS[number];
 export function isValidTab(tab: string): tab is ValidTab {
   return VALID_TABS.includes(tab as ValidTab);
 }
+
+/**
+ * Parse session name into number and optional suffix for sorting
+ */
+export function parseSessionName(name: string): [number, string] {
+  const match = name.match(/session\s+(\d+)([a-z])?/i);
+  if (match && match[1]) {
+    return [parseInt(match[1], 10), match[2]?.toLowerCase() || ''];
+  }
+  return [0, name.toLowerCase()];
+}
+
+/**
+ * Sort sessions in logical order: 1, 2, 2a, 2b, 3, 3a, 3b, 4, etc.
+ */
+export function sortSessionsLogically<T extends { name: string }>(sessions: T[]): T[] {
+  return [...sessions].sort((a, b) => {
+    const [numA, suffixA] = parseSessionName(a.name);
+    const [numB, suffixB] = parseSessionName(b.name);
+    if (numA !== numB) return numA - numB;
+    return suffixA.localeCompare(suffixB);
+  });
+}
+
+/**
+ * Filter sessions to main and embedded types only
+ */
+export function filterSelectableSessions<
+  T extends { session_type?: string | null }
+>(sessions: T[]): T[] {
+  return sessions.filter(
+    (s) => s.session_type === 'main' || s.session_type === 'embedded'
+  );
+}

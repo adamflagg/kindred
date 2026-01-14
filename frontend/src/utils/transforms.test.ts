@@ -314,7 +314,7 @@ describe('createLookupMaps', () => {
           person: createMockPerson({ id: 'p1', cm_id: 12345 }),
         },
       },
-    ] as BunkAssignmentsResponse<{ person?: PersonsResponse }>[];
+    ] as Array<BunkAssignmentsResponse<{ person?: PersonsResponse }>>;
 
     const maps = createLookupMaps({ assignments });
 
@@ -325,7 +325,7 @@ describe('createLookupMaps', () => {
   it('should skip assignments without expanded person', () => {
     const assignments = [
       createMockAssignment({ id: 'a1' }),
-    ] as BunkAssignmentsResponse<{ person?: PersonsResponse }>[];
+    ] as Array<BunkAssignmentsResponse<{ person?: PersonsResponse }>>;
 
     const maps = createLookupMaps({ assignments });
 
@@ -348,7 +348,7 @@ describe('buildCampersFromData', () => {
           session: createMockSession({ id: 's1', cm_id: 1001, name: 'Session 2' }),
         },
       },
-    ] as AttendeesResponse<{ person?: PersonsResponse; session?: CampSessionsResponse }>[];
+    ] as Array<AttendeesResponse<{ person?: PersonsResponse; session?: CampSessionsResponse }>>;
 
     const campers = buildCampersFromData(attendees, new Map(), new Map());
 
@@ -372,7 +372,7 @@ describe('buildCampersFromData', () => {
           }),
         },
       },
-    ] as AttendeesResponse<{ person?: PersonsResponse }>[];
+    ] as Array<AttendeesResponse<{ person?: PersonsResponse }>>;
 
     const campers = buildCampersFromData(attendees, new Map(), new Map());
 
@@ -385,7 +385,7 @@ describe('buildCampersFromData', () => {
         ...createMockAttendee({ id: 'a1' }),
         expand: {},
       },
-    ] as AttendeesResponse<{ person?: PersonsResponse }>[];
+    ] as Array<AttendeesResponse<{ person?: PersonsResponse }>>;
 
     const campers = buildCampersFromData(attendees, new Map(), new Map());
 
@@ -400,7 +400,7 @@ describe('buildCampersFromData', () => {
           person: createMockPerson({ id: 'p1', cm_id: 12345, first_name: 'John' }),
         },
       },
-    ] as AttendeesResponse<{ person?: PersonsResponse }>[];
+    ] as Array<AttendeesResponse<{ person?: PersonsResponse }>>;
 
     const bunk = createMockBunk({ id: 'b1', cm_id: 100, name: 'B-1' });
 

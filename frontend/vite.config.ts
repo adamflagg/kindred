@@ -263,7 +263,7 @@ if (existsSync(localConfigPath)) {
     const { localConfig: imported } = await import('./vite.config.local')
     localConfig = imported
     console.log('✓ Loaded local Vite configuration from vite.config.local.ts')
-  } catch (error) {
+  } catch {
     // Expected in CI when file is git-crypt encrypted
     console.log('ℹ️  vite.config.local.ts not loaded (encrypted or invalid) - using defaults')
   }
