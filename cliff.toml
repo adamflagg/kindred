@@ -3,7 +3,7 @@ body = """
 {% for group, commits in commits | group_by(attribute="group") %}
 ### {{ group | striptags | trim | upper_first }}
 {% for commit in commits -%}
-* {{ commit.id }}: {{ commit.raw_message | split(pat="\n") | first | trim }}{% if commit.remote.pr_number %} (#{{ commit.remote.pr_number }}){% endif %}{% if commit.remote.username %} (@{{ commit.remote.username }}){% endif %}
+* {{ commit.id }}: {{ commit.raw_message | split(pat="\n") | first | trim }}{% if commit.remote.username %} (@{{ commit.remote.username }}){% endif %}
 {% endfor %}
 {% endfor %}
 """
