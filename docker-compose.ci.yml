@@ -22,6 +22,6 @@ networks:
   kindred-ci:
     driver: bridge
   # Override web-proxy from base file to not be external
-  # (Docker Compose merges network definitions, so we must override it)
+  # Must explicitly set external: false (compose merges properties, not replaces)
   web-proxy:
-    driver: bridge
+    external: false
