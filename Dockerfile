@@ -109,8 +109,8 @@ COPY --from=frontend-builder /app/dist /pb_public
 # See: .github/workflows/cd.yml "Prepare local assets" step
 COPY local/ /pb_public/local/
 
-# Set ownership for writable directories and drop to non-root user
-RUN chown -R kindred:kindred /app /pb_data /pb_public /pb_hooks /pb_migrations /etc/caddy
+# Set ownership only for writable directories (skip .venv - it's read-only)
+RUN chown -R kindred:kindred /pb_data /app/logs /app/csv_history /pb_public /pb_hooks /pb_migrations
 USER kindred
 
 EXPOSE 8080
