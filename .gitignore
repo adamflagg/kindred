@@ -287,9 +287,5 @@ claude-exports/
 # - frontend/vite.config.local.ts
 # =============================================================================
 
-# Config files (symlinked from dotfiles)
-CLAUDE.md
-CLAUDE.local.md
-
 # Worktree-specific files
 start.sh
