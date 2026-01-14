@@ -42,7 +42,7 @@ def is_infeasible(status: Any) -> bool:
     Works around mypy comparison-overlap issue with CpSolverStatus vs ValueType.
     """
     int_status = cast(int, status)
-    return int_status == cp_model.INFEASIBLE
+    return bool(int_status == cp_model.INFEASIBLE)
 
 
 class MinimalConfigLoader:
