@@ -2,10 +2,10 @@
 # Remove a git worktree and optionally its branch
 #
 # Usage:
-#   ./scripts/worktree/cleanup.sh <feature-name> [--keep-branch]
+#   ./scripts/worktree/cleanup.sh <feature-name> [--force|--keep-branch]
 #   ./scripts/worktree/cleanup.sh --all-merged
 #   ./scripts/worktree/cleanup.sh fix-auth-bug
-#   ./scripts/worktree/cleanup.sh fix-auth-bug --keep-branch
+#   ./scripts/worktree/cleanup.sh fix-auth-bug --force  # Force cleanup even if PR not merged
 
 set -e
 
@@ -64,12 +64,20 @@ KEEP_BRANCH=false
 [ "$2" = "--keep-branch" ] && KEEP_BRANCH=true
 
 if [ -z "$FEATURE_NAME" ]; then
-    echo -e "${RED}Usage: $0 <feature-name> [--keep-branch]${NC}"
+    echo -e "${RED}Usage: $0 <feature-name> [--force|--keep-branch]${NC}"
     echo -e "       $0 --all-merged"
+    echo -e ""
+    echo -e "Cleanup only works after the PR is merged (use --force to override)"
     echo -e ""
     echo -e "Active worktrees:"
     if [ -d "$WORKTREES_DIR" ]; then
-        ls -1 "$WORKTREES_DIR" 2>/dev/null | grep -v README | sed 's/^/  /' || echo -e "  (none)"
+        found=false
+        for dir in "$WORKTREES_DIR"/*/; do
+            [ -d "$dir" ] || continue
+            found=true
+            echo -e "  $(basename "$dir")"
+        done
+        [ "$found" = false ] && echo -e "  (none)"
     else
         echo -e "  (none)"
     fi
@@ -82,6 +90,13 @@ BRANCH_NAME="feature/$FEATURE_NAME"
 if [ ! -d "$WORKTREE_DIR" ]; then
     echo -e "${RED}Worktree not found: $WORKTREE_DIR${NC}"
     exit 1
+fi
+
+# Only allow cleanup if PR is merged (protects work-in-progress)
+if ! is_pr_merged "$BRANCH_NAME"; then
+    echo -e "${RED}Cannot clean up: PR for $BRANCH_NAME is not merged${NC}"
+    echo -e "Push your branch and merge the PR first, or use --force to override"
+    [ "$2" = "--force" ] || exit 1
 fi
 
 echo -e "${YELLOW}Cleaning up worktree: $FEATURE_NAME${NC}"
@@ -99,15 +114,10 @@ echo -e "${BLUE}Removing worktree...${NC}"
 cd "$MAIN_REPO"
 git worktree remove "$WORKTREE_DIR" --force 2>/dev/null || rm -rf "$WORKTREE_DIR"
 
-# Remove branch if not keeping and if merged
+# Remove branch (we already verified PR is merged)
 if [ "$KEEP_BRANCH" = false ]; then
-    if git branch --merged main | grep -q "$BRANCH_NAME"; then
-        echo -e "${BLUE}Removing merged branch: $BRANCH_NAME${NC}"
-        git branch -d "$BRANCH_NAME" 2>/dev/null || true
-    else
-        echo -e "${YELLOW}Branch not merged to main, keeping: $BRANCH_NAME${NC}"
-        echo -e "To force delete: git branch -D $BRANCH_NAME"
-    fi
+    echo -e "${BLUE}Removing branch: $BRANCH_NAME${NC}"
+    git branch -D "$BRANCH_NAME" 2>/dev/null || true
 fi
 
 echo -e "${GREEN}Cleanup complete${NC}"
