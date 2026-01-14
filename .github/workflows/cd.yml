@@ -299,8 +299,15 @@ jobs:
           echo "Checking if image ${{ matrix.image }}:${DOCKER_TAG} already exists..."
 
           # Query GitHub Packages API for existing version
-          EXISTING=$(gh api "/users/${{ env.USERNAME }}/packages/container/${{ matrix.image }}/versions" \
-            --jq ".[] | select(.metadata.container.tags[] == \"${DOCKER_TAG}\") | .id" 2>/dev/null | head -1 || echo "")
+          # Note: gh api returns 404 JSON to stdout (not stderr) when package doesn't exist,
+          # so we must check exit code explicitly
+          if gh api "/users/${{ env.USERNAME }}/packages/container/${{ matrix.image }}/versions" \
+               --jq ".[] | select(.metadata.container.tags[] == \"${DOCKER_TAG}\") | .id" \
+               > /tmp/existing_id 2>/dev/null; then
+            EXISTING=$(head -1 /tmp/existing_id)
+          else
+            EXISTING=""
+          fi
 
           if [ -n "$EXISTING" ]; then
             echo "build=false" >> $GITHUB_OUTPUT
@@ -383,10 +390,16 @@ jobs:
           DOCKER_TAG=${TAG_NAME#v}
           TAGS="${TAGS},${IMAGE}:${DOCKER_TAG}"
 
-          # Add minor version tag (e.g., 0.7 from 0.7.0)
+          # Add minor version tag (e.g., 1.0 from 1.0.0)
           MINOR_TAG=$(echo "$DOCKER_TAG" | cut -d. -f1-2)
           if [[ "$MINOR_TAG" != "$DOCKER_TAG" ]]; then
             TAGS="${TAGS},${IMAGE}:${MINOR_TAG}"
+          fi
+
+          # Add major version tag (e.g., 1 from 1.0.0)
+          MAJOR_TAG=$(echo "$DOCKER_TAG" | cut -d. -f1)
+          if [[ "$MAJOR_TAG" != "$MINOR_TAG" ]]; then
+            TAGS="${TAGS},${IMAGE}:${MAJOR_TAG}"
           fi
         fi
         echo "tags=$TAGS" >> $GITHUB_OUTPUT
@@ -485,7 +498,10 @@ jobs:
         AUTH_MODE=bypass
         EOF
 
-        mkdir -p ${CI_DIR}/kindred/pocketbase
+        # Create directory matching docker-compose volume mount path
+        mkdir -p ${CI_DIR}/bunking/pocketbase
+        # Set ownership to match container user (1000:1000)
+        sudo chown -R 1000:1000 ${CI_DIR}/bunking/pocketbase
 
     - name: Create test network
       run: docker network create app-bridge-${{ github.run_id }} || true
@@ -571,6 +587,22 @@ jobs:
         test_endpoint "http://${KINDRED_IP}:8080/api/collections/_superusers/records" "PocketBase collections" || exit 1
 
         echo "✅ All integration tests passed!"
+
+    - name: Verify non-root user and write permissions
+      run: |
+        CONTAINER_NAME="kindred-ci-${{ github.run_id }}-kindred-1"
+
+        # Verify container runs as non-root
+        CONTAINER_USER=$(docker exec ${CONTAINER_NAME} id -u)
+        if [ "$CONTAINER_USER" = "0" ]; then
+          echo "❌ Container is running as root!"
+          exit 1
+        fi
+        echo "✓ Container running as UID: $CONTAINER_USER"
+
+        # Verify database is writable (migration already proved this, but explicit test)
+        docker exec ${CONTAINER_NAME} sh -c "touch /pb_data/write_test && rm /pb_data/write_test"
+        echo "✓ Database directory is writable by non-root user"
 
     - name: Show logs on failure
       if: failure()

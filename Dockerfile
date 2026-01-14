@@ -64,7 +64,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Stage 4: Final runtime image - Combined Caddy + PocketBase + FastAPI
 # =============================================================================
 FROM python:3.13-slim
-RUN groupadd -r kindred && useradd -r -g kindred kindred
+# Use fixed UID/GID 1000 (standard first non-root user) for predictable volume permissions
+# Can be overridden via docker-compose user: directive with PUID/PGID env vars
+RUN groupadd -r -g 1000 kindred && useradd -r -g kindred -u 1000 kindred
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
@@ -113,6 +115,7 @@ USER kindred
 
 EXPOSE 8080
 
+ENV HOME=/app
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV IS_DOCKER=true

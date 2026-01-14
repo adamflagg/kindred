@@ -290,3 +290,6 @@ claude-exports/
 # Config files (symlinked from dotfiles)
 CLAUDE.md
 CLAUDE.local.md
+
+# Worktree-specific files
+start.sh
