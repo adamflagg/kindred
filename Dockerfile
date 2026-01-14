@@ -41,7 +41,7 @@ RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-s -w" -o pocketbase .
 # =============================================================================
 # Stage 3: Python dependencies build (uv for fast, reproducible installs)
 # =============================================================================
-FROM python:3.13-slim AS python-builder
+FROM python:3.14-slim AS python-builder
 
 # Install uv (single static binary, ~15MB)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
@@ -63,7 +63,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # =============================================================================
 # Stage 4: Final runtime image - Combined Caddy + PocketBase + FastAPI
 # =============================================================================
-FROM python:3.13-slim
+FROM python:3.14-slim
 # Use fixed UID/GID 1000 (standard first non-root user) for predictable volume permissions
 # Can be overridden via docker-compose user: directive with PUID/PGID env vars
 RUN groupadd -r -g 1000 kindred && useradd -r -g kindred -u 1000 kindred
