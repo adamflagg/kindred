@@ -154,7 +154,7 @@ exclude_lines = [
 ]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.14"
 # Strict mode - catch type errors, async/sync mismatches, missing attributes
 strict = true
 warn_return_any = true
