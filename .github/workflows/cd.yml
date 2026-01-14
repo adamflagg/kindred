@@ -263,9 +263,11 @@ jobs:
         npm run type-check
         echo "✅ TypeScript OK"
 
-  # Build and push Docker image (single combined container)
-  build-and-push:
-    name: Build & Push Image
+  # Build, test, then push Docker image (single combined container)
+  # Following Docker's "test before push" pattern:
+  # https://docs.docker.com/build/ci/github-actions/test-before-push/
+  build-test-push:
+    name: Build, Test & Push
     needs: [detect-changes, verify-ci, smoke-test]
     if: |
       always() &&
@@ -420,15 +422,15 @@ jobs:
         echo "Version: $VERSION"
         echo "Build Date: $BUILD_DATE"
 
-    - name: Build and push Docker image
+    - name: Build Docker image (local only)
       if: steps.check.outputs.build == 'true'
       id: build
       uses: docker/build-push-action@v6
       with:
         context: ${{ matrix.context }}
         file: ${{ matrix.dockerfile }}
-        push: true
-        tags: ${{ steps.tags.outputs.tags }}
+        load: true
+        tags: ${{ env.REGISTRY }}/${{ env.USERNAME }}/${{ matrix.image }}:test
         cache-from: ${{ github.event.inputs.no_cache == 'true' && '' || 'type=gha' }}
         cache-to: type=gha,mode=max
         platforms: linux/amd64
@@ -437,80 +439,30 @@ jobs:
           VERSION=${{ steps.version.outputs.version }}
           BUILD_DATE=${{ steps.version.outputs.build_date }}
 
-    - name: Run Trivy vulnerability scanner
-      if: steps.check.outputs.build == 'true'
-      uses: aquasecurity/trivy-action@0.33.1
-      with:
-        image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/${{ matrix.image }}:latest
-        format: 'sarif'
-        output: 'trivy-results-${{ matrix.image }}.sarif'
-        severity: 'CRITICAL,HIGH'
-        exit-code: '0'
-
-    - name: Upload Trivy scan results to GitHub Security
-      if: steps.check.outputs.build == 'true'
-      continue-on-error: true
-      uses: github/codeql-action/upload-sarif@v4
-      with:
-        sarif_file: 'trivy-results-${{ matrix.image }}.sarif'
-
-  # Integration test - verify services work together
-  integration-test:
-    name: Integration Test
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    if: success()
-    permissions:
-      contents: read
-      packages: read
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v6
-
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-
-    - name: Log in to GitHub Container Registry
-      uses: docker/login-action@v3
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Pull built image
-      run: |
-        echo "Pulling latest image..."
-        docker pull ${{ env.REGISTRY }}/${{ env.USERNAME }}/kindred:latest
-
-        # Tag for local testing
-        docker tag ${{ env.REGISTRY }}/${{ env.USERNAME }}/kindred:latest ghcr.io/adamflagg/kindred:ci-test
-
+    # === Integration Tests (run before push) ===
     - name: Create CI environment file
+      if: steps.check.outputs.build == 'true'
       run: |
-        # Use run_id for unique paths to support parallel runners
         CI_DIR="/tmp/kindred-ci-${{ github.run_id }}"
-
         cat > .env.ci << EOF
-        IMAGE_TAG=ci-test
+        IMAGE_TAG=test
         APPDATA_DIR=${CI_DIR}
         POCKETBASE_ADMIN_EMAIL=ci@test.local
         POCKETBASE_ADMIN_PASSWORD=ci-test-password
         AUTH_MODE=bypass
         EOF
-
-        # Create directory matching docker-compose volume mount path
         mkdir -p ${CI_DIR}/bunking/pocketbase
-        # Set ownership to match container user (1000:1000)
         sudo chown -R 1000:1000 ${CI_DIR}/bunking/pocketbase
 
     - name: Create test network
+      if: steps.check.outputs.build == 'true'
       run: docker network create app-bridge-${{ github.run_id }} || true
 
     - name: Start test stack
+      if: steps.check.outputs.build == 'true'
       run: |
-        # Use run_id for isolation when multiple CD runs share Docker daemon
         export COMPOSE_PROJECT_NAME=kindred-ci-${{ github.run_id }}
-        export IMAGE_TAG=ci-test
+        export IMAGE_TAG=test
         export APPDATA_DIR=/tmp/kindred-ci-${{ github.run_id }}
         export POCKETBASE_ADMIN_EMAIL=ci@test.local
         export POCKETBASE_ADMIN_PASSWORD=ci-test-password
@@ -528,9 +480,7 @@ jobs:
 
         for i in $(seq 1 $MAX_ATTEMPTS); do
           echo "Attempt $i/$MAX_ATTEMPTS..."
-
           HEALTHY=$(docker compose ps kindred --format json | jq -r '.[0].Health' | grep -c "healthy" || true)
-
           echo "  Kindred: $([ "$HEALTHY" = "1" ] && echo "✓ healthy" || echo "✗ not ready")"
 
           if [ "$HEALTHY" = "1" ]; then
@@ -551,11 +501,10 @@ jobs:
         docker compose ps
 
     - name: Test service endpoints
+      if: steps.check.outputs.build == 'true'
       run: |
-        # Container name follows pattern: {project}-{service}-{instance}
         CONTAINER_NAME="kindred-ci-${{ github.run_id }}-kindred-1"
         KINDRED_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${CONTAINER_NAME})
-
         echo "Kindred IP: $KINDRED_IP"
 
         test_endpoint() {
@@ -589,10 +538,10 @@ jobs:
         echo "✅ All integration tests passed!"
 
     - name: Verify non-root user and write permissions
+      if: steps.check.outputs.build == 'true'
       run: |
         CONTAINER_NAME="kindred-ci-${{ github.run_id }}-kindred-1"
 
-        # Verify container runs as non-root
         CONTAINER_USER=$(docker exec ${CONTAINER_NAME} id -u)
         if [ "$CONTAINER_USER" = "0" ]; then
           echo "❌ Container is running as root!"
@@ -600,12 +549,11 @@ jobs:
         fi
         echo "✓ Container running as UID: $CONTAINER_USER"
 
-        # Verify database is writable (migration already proved this, but explicit test)
         docker exec ${CONTAINER_NAME} sh -c "touch /pb_data/write_test && rm /pb_data/write_test"
         echo "✓ Database directory is writable by non-root user"
 
-    - name: Show logs on failure
-      if: failure()
+    - name: Show logs on test failure
+      if: failure() && steps.check.outputs.build == 'true'
       run: |
         export COMPOSE_PROJECT_NAME=kindred-ci-${{ github.run_id }}
         echo "=== Docker Compose Status ==="
@@ -615,33 +563,61 @@ jobs:
         docker compose logs kindred
 
     - name: Stop test stack
-      if: always()
+      if: always() && steps.check.outputs.build == 'true'
       run: |
         export COMPOSE_PROJECT_NAME=kindred-ci-${{ github.run_id }}
-        docker compose down -v
+        docker compose down -v || true
         docker network rm app-bridge-${{ github.run_id }} || true
         rm -rf /tmp/kindred-ci-${{ github.run_id }}
+
+    # === Security Scan (run before push) ===
+    - name: Run Trivy vulnerability scanner
+      if: steps.check.outputs.build == 'true'
+      uses: aquasecurity/trivy-action@0.33.1
+      with:
+        image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/${{ matrix.image }}:test
+        format: 'sarif'
+        output: 'trivy-results-${{ matrix.image }}.sarif'
+        severity: 'CRITICAL,HIGH'
+        exit-code: '0'
+
+    - name: Upload Trivy scan results to GitHub Security
+      if: steps.check.outputs.build == 'true'
+      continue-on-error: true
+      uses: github/codeql-action/upload-sarif@v4
+      with:
+        sarif_file: 'trivy-results-${{ matrix.image }}.sarif'
+
+    # === Push to Registry (only if tests pass) ===
+    - name: Push Docker image
+      if: steps.check.outputs.build == 'true'
+      uses: docker/build-push-action@v6
+      with:
+        context: ${{ matrix.context }}
+        file: ${{ matrix.dockerfile }}
+        push: true
+        tags: ${{ steps.tags.outputs.tags }}
+        cache-from: type=gha
+        platforms: linux/amd64
+        build-args: |
+          VERSION=${{ steps.version.outputs.version }}
+          BUILD_DATE=${{ steps.version.outputs.build_date }}
 
   # Summary job
   summary:
     name: Build Summary
-    needs: [build-and-push, integration-test]
+    needs: [build-test-push]
     runs-on: ubuntu-latest
     if: always()
     steps:
     - name: Check build status
       run: |
-        if [ "${{ needs.build-and-push.result }}" != "success" ] && [ "${{ needs.build-and-push.result }}" != "skipped" ]; then
-          echo "❌ Docker image builds failed!"
+        if [ "${{ needs.build-test-push.result }}" != "success" ] && [ "${{ needs.build-test-push.result }}" != "skipped" ]; then
+          echo "❌ Build, test, or push failed!"
           exit 1
         fi
 
-        if [ "${{ needs.integration-test.result }}" != "success" ] && [ "${{ needs.integration-test.result }}" != "skipped" ]; then
-          echo "❌ Integration tests failed!"
-          exit 1
-        fi
-
-        if [ "${{ needs.build-and-push.result }}" == "skipped" ]; then
+        if [ "${{ needs.build-test-push.result }}" == "skipped" ]; then
           echo "ℹ️  Docker build skipped (no relevant file changes)"
         else
           echo "✅ All CD checks passed successfully!"
@@ -653,7 +629,7 @@ jobs:
   # Auto-generate release notes from conventional commits
   create-release:
     name: Create GitHub Release
-    needs: [build-and-push, integration-test]
+    needs: [build-test-push]
     runs-on: ubuntu-latest
     # Only run on tag pushes, not release events (release already exists) or manual triggers
     if: success() && startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
