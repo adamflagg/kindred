@@ -28,6 +28,7 @@ RUN npm run build
 FROM golang:1.25 AS go-builder
 
 # Using Debian-based image to match final python:3.13-slim (glibc compatibility)
+# hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends git gcc && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 COPY pocketbase/go.mod pocketbase/go.sum ./
@@ -47,6 +48,7 @@ FROM python:3.14-slim AS python-builder
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # Use cache mounts for apt - content excluded from layer hash for reproducibility
+# hadolint ignore=DL3008
 RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends gcc g++
@@ -68,6 +70,7 @@ FROM python:3.14-slim
 # Can be overridden via docker-compose user: directive with PUID/PGID env vars
 RUN groupadd -r -g 1000 kindred && useradd -r -g kindred -u 1000 kindred
 WORKDIR /app
+# hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     wget \

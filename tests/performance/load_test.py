@@ -32,7 +32,7 @@ def get_auth_headers():
 
 
 class LoadTester:
-    def __init__(self, base_url="http://localhost:8001", pb_url="http://localhost:8091"):
+    def __init__(self, base_url="http://localhost:8080", pb_url="http://localhost:8080"):
         self.base_url = base_url
         self.pb_url = pb_url
         self.results: dict[str, list[Any]] = {
