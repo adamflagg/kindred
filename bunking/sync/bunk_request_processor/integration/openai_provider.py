@@ -24,7 +24,7 @@ from .ai_schemas import (
     AIDisambiguationResponse,
     AIParseResponse,
 )
-from .ai_service import AIProvider, AIRequestContext, ParsedResponse, TokenUsage
+from .ai_types import AIProvider, AIRequestContext, ParsedResponse, TokenUsage
 
 logger = logging.getLogger(__name__)
 
