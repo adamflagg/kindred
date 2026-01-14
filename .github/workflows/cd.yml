@@ -454,10 +454,6 @@ jobs:
         mkdir -p ${CI_DIR}/bunking/pocketbase
         sudo chown -R 1000:1000 ${CI_DIR}/bunking/pocketbase
 
-    - name: Create test network
-      if: steps.check.outputs.build == 'true'
-      run: docker network create app-bridge-${{ github.run_id }} || true
-
     - name: Start test stack
       if: steps.check.outputs.build == 'true'
       run: |
@@ -467,12 +463,12 @@ jobs:
         export POCKETBASE_ADMIN_EMAIL=ci@test.local
         export POCKETBASE_ADMIN_PASSWORD=ci-test-password
         export AUTH_MODE=bypass
-        export PROXY_NETWORK=app-bridge-${{ github.run_id }}
 
-        docker compose up -d
+        # Use CI override to avoid external network requirement
+        docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d
 
         echo "=== Initial service status ==="
-        docker compose ps
+        docker compose -f docker-compose.yml -f docker-compose.ci.yml ps
 
         echo "Waiting for service to become healthy..."
         MAX_ATTEMPTS=30
@@ -480,7 +476,7 @@ jobs:
 
         for i in $(seq 1 $MAX_ATTEMPTS); do
           echo "Attempt $i/$MAX_ATTEMPTS..."
-          HEALTHY=$(docker compose ps kindred --format json | jq -r '.[0].Health' | grep -c "healthy" || true)
+          HEALTHY=$(docker compose -f docker-compose.yml -f docker-compose.ci.yml ps kindred --format json | jq -r '.[0].Health' | grep -c "healthy" || true)
           echo "  Kindred: $([ "$HEALTHY" = "1" ] && echo "✓ healthy" || echo "✗ not ready")"
 
           if [ "$HEALTHY" = "1" ]; then
@@ -490,15 +486,15 @@ jobs:
 
           if [ $i -eq $MAX_ATTEMPTS ]; then
             echo "❌ Service failed to become healthy after $((MAX_ATTEMPTS * SLEEP_TIME)) seconds"
-            docker compose ps
-            docker compose logs --tail=50
+            docker compose -f docker-compose.yml -f docker-compose.ci.yml ps
+            docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --tail=50
             exit 1
           fi
 
           sleep $SLEEP_TIME
         done
 
-        docker compose ps
+        docker compose -f docker-compose.yml -f docker-compose.ci.yml ps
 
     - name: Test service endpoints
       if: steps.check.outputs.build == 'true'
@@ -557,17 +553,16 @@ jobs:
       run: |
         export COMPOSE_PROJECT_NAME=kindred-ci-${{ github.run_id }}
         echo "=== Docker Compose Status ==="
-        docker compose ps
+        docker compose -f docker-compose.yml -f docker-compose.ci.yml ps
         echo ""
         echo "=== Kindred Logs ==="
-        docker compose logs kindred
+        docker compose -f docker-compose.yml -f docker-compose.ci.yml logs kindred
 
     - name: Stop test stack
       if: always() && steps.check.outputs.build == 'true'
       run: |
         export COMPOSE_PROJECT_NAME=kindred-ci-${{ github.run_id }}
-        docker compose down -v || true
-        docker network rm app-bridge-${{ github.run_id }} || true
+        docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v || true
         rm -rf /tmp/kindred-ci-${{ github.run_id }}
 
     # === Security Scan (run before push) ===
