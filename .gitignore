@@ -275,6 +275,7 @@ $RECYCLE.BIN/
 # =============================================================================
 requirements/
 claude-exports/
+pb_data_local/
 
 # =============================================================================
 # git-crypt encrypted files (DO NOT add to .gitignore)

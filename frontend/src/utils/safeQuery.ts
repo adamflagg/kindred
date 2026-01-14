@@ -5,7 +5,7 @@
  * API contract violations at runtime, providing better error messages
  * than TypeScript alone (which only checks at compile time).
  */
-import { z } from 'zod';
+import type { z } from 'zod';
 
 /**
  * Parse an API response with a Zod schema, throwing on validation failure.

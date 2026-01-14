@@ -48,7 +48,7 @@ export function useSolverConfig() {
         sections = await pb.collection<ConfigSectionsRecord>('config_sections').getFullList({
           sort: 'display_order'
         });
-      } catch (error) {
+      } catch {
         // If config_sections doesn't exist yet, continue without sections
         console.warn('config_sections table not found, continuing without sections');
       }

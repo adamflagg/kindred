@@ -118,12 +118,10 @@ export default function SessionView() {
     }
   }, [solverProgress, runSolverInternal, currentScenario?.name]);
 
-  // Reset selected area if All-Gender is selected but no longer available
-  useEffect(() => {
-    if (selectedBunkArea === 'all-gender' && !showAgArea) {
-      setSelectedBunkArea('all');
-    }
-  }, [selectedBunkArea, showAgArea]);
+  // Reset selected area if All-Gender is selected but no longer available (render-time check)
+  if (selectedBunkArea === 'all-gender' && !showAgArea) {
+    setSelectedBunkArea('all');
+  }
 
   // Load scenarios when session changes
   useEffect(() => {

@@ -14,7 +14,7 @@ import {
 
 describe('getGridColumns', () => {
   it('should generate grid template columns string', () => {
-    const columns: TableColumn<unknown>[] = [
+    const columns: Array<TableColumn<unknown>> = [
       { key: 'name', header: 'Name', width: '200px' },
       { key: 'age', header: 'Age', width: '100px' },
       { key: 'status', header: 'Status', width: '150px' },
@@ -27,7 +27,7 @@ describe('getGridColumns', () => {
   });
 
   it('should handle minmax widths', () => {
-    const columns: TableColumn<unknown>[] = [
+    const columns: Array<TableColumn<unknown>> = [
       { key: 'name', header: 'Name', width: 'minmax(180px,2fr)' },
       { key: 'desc', header: 'Description', width: 'minmax(200px,3fr)' },
     ];

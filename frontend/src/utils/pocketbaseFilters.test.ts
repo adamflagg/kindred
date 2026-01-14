@@ -42,8 +42,8 @@ describe('pocketbaseFilters', () => {
 
     it('should handle empty or null filters', () => {
       expect(formatFilter('')).toBe('');
-      expect(formatFilter(null as any)).toBe(null);
-      expect(formatFilter(undefined as any)).toBe(undefined);
+      expect(formatFilter(null as unknown as string)).toBe(null);
+      expect(formatFilter(undefined as unknown as string)).toBe(undefined);
     });
   });
 
@@ -69,7 +69,7 @@ describe('pocketbaseFilters', () => {
 
     it('should handle empty conditions', () => {
       expect(buildFilter([])).toBe('');
-      expect(buildFilter(null as any)).toBe('');
+      expect(buildFilter(null as unknown as string[])).toBe('');
     });
 
     it('should filter out empty conditions', () => {
