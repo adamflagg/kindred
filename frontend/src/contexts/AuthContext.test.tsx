@@ -149,7 +149,7 @@ describe('AuthContext', () => {
       });
 
       const { authenticateBypassMode } = await import('../lib/pocketbase');
-      (authenticateBypassMode as any).mockResolvedValue(true);
+      vi.mocked(authenticateBypassMode).mockResolvedValue(true);
 
       render(
         <AuthProvider>
@@ -169,8 +169,8 @@ describe('AuthContext', () => {
       });
 
       const { authenticateBypassMode, isAuthenticated } = await import('../lib/pocketbase');
-      (authenticateBypassMode as any).mockResolvedValue(true);
-      (isAuthenticated as any).mockReturnValue(false); // Even if PB says false
+      vi.mocked(authenticateBypassMode).mockResolvedValue(true);
+      vi.mocked(isAuthenticated).mockReturnValue(false); // Even if PB says false
 
       render(
         <AuthProvider>
@@ -191,7 +191,7 @@ describe('AuthContext', () => {
       });
 
       const { authenticateBypassMode } = await import('../lib/pocketbase');
-      (authenticateBypassMode as any).mockResolvedValue(false);
+      vi.mocked(authenticateBypassMode).mockResolvedValue(false);
 
       render(
         <AuthProvider>
@@ -213,7 +213,7 @@ describe('AuthContext', () => {
       });
 
       const { isAuthenticated } = await import('../lib/pocketbase');
-      (isAuthenticated as any).mockReturnValue(false);
+      vi.mocked(isAuthenticated).mockReturnValue(false);
 
       render(
         <AuthProvider>
@@ -235,10 +235,13 @@ describe('AuthContext', () => {
 
       const { getCurrentUser, pb } = await import('../lib/pocketbase');
       // Return an admin user (superusers collection)
-      (getCurrentUser as any).mockReturnValue({
+      vi.mocked(getCurrentUser).mockReturnValue({
         id: 'admin-id',
+        collectionId: '_superusers',
         collectionName: '_superusers',
         email: 'admin@test.com',
+        created: '',
+        updated: '',
       });
 
       render(
@@ -262,7 +265,7 @@ describe('AuthContext', () => {
       });
 
       const { authenticateBypassMode } = await import('../lib/pocketbase');
-      (authenticateBypassMode as any).mockResolvedValue(true);
+      vi.mocked(authenticateBypassMode).mockResolvedValue(true);
 
       render(
         <AuthProvider>

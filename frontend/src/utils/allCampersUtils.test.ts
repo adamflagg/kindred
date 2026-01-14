@@ -7,6 +7,7 @@ import {
 } from './allCampersUtils';
 import type { BunksResponse, BunkPlansResponse } from '../types/pocketbase-types';
 import type { Session } from '../types/app-types';
+import { expectDefined } from '../test/testUtils';
 
 // Mock data helper - accepts partial overrides and required fields
 function createMockSession(
@@ -67,8 +68,8 @@ describe('allCampersUtils', () => {
         createMockBunk('B-2')
       ];
       const bunkPlans = [
-        createMockBunkPlan(bunks[0]!.id, 'main-2'),
-        createMockBunkPlan(bunks[1]!.id, 'main-2')
+        createMockBunkPlan(expectDefined(bunks[0]).id, 'main-2'),
+        createMockBunkPlan(expectDefined(bunks[1]).id, 'main-2')
       ];
 
       const result = filterSummerCampBunks(bunks, bunkPlans, sessions);
@@ -82,7 +83,7 @@ describe('allCampersUtils', () => {
         createMockSession({ name: 'All-Gender Session 2', session_type: 'ag', id: 'ag-2' })
       ];
       const bunks = [createMockBunk('AG-8', 'Mixed')];
-      const bunkPlans = [createMockBunkPlan(bunks[0]!.id, 'ag-2')];
+      const bunkPlans = [createMockBunkPlan(expectDefined(bunks[0]).id, 'ag-2')];
 
       const result = filterSummerCampBunks(bunks, bunkPlans, sessions);
       expect(result).toHaveLength(1);
@@ -95,8 +96,8 @@ describe('allCampersUtils', () => {
       ];
       const bunks = [createMockBunk('B-1'), createMockBunk('G-1', 'F')];
       const bunkPlans = [
-        createMockBunkPlan(bunks[0]!.id, 'emb-2a'),
-        createMockBunkPlan(bunks[1]!.id, 'emb-2a')
+        createMockBunkPlan(expectDefined(bunks[0]).id, 'emb-2a'),
+        createMockBunkPlan(expectDefined(bunks[1]).id, 'emb-2a')
       ];
 
       const result = filterSummerCampBunks(bunks, bunkPlans, sessions);
@@ -112,8 +113,8 @@ describe('allCampersUtils', () => {
         createMockBunk('Azaleas')
       ];
       const bunkPlans = [
-        createMockBunkPlan(bunks[0]!.id, 'fam-1'),
-        createMockBunkPlan(bunks[1]!.id, 'fam-1')
+        createMockBunkPlan(expectDefined(bunks[0]).id, 'fam-1'),
+        createMockBunkPlan(expectDefined(bunks[1]).id, 'fam-1')
       ];
 
       const result = filterSummerCampBunks(bunks, bunkPlans, sessions);
@@ -128,8 +129,8 @@ describe('allCampersUtils', () => {
       // This bunk is used in both summer and family camp
       const bunks = [createMockBunk('B-1')];
       const bunkPlans = [
-        createMockBunkPlan(bunks[0]!.id, 'main-2'),
-        createMockBunkPlan(bunks[0]!.id, 'fam-1')
+        createMockBunkPlan(expectDefined(bunks[0]).id, 'main-2'),
+        createMockBunkPlan(expectDefined(bunks[0]).id, 'fam-1')
       ];
 
       const result = filterSummerCampBunks(bunks, bunkPlans, sessions);
@@ -146,7 +147,7 @@ describe('allCampersUtils', () => {
         createMockBunk('Orphan-Bunk') // No bunk_plan
       ];
       const bunkPlans = [
-        createMockBunkPlan(bunks[0]!.id, 'main-2')
+        createMockBunkPlan(expectDefined(bunks[0]).id, 'main-2')
         // No plan for Orphan-Bunk
       ];
 

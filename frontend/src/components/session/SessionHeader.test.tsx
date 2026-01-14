@@ -297,7 +297,7 @@ describe('SessionHeader', () => {
 
     describe('compare button visibility', () => {
       it('should only show compare when scenarios exist', () => {
-        const scenarios: { id: string; name: string }[] = [];
+        const scenarios: Array<{ id: string; name: string }> = [];
 
         const shouldShowCompare = scenarios.length > 0;
 
