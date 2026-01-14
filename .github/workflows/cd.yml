@@ -444,31 +444,35 @@ jobs:
       if: steps.check.outputs.build == 'true'
       run: |
         CI_DIR="/tmp/kindred-ci-${{ github.run_id }}"
-        cat > .env.ci << EOF
+        cat > .env.ci << 'EOF'
+        COMPOSE_PROJECT_NAME=kindred-ci-${{ github.run_id }}
         IMAGE_TAG=test
-        APPDATA_DIR=${CI_DIR}
         POCKETBASE_ADMIN_EMAIL=ci@test.local
         POCKETBASE_ADMIN_PASSWORD=ci-test-password
         AUTH_MODE=bypass
+        # Optional vars (empty to suppress warnings)
+        CAMPMINDER_API_KEY=
+        CAMPMINDER_PRIMARY_KEY=
+        CAMPMINDER_CLIENT_ID=
+        CAMPMINDER_SEASON_ID=
+        SUB_BUNKING=
+        DOMAIN_NAME=
         EOF
+        # APPDATA_DIR needs shell expansion, add separately
+        echo "APPDATA_DIR=${CI_DIR}" >> .env.ci
+        # Remove leading whitespace from heredoc
+        sed -i 's/^[[:space:]]*//' .env.ci
         mkdir -p ${CI_DIR}/bunking/pocketbase
         sudo chown -R 1000:1000 ${CI_DIR}/bunking/pocketbase
 
     - name: Start test stack
       if: steps.check.outputs.build == 'true'
       run: |
-        export COMPOSE_PROJECT_NAME=kindred-ci-${{ github.run_id }}
-        export IMAGE_TAG=test
-        export APPDATA_DIR=/tmp/kindred-ci-${{ github.run_id }}
-        export POCKETBASE_ADMIN_EMAIL=ci@test.local
-        export POCKETBASE_ADMIN_PASSWORD=ci-test-password
-        export AUTH_MODE=bypass
-
         # Use CI override to avoid external network requirement
-        docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d
+        docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml up -d
 
         echo "=== Initial service status ==="
-        docker compose -f docker-compose.yml -f docker-compose.ci.yml ps
+        docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml ps
 
         echo "Waiting for service to become healthy..."
         MAX_ATTEMPTS=30
@@ -476,7 +480,7 @@ jobs:
 
         for i in $(seq 1 $MAX_ATTEMPTS); do
           echo "Attempt $i/$MAX_ATTEMPTS..."
-          HEALTHY=$(docker compose -f docker-compose.yml -f docker-compose.ci.yml ps kindred --format json | jq -r '.[0].Health' | grep -c "healthy" || true)
+          HEALTHY=$(docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml ps kindred --format json | jq -r '.[0].Health' | grep -c "healthy" || true)
           echo "  Kindred: $([ "$HEALTHY" = "1" ] && echo "✓ healthy" || echo "✗ not ready")"
 
           if [ "$HEALTHY" = "1" ]; then
@@ -486,15 +490,15 @@ jobs:
 
           if [ $i -eq $MAX_ATTEMPTS ]; then
             echo "❌ Service failed to become healthy after $((MAX_ATTEMPTS * SLEEP_TIME)) seconds"
-            docker compose -f docker-compose.yml -f docker-compose.ci.yml ps
-            docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --tail=50
+            docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml ps
+            docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml logs --tail=50
             exit 1
           fi
 
           sleep $SLEEP_TIME
         done
 
-        docker compose -f docker-compose.yml -f docker-compose.ci.yml ps
+        docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml ps
 
     - name: Test service endpoints
       if: steps.check.outputs.build == 'true'
@@ -551,18 +555,16 @@ jobs:
     - name: Show logs on test failure
       if: failure() && steps.check.outputs.build == 'true'
       run: |
-        export COMPOSE_PROJECT_NAME=kindred-ci-${{ github.run_id }}
         echo "=== Docker Compose Status ==="
-        docker compose -f docker-compose.yml -f docker-compose.ci.yml ps
+        docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml ps
         echo ""
         echo "=== Kindred Logs ==="
-        docker compose -f docker-compose.yml -f docker-compose.ci.yml logs kindred
+        docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml logs kindred
 
     - name: Stop test stack
       if: always() && steps.check.outputs.build == 'true'
       run: |
-        export COMPOSE_PROJECT_NAME=kindred-ci-${{ github.run_id }}
-        docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v || true
+        docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml down -v || true
         rm -rf /tmp/kindred-ci-${{ github.run_id }}
 
     # === Security Scan (run before push) ===

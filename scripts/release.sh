@@ -36,6 +36,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --github-build  Build via GitHub Actions CD (default for public repo)"
             echo "  --local-build   Build locally instead of via GitHub Actions"
             echo "  --version X     Override git-cliff version suggestion"
+            echo "                  If version exists, will delete and re-release"
             exit 0
             ;;
         *) echo "Unknown option: $1"; exit 1 ;;
@@ -208,10 +209,140 @@ else
     echo -e "${YELLOW}⚠ Skipping tests (--skip-tests)${NC}"
 fi
 
+# ===== HANDLE EXISTING VERSION (RE-RELEASE) =====
+# If --version is provided and that version already exists, clean up first
+# This must happen BEFORE version calculation so LAST_TAG finds the correct previous tag
+RE_RELEASE=false
+if [[ -n "$CUSTOM_VERSION" ]]; then
+    # Normalize version format
+    if [[ "$CUSTOM_VERSION" != v* ]]; then
+        CHECK_VERSION="v$CUSTOM_VERSION"
+    else
+        CHECK_VERSION="$CUSTOM_VERSION"
+    fi
+
+    # Check if version exists (locally, remotely, or as a release)
+    VERSION_EXISTS=false
+    git fetch --tags --quiet 2>/dev/null || true
+
+    if git rev-parse "$CHECK_VERSION" &>/dev/null; then
+        VERSION_EXISTS=true
+    elif git ls-remote --tags origin "refs/tags/$CHECK_VERSION" 2>/dev/null | grep -q "$CHECK_VERSION"; then
+        VERSION_EXISTS=true
+    fi
+
+    if [[ "$VERSION_EXISTS" == "true" ]]; then
+        RE_RELEASE=true
+        echo -e "\n${YELLOW}═══════════════════════════════════════════════════════════${NC}"
+        echo -e "${YELLOW}⚠ Version $CHECK_VERSION already exists!${NC}"
+        echo -e "${YELLOW}═══════════════════════════════════════════════════════════${NC}"
+        echo ""
+        echo "  This will perform a RE-RELEASE:"
+        echo "    1. Delete the existing GitHub release"
+        echo "    2. Delete git tags (local & remote)"
+        echo "    3. Delete Docker package versions from GHCR"
+        echo "    4. Regenerate changelog from previous version"
+        echo "    5. Create fresh release at current HEAD"
+        echo ""
+
+        # Find the previous tag (before the one we're re-releasing) for changelog calculation
+        # This is needed for both dry-run (tag not deleted) and actual run (before deletion)
+        PREV_TAG_FOR_RERELEASE=$(git describe --tags --abbrev=0 "${CHECK_VERSION}^" 2>/dev/null || true)
+        if [[ -z "$PREV_TAG_FOR_RERELEASE" ]]; then
+            # No previous tag - use root commit
+            PREV_TAG_FOR_RERELEASE=$(git rev-list --max-parents=0 HEAD | head -1)
+            echo "  Previous version: (first release)"
+        else
+            echo "  Previous version: $PREV_TAG_FOR_RERELEASE"
+        fi
+
+        if [[ "$DRY_RUN" == "true" ]]; then
+            echo -e "${CYAN}DRY RUN: Would delete and re-release $CHECK_VERSION${NC}"
+        else
+            read -p "Re-release $CHECK_VERSION? This is destructive! [y/N] " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                echo "Aborted."
+                exit 0
+            fi
+
+            echo -e "\n${YELLOW}▶ Cleaning up existing release artifacts...${NC}"
+
+            # Delete GitHub release (if exists)
+            if gh release view "$CHECK_VERSION" &>/dev/null; then
+                gh release delete "$CHECK_VERSION" --yes --cleanup-tag 2>/dev/null || \
+                gh release delete "$CHECK_VERSION" --yes 2>/dev/null || true
+                echo -e "${GREEN}✓ Deleted GitHub release${NC}"
+            else
+                echo "  No GitHub release found"
+            fi
+
+            # Delete remote tag (if exists)
+            if git ls-remote --tags origin "refs/tags/$CHECK_VERSION" 2>/dev/null | grep -q "$CHECK_VERSION"; then
+                git push origin --delete "$CHECK_VERSION" 2>/dev/null || true
+                echo -e "${GREEN}✓ Deleted remote tag${NC}"
+            else
+                echo "  No remote tag found"
+            fi
+
+            # Delete local tag (if exists)
+            if git rev-parse "$CHECK_VERSION" &>/dev/null; then
+                git tag -d "$CHECK_VERSION" 2>/dev/null || true
+                echo -e "${GREEN}✓ Deleted local tag${NC}"
+            else
+                echo "  No local tag found"
+            fi
+
+            # Delete Docker package versions from GHCR
+            echo -e "\n${YELLOW}▶ Cleaning up Docker packages...${NC}"
+            PACKAGE_NAME="kindred"
+            USERNAME="adamflagg"
+            DOCKER_TAG="${CHECK_VERSION#v}"  # v0.8.0 -> 0.8.0
+
+            # Get all package versions
+            if VERSIONS_JSON=$(gh api "/users/$USERNAME/packages/container/$PACKAGE_NAME/versions" --paginate 2>/dev/null); then
+                # Find versions with our exact patch tag (e.g., "0.8.0")
+                # Don't delete based on minor/major tags as those may have moved to newer versions
+                VERSION_IDS=$(echo "$VERSIONS_JSON" | jq -r ".[] | select(.metadata.container.tags | index(\"$DOCKER_TAG\")) | .id" 2>/dev/null || echo "")
+
+                if [[ -n "$VERSION_IDS" ]]; then
+                    for VERSION_ID in $VERSION_IDS; do
+                        # Get the tags for this version for display
+                        TAGS=$(echo "$VERSIONS_JSON" | jq -r ".[] | select(.id == $VERSION_ID) | .metadata.container.tags | join(\", \")" 2>/dev/null || echo "unknown")
+                        echo "  Deleting package version $VERSION_ID (tags: $TAGS)..."
+                        if gh api --method DELETE "/users/$USERNAME/packages/container/$PACKAGE_NAME/versions/$VERSION_ID" 2>/dev/null; then
+                            echo -e "  ${GREEN}✓ Deleted${NC}"
+                        else
+                            echo -e "  ${YELLOW}⚠ Failed to delete (may require admin permissions)${NC}"
+                        fi
+                    done
+                else
+                    echo "  No package versions found with tag $DOCKER_TAG"
+                fi
+            else
+                echo "  Package $PACKAGE_NAME not found or no access"
+            fi
+
+            echo -e "\n${GREEN}✓ Cleanup complete - ready for fresh release${NC}"
+        fi
+    fi
+fi
+
 # ===== VERSION CALCULATION =====
 echo -e "\n${YELLOW}▶ Calculating version...${NC}"
 
-if git describe --tags --abbrev=0 &>/dev/null; then
+# For re-releases, use the previous tag we calculated earlier
+# This handles both dry-run (old tag not deleted) and actual run (after deletion)
+if [[ "$RE_RELEASE" == "true" && -n "$PREV_TAG_FOR_RERELEASE" ]]; then
+    LAST_TAG="$PREV_TAG_FOR_RERELEASE"
+    if [[ "$LAST_TAG" == "$(git rev-list --max-parents=0 HEAD | head -1)" ]]; then
+        FIRST_RELEASE=true
+        echo "  Re-release from: (first release)"
+    else
+        FIRST_RELEASE=false
+        echo "  Re-release from: $LAST_TAG"
+    fi
+elif git describe --tags --abbrev=0 &>/dev/null; then
     LAST_TAG=$(git describe --tags --abbrev=0)
     FIRST_RELEASE=false
     echo "  Last tag: $LAST_TAG"
@@ -260,9 +391,10 @@ else
     echo "  Suggested by git-cliff: $NEW_VERSION"
 fi
 
-# Check if tag exists
-if git rev-parse "$NEW_VERSION" &>/dev/null; then
+# Check if tag exists (skip for re-releases since we already handled it)
+if [[ "$RE_RELEASE" != "true" ]] && git rev-parse "$NEW_VERSION" &>/dev/null; then
     echo -e "${RED}✗ Tag $NEW_VERSION already exists${NC}"
+    echo "  Use --version $NEW_VERSION to re-release"
     exit 1
 fi
 echo -e "${GREEN}✓ Version $NEW_VERSION available${NC}"
@@ -270,7 +402,12 @@ echo -e "${GREEN}✓ Version $NEW_VERSION available${NC}"
 # ===== CHANGELOG PREVIEW =====
 echo -e "\n${YELLOW}▶ Release notes preview:${NC}"
 echo "─────────────────────────────────────────────────"
-git_cliff --unreleased --strip header || echo "(no conventional commits)"
+# For re-releases, use explicit range since --unreleased might use wrong tag in dry-run
+if [[ "$RE_RELEASE" == "true" ]]; then
+    git_cliff "$LAST_TAG"..HEAD --strip header || echo "(no conventional commits)"
+else
+    git_cliff --unreleased --strip header || echo "(no conventional commits)"
+fi
 echo "─────────────────────────────────────────────────"
 
 # ===== CHANGES SUMMARY =====
@@ -290,20 +427,27 @@ fi
 if [[ "$DRY_RUN" == "true" ]]; then
     echo -e "\n${CYAN}═══════════════════════════════════════════════════════════${NC}"
     echo -e "${YELLOW}DRY RUN COMPLETE${NC}"
+    if [[ "$RE_RELEASE" == "true" ]]; then
+        echo -e "  Mode: RE-RELEASE (would delete existing $NEW_VERSION first)"
+    fi
     echo -e "  Would create tag: $NEW_VERSION"
     if [[ "$GITHUB_BUILD" != "true" ]]; then
         echo -e "  Build mode: Local (default)"
     else
         echo -e "  Build mode: GitHub Actions CD"
     fi
-    echo -e "  To release: $0"
+    echo -e "  To release: $0 --version ${NEW_VERSION#v}"
     echo -e "${CYAN}═══════════════════════════════════════════════════════════${NC}"
     exit 0
 fi
 
 # ===== CONFIRMATION =====
 echo -e "\n${CYAN}═══════════════════════════════════════════════════════════${NC}"
-echo -e "${YELLOW}Ready to release $NEW_VERSION${NC}"
+if [[ "$RE_RELEASE" == "true" ]]; then
+    echo -e "${YELLOW}Ready to RE-RELEASE $NEW_VERSION${NC}"
+else
+    echo -e "${YELLOW}Ready to release $NEW_VERSION${NC}"
+fi
 echo -e "This will:"
 if [[ "$GITHUB_BUILD" != "true" ]]; then
     echo -e "  1. Build and push Docker image locally"
@@ -330,7 +474,12 @@ fi
 echo -e "\n${YELLOW}▶ Creating release...${NC}"
 
 # Generate changelog for release notes
-CHANGELOG=$(git_cliff --unreleased --strip header || true)
+# For re-releases, use explicit range to ensure correct commits are included
+if [[ "$RE_RELEASE" == "true" ]]; then
+    CHANGELOG=$(git_cliff "$LAST_TAG"..HEAD --strip header || true)
+else
+    CHANGELOG=$(git_cliff --unreleased --strip header || true)
+fi
 
 # Check if git-cliff output is valid (contains actual content)
 if [[ -z "$CHANGELOG" ]] || echo "$CHANGELOG" | grep -q "panicked\|Error\|error"; then
