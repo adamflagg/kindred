@@ -24,6 +24,7 @@ type RequestProcessor struct {
 	Limit        int      // Optional limit for testing (0 = no limit)
 	Force        bool     // Force reprocess by clearing processed flags first
 	SourceFields []string // Optional source field filter (empty = all fields)
+	Debug        bool     // Enable debug logging in Python processor
 }
 
 // NewRequestProcessor creates a new processor
@@ -34,6 +35,7 @@ func NewRequestProcessor(app core.App) *RequestProcessor {
 		Limit:           0,                            // Default to no limit
 		Force:           false,                        // Default to no force
 		SourceFields:    nil,                          // Default to all fields
+		Debug:           false,                        // Default to no debug
 	}
 }
 
@@ -55,6 +57,7 @@ func (p *RequestProcessor) Sync(ctx context.Context) error {
 		"limit", p.Limit,
 		"force", p.Force,
 		"sourceFields", p.SourceFields,
+		"debug", p.Debug,
 	)
 
 	// If force mode, clear processed flags first
@@ -134,6 +137,11 @@ func (p *RequestProcessor) callPythonProcessor(ctx context.Context) (Stats, erro
 	// Add clear-existing flag when force reprocessing
 	if p.Force {
 		args = append(args, "--clear-existing")
+	}
+
+	// Add debug flag for verbose logging
+	if p.Debug {
+		args = append(args, "--debug")
 	}
 
 	//nolint:gosec // G204: args are from trusted internal config
