@@ -10,6 +10,7 @@ from bunking.auth_middleware import (
     AuthMiddleware,
     AuthUser,
     _is_docker_environment,
+    _is_github_actions,
     create_auth_middleware,
     get_current_user,
     require_admin,
@@ -83,6 +84,35 @@ class TestIsDockerEnvironment:
                 assert _is_docker_environment() is True
 
 
+class TestIsGitHubActions:
+    """Tests for _is_github_actions function."""
+
+    def test_github_actions_both_signals_present(self):
+        """Test that both CI=true and GITHUB_ACTIONS=true are required."""
+        with patch.dict("os.environ", {"CI": "true", "GITHUB_ACTIONS": "true"}):
+            assert _is_github_actions() is True
+
+    def test_github_actions_missing_ci(self):
+        """Test that GITHUB_ACTIONS alone is not sufficient."""
+        with patch.dict("os.environ", {"GITHUB_ACTIONS": "true"}, clear=True):
+            assert _is_github_actions() is False
+
+    def test_github_actions_missing_github_actions(self):
+        """Test that CI alone is not sufficient."""
+        with patch.dict("os.environ", {"CI": "true"}, clear=True):
+            assert _is_github_actions() is False
+
+    def test_github_actions_neither_signal(self):
+        """Test that missing both signals returns False."""
+        with patch.dict("os.environ", {}, clear=True):
+            assert _is_github_actions() is False
+
+    def test_github_actions_wrong_values(self):
+        """Test that values must be exactly 'true'."""
+        with patch.dict("os.environ", {"CI": "yes", "GITHUB_ACTIONS": "1"}):
+            assert _is_github_actions() is False
+
+
 class TestAuthMiddlewareInit:
     """Tests for AuthMiddleware initialization."""
 
@@ -108,12 +138,23 @@ class TestAuthMiddlewareInit:
                 AuthMiddleware(app, "invalid_mode", "admin")
 
     def test_init_bypass_blocked_in_docker(self):
-        """Test that bypass mode is blocked in Docker."""
+        """Test that bypass mode is blocked in Docker (non-CI)."""
         app = MagicMock()
 
         with patch("bunking.auth_middleware._is_docker_environment", return_value=True):
-            with pytest.raises(ValueError, match="SECURITY ERROR"):
-                AuthMiddleware(app, "bypass", "admin")
+            with patch("bunking.auth_middleware._is_github_actions", return_value=False):
+                with pytest.raises(ValueError, match="SECURITY ERROR"):
+                    AuthMiddleware(app, "bypass", "admin")
+
+    def test_init_bypass_allowed_in_docker_when_github_actions(self):
+        """Test that bypass mode is allowed in Docker when in GitHub Actions CI."""
+        app = MagicMock()
+
+        with patch("bunking.auth_middleware._is_docker_environment", return_value=True):
+            with patch("bunking.auth_middleware._is_github_actions", return_value=True):
+                # Should NOT raise - bypass allowed in CI
+                middleware = AuthMiddleware(app, "bypass", "admin")
+                assert middleware.auth_mode == "bypass"
 
     def test_init_production_requires_issuer(self):
         """Test that production mode requires OIDC_ISSUER."""
