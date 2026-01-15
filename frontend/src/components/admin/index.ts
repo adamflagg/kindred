@@ -1,7 +1,8 @@
 // Admin component exports
 // Re-export components for external use
 
-export { SyncTab, SYNC_TYPES, HISTORICAL_SYNC_TYPES } from './SyncTab';
+export { SyncTab } from './SyncTab';
+export { SYNC_TYPES, HISTORICAL_SYNC_TYPES } from './syncTypes';
 export { ConfigTab, CATEGORIES } from './ConfigTab';
 export { SectionCard, type SectionCardProps } from './SectionCard';
 export { ScaleGuideSidebar, type ScaleGuideSidebarProps } from './ScaleGuideSidebar';
