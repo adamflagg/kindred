@@ -472,6 +472,8 @@ jobs:
         POCKETBASE_ADMIN_EMAIL=ci@test.local
         POCKETBASE_ADMIN_PASSWORD=ci-test-password
         AUTH_MODE=bypass
+        CI=true
+        GITHUB_ACTIONS=true
         # Optional vars (empty to suppress warnings)
         CAMPMINDER_API_KEY=
         CAMPMINDER_PRIMARY_KEY=
