@@ -610,6 +610,7 @@ jobs:
       uses: aquasecurity/trivy-action@0.33.1
       with:
         image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/${{ matrix.image }}:test
+        version: 'v0.68.2'
         format: 'sarif'
         output: 'trivy-results-${{ matrix.image }}.sarif'
         severity: 'CRITICAL,HIGH'
