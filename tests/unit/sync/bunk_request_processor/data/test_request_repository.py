@@ -500,5 +500,180 @@ class TestClearAllForYear:
         assert verified is False, "Should report verification failed when records remain"
 
 
+class TestClearBySourceFieldsPagination:
+    """Test pagination in clear_by_source_fields (BUG FIX).
+
+    The current implementation only fetches page 1 (max 1000 records) and never
+    paginates. This causes silent data loss when clearing >1000 records per person.
+
+    Issue: request_repository.py:139-141 - only fetches first page.
+    """
+
+    @pytest.fixture
+    def mock_pb_client(self):
+        """Create a mock PocketBase client"""
+        mock_client = Mock()
+        mock_collection = Mock()
+        mock_client.collection.return_value = mock_collection
+        return mock_client, mock_collection
+
+    @pytest.fixture
+    def repository(self, mock_pb_client):
+        """Create a RequestRepository with mocked client"""
+        mock_client, _ = mock_pb_client
+        return RequestRepository(mock_client)
+
+    def test_clear_by_source_fields_paginates_when_more_than_page_size(
+        self, repository, mock_pb_client
+    ):
+        """FAILING TEST: Verify clear_by_source_fields handles >1000 records.
+
+        This test should FAIL with the current implementation because it only
+        fetches page 1 and never checks for more pages.
+        """
+        mock_client, mock_collection = mock_pb_client
+
+        # Simulate 1500 records - more than one page (assuming page size of 500-1000)
+        # First page: 500 records
+        page1_items = [Mock(id=f"req_{i}") for i in range(500)]
+        page1_result = Mock()
+        page1_result.items = page1_items
+        page1_result.total_items = 1500
+
+        # Second page: 500 more records
+        page2_items = [Mock(id=f"req_{i}") for i in range(500, 1000)]
+        page2_result = Mock()
+        page2_result.items = page2_items
+        page2_result.total_items = 1500
+
+        # Third page: 500 more records
+        page3_items = [Mock(id=f"req_{i}") for i in range(1000, 1500)]
+        page3_result = Mock()
+        page3_result.items = page3_items
+        page3_result.total_items = 1500
+
+        # Fourth page: empty (done)
+        page4_result = Mock()
+        page4_result.items = []
+        page4_result.total_items = 1500
+
+        mock_collection.get_list.side_effect = [
+            page1_result,
+            page2_result,
+            page3_result,
+            page4_result,
+        ]
+
+        # Test clearing - should delete ALL 1500 records
+        count = repository.clear_by_source_fields(
+            requester_cm_id=12345,
+            source_fields=["share_bunk_with"],
+            year=2025,
+        )
+
+        # This assertion should FAIL with current buggy implementation
+        # Current implementation only deletes first 500-1000 records
+        assert count == 1500, f"Should delete all 1500 records, but only deleted {count}"
+
+        # Verify all records were actually deleted
+        assert mock_collection.delete.call_count == 1500, (
+            f"Should have called delete 1500 times, "
+            f"but only called {mock_collection.delete.call_count} times"
+        )
+
+    def test_clear_by_source_fields_single_page_still_works(
+        self, repository, mock_pb_client
+    ):
+        """Verify single page (< page_size records) still works correctly.
+
+        This should pass with both old and new implementation.
+        """
+        mock_client, mock_collection = mock_pb_client
+
+        # Only 50 records - fits in one page
+        page1_items = [Mock(id=f"req_{i}") for i in range(50)]
+        page1_result = Mock()
+        page1_result.items = page1_items
+        page1_result.total_items = 50
+
+        mock_collection.get_list.return_value = page1_result
+
+        count = repository.clear_by_source_fields(
+            requester_cm_id=12345,
+            source_fields=["share_bunk_with"],
+            year=2025,
+        )
+
+        assert count == 50
+        assert mock_collection.delete.call_count == 50
+
+    def test_clear_by_source_fields_handles_exactly_page_size(
+        self, repository, mock_pb_client
+    ):
+        """Verify exact page size boundary is handled correctly.
+
+        Edge case: exactly 500 (or 1000) records should work without pagination.
+        """
+        mock_client, mock_collection = mock_pb_client
+
+        # Exactly 500 records (typical page size)
+        page1_items = [Mock(id=f"req_{i}") for i in range(500)]
+        page1_result = Mock()
+        page1_result.items = page1_items
+        page1_result.total_items = 500
+
+        # Second page: empty (confirms no more records)
+        page2_result = Mock()
+        page2_result.items = []
+        page2_result.total_items = 500
+
+        mock_collection.get_list.side_effect = [page1_result, page2_result]
+
+        count = repository.clear_by_source_fields(
+            requester_cm_id=12345,
+            source_fields=["share_bunk_with"],
+            year=2025,
+        )
+
+        assert count == 500
+        assert mock_collection.delete.call_count == 500
+
+    def test_clear_by_source_fields_with_session_filter_paginates(
+        self, repository, mock_pb_client
+    ):
+        """Verify pagination works with session filter applied.
+
+        The session filter shouldn't break pagination behavior.
+        """
+        mock_client, mock_collection = mock_pb_client
+
+        # 600 records across 2 pages
+        page1_items = [Mock(id=f"req_{i}") for i in range(500)]
+        page1_result = Mock()
+        page1_result.items = page1_items
+        page1_result.total_items = 600
+
+        page2_items = [Mock(id=f"req_{i}") for i in range(500, 600)]
+        page2_result = Mock()
+        page2_result.items = page2_items
+        page2_result.total_items = 600
+
+        page3_result = Mock()
+        page3_result.items = []
+        page3_result.total_items = 600
+
+        mock_collection.get_list.side_effect = [page1_result, page2_result, page3_result]
+
+        count = repository.clear_by_source_fields(
+            requester_cm_id=12345,
+            source_fields=["share_bunk_with"],
+            year=2025,
+            session_cm_ids=[1000002, 1000003],  # Multiple sessions
+        )
+
+        # Should delete ALL 600 records even with session filter
+        assert count == 600, f"Should delete all 600 records, but only deleted {count}"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
