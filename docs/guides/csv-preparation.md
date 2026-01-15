@@ -264,7 +264,7 @@ The script will:
 ### 3. Specify File (Optional)
 To use a specific file:
 ```bash
-./venv/bin/python scripts/sync/sync_bunk_requests.py --csv drive/api-bunking-6-27-25.csv
+uv run python scripts/sync/sync_bunk_requests.py --csv drive/api-bunking-6-27-25.csv
 ```
 
 ### 4. Review Import Results

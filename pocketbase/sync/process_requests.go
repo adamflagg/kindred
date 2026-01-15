@@ -238,8 +238,8 @@ func (p *RequestProcessor) getPythonPath(projectRoot string) string {
 		return "python3"
 	}
 
-	// In development, use the project's venv
-	return filepath.Join(projectRoot, "venv", "bin", "python")
+	// In development, use the project's venv (uv creates .venv with dot prefix)
+	return filepath.Join(projectRoot, ".venv", "bin", "python")
 }
 
 // clearProcessedFlags clears the 'processed' field in original_bunk_requests

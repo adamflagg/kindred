@@ -9,7 +9,7 @@ This script tests each component of the bunk request processor
 to identify where hangs occur.
 
 Usage:
-    ./venv/bin/python scripts/test/bunk_request_processor/test_processor_flow.py"""
+    uv run python scripts/test/bunk_request_processor/test_processor_flow.py"""
 
 import asyncio
 import sys

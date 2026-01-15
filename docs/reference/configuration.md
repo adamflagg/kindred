@@ -500,13 +500,13 @@ python -m json.tool config/ai_config.json
 **Database configuration not loading**
 ```python
 # Check database configs
-./venv/bin/python scripts/check_configs.py
+uv run python scripts/check_configs.py
 ```
 
 **OAuth2 not working**
 ```bash
 # Verify OAuth configuration
-./venv/bin/python scripts/test_oauth.py
+uv run python scripts/test_oauth.py
 ```
 
 ## Related Documentation
