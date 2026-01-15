@@ -49,7 +49,7 @@ grep CAMPMINDER .env
 rm ~/.campminder_token_cache.json
 
 # Test authentication
-./venv/bin/python -c "
+uv run python -c "
 from campminder.auth import CampMinderAuth
 auth = CampMinderAuth()
 print(auth.get_token())
@@ -67,7 +67,7 @@ print(auth.get_token())
 grep CAMPMINDER_SEASON_ID .env
 
 # Run with verbose output
-LOG_LEVEL=DEBUG ./venv/bin/python scripts/sync/sync_01_sessions.py
+LOG_LEVEL=DEBUG uv run python scripts/sync/sync_01_sessions.py
 ```
 
 ### Database Issues
@@ -75,7 +75,7 @@ LOG_LEVEL=DEBUG ./venv/bin/python scripts/sync/sync_01_sessions.py
 #### Database is Locked
 ```bash
 # Force WAL checkpoint
-./venv/bin/python scripts/force_wal_checkpoint.py
+uv run python scripts/force_wal_checkpoint.py
 
 # Check for other processes
 fuser pocketbase/pb_data/data.db
@@ -101,13 +101,13 @@ tail -f pocketbase/pb_data/logs.db
 #### Data Integrity Errors
 ```bash
 # Validate year data
-./venv/bin/python scripts/check/validate_year_integrity.py
+uv run python scripts/check/validate_year_integrity.py
 
 # Check for orphaned records
-./venv/bin/python scripts/diagnostic_tool_v2.py
+uv run python scripts/diagnostic_tool_v2.py
 
 # Rebuild relationships if needed
-./venv/bin/python scripts/fix/fix_orphaned_assignments.py
+uv run python scripts/fix/fix_orphaned_assignments.py
 ```
 
 ### Frontend Issues
@@ -157,7 +157,7 @@ cat .env
 #### Solver Won't Start
 ```bash
 # Check OR-Tools installation
-./venv/bin/python -c "from ortools.sat.python import cp_model"
+uv run python -c "from ortools.sat.python import cp_model"
 
 # Reinstall dependencies (includes OR-Tools)
 ./venv/bin/pip install -r requirements.txt
@@ -173,7 +173,7 @@ tail -f logs/solver.log
 **Fix**: 
 ```bash
 rm ~/.campminder_token_cache.json
-./venv/bin/python scripts/sync/sync_01_persons.py
+uv run python scripts/sync/sync_01_persons.py
 ```
 
 ### "UNIQUE constraint failed"
@@ -223,7 +223,7 @@ time curl -X GET "https://api.campminder.com/seasons"
 ### Database Queries Slow
 ```bash
 # Check indexes
-./venv/bin/python scripts/check/check_db_indexes.py
+uv run python scripts/check/check_db_indexes.py
 
 # Vacuum database
 sqlite3 pocketbase/pb_data/data.db "VACUUM;"
@@ -255,7 +255,7 @@ cp -r state/ state_backup_$(date +%Y%m%d)
 rm state/sync_*.json
 
 # Re-run sync from beginning
-./venv/bin/python scripts/sync/sync_all_layers.py
+uv run python scripts/sync/sync_all_layers.py
 ```
 
 ### Recover Lost Assignments
@@ -265,7 +265,7 @@ sqlite3 pocketbase/pb_data/data.db \
   "SELECT * FROM _bunk_assignments_history ORDER BY created DESC LIMIT 100;"
 
 # Restore from scenario
-./venv/bin/python scripts/restore_from_scenario.py --scenario-id [ID]
+uv run python scripts/restore_from_scenario.py --scenario-id [ID]
 ```
 
 ## Debugging Techniques
@@ -274,7 +274,7 @@ sqlite3 pocketbase/pb_data/data.db \
 ```bash
 # Python
 export LOG_LEVEL=DEBUG
-./venv/bin/python scripts/sync/sync_01_persons.py
+uv run python scripts/sync/sync_01_persons.py
 
 # Frontend
 ```
@@ -348,7 +348,7 @@ ERROR - Failed to collect requests from row: 'BunkRequestsSync' object has no at
 **Solution**: Update sync script to latest version with all required methods:
 ```bash
 git pull
-./venv/bin/python scripts/sync/sync_bunk_requests.py
+uv run python scripts/sync/sync_bunk_requests.py
 ```
 
 #### Friend Groups Not Showing
@@ -360,10 +360,10 @@ git pull
 **Solution**:
 ```bash
 # Run bunk requests sync to populate friend groups
-./venv/bin/python scripts/sync/sync_bunk_requests.py
+uv run python scripts/sync/sync_bunk_requests.py
 
 # Verify friend groups were created
-./venv/bin/python -c "
+uv run python -c "
 import os
 from pocketbase import PocketBase
 pb = PocketBase('http://127.0.0.1:8090')
@@ -387,7 +387,7 @@ print(f'Total friend groups: {result.total_items}')
 
 **Fix existing data**:
 ```bash
-./venv/bin/python scripts/fix_request_type_enum.py
+uv run python scripts/fix_request_type_enum.py
 ```
 
 #### All Confidence Scores Show 0
@@ -403,7 +403,7 @@ print(f'Total friend groups: {result.total_items}')
 #### No Campers Show Red Ring
 **Check if requests exist**:
 ```bash
-./venv/bin/python -c "
+uv run python -c "
 import os
 from pocketbase import PocketBase
 pb = PocketBase('http://127.0.0.1:8090')
@@ -458,7 +458,7 @@ docker-compose restart
 **Symptom**: Migration shows as applied but enum values unchanged
 **Solution**: Use direct SQLite update:
 ```bash
-./venv/bin/python scripts/fix_request_type_enum.py
+uv run python scripts/fix_request_type_enum.py
 ```
 
 #### Migration Syntax Errors
@@ -480,8 +480,8 @@ migrate((app) => {
 ### Regular Maintenance
 ```bash
 # Weekly
-./venv/bin/python scripts/check/validate_year_integrity.py
-./venv/bin/python scripts/force_wal_checkpoint.py
+uv run python scripts/check/validate_year_integrity.py
+uv run python scripts/force_wal_checkpoint.py
 
 # Monthly
 sqlite3 pocketbase/pb_data/data.db "VACUUM;"
