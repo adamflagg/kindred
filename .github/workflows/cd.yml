@@ -527,11 +527,8 @@ jobs:
     - name: Test service endpoints
       if: steps.check.outputs.build == 'true'
       run: |
-        # Get actual container name (compose file has hardcoded container_name: kindred)
-        CONTAINER_NAME=$(docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml ps --format '{{.Name}}' kindred | head -1)
-        echo "Container name: $CONTAINER_NAME"
-        KINDRED_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${CONTAINER_NAME})
-        echo "Kindred IP: $KINDRED_IP"
+        # Use localhost since port 8080 is exposed directly in docker-compose.ci.yml
+        # (Avoids issues with multiple networks causing concatenated IPs)
 
         test_endpoint() {
           local url=$1
@@ -557,32 +554,32 @@ jobs:
         }
 
         echo "=== Testing via Caddy (main entry point) ==="
-        test_endpoint "http://${KINDRED_IP}:8080/health" "Health check" || exit 1
-        test_endpoint "http://${KINDRED_IP}:8080/api/config" "FastAPI config" || exit 1
-        test_endpoint "http://${KINDRED_IP}:8080/api/collections/_superusers/records" "PocketBase collections" || exit 1
+        test_endpoint "http://localhost:8080/health" "Health check" || exit 1
+        test_endpoint "http://localhost:8080/api/config" "FastAPI config" || exit 1
+        test_endpoint "http://localhost:8080/api/collections/_superusers/records" "PocketBase collections" || exit 1
 
         echo "✅ All integration tests passed!"
 
     - name: Verify non-root user and write permissions
       if: steps.check.outputs.build == 'true'
       run: |
-        # Get actual container name (compose file has hardcoded container_name: kindred)
-        CONTAINER_NAME=$(docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml ps --format '{{.Name}}' kindred | head -1)
-        echo "Container name: $CONTAINER_NAME"
+        # Use docker compose exec to run commands in the service container
+        # (Avoids issues with container name lookup)
+        COMPOSE_CMD="docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml exec -T kindred"
 
-        CONTAINER_USER=$(docker exec ${CONTAINER_NAME} id -u)
+        CONTAINER_USER=$($COMPOSE_CMD id -u)
         if [ "$CONTAINER_USER" = "0" ]; then
           echo "❌ Container is running as root!"
           exit 1
         fi
         echo "✓ Container running as UID: $CONTAINER_USER"
 
-        docker exec ${CONTAINER_NAME} sh -c "touch /pb_data/write_test && rm /pb_data/write_test"
+        $COMPOSE_CMD sh -c "touch /pb_data/write_test && rm /pb_data/write_test"
         echo "✓ Database directory is writable by non-root user"
 
         # Verify entrypoint is world-readable (required for shell scripts)
         # This catches local builds with restrictive umask (600 → chmod +x → 711)
-        ENTRYPOINT_PERMS=$(docker exec ${CONTAINER_NAME} stat -c "%a" /entrypoint.sh)
+        ENTRYPOINT_PERMS=$($COMPOSE_CMD stat -c "%a" /entrypoint.sh)
         if [ "$ENTRYPOINT_PERMS" != "755" ]; then
           echo "❌ Entrypoint has wrong permissions: $ENTRYPOINT_PERMS (expected 755)"
           echo "   This usually means the Dockerfile uses 'chmod +x' instead of 'chmod 755'"
@@ -603,7 +600,8 @@ jobs:
       if: always() && steps.check.outputs.build == 'true'
       run: |
         docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml down -v || true
-        rm -rf /tmp/kindred-ci-${{ github.run_id }}
+        # Use sudo to clean up files created by container (runs as UID 1000, different from runner)
+        sudo rm -rf /tmp/kindred-ci-${{ github.run_id }}
 
     # === Security Scan (run before push) ===
     - name: Run Trivy vulnerability scanner
