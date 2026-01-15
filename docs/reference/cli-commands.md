@@ -58,7 +58,7 @@ curl -s "http://127.0.0.1:8090/api/collections/bunk_assignments/records?filter=p
 
 ### Process Bunk Requests (Modular Pipeline)
 ```bash
-./venv/bin/python -m bunking.sync.bunk_request_processor.process_requests [OPTIONS]
+uv run python -m bunking.sync.bunk_request_processor.process_requests [OPTIONS]
 
 Options:
   --year YEAR      Year to process (default: from config)
@@ -71,19 +71,19 @@ Three-phase AI pipeline called by Go orchestrator. Processes AI-assisted fields 
 
 ### Sync Sibling Relationships
 ```bash
-./venv/bin/python scripts/sync/sync_sibling_relationships.py
+uv run python scripts/sync/sync_sibling_relationships.py
 ```
 Syncs sibling data from CampMinder to establish family relationships.
 
 ### Rebuild Database (Interactive)
 ```bash
-./venv/bin/python scripts/sync/rebuild_database.py
+uv run python scripts/sync/rebuild_database.py
 ```
 Interactive database rebuild with prompts for each step.
 
 ### Rebuild Database (Automated)
 ```bash
-./venv/bin/python scripts/sync/rebuild_database_auto.py [OPTIONS]
+uv run python scripts/sync/rebuild_database_auto.py [OPTIONS]
 
 Options:
   --year YEAR      Specific year to rebuild (default: current year)
@@ -94,7 +94,7 @@ Automated complete database rebuild from CampMinder data.
 
 ### Three-Phase Request Processor
 ```bash
-./venv/bin/python bunking/sync/bunk_request_processor/process_requests.py [OPTIONS]
+uv run python bunking/sync/bunk_request_processor/process_requests.py [OPTIONS]
 
 Options:
   --phase PHASE    Run specific phase (parse/validate/store)
@@ -132,7 +132,7 @@ Comprehensive test suite including:
 
 ### Run Specific Python Tests
 ```bash
-./venv/bin/python -m pytest scripts/test/TEST_FILE.py [OPTIONS]
+uv run python -m pytest scripts/test/TEST_FILE.py [OPTIONS]
 
 Options:
   -v              Verbose output
@@ -143,13 +143,13 @@ Options:
 
 ### Bunking-Specific Tests
 ```bash
-./venv/bin/python scripts/test/run_all_bunking_tests.py
+uv run python scripts/test/run_all_bunking_tests.py
 ```
 Runs all tests related to bunking logic and solver operations.
 
 ### Audit Tests
 ```bash
-./venv/bin/python scripts/test/audit_tests.py
+uv run python scripts/test/audit_tests.py
 ```
 Runs data integrity audits and validation checks.
 
@@ -179,13 +179,13 @@ Clears migration history (useful for consolidating migrations).
 
 ### Force WAL Checkpoint
 ```bash
-./venv/bin/python scripts/force_wal_checkpoint.py
+uv run python scripts/force_wal_checkpoint.py
 ```
 Forces SQLite Write-Ahead Log checkpoint (reduces database file size).
 
 ### Generate Schema Snapshot
 ```bash
-./venv/bin/python scripts/generate_snapshot_migration.py
+uv run python scripts/generate_snapshot_migration.py
 ```
 Creates a PocketBase migration snapshot of current schema.
 
@@ -224,7 +224,7 @@ Waits for container health checks to pass.
 
 ### Prepare for New Year
 ```bash
-./venv/bin/python scripts/prepare_for_new_year.py YEAR
+uv run python scripts/prepare_for_new_year.py YEAR
 
 Example:
   python scripts/prepare_for_new_year.py 2026
@@ -233,13 +233,13 @@ Updates configuration for new camp year.
 
 ### Configure OAuth2
 ```bash
-./venv/bin/python scripts/configure_pocketbase_oauth.py
+uv run python scripts/configure_pocketbase_oauth.py
 ```
 Configures PocketBase OAuth2 settings from environment variables.
 
 ### Update Solver Configuration
 ```bash
-./venv/bin/python scripts/update_solver_fairness_config.py [OPTIONS]
+uv run python scripts/update_solver_fairness_config.py [OPTIONS]
 
 Options:
   --priority-weight VALUE    Update priority weight
@@ -249,7 +249,7 @@ Options:
 
 ### Enable Public Read Access
 ```bash
-./venv/bin/python scripts/setup/enable_public_read_access.py
+uv run python scripts/setup/enable_public_read_access.py
 ```
 Enables public read access for specified collections.
 
@@ -257,7 +257,7 @@ Enables public read access for specified collections.
 
 ### Schema Diagnostics
 ```bash
-./venv/bin/python scripts/diagnostic_tool_v2.py [OPTIONS]
+uv run python scripts/diagnostic_tool_v2.py [OPTIONS]
 
 Options:
   --collections    List all collections
@@ -268,7 +268,7 @@ Options:
 
 ### Analyze Attendees
 ```bash
-./venv/bin/python scripts/sync/analyze_attendees.py [OPTIONS]
+uv run python scripts/sync/analyze_attendees.py [OPTIONS]
 
 Options:
   --session-id ID  Analyze specific session
@@ -278,13 +278,13 @@ Options:
 
 ### Test API Differences
 ```bash
-./venv/bin/python scripts/test_person_api_differences.py
+uv run python scripts/test_person_api_differences.py
 ```
 Compares CampMinder API responses for consistency.
 
 ### Example Analysis
 ```bash
-./venv/bin/python scripts/example_analysis.py
+uv run python scripts/example_analysis.py
 ```
 Runs example data analysis for demonstration purposes.
 
@@ -344,13 +344,13 @@ git push
 ### Processing New Bunk Requests
 ```bash
 # Process all sessions with modular pipeline (called by Go orchestrator)
-./venv/bin/python -m bunking.sync.bunk_request_processor.process_requests --session 0
+uv run python -m bunking.sync.bunk_request_processor.process_requests --session 0
 
 # Or specific session
-./venv/bin/python -m bunking.sync.bunk_request_processor.process_requests --session 1
+uv run python -m bunking.sync.bunk_request_processor.process_requests --session 1
 
 # Test with limited requests
-./venv/bin/python -m bunking.sync.bunk_request_processor.process_requests --test-limit 10 --debug
+uv run python -m bunking.sync.bunk_request_processor.process_requests --test-limit 10 --debug
 ```
 
 ### Production Deployment
@@ -368,13 +368,13 @@ docker compose logs -f
 ### Database Maintenance
 ```bash
 # Regular maintenance
-./venv/bin/python scripts/force_wal_checkpoint.py
+uv run python scripts/force_wal_checkpoint.py
 
 # After major changes
 ./scripts/reset_and_migrate.sh
 
 # Complete rebuild
-./venv/bin/python scripts/sync/rebuild_database_auto.py
+uv run python scripts/sync/rebuild_database_auto.py
 ```
 
 ## Environment Variables
