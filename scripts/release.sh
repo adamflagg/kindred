@@ -175,6 +175,12 @@ DOCS_RUNS=$(get_check_status "$LOCAL" "Documentation Linting")
 DOCS_COUNT=$(echo "$DOCS_RUNS" | jq -s 'length' 2>/dev/null || echo "0")
 DOCS_SUCCESS=$(echo "$DOCS_RUNS" | jq -s '[.[] | select(.status == "completed" and .conclusion == "success")] | length' 2>/dev/null || echo "0")
 
+# Check CD Build Summary (if present - runs on PRs that modify CD files)
+CD_RUNS=$(get_check_status "$LOCAL" "Build Summary")
+CD_COUNT=$(echo "$CD_RUNS" | jq -s 'length' 2>/dev/null || echo "0")
+CD_SUCCESS=$(echo "$CD_RUNS" | jq -s '[.[] | select(.status == "completed" and .conclusion == "success")] | length' 2>/dev/null || echo "0")
+CD_FAILED=$(echo "$CD_RUNS" | jq -s '[.[] | select(.status == "completed" and .conclusion != "success")] | length' 2>/dev/null || echo "0")
+
 CHECKS_PASSED=true
 
 if [ "$CI_SUCCESS" -eq 0 ]; then
@@ -190,6 +196,20 @@ if [ "$DOCS_COUNT" -gt 0 ]; then
         CHECKS_PASSED=false
     else
         echo -e "${GREEN}✓ Documentation Linting passed${NC}"
+    fi
+fi
+
+if [ "$CD_COUNT" -gt 0 ]; then
+    if [ "$CD_FAILED" -gt 0 ]; then
+        echo -e "${RED}✗ CD Build Summary failed${NC}"
+        echo "  CD ran on this commit (PR touched CD files) but failed."
+        echo "  Fix CD issues before releasing."
+        CHECKS_PASSED=false
+    elif [ "$CD_SUCCESS" -gt 0 ]; then
+        echo -e "${GREEN}✓ CD Build Summary passed (PR validation)${NC}"
+    else
+        echo -e "${YELLOW}⚠ CD Build Summary still running${NC}"
+        CHECKS_PASSED=false
     fi
 fi
 
@@ -429,7 +449,8 @@ echo "  Total: $COMMIT_COUNT commits"
 # ===== LOCAL DOCKER BUILD (default) =====
 if [[ "$GITHUB_BUILD" != "true" ]]; then
     echo -e "\n${YELLOW}▶ Building and pushing Docker image locally...${NC}"
-    ./scripts/docker/build_and_push.sh "$NEW_VERSION"
+    # Use --no-cache for release builds to ensure clean, reproducible images
+    ./scripts/docker/build_and_push.sh --no-cache "$NEW_VERSION"
     echo -e "${GREEN}✓ Local build and push successful${NC}"
 fi
 

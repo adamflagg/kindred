@@ -3,17 +3,17 @@ name: CI - Tests & Linting
 on:
   # Allow manual triggering
   workflow_dispatch:
-  # Run on every push (except docs-only changes and tags)
+  # Run on pushes to main only (feature branches use pull_request trigger)
   push:
     branches:
-      - '**'
+      - main
     tags-ignore:
       - '**'  # Skip CI on tag pushes (already tested on branch)
     paths-ignore:
       - 'docs/**'
       - '*.md'
       - 'LICENSE'
-  # Run on pull requests (except docs-only changes)
+  # Run on pull requests targeting main (covers all feature branch pushes)
   pull_request:
     branches: [main]
     paths-ignore:

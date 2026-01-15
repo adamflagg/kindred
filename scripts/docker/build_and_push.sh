@@ -11,20 +11,45 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# =============================================================================
+# Pre-flight checks
+# =============================================================================
+
+# Verify Docker BuildKit is available (required for consistent builds)
+if ! docker buildx version &>/dev/null; then
+    echo -e "${RED}Error: Docker BuildKit (buildx) not available${NC}"
+    echo "Install with: docker buildx install"
+    exit 1
+fi
+
+# Warn about uncommitted changes in build context
+if [[ -n $(git status --porcelain 2>/dev/null) ]]; then
+    echo -e "${YELLOW}⚠️  Warning: Uncommitted changes in working directory${NC}"
+    echo "   Local build may differ from CI. Consider committing first."
+    git status --short | head -5
+    echo ""
+fi
+
+# =============================================================================
 # Configuration
+# =============================================================================
+
 REGISTRY="ghcr.io"
 USERNAME="adamflagg"
 BUILD_ONLY=false
+NO_CACHE=""
 IMAGE_TAG=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
         --build-only) BUILD_ONLY=true; shift ;;
+        --no-cache) NO_CACHE="--no-cache"; shift ;;
         -h|--help)
             echo "Usage: $0 [options] [tag]"
             echo "Options:"
             echo "  --build-only  Build images without pushing"
+            echo "  --no-cache    Disable Docker layer cache (recommended for releases)"
             echo "  tag           Image tag - supports:"
             echo "                  - semver: v0.7.0 (creates 0.7.0, 0.7, latest)"
             echo "                  - date: YYYY.MM.DD (default if no tag provided)"
@@ -84,7 +109,7 @@ fi
 # Build combined image (Caddy + PocketBase + FastAPI + frontend)
 echo ""
 echo -e "${BLUE}Building kindred image (Caddy + PocketBase + FastAPI + frontend)...${NC}"
-docker build -f Dockerfile -t "$REGISTRY/$USERNAME/kindred:$DOCKER_TAG" .
+docker build ${NO_CACHE} -f Dockerfile -t "$REGISTRY/$USERNAME/kindred:$DOCKER_TAG" .
 docker tag "$REGISTRY/$USERNAME/kindred:$DOCKER_TAG" "$REGISTRY/$USERNAME/kindred:latest"
 
 # Add minor version tag if semver

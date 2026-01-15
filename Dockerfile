@@ -95,7 +95,7 @@ RUN mkdir -p /pb_data/bunk_requests /app/logs /app/csv_history
 COPY api/ ./api/
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY docker/combined-entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN chmod 755 /entrypoint.sh
 
 # 4. BUNKING
 COPY bunking/ ./bunking/
@@ -112,8 +112,18 @@ COPY --from=frontend-builder /app/dist /pb_public
 # See: .github/workflows/cd.yml "Prepare local assets" step
 COPY local/ /pb_public/local/
 
-# Set ownership only for writable directories (skip .venv - it's read-only)
-RUN chown -R kindred:kindred /pb_data /app/logs /app/csv_history /pb_public /pb_hooks /pb_migrations
+# Verify local assets aren't git-crypt encrypted (would start with "GITCRYPT" header)
+# This catches builds where git-crypt wasn't unlocked before building
+# hadolint ignore=DL4006
+RUN for f in /pb_public/local/assets/*; do \
+      [ -f "$f" ] && head -c 8 "$f" 2>/dev/null | grep -q "^.GITCRYPT" && \
+        echo "ERROR: $f is git-crypt encrypted. Run 'git-crypt unlock' first." && exit 1; \
+    done; true
+
+# Create Caddy config/data directories and set ownership for writable directories
+# (skip .venv - it's read-only)
+RUN mkdir -p /app/.config/caddy /app/.local/share/caddy && \
+    chown -R kindred:kindred /pb_data /app/logs /app/csv_history /pb_public /pb_hooks /pb_migrations /app/.config /app/.local
 USER kindred
 
 EXPOSE 8080

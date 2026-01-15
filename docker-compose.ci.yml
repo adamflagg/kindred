@@ -9,6 +9,13 @@
 
 services:
   kindred:
+    # CI-specific environment variables (merged with base docker-compose.yml)
+    # These MUST be here because --env-file only does ${VAR} substitution,
+    # it doesn't automatically pass vars to the container
+    environment:
+      - AUTH_MODE=bypass
+      - CI=true
+      - GITHUB_ACTIONS=true
     # Clear Traefik labels - not needed in CI
     labels: []
     # Expose port directly for testing
