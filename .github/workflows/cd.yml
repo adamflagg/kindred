@@ -1,7 +1,7 @@
 name: CD - Build & Deploy Docker Images
 
 on:
-  # Manual trigger
+  # Manual trigger - use dry_run to test without pushing
   workflow_dispatch:
     inputs:
       tag:
@@ -13,6 +13,20 @@ on:
         required: false
         type: boolean
         default: false
+      dry_run:
+        description: 'Build and test only - do NOT push to registry'
+        required: false
+        type: boolean
+        default: false
+
+  # Auto-validate CD changes on PRs (dry-run mode, no push)
+  # This catches CD breakage BEFORE it merges to main
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - 'docker-compose*.yml'
+      - 'docker/**'
+      - '.github/workflows/cd.yml'
 
   # On version tags only (semver pattern)
   # Use: git tag -a v0.1.0 -m "Release message" && git push --tags
@@ -128,12 +142,20 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
-        echo "Checking check runs for ${{ github.sha }}..."
+        # For PRs, github.sha is the merge commit (virtual), not the PR head commit
+        # CI runs on the PR head commit, so we need to check that instead
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          CHECK_SHA="${{ github.event.pull_request.head.sha }}"
+          echo "PR event: checking PR head commit $CHECK_SHA"
+        else
+          CHECK_SHA="${{ github.sha }}"
+          echo "Checking check runs for $CHECK_SHA..."
+        fi
 
         # Helper to get check status by name
         get_check_status() {
           local check_name="$1"
-          gh api repos/${{ github.repository }}/commits/${{ github.sha }}/check-runs \
+          gh api repos/${{ github.repository }}/commits/${CHECK_SHA}/check-runs \
             --jq ".check_runs[] | select(.name == \"$check_name\") | {status: .status, conclusion: .conclusion}"
         }
 
@@ -480,7 +502,9 @@ jobs:
 
         for i in $(seq 1 $MAX_ATTEMPTS); do
           echo "Attempt $i/$MAX_ATTEMPTS..."
-          HEALTHY=$(docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml ps kindred --format json | jq -r '.[0].Health' | grep -c "healthy" || true)
+          # Note: docker compose ps --format json outputs NDJSON (one object per line), not an array
+          # Use jq -s (slurp) to collect into array, then check Health field
+          HEALTHY=$(docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml ps kindred --format json | jq -s '.[0].Health // .[0].health // "unknown"' | grep -c "healthy" || true)
           echo "  Kindred: $([ "$HEALTHY" = "1" ] && echo "✓ healthy" || echo "✗ not ready")"
 
           if [ "$HEALTHY" = "1" ]; then
@@ -503,7 +527,9 @@ jobs:
     - name: Test service endpoints
       if: steps.check.outputs.build == 'true'
       run: |
-        CONTAINER_NAME="kindred-ci-${{ github.run_id }}-kindred-1"
+        # Get actual container name (compose file has hardcoded container_name: kindred)
+        CONTAINER_NAME=$(docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml ps --format '{{.Name}}' kindred | head -1)
+        echo "Container name: $CONTAINER_NAME"
         KINDRED_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${CONTAINER_NAME})
         echo "Kindred IP: $KINDRED_IP"
 
@@ -540,7 +566,9 @@ jobs:
     - name: Verify non-root user and write permissions
       if: steps.check.outputs.build == 'true'
       run: |
-        CONTAINER_NAME="kindred-ci-${{ github.run_id }}-kindred-1"
+        # Get actual container name (compose file has hardcoded container_name: kindred)
+        CONTAINER_NAME=$(docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml ps --format '{{.Name}}' kindred | head -1)
+        echo "Container name: $CONTAINER_NAME"
 
         CONTAINER_USER=$(docker exec ${CONTAINER_NAME} id -u)
         if [ "$CONTAINER_USER" = "0" ]; then
@@ -551,6 +579,16 @@ jobs:
 
         docker exec ${CONTAINER_NAME} sh -c "touch /pb_data/write_test && rm /pb_data/write_test"
         echo "✓ Database directory is writable by non-root user"
+
+        # Verify entrypoint is world-readable (required for shell scripts)
+        # This catches local builds with restrictive umask (600 → chmod +x → 711)
+        ENTRYPOINT_PERMS=$(docker exec ${CONTAINER_NAME} stat -c "%a" /entrypoint.sh)
+        if [ "$ENTRYPOINT_PERMS" != "755" ]; then
+          echo "❌ Entrypoint has wrong permissions: $ENTRYPOINT_PERMS (expected 755)"
+          echo "   This usually means the Dockerfile uses 'chmod +x' instead of 'chmod 755'"
+          exit 1
+        fi
+        echo "✓ Entrypoint has correct permissions (755)"
 
     - name: Show logs on test failure
       if: failure() && steps.check.outputs.build == 'true'
@@ -585,9 +623,12 @@ jobs:
       with:
         sarif_file: 'trivy-results-${{ matrix.image }}.sarif'
 
-    # === Push to Registry (only if tests pass) ===
+    # === Push to Registry (only if tests pass and not dry-run/PR) ===
     - name: Push Docker image
-      if: steps.check.outputs.build == 'true'
+      if: |
+        steps.check.outputs.build == 'true' &&
+        github.event_name != 'pull_request' &&
+        github.event.inputs.dry_run != 'true'
       uses: docker/build-push-action@v6
       with:
         context: ${{ matrix.context }}
@@ -599,6 +640,18 @@ jobs:
         build-args: |
           VERSION=${{ steps.version.outputs.version }}
           BUILD_DATE=${{ steps.version.outputs.build_date }}
+
+    - name: Skip push (dry-run or PR)
+      if: |
+        steps.check.outputs.build == 'true' &&
+        (github.event_name == 'pull_request' || github.event.inputs.dry_run == 'true')
+      run: |
+        if [ "${{ github.event_name }}" == "pull_request" ]; then
+          echo "🔍 PR validation mode - image built and tested but NOT pushed"
+        else
+          echo "🔍 Dry-run mode - image built and tested but NOT pushed"
+        fi
+        echo "   To push, trigger manually without dry_run or create a release tag"
 
   # Summary job
   summary:
@@ -616,6 +669,24 @@ jobs:
 
         if [ "${{ needs.build-test-push.result }}" == "skipped" ]; then
           echo "ℹ️  Docker build skipped (no relevant file changes)"
+        elif [ "${{ github.event_name }}" == "pull_request" ]; then
+          echo "✅ CD validation passed (PR mode - no push)"
+          echo ""
+          echo "This PR's CD changes have been validated:"
+          echo "- Docker image built successfully"
+          echo "- Integration tests passed"
+          echo "- Security scan completed"
+          echo ""
+          echo "Image will be pushed when this PR merges and a release is created."
+        elif [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
+          echo "✅ CD dry-run passed (no push)"
+          echo ""
+          echo "Validated:"
+          echo "- Docker image built successfully"
+          echo "- Integration tests passed"
+          echo "- Security scan completed"
+          echo ""
+          echo "To push, run again without dry_run or create a release tag."
         else
           echo "✅ All CD checks passed successfully!"
           echo ""

@@ -95,7 +95,7 @@ RUN mkdir -p /pb_data/bunk_requests /app/logs /app/csv_history
 COPY api/ ./api/
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY docker/combined-entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN chmod 755 /entrypoint.sh
 
 # 4. BUNKING
 COPY bunking/ ./bunking/
@@ -111,6 +111,14 @@ COPY --from=frontend-builder /app/dist /pb_public
 # Copy local assets (logos) - CI ensures local/ exists (empty if not unlocked)
 # See: .github/workflows/cd.yml "Prepare local assets" step
 COPY local/ /pb_public/local/
+
+# Verify local assets aren't git-crypt encrypted (would start with "GITCRYPT" header)
+# This catches builds where git-crypt wasn't unlocked before building
+# hadolint ignore=DL4006
+RUN for f in /pb_public/local/assets/*; do \
+      [ -f "$f" ] && head -c 8 "$f" 2>/dev/null | grep -q "^.GITCRYPT" && \
+        echo "ERROR: $f is git-crypt encrypted. Run 'git-crypt unlock' first." && exit 1; \
+    done; true
 
 # Set ownership only for writable directories (skip .venv - it's read-only)
 RUN chown -R kindred:kindred /pb_data /app/logs /app/csv_history /pb_public /pb_hooks /pb_migrations
