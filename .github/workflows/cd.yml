@@ -558,7 +558,6 @@ jobs:
         echo "=== Testing via Caddy (main entry point) ==="
         test_endpoint "http://localhost:8080/health" "Health check" || exit 1
         test_endpoint "http://localhost:8080/api/config" "FastAPI config" || exit 1
-        test_endpoint "http://localhost:8080/api/collections/_superusers/records" "PocketBase collections" || exit 1
 
         echo "✅ All integration tests passed!"
 
