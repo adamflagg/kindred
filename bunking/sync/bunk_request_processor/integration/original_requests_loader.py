@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 from ..data.repositories.session_repository import SessionRepository
 from ..shared.constants import (
     AI_PROCESSING_FIELDS,
+    ALL_PROCESSING_FIELDS,
     FIELD_TO_SOURCE_FIELD,
 )
 
@@ -548,3 +549,88 @@ class OriginalRequestsLoader:
             return 0
 
         return self.mark_as_processed(list(request_ids.values()))
+
+    def clear_processed_flags(self, fields: list[str] | None = None, limit: int | None = None) -> int:
+        """Clear processed flags to force reprocessing (mirrors Go's clearProcessedFlags).
+
+        This method enables Python CLI to force reprocess records without needing
+        the Go API. It uses the same filter/sort/limit logic as Go's clearProcessedFlags.
+
+        Filter order (same as Go):
+        1. year = {self.year} && processed != ''  (only already-processed records)
+        2. (field = 'bunk_with' || field = '...')  (if fields specified)
+        3. (requester.cm_id = X || ...)  (if session_cm_ids specified - persons in target sessions)
+        Sort: -updated (most recently updated first)
+        Limit: Applied after session filtering
+
+        Args:
+            fields: Source fields to clear (default: ALL_PROCESSING_FIELDS)
+            limit: Max records to clear (for testing)
+
+        Returns:
+            Number of records cleared
+        """
+        if fields is None:
+            fields = ALL_PROCESSING_FIELDS
+
+        # Build base filter: processed records only
+        field_conditions = [f"field = '{f}'" for f in fields]
+        field_filter = "(" + " || ".join(field_conditions) + ")"
+        filter_str = f"year = {self.year} && processed != '' && {field_filter}"
+
+        # Add session filter if specified (via person enrollment)
+        apply_session_filter_in_python = False
+        if self.session_cm_ids:
+            valid_cm_ids = self._get_valid_requester_cm_ids()
+            if len(valid_cm_ids) == 0:
+                logger.warning(f"No persons in target sessions {self.session_cm_ids}")
+                return 0
+            if len(valid_cm_ids) <= 50:
+                id_conditions = [f"requester.cm_id = {cm_id}" for cm_id in valid_cm_ids]
+                filter_str = f"{filter_str} && ({' || '.join(id_conditions)})"
+            else:
+                apply_session_filter_in_python = True
+
+        logger.info(f"Clearing processed flags with filter: {filter_str}")
+
+        # Fetch records (paginate if needed)
+        if limit and not apply_session_filter_in_python:
+            records = self.pb.collection("original_bunk_requests").get_list(
+                page=1,
+                per_page=limit,
+                query_params={"filter": filter_str, "sort": "-updated"},
+            )
+            items = records.items
+        else:
+            items = self.pb.collection("original_bunk_requests").get_full_list(
+                query_params={"filter": filter_str, "sort": "-updated"}
+            )
+
+        # Apply session filter in Python if many IDs
+        if apply_session_filter_in_python:
+            valid_cm_ids = self._get_valid_requester_cm_ids()
+            # Need to expand requester to get cm_id - refetch with expand
+            items_with_expand = self.pb.collection("original_bunk_requests").get_full_list(
+                query_params={"filter": filter_str, "sort": "-updated", "expand": "requester"}
+            )
+            items = [
+                r
+                for r in items_with_expand
+                if hasattr(r, "expand") and r.expand.get("requester") and r.expand["requester"].cm_id in valid_cm_ids
+            ]
+
+        # Apply limit after session filtering
+        if limit and len(items) > limit:
+            items = items[:limit]
+
+        # Clear processed field on each record
+        cleared = 0
+        for record in items:
+            try:
+                self.pb.collection("original_bunk_requests").update(record.id, {"processed": ""})
+                cleared += 1
+            except Exception as e:
+                logger.error(f"Failed to clear processed flag for {record.id}: {e}")
+
+        logger.info(f"Cleared {cleared} processed flags (matched {len(items)} records)")
+        return cleared
