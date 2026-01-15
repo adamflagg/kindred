@@ -9,6 +9,7 @@ interface ProcessRequestsResponse {
   session: string;
   limit: number;
   force: boolean;
+  debug: boolean;
 }
 
 /**
@@ -39,6 +40,10 @@ export function useProcessRequests() {
 
       if (options.forceReprocess) {
         params.set('force', 'true');
+      }
+
+      if (options.debug) {
+        params.set('debug', 'true');
       }
 
       const queryString = params.toString();
@@ -84,6 +89,11 @@ export function useProcessRequests() {
       // Add force indicator
       if (options.forceReprocess) {
         parts.push('force reprocess');
+      }
+
+      // Add debug indicator
+      if (options.debug) {
+        parts.push('debug mode');
       }
 
       const description = parts.join(', ');

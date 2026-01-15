@@ -161,6 +161,7 @@ describe('ProcessRequestOptions', () => {
       limit: undefined,
       forceReprocess: false,
       sourceFields: [],
+      debug: false,
     });
   });
 
@@ -182,6 +183,7 @@ describe('ProcessRequestOptions', () => {
       limit: undefined,
       forceReprocess: false,
       sourceFields: [],
+      debug: false,
     });
   });
 
@@ -203,6 +205,7 @@ describe('ProcessRequestOptions', () => {
       limit: undefined,
       forceReprocess: false,
       sourceFields: [],
+      debug: false,
     });
   });
 
@@ -240,6 +243,7 @@ describe('ProcessRequestOptions', () => {
       limit: 25,
       forceReprocess: false,
       sourceFields: [],
+      debug: false,
     });
   });
 
@@ -256,6 +260,7 @@ describe('ProcessRequestOptions', () => {
       limit: undefined,
       forceReprocess: true,
       sourceFields: [],
+      debug: false,
     });
   });
 
@@ -291,6 +296,7 @@ describe('ProcessRequestOptions', () => {
       limit: 15,
       forceReprocess: true,
       sourceFields: expect.arrayContaining(['internal_notes', 'bunking_notes']),
+      debug: false,
     });
   });
 
@@ -322,6 +328,7 @@ describe('ProcessRequestOptions', () => {
       limit: undefined,  // Negative values treated as no limit
       forceReprocess: false,
       sourceFields: [],
+      debug: false,
     });
   });
 
