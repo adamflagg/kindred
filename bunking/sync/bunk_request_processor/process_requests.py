@@ -67,6 +67,7 @@ async def process_bunk_requests(
     clear_existing: bool = False,
     dry_run: bool = False,
     source_fields: list[str] | None = None,
+    force: bool = False,
 ) -> dict[str, Any]:
     """Process bunk requests from a data source.
 
@@ -78,6 +79,7 @@ async def process_bunk_requests(
         clear_existing: Whether to clear existing requests
         dry_run: If True, don't save to database
         source_fields: Optional list of source fields to filter by
+        force: If True, clear processed flags before fetching (enables reprocessing)
 
     Returns:
         Processing results
@@ -101,7 +103,7 @@ async def process_bunk_requests(
         # Load data
         if data_source == "database":
             # Load from bunk_requests table
-            raw_requests = await load_from_database(pb, year, session_cm_ids, test_limit, source_fields)
+            raw_requests = await load_from_database(pb, year, session_cm_ids, test_limit, source_fields, force)
         else:
             # Load from file (CSV, etc.)
             raw_requests = await load_from_file(data_source, test_limit)
@@ -183,11 +185,13 @@ async def load_from_database(
     session_cm_ids: list[int],
     limit: int | None,
     source_fields: list[str] | None = None,
+    force: bool = False,
 ) -> list[dict[str, Any]]:
     """Load raw request data from original_bunk_requests table.
 
     Fetches records that need processing:
     - processed IS NULL (never processed)
+    - If force=True, first clears processed flags to enable reprocessing
 
     Only loads and marks as processed records for people in the target sessions.
 
@@ -202,6 +206,11 @@ async def load_from_database(
     # Determine which fields to process
     # If source_fields provided, use those; otherwise use all
     fields_to_process = source_fields if source_fields else ALL_PROCESSING_FIELDS
+
+    # Force mode: clear processed flags to enable reprocessing (same logic as Go)
+    if force:
+        cleared = loader.clear_processed_flags(fields=fields_to_process, limit=limit)
+        logger.info(f"Force mode: cleared {cleared} processed flags")
 
     # Count already processed records for visibility in stats
     already_processed_count = loader.count_already_processed(fields=fields_to_process)
@@ -275,6 +284,14 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="Process without saving")
     parser.add_argument("--stats-output", type=str, help="Write JSON stats to this file (for Go integration)")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "Force reprocessing by clearing 'processed' flags in original_bunk_requests "
+            "(same logic as Go API). Use with --clear-existing for full reprocess."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -357,6 +374,7 @@ def main() -> None:
                 clear_existing=args.clear_existing,
                 dry_run=args.dry_run,
                 source_fields=source_fields,
+                force=args.force,
             )
 
         result = asyncio.run(process_with_related_sessions())
