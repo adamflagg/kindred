@@ -109,6 +109,7 @@ class RequestRepository:
         This implements granular per-field clearing like V1:
         - Only clears requests matching the specified source_fields
         - Optionally filters by session for multi-session support
+        - Paginates through all matching records (handles >1000 records)
 
         Args:
             requester_cm_id: Person to clear requests for
@@ -121,6 +122,8 @@ class RequestRepository:
         """
         if not source_fields:
             return 0
+
+        page_size = 500  # Use smaller page size for safer pagination
 
         try:
             # Build source field filter
@@ -135,19 +138,32 @@ class RequestRepository:
                 session_filter = "(" + " || ".join(session_conditions) + ")"
                 filter_str += f" && {session_filter}"
 
-            # Get all matching records
-            result = self.pb.collection("bunk_requests").get_list(
-                page=1, per_page=1000, query_params={"filter": filter_str}
-            )
-
-            # Delete each one
+            # Paginate through all matching records
             deleted_count = 0
-            for item in result.items:
-                try:
-                    self.pb.collection("bunk_requests").delete(item.id)
-                    deleted_count += 1
-                except Exception as e:
-                    print(f"Error deleting request {item.id}: {e}")
+            page = 1
+
+            while True:
+                result = self.pb.collection("bunk_requests").get_list(
+                    page=page, per_page=page_size, query_params={"filter": filter_str}
+                )
+
+                if not result.items:
+                    break
+
+                # Delete each record in this page
+                for item in result.items:
+                    try:
+                        self.pb.collection("bunk_requests").delete(item.id)
+                        deleted_count += 1
+                    except Exception as e:
+                        print(f"Error deleting request {item.id}: {e}")
+
+                # If we got fewer than page_size, we're done
+                if len(result.items) < page_size:
+                    break
+
+                # Move to next page
+                page += 1
 
             return deleted_count
 
