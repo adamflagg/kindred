@@ -6,11 +6,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from api.settings import _is_github_actions
 from bunking.auth_middleware import (
     AuthMiddleware,
     AuthUser,
     _is_docker_environment,
-    _is_github_actions,
     create_auth_middleware,
     get_current_user,
     require_admin,

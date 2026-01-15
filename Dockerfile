@@ -120,8 +120,10 @@ RUN for f in /pb_public/local/assets/*; do \
         echo "ERROR: $f is git-crypt encrypted. Run 'git-crypt unlock' first." && exit 1; \
     done; true
 
-# Set ownership only for writable directories (skip .venv - it's read-only)
-RUN chown -R kindred:kindred /pb_data /app/logs /app/csv_history /pb_public /pb_hooks /pb_migrations
+# Create Caddy config/data directories and set ownership for writable directories
+# (skip .venv - it's read-only)
+RUN mkdir -p /app/.config/caddy /app/.local/share/caddy && \
+    chown -R kindred:kindred /pb_data /app/logs /app/csv_history /pb_public /pb_hooks /pb_migrations /app/.config /app/.local
 USER kindred
 
 EXPOSE 8080

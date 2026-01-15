@@ -19,6 +19,7 @@ from fastapi import Depends, HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import JSONResponse, Response
 
+from api.settings import _is_github_actions
 from pocketbase import PocketBase
 
 from .jwt_auth import JWTValidator, PocketBaseTokenValidator, extract_bearer_token
@@ -41,15 +42,6 @@ def _is_docker_environment() -> bool:
     except (FileNotFoundError, PermissionError):
         pass
     return False
-
-
-def _is_github_actions() -> bool:
-    """Detect if running in GitHub Actions CI environment.
-
-    Returns True only when BOTH CI=true AND GITHUB_ACTIONS=true are set.
-    This dual-signal requirement prevents accidental bypass in production.
-    """
-    return os.getenv("CI") == "true" and os.getenv("GITHUB_ACTIONS") == "true"
 
 
 class AuthUser:
