@@ -62,6 +62,15 @@ echo -e "${CYAN}  eslint...${NC}"
     exit 1
 }
 
+# Dockerfile chmod check (prevent chmod +x on scripts, must use chmod 755)
+echo -e "${CYAN}  dockerfile chmod...${NC}"
+if grep -qE 'chmod \+x.*/.*\.(sh|bash)' Dockerfile 2>/dev/null; then
+    echo -e "${RED}❌ Dockerfile uses 'chmod +x' on shell scripts${NC}"
+    echo "   Use 'chmod 755' for explicit world-readable permissions"
+    echo "   See: docs/guides/local-vs-ci-builds.md for details"
+    exit 1
+fi
+
 echo -e "${GREEN}✓ All linting passed${NC}"
 
 # =============================================================================
