@@ -416,11 +416,9 @@ func (p *RequestProcessor) resolveSessionCMIDs(year string) ([]int, error) {
 	var cmIDs []int
 
 	// Check if it's a main session or embedded
-	isEmbedded := strings.Contains(sessionNum, "a") || strings.Contains(sessionNum, "b")
-
-	if isEmbedded {
+	if isEmbeddedSession(sessionNum) {
 		// Embedded session - just get that specific session
-		filter := fmt.Sprintf("year = %s && name ~ '%s'", year, sessionNum)
+		filter := fmt.Sprintf("year = %s && session_type = 'embedded' && name ~ '%s'", year, sessionNum)
 		sessions, err := p.App.FindRecordsByFilter("camp_sessions", filter, "", 1, 0)
 		if err != nil {
 			return nil, fmt.Errorf("querying sessions: %w", err)
@@ -433,7 +431,8 @@ func (p *RequestProcessor) resolveSessionCMIDs(year string) ([]int, error) {
 	} else {
 		// Main session - get main + AG children
 		// First find the main session
-		filter := fmt.Sprintf("year = %s && session_type = 'main' && name ~ 'Session %s'", year, sessionNum)
+		namePattern := getSessionNamePattern(sessionNum)
+		filter := fmt.Sprintf("year = %s && session_type = 'main' && name ~ '%s'", year, namePattern)
 		sessions, err := p.App.FindRecordsByFilter("camp_sessions", filter, "", 1, 0)
 		if err != nil {
 			return nil, fmt.Errorf("querying main session: %w", err)
@@ -461,4 +460,18 @@ func (p *RequestProcessor) resolveSessionCMIDs(year string) ([]int, error) {
 	}
 
 	return cmIDs, nil
+}
+
+// getSessionNamePattern returns the name pattern to match for a given session number.
+// Session 1 is "Taste of Camp", sessions 2-4 are "Session N".
+func getSessionNamePattern(sessionNum string) string {
+	if sessionNum == "1" {
+		return "Taste of Camp"
+	}
+	return fmt.Sprintf("Session %s", sessionNum)
+}
+
+// isEmbeddedSession returns true if the session number indicates an embedded session (2a, 2b, 3a, etc.)
+func isEmbeddedSession(sessionNum string) bool {
+	return strings.Contains(sessionNum, "a") || strings.Contains(sessionNum, "b")
 }
