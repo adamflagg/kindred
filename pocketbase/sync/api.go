@@ -90,6 +90,7 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	// - ?limit=N (optional limit for testing)
 	// - ?force=true (clear processed flags and reprocess)
 	// - ?source_field=X,Y (comma-separated list of fields to process)
+	// - ?debug=true (enable verbose debug logging in Python processor)
 	e.Router.POST("/api/custom/sync/process-requests", func(e *core.RequestEvent) error {
 		// Check authentication
 		if e.Auth == nil {
@@ -143,12 +144,17 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 		forceParam := e.Request.URL.Query().Get("force")
 		force := forceParam == boolTrueStr || forceParam == "1"
 
+		// Parse optional debug parameter
+		debugParam := e.Request.URL.Query().Get("debug")
+		debug := debugParam == boolTrueStr || debugParam == "1"
+
 		// Create processor with all options
 		processor := NewRequestProcessor(app)
 		processor.Session = session
 		processor.Limit = limit
 		processor.Force = force
 		processor.SourceFields = sourceFields
+		processor.Debug = debug
 
 		// Run in background
 		go func() {
@@ -160,6 +166,7 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 				"source_fields", sourceFields,
 				"limit", limit,
 				"force", force,
+				"debug", debug,
 			)
 			if err := processor.Sync(ctx); err != nil {
 				slog.Error("Process requests sync failed", "error", err)
@@ -169,13 +176,14 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 			}
 		}()
 
-		return e.JSON(http.StatusOK, map[string]interface{}{
+		return e.JSON(http.StatusOK, map[string]any{
 			"status":        "started",
 			"message":       "Process requests sync started",
 			"session":       session,
 			"source_fields": sourceFields,
 			"limit":         limit,
 			"force":         force,
+			"debug":         debug,
 		})
 	})
 

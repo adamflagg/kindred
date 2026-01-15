@@ -11,6 +11,7 @@ export interface ProcessRequestOptionsState {
   limit: number | undefined;
   forceReprocess: boolean;
   sourceFields: string[];
+  debug: boolean;
 }
 
 interface ProcessRequestOptionsProps {
@@ -52,6 +53,7 @@ export default function ProcessRequestOptions({
   const [limitValue, setLimitValue] = useState<string>('');
   const [forceReprocess, setForceReprocess] = useState(false);
   const [sourceFields, setSourceFields] = useState<string[]>([]);
+  const [debug, setDebug] = useState(false);
   const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
 
   // Reset form when modal closes (render-time check to avoid setState in effect)
@@ -61,6 +63,7 @@ export default function ProcessRequestOptions({
     setLimitValue('');
     setForceReprocess(false);
     setSourceFields([]);
+    setDebug(false);
   } else if (isOpen !== prevIsOpen) {
     setPrevIsOpen(isOpen);
   }
@@ -122,6 +125,7 @@ export default function ProcessRequestOptions({
       limit,
       forceReprocess,
       sourceFields,
+      debug,
     });
   };
 
@@ -240,6 +244,25 @@ export default function ProcessRequestOptions({
                 </p>
               </div>
             )}
+          </div>
+
+          {/* Debug Checkbox */}
+          <div>
+            <label className="flex items-center gap-3 cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={debug}
+                onChange={(e) => setDebug(e.target.checked)}
+                disabled={isProcessing}
+                className="w-4 h-4 rounded border-border text-primary focus:ring-primary/30 focus:ring-offset-0 disabled:opacity-50"
+              />
+              <span className="text-sm font-medium group-hover:text-foreground transition-colors">
+                Debug mode
+              </span>
+            </label>
+            <p className="text-xs text-muted-foreground mt-1.5 ml-7">
+              Enable verbose logging for detailed processing output
+            </p>
           </div>
         </div>
 
