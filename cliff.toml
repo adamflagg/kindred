@@ -16,17 +16,36 @@ repo = "kindred"
 [git]
 conventional_commits = true
 filter_unconventional = true
+# Parser order matters - first match wins.
+# Strategy: Include PR-referenced commits (#NNN), skip duplicates from merged branches.
+# This works because GitHub appends (#NNN) to merge/squash/rebase commits.
 commit_parsers = [
+    # Skip merge commits (both "Merge pull request" and "Merge branch" styles)
     { message = "^Merge", skip = true },
-    { message = "^feat", group = "Features" },
-    { message = "^fix", group = "Bug Fixes" },
-    { message = "^perf", group = "Performance" },
-    { message = "^refactor", group = "Refactoring" },
-    { message = "^docs", group = "Documentation" },
-    { message = "^style", group = "Styling" },
-    { message = "^test", group = "Testing" },
-    { message = "^build", group = "Build" },
-    { message = "^config", group = "Configuration" },
+
+    # PR-referenced commits (prioritized - these are the "final" versions)
+    { message = "^feat.*\\(#\\d+\\)", group = "Features" },
+    { message = "^fix.*\\(#\\d+\\)", group = "Bug Fixes" },
+    { message = "^perf.*\\(#\\d+\\)", group = "Performance" },
+    { message = "^refactor.*\\(#\\d+\\)", group = "Refactoring" },
+    { message = "^docs.*\\(#\\d+\\)", group = "Documentation" },
+    { message = "^style.*\\(#\\d+\\)", group = "Styling" },
+    { message = "^test.*\\(#\\d+\\)", group = "Testing" },
+    { message = "^build.*\\(#\\d+\\)", group = "Build" },
+    { message = "^config.*\\(#\\d+\\)", group = "Configuration" },
+
+    # Skip non-PR conventional commits (duplicates from feature branches)
+    { message = "^feat", skip = true },
+    { message = "^fix", skip = true },
+    { message = "^perf", skip = true },
+    { message = "^refactor", skip = true },
+    { message = "^docs", skip = true },
+    { message = "^style", skip = true },
+    { message = "^test", skip = true },
+    { message = "^build", skip = true },
+    { message = "^config", skip = true },
+
+    # Always skip these regardless of PR reference
     { message = "^chore", skip = true },
     { message = "^ci", skip = true },
 ]
