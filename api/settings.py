@@ -28,6 +28,17 @@ def _is_docker_environment() -> bool:
     return False
 
 
+def _is_github_actions() -> bool:
+    """Detect if running in GitHub Actions CI environment.
+
+    Returns True only when BOTH CI=true AND GITHUB_ACTIONS=true are set.
+    This dual-signal requirement prevents accidental bypass in production.
+    """
+    import os
+
+    return os.getenv("CI") == "true" and os.getenv("GITHUB_ACTIONS") == "true"
+
+
 class Settings(BaseSettings):
     """
     Application settings loaded from environment variables.
@@ -159,8 +170,13 @@ class Settings(BaseSettings):
         return self.is_docker or self.docker_container or _is_docker_environment()
 
     def get_effective_auth_mode(self) -> str:
-        """Get effective auth mode, forcing production in Docker."""
-        if self.is_docker_environment():
+        """Get effective auth mode, forcing production in Docker (except CI).
+
+        In Docker environments, always force production mode for security,
+        EXCEPT when running in GitHub Actions CI where bypass is allowed
+        for integration testing.
+        """
+        if self.is_docker_environment() and not _is_github_actions():
             return "production"
         return self.auth_mode
 

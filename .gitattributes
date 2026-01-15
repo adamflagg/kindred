@@ -19,6 +19,9 @@
 *.css text
 *.html text
 *.sh text eol=lf
+Dockerfile text eol=lf
+Caddyfile text eol=lf
+*.Caddyfile text eol=lf
 
 # Binary files
 *.png binary
