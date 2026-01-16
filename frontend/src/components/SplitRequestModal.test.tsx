@@ -13,30 +13,9 @@ import SplitRequestModal from './SplitRequestModal';
 import type { BunkRequestsResponse } from '../types/pocketbase-types';
 import { BunkRequestsRequestTypeOptions } from '../types/pocketbase-types';
 
-// Mock the useApiWithAuth hook
-const mockFetchWithAuth = vi.fn();
-vi.mock('../hooks/useApiWithAuth', () => ({
-  useApiWithAuth: () => ({
-    fetchWithAuth: mockFetchWithAuth,
-  }),
-}));
-
-// Mock pocketbase with all required exports
-vi.mock('../lib/pocketbase', () => ({
-  pb: {
-    collection: vi.fn(() => ({
-      getFullList: vi.fn(() => Promise.resolve([])),
-    })),
-    authStore: {
-      isValid: true,
-      model: { id: 'test-user' },
-      onChange: vi.fn(),
-      record: { id: 'test-user', email: 'test@example.com' },
-    },
-  },
-  isAuthenticated: vi.fn(() => true),
-  getCurrentUser: vi.fn(() => ({ id: 'test-user', email: 'test@example.com' })),
-}));
+// Mock fetch for API calls
+const mockFetch = vi.fn();
+global.fetch = mockFetch;
 
 // Helper to create mock request object with multiple sources
 function createMergedMockRequest(overrides: Partial<BunkRequestsResponse> = {}): BunkRequestsResponse {
@@ -71,7 +50,7 @@ interface SourceLinkData {
   source_field: string;
 }
 
-function renderWithProviders(ui: React.ReactElement) {
+function renderWithQueryClient(ui: React.ReactElement) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -92,7 +71,7 @@ describe('SplitRequestModal', () => {
 
   describe('rendering', () => {
     it('renders nothing when not open', () => {
-      const { container } = renderWithProviders(
+      const { container } = renderWithQueryClient(
         <SplitRequestModal
           isOpen={false}
           onClose={() => {}}
@@ -106,7 +85,7 @@ describe('SplitRequestModal', () => {
     });
 
     it('renders modal with title when open', () => {
-      renderWithProviders(
+      renderWithQueryClient(
         <SplitRequestModal
           isOpen={true}
           onClose={() => {}}
@@ -131,7 +110,7 @@ describe('SplitRequestModal', () => {
         { original_request_id: 'orig_2', source_field: 'bunking_notes' },
       ];
 
-      renderWithProviders(
+      renderWithQueryClient(
         <SplitRequestModal
           isOpen={true}
           onClose={() => {}}
@@ -153,7 +132,7 @@ describe('SplitRequestModal', () => {
         { original_request_id: 'orig_2', source_field: 'bunking_notes' },
       ];
 
-      renderWithProviders(
+      renderWithQueryClient(
         <SplitRequestModal
           isOpen={true}
           onClose={() => {}}
@@ -167,18 +146,13 @@ describe('SplitRequestModal', () => {
       expect(checkboxes.length).toBeGreaterThanOrEqual(2);
     });
 
-    it('non-primary sources are auto-selected by default, primary is disabled', () => {
-      // Primary source should NOT be selected and should be disabled
-      // Non-primary sources should be auto-selected
-      interface ExtendedSourceLinkData extends SourceLinkData {
-        is_primary?: boolean;
-      }
-      const sourceLinks: ExtendedSourceLinkData[] = [
-        { original_request_id: 'orig_1', source_field: 'share_bunk_with', is_primary: true },
-        { original_request_id: 'orig_2', source_field: 'bunking_notes', is_primary: false },
+    it('no sources are selected by default', () => {
+      const sourceLinks: SourceLinkData[] = [
+        { original_request_id: 'orig_1', source_field: 'share_bunk_with' },
+        { original_request_id: 'orig_2', source_field: 'bunking_notes' },
       ];
 
-      renderWithProviders(
+      renderWithQueryClient(
         <SplitRequestModal
           isOpen={true}
           onClose={() => {}}
@@ -189,12 +163,9 @@ describe('SplitRequestModal', () => {
       );
 
       const checkboxes = screen.getAllByRole('checkbox');
-      // Primary checkbox should be disabled and not checked
-      expect(checkboxes[0]).toBeDisabled();
-      expect(checkboxes[0]).not.toBeChecked();
-      // Non-primary checkbox should be enabled and auto-checked
-      expect(checkboxes[1]).not.toBeDisabled();
-      expect(checkboxes[1]).toBeChecked();
+      checkboxes.forEach((checkbox) => {
+        expect(checkbox).not.toBeChecked();
+      });
     });
   });
 
@@ -205,7 +176,7 @@ describe('SplitRequestModal', () => {
         { original_request_id: 'orig_2', source_field: 'bunking_notes' },
       ];
 
-      renderWithProviders(
+      renderWithQueryClient(
         <SplitRequestModal
           isOpen={true}
           onClose={() => {}}
@@ -230,7 +201,7 @@ describe('SplitRequestModal', () => {
 
   describe('split action', () => {
     it('has a split button', () => {
-      renderWithProviders(
+      renderWithQueryClient(
         <SplitRequestModal
           isOpen={true}
           onClose={() => {}}
@@ -245,21 +216,15 @@ describe('SplitRequestModal', () => {
       expect(screen.getByRole('button', { name: /split/i })).toBeInTheDocument();
     });
 
-    it('split button is disabled when only primary source exists (cannot be selected)', () => {
-      // If the only source is primary, it cannot be selected, so button should be disabled
-      interface ExtendedSourceLinkData extends SourceLinkData {
-        is_primary?: boolean;
-      }
-      const sourceLinks: ExtendedSourceLinkData[] = [
-        { original_request_id: 'orig_1', source_field: 'share_bunk_with', is_primary: true },
-      ];
-
-      renderWithProviders(
+    it('split button is disabled when no sources selected', () => {
+      renderWithQueryClient(
         <SplitRequestModal
           isOpen={true}
           onClose={() => {}}
           request={createMergedMockRequest()}
-          sourceLinks={sourceLinks}
+          sourceLinks={[
+            { original_request_id: 'orig_1', source_field: 'share_bunk_with' },
+          ]}
           onSplitComplete={() => {}}
         />
       );
@@ -274,7 +239,7 @@ describe('SplitRequestModal', () => {
         { original_request_id: 'orig_2', source_field: 'bunking_notes' },
       ];
 
-      mockFetchWithAuth.mockResolvedValueOnce({
+      mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
           original_request_id: 'req_merged',
@@ -283,7 +248,7 @@ describe('SplitRequestModal', () => {
         }),
       });
 
-      renderWithProviders(
+      renderWithQueryClient(
         <SplitRequestModal
           isOpen={true}
           onClose={() => {}}
@@ -303,7 +268,7 @@ describe('SplitRequestModal', () => {
       fireEvent.click(splitButton);
 
       await waitFor(() => {
-        expect(mockFetchWithAuth).toHaveBeenCalledWith(
+        expect(mockFetch).toHaveBeenCalledWith(
           expect.stringContaining('/api/requests/split'),
           expect.objectContaining({
             method: 'POST',
@@ -321,7 +286,7 @@ describe('SplitRequestModal', () => {
 
       const onSplitComplete = vi.fn();
 
-      mockFetchWithAuth.mockResolvedValueOnce({
+      mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
           original_request_id: 'req_merged',
@@ -330,7 +295,7 @@ describe('SplitRequestModal', () => {
         }),
       });
 
-      renderWithProviders(
+      renderWithQueryClient(
         <SplitRequestModal
           isOpen={true}
           onClose={() => {}}
@@ -355,20 +320,16 @@ describe('SplitRequestModal', () => {
     });
 
     it('shows error message on split failure', async () => {
-      interface ExtendedSourceLinkData extends SourceLinkData {
-        is_primary?: boolean;
-      }
-      // Non-primary source will be auto-selected
-      const sourceLinks: ExtendedSourceLinkData[] = [
-        { original_request_id: 'orig_1', source_field: 'share_bunk_with', is_primary: false },
+      const sourceLinks: SourceLinkData[] = [
+        { original_request_id: 'orig_1', source_field: 'share_bunk_with' },
       ];
 
-      mockFetchWithAuth.mockResolvedValueOnce({
+      mockFetch.mockResolvedValueOnce({
         ok: false,
         json: async () => ({ detail: 'Split failed' }),
       });
 
-      renderWithProviders(
+      renderWithQueryClient(
         <SplitRequestModal
           isOpen={true}
           onClose={() => {}}
@@ -378,7 +339,12 @@ describe('SplitRequestModal', () => {
         />
       );
 
-      // Source is already auto-selected, just click split
+      // Select a source and try to split
+      const checkboxes = screen.getAllByRole('checkbox');
+      const firstCheckbox = checkboxes[0];
+      expect(firstCheckbox).toBeDefined();
+      if (firstCheckbox) fireEvent.click(firstCheckbox);
+
       const splitButton = screen.getByRole('button', { name: /split/i });
       fireEvent.click(splitButton);
 
@@ -390,7 +356,7 @@ describe('SplitRequestModal', () => {
 
   describe('cancel action', () => {
     it('has a cancel button', () => {
-      renderWithProviders(
+      renderWithQueryClient(
         <SplitRequestModal
           isOpen={true}
           onClose={() => {}}
@@ -406,7 +372,7 @@ describe('SplitRequestModal', () => {
     it('calls onClose when cancel is clicked', () => {
       const onClose = vi.fn();
 
-      renderWithProviders(
+      renderWithQueryClient(
         <SplitRequestModal
           isOpen={true}
           onClose={onClose}
@@ -430,9 +396,9 @@ describe('SplitRequestModal', () => {
       ];
 
       // Never resolve to keep it in loading state
-      mockFetchWithAuth.mockReturnValue(new Promise(() => {}));
+      mockFetch.mockReturnValue(new Promise(() => {}));
 
-      renderWithProviders(
+      renderWithQueryClient(
         <SplitRequestModal
           isOpen={true}
           onClose={() => {}}
@@ -454,78 +420,6 @@ describe('SplitRequestModal', () => {
       await waitFor(() => {
         expect(splitButton).toBeDisabled();
       });
-    });
-  });
-
-  /**
-   * TDD TESTS: Primary Source Indicator
-   *
-   * When viewing source links in the split modal, users should be able
-   * to distinguish which source is the "primary" source that determined
-   * the main request type/target.
-   */
-  describe('Primary Source Indicator', () => {
-    it('should accept is_primary in SourceLinkData interface', () => {
-      // Extended interface should include is_primary
-      interface SourceLinkDataWithPrimary {
-        original_request_id: string;
-        source_field: string;
-        original_content?: string;
-        created?: string;
-        parse_notes?: string;
-        is_primary?: boolean;
-      }
-
-      const primarySource: SourceLinkDataWithPrimary = {
-        original_request_id: 'orig_1',
-        source_field: 'share_bunk_with',
-        is_primary: true,
-      };
-
-      const secondarySource: SourceLinkDataWithPrimary = {
-        original_request_id: 'orig_2',
-        source_field: 'bunking_notes',
-        is_primary: false,
-      };
-
-      expect(primarySource.is_primary).toBe(true);
-      expect(secondarySource.is_primary).toBe(false);
-    });
-
-    it('should identify the primary source among multiple sources', () => {
-      const sourceLinks = [
-        { original_request_id: 'orig_1', source_field: 'share_bunk_with', is_primary: true },
-        { original_request_id: 'orig_2', source_field: 'bunking_notes', is_primary: false },
-      ];
-
-      const primarySource = sourceLinks.find(s => s.is_primary === true);
-      expect(primarySource).toBeDefined();
-      expect(primarySource?.source_field).toBe('share_bunk_with');
-    });
-
-    it('should handle case where no source is marked as primary', () => {
-      const sourceLinks = [
-        { original_request_id: 'orig_1', source_field: 'share_bunk_with' },
-        { original_request_id: 'orig_2', source_field: 'bunking_notes' },
-      ];
-
-      const primarySource = sourceLinks.find(s => (s as { is_primary?: boolean }).is_primary === true);
-      expect(primarySource).toBeUndefined();
-    });
-
-    it('should show primary badge text for primary source', () => {
-      // Test the visual indicator logic
-      const isPrimary = true;
-      const badgeText = isPrimary ? 'Primary' : null;
-
-      expect(badgeText).toBe('Primary');
-    });
-
-    it('should not show primary badge for non-primary sources', () => {
-      const isPrimary = false;
-      const badgeText = isPrimary ? 'Primary' : null;
-
-      expect(badgeText).toBeNull();
     });
   });
 });
