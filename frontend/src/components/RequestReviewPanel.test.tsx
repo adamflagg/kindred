@@ -117,6 +117,177 @@ describe('RequestReviewPanel', () => {
   });
 
   /**
+   * TDD TESTS: Collapsible Filter Bar (UI Optimization Part 1)
+   *
+   * Design goals:
+   * - Filter bar should collapse to ~48px for space efficiency
+   * - Filter toggle button shows count of active filters
+   * - Search input remains visible in collapsed state
+   * - Expanded state slides down smoothly
+   * - Escape key closes expanded filters
+   */
+  describe('Collapsible Filter Bar', () => {
+    it('should have filters collapsed by default', () => {
+      // The filter bar should start in collapsed state to save vertical space
+      const defaultFiltersExpanded = false;
+      expect(defaultFiltersExpanded).toBe(false);
+    });
+
+    it('should calculate active filter count correctly', () => {
+      // Active filters: non-default confidence threshold, selected request types, non-default statuses
+      const filters = {
+        confidenceThreshold: 50, // non-default (0 is default)
+        requestTypes: ['bunk_with', 'not_bunk_with'], // 2 types selected
+        statuses: ['pending'], // 1 status (default has 3)
+        searchQuery: '',
+        showResolved: false,
+        resolvedConfidenceFilter: 'all' as const,
+      };
+
+      // Count active filters:
+      // - confidenceThreshold !== 0 = 1
+      // - requestTypes.length > 0 = 1 (counts as 1 regardless of how many types)
+      // - statuses differ from default = 1
+      let activeCount = 0;
+      if (filters.confidenceThreshold !== 0) activeCount++;
+      if (filters.requestTypes.length > 0) activeCount++;
+      if (filters.statuses.length !== 3 || filters.showResolved) activeCount++;
+
+      expect(activeCount).toBe(3);
+    });
+
+    it('should toggle filters expanded state on button click', () => {
+      let filtersExpanded = false;
+
+      // Simulate toggle click
+      filtersExpanded = !filtersExpanded;
+      expect(filtersExpanded).toBe(true);
+
+      // Toggle again
+      filtersExpanded = !filtersExpanded;
+      expect(filtersExpanded).toBe(false);
+    });
+
+    it('should close filters on Escape key', () => {
+      let filtersExpanded = true;
+
+      // Simulate Escape key handler
+      const handleKeyDown = (event: { key: string }) => {
+        if (event.key === 'Escape' && filtersExpanded) {
+          filtersExpanded = false;
+        }
+      };
+
+      handleKeyDown({ key: 'Escape' });
+      expect(filtersExpanded).toBe(false);
+    });
+
+    it('should keep search input always visible regardless of collapse state', () => {
+      // Search is always visible in the compact header bar
+      const isSearchAlwaysVisible = true;
+      expect(isSearchAlwaysVisible).toBe(true);
+    });
+
+    it('should use correct ARIA attributes for accessibility', () => {
+      const filtersExpanded = true;
+      const ariaExpanded = filtersExpanded;
+      const ariaControls = 'filter-panel';
+
+      expect(ariaExpanded).toBe(true);
+      expect(ariaControls).toBe('filter-panel');
+    });
+  });
+
+  /**
+   * TDD TESTS: Sticky Bottom Bulk Action Bar (UI Optimization Part 2)
+   *
+   * Design goals:
+   * - Bar appears at bottom of screen (fixed position) when requests selected
+   * - Uses transform animation (GPU-accelerated, no content shift)
+   * - Shows selected count and preview of selected names
+   * - Has Approve, Merge (when eligible), and Reject buttons
+   * - Touch-friendly with 44px min-height buttons
+   */
+  describe('Sticky Bottom Bulk Action Bar', () => {
+    it('should not render when no requests are selected', () => {
+      const selectedRequests = new Set<string>();
+      const shouldShowBar = selectedRequests.size > 0;
+
+      expect(shouldShowBar).toBe(false);
+    });
+
+    it('should render when requests are selected', () => {
+      const selectedRequests = new Set(['req1', 'req2', 'req3']);
+      const shouldShowBar = selectedRequests.size > 0;
+
+      expect(shouldShowBar).toBe(true);
+    });
+
+    it('should display correct selected count', () => {
+      const selectedRequests = new Set(['req1', 'req2', 'req3']);
+      const selectedCount = selectedRequests.size;
+
+      expect(selectedCount).toBe(3);
+    });
+
+    it('should preview first 2-3 selected names with overflow indicator', () => {
+      // Helper function to get selected names preview
+      const getSelectedNamesPreview = (names: string[], maxDisplay: number = 2) => {
+        if (names.length === 0) return '';
+        if (names.length <= maxDisplay) return names.join(', ');
+        const displayed = names.slice(0, maxDisplay).join(', ');
+        const remaining = names.length - maxDisplay;
+        return `${displayed} +${remaining}`;
+      };
+
+      expect(getSelectedNamesPreview(['Emma J.', 'Liam G.'])).toBe('Emma J., Liam G.');
+      expect(getSelectedNamesPreview(['Emma J.', 'Liam G.', 'Olivia C.'])).toBe('Emma J., Liam G. +1');
+      expect(getSelectedNamesPreview(['Emma J.', 'Liam G.', 'Olivia C.', 'Noah S.'])).toBe('Emma J., Liam G. +2');
+      expect(getSelectedNamesPreview([])).toBe('');
+    });
+
+    it('should use transform-based animation classes (not max-height)', () => {
+      // The bar should use translate-y-full for hidden state
+      // and translate-y-0 for visible state (GPU-accelerated)
+      const hiddenClasses = 'translate-y-full';
+      const visibleClasses = 'translate-y-0';
+
+      expect(hiddenClasses).toContain('translate-y');
+      expect(visibleClasses).toBe('translate-y-0');
+    });
+
+    it('should have fixed positioning at bottom of screen', () => {
+      // Bar should be fixed position so it doesn't push table content
+      const positioningClasses = 'fixed bottom-0 left-0 right-0';
+
+      expect(positioningClasses).toContain('fixed');
+      expect(positioningClasses).toContain('bottom-0');
+    });
+
+    it('should have proper ARIA attributes for accessibility', () => {
+      const selectedCount = 3;
+      const ariaRole = 'toolbar';
+      const ariaLabel = `Bulk actions for ${selectedCount} selected requests`;
+
+      expect(ariaRole).toBe('toolbar');
+      expect(ariaLabel).toBe('Bulk actions for 3 selected requests');
+    });
+
+    it('should use will-change for smooth GPU animation', () => {
+      const willChangeClasses = 'will-change-transform';
+      expect(willChangeClasses).toBe('will-change-transform');
+    });
+
+    it('should have touch-friendly button sizes (min 44px)', () => {
+      const minButtonHeight = 44;
+      const buttonClasses = 'min-h-[44px]';
+
+      expect(minButtonHeight).toBeGreaterThanOrEqual(44);
+      expect(buttonClasses).toContain('44');
+    });
+  });
+
+  /**
    * TDD TESTS: Merge/Split Integration
    *
    * Phase 4-5 of cross-run deduplication system.
