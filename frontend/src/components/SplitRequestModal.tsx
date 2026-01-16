@@ -178,8 +178,11 @@ export default function SplitRequestModal({
       return response.json() as Promise<SplitResponse>;
     },
     onSuccess: () => {
-      // Invalidate queries to refresh data
+      // Invalidate all related queries to refresh data
       queryClient.invalidateQueries({ queryKey: ['bunk-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['all-bunk-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['source-links'] });
+      queryClient.invalidateQueries({ queryKey: ['expanded-source-links'] });
       onSplitComplete();
       onClose();
     },

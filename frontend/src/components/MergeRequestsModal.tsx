@@ -142,8 +142,11 @@ export default function MergeRequestsModal({
       return response.json() as Promise<MergeResponse>;
     },
     onSuccess: () => {
-      // Invalidate queries to refresh data
+      // Invalidate all related queries to refresh data
       queryClient.invalidateQueries({ queryKey: ['bunk-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['all-bunk-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['source-links'] });
+      queryClient.invalidateQueries({ queryKey: ['expanded-source-links'] });
       onMergeComplete();
       onClose();
     },
