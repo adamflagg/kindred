@@ -8,9 +8,15 @@ Following TDD: These tests are written FIRST to define expected behavior.
 
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 from unittest.mock import Mock
 
 import pytest
+
+if TYPE_CHECKING:
+    from bunking.sync.bunk_request_processor.data.repositories.debug_parse_repository import (
+        DebugParseRepository,
+    )
 
 test_dir = Path(__file__).resolve().parent
 project_root = test_dir.parent.parent.parent.parent.parent.parent
@@ -29,7 +35,7 @@ class TestDebugParseRepositorySaveResult:
         return mock_client, mock_collection
 
     @pytest.fixture
-    def repository(self, mock_pb_client: tuple[Mock, Mock]):
+    def repository(self, mock_pb_client: tuple[Mock, Mock]) -> "DebugParseRepository":
         """Create a DebugParseRepository with mocked client."""
         from bunking.sync.bunk_request_processor.data.repositories.debug_parse_repository import (
             DebugParseRepository,
@@ -38,7 +44,9 @@ class TestDebugParseRepositorySaveResult:
         mock_client, _ = mock_pb_client
         return DebugParseRepository(mock_client)
 
-    def test_save_result_creates_record_with_all_fields(self, repository, mock_pb_client: tuple[Mock, Mock]) -> None:
+    def test_save_result_creates_record_with_all_fields(
+        self, repository: "DebugParseRepository", mock_pb_client: tuple[Mock, Mock]
+    ) -> None:
         """Test that save_result creates a record with all required fields."""
         _, mock_collection = mock_pb_client
         mock_collection.create.return_value = Mock(id="debug_123")
@@ -80,12 +88,14 @@ class TestDebugParseRepositorySaveResult:
         assert create_args["processing_time_ms"] == 1250
         assert create_args["is_valid"] is True
 
-    def test_save_result_handles_empty_session(self, repository, mock_pb_client: tuple[Mock, Mock]) -> None:
+    def test_save_result_handles_empty_session(
+        self, repository: "DebugParseRepository", mock_pb_client: tuple[Mock, Mock]
+    ) -> None:
         """Test that save_result handles None session gracefully."""
         _, mock_collection = mock_pb_client
         mock_collection.create.return_value = Mock(id="debug_124")
 
-        result_data = {
+        result_data: dict[str, Any] = {
             "original_request_id": "orig_req_456",
             "session_id": None,  # No session filter
             "parsed_intents": [],
@@ -98,7 +108,9 @@ class TestDebugParseRepositorySaveResult:
         create_args = mock_collection.create.call_args[0][0]
         assert create_args.get("session", "") == ""
 
-    def test_save_result_stores_error_for_failed_parse(self, repository, mock_pb_client: tuple[Mock, Mock]) -> None:
+    def test_save_result_stores_error_for_failed_parse(
+        self, repository: "DebugParseRepository", mock_pb_client: tuple[Mock, Mock]
+    ) -> None:
         """Test that save_result stores error message for failed parses."""
         _, mock_collection = mock_pb_client
         mock_collection.create.return_value = Mock(id="debug_125")
@@ -116,7 +128,9 @@ class TestDebugParseRepositorySaveResult:
         assert create_args["is_valid"] is False
         assert create_args["error_message"] == "AI parsing failed: rate limit exceeded"
 
-    def test_save_result_returns_none_on_error(self, repository, mock_pb_client: tuple[Mock, Mock]) -> None:
+    def test_save_result_returns_none_on_error(
+        self, repository: "DebugParseRepository", mock_pb_client: tuple[Mock, Mock]
+    ) -> None:
         """Test that save_result returns None on database error."""
         _, mock_collection = mock_pb_client
         mock_collection.create.side_effect = Exception("DB connection failed")
@@ -144,7 +158,7 @@ class TestDebugParseRepositoryGetByOriginalRequest:
         return mock_client, mock_collection
 
     @pytest.fixture
-    def repository(self, mock_pb_client: tuple[Mock, Mock]):
+    def repository(self, mock_pb_client: tuple[Mock, Mock]) -> "DebugParseRepository":
         """Create a DebugParseRepository with mocked client."""
         from bunking.sync.bunk_request_processor.data.repositories.debug_parse_repository import (
             DebugParseRepository,
@@ -153,7 +167,9 @@ class TestDebugParseRepositoryGetByOriginalRequest:
         mock_client, _ = mock_pb_client
         return DebugParseRepository(mock_client)
 
-    def test_get_by_original_request_returns_cached_result(self, repository, mock_pb_client: tuple[Mock, Mock]) -> None:
+    def test_get_by_original_request_returns_cached_result(
+        self, repository: "DebugParseRepository", mock_pb_client: tuple[Mock, Mock]
+    ) -> None:
         """Test that get_by_original_request returns cached debug result."""
         _, mock_collection = mock_pb_client
 
@@ -185,7 +201,7 @@ class TestDebugParseRepositoryGetByOriginalRequest:
         assert 'original_request = "orig_req_456"' in filter_str
 
     def test_get_by_original_request_returns_none_when_not_found(
-        self, repository, mock_pb_client: tuple[Mock, Mock]
+        self, repository: "DebugParseRepository", mock_pb_client: tuple[Mock, Mock]
     ) -> None:
         """Test that get_by_original_request returns None when no cached result."""
         _, mock_collection = mock_pb_client
@@ -198,7 +214,9 @@ class TestDebugParseRepositoryGetByOriginalRequest:
 
         assert result is None
 
-    def test_get_by_original_request_returns_most_recent(self, repository, mock_pb_client: tuple[Mock, Mock]) -> None:
+    def test_get_by_original_request_returns_most_recent(
+        self, repository: "DebugParseRepository", mock_pb_client: tuple[Mock, Mock]
+    ) -> None:
         """Test that get_by_original_request returns the most recent result."""
         _, mock_collection = mock_pb_client
 
@@ -224,6 +242,7 @@ class TestDebugParseRepositoryGetByOriginalRequest:
 
         result = repository.get_by_original_request("orig_req_456")
 
+        assert result is not None
         assert result["id"] == "debug_new"
 
         # Verify sort order
@@ -243,7 +262,7 @@ class TestDebugParseRepositoryListWithOriginals:
         return mock_client, mock_collection
 
     @pytest.fixture
-    def repository(self, mock_pb_client: tuple[Mock, Mock]):
+    def repository(self, mock_pb_client: tuple[Mock, Mock]) -> "DebugParseRepository":
         """Create a DebugParseRepository with mocked client."""
         from bunking.sync.bunk_request_processor.data.repositories.debug_parse_repository import (
             DebugParseRepository,
@@ -252,7 +271,9 @@ class TestDebugParseRepositoryListWithOriginals:
         mock_client, _ = mock_pb_client
         return DebugParseRepository(mock_client)
 
-    def test_list_with_originals_expands_relations(self, repository, mock_pb_client: tuple[Mock, Mock]) -> None:
+    def test_list_with_originals_expands_relations(
+        self, repository: "DebugParseRepository", mock_pb_client: tuple[Mock, Mock]
+    ) -> None:
         """Test that list_with_originals expands original_request and person."""
         _, mock_collection = mock_pb_client
 
@@ -304,7 +325,9 @@ class TestDebugParseRepositoryListWithOriginals:
         assert "original_request" in expand_str
         assert "original_request.requester" in expand_str
 
-    def test_list_with_originals_filters_by_session(self, repository, mock_pb_client: tuple[Mock, Mock]) -> None:
+    def test_list_with_originals_filters_by_session(
+        self, repository: "DebugParseRepository", mock_pb_client: tuple[Mock, Mock]
+    ) -> None:
         """Test that list_with_originals filters by session when provided."""
         _, mock_collection = mock_pb_client
 
@@ -319,7 +342,9 @@ class TestDebugParseRepositoryListWithOriginals:
         filter_str = call_args[1]["query_params"]["filter"]
         assert 'session = "sess_789"' in filter_str
 
-    def test_list_with_originals_filters_by_source_field(self, repository, mock_pb_client: tuple[Mock, Mock]) -> None:
+    def test_list_with_originals_filters_by_source_field(
+        self, repository: "DebugParseRepository", mock_pb_client: tuple[Mock, Mock]
+    ) -> None:
         """Test that list_with_originals filters by source field when provided."""
         _, mock_collection = mock_pb_client
 
@@ -334,7 +359,9 @@ class TestDebugParseRepositoryListWithOriginals:
         filter_str = call_args[1]["query_params"]["filter"]
         assert 'original_request.field = "bunking_notes"' in filter_str
 
-    def test_list_with_originals_applies_pagination(self, repository, mock_pb_client: tuple[Mock, Mock]) -> None:
+    def test_list_with_originals_applies_pagination(
+        self, repository: "DebugParseRepository", mock_pb_client: tuple[Mock, Mock]
+    ) -> None:
         """Test that list_with_originals applies limit and offset."""
         _, mock_collection = mock_pb_client
 
@@ -362,7 +389,7 @@ class TestDebugParseRepositoryClearAll:
         return mock_client, mock_collection
 
     @pytest.fixture
-    def repository(self, mock_pb_client: tuple[Mock, Mock]):
+    def repository(self, mock_pb_client: tuple[Mock, Mock]) -> "DebugParseRepository":
         """Create a DebugParseRepository with mocked client."""
         from bunking.sync.bunk_request_processor.data.repositories.debug_parse_repository import (
             DebugParseRepository,
@@ -371,7 +398,9 @@ class TestDebugParseRepositoryClearAll:
         mock_client, _ = mock_pb_client
         return DebugParseRepository(mock_client)
 
-    def test_clear_all_deletes_all_records(self, repository, mock_pb_client: tuple[Mock, Mock]) -> None:
+    def test_clear_all_deletes_all_records(
+        self, repository: "DebugParseRepository", mock_pb_client: tuple[Mock, Mock]
+    ) -> None:
         """Test that clear_all deletes all debug records."""
         _, mock_collection = mock_pb_client
 
@@ -399,7 +428,9 @@ class TestDebugParseRepositoryClearAll:
         mock_collection.delete.assert_any_call("debug_1")
         mock_collection.delete.assert_any_call("debug_2")
 
-    def test_clear_all_returns_zero_when_empty(self, repository, mock_pb_client: tuple[Mock, Mock]) -> None:
+    def test_clear_all_returns_zero_when_empty(
+        self, repository: "DebugParseRepository", mock_pb_client: tuple[Mock, Mock]
+    ) -> None:
         """Test that clear_all returns 0 when no records exist."""
         _, mock_collection = mock_pb_client
 
@@ -412,7 +443,9 @@ class TestDebugParseRepositoryClearAll:
         assert result == 0
         mock_collection.delete.assert_not_called()
 
-    def test_clear_all_returns_negative_on_error(self, repository, mock_pb_client: tuple[Mock, Mock]) -> None:
+    def test_clear_all_returns_negative_on_error(
+        self, repository: "DebugParseRepository", mock_pb_client: tuple[Mock, Mock]
+    ) -> None:
         """Test that clear_all returns -1 on error."""
         _, mock_collection = mock_pb_client
 
@@ -435,7 +468,7 @@ class TestDebugParseRepositoryDeleteByOriginalRequest:
         return mock_client, mock_collection
 
     @pytest.fixture
-    def repository(self, mock_pb_client: tuple[Mock, Mock]):
+    def repository(self, mock_pb_client: tuple[Mock, Mock]) -> "DebugParseRepository":
         """Create a DebugParseRepository with mocked client."""
         from bunking.sync.bunk_request_processor.data.repositories.debug_parse_repository import (
             DebugParseRepository,
@@ -445,7 +478,7 @@ class TestDebugParseRepositoryDeleteByOriginalRequest:
         return DebugParseRepository(mock_client)
 
     def test_delete_by_original_request_removes_cached_result(
-        self, repository, mock_pb_client: tuple[Mock, Mock]
+        self, repository: "DebugParseRepository", mock_pb_client: tuple[Mock, Mock]
     ) -> None:
         """Test that delete_by_original_request removes cached debug result."""
         _, mock_collection = mock_pb_client
@@ -463,7 +496,7 @@ class TestDebugParseRepositoryDeleteByOriginalRequest:
         mock_collection.delete.assert_called_once_with("debug_123")
 
     def test_delete_by_original_request_returns_false_when_not_found(
-        self, repository, mock_pb_client: tuple[Mock, Mock]
+        self, repository: "DebugParseRepository", mock_pb_client: tuple[Mock, Mock]
     ) -> None:
         """Test that delete_by_original_request returns False when no result."""
         _, mock_collection = mock_pb_client
