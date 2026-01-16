@@ -42,9 +42,7 @@ class TestRequestRepositorySoftDelete:
         mock_client, _ = mock_pb_client
         return RequestRepository(mock_client)
 
-    def test_soft_delete_for_merge_sets_merged_into(
-        self, repository, mock_pb_client: tuple[Mock, Mock]
-    ) -> None:
+    def test_soft_delete_for_merge_sets_merged_into(self, repository, mock_pb_client: tuple[Mock, Mock]) -> None:
         """Test that soft_delete_for_merge sets merged_into field."""
         _, mock_collection = mock_pb_client
 
@@ -65,9 +63,7 @@ class TestRequestRepositorySoftDelete:
         update_data = call_args[0][1]
         assert update_data["merged_into"] == "kept_req_456"
 
-    def test_soft_delete_for_merge_returns_false_on_error(
-        self, repository, mock_pb_client: tuple[Mock, Mock]
-    ) -> None:
+    def test_soft_delete_for_merge_returns_false_on_error(self, repository, mock_pb_client: tuple[Mock, Mock]) -> None:
         """Test that soft_delete_for_merge returns False on error."""
         _, mock_collection = mock_pb_client
 
@@ -80,9 +76,7 @@ class TestRequestRepositorySoftDelete:
 
         assert result is False
 
-    def test_restore_from_merge_clears_merged_into(
-        self, repository, mock_pb_client: tuple[Mock, Mock]
-    ) -> None:
+    def test_restore_from_merge_clears_merged_into(self, repository, mock_pb_client: tuple[Mock, Mock]) -> None:
         """Test that restore_from_merge clears merged_into field."""
         _, mock_collection = mock_pb_client
 
@@ -99,9 +93,7 @@ class TestRequestRepositorySoftDelete:
         update_data = call_args[0][1]
         assert update_data["merged_into"] == ""
 
-    def test_restore_from_merge_returns_false_on_error(
-        self, repository, mock_pb_client: tuple[Mock, Mock]
-    ) -> None:
+    def test_restore_from_merge_returns_false_on_error(self, repository, mock_pb_client: tuple[Mock, Mock]) -> None:
         """Test that restore_from_merge returns False on error."""
         _, mock_collection = mock_pb_client
 
@@ -167,9 +159,7 @@ class TestRequestRepositorySoftDelete:
         filter_str = call_args[1]["query_params"]["filter"]
         assert 'merged_into = "kept_req_456"' in filter_str
 
-    def test_get_merged_requests_returns_empty_when_none(
-        self, repository, mock_pb_client: tuple[Mock, Mock]
-    ) -> None:
+    def test_get_merged_requests_returns_empty_when_none(self, repository, mock_pb_client: tuple[Mock, Mock]) -> None:
         """Test that get_merged_requests returns empty list when no merged requests."""
         _, mock_collection = mock_pb_client
 
@@ -203,9 +193,7 @@ class TestGetByIdExcludesMerged:
         mock_client, _ = mock_pb_client
         return RequestRepository(mock_client)
 
-    def test_get_by_id_includes_merged_into_field(
-        self, repository, mock_pb_client: tuple[Mock, Mock]
-    ) -> None:
+    def test_get_by_id_includes_merged_into_field(self, repository, mock_pb_client: tuple[Mock, Mock]) -> None:
         """Test that get_by_id returns the merged_into field if present."""
         _, mock_collection = mock_pb_client
 
@@ -247,16 +235,12 @@ class TestMergeEndpointSoftDelete:
         return mock_request_repo, mock_source_link_repo
 
     @pytest.fixture
-    def client_with_mocks(
-        self, mock_repos: tuple[Mock, Mock]
-    ) -> Generator[tuple[TestClient, Mock, Mock], None, None]:
+    def client_with_mocks(self, mock_repos: tuple[Mock, Mock]) -> Generator[tuple[TestClient, Mock, Mock], None, None]:
         """Create test client with mocked repositories."""
         mock_request_repo, mock_source_link_repo = mock_repos
 
         with patch("api.routers.requests.get_request_repository") as mock_get_req_repo:
-            with patch(
-                "api.routers.requests.get_source_link_repository"
-            ) as mock_get_sl_repo:
+            with patch("api.routers.requests.get_source_link_repository") as mock_get_sl_repo:
                 mock_get_req_repo.return_value = mock_request_repo
                 mock_get_sl_repo.return_value = mock_source_link_repo
 
@@ -267,9 +251,7 @@ class TestMergeEndpointSoftDelete:
 
                 yield TestClient(app), mock_request_repo, mock_source_link_repo
 
-    def test_merge_soft_deletes_absorbed_requests(
-        self, client_with_mocks: tuple[TestClient, Mock, Mock]
-    ) -> None:
+    def test_merge_soft_deletes_absorbed_requests(self, client_with_mocks: tuple[TestClient, Mock, Mock]) -> None:
         """Test that merge uses soft_delete_for_merge instead of delete."""
         client, mock_request_repo, mock_source_link_repo = client_with_mocks
 
@@ -312,9 +294,7 @@ class TestMergeEndpointSoftDelete:
         assert response.status_code == 200
 
         # Verify soft_delete_for_merge was called instead of delete
-        mock_request_repo.soft_delete_for_merge.assert_called_once_with(
-            "req_2", "req_1"
-        )
+        mock_request_repo.soft_delete_for_merge.assert_called_once_with("req_2", "req_1")
         # Verify delete was NOT called
         mock_request_repo.delete.assert_not_called()
 
@@ -380,16 +360,12 @@ class TestSplitEndpointRestore:
         return mock_request_repo, mock_source_link_repo
 
     @pytest.fixture
-    def client_with_mocks(
-        self, mock_repos: tuple[Mock, Mock]
-    ) -> Generator[tuple[TestClient, Mock, Mock], None, None]:
+    def client_with_mocks(self, mock_repos: tuple[Mock, Mock]) -> Generator[tuple[TestClient, Mock, Mock], None, None]:
         """Create test client with mocked repositories."""
         mock_request_repo, mock_source_link_repo = mock_repos
 
         with patch("api.routers.requests.get_request_repository") as mock_get_req_repo:
-            with patch(
-                "api.routers.requests.get_source_link_repository"
-            ) as mock_get_sl_repo:
+            with patch("api.routers.requests.get_source_link_repository") as mock_get_sl_repo:
                 mock_get_req_repo.return_value = mock_request_repo
                 mock_get_sl_repo.return_value = mock_source_link_repo
 
@@ -466,9 +442,7 @@ class TestSplitEndpointRestore:
         # Verify create was NOT called (we restored, didn't create new)
         mock_request_repo.create.assert_not_called()
 
-    def test_split_falls_back_to_create_for_legacy_data(
-        self, client_with_mocks: tuple[TestClient, Mock, Mock]
-    ) -> None:
+    def test_split_falls_back_to_create_for_legacy_data(self, client_with_mocks: tuple[TestClient, Mock, Mock]) -> None:
         """Test that split falls back to creating new request for legacy merged data."""
         client, mock_request_repo, mock_source_link_repo = client_with_mocks
 
@@ -597,9 +571,7 @@ class TestFindExistingExcludesMerged:
         mock_client, _ = mock_pb_client
         return RequestRepository(mock_client)
 
-    def test_find_existing_filters_out_merged_requests(
-        self, repository, mock_pb_client: tuple[Mock, Mock]
-    ) -> None:
+    def test_find_existing_filters_out_merged_requests(self, repository, mock_pb_client: tuple[Mock, Mock]) -> None:
         """Test that find_existing excludes requests with merged_into set."""
         _, mock_collection = mock_pb_client
 
