@@ -188,7 +188,9 @@ describe('SplitRequestModal', () => {
 
       // Select a source
       const checkboxes = screen.getAllByRole('checkbox');
-      fireEvent.click(checkboxes[0]!);
+      const firstCheckbox = checkboxes[0];
+      expect(firstCheckbox).toBeDefined();
+      if (firstCheckbox) fireEvent.click(firstCheckbox);
 
       // Should now show a type dropdown
       await waitFor(() => {
@@ -258,7 +260,9 @@ describe('SplitRequestModal', () => {
 
       // Select a source to split
       const checkboxes = screen.getAllByRole('checkbox');
-      fireEvent.click(checkboxes[1]!); // Select bunking_notes
+      const secondCheckbox = checkboxes[1];
+      expect(secondCheckbox).toBeDefined();
+      if (secondCheckbox) fireEvent.click(secondCheckbox); // Select bunking_notes
 
       const splitButton = screen.getByRole('button', { name: /split/i });
       fireEvent.click(splitButton);
@@ -303,7 +307,9 @@ describe('SplitRequestModal', () => {
 
       // Select a source and split
       const checkboxes = screen.getAllByRole('checkbox');
-      fireEvent.click(checkboxes[0]!);
+      const firstCheckbox = checkboxes[0];
+      expect(firstCheckbox).toBeDefined();
+      if (firstCheckbox) fireEvent.click(firstCheckbox);
 
       const splitButton = screen.getByRole('button', { name: /split/i });
       fireEvent.click(splitButton);
@@ -335,7 +341,9 @@ describe('SplitRequestModal', () => {
 
       // Select a source and try to split
       const checkboxes = screen.getAllByRole('checkbox');
-      fireEvent.click(checkboxes[0]!);
+      const firstCheckbox = checkboxes[0];
+      expect(firstCheckbox).toBeDefined();
+      if (firstCheckbox) fireEvent.click(firstCheckbox);
 
       const splitButton = screen.getByRole('button', { name: /split/i });
       fireEvent.click(splitButton);
@@ -402,7 +410,9 @@ describe('SplitRequestModal', () => {
 
       // Select a source
       const checkboxes = screen.getAllByRole('checkbox');
-      fireEvent.click(checkboxes[0]!);
+      const firstCheckbox = checkboxes[0];
+      expect(firstCheckbox).toBeDefined();
+      if (firstCheckbox) fireEvent.click(firstCheckbox);
 
       const splitButton = screen.getByRole('button', { name: /split/i });
       fireEvent.click(splitButton);
