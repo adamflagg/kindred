@@ -70,14 +70,16 @@ class Deduplicator:
             if request.is_placeholder:
                 key = None
             elif request.request_type == RequestType.AGE_PREFERENCE:
-                # Age preferences: group by (requester, None, type, source_field, year, session)
-                # Uses source_field to prevent cross-field dedup (e.g., AI-parsed bunk_with vs dropdown)
-                # This preserves explicit dropdown values that would otherwise be lost
+                # Age preferences: group by (requester, None, type, "", year, session)
+                # Dedupes across ALL source fields - matches DB unique constraint which
+                # doesn't include source_field. Same requester's age preference from
+                # different sources (AI-parsed vs dropdown) is the same intent.
+                # Priority: STAFF > FAMILY during merge preserves metadata from both.
                 key = (
                     request.requester_cm_id,
                     None,  # No target for age preferences
                     request.request_type,
-                    request.source_field,  # Don't dedupe across source fields
+                    "",  # Empty = dedupe across all source fields
                     request.year,
                     request.session_cm_id,
                 )
