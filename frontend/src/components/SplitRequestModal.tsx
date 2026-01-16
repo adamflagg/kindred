@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Scissors, AlertCircle, User, HelpCircle } from 'lucide-react';
+import { Loader2, Scissors, AlertCircle, User, HelpCircle, Star } from 'lucide-react';
 import { Modal } from './ui/Modal';
 import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types';
 import { BunkRequestsRequestTypeOptions } from '../types/pocketbase-types';
@@ -13,6 +13,7 @@ interface SourceLinkData {
   original_content?: string | undefined;
   created?: string | undefined;
   parse_notes?: string | undefined;
+  is_primary?: boolean | undefined;
 }
 
 interface SplitRequestModalProps {
@@ -251,12 +252,20 @@ export default function SplitRequestModal({
                       className="mt-1 rounded"
                     />
                     <div className="flex-1">
-                      <label
-                        htmlFor={`source-${link.original_request_id}`}
-                        className="block text-sm font-medium cursor-pointer"
-                      >
-                        {link.source_field}
-                      </label>
+                      <div className="flex items-center gap-2">
+                        <label
+                          htmlFor={`source-${link.original_request_id}`}
+                          className="text-sm font-medium cursor-pointer"
+                        >
+                          {link.source_field}
+                        </label>
+                        {link.is_primary && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium rounded bg-primary/10 text-primary">
+                            <Star className="w-3 h-3" />
+                            Primary
+                          </span>
+                        )}
+                      </div>
                       {link.original_content && (
                         <p className="text-sm text-muted-foreground mt-1 italic">
                           "{link.original_content}"
