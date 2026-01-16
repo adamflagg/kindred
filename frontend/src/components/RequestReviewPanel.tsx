@@ -12,7 +12,9 @@ import {
   Search,
   AlertCircle,
   Shield,
-  Plus
+  Plus,
+  GitMerge,
+  Scissors
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { pb } from '../lib/pocketbase';
@@ -24,6 +26,8 @@ import EditableRequestTarget from './EditableRequestTarget';
 import EditablePriority from './EditablePriority';
 import CreateRequestModal from './CreateRequestModal';
 import CamperDetailsPanel from './CamperDetailsPanel';
+import MergeRequestsModal from './MergeRequestsModal';
+import SplitRequestModal from './SplitRequestModal';
 
 interface RequestReviewPanelProps {
   sessionId: number;
@@ -57,6 +61,9 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
   const [sortBy, setSortBy] = useState<SortColumn>('confidence');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [showSplitModal, setShowSplitModal] = useState(false);
+  const [requestToSplit, setRequestToSplit] = useState<BunkRequestsResponse | null>(null);
   const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>({
     confidenceThreshold: 0,
@@ -243,6 +250,39 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
 
     return sorted;
   }, [requests, sortBy, sortOrder, personMap]);
+
+  // Check if merge is possible: exactly 2 requests selected with same requester and session
+  const mergeEligibility = useMemo(() => {
+    if (selectedRequests.size !== 2) {
+      return { canMerge: false, reason: 'Select exactly 2 requests to merge', requests: [] };
+    }
+
+    const selectedReqs = sortedRequests.filter(r => selectedRequests.has(r.id));
+    if (selectedReqs.length !== 2) {
+      return { canMerge: false, reason: 'Selected requests not found', requests: [] };
+    }
+
+    const [first, second] = selectedReqs;
+    if (!first || !second) {
+      return { canMerge: false, reason: 'Selected requests not found', requests: [] };
+    }
+
+    if (first.requester_id !== second.requester_id) {
+      return { canMerge: false, reason: 'Requests must have the same requester', requests: [] };
+    }
+
+    if (first.session_id !== second.session_id) {
+      return { canMerge: false, reason: 'Requests must be from the same session', requests: [] };
+    }
+
+    return { canMerge: true, reason: '', requests: selectedReqs };
+  }, [selectedRequests, sortedRequests]);
+
+  // Helper to check if a request has multiple source fields (is a merged request)
+  const hasMultipleSources = useCallback((request: BunkRequestsResponse) => {
+    const sourceFields = (request as unknown as { source_fields?: string[] }).source_fields;
+    return Array.isArray(sourceFields) && sourceFields.length > 1;
+  }, []);
 
   // Simple scroll container ref
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -606,6 +646,16 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
               <CheckCircle className="w-4 h-4" />
               <span className="hidden xs:inline">Approve</span>
             </button>
+            {mergeEligibility.canMerge && (
+              <button
+                onClick={() => setShowMergeModal(true)}
+                className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 font-medium shadow-sm touch-manipulation min-h-[44px]"
+                title="Merge these two requests into one"
+              >
+                <GitMerge className="w-4 h-4" />
+                <span className="hidden xs:inline">Merge</span>
+              </button>
+            )}
             <button
               onClick={handleBulkReject}
               className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-destructive text-destructive-foreground rounded-xl hover:bg-destructive/90 transition-colors flex items-center justify-center gap-2 font-medium shadow-sm touch-manipulation min-h-[44px]"
@@ -834,6 +884,18 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
                               <Shield className="w-5 h-5" />
                             </button>
                           )}
+                          {hasMultipleSources(request) && (
+                            <button
+                              onClick={() => {
+                                setRequestToSplit(request);
+                                setShowSplitModal(true);
+                              }}
+                              className="p-2 hover:bg-amber-100 dark:hover:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-lg transition-colors touch-manipulation"
+                              title="Split merged request"
+                            >
+                              <Scissors className="w-5 h-5" />
+                            </button>
+                          )}
                           <button
                             onClick={() => updateRequestMutation.mutate({
                               id: request.id,
@@ -1038,6 +1100,18 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
                               <Shield className="w-4 h-4" />
                             </button>
                           )}
+                          {hasMultipleSources(request) && (
+                            <button
+                              onClick={() => {
+                                setRequestToSplit(request);
+                                setShowSplitModal(true);
+                              }}
+                              className="p-1.5 hover:bg-amber-100 dark:hover:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-lg transition-colors"
+                              title="Split merged request"
+                            >
+                              <Scissors className="w-4 h-4" />
+                            </button>
+                          )}
                           <button
                             onClick={() => updateRequestMutation.mutate({
                               id: request.id,
@@ -1184,6 +1258,38 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
         <CamperDetailsPanel
           camperId={selectedCamperId}
           onClose={() => setSelectedCamperId(null)}
+        />
+      )}
+
+      {/* Merge Requests Modal */}
+      {showMergeModal && mergeEligibility.canMerge && (
+        <MergeRequestsModal
+          isOpen={showMergeModal}
+          onClose={() => setShowMergeModal(false)}
+          requests={mergeEligibility.requests}
+          onMergeComplete={() => {
+            setShowMergeModal(false);
+            setSelectedRequests(new Set());
+            toast.success('Requests merged successfully');
+          }}
+        />
+      )}
+
+      {/* Split Request Modal */}
+      {showSplitModal && requestToSplit && (
+        <SplitRequestModal
+          isOpen={showSplitModal}
+          onClose={() => {
+            setShowSplitModal(false);
+            setRequestToSplit(null);
+          }}
+          request={requestToSplit}
+          sourceLinks={[]} // TODO: Fetch source links from backend
+          onSplitComplete={() => {
+            setShowSplitModal(false);
+            setRequestToSplit(null);
+            toast.success('Request split successfully');
+          }}
         />
       )}
     </div>
