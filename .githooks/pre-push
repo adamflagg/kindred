@@ -43,7 +43,7 @@ uv run ruff format --check . || {
 }
 
 echo -e "${CYAN}  mypy...${NC}"
-uv run mypy bunking api || {
+uv run mypy . --explicit-package-bases || {
     echo -e "${RED}❌ mypy failed${NC}"
     exit 1
 }
