@@ -364,7 +364,7 @@ class ConfidenceScorer:
 
     def _map_source_type(self, source: RequestSource) -> str:
         """Map V2 RequestSource to string for signals"""
-        source_map = {RequestSource.FAMILY: "parent", RequestSource.STAFF: "counselor", RequestSource.NOTES: "staff"}
+        source_map = {RequestSource.FAMILY: "parent", RequestSource.STAFF: "counselor"}
         return source_map.get(source, "parent")
 
     def create_signals_for_disambiguation(

@@ -5,6 +5,7 @@ Handles all database operations related to BunkRequest records."""
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from pocketbase import PocketBase
@@ -16,6 +17,8 @@ from ...core.models import (
     RequestType,
 )
 from ..pocketbase_wrapper import PocketBaseWrapper
+
+logger = logging.getLogger(__name__)
 
 
 class RequestRepository:
@@ -37,13 +40,18 @@ class RequestRepository:
             return result is not None
 
         except Exception as e:
-            print(f"Error creating bunk request: {e}")
+            logger.warning(
+                f"Error creating bunk request: {e} "
+                f"(requester={request.requester_cm_id}, requestee={request.requested_cm_id}, "
+                f"type={request.request_type.value}, session={request.session_cm_id}, "
+                f"source={request.source_field})"
+            )
             return False
 
     def update(self, request: BunkRequest) -> bool:
         """Update an existing bunk request"""
-        if not hasattr(request, "id") or not request.id:
-            print("Cannot update request without ID")
+        if not request.id:
+            logger.warning("Cannot update request without ID")
             return False
 
         try:
@@ -52,7 +60,7 @@ class RequestRepository:
             return True
 
         except Exception as e:
-            print(f"Error updating bunk request {request.id}: {e}")
+            logger.warning(f"Error updating bunk request {request.id}: {e}")
             return False
 
     def find_existing(
@@ -97,7 +105,7 @@ class RequestRepository:
                 return self._map_from_db(result.items[0])
 
         except Exception as e:
-            print(f"Error finding existing request: {e}")
+            logger.warning(f"Error finding existing request: {e}")
 
         return None
 
@@ -156,7 +164,7 @@ class RequestRepository:
                         self.pb.collection("bunk_requests").delete(item.id)
                         deleted_count += 1
                     except Exception as e:
-                        print(f"Error deleting request {item.id}: {e}")
+                        logger.warning(f"Error deleting request {item.id}: {e}")
 
                 # If we got fewer than page_size, we're done
                 if len(result.items) < page_size:
@@ -168,7 +176,7 @@ class RequestRepository:
             return deleted_count
 
         except Exception as e:
-            print(f"Error clearing requests by source fields: {e}")
+            logger.error(f"Error clearing requests by source fields: {e}")
             return 0
 
     def clear_all_for_year(self, year: int, verify: bool = False, batch_size: int = 500) -> int | tuple[int, bool]:
@@ -189,7 +197,7 @@ class RequestRepository:
         total_deleted = 0
 
         try:
-            print(f"Clearing ALL bunk requests for year {year} (test mode)")
+            logger.info(f"Clearing ALL bunk requests for year {year} (test mode)")
 
             while True:
                 # Always fetch page 1 - as we delete, new records become "first"
@@ -211,11 +219,11 @@ class RequestRepository:
                         self.pb.collection("bunk_requests").delete(request.id)
                         total_deleted += 1
                         if total_deleted % 100 == 0:
-                            print(f"Progress: deleted {total_deleted} requests")
+                            logger.debug(f"Progress: deleted {total_deleted} requests")
                     except Exception as e:
-                        print(f"Error deleting request {request.id}: {e}")
+                        logger.warning(f"Error deleting request {request.id}: {e}")
 
-            print(f"Deleted {total_deleted} existing requests for year {year}")
+            logger.info(f"Deleted {total_deleted} existing requests for year {year}")
 
             if verify:
                 # Verify the table is empty for this year
@@ -224,13 +232,13 @@ class RequestRepository:
                 )
                 verified = verify_result.total_items == 0
                 if not verified:
-                    print(f"WARNING: After deletion, {verify_result.total_items} requests still remain for year {year}")
+                    logger.warning(f"After deletion, {verify_result.total_items} requests still remain for year {year}")
                 return total_deleted, verified
 
             return total_deleted
 
         except Exception as e:
-            print(f"Error clearing all requests for year {year}: {e}")
+            logger.error(f"Error clearing all requests for year {year}: {e}")
             if verify:
                 return total_deleted, False
             return total_deleted
@@ -294,13 +302,16 @@ class RequestRepository:
         - requester_id (not requester_person_id)
         - requestee_id (not requested_person_id)
         """
-        # Parse metadata JSON
+        # Parse metadata - handle both JSON string and dict (PocketBase varies by version)
         metadata: dict[str, Any] = {}
         if hasattr(db_record, "metadata") and db_record.metadata:
-            try:
-                metadata = json.loads(db_record.metadata)
-            except json.JSONDecodeError:
-                print(f"Error parsing metadata for request {db_record.id}")
+            if isinstance(db_record.metadata, dict):
+                metadata = db_record.metadata
+            elif isinstance(db_record.metadata, str):
+                try:
+                    metadata = json.loads(db_record.metadata)
+                except json.JSONDecodeError:
+                    logger.warning(f"Error parsing metadata for request {db_record.id}")
 
         # Get field values with fallback for attribute access
         def get_field(record: Any, name: str, default: Any = None) -> Any:
@@ -326,6 +337,7 @@ class RequestRepository:
             status=RequestStatus(get_field(db_record, "status")),
             is_placeholder=get_field(db_record, "is_placeholder", False),
             metadata=metadata,
+            id=get_field(db_record, "id"),  # PocketBase record ID for updates
         )
 
         return request

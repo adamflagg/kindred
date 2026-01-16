@@ -279,7 +279,7 @@ class TestPriorityCalculator:
             target_name="Johnny",
             age_preference=None,
             source_field="internal_notes",
-            source=RequestSource.NOTES,
+            source=RequestSource.STAFF,
             confidence=0.85,
             csv_position=0,
             metadata={},
@@ -453,7 +453,7 @@ class TestConfigDrivenPriorityCalculator:
             target_name="Johnny",
             age_preference=None,
             source_field="internal_notes",
-            source=RequestSource.NOTES,
+            source=RequestSource.STAFF,
             confidence=0.85,
             csv_position=1,  # First position (1-indexed)
             metadata={},

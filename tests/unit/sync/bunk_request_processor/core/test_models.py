@@ -42,19 +42,22 @@ class TestRequestSource:
         Note: Values match PocketBase schema (migration 1754196925):
         - FAMILY: Parent/family requests (ret_parent_socialize_with_best, share_bunk_with)
         - STAFF: Staff requests (do_not_share_bunk_with)
-        - NOTES: Internal notes (internal_notes, bunking_notes)
+        Simplified to two categories:
+        - FAMILY: Parent/family-submitted fields (share_bunk_with, socialize_with)
+        - STAFF: Staff-written fields (do_not_share_with, bunking_notes, internal_notes)
         """
         from bunking.sync.bunk_request_processor.core.models import RequestSource
 
         assert RequestSource.FAMILY.value == "family"
         assert RequestSource.STAFF.value == "staff"
-        assert RequestSource.NOTES.value == "notes"
+        # NOTES was removed - all staff fields use STAFF
+        assert not hasattr(RequestSource, "NOTES")
 
     def test_request_source_exhaustive(self):
-        """Test that we have exactly 3 request sources"""
+        """Test that we have exactly 2 request sources (simplified)"""
         from bunking.sync.bunk_request_processor.core.models import RequestSource
 
-        assert len(RequestSource) == 3
+        assert len(RequestSource) == 2
 
 
 class TestRequestStatus:
