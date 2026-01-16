@@ -40,6 +40,7 @@ class SourceLinkRepository:
         original_request_id: str,
         is_primary: bool,
         source_field: str | None = None,
+        parse_notes: str | None = None,
     ) -> bool:
         """Create a new junction record linking a bunk_request to an original_request.
 
@@ -48,6 +49,7 @@ class SourceLinkRepository:
             original_request_id: PocketBase ID of the original_bunk_request
             is_primary: Whether this source "owns" the request
             source_field: Optional source field name for quick access
+            parse_notes: Optional AI parse notes from the original bunk_request
 
         Returns:
             True if created successfully, False on error (including duplicate)
@@ -60,6 +62,8 @@ class SourceLinkRepository:
             }
             if source_field:
                 data["source_field"] = source_field
+            if parse_notes:
+                data["parse_notes"] = parse_notes
 
             self.pb.collection(COLLECTION_NAME).create(data)
             return True
