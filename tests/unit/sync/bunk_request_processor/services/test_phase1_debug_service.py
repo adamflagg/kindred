@@ -8,7 +8,7 @@ Following TDD: These tests are written FIRST to define expected behavior.
 
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -76,7 +76,6 @@ class TestPhase1DebugServiceParseSelectedRecords:
         # Mock Phase 1 parse result
         from bunking.sync.bunk_request_processor.core.models import (
             ParsedRequest,
-            ParseRequest,
             ParseResult,
             RequestSource,
             RequestType,
@@ -131,9 +130,7 @@ class TestPhase1DebugServiceParseSelectedRecords:
         }
         mock_dependencies["debug_repo"].get_by_original_request.return_value = cached_result
 
-        results = await debug_service.parse_selected_records(
-            ["orig_req_1"], force_reparse=False
-        )
+        results = await debug_service.parse_selected_records(["orig_req_1"], force_reparse=False)
 
         assert len(results) == 1
         assert results[0] == cached_result
@@ -178,9 +175,7 @@ class TestPhase1DebugServiceParseSelectedRecords:
         await debug_service.parse_selected_records(["orig_req_1"], force_reparse=True)
 
         # Verify old cache was deleted
-        mock_dependencies["debug_repo"].delete_by_original_request.assert_called_once_with(
-            "orig_req_1"
-        )
+        mock_dependencies["debug_repo"].delete_by_original_request.assert_called_once_with("orig_req_1")
 
         # Verify Phase 1 was called
         mock_dependencies["phase1_service"].batch_parse.assert_called_once()
@@ -190,10 +185,16 @@ class TestPhase1DebugServiceParseSelectedRecords:
         self, debug_service, mock_dependencies: dict[str, Mock]
     ) -> None:
         """Test handling mix of cached and new records."""
+
         # First record has cache, second doesn't
         def get_cached(orig_id):
             if orig_id == "orig_req_1":
-                return {"id": "debug_cached", "original_request_id": "orig_req_1", "is_valid": True, "parsed_intents": []}
+                return {
+                    "id": "debug_cached",
+                    "original_request_id": "orig_req_1",
+                    "is_valid": True,
+                    "parsed_intents": [],
+                }
             return None
 
         mock_dependencies["debug_repo"].get_by_original_request.side_effect = get_cached
@@ -215,16 +216,12 @@ class TestPhase1DebugServiceParseSelectedRecords:
         ]
         mock_dependencies["debug_repo"].save_result.return_value = "debug_new"
 
-        results = await debug_service.parse_selected_records(
-            ["orig_req_1", "orig_req_2"], force_reparse=False
-        )
+        results = await debug_service.parse_selected_records(["orig_req_1", "orig_req_2"], force_reparse=False)
 
         assert len(results) == 2
 
         # Verify only uncached record was loaded
-        mock_dependencies["original_requests_loader"].load_by_ids.assert_called_once_with(
-            ["orig_req_2"]
-        )
+        mock_dependencies["original_requests_loader"].load_by_ids.assert_called_once_with(["orig_req_2"])
 
     @pytest.mark.asyncio
     async def test_parse_selected_records_returns_empty_for_empty_input(
@@ -267,9 +264,7 @@ class TestPhase1DebugServiceParseByFilter:
         )
 
     @pytest.mark.asyncio
-    async def test_parse_by_filter_filters_by_session(
-        self, debug_service, mock_dependencies: dict[str, Mock]
-    ) -> None:
+    async def test_parse_by_filter_filters_by_session(self, debug_service, mock_dependencies: dict[str, Mock]) -> None:
         """Test that parse_by_filter applies session filter."""
         mock_dependencies["original_requests_loader"].load_by_filter.return_value = []
         mock_dependencies["debug_repo"].get_by_original_request.return_value = None
@@ -295,9 +290,7 @@ class TestPhase1DebugServiceParseByFilter:
         assert call_kwargs.get("source_field") == "bunking_notes"
 
     @pytest.mark.asyncio
-    async def test_parse_by_filter_respects_limit(
-        self, debug_service, mock_dependencies: dict[str, Mock]
-    ) -> None:
+    async def test_parse_by_filter_respects_limit(self, debug_service, mock_dependencies: dict[str, Mock]) -> None:
         """Test that parse_by_filter respects the limit parameter."""
         mock_dependencies["original_requests_loader"].load_by_filter.return_value = []
         mock_dependencies["debug_repo"].get_by_original_request.return_value = None
@@ -351,7 +344,9 @@ class TestPhase1DebugServiceConvertToParseRequest:
         }
 
         # Access internal method for testing
-        parse_request = debug_service._convert_to_parse_request(mock_original, session_cm_id=1000002, session_name="Session 2")
+        parse_request = debug_service._convert_to_parse_request(
+            mock_original, session_cm_id=1000002, session_name="Session 2"
+        )
 
         assert parse_request.requester_name == "Li Garcia"  # Uses preferred_name
         assert parse_request.requester_cm_id == 12345
@@ -375,7 +370,9 @@ class TestPhase1DebugServiceConvertToParseRequest:
             )
         }
 
-        parse_request = debug_service._convert_to_parse_request(mock_original, session_cm_id=1000002, session_name="Session 2")
+        parse_request = debug_service._convert_to_parse_request(
+            mock_original, session_cm_id=1000002, session_name="Session 2"
+        )
 
         assert parse_request.requester_name == "Liam Garcia"
 
@@ -453,9 +450,7 @@ class TestPhase1DebugServiceFormatResults:
             metadata={"token_count": 200, "processing_time_ms": 1500},
         )
 
-        formatted = debug_service._format_parse_result(
-            parse_result, original_request_id="orig_req_1"
-        )
+        formatted = debug_service._format_parse_result(parse_result, original_request_id="orig_req_1")
 
         assert formatted["original_request_id"] == "orig_req_1"
         assert formatted["is_valid"] is True
@@ -482,9 +477,7 @@ class TestPhase1DebugServiceFormatResults:
             metadata={"failure_reason": "AI timeout", "token_count": 0},
         )
 
-        formatted = debug_service._format_parse_result(
-            parse_result, original_request_id="orig_req_1"
-        )
+        formatted = debug_service._format_parse_result(parse_result, original_request_id="orig_req_1")
 
         assert formatted["is_valid"] is False
         assert formatted["error_message"] == "AI timeout"
@@ -527,9 +520,7 @@ class TestPhase1DebugServiceGetPromptVersion:
             metadata={},
         )
 
-        formatted = debug_service._format_parse_result(
-            parse_result, original_request_id="orig_req_1"
-        )
+        formatted = debug_service._format_parse_result(parse_result, original_request_id="orig_req_1")
 
         assert formatted["prompt_version"] == "v1.2.0"
 
