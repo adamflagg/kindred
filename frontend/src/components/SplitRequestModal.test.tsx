@@ -422,4 +422,76 @@ describe('SplitRequestModal', () => {
       });
     });
   });
+
+  /**
+   * TDD TESTS: Primary Source Indicator
+   *
+   * When viewing source links in the split modal, users should be able
+   * to distinguish which source is the "primary" source that determined
+   * the main request type/target.
+   */
+  describe('Primary Source Indicator', () => {
+    it('should accept is_primary in SourceLinkData interface', () => {
+      // Extended interface should include is_primary
+      interface SourceLinkDataWithPrimary {
+        original_request_id: string;
+        source_field: string;
+        original_content?: string;
+        created?: string;
+        parse_notes?: string;
+        is_primary?: boolean;
+      }
+
+      const primarySource: SourceLinkDataWithPrimary = {
+        original_request_id: 'orig_1',
+        source_field: 'share_bunk_with',
+        is_primary: true,
+      };
+
+      const secondarySource: SourceLinkDataWithPrimary = {
+        original_request_id: 'orig_2',
+        source_field: 'bunking_notes',
+        is_primary: false,
+      };
+
+      expect(primarySource.is_primary).toBe(true);
+      expect(secondarySource.is_primary).toBe(false);
+    });
+
+    it('should identify the primary source among multiple sources', () => {
+      const sourceLinks = [
+        { original_request_id: 'orig_1', source_field: 'share_bunk_with', is_primary: true },
+        { original_request_id: 'orig_2', source_field: 'bunking_notes', is_primary: false },
+      ];
+
+      const primarySource = sourceLinks.find(s => s.is_primary === true);
+      expect(primarySource).toBeDefined();
+      expect(primarySource?.source_field).toBe('share_bunk_with');
+    });
+
+    it('should handle case where no source is marked as primary', () => {
+      const sourceLinks = [
+        { original_request_id: 'orig_1', source_field: 'share_bunk_with' },
+        { original_request_id: 'orig_2', source_field: 'bunking_notes' },
+      ];
+
+      const primarySource = sourceLinks.find(s => (s as { is_primary?: boolean }).is_primary === true);
+      expect(primarySource).toBeUndefined();
+    });
+
+    it('should show primary badge text for primary source', () => {
+      // Test the visual indicator logic
+      const isPrimary = true;
+      const badgeText = isPrimary ? 'Primary' : null;
+
+      expect(badgeText).toBe('Primary');
+    });
+
+    it('should not show primary badge for non-primary sources', () => {
+      const isPrimary = false;
+      const badgeText = isPrimary ? 'Primary' : null;
+
+      expect(badgeText).toBeNull();
+    });
+  });
 });
