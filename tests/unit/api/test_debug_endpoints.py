@@ -48,9 +48,7 @@ class TestListParseAnalysisEndpoint:
 
                 yield TestClient(app), mock_repos
 
-    def test_list_returns_parse_analysis_items(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
-    ) -> None:
+    def test_list_returns_parse_analysis_items(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
         """Test that list endpoint returns parse analysis items."""
         client, mock_repos = client_with_mocks
 
@@ -100,9 +98,7 @@ class TestListParseAnalysisEndpoint:
         assert item["source_field"] == "bunk_with"
         assert len(item["parsed_intents"]) == 1
 
-    def test_list_filters_by_session(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
-    ) -> None:
+    def test_list_filters_by_session(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
         """Test that list endpoint filters by session_cm_id."""
         client, mock_repos = client_with_mocks
 
@@ -122,9 +118,7 @@ class TestListParseAnalysisEndpoint:
         call_kwargs = mock_repos["debug_repo"].list_with_originals.call_args[1]
         assert call_kwargs.get("session_id") == "sess_abc"
 
-    def test_list_filters_by_source_field(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
-    ) -> None:
+    def test_list_filters_by_source_field(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
         """Test that list endpoint filters by source_field."""
         client, mock_repos = client_with_mocks
 
@@ -137,9 +131,7 @@ class TestListParseAnalysisEndpoint:
         call_kwargs = mock_repos["debug_repo"].list_with_originals.call_args[1]
         assert call_kwargs.get("source_field") == "bunking_notes"
 
-    def test_list_applies_pagination(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
-    ) -> None:
+    def test_list_applies_pagination(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
         """Test that list endpoint applies limit and offset."""
         client, mock_repos = client_with_mocks
 
@@ -153,9 +145,7 @@ class TestListParseAnalysisEndpoint:
         assert call_kwargs.get("limit") == 25
         assert call_kwargs.get("offset") == 50
 
-    def test_list_validates_source_field_enum(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
-    ) -> None:
+    def test_list_validates_source_field_enum(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
         """Test that list endpoint validates source_field enum values."""
         client, _mock_repos = client_with_mocks
 
@@ -187,9 +177,7 @@ class TestGetParseAnalysisDetailEndpoint:
 
             yield TestClient(app), mock_repos
 
-    def test_get_detail_returns_single_item(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
-    ) -> None:
+    def test_get_detail_returns_single_item(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
         """Test that get detail returns a single parse analysis item."""
         client, mock_repos = client_with_mocks
 
@@ -248,9 +236,7 @@ class TestPhase1OnlyEndpoint:
 
             yield TestClient(app), mock_services
 
-    def test_parse_phase1_only_runs_phase1(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
-    ) -> None:
+    def test_parse_phase1_only_runs_phase1(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
         """Test that parse endpoint runs Phase 1 only."""
         client, mock_services = client_with_mocks
 
@@ -278,9 +264,7 @@ class TestPhase1OnlyEndpoint:
             ["orig_req_1"], force_reparse=False
         )
 
-    def test_parse_phase1_only_with_force_reparse(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
-    ) -> None:
+    def test_parse_phase1_only_with_force_reparse(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
         """Test that force_reparse flag is passed through."""
         client, mock_services = client_with_mocks
 
@@ -354,9 +338,7 @@ class TestClearParseAnalysisEndpoint:
 
             yield TestClient(app), mock_repos
 
-    def test_clear_deletes_all_debug_results(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
-    ) -> None:
+    def test_clear_deletes_all_debug_results(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
         """Test that clear endpoint deletes all debug results."""
         client, mock_repos = client_with_mocks
 
@@ -370,9 +352,7 @@ class TestClearParseAnalysisEndpoint:
 
         mock_repos["debug_repo"].clear_all.assert_called_once()
 
-    def test_clear_returns_error_on_failure(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
-    ) -> None:
+    def test_clear_returns_error_on_failure(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
         """Test that clear endpoint returns error on failure."""
         client, mock_repos = client_with_mocks
 
@@ -392,9 +372,7 @@ class TestListOriginalRequestsEndpoint:
         return Mock()
 
     @pytest.fixture
-    def client_with_mocks(
-        self, mock_loader: Mock
-    ) -> Generator[tuple[TestClient, Mock], None, None]:
+    def client_with_mocks(self, mock_loader: Mock) -> Generator[tuple[TestClient, Mock], None, None]:
         """Create test client with mocked dependencies."""
         # Patch the OriginalRequestsLoader class since impl instantiates it directly
         with patch("api.routers.debug.OriginalRequestsLoader") as MockLoaderClass:
@@ -407,9 +385,7 @@ class TestListOriginalRequestsEndpoint:
 
             yield TestClient(app), mock_loader
 
-    def test_list_original_requests_returns_items(
-        self, client_with_mocks: tuple[TestClient, Mock]
-    ) -> None:
+    def test_list_original_requests_returns_items(self, client_with_mocks: tuple[TestClient, Mock]) -> None:
         """Test that list endpoint returns original requests."""
         client, mock_loader = client_with_mocks
 
@@ -440,9 +416,7 @@ class TestListOriginalRequestsEndpoint:
         assert item["original_text"] == "With Mia please"
         assert item["requester_name"] == "Emma Johnson"
 
-    def test_list_original_requests_filters_by_session(
-        self, client_with_mocks: tuple[TestClient, Mock]
-    ) -> None:
+    def test_list_original_requests_filters_by_session(self, client_with_mocks: tuple[TestClient, Mock]) -> None:
         """Test that list filters by session when provided."""
         client, mock_loader = client_with_mocks
 
@@ -455,9 +429,7 @@ class TestListOriginalRequestsEndpoint:
         call_kwargs = mock_loader.load_by_filter.call_args[1]
         assert call_kwargs.get("session_cm_id") == 1000002
 
-    def test_list_original_requests_year_required(
-        self, client_with_mocks: tuple[TestClient, Mock]
-    ) -> None:
+    def test_list_original_requests_year_required(self, client_with_mocks: tuple[TestClient, Mock]) -> None:
         """Test that year parameter is required."""
         client, _mock_loader = client_with_mocks
 
