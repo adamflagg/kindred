@@ -92,6 +92,34 @@ class SourceLinkRepository:
             logger.warning(f"Error getting sources for request {bunk_request_id}: {e}")
             return []
 
+    def get_source_links_with_fields(self, bunk_request_id: str) -> list[dict[str, object]]:
+        """Get all source links for a request with their source_field values.
+
+        Used by split endpoint to match absorbed requests by source_field when
+        source links have been transferred to the kept request during merge.
+
+        Args:
+            bunk_request_id: PocketBase ID of the bunk_request
+
+        Returns:
+            List of dicts with original_request_id, source_field, is_primary
+        """
+        try:
+            result = self.pb.collection(COLLECTION_NAME).get_list(
+                query_params={"filter": f'bunk_request = "{bunk_request_id}"', "perPage": 100}
+            )
+            return [
+                {
+                    "original_request_id": str(item.original_request),  # type: ignore[attr-defined]
+                    "source_field": getattr(item, "source_field", None),
+                    "is_primary": getattr(item, "is_primary", False),
+                }
+                for item in result.items
+            ]
+        except Exception as e:
+            logger.warning(f"Error getting source links with fields for {bunk_request_id}: {e}")
+            return []
+
     def get_requests_for_source(self, original_request_id: str) -> list[str]:
         """Get all bunk_request IDs linked to an original_request.
 
