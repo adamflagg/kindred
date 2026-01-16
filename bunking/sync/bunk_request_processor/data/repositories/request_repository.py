@@ -350,6 +350,35 @@ class RequestRepository:
             logger.warning(f"Error updating source_fields for {record_id}: {e}")
             return False
 
+    def update_merged_from(self, record_id: str, merged_from: list[str]) -> bool:
+        """Update the merged_from metadata for a request after split.
+
+        Updates the metadata.merged_from array to track which request IDs
+        are still merged into this request after a split operation.
+
+        Args:
+            record_id: PocketBase record ID
+            merged_from: Updated list of merged request IDs
+
+        Returns:
+            True if updated, False otherwise
+        """
+        try:
+            # Get current metadata to preserve other fields
+            existing = self.get_by_id(record_id)
+            if not existing:
+                logger.warning(f"Cannot update merged_from: request {record_id} not found")
+                return False
+
+            metadata = existing.metadata or {}
+            metadata["merged_from"] = merged_from
+
+            self.pb.collection("bunk_requests").update(record_id, {"metadata": json.dumps(metadata)})
+            return True
+        except Exception as e:
+            logger.warning(f"Error updating merged_from for {record_id}: {e}")
+            return False
+
     def soft_delete_for_merge(self, record_id: str, merged_into_id: str) -> bool:
         """Mark request as merged into another (soft delete).
 

@@ -14,8 +14,6 @@ from pydantic import BaseModel, field_validator
 
 from bunking.sync.bunk_request_processor.core.models import (
     BunkRequest,
-    RequestSource,
-    RequestStatus,
     RequestType,
 )
 from bunking.sync.bunk_request_processor.data.repositories.request_repository import (
@@ -166,7 +164,9 @@ class MergeRequestsResponse(BaseModel):
 class SplitSourceConfig(BaseModel):
     """Configuration for a single source to split off."""
 
-    original_request_id: str
+    # This is the absorbed bunk_request ID (soft-deleted request that was merged)
+    # Previously named original_request_id when using source links
+    original_request_id: str  # Keep name for backwards compatibility with frontend
     new_type: str
     new_target_id: int | None = None
 
@@ -389,147 +389,89 @@ async def split_requests(request: SplitRequestsRequest) -> SplitRequestsResponse
         SplitRequestsResponse with restored request IDs and updated source_fields
     """
     request_repo = get_request_repository()
-    source_link_repo = get_source_link_repository()
 
-    # Load the original request
-    original_request = request_repo.get_by_id(request.request_id)
-    if original_request is None:
+    # Load the kept request (the one we're splitting from)
+    kept_request = request_repo.get_by_id(request.request_id)
+    if kept_request is None:
         raise HTTPException(
             status_code=404,
             detail=f"Request '{request.request_id}' not found",
         )
 
-    # Verify it's a multi-source request
-    source_count = source_link_repo.count_sources_for_request(request.request_id)
-    if source_count <= 1:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot split a request with a single source",
-        )
-
-    assert original_request.id is not None, "Database record missing ID"
-
-    # Get all source links on the KEPT request (where they were transferred during merge)
-    kept_source_links = source_link_repo.get_source_links_with_fields(request.request_id)
-
-    # Build a set of primary source IDs for validation
-    primary_source_ids = {
-        link.get("original_request_id")
-        for link in kept_source_links
-        if link.get("is_primary")
-    }
-
-    # Validate: cannot split off primary source
-    for split_config in request.split_sources:
-        if split_config.original_request_id in primary_source_ids:
-            raise HTTPException(
-                status_code=400,
-                detail="Cannot split off the primary source. The primary source must remain with the original request.",
-            )
+    assert kept_request.id is not None, "Database record missing ID"
 
     # Get all soft-deleted requests that were merged into this one
     merged_requests = request_repo.get_merged_requests(request.request_id)
 
-    # Build a map of original_request_id -> merged_request for efficient lookup
-    # NOTE: Source links are transferred to the kept request during merge,
-    # so we must match by source_field instead of looking up sources on absorbed requests.
-    merged_by_source: dict[str, BunkRequest] = {}
-
-    # Build map by matching absorbed request's source_field to source link's source_field
+    # Build a map of absorbed request ID -> absorbed request for efficient lookup
+    merged_by_id: dict[str, BunkRequest] = {}
     for merged_req in merged_requests:
-        assert merged_req.id is not None
-        merged_source_field = getattr(merged_req, "source_field", None)
-        if merged_source_field:
-            for link in kept_source_links:
-                if link.get("source_field") == merged_source_field:
-                    original_req_id = link.get("original_request_id")
-                    if original_req_id and isinstance(original_req_id, str):
-                        merged_by_source[original_req_id] = merged_req
-                    break
+        if merged_req.id:
+            merged_by_id[merged_req.id] = merged_req
 
-    # Track restored/created requests and removed source fields
+    # Verify it's a merged request with absorbed requests
+    if not merged_by_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot split a request that has no merged requests",
+        )
+
+    # Validate: cannot split off the kept request itself (it's the "primary")
+    for split_config in request.split_sources:
+        if split_config.original_request_id == request.request_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot split off the primary request. Select absorbed requests to split off.",
+            )
+        if split_config.original_request_id not in merged_by_id:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Request '{split_config.original_request_id}' is not a merged request of '{request.request_id}'",
+            )
+
+    # Track restored requests and their source fields
     restored_request_ids: list[str] = []
     removed_source_fields: list[str] = []
 
-    # Process each split source
+    # Process each split source (now using absorbed request IDs directly)
     for split_config in request.split_sources:
-        # Get the source_field for this link
-        source_field = source_link_repo.get_source_field_for_link(
-            bunk_request_id=request.request_id,
-            original_request_id=split_config.original_request_id,
-        )
-        if source_field:
-            removed_source_fields.append(source_field)
+        absorbed_request = merged_by_id.get(split_config.original_request_id)
 
-        # Try to find a soft-deleted request to restore
-        found_merged_req = merged_by_source.get(split_config.original_request_id)
+        if absorbed_request is not None and absorbed_request.id is not None:
+            # Get source_field from the absorbed request
+            source_field = getattr(absorbed_request, "source_field", None)
+            if source_field:
+                removed_source_fields.append(source_field)
 
-        if found_merged_req is not None and found_merged_req.id is not None:
             # Restore the soft-deleted request (preserves all original AI data)
-            if request_repo.restore_from_merge(found_merged_req.id):
-                restored_request_ids.append(found_merged_req.id)
-
-                # Transfer source link back to restored request
-                source_link_repo.remove_source_link(
-                    bunk_request_id=request.request_id,
-                    original_request_id=split_config.original_request_id,
-                )
-                source_link_repo.add_source_link(
-                    bunk_request_id=found_merged_req.id,
-                    original_request_id=split_config.original_request_id,
-                    is_primary=True,
-                )
+            if request_repo.restore_from_merge(absorbed_request.id):
+                restored_request_ids.append(absorbed_request.id)
+                logger.info(f"Restored absorbed request {absorbed_request.id}")
         else:
-            # Fallback for legacy data: create new request
-            new_request = BunkRequest(
-                requester_cm_id=original_request.requester_cm_id,
-                requested_cm_id=split_config.new_target_id or original_request.requested_cm_id,
-                request_type=RequestType(split_config.new_type),
-                session_cm_id=original_request.session_cm_id,
-                priority=original_request.priority,
-                confidence_score=original_request.confidence_score,
-                source=original_request.source
-                if hasattr(original_request, "source") and original_request.source
-                else RequestSource.FAMILY,
-                source_field=source_field or "",
-                csv_position=original_request.csv_position,
-                year=original_request.year,
-                status=RequestStatus.RESOLVED,
-                is_placeholder=False,
-                metadata={"split_from": original_request.id},
-            )
+            logger.warning(f"Could not find absorbed request {split_config.original_request_id}")
 
-            # Create the new request
-            if request_repo.create(new_request):
-                if new_request.id:
-                    restored_request_ids.append(new_request.id)
-
-                    # Transfer source link: remove from old, add to new
-                    source_link_repo.remove_source_link(
-                        bunk_request_id=request.request_id,
-                        original_request_id=split_config.original_request_id,
-                    )
-                    source_link_repo.add_source_link(
-                        bunk_request_id=new_request.id,
-                        original_request_id=split_config.original_request_id,
-                        is_primary=True,
-                    )
-
-    # Update original's source_fields (remove split sources)
-    original_source_fields = getattr(original_request, "source_fields", None) or []
-    if isinstance(original_source_fields, str):
+    # Update kept request's source_fields (remove split sources)
+    kept_source_fields = getattr(kept_request, "source_fields", None) or []
+    if isinstance(kept_source_fields, str):
         import json
 
         try:
-            original_source_fields = json.loads(original_source_fields)
+            kept_source_fields = json.loads(kept_source_fields)
         except json.JSONDecodeError:
-            original_source_fields = [original_source_fields]
+            kept_source_fields = [kept_source_fields]
 
-    updated_source_fields = [f for f in original_source_fields if f not in removed_source_fields]
+    updated_source_fields = [f for f in kept_source_fields if f not in removed_source_fields]
     request_repo.update_source_fields(
-        record_id=original_request.id,
+        record_id=kept_request.id,
         source_fields=updated_source_fields,
     )
+
+    # Update merged_from metadata on kept request (remove split request IDs)
+    metadata = getattr(kept_request, "metadata", {}) or {}
+    merged_from = metadata.get("merged_from", [])
+    if merged_from:
+        updated_merged_from = [rid for rid in merged_from if rid not in restored_request_ids]
+        request_repo.update_merged_from(kept_request.id, updated_merged_from)
 
     logger.info(
         f"Split {len(restored_request_ids)} sources from {request.request_id}. "
