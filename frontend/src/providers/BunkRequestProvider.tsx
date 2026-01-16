@@ -22,7 +22,8 @@ export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProvid
     queryFn: async () => {
       // Inline getBunkRequests
       try {
-        const filter = `session_id = ${sessionCmId} && year = ${currentYear}`;
+        // Filter out absorbed requests (those that have been merged into another request)
+        const filter = `session_id = ${sessionCmId} && year = ${currentYear} && (merged_into = "" || merged_into = null)`;
 
         // Include all requests (includeAll = true)
         // No status filter when includeAll is true
