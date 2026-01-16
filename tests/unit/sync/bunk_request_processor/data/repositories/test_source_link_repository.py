@@ -513,5 +513,114 @@ class TestSourceLinkRepositoryBulkOperations:
         assert sources_map["br_2"] == ["or_c"]
 
 
+class TestSourceLinkRepositoryWithFieldInfo:
+    """Test source link repository methods that return field information.
+
+    TDD: These tests define behavior for get_source_links_with_fields(),
+    needed for split endpoint to match absorbed requests by source_field.
+    """
+
+    @pytest.fixture
+    def mock_pb_client(self):
+        """Create a mock PocketBase client"""
+        mock_client = Mock()
+        mock_collection = Mock()
+        mock_client.collection.return_value = mock_collection
+        return mock_client, mock_collection
+
+    @pytest.fixture
+    def repository(self, mock_pb_client):
+        """Create a SourceLinkRepository with mocked client"""
+        from bunking.sync.bunk_request_processor.data.repositories.source_link_repository import (
+            SourceLinkRepository,
+        )
+
+        mock_client, _ = mock_pb_client
+        return SourceLinkRepository(mock_client)
+
+    def test_get_source_links_with_fields_returns_all_link_info(self, repository, mock_pb_client):
+        """Test fetching source links with their source_field values.
+
+        This is needed for split endpoint to match absorbed requests by source_field
+        when the source links have been transferred to the kept request.
+        """
+        mock_client, mock_collection = mock_pb_client
+
+        # Mock result with source links that have source_field populated
+        mock_result = Mock()
+        mock_result.items = [
+            Mock(original_request="or_primary", source_field="Share Bunk With", is_primary=True),
+            Mock(original_request="or_merged", source_field="BunkingNotes Notes", is_primary=False),
+        ]
+        mock_result.total_items = 2
+        mock_collection.get_list.return_value = mock_result
+
+        links = repository.get_source_links_with_fields("br_merged_request")
+
+        assert len(links) == 2
+
+        # First link
+        assert links[0]["original_request_id"] == "or_primary"
+        assert links[0]["source_field"] == "Share Bunk With"
+        assert links[0]["is_primary"] is True
+
+        # Second link
+        assert links[1]["original_request_id"] == "or_merged"
+        assert links[1]["source_field"] == "BunkingNotes Notes"
+        assert links[1]["is_primary"] is False
+
+        # Verify filter was correct
+        args = mock_collection.get_list.call_args[1]
+        filter_str = args["query_params"]["filter"]
+        assert 'bunk_request = "br_merged_request"' in filter_str
+
+    def test_get_source_links_with_fields_returns_empty_when_no_links(self, repository, mock_pb_client):
+        """Test fetching source links when no links exist."""
+        mock_client, mock_collection = mock_pb_client
+
+        mock_result = Mock()
+        mock_result.items = []
+        mock_result.total_items = 0
+        mock_collection.get_list.return_value = mock_result
+
+        links = repository.get_source_links_with_fields("br_nonexistent")
+
+        assert links == []
+
+    def test_get_source_links_with_fields_handles_missing_source_field(self, repository, mock_pb_client):
+        """Test that missing source_field attribute is handled gracefully.
+
+        Some older records may not have source_field populated.
+        """
+        mock_client, mock_collection = mock_pb_client
+
+        # Mock item without source_field attribute
+        mock_item = Mock(spec=["original_request", "is_primary"])
+        mock_item.original_request = "or_legacy"
+        mock_item.is_primary = True
+
+        mock_result = Mock()
+        mock_result.items = [mock_item]
+        mock_result.total_items = 1
+        mock_collection.get_list.return_value = mock_result
+
+        links = repository.get_source_links_with_fields("br_legacy")
+
+        assert len(links) == 1
+        assert links[0]["original_request_id"] == "or_legacy"
+        assert links[0]["source_field"] is None
+        assert links[0]["is_primary"] is True
+
+    def test_get_source_links_with_fields_handles_api_error(self, repository, mock_pb_client):
+        """Test that API errors return empty list."""
+        mock_client, mock_collection = mock_pb_client
+
+        mock_collection.get_list.side_effect = Exception("API error")
+
+        links = repository.get_source_links_with_fields("br_error")
+
+        assert links == []
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

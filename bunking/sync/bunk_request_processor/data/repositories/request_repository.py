@@ -86,7 +86,13 @@ class RequestRepository:
         """
         try:
             # Build filter using current schema field names (post-migration)
-            filter_parts = [f"requester_id = {requester_cm_id}", f"request_type = '{request_type}'", f"year = {year}"]
+            # Exclude soft-deleted (merged) requests
+            filter_parts = [
+                f"requester_id = {requester_cm_id}",
+                f"request_type = '{request_type}'",
+                f"year = {year}",
+                'merged_into = ""',  # Exclude soft-deleted requests
+            ]
 
             if requested_cm_id is not None:
                 filter_parts.append(f"requestee_id = {requested_cm_id}")
@@ -343,6 +349,95 @@ class RequestRepository:
         except Exception as e:
             logger.warning(f"Error updating source_fields for {record_id}: {e}")
             return False
+
+    def update_merged_from(self, record_id: str, merged_from: list[str]) -> bool:
+        """Update the merged_from metadata for a request after split.
+
+        Updates the metadata.merged_from array to track which request IDs
+        are still merged into this request after a split operation.
+
+        Args:
+            record_id: PocketBase record ID
+            merged_from: Updated list of merged request IDs
+
+        Returns:
+            True if updated, False otherwise
+        """
+        try:
+            # Get current metadata to preserve other fields
+            existing = self.get_by_id(record_id)
+            if not existing:
+                logger.warning(f"Cannot update merged_from: request {record_id} not found")
+                return False
+
+            metadata = existing.metadata or {}
+            metadata["merged_from"] = merged_from
+
+            self.pb.collection("bunk_requests").update(record_id, {"metadata": json.dumps(metadata)})
+            return True
+        except Exception as e:
+            logger.warning(f"Error updating merged_from for {record_id}: {e}")
+            return False
+
+    def soft_delete_for_merge(self, record_id: str, merged_into_id: str) -> bool:
+        """Mark request as merged into another (soft delete).
+
+        Instead of deleting the absorbed request, sets merged_into field
+        to preserve all AI-generated data for potential restoration via split.
+
+        Args:
+            record_id: PocketBase record ID of the request being absorbed
+            merged_into_id: PocketBase record ID of the kept request
+
+        Returns:
+            True if updated, False on error
+        """
+        try:
+            self.pb.collection("bunk_requests").update(record_id, {"merged_into": merged_into_id})
+            return True
+        except Exception as e:
+            logger.warning(f"Error soft-deleting request {record_id} for merge: {e}")
+            return False
+
+    def restore_from_merge(self, record_id: str) -> bool:
+        """Restore a merged request by clearing merged_into.
+
+        Used by split operations to restore a soft-deleted request
+        with all its original data intact.
+
+        Args:
+            record_id: PocketBase record ID of the merged request
+
+        Returns:
+            True if restored, False on error
+        """
+        try:
+            self.pb.collection("bunk_requests").update(record_id, {"merged_into": ""})
+            return True
+        except Exception as e:
+            logger.warning(f"Error restoring merged request {record_id}: {e}")
+            return False
+
+    def get_merged_requests(self, kept_request_id: str) -> list[BunkRequest]:
+        """Get all requests that were merged into a given request.
+
+        Used by split operations to find soft-deleted requests that
+        can be restored.
+
+        Args:
+            kept_request_id: PocketBase record ID of the kept request
+
+        Returns:
+            List of BunkRequest objects that were merged into the kept request
+        """
+        try:
+            result = self.pb.collection("bunk_requests").get_list(
+                query_params={"filter": f'merged_into = "{kept_request_id}"', "perPage": 100}
+            )
+            return [self._map_from_db(item) for item in result.items]
+        except Exception as e:
+            logger.warning(f"Error getting merged requests for {kept_request_id}: {e}")
+            return []
 
     def flag_for_review(
         self,

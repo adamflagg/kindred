@@ -232,8 +232,8 @@ class TestMergeEndpointSuccess:
         call_kwargs = mock_request_repo.update_for_merge.call_args.kwargs
         assert call_kwargs.get("confidence_score") == 0.98
 
-    def test_merge_deletes_merged_requests(self, client_with_mocks: tuple[TestClient, Mock, Mock]) -> None:
-        """Test that merged requests are deleted after merge."""
+    def test_merge_soft_deletes_merged_requests(self, client_with_mocks: tuple[TestClient, Mock, Mock]) -> None:
+        """Test that merged requests are soft-deleted after merge."""
         client, mock_request_repo, mock_source_link_repo = client_with_mocks
 
         request_1 = Mock()
@@ -257,6 +257,7 @@ class TestMergeEndpointSuccess:
         request_2.metadata = {}
 
         mock_request_repo.get_by_id.side_effect = lambda id: {"req_1": request_1, "req_2": request_2}.get(id)
+        mock_request_repo.soft_delete_for_merge.return_value = True
 
         response = client.post(
             "/api/requests/merge",
@@ -269,8 +270,9 @@ class TestMergeEndpointSuccess:
 
         assert response.status_code == 200
 
-        # Verify req_2 was deleted (req_1 is the kept one)
-        mock_request_repo.delete.assert_called_once_with("req_2")
+        # Verify req_2 was soft-deleted (not hard-deleted)
+        mock_request_repo.soft_delete_for_merge.assert_called_once_with("req_2", "req_1")
+        mock_request_repo.delete.assert_not_called()
 
     def test_merge_returns_merged_request_id(self, client_with_mocks: tuple[TestClient, Mock, Mock]) -> None:
         """Test that merge returns the ID of the merged request."""

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import {
@@ -14,7 +14,11 @@ import {
   Shield,
   Plus,
   GitMerge,
-  Scissors
+  Scissors,
+  SlidersHorizontal,
+  Users,
+  Loader2,
+  Star
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { pb } from '../lib/pocketbase';
@@ -75,15 +79,26 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
     showResolved: false,
     resolvedConfidenceFilter: 'all'
   });
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
+
+  // Query key excludes searchQuery since search filtering happens client-side using personMap
+  const queryKeyFilters = useMemo(() => ({
+    confidenceThreshold: filters.confidenceThreshold,
+    requestTypes: filters.requestTypes,
+    statuses: filters.statuses,
+    showResolved: filters.showResolved,
+    resolvedConfidenceFilter: filters.resolvedConfidenceFilter
+  }), [filters.confidenceThreshold, filters.requestTypes, filters.statuses, filters.showResolved, filters.resolvedConfidenceFilter]);
 
   // Fetch bunk requests
   const { data: requests = [], isLoading } = useQuery({
-    queryKey: ['bunk-requests', sessionId, relatedSessionIds, year, filters],
+    queryKey: ['bunk-requests', sessionId, relatedSessionIds, year, queryKeyFilters],
     queryFn: async () => {
       // Build filter for primary session and all related sessions
       const allSessionIds = [sessionId, ...relatedSessionIds];
       const sessionFilter = allSessionIds.map(id => `session_id = ${id}`).join(' || ');
-      let filterStr = `(${sessionFilter}) && year = ${year}`;
+      // Filter out absorbed requests (those that have been merged into another request)
+      let filterStr = `(${sessionFilter}) && year = ${year} && (merged_into = "" || merged_into = null)`;
 
       // Add status filter - exclude resolved if showResolved is false
       const activeStatuses = filters.showResolved
@@ -126,51 +141,28 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
         });
       }
 
-      // If we have a search query, we need to fetch person data
-      if (filters.searchQuery) {
-        const personIds = new Set<number>();
-        filtered.forEach(r => {
-          personIds.add(r.requester_id);
-          if (r.requestee_id) personIds.add(r.requestee_id);
-        });
-
-        const persons = await pb.collection<PersonsResponse>('persons').getFullList({
-          filter: `(${Array.from(personIds).map(id => `cm_id = ${id}`).join(' || ')}) && year = ${year}`
-        });
-
-        const personMap = new Map(persons.map(p => [p.cm_id, p]));
-
-        // Filter by search query
-        return filtered.filter(r => {
-          const requester = personMap.get(r.requester_id);
-          const requested = r.requestee_id ? personMap.get(r.requestee_id) : null;
-          
-          const searchLower = filters.searchQuery.toLowerCase();
-          const requesterName = requester ? `${requester?.first_name || ''} ${requester?.last_name || ''}`.toLowerCase() : '';
-          const requestedName = requested ? `${requested?.first_name || ''} ${requested?.last_name || ''}`.toLowerCase() : '';
-          
-          return requesterName.includes(searchLower) || requestedName.includes(searchLower);
-        });
-      }
-
+      // Search filtering moved to sortedRequests useMemo for instant client-side filtering
       return filtered;
     },
     staleTime: 30000,
     enabled: !!user,
   });
 
-  // Fetch person data for display
+  // Fetch person data for display - use string-based key for stability
   const personIds = useMemo(() => {
     const ids = new Set<number>();
     requests.forEach((r: BunkRequestsResponse) => {
       ids.add(r.requester_id);
       if (r.requestee_id) ids.add(r.requestee_id);
     });
-    return Array.from(ids);
+    return Array.from(ids).sort((a, b) => a - b);
   }, [requests]);
 
+  // Stable string key prevents unnecessary refetches when array reference changes
+  const personIdsKey = useMemo(() => personIds.join(','), [personIds]);
+
   const { data: persons = [] } = useQuery({
-    queryKey: ['persons-for-requests', personIds, year],
+    queryKey: ['persons-for-requests', personIdsKey, year],
     queryFn: async () => {
       if (personIds.length === 0) return [];
 
@@ -197,14 +189,139 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
     return new Map(persons.map((p: PersonsResponse) => [p.cm_id, p]));
   }, [persons]);
 
+  // Fetch absorbed requests for split modal when a request is selected for splitting
+  // These are soft-deleted requests that were merged into the selected request
+  const { data: absorbedRequestsData = [], isLoading: isLoadingAbsorbedRequests } = useQuery({
+    queryKey: ['absorbed-requests', requestToSplit?.id],
+    queryFn: async () => {
+      if (!requestToSplit) return [];
+      // Fetch requests where merged_into points to the selected request
+      return pb.collection('bunk_requests').getFullList({
+        filter: `merged_into = "${requestToSplit.id}"`,
+        sort: 'created',
+      });
+    },
+    enabled: !!requestToSplit,
+  });
+
+  // Transform absorbed requests + kept request into source links format for SplitRequestModal
+  // The "primary" entry is the kept request itself, absorbed requests are non-primary
+  const sourceLinks = useMemo(() => {
+    interface SourceLinkEntry {
+      original_request_id: string;
+      source_field: string;
+      original_content?: string | undefined;
+      created?: string | undefined;
+      parse_notes?: string | undefined;
+      is_primary?: boolean | undefined;
+      // Additional fields for absorbed request display
+      requested_person_name?: string | undefined;
+      requestee_id?: number | undefined;
+    }
+    const links: SourceLinkEntry[] = [];
+
+    // Add the kept request as primary (cannot be split off)
+    if (requestToSplit) {
+      const metadata = requestToSplit.metadata as Record<string, unknown> | null;
+      links.push({
+        original_request_id: requestToSplit.id,
+        source_field: requestToSplit.source_field || 'Unknown',
+        original_content: metadata?.['original_text'] as string | undefined,
+        created: requestToSplit.created,
+        parse_notes: metadata?.['parse_notes'] as string | undefined,
+        is_primary: true,
+        requested_person_name: requestToSplit.requested_person_name || undefined,
+        requestee_id: requestToSplit.requestee_id,
+      });
+    }
+
+    // Add absorbed requests as non-primary (can be split off)
+    for (const absorbed of absorbedRequestsData as BunkRequestsResponse[]) {
+      const metadata = absorbed.metadata as Record<string, unknown> | null;
+      links.push({
+        original_request_id: absorbed.id,
+        source_field: absorbed.source_field || 'Unknown',
+        original_content: metadata?.['original_text'] as string | undefined,
+        created: absorbed.created,
+        parse_notes: metadata?.['parse_notes'] as string | undefined,
+        is_primary: false,
+        requested_person_name: absorbed.requested_person_name || undefined,
+        requestee_id: absorbed.requestee_id,
+      });
+    }
+
+    return links;
+  }, [requestToSplit, absorbedRequestsData]);
+
+  // Loading state includes both the request itself and absorbed requests
+  const isLoadingSourceLinks = isLoadingAbsorbedRequests;
+
+  // Track which merged request rows need source links loaded (lazy loading)
+  const [expandedMergedRequestId, setExpandedMergedRequestId] = useState<string | null>(null);
+
+  // Lazy load source links for expanded merged request dropdown
+  const { data: expandedSourceLinksData = [], isLoading: isLoadingExpandedSourceLinks } = useQuery({
+    queryKey: ['expanded-source-links', expandedMergedRequestId],
+    queryFn: async () => {
+      if (!expandedMergedRequestId) return [];
+      return pb.collection('bunk_request_sources').getFullList({
+        filter: `bunk_request = "${expandedMergedRequestId}"`,
+        sort: '-is_primary,created',
+        expand: 'original_request',
+      });
+    },
+    enabled: !!expandedMergedRequestId,
+    staleTime: 60000, // Cache for 1 minute
+  });
+
+  // Transform expanded source links data for dropdown display
+  const expandedSourceLinks = useMemo(() => {
+    interface ExpandedOriginalRequest {
+      content?: string;
+      created?: string;
+    }
+    interface SourceLinkRecord {
+      original_request: string;
+      source_field: string;
+      parse_notes?: string;
+      is_primary?: boolean;
+      expand?: {
+        original_request?: ExpandedOriginalRequest;
+      };
+    }
+    return (expandedSourceLinksData as unknown as SourceLinkRecord[]).map((sl) => ({
+      original_request_id: sl.original_request,
+      source_field: sl.source_field,
+      original_content: sl.expand?.original_request?.content,
+      created: sl.expand?.original_request?.created,
+      parse_notes: sl.parse_notes,
+      is_primary: sl.is_primary ?? false,
+    }));
+  }, [expandedSourceLinksData]);
+
   // Count of requests needing review (all pending requests need attention)
   const reviewCount = useMemo(() => {
     return requests.filter((r: BunkRequestsResponse) => r.status === 'pending').length;
   }, [requests]);
 
-  // Sort requests
+  // Filter and sort requests - search filtering happens here for instant client-side response
   const sortedRequests = useMemo(() => {
-    const sorted = [...requests].sort((a, b) => {
+    let filtered = [...requests];
+
+    // Client-side search filtering using already-fetched personMap
+    if (filters.searchQuery && personMap.size > 0) {
+      const searchLower = filters.searchQuery.toLowerCase();
+      filtered = filtered.filter(r => {
+        const requester = personMap.get(r.requester_id);
+        const requested = r.requestee_id ? personMap.get(r.requestee_id) : null;
+        const requesterName = requester ? `${requester.first_name || ''} ${requester.last_name || ''}`.toLowerCase() : '';
+        const requestedName = requested ? `${requested.first_name || ''} ${requested.last_name || ''}`.toLowerCase() : '';
+        return requesterName.includes(searchLower) || requestedName.includes(searchLower);
+      });
+    }
+
+    // Sort filtered results
+    const sorted = filtered.sort((a, b) => {
       let aValue: string | number | Date;
       let bValue: string | number | Date;
 
@@ -251,39 +368,50 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
     });
 
     return sorted;
-  }, [requests, sortBy, sortOrder, personMap]);
+  }, [requests, sortBy, sortOrder, personMap, filters.searchQuery]);
 
-  // Check if merge is possible: exactly 2 requests selected with same requester and session
+  // Check if merge is possible: 2+ requests selected with same requester and session
   const mergeEligibility = useMemo(() => {
-    if (selectedRequests.size !== 2) {
-      return { canMerge: false, reason: 'Select exactly 2 requests to merge', requests: [] };
+    if (selectedRequests.size < 2) {
+      return { canMerge: false, reason: 'Select at least 2 requests to merge', requests: [] };
     }
 
     const selectedReqs = sortedRequests.filter(r => selectedRequests.has(r.id));
-    if (selectedReqs.length !== 2) {
+    if (selectedReqs.length < 2) {
       return { canMerge: false, reason: 'Selected requests not found', requests: [] };
     }
 
-    const [first, second] = selectedReqs;
-    if (!first || !second) {
-      return { canMerge: false, reason: 'Selected requests not found', requests: [] };
+    // Check all selected requests have the same requester_id
+    const firstRequesterId = selectedReqs[0]?.requester_id;
+    const allSameRequester = selectedReqs.every(r => r.requester_id === firstRequesterId);
+    if (!allSameRequester) {
+      return { canMerge: false, reason: 'All requests must have the same requester', requests: [] };
     }
 
-    if (first.requester_id !== second.requester_id) {
-      return { canMerge: false, reason: 'Requests must have the same requester', requests: [] };
-    }
-
-    if (first.session_id !== second.session_id) {
-      return { canMerge: false, reason: 'Requests must be from the same session', requests: [] };
+    // Check all selected requests have the same session_id
+    const firstSessionId = selectedReqs[0]?.session_id;
+    const allSameSession = selectedReqs.every(r => r.session_id === firstSessionId);
+    if (!allSameSession) {
+      return { canMerge: false, reason: 'All requests must be from the same session', requests: [] };
     }
 
     return { canMerge: true, reason: '', requests: selectedReqs };
   }, [selectedRequests, sortedRequests]);
 
-  // Helper to check if a request has multiple source fields (is a merged request)
+  // Helper to check if a request is a merged request (has multiple sources)
+  // Check either: multiple source_fields OR merged_from metadata exists
   const hasMultipleSources = useCallback((request: BunkRequestsResponse) => {
-    const sourceFields = (request as unknown as { source_fields?: string[] }).source_fields;
-    return Array.isArray(sourceFields) && sourceFields.length > 1;
+    // Multiple unique source fields
+    if (Array.isArray(request.source_fields) && request.source_fields.length > 1) {
+      return true;
+    }
+    // Check metadata for merged_from (when merging requests from same source field)
+    const metadata = request.metadata as Record<string, unknown> | undefined;
+    const mergedFrom = metadata?.['merged_from'];
+    if (mergedFrom && Array.isArray(mergedFrom) && mergedFrom.length > 0) {
+      return true;
+    }
+    return false;
   }, []);
 
   // Optimistic validation for conflict detection
@@ -329,17 +457,23 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
   });
 
   // Handlers
-  const toggleRowExpansion = useCallback((id: string) => {
+  const toggleRowExpansion = useCallback((id: string, request?: BunkRequestsResponse) => {
     setExpandedRows(prev => {
       const next = new Set(prev);
       if (next.has(id)) {
         next.delete(id);
+        // Clear the expanded merged request when collapsing
+        setExpandedMergedRequestId(currentId => currentId === id ? null : currentId);
       } else {
         next.add(id);
+        // Trigger lazy loading for merged requests
+        if (request && hasMultipleSources(request)) {
+          setExpandedMergedRequestId(id);
+        }
       }
       return next;
     });
-  }, []);
+  }, [hasMultipleSources]);
 
   const toggleRequestSelection = useCallback((id: string) => {
     setSelectedRequests(prev => {
@@ -498,178 +632,235 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
 
   const requestTypes = ['bunk_with', 'not_bunk_with', 'age_preference'];
 
+  // Count active filters for the filter toggle badge
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (filters.confidenceThreshold !== 0) count++;
+    if (filters.requestTypes.length > 0) count++;
+    if (filters.statuses.length !== 3 || filters.showResolved) count++;
+    return count;
+  }, [filters.confidenceThreshold, filters.requestTypes.length, filters.statuses.length, filters.showResolved]);
+
+  // Get preview of selected request names for bulk action bar
+  const getSelectedNamesPreview = useCallback((maxDisplay: number = 2) => {
+    const selectedReqs = sortedRequests.filter(r => selectedRequests.has(r.id));
+    const names = selectedReqs.map(r => {
+      const person = personMap.get(r.requester_id);
+      if (person) {
+        const firstName = person.first_name || '';
+        const lastName = person.last_name || '';
+        return `${firstName} ${lastName.charAt(0)}.`.trim();
+      }
+      return `#${r.requester_id}`;
+    });
+
+    if (names.length === 0) return '';
+    if (names.length <= maxDisplay) return names.join(', ');
+    const displayed = names.slice(0, maxDisplay).join(', ');
+    const remaining = names.length - maxDisplay;
+    return `${displayed} +${remaining}`;
+  }, [sortedRequests, selectedRequests, personMap]);
+
+  // Keyboard handler for Escape to close filters
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && filtersExpanded) {
+        setFiltersExpanded(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [filtersExpanded]);
+
   return (
+    <>
     <div className="card-lodge overflow-hidden">
-      {/* Header */}
-      <div className="p-4 sm:p-6 border-b border-border">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <h2 className="text-lg sm:text-xl font-display font-semibold flex flex-wrap items-center gap-2 text-foreground">
+      {/* Compact Header Bar - Always visible */}
+      <div className="p-3 sm:p-4 border-b border-border">
+        <div className="flex items-center gap-3">
+          {/* Title with review badge */}
+          <div className="flex items-center gap-2 flex-shrink-0">
             <Filter className="w-5 h-5 text-primary" />
-            Requests
+            <h2 className="text-lg font-display font-semibold text-foreground hidden sm:block">
+              Requests
+            </h2>
             {reviewCount > 0 && (
-              <span className="px-2.5 py-1 sm:px-3 sm:py-1 text-sm font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 rounded-full">
-                {reviewCount} need review
+              <span className="px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 rounded-full">
+                {reviewCount}
               </span>
             )}
-          </h2>
-          <div className="flex items-center gap-3 sm:gap-4">
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="btn-primary flex items-center gap-2 text-sm sm:text-base px-3 py-2 sm:px-4 touch-manipulation"
-            >
-              <Plus className="w-4 h-4" />
-              <span className="hidden xs:inline">Create</span>
-              <span className="xs:hidden">+</span>
-            </button>
-            <div className="text-xs sm:text-sm text-muted-foreground">
-              {requests.length} total
-            </div>
+          </div>
+
+          {/* Search - Always visible */}
+          <div className="relative flex-1 max-w-xs">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search..."
+              value={filters.searchQuery}
+              onChange={(e) => setFilters(prev => ({ ...prev, searchQuery: e.target.value }))}
+              className="input-lodge pl-9 py-2 text-sm w-full"
+            />
+          </div>
+
+          {/* Filter Toggle Button */}
+          <button
+            onClick={() => setFiltersExpanded(!filtersExpanded)}
+            aria-expanded={filtersExpanded}
+            aria-controls="filter-panel"
+            className={clsx(
+              "flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all touch-manipulation",
+              filtersExpanded
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
+            )}
+          >
+            <SlidersHorizontal className="w-4 h-4" />
+            <span className="hidden sm:inline">Filters</span>
+            {activeFilterCount > 0 && (
+              <span className={clsx(
+                "px-1.5 py-0.5 text-xs rounded-full font-semibold",
+                filtersExpanded
+                  ? "bg-primary-foreground/20 text-primary-foreground"
+                  : "bg-primary text-primary-foreground"
+              )}>
+                {activeFilterCount}
+              </span>
+            )}
+            {filtersExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
+
+          {/* Create Button */}
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="btn-primary flex items-center gap-2 text-sm px-3 py-2 touch-manipulation"
+          >
+            <Plus className="w-4 h-4" />
+            <span className="hidden sm:inline">Create</span>
+          </button>
+
+          {/* Total count */}
+          <div className="text-xs text-muted-foreground flex-shrink-0 hidden sm:block">
+            {sortedRequests.length} total
           </div>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="p-4 sm:p-6 border-b border-border bg-forest-50/30 dark:bg-forest-900/40">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Confidence Threshold */}
-          <div>
-            <label className="block text-sm font-medium mb-2 text-stone-700 dark:text-stone-200">
-              Maximum Confidence to Show
-            </label>
-            <div className="space-y-2">
-              <div className="flex gap-2 mb-2">
+      {/* Collapsible Filter Panel */}
+      <div
+        id="filter-panel"
+        className={clsx(
+          "border-b border-border bg-forest-50/30 dark:bg-forest-900/40 overflow-hidden transition-all duration-200 ease-out",
+          filtersExpanded ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0"
+        )}
+      >
+        <div className="p-4 sm:p-6 space-y-4">
+          {/* Row 1: Confidence Segmented Buttons */}
+          <div className="flex flex-wrap items-center gap-4">
+            <span className="text-xs font-semibold text-bark-600 dark:text-bark-300 w-20">Confidence</span>
+            <div className="flex items-center gap-1 bg-muted/50 dark:bg-muted/30 rounded-xl p-1 border border-border/50">
+              {[
+                { value: 0, label: 'All' },
+                { value: 50, label: 'Low Only' },
+                { value: 1, label: 'Needs Review' },
+              ].map(({ value, label }) => (
                 <button
-                  onClick={() => setFilters(prev => ({ ...prev, confidenceThreshold: 0 }))}
+                  key={value}
+                  onClick={() => setFilters(prev => ({ ...prev, confidenceThreshold: value }))}
                   className={clsx(
-                    "px-3 py-1 text-xs rounded-md transition-colors",
-                    filters.confidenceThreshold === 0 
-                      ? "bg-primary text-primary-foreground" 
-                      : "bg-muted hover:bg-muted/80"
+                    "px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200",
+                    filters.confidenceThreshold === value
+                      ? "bg-primary text-primary-foreground shadow-lodge-sm"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted dark:hover:bg-muted/80"
                   )}
                 >
-                  All
+                  {label}
                 </button>
-                <button
-                  onClick={() => setFilters(prev => ({ ...prev, confidenceThreshold: 50 }))}
-                  className={clsx(
-                    "px-3 py-1 text-xs rounded-md transition-colors",
-                    filters.confidenceThreshold === 50 
-                      ? "bg-primary text-primary-foreground" 
-                      : "bg-muted hover:bg-muted/80"
-                  )}
-                >
-                  Low Only
-                </button>
-                <button
-                  onClick={() => setFilters(prev => ({ ...prev, confidenceThreshold: 1 }))}
-                  className={clsx(
-                    "px-3 py-1 text-xs rounded-md transition-colors",
-                    filters.confidenceThreshold === 1 
-                      ? "bg-primary text-primary-foreground" 
-                      : "bg-muted hover:bg-muted/80"
-                  )}
-                >
-                  Unresolved
-                </button>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={filters.confidenceThreshold}
-                onChange={(e) => setFilters(prev => ({ ...prev, confidenceThreshold: parseInt(e.target.value) }))}
-                className="w-full accent-primary"
-              />
-              <div className="text-xs text-muted-foreground text-center">
-                {filters.confidenceThreshold === 0 
-                  ? "Showing all requests" 
-                  : `Showing requests with ≤ ${filters.confidenceThreshold}% confidence`}
-              </div>
+              ))}
             </div>
           </div>
 
-          {/* Request Types */}
-          <div>
-            <label className="block text-sm font-medium mb-2 text-stone-700 dark:text-stone-200">Request Types</label>
-            <div className="space-y-2">
-              <div className="flex gap-2 mb-1">
-                <button
-                  onClick={() => setFilters(prev => ({ ...prev, requestTypes: [...requestTypes] }))}
-                  className="text-xs text-primary hover:text-primary/80"
-                >
-                  Select All
-                </button>
-                <span className="text-xs text-muted-foreground">|</span>
-                <button
-                  onClick={() => setFilters(prev => ({ ...prev, requestTypes: [] }))}
-                  className="text-xs text-primary hover:text-primary/80"
-                >
-                  Clear All
-                </button>
-              </div>
-              <div className="grid grid-cols-1 gap-1 max-h-32 overflow-y-auto">
-                {requestTypes.map(type => (
-                  <label key={type} className="flex items-center text-sm text-stone-700 dark:text-stone-200">
-                    <input
-                      type="checkbox"
-                      checked={filters.requestTypes.includes(type)}
-                      onChange={(e) => {
-                        setFilters(prev => ({
-                          ...prev,
-                          requestTypes: e.target.checked
-                            ? [...prev.requestTypes, type]
-                            : prev.requestTypes.filter(t => t !== type)
-                        }));
-                      }}
-                      className="mr-2 rounded accent-primary"
-                    />
-                    <span>{getRequestTypeLabel(type)}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Status Filter */}
-          <div>
-            <label className="block text-sm font-medium mb-2 text-stone-700 dark:text-stone-200">Status</label>
-            <div className="space-y-2">
-              <div className="space-y-1">
-                {['pending', 'declined'].map(status => (
-                  <label key={status} className="flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={filters.statuses.includes(status)}
-                      onChange={(e) => {
-                        setFilters(prev => ({
-                          ...prev,
-                          statuses: e.target.checked
-                            ? [...prev.statuses, status]
-                            : prev.statuses.filter(s => s !== status)
-                        }));
-                      }}
-                      className="mr-2 rounded accent-primary"
-                    />
-                    <span className="text-sm">{getStatusBadge(status)}</span>
-                  </label>
-                ))}
-              </div>
-              <div className="pt-2 border-t border-border space-y-2">
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={filters.showResolved}
-                    onChange={(e) => {
+          {/* Row 2: Request Types as Pills */}
+          <div className="flex flex-wrap items-center gap-4">
+            <span className="text-xs font-semibold text-bark-600 dark:text-bark-300 w-20">Types</span>
+            <div className="flex flex-wrap items-center gap-2">
+              {requestTypes.map(type => {
+                const isSelected = filters.requestTypes.includes(type);
+                return (
+                  <button
+                    key={type}
+                    onClick={() => {
                       setFilters(prev => ({
                         ...prev,
-                        showResolved: e.target.checked
+                        requestTypes: isSelected
+                          ? prev.requestTypes.filter(t => t !== type)
+                          : [...prev.requestTypes, type]
                       }));
                     }}
-                    className="mr-2 rounded accent-primary"
-                  />
-                  <span className="text-sm text-stone-700 dark:text-stone-200">Show Resolved</span>
-                </label>
-                {/* Resolved confidence filter dropdown */}
+                    role="button"
+                    aria-pressed={isSelected}
+                    className={clsx(
+                      "px-3 py-1.5 rounded-full text-sm font-medium transition-all border",
+                      isSelected
+                        ? "bg-forest-100 dark:bg-forest-900/50 text-forest-800 dark:text-forest-200 border-forest-300 dark:border-forest-700"
+                        : "bg-transparent text-muted-foreground border-border hover:border-forest-300 dark:hover:border-forest-700 hover:text-foreground"
+                    )}
+                  >
+                    {isSelected && <CheckCircle className="w-3 h-3 inline mr-1.5" />}
+                    {getRequestTypeLabel(type)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Row 3: Status Pills + Show Resolved */}
+          <div className="flex flex-wrap items-center gap-4">
+            <span className="text-xs font-semibold text-bark-600 dark:text-bark-300 w-20">Status</span>
+            <div className="flex flex-wrap items-center gap-2">
+              {['pending', 'declined'].map(status => {
+                const isSelected = filters.statuses.includes(status);
+                return (
+                  <button
+                    key={status}
+                    onClick={() => {
+                      setFilters(prev => ({
+                        ...prev,
+                        statuses: isSelected
+                          ? prev.statuses.filter(s => s !== status)
+                          : [...prev.statuses, status]
+                      }));
+                    }}
+                    role="button"
+                    aria-pressed={isSelected}
+                    className={clsx(
+                      "px-3 py-1.5 rounded-full text-sm font-medium transition-all border capitalize",
+                      isSelected
+                        ? "bg-forest-100 dark:bg-forest-900/50 text-forest-800 dark:text-forest-200 border-forest-300 dark:border-forest-700"
+                        : "bg-transparent text-muted-foreground border-border hover:border-forest-300 dark:hover:border-forest-700 hover:text-foreground"
+                    )}
+                  >
+                    {isSelected && <CheckCircle className="w-3 h-3 inline mr-1.5" />}
+                    {status}
+                  </button>
+                );
+              })}
+              <div className="border-l border-border pl-2 ml-1 flex items-center gap-2">
+                <button
+                  onClick={() => setFilters(prev => ({ ...prev, showResolved: !prev.showResolved }))}
+                  role="button"
+                  aria-pressed={filters.showResolved}
+                  className={clsx(
+                    "px-3 py-1.5 rounded-full text-sm font-medium transition-all border",
+                    filters.showResolved
+                      ? "bg-forest-100 dark:bg-forest-900/50 text-forest-800 dark:text-forest-200 border-forest-300 dark:border-forest-700"
+                      : "bg-transparent text-muted-foreground border-border hover:border-forest-300 dark:hover:border-forest-700 hover:text-foreground"
+                  )}
+                >
+                  {filters.showResolved && <CheckCircle className="w-3 h-3 inline mr-1.5" />}
+                  Show Resolved
+                </button>
                 {filters.showResolved && (
                   <select
                     value={filters.resolvedConfidenceFilter}
@@ -677,7 +868,7 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
                       ...prev,
                       resolvedConfidenceFilter: e.target.value as ResolvedConfidenceFilter
                     }))}
-                    className="input-lodge text-sm py-1"
+                    className="input-lodge text-sm py-1.5 px-2"
                   >
                     <option value="all">All Resolved</option>
                     <option value="high">High Confidence (≥95%)</option>
@@ -687,74 +878,25 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
               </div>
             </div>
           </div>
-
-          {/* Search */}
-          <div>
-            <label className="block text-sm font-medium mb-2 text-stone-700 dark:text-stone-200">Search</label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Search by name..."
-                value={filters.searchQuery}
-                onChange={(e) => setFilters(prev => ({ ...prev, searchQuery: e.target.value }))}
-                className="input-lodge pl-10"
-              />
-            </div>
-          </div>
         </div>
       </div>
-
-      {/* Bulk Actions */}
-      {selectedRequests.size > 0 && (
-        <div className="p-3 sm:p-4 border-b border-border bg-forest-50/50 dark:bg-forest-950/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <span className="text-sm font-medium text-forest-800 dark:text-forest-200">
-            {selectedRequests.size} selected
-          </span>
-          <div className="flex gap-2 w-full sm:w-auto">
-            <button
-              onClick={handleBulkApprove}
-              className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-forest-600 text-white rounded-xl hover:bg-forest-700 transition-colors flex items-center justify-center gap-2 font-medium shadow-sm touch-manipulation min-h-[44px]"
-            >
-              <CheckCircle className="w-4 h-4" />
-              <span className="hidden xs:inline">Approve</span>
-            </button>
-            {mergeEligibility.canMerge && (
-              <button
-                onClick={() => setShowMergeModal(true)}
-                className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 font-medium shadow-sm touch-manipulation min-h-[44px]"
-                title="Merge these two requests into one"
-              >
-                <GitMerge className="w-4 h-4" />
-                <span className="hidden xs:inline">Merge</span>
-              </button>
-            )}
-            <button
-              onClick={handleBulkReject}
-              className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-destructive text-destructive-foreground rounded-xl hover:bg-destructive/90 transition-colors flex items-center justify-center gap-2 font-medium shadow-sm touch-manipulation min-h-[44px]"
-            >
-              <XCircle className="w-4 h-4" />
-              <span className="hidden xs:inline">Reject</span>
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Request List */}
       <div className="overflow-hidden">
         {/* Table Header - Desktop only */}
         <div className="hidden md:block bg-forest-50/40 dark:bg-forest-900/40 border-b border-border sticky top-0 z-10">
           <div className="request-table-grid">
-            <div className="px-4 py-3">
+            <div className="px-3 py-3 flex items-center gap-2">
               <input
                 type="checkbox"
                 checked={selectedRequests.size === sortedRequests.length && sortedRequests.length > 0}
                 onChange={toggleAllSelection}
                 className="rounded"
               />
+              <ChevronRight className="w-4 h-4 text-muted-foreground" />
             </div>
-            <div 
-              className="px-4 py-3 text-left text-sm font-medium cursor-pointer hover:text-primary"
+            <div
+              className="px-4 py-3 text-left text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground"
               onClick={() => handleSort('requester')}
             >
               <div className="flex items-center gap-1">
@@ -764,8 +906,8 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
                 )}
               </div>
             </div>
-            <div 
-              className="px-4 py-3 text-left text-sm font-medium cursor-pointer hover:text-primary"
+            <div
+              className="px-4 py-3 text-left text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground"
               onClick={() => handleSort('request')}
             >
               <div className="flex items-center gap-1">
@@ -775,8 +917,8 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
                 )}
               </div>
             </div>
-            <div 
-              className="px-4 py-3 text-left text-sm font-medium cursor-pointer hover:text-primary"
+            <div
+              className="px-4 py-3 text-left text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground"
               onClick={() => handleSort('type')}
             >
               <div className="flex items-center gap-1">
@@ -786,8 +928,8 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
                 )}
               </div>
             </div>
-            <div 
-              className="px-4 py-3 text-center text-sm font-medium cursor-pointer hover:text-primary"
+            <div
+              className="px-4 py-3 text-center text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground"
               onClick={() => handleSort('priority')}
             >
               <div className="flex items-center gap-1 justify-center">
@@ -797,8 +939,8 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
                 )}
               </div>
             </div>
-            <div 
-              className="px-4 py-3 text-center text-sm font-medium cursor-pointer hover:text-primary"
+            <div
+              className="px-4 py-3 text-center text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground"
               onClick={() => handleSort('confidence')}
             >
               <div className="flex items-center gap-1 justify-center">
@@ -808,8 +950,8 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
                 )}
               </div>
             </div>
-            <div 
-              className="px-4 py-3 text-center text-sm font-medium cursor-pointer hover:text-primary"
+            <div
+              className="px-4 py-3 text-center text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground"
               onClick={() => handleSort('status')}
             >
               <div className="flex items-center gap-1 justify-center">
@@ -819,7 +961,7 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
                 )}
               </div>
             </div>
-            <div className="px-4 py-3 text-right text-sm font-medium">
+            <div className="px-4 py-3 text-right text-sm font-medium text-muted-foreground">
               Actions
             </div>
           </div>
@@ -840,11 +982,11 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
         </div>
 
         {/* Table Body */}
-        <div 
+        <div
           ref={scrollContainerRef}
           className="overflow-auto relative"
-          style={{ 
-            height: '600px', 
+          style={{
+            height: '600px',
             overscrollBehaviorY: 'contain'
           }}
         >
@@ -930,13 +1072,14 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
                             requestedPersonName={request.requested_person_name}
                             {...(request.parse_notes !== undefined && { parseNotes: request.parse_notes })}
                             onViewCamper={(personCmId) => setSelectedCamperId(String(personCmId))}
+                            personMap={personMap}
                           />
                         </div>
 
                         {/* Actions */}
                         <div className="card-actions">
                           <button
-                            onClick={() => toggleRowExpansion(request.id)}
+                            onClick={() => toggleRowExpansion(request.id, request)}
                             className="p-2 hover:bg-muted rounded-lg transition-colors touch-manipulation"
                             title="View details"
                           >
@@ -1038,7 +1181,7 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
               </div>
 
               {/* Desktop Table Layout */}
-              <div className="hidden md:block min-w-[1080px] pb-[200px]">
+              <div className="hidden md:block min-w-[1064px] pb-[200px]">
                 {sortedRequests.map((request) => {
                   const requester = personMap.get(request.requester_id);
                   const isExpanded = expandedRows.has(request.id);
@@ -1046,16 +1189,28 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
                   return (
                     <div
                       key={request.id}
-                      className="border-b hover:bg-muted/50 transition-colors"
+                      className={clsx(
+                        "border-b transition-colors",
+                        selectedRequests.has(request.id)
+                          ? "bg-primary/5 hover:bg-primary/10"
+                          : "hover:bg-muted/30"
+                      )}
                     >
                       <div className="request-table-grid">
-                      <div className="px-4 py-3 flex items-center">
+                      <div className="px-3 py-3 flex items-center gap-1">
                         <input
                           type="checkbox"
                           checked={selectedRequests.has(request.id)}
                           onChange={() => toggleRequestSelection(request.id)}
                           className="rounded"
                         />
+                        <button
+                          onClick={() => toggleRowExpansion(request.id, request)}
+                          className="p-1.5 hover:bg-muted rounded-lg transition-colors"
+                          title="View details"
+                        >
+                          {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                        </button>
                       </div>
                       <div className="px-4 py-3 flex items-center">
                         <button
@@ -1095,6 +1250,7 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
                           requestedPersonName={request.requested_person_name}
                           {...(request.parse_notes !== undefined && { parseNotes: request.parse_notes })}
                           onViewCamper={(personCmId) => setSelectedCamperId(String(personCmId))}
+                          personMap={personMap}
                         />
                       </div>
                       <div className="px-4 py-3 flex items-center">
@@ -1142,14 +1298,7 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
                         {getStatusBadge(request.status)}
                       </div>
                       <div className="px-4 py-3 flex items-center justify-end">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => toggleRowExpansion(request.id)}
-                            className="p-1.5 hover:bg-muted rounded-lg transition-colors"
-                            title="View details"
-                          >
-                            {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                          </button>
+                        <div className="flex items-center justify-end gap-1 min-w-[100px]">
                           {request.status === 'resolved' && request.request_locked && (
                             <button
                               onClick={() => updateRequestMutation.mutate({
@@ -1158,7 +1307,7 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
                                   request_locked: false
                                 }
                               })}
-                              className="p-1.5 hover:bg-primary/10 text-primary rounded-lg transition-colors"
+                              className="p-1.5 hover:bg-primary/10 text-primary rounded-lg transition-colors opacity-80 hover:opacity-100"
                               title="Click to unprotect and allow editing"
                             >
                               <Shield className="w-4 h-4" />
@@ -1170,7 +1319,7 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
                                 setRequestToSplit(request);
                                 setShowSplitModal(true);
                               }}
-                              className="p-1.5 hover:bg-amber-100 dark:hover:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-lg transition-colors"
+                              className="p-1.5 hover:bg-amber-100 dark:hover:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-lg transition-colors opacity-80 hover:opacity-100"
                               title="Split merged request"
                             >
                               <Scissors className="w-4 h-4" />
@@ -1184,7 +1333,7 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
                                 request_locked: true
                               }
                             })}
-                            className="p-1.5 hover:bg-forest-100 dark:hover:bg-forest-900/30 text-forest-600 dark:text-forest-400 rounded-lg transition-colors"
+                            className="p-1.5 hover:bg-forest-100 dark:hover:bg-forest-900/30 text-forest-600 dark:text-forest-400 rounded-lg transition-colors opacity-80 hover:opacity-100"
                             title="Approve"
                           >
                             <CheckCircle className="w-4 h-4" />
@@ -1198,7 +1347,7 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
                                 });
                               }
                             }}
-                            className="p-1.5 hover:bg-destructive/10 text-destructive rounded-lg transition-colors"
+                            className="p-1.5 hover:bg-destructive/10 text-destructive rounded-lg transition-colors opacity-80 hover:opacity-100"
                             title="Reject"
                           >
                             <XCircle className="w-4 h-4" />
@@ -1209,42 +1358,122 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
                     {isExpanded && (
                       <div className="px-4 py-4 bg-parchment-50/50 dark:bg-forest-950/20 border-t border-border">
                         <div className="space-y-3 max-w-3xl ml-10">
-                          {/* Combined Source Field & Content */}
-                          <div>
-                            <h4 className="font-medium text-sm mb-1">Source Field & Content</h4>
-                            {(() => {
-                              // Get the field name with proper type handling
-                              interface AiReasoningWithField {
-                                csv_source_field?: string;
-                              }
-                              const field = (request.ai_p1_reasoning && typeof request.ai_p1_reasoning === 'object' && 'csv_source_field' in request.ai_p1_reasoning)
-                                ? (request.ai_p1_reasoning as AiReasoningWithField).csv_source_field ?? ''
-                                : '';
-                              const fieldName = field && typeof field === 'string'
-                                ? field.split('_').map((word: string) =>
-                                    word.charAt(0).toUpperCase() + word.slice(1)
-                                  ).join(' ')
-                                : 'Unknown Field';
-                              
-                              return (
-                                <p className="text-sm">
-                                  <span className="font-medium">{fieldName}:</span>{' '}
-                                  <span className="text-muted-foreground">
-                                    {request.original_text || <span className="italic">No original text</span>}
-                                  </span>
+                          {/* Merged Request: Show individual sources */}
+                          {hasMultipleSources(request) && expandedMergedRequestId === request.id ? (
+                            <>
+                              <div>
+                                <h4 className="text-sm font-semibold text-foreground mb-2">Contributing Sources</h4>
+                                {isLoadingExpandedSourceLinks ? (
+                                  <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    Loading source details...
+                                  </div>
+                                ) : expandedSourceLinks.length > 0 ? (
+                                  <div className="space-y-3">
+                                    {expandedSourceLinks.map((source, idx) => {
+                                      // Helper to format field name (snake_case -> Title Case)
+                                      const formatFieldName = (f: string) =>
+                                        f.split('_').map((word: string) =>
+                                          word.charAt(0).toUpperCase() + word.slice(1)
+                                        ).join(' ');
+
+                                      return (
+                                        <div
+                                          key={source.original_request_id || idx}
+                                          className={clsx(
+                                            "p-3 rounded-lg border",
+                                            source.is_primary
+                                              ? "border-primary/30 bg-primary/5"
+                                              : "border-border bg-muted/20"
+                                          )}
+                                        >
+                                          <div className="flex items-center gap-2 mb-1">
+                                            <span className="text-sm font-medium">
+                                              {formatFieldName(source.source_field)}
+                                            </span>
+                                            {source.is_primary && (
+                                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium rounded bg-primary/10 text-primary">
+                                                <Star className="w-3 h-3" />
+                                                Primary
+                                              </span>
+                                            )}
+                                          </div>
+                                          <p className="text-sm text-muted-foreground">
+                                            {source.original_content || <span className="italic">No original text</span>}
+                                          </p>
+                                          <p className="text-xs text-muted-foreground mt-1.5 bg-muted/50 px-2 py-1 rounded">
+                                            <span className="font-medium">Parse notes:</span>{' '}
+                                            {source.parse_notes || <span className="italic">No parse notes</span>}
+                                          </p>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  // Fallback to request-level data if no source links found
+                                  <p className="text-sm text-muted-foreground italic">
+                                    Source details not available
+                                  </p>
+                                )}
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              {/* Single Source Request: Original display */}
+                              <div>
+                                <h4 className="text-sm font-semibold text-foreground mb-1">Source Field & Content</h4>
+                                {(() => {
+                                  // Helper to format field name (snake_case -> Title Case)
+                                  const formatFieldName = (f: string) =>
+                                    f.split('_').map((word: string) =>
+                                      word.charAt(0).toUpperCase() + word.slice(1)
+                                    ).join(' ');
+
+                                  // Get field name(s) with proper fallback chain:
+                                  // 1. source_fields (for merged requests - array)
+                                  // 2. source_field (single field)
+                                  // 3. ai_p1_reasoning.csv_source_field (AI processing)
+                                  interface AiReasoningWithField {
+                                    csv_source_field?: string;
+                                  }
+
+                                  const sourceFields = request.source_fields;
+                                  const singleField = request.source_field;
+                                  const aiField = (request.ai_p1_reasoning && typeof request.ai_p1_reasoning === 'object' && 'csv_source_field' in request.ai_p1_reasoning)
+                                    ? (request.ai_p1_reasoning as AiReasoningWithField).csv_source_field ?? ''
+                                    : '';
+
+                                  // Determine display field name
+                                  let fieldName: string;
+                                  if (Array.isArray(sourceFields) && sourceFields.length > 1) {
+                                    // Merged request: show all source fields combined
+                                    fieldName = sourceFields.map(f => formatFieldName(f)).join(' + ');
+                                  } else {
+                                    // Single source: use first available field
+                                    const field = sourceFields?.[0] || singleField || aiField || '';
+                                    fieldName = field ? formatFieldName(field) : 'Unknown Field';
+                                  }
+
+                                  return (
+                                    <p className="text-sm">
+                                      <span className="font-medium">{fieldName}:</span>{' '}
+                                      <span className="text-muted-foreground">
+                                        {request.original_text || <span className="italic">No original text</span>}
+                                      </span>
+                                    </p>
+                                  );
+                                })()}
+                              </div>
+
+                              {/* Parse Notes - always show for single source */}
+                              <div>
+                                <h4 className="text-sm font-semibold text-foreground mb-1">Parse Notes</h4>
+                                <p className="text-sm text-muted-foreground">
+                                  {request.parse_notes || <span className="italic">No parse notes</span>}
                                 </p>
-                              );
-                            })()}
-                          </div>
-
-                          {/* Parse Notes - always show */}
-                          <div>
-                            <h4 className="font-medium text-sm mb-1">Parse Notes</h4>
-                            <p className="text-sm text-muted-foreground">
-                              {request.parse_notes || <span className="italic">No parse notes</span>}
-                            </p>
-                          </div>
-
+                              </div>
+                            </>
+                          )}
 
                           {/* Metadata - always show */}
                           <div className="flex items-center gap-4 text-xs text-muted-foreground">
@@ -1348,7 +1577,8 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
             setRequestToSplit(null);
           }}
           request={requestToSplit}
-          sourceLinks={[]} // TODO: Fetch source links from backend
+          sourceLinks={sourceLinks}
+          isLoadingSourceLinks={isLoadingSourceLinks}
           onSplitComplete={() => {
             setShowSplitModal(false);
             setRequestToSplit(null);
@@ -1403,5 +1633,65 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
         </div>
       )}
     </div>
+
+    {/* Sticky Bottom Bulk Action Bar - Fixed position, slides up when requests selected */}
+    <div
+      role="toolbar"
+      aria-label={`Bulk actions for ${selectedRequests.size} selected requests`}
+      className={clsx(
+        "fixed bottom-0 left-0 right-0 z-50",
+        "bg-background/95 backdrop-blur-sm border-t border-border shadow-lg",
+        "transition-transform duration-300 ease-out will-change-transform",
+        selectedRequests.size > 0 ? "translate-y-0" : "translate-y-full"
+      )}
+    >
+      <div className="max-w-7xl mx-auto px-4 py-3 sm:px-6">
+        <div className="flex items-center justify-between gap-4">
+          {/* Selection info */}
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <Users className="w-4 h-4 text-primary flex-shrink-0" />
+              <span>{selectedRequests.size} selected</span>
+            </div>
+            {selectedRequests.size > 0 && (
+              <span className="text-sm text-muted-foreground truncate hidden sm:block">
+                • {getSelectedNamesPreview()}
+              </span>
+            )}
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleBulkApprove}
+              disabled={selectedRequests.size === 0}
+              className="px-4 py-2 bg-forest-600 text-white rounded-xl hover:bg-forest-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2 font-medium shadow-sm touch-manipulation min-h-[44px]"
+            >
+              <CheckCircle className="w-4 h-4" />
+              <span className="hidden sm:inline">Approve</span>
+            </button>
+            {mergeEligibility.canMerge && (
+              <button
+                onClick={() => setShowMergeModal(true)}
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors flex items-center gap-2 font-medium shadow-sm touch-manipulation min-h-[44px]"
+                title="Merge these two requests into one"
+              >
+                <GitMerge className="w-4 h-4" />
+                <span className="hidden sm:inline">Merge</span>
+              </button>
+            )}
+            <button
+              onClick={handleBulkReject}
+              disabled={selectedRequests.size === 0}
+              className="px-4 py-2 bg-destructive text-destructive-foreground rounded-xl hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2 font-medium shadow-sm touch-manipulation min-h-[44px]"
+            >
+              <XCircle className="w-4 h-4" />
+              <span className="hidden sm:inline">Reject</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    </>
   );
 }
