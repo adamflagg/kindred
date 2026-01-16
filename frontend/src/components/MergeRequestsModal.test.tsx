@@ -89,7 +89,8 @@ describe('MergeRequestsModal', () => {
         />
       );
 
-      expect(screen.getByText(/merge requests/i)).toBeInTheDocument();
+      // Title appears in the modal header
+      expect(screen.getByRole('heading', { name: /merge requests/i }) || screen.getAllByText(/merge requests/i).length).toBeTruthy();
     });
 
     it('shows both requests in side-by-side comparison', () => {
@@ -107,8 +108,9 @@ describe('MergeRequestsModal', () => {
         />
       );
 
-      expect(screen.getByText(/share_bunk_with/i)).toBeInTheDocument();
-      expect(screen.getByText(/bunking_notes/i)).toBeInTheDocument();
+      // Use getAllByText since source fields may appear in multiple places
+      expect(screen.getAllByText(/share_bunk_with/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/bunking_notes/i).length).toBeGreaterThan(0);
     });
   });
 
