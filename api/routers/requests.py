@@ -158,7 +158,7 @@ class MergeRequestsResponse(BaseModel):
     """Response body for merge endpoint."""
 
     merged_request_id: str
-    deleted_request_ids: list[str]
+    merged_request_ids: list[str]  # Soft-deleted request IDs (previously deleted_request_ids)
     source_fields: list[str]
     confidence_score: float
 
@@ -199,7 +199,7 @@ class SplitRequestsResponse(BaseModel):
     """Response body for split endpoint."""
 
     original_request_id: str
-    created_request_ids: list[str]
+    restored_request_ids: list[str]  # Restored soft-deleted IDs (previously created_request_ids)
     updated_source_fields: list[str]
 
 
@@ -356,17 +356,17 @@ async def merge_requests(request: MergeRequestsRequest) -> MergeRequestsResponse
         metadata=combined_metadata,
     )
 
-    # Delete the merged requests
-    deleted_ids: list[str] = []
-    for del_id in delete_ids:
-        if request_repo.delete(del_id):
-            deleted_ids.append(del_id)
+    # Soft-delete the merged requests (set merged_into instead of deleting)
+    merged_ids: list[str] = []
+    for merge_id in delete_ids:
+        if request_repo.soft_delete_for_merge(merge_id, kept_id):
+            merged_ids.append(merge_id)
 
-    logger.info(f"Merged {len(deleted_ids)} requests into {kept_id}. Source fields: {combined_source_fields}")
+    logger.info(f"Merged {len(merged_ids)} requests into {kept_id}. Source fields: {combined_source_fields}")
 
     return MergeRequestsResponse(
         merged_request_id=kept_id,
-        deleted_request_ids=deleted_ids,
+        merged_request_ids=merged_ids,
         source_fields=combined_source_fields,
         confidence_score=max_confidence,
     )
@@ -377,15 +377,16 @@ async def split_requests(request: SplitRequestsRequest) -> SplitRequestsResponse
     """Split a merged bunk_request into separate requests.
 
     For each source to split off:
-    - Creates a new request with the specified type
-    - Transfers the source link from original to new request
+    - First tries to restore a soft-deleted request (preserves all original data)
+    - Falls back to creating a new request for legacy merges
+    - Transfers source links appropriately
     - Updates original's source_fields to remove split sources
 
     Args:
         request: Split request with request_id and split_sources config
 
     Returns:
-        SplitRequestsResponse with created request IDs and updated source_fields
+        SplitRequestsResponse with restored request IDs and updated source_fields
     """
     request_repo = get_request_repository()
     source_link_repo = get_source_link_repository()
@@ -408,8 +409,20 @@ async def split_requests(request: SplitRequestsRequest) -> SplitRequestsResponse
 
     assert original_request.id is not None, "Database record missing ID"
 
-    # Track created requests and removed source fields
-    created_request_ids: list[str] = []
+    # Get all soft-deleted requests that were merged into this one
+    merged_requests = request_repo.get_merged_requests(request.request_id)
+
+    # Build a map of original_request_id -> merged_request for efficient lookup
+    merged_by_source: dict[str, BunkRequest] = {}
+    for merged_req in merged_requests:
+        assert merged_req.id is not None
+        # Get the sources linked to this merged request
+        sources = source_link_repo.get_sources_for_request(merged_req.id)
+        for source_id in sources:
+            merged_by_source[source_id] = merged_req
+
+    # Track restored/created requests and removed source fields
+    restored_request_ids: list[str] = []
     removed_source_fields: list[str] = []
 
     # Process each split source
@@ -422,40 +435,59 @@ async def split_requests(request: SplitRequestsRequest) -> SplitRequestsResponse
         if source_field:
             removed_source_fields.append(source_field)
 
-        # Create new BunkRequest
-        new_request = BunkRequest(
-            requester_cm_id=original_request.requester_cm_id,
-            requested_cm_id=split_config.new_target_id or original_request.requested_cm_id,
-            request_type=RequestType(split_config.new_type),
-            session_cm_id=original_request.session_cm_id,
-            priority=original_request.priority,
-            confidence_score=original_request.confidence_score,
-            source=original_request.source
-            if hasattr(original_request, "source") and original_request.source
-            else RequestSource.FAMILY,
-            source_field=source_field or "",
-            csv_position=original_request.csv_position,
-            year=original_request.year,
-            status=RequestStatus.RESOLVED,
-            is_placeholder=False,
-            metadata={"split_from": original_request.id},
-        )
+        # Try to find a soft-deleted request to restore
+        found_merged_req = merged_by_source.get(split_config.original_request_id)
 
-        # Create the new request
-        if request_repo.create(new_request):
-            if new_request.id:
-                created_request_ids.append(new_request.id)
+        if found_merged_req is not None and found_merged_req.id is not None:
+            # Restore the soft-deleted request (preserves all original AI data)
+            if request_repo.restore_from_merge(found_merged_req.id):
+                restored_request_ids.append(found_merged_req.id)
 
-                # Transfer source link: remove from old, add to new
+                # Transfer source link back to restored request
                 source_link_repo.remove_source_link(
                     bunk_request_id=request.request_id,
                     original_request_id=split_config.original_request_id,
                 )
                 source_link_repo.add_source_link(
-                    bunk_request_id=new_request.id,
+                    bunk_request_id=found_merged_req.id,
                     original_request_id=split_config.original_request_id,
                     is_primary=True,
                 )
+        else:
+            # Fallback for legacy data: create new request
+            new_request = BunkRequest(
+                requester_cm_id=original_request.requester_cm_id,
+                requested_cm_id=split_config.new_target_id or original_request.requested_cm_id,
+                request_type=RequestType(split_config.new_type),
+                session_cm_id=original_request.session_cm_id,
+                priority=original_request.priority,
+                confidence_score=original_request.confidence_score,
+                source=original_request.source
+                if hasattr(original_request, "source") and original_request.source
+                else RequestSource.FAMILY,
+                source_field=source_field or "",
+                csv_position=original_request.csv_position,
+                year=original_request.year,
+                status=RequestStatus.RESOLVED,
+                is_placeholder=False,
+                metadata={"split_from": original_request.id},
+            )
+
+            # Create the new request
+            if request_repo.create(new_request):
+                if new_request.id:
+                    restored_request_ids.append(new_request.id)
+
+                    # Transfer source link: remove from old, add to new
+                    source_link_repo.remove_source_link(
+                        bunk_request_id=request.request_id,
+                        original_request_id=split_config.original_request_id,
+                    )
+                    source_link_repo.add_source_link(
+                        bunk_request_id=new_request.id,
+                        original_request_id=split_config.original_request_id,
+                        is_primary=True,
+                    )
 
     # Update original's source_fields (remove split sources)
     original_source_fields = getattr(original_request, "source_fields", None) or []
@@ -474,12 +506,12 @@ async def split_requests(request: SplitRequestsRequest) -> SplitRequestsResponse
     )
 
     logger.info(
-        f"Split {len(created_request_ids)} sources from {request.request_id}. "
-        f"Created: {created_request_ids}, Remaining source_fields: {updated_source_fields}"
+        f"Split {len(restored_request_ids)} sources from {request.request_id}. "
+        f"Restored: {restored_request_ids}, Remaining source_fields: {updated_source_fields}"
     )
 
     return SplitRequestsResponse(
         original_request_id=request.request_id,
-        created_request_ids=created_request_ids,
+        restored_request_ids=restored_request_ids,
         updated_source_fields=updated_source_fields,
     )
