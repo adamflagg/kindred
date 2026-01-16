@@ -11,10 +11,10 @@ from ..core.models import BunkRequest, RequestSource, RequestType
 from ..data.repositories.request_repository import RequestRepository
 
 # Source priority order (higher number = higher priority)
+# Used for deduplication tiebreaker only - staff validates family input
 SOURCE_PRIORITY = {
-    RequestSource.FAMILY: 3,
-    RequestSource.STAFF: 2,
-    RequestSource.NOTES: 1,
+    RequestSource.STAFF: 2,  # Staff validates/confirms family requests
+    RequestSource.FAMILY: 1,  # Original family submission
 }
 
 
@@ -195,16 +195,44 @@ class Deduplicator:
     def _merge_metadata(self, primary: BunkRequest, duplicates: list[BunkRequest]) -> None:
         """Merge metadata from duplicate requests into the primary.
 
+        Preserves full context from ALL source fields (e.g., when same request
+        appears in bunk_with, bunking_notes, and internal_notes). This enables
+        the frontend to show a split view with each source's context.
+
         Args:
             primary: The request to keep
             duplicates: The duplicate requests
         """
-        # Track duplicate sources
+        all_requests = [primary] + duplicates
+
+        # Build merged_sources array with full context from each source field
+        merged_sources = []
+        for req in all_requests:
+            source_record = {
+                # Identifying info
+                "source": req.source.value,
+                "source_field": req.source_field,
+                # AI processing details
+                "confidence_score": req.confidence_score,
+                "original_text": req.metadata.get("original_text"),
+                "ai_p1_reasoning": req.metadata.get("ai_p1_reasoning"),
+                "ai_p3_reasoning": req.metadata.get("ai_p3_reasoning"),
+                "parse_notes": req.metadata.get("parse_notes"),
+                "keywords_found": req.metadata.get("keywords_found"),
+                # Position and timing
+                "csv_position": req.csv_position,
+                "priority": req.priority,
+            }
+            merged_sources.append(source_record)
+
+        primary.metadata["merged_sources"] = merged_sources
+        primary.metadata["is_merged_duplicate"] = True
+
+        # Track duplicate sources (legacy, for backwards compatibility)
         duplicate_sources = [r.source.value for r in duplicates]
         primary.metadata["duplicate_sources"] = duplicate_sources
 
         # Find highest confidence among all requests
-        all_requests = [primary] + duplicates
         highest_conf = max(r.confidence_score for r in all_requests)
 
         # If a duplicate has higher confidence, boost the primary

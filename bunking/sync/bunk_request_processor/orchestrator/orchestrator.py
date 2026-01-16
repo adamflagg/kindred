@@ -1433,6 +1433,9 @@ class RequestOrchestrator:
     def _save_bunk_requests(self, validated_requests: list[BunkRequest]) -> list[BunkRequest]:
         """Save validated bunk requests to the database.
 
+        Note: Go clears existing bunk_requests before calling Python, so we only
+        need to create new records. In-batch deduplication handles same-run duplicates.
+
         Args:
             validated_requests: List of validated BunkRequest objects
 
@@ -1440,6 +1443,7 @@ class RequestOrchestrator:
             List of successfully saved requests
         """
         saved_requests = []
+
         for bunk_request in validated_requests:
             try:
                 if self.request_repository.create(bunk_request):
@@ -1449,6 +1453,7 @@ class RequestOrchestrator:
                     logger.warning(f"Failed to save bunk request for {bunk_request.requester_cm_id}")
             except Exception as e:
                 logger.error(f"Failed to save bunk request: {e}")
+
         return saved_requests
 
     def _apply_validation_pipeline(self, requests: list[BunkRequest]) -> list[BunkRequest]:
@@ -1500,7 +1505,7 @@ class RequestOrchestrator:
         if self_ref_count > 0:
             logger.info(f"Marked {self_ref_count} self-referential request(s) for staff review")
 
-        # Step 2: Deduplicate requests
+        # Step 2: Deduplicate requests (in-batch only - Go clears DB before reprocessing)
         dedup_result = self.deduplicator.deduplicate_batch(validated_requests)
         deduplicated_requests = dedup_result.kept_requests
 

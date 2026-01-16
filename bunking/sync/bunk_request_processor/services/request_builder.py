@@ -121,12 +121,17 @@ class RequestBuilder:
         # Determine status
         status = self.determine_request_status(parsed_req, resolution_info, metadata)
 
-        # Determine is_placeholder
+        # Determine is_placeholder (only for true placeholders, not unresolved names)
+        # True placeholders: person_cm_id is None (e.g., age_preference requests)
+        # Unresolved names: person_cm_id < 0 (hash-based ID) - NOT placeholders
+        # This distinction matters for database duplicate detection - unresolved requests
+        # SHOULD be checked against the DB to prevent 400 errors on re-processing.
         person_cm_id = resolution_info.get("person_cm_id")
-        is_placeholder = person_cm_id is None or person_cm_id < 0
+        is_placeholder = person_cm_id is None
+        is_unresolved = person_cm_id is not None and person_cm_id < 0
 
-        # Enrich placeholder metadata with self-reference context
-        if is_placeholder:
+        # Enrich metadata for both placeholders AND unresolved requests
+        if is_placeholder or is_unresolved:
             session_cm_id = resolution_info.get("session_cm_id", 0)
             self.enrich_placeholder_metadata(metadata, requester_cm_id, session_cm_id, parsed_req.target_name)
 

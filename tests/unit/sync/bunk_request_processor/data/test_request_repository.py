@@ -523,9 +523,7 @@ class TestClearBySourceFieldsPagination:
         mock_client, _ = mock_pb_client
         return RequestRepository(mock_client)
 
-    def test_clear_by_source_fields_paginates_when_more_than_page_size(
-        self, repository, mock_pb_client
-    ):
+    def test_clear_by_source_fields_paginates_when_more_than_page_size(self, repository, mock_pb_client):
         """FAILING TEST: Verify clear_by_source_fields handles >1000 records.
 
         This test should FAIL with the current implementation because it only
@@ -577,13 +575,10 @@ class TestClearBySourceFieldsPagination:
 
         # Verify all records were actually deleted
         assert mock_collection.delete.call_count == 1500, (
-            f"Should have called delete 1500 times, "
-            f"but only called {mock_collection.delete.call_count} times"
+            f"Should have called delete 1500 times, but only called {mock_collection.delete.call_count} times"
         )
 
-    def test_clear_by_source_fields_single_page_still_works(
-        self, repository, mock_pb_client
-    ):
+    def test_clear_by_source_fields_single_page_still_works(self, repository, mock_pb_client):
         """Verify single page (< page_size records) still works correctly.
 
         This should pass with both old and new implementation.
@@ -607,9 +602,7 @@ class TestClearBySourceFieldsPagination:
         assert count == 50
         assert mock_collection.delete.call_count == 50
 
-    def test_clear_by_source_fields_handles_exactly_page_size(
-        self, repository, mock_pb_client
-    ):
+    def test_clear_by_source_fields_handles_exactly_page_size(self, repository, mock_pb_client):
         """Verify exact page size boundary is handled correctly.
 
         Edge case: exactly 500 (or 1000) records should work without pagination.
@@ -638,9 +631,7 @@ class TestClearBySourceFieldsPagination:
         assert count == 500
         assert mock_collection.delete.call_count == 500
 
-    def test_clear_by_source_fields_with_session_filter_paginates(
-        self, repository, mock_pb_client
-    ):
+    def test_clear_by_source_fields_with_session_filter_paginates(self, repository, mock_pb_client):
         """Verify pagination works with session filter applied.
 
         The session filter shouldn't break pagination behavior.

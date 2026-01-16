@@ -36,14 +36,22 @@ class Gender(Enum):
 
 
 class RequestSource(Enum):
-    """Sources of bunk requests (which field they came from)
+    """Sources of bunk requests - simplified to two categories.
 
     Note: Values must match PocketBase schema (see migration 1754196925)
+
+    FAMILY: Parent/family-submitted fields
+      - share_bunk_with (bunk_with)
+      - ret_parent_socialize_with_best (socialize_with)
+
+    STAFF: Staff-written fields (staff validates family input)
+      - do_not_share_bunk_with (not_bunk_with)
+      - bunking_notes
+      - internal_notes
     """
 
-    FAMILY = "family"  # Parent/family requests (ret_parent_socialize_with_best, share_bunk_with)
-    STAFF = "staff"  # Staff requests (do_not_share_bunk_with)
-    NOTES = "notes"  # Internal notes (internal_notes, bunking_notes)
+    FAMILY = "family"
+    STAFF = "staff"
 
 
 class RequestStatus(Enum):
@@ -270,6 +278,9 @@ class BunkRequest:
     requested_name: str | None = None
     requester: Camper | None = None  # Full camper object if available
     requested: Camper | None = None  # Full camper object if available
+
+    # Database ID (set when loading from DB, used for updates)
+    id: str | None = None
 
 
 # Three-Phase Processing Models
