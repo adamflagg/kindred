@@ -189,44 +189,72 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
     return new Map(persons.map((p: PersonsResponse) => [p.cm_id, p]));
   }, [persons]);
 
-  // Fetch source links for split modal when a request is selected for splitting
-  const { data: sourceLinksData = [], isLoading: isLoadingSourceLinks } = useQuery({
-    queryKey: ['source-links', requestToSplit?.id],
+  // Fetch absorbed requests for split modal when a request is selected for splitting
+  // These are soft-deleted requests that were merged into the selected request
+  const { data: absorbedRequestsData = [], isLoading: isLoadingAbsorbedRequests } = useQuery({
+    queryKey: ['absorbed-requests', requestToSplit?.id],
     queryFn: async () => {
       if (!requestToSplit) return [];
-      return pb.collection('bunk_request_sources').getFullList({
-        filter: `bunk_request = "${requestToSplit.id}"`,
-        sort: '-is_primary,created',
-        expand: 'original_request',
+      // Fetch requests where merged_into points to the selected request
+      return pb.collection('bunk_requests').getFullList({
+        filter: `merged_into = "${requestToSplit.id}"`,
+        sort: 'created',
       });
     },
     enabled: !!requestToSplit,
   });
 
-  // Transform source links data for SplitRequestModal
+  // Transform absorbed requests + kept request into source links format for SplitRequestModal
+  // The "primary" entry is the kept request itself, absorbed requests are non-primary
   const sourceLinks = useMemo(() => {
-    interface ExpandedOriginalRequest {
-      content?: string;
-      created?: string;
-    }
-    interface SourceLinkRecord {
-      original_request: string;
+    interface SourceLinkEntry {
+      original_request_id: string;
       source_field: string;
-      parse_notes?: string;  // AI parse notes stored on junction table
-      is_primary?: boolean;
-      expand?: {
-        original_request?: ExpandedOriginalRequest;
-      };
+      original_content?: string | undefined;
+      created?: string | undefined;
+      parse_notes?: string | undefined;
+      is_primary?: boolean | undefined;
+      // Additional fields for absorbed request display
+      requested_person_name?: string | undefined;
+      requestee_id?: number | undefined;
     }
-    return (sourceLinksData as unknown as SourceLinkRecord[]).map((sl) => ({
-      original_request_id: sl.original_request,
-      source_field: sl.source_field,
-      original_content: sl.expand?.original_request?.content,
-      created: sl.expand?.original_request?.created,
-      parse_notes: sl.parse_notes,
-      is_primary: sl.is_primary,
-    }));
-  }, [sourceLinksData]);
+    const links: SourceLinkEntry[] = [];
+
+    // Add the kept request as primary (cannot be split off)
+    if (requestToSplit) {
+      const metadata = requestToSplit.metadata as Record<string, unknown> | null;
+      links.push({
+        original_request_id: requestToSplit.id,
+        source_field: requestToSplit.source_field || 'Unknown',
+        original_content: metadata?.['original_text'] as string | undefined,
+        created: requestToSplit.created,
+        parse_notes: metadata?.['parse_notes'] as string | undefined,
+        is_primary: true,
+        requested_person_name: requestToSplit.requested_person_name || undefined,
+        requestee_id: requestToSplit.requestee_id,
+      });
+    }
+
+    // Add absorbed requests as non-primary (can be split off)
+    for (const absorbed of absorbedRequestsData as BunkRequestsResponse[]) {
+      const metadata = absorbed.metadata as Record<string, unknown> | null;
+      links.push({
+        original_request_id: absorbed.id,
+        source_field: absorbed.source_field || 'Unknown',
+        original_content: metadata?.['original_text'] as string | undefined,
+        created: absorbed.created,
+        parse_notes: metadata?.['parse_notes'] as string | undefined,
+        is_primary: false,
+        requested_person_name: absorbed.requested_person_name || undefined,
+        requestee_id: absorbed.requestee_id,
+      });
+    }
+
+    return links;
+  }, [requestToSplit, absorbedRequestsData]);
+
+  // Loading state includes both the request itself and absorbed requests
+  const isLoadingSourceLinks = isLoadingAbsorbedRequests;
 
   // Track which merged request rows need source links loaded (lazy loading)
   const [expandedMergedRequestId, setExpandedMergedRequestId] = useState<string | null>(null);

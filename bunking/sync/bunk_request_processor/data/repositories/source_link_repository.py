@@ -70,7 +70,7 @@ class SourceLinkRepository:
 
         except Exception as e:
             # Unique constraint violation is expected for duplicates
-            logger.debug(f"Could not add source link: {e}")
+            logger.debug(f"Could not add source link {bunk_request_id} -> {original_request_id}: {e}")
             return False
 
     def get_sources_for_request(self, bunk_request_id: str) -> list[str]:

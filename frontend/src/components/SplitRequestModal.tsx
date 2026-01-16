@@ -14,6 +14,9 @@ interface SourceLinkData {
   created?: string | undefined;
   parse_notes?: string | undefined;
   is_primary?: boolean | undefined;
+  // Additional fields for absorbed request display
+  requested_person_name?: string | undefined;
+  requestee_id?: number | undefined;
 }
 
 interface SplitRequestModalProps {
@@ -285,12 +288,20 @@ export default function SplitRequestModal({
                       className={`mt-1 rounded ${isPrimary ? 'cursor-not-allowed' : ''}`}
                     />
                     <div className="flex-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <label
                           htmlFor={`source-${link.original_request_id}`}
                           className={`text-sm font-medium ${isPrimary ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                         >
-                          {link.source_field}
+                          {link.requested_person_name ? (
+                            <span className="flex items-center gap-1.5">
+                              <User className="w-3.5 h-3.5 text-forest-600 dark:text-forest-400" />
+                              {link.requested_person_name}
+                              <span className="text-xs text-muted-foreground">({link.source_field})</span>
+                            </span>
+                          ) : (
+                            link.source_field
+                          )}
                         </label>
                         {isPrimary && (
                           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium rounded bg-amber-500/10 text-amber-600 dark:text-amber-400">
@@ -301,7 +312,7 @@ export default function SplitRequestModal({
                       </div>
                       {link.original_content && (
                         <p className="text-sm text-muted-foreground mt-1 italic">
-                          "{link.original_content}"
+                          &quot;{link.original_content}&quot;
                         </p>
                       )}
                       {link.parse_notes && (
