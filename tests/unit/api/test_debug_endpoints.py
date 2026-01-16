@@ -106,10 +106,8 @@ class TestListParseAnalysisEndpoint:
         """Test that list endpoint filters by session_cm_id."""
         client, mock_repos = client_with_mocks
 
-        # Mock session lookup
-        mock_session = Mock()
-        mock_session.id = "sess_abc"
-        mock_repos["session_repo"].get_by_cm_id.return_value = mock_session
+        # Mock session lookup - find_by_cm_id returns a dict
+        mock_repos["session_repo"].find_by_cm_id.return_value = {"id": "sess_abc"}
 
         mock_repos["debug_repo"].list_with_originals.return_value = ([], 0)
 
@@ -118,7 +116,7 @@ class TestListParseAnalysisEndpoint:
         assert response.status_code == 200
 
         # Verify session lookup was called
-        mock_repos["session_repo"].get_by_cm_id.assert_called_once_with(1000002)
+        mock_repos["session_repo"].find_by_cm_id.assert_called_once_with(1000002)
 
         # Verify filter was applied
         call_kwargs = mock_repos["debug_repo"].list_with_originals.call_args[1]
@@ -159,7 +157,7 @@ class TestListParseAnalysisEndpoint:
         self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
     ) -> None:
         """Test that list endpoint validates source_field enum values."""
-        client, mock_repos = client_with_mocks
+        client, _mock_repos = client_with_mocks
 
         response = client.get("/api/debug/parse-analysis?source_field=invalid_field")
 
@@ -303,7 +301,7 @@ class TestPhase1OnlyEndpoint:
         self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
     ) -> None:
         """Test that empty original_request_ids list returns validation error."""
-        client, mock_services = client_with_mocks
+        client, _mock_services = client_with_mocks
 
         response = client.post(
             "/api/debug/parse-phase1-only",
@@ -389,50 +387,45 @@ class TestListOriginalRequestsEndpoint:
     """Test GET /api/debug/original-requests endpoint for unparsed requests."""
 
     @pytest.fixture
-    def mock_repos(self) -> dict[str, Mock]:
-        """Create mock repositories for testing."""
-        return {
-            "original_requests_loader": Mock(),
-            "session_repo": Mock(),
-        }
+    def mock_loader(self) -> Mock:
+        """Create mock loader for testing."""
+        return Mock()
 
     @pytest.fixture
     def client_with_mocks(
-        self, mock_repos: dict[str, Mock]
-    ) -> Generator[tuple[TestClient, dict[str, Mock]], None, None]:
+        self, mock_loader: Mock
+    ) -> Generator[tuple[TestClient, Mock], None, None]:
         """Create test client with mocked dependencies."""
-        with patch("api.routers.debug.get_original_requests_loader") as mock_get_loader:
-            with patch("api.routers.debug.get_session_repository") as mock_get_session_repo:
-                mock_get_loader.return_value = mock_repos["original_requests_loader"]
-                mock_get_session_repo.return_value = mock_repos["session_repo"]
+        # Patch the OriginalRequestsLoader class since impl instantiates it directly
+        with patch("api.routers.debug.OriginalRequestsLoader") as MockLoaderClass:
+            MockLoaderClass.return_value = mock_loader
 
-                from api.routers.debug import router
+            from api.routers.debug import router
 
-                app = FastAPI()
-                app.include_router(router)
+            app = FastAPI()
+            app.include_router(router)
 
-                yield TestClient(app), mock_repos
+            yield TestClient(app), mock_loader
 
     def test_list_original_requests_returns_items(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
+        self, client_with_mocks: tuple[TestClient, Mock]
     ) -> None:
         """Test that list endpoint returns original requests."""
-        client, mock_repos = client_with_mocks
+        client, mock_loader = client_with_mocks
 
-        mock_person = Mock()
-        mock_person.cm_id = 12345
-        mock_person.first_name = "Emma"
-        mock_person.last_name = "Johnson"
-        mock_person.preferred_name = None
-
+        # Mock OriginalRequest with all required attributes
         mock_original = Mock()
         mock_original.id = "orig_req_1"
+        mock_original.preferred_name = None
+        mock_original.first_name = "Emma"
+        mock_original.last_name = "Johnson"
+        mock_original.requester_cm_id = 12345
         mock_original.field = "bunk_with"
         mock_original.content = "With Mia please"
         mock_original.year = 2025
-        mock_original.expand = {"requester": mock_person}
+        mock_original.processed = None
 
-        mock_repos["original_requests_loader"].load_by_filter.return_value = [mock_original]
+        mock_loader.load_by_filter.return_value = [mock_original]
 
         response = client.get("/api/debug/original-requests?year=2025")
 
@@ -448,25 +441,25 @@ class TestListOriginalRequestsEndpoint:
         assert item["requester_name"] == "Emma Johnson"
 
     def test_list_original_requests_filters_by_session(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
+        self, client_with_mocks: tuple[TestClient, Mock]
     ) -> None:
         """Test that list filters by session when provided."""
-        client, mock_repos = client_with_mocks
+        client, mock_loader = client_with_mocks
 
-        mock_repos["original_requests_loader"].load_by_filter.return_value = []
+        mock_loader.load_by_filter.return_value = []
 
         response = client.get("/api/debug/original-requests?session_cm_id=1000002&year=2025")
 
         assert response.status_code == 200
 
-        call_kwargs = mock_repos["original_requests_loader"].load_by_filter.call_args[1]
+        call_kwargs = mock_loader.load_by_filter.call_args[1]
         assert call_kwargs.get("session_cm_id") == 1000002
 
     def test_list_original_requests_year_required(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
+        self, client_with_mocks: tuple[TestClient, Mock]
     ) -> None:
         """Test that year parameter is required."""
-        client, mock_repos = client_with_mocks
+        client, _mock_loader = client_with_mocks
 
         response = client.get("/api/debug/original-requests")
 
