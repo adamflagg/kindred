@@ -350,7 +350,11 @@ class TestMergeEndpointSoftDelete:
 
 
 class TestSplitEndpointRestore:
-    """Test that split endpoint restores merged requests instead of creating new."""
+    """Test that split endpoint restores merged requests instead of creating new.
+
+    Updated: Now uses absorbed request IDs directly (soft-deleted bunk_requests)
+    instead of original_bunk_request IDs from source links.
+    """
 
     @pytest.fixture
     def mock_repos(self) -> tuple[Mock, Mock]:
@@ -379,48 +383,22 @@ class TestSplitEndpointRestore:
     def test_split_restores_merged_request_when_available(
         self, client_with_mocks: tuple[TestClient, Mock, Mock]
     ) -> None:
-        """Test that split restores a soft-deleted request instead of creating new."""
-        client, mock_request_repo, mock_source_link_repo = client_with_mocks
+        """Test that split restores a soft-deleted request by absorbed request ID."""
+        client, mock_request_repo, _mock_source_link_repo = client_with_mocks
 
-        # Original merged request (kept one)
-        original_request = Mock()
-        original_request.id = "req_merged"
-        original_request.requester_cm_id = 12345
-        original_request.requested_cm_id = 67890
-        original_request.session_cm_id = 1000002
-        original_request.request_type = Mock(value="bunk_with")
-        original_request.source_fields = ["share_bunk_with", "bunking_notes"]
-        original_request.confidence_score = 0.95
-        original_request.priority = 3
-        original_request.source = Mock(value="family")
-        original_request.csv_position = 0
-        original_request.year = 2025
-        original_request.metadata = {}
+        # The kept (surviving) request
+        kept_request = Mock()
+        kept_request.id = "req_merged"
+        kept_request.source_fields = ["share_bunk_with", "bunking_notes"]
+        kept_request.metadata = {"merged_from": ["req_soft_deleted"]}
 
         # Soft-deleted (merged) request that should be restored
         merged_request = Mock()
         merged_request.id = "req_soft_deleted"
-        merged_request.requester_cm_id = 12345
-        merged_request.requested_cm_id = 67890
-        merged_request.session_cm_id = 1000002
-        merged_request.request_type = Mock(value="bunk_with")
         merged_request.source_field = "bunking_notes"
-        merged_request.confidence_score = 0.85
-        merged_request.priority = 4
-        merged_request.year = 2025
 
-        mock_request_repo.get_by_id.return_value = original_request
-        mock_source_link_repo.count_sources_for_request.return_value = 2
-        mock_source_link_repo.get_source_field_for_link.return_value = "bunking_notes"
-
-        # Return the merged request when looking for requests merged into kept
+        mock_request_repo.get_by_id.return_value = kept_request
         mock_request_repo.get_merged_requests.return_value = [merged_request]
-
-        # Source links on kept request (used to match absorbed request by source_field)
-        mock_source_link_repo.get_source_links_with_fields.return_value = [
-            {"original_request_id": "orig_123", "source_field": "bunking_notes", "is_primary": False},
-        ]
-
         mock_request_repo.restore_from_merge.return_value = True
 
         response = client.post(
@@ -429,7 +407,7 @@ class TestSplitEndpointRestore:
                 "request_id": "req_merged",
                 "split_sources": [
                     {
-                        "original_request_id": "orig_123",
+                        "original_request_id": "req_soft_deleted",  # Now uses absorbed request ID directly
                         "new_type": "bunk_with",
                         "new_target_id": None,
                     }
@@ -444,46 +422,26 @@ class TestSplitEndpointRestore:
         # Verify create was NOT called (we restored, didn't create new)
         mock_request_repo.create.assert_not_called()
 
-    def test_split_falls_back_to_create_for_legacy_data(self, client_with_mocks: tuple[TestClient, Mock, Mock]) -> None:
-        """Test that split falls back to creating new request for legacy merged data."""
-        client, mock_request_repo, mock_source_link_repo = client_with_mocks
+    def test_split_fails_when_no_merged_requests(self, client_with_mocks: tuple[TestClient, Mock, Mock]) -> None:
+        """Test that split fails when there are no merged requests (can't split unmerged request)."""
+        client, mock_request_repo, _mock_source_link_repo = client_with_mocks
 
-        # Original merged request
-        original_request = Mock()
-        original_request.id = "req_merged"
-        original_request.requester_cm_id = 12345
-        original_request.requested_cm_id = 67890
-        original_request.session_cm_id = 1000002
-        original_request.request_type = Mock(value="bunk_with")
-        original_request.source_fields = ["share_bunk_with", "bunking_notes"]
-        original_request.confidence_score = 0.95
-        original_request.priority = 3
-        original_request.source = Mock(value="family")
-        original_request.csv_position = 0
-        original_request.year = 2025
-        original_request.metadata = {}
+        # A request that was never merged (no absorbed requests)
+        kept_request = Mock()
+        kept_request.id = "req_single"
+        kept_request.source_fields = ["share_bunk_with"]
+        kept_request.metadata = {}
 
-        mock_request_repo.get_by_id.return_value = original_request
-        mock_source_link_repo.count_sources_for_request.return_value = 2
-        mock_source_link_repo.get_source_field_for_link.return_value = "bunking_notes"
-
-        # No soft-deleted requests found (legacy merge that hard-deleted)
-        mock_request_repo.get_merged_requests.return_value = []
-
-        # Mock create for fallback
-        def set_id_on_create(req):
-            req.id = "new_legacy_split_req"
-            return True
-
-        mock_request_repo.create.side_effect = set_id_on_create
+        mock_request_repo.get_by_id.return_value = kept_request
+        mock_request_repo.get_merged_requests.return_value = []  # No absorbed requests
 
         response = client.post(
             "/api/requests/split",
             json={
-                "request_id": "req_merged",
+                "request_id": "req_single",
                 "split_sources": [
                     {
-                        "original_request_id": "orig_123",
+                        "original_request_id": "some_id",
                         "new_type": "bunk_with",
                         "new_target_id": None,
                     }
@@ -491,45 +449,27 @@ class TestSplitEndpointRestore:
             },
         )
 
-        assert response.status_code == 200
-
-        # Verify create was called (fallback for legacy data)
-        mock_request_repo.create.assert_called_once()
-        # Verify restore was NOT called (no soft-deleted request to restore)
-        mock_request_repo.restore_from_merge.assert_not_called()
+        # Should fail because there are no merged requests to split off
+        assert response.status_code == 400
+        assert "no merged requests" in response.json()["detail"].lower()
 
     def test_split_response_uses_restored_not_created_terminology(
         self, client_with_mocks: tuple[TestClient, Mock, Mock]
     ) -> None:
         """Test that split response uses 'restored_request_ids' terminology."""
-        client, mock_request_repo, mock_source_link_repo = client_with_mocks
+        client, mock_request_repo, _mock_source_link_repo = client_with_mocks
 
-        original_request = Mock()
-        original_request.id = "req_merged"
-        original_request.requester_cm_id = 12345
-        original_request.requested_cm_id = 67890
-        original_request.session_cm_id = 1000002
-        original_request.request_type = Mock(value="bunk_with")
-        original_request.source_fields = ["share_bunk_with", "bunking_notes"]
-        original_request.confidence_score = 0.95
-        original_request.priority = 3
-        original_request.source = Mock(value="family")
-        original_request.csv_position = 0
-        original_request.year = 2025
-        original_request.metadata = {}
+        kept_request = Mock()
+        kept_request.id = "req_merged"
+        kept_request.source_fields = ["share_bunk_with", "bunking_notes"]
+        kept_request.metadata = {"merged_from": ["req_soft_deleted"]}
 
         merged_request = Mock()
         merged_request.id = "req_soft_deleted"
-        merged_request.source_field = "bunking_notes"  # Used for matching
+        merged_request.source_field = "bunking_notes"
 
-        mock_request_repo.get_by_id.return_value = original_request
-        mock_source_link_repo.count_sources_for_request.return_value = 2
-        mock_source_link_repo.get_source_field_for_link.return_value = "bunking_notes"
+        mock_request_repo.get_by_id.return_value = kept_request
         mock_request_repo.get_merged_requests.return_value = [merged_request]
-        # Source links on kept request (used to match absorbed request by source_field)
-        mock_source_link_repo.get_source_links_with_fields.return_value = [
-            {"original_request_id": "orig_123", "source_field": "bunking_notes", "is_primary": False},
-        ]
         mock_request_repo.restore_from_merge.return_value = True
 
         response = client.post(
@@ -538,7 +478,7 @@ class TestSplitEndpointRestore:
                 "request_id": "req_merged",
                 "split_sources": [
                     {
-                        "original_request_id": "orig_123",
+                        "original_request_id": "req_soft_deleted",  # Now uses absorbed request ID directly
                         "new_type": "bunk_with",
                         "new_target_id": None,
                     }
