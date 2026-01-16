@@ -321,9 +321,20 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
     return { canMerge: true, reason: '', requests: selectedReqs };
   }, [selectedRequests, sortedRequests]);
 
-  // Helper to check if a request has multiple source fields (is a merged request)
+  // Helper to check if a request is a merged request (has multiple sources)
+  // Check either: multiple source_fields OR merged_from metadata exists
   const hasMultipleSources = useCallback((request: BunkRequestsResponse) => {
-    return Array.isArray(request.source_fields) && request.source_fields.length > 1;
+    // Multiple unique source fields
+    if (Array.isArray(request.source_fields) && request.source_fields.length > 1) {
+      return true;
+    }
+    // Check metadata for merged_from (when merging requests from same source field)
+    const metadata = request.metadata as Record<string, unknown> | undefined;
+    const mergedFrom = metadata?.['merged_from'];
+    if (mergedFrom && Array.isArray(mergedFrom) && mergedFrom.length > 0) {
+      return true;
+    }
+    return false;
   }, []);
 
   // Optimistic validation for conflict detection
@@ -888,11 +899,11 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
         </div>
 
         {/* Table Body */}
-        <div 
+        <div
           ref={scrollContainerRef}
           className="overflow-auto relative"
-          style={{ 
-            height: '600px', 
+          style={{
+            height: '600px',
             overscrollBehaviorY: 'contain'
           }}
         >

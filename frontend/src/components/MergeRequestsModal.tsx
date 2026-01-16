@@ -16,7 +16,7 @@ interface MergeRequestsModalProps {
 
 interface MergeResponse {
   merged_request_id: string;
-  deleted_request_ids: string[];
+  merged_request_ids: string[];
   source_fields: string[];
   confidence_score: number;
 }

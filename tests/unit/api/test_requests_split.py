@@ -113,6 +113,8 @@ class TestSplitEndpointSuccess:
 
         mock_request_repo.get_by_id.return_value = original_request
         mock_source_link_repo.count_sources_for_request.return_value = 2
+        # No soft-deleted requests to restore (legacy path)
+        mock_request_repo.get_merged_requests.return_value = []
 
         # Mock the create to set an ID
         def set_id_on_create(req):
@@ -137,7 +139,7 @@ class TestSplitEndpointSuccess:
 
         assert response.status_code == 200
 
-        # Should have created a new request
+        # Should have created a new request (legacy fallback)
         mock_request_repo.create.assert_called_once()
 
     def test_split_transfers_source_link(self, client_with_mocks: tuple[TestClient, Mock, Mock]) -> None:
@@ -161,6 +163,8 @@ class TestSplitEndpointSuccess:
         mock_request_repo.get_by_id.return_value = original_request
         mock_source_link_repo.count_sources_for_request.return_value = 2
         mock_source_link_repo.get_source_field_for_link.return_value = "bunking_notes"
+        # No soft-deleted requests to restore (legacy path)
+        mock_request_repo.get_merged_requests.return_value = []
 
         def set_id_on_create(req):
             req.id = "new_split_req"
@@ -214,6 +218,8 @@ class TestSplitEndpointSuccess:
         mock_request_repo.get_by_id.return_value = original_request
         mock_source_link_repo.count_sources_for_request.return_value = 2
         mock_source_link_repo.get_source_field_for_link.return_value = "bunking_notes"
+        # No soft-deleted requests to restore (legacy path)
+        mock_request_repo.get_merged_requests.return_value = []
 
         def set_id_on_create(req):
             req.id = "new_split_req"
@@ -244,8 +250,8 @@ class TestSplitEndpointSuccess:
         assert "bunking_notes" not in updated_fields
         assert "share_bunk_with" in updated_fields
 
-    def test_split_returns_created_request_ids(self, client_with_mocks: tuple[TestClient, Mock, Mock]) -> None:
-        """Test that split returns the IDs of created requests."""
+    def test_split_returns_restored_request_ids(self, client_with_mocks: tuple[TestClient, Mock, Mock]) -> None:
+        """Test that split returns the IDs of restored/created requests."""
         client, mock_request_repo, mock_source_link_repo = client_with_mocks
 
         original_request = Mock()
@@ -264,6 +270,8 @@ class TestSplitEndpointSuccess:
 
         mock_request_repo.get_by_id.return_value = original_request
         mock_source_link_repo.count_sources_for_request.return_value = 2
+        # No soft-deleted requests to restore (legacy path)
+        mock_request_repo.get_merged_requests.return_value = []
 
         def set_id_on_create(req):
             req.id = "new_split_req_1"
@@ -287,8 +295,8 @@ class TestSplitEndpointSuccess:
 
         assert response.status_code == 200
         data = response.json()
-        assert "created_request_ids" in data
-        assert "new_split_req_1" in data["created_request_ids"]
+        assert "restored_request_ids" in data
+        assert "new_split_req_1" in data["restored_request_ids"]
 
 
 class TestSplitEndpointErrors:
