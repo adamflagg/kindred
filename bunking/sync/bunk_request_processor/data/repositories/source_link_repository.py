@@ -40,6 +40,7 @@ class SourceLinkRepository:
         original_request_id: str,
         is_primary: bool,
         source_field: str | None = None,
+        parse_notes: str | None = None,
     ) -> bool:
         """Create a new junction record linking a bunk_request to an original_request.
 
@@ -48,6 +49,7 @@ class SourceLinkRepository:
             original_request_id: PocketBase ID of the original_bunk_request
             is_primary: Whether this source "owns" the request
             source_field: Optional source field name for quick access
+            parse_notes: Optional AI parse notes from the original bunk_request
 
         Returns:
             True if created successfully, False on error (including duplicate)
@@ -60,13 +62,15 @@ class SourceLinkRepository:
             }
             if source_field:
                 data["source_field"] = source_field
+            if parse_notes:
+                data["parse_notes"] = parse_notes
 
             self.pb.collection(COLLECTION_NAME).create(data)
             return True
 
         except Exception as e:
             # Unique constraint violation is expected for duplicates
-            logger.debug(f"Could not add source link: {e}")
+            logger.debug(f"Could not add source link {bunk_request_id} -> {original_request_id}: {e}")
             return False
 
     def get_sources_for_request(self, bunk_request_id: str) -> list[str]:
@@ -86,6 +90,34 @@ class SourceLinkRepository:
 
         except Exception as e:
             logger.warning(f"Error getting sources for request {bunk_request_id}: {e}")
+            return []
+
+    def get_source_links_with_fields(self, bunk_request_id: str) -> list[dict[str, object]]:
+        """Get all source links for a request with their source_field values.
+
+        Used by split endpoint to match absorbed requests by source_field when
+        source links have been transferred to the kept request during merge.
+
+        Args:
+            bunk_request_id: PocketBase ID of the bunk_request
+
+        Returns:
+            List of dicts with original_request_id, source_field, is_primary
+        """
+        try:
+            result = self.pb.collection(COLLECTION_NAME).get_list(
+                query_params={"filter": f'bunk_request = "{bunk_request_id}"', "perPage": 100}
+            )
+            return [
+                {
+                    "original_request_id": str(item.original_request),  # type: ignore[attr-defined]
+                    "source_field": getattr(item, "source_field", None),
+                    "is_primary": getattr(item, "is_primary", False),
+                }
+                for item in result.items
+            ]
+        except Exception as e:
+            logger.warning(f"Error getting source links with fields for {bunk_request_id}: {e}")
             return []
 
     def get_requests_for_source(self, original_request_id: str) -> list[str]:
