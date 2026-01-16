@@ -7,6 +7,7 @@ Following TDD: These tests are written FIRST to define expected behavior.
 """
 
 import sys
+from collections.abc import Generator
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -79,14 +80,14 @@ class TestMergeEndpointSuccess:
     """Test successful merge operations."""
 
     @pytest.fixture
-    def mock_repos(self):
+    def mock_repos(self) -> tuple[Mock, Mock]:
         """Create mock repositories for testing."""
         mock_request_repo = Mock()
         mock_source_link_repo = Mock()
         return mock_request_repo, mock_source_link_repo
 
     @pytest.fixture
-    def client_with_mocks(self, mock_repos):
+    def client_with_mocks(self, mock_repos: tuple[Mock, Mock]) -> Generator[tuple[TestClient, Mock, Mock], None, None]:
         """Create test client with mocked repositories."""
         mock_request_repo, mock_source_link_repo = mock_repos
 
@@ -102,7 +103,7 @@ class TestMergeEndpointSuccess:
 
                 yield TestClient(app), mock_request_repo, mock_source_link_repo
 
-    def test_merge_combines_source_links(self, client_with_mocks) -> None:
+    def test_merge_combines_source_links(self, client_with_mocks: tuple[TestClient, Mock, Mock]) -> None:
         """Test that merge transfers all source links to kept request."""
         client, mock_request_repo, mock_source_link_repo = client_with_mocks
 
@@ -146,7 +147,7 @@ class TestMergeEndpointSuccess:
             to_request_id="req_1",
         )
 
-    def test_merge_combines_source_fields(self, client_with_mocks) -> None:
+    def test_merge_combines_source_fields(self, client_with_mocks: tuple[TestClient, Mock, Mock]) -> None:
         """Test that merge combines source_fields arrays."""
         client, mock_request_repo, mock_source_link_repo = client_with_mocks
 
@@ -190,7 +191,7 @@ class TestMergeEndpointSuccess:
         assert "share_bunk_with" in source_fields
         assert "bunking_notes" in source_fields
 
-    def test_merge_preserves_highest_confidence(self, client_with_mocks) -> None:
+    def test_merge_preserves_highest_confidence(self, client_with_mocks: tuple[TestClient, Mock, Mock]) -> None:
         """Test that merge keeps the highest confidence score."""
         client, mock_request_repo, mock_source_link_repo = client_with_mocks
 
@@ -231,7 +232,7 @@ class TestMergeEndpointSuccess:
         call_kwargs = mock_request_repo.update_for_merge.call_args.kwargs
         assert call_kwargs.get("confidence_score") == 0.98
 
-    def test_merge_deletes_merged_requests(self, client_with_mocks) -> None:
+    def test_merge_deletes_merged_requests(self, client_with_mocks: tuple[TestClient, Mock, Mock]) -> None:
         """Test that merged requests are deleted after merge."""
         client, mock_request_repo, mock_source_link_repo = client_with_mocks
 
@@ -271,7 +272,7 @@ class TestMergeEndpointSuccess:
         # Verify req_2 was deleted (req_1 is the kept one)
         mock_request_repo.delete.assert_called_once_with("req_2")
 
-    def test_merge_returns_merged_request_id(self, client_with_mocks) -> None:
+    def test_merge_returns_merged_request_id(self, client_with_mocks: tuple[TestClient, Mock, Mock]) -> None:
         """Test that merge returns the ID of the merged request."""
         client, mock_request_repo, mock_source_link_repo = client_with_mocks
 
@@ -314,14 +315,14 @@ class TestMergeEndpointErrors:
     """Test error handling for merge endpoint."""
 
     @pytest.fixture
-    def mock_repos(self):
+    def mock_repos(self) -> tuple[Mock, Mock]:
         """Create mock repositories for testing."""
         mock_request_repo = Mock()
         mock_source_link_repo = Mock()
         return mock_request_repo, mock_source_link_repo
 
     @pytest.fixture
-    def client_with_mocks(self, mock_repos):
+    def client_with_mocks(self, mock_repos: tuple[Mock, Mock]) -> Generator[tuple[TestClient, Mock, Mock], None, None]:
         """Create test client with mocked repositories."""
         mock_request_repo, mock_source_link_repo = mock_repos
 
@@ -337,7 +338,7 @@ class TestMergeEndpointErrors:
 
                 yield TestClient(app), mock_request_repo, mock_source_link_repo
 
-    def test_merge_fails_if_request_not_found(self, client_with_mocks) -> None:
+    def test_merge_fails_if_request_not_found(self, client_with_mocks: tuple[TestClient, Mock, Mock]) -> None:
         """Test that merge fails if one of the requests doesn't exist."""
         client, mock_request_repo, mock_source_link_repo = client_with_mocks
 
@@ -355,7 +356,7 @@ class TestMergeEndpointErrors:
         assert response.status_code == 404
         assert "not found" in response.json()["detail"].lower()
 
-    def test_merge_fails_for_different_requesters(self, client_with_mocks) -> None:
+    def test_merge_fails_for_different_requesters(self, client_with_mocks: tuple[TestClient, Mock, Mock]) -> None:
         """Test that merge fails if requests have different requesters."""
         client, mock_request_repo, mock_source_link_repo = client_with_mocks
 
@@ -385,7 +386,7 @@ class TestMergeEndpointErrors:
         assert response.status_code == 400
         assert "same requester" in response.json()["detail"].lower()
 
-    def test_merge_fails_for_different_sessions(self, client_with_mocks) -> None:
+    def test_merge_fails_for_different_sessions(self, client_with_mocks: tuple[TestClient, Mock, Mock]) -> None:
         """Test that merge fails if requests have different sessions."""
         client, mock_request_repo, mock_source_link_repo = client_with_mocks
 

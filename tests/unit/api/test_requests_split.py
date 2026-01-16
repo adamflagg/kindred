@@ -7,6 +7,7 @@ Following TDD: These tests are written FIRST to define expected behavior.
 """
 
 import sys
+from collections.abc import Generator
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -68,14 +69,14 @@ class TestSplitEndpointSuccess:
     """Test successful split operations."""
 
     @pytest.fixture
-    def mock_repos(self):
+    def mock_repos(self) -> tuple[Mock, Mock]:
         """Create mock repositories for testing."""
         mock_request_repo = Mock()
         mock_source_link_repo = Mock()
         return mock_request_repo, mock_source_link_repo
 
     @pytest.fixture
-    def client_with_mocks(self, mock_repos):
+    def client_with_mocks(self, mock_repos: tuple[Mock, Mock]) -> Generator[tuple[TestClient, Mock, Mock], None, None]:
         """Create test client with mocked repositories."""
         mock_request_repo, mock_source_link_repo = mock_repos
 
@@ -91,7 +92,7 @@ class TestSplitEndpointSuccess:
 
                 yield TestClient(app), mock_request_repo, mock_source_link_repo
 
-    def test_split_creates_new_request(self, client_with_mocks) -> None:
+    def test_split_creates_new_request(self, client_with_mocks: tuple[TestClient, Mock, Mock]) -> None:
         """Test that split creates a new request for the split source."""
         client, mock_request_repo, mock_source_link_repo = client_with_mocks
 
@@ -139,7 +140,7 @@ class TestSplitEndpointSuccess:
         # Should have created a new request
         mock_request_repo.create.assert_called_once()
 
-    def test_split_transfers_source_link(self, client_with_mocks) -> None:
+    def test_split_transfers_source_link(self, client_with_mocks: tuple[TestClient, Mock, Mock]) -> None:
         """Test that split transfers source link from original to new request."""
         client, mock_request_repo, mock_source_link_repo = client_with_mocks
 
@@ -192,7 +193,7 @@ class TestSplitEndpointSuccess:
         # Should have added new source link
         mock_source_link_repo.add_source_link.assert_called()
 
-    def test_split_updates_original_source_fields(self, client_with_mocks) -> None:
+    def test_split_updates_original_source_fields(self, client_with_mocks: tuple[TestClient, Mock, Mock]) -> None:
         """Test that split updates the original request's source_fields."""
         client, mock_request_repo, mock_source_link_repo = client_with_mocks
 
@@ -243,7 +244,7 @@ class TestSplitEndpointSuccess:
         assert "bunking_notes" not in updated_fields
         assert "share_bunk_with" in updated_fields
 
-    def test_split_returns_created_request_ids(self, client_with_mocks) -> None:
+    def test_split_returns_created_request_ids(self, client_with_mocks: tuple[TestClient, Mock, Mock]) -> None:
         """Test that split returns the IDs of created requests."""
         client, mock_request_repo, mock_source_link_repo = client_with_mocks
 
@@ -294,14 +295,14 @@ class TestSplitEndpointErrors:
     """Test error handling for split endpoint."""
 
     @pytest.fixture
-    def mock_repos(self):
+    def mock_repos(self) -> tuple[Mock, Mock]:
         """Create mock repositories for testing."""
         mock_request_repo = Mock()
         mock_source_link_repo = Mock()
         return mock_request_repo, mock_source_link_repo
 
     @pytest.fixture
-    def client_with_mocks(self, mock_repos):
+    def client_with_mocks(self, mock_repos: tuple[Mock, Mock]) -> Generator[tuple[TestClient, Mock, Mock], None, None]:
         """Create test client with mocked repositories."""
         mock_request_repo, mock_source_link_repo = mock_repos
 
@@ -317,7 +318,7 @@ class TestSplitEndpointErrors:
 
                 yield TestClient(app), mock_request_repo, mock_source_link_repo
 
-    def test_split_fails_if_request_not_found(self, client_with_mocks) -> None:
+    def test_split_fails_if_request_not_found(self, client_with_mocks: tuple[TestClient, Mock, Mock]) -> None:
         """Test that split fails if the request doesn't exist."""
         client, mock_request_repo, mock_source_link_repo = client_with_mocks
 
@@ -340,7 +341,7 @@ class TestSplitEndpointErrors:
         assert response.status_code == 404
         assert "not found" in response.json()["detail"].lower()
 
-    def test_split_fails_if_single_source_request(self, client_with_mocks) -> None:
+    def test_split_fails_if_single_source_request(self, client_with_mocks: tuple[TestClient, Mock, Mock]) -> None:
         """Test that split fails if request has only one source."""
         client, mock_request_repo, mock_source_link_repo = client_with_mocks
 
