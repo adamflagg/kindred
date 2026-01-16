@@ -342,28 +342,29 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
     return sorted;
   }, [requests, sortBy, sortOrder, personMap, filters.searchQuery]);
 
-  // Check if merge is possible: exactly 2 requests selected with same requester and session
+  // Check if merge is possible: 2+ requests selected with same requester and session
   const mergeEligibility = useMemo(() => {
-    if (selectedRequests.size !== 2) {
-      return { canMerge: false, reason: 'Select exactly 2 requests to merge', requests: [] };
+    if (selectedRequests.size < 2) {
+      return { canMerge: false, reason: 'Select at least 2 requests to merge', requests: [] };
     }
 
     const selectedReqs = sortedRequests.filter(r => selectedRequests.has(r.id));
-    if (selectedReqs.length !== 2) {
+    if (selectedReqs.length < 2) {
       return { canMerge: false, reason: 'Selected requests not found', requests: [] };
     }
 
-    const [first, second] = selectedReqs;
-    if (!first || !second) {
-      return { canMerge: false, reason: 'Selected requests not found', requests: [] };
+    // Check all selected requests have the same requester_id
+    const firstRequesterId = selectedReqs[0]?.requester_id;
+    const allSameRequester = selectedReqs.every(r => r.requester_id === firstRequesterId);
+    if (!allSameRequester) {
+      return { canMerge: false, reason: 'All requests must have the same requester', requests: [] };
     }
 
-    if (first.requester_id !== second.requester_id) {
-      return { canMerge: false, reason: 'Requests must have the same requester', requests: [] };
-    }
-
-    if (first.session_id !== second.session_id) {
-      return { canMerge: false, reason: 'Requests must be from the same session', requests: [] };
+    // Check all selected requests have the same session_id
+    const firstSessionId = selectedReqs[0]?.session_id;
+    const allSameSession = selectedReqs.every(r => r.session_id === firstSessionId);
+    if (!allSameSession) {
+      return { canMerge: false, reason: 'All requests must be from the same session', requests: [] };
     }
 
     return { canMerge: true, reason: '', requests: selectedReqs };
