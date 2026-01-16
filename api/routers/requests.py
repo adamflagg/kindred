@@ -12,7 +12,12 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, field_validator
 
-from bunking.sync.bunk_request_processor.core.models import RequestType
+from bunking.sync.bunk_request_processor.core.models import (
+    BunkRequest,
+    RequestSource,
+    RequestStatus,
+    RequestType,
+)
 from bunking.sync.bunk_request_processor.data.repositories.request_repository import (
     RequestRepository,
 )
@@ -70,6 +75,46 @@ class MergeRequestsResponse(BaseModel):
     deleted_request_ids: list[str]
     source_fields: list[str]
     confidence_score: float
+
+
+class SplitSourceConfig(BaseModel):
+    """Configuration for a single source to split off."""
+
+    original_request_id: str
+    new_type: str
+    new_target_id: int | None = None
+
+    @field_validator("new_type")
+    @classmethod
+    def validate_new_type(cls, v: str) -> str:
+        """Validate that new_type is a valid RequestType."""
+        valid_types = [t.value for t in RequestType]
+        if v not in valid_types:
+            raise ValueError(f"invalid request type: {v}. Must be one of {valid_types}")
+        return v
+
+
+class SplitRequestsRequest(BaseModel):
+    """Request body for split endpoint."""
+
+    request_id: str
+    split_sources: list[SplitSourceConfig]
+
+    @field_validator("split_sources")
+    @classmethod
+    def validate_split_sources(cls, v: list[SplitSourceConfig]) -> list[SplitSourceConfig]:
+        """Validate that at least one source is provided."""
+        if len(v) < 1:
+            raise ValueError("at least one source required to split")
+        return v
+
+
+class SplitRequestsResponse(BaseModel):
+    """Response body for split endpoint."""
+
+    original_request_id: str
+    created_request_ids: list[str]
+    updated_source_fields: list[str]
 
 
 @router.post("/requests/merge", response_model=MergeRequestsResponse)
@@ -138,6 +183,7 @@ async def merge_requests(request: MergeRequestsRequest) -> MergeRequestsResponse
         if isinstance(fields, str):
             # Handle case where it's stored as JSON string
             import json
+
             try:
                 fields = json.loads(fields)
             except json.JSONDecodeError:
@@ -186,14 +232,124 @@ async def merge_requests(request: MergeRequestsRequest) -> MergeRequestsResponse
         if request_repo.delete(del_id):
             deleted_ids.append(del_id)
 
-    logger.info(
-        f"Merged {len(deleted_ids)} requests into {kept_id}. "
-        f"Source fields: {combined_source_fields}"
-    )
+    logger.info(f"Merged {len(deleted_ids)} requests into {kept_id}. Source fields: {combined_source_fields}")
 
     return MergeRequestsResponse(
         merged_request_id=kept_id,
         deleted_request_ids=deleted_ids,
         source_fields=combined_source_fields,
         confidence_score=max_confidence,
+    )
+
+
+@router.post("/requests/split", response_model=SplitRequestsResponse)
+async def split_requests(request: SplitRequestsRequest) -> SplitRequestsResponse:
+    """Split a merged bunk_request into separate requests.
+
+    For each source to split off:
+    - Creates a new request with the specified type
+    - Transfers the source link from original to new request
+    - Updates original's source_fields to remove split sources
+
+    Args:
+        request: Split request with request_id and split_sources config
+
+    Returns:
+        SplitRequestsResponse with created request IDs and updated source_fields
+    """
+    request_repo = get_request_repository()
+    source_link_repo = get_source_link_repository()
+
+    # Load the original request
+    original_request = request_repo.get_by_id(request.request_id)
+    if original_request is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Request '{request.request_id}' not found",
+        )
+
+    # Verify it's a multi-source request
+    source_count = source_link_repo.count_sources_for_request(request.request_id)
+    if source_count <= 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot split a request with a single source",
+        )
+
+    assert original_request.id is not None, "Database record missing ID"
+
+    # Track created requests and removed source fields
+    created_request_ids: list[str] = []
+    removed_source_fields: list[str] = []
+
+    # Process each split source
+    for split_config in request.split_sources:
+        # Get the source_field for this link
+        source_field = source_link_repo.get_source_field_for_link(
+            bunk_request_id=request.request_id,
+            original_request_id=split_config.original_request_id,
+        )
+        if source_field:
+            removed_source_fields.append(source_field)
+
+        # Create new BunkRequest
+        new_request = BunkRequest(
+            requester_cm_id=original_request.requester_cm_id,
+            requested_cm_id=split_config.new_target_id or original_request.requested_cm_id,
+            request_type=RequestType(split_config.new_type),
+            session_cm_id=original_request.session_cm_id,
+            priority=original_request.priority,
+            confidence_score=original_request.confidence_score,
+            source=original_request.source
+            if hasattr(original_request, "source") and original_request.source
+            else RequestSource.FAMILY,
+            source_field=source_field or "",
+            csv_position=original_request.csv_position,
+            year=original_request.year,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=False,
+            metadata={"split_from": original_request.id},
+        )
+
+        # Create the new request
+        if request_repo.create(new_request):
+            if new_request.id:
+                created_request_ids.append(new_request.id)
+
+                # Transfer source link: remove from old, add to new
+                source_link_repo.remove_source_link(
+                    bunk_request_id=request.request_id,
+                    original_request_id=split_config.original_request_id,
+                )
+                source_link_repo.add_source_link(
+                    bunk_request_id=new_request.id,
+                    original_request_id=split_config.original_request_id,
+                    is_primary=True,
+                )
+
+    # Update original's source_fields (remove split sources)
+    original_source_fields = getattr(original_request, "source_fields", None) or []
+    if isinstance(original_source_fields, str):
+        import json
+
+        try:
+            original_source_fields = json.loads(original_source_fields)
+        except json.JSONDecodeError:
+            original_source_fields = [original_source_fields]
+
+    updated_source_fields = [f for f in original_source_fields if f not in removed_source_fields]
+    request_repo.update_source_fields(
+        record_id=original_request.id,
+        source_fields=updated_source_fields,
+    )
+
+    logger.info(
+        f"Split {len(created_request_ids)} sources from {request.request_id}. "
+        f"Created: {created_request_ids}, Remaining source_fields: {updated_source_fields}"
+    )
+
+    return SplitRequestsResponse(
+        original_request_id=request.request_id,
+        created_request_ids=created_request_ids,
+        updated_source_fields=updated_source_fields,
     )
