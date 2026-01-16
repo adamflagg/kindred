@@ -8,6 +8,7 @@ Following TDD: These tests are written FIRST to define expected behavior.
 
 import sys
 from pathlib import Path
+from typing import Any
 from unittest.mock import Mock, patch
 
 import pytest
@@ -37,7 +38,7 @@ class TestOrchestratorMergeOnSave:
         source: RequestSource = RequestSource.FAMILY,
         confidence_score: float = 0.95,
         year: int = 2025,
-        metadata: dict | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> BunkRequest:
         """Helper to create a BunkRequest."""
         return BunkRequest(
