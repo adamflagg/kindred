@@ -338,9 +338,7 @@ class RequestRepository:
             True if updated, False otherwise
         """
         try:
-            self.pb.collection("bunk_requests").update(
-                record_id, {"source_fields": json.dumps(source_fields)}
-            )
+            self.pb.collection("bunk_requests").update(record_id, {"source_fields": json.dumps(source_fields)})
             return True
         except Exception as e:
             logger.warning(f"Error updating source_fields for {record_id}: {e}")
@@ -377,9 +375,7 @@ class RequestRepository:
             if changed_original_id:
                 metadata["changed_original_id"] = changed_original_id
 
-            self.pb.collection("bunk_requests").update(
-                record_id, {"metadata": json.dumps(metadata)}
-            )
+            self.pb.collection("bunk_requests").update(record_id, {"metadata": json.dumps(metadata)})
             return True
         except Exception as e:
             logger.warning(f"Error flagging request {record_id} for review: {e}")

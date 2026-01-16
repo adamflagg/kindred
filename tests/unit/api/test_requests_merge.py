@@ -8,7 +8,7 @@ Following TDD: These tests are written FIRST to define expected behavior.
 
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 from fastapi import FastAPI

@@ -30,8 +30,8 @@ from ..core.models import (
 )
 from ..data.cache.temporal_name_cache import TemporalNameCache
 from ..data.repositories.request_repository import RequestRepository
-from ..data.repositories.source_link_repository import SourceLinkRepository
 from ..data.repositories.session_repository import SessionRepository
+from ..data.repositories.source_link_repository import SourceLinkRepository
 from ..integration.batch_processor import BatchProcessor
 from ..integration.provider_factory import ProviderFactory
 from ..processing.deduplicator import Deduplicator

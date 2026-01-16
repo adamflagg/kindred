@@ -212,11 +212,13 @@ class TestSourceLinkRepository:
 
         assert count == 3
         assert mock_collection.delete.call_count == 3
-        mock_collection.delete.assert_has_calls([
-            call("link1"),
-            call("link2"),
-            call("link3"),
-        ])
+        mock_collection.delete.assert_has_calls(
+            [
+                call("link1"),
+                call("link2"),
+                call("link3"),
+            ]
+        )
 
     def test_get_primary_source_returns_primary_link(self, repository, mock_pb_client):
         """Test fetching only the primary source for a request."""
