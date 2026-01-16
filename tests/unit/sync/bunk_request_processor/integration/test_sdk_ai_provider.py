@@ -305,6 +305,6 @@ class TestSDKProviderRequestTypeMapping:
         """AI source_type strings map to RequestSource enum."""
 
         # Verify the enum values match what AI can output
+        # Note: NOTES was removed - AI "notes" output now maps to STAFF
         assert RequestSource.FAMILY.value in ["family", "FAMILY"]
         assert RequestSource.STAFF.value in ["staff", "STAFF"]
-        assert RequestSource.NOTES.value in ["notes", "NOTES"]
