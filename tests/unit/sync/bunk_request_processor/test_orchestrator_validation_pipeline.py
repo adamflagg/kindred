@@ -416,7 +416,7 @@ class TestOrchestratorValidationPipelineOrder:
             _create_bunk_request(
                 requester_cm_id=100,
                 requested_cm_id=200,  # Valid
-                source=RequestSource.NOTES,
+                source=RequestSource.STAFF,
                 confidence=0.70,
             ),
         ]
@@ -457,7 +457,7 @@ class TestOrchestratorValidationPipelineOrder:
         # Multiple copies of the same reciprocal pair
         requests = [
             _create_bunk_request(requester_cm_id=100, requested_cm_id=200, source=RequestSource.FAMILY),
-            _create_bunk_request(requester_cm_id=100, requested_cm_id=200, source=RequestSource.NOTES),  # Dup
+            _create_bunk_request(requester_cm_id=100, requested_cm_id=200, source=RequestSource.STAFF),  # Dup
             _create_bunk_request(requester_cm_id=200, requested_cm_id=100, source=RequestSource.FAMILY),
             _create_bunk_request(requester_cm_id=200, requested_cm_id=100, source=RequestSource.STAFF),  # Dup
         ]
@@ -493,7 +493,7 @@ class TestOrchestratorValidationPipelineIntegration:
             _create_bunk_request(requester_cm_id=100, requested_cm_id=100),
             # Duplicate pair (should keep one)
             _create_bunk_request(requester_cm_id=200, requested_cm_id=300, source=RequestSource.FAMILY),
-            _create_bunk_request(requester_cm_id=200, requested_cm_id=300, source=RequestSource.NOTES),
+            _create_bunk_request(requester_cm_id=200, requested_cm_id=300, source=RequestSource.STAFF),
             # Reciprocal pair (should be marked)
             _create_bunk_request(requester_cm_id=400, requested_cm_id=500),
             _create_bunk_request(requester_cm_id=500, requested_cm_id=400),

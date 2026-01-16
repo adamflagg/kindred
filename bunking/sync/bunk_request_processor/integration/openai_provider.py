@@ -344,13 +344,16 @@ class OpenAIProvider(AIProvider):
         return mapping.get(ai_type, RequestType.BUNK_WITH)
 
     def _map_source_type(self, ai_source: str) -> RequestSource:
-        """Map AI source type to internal enum."""
+        """Map AI source type to internal enum.
+
+        All staff-related sources (counselor, staff, notes) map to STAFF.
+        """
         mapping = {
             "parent": RequestSource.FAMILY,
             "family": RequestSource.FAMILY,
             "counselor": RequestSource.STAFF,
             "staff": RequestSource.STAFF,
-            "notes": RequestSource.NOTES,
+            "notes": RequestSource.STAFF,  # Notes are staff-written, not a separate category
         }
         return mapping.get(ai_source.lower(), RequestSource.FAMILY)
 

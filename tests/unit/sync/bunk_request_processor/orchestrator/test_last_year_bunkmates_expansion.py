@@ -391,7 +391,7 @@ class TestExpandLastYearBunkmatesPlaceholders:
         parse_result, resolution_list = self._create_parse_result_with_placeholder(requester_cm_id, session_cm_id)
         # Modify source_field to verify it's preserved
         parse_result.parsed_requests[0].source_field = "BunkingNotes Notes"
-        parse_result.parsed_requests[0].source = RequestSource.NOTES
+        parse_result.parsed_requests[0].source = RequestSource.STAFF
 
         resolution_results = [(parse_result, resolution_list)]
 
@@ -399,7 +399,7 @@ class TestExpandLastYearBunkmatesPlaceholders:
 
         pr, res_list = expanded_results[0]
         assert pr.parsed_requests[0].source_field == "BunkingNotes Notes"
-        assert pr.parsed_requests[0].source == RequestSource.NOTES
+        assert pr.parsed_requests[0].source == RequestSource.STAFF
 
 
 class TestExpandLastYearBunkmatesPipelineIntegration:
