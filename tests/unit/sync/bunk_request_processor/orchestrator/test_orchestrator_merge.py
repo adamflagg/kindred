@@ -8,7 +8,7 @@ Following TDD: These tests are written FIRST to define expected behavior.
 
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -77,12 +77,16 @@ class TestOrchestratorMergeOnSave:
         mock_request_repo = Mock()
         mock_source_link_repo = Mock()
 
-        # The existing record in DB
-        existing_record = Mock()
+        # The existing record in DB - use a proper BunkRequest object
+        existing_record = self._create_request(
+            source_field="share_bunk_with",
+            confidence_score=0.85,
+        )
         existing_record.id = "existing_pb_id_123"
-        existing_record.source_field = "share_bunk_with"
+        # Set source_fields attribute that exists on DB records
         existing_record.source_fields = ["share_bunk_with"]
         mock_request_repo.get_by_id.return_value = existing_record
+        mock_request_repo.update_for_merge.return_value = True
 
         # Import and create orchestrator with mocks
         from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
@@ -124,10 +128,15 @@ class TestOrchestratorMergeOnSave:
         mock_request_repo = Mock()
         mock_source_link_repo = Mock()
 
-        existing_record = Mock()
+        # The existing record - use proper BunkRequest
+        existing_record = self._create_request(
+            source_field="share_bunk_with",
+            confidence_score=0.85,
+        )
         existing_record.id = "existing_pb_id_123"
         existing_record.source_fields = ["share_bunk_with"]
         mock_request_repo.get_by_id.return_value = existing_record
+        mock_request_repo.update_for_merge.return_value = True
 
         from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
             RequestOrchestrator,
@@ -167,10 +176,15 @@ class TestOrchestratorMergeOnSave:
         mock_request_repo = Mock()
         mock_source_link_repo = Mock()
 
-        existing_record = Mock()
+        # The existing record - use proper BunkRequest
+        existing_record = self._create_request(
+            source_field="share_bunk_with",
+            confidence_score=0.85,
+        )
         existing_record.id = "existing_pb_id_123"
         existing_record.source_fields = ["share_bunk_with"]  # Existing field
         mock_request_repo.get_by_id.return_value = existing_record
+        mock_request_repo.update_for_merge.return_value = True
 
         from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
             RequestOrchestrator,
@@ -185,11 +199,11 @@ class TestOrchestratorMergeOnSave:
             orchestrator._save_bunk_requests([request])
 
         # Check that update was called with combined source_fields
-        call_args = mock_request_repo.update_for_merge.call_args
-        update_data = call_args[1] if call_args[1] else call_args[0][1]
+        mock_request_repo.update_for_merge.assert_called_once()
+        call_kwargs = mock_request_repo.update_for_merge.call_args.kwargs
         # Should contain both fields
-        assert "bunking_notes" in update_data.get("source_fields", [])
-        assert "share_bunk_with" in update_data.get("source_fields", [])
+        assert "bunking_notes" in call_kwargs.get("source_fields", [])
+        assert "share_bunk_with" in call_kwargs.get("source_fields", [])
 
     def test_no_merge_creates_new_with_source_link(self) -> None:
         """Test that requests without database match create new records.
@@ -327,11 +341,15 @@ class TestOrchestratorMergeOnSave:
         mock_request_repo = Mock()
         mock_source_link_repo = Mock()
 
-        existing_record = Mock()
+        # The existing record - use proper BunkRequest with lower confidence
+        existing_record = self._create_request(
+            source_field="share_bunk_with",
+            confidence_score=0.85,  # Lower than new request
+        )
         existing_record.id = "existing_pb_id_123"
-        existing_record.confidence_score = 0.85  # Lower
         existing_record.source_fields = ["share_bunk_with"]
         mock_request_repo.get_by_id.return_value = existing_record
+        mock_request_repo.update_for_merge.return_value = True
 
         from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
             RequestOrchestrator,
@@ -346,9 +364,9 @@ class TestOrchestratorMergeOnSave:
             orchestrator._save_bunk_requests([request])
 
         # Check that update used the higher confidence
-        call_args = mock_request_repo.update_for_merge.call_args
-        update_data = call_args[1] if call_args[1] else call_args[0][1]
-        assert update_data.get("confidence_score") == 0.98
+        mock_request_repo.update_for_merge.assert_called_once()
+        call_kwargs = mock_request_repo.update_for_merge.call_args.kwargs
+        assert call_kwargs.get("confidence_score") == 0.98
 
     def test_merge_stats_tracked(self) -> None:
         """Test that merge operations are tracked in statistics."""
@@ -365,10 +383,15 @@ class TestOrchestratorMergeOnSave:
         mock_request_repo = Mock()
         mock_source_link_repo = Mock()
 
-        existing_record = Mock()
+        # The existing record - use proper BunkRequest
+        existing_record = self._create_request(
+            source_field="share_bunk_with",
+            confidence_score=0.85,
+        )
         existing_record.id = "existing_pb_id_123"
         existing_record.source_fields = ["share_bunk_with"]
         mock_request_repo.get_by_id.return_value = existing_record
+        mock_request_repo.update_for_merge.return_value = True
 
         from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
             RequestOrchestrator,
@@ -390,7 +413,7 @@ class TestOrchestratorSourceLinkInitialization:
     """Test that orchestrator initializes SourceLinkRepository."""
 
     def test_orchestrator_has_source_link_repository(self) -> None:
-        """Test that orchestrator creates SourceLinkRepository on init."""
+        """Test that orchestrator creates SourceLinkRepository in _init_validation_components."""
         from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
             RequestOrchestrator,
         )
@@ -401,12 +424,31 @@ class TestOrchestratorSourceLinkInitialization:
         with patch(
             "bunking.sync.bunk_request_processor.orchestrator.orchestrator.SourceLinkRepository"
         ) as mock_slr_class:
-            # Create orchestrator with minimal config
-            with patch.object(RequestOrchestrator, "_load_config"):
-                with patch.object(RequestOrchestrator, "_init_components"):
-                    orchestrator = RequestOrchestrator.__new__(RequestOrchestrator)
-                    orchestrator.pb_client = mock_pb_client
-                    orchestrator._init_source_link_repository()
+            with patch(
+                "bunking.sync.bunk_request_processor.orchestrator.orchestrator.RequestRepository"
+            ):
+                with patch(
+                    "bunking.sync.bunk_request_processor.orchestrator.orchestrator.SelfReferenceRule"
+                ):
+                    with patch(
+                        "bunking.sync.bunk_request_processor.orchestrator.orchestrator.Deduplicator"
+                    ):
+                        with patch(
+                            "bunking.sync.bunk_request_processor.orchestrator.orchestrator.ReciprocalDetector"
+                        ):
+                            with patch(
+                                "bunking.sync.bunk_request_processor.orchestrator.orchestrator.RequestBuilder"
+                            ):
+                                # Create orchestrator instance manually
+                                orchestrator = RequestOrchestrator.__new__(RequestOrchestrator)
+                                orchestrator.pb = mock_pb_client
+                                orchestrator.ai_config = {"reciprocal_confidence_boost": 0.1}
+                                orchestrator.temporal_name_cache = Mock()
+                                orchestrator.priority_calculator = Mock()
+                                orchestrator.year = 2025
+
+                                # Call the method that should init SourceLinkRepository
+                                orchestrator._init_validation_components()
 
             # Should have created SourceLinkRepository with pb_client
             mock_slr_class.assert_called_once_with(mock_pb_client)

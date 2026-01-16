@@ -30,6 +30,7 @@ from ..core.models import (
 )
 from ..data.cache.temporal_name_cache import TemporalNameCache
 from ..data.repositories.request_repository import RequestRepository
+from ..data.repositories.source_link_repository import SourceLinkRepository
 from ..data.repositories.session_repository import SessionRepository
 from ..integration.batch_processor import BatchProcessor
 from ..integration.provider_factory import ProviderFactory
@@ -726,6 +727,7 @@ class RequestOrchestrator:
     def _init_validation_components(self) -> None:
         """Initialize request repository and validation pipeline components."""
         self.request_repository = RequestRepository(self.pb)
+        self.source_link_repository = SourceLinkRepository(self.pb)
         self.self_reference_rule = SelfReferenceRule()
         self.deduplicator = Deduplicator(self.request_repository)
         self.reciprocal_detector = ReciprocalDetector(
@@ -1433,8 +1435,10 @@ class RequestOrchestrator:
     def _save_bunk_requests(self, validated_requests: list[BunkRequest]) -> list[BunkRequest]:
         """Save validated bunk requests to the database.
 
-        Note: Go clears existing bunk_requests before calling Python, so we only
-        need to create new records. In-batch deduplication handles same-run duplicates.
+        Handles both new requests and cross-run merge scenarios:
+        - New requests: Create record and primary source link
+        - Database match (unlocked): Merge into existing, add source link
+        - Database match (locked): Create new, flag for manual review
 
         Args:
             validated_requests: List of validated BunkRequest objects
@@ -1446,15 +1450,142 @@ class RequestOrchestrator:
 
         for bunk_request in validated_requests:
             try:
-                if self.request_repository.create(bunk_request):
+                # Check if this request should be merged with an existing DB record
+                if bunk_request.metadata.get("database_match_action") == "merge":
+                    if bunk_request.metadata.get("database_match_locked"):
+                        # Locked request - create new and flag for manual review
+                        saved = self._save_new_request_for_locked_merge(bunk_request)
+                    else:
+                        # Unlocked - perform auto-merge
+                        saved = self._merge_into_existing(bunk_request)
+                else:
+                    # No database match - create new request with source link
+                    saved = self._save_new_request_with_source_link(bunk_request)
+
+                if saved:
                     saved_requests.append(bunk_request)
                     self._track_request_stats(bunk_request)
                 else:
                     logger.warning(f"Failed to save bunk request for {bunk_request.requester_cm_id}")
+
             except Exception as e:
                 logger.error(f"Failed to save bunk request: {e}")
 
         return saved_requests
+
+    def _save_new_request_with_source_link(self, request: BunkRequest) -> bool:
+        """Create a new bunk request with primary source link.
+
+        Args:
+            request: BunkRequest to create
+
+        Returns:
+            True if creation succeeded
+        """
+        if not self.request_repository.create(request):
+            return False
+
+        # Add source link if we have original_request_id
+        original_request_id = request.metadata.get("original_request_id")
+        if original_request_id and request.id:
+            self.source_link_repository.add_source_link(
+                bunk_request_id=request.id,
+                original_request_id=original_request_id,
+                is_primary=True,
+                source_field=request.source_field,
+            )
+
+        return True
+
+    def _merge_into_existing(self, request: BunkRequest) -> bool:
+        """Merge a new request into an existing database record.
+
+        Updates source_fields, confidence, and metadata on the existing record.
+        Creates a non-primary source link for the new original_request.
+
+        Args:
+            request: BunkRequest with database_duplicate_id in metadata
+
+        Returns:
+            True if merge succeeded
+        """
+        existing_id = request.metadata.get("database_duplicate_id")
+        if not existing_id:
+            logger.warning("Merge requested but no database_duplicate_id in metadata")
+            return False
+
+        # Get existing record to merge with
+        existing = self.request_repository.get_by_id(existing_id)
+        if not existing:
+            logger.warning(f"Could not find existing record {existing_id} for merge")
+            return False
+
+        # Combine source_fields arrays
+        existing_source_fields = getattr(existing, "source_fields", None) or []
+        if isinstance(existing_source_fields, str):
+            import json
+
+            try:
+                existing_source_fields = json.loads(existing_source_fields)
+            except json.JSONDecodeError:
+                existing_source_fields = [existing.source_field] if existing.source_field else []
+
+        new_source_fields = list(set(existing_source_fields + [request.source_field]))
+
+        # Use higher confidence score
+        final_confidence = max(existing.confidence_score, request.confidence_score)
+
+        # Merge metadata
+        merged_metadata = {**existing.metadata, **request.metadata}
+        merged_metadata["is_merged_duplicate"] = True
+        merged_metadata["merge_source_field"] = request.source_field
+
+        # Update existing record
+        if not self.request_repository.update_for_merge(
+            record_id=existing_id,
+            source_fields=new_source_fields,
+            confidence_score=final_confidence,
+            metadata=merged_metadata,
+        ):
+            return False
+
+        # Add source link for the new original_request
+        original_request_id = request.metadata.get("original_request_id")
+        if original_request_id:
+            self.source_link_repository.add_source_link(
+                bunk_request_id=existing_id,
+                original_request_id=original_request_id,
+                is_primary=False,  # Not primary since we're merging
+                source_field=request.source_field,
+            )
+
+        # Track merge statistics
+        self._stats["cross_run_merges"] = self._stats.get("cross_run_merges", 0) + 1
+
+        logger.info(
+            f"Merged request into existing {existing_id}: "
+            f"source_fields={new_source_fields}, confidence={final_confidence}"
+        )
+
+        return True
+
+    def _save_new_request_for_locked_merge(self, request: BunkRequest) -> bool:
+        """Create a new request when merge target is locked.
+
+        Locked requests need manual review, so we create a separate record
+        and flag it for staff attention.
+
+        Args:
+            request: BunkRequest that would have merged with a locked record
+
+        Returns:
+            True if creation succeeded
+        """
+        # Flag for manual review
+        request.metadata["requires_manual_merge_review"] = True
+        request.metadata["locked_duplicate_id"] = request.metadata.get("database_duplicate_id")
+
+        return self._save_new_request_with_source_link(request)
 
     def _apply_validation_pipeline(self, requests: list[BunkRequest]) -> list[BunkRequest]:
         """Apply the validation pipeline to a list of BunkRequest objects.

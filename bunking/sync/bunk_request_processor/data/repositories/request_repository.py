@@ -295,6 +295,55 @@ class RequestRepository:
 
         return data
 
+    def get_by_id(self, record_id: str) -> BunkRequest | None:
+        """Get a bunk request by its PocketBase record ID.
+
+        Args:
+            record_id: PocketBase record ID
+
+        Returns:
+            BunkRequest if found, None otherwise
+        """
+        try:
+            result = self.pb.collection("bunk_requests").get_one(record_id)
+            return self._map_from_db(result)
+        except Exception as e:
+            logger.warning(f"Error getting request by id {record_id}: {e}")
+            return None
+
+    def update_for_merge(
+        self,
+        record_id: str,
+        source_fields: list[str],
+        confidence_score: float,
+        metadata: dict[str, Any],
+    ) -> bool:
+        """Update an existing request during merge operation.
+
+        Updates the source_fields array, confidence score, and metadata
+        when merging a new source into an existing request.
+
+        Args:
+            record_id: PocketBase record ID of the request to update
+            source_fields: Combined list of all contributing source fields
+            confidence_score: New confidence score (should be max of old and new)
+            metadata: Merged metadata dict
+
+        Returns:
+            True if update succeeded, False otherwise
+        """
+        try:
+            data = {
+                "source_fields": json.dumps(source_fields),
+                "confidence_score": confidence_score,
+                "metadata": json.dumps(metadata),
+            }
+            self.pb.collection("bunk_requests").update(record_id, data)
+            return True
+        except Exception as e:
+            logger.warning(f"Error updating request for merge {record_id}: {e}")
+            return False
+
     def _map_from_db(self, db_record: Any) -> BunkRequest:
         """Map database record to BunkRequest model
 
