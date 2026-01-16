@@ -85,7 +85,7 @@ class TestDeduplicator:
             session_cm_id=1000002,
             priority=1,
             confidence_score=0.80,
-            source=RequestSource.NOTES,
+            source=RequestSource.STAFF,
             source_field="bunking_notes",
             csv_position=0,
             year=2025,
@@ -429,7 +429,7 @@ class TestDeduplicator:
             session_cm_id=1000002,
             priority=1,
             confidence_score=0.80,
-            source=RequestSource.NOTES,
+            source=RequestSource.STAFF,
             source_field="bunking_notes",  # Different field
             csv_position=0,
             year=2025,
@@ -455,7 +455,7 @@ class TestDeduplicator:
         Example: Parent mentions "wants to bunk with Sarah" in both:
         - share_bunk_with field (family form)
         - bunking_notes field (free text)
-        → Only ONE request should be kept (highest confidence wins).
+        → Only ONE request should be kept (STAFF source wins over FAMILY).
         """
         # Request from share_bunk_with field
         form_request = BunkRequest(
@@ -482,7 +482,7 @@ class TestDeduplicator:
             session_cm_id=1000002,
             priority=1,
             confidence_score=0.80,
-            source=RequestSource.NOTES,
+            source=RequestSource.STAFF,
             source_field="bunking_notes",  # Free text notes field
             csv_position=0,
             year=2025,
@@ -493,10 +493,12 @@ class TestDeduplicator:
 
         result = deduplicator.deduplicate_batch([form_request, notes_request])
 
-        # Should deduplicate - only ONE kept (highest confidence wins)
+        # Should deduplicate - only ONE kept (source priority first, then max confidence)
         assert len(result.kept_requests) == 1
-        assert result.kept_requests[0].confidence_score == 0.95  # Higher confidence wins
-        assert result.kept_requests[0].metadata["origin"] == "form"
+        # STAFF source wins over FAMILY, but keeps max confidence from both
+        assert result.kept_requests[0].source == RequestSource.STAFF
+        assert result.kept_requests[0].confidence_score == 0.95  # Max confidence from both
+        assert result.kept_requests[0].metadata["origin"] == "notes"
         assert result.statistics["duplicates_removed"] == 1
 
     def test_internal_notes_deduplicated_across_source_fields(self, deduplicator):
@@ -544,6 +546,173 @@ class TestDeduplicator:
         # Should deduplicate
         assert len(result.kept_requests) == 1
         assert result.statistics["duplicates_removed"] == 1
+
+
+class TestSimplifiedSourcePriority:
+    """Test simplified source priority (STAFF > FAMILY only, no NOTES category)."""
+
+    @pytest.fixture
+    def deduplicator(self):
+        """Create a Deduplicator without repository (batch-only dedup)"""
+        return Deduplicator()
+
+    def test_staff_over_family_tiebreaker(self):
+        """Test that STAFF source wins over FAMILY in dedup tiebreaker.
+
+        When same (requester, requestee, type, session, year) comes from both
+        FAMILY and STAFF sources, STAFF should win because staff validates
+        family input.
+        """
+        family_request = BunkRequest(
+            requester_cm_id=12345,
+            requested_cm_id=67890,
+            request_type=RequestType.NOT_BUNK_WITH,
+            session_cm_id=1000002,
+            priority=4,
+            confidence_score=0.95,  # Higher confidence
+            source=RequestSource.FAMILY,
+            source_field="share_bunk_with",  # Parent embedded negative in bunk_with
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=False,
+            metadata={"original_text": "Please don't put with Ashley"},
+        )
+
+        staff_request = BunkRequest(
+            requester_cm_id=12345,
+            requested_cm_id=67890,
+            request_type=RequestType.NOT_BUNK_WITH,
+            session_cm_id=1000002,
+            priority=4,
+            confidence_score=0.90,  # Lower confidence
+            source=RequestSource.STAFF,
+            source_field="do_not_share_with",  # Staff explicit validation
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=False,
+            metadata={"original_text": "Neg req Ashley"},
+        )
+
+        deduplicator = Deduplicator()
+        result = deduplicator.deduplicate_batch([family_request, staff_request])
+
+        # Staff should win even with lower confidence (source > confidence)
+        assert len(result.kept_requests) == 1
+        assert result.kept_requests[0].source == RequestSource.STAFF
+        assert result.kept_requests[0].source_field == "do_not_share_with"
+        assert result.statistics["duplicates_removed"] == 1
+
+    def test_confidence_tiebreaker_same_source(self):
+        """Test that confidence is tiebreaker when sources are equal.
+
+        When both requests have same source priority, higher confidence wins.
+        """
+        high_conf = BunkRequest(
+            requester_cm_id=100,
+            requested_cm_id=200,
+            request_type=RequestType.BUNK_WITH,
+            session_cm_id=1000002,
+            priority=3,
+            confidence_score=0.98,  # Higher confidence
+            source=RequestSource.FAMILY,
+            source_field="share_bunk_with",
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=False,
+            metadata={},
+        )
+
+        low_conf = BunkRequest(
+            requester_cm_id=100,
+            requested_cm_id=200,
+            request_type=RequestType.BUNK_WITH,
+            session_cm_id=1000002,
+            priority=3,
+            confidence_score=0.75,  # Lower confidence
+            source=RequestSource.FAMILY,  # Same source
+            source_field="share_bunk_with",
+            csv_position=1,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=False,
+            metadata={},
+        )
+
+        deduplicator = Deduplicator()
+        result = deduplicator.deduplicate_batch([low_conf, high_conf])
+
+        # Higher confidence wins when source priority is equal
+        assert len(result.kept_requests) == 1
+        assert result.kept_requests[0].confidence_score == 0.98
+        assert result.statistics["duplicates_removed"] == 1
+
+    def test_source_priority_only_staff_and_family(self):
+        """Test that SOURCE_PRIORITY only contains STAFF and FAMILY.
+
+        NOTES category should not exist - bunking_notes and internal_notes
+        should map to STAFF source.
+        """
+        from bunking.sync.bunk_request_processor.processing.deduplicator import SOURCE_PRIORITY
+
+        # Should only have two entries
+        assert len(SOURCE_PRIORITY) == 2
+        assert RequestSource.STAFF in SOURCE_PRIORITY
+        assert RequestSource.FAMILY in SOURCE_PRIORITY
+
+        # STAFF should have higher priority than FAMILY
+        assert SOURCE_PRIORITY[RequestSource.STAFF] > SOURCE_PRIORITY[RequestSource.FAMILY]
+
+    def test_notes_enum_removed(self):
+        """Test that RequestSource.NOTES no longer exists.
+
+        All staff-written fields (bunking_notes, internal_notes, do_not_share_with)
+        should use RequestSource.STAFF.
+        """
+        # NOTES should not be a valid enum value
+        assert not hasattr(RequestSource, "NOTES")
+
+
+class TestDatabaseDuplicateMerge:
+    """Test database duplicate detection and merge metadata."""
+
+    @pytest.fixture
+    def mock_request_repo(self):
+        """Create a mock request repository"""
+        return Mock()
+
+    def test_database_duplicate_flagged_with_all_metadata(self, mock_request_repo):
+        """Test that database duplicates are flagged with ID for merge handling."""
+        existing_mock = Mock()
+        existing_mock.id = "existing_record_123"
+        mock_request_repo.find_existing.return_value = existing_mock
+
+        new_request = BunkRequest(
+            requester_cm_id=12345,
+            requested_cm_id=67890,
+            request_type=RequestType.NOT_BUNK_WITH,
+            session_cm_id=1000002,
+            priority=4,
+            confidence_score=0.95,
+            source=RequestSource.STAFF,
+            source_field="do_not_share_with",
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=False,
+            metadata={"ai_p1_reasoning": {"parsed": True}},
+        )
+
+        deduplicator = Deduplicator(mock_request_repo)
+        result = deduplicator.deduplicate_batch([new_request], check_database=True)
+
+        # Should be flagged for merge handling
+        assert len(result.kept_requests) == 1
+        assert result.kept_requests[0].metadata["has_database_duplicate"] is True
+        assert result.kept_requests[0].metadata["database_duplicate_id"] == "existing_record_123"
+        assert result.statistics["database_duplicates"] == 1
 
 
 if __name__ == "__main__":

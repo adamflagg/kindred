@@ -153,7 +153,7 @@ class TestRequestTypeValidationForSourceField:
             target_name=None,  # No target - invalid for bunk_with
             age_preference=None,
             source_field="bunking_notes",
-            source=RequestSource.NOTES,
+            source=RequestSource.STAFF,
             confidence=0.60,
             csv_position=0,
             metadata={},
