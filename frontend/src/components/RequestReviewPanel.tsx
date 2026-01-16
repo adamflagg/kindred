@@ -16,7 +16,9 @@ import {
   GitMerge,
   Scissors,
   SlidersHorizontal,
-  Users
+  Users,
+  Loader2,
+  Star
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { pb } from '../lib/pocketbase';
@@ -211,6 +213,7 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
       original_request: string;
       source_field: string;
       parse_notes?: string;  // AI parse notes stored on junction table
+      is_primary?: boolean;
       expand?: {
         original_request?: ExpandedOriginalRequest;
       };
@@ -221,8 +224,52 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
       original_content: sl.expand?.original_request?.content,
       created: sl.expand?.original_request?.created,
       parse_notes: sl.parse_notes,
+      is_primary: sl.is_primary,
     }));
   }, [sourceLinksData]);
+
+  // Track which merged request rows need source links loaded (lazy loading)
+  const [expandedMergedRequestId, setExpandedMergedRequestId] = useState<string | null>(null);
+
+  // Lazy load source links for expanded merged request dropdown
+  const { data: expandedSourceLinksData = [], isLoading: isLoadingExpandedSourceLinks } = useQuery({
+    queryKey: ['expanded-source-links', expandedMergedRequestId],
+    queryFn: async () => {
+      if (!expandedMergedRequestId) return [];
+      return pb.collection('bunk_request_sources').getFullList({
+        filter: `bunk_request = "${expandedMergedRequestId}"`,
+        sort: '-is_primary,created',
+        expand: 'original_request',
+      });
+    },
+    enabled: !!expandedMergedRequestId,
+    staleTime: 60000, // Cache for 1 minute
+  });
+
+  // Transform expanded source links data for dropdown display
+  const expandedSourceLinks = useMemo(() => {
+    interface ExpandedOriginalRequest {
+      content?: string;
+      created?: string;
+    }
+    interface SourceLinkRecord {
+      original_request: string;
+      source_field: string;
+      parse_notes?: string;
+      is_primary?: boolean;
+      expand?: {
+        original_request?: ExpandedOriginalRequest;
+      };
+    }
+    return (expandedSourceLinksData as unknown as SourceLinkRecord[]).map((sl) => ({
+      original_request_id: sl.original_request,
+      source_field: sl.source_field,
+      original_content: sl.expand?.original_request?.content,
+      created: sl.expand?.original_request?.created,
+      parse_notes: sl.parse_notes,
+      is_primary: sl.is_primary ?? false,
+    }));
+  }, [expandedSourceLinksData]);
 
   // Count of requests needing review (all pending requests need attention)
   const reviewCount = useMemo(() => {
@@ -381,17 +428,23 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
   });
 
   // Handlers
-  const toggleRowExpansion = useCallback((id: string) => {
+  const toggleRowExpansion = useCallback((id: string, request?: BunkRequestsResponse) => {
     setExpandedRows(prev => {
       const next = new Set(prev);
       if (next.has(id)) {
         next.delete(id);
+        // Clear the expanded merged request when collapsing
+        setExpandedMergedRequestId(currentId => currentId === id ? null : currentId);
       } else {
         next.add(id);
+        // Trigger lazy loading for merged requests
+        if (request && hasMultipleSources(request)) {
+          setExpandedMergedRequestId(id);
+        }
       }
       return next;
     });
-  }, []);
+  }, [hasMultipleSources]);
 
   const toggleRequestSelection = useCallback((id: string) => {
     setSelectedRequests(prev => {
@@ -997,7 +1050,7 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
                         {/* Actions */}
                         <div className="card-actions">
                           <button
-                            onClick={() => toggleRowExpansion(request.id)}
+                            onClick={() => toggleRowExpansion(request.id, request)}
                             className="p-2 hover:bg-muted rounded-lg transition-colors touch-manipulation"
                             title="View details"
                           >
@@ -1123,7 +1176,7 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
                           className="rounded"
                         />
                         <button
-                          onClick={() => toggleRowExpansion(request.id)}
+                          onClick={() => toggleRowExpansion(request.id, request)}
                           className="p-1.5 hover:bg-muted rounded-lg transition-colors"
                           title="View details"
                         >
@@ -1276,60 +1329,123 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
                     {isExpanded && (
                       <div className="px-4 py-4 bg-parchment-50/50 dark:bg-forest-950/20 border-t border-border">
                         <div className="space-y-3 max-w-3xl ml-10">
-                          {/* Combined Source Field & Content */}
-                          <div>
-                            <h4 className="text-sm font-semibold text-foreground mb-1">Source Field & Content</h4>
-                            {(() => {
-                              // Helper to format field name (snake_case -> Title Case)
-                              const formatFieldName = (f: string) =>
-                                f.split('_').map((word: string) =>
-                                  word.charAt(0).toUpperCase() + word.slice(1)
-                                ).join(' ');
+                          {/* Merged Request: Show individual sources */}
+                          {hasMultipleSources(request) && expandedMergedRequestId === request.id ? (
+                            <>
+                              <div>
+                                <h4 className="text-sm font-semibold text-foreground mb-2">Contributing Sources</h4>
+                                {isLoadingExpandedSourceLinks ? (
+                                  <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    Loading source details...
+                                  </div>
+                                ) : expandedSourceLinks.length > 0 ? (
+                                  <div className="space-y-3">
+                                    {expandedSourceLinks.map((source, idx) => {
+                                      // Helper to format field name (snake_case -> Title Case)
+                                      const formatFieldName = (f: string) =>
+                                        f.split('_').map((word: string) =>
+                                          word.charAt(0).toUpperCase() + word.slice(1)
+                                        ).join(' ');
 
-                              // Get field name(s) with proper fallback chain:
-                              // 1. source_fields (for merged requests - array)
-                              // 2. source_field (single field)
-                              // 3. ai_p1_reasoning.csv_source_field (AI processing)
-                              interface AiReasoningWithField {
-                                csv_source_field?: string;
-                              }
+                                      return (
+                                        <div
+                                          key={source.original_request_id || idx}
+                                          className={clsx(
+                                            "p-3 rounded-lg border",
+                                            source.is_primary
+                                              ? "border-primary/30 bg-primary/5"
+                                              : "border-border bg-muted/20"
+                                          )}
+                                        >
+                                          <div className="flex items-center gap-2 mb-1">
+                                            <span className="text-sm font-medium">
+                                              {formatFieldName(source.source_field)}
+                                            </span>
+                                            {source.is_primary && (
+                                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium rounded bg-primary/10 text-primary">
+                                                <Star className="w-3 h-3" />
+                                                Primary
+                                              </span>
+                                            )}
+                                          </div>
+                                          <p className="text-sm text-muted-foreground">
+                                            {source.original_content || <span className="italic">No original text</span>}
+                                          </p>
+                                          {source.parse_notes && (
+                                            <p className="text-xs text-muted-foreground mt-1.5 bg-muted/50 px-2 py-1 rounded">
+                                              <span className="font-medium">Parse notes:</span> {source.parse_notes}
+                                            </p>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  // Fallback to request-level data if no source links found
+                                  <p className="text-sm text-muted-foreground italic">
+                                    Source details not available
+                                  </p>
+                                )}
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              {/* Single Source Request: Original display */}
+                              <div>
+                                <h4 className="text-sm font-semibold text-foreground mb-1">Source Field & Content</h4>
+                                {(() => {
+                                  // Helper to format field name (snake_case -> Title Case)
+                                  const formatFieldName = (f: string) =>
+                                    f.split('_').map((word: string) =>
+                                      word.charAt(0).toUpperCase() + word.slice(1)
+                                    ).join(' ');
 
-                              const sourceFields = request.source_fields;
-                              const singleField = request.source_field;
-                              const aiField = (request.ai_p1_reasoning && typeof request.ai_p1_reasoning === 'object' && 'csv_source_field' in request.ai_p1_reasoning)
-                                ? (request.ai_p1_reasoning as AiReasoningWithField).csv_source_field ?? ''
-                                : '';
+                                  // Get field name(s) with proper fallback chain:
+                                  // 1. source_fields (for merged requests - array)
+                                  // 2. source_field (single field)
+                                  // 3. ai_p1_reasoning.csv_source_field (AI processing)
+                                  interface AiReasoningWithField {
+                                    csv_source_field?: string;
+                                  }
 
-                              // Determine display field name
-                              let fieldName: string;
-                              if (Array.isArray(sourceFields) && sourceFields.length > 1) {
-                                // Merged request: show all source fields combined
-                                fieldName = sourceFields.map(f => formatFieldName(f)).join(' + ');
-                              } else {
-                                // Single source: use first available field
-                                const field = sourceFields?.[0] || singleField || aiField || '';
-                                fieldName = field ? formatFieldName(field) : 'Unknown Field';
-                              }
+                                  const sourceFields = request.source_fields;
+                                  const singleField = request.source_field;
+                                  const aiField = (request.ai_p1_reasoning && typeof request.ai_p1_reasoning === 'object' && 'csv_source_field' in request.ai_p1_reasoning)
+                                    ? (request.ai_p1_reasoning as AiReasoningWithField).csv_source_field ?? ''
+                                    : '';
 
-                              return (
-                                <p className="text-sm">
-                                  <span className="font-medium">{fieldName}:</span>{' '}
-                                  <span className="text-muted-foreground">
-                                    {request.original_text || <span className="italic">No original text</span>}
-                                  </span>
+                                  // Determine display field name
+                                  let fieldName: string;
+                                  if (Array.isArray(sourceFields) && sourceFields.length > 1) {
+                                    // Merged request: show all source fields combined
+                                    fieldName = sourceFields.map(f => formatFieldName(f)).join(' + ');
+                                  } else {
+                                    // Single source: use first available field
+                                    const field = sourceFields?.[0] || singleField || aiField || '';
+                                    fieldName = field ? formatFieldName(field) : 'Unknown Field';
+                                  }
+
+                                  return (
+                                    <p className="text-sm">
+                                      <span className="font-medium">{fieldName}:</span>{' '}
+                                      <span className="text-muted-foreground">
+                                        {request.original_text || <span className="italic">No original text</span>}
+                                      </span>
+                                    </p>
+                                  );
+                                })()}
+                              </div>
+
+                              {/* Parse Notes - always show for single source */}
+                              <div>
+                                <h4 className="text-sm font-semibold text-foreground mb-1">Parse Notes</h4>
+                                <p className="text-sm text-muted-foreground">
+                                  {request.parse_notes || <span className="italic">No parse notes</span>}
                                 </p>
-                              );
-                            })()}
-                          </div>
-
-                          {/* Parse Notes - always show */}
-                          <div>
-                            <h4 className="text-sm font-semibold text-foreground mb-1">Parse Notes</h4>
-                            <p className="text-sm text-muted-foreground">
-                              {request.parse_notes || <span className="italic">No parse notes</span>}
-                            </p>
-                          </div>
-
+                              </div>
+                            </>
+                          )}
 
                           {/* Metadata - always show */}
                           <div className="flex items-center gap-4 text-xs text-muted-foreground">
