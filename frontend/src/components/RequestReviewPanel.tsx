@@ -95,7 +95,8 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
       // Build filter for primary session and all related sessions
       const allSessionIds = [sessionId, ...relatedSessionIds];
       const sessionFilter = allSessionIds.map(id => `session_id = ${id}`).join(' || ');
-      let filterStr = `(${sessionFilter}) && year = ${year}`;
+      // Filter out absorbed requests (those that have been merged into another request)
+      let filterStr = `(${sessionFilter}) && year = ${year} && (merged_into = "" || merged_into = null)`;
 
       // Add status filter - exclude resolved if showResolved is false
       const activeStatuses = filters.showResolved
