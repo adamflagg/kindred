@@ -218,12 +218,20 @@ export const AppLayout = () => {
                   Users
                 </Link>
                 {activeProgram === 'summer' && (
-                  <Link
-                    to="/summer/admin"
-                    className={`nav-link-lodge ${isActiveRoute('/admin') ? 'active' : ''}`}
-                  >
-                    Admin
-                  </Link>
+                  <>
+                    <Link
+                      to="/summer/admin"
+                      className={`nav-link-lodge ${isActiveRoute('/admin') ? 'active' : ''}`}
+                    >
+                      Admin
+                    </Link>
+                    <Link
+                      to="/summer/debug"
+                      className={`nav-link-lodge ${isActiveRoute('/debug') ? 'active' : ''}`}
+                    >
+                      Debug
+                    </Link>
+                  </>
                 )}
               </div>
             </div>
@@ -431,17 +439,30 @@ export const AppLayout = () => {
                   Users
                 </Link>
                 {activeProgram === 'summer' && (
-                  <Link
-                    to="/summer/admin"
-                    className={`block px-4 py-3 text-base font-semibold rounded-xl transition-all ${
-                      isActiveRoute('/admin')
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-foreground hover:bg-muted/50'
-                    }`}
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  >
-                    Admin
-                  </Link>
+                  <>
+                    <Link
+                      to="/summer/admin"
+                      className={`block px-4 py-3 text-base font-semibold rounded-xl transition-all ${
+                        isActiveRoute('/admin')
+                          ? 'bg-primary text-primary-foreground'
+                          : 'text-foreground hover:bg-muted/50'
+                      }`}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                    >
+                      Admin
+                    </Link>
+                    <Link
+                      to="/summer/debug"
+                      className={`block px-4 py-3 text-base font-semibold rounded-xl transition-all ${
+                        isActiveRoute('/debug')
+                          ? 'bg-primary text-primary-foreground'
+                          : 'text-foreground hover:bg-muted/50'
+                      }`}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                    >
+                      Debug
+                    </Link>
+                  </>
                 )}
               </div>
 
