@@ -12,7 +12,9 @@ import {
   Search,
   AlertCircle,
   Shield,
-  Plus
+  Plus,
+  GitMerge,
+  Scissors
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { pb } from '../lib/pocketbase';
@@ -24,6 +26,10 @@ import EditableRequestTarget from './EditableRequestTarget';
 import EditablePriority from './EditablePriority';
 import CreateRequestModal from './CreateRequestModal';
 import CamperDetailsPanel from './CamperDetailsPanel';
+import MergeRequestsModal from './MergeRequestsModal';
+import SplitRequestModal from './SplitRequestModal';
+import { useOptimisticValidation } from '../hooks/useOptimisticValidation';
+import type { BunkRequestsRequestTypeOptions } from '../types/pocketbase-types';
 
 interface RequestReviewPanelProps {
   sessionId: number;
@@ -57,6 +63,9 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
   const [sortBy, setSortBy] = useState<SortColumn>('confidence');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [showSplitModal, setShowSplitModal] = useState(false);
+  const [requestToSplit, setRequestToSplit] = useState<BunkRequestsResponse | null>(null);
   const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>({
     confidenceThreshold: 0,
@@ -244,6 +253,48 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
     return sorted;
   }, [requests, sortBy, sortOrder, personMap]);
 
+  // Check if merge is possible: exactly 2 requests selected with same requester and session
+  const mergeEligibility = useMemo(() => {
+    if (selectedRequests.size !== 2) {
+      return { canMerge: false, reason: 'Select exactly 2 requests to merge', requests: [] };
+    }
+
+    const selectedReqs = sortedRequests.filter(r => selectedRequests.has(r.id));
+    if (selectedReqs.length !== 2) {
+      return { canMerge: false, reason: 'Selected requests not found', requests: [] };
+    }
+
+    const [first, second] = selectedReqs;
+    if (!first || !second) {
+      return { canMerge: false, reason: 'Selected requests not found', requests: [] };
+    }
+
+    if (first.requester_id !== second.requester_id) {
+      return { canMerge: false, reason: 'Requests must have the same requester', requests: [] };
+    }
+
+    if (first.session_id !== second.session_id) {
+      return { canMerge: false, reason: 'Requests must be from the same session', requests: [] };
+    }
+
+    return { canMerge: true, reason: '', requests: selectedReqs };
+  }, [selectedRequests, sortedRequests]);
+
+  // Helper to check if a request has multiple source fields (is a merged request)
+  const hasMultipleSources = useCallback((request: BunkRequestsResponse) => {
+    const sourceFields = (request as unknown as { source_fields?: string[] }).source_fields;
+    return Array.isArray(sourceFields) && sourceFields.length > 1;
+  }, []);
+
+  // Optimistic validation for conflict detection
+  const { validateChange, conflicts, clearConflicts } = useOptimisticValidation(requests);
+  const [conflictingRequest, setConflictingRequest] = useState<BunkRequestsResponse | null>(null);
+  const [pendingUpdate, setPendingUpdate] = useState<{
+    id: string;
+    updates: Partial<BunkRequestsResponse>;
+    request: BunkRequestsResponse;
+  } | null>(null);
+
   // Simple scroll container ref
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -338,6 +389,68 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
       updates: { status: 'declined' as BunkRequestsStatusOptions }
     });
   };
+
+  // Validated update handler - checks for conflicts before applying
+  const handleValidatedUpdate = useCallback((
+    request: BunkRequestsResponse,
+    updates: Partial<BunkRequestsResponse>
+  ) => {
+    // Only validate if changing target or type (potential conflict fields)
+    if (updates.requestee_id !== undefined || updates.request_type !== undefined) {
+      const newRequesteeId = updates.requestee_id ?? request.requestee_id ?? 0;
+      const newType = (updates.request_type ?? request.request_type) as BunkRequestsRequestTypeOptions;
+
+      validateChange({
+        requestId: request.id,
+        requesterId: request.requester_id,
+        newRequesteeId,
+        newType,
+        sessionId: request.session_id,
+      });
+
+      // Check if validation found conflicts
+      if (conflicts.length > 0) {
+        const conflict = conflicts[0];
+        if (conflict) {
+          setConflictingRequest(conflict.conflictingRequest);
+          setPendingUpdate({ id: request.id, updates, request });
+          return; // Don't proceed with update, show conflict dialog instead
+        }
+      }
+    }
+
+    // No conflict, proceed with update
+    updateRequestMutation.mutate({ id: request.id, updates });
+  }, [validateChange, conflicts, updateRequestMutation]);
+
+  // Handle conflict resolution - proceed with update despite conflict
+  const handleProceedDespiteConflict = useCallback(() => {
+    if (pendingUpdate) {
+      updateRequestMutation.mutate({ id: pendingUpdate.id, updates: pendingUpdate.updates });
+      clearConflicts();
+      setPendingUpdate(null);
+      setConflictingRequest(null);
+    }
+  }, [pendingUpdate, updateRequestMutation, clearConflicts]);
+
+  // Handle conflict resolution - merge instead
+  const handleMergeConflict = useCallback(() => {
+    if (pendingUpdate && conflictingRequest) {
+      // Open merge modal with the two conflicting requests
+      setSelectedRequests(new Set([pendingUpdate.id, conflictingRequest.id]));
+      setShowMergeModal(true);
+      clearConflicts();
+      setPendingUpdate(null);
+      setConflictingRequest(null);
+    }
+  }, [pendingUpdate, conflictingRequest, clearConflicts]);
+
+  // Cancel conflict resolution
+  const handleCancelConflict = useCallback(() => {
+    clearConflicts();
+    setPendingUpdate(null);
+    setConflictingRequest(null);
+  }, [clearConflicts]);
 
   const getConfidenceColor = (score: number) => {
     if (score >= CONFIDENCE_AUTO_ACCEPT) return 'text-forest-700 bg-forest-50 dark:text-forest-300 dark:bg-forest-900/30';
@@ -606,6 +719,16 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
               <CheckCircle className="w-4 h-4" />
               <span className="hidden xs:inline">Approve</span>
             </button>
+            {mergeEligibility.canMerge && (
+              <button
+                onClick={() => setShowMergeModal(true)}
+                className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 font-medium shadow-sm touch-manipulation min-h-[44px]"
+                title="Merge these two requests into one"
+              >
+                <GitMerge className="w-4 h-4" />
+                <span className="hidden xs:inline">Merge</span>
+              </button>
+            )}
             <button
               onClick={handleBulkReject}
               className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-destructive text-destructive-foreground rounded-xl hover:bg-destructive/90 transition-colors flex items-center justify-center gap-2 font-medium shadow-sm touch-manipulation min-h-[44px]"
@@ -800,10 +923,7 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
                                 pbUpdates.status = 'resolved' as BunkRequestsStatusOptions;
                                 pbUpdates.confidence_score = 1.0;
                               }
-                              updateRequestMutation.mutate({
-                                id: request.id,
-                                updates: pbUpdates
-                              });
+                              handleValidatedUpdate(request, pbUpdates);
                             }}
                             disabled={request.request_locked || false}
                             originalText={request.original_text}
@@ -832,6 +952,18 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
                               title="Unprotect"
                             >
                               <Shield className="w-5 h-5" />
+                            </button>
+                          )}
+                          {hasMultipleSources(request) && (
+                            <button
+                              onClick={() => {
+                                setRequestToSplit(request);
+                                setShowSplitModal(true);
+                              }}
+                              className="p-2 hover:bg-amber-100 dark:hover:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-lg transition-colors touch-manipulation"
+                              title="Split merged request"
+                            >
+                              <Scissors className="w-5 h-5" />
                             </button>
                           )}
                           <button
@@ -956,10 +1088,7 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
                               pbUpdates.status = 'resolved' as BunkRequestsStatusOptions;
                               pbUpdates.confidence_score = 1.0;
                             }
-                            updateRequestMutation.mutate({
-                              id: request.id,
-                              updates: pbUpdates
-                            });
+                            handleValidatedUpdate(request, pbUpdates);
                           }}
                           disabled={request.request_locked || false}
                           originalText={request.original_text}
@@ -973,7 +1102,7 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
                           value={request.request_type}
                           onChange={(newType) => {
                             const updates: Partial<BunkRequestsResponse> = { request_type: newType as BunkRequestsResponse['request_type'] };
-                            
+
                             // Clear fields based on type change
                             if (newType === 'age_preference') {
                               // Clear person selection when switching to age preference
@@ -982,11 +1111,8 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
                               // Clear age preference when switching to person-based types
                               delete updates.age_preference_target;
                             }
-                            
-                            updateRequestMutation.mutate({
-                              id: request.id,
-                              updates
-                            });
+
+                            handleValidatedUpdate(request, updates);
                           }}
                           disabled={request.request_locked || false}
                         />
@@ -1036,6 +1162,18 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
                               title="Click to unprotect and allow editing"
                             >
                               <Shield className="w-4 h-4" />
+                            </button>
+                          )}
+                          {hasMultipleSources(request) && (
+                            <button
+                              onClick={() => {
+                                setRequestToSplit(request);
+                                setShowSplitModal(true);
+                              }}
+                              className="p-1.5 hover:bg-amber-100 dark:hover:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-lg transition-colors"
+                              title="Split merged request"
+                            >
+                              <Scissors className="w-4 h-4" />
                             </button>
                           )}
                           <button
@@ -1185,6 +1323,84 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
           camperId={selectedCamperId}
           onClose={() => setSelectedCamperId(null)}
         />
+      )}
+
+      {/* Merge Requests Modal */}
+      {showMergeModal && mergeEligibility.canMerge && (
+        <MergeRequestsModal
+          isOpen={showMergeModal}
+          onClose={() => setShowMergeModal(false)}
+          requests={mergeEligibility.requests}
+          onMergeComplete={() => {
+            setShowMergeModal(false);
+            setSelectedRequests(new Set());
+            toast.success('Requests merged successfully');
+          }}
+        />
+      )}
+
+      {/* Split Request Modal */}
+      {showSplitModal && requestToSplit && (
+        <SplitRequestModal
+          isOpen={showSplitModal}
+          onClose={() => {
+            setShowSplitModal(false);
+            setRequestToSplit(null);
+          }}
+          request={requestToSplit}
+          sourceLinks={[]} // TODO: Fetch source links from backend
+          onSplitComplete={() => {
+            setShowSplitModal(false);
+            setRequestToSplit(null);
+            toast.success('Request split successfully');
+          }}
+        />
+      )}
+
+      {/* Conflict Resolution Dialog */}
+      {conflictingRequest && pendingUpdate && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-background rounded-xl shadow-lg max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <AlertCircle className="w-6 h-6 text-amber-500" />
+              <h3 className="text-lg font-semibold">Conflict Detected</h3>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              This change would create a duplicate request. A request for the same person already exists:
+            </p>
+            <div className="p-3 bg-muted rounded-lg mb-4">
+              <div className="text-sm">
+                <span className="font-medium">Type:</span>{' '}
+                {conflictingRequest.request_type.replace('_', ' ')}
+              </div>
+              <div className="text-sm">
+                <span className="font-medium">Source:</span>{' '}
+                {conflictingRequest.source_field}
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={handleCancelConflict}
+                className="px-4 py-2 text-sm font-medium rounded-lg border border-border hover:bg-muted transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleMergeConflict}
+                className="px-4 py-2 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors flex items-center gap-2"
+              >
+                <GitMerge className="w-4 h-4" />
+                Merge Requests
+              </button>
+              <button
+                onClick={handleProceedDespiteConflict}
+                className="px-4 py-2 text-sm font-medium rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition-colors"
+              >
+                Create Anyway
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

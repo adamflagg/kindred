@@ -115,4 +115,32 @@ describe('RequestReviewPanel', () => {
     it.todo('sorts requests by different columns');
     it.todo('toggles sort order between ascending and descending');
   });
+
+  /**
+   * TDD TESTS: Merge/Split Integration
+   *
+   * Phase 4-5 of cross-run deduplication system.
+   *
+   * Merge UI:
+   * - When exactly 2 requests are selected with same requester + same session,
+   *   a "Merge" button should appear in the bulk actions bar
+   * - Clicking opens MergeRequestsModal
+   *
+   * Split UI:
+   * - Requests with multiple source_fields (merged requests) should show
+   *   a "Split" action button
+   * - Clicking opens SplitRequestModal
+   *
+   * These tests require populated mock data with multiple requests.
+   * Complex mocking requirements similar to Filter and Sort tests.
+   */
+  describe('Merge/Split Integration', () => {
+    it.todo('shows merge button when exactly 2 requests with same requester are selected');
+    it.todo('hides merge button when selected requests have different requesters');
+    it.todo('hides merge button when more than 2 requests are selected');
+    it.todo('opens MergeRequestsModal when merge button is clicked');
+    it.todo('shows split button on requests with multiple source_fields');
+    it.todo('hides split button on requests with single source_field');
+    it.todo('opens SplitRequestModal when split button is clicked');
+  });
 });
