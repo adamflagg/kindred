@@ -24,8 +24,12 @@ from bunking.sync.bunk_request_processor.data.repositories.request_repository im
 from bunking.sync.bunk_request_processor.data.repositories.source_link_repository import (
     SourceLinkRepository,
 )
+from bunking.sync.bunk_request_processor.shared.constants import FIELD_TO_SOURCE_FIELD
 
 from ..dependencies import pb
+
+# Reverse mapping: source_field ("Share Bunk With") -> field enum ("bunk_with")
+SOURCE_FIELD_TO_DB_FIELD = {v: k for k, v in FIELD_TO_SOURCE_FIELD.items()}
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +45,88 @@ def get_request_repository() -> RequestRepository:
 def get_source_link_repository() -> SourceLinkRepository:
     """Get a SourceLinkRepository instance."""
     return SourceLinkRepository(pb)
+
+
+def ensure_source_link_exists(
+    bunk_request_id: str,
+    requester_cm_id: int,
+    source_field: str,
+    year: int,
+    session_id: int,
+    source_link_repo: SourceLinkRepository,
+    is_primary: bool = True,
+    parse_notes: str | None = None,
+) -> bool:
+    """Ensure a source link exists for a bunk_request.
+
+    If the request doesn't have any source links, find the corresponding
+    original_bunk_request and create a link.
+
+    Args:
+        bunk_request_id: PocketBase ID of the bunk_request
+        requester_cm_id: CampMinder ID of the requester
+        source_field: Human-readable source field (e.g., "Share Bunk With")
+        year: Year of the request
+        session_id: Session ID
+        source_link_repo: SourceLinkRepository instance
+        is_primary: Whether this should be the primary source
+        parse_notes: Optional AI parse notes from the bunk_request
+
+    Returns:
+        True if link exists or was created, False if couldn't find original
+    """
+    # Check if link already exists
+    existing_sources = source_link_repo.get_sources_for_request(bunk_request_id)
+    if existing_sources:
+        return True
+
+    # Map human-readable source_field to DB field enum
+    db_field = SOURCE_FIELD_TO_DB_FIELD.get(source_field)
+    if not db_field:
+        logger.warning(f"Unknown source_field: {source_field}")
+        return False
+
+    try:
+        # Find the person record by cm_id
+        person_result = pb.collection("persons").get_list(
+            query_params={
+                "filter": f"cm_id = {requester_cm_id} && year = {year}",
+                "perPage": 1,
+            }
+        )
+        if not person_result.items:
+            logger.warning(f"Person not found for cm_id={requester_cm_id}, year={year}")
+            return False
+
+        person_id = person_result.items[0].id
+
+        # Find the original_bunk_request
+        # Note: session field on original_bunk_requests may not be populated,
+        # so we match by requester + field only
+        orig_result = pb.collection("original_bunk_requests").get_list(
+            query_params={
+                "filter": f'requester = "{person_id}" && field = "{db_field}"',
+                "perPage": 1,
+            }
+        )
+        if not orig_result.items:
+            logger.warning(f"Original request not found for person={person_id}, field={db_field}, session={session_id}")
+            return False
+
+        original_request_id = orig_result.items[0].id
+
+        # Create the source link
+        return source_link_repo.add_source_link(
+            bunk_request_id=bunk_request_id,
+            original_request_id=original_request_id,
+            is_primary=is_primary,
+            source_field=source_field,
+            parse_notes=parse_notes,
+        )
+
+    except Exception as e:
+        logger.warning(f"Error ensuring source link: {e}")
+        return False
 
 
 class MergeRequestsRequest(BaseModel):
@@ -177,6 +263,7 @@ async def merge_requests(request: MergeRequestsRequest) -> MergeRequestsResponse
         assert req.id is not None, "Database record missing ID"
 
     # Combine source_fields from all requests
+    # Fall back to source_field (singular) if source_fields is empty
     combined_source_fields: list[str] = []
     for req in requests_to_merge:
         fields = getattr(req, "source_fields", None) or []
@@ -188,6 +275,13 @@ async def merge_requests(request: MergeRequestsRequest) -> MergeRequestsResponse
                 fields = json.loads(fields)
             except json.JSONDecodeError:
                 fields = [fields]
+
+        # If source_fields is empty, fall back to source_field (singular)
+        if not fields:
+            single_field = getattr(req, "source_field", None)
+            if single_field:
+                fields = [single_field]
+
         for field in fields:
             if field and field not in combined_source_fields:
                 combined_source_fields.append(field)
@@ -210,6 +304,42 @@ async def merge_requests(request: MergeRequestsRequest) -> MergeRequestsResponse
     # Track merge in metadata
     combined_metadata["merged_from"] = delete_ids
     combined_metadata["merge_timestamp"] = str(__import__("datetime").datetime.now().isoformat())
+
+    # Ensure source links exist for all requests before merging
+    # This handles legacy requests that were created before source_link tracking
+    for req in requests_to_merge:
+        assert req.id is not None
+        # Get source field - from source_fields array or fall back to source_field
+        req_source_fields = getattr(req, "source_fields", None) or []
+        if isinstance(req_source_fields, str):
+            import json
+
+            try:
+                req_source_fields = json.loads(req_source_fields)
+            except json.JSONDecodeError:
+                req_source_fields = [req_source_fields]
+
+        if not req_source_fields:
+            single_field = getattr(req, "source_field", None)
+            if single_field:
+                req_source_fields = [single_field]
+
+        # Create source links for each source field
+        # Include parse_notes from the original request for context in split modal
+        req_parse_notes = getattr(req, "parse_notes", None)
+        is_first = True
+        for sf in req_source_fields:
+            ensure_source_link_exists(
+                bunk_request_id=req.id,
+                requester_cm_id=req.requester_cm_id,
+                source_field=sf,
+                year=req.year,
+                session_id=req.session_cm_id,
+                source_link_repo=source_link_repo,
+                is_primary=is_first,
+                parse_notes=req_parse_notes,
+            )
+            is_first = False
 
     # Transfer source links from deleted requests to kept request
     for del_id in delete_ids:
