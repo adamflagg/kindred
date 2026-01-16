@@ -54,6 +54,17 @@ export const queryKeys = {
   // Admin/Config (Tier 2 - user data)
   adminSettings: () => ['admin-settings'] as const,
   solverConfig: () => ['solver-config'] as const,
+
+  // Debug (Tier 2 - frequently updated during testing)
+  parseAnalysis: (filters?: { sessionCmId?: number | undefined; sourceField?: string | undefined }) =>
+    filters
+      ? (['parse-analysis', filters.sessionCmId, filters.sourceField] as const)
+      : (['parse-analysis'] as const),
+  parseAnalysisDetail: (id: string) => ['parse-analysis', id] as const,
+  originalRequests: (year: number, filters?: { sessionCmId?: number | undefined; sourceField?: string | undefined }) =>
+    filters
+      ? (['original-requests', year, filters.sessionCmId, filters.sourceField] as const)
+      : (['original-requests', year] as const),
 };
 
 /**
