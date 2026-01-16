@@ -12,6 +12,7 @@ export default [
         // See: https://pocketbase.io/docs/js-migrations/
         migrate: 'readonly',
         Collection: 'readonly',
+        Field: 'readonly',
         Record: 'readonly',
         unmarshal: 'readonly',
         console: 'readonly',

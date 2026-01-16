@@ -10,79 +10,55 @@
  * - Merge/split tracking (multi-source requests)
  */
 
-// Fixed collection IDs - must match across all migrations
-const COLLECTION_IDS = {
-  camp_sessions: "col_camp_sessions",
-  persons: "col_persons",
-  bunks: "col_bunks",
-  attendees: "col_attendees",
-  bunk_plans: "col_bunk_plans",
-  bunk_requests: "col_bunk_requests",
-  bunk_assignments: "col_bunk_assignments",
-  bunk_assignments_draft: "col_bunk_drafts",
-  saved_scenarios: "col_scenarios",
-  solver_runs: "col_solver_runs",
-  original_bunk_requests: "col_orig_requests",
-  locked_groups: "col_locked_groups",
-  locked_group_members: "col_locked_members",
-  config: "col_config",
-  config_sections: "col_config_sections",
-  bunk_request_sources: "col_request_sources"
-}
-
 migrate((app) => {
+  // Dynamic lookups - these collections were created in earlier migrations
+  const bunkRequestsCol = app.findCollectionByNameOrId("bunk_requests")
+  const originalRequestsCol = app.findCollectionByNameOrId("original_bunk_requests")
+
   const collection = new Collection({
-    id: COLLECTION_IDS.bunk_request_sources,
     name: "bunk_request_sources",
     type: "base",
-    system: false,
+    listRule: '@request.auth.id != ""',
+    viewRule: '@request.auth.id != ""',
+    createRule: '@request.auth.id != ""',
+    updateRule: '@request.auth.id != ""',
+    deleteRule: '@request.auth.id != ""',
     fields: [
       // FK to bunk_requests
       {
-        name: "bunk_request",
         type: "relation",
-        system: false,
+        name: "bunk_request",
         required: true,
-        unique: false,
-        options: {
-          collectionId: COLLECTION_IDS.bunk_requests,
-          cascadeDelete: true,
-          minSelect: null,
-          maxSelect: 1,
-          displayFields: null
-        }
+        presentable: false,
+        collectionId: bunkRequestsCol.id,
+        cascadeDelete: true,
+        minSelect: null,
+        maxSelect: 1
       },
       // FK to original_bunk_requests
       {
-        name: "original_request",
         type: "relation",
-        system: false,
+        name: "original_request",
         required: true,
-        unique: false,
-        options: {
-          collectionId: COLLECTION_IDS.original_bunk_requests,
-          cascadeDelete: true,
-          minSelect: null,
-          maxSelect: 1,
-          displayFields: null
-        }
+        presentable: false,
+        collectionId: originalRequestsCol.id,
+        cascadeDelete: true,
+        minSelect: null,
+        maxSelect: 1
       },
       // Which source "owns" the request (true for primary source)
       {
-        name: "is_primary",
         type: "bool",
-        system: false,
+        name: "is_primary",
         required: false,
-        unique: false,
-        options: {}
+        presentable: false
       },
       // Source field name (for quick access without joining original_bunk_requests)
       {
-        name: "source_field",
         type: "text",
-        system: false,
+        name: "source_field",
         required: false,
-        unique: false,
+        presentable: false,
         options: {
           min: null,
           max: 100,
@@ -107,17 +83,11 @@ migrate((app) => {
       "CREATE INDEX `idx_source_link_original` ON `bunk_request_sources` (`original_request`)",
       // Find primary source quickly
       "CREATE INDEX `idx_source_link_primary` ON `bunk_request_sources` (`bunk_request`, `is_primary`)"
-    ],
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
-    options: {}
+    ]
   });
 
-  return app.save(collection);
+  app.save(collection);
 }, (app) => {
   const collection = app.findCollectionByNameOrId("bunk_request_sources");
-  return app.delete(collection);
+  app.delete(collection);
 });

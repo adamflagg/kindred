@@ -13,37 +13,24 @@
 
 migrate((app) => {
   const collection = app.findCollectionByNameOrId("bunk_requests");
-  if (!collection) {
-    throw new Error("bunk_requests collection not found");
-  }
 
   // Add source_fields JSON array field
-  collection.fields.push({
-    name: "source_fields",
+  collection.fields.add(new Field({
     type: "json",
-    system: false,
+    name: "source_fields",
     required: false,
-    unique: false,
+    presentable: false,
     options: {
       maxSize: 2000000
     }
-  });
+  }));
 
-  return app.save(collection);
+  app.save(collection);
 }, (app) => {
   const collection = app.findCollectionByNameOrId("bunk_requests");
-  if (!collection) {
-    return; // Nothing to rollback if collection doesn't exist
-  }
 
-  // Remove source_fields field by filtering it out
-  const fieldsArray = collection.fields;
-  for (let i = 0; i < fieldsArray.length; i++) {
-    if (fieldsArray[i].name === "source_fields") {
-      fieldsArray.splice(i, 1);
-      break;
-    }
-  }
+  // Remove source_fields field
+  collection.fields.removeByName("source_fields");
 
-  return app.save(collection);
+  app.save(collection);
 });

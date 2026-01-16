@@ -302,6 +302,93 @@ CampMinder reuses session IDs across years. Year field prevents data contaminati
 
 **Enum update workaround**: If migration applies but enum values unchanged, use `scripts/fix_request_type_enum.py` to update schema JSON directly.
 
+### Creating New Collections
+
+Use dynamic collection lookups for relation fields - never hardcode collection IDs:
+
+```javascript
+migrate((app) => {
+  // Dynamic lookups for relations
+  const personsCol = app.findCollectionByNameOrId("persons")
+
+  const collection = new Collection({
+    name: "my_collection",
+    type: "base",
+    listRule: '@request.auth.id != ""',
+    // ... other rules
+    fields: [
+      // Relation field - collectionId is DIRECT property, not nested in options
+      {
+        type: "relation",
+        name: "person",
+        required: true,
+        presentable: false,
+        collectionId: personsCol.id,  // Dynamic lookup
+        cascadeDelete: false,
+        minSelect: null,
+        maxSelect: 1
+      },
+      // Select field - values/maxSelect are DIRECT properties
+      {
+        type: "select",
+        name: "status",
+        required: true,
+        values: ["active", "inactive"],
+        maxSelect: 1
+      },
+      // Other field types use options normally
+      {
+        type: "text",
+        name: "name",
+        required: true,
+        options: { min: null, max: 200, pattern: "" }
+      }
+    ],
+    indexes: [...]
+  });
+
+  app.save(collection);
+}, (app) => {
+  const collection = app.findCollectionByNameOrId("my_collection");
+  app.delete(collection);
+});
+```
+
+### Adding Fields to Existing Collections
+
+Use `new Field()` constructor and `fields.add()` - plain objects don't work:
+
+```javascript
+migrate((app) => {
+  const collection = app.findCollectionByNameOrId("existing_collection");
+
+  // CORRECT: Use new Field() constructor
+  collection.fields.add(new Field({
+    type: "json",
+    name: "my_field",
+    required: false,
+    presentable: false,
+    options: { maxSize: 2000000 }
+  }));
+
+  app.save(collection);
+}, (app) => {
+  const collection = app.findCollectionByNameOrId("existing_collection");
+  collection.fields.removeByName("my_field");
+  app.save(collection);
+});
+```
+
+### Common Mistakes to Avoid
+
+| Wrong | Right |
+|-------|-------|
+| `collectionId` inside `options: {}` | `collectionId` as direct property |
+| `collection.fields.push({...})` | `collection.fields.add(new Field({...}))` |
+| Hardcoded collection IDs | `app.findCollectionByNameOrId("name").id` |
+| `for...of` on fields | Index-based `for` loop |
+| `return app.save()` | `app.save()` (no return needed) |
+
 ## 🚨 CRITICAL: Development Quality Standards
 
 ### CI/CD Workflow
