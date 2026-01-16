@@ -416,8 +416,10 @@ class TestSplitEndpointRestore:
         # Return the merged request when looking for requests merged into kept
         mock_request_repo.get_merged_requests.return_value = [merged_request]
 
-        # Source link maps to the merged request
-        mock_source_link_repo.get_sources_for_request.return_value = ["orig_123"]
+        # Source links on kept request (used to match absorbed request by source_field)
+        mock_source_link_repo.get_source_links_with_fields.return_value = [
+            {"original_request_id": "orig_123", "source_field": "bunking_notes", "is_primary": False},
+        ]
 
         mock_request_repo.restore_from_merge.return_value = True
 
@@ -518,12 +520,16 @@ class TestSplitEndpointRestore:
 
         merged_request = Mock()
         merged_request.id = "req_soft_deleted"
+        merged_request.source_field = "bunking_notes"  # Used for matching
 
         mock_request_repo.get_by_id.return_value = original_request
         mock_source_link_repo.count_sources_for_request.return_value = 2
         mock_source_link_repo.get_source_field_for_link.return_value = "bunking_notes"
         mock_request_repo.get_merged_requests.return_value = [merged_request]
-        mock_source_link_repo.get_sources_for_request.return_value = ["orig_123"]
+        # Source links on kept request (used to match absorbed request by source_field)
+        mock_source_link_repo.get_source_links_with_fields.return_value = [
+            {"original_request_id": "orig_123", "source_field": "bunking_notes", "is_primary": False},
+        ]
         mock_request_repo.restore_from_merge.return_value = True
 
         response = client.post(
