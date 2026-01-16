@@ -282,6 +282,10 @@ class BunkRequest:
     # Database ID (set when loading from DB, used for updates)
     id: str | None = None
 
+    # Tracks all source fields that contributed to this request (set during merge or DB load)
+    # During initial parsing this is None; after save/merge it contains all contributing fields
+    source_fields: list[str] | None = None
+
 
 # Three-Phase Processing Models
 

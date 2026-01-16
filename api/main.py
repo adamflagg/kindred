@@ -98,6 +98,7 @@ def create_app() -> FastAPI:
 
     # Register routers
     from .routers import (
+        requests,
         scenarios,
         social_graph,
         solver,
@@ -108,6 +109,7 @@ def create_app() -> FastAPI:
     app.include_router(solver.router)
     app.include_router(scenarios.router)
     app.include_router(social_graph.router)
+    app.include_router(requests.router)
 
     # Core endpoints (not in a router)
     @app.get("/health")
