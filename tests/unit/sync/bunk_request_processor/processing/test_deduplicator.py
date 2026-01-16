@@ -715,5 +715,249 @@ class TestDatabaseDuplicateMerge:
         assert result.statistics["database_duplicates"] == 1
 
 
+class TestAgePreferenceDeduplication:
+    """Test age_preference request deduplication across source fields.
+
+    Bug fix: age_preference requests from different sources (e.g., AI-parsed from
+    bunking_notes vs dropdown from ret_parent_socialize_with_best) were NOT being
+    deduplicated, causing DB unique constraint violations.
+
+    The DB unique constraint is: (requester_id, requestee_id, request_type, year, session_id)
+    It does NOT include source_field, so we must dedupe across all source fields.
+    """
+
+    @pytest.fixture
+    def deduplicator(self):
+        """Create a Deduplicator without repository (batch-only dedup)"""
+        return Deduplicator()
+
+    def test_age_preference_from_different_sources_deduplicated(self, deduplicator):
+        """Test that age_preference from different sources ARE deduplicated.
+
+        This is the bug fix test. Previously, age_preference requests from bunking_notes
+        and ret_parent_socialize_with_best had different dedup keys and both attempted
+        to save to the DB, violating the unique constraint.
+        """
+        # Age preference from bunking_notes (AI-parsed)
+        ai_parsed = BunkRequest(
+            requester_cm_id=12345,
+            requested_cm_id=None,  # age_preference has no target
+            request_type=RequestType.AGE_PREFERENCE,
+            session_cm_id=1000002,
+            priority=1,
+            confidence_score=0.85,
+            source=RequestSource.STAFF,
+            source_field="bunking_notes",  # AI-parsed from staff notes
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=False,
+            metadata={"age_preference": "older", "origin": "ai_parsed"},
+        )
+
+        # Age preference from dropdown (direct parse)
+        dropdown_parsed = BunkRequest(
+            requester_cm_id=12345,
+            requested_cm_id=None,  # age_preference has no target
+            request_type=RequestType.AGE_PREFERENCE,
+            session_cm_id=1000002,
+            priority=1,
+            confidence_score=1.0,  # Dropdown is 100% confidence
+            source=RequestSource.FAMILY,
+            source_field="ret_parent_socialize_with_best",  # Dropdown field
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=False,
+            metadata={"age_preference": "older", "origin": "dropdown"},
+        )
+
+        result = deduplicator.deduplicate_batch([ai_parsed, dropdown_parsed])
+
+        # MUST deduplicate - only ONE kept (otherwise DB constraint violation)
+        assert len(result.kept_requests) == 1
+        assert result.statistics["duplicates_removed"] == 1
+
+        # STAFF wins over FAMILY (source priority)
+        kept = result.kept_requests[0]
+        assert kept.source == RequestSource.STAFF
+
+        # But confidence is boosted to max from all sources
+        assert kept.confidence_score == 1.0
+
+        # Metadata should be merged
+        assert kept.metadata.get("is_merged_duplicate") is True
+
+    def test_age_preference_conflicting_values_highest_priority_wins(self, deduplicator):
+        """Test that conflicting age preferences resolve to highest priority source.
+
+        Edge case: What if bunking_notes says "older" but dropdown says "younger"?
+        Higher priority source wins (STAFF > FAMILY), consistent with other request types.
+        """
+        # AI-parsed says "older" (STAFF source)
+        older_request = BunkRequest(
+            requester_cm_id=12345,
+            requested_cm_id=None,
+            request_type=RequestType.AGE_PREFERENCE,
+            session_cm_id=1000002,
+            priority=1,
+            confidence_score=0.80,
+            source=RequestSource.STAFF,
+            source_field="bunking_notes",
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=False,
+            metadata={"age_preference": "older"},
+        )
+
+        # Dropdown says "younger" (FAMILY source)
+        younger_request = BunkRequest(
+            requester_cm_id=12345,
+            requested_cm_id=None,
+            request_type=RequestType.AGE_PREFERENCE,
+            session_cm_id=1000002,
+            priority=1,
+            confidence_score=1.0,  # Higher confidence
+            source=RequestSource.FAMILY,
+            source_field="ret_parent_socialize_with_best",
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=False,
+            metadata={"age_preference": "younger"},
+        )
+
+        result = deduplicator.deduplicate_batch([older_request, younger_request])
+
+        # Deduplicated - STAFF wins despite lower confidence
+        assert len(result.kept_requests) == 1
+        kept = result.kept_requests[0]
+        assert kept.source == RequestSource.STAFF
+        assert kept.metadata["age_preference"] == "older"
+        # Confidence boosted from family's higher value
+        assert kept.confidence_score == 1.0
+
+    def test_age_preference_same_source_same_field_deduplicated(self, deduplicator):
+        """Test that multiple age_preference from same source/field are deduplicated."""
+        req1 = BunkRequest(
+            requester_cm_id=12345,
+            requested_cm_id=None,
+            request_type=RequestType.AGE_PREFERENCE,
+            session_cm_id=1000002,
+            priority=1,
+            confidence_score=0.90,
+            source=RequestSource.STAFF,
+            source_field="bunking_notes",
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=False,
+            metadata={},
+        )
+
+        req2 = BunkRequest(
+            requester_cm_id=12345,
+            requested_cm_id=None,
+            request_type=RequestType.AGE_PREFERENCE,
+            session_cm_id=1000002,
+            priority=1,
+            confidence_score=0.85,
+            source=RequestSource.STAFF,
+            source_field="bunking_notes",
+            csv_position=1,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=False,
+            metadata={},
+        )
+
+        result = deduplicator.deduplicate_batch([req1, req2])
+
+        assert len(result.kept_requests) == 1
+        assert result.kept_requests[0].confidence_score == 0.90
+        assert result.statistics["duplicates_removed"] == 1
+
+    def test_age_preference_different_sessions_not_deduplicated(self, deduplicator):
+        """Test that age_preference for different sessions are NOT deduplicated."""
+        session1 = BunkRequest(
+            requester_cm_id=12345,
+            requested_cm_id=None,
+            request_type=RequestType.AGE_PREFERENCE,
+            session_cm_id=1000002,  # Session 2
+            priority=1,
+            confidence_score=0.90,
+            source=RequestSource.FAMILY,
+            source_field="ret_parent_socialize_with_best",
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=False,
+            metadata={},
+        )
+
+        session2 = BunkRequest(
+            requester_cm_id=12345,
+            requested_cm_id=None,
+            request_type=RequestType.AGE_PREFERENCE,
+            session_cm_id=1000003,  # Session 3 - different!
+            priority=1,
+            confidence_score=0.90,
+            source=RequestSource.FAMILY,
+            source_field="ret_parent_socialize_with_best",
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=False,
+            metadata={},
+        )
+
+        result = deduplicator.deduplicate_batch([session1, session2])
+
+        # Different sessions - both kept
+        assert len(result.kept_requests) == 2
+        assert result.statistics["duplicates_removed"] == 0
+
+    def test_age_preference_different_requesters_not_deduplicated(self, deduplicator):
+        """Test that age_preference for different people are NOT deduplicated."""
+        person1 = BunkRequest(
+            requester_cm_id=12345,  # Person 1
+            requested_cm_id=None,
+            request_type=RequestType.AGE_PREFERENCE,
+            session_cm_id=1000002,
+            priority=1,
+            confidence_score=0.90,
+            source=RequestSource.FAMILY,
+            source_field="ret_parent_socialize_with_best",
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=False,
+            metadata={},
+        )
+
+        person2 = BunkRequest(
+            requester_cm_id=67890,  # Person 2 - different!
+            requested_cm_id=None,
+            request_type=RequestType.AGE_PREFERENCE,
+            session_cm_id=1000002,
+            priority=1,
+            confidence_score=0.90,
+            source=RequestSource.FAMILY,
+            source_field="ret_parent_socialize_with_best",
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=False,
+            metadata={},
+        )
+
+        result = deduplicator.deduplicate_batch([person1, person2])
+
+        # Different people - both kept
+        assert len(result.kept_requests) == 2
+        assert result.statistics["duplicates_removed"] == 0
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
