@@ -219,6 +219,7 @@ export interface BunkRequestsRecord<Tai_p1_reasoning = unknown, Tai_p3_reasoning
 	source?: BunkRequestsSourceOptions
 	source_detail?: string
 	source_field?: string
+	source_fields?: string[]
 	status: BunkRequestsStatusOptions
 	updated?: IsoDateString
 	was_dropped_for_spread?: boolean

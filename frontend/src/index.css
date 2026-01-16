@@ -513,6 +513,24 @@
     outline: none;
   }
 
+  /* Filter label styling */
+  .filter-label {
+    @apply block text-xs font-semibold mb-2;
+    @apply text-bark-600 dark:text-bark-300;
+    @apply uppercase tracking-wider;
+  }
+
+  /* Lodge-styled checkbox */
+  .checkbox-lodge {
+    @apply w-4 h-4 rounded;
+    @apply border-2 border-bark-300 dark:border-bark-600;
+    @apply bg-parchment-100 dark:bg-bark-900;
+    @apply checked:bg-forest-600 checked:border-forest-600;
+    @apply focus:ring-2 focus:ring-forest-500/20;
+    @apply transition-colors duration-150;
+    @apply cursor-pointer;
+  }
+
   /* Listbox (Headless UI styled dropdowns) */
   .listbox-button {
     @apply w-full flex items-center justify-between gap-2;
@@ -1104,8 +1122,9 @@
    ============================================ */
 .request-table-grid {
   display: grid;
-  grid-template-columns: 40px 260px 260px 220px 80px 100px 100px 120px;
-  min-width: 1080px;
+  /* Columns: checkbox+expand | requester | request | type | priority | confidence | status | actions */
+  grid-template-columns: 64px 240px 260px 200px 80px 100px 100px 120px;
+  min-width: 1064px;
 }
 
 /* Mobile card layout for request review panel */
