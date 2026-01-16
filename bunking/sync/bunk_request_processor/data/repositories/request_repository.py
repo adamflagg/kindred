@@ -311,6 +311,80 @@ class RequestRepository:
             logger.warning(f"Error getting request by id {record_id}: {e}")
             return None
 
+    def delete(self, record_id: str) -> bool:
+        """Delete a bunk request by its PocketBase record ID.
+
+        Args:
+            record_id: PocketBase record ID
+
+        Returns:
+            True if deleted, False otherwise
+        """
+        try:
+            self.pb.collection("bunk_requests").delete(record_id)
+            return True
+        except Exception as e:
+            logger.warning(f"Error deleting request {record_id}: {e}")
+            return False
+
+    def update_source_fields(self, record_id: str, source_fields: list[str]) -> bool:
+        """Update the source_fields array for a request.
+
+        Args:
+            record_id: PocketBase record ID
+            source_fields: Updated list of source fields
+
+        Returns:
+            True if updated, False otherwise
+        """
+        try:
+            self.pb.collection("bunk_requests").update(
+                record_id, {"source_fields": json.dumps(source_fields)}
+            )
+            return True
+        except Exception as e:
+            logger.warning(f"Error updating source_fields for {record_id}: {e}")
+            return False
+
+    def flag_for_review(
+        self,
+        record_id: str,
+        reason: str,
+        changed_original_id: str | None = None,
+    ) -> bool:
+        """Flag a request for manual review.
+
+        Adds a flag to the request's metadata indicating it needs staff attention.
+
+        Args:
+            record_id: PocketBase record ID
+            reason: Why this request needs review
+            changed_original_id: Optional original_request_id that triggered the flag
+
+        Returns:
+            True if flagged, False otherwise
+        """
+        try:
+            # Get current request to preserve metadata
+            existing = self.get_by_id(record_id)
+            if not existing:
+                return False
+
+            # Update metadata with review flag
+            metadata = existing.metadata or {}
+            metadata["needs_review"] = True
+            metadata["review_reason"] = reason
+            if changed_original_id:
+                metadata["changed_original_id"] = changed_original_id
+
+            self.pb.collection("bunk_requests").update(
+                record_id, {"metadata": json.dumps(metadata)}
+            )
+            return True
+        except Exception as e:
+            logger.warning(f"Error flagging request {record_id} for review: {e}")
+            return False
+
     def update_for_merge(
         self,
         record_id: str,
