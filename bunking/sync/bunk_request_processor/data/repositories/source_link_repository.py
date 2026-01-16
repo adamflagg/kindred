@@ -82,7 +82,7 @@ class SourceLinkRepository:
             result = self.pb.collection(COLLECTION_NAME).get_list(
                 query_params={"filter": f'bunk_request = "{bunk_request_id}"', "perPage": 100}
             )
-            return [item.original_request for item in result.items]
+            return [str(getattr(item, "original_request")) for item in result.items]
 
         except Exception as e:
             logger.warning(f"Error getting sources for request {bunk_request_id}: {e}")
@@ -104,7 +104,7 @@ class SourceLinkRepository:
             result = self.pb.collection(COLLECTION_NAME).get_list(
                 query_params={"filter": f'original_request = "{original_request_id}"', "perPage": 100}
             )
-            return [item.bunk_request for item in result.items]
+            return [str(getattr(item, "bunk_request")) for item in result.items]
 
         except Exception as e:
             logger.warning(f"Error getting requests for source {original_request_id}: {e}")
@@ -190,7 +190,7 @@ class SourceLinkRepository:
             )
 
             if result.items:
-                return result.items[0].original_request
+                return str(getattr(result.items[0], "original_request"))
 
         except Exception as e:
             logger.warning(f"Error getting primary source for {bunk_request_id}: {e}")
@@ -247,6 +247,36 @@ class SourceLinkRepository:
         except Exception as e:
             logger.warning(f"Error transferring primary status: {e}")
             return False
+
+    def get_source_field_for_link(
+        self,
+        bunk_request_id: str,
+        original_request_id: str,
+    ) -> str | None:
+        """Get the source_field for a specific source link.
+
+        Args:
+            bunk_request_id: PocketBase ID of the bunk_request
+            original_request_id: PocketBase ID of the original_bunk_request
+
+        Returns:
+            The source_field value, or None if not found
+        """
+        try:
+            result = self.pb.collection(COLLECTION_NAME).get_list(
+                query_params={
+                    "filter": f'bunk_request = "{bunk_request_id}" && original_request = "{original_request_id}"',
+                    "perPage": 1,
+                }
+            )
+
+            if result.items:
+                return getattr(result.items[0], "source_field", None)
+
+        except Exception as e:
+            logger.warning(f"Error getting source_field for link: {e}")
+
+        return None
 
     def count_sources_for_request(self, bunk_request_id: str) -> int:
         """Count how many sources are linked to a request.
@@ -312,7 +342,7 @@ class SourceLinkRepository:
                     self.pb.collection(COLLECTION_NAME).create(
                         {
                             "bunk_request": to_request_id,
-                            "original_request": item.original_request,
+                            "original_request": getattr(item, "original_request"),
                             "is_primary": False,  # Non-primary since it's a merge
                             "source_field": getattr(item, "source_field", None),
                         }
@@ -390,7 +420,9 @@ class SourceLinkRepository:
             # Group by bunk_request
             sources_map: dict[str, list[str]] = defaultdict(list)
             for item in result.items:
-                sources_map[item.bunk_request].append(item.original_request)
+                bunk_req_id = str(getattr(item, "bunk_request"))
+                orig_req_id = str(getattr(item, "original_request"))
+                sources_map[bunk_req_id].append(orig_req_id)
 
             return dict(sources_map)
 
