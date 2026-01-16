@@ -187,7 +187,8 @@ func TestBuildBatchedFilter(t *testing.T) {
 			name:       "multiple person IDs joined with OR",
 			baseFilter: "year = 2025 && processed != ''",
 			personIDs:  []string{"abc123", "def456", "ghi789"},
-			wantFilter: "year = 2025 && processed != '' && (requester = 'abc123' || requester = 'def456' || requester = 'ghi789')",
+			wantFilter: "year = 2025 && processed != '' && " +
+				"(requester = 'abc123' || requester = 'def456' || requester = 'ghi789')",
 		},
 	}
 
