@@ -451,7 +451,7 @@ describe('RequestReviewPanel', () => {
     describe('Lazy Loading Source Links for Dropdown', () => {
       it('should not fetch source links until row is expanded', () => {
         // State tracking
-        let expandedRows = new Set<string>();
+        const expandedRows = new Set<string>();
         let fetchTriggered = false;
 
         const shouldFetchSourceLinks = (requestId: string, isMerged: boolean) => {
