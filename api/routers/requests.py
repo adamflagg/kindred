@@ -409,6 +409,24 @@ async def split_requests(request: SplitRequestsRequest) -> SplitRequestsResponse
 
     assert original_request.id is not None, "Database record missing ID"
 
+    # Get all source links on the KEPT request (where they were transferred during merge)
+    kept_source_links = source_link_repo.get_source_links_with_fields(request.request_id)
+
+    # Build a set of primary source IDs for validation
+    primary_source_ids = {
+        link.get("original_request_id")
+        for link in kept_source_links
+        if link.get("is_primary")
+    }
+
+    # Validate: cannot split off primary source
+    for split_config in request.split_sources:
+        if split_config.original_request_id in primary_source_ids:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot split off the primary source. The primary source must remain with the original request.",
+            )
+
     # Get all soft-deleted requests that were merged into this one
     merged_requests = request_repo.get_merged_requests(request.request_id)
 
@@ -416,9 +434,6 @@ async def split_requests(request: SplitRequestsRequest) -> SplitRequestsResponse
     # NOTE: Source links are transferred to the kept request during merge,
     # so we must match by source_field instead of looking up sources on absorbed requests.
     merged_by_source: dict[str, BunkRequest] = {}
-
-    # Get all source links on the KEPT request (where they were transferred during merge)
-    kept_source_links = source_link_repo.get_source_links_with_fields(request.request_id)
 
     # Build map by matching absorbed request's source_field to source link's source_field
     for merged_req in merged_requests:

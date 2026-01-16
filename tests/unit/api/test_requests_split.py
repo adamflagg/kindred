@@ -116,6 +116,12 @@ class TestSplitEndpointSuccess:
         # No soft-deleted requests to restore (legacy path)
         mock_request_repo.get_merged_requests.return_value = []
 
+        # Source links - orig_123 is NOT primary (allows split)
+        mock_source_link_repo.get_source_links_with_fields.return_value = [
+            {"original_request_id": "orig_primary", "source_field": "share_bunk_with", "is_primary": True},
+            {"original_request_id": "orig_123", "source_field": "bunking_notes", "is_primary": False},
+        ]
+
         # Mock the create to set an ID
         def set_id_on_create(req):
             req.id = "new_split_req"
@@ -165,6 +171,12 @@ class TestSplitEndpointSuccess:
         mock_source_link_repo.get_source_field_for_link.return_value = "bunking_notes"
         # No soft-deleted requests to restore (legacy path)
         mock_request_repo.get_merged_requests.return_value = []
+
+        # Source links - orig_123 is NOT primary (allows split)
+        mock_source_link_repo.get_source_links_with_fields.return_value = [
+            {"original_request_id": "orig_primary", "source_field": "share_bunk_with", "is_primary": True},
+            {"original_request_id": "orig_123", "source_field": "bunking_notes", "is_primary": False},
+        ]
 
         def set_id_on_create(req):
             req.id = "new_split_req"
@@ -221,6 +233,12 @@ class TestSplitEndpointSuccess:
         # No soft-deleted requests to restore (legacy path)
         mock_request_repo.get_merged_requests.return_value = []
 
+        # Source links - orig_123 is NOT primary (allows split)
+        mock_source_link_repo.get_source_links_with_fields.return_value = [
+            {"original_request_id": "orig_primary", "source_field": "share_bunk_with", "is_primary": True},
+            {"original_request_id": "orig_123", "source_field": "bunking_notes", "is_primary": False},
+        ]
+
         def set_id_on_create(req):
             req.id = "new_split_req"
             return True
@@ -272,6 +290,12 @@ class TestSplitEndpointSuccess:
         mock_source_link_repo.count_sources_for_request.return_value = 2
         # No soft-deleted requests to restore (legacy path)
         mock_request_repo.get_merged_requests.return_value = []
+
+        # Source links - orig_123 is NOT primary (allows split)
+        mock_source_link_repo.get_source_links_with_fields.return_value = [
+            {"original_request_id": "orig_primary", "source_field": "share_bunk_with", "is_primary": True},
+            {"original_request_id": "orig_123", "source_field": "bunking_notes", "is_primary": False},
+        ]
 
         def set_id_on_create(req):
             req.id = "new_split_req_1"
