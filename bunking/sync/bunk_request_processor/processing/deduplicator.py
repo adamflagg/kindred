@@ -179,6 +179,11 @@ class Deduplicator:
                         request.metadata["has_database_duplicate"] = True
                         # existing is a BunkRequest object, access id attribute directly
                         request.metadata["database_duplicate_id"] = getattr(existing, "id", None)
+                        # Set action for orchestrator - indicates this should be merged
+                        request.metadata["database_match_action"] = "merge"
+                        # Include locked status for orchestrator decision
+                        # (locked requests need manual review, not auto-merge)
+                        request.metadata["database_match_locked"] = getattr(existing, "request_locked", False)
                         database_duplicates += 1
 
         # Compile statistics
