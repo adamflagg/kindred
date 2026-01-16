@@ -250,41 +250,6 @@ func (p *RequestProcessor) getPythonPath(projectRoot string) string {
 	return filepath.Join(projectRoot, ".venv", "bin", "python")
 }
 
-// clearBatchSize is the maximum number of person IDs per OR condition batch.
-// Conservative to avoid query length issues while maintaining efficiency.
-const clearBatchSize = 25
-
-// batchStrings splits a slice into batches of the given size.
-// Returns empty slice for empty input or invalid batch size.
-func batchStrings(items []string, batchSize int) [][]string {
-	if len(items) == 0 || batchSize <= 0 {
-		return [][]string{}
-	}
-
-	result := make([][]string, 0, (len(items)+batchSize-1)/batchSize)
-	for i := 0; i < len(items); i += batchSize {
-		end := i + batchSize
-		if end > len(items) {
-			end = len(items)
-		}
-		result = append(result, items[i:end])
-	}
-	return result
-}
-
-// buildBatchedFilter appends person ID conditions to the base filter.
-// Returns base filter unchanged if personIDs is empty.
-func buildBatchedFilter(baseFilter string, personIDs []string) string {
-	if len(personIDs) == 0 {
-		return baseFilter
-	}
-	idConditions := make([]string, len(personIDs))
-	for i, pbID := range personIDs {
-		idConditions[i] = fmt.Sprintf("requester = '%s'", pbID)
-	}
-	return fmt.Sprintf("%s && (%s)", baseFilter, strings.Join(idConditions, " || "))
-}
-
 // clearProcessedFlags clears the 'processed' field in original_bunk_requests
 // to force reprocessing of records.
 //
@@ -293,16 +258,14 @@ func buildBatchedFilter(baseFilter string, personIDs []string) string {
 //  2. Source fields (if p.SourceFields is non-empty)
 //  3. Session (if p.Session != "all", filters to persons in target sessions)
 //  4. Limit (applied last)
-//
-// For sessions with many persons, queries are batched to avoid long OR conditions.
 func (p *RequestProcessor) clearProcessedFlags(ctx context.Context) (int, error) {
 	year := os.Getenv("CAMPMINDER_SEASON_ID")
 	if year == "" {
 		year = "2025"
 	}
 
-	// Build base filter - always filter by year and processed != ''
-	baseFilter := fmt.Sprintf("year = %s && processed != ''", year)
+	// Build filter - always filter by year and processed != ''
+	filter := fmt.Sprintf("year = %s && processed != ''", year)
 
 	// Add source field filter if specified
 	if len(p.SourceFields) > 0 {
@@ -311,91 +274,39 @@ func (p *RequestProcessor) clearProcessedFlags(ctx context.Context) (int, error)
 			fieldConditions[i] = fmt.Sprintf("field = '%s'", field)
 		}
 		fieldFilter := "(" + strings.Join(fieldConditions, " || ") + ")"
-		baseFilter = fmt.Sprintf("%s && %s", baseFilter, fieldFilter)
+		filter = fmt.Sprintf("%s && %s", filter, fieldFilter)
 	}
 
-	// Check if session filter is needed
-	var personIDs []string
+	// Add session filter if not "all"
+	// This requires finding persons enrolled in target sessions
 	if p.Session != DefaultSession && p.Session != "" {
-		ids, err := p.getPersonsInSession(ctx, year)
+		validPersonPBIDs, err := p.getPersonsInSession(ctx, year)
 		switch {
 		case err != nil:
 			slog.Warn("Failed to get persons for session filter, skipping session filter",
 				"session", p.Session, "error", err)
-			// Fall through with empty personIDs - will query without session filter
-		case len(ids) == 0:
+		case len(validPersonPBIDs) > 0:
+			// Add requester filter - limit to 100 IDs to avoid query size issues
+			if len(validPersonPBIDs) <= 100 {
+				idConditions := make([]string, len(validPersonPBIDs))
+				for i, pbID := range validPersonPBIDs {
+					idConditions[i] = fmt.Sprintf("requester = '%s'", pbID)
+				}
+				requesterFilter := "(" + strings.Join(idConditions, " || ") + ")"
+				filter = fmt.Sprintf("%s && %s", filter, requesterFilter)
+				slog.Info("Added session filter to clear query",
+					"session", p.Session, "personCount", len(validPersonPBIDs))
+			} else {
+				slog.Warn("Too many persons for session filter, will filter in memory",
+					"session", p.Session, "personCount", len(validPersonPBIDs))
+			}
+		default:
 			slog.Warn("No persons found in target session", "session", p.Session)
 			return 0, nil // Nothing to clear
-		default:
-			personIDs = ids
 		}
 	}
 
-	// If no session filter needed (all sessions or failed to get persons), run single query
-	if len(personIDs) == 0 {
-		return p.clearRecordsWithFilter(baseFilter)
-	}
-
-	// Batch the queries for session filtering
-	batches := batchStrings(personIDs, clearBatchSize)
-	slog.Info("Clearing processed flags in batches",
-		"session", p.Session,
-		"totalPersons", len(personIDs),
-		"batchCount", len(batches),
-		"batchSize", clearBatchSize,
-	)
-
-	totalCleared := 0
-	remainingLimit := p.Limit // 0 means no limit
-
-	for batchNum, batch := range batches {
-		// Check if we've hit the limit
-		if remainingLimit > 0 && totalCleared >= remainingLimit {
-			break
-		}
-
-		// Build filter for this batch
-		batchFilter := buildBatchedFilter(baseFilter, batch)
-
-		slog.Debug("Processing batch",
-			"batch", batchNum+1,
-			"batchSize", len(batch),
-			"totalPersons", len(personIDs),
-		)
-
-		// Temporarily adjust limit for this batch if needed
-		originalLimit := p.Limit
-		if remainingLimit > 0 {
-			p.Limit = remainingLimit - totalCleared
-		}
-
-		cleared, err := p.clearRecordsWithFilter(batchFilter)
-		p.Limit = originalLimit // Restore
-
-		if err != nil {
-			slog.Error("Failed to clear batch",
-				"batch", batchNum+1,
-				"error", err,
-			)
-			// Continue with other batches
-			continue
-		}
-
-		totalCleared += cleared
-	}
-
-	slog.Info("Completed batched flag clearing",
-		"totalCleared", totalCleared,
-		"batchCount", len(batches),
-	)
-
-	return totalCleared, nil
-}
-
-// clearRecordsWithFilter finds and clears processed records matching the filter.
-// Respects p.Limit if set.
-func (p *RequestProcessor) clearRecordsWithFilter(filter string) (int, error) {
-	// Determine page size respecting limit
+	// If limit is specified, we need to respect it
 	pageSize := 500
 	if p.Limit > 0 && p.Limit < pageSize {
 		pageSize = p.Limit
@@ -418,7 +329,7 @@ func (p *RequestProcessor) clearRecordsWithFilter(filter string) (int, error) {
 		records = records[:p.Limit]
 	}
 
-	slog.Debug("Found processed records to clear",
+	slog.Info("Found processed records to clear",
 		"count", len(records),
 		"filter", filter,
 		"limit", p.Limit,

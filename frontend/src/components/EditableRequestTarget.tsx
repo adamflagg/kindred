@@ -20,7 +20,6 @@ interface EditableRequestTargetProps {
   parseNotes?: string;
   requestedPersonName?: string;
   onViewCamper?: (personCmId: number) => void;
-  personMap?: Map<number, PersonsResponse>;
 }
 
 interface Camper {
@@ -59,8 +58,7 @@ export default function EditableRequestTarget({
   disabled,
   originalText: _originalText,
   requestedPersonName,
-  onViewCamper,
-  personMap
+  onViewCamper
 }: EditableRequestTargetProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -182,13 +180,17 @@ export default function EditableRequestTarget({
     enabled: requestType !== 'age_preference' && isOpen
   });
 
-  // Get current person from personMap (passed from parent) instead of separate query
-  const currentPerson = useMemo(() => {
-    if (!currentPersonId || currentPersonId <= 0 || requestType === 'age_preference') {
-      return undefined;
-    }
-    return personMap?.get(currentPersonId);
-  }, [currentPersonId, personMap, requestType]);
+  // Fetch current person details if selected
+  const { data: currentPerson } = useQuery({
+    queryKey: ['person', currentPersonId],
+    queryFn: async () => {
+      const persons = await pb.collection<PersonsResponse>('persons').getFullList({
+        filter: `cm_id = ${currentPersonId}`
+      });
+      return persons[0];
+    },
+    enabled: !!currentPersonId && currentPersonId > 0 && requestType !== 'age_preference'
+  });
 
   // Filter campers based on search and exclude requester
   const filteredCampers = useMemo(() => {
@@ -261,12 +263,12 @@ export default function EditableRequestTarget({
           )}
           disabled={disabled}
         >
-          <ChevronDown className="w-3 h-3 flex-shrink-0" />
           <span>
-            {agePreferenceTarget === 'older' ? 'Prefers older' :
-             agePreferenceTarget === 'younger' ? 'Prefers younger' :
+            {agePreferenceTarget === 'older' ? 'Prefers older' : 
+             agePreferenceTarget === 'younger' ? 'Prefers younger' : 
              'Select preference'}
           </span>
+          <ChevronDown className="w-3 h-3" />
         </button>
 
         {isOpen && (
@@ -328,13 +330,13 @@ export default function EditableRequestTarget({
         )}
         disabled={disabled}
       >
-        {dropdownPosition.direction === 'up' && isOpen ? (
-          <ChevronUp className="w-3 h-3 flex-shrink-0" />
-        ) : (
-          <ChevronDown className="w-3 h-3 flex-shrink-0" />
-        )}
-        <User className="w-3 h-3 flex-shrink-0" />
+        <User className="w-3 h-3" />
         <span className="truncate max-w-[200px]">{displayText}</span>
+        {dropdownPosition.direction === 'up' && isOpen ? (
+          <ChevronUp className="w-3 h-3" />
+        ) : (
+          <ChevronDown className="w-3 h-3" />
+        )}
       </button>
       {/* View target camper in modal */}
       {canLinkToTarget && onViewCamper && currentPersonId && (
