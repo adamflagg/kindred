@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Scissors, AlertCircle, User, HelpCircle, Star } from 'lucide-react';
 import { Modal } from './ui/Modal';
@@ -50,6 +50,30 @@ export default function SplitRequestModal({
   const [selectedSources, setSelectedSources] = useState<Set<string>>(new Set());
   const [sourceTypes, setSourceTypes] = useState<Record<string, BunkRequestsRequestTypeOptions>>({});
   const [error, setError] = useState<string | null>(null);
+  const prevIsOpenRef = useRef(false);
+
+  // Auto-select all non-primary sources when modal opens
+  // This is a valid "reset state when modal opens" pattern
+  useEffect(() => {
+    // Only initialize when modal transitions from closed to open
+    const wasOpen = prevIsOpenRef.current;
+    prevIsOpenRef.current = isOpen;
+
+    if (isOpen && !wasOpen && sourceLinks.length > 0) {
+      const nonPrimarySources = sourceLinks
+        .filter((link) => !link.is_primary)
+        .map((link) => link.original_request_id);
+
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Valid pattern: reset state when modal opens
+      setSelectedSources(new Set(nonPrimarySources));
+
+      const defaultTypes: Record<string, BunkRequestsRequestTypeOptions> = {};
+      nonPrimarySources.forEach((id) => {
+        defaultTypes[id] = request.request_type;
+      });
+      setSourceTypes(defaultTypes);
+    }
+  }, [isOpen, sourceLinks, request.request_type]);
 
   // Get current source fields from request
   // source_fields may be an array if the request was merged
@@ -239,11 +263,16 @@ export default function SplitRequestModal({
           <div className="space-y-3">
             {sourceLinks.map((link) => {
               const isSelected = selectedSources.has(link.original_request_id);
+              const isPrimary = link.is_primary === true;
               return (
                 <div
                   key={link.original_request_id}
                   className={`p-4 border rounded-lg transition-colors ${
-                    isSelected ? 'border-primary bg-primary/5' : 'border-border'
+                    isPrimary
+                      ? 'border-border bg-muted/20 opacity-60'
+                      : isSelected
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border'
                   }`}
                 >
                   <div className="flex items-start gap-3">
@@ -252,20 +281,21 @@ export default function SplitRequestModal({
                       id={`source-${link.original_request_id}`}
                       checked={isSelected}
                       onChange={() => toggleSource(link.original_request_id)}
-                      className="mt-1 rounded"
+                      disabled={isPrimary}
+                      className={`mt-1 rounded ${isPrimary ? 'cursor-not-allowed' : ''}`}
                     />
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <label
                           htmlFor={`source-${link.original_request_id}`}
-                          className="text-sm font-medium cursor-pointer"
+                          className={`text-sm font-medium ${isPrimary ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                         >
                           {link.source_field}
                         </label>
-                        {link.is_primary && (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium rounded bg-primary/10 text-primary">
+                        {isPrimary && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium rounded bg-amber-500/10 text-amber-600 dark:text-amber-400">
                             <Star className="w-3 h-3" />
-                            Primary
+                            Primary (cannot split)
                           </span>
                         )}
                       </div>
