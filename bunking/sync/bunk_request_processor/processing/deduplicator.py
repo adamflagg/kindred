@@ -65,11 +65,10 @@ class Deduplicator:
         request_groups: dict[tuple[int, int | None, RequestType, str, int, int] | None, list[BunkRequest]] = {}
 
         for request in requests:
-            # Placeholders are always unique (no dedup)
             key: tuple[int, int | None, RequestType, str, int, int] | None
-            if request.is_placeholder:
-                key = None
-            elif request.request_type == RequestType.AGE_PREFERENCE:
+            # Check AGE_PREFERENCE FIRST - they have is_placeholder=True (no requestee)
+            # but still need deduplication across source fields
+            if request.request_type == RequestType.AGE_PREFERENCE:
                 # Age preferences: group by (requester, None, type, "", year, session)
                 # Dedupes across ALL source fields - matches DB unique constraint which
                 # doesn't include source_field. Same requester's age preference from
@@ -83,6 +82,9 @@ class Deduplicator:
                     request.year,
                     request.session_cm_id,
                 )
+            elif request.is_placeholder:
+                # True placeholders (non-age_preference with no target) are unique
+                key = None
             else:
                 # Key generation is source-field-specific:
                 # - socialize_with: Include source_field (preserves 1:1 age preference per child)
