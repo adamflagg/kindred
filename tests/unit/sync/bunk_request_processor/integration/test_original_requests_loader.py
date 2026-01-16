@@ -567,7 +567,7 @@ class TestClearProcessedFlags:
         mock_pb.collection = Mock(return_value=mock_collection)
         return mock_pb, mock_collection
 
-    def _create_mock_record(self, record_id: str, field: str = "bunk_with", cm_id: int = 12345):
+    def _create_mock_record(self, record_id: str, field: str = "bunk_with", cm_id: int = 12345) -> Mock:
         """Helper to create a mock record with expand data"""
         mock_person = Mock()
         mock_person.cm_id = cm_id

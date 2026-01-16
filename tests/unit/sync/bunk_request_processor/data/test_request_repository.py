@@ -245,7 +245,7 @@ class TestRequestRepository:
             metadata={"resolution_method": "fuzzy_match", "updated": True},
         )
         # Add ID to simulate loaded record
-        request.id = "abc123"  # type: ignore[attr-defined]
+        request.id = "abc123"
 
         # Mock successful update
         mock_collection.update.return_value = Mock()
