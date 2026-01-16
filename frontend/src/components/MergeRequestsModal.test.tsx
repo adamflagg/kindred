@@ -13,9 +13,30 @@ import MergeRequestsModal from './MergeRequestsModal';
 import type { BunkRequestsResponse } from '../types/pocketbase-types';
 import { BunkRequestsRequestTypeOptions } from '../types/pocketbase-types';
 
-// Mock fetch for API calls
-const mockFetch = vi.fn();
-global.fetch = mockFetch;
+// Mock the useApiWithAuth hook
+const mockFetchWithAuth = vi.fn();
+vi.mock('../hooks/useApiWithAuth', () => ({
+  useApiWithAuth: () => ({
+    fetchWithAuth: mockFetchWithAuth,
+  }),
+}));
+
+// Mock pocketbase with all required exports
+vi.mock('../lib/pocketbase', () => ({
+  pb: {
+    collection: vi.fn(() => ({
+      getFullList: vi.fn(() => Promise.resolve([])),
+    })),
+    authStore: {
+      isValid: true,
+      model: { id: 'test-user' },
+      onChange: vi.fn(),
+      record: { id: 'test-user', email: 'test@example.com' },
+    },
+  },
+  isAuthenticated: vi.fn(() => true),
+  getCurrentUser: vi.fn(() => ({ id: 'test-user', email: 'test@example.com' })),
+}));
 
 // Helper to create mock request objects
 function createMockRequest(overrides: Partial<BunkRequestsResponse> = {}): BunkRequestsResponse {
@@ -221,7 +242,7 @@ describe('MergeRequestsModal', () => {
         createMockRequest({ id: 'req_2', request_type: BunkRequestsRequestTypeOptions.bunk_with }),
       ];
 
-      mockFetch.mockResolvedValueOnce({
+      mockFetchWithAuth.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
           merged_request_id: 'req_1',
@@ -244,7 +265,7 @@ describe('MergeRequestsModal', () => {
       fireEvent.click(mergeButton);
 
       await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalledWith(
+        expect(mockFetchWithAuth).toHaveBeenCalledWith(
           expect.stringContaining('/api/requests/merge'),
           expect.objectContaining({
             method: 'POST',
@@ -262,7 +283,7 @@ describe('MergeRequestsModal', () => {
 
       const onMergeComplete = vi.fn();
 
-      mockFetch.mockResolvedValueOnce({
+      mockFetchWithAuth.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
           merged_request_id: 'req_1',
@@ -295,7 +316,7 @@ describe('MergeRequestsModal', () => {
         createMockRequest({ id: 'req_2' }),
       ];
 
-      mockFetch.mockResolvedValueOnce({
+      mockFetchWithAuth.mockResolvedValueOnce({
         ok: false,
         json: async () => ({ detail: 'Merge failed' }),
       });
@@ -369,7 +390,7 @@ describe('MergeRequestsModal', () => {
       ];
 
       // Never resolve to keep it in loading state
-      mockFetch.mockReturnValue(new Promise(() => {}));
+      mockFetchWithAuth.mockReturnValue(new Promise(() => {}));
 
       renderWithQueryClient(
         <MergeRequestsModal
