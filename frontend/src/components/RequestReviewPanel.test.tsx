@@ -306,9 +306,9 @@ describe('RequestReviewPanel', () => {
    * Complex mocking requirements similar to Filter and Sort tests.
    */
   describe('Merge/Split Integration', () => {
-    it.todo('shows merge button when exactly 2 requests with same requester are selected');
+    it.todo('shows merge button when 2+ requests with same requester are selected');
     it.todo('hides merge button when selected requests have different requesters');
-    it.todo('hides merge button when more than 2 requests are selected');
+    it.todo('shows merge button when 3+ requests with same requester are selected');
     it.todo('opens MergeRequestsModal when merge button is clicked');
     it.todo('shows split button on requests with multiple source_fields');
     it.todo('hides split button on requests with single source_field');
