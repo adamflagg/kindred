@@ -43,7 +43,9 @@ class TestMergeEndpointValidation:
         )
 
         assert response.status_code == 422  # Validation error
-        assert "at least 2" in response.json()["detail"].lower()
+        # FastAPI returns validation errors as a list
+        error_detail = str(response.json()["detail"]).lower()
+        assert "at least 2" in error_detail
 
     def test_merge_requires_valid_keep_target_from(self, client: TestClient) -> None:
         """Test that keep_target_from must be one of the request_ids."""
