@@ -580,5 +580,151 @@ class TestSplitEndpointSourceFieldMatching:
         mock_request_repo.create.assert_called_once()
 
 
+class TestSplitEndpointPrimarySourceValidation:
+    """Test that split endpoint rejects attempts to split primary source.
+
+    TDD: The primary source must remain with the original request.
+    Users should only be able to split off non-primary sources.
+    """
+
+    @pytest.fixture
+    def mock_repos(self) -> tuple[Mock, Mock]:
+        """Create mock repositories for testing."""
+        mock_request_repo = Mock()
+        mock_source_link_repo = Mock()
+        return mock_request_repo, mock_source_link_repo
+
+    @pytest.fixture
+    def client_with_mocks(self, mock_repos: tuple[Mock, Mock]) -> Generator[tuple[TestClient, Mock, Mock], None, None]:
+        """Create test client with mocked repositories."""
+        mock_request_repo, mock_source_link_repo = mock_repos
+
+        with patch("api.routers.requests.get_request_repository") as mock_get_req_repo:
+            with patch("api.routers.requests.get_source_link_repository") as mock_get_sl_repo:
+                mock_get_req_repo.return_value = mock_request_repo
+                mock_get_sl_repo.return_value = mock_source_link_repo
+
+                from api.routers.requests import router
+
+                app = FastAPI()
+                app.include_router(router)
+
+                yield TestClient(app), mock_request_repo, mock_source_link_repo
+
+    def test_split_rejects_primary_source(self, client_with_mocks: tuple[TestClient, Mock, Mock]) -> None:
+        """Test that split fails when trying to split off the primary source."""
+        client, mock_request_repo, mock_source_link_repo = client_with_mocks
+
+        kept_request = Mock()
+        kept_request.id = "kept_request_id"
+        kept_request.requester_cm_id = 12345
+        kept_request.requested_cm_id = 67890
+        kept_request.session_cm_id = 1000002
+        kept_request.request_type = Mock(value="bunk_with")
+        kept_request.source_fields = ["Share Bunk With", "BunkingNotes Notes"]
+        kept_request.confidence_score = 0.95
+        kept_request.priority = 3
+        kept_request.source = Mock(value="family")
+        kept_request.csv_position = 0
+        kept_request.year = 2025
+        kept_request.metadata = {}
+
+        mock_request_repo.get_by_id.return_value = kept_request
+        mock_source_link_repo.count_sources_for_request.return_value = 2
+        mock_request_repo.get_merged_requests.return_value = []  # No merged requests needed for validation
+
+        # Source links - one is primary
+        mock_source_link_repo.get_source_links_with_fields.return_value = [
+            {
+                "original_request_id": "orig_primary",
+                "source_field": "Share Bunk With",
+                "is_primary": True,
+            },
+            {
+                "original_request_id": "orig_secondary",
+                "source_field": "BunkingNotes Notes",
+                "is_primary": False,
+            },
+        ]
+
+        # Try to split the PRIMARY source - should be rejected BEFORE processing
+        response = client.post(
+            "/api/requests/split",
+            json={
+                "request_id": "kept_request_id",
+                "split_sources": [
+                    {
+                        "original_request_id": "orig_primary",  # This is the primary!
+                        "new_type": "bunk_with",
+                        "new_target_id": None,
+                    }
+                ],
+            },
+        )
+
+        assert response.status_code == 400
+        assert "primary" in response.json()["detail"].lower()
+
+    def test_split_allows_non_primary_source(self, client_with_mocks: tuple[TestClient, Mock, Mock]) -> None:
+        """Test that split succeeds when splitting non-primary source."""
+        client, mock_request_repo, mock_source_link_repo = client_with_mocks
+
+        kept_request = Mock()
+        kept_request.id = "kept_request_id"
+        kept_request.requester_cm_id = 12345
+        kept_request.requested_cm_id = 67890
+        kept_request.session_cm_id = 1000002
+        kept_request.request_type = Mock(value="bunk_with")
+        kept_request.source_fields = ["Share Bunk With", "BunkingNotes Notes"]
+        kept_request.confidence_score = 0.95
+        kept_request.priority = 3
+        kept_request.source = Mock(value="family")
+        kept_request.csv_position = 0
+        kept_request.year = 2025
+        kept_request.metadata = {}
+
+        absorbed_request = Mock()
+        absorbed_request.id = "absorbed_request_id"
+        absorbed_request.source_field = "BunkingNotes Notes"
+
+        mock_request_repo.get_by_id.return_value = kept_request
+        mock_source_link_repo.count_sources_for_request.return_value = 2
+        mock_request_repo.get_merged_requests.return_value = [absorbed_request]
+
+        # Source links - one is primary
+        mock_source_link_repo.get_source_links_with_fields.return_value = [
+            {
+                "original_request_id": "orig_primary",
+                "source_field": "Share Bunk With",
+                "is_primary": True,
+            },
+            {
+                "original_request_id": "orig_secondary",
+                "source_field": "BunkingNotes Notes",
+                "is_primary": False,
+            },
+        ]
+
+        mock_source_link_repo.get_source_field_for_link.return_value = "BunkingNotes Notes"
+        mock_request_repo.restore_from_merge.return_value = True
+
+        # Split the NON-PRIMARY source - should succeed
+        response = client.post(
+            "/api/requests/split",
+            json={
+                "request_id": "kept_request_id",
+                "split_sources": [
+                    {
+                        "original_request_id": "orig_secondary",  # This is NOT primary
+                        "new_type": "bunk_with",
+                        "new_target_id": None,
+                    }
+                ],
+            },
+        )
+
+        assert response.status_code == 200
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
