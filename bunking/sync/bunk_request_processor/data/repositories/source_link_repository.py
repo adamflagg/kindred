@@ -82,7 +82,7 @@ class SourceLinkRepository:
             result = self.pb.collection(COLLECTION_NAME).get_list(
                 query_params={"filter": f'bunk_request = "{bunk_request_id}"', "perPage": 100}
             )
-            return [str(getattr(item, "original_request")) for item in result.items]
+            return [str(item.original_request) for item in result.items]  # type: ignore[attr-defined]
 
         except Exception as e:
             logger.warning(f"Error getting sources for request {bunk_request_id}: {e}")
@@ -104,7 +104,7 @@ class SourceLinkRepository:
             result = self.pb.collection(COLLECTION_NAME).get_list(
                 query_params={"filter": f'original_request = "{original_request_id}"', "perPage": 100}
             )
-            return [str(getattr(item, "bunk_request")) for item in result.items]
+            return [str(item.bunk_request) for item in result.items]  # type: ignore[attr-defined]
 
         except Exception as e:
             logger.warning(f"Error getting requests for source {original_request_id}: {e}")
@@ -190,7 +190,7 @@ class SourceLinkRepository:
             )
 
             if result.items:
-                return str(getattr(result.items[0], "original_request"))
+                return str(result.items[0].original_request)  # type: ignore[attr-defined]
 
         except Exception as e:
             logger.warning(f"Error getting primary source for {bunk_request_id}: {e}")
@@ -223,9 +223,7 @@ class SourceLinkRepository:
             )
 
             if old_primary_result.items:
-                self.pb.collection(COLLECTION_NAME).update(
-                    old_primary_result.items[0].id, {"is_primary": False}
-                )
+                self.pb.collection(COLLECTION_NAME).update(old_primary_result.items[0].id, {"is_primary": False})
 
             # Find and update the new primary (set is_primary=true)
             new_primary_result = self.pb.collection(COLLECTION_NAME).get_list(
@@ -236,9 +234,7 @@ class SourceLinkRepository:
             )
 
             if new_primary_result.items:
-                self.pb.collection(COLLECTION_NAME).update(
-                    new_primary_result.items[0].id, {"is_primary": True}
-                )
+                self.pb.collection(COLLECTION_NAME).update(new_primary_result.items[0].id, {"is_primary": True})
                 return True
 
             logger.warning(f"New primary source {new_primary_original_id} not found for {bunk_request_id}")
@@ -342,7 +338,7 @@ class SourceLinkRepository:
                     self.pb.collection(COLLECTION_NAME).create(
                         {
                             "bunk_request": to_request_id,
-                            "original_request": getattr(item, "original_request"),
+                            "original_request": item.original_request,  # type: ignore[attr-defined]
                             "is_primary": False,  # Non-primary since it's a merge
                             "source_field": getattr(item, "source_field", None),
                         }
@@ -413,15 +409,13 @@ class SourceLinkRepository:
             id_conditions = [f'bunk_request = "{rid}"' for rid in bunk_request_ids]
             filter_str = "(" + " || ".join(id_conditions) + ")"
 
-            result = self.pb.collection(COLLECTION_NAME).get_list(
-                query_params={"filter": filter_str, "perPage": 500}
-            )
+            result = self.pb.collection(COLLECTION_NAME).get_list(query_params={"filter": filter_str, "perPage": 500})
 
             # Group by bunk_request
             sources_map: dict[str, list[str]] = defaultdict(list)
             for item in result.items:
-                bunk_req_id = str(getattr(item, "bunk_request"))
-                orig_req_id = str(getattr(item, "original_request"))
+                bunk_req_id = str(item.bunk_request)  # type: ignore[attr-defined]
+                orig_req_id = str(item.original_request)  # type: ignore[attr-defined]
                 sources_map[bunk_req_id].append(orig_req_id)
 
             return dict(sources_map)

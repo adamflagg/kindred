@@ -187,9 +187,7 @@ class PartialInvalidationHandler:
             result: InvalidationResult to update
         """
         # Get the source_field that's being removed
-        source_field = self.source_link_repository.get_source_field_for_link(
-            bunk_request_id, original_request_id
-        )
+        source_field = self.source_link_repository.get_source_field_for_link(bunk_request_id, original_request_id)
 
         # Remove the source link
         self.source_link_repository.remove_source_link(

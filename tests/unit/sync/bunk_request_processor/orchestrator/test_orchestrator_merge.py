@@ -101,7 +101,7 @@ class TestOrchestratorMergeOnSave:
             orchestrator._stats = {}
 
             # Call the save method
-            saved = orchestrator._save_bunk_requests([request])
+            orchestrator._save_bunk_requests([request])
 
         # Should have called update on existing, not create new
         mock_request_repo.update_for_merge.assert_called_once()
@@ -232,7 +232,7 @@ class TestOrchestratorMergeOnSave:
             orchestrator.source_link_repository = mock_source_link_repo
             orchestrator._stats = {}
 
-            saved = orchestrator._save_bunk_requests([request])
+            orchestrator._save_bunk_requests([request])
 
         # Should have called create, not update
         mock_request_repo.create.assert_called_once()
@@ -424,21 +424,11 @@ class TestOrchestratorSourceLinkInitialization:
         with patch(
             "bunking.sync.bunk_request_processor.orchestrator.orchestrator.SourceLinkRepository"
         ) as mock_slr_class:
-            with patch(
-                "bunking.sync.bunk_request_processor.orchestrator.orchestrator.RequestRepository"
-            ):
-                with patch(
-                    "bunking.sync.bunk_request_processor.orchestrator.orchestrator.SelfReferenceRule"
-                ):
-                    with patch(
-                        "bunking.sync.bunk_request_processor.orchestrator.orchestrator.Deduplicator"
-                    ):
-                        with patch(
-                            "bunking.sync.bunk_request_processor.orchestrator.orchestrator.ReciprocalDetector"
-                        ):
-                            with patch(
-                                "bunking.sync.bunk_request_processor.orchestrator.orchestrator.RequestBuilder"
-                            ):
+            with patch("bunking.sync.bunk_request_processor.orchestrator.orchestrator.RequestRepository"):
+                with patch("bunking.sync.bunk_request_processor.orchestrator.orchestrator.SelfReferenceRule"):
+                    with patch("bunking.sync.bunk_request_processor.orchestrator.orchestrator.Deduplicator"):
+                        with patch("bunking.sync.bunk_request_processor.orchestrator.orchestrator.ReciprocalDetector"):
+                            with patch("bunking.sync.bunk_request_processor.orchestrator.orchestrator.RequestBuilder"):
                                 # Create orchestrator instance manually
                                 orchestrator = RequestOrchestrator.__new__(RequestOrchestrator)
                                 orchestrator.pb = mock_pb_client

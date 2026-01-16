@@ -154,7 +154,7 @@ class TestCrossRunDeduplication:
             metadata={},
         )
 
-        result = deduplicator.deduplicate_batch([placeholder], check_database=True)
+        deduplicator.deduplicate_batch([placeholder], check_database=True)
 
         # find_existing should NOT be called for placeholders
         mock_request_repo.find_existing.assert_not_called()
