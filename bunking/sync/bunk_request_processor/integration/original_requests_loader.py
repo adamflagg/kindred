@@ -634,3 +634,98 @@ class OriginalRequestsLoader:
 
         logger.info(f"Cleared {cleared} processed flags (matched {len(items)} records)")
         return cleared
+
+    def load_by_ids(self, record_ids: list[str]) -> list[OriginalRequest]:
+        """Load original_bunk_requests by PocketBase record IDs.
+
+        Used by debug service to load specific records for parsing.
+
+        Args:
+            record_ids: List of PocketBase record IDs
+
+        Returns:
+            List of OriginalRequest objects
+        """
+        if not record_ids:
+            return []
+
+        # Build filter for specific IDs
+        id_conditions = [f'id = "{rid}"' for rid in record_ids]
+        filter_str = "(" + " || ".join(id_conditions) + ")"
+
+        try:
+            items = self.pb.collection("original_bunk_requests").get_full_list(
+                query_params={"filter": filter_str, "expand": "requester"}
+            )
+
+            requests = []
+            for record in items:
+                orig_req = self._parse_record(record)
+                if orig_req:
+                    requests.append(orig_req)
+
+            return requests
+        except Exception as e:
+            logger.error(f"Failed to load requests by IDs: {e}")
+            return []
+
+    def load_by_filter(
+        self,
+        session_cm_id: int | None = None,
+        source_field: str | None = None,
+        limit: int = 50,
+    ) -> list[OriginalRequest]:
+        """Load original_bunk_requests by filter criteria.
+
+        Used by debug service to load records matching certain criteria.
+
+        Args:
+            session_cm_id: Optional session CM ID to filter by
+            source_field: Optional source field to filter by (bunk_with, etc.)
+            limit: Maximum number of records to return
+
+        Returns:
+            List of OriginalRequest objects
+        """
+        # Build filter
+        filters = [f"year = {self.year}"]
+
+        if source_field:
+            filters.append(f'field = "{source_field}"')
+
+        # Session filtering requires joining through person enrollment
+        # For simplicity, we filter in Python after loading
+        filter_str = " && ".join(filters)
+
+        try:
+            if limit:
+                result = self.pb.collection("original_bunk_requests").get_list(
+                    page=1,
+                    per_page=limit * 2,  # Fetch extra in case we filter some out
+                    query_params={"filter": filter_str, "expand": "requester", "sort": "-updated"},
+                )
+                items = result.items
+            else:
+                items = self.pb.collection("original_bunk_requests").get_full_list(
+                    query_params={"filter": filter_str, "expand": "requester", "sort": "-updated"}
+                )
+
+            requests = []
+            for record in items:
+                orig_req = self._parse_record(record)
+                if orig_req:
+                    # Apply session filter if specified
+                    if session_cm_id:
+                        person_sessions = self.get_all_sessions_for_person(orig_req.requester_cm_id)
+                        if session_cm_id not in person_sessions:
+                            continue
+
+                    requests.append(orig_req)
+
+                    if limit and len(requests) >= limit:
+                        break
+
+            return requests
+        except Exception as e:
+            logger.error(f"Failed to load requests by filter: {e}")
+            return []

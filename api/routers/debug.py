@@ -1,0 +1,367 @@
+"""Debug Router - Debug tools for Phase 1 AI parse analysis.
+
+This router provides endpoints for analyzing and iterating on Phase 1
+AI intent parsing without running the full 3-phase pipeline.
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import datetime
+
+from fastapi import APIRouter, HTTPException, Query
+
+from bunking.sync.bunk_request_processor.data.repositories.debug_parse_repository import (
+    DebugParseRepository,
+)
+from bunking.sync.bunk_request_processor.data.repositories.session_repository import (
+    SessionRepository,
+)
+from bunking.sync.bunk_request_processor.integration.original_requests_loader import (
+    OriginalRequestsLoader,
+)
+from bunking.sync.bunk_request_processor.services.phase1_debug_service import (
+    Phase1DebugService,
+)
+
+from ..dependencies import pb
+from ..schemas.debug import (
+    ClearAnalysisResponse,
+    OriginalRequestItem,
+    OriginalRequestsListResponse,
+    ParseAnalysisDetailItem,
+    ParseAnalysisItem,
+    ParseAnalysisListResponse,
+    ParsedIntent,
+    Phase1OnlyRequest,
+    Phase1OnlyResponse,
+    SourceFieldType,
+)
+from ..settings import get_settings
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/debug", tags=["debug"])
+
+
+# Dependency functions for repository injection (mockable in tests)
+def get_debug_parse_repository() -> DebugParseRepository:
+    """Get a DebugParseRepository instance."""
+    return DebugParseRepository(pb)
+
+
+def get_session_repository() -> SessionRepository:
+    """Get a SessionRepository instance."""
+    return SessionRepository(pb)
+
+
+def get_original_requests_loader() -> OriginalRequestsLoader:
+    """Get an OriginalRequestsLoader instance."""
+    settings = get_settings()
+    # Use current year from settings or default to 2025
+    year = getattr(settings, "current_year", 2025)
+    loader = OriginalRequestsLoader(pb, year)
+    loader.load_persons_cache()
+    return loader
+
+
+async def get_phase1_debug_service() -> Phase1DebugService:
+    """Get a Phase1DebugService instance.
+
+    Note: This lazily creates the service with all dependencies.
+    In production, you might want to cache this or use proper DI.
+    """
+    import os
+
+    from bunking.sync.bunk_request_processor.integration.batch_processor import (
+        BatchProcessor,
+    )
+    from bunking.sync.bunk_request_processor.integration.provider_factory import (
+        ProviderFactory,
+    )
+    from bunking.sync.bunk_request_processor.services.context_builder import (
+        ContextBuilder,
+    )
+    from bunking.sync.bunk_request_processor.services.phase1_parse_service import (
+        Phase1ParseService,
+    )
+
+    # Create AI provider from environment config
+    provider_factory = ProviderFactory()
+    ai_service = provider_factory.create_from_env()
+
+    # Create context builder
+    context_builder = ContextBuilder()
+
+    # Create batch processor
+    batch_processor = BatchProcessor(ai_service)
+
+    # Create Phase 1 service
+    phase1_service = Phase1ParseService(
+        ai_service=ai_service,
+        context_builder=context_builder,
+        batch_processor=batch_processor,
+    )
+
+    # Create debug dependencies
+    debug_repo = get_debug_parse_repository()
+    loader = get_original_requests_loader()
+
+    # Get prompt version from environment or use default
+    prompt_version = os.environ.get("PROMPT_VERSION", "v1.0.0")
+
+    return Phase1DebugService(
+        debug_repo=debug_repo,
+        original_requests_loader=loader,
+        phase1_service=phase1_service,
+        prompt_version=prompt_version,
+    )
+
+
+@router.get("/parse-analysis", response_model=ParseAnalysisListResponse)
+async def list_parse_analysis(
+    session_cm_id: int | None = Query(default=None, description="Filter by session CM ID"),
+    source_field: SourceFieldType | None = Query(default=None, description="Filter by source field"),
+    limit: int = Query(default=50, ge=1, le=500, description="Maximum results"),
+    offset: int = Query(default=0, ge=0, description="Pagination offset"),
+) -> ParseAnalysisListResponse:
+    """List Phase 1 parse analysis results.
+
+    Returns cached debug results with optional filtering by session
+    and source field. Results are sorted by creation time (newest first).
+    """
+    debug_repo = get_debug_parse_repository()
+
+    # Convert session CM ID to PocketBase ID if provided
+    session_id: str | None = None
+    if session_cm_id:
+        session_repo = get_session_repository()
+        session = session_repo.find_by_cm_id(session_cm_id)
+        if session:
+            session_id = session["id"]
+
+    items, total = debug_repo.list_with_originals(
+        limit=limit,
+        offset=offset,
+        session_id=session_id,
+        source_field=source_field,
+    )
+
+    # Convert to response model
+    response_items = []
+    for item in items:
+        # Convert parsed_intents to proper model
+        parsed_intents = []
+        for intent in item.get("parsed_intents", []):
+            parsed_intents.append(
+                ParsedIntent(
+                    request_type=intent.get("request_type", "unknown"),
+                    target_name=intent.get("target_name"),
+                    keywords_found=intent.get("keywords_found", []),
+                    parse_notes=intent.get("parse_notes", ""),
+                    reasoning=intent.get("reasoning", ""),
+                    list_position=intent.get("list_position", 0),
+                    needs_clarification=intent.get("needs_clarification", False),
+                    temporal_info=intent.get("temporal_info"),
+                )
+            )
+
+        # Parse created timestamp
+        created_str = item.get("created")
+        created_dt = None
+        if created_str:
+            try:
+                created_dt = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
+            except (ValueError, TypeError):
+                pass
+
+        response_items.append(
+            ParseAnalysisItem(
+                id=item.get("id", ""),
+                original_request_id=item.get("original_request_id", ""),
+                requester_name=item.get("requester_name"),
+                requester_cm_id=item.get("requester_cm_id"),
+                source_field=item.get("source_field"),
+                original_text=item.get("original_text"),
+                parsed_intents=parsed_intents,
+                is_valid=item.get("is_valid", True),
+                error_message=item.get("error_message"),
+                token_count=item.get("token_count"),
+                processing_time_ms=item.get("processing_time_ms"),
+                prompt_version=item.get("prompt_version"),
+                created=created_dt,
+            )
+        )
+
+    return ParseAnalysisListResponse(items=response_items, total=total)
+
+
+@router.get("/parse-analysis/{item_id}", response_model=ParseAnalysisDetailItem)
+async def get_parse_analysis_detail(item_id: str) -> ParseAnalysisDetailItem:
+    """Get detailed parse analysis result including raw AI response."""
+    debug_repo = get_debug_parse_repository()
+    item = debug_repo.get_by_id(item_id)
+
+    if not item:
+        raise HTTPException(status_code=404, detail="Parse analysis result not found")
+
+    # Convert parsed_intents
+    parsed_intents = []
+    for intent in item.get("parsed_intents", []):
+        parsed_intents.append(
+            ParsedIntent(
+                request_type=intent.get("request_type", "unknown"),
+                target_name=intent.get("target_name"),
+                keywords_found=intent.get("keywords_found", []),
+                parse_notes=intent.get("parse_notes", ""),
+                reasoning=intent.get("reasoning", ""),
+                list_position=intent.get("list_position", 0),
+                needs_clarification=intent.get("needs_clarification", False),
+                temporal_info=intent.get("temporal_info"),
+            )
+        )
+
+    # Parse created timestamp
+    created_str = item.get("created")
+    created_dt = None
+    if created_str:
+        try:
+            created_dt = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            pass
+
+    return ParseAnalysisDetailItem(
+        id=item.get("id", ""),
+        original_request_id=item.get("original_request_id", ""),
+        requester_name=item.get("requester_name"),
+        requester_cm_id=item.get("requester_cm_id"),
+        source_field=item.get("source_field"),
+        original_text=item.get("original_text"),
+        parsed_intents=parsed_intents,
+        is_valid=item.get("is_valid", True),
+        error_message=item.get("error_message"),
+        token_count=item.get("token_count"),
+        processing_time_ms=item.get("processing_time_ms"),
+        prompt_version=item.get("prompt_version"),
+        created=created_dt,
+        ai_raw_response=item.get("ai_raw_response"),
+    )
+
+
+@router.post("/parse-phase1-only", response_model=Phase1OnlyResponse)
+async def parse_phase1_only(request: Phase1OnlyRequest) -> Phase1OnlyResponse:
+    """Run Phase 1 parsing only on selected original_bunk_requests.
+
+    This endpoint runs the AI parsing phase in isolation without
+    name resolution (Phase 2) or disambiguation (Phase 3).
+
+    Use this to:
+    - Test prompt changes
+    - Debug specific parsing issues
+    - Iterate on AI prompt without running full pipeline
+    """
+    debug_service = await get_phase1_debug_service()
+
+    results = await debug_service.parse_selected_records(
+        request.original_request_ids,
+        force_reparse=request.force_reparse,
+    )
+
+    # Calculate total tokens
+    total_tokens = sum(r.get("token_count", 0) or 0 for r in results)
+
+    # Convert to response model
+    response_items = []
+    for item in results:
+        parsed_intents = []
+        for intent in item.get("parsed_intents", []):
+            parsed_intents.append(
+                ParsedIntent(
+                    request_type=intent.get("request_type", "unknown"),
+                    target_name=intent.get("target_name"),
+                    keywords_found=intent.get("keywords_found", []),
+                    parse_notes=intent.get("parse_notes", ""),
+                    reasoning=intent.get("reasoning", ""),
+                    list_position=intent.get("list_position", 0),
+                    needs_clarification=intent.get("needs_clarification", False),
+                    temporal_info=intent.get("temporal_info"),
+                )
+            )
+
+        response_items.append(
+            ParseAnalysisItem(
+                id=item.get("id", ""),
+                original_request_id=item.get("original_request_id", ""),
+                requester_name=item.get("requester_name"),
+                requester_cm_id=item.get("requester_cm_id"),
+                source_field=item.get("source_field"),
+                original_text=item.get("original_text"),
+                parsed_intents=parsed_intents,
+                is_valid=item.get("is_valid", True),
+                error_message=item.get("error_message"),
+                token_count=item.get("token_count"),
+                processing_time_ms=item.get("processing_time_ms"),
+                prompt_version=item.get("prompt_version"),
+                created=None,
+            )
+        )
+
+    return Phase1OnlyResponse(results=response_items, total_tokens=total_tokens)
+
+
+@router.delete("/parse-analysis", response_model=ClearAnalysisResponse)
+async def clear_parse_analysis() -> ClearAnalysisResponse:
+    """Clear all debug parse analysis results.
+
+    This removes all cached debug results. Use when you want a clean
+    slate for testing new prompt versions.
+    """
+    debug_repo = get_debug_parse_repository()
+    deleted_count = debug_repo.clear_all()
+
+    if deleted_count < 0:
+        raise HTTPException(status_code=500, detail="Failed to clear parse analysis results")
+
+    return ClearAnalysisResponse(deleted_count=deleted_count)
+
+
+@router.get("/original-requests", response_model=OriginalRequestsListResponse)
+async def list_original_requests(
+    year: int = Query(description="Year to filter by (required)"),
+    session_cm_id: int | None = Query(default=None, description="Filter by session CM ID"),
+    source_field: SourceFieldType | None = Query(default=None, description="Filter by source field"),
+    limit: int = Query(default=50, ge=1, le=500, description="Maximum results"),
+) -> OriginalRequestsListResponse:
+    """List original_bunk_requests for debug selection.
+
+    Returns original requests that can be selected for Phase 1 parsing.
+    Use this to browse available requests before running parse analysis.
+    """
+    # Create loader with specified year
+    loader = OriginalRequestsLoader(pb, year)
+    loader.load_persons_cache()
+
+    records = loader.load_by_filter(
+        session_cm_id=session_cm_id,
+        source_field=source_field,
+        limit=limit,
+    )
+
+    items = []
+    for record in records:
+        first = record.preferred_name or record.first_name
+        requester_name = f"{first} {record.last_name}".strip()
+
+        items.append(
+            OriginalRequestItem(
+                id=record.id,
+                requester_name=requester_name,
+                requester_cm_id=record.requester_cm_id,
+                source_field=record.field,
+                original_text=record.content,
+                year=record.year,
+                processed=record.processed is not None,
+            )
+        )
+
+    return OriginalRequestsListResponse(items=items, total=len(items))

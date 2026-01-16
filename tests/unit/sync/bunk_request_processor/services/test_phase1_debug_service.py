@@ -51,11 +51,15 @@ class TestPhase1DebugServiceParseSelectedRecords:
         self, debug_service, mock_dependencies: dict[str, Mock]
     ) -> None:
         """Test that parse_selected_records loads records and runs Phase 1."""
+        # Mock no cached result (returns None, not a Mock)
+        mock_dependencies["debug_repo"].get_by_original_request.return_value = None
+
         # Mock original request data
         mock_original_1 = Mock()
         mock_original_1.id = "orig_req_1"
         mock_original_1.content = "With Emma please"
         mock_original_1.field = "bunk_with"
+        mock_original_1.year = 2025
         mock_original_1.expand = {
             "requester": Mock(
                 cm_id=12345,
@@ -67,6 +71,7 @@ class TestPhase1DebugServiceParseSelectedRecords:
         }
 
         mock_dependencies["original_requests_loader"].load_by_ids.return_value = [mock_original_1]
+        mock_dependencies["original_requests_loader"].get_session_for_person.return_value = 1000002
 
         # Mock Phase 1 parse result
         from bunking.sync.bunk_request_processor.core.models import (
