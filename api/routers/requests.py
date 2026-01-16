@@ -413,13 +413,24 @@ async def split_requests(request: SplitRequestsRequest) -> SplitRequestsResponse
     merged_requests = request_repo.get_merged_requests(request.request_id)
 
     # Build a map of original_request_id -> merged_request for efficient lookup
+    # NOTE: Source links are transferred to the kept request during merge,
+    # so we must match by source_field instead of looking up sources on absorbed requests.
     merged_by_source: dict[str, BunkRequest] = {}
+
+    # Get all source links on the KEPT request (where they were transferred during merge)
+    kept_source_links = source_link_repo.get_source_links_with_fields(request.request_id)
+
+    # Build map by matching absorbed request's source_field to source link's source_field
     for merged_req in merged_requests:
         assert merged_req.id is not None
-        # Get the sources linked to this merged request
-        sources = source_link_repo.get_sources_for_request(merged_req.id)
-        for source_id in sources:
-            merged_by_source[source_id] = merged_req
+        merged_source_field = getattr(merged_req, "source_field", None)
+        if merged_source_field:
+            for link in kept_source_links:
+                if link.get("source_field") == merged_source_field:
+                    original_req_id = link.get("original_request_id")
+                    if original_req_id and isinstance(original_req_id, str):
+                        merged_by_source[original_req_id] = merged_req
+                    break
 
     # Track restored/created requests and removed source fields
     restored_request_ids: list[str] = []
