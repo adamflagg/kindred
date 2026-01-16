@@ -32,7 +32,7 @@ interface SplitSourceConfig {
 
 interface SplitResponse {
   original_request_id: string;
-  created_request_ids: string[];
+  restored_request_ids: string[];
   updated_source_fields: string[];
 }
 
@@ -324,7 +324,7 @@ export default function SplitRequestModal({
           <div className="p-4 bg-muted/30 rounded-lg">
             <h3 className="text-sm font-medium mb-2">Split Preview</h3>
             <p className="text-sm text-muted-foreground">
-              {selectedSources.size} source(s) will be split into new request(s).
+              {selectedSources.size} source(s) will be restored to their original requests.
             </p>
             <p className="text-sm text-muted-foreground mt-1">
               Remaining sources:{' '}
