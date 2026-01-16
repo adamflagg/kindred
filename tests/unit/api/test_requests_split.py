@@ -378,5 +378,207 @@ class TestSplitEndpointErrors:
         assert "single" in response.json()["detail"].lower() or "cannot split" in response.json()["detail"].lower()
 
 
+class TestSplitEndpointSourceFieldMatching:
+    """Test split endpoint matches absorbed requests by source_field.
+
+    TDD: When splitting a merged request, the split endpoint needs to find
+    the absorbed request by matching source_field between:
+    - The absorbed request's source_field (e.g., 'BunkingNotes Notes')
+    - The source links on the kept request
+
+    Bug being fixed: Source links are transferred to the kept request during
+    merge, so looking up sources on the absorbed request returns empty.
+    The fix is to match by source_field instead.
+    """
+
+    @pytest.fixture
+    def mock_repos(self) -> tuple[Mock, Mock]:
+        """Create mock repositories for testing."""
+        mock_request_repo = Mock()
+        mock_source_link_repo = Mock()
+        return mock_request_repo, mock_source_link_repo
+
+    @pytest.fixture
+    def client_with_mocks(self, mock_repos: tuple[Mock, Mock]) -> Generator[tuple[TestClient, Mock, Mock], None, None]:
+        """Create test client with mocked repositories."""
+        mock_request_repo, mock_source_link_repo = mock_repos
+
+        with patch("api.routers.requests.get_request_repository") as mock_get_req_repo:
+            with patch("api.routers.requests.get_source_link_repository") as mock_get_sl_repo:
+                mock_get_req_repo.return_value = mock_request_repo
+                mock_get_sl_repo.return_value = mock_source_link_repo
+
+                from api.routers.requests import router
+
+                app = FastAPI()
+                app.include_router(router)
+
+                yield TestClient(app), mock_request_repo, mock_source_link_repo
+
+    def test_split_restores_absorbed_request_by_source_field_match(
+        self, client_with_mocks: tuple[TestClient, Mock, Mock]
+    ) -> None:
+        """Test that split finds absorbed request via source_field matching.
+
+        Scenario:
+        - kept_request has source_fields: ['Share Bunk With', 'BunkingNotes Notes']
+        - absorbed_request has source_field: 'BunkingNotes Notes' and merged_into: kept_request
+        - kept_request's source links include one with source_field='BunkingNotes Notes'
+        - Split should match the absorbed request by source_field and restore it
+        """
+        client, mock_request_repo, mock_source_link_repo = client_with_mocks
+
+        # The kept merged request
+        kept_request = Mock()
+        kept_request.id = "kept_request_id"
+        kept_request.requester_cm_id = 12345
+        kept_request.requested_cm_id = 67890
+        kept_request.session_cm_id = 1000002
+        kept_request.request_type = Mock(value="bunk_with")
+        kept_request.source_fields = ["Share Bunk With", "BunkingNotes Notes"]
+        kept_request.confidence_score = 0.95
+        kept_request.priority = 3
+        kept_request.source = Mock(value="family")
+        kept_request.csv_position = 0
+        kept_request.year = 2025
+        kept_request.metadata = {"merged_from": ["absorbed_request_id"]}
+
+        # The absorbed request (soft-deleted, source_field still populated)
+        absorbed_request = Mock()
+        absorbed_request.id = "absorbed_request_id"
+        absorbed_request.source_field = "BunkingNotes Notes"  # Key field for matching
+        absorbed_request.merged_into = "kept_request_id"
+
+        mock_request_repo.get_by_id.return_value = kept_request
+        mock_source_link_repo.count_sources_for_request.return_value = 2
+
+        # Return the absorbed request from get_merged_requests
+        mock_request_repo.get_merged_requests.return_value = [absorbed_request]
+
+        # Source links on the kept request (these include the transferred link)
+        mock_source_link_repo.get_source_links_with_fields.return_value = [
+            {
+                "original_request_id": "orig_share_bunk",
+                "source_field": "Share Bunk With",
+                "is_primary": True,
+            },
+            {
+                "original_request_id": "orig_bunking_notes",
+                "source_field": "BunkingNotes Notes",  # Matches absorbed_request.source_field
+                "is_primary": False,
+            },
+        ]
+
+        mock_source_link_repo.get_source_field_for_link.return_value = "BunkingNotes Notes"
+        mock_request_repo.restore_from_merge.return_value = True
+
+        response = client.post(
+            "/api/requests/split",
+            json={
+                "request_id": "kept_request_id",
+                "split_sources": [
+                    {
+                        "original_request_id": "orig_bunking_notes",  # The one from BunkingNotes Notes
+                        "new_type": "bunk_with",
+                        "new_target_id": None,
+                    }
+                ],
+            },
+        )
+
+        assert response.status_code == 200
+
+        # Should have found the absorbed request via source_field matching
+        # and restored it instead of creating a new one
+        mock_request_repo.restore_from_merge.assert_called_once_with("absorbed_request_id")
+
+        # Should NOT have created a new request (fallback path)
+        mock_request_repo.create.assert_not_called()
+
+        # Should have transferred source link back to restored request
+        mock_source_link_repo.remove_source_link.assert_called_with(
+            bunk_request_id="kept_request_id",
+            original_request_id="orig_bunking_notes",
+        )
+        mock_source_link_repo.add_source_link.assert_called_with(
+            bunk_request_id="absorbed_request_id",
+            original_request_id="orig_bunking_notes",
+            is_primary=True,
+        )
+
+    def test_split_falls_back_to_create_when_no_source_field_match(
+        self, client_with_mocks: tuple[TestClient, Mock, Mock]
+    ) -> None:
+        """Test that split creates new request when no absorbed request matches.
+
+        If no absorbed request has a matching source_field (legacy data or
+        data corruption), the split should fall back to creating a new request.
+        """
+        client, mock_request_repo, mock_source_link_repo = client_with_mocks
+
+        kept_request = Mock()
+        kept_request.id = "kept_request_id"
+        kept_request.requester_cm_id = 12345
+        kept_request.requested_cm_id = 67890
+        kept_request.session_cm_id = 1000002
+        kept_request.request_type = Mock(value="bunk_with")
+        kept_request.source_fields = ["Share Bunk With", "BunkingNotes Notes"]
+        kept_request.confidence_score = 0.95
+        kept_request.priority = 3
+        kept_request.source = Mock(value="family")
+        kept_request.csv_position = 0
+        kept_request.year = 2025
+        kept_request.metadata = {}
+
+        # Absorbed request with DIFFERENT source_field (won't match)
+        absorbed_request = Mock()
+        absorbed_request.id = "absorbed_request_id"
+        absorbed_request.source_field = "Internal Notes"  # Different field
+        absorbed_request.merged_into = "kept_request_id"
+
+        mock_request_repo.get_by_id.return_value = kept_request
+        mock_source_link_repo.count_sources_for_request.return_value = 2
+        mock_request_repo.get_merged_requests.return_value = [absorbed_request]
+
+        # Source link for the one being split
+        mock_source_link_repo.get_source_links_with_fields.return_value = [
+            {
+                "original_request_id": "orig_bunking_notes",
+                "source_field": "BunkingNotes Notes",  # No absorbed request has this
+                "is_primary": False,
+            },
+        ]
+        mock_source_link_repo.get_source_field_for_link.return_value = "BunkingNotes Notes"
+
+        # Mock create to set ID
+        def set_id_on_create(req):
+            req.id = "new_created_id"
+            return True
+
+        mock_request_repo.create.side_effect = set_id_on_create
+
+        response = client.post(
+            "/api/requests/split",
+            json={
+                "request_id": "kept_request_id",
+                "split_sources": [
+                    {
+                        "original_request_id": "orig_bunking_notes",
+                        "new_type": "bunk_with",
+                        "new_target_id": None,
+                    }
+                ],
+            },
+        )
+
+        assert response.status_code == 200
+
+        # Should NOT have tried to restore (no match found)
+        mock_request_repo.restore_from_merge.assert_not_called()
+
+        # Should have created a new request (fallback)
+        mock_request_repo.create.assert_called_once()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
