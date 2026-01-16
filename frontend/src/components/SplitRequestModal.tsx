@@ -131,11 +131,11 @@ export default function SplitRequestModal({
       newSelected.delete(originalRequestId);
     } else {
       newSelected.add(originalRequestId);
-      // Set default type if not already set
+      // Set default type to the parent request's type (not hardcoded bunk_with)
       if (!sourceTypes[originalRequestId]) {
         setSourceTypes((prev) => ({
           ...prev,
-          [originalRequestId]: BunkRequestsRequestTypeOptions.bunk_with,
+          [originalRequestId]: request.request_type,
         }));
       }
     }
@@ -294,7 +294,7 @@ export default function SplitRequestModal({
                           <select
                             id={`type-${link.original_request_id}`}
                             aria-label="New request type"
-                            value={sourceTypes[link.original_request_id] || BunkRequestsRequestTypeOptions.bunk_with}
+                            value={sourceTypes[link.original_request_id] || request.request_type}
                             onChange={(e) =>
                               updateSourceType(
                                 link.original_request_id,
