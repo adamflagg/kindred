@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, memo } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -14,8 +14,7 @@ const requestTypes = [
   { value: 'age_preference', label: 'Age Preference' }
 ];
 
-// Memoized component - only re-renders when value or disabled changes
-const EditableRequestType = memo(function EditableRequestType({ value, onChange, disabled }: EditableRequestTypeProps) {
+export default function EditableRequestType({ value, onChange, disabled }: EditableRequestTypeProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -79,9 +78,4 @@ const EditableRequestType = memo(function EditableRequestType({ value, onChange,
       )}
     </div>
   );
-}, (prevProps, nextProps) => {
-  // Custom comparison - only re-render if value or disabled changes
-  return prevProps.value === nextProps.value && prevProps.disabled === nextProps.disabled;
-});
-
-export default EditableRequestType;
+}
