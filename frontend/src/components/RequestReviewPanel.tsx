@@ -1372,11 +1372,10 @@ export default function RequestReviewPanel({ sessionId, relatedSessionIds = [], 
                                           <p className="text-sm text-muted-foreground">
                                             {source.original_content || <span className="italic">No original text</span>}
                                           </p>
-                                          {source.parse_notes && (
-                                            <p className="text-xs text-muted-foreground mt-1.5 bg-muted/50 px-2 py-1 rounded">
-                                              <span className="font-medium">Parse notes:</span> {source.parse_notes}
-                                            </p>
-                                          )}
+                                          <p className="text-xs text-muted-foreground mt-1.5 bg-muted/50 px-2 py-1 rounded">
+                                            <span className="font-medium">Parse notes:</span>{' '}
+                                            {source.parse_notes || <span className="italic">No parse notes</span>}
+                                          </p>
                                         </div>
                                       );
                                     })}
