@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, memo } from 'react';
 import { ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -24,7 +24,9 @@ function getStyle(priority: number) {
   return priorityStyles[priority as keyof typeof priorityStyles] ?? defaultStyle;
 }
 
-export default function EditablePriority({ value, onChange, disabled }: EditablePriorityProps) {
+// Memoized component - only re-renders when value or disabled changes
+// Uses custom comparison to ignore onChange callback reference changes
+const EditablePriority = memo(function EditablePriority({ value, onChange, disabled }: EditablePriorityProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -113,4 +115,10 @@ export default function EditablePriority({ value, onChange, disabled }: Editable
       )}
     </div>
   );
-}
+}, (prevProps, nextProps) => {
+  // Custom comparison - only re-render if value or disabled changes
+  // Ignores onChange reference changes for better performance
+  return prevProps.value === nextProps.value && prevProps.disabled === nextProps.disabled;
+});
+
+export default EditablePriority;

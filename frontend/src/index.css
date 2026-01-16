@@ -171,7 +171,11 @@
    ============================================ */
 @layer base {
   /* Prevent overscroll bounce */
-  html, body {
+  html {
+    overscroll-behavior: none;
+  }
+
+  body {
     overscroll-behavior: none;
     overflow-x: hidden;
   }
