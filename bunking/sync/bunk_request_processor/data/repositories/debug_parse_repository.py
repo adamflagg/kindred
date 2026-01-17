@@ -264,3 +264,97 @@ class DebugParseRepository:
                         base["requester_cm_id"] = getattr(requester, "cm_id", None)
 
         return base
+
+    def get_production_fallback(self, original_request_id: str) -> dict[str, Any] | None:
+        """Get Phase 1 results from production bunk_requests via junction table.
+
+        Queries bunk_request_sources to find linked bunk_requests and extracts
+        their ai_p1_reasoning data for display in the debug UI.
+
+        Args:
+            original_request_id: ID of the original_bunk_requests record
+
+        Returns:
+            Dictionary with parsed_intents from production, or None if not found
+        """
+        try:
+            # Query bunk_request_sources with bunk_request expansion
+            result = self.pb.collection("bunk_request_sources").get_list(
+                query_params={
+                    "filter": f'original_request = "{original_request_id}"',
+                    "expand": "bunk_request",
+                    "perPage": 100,
+                }
+            )
+
+            if not result.items:
+                return None
+
+            # Aggregate parsed intents from all linked bunk_requests
+            all_intents: list[dict[str, Any]] = []
+
+            for source in result.items:
+                if not hasattr(source, "expand") or not source.expand:
+                    continue
+
+                bunk_request = source.expand.get("bunk_request")
+                if not bunk_request:
+                    continue
+
+                ai_p1_reasoning = getattr(bunk_request, "ai_p1_reasoning", None)
+                if not ai_p1_reasoning:
+                    continue
+
+                # Extract parsed_intents from ai_p1_reasoning
+                if isinstance(ai_p1_reasoning, dict):
+                    intents = ai_p1_reasoning.get("parsed_intents", [])
+                    all_intents.extend(intents)
+
+            if not all_intents:
+                return None
+
+            return {
+                "source": "production",
+                "parsed_intents": all_intents,
+                "is_valid": True,
+            }
+
+        except Exception as e:
+            logger.warning(f"Failed to get production fallback: {e}")
+            return None
+
+    def check_parse_status(self, original_request_id: str) -> tuple[bool, bool]:
+        """Check if parse results exist in debug and/or production.
+
+        Args:
+            original_request_id: ID of the original_bunk_requests record
+
+        Returns:
+            Tuple of (has_debug_result, has_production_result)
+        """
+        has_debug = False
+        has_production = False
+
+        try:
+            # Check debug_parse_results
+            debug_result = self.pb.collection(self.COLLECTION_NAME).get_list(
+                query_params={
+                    "filter": f'original_request = "{original_request_id}"',
+                    "perPage": 1,
+                }
+            )
+            has_debug = len(debug_result.items) > 0
+
+            # Check bunk_request_sources (production)
+            sources_result = self.pb.collection("bunk_request_sources").get_list(
+                query_params={
+                    "filter": f'original_request = "{original_request_id}"',
+                    "perPage": 1,
+                }
+            )
+            has_production = len(sources_result.items) > 0
+
+        except Exception as e:
+            logger.warning(f"Failed to check parse status: {e}")
+
+        return has_debug, has_production

@@ -2,16 +2,17 @@
  * ParseAnalysisDetail - Right panel showing original text vs parsed intents
  *
  * Split-view comparison of the raw input text and the AI-parsed intents.
+ * Shows source badge (Debug/Production/Not parsed) to indicate data origin.
  * Sierra Lodge aesthetic with warm, nature-inspired styling.
  */
 
-import { AlertTriangle, CheckCircle, Clock, FileText, Loader2, RefreshCw, Sparkles } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Clock, Database, FileText, FlaskConical, Loader2, RefreshCw, Sparkles } from 'lucide-react';
 import { ParseIntentCard } from './ParseIntentCard';
 import { SOURCE_FIELD_LABELS } from './types';
-import type { ParseAnalysisItem, SourceFieldType } from './types';
+import type { ParseResultWithSource, SourceFieldType } from './types';
 
 interface ParseAnalysisDetailProps {
-  item: ParseAnalysisItem | null;
+  item: ParseResultWithSource | null;
   isLoading?: boolean | undefined;
   onReparse?: (() => void) | undefined;
   isReparsing?: boolean | undefined;
@@ -55,7 +56,25 @@ export function ParseAnalysisDetail({
       {/* Header with requester info and actions */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h3 className="text-xl font-display font-bold text-foreground">{item.requester_name || 'Unknown'}</h3>
+          <div className="flex items-center gap-3">
+            <h3 className="text-xl font-display font-bold text-foreground">{item.requester_name || 'Unknown'}</h3>
+            {/* Source badge */}
+            {item.source === 'debug' ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
+                <FlaskConical className="w-3.5 h-3.5" />
+                Debug Result
+              </span>
+            ) : item.source === 'production' ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-forest-100 text-forest-700 dark:bg-forest-900/40 dark:text-forest-400">
+                <Database className="w-3.5 h-3.5" />
+                Production Result
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-bark-100 text-bark-600 dark:bg-bark-800 dark:text-bark-400">
+                Not Parsed
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-3 mt-1.5 text-sm text-muted-foreground">
             {item.requester_cm_id && (
               <span className="px-2 py-0.5 rounded-md bg-bark-100 dark:bg-bark-800 font-mono text-xs">

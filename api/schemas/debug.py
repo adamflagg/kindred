@@ -111,6 +111,49 @@ class OriginalRequestsListResponse(BaseModel):
     total: int = Field(description="Total count")
 
 
+class OriginalRequestWithStatus(BaseModel):
+    """An original bunk request with parse status flags."""
+
+    id: str = Field(description="PocketBase record ID")
+    requester_name: str | None = Field(description="Name of the camper")
+    requester_cm_id: int | None = Field(description="CampMinder ID of the requester")
+    source_field: str = Field(description="Source field type")
+    original_text: str = Field(description="Original request text")
+    year: int = Field(description="Camp year")
+    has_debug_result: bool = Field(description="Whether a debug parse result exists")
+    has_production_result: bool = Field(description="Whether production bunk_requests exist")
+
+
+class OriginalRequestsWithParseResponse(BaseModel):
+    """Response for listing original requests with parse status."""
+
+    items: list[OriginalRequestWithStatus] = Field(description="List of original requests with status")
+    total: int = Field(description="Total count")
+
+
+# Source type for parse results
+ParseResultSource = Literal["debug", "production", "none"]
+
+
+class ParseResultWithSource(BaseModel):
+    """Parse result with source indicator for fallback display."""
+
+    source: ParseResultSource = Field(description="Source of the parse result")
+    id: str | None = Field(default=None, description="Debug result record ID (if source is debug)")
+    original_request_id: str | None = Field(default=None, description="Original bunk request record ID")
+    requester_name: str | None = Field(default=None, description="Name of the camper")
+    requester_cm_id: int | None = Field(default=None, description="CampMinder ID of the requester")
+    source_field: str | None = Field(default=None, description="Source field type")
+    original_text: str | None = Field(default=None, description="Original request text")
+    parsed_intents: list[ParsedIntent] = Field(default_factory=list, description="Parsed intents")
+    is_valid: bool = Field(default=True, description="Whether parsing succeeded")
+    error_message: str | None = Field(default=None, description="Error message if parsing failed")
+    token_count: int | None = Field(default=None, description="Number of tokens used")
+    processing_time_ms: int | None = Field(default=None, description="Processing time in milliseconds")
+    prompt_version: str | None = Field(default=None, description="Version of prompt used")
+    created: datetime | None = Field(default=None, description="When the result was created")
+
+
 # Prompt Editor Schemas
 
 

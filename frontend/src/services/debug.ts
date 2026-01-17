@@ -92,6 +92,50 @@ export interface OriginalRequestsFilters {
   limit?: number;
 }
 
+// New types for fallback pattern
+export type ParseResultSource = 'debug' | 'production' | 'none';
+
+export interface OriginalRequestWithStatus {
+  id: string;
+  requester_name: string | null;
+  requester_cm_id: number | null;
+  source_field: string;
+  original_text: string;
+  year: number;
+  has_debug_result: boolean;
+  has_production_result: boolean;
+}
+
+export interface OriginalRequestsWithParseResponse {
+  items: OriginalRequestWithStatus[];
+  total: number;
+}
+
+export interface ParseResultWithSource {
+  source: ParseResultSource;
+  id: string | null;
+  original_request_id: string | null;
+  requester_name: string | null;
+  requester_cm_id: number | null;
+  source_field: string | null;
+  original_text: string | null;
+  parsed_intents: ParsedIntent[];
+  is_valid: boolean;
+  error_message: string | null;
+  token_count: number | null;
+  processing_time_ms: number | null;
+  prompt_version: string | null;
+  created: string | null;
+}
+
+export interface OriginalRequestsWithStatusFilters {
+  year: number;
+  session_cm_id?: number | undefined;
+  source_field?: SourceFieldType | undefined;
+  limit?: number | undefined;
+  offset?: number | undefined;
+}
+
 // Prompt Editor Types
 
 export interface PromptListItem {
@@ -210,6 +254,43 @@ export const debugService = {
 
     if (!response.ok) {
       throw new Error('Failed to fetch original requests');
+    }
+    return response.json();
+  },
+
+  /**
+   * List original requests with parse status flags (debug/production)
+   */
+  async listOriginalRequestsWithStatus(
+    filters: OriginalRequestsWithStatusFilters,
+    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+  ): Promise<OriginalRequestsWithParseResponse> {
+    const params = new URLSearchParams();
+    params.set('year', String(filters.year));
+    if (filters.session_cm_id) params.set('session_cm_id', String(filters.session_cm_id));
+    if (filters.source_field) params.set('source_field', filters.source_field);
+    if (filters.limit) params.set('limit', String(filters.limit));
+    if (filters.offset) params.set('offset', String(filters.offset));
+
+    const response = await fetchWithAuth(`${API_BASE}/original-requests-with-parse-status?${params}`);
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch original requests with status');
+    }
+    return response.json();
+  },
+
+  /**
+   * Get parse result with fallback (debug -> production -> none)
+   */
+  async getParseResultWithFallback(
+    originalRequestId: string,
+    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+  ): Promise<ParseResultWithSource> {
+    const response = await fetchWithAuth(`${API_BASE}/parse-result/${encodeURIComponent(originalRequestId)}`);
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch parse result');
     }
     return response.json();
   },
