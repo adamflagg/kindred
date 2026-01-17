@@ -671,7 +671,7 @@ class OriginalRequestsLoader:
 
     def load_by_filter(
         self,
-        session_cm_id: int | None = None,
+        session_cm_id: int | list[int] | None = None,
         source_field: str | None = None,
         limit: int = 50,
     ) -> list[OriginalRequest]:
@@ -680,7 +680,7 @@ class OriginalRequestsLoader:
         Used by debug service to load records matching certain criteria.
 
         Args:
-            session_cm_id: Optional session CM ID to filter by
+            session_cm_id: Optional session CM ID(s) to filter by. Can be single ID or list.
             source_field: Optional source field to filter by (bunk_with, etc.)
             limit: Maximum number of records to return
 
@@ -710,14 +710,23 @@ class OriginalRequestsLoader:
                     query_params={"filter": filter_str, "expand": "requester", "sort": "-updated"}
                 )
 
+            # Normalize session_cm_id to a set for efficient lookup
+            session_cm_ids: set[int] | None = None
+            if session_cm_id is not None:
+                if isinstance(session_cm_id, list):
+                    session_cm_ids = set(session_cm_id)
+                else:
+                    session_cm_ids = {session_cm_id}
+
             requests = []
             for record in items:
                 orig_req = self._parse_record(record)
                 if orig_req:
                     # Apply session filter if specified
-                    if session_cm_id:
+                    if session_cm_ids:
                         person_sessions = self.get_all_sessions_for_person(orig_req.requester_cm_id)
-                        if session_cm_id not in person_sessions:
+                        # Check if any of the person's sessions match our filter
+                        if not session_cm_ids.intersection(person_sessions):
                             continue
 
                     requests.append(orig_req)
