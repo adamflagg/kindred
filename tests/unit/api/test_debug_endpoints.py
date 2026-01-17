@@ -459,5 +459,473 @@ class TestDebugRouterAdminOnly:
         assert len(expected_protected_endpoints) == 5
 
 
+class TestListPromptsEndpoint:
+    """Test GET /api/debug/prompts endpoint."""
+
+    @pytest.fixture
+    def client_with_mocks(self) -> Generator[TestClient, None, None]:
+        """Create test client."""
+        from api.routers.debug import router
+
+        app = FastAPI()
+        app.include_router(router)
+
+        yield TestClient(app)
+
+    def test_list_prompts_returns_available_files(self, client_with_mocks: TestClient) -> None:
+        """Test that list prompts returns available prompt files."""
+        client = client_with_mocks
+
+        # Mock the prompts directory listing
+        with patch("api.routers.debug.PROMPTS_DIR") as mock_dir:
+            mock_dir.glob.return_value = [
+                Path("/config/prompts/parse_bunk_with.txt"),
+                Path("/config/prompts/parse_not_bunk_with.txt"),
+                Path("/config/prompts/disambiguate.txt"),
+            ]
+            mock_dir.exists.return_value = True
+
+            response = client.get("/api/debug/prompts")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "prompts" in data
+        assert len(data["prompts"]) == 3
+
+        # Check prompt item structure
+        names = [p["name"] for p in data["prompts"]]
+        assert "parse_bunk_with" in names
+        assert "parse_not_bunk_with" in names
+        assert "disambiguate" in names
+
+    def test_list_prompts_includes_metadata(self, client_with_mocks: TestClient) -> None:
+        """Test that list prompts includes file metadata."""
+        client = client_with_mocks
+
+        mock_file = Mock()
+        mock_file.name = "parse_bunk_with.txt"
+        mock_file.stem = "parse_bunk_with"
+        mock_file.stat.return_value.st_mtime = 1705312800.0  # Fixed timestamp
+
+        with patch("api.routers.debug.PROMPTS_DIR") as mock_dir:
+            mock_dir.glob.return_value = [mock_file]
+            mock_dir.exists.return_value = True
+
+            response = client.get("/api/debug/prompts")
+
+        assert response.status_code == 200
+        data = response.json()
+        prompt = data["prompts"][0]
+        assert prompt["name"] == "parse_bunk_with"
+        assert prompt["filename"] == "parse_bunk_with.txt"
+        assert "modified_at" in prompt
+
+
+class TestGetPromptEndpoint:
+    """Test GET /api/debug/prompts/{name} endpoint."""
+
+    @pytest.fixture
+    def client_with_mocks(self) -> Generator[TestClient, None, None]:
+        """Create test client."""
+        from api.routers.debug import router
+
+        app = FastAPI()
+        app.include_router(router)
+
+        yield TestClient(app)
+
+    def test_get_prompt_returns_content(self, client_with_mocks: TestClient) -> None:
+        """Test that get prompt returns file content."""
+        client = client_with_mocks
+
+        prompt_content = "# Bunk With Parser\n\nYou are parsing bunk requests..."
+
+        with patch("api.routers.debug.PROMPTS_DIR") as mock_dir:
+            mock_file = Mock()
+            mock_file.exists.return_value = True
+            mock_file.read_text.return_value = prompt_content
+            mock_file.stat.return_value.st_mtime = 1705312800.0
+            mock_dir.__truediv__ = Mock(return_value=mock_file)
+
+            response = client.get("/api/debug/prompts/parse_bunk_with")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "parse_bunk_with"
+        assert data["content"] == prompt_content
+        assert "modified_at" in data
+
+    def test_get_prompt_returns_404_for_nonexistent(self, client_with_mocks: TestClient) -> None:
+        """Test that get prompt returns 404 for nonexistent file."""
+        client = client_with_mocks
+
+        with patch("api.routers.debug.PROMPTS_DIR") as mock_dir:
+            mock_file = Mock()
+            mock_file.exists.return_value = False
+            mock_dir.__truediv__ = Mock(return_value=mock_file)
+
+            response = client.get("/api/debug/prompts/nonexistent_prompt")
+
+        assert response.status_code == 404
+
+    def test_get_prompt_sanitizes_path_traversal(self, client_with_mocks: TestClient) -> None:
+        """Test that get prompt prevents path traversal attacks."""
+        client = client_with_mocks
+
+        # Try various path traversal attempts
+        malicious_names = [
+            "../../../etc/passwd",
+            "..%2F..%2F..%2Fetc%2Fpasswd",
+            "parse_bunk_with/../../secret",
+        ]
+
+        for name in malicious_names:
+            response = client.get(f"/api/debug/prompts/{name}")
+            # Should return 400 (bad request) or 404, not actually traverse
+            assert response.status_code in [400, 404, 422]
+
+
+class TestUpdatePromptEndpoint:
+    """Test PUT /api/debug/prompts/{name} endpoint."""
+
+    @pytest.fixture
+    def client_with_mocks(self) -> Generator[TestClient, None, None]:
+        """Create test client."""
+        from api.routers.debug import router
+
+        app = FastAPI()
+        app.include_router(router)
+
+        yield TestClient(app)
+
+    def test_update_prompt_writes_content(self, client_with_mocks: TestClient) -> None:
+        """Test that update prompt writes new content to file."""
+        client = client_with_mocks
+
+        new_content = "# Updated Prompt\n\nNew instructions..."
+
+        with patch("api.routers.debug.PROMPTS_DIR") as mock_dir:
+            mock_file = Mock()
+            mock_file.exists.return_value = True
+            mock_file.stat.return_value.st_mtime = 1705312800.0
+            mock_dir.__truediv__ = Mock(return_value=mock_file)
+
+            response = client.put(
+                "/api/debug/prompts/parse_bunk_with",
+                json={"content": new_content},
+            )
+
+        assert response.status_code == 200
+        mock_file.write_text.assert_called_once_with(new_content, encoding="utf-8")
+
+        data = response.json()
+        assert data["name"] == "parse_bunk_with"
+        assert data["success"] is True
+
+    def test_update_prompt_returns_404_for_nonexistent(self, client_with_mocks: TestClient) -> None:
+        """Test that update returns 404 for nonexistent prompt."""
+        client = client_with_mocks
+
+        with patch("api.routers.debug.PROMPTS_DIR") as mock_dir:
+            mock_file = Mock()
+            mock_file.exists.return_value = False
+            mock_dir.__truediv__ = Mock(return_value=mock_file)
+
+            response = client.put(
+                "/api/debug/prompts/nonexistent_prompt",
+                json={"content": "new content"},
+            )
+
+        assert response.status_code == 404
+
+    def test_update_prompt_clears_cache(self, client_with_mocks: TestClient) -> None:
+        """Test that updating a prompt clears the loader cache."""
+        client = client_with_mocks
+
+        with patch("api.routers.debug.PROMPTS_DIR") as mock_dir:
+            mock_file = Mock()
+            mock_file.exists.return_value = True
+            mock_file.stat.return_value.st_mtime = 1705312800.0
+            mock_dir.__truediv__ = Mock(return_value=mock_file)
+
+            with patch("api.routers.debug.clear_prompt_cache") as mock_clear_cache:
+                response = client.put(
+                    "/api/debug/prompts/parse_bunk_with",
+                    json={"content": "new content"},
+                )
+
+                assert response.status_code == 200
+                mock_clear_cache.assert_called_once()
+
+    def test_update_prompt_validates_content_not_empty(self, client_with_mocks: TestClient) -> None:
+        """Test that update validates content is not empty."""
+        client = client_with_mocks
+
+        response = client.put(
+            "/api/debug/prompts/parse_bunk_with",
+            json={"content": ""},
+        )
+
+        assert response.status_code == 422  # Validation error
+
+    def test_update_prompt_sanitizes_path_traversal(self, client_with_mocks: TestClient) -> None:
+        """Test that update prompt prevents path traversal attacks."""
+        client = client_with_mocks
+
+        response = client.put(
+            "/api/debug/prompts/../../../etc/passwd",
+            json={"content": "malicious content"},
+        )
+
+        # Should return 400 or 404, not actually write
+        assert response.status_code in [400, 404, 422]
+
+
+class TestListOriginalRequestsWithParseStatusEndpoint:
+    """Test GET /api/debug/original-requests-with-parse-status endpoint."""
+
+    @pytest.fixture
+    def mock_repos(self) -> dict[str, Mock]:
+        """Create mock repositories for testing."""
+        return {
+            "debug_repo": Mock(),
+            "session_repo": Mock(),
+        }
+
+    @pytest.fixture
+    def mock_loader(self) -> Mock:
+        """Create mock loader for testing."""
+        return Mock()
+
+    @pytest.fixture
+    def client_with_mocks(
+        self, mock_repos: dict[str, Mock], mock_loader: Mock
+    ) -> Generator[tuple[TestClient, dict[str, Mock], Mock], None, None]:
+        """Create test client with mocked dependencies."""
+        with patch("api.routers.debug.get_debug_parse_repository") as mock_get_debug_repo:
+            with patch("api.routers.debug.get_session_repository") as mock_get_session_repo:
+                with patch("api.routers.debug.OriginalRequestsLoader") as MockLoaderClass:
+                    mock_get_debug_repo.return_value = mock_repos["debug_repo"]
+                    mock_get_session_repo.return_value = mock_repos["session_repo"]
+                    MockLoaderClass.return_value = mock_loader
+
+                    from api.routers.debug import router
+
+                    app = FastAPI()
+                    app.include_router(router)
+
+                    yield TestClient(app), mock_repos, mock_loader
+
+    def test_list_returns_original_requests_with_parse_status(
+        self, client_with_mocks: tuple[TestClient, dict[str, Mock], Mock]
+    ) -> None:
+        """Test that endpoint returns original requests with has_debug_result and has_production_result flags."""
+        client, mock_repos, mock_loader = client_with_mocks
+
+        # Mock original request
+        mock_original = Mock()
+        mock_original.id = "orig_req_1"
+        mock_original.preferred_name = None
+        mock_original.first_name = "Emma"
+        mock_original.last_name = "Johnson"
+        mock_original.requester_cm_id = 12345
+        mock_original.field = "bunk_with"
+        mock_original.content = "With Mia please"
+        mock_original.year = 2025
+        mock_original.processed = None
+
+        mock_loader.load_by_filter.return_value = [mock_original]
+
+        # Mock parse status check - has production result but no debug
+        mock_repos["debug_repo"].check_parse_status.return_value = (False, True)
+
+        response = client.get("/api/debug/original-requests-with-parse-status?year=2025")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "items" in data
+        assert len(data["items"]) == 1
+
+        item = data["items"][0]
+        assert item["id"] == "orig_req_1"
+        assert item["requester_name"] == "Emma Johnson"
+        assert item["has_debug_result"] is False
+        assert item["has_production_result"] is True
+
+    def test_list_filters_by_session_and_source_field(
+        self, client_with_mocks: tuple[TestClient, dict[str, Mock], Mock]
+    ) -> None:
+        """Test that endpoint filters by session_cm_id and source_field."""
+        client, mock_repos, mock_loader = client_with_mocks
+
+        mock_loader.load_by_filter.return_value = []
+
+        response = client.get(
+            "/api/debug/original-requests-with-parse-status?year=2025&session_cm_id=1000002&source_field=bunking_notes"
+        )
+
+        assert response.status_code == 200
+
+        call_kwargs = mock_loader.load_by_filter.call_args[1]
+        assert call_kwargs.get("session_cm_id") == 1000002
+        assert call_kwargs.get("source_field") == "bunking_notes"
+
+    def test_list_year_required(
+        self, client_with_mocks: tuple[TestClient, dict[str, Mock], Mock]
+    ) -> None:
+        """Test that year parameter is required."""
+        client, _mock_repos, _mock_loader = client_with_mocks
+
+        response = client.get("/api/debug/original-requests-with-parse-status")
+
+        assert response.status_code == 422  # Validation error - year required
+
+
+class TestGetParseResultWithFallbackEndpoint:
+    """Test GET /api/debug/parse-result/{original_request_id} endpoint."""
+
+    @pytest.fixture
+    def mock_repos(self) -> dict[str, Mock]:
+        """Create mock repositories for testing."""
+        return {"debug_repo": Mock()}
+
+    @pytest.fixture
+    def client_with_mocks(
+        self, mock_repos: dict[str, Mock]
+    ) -> Generator[tuple[TestClient, dict[str, Mock]], None, None]:
+        """Create test client with mocked repositories."""
+        with patch("api.routers.debug.get_debug_parse_repository") as mock_get_debug_repo:
+            mock_get_debug_repo.return_value = mock_repos["debug_repo"]
+
+            from api.routers.debug import router
+
+            app = FastAPI()
+            app.include_router(router)
+
+            yield TestClient(app), mock_repos
+
+    def test_returns_debug_result_when_available(
+        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
+    ) -> None:
+        """Test that endpoint returns debug result when it exists."""
+        client, mock_repos = client_with_mocks
+
+        # Debug result exists
+        mock_repos["debug_repo"].get_by_original_request.return_value = {
+            "id": "debug_123",
+            "original_request_id": "orig_req_456",
+            "requester_name": "Emma Johnson",
+            "requester_cm_id": 12345,
+            "source_field": "bunk_with",
+            "original_text": "With Mia please",
+            "parsed_intents": [
+                {
+                    "request_type": "bunk_with",
+                    "target_name": "Mia",
+                    "keywords_found": ["with"],
+                    "parse_notes": "Clear request",
+                    "reasoning": "Standard pattern",
+                    "list_position": 0,
+                    "needs_clarification": False,
+                }
+            ],
+            "is_valid": True,
+            "token_count": 150,
+            "processing_time_ms": 1250,
+            "prompt_version": "v1.2.0",
+        }
+
+        response = client.get("/api/debug/parse-result/orig_req_456")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["source"] == "debug"
+        assert data["id"] == "debug_123"
+        assert len(data["parsed_intents"]) == 1
+        assert data["parsed_intents"][0]["target_name"] == "Mia"
+
+    def test_returns_production_fallback_when_no_debug(
+        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
+    ) -> None:
+        """Test that endpoint returns production data when debug result doesn't exist."""
+        client, mock_repos = client_with_mocks
+
+        # No debug result
+        mock_repos["debug_repo"].get_by_original_request.return_value = None
+
+        # Production fallback exists
+        mock_repos["debug_repo"].get_production_fallback.return_value = {
+            "source": "production",
+            "parsed_intents": [
+                {
+                    "request_type": "bunk_with",
+                    "target_name": "Mia Garcia",
+                    "keywords_found": ["with"],
+                    "parse_notes": "Processed in production",
+                    "reasoning": "From Phase 1",
+                    "list_position": 0,
+                    "needs_clarification": False,
+                }
+            ],
+            "is_valid": True,
+        }
+
+        response = client.get("/api/debug/parse-result/orig_req_456")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["source"] == "production"
+        assert len(data["parsed_intents"]) == 1
+        assert data["parsed_intents"][0]["target_name"] == "Mia Garcia"
+
+    def test_returns_none_source_when_no_results(
+        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
+    ) -> None:
+        """Test that endpoint returns source='none' when neither debug nor production exists."""
+        client, mock_repos = client_with_mocks
+
+        # No debug result
+        mock_repos["debug_repo"].get_by_original_request.return_value = None
+        # No production fallback
+        mock_repos["debug_repo"].get_production_fallback.return_value = None
+
+        response = client.get("/api/debug/parse-result/orig_req_789")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["source"] == "none"
+        assert data["parsed_intents"] == []
+
+    def test_debug_takes_priority_over_production(
+        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
+    ) -> None:
+        """Test that debug result takes priority even when production exists."""
+        client, mock_repos = client_with_mocks
+
+        # Both debug and production exist
+        mock_repos["debug_repo"].get_by_original_request.return_value = {
+            "id": "debug_123",
+            "original_request_id": "orig_req_456",
+            "parsed_intents": [{"request_type": "bunk_with", "target_name": "Debug Target"}],
+            "is_valid": True,
+        }
+
+        mock_repos["debug_repo"].get_production_fallback.return_value = {
+            "source": "production",
+            "parsed_intents": [{"request_type": "bunk_with", "target_name": "Production Target"}],
+        }
+
+        response = client.get("/api/debug/parse-result/orig_req_456")
+
+        assert response.status_code == 200
+        data = response.json()
+        # Debug should be returned, not production
+        assert data["source"] == "debug"
+        assert data["parsed_intents"][0]["target_name"] == "Debug Target"
+
+        # get_production_fallback should NOT have been called since debug was found
+        mock_repos["debug_repo"].get_production_fallback.assert_not_called()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
