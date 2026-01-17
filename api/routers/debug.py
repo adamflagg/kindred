@@ -34,10 +34,13 @@ from ..schemas.debug import (
     ClearAnalysisResponse,
     OriginalRequestItem,
     OriginalRequestsListResponse,
+    OriginalRequestsWithParseResponse,
+    OriginalRequestWithStatus,
     ParseAnalysisDetailItem,
     ParseAnalysisItem,
     ParseAnalysisListResponse,
     ParsedIntent,
+    ParseResultWithSource,
     Phase1OnlyRequest,
     Phase1OnlyResponse,
     PromptContentResponse,
@@ -381,6 +384,145 @@ async def list_original_requests(
         )
 
     return OriginalRequestsListResponse(items=items, total=len(items))
+
+
+@router.get("/original-requests-with-parse-status", response_model=OriginalRequestsWithParseResponse)
+async def list_original_requests_with_parse_status(
+    year: int = Query(description="Year to filter by (required)"),
+    session_cm_id: int | None = Query(default=None, description="Filter by session CM ID"),
+    source_field: SourceFieldType | None = Query(default=None, description="Filter by source field"),
+    limit: int = Query(default=100, ge=1, le=500, description="Maximum results"),
+    offset: int = Query(default=0, ge=0, description="Pagination offset"),
+) -> OriginalRequestsWithParseResponse:
+    """List original_bunk_requests with their parse status flags.
+
+    For each original request, indicates whether debug and/or production
+    parse results exist. Use this to show the debug UI with status indicators.
+    """
+    # Create loader with specified year
+    loader = OriginalRequestsLoader(pb, year)
+    loader.load_persons_cache()
+
+    records = loader.load_by_filter(
+        session_cm_id=session_cm_id,
+        source_field=source_field,
+        limit=limit,
+    )
+
+    debug_repo = get_debug_parse_repository()
+
+    items = []
+    for record in records:
+        first = record.preferred_name or record.first_name
+        requester_name = f"{first} {record.last_name}".strip()
+
+        # Check parse status for this record
+        has_debug, has_production = debug_repo.check_parse_status(record.id)
+
+        items.append(
+            OriginalRequestWithStatus(
+                id=record.id,
+                requester_name=requester_name,
+                requester_cm_id=record.requester_cm_id,
+                source_field=record.field,
+                original_text=record.content,
+                year=record.year,
+                has_debug_result=has_debug,
+                has_production_result=has_production,
+            )
+        )
+
+    return OriginalRequestsWithParseResponse(items=items, total=len(items))
+
+
+@router.get("/parse-result/{original_request_id}", response_model=ParseResultWithSource)
+async def get_parse_result_with_fallback(original_request_id: str) -> ParseResultWithSource:
+    """Get Phase 1 parse result for an original request with fallback.
+
+    Priority:
+    1. debug_parse_results (if exists) - returns source="debug"
+    2. bunk_requests via bunk_request_sources (fallback) - returns source="production"
+    3. Neither exists - returns source="none" with empty parsed_intents
+    """
+    debug_repo = get_debug_parse_repository()
+
+    # First, check for debug result
+    debug_result = debug_repo.get_by_original_request(original_request_id)
+    if debug_result:
+        # Convert parsed_intents to proper model
+        parsed_intents = []
+        for intent in debug_result.get("parsed_intents", []):
+            parsed_intents.append(
+                ParsedIntent(
+                    request_type=intent.get("request_type", "unknown"),
+                    target_name=intent.get("target_name"),
+                    keywords_found=intent.get("keywords_found", []),
+                    parse_notes=intent.get("parse_notes", ""),
+                    reasoning=intent.get("reasoning", ""),
+                    list_position=intent.get("list_position", 0),
+                    needs_clarification=intent.get("needs_clarification", False),
+                    temporal_info=intent.get("temporal_info"),
+                )
+            )
+
+        # Parse created timestamp
+        created_str = debug_result.get("created")
+        created_dt = None
+        if created_str:
+            try:
+                created_dt = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
+            except (ValueError, TypeError):
+                pass
+
+        return ParseResultWithSource(
+            source="debug",
+            id=debug_result.get("id"),
+            original_request_id=original_request_id,
+            requester_name=debug_result.get("requester_name"),
+            requester_cm_id=debug_result.get("requester_cm_id"),
+            source_field=debug_result.get("source_field"),
+            original_text=debug_result.get("original_text"),
+            parsed_intents=parsed_intents,
+            is_valid=debug_result.get("is_valid", True),
+            error_message=debug_result.get("error_message"),
+            token_count=debug_result.get("token_count"),
+            processing_time_ms=debug_result.get("processing_time_ms"),
+            prompt_version=debug_result.get("prompt_version"),
+            created=created_dt,
+        )
+
+    # Fallback to production data
+    production_result = debug_repo.get_production_fallback(original_request_id)
+    if production_result:
+        # Convert parsed_intents to proper model
+        parsed_intents = []
+        for intent in production_result.get("parsed_intents", []):
+            parsed_intents.append(
+                ParsedIntent(
+                    request_type=intent.get("request_type", "unknown"),
+                    target_name=intent.get("target_name"),
+                    keywords_found=intent.get("keywords_found", []),
+                    parse_notes=intent.get("parse_notes", ""),
+                    reasoning=intent.get("reasoning", ""),
+                    list_position=intent.get("list_position", 0),
+                    needs_clarification=intent.get("needs_clarification", False),
+                    temporal_info=intent.get("temporal_info"),
+                )
+            )
+
+        return ParseResultWithSource(
+            source="production",
+            original_request_id=original_request_id,
+            parsed_intents=parsed_intents,
+            is_valid=production_result.get("is_valid", True),
+        )
+
+    # Neither debug nor production exists
+    return ParseResultWithSource(
+        source="none",
+        original_request_id=original_request_id,
+        parsed_intents=[],
+    )
 
 
 # ============================================================================
