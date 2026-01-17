@@ -130,7 +130,7 @@ export interface ParseResultWithSource {
 
 export interface OriginalRequestsWithStatusFilters {
   year: number;
-  session_cm_id?: number | undefined;
+  session_cm_ids?: number[] | undefined;
   source_field?: SourceFieldType | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
@@ -267,7 +267,12 @@ export const debugService = {
   ): Promise<OriginalRequestsWithParseResponse> {
     const params = new URLSearchParams();
     params.set('year', String(filters.year));
-    if (filters.session_cm_id) params.set('session_cm_id', String(filters.session_cm_id));
+    // Pass multiple session_cm_id params for array (FastAPI handles repeated query params)
+    if (filters.session_cm_ids) {
+      filters.session_cm_ids.forEach((cmId) => {
+        params.append('session_cm_id', String(cmId));
+      });
+    }
     if (filters.source_field) params.set('source_field', filters.source_field);
     if (filters.limit) params.set('limit', String(filters.limit));
     if (filters.offset) params.set('offset', String(filters.offset));
