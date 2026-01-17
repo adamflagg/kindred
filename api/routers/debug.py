@@ -7,7 +7,9 @@ AI intent parsing without running the full 3-phase pipeline.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+import re
+from datetime import UTC, datetime
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -20,6 +22,9 @@ from bunking.sync.bunk_request_processor.data.repositories.session_repository im
 from bunking.sync.bunk_request_processor.integration.original_requests_loader import (
     OriginalRequestsLoader,
 )
+from bunking.sync.bunk_request_processor.prompts.loader import (
+    clear_cache as clear_prompt_cache,
+)
 from bunking.sync.bunk_request_processor.services.phase1_debug_service import (
     Phase1DebugService,
 )
@@ -29,12 +34,20 @@ from ..schemas.debug import (
     ClearAnalysisResponse,
     OriginalRequestItem,
     OriginalRequestsListResponse,
+    OriginalRequestsWithParseResponse,
+    OriginalRequestWithStatus,
     ParseAnalysisDetailItem,
     ParseAnalysisItem,
     ParseAnalysisListResponse,
     ParsedIntent,
+    ParseResultWithSource,
     Phase1OnlyRequest,
     Phase1OnlyResponse,
+    PromptContentResponse,
+    PromptListItem,
+    PromptListResponse,
+    PromptUpdateRequest,
+    PromptUpdateResponse,
     SourceFieldType,
 )
 from ..settings import get_settings
@@ -42,6 +55,12 @@ from ..settings import get_settings
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/debug", tags=["debug"])
+
+# Prompts directory - relative to project root
+PROMPTS_DIR = Path(__file__).parent.parent.parent / "config" / "prompts"
+
+# Valid prompt name pattern (alphanumeric with underscores only)
+VALID_PROMPT_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_]+$")
 
 
 # Dependency functions for repository injection (mockable in tests)
@@ -365,3 +384,238 @@ async def list_original_requests(
         )
 
     return OriginalRequestsListResponse(items=items, total=len(items))
+
+
+@router.get("/original-requests-with-parse-status", response_model=OriginalRequestsWithParseResponse)
+async def list_original_requests_with_parse_status(
+    year: int = Query(description="Year to filter by (required)"),
+    session_cm_id: list[int] | None = Query(default=None, description="Filter by session CM ID(s)"),
+    source_field: SourceFieldType | None = Query(default=None, description="Filter by source field"),
+    limit: int = Query(default=100, ge=1, le=500, description="Maximum results"),
+    offset: int = Query(default=0, ge=0, description="Pagination offset"),
+) -> OriginalRequestsWithParseResponse:
+    """List original_bunk_requests with their parse status flags.
+
+    For each original request, indicates whether debug and/or production
+    parse results exist. Use this to show the debug UI with status indicators.
+
+    session_cm_id can be passed multiple times to filter by multiple sessions,
+    e.g., ?session_cm_id=200&session_cm_id=201 to include main + AG sessions.
+    """
+    # Create loader with specified year
+    loader = OriginalRequestsLoader(pb, year)
+    loader.load_persons_cache()
+
+    records = loader.load_by_filter(
+        session_cm_id=session_cm_id,
+        source_field=source_field,
+        limit=limit,
+    )
+
+    debug_repo = get_debug_parse_repository()
+
+    items = []
+    for record in records:
+        first = record.preferred_name or record.first_name
+        requester_name = f"{first} {record.last_name}".strip()
+
+        # Check parse status for this record
+        has_debug, has_production = debug_repo.check_parse_status(record.id)
+
+        items.append(
+            OriginalRequestWithStatus(
+                id=record.id,
+                requester_name=requester_name,
+                requester_cm_id=record.requester_cm_id,
+                source_field=record.field,
+                original_text=record.content,
+                year=record.year,
+                has_debug_result=has_debug,
+                has_production_result=has_production,
+            )
+        )
+
+    return OriginalRequestsWithParseResponse(items=items, total=len(items))
+
+
+@router.get("/parse-result/{original_request_id}", response_model=ParseResultWithSource)
+async def get_parse_result_with_fallback(original_request_id: str) -> ParseResultWithSource:
+    """Get Phase 1 parse result for an original request with fallback.
+
+    Priority:
+    1. debug_parse_results (if exists) - returns source="debug"
+    2. bunk_requests via bunk_request_sources (fallback) - returns source="production"
+    3. Neither exists - returns source="none" with empty parsed_intents
+    """
+    debug_repo = get_debug_parse_repository()
+
+    # First, check for debug result
+    debug_result = debug_repo.get_by_original_request(original_request_id)
+    if debug_result:
+        # Convert parsed_intents to proper model
+        parsed_intents = []
+        for intent in debug_result.get("parsed_intents", []):
+            parsed_intents.append(
+                ParsedIntent(
+                    request_type=intent.get("request_type", "unknown"),
+                    target_name=intent.get("target_name"),
+                    keywords_found=intent.get("keywords_found", []),
+                    parse_notes=intent.get("parse_notes", ""),
+                    reasoning=intent.get("reasoning", ""),
+                    list_position=intent.get("list_position", 0),
+                    needs_clarification=intent.get("needs_clarification", False),
+                    temporal_info=intent.get("temporal_info"),
+                )
+            )
+
+        # Parse created timestamp
+        created_str = debug_result.get("created")
+        created_dt = None
+        if created_str:
+            try:
+                created_dt = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
+            except (ValueError, TypeError):
+                pass
+
+        return ParseResultWithSource(
+            source="debug",
+            id=debug_result.get("id"),
+            original_request_id=original_request_id,
+            requester_name=debug_result.get("requester_name"),
+            requester_cm_id=debug_result.get("requester_cm_id"),
+            source_field=debug_result.get("source_field"),
+            original_text=debug_result.get("original_text"),
+            parsed_intents=parsed_intents,
+            is_valid=debug_result.get("is_valid", True),
+            error_message=debug_result.get("error_message"),
+            token_count=debug_result.get("token_count"),
+            processing_time_ms=debug_result.get("processing_time_ms"),
+            prompt_version=debug_result.get("prompt_version"),
+            created=created_dt,
+        )
+
+    # Fallback to production data
+    production_result = debug_repo.get_production_fallback(original_request_id)
+    if production_result:
+        # Convert parsed_intents to proper model
+        parsed_intents = []
+        for intent in production_result.get("parsed_intents", []):
+            parsed_intents.append(
+                ParsedIntent(
+                    request_type=intent.get("request_type", "unknown"),
+                    target_name=intent.get("target_name"),
+                    keywords_found=intent.get("keywords_found", []),
+                    parse_notes=intent.get("parse_notes", ""),
+                    reasoning=intent.get("reasoning", ""),
+                    list_position=intent.get("list_position", 0),
+                    needs_clarification=intent.get("needs_clarification", False),
+                    temporal_info=intent.get("temporal_info"),
+                )
+            )
+
+        return ParseResultWithSource(
+            source="production",
+            original_request_id=original_request_id,
+            parsed_intents=parsed_intents,
+            is_valid=production_result.get("is_valid", True),
+        )
+
+    # Neither debug nor production exists
+    return ParseResultWithSource(
+        source="none",
+        original_request_id=original_request_id,
+        parsed_intents=[],
+    )
+
+
+# ============================================================================
+# Prompt Editor Endpoints
+# ============================================================================
+
+
+def _validate_prompt_name(name: str) -> None:
+    """Validate prompt name to prevent path traversal attacks."""
+    if not VALID_PROMPT_NAME_PATTERN.match(name):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid prompt name. Only alphanumeric characters and underscores allowed.",
+        )
+
+
+def _get_file_modified_at(path: Path) -> datetime | None:
+    """Get file modification time as datetime."""
+    try:
+        mtime = path.stat().st_mtime
+        return datetime.fromtimestamp(mtime, tz=UTC)
+    except OSError:
+        return None
+
+
+@router.get("/prompts", response_model=PromptListResponse)
+async def list_prompts() -> PromptListResponse:
+    """List available prompt files.
+
+    Returns all .txt files in the config/prompts directory.
+    """
+    if not PROMPTS_DIR.exists():
+        return PromptListResponse(prompts=[])
+
+    prompts = []
+    for file_path in PROMPTS_DIR.glob("*.txt"):
+        prompts.append(
+            PromptListItem(
+                name=file_path.stem,
+                filename=file_path.name,
+                modified_at=_get_file_modified_at(file_path),
+            )
+        )
+
+    # Sort by name for consistent ordering
+    prompts.sort(key=lambda p: p.name)
+    return PromptListResponse(prompts=prompts)
+
+
+@router.get("/prompts/{name}", response_model=PromptContentResponse)
+async def get_prompt(name: str) -> PromptContentResponse:
+    """Get the content of a specific prompt file.
+
+    Args:
+        name: Prompt name (without .txt extension)
+    """
+    _validate_prompt_name(name)
+
+    file_path = PROMPTS_DIR / f"{name}.txt"
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail=f"Prompt '{name}' not found")
+
+    content = file_path.read_text(encoding="utf-8")
+    modified_at = _get_file_modified_at(file_path)
+
+    return PromptContentResponse(
+        name=name,
+        content=content,
+        modified_at=modified_at,
+    )
+
+
+@router.put("/prompts/{name}", response_model=PromptUpdateResponse)
+async def update_prompt(name: str, request: PromptUpdateRequest) -> PromptUpdateResponse:
+    """Update a prompt file's content.
+
+    Args:
+        name: Prompt name (without .txt extension)
+        request: Request body with new content
+    """
+    _validate_prompt_name(name)
+
+    file_path = PROMPTS_DIR / f"{name}.txt"
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail=f"Prompt '{name}' not found")
+
+    # Write the new content
+    file_path.write_text(request.content, encoding="utf-8")
+
+    # Clear the prompt cache so the new content is used
+    clear_prompt_cache()
+
+    return PromptUpdateResponse(name=name, success=True)

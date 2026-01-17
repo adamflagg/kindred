@@ -92,6 +92,77 @@ export interface OriginalRequestsFilters {
   limit?: number;
 }
 
+// New types for fallback pattern
+export type ParseResultSource = 'debug' | 'production' | 'none';
+
+export interface OriginalRequestWithStatus {
+  id: string;
+  requester_name: string | null;
+  requester_cm_id: number | null;
+  source_field: string;
+  original_text: string;
+  year: number;
+  has_debug_result: boolean;
+  has_production_result: boolean;
+}
+
+export interface OriginalRequestsWithParseResponse {
+  items: OriginalRequestWithStatus[];
+  total: number;
+}
+
+export interface ParseResultWithSource {
+  source: ParseResultSource;
+  id: string | null;
+  original_request_id: string | null;
+  requester_name: string | null;
+  requester_cm_id: number | null;
+  source_field: string | null;
+  original_text: string | null;
+  parsed_intents: ParsedIntent[];
+  is_valid: boolean;
+  error_message: string | null;
+  token_count: number | null;
+  processing_time_ms: number | null;
+  prompt_version: string | null;
+  created: string | null;
+}
+
+export interface OriginalRequestsWithStatusFilters {
+  year: number;
+  session_cm_ids?: number[] | undefined;
+  source_field?: SourceFieldType | undefined;
+  limit?: number | undefined;
+  offset?: number | undefined;
+}
+
+// Prompt Editor Types
+
+export interface PromptListItem {
+  name: string;
+  filename: string;
+  modified_at: string | null;
+}
+
+export interface PromptListResponse {
+  prompts: PromptListItem[];
+}
+
+export interface PromptContentResponse {
+  name: string;
+  content: string;
+  modified_at: string | null;
+}
+
+export interface PromptUpdateRequest {
+  content: string;
+}
+
+export interface PromptUpdateResponse {
+  name: string;
+  success: boolean;
+}
+
 export const debugService = {
   /**
    * List parse analysis results with optional filters
@@ -183,6 +254,108 @@ export const debugService = {
 
     if (!response.ok) {
       throw new Error('Failed to fetch original requests');
+    }
+    return response.json();
+  },
+
+  /**
+   * List original requests with parse status flags (debug/production)
+   */
+  async listOriginalRequestsWithStatus(
+    filters: OriginalRequestsWithStatusFilters,
+    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+  ): Promise<OriginalRequestsWithParseResponse> {
+    const params = new URLSearchParams();
+    params.set('year', String(filters.year));
+    // Pass multiple session_cm_id params for array (FastAPI handles repeated query params)
+    if (filters.session_cm_ids) {
+      filters.session_cm_ids.forEach((cmId) => {
+        params.append('session_cm_id', String(cmId));
+      });
+    }
+    if (filters.source_field) params.set('source_field', filters.source_field);
+    if (filters.limit) params.set('limit', String(filters.limit));
+    if (filters.offset) params.set('offset', String(filters.offset));
+
+    const response = await fetchWithAuth(`${API_BASE}/original-requests-with-parse-status?${params}`);
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch original requests with status');
+    }
+    return response.json();
+  },
+
+  /**
+   * Get parse result with fallback (debug -> production -> none)
+   */
+  async getParseResultWithFallback(
+    originalRequestId: string,
+    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+  ): Promise<ParseResultWithSource> {
+    const response = await fetchWithAuth(`${API_BASE}/parse-result/${encodeURIComponent(originalRequestId)}`);
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch parse result');
+    }
+    return response.json();
+  },
+
+  // ============================================================================
+  // Prompt Editor Methods
+  // ============================================================================
+
+  /**
+   * List available prompt files
+   */
+  async listPrompts(
+    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+  ): Promise<PromptListResponse> {
+    const response = await fetchWithAuth(`${API_BASE}/prompts`);
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch prompts list');
+    }
+    return response.json();
+  },
+
+  /**
+   * Get the content of a specific prompt
+   */
+  async getPrompt(
+    name: string,
+    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+  ): Promise<PromptContentResponse> {
+    const response = await fetchWithAuth(`${API_BASE}/prompts/${encodeURIComponent(name)}`);
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error(`Prompt '${name}' not found`);
+      }
+      throw new Error('Failed to fetch prompt content');
+    }
+    return response.json();
+  },
+
+  /**
+   * Update a prompt's content
+   */
+  async updatePrompt(
+    name: string,
+    content: string,
+    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+  ): Promise<PromptUpdateResponse> {
+    const response = await fetchWithAuth(`${API_BASE}/prompts/${encodeURIComponent(name)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content } satisfies PromptUpdateRequest),
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error(`Prompt '${name}' not found`);
+      }
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.detail || 'Failed to update prompt');
     }
     return response.json();
   },

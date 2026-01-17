@@ -9,6 +9,7 @@ import { debugService } from '../services/debug';
 import type {
   ParseAnalysisFilters,
   OriginalRequestsFilters,
+  OriginalRequestsWithStatusFilters,
   Phase1OnlyRequest,
 } from '../services/debug';
 
@@ -76,6 +77,46 @@ export function useOriginalRequests(filters: OriginalRequestsFilters) {
 }
 
 /**
+ * Hook to fetch original requests with parse status (debug/production flags)
+ */
+export function useOriginalRequestsWithStatus(filters: OriginalRequestsWithStatusFilters) {
+  const { fetchWithAuth, isAuthenticated } = useApiWithAuth();
+
+  // Build filter object only with defined values
+  const filterArg =
+    filters.session_cm_ids !== undefined || filters.source_field !== undefined
+      ? {
+          ...(filters.session_cm_ids !== undefined && { sessionCmIds: filters.session_cm_ids }),
+          ...(filters.source_field !== undefined && { sourceField: filters.source_field }),
+        }
+      : undefined;
+
+  return useQuery({
+    queryKey: queryKeys.originalRequestsWithStatus(filters.year, filterArg),
+    queryFn: () => debugService.listOriginalRequestsWithStatus(filters, fetchWithAuth),
+    enabled: isAuthenticated && !!filters.year,
+    ...userDataOptions,
+  });
+}
+
+/**
+ * Hook to fetch parse result with fallback (debug -> production -> none)
+ */
+export function useParseResultWithFallback(originalRequestId: string | null) {
+  const { fetchWithAuth, isAuthenticated } = useApiWithAuth();
+
+  return useQuery({
+    queryKey: queryKeys.parseResultWithFallback(originalRequestId || ''),
+    queryFn: () => {
+      if (!originalRequestId) throw new Error('Original request ID is required');
+      return debugService.getParseResultWithFallback(originalRequestId, fetchWithAuth);
+    },
+    enabled: isAuthenticated && !!originalRequestId,
+    ...userDataOptions,
+  });
+}
+
+/**
  * Hook to run Phase 1 parsing on selected requests
  */
 export function useParsePhase1Only() {
@@ -122,6 +163,59 @@ export function useClearParseAnalysis() {
     mutationFn: () => debugService.clearParseAnalysis(fetchWithAuth),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['parse-analysis'] });
+    },
+  });
+}
+
+// ============================================================================
+// Prompt Editor Hooks
+// ============================================================================
+
+/**
+ * Hook to fetch the list of available prompts
+ */
+export function usePromptsList() {
+  const { fetchWithAuth, isAuthenticated } = useApiWithAuth();
+
+  return useQuery({
+    queryKey: queryKeys.prompts(),
+    queryFn: () => debugService.listPrompts(fetchWithAuth),
+    enabled: isAuthenticated,
+    ...userDataOptions,
+  });
+}
+
+/**
+ * Hook to fetch a specific prompt's content
+ */
+export function usePrompt(name: string | null) {
+  const { fetchWithAuth, isAuthenticated } = useApiWithAuth();
+
+  return useQuery({
+    queryKey: queryKeys.prompt(name || ''),
+    queryFn: () => {
+      if (!name) throw new Error('Prompt name is required');
+      return debugService.getPrompt(name, fetchWithAuth);
+    },
+    enabled: isAuthenticated && !!name,
+    ...userDataOptions,
+  });
+}
+
+/**
+ * Hook to update a prompt's content
+ */
+export function useUpdatePrompt() {
+  const { fetchWithAuth } = useApiWithAuth();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ name, content }: { name: string; content: string }) =>
+      debugService.updatePrompt(name, content, fetchWithAuth),
+    onSuccess: (_data, variables) => {
+      // Invalidate both the specific prompt and the list
+      queryClient.invalidateQueries({ queryKey: queryKeys.prompt(variables.name) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.prompts() });
     },
   });
 }

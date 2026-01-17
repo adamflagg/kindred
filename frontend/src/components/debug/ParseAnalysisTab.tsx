@@ -2,31 +2,41 @@
  * ParseAnalysisTab - Main container for parse analysis debugging
  *
  * Two-panel layout with filters, requester list (left), and detail view (right).
+ * Uses fallback pattern: shows debug results if available, otherwise production.
  */
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 
 import { useYear } from '../../hooks/useCurrentYear';
 import { useApiWithAuth } from '../../hooks/useApiWithAuth';
 import {
-  useParseAnalysis,
+  useOriginalRequestsWithStatus,
+  useParseResultWithFallback,
   useParsePhase1Only,
   useClearParseAnalysis,
   useReparseSingle,
 } from '../../hooks/useParseAnalysis';
 import { queryKeys, syncDataOptions } from '../../utils/queryKeys';
+import {
+  getDebugDropdownSessions,
+  buildAgSessionCmIdMap,
+  getEffectiveCmIds,
+  filterByRequesterName,
+} from '../../utils/debugParserUtils';
 
 import { ParseAnalysisFilters } from './ParseAnalysisFilters';
 import { ParseAnalysisList } from './ParseAnalysisList';
 import { ParseAnalysisDetail } from './ParseAnalysisDetail';
-import type { ParseAnalysisItem, SourceFieldType } from './types';
+import type { OriginalRequestWithStatus, SourceFieldType } from './types';
 
 interface Session {
   id: string;
   cm_id: number;
   name: string;
+  session_type?: string;
+  parent_id?: number | null;
 }
 
 export function ParseAnalysisTab() {
@@ -36,17 +46,21 @@ export function ParseAnalysisTab() {
   // Filter state
   const [sessionCmId, setSessionCmId] = useState<number | null>(null);
   const [sourceField, setSourceField] = useState<SourceFieldType | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // Selection state
-  const [selectedItem, setSelectedItem] = useState<ParseAnalysisItem | null>(null);
+  // Selection state - now tracks original_request_id for fetching parse result with fallback
+  const [selectedOriginalRequestId, setSelectedOriginalRequestId] = useState<string | null>(null);
   const [reparsingIds, setReparsingIds] = useState<Set<string>>(new Set());
 
-  // Fetch sessions for filter dropdown
-  const { data: sessions = [] } = useQuery<Session[]>({
-    queryKey: queryKeys.sessions(currentYear),
+  // Fetch all summer camp sessions (main + ag + embedded)
+  const { data: allSessions = [] } = useQuery<Session[]>({
+    queryKey: [...queryKeys.sessions(currentYear), 'debug-filter'],
     queryFn: async () => {
+      const filter = encodeURIComponent(
+        `(session_type = "main" || session_type = "ag" || session_type = "embedded") && year = ${currentYear}`
+      );
       const res = await fetchWithAuth(
-        `/api/collections/camp_sessions/records?filter=(year=${currentYear})&sort=name`
+        `/api/collections/camp_sessions/records?filter=${filter}&sort=name`
       );
       if (!res.ok) throw new Error('Failed to fetch sessions');
       const data = await res.json();
@@ -56,16 +70,38 @@ export function ParseAnalysisTab() {
     ...syncDataOptions,
   });
 
-  // Fetch parse analysis results
+  // Filter sessions for dropdown (main + embedded only, AG excluded)
+  const dropdownSessions = useMemo(
+    () => getDebugDropdownSessions(allSessions),
+    [allSessions]
+  );
+
+  // Build AG session cm_id mapping (main cm_id -> [ag cm_ids])
+  const agSessionMap = useMemo(() => buildAgSessionCmIdMap(allSessions), [allSessions]);
+
+  // Get effective cm_ids for API call (includes AG children for main sessions)
+  const effectiveCmIds = useMemo(
+    () => getEffectiveCmIds(sessionCmId, agSessionMap),
+    [sessionCmId, agSessionMap]
+  );
+
+  // Fetch original requests with parse status (for left panel list)
   const {
-    data: analysisData,
-    isLoading: isLoadingAnalysis,
-    refetch: refetchAnalysis,
-  } = useParseAnalysis({
-    session_cm_id: sessionCmId ?? undefined,
+    data: requestsData,
+    isLoading: isLoadingRequests,
+    refetch: refetchRequests,
+  } = useOriginalRequestsWithStatus({
+    year: currentYear,
+    session_cm_ids: effectiveCmIds,
     source_field: sourceField ?? undefined,
     limit: 100,
   });
+
+  // Fetch parse result with fallback for selected item (for right panel detail)
+  const {
+    data: parseResult,
+    isLoading: isLoadingDetail,
+  } = useParseResultWithFallback(selectedOriginalRequestId);
 
   // Mutations
   const parsePhase1Mutation = useParsePhase1Only();
@@ -73,13 +109,15 @@ export function ParseAnalysisTab() {
   const reparseSingleMutation = useReparseSingle();
 
   // Handle single item reparse
-  const handleReparseSingle = async (item: ParseAnalysisItem) => {
-    const originalId = item.original_request_id;
+  const handleReparseSingle = async (item: OriginalRequestWithStatus) => {
+    const originalId = item.id;
     setReparsingIds((prev) => new Set(prev).add(originalId));
 
     try {
       await reparseSingleMutation.mutateAsync(originalId);
       toast.success(`Reparsed ${item.requester_name || 'request'}`);
+      // Refresh both the list and detail
+      await refetchRequests();
     } catch {
       toast.error('Failed to reparse');
     } finally {
@@ -93,19 +131,35 @@ export function ParseAnalysisTab() {
 
   // Handle detail view reparse (from detail panel)
   const handleDetailReparse = async () => {
-    if (!selectedItem) return;
-    await handleReparseSingle(selectedItem);
-    // Refresh the selected item data
-    const updatedData = await refetchAnalysis();
-    const updated = updatedData.data?.items.find((i) => i.id === selectedItem.id);
-    if (updated) setSelectedItem(updated);
+    if (!selectedOriginalRequestId || !parseResult) return;
+    // Find the item in the list to get the name for toast
+    const item = requestsData?.items.find((i) => i.id === selectedOriginalRequestId);
+    if (item) {
+      await handleReparseSingle(item);
+    } else {
+      // Fallback: reparse without the full item info
+      setReparsingIds((prev) => new Set(prev).add(selectedOriginalRequestId));
+      try {
+        await reparseSingleMutation.mutateAsync(selectedOriginalRequestId);
+        toast.success('Reparsed request');
+        await refetchRequests();
+      } catch {
+        toast.error('Failed to reparse');
+      } finally {
+        setReparsingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(selectedOriginalRequestId);
+          return next;
+        });
+      }
+    }
   };
 
   // Handle bulk reparse
   const handleReparseAll = async () => {
-    if (!analysisData?.items.length) return;
+    if (!requestsData?.items.length) return;
 
-    const ids = analysisData.items.map((item) => item.original_request_id);
+    const ids = requestsData.items.map((item) => item.id);
     const allIds = new Set(ids);
     setReparsingIds(allIds);
 
@@ -115,6 +169,7 @@ export function ParseAnalysisTab() {
         force_reparse: true,
       });
       toast.success(`Reparsed ${ids.length} requests`);
+      await refetchRequests();
     } catch {
       toast.error('Failed to reparse requests');
     } finally {
@@ -124,38 +179,45 @@ export function ParseAnalysisTab() {
 
   // Handle clear all
   const handleClearAll = async () => {
-    if (!confirm('Are you sure you want to clear all parse analysis results?')) return;
+    if (!confirm('Are you sure you want to clear all debug parse analysis results?')) return;
 
     try {
       const result = await clearMutation.mutateAsync();
-      toast.success(`Cleared ${result.deleted_count} results`);
-      setSelectedItem(null);
+      toast.success(`Cleared ${result.deleted_count} debug results`);
+      setSelectedOriginalRequestId(null);
+      await refetchRequests();
     } catch {
       toast.error('Failed to clear results');
     }
   };
 
   // Handle selection
-  const handleSelect = (item: ParseAnalysisItem) => {
-    setSelectedItem(item);
+  const handleSelect = (item: OriginalRequestWithStatus) => {
+    setSelectedOriginalRequestId(item.id);
   };
 
-  const items = analysisData?.items || [];
+  // Apply client-side search filter
+  const filteredItems = useMemo(
+    () => filterByRequesterName(requestsData?.items || [], searchQuery),
+    [requestsData?.items, searchQuery]
+  );
 
   return (
     <div className="space-y-6">
       {/* Filters */}
       <ParseAnalysisFilters
-        sessions={sessions}
+        sessions={dropdownSessions}
         selectedSessionCmId={sessionCmId}
         onSessionChange={setSessionCmId}
         selectedSourceField={sourceField}
         onSourceFieldChange={setSourceField}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
         onReparseSelected={handleReparseAll}
         onClearAll={handleClearAll}
         isReparsing={parsePhase1Mutation.isPending}
         isClearing={clearMutation.isPending}
-        selectedCount={items.length}
+        selectedCount={filteredItems.length}
       />
 
       {/* Two-panel layout */}
@@ -165,19 +227,19 @@ export function ParseAnalysisTab() {
           <div className="sticky top-24">
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
               Requesters
-              {items.length > 0 && (
+              {filteredItems.length > 0 && (
                 <span className="px-2 py-0.5 rounded-full bg-muted text-xs font-medium">
-                  {items.length}
+                  {filteredItems.length}
                 </span>
               )}
             </h3>
             <ParseAnalysisList
-              items={items}
-              selectedId={selectedItem?.id || null}
+              items={filteredItems}
+              selectedId={selectedOriginalRequestId}
               onSelect={handleSelect}
               onReparse={handleReparseSingle}
               reparsingIds={reparsingIds}
-              isLoading={isLoadingAnalysis}
+              isLoading={isLoadingRequests}
             />
           </div>
         </div>
@@ -188,9 +250,10 @@ export function ParseAnalysisTab() {
             Analysis Detail
           </h3>
           <ParseAnalysisDetail
-            item={selectedItem}
-            onReparse={selectedItem ? handleDetailReparse : undefined}
-            isReparsing={selectedItem ? reparsingIds.has(selectedItem.original_request_id) : false}
+            item={parseResult || null}
+            isLoading={isLoadingDetail}
+            onReparse={selectedOriginalRequestId ? handleDetailReparse : undefined}
+            isReparsing={selectedOriginalRequestId ? reparsingIds.has(selectedOriginalRequestId) : false}
           />
         </div>
       </div>

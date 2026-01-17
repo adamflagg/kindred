@@ -65,6 +65,16 @@ export const queryKeys = {
     filters
       ? (['original-requests', year, filters.sessionCmId, filters.sourceField] as const)
       : (['original-requests', year] as const),
+  originalRequestsWithStatus: (year: number, filters?: { sessionCmId?: number | undefined; sourceField?: string | undefined }) =>
+    filters
+      ? (['original-requests-with-status', year, filters.sessionCmId, filters.sourceField] as const)
+      : (['original-requests-with-status', year] as const),
+  parseResultWithFallback: (originalRequestId: string) =>
+    ['parse-result-with-fallback', originalRequestId] as const,
+
+  // Prompts (Tier 2 - editable config files)
+  prompts: () => ['prompts'] as const,
+  prompt: (name: string) => ['prompts', name] as const,
 };
 
 /**
