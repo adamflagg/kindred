@@ -5,7 +5,7 @@
  * Uses fallback pattern: shows debug results if available, otherwise production.
  */
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 
@@ -19,6 +19,11 @@ import {
   useReparseSingle,
 } from '../../hooks/useParseAnalysis';
 import { queryKeys, syncDataOptions } from '../../utils/queryKeys';
+import {
+  getDebugDropdownSessions,
+  buildAgSessionCmIdMap,
+  getEffectiveCmIds,
+} from '../../utils/debugParserUtils';
 
 import { ParseAnalysisFilters } from './ParseAnalysisFilters';
 import { ParseAnalysisList } from './ParseAnalysisList';
@@ -29,6 +34,8 @@ interface Session {
   id: string;
   cm_id: number;
   name: string;
+  session_type?: string;
+  parent_id?: number | null;
 }
 
 export function ParseAnalysisTab() {
@@ -43,8 +50,8 @@ export function ParseAnalysisTab() {
   const [selectedOriginalRequestId, setSelectedOriginalRequestId] = useState<string | null>(null);
   const [reparsingIds, setReparsingIds] = useState<Set<string>>(new Set());
 
-  // Fetch sessions for filter dropdown (main + embedded types only, not all programs)
-  const { data: sessions = [] } = useQuery<Session[]>({
+  // Fetch all summer camp sessions (main + ag + embedded)
+  const { data: allSessions = [] } = useQuery<Session[]>({
     queryKey: [...queryKeys.sessions(currentYear), 'debug-filter'],
     queryFn: async () => {
       const filter = encodeURIComponent(
@@ -61,6 +68,21 @@ export function ParseAnalysisTab() {
     ...syncDataOptions,
   });
 
+  // Filter sessions for dropdown (main + embedded only, AG excluded)
+  const dropdownSessions = useMemo(
+    () => getDebugDropdownSessions(allSessions),
+    [allSessions]
+  );
+
+  // Build AG session cm_id mapping (main cm_id -> [ag cm_ids])
+  const agSessionMap = useMemo(() => buildAgSessionCmIdMap(allSessions), [allSessions]);
+
+  // Get effective cm_ids for API call (includes AG children for main sessions)
+  const effectiveCmIds = useMemo(
+    () => getEffectiveCmIds(sessionCmId, agSessionMap),
+    [sessionCmId, agSessionMap]
+  );
+
   // Fetch original requests with parse status (for left panel list)
   const {
     data: requestsData,
@@ -68,7 +90,7 @@ export function ParseAnalysisTab() {
     refetch: refetchRequests,
   } = useOriginalRequestsWithStatus({
     year: currentYear,
-    session_cm_id: sessionCmId ?? undefined,
+    session_cm_ids: effectiveCmIds,
     source_field: sourceField ?? undefined,
     limit: 100,
   });
@@ -178,7 +200,7 @@ export function ParseAnalysisTab() {
     <div className="space-y-6">
       {/* Filters */}
       <ParseAnalysisFilters
-        sessions={sessions}
+        sessions={dropdownSessions}
         selectedSessionCmId={sessionCmId}
         onSessionChange={setSessionCmId}
         selectedSourceField={sourceField}

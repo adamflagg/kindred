@@ -84,9 +84,9 @@ export function useOriginalRequestsWithStatus(filters: OriginalRequestsWithStatu
 
   // Build filter object only with defined values
   const filterArg =
-    filters.session_cm_id !== undefined || filters.source_field !== undefined
+    filters.session_cm_ids !== undefined || filters.source_field !== undefined
       ? {
-          ...(filters.session_cm_id !== undefined && { sessionCmId: filters.session_cm_id }),
+          ...(filters.session_cm_ids !== undefined && { sessionCmIds: filters.session_cm_ids }),
           ...(filters.source_field !== undefined && { sourceField: filters.source_field }),
         }
       : undefined;

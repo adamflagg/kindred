@@ -389,7 +389,7 @@ async def list_original_requests(
 @router.get("/original-requests-with-parse-status", response_model=OriginalRequestsWithParseResponse)
 async def list_original_requests_with_parse_status(
     year: int = Query(description="Year to filter by (required)"),
-    session_cm_id: int | None = Query(default=None, description="Filter by session CM ID"),
+    session_cm_id: list[int] | None = Query(default=None, description="Filter by session CM ID(s)"),
     source_field: SourceFieldType | None = Query(default=None, description="Filter by source field"),
     limit: int = Query(default=100, ge=1, le=500, description="Maximum results"),
     offset: int = Query(default=0, ge=0, description="Pagination offset"),
@@ -398,6 +398,9 @@ async def list_original_requests_with_parse_status(
 
     For each original request, indicates whether debug and/or production
     parse results exist. Use this to show the debug UI with status indicators.
+
+    session_cm_id can be passed multiple times to filter by multiple sessions,
+    e.g., ?session_cm_id=200&session_cm_id=201 to include main + AG sessions.
     """
     # Create loader with specified year
     loader = OriginalRequestsLoader(pb, year)
