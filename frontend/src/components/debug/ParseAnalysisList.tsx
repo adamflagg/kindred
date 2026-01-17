@@ -1,20 +1,20 @@
 /**
  * ParseAnalysisList - Left panel with requester list and selection
  *
- * Shows a scrollable list of requesters with their parse status.
- * Each row has a per-row reprocess button.
+ * Shows a scrollable list of original requests with their parse status.
+ * Each row has a per-row reprocess button and badges showing data source.
  * Sierra Lodge aesthetic with warm, nature-inspired styling.
  */
 
-import { CheckCircle, Loader2, RefreshCw, User, XCircle } from 'lucide-react';
+import { Database, FlaskConical, Loader2, RefreshCw, User } from 'lucide-react';
 import { SOURCE_FIELD_LABELS } from './types';
-import type { ParseAnalysisItem, SourceFieldType } from './types';
+import type { OriginalRequestWithStatus, SourceFieldType } from './types';
 
 interface ParseAnalysisListProps {
-  items: ParseAnalysisItem[];
+  items: OriginalRequestWithStatus[];
   selectedId: string | null;
-  onSelect: (item: ParseAnalysisItem) => void;
-  onReparse: (item: ParseAnalysisItem) => void;
+  onSelect: (item: OriginalRequestWithStatus) => void;
+  onReparse: (item: OriginalRequestWithStatus) => void;
   reparsingIds: Set<string>;
   isLoading?: boolean;
 }
@@ -59,11 +59,14 @@ export function ParseAnalysisList({
       <div className="space-y-1.5 max-h-[600px] overflow-y-auto pr-1 custom-scrollbar">
         {items.map((item) => {
           const isSelected = item.id === selectedId;
-          const isReparsing = reparsingIds.has(item.original_request_id);
+          const isReparsing = reparsingIds.has(item.id);
           const sourceLabel =
             SOURCE_FIELD_LABELS[item.source_field as SourceFieldType] ||
             item.source_field ||
             'Unknown';
+
+          // Determine parse status for badge
+          const hasAnyResult = item.has_debug_result || item.has_production_result;
 
           return (
             <div
@@ -96,11 +99,22 @@ export function ParseAnalysisList({
                   <span className="font-medium text-foreground truncate">
                     {item.requester_name || 'Unknown'}
                   </span>
-                  {item.is_valid ? (
-                    <CheckCircle className="w-3.5 h-3.5 text-forest-500 flex-shrink-0" />
-                  ) : (
-                    <XCircle className="w-3.5 h-3.5 text-rose-500 flex-shrink-0" />
-                  )}
+                  {/* Parse status badge */}
+                  {item.has_debug_result ? (
+                    <span
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400"
+                      title="Debug result available"
+                    >
+                      <FlaskConical className="w-2.5 h-2.5" />
+                    </span>
+                  ) : item.has_production_result ? (
+                    <span
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-forest-100 text-forest-700 dark:bg-forest-900/40 dark:text-forest-400"
+                      title="Production result available"
+                    >
+                      <Database className="w-2.5 h-2.5" />
+                    </span>
+                  ) : null}
                 </div>
                 <div className="flex items-center gap-2 mt-1">
                   <span
@@ -114,9 +128,9 @@ export function ParseAnalysisList({
                   >
                     {sourceLabel}
                   </span>
-                  <span className="text-xs text-muted-foreground">
-                    {item.parsed_intents.length} intent{item.parsed_intents.length !== 1 ? 's' : ''}
-                  </span>
+                  {!hasAnyResult && (
+                    <span className="text-xs text-muted-foreground italic">Not parsed</span>
+                  )}
                 </div>
               </div>
 

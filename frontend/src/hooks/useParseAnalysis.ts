@@ -9,6 +9,7 @@ import { debugService } from '../services/debug';
 import type {
   ParseAnalysisFilters,
   OriginalRequestsFilters,
+  OriginalRequestsWithStatusFilters,
   Phase1OnlyRequest,
 } from '../services/debug';
 
@@ -71,6 +72,46 @@ export function useOriginalRequests(filters: OriginalRequestsFilters) {
     queryKey: queryKeys.originalRequests(filters.year, filterArg),
     queryFn: () => debugService.listOriginalRequests(filters, fetchWithAuth),
     enabled: isAuthenticated && !!filters.year,
+    ...userDataOptions,
+  });
+}
+
+/**
+ * Hook to fetch original requests with parse status (debug/production flags)
+ */
+export function useOriginalRequestsWithStatus(filters: OriginalRequestsWithStatusFilters) {
+  const { fetchWithAuth, isAuthenticated } = useApiWithAuth();
+
+  // Build filter object only with defined values
+  const filterArg =
+    filters.session_cm_id !== undefined || filters.source_field !== undefined
+      ? {
+          ...(filters.session_cm_id !== undefined && { sessionCmId: filters.session_cm_id }),
+          ...(filters.source_field !== undefined && { sourceField: filters.source_field }),
+        }
+      : undefined;
+
+  return useQuery({
+    queryKey: queryKeys.originalRequestsWithStatus(filters.year, filterArg),
+    queryFn: () => debugService.listOriginalRequestsWithStatus(filters, fetchWithAuth),
+    enabled: isAuthenticated && !!filters.year,
+    ...userDataOptions,
+  });
+}
+
+/**
+ * Hook to fetch parse result with fallback (debug -> production -> none)
+ */
+export function useParseResultWithFallback(originalRequestId: string | null) {
+  const { fetchWithAuth, isAuthenticated } = useApiWithAuth();
+
+  return useQuery({
+    queryKey: queryKeys.parseResultWithFallback(originalRequestId || ''),
+    queryFn: () => {
+      if (!originalRequestId) throw new Error('Original request ID is required');
+      return debugService.getParseResultWithFallback(originalRequestId, fetchWithAuth);
+    },
+    enabled: isAuthenticated && !!originalRequestId,
     ...userDataOptions,
   });
 }
