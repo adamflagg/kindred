@@ -23,6 +23,7 @@ import {
   getDebugDropdownSessions,
   buildAgSessionCmIdMap,
   getEffectiveCmIds,
+  filterByRequesterName,
 } from '../../utils/debugParserUtils';
 
 import { ParseAnalysisFilters } from './ParseAnalysisFilters';
@@ -45,6 +46,7 @@ export function ParseAnalysisTab() {
   // Filter state
   const [sessionCmId, setSessionCmId] = useState<number | null>(null);
   const [sourceField, setSourceField] = useState<SourceFieldType | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Selection state - now tracks original_request_id for fetching parse result with fallback
   const [selectedOriginalRequestId, setSelectedOriginalRequestId] = useState<string | null>(null);
@@ -194,7 +196,11 @@ export function ParseAnalysisTab() {
     setSelectedOriginalRequestId(item.id);
   };
 
-  const items = requestsData?.items || [];
+  // Apply client-side search filter
+  const filteredItems = useMemo(
+    () => filterByRequesterName(requestsData?.items || [], searchQuery),
+    [requestsData?.items, searchQuery]
+  );
 
   return (
     <div className="space-y-6">
@@ -205,11 +211,13 @@ export function ParseAnalysisTab() {
         onSessionChange={setSessionCmId}
         selectedSourceField={sourceField}
         onSourceFieldChange={setSourceField}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
         onReparseSelected={handleReparseAll}
         onClearAll={handleClearAll}
         isReparsing={parsePhase1Mutation.isPending}
         isClearing={clearMutation.isPending}
-        selectedCount={items.length}
+        selectedCount={filteredItems.length}
       />
 
       {/* Two-panel layout */}
@@ -219,14 +227,14 @@ export function ParseAnalysisTab() {
           <div className="sticky top-24">
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
               Requesters
-              {items.length > 0 && (
+              {filteredItems.length > 0 && (
                 <span className="px-2 py-0.5 rounded-full bg-muted text-xs font-medium">
-                  {items.length}
+                  {filteredItems.length}
                 </span>
               )}
             </h3>
             <ParseAnalysisList
-              items={items}
+              items={filteredItems}
               selectedId={selectedOriginalRequestId}
               onSelect={handleSelect}
               onReparse={handleReparseSingle}
