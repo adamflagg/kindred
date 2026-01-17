@@ -7,4 +7,5 @@ export { ParseAnalysisFilters } from './ParseAnalysisFilters';
 export { ParseAnalysisList } from './ParseAnalysisList';
 export { ParseAnalysisDetail } from './ParseAnalysisDetail';
 export { ParseIntentCard } from './ParseIntentCard';
+export { PromptEditorTab } from './PromptEditorTab';
 export * from './types';

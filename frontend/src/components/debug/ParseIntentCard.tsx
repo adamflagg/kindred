@@ -3,6 +3,7 @@
  *
  * Features distinct styling per request type and shows all parsed data
  * including keywords, reasoning, and temporal info when present.
+ * Sierra Lodge aesthetic with warm, nature-inspired styling.
  */
 
 import { AlertCircle, Clock, Hash, MessageSquare, Target, Zap } from 'lucide-react';
@@ -15,9 +16,9 @@ interface ParseIntentCardProps {
 }
 
 const DEFAULT_COLORS = {
-  bg: 'bg-slate-50 dark:bg-slate-950/30',
-  text: 'text-slate-700 dark:text-slate-400',
-  border: 'border-slate-200 dark:border-slate-800',
+  bg: 'bg-parchment-200/50 dark:bg-bark-800/50',
+  text: 'text-bark-700 dark:text-bark-300',
+  border: 'border-bark-200 dark:border-bark-700',
 };
 
 export function ParseIntentCard({ intent, index }: ParseIntentCardProps) {
@@ -33,16 +34,17 @@ export function ParseIntentCard({ intent, index }: ParseIntentCardProps) {
   return (
     <div
       className={`
-        relative rounded-xl border-2 overflow-hidden transition-all duration-200
-        hover:shadow-lg hover:-translate-y-0.5
-        ${colors.bg} ${colors.border}
+        card-lodge relative overflow-hidden transition-all duration-200
+        hover:shadow-lodge-lg hover:-translate-y-0.5
+        ${colors.bg} !border-2 ${colors.border}
       `}
     >
       {/* Intent number badge */}
       <div
         className={`
-          absolute top-3 right-3 w-7 h-7 rounded-lg flex items-center justify-center
-          font-mono text-xs font-bold ${colors.text} bg-white/60 dark:bg-black/30
+          absolute top-3 right-3 w-8 h-8 rounded-xl flex items-center justify-center
+          font-mono text-xs font-bold ${colors.text} bg-white/70 dark:bg-black/30
+          shadow-sm
         `}
       >
         #{index + 1}
@@ -57,7 +59,7 @@ export function ParseIntentCard({ intent, index }: ParseIntentCardProps) {
 
         {/* Target name - prominent display */}
         {intent.target_name && (
-          <div className="mt-2 text-lg font-semibold text-foreground">
+          <div className="mt-2 text-lg font-display font-semibold text-foreground">
             {intent.target_name}
           </div>
         )}
@@ -68,12 +70,12 @@ export function ParseIntentCard({ intent, index }: ParseIntentCardProps) {
         {/* Keywords */}
         {intent.keywords_found.length > 0 && (
           <div className="flex items-start gap-2">
-            <Hash className="w-3.5 h-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
+            <Hash className="w-3.5 h-3.5 text-forest-500 mt-0.5 flex-shrink-0" />
             <div className="flex flex-wrap gap-1.5">
               {intent.keywords_found.map((keyword, i) => (
                 <span
                   key={i}
-                  className="inline-flex px-2 py-0.5 text-xs font-medium rounded-md bg-white/70 dark:bg-black/20 text-foreground"
+                  className="inline-flex px-2 py-0.5 text-xs font-medium rounded-md bg-white/80 dark:bg-bark-700/50 text-foreground border border-bark-200 dark:border-bark-600"
                 >
                   {keyword}
                 </span>
@@ -85,7 +87,7 @@ export function ParseIntentCard({ intent, index }: ParseIntentCardProps) {
         {/* Parse notes */}
         {intent.parse_notes && (
           <div className="flex items-start gap-2">
-            <MessageSquare className="w-3.5 h-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
+            <MessageSquare className="w-3.5 h-3.5 text-forest-500 mt-0.5 flex-shrink-0" />
             <p className="text-sm text-muted-foreground leading-relaxed">{intent.parse_notes}</p>
           </div>
         )}
@@ -104,12 +106,12 @@ export function ParseIntentCard({ intent, index }: ParseIntentCardProps) {
         {intent.temporal_info && (
           <div
             className={`
-              flex items-start gap-2 p-2.5 rounded-lg
-              ${intent.temporal_info.is_superseded ? 'bg-amber-100/50 dark:bg-amber-900/20' : 'bg-blue-100/50 dark:bg-blue-900/20'}
+              flex items-start gap-2 p-3 rounded-xl
+              ${intent.temporal_info.is_superseded ? 'bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800' : 'bg-forest-50 dark:bg-forest-900/20 border border-forest-200 dark:border-forest-800'}
             `}
           >
             <Clock
-              className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${intent.temporal_info.is_superseded ? 'text-amber-600' : 'text-blue-600'}`}
+              className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${intent.temporal_info.is_superseded ? 'text-amber-600' : 'text-forest-600'}`}
             />
             <div className="text-sm">
               {intent.temporal_info.date && (
@@ -126,9 +128,9 @@ export function ParseIntentCard({ intent, index }: ParseIntentCardProps) {
 
         {/* Needs clarification flag */}
         {intent.needs_clarification && (
-          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-rose-100/50 dark:bg-rose-900/20">
+          <div className="flex items-center gap-2 p-3 rounded-xl bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800">
             <AlertCircle className="w-3.5 h-3.5 text-rose-600 flex-shrink-0" />
-            <span className="text-sm font-medium text-rose-700 dark:text-rose-400">
+            <span className="text-sm font-semibold text-rose-700 dark:text-rose-400">
               Needs clarification
             </span>
           </div>
@@ -138,8 +140,8 @@ export function ParseIntentCard({ intent, index }: ParseIntentCardProps) {
       {/* List position indicator */}
       <div
         className={`
-          px-4 py-2 border-t text-xs font-medium flex items-center gap-1.5
-          ${colors.border} ${colors.text} bg-white/30 dark:bg-black/10
+          px-4 py-2.5 border-t-2 text-xs font-medium flex items-center gap-1.5
+          ${colors.border} ${colors.text} bg-white/40 dark:bg-black/10
         `}
       >
         Position in text: {intent.list_position}
