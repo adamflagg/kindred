@@ -7,7 +7,9 @@ AI intent parsing without running the full 3-phase pipeline.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+import re
+from datetime import UTC, datetime
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -19,6 +21,9 @@ from bunking.sync.bunk_request_processor.data.repositories.session_repository im
 )
 from bunking.sync.bunk_request_processor.integration.original_requests_loader import (
     OriginalRequestsLoader,
+)
+from bunking.sync.bunk_request_processor.prompts.loader import (
+    clear_cache as clear_prompt_cache,
 )
 from bunking.sync.bunk_request_processor.services.phase1_debug_service import (
     Phase1DebugService,
@@ -35,6 +40,11 @@ from ..schemas.debug import (
     ParsedIntent,
     Phase1OnlyRequest,
     Phase1OnlyResponse,
+    PromptContentResponse,
+    PromptListItem,
+    PromptListResponse,
+    PromptUpdateRequest,
+    PromptUpdateResponse,
     SourceFieldType,
 )
 from ..settings import get_settings
@@ -42,6 +52,12 @@ from ..settings import get_settings
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/debug", tags=["debug"])
+
+# Prompts directory - relative to project root
+PROMPTS_DIR = Path(__file__).parent.parent.parent / "config" / "prompts"
+
+# Valid prompt name pattern (alphanumeric with underscores only)
+VALID_PROMPT_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_]+$")
 
 
 # Dependency functions for repository injection (mockable in tests)
@@ -365,3 +381,96 @@ async def list_original_requests(
         )
 
     return OriginalRequestsListResponse(items=items, total=len(items))
+
+
+# ============================================================================
+# Prompt Editor Endpoints
+# ============================================================================
+
+
+def _validate_prompt_name(name: str) -> None:
+    """Validate prompt name to prevent path traversal attacks."""
+    if not VALID_PROMPT_NAME_PATTERN.match(name):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid prompt name. Only alphanumeric characters and underscores allowed.",
+        )
+
+
+def _get_file_modified_at(path: Path) -> datetime | None:
+    """Get file modification time as datetime."""
+    try:
+        mtime = path.stat().st_mtime
+        return datetime.fromtimestamp(mtime, tz=UTC)
+    except OSError:
+        return None
+
+
+@router.get("/prompts", response_model=PromptListResponse)
+async def list_prompts() -> PromptListResponse:
+    """List available prompt files.
+
+    Returns all .txt files in the config/prompts directory.
+    """
+    if not PROMPTS_DIR.exists():
+        return PromptListResponse(prompts=[])
+
+    prompts = []
+    for file_path in PROMPTS_DIR.glob("*.txt"):
+        prompts.append(
+            PromptListItem(
+                name=file_path.stem,
+                filename=file_path.name,
+                modified_at=_get_file_modified_at(file_path),
+            )
+        )
+
+    # Sort by name for consistent ordering
+    prompts.sort(key=lambda p: p.name)
+    return PromptListResponse(prompts=prompts)
+
+
+@router.get("/prompts/{name}", response_model=PromptContentResponse)
+async def get_prompt(name: str) -> PromptContentResponse:
+    """Get the content of a specific prompt file.
+
+    Args:
+        name: Prompt name (without .txt extension)
+    """
+    _validate_prompt_name(name)
+
+    file_path = PROMPTS_DIR / f"{name}.txt"
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail=f"Prompt '{name}' not found")
+
+    content = file_path.read_text(encoding="utf-8")
+    modified_at = _get_file_modified_at(file_path)
+
+    return PromptContentResponse(
+        name=name,
+        content=content,
+        modified_at=modified_at,
+    )
+
+
+@router.put("/prompts/{name}", response_model=PromptUpdateResponse)
+async def update_prompt(name: str, request: PromptUpdateRequest) -> PromptUpdateResponse:
+    """Update a prompt file's content.
+
+    Args:
+        name: Prompt name (without .txt extension)
+        request: Request body with new content
+    """
+    _validate_prompt_name(name)
+
+    file_path = PROMPTS_DIR / f"{name}.txt"
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail=f"Prompt '{name}' not found")
+
+    # Write the new content
+    file_path.write_text(request.content, encoding="utf-8")
+
+    # Clear the prompt cache so the new content is used
+    clear_prompt_cache()
+
+    return PromptUpdateResponse(name=name, success=True)

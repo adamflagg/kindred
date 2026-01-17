@@ -65,6 +65,10 @@ export const queryKeys = {
     filters
       ? (['original-requests', year, filters.sessionCmId, filters.sourceField] as const)
       : (['original-requests', year] as const),
+
+  // Prompts (Tier 2 - editable config files)
+  prompts: () => ['prompts'] as const,
+  prompt: (name: string) => ['prompts', name] as const,
 };
 
 /**

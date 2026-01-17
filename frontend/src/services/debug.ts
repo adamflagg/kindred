@@ -92,6 +92,33 @@ export interface OriginalRequestsFilters {
   limit?: number;
 }
 
+// Prompt Editor Types
+
+export interface PromptListItem {
+  name: string;
+  filename: string;
+  modified_at: string | null;
+}
+
+export interface PromptListResponse {
+  prompts: PromptListItem[];
+}
+
+export interface PromptContentResponse {
+  name: string;
+  content: string;
+  modified_at: string | null;
+}
+
+export interface PromptUpdateRequest {
+  content: string;
+}
+
+export interface PromptUpdateResponse {
+  name: string;
+  success: boolean;
+}
+
 export const debugService = {
   /**
    * List parse analysis results with optional filters
@@ -183,6 +210,66 @@ export const debugService = {
 
     if (!response.ok) {
       throw new Error('Failed to fetch original requests');
+    }
+    return response.json();
+  },
+
+  // ============================================================================
+  // Prompt Editor Methods
+  // ============================================================================
+
+  /**
+   * List available prompt files
+   */
+  async listPrompts(
+    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+  ): Promise<PromptListResponse> {
+    const response = await fetchWithAuth(`${API_BASE}/prompts`);
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch prompts list');
+    }
+    return response.json();
+  },
+
+  /**
+   * Get the content of a specific prompt
+   */
+  async getPrompt(
+    name: string,
+    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+  ): Promise<PromptContentResponse> {
+    const response = await fetchWithAuth(`${API_BASE}/prompts/${encodeURIComponent(name)}`);
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error(`Prompt '${name}' not found`);
+      }
+      throw new Error('Failed to fetch prompt content');
+    }
+    return response.json();
+  },
+
+  /**
+   * Update a prompt's content
+   */
+  async updatePrompt(
+    name: string,
+    content: string,
+    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+  ): Promise<PromptUpdateResponse> {
+    const response = await fetchWithAuth(`${API_BASE}/prompts/${encodeURIComponent(name)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content } satisfies PromptUpdateRequest),
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error(`Prompt '${name}' not found`);
+      }
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.detail || 'Failed to update prompt');
     }
     return response.json();
   },
