@@ -770,9 +770,7 @@ class TestListOriginalRequestsWithParseStatusEndpoint:
         assert call_kwargs.get("session_cm_id") == 1000002
         assert call_kwargs.get("source_field") == "bunking_notes"
 
-    def test_list_year_required(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock], Mock]
-    ) -> None:
+    def test_list_year_required(self, client_with_mocks: tuple[TestClient, dict[str, Mock], Mock]) -> None:
         """Test that year parameter is required."""
         client, _mock_repos, _mock_loader = client_with_mocks
 
@@ -804,9 +802,7 @@ class TestGetParseResultWithFallbackEndpoint:
 
             yield TestClient(app), mock_repos
 
-    def test_returns_debug_result_when_available(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
-    ) -> None:
+    def test_returns_debug_result_when_available(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
         """Test that endpoint returns debug result when it exists."""
         client, mock_repos = client_with_mocks
 
@@ -878,9 +874,7 @@ class TestGetParseResultWithFallbackEndpoint:
         assert len(data["parsed_intents"]) == 1
         assert data["parsed_intents"][0]["target_name"] == "Mia Garcia"
 
-    def test_returns_none_source_when_no_results(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
-    ) -> None:
+    def test_returns_none_source_when_no_results(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
         """Test that endpoint returns source='none' when neither debug nor production exists."""
         client, mock_repos = client_with_mocks
 
@@ -896,9 +890,7 @@ class TestGetParseResultWithFallbackEndpoint:
         assert data["source"] == "none"
         assert data["parsed_intents"] == []
 
-    def test_debug_takes_priority_over_production(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
-    ) -> None:
+    def test_debug_takes_priority_over_production(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
         """Test that debug result takes priority even when production exists."""
         client, mock_repos = client_with_mocks
 
