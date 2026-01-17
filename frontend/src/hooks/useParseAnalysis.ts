@@ -125,3 +125,56 @@ export function useClearParseAnalysis() {
     },
   });
 }
+
+// ============================================================================
+// Prompt Editor Hooks
+// ============================================================================
+
+/**
+ * Hook to fetch the list of available prompts
+ */
+export function usePromptsList() {
+  const { fetchWithAuth, isAuthenticated } = useApiWithAuth();
+
+  return useQuery({
+    queryKey: queryKeys.prompts(),
+    queryFn: () => debugService.listPrompts(fetchWithAuth),
+    enabled: isAuthenticated,
+    ...userDataOptions,
+  });
+}
+
+/**
+ * Hook to fetch a specific prompt's content
+ */
+export function usePrompt(name: string | null) {
+  const { fetchWithAuth, isAuthenticated } = useApiWithAuth();
+
+  return useQuery({
+    queryKey: queryKeys.prompt(name || ''),
+    queryFn: () => {
+      if (!name) throw new Error('Prompt name is required');
+      return debugService.getPrompt(name, fetchWithAuth);
+    },
+    enabled: isAuthenticated && !!name,
+    ...userDataOptions,
+  });
+}
+
+/**
+ * Hook to update a prompt's content
+ */
+export function useUpdatePrompt() {
+  const { fetchWithAuth } = useApiWithAuth();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ name, content }: { name: string; content: string }) =>
+      debugService.updatePrompt(name, content, fetchWithAuth),
+    onSuccess: (_data, variables) => {
+      // Invalidate both the specific prompt and the list
+      queryClient.invalidateQueries({ queryKey: queryKeys.prompt(variables.name) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.prompts() });
+    },
+  });
+}

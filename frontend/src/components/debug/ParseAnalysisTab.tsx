@@ -41,12 +41,15 @@ export function ParseAnalysisTab() {
   const [selectedItem, setSelectedItem] = useState<ParseAnalysisItem | null>(null);
   const [reparsingIds, setReparsingIds] = useState<Set<string>>(new Set());
 
-  // Fetch sessions for filter dropdown
+  // Fetch sessions for filter dropdown (main + embedded types only, not all programs)
   const { data: sessions = [] } = useQuery<Session[]>({
-    queryKey: queryKeys.sessions(currentYear),
+    queryKey: [...queryKeys.sessions(currentYear), 'debug-filter'],
     queryFn: async () => {
+      const filter = encodeURIComponent(
+        `(session_type = "main" || session_type = "ag" || session_type = "embedded") && year = ${currentYear}`
+      );
       const res = await fetchWithAuth(
-        `/api/collections/camp_sessions/records?filter=(year=${currentYear})&sort=name`
+        `/api/collections/camp_sessions/records?filter=${filter}&sort=name`
       );
       if (!res.ok) throw new Error('Failed to fetch sessions');
       const data = await res.json();
