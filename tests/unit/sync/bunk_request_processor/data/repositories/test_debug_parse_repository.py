@@ -511,5 +511,361 @@ class TestDebugParseRepositoryDeleteByOriginalRequest:
         mock_collection.delete.assert_not_called()
 
 
+class TestDebugParseRepositoryGetProductionFallback:
+    """Test fetching Phase 1 results from production bunk_requests via junction table."""
+
+    @pytest.fixture
+    def mock_pb_client(self) -> tuple[Mock, Mock]:
+        """Create a mock PocketBase client."""
+        mock_client = Mock()
+        mock_collection = Mock()
+        mock_client.collection.return_value = mock_collection
+        return mock_client, mock_collection
+
+    @pytest.fixture
+    def repository(self, mock_pb_client: tuple[Mock, Mock]) -> "DebugParseRepository":
+        """Create a DebugParseRepository with mocked client."""
+        from bunking.sync.bunk_request_processor.data.repositories.debug_parse_repository import (
+            DebugParseRepository,
+        )
+
+        mock_client, _ = mock_pb_client
+        return DebugParseRepository(mock_client)
+
+    def test_get_production_fallback_returns_bunk_request_data(
+        self, repository: "DebugParseRepository", mock_pb_client: tuple[Mock, Mock]
+    ) -> None:
+        """Test that get_production_fallback returns ai_p1_reasoning from bunk_requests."""
+        mock_client, _ = mock_pb_client
+
+        # Mock bunk_request_sources collection
+        mock_bunk_request = Mock()
+        mock_bunk_request.id = "br_123"
+        mock_bunk_request.request_type = "bunk_with"
+        mock_bunk_request.requested_person_name = "Emma Johnson"
+        mock_bunk_request.ai_p1_reasoning = {
+            "parsed_intents": [
+                {
+                    "request_type": "bunk_with",
+                    "target_name": "Emma Johnson",
+                    "keywords_found": ["with"],
+                    "parse_notes": "Standard request pattern",
+                    "reasoning": "Clear bunk_with intent",
+                    "list_position": 0,
+                    "needs_clarification": False,
+                }
+            ],
+            "raw_response": {"completion_tokens": 100},
+        }
+        mock_bunk_request.parse_notes = "Standard request pattern"
+        mock_bunk_request.keywords_found = ["with"]
+
+        mock_source = Mock()
+        mock_source.id = "src_456"
+        mock_source.source_field = "bunk_with"
+        mock_source.is_primary = True
+        mock_source.expand = {"bunk_request": mock_bunk_request}
+
+        mock_sources_result = Mock()
+        mock_sources_result.items = [mock_source]
+        mock_sources_result.total_items = 1
+
+        # Configure mock to return sources collection first
+        def collection_side_effect(name: str) -> Mock:
+            mock_col = Mock()
+            if name == "bunk_request_sources":
+                mock_col.get_list.return_value = mock_sources_result
+            return mock_col
+
+        mock_client.collection.side_effect = collection_side_effect
+
+        result = repository.get_production_fallback("orig_req_789")
+
+        assert result is not None
+        assert result["source"] == "production"
+        assert "parsed_intents" in result
+        assert len(result["parsed_intents"]) == 1
+        assert result["parsed_intents"][0]["request_type"] == "bunk_with"
+        assert result["parsed_intents"][0]["target_name"] == "Emma Johnson"
+
+    def test_get_production_fallback_returns_none_when_no_sources(
+        self, repository: "DebugParseRepository", mock_pb_client: tuple[Mock, Mock]
+    ) -> None:
+        """Test that get_production_fallback returns None when no bunk_request_sources exist."""
+        mock_client, _ = mock_pb_client
+
+        # No sources found
+        mock_sources_result = Mock()
+        mock_sources_result.items = []
+        mock_sources_result.total_items = 0
+
+        def collection_side_effect(name: str) -> Mock:
+            mock_col = Mock()
+            if name == "bunk_request_sources":
+                mock_col.get_list.return_value = mock_sources_result
+            return mock_col
+
+        mock_client.collection.side_effect = collection_side_effect
+
+        result = repository.get_production_fallback("orig_req_nonexistent")
+
+        assert result is None
+
+    def test_get_production_fallback_returns_none_when_no_ai_reasoning(
+        self, repository: "DebugParseRepository", mock_pb_client: tuple[Mock, Mock]
+    ) -> None:
+        """Test that get_production_fallback returns None when bunk_request has no ai_p1_reasoning."""
+        mock_client, _ = mock_pb_client
+
+        # bunk_request without ai_p1_reasoning
+        mock_bunk_request = Mock()
+        mock_bunk_request.id = "br_123"
+        mock_bunk_request.ai_p1_reasoning = None
+
+        mock_source = Mock()
+        mock_source.id = "src_456"
+        mock_source.expand = {"bunk_request": mock_bunk_request}
+
+        mock_sources_result = Mock()
+        mock_sources_result.items = [mock_source]
+
+        def collection_side_effect(name: str) -> Mock:
+            mock_col = Mock()
+            if name == "bunk_request_sources":
+                mock_col.get_list.return_value = mock_sources_result
+            return mock_col
+
+        mock_client.collection.side_effect = collection_side_effect
+
+        result = repository.get_production_fallback("orig_req_789")
+
+        assert result is None
+
+    def test_get_production_fallback_aggregates_multiple_bunk_requests(
+        self, repository: "DebugParseRepository", mock_pb_client: tuple[Mock, Mock]
+    ) -> None:
+        """Test that get_production_fallback aggregates intents from multiple bunk_requests."""
+        mock_client, _ = mock_pb_client
+
+        # First bunk_request
+        mock_bunk_request_1 = Mock()
+        mock_bunk_request_1.id = "br_1"
+        mock_bunk_request_1.request_type = "bunk_with"
+        mock_bunk_request_1.requested_person_name = "Emma"
+        mock_bunk_request_1.ai_p1_reasoning = {
+            "parsed_intents": [
+                {
+                    "request_type": "bunk_with",
+                    "target_name": "Emma",
+                    "list_position": 0,
+                }
+            ]
+        }
+        mock_bunk_request_1.parse_notes = ""
+        mock_bunk_request_1.keywords_found = []
+
+        # Second bunk_request
+        mock_bunk_request_2 = Mock()
+        mock_bunk_request_2.id = "br_2"
+        mock_bunk_request_2.request_type = "bunk_with"
+        mock_bunk_request_2.requested_person_name = "Mia"
+        mock_bunk_request_2.ai_p1_reasoning = {
+            "parsed_intents": [
+                {
+                    "request_type": "bunk_with",
+                    "target_name": "Mia",
+                    "list_position": 1,
+                }
+            ]
+        }
+        mock_bunk_request_2.parse_notes = ""
+        mock_bunk_request_2.keywords_found = []
+
+        mock_source_1 = Mock()
+        mock_source_1.id = "src_1"
+        mock_source_1.source_field = "bunk_with"
+        mock_source_1.is_primary = True
+        mock_source_1.expand = {"bunk_request": mock_bunk_request_1}
+
+        mock_source_2 = Mock()
+        mock_source_2.id = "src_2"
+        mock_source_2.source_field = "bunk_with"
+        mock_source_2.is_primary = False
+        mock_source_2.expand = {"bunk_request": mock_bunk_request_2}
+
+        mock_sources_result = Mock()
+        mock_sources_result.items = [mock_source_1, mock_source_2]
+
+        def collection_side_effect(name: str) -> Mock:
+            mock_col = Mock()
+            if name == "bunk_request_sources":
+                mock_col.get_list.return_value = mock_sources_result
+            return mock_col
+
+        mock_client.collection.side_effect = collection_side_effect
+
+        result = repository.get_production_fallback("orig_req_789")
+
+        assert result is not None
+        assert len(result["parsed_intents"]) == 2
+        target_names = [intent["target_name"] for intent in result["parsed_intents"]]
+        assert "Emma" in target_names
+        assert "Mia" in target_names
+
+    def test_get_production_fallback_handles_db_error(
+        self, repository: "DebugParseRepository", mock_pb_client: tuple[Mock, Mock]
+    ) -> None:
+        """Test that get_production_fallback returns None on database error."""
+        mock_client, _ = mock_pb_client
+
+        def collection_side_effect(name: str) -> Mock:
+            mock_col = Mock()
+            if name == "bunk_request_sources":
+                mock_col.get_list.side_effect = Exception("DB connection failed")
+            return mock_col
+
+        mock_client.collection.side_effect = collection_side_effect
+
+        result = repository.get_production_fallback("orig_req_789")
+
+        assert result is None
+
+
+class TestDebugParseRepositoryCheckParseStatus:
+    """Test checking parse status for original requests."""
+
+    @pytest.fixture
+    def mock_pb_client(self) -> tuple[Mock, Mock]:
+        """Create a mock PocketBase client."""
+        mock_client = Mock()
+        mock_collection = Mock()
+        mock_client.collection.return_value = mock_collection
+        return mock_client, mock_collection
+
+    @pytest.fixture
+    def repository(self, mock_pb_client: tuple[Mock, Mock]) -> "DebugParseRepository":
+        """Create a DebugParseRepository with mocked client."""
+        from bunking.sync.bunk_request_processor.data.repositories.debug_parse_repository import (
+            DebugParseRepository,
+        )
+
+        mock_client, _ = mock_pb_client
+        return DebugParseRepository(mock_client)
+
+    def test_check_parse_status_detects_debug_result(
+        self, repository: "DebugParseRepository", mock_pb_client: tuple[Mock, Mock]
+    ) -> None:
+        """Test that check_parse_status correctly detects debug results exist."""
+        mock_client, _ = mock_pb_client
+
+        # Mock debug_parse_results has entry
+        mock_debug_result = Mock()
+        mock_debug_result.items = [Mock(id="debug_123")]
+
+        # Mock bunk_request_sources is empty
+        mock_sources_result = Mock()
+        mock_sources_result.items = []
+
+        def collection_side_effect(name: str) -> Mock:
+            mock_col = Mock()
+            if name == "debug_parse_results":
+                mock_col.get_list.return_value = mock_debug_result
+            elif name == "bunk_request_sources":
+                mock_col.get_list.return_value = mock_sources_result
+            return mock_col
+
+        mock_client.collection.side_effect = collection_side_effect
+
+        has_debug, has_production = repository.check_parse_status("orig_req_456")
+
+        assert has_debug is True
+        assert has_production is False
+
+    def test_check_parse_status_detects_production_result(
+        self, repository: "DebugParseRepository", mock_pb_client: tuple[Mock, Mock]
+    ) -> None:
+        """Test that check_parse_status correctly detects production results exist."""
+        mock_client, _ = mock_pb_client
+
+        # Mock debug_parse_results is empty
+        mock_debug_result = Mock()
+        mock_debug_result.items = []
+
+        # Mock bunk_request_sources has entry
+        mock_sources_result = Mock()
+        mock_sources_result.items = [Mock(id="src_123")]
+
+        def collection_side_effect(name: str) -> Mock:
+            mock_col = Mock()
+            if name == "debug_parse_results":
+                mock_col.get_list.return_value = mock_debug_result
+            elif name == "bunk_request_sources":
+                mock_col.get_list.return_value = mock_sources_result
+            return mock_col
+
+        mock_client.collection.side_effect = collection_side_effect
+
+        has_debug, has_production = repository.check_parse_status("orig_req_456")
+
+        assert has_debug is False
+        assert has_production is True
+
+    def test_check_parse_status_detects_both(
+        self, repository: "DebugParseRepository", mock_pb_client: tuple[Mock, Mock]
+    ) -> None:
+        """Test that check_parse_status detects when both debug and production exist."""
+        mock_client, _ = mock_pb_client
+
+        # Both collections have entries
+        mock_debug_result = Mock()
+        mock_debug_result.items = [Mock(id="debug_123")]
+
+        mock_sources_result = Mock()
+        mock_sources_result.items = [Mock(id="src_123")]
+
+        def collection_side_effect(name: str) -> Mock:
+            mock_col = Mock()
+            if name == "debug_parse_results":
+                mock_col.get_list.return_value = mock_debug_result
+            elif name == "bunk_request_sources":
+                mock_col.get_list.return_value = mock_sources_result
+            return mock_col
+
+        mock_client.collection.side_effect = collection_side_effect
+
+        has_debug, has_production = repository.check_parse_status("orig_req_456")
+
+        assert has_debug is True
+        assert has_production is True
+
+    def test_check_parse_status_detects_neither(
+        self, repository: "DebugParseRepository", mock_pb_client: tuple[Mock, Mock]
+    ) -> None:
+        """Test that check_parse_status correctly detects when no parse results exist."""
+        mock_client, _ = mock_pb_client
+
+        # Both collections empty
+        mock_debug_result = Mock()
+        mock_debug_result.items = []
+
+        mock_sources_result = Mock()
+        mock_sources_result.items = []
+
+        def collection_side_effect(name: str) -> Mock:
+            mock_col = Mock()
+            if name == "debug_parse_results":
+                mock_col.get_list.return_value = mock_debug_result
+            elif name == "bunk_request_sources":
+                mock_col.get_list.return_value = mock_sources_result
+            return mock_col
+
+        mock_client.collection.side_effect = collection_side_effect
+
+        has_debug, has_production = repository.check_parse_status("orig_req_456")
+
+        assert has_debug is False
+        assert has_production is False
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

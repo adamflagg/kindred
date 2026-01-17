@@ -45,6 +45,37 @@ export interface OriginalRequestItem {
   processed: boolean;
 }
 
+// New types for fallback pattern
+export type ParseResultSource = 'debug' | 'production' | 'none';
+
+export interface OriginalRequestWithStatus {
+  id: string;
+  requester_name: string | null;
+  requester_cm_id: number | null;
+  source_field: string;
+  original_text: string;
+  year: number;
+  has_debug_result: boolean;
+  has_production_result: boolean;
+}
+
+export interface ParseResultWithSource {
+  source: ParseResultSource;
+  id: string | null;
+  original_request_id: string | null;
+  requester_name: string | null;
+  requester_cm_id: number | null;
+  source_field: string | null;
+  original_text: string | null;
+  parsed_intents: ParsedIntent[];
+  is_valid: boolean;
+  error_message: string | null;
+  token_count: number | null;
+  processing_time_ms: number | null;
+  prompt_version: string | null;
+  created: string | null;
+}
+
 export const SOURCE_FIELD_LABELS: Record<SourceFieldType, string> = {
   bunk_with: 'Bunk With',
   not_bunk_with: 'Not Bunk With',
