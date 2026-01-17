@@ -1,11 +1,11 @@
 /**
  * ParseAnalysisFilters - Filter controls for parse analysis
  *
- * Session and source field dropdowns with bulk reparse action.
+ * Session and source field dropdowns, search input, and bulk reparse action.
  * Sierra Lodge aesthetic with warm, nature-inspired styling.
  */
 
-import { ChevronDown, Filter, Loader2, RefreshCw, Trash2 } from 'lucide-react';
+import { ChevronDown, Filter, Loader2, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import { SOURCE_FIELD_LABELS } from './types';
 import type { SourceFieldType } from './types';
 
@@ -21,6 +21,8 @@ interface ParseAnalysisFiltersProps {
   onSessionChange: (cmId: number | null) => void;
   selectedSourceField: SourceFieldType | null;
   onSourceFieldChange: (field: SourceFieldType | null) => void;
+  searchQuery: string;
+  onSearchChange: (query: string) => void;
   onReparseSelected: () => void;
   onClearAll: () => void;
   isReparsing: boolean;
@@ -34,6 +36,8 @@ export function ParseAnalysisFilters({
   onSessionChange,
   selectedSourceField,
   onSourceFieldChange,
+  searchQuery,
+  onSearchChange,
   onReparseSelected,
   onClearAll,
   isReparsing,
@@ -46,6 +50,33 @@ export function ParseAnalysisFilters({
       <div className="flex items-center gap-2 text-forest-600 dark:text-forest-400">
         <Filter className="w-4 h-4" />
         <span className="text-sm font-semibold">Filters</span>
+      </div>
+
+      {/* Search input */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-bark-400 pointer-events-none" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => onSearchChange(e.target.value)}
+          placeholder="Search requester..."
+          className="
+            w-48 pl-9 pr-8 py-2.5 rounded-xl text-sm font-medium
+            bg-white dark:bg-bark-800 border-2 border-bark-200 dark:border-bark-700
+            hover:border-forest-400 dark:hover:border-forest-600
+            focus:outline-none focus:ring-2 focus:ring-forest-500/20 focus:border-forest-500
+            placeholder:text-bark-400 dark:placeholder:text-bark-500
+            transition-all duration-200
+          "
+        />
+        {searchQuery && (
+          <button
+            onClick={() => onSearchChange('')}
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-bark-100 dark:hover:bg-bark-700 text-bark-400 hover:text-bark-600 dark:hover:text-bark-300 transition-colors"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
 
       {/* Session dropdown */}
