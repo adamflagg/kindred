@@ -109,3 +109,41 @@ class OriginalRequestsListResponse(BaseModel):
 
     items: list[OriginalRequestItem] = Field(description="List of original requests")
     total: int = Field(description="Total count")
+
+
+# Prompt Editor Schemas
+
+
+class PromptListItem(BaseModel):
+    """A single prompt file in the list."""
+
+    name: str = Field(description="Prompt name (without extension)")
+    filename: str = Field(description="Full filename")
+    modified_at: datetime | None = Field(default=None, description="Last modification time")
+
+
+class PromptListResponse(BaseModel):
+    """Response for listing available prompts."""
+
+    prompts: list[PromptListItem] = Field(description="List of available prompts")
+
+
+class PromptContentResponse(BaseModel):
+    """Response for getting prompt content."""
+
+    name: str = Field(description="Prompt name")
+    content: str = Field(description="Prompt content")
+    modified_at: datetime | None = Field(default=None, description="Last modification time")
+
+
+class PromptUpdateRequest(BaseModel):
+    """Request body for updating a prompt."""
+
+    content: str = Field(min_length=1, description="New prompt content")
+
+
+class PromptUpdateResponse(BaseModel):
+    """Response for updating a prompt."""
+
+    name: str = Field(description="Prompt name")
+    success: bool = Field(description="Whether update succeeded")
