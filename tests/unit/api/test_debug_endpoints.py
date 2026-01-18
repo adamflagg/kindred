@@ -1020,9 +1020,7 @@ class TestGetParseResultAlwaysIncludesOriginal:
         mock.content = content
         return mock
 
-    def test_debug_result_includes_original_data(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
-    ) -> None:
+    def test_debug_result_includes_original_data(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
         """Test that debug result includes original request data loaded directly."""
         client, mock_deps = client_with_mocks
 
@@ -1082,9 +1080,7 @@ class TestGetParseResultAlwaysIncludesOriginal:
         assert data["source_field"] == "bunk_with"
         assert data["original_text"] == "With Mia please"
 
-    def test_none_source_includes_original_data(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
-    ) -> None:
+    def test_none_source_includes_original_data(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
         """Test that 'none' source still includes original request data."""
         client, mock_deps = client_with_mocks
 
@@ -1117,9 +1113,7 @@ class TestGetParseResultAlwaysIncludesOriginal:
         assert data["source_field"] == "bunking_notes"
         assert data["original_text"] == "Needs bottom bunk"
 
-    def test_returns_404_when_original_not_found(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
-    ) -> None:
+    def test_returns_404_when_original_not_found(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
         """Test that 404 is returned when original request doesn't exist."""
         client, mock_deps = client_with_mocks
 
@@ -1131,9 +1125,7 @@ class TestGetParseResultAlwaysIncludesOriginal:
         assert response.status_code == 404
         assert "not found" in response.json()["detail"].lower()
 
-    def test_uses_preferred_name_when_available(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
-    ) -> None:
+    def test_uses_preferred_name_when_available(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
         """Test that preferred_name is used over first_name when available."""
         client, mock_deps = client_with_mocks
 
@@ -1274,9 +1266,7 @@ class TestGroupedByCamperEndpoint:
 
                 yield TestClient(app), mock_deps, mock_loader
 
-    def test_groups_requests_by_camper(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock], Mock]
-    ) -> None:
+    def test_groups_requests_by_camper(self, client_with_mocks: tuple[TestClient, dict[str, Mock], Mock]) -> None:
         """Test that requests are grouped by camper."""
         client, mock_deps, mock_loader = client_with_mocks
 
@@ -1337,9 +1327,7 @@ class TestGroupedByCamperEndpoint:
         assert emma_group["requester_name"] == "Emma Johnson"
         assert len(liam_group["fields"]) == 1
 
-    def test_excludes_socialize_with_field(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock], Mock]
-    ) -> None:
+    def test_excludes_socialize_with_field(self, client_with_mocks: tuple[TestClient, dict[str, Mock], Mock]) -> None:
         """Test that socialize_with field is excluded (not AI parsed)."""
         client, mock_deps, mock_loader = client_with_mocks
 
@@ -1373,9 +1361,7 @@ class TestGroupedByCamperEndpoint:
         assert len(data["items"][0]["fields"]) == 1
         assert data["items"][0]["fields"][0]["source_field"] == "bunk_with"
 
-    def test_filters_by_source_field(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock], Mock]
-    ) -> None:
+    def test_filters_by_source_field(self, client_with_mocks: tuple[TestClient, dict[str, Mock], Mock]) -> None:
         """Test that source_field filter is applied."""
         client, mock_deps, mock_loader = client_with_mocks
 
@@ -1392,9 +1378,7 @@ class TestGroupedByCamperEndpoint:
         mock_loader.load_by_filter.return_value = [mock]
         mock_deps["debug_repo"].check_parse_status_batch.return_value = {"req_1": (False, False)}
 
-        response = client.get(
-            "/api/debug/original-requests-grouped?year=2025&source_field=bunking_notes"
-        )
+        response = client.get("/api/debug/original-requests-grouped?year=2025&source_field=bunking_notes")
 
         assert response.status_code == 200
 
@@ -1402,9 +1386,7 @@ class TestGroupedByCamperEndpoint:
         call_kwargs = mock_loader.load_by_filter.call_args[1]
         assert call_kwargs.get("source_field") == "bunking_notes"
 
-    def test_year_is_required(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock], Mock]
-    ) -> None:
+    def test_year_is_required(self, client_with_mocks: tuple[TestClient, dict[str, Mock], Mock]) -> None:
         """Test that year parameter is required."""
         client, _mock_deps, _mock_loader = client_with_mocks
 
@@ -1441,9 +1423,7 @@ class TestClearSingleDebugResultEndpoint:
 
             yield TestClient(app), mock_repos
 
-    def test_clear_single_deletes_debug_result(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
-    ) -> None:
+    def test_clear_single_deletes_debug_result(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
         """Test that clear single endpoint deletes debug result for one original request."""
         client, mock_repos = client_with_mocks
 
@@ -1558,18 +1538,14 @@ class TestScopedClearEndpoint:
         call_kwargs = mock_repos["debug_repo"].clear_by_filter.call_args[1]
         assert call_kwargs.get("source_field") == "bunking_notes"
 
-    def test_clear_with_multiple_filters(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
-    ) -> None:
+    def test_clear_with_multiple_filters(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
         """Test that clear with multiple filters applies all of them."""
         client, mock_repos = client_with_mocks
 
         mock_repos["session_repo"].find_by_cm_id.return_value = {"id": "sess_xyz"}
         mock_repos["debug_repo"].clear_by_filter.return_value = 3
 
-        response = client.delete(
-            "/api/debug/parse-analysis?session_cm_id=1000003&source_field=bunk_with"
-        )
+        response = client.delete("/api/debug/parse-analysis?session_cm_id=1000003&source_field=bunk_with")
 
         assert response.status_code == 200
         data = response.json()
