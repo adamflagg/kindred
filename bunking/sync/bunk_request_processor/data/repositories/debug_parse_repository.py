@@ -358,3 +358,93 @@ class DebugParseRepository:
             logger.warning(f"Failed to check parse status: {e}")
 
         return has_debug, has_production
+
+    def check_parse_status_batch(self, original_request_ids: list[str]) -> dict[str, tuple[bool, bool]]:
+        """Check parse status for multiple original requests in batch.
+
+        This is much more efficient than calling check_parse_status() individually
+        when checking status for many records (2 queries instead of N*2).
+
+        Args:
+            original_request_ids: List of original_bunk_requests record IDs
+
+        Returns:
+            Dict mapping original_request_id -> (has_debug, has_production)
+        """
+        if not original_request_ids:
+            return {}
+
+        # Initialize result with all False
+        result: dict[str, tuple[bool, bool]] = {rid: (False, False) for rid in original_request_ids}
+
+        try:
+            # Build filter for debug results
+            id_conditions = [f'original_request = "{rid}"' for rid in original_request_ids]
+            filter_str = "(" + " || ".join(id_conditions) + ")"
+
+            # Single query: debug_parse_results
+            debug_results = self.pb.collection(self.COLLECTION_NAME).get_full_list(
+                query_params={"filter": filter_str, "fields": "original_request"}
+            )
+            debug_ids = {r.original_request for r in debug_results}  # type: ignore[attr-defined]
+
+            # Single query: bunk_request_sources (production)
+            prod_results = self.pb.collection("bunk_request_sources").get_full_list(
+                query_params={"filter": filter_str, "fields": "original_request"}
+            )
+            prod_ids = {r.original_request for r in prod_results}  # type: ignore[attr-defined]
+
+            # Update result dict
+            for rid in original_request_ids:
+                result[rid] = (rid in debug_ids, rid in prod_ids)
+
+        except Exception as e:
+            logger.warning(f"Failed to check parse status batch: {e}")
+
+        return result
+
+    def clear_by_filter(
+        self,
+        session_id: str | None = None,
+        source_field: str | None = None,
+    ) -> int:
+        """Delete debug results matching the given filters.
+
+        Args:
+            session_id: Optional PocketBase session ID to filter by
+            source_field: Optional source field to filter by
+
+        Returns:
+            Number of records deleted, or -1 on error
+        """
+        try:
+            # Build filter
+            filters = []
+            if session_id:
+                filters.append(f'session = "{session_id}"')
+            if source_field:
+                filters.append(f'original_request.field = "{source_field}"')
+
+            filter_str = " && ".join(filters) if filters else ""
+
+            # Get matching records
+            result = self.pb.collection(self.COLLECTION_NAME).get_full_list(
+                query_params={"filter": filter_str} if filter_str else {}
+            )
+
+            if not result:
+                return 0
+
+            # Delete each record
+            deleted_count = 0
+            for record in result:
+                try:
+                    self.pb.collection(self.COLLECTION_NAME).delete(record.id)
+                    deleted_count += 1
+                except Exception as e:
+                    logger.warning(f"Failed to delete debug result {record.id}: {e}")
+
+            return deleted_count
+        except Exception as e:
+            logger.warning(f"Failed to clear debug results by filter: {e}")
+            return -1

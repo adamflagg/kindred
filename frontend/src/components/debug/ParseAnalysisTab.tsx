@@ -1,7 +1,7 @@
 /**
  * ParseAnalysisTab - Main container for parse analysis debugging
  *
- * Two-panel layout with filters, requester list (left), and detail view (right).
+ * Accordion grouped UI showing campers with their field requests as nested blocks.
  * Uses fallback pattern: shows debug results if available, otherwise production.
  */
 
@@ -12,24 +12,22 @@ import toast from 'react-hot-toast';
 import { useYear } from '../../hooks/useCurrentYear';
 import { useApiWithAuth } from '../../hooks/useApiWithAuth';
 import {
-  useOriginalRequestsWithStatus,
-  useParseResultWithFallback,
+  useGroupedRequests,
   useParsePhase1Only,
   useClearParseAnalysis,
   useReparseSingle,
+  useClearSingleParseAnalysis,
 } from '../../hooks/useParseAnalysis';
 import { queryKeys, syncDataOptions } from '../../utils/queryKeys';
 import {
   getDebugDropdownSessions,
   buildAgSessionCmIdMap,
   getEffectiveCmIds,
-  filterByRequesterName,
 } from '../../utils/debugParserUtils';
 
 import { ParseAnalysisFilters } from './ParseAnalysisFilters';
-import { ParseAnalysisList } from './ParseAnalysisList';
-import { ParseAnalysisDetail } from './ParseAnalysisDetail';
-import type { OriginalRequestWithStatus, SourceFieldType } from './types';
+import { ParseAnalysisGroupedList } from './ParseAnalysisGroupedList';
+import type { SourceFieldType } from './types';
 
 interface Session {
   id: string;
@@ -48,9 +46,9 @@ export function ParseAnalysisTab() {
   const [sourceField, setSourceField] = useState<SourceFieldType | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Selection state - now tracks original_request_id for fetching parse result with fallback
-  const [selectedOriginalRequestId, setSelectedOriginalRequestId] = useState<string | null>(null);
+  // Operation tracking state
   const [reparsingIds, setReparsingIds] = useState<Set<string>>(new Set());
+  const [clearingIds, setClearingIds] = useState<Set<string>>(new Set());
 
   // Fetch all summer camp sessions (main + ag + embedded)
   const { data: allSessions = [] } = useQuery<Session[]>({
@@ -85,81 +83,70 @@ export function ParseAnalysisTab() {
     [sessionCmId, agSessionMap]
   );
 
-  // Fetch original requests with parse status (for left panel list)
+  // Fetch grouped requests (campers with their fields)
   const {
-    data: requestsData,
-    isLoading: isLoadingRequests,
-    refetch: refetchRequests,
-  } = useOriginalRequestsWithStatus({
+    data: groupedData,
+    isLoading: isLoadingGrouped,
+    refetch: refetchGrouped,
+  } = useGroupedRequests({
     year: currentYear,
     session_cm_ids: effectiveCmIds,
     source_field: sourceField ?? undefined,
     limit: 100,
   });
 
-  // Fetch parse result with fallback for selected item (for right panel detail)
-  const {
-    data: parseResult,
-    isLoading: isLoadingDetail,
-  } = useParseResultWithFallback(selectedOriginalRequestId);
-
   // Mutations
   const parsePhase1Mutation = useParsePhase1Only();
   const clearMutation = useClearParseAnalysis();
   const reparseSingleMutation = useReparseSingle();
+  const clearSingleMutation = useClearSingleParseAnalysis();
 
   // Handle single item reparse
-  const handleReparseSingle = async (item: OriginalRequestWithStatus) => {
-    const originalId = item.id;
-    setReparsingIds((prev) => new Set(prev).add(originalId));
+  const handleReparseSingle = async (originalRequestId: string) => {
+    setReparsingIds((prev) => new Set(prev).add(originalRequestId));
 
     try {
-      await reparseSingleMutation.mutateAsync(originalId);
-      toast.success(`Reparsed ${item.requester_name || 'request'}`);
-      // Refresh both the list and detail
-      await refetchRequests();
+      await reparseSingleMutation.mutateAsync(originalRequestId);
+      toast.success('Reparsed successfully');
+      await refetchGrouped();
     } catch {
       toast.error('Failed to reparse');
     } finally {
       setReparsingIds((prev) => {
         const next = new Set(prev);
-        next.delete(originalId);
+        next.delete(originalRequestId);
         return next;
       });
     }
   };
 
-  // Handle detail view reparse (from detail panel)
-  const handleDetailReparse = async () => {
-    if (!selectedOriginalRequestId || !parseResult) return;
-    // Find the item in the list to get the name for toast
-    const item = requestsData?.items.find((i) => i.id === selectedOriginalRequestId);
-    if (item) {
-      await handleReparseSingle(item);
-    } else {
-      // Fallback: reparse without the full item info
-      setReparsingIds((prev) => new Set(prev).add(selectedOriginalRequestId));
-      try {
-        await reparseSingleMutation.mutateAsync(selectedOriginalRequestId);
-        toast.success('Reparsed request');
-        await refetchRequests();
-      } catch {
-        toast.error('Failed to reparse');
-      } finally {
-        setReparsingIds((prev) => {
-          const next = new Set(prev);
-          next.delete(selectedOriginalRequestId);
-          return next;
-        });
-      }
+  // Handle single item clear
+  const handleClearSingle = async (originalRequestId: string) => {
+    setClearingIds((prev) => new Set(prev).add(originalRequestId));
+
+    try {
+      await clearSingleMutation.mutateAsync(originalRequestId);
+      toast.success('Cleared debug result');
+      await refetchGrouped();
+    } catch {
+      toast.error('Failed to clear');
+    } finally {
+      setClearingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(originalRequestId);
+        return next;
+      });
     }
   };
 
-  // Handle bulk reparse
+  // Handle bulk reparse (visible items only)
   const handleReparseAll = async () => {
-    if (!requestsData?.items.length) return;
+    if (!groupedData?.items.length) return;
 
-    const ids = requestsData.items.map((item) => item.id);
+    // Collect all original request IDs from visible grouped items
+    const ids = groupedData.items.flatMap((camper) =>
+      camper.fields.map((f) => f.original_request_id)
+    );
     const allIds = new Set(ids);
     setReparsingIds(allIds);
 
@@ -169,7 +156,7 @@ export function ParseAnalysisTab() {
         force_reparse: true,
       });
       toast.success(`Reparsed ${ids.length} requests`);
-      await refetchRequests();
+      await refetchGrouped();
     } catch {
       toast.error('Failed to reparse requests');
     } finally {
@@ -177,29 +164,34 @@ export function ParseAnalysisTab() {
     }
   };
 
-  // Handle clear all
+  // Handle scoped clear (visible items only)
   const handleClearAll = async () => {
-    if (!confirm('Are you sure you want to clear all debug parse analysis results?')) return;
+    // Build scoped filters based on current filter state
+    const scopedFilters = {
+      session_cm_ids: effectiveCmIds,
+      source_field: sourceField ?? undefined,
+    };
+
+    const hasFilters = effectiveCmIds || sourceField;
+    const confirmMessage = hasFilters
+      ? 'Are you sure you want to clear debug results for the current filtered view?'
+      : 'Are you sure you want to clear ALL debug parse analysis results?';
+
+    if (!confirm(confirmMessage)) return;
 
     try {
-      const result = await clearMutation.mutateAsync();
+      const result = await clearMutation.mutateAsync(scopedFilters);
       toast.success(`Cleared ${result.deleted_count} debug results`);
-      setSelectedOriginalRequestId(null);
-      await refetchRequests();
+      await refetchGrouped();
     } catch {
       toast.error('Failed to clear results');
     }
   };
 
-  // Handle selection
-  const handleSelect = (item: OriginalRequestWithStatus) => {
-    setSelectedOriginalRequestId(item.id);
-  };
-
-  // Apply client-side search filter
-  const filteredItems = useMemo(
-    () => filterByRequesterName(requestsData?.items || [], searchQuery),
-    [requestsData?.items, searchQuery]
+  // Count total fields for display
+  const totalFields = useMemo(
+    () => groupedData?.items.reduce((sum, camper) => sum + camper.fields.length, 0) ?? 0,
+    [groupedData?.items]
   );
 
   return (
@@ -217,45 +209,28 @@ export function ParseAnalysisTab() {
         onClearAll={handleClearAll}
         isReparsing={parsePhase1Mutation.isPending}
         isClearing={clearMutation.isPending}
-        selectedCount={filteredItems.length}
+        selectedCount={totalFields}
       />
 
-      {/* Two-panel layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left panel: Requester list */}
-        <div className="lg:col-span-4">
-          <div className="sticky top-24">
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
-              Requesters
-              {filteredItems.length > 0 && (
-                <span className="px-2 py-0.5 rounded-full bg-muted text-xs font-medium">
-                  {filteredItems.length}
-                </span>
-              )}
-            </h3>
-            <ParseAnalysisList
-              items={filteredItems}
-              selectedId={selectedOriginalRequestId}
-              onSelect={handleSelect}
-              onReparse={handleReparseSingle}
-              reparsingIds={reparsingIds}
-              isLoading={isLoadingRequests}
-            />
-          </div>
-        </div>
-
-        {/* Right panel: Detail view */}
-        <div className="lg:col-span-8">
-          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-            Analysis Detail
-          </h3>
-          <ParseAnalysisDetail
-            item={parseResult || null}
-            isLoading={isLoadingDetail}
-            onReparse={selectedOriginalRequestId ? handleDetailReparse : undefined}
-            isReparsing={selectedOriginalRequestId ? reparsingIds.has(selectedOriginalRequestId) : false}
-          />
-        </div>
+      {/* Grouped accordion list */}
+      <div>
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+          Campers
+          {groupedData && groupedData.items.length > 0 && (
+            <span className="px-2 py-0.5 rounded-full bg-muted text-xs font-medium">
+              {groupedData.items.length} camper{groupedData.items.length !== 1 ? 's' : ''}, {totalFields} field{totalFields !== 1 ? 's' : ''}
+            </span>
+          )}
+        </h3>
+        <ParseAnalysisGroupedList
+          items={groupedData?.items ?? []}
+          isLoading={isLoadingGrouped}
+          reparsingIds={reparsingIds}
+          clearingIds={clearingIds}
+          onReparse={handleReparseSingle}
+          onClear={handleClearSingle}
+          searchQuery={searchQuery}
+        />
       </div>
     </div>
   );
