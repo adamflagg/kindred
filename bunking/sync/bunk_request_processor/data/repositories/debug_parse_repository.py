@@ -266,10 +266,10 @@ class DebugParseRepository:
         return base
 
     def get_production_fallback(self, original_request_id: str) -> dict[str, Any] | None:
-        """Get Phase 1 results from production bunk_requests via junction table.
+        """Get Phase 1 results from production bunk_requests.
 
-        Queries bunk_request_sources to find linked bunk_requests and extracts
-        their ai_p1_reasoning data for display in the debug UI.
+        Queries bunk_requests directly by matching requester_id and original_text
+        from the original_bunk_requests record.
 
         Args:
             original_request_id: ID of the original_bunk_requests record
@@ -278,37 +278,62 @@ class DebugParseRepository:
             Dictionary with parsed_intents from production, or None if not found
         """
         try:
-            # Query bunk_request_sources with bunk_request expansion
-            result = self.pb.collection("bunk_request_sources").get_list(
+            # First, load the original request to get requester cm_id and content
+            orig_result = self.pb.collection("original_bunk_requests").get_one(
+                original_request_id,
+                query_params={"expand": "requester"},
+            )
+
+            if not orig_result:
+                return None
+
+            # Get requester cm_id from expanded relation
+            requester = None
+            if hasattr(orig_result, "expand") and orig_result.expand:
+                requester = orig_result.expand.get("requester")
+
+            if not requester:
+                return None
+
+            requester_cm_id = getattr(requester, "cm_id", None)
+            original_text = getattr(orig_result, "content", None)
+
+            if not requester_cm_id or not original_text:
+                return None
+
+            # Query bunk_requests directly by requester_id and original_text
+            # Need to escape quotes in original_text for PocketBase filter
+            escaped_text = original_text.replace('"', '\\"')
+            filter_str = f'requester_id = {requester_cm_id} && original_text = "{escaped_text}"'
+
+            bunk_results = self.pb.collection("bunk_requests").get_list(
                 query_params={
-                    "filter": f'original_request = "{original_request_id}"',
-                    "expand": "bunk_request",
+                    "filter": filter_str,
                     "perPage": 100,
                 }
             )
 
-            if not result.items:
+            if not bunk_results.items:
                 return None
 
-            # Aggregate parsed intents from all linked bunk_requests
+            # Build parsed_intents from bunk_request records
             all_intents: list[dict[str, Any]] = []
 
-            for source in result.items:
-                if not hasattr(source, "expand") or not source.expand:
-                    continue
+            for br in bunk_results.items:
+                # Extract data from main fields and metadata
+                metadata = getattr(br, "metadata", {}) or {}
 
-                bunk_request = source.expand.get("bunk_request")
-                if not bunk_request:
-                    continue
-
-                ai_p1_reasoning = getattr(bunk_request, "ai_p1_reasoning", None)
-                if not ai_p1_reasoning:
-                    continue
-
-                # Extract parsed_intents from ai_p1_reasoning
-                if isinstance(ai_p1_reasoning, dict):
-                    intents = ai_p1_reasoning.get("parsed_intents", [])
-                    all_intents.extend(intents)
+                intent: dict[str, Any] = {
+                    "request_type": getattr(br, "request_type", "unknown"),
+                    "target_name": metadata.get("target_name") or getattr(br, "target_name", None),
+                    "keywords_found": metadata.get("keywords_found", []) or getattr(br, "keywords_found", []),
+                    "parse_notes": metadata.get("parse_notes", "") or getattr(br, "parse_notes", ""),
+                    "reasoning": metadata.get("reasoning", ""),
+                    "list_position": getattr(br, "csv_position", 0),
+                    "needs_clarification": getattr(br, "requires_manual_review", False),
+                    "temporal_info": None,
+                }
+                all_intents.append(intent)
 
             if not all_intents:
                 return None
@@ -345,14 +370,30 @@ class DebugParseRepository:
             )
             has_debug = len(debug_result.items) > 0
 
-            # Check bunk_request_sources (production)
-            sources_result = self.pb.collection("bunk_request_sources").get_list(
-                query_params={
-                    "filter": f'original_request = "{original_request_id}"',
-                    "perPage": 1,
-                }
+            # Check bunk_requests directly (production)
+            # Load original request to get requester cm_id and content
+            orig_result = self.pb.collection("original_bunk_requests").get_one(
+                original_request_id,
+                query_params={"expand": "requester"},
             )
-            has_production = len(sources_result.items) > 0
+
+            if orig_result:
+                requester = None
+                if hasattr(orig_result, "expand") and orig_result.expand:
+                    requester = orig_result.expand.get("requester")
+
+                if requester:
+                    requester_cm_id = getattr(requester, "cm_id", None)
+                    original_text = getattr(orig_result, "content", None)
+
+                    if requester_cm_id and original_text:
+                        escaped_text = original_text.replace('"', '\\"')
+                        filter_str = f'requester_id = {requester_cm_id} && original_text = "{escaped_text}"'
+
+                        prod_result = self.pb.collection("bunk_requests").get_list(
+                            query_params={"filter": filter_str, "perPage": 1}
+                        )
+                        has_production = len(prod_result.items) > 0
 
         except Exception as e:
             logger.warning(f"Failed to check parse status: {e}")
@@ -361,9 +402,6 @@ class DebugParseRepository:
 
     def check_parse_status_batch(self, original_request_ids: list[str]) -> dict[str, tuple[bool, bool]]:
         """Check parse status for multiple original requests in batch.
-
-        This is much more efficient than calling check_parse_status() individually
-        when checking status for many records (2 queries instead of N*2).
 
         Args:
             original_request_ids: List of original_bunk_requests record IDs
@@ -388,18 +426,233 @@ class DebugParseRepository:
             )
             debug_ids = {r.original_request for r in debug_results}  # type: ignore[attr-defined]
 
-            # Single query: bunk_request_sources (production)
-            prod_results = self.pb.collection("bunk_request_sources").get_full_list(
-                query_params={"filter": filter_str, "fields": "original_request"}
+            # For production: load original requests to get (cm_id, content) pairs
+            orig_filter = "(" + " || ".join(f'id = "{rid}"' for rid in original_request_ids) + ")"
+            orig_results = self.pb.collection("original_bunk_requests").get_full_list(
+                query_params={"filter": orig_filter, "expand": "requester"}
             )
-            prod_ids = {r.original_request for r in prod_results}  # type: ignore[attr-defined]
 
-            # Update result dict
+            # Build lookup: original_request_id -> (cm_id, content)
+            orig_lookup: dict[str, tuple[int, str]] = {}
+            for orig in orig_results:
+                requester = None
+                if hasattr(orig, "expand") and orig.expand:
+                    requester = orig.expand.get("requester")
+                if requester:
+                    cm_id = getattr(requester, "cm_id", None)
+                    content = getattr(orig, "content", None)
+                    if cm_id and content:
+                        orig_lookup[orig.id] = (cm_id, content)
+
+            # Get unique requester cm_ids to batch query bunk_requests
+            cm_ids = {v[0] for v in orig_lookup.values()}
+            if cm_ids:
+                cm_id_filter = " || ".join(f"requester_id = {cm_id}" for cm_id in cm_ids)
+                bunk_results = self.pb.collection("bunk_requests").get_full_list(
+                    query_params={
+                        "filter": f"({cm_id_filter})",
+                        "fields": "requester_id,original_text",
+                    }
+                )
+
+                # Build set of (cm_id, original_text) pairs that exist in bunk_requests
+                prod_pairs: set[tuple[int, str]] = set()
+                for br in bunk_results:
+                    cm_id = getattr(br, "requester_id", None)
+                    text = getattr(br, "original_text", None)
+                    if cm_id and text:
+                        prod_pairs.add((cm_id, text))
+
+                # Check each original request against the production pairs
+                for rid, (cm_id, content) in orig_lookup.items():
+                    has_prod = (cm_id, content) in prod_pairs
+                    has_debug = rid in debug_ids
+                    result[rid] = (has_debug, has_prod)
+
+            # Update debug status for requests not in orig_lookup
             for rid in original_request_ids:
-                result[rid] = (rid in debug_ids, rid in prod_ids)
+                if rid not in orig_lookup:
+                    result[rid] = (rid in debug_ids, False)
 
         except Exception as e:
             logger.warning(f"Failed to check parse status batch: {e}")
+
+        return result
+
+    def get_results_batch(self, original_request_ids: list[str]) -> dict[str, dict[str, Any]]:
+        """Get parse results for multiple original requests in batch.
+
+        Returns debug results where available, otherwise production fallback.
+        This is optimized to use minimal database queries.
+
+        Args:
+            original_request_ids: List of original_bunk_requests record IDs
+
+        Returns:
+            Dict mapping original_request_id -> result dict with:
+                - source: "debug" | "production" | "none"
+                - parsed_intents: list of intent dicts
+                - is_valid: bool
+                - error_message: optional str
+                - Plus original request data (always included)
+        """
+        if not original_request_ids:
+            return {}
+
+        result: dict[str, dict[str, Any]] = {}
+
+        try:
+            # Query 1: Load all original requests with expanded requester
+            orig_filter = "(" + " || ".join(f'id = "{rid}"' for rid in original_request_ids) + ")"
+            orig_results = self.pb.collection("original_bunk_requests").get_full_list(
+                query_params={"filter": orig_filter, "expand": "requester"}
+            )
+
+            # Build lookup for original request data
+            orig_data: dict[str, dict[str, Any]] = {}
+            orig_lookup: dict[str, tuple[int, str]] = {}  # id -> (cm_id, content)
+
+            for orig in orig_results:
+                requester = None
+                if hasattr(orig, "expand") and orig.expand:
+                    requester = orig.expand.get("requester")
+
+                requester_cm_id = getattr(requester, "cm_id", None) if requester else None
+                first_name = (
+                    getattr(requester, "preferred_name", None) or getattr(requester, "first_name", "")
+                    if requester
+                    else ""
+                )
+                last_name = getattr(requester, "last_name", "") if requester else ""
+                requester_name = f"{first_name} {last_name}".strip()
+
+                content = getattr(orig, "content", "")
+                field = getattr(orig, "field", "")
+
+                orig_data[orig.id] = {
+                    "original_request_id": orig.id,
+                    "requester_name": requester_name,
+                    "requester_cm_id": requester_cm_id,
+                    "source_field": field,
+                    "original_text": content,
+                }
+
+                if requester_cm_id and content:
+                    orig_lookup[orig.id] = (requester_cm_id, content)
+
+            # Query 2: Load all debug results
+            debug_filter = "(" + " || ".join(f'original_request = "{rid}"' for rid in original_request_ids) + ")"
+            debug_results = self.pb.collection(self.COLLECTION_NAME).get_full_list(
+                query_params={"filter": debug_filter}
+            )
+
+            # Build debug results lookup
+            debug_by_orig: dict[str, Any] = {}
+            for dr in debug_results:
+                orig_id = getattr(dr, "original_request", None)
+                if orig_id:
+                    debug_by_orig[orig_id] = dr
+
+            # Query 3: Load bunk_requests for production fallback
+            cm_ids = {v[0] for v in orig_lookup.values()}
+            prod_by_pair: dict[tuple[int, str], list[Any]] = {}
+
+            if cm_ids:
+                cm_id_filter = " || ".join(f"requester_id = {cm_id}" for cm_id in cm_ids)
+                bunk_results = self.pb.collection("bunk_requests").get_full_list(
+                    query_params={"filter": f"({cm_id_filter})"}
+                )
+
+                # Group bunk_requests by (cm_id, original_text)
+                for br in bunk_results:
+                    cm_id = getattr(br, "requester_id", None)
+                    text = getattr(br, "original_text", None)
+                    if cm_id and text:
+                        key = (cm_id, text)
+                        if key not in prod_by_pair:
+                            prod_by_pair[key] = []
+                        prod_by_pair[key].append(br)
+
+            # Build results for each original request
+            for rid in original_request_ids:
+                base = orig_data.get(
+                    rid,
+                    {
+                        "original_request_id": rid,
+                        "requester_name": "",
+                        "requester_cm_id": None,
+                        "source_field": "",
+                        "original_text": "",
+                    },
+                )
+
+                # Check for debug result first
+                if rid in debug_by_orig:
+                    dr = debug_by_orig[rid]
+                    result[rid] = {
+                        **base,
+                        "source": "debug",
+                        "id": dr.id,
+                        "parsed_intents": getattr(dr, "parsed_intents", []) or [],
+                        "is_valid": getattr(dr, "is_valid", True),
+                        "error_message": getattr(dr, "error_message", None),
+                        "token_count": getattr(dr, "token_count", None),
+                        "processing_time_ms": getattr(dr, "processing_time_ms", None),
+                        "prompt_version": getattr(dr, "prompt_version", None),
+                        "created": getattr(dr, "created", None),
+                    }
+                    continue
+
+                # Check for production fallback
+                if rid in orig_lookup:
+                    cm_id, content = orig_lookup[rid]
+                    prod_records = prod_by_pair.get((cm_id, content), [])
+
+                    if prod_records:
+                        # Build parsed_intents from production bunk_request records
+                        intents = []
+                        for br in prod_records:
+                            metadata = getattr(br, "metadata", {}) or {}
+                            intent = {
+                                "request_type": getattr(br, "request_type", "unknown"),
+                                "target_name": metadata.get("target_name") or getattr(br, "target_name", None),
+                                "keywords_found": metadata.get("keywords_found", []),
+                                "parse_notes": metadata.get("parse_notes", ""),
+                                "reasoning": metadata.get("reasoning", ""),
+                                "list_position": getattr(br, "csv_position", 0),
+                                "needs_clarification": getattr(br, "requires_manual_review", False),
+                                "temporal_info": None,
+                            }
+                            intents.append(intent)
+
+                        result[rid] = {
+                            **base,
+                            "source": "production",
+                            "parsed_intents": intents,
+                            "is_valid": True,
+                        }
+                        continue
+
+                # Neither debug nor production
+                result[rid] = {
+                    **base,
+                    "source": "none",
+                    "parsed_intents": [],
+                    "is_valid": True,
+                }
+
+        except Exception as e:
+            logger.warning(f"Failed to get results batch: {e}")
+            # Return empty results for all on error
+            for rid in original_request_ids:
+                if rid not in result:
+                    result[rid] = {
+                        "original_request_id": rid,
+                        "source": "none",
+                        "parsed_intents": [],
+                        "is_valid": False,
+                        "error_message": str(e),
+                    }
 
         return result
 
