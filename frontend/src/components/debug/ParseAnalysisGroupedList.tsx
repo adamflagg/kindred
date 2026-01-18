@@ -9,7 +9,6 @@
 import { useState, useCallback } from 'react';
 import { ChevronDown, ChevronRight, Loader2, User } from 'lucide-react';
 import { CamperFieldBlock } from './CamperFieldBlock';
-import { useParseResultWithFallback } from '../../hooks/useParseAnalysis';
 import { SOURCE_FIELD_LABELS } from './types';
 import type {
   CamperGroupedRequests,
@@ -25,6 +24,8 @@ interface ParseAnalysisGroupedListProps {
   onReparse: (originalRequestId: string) => void;
   onClear: (originalRequestId: string) => void;
   searchQuery: string;
+  selectedFieldId: string | null;
+  onFieldSelect: (originalRequestId: string) => void;
 }
 
 // Small badge component for field preview in collapsed row
@@ -74,38 +75,29 @@ function CamperExpandedContent({
   clearingIds,
   onReparse,
   onClear,
+  selectedFieldId,
+  onFieldSelect,
 }: {
   camper: CamperGroupedRequests;
   reparsingIds: Set<string>;
   clearingIds: Set<string>;
   onReparse: (originalRequestId: string) => void;
   onClear: (originalRequestId: string) => void;
+  selectedFieldId: string | null;
+  onFieldSelect: (originalRequestId: string) => void;
 }) {
-  // Track which field is expanded to fetch its parse result
-  const [expandedFieldId, setExpandedFieldId] = useState<string | null>(null);
-
-  // Fetch parse result for the expanded field
-  const { data: parseResult, isLoading: isLoadingDetail } =
-    useParseResultWithFallback(expandedFieldId);
-
   return (
     <div className="space-y-3 p-4 pt-0">
       {camper.fields.map((field) => (
         <CamperFieldBlock
           key={field.original_request_id}
           field={field}
-          parseResult={
-            expandedFieldId === field.original_request_id ? parseResult ?? null : null
-          }
-          isLoadingDetail={
-            expandedFieldId === field.original_request_id && isLoadingDetail
-          }
           isReparsing={reparsingIds.has(field.original_request_id)}
           isClearing={clearingIds.has(field.original_request_id)}
           onReparse={() => onReparse(field.original_request_id)}
           onClear={() => onClear(field.original_request_id)}
-          onExpand={() => setExpandedFieldId(field.original_request_id)}
-          isExpanded={expandedFieldId === field.original_request_id}
+          onSelect={() => onFieldSelect(field.original_request_id)}
+          isSelected={selectedFieldId === field.original_request_id}
         />
       ))}
     </div>
@@ -120,6 +112,8 @@ export function ParseAnalysisGroupedList({
   onReparse,
   onClear,
   searchQuery,
+  selectedFieldId,
+  onFieldSelect,
 }: ParseAnalysisGroupedListProps) {
   const [expandedCampers, setExpandedCampers] = useState<Set<number>>(new Set());
 
@@ -231,6 +225,8 @@ export function ParseAnalysisGroupedList({
                   clearingIds={clearingIds}
                   onReparse={onReparse}
                   onClear={onClear}
+                  selectedFieldId={selectedFieldId}
+                  onFieldSelect={onFieldSelect}
                 />
               )}
             </div>
