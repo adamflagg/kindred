@@ -9,6 +9,10 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from bunking.sync.bunk_request_processor.services.staff_note_parser import (
+    extract_staff_pattern,
+)
+
 if TYPE_CHECKING:
     from pocketbase import PocketBase
 
@@ -297,13 +301,22 @@ class DebugParseRepository:
 
             requester_cm_id = getattr(requester, "cm_id", None)
             original_text = getattr(orig_result, "content", None)
+            field_type = getattr(orig_result, "field", None)
 
             if not requester_cm_id or not original_text:
                 return None
 
+            # For bunking_notes, the bunk_requests.original_text has staff attribution
+            # stripped (e.g., "STAFFNAME (May 30 2024 2:18PM)"), so we need to match
+            # using the cleaned version
+            text_to_match = original_text
+            if field_type == "bunking_notes":
+                cleaned_text, _ = extract_staff_pattern(original_text)
+                text_to_match = cleaned_text
+
             # Query bunk_requests directly by requester_id and original_text
             # Need to escape quotes in original_text for PocketBase filter
-            escaped_text = original_text.replace('"', '\\"')
+            escaped_text = text_to_match.replace('"', '\\"')
             filter_str = f'requester_id = {requester_cm_id} && original_text = "{escaped_text}"'
 
             bunk_results = self.pb.collection("bunk_requests").get_list(
