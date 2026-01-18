@@ -31,7 +31,10 @@ from bunking.sync.bunk_request_processor.services.phase1_debug_service import (
 
 from ..dependencies import pb
 from ..schemas.debug import (
+    CamperGroupedRequests,
     ClearAnalysisResponse,
+    FieldParseResult,
+    GroupedRequestsResponse,
     OriginalRequestItem,
     OriginalRequestsListResponse,
     OriginalRequestsWithParseResponse,
@@ -328,15 +331,48 @@ async def parse_phase1_only(request: Phase1OnlyRequest) -> Phase1OnlyResponse:
     return Phase1OnlyResponse(results=response_items, total_tokens=total_tokens)
 
 
-@router.delete("/parse-analysis", response_model=ClearAnalysisResponse)
-async def clear_parse_analysis() -> ClearAnalysisResponse:
-    """Clear all debug parse analysis results.
+@router.delete("/parse-analysis/by-original/{original_request_id}", response_model=ClearAnalysisResponse)
+async def clear_single_parse_analysis(original_request_id: str) -> ClearAnalysisResponse:
+    """Clear debug parse result for a single original request.
 
-    This removes all cached debug results. Use when you want a clean
-    slate for testing new prompt versions.
+    Args:
+        original_request_id: ID of the original_bunk_requests record
     """
     debug_repo = get_debug_parse_repository()
-    deleted_count = debug_repo.clear_all()
+    deleted = debug_repo.delete_by_original_request(original_request_id)
+
+    return ClearAnalysisResponse(deleted_count=1 if deleted else 0)
+
+
+@router.delete("/parse-analysis", response_model=ClearAnalysisResponse)
+async def clear_parse_analysis(
+    session_cm_id: int | None = Query(default=None, description="Filter by session CM ID"),
+    source_field: SourceFieldType | None = Query(default=None, description="Filter by source field"),
+) -> ClearAnalysisResponse:
+    """Clear debug parse analysis results.
+
+    Without filters, clears ALL debug results.
+    With filters, only clears results matching the given criteria.
+    """
+    debug_repo = get_debug_parse_repository()
+
+    # If any filter is provided, use scoped deletion
+    if session_cm_id is not None or source_field is not None:
+        # Convert session CM ID to PocketBase ID if provided
+        session_id: str | None = None
+        if session_cm_id:
+            session_repo = get_session_repository()
+            session = session_repo.find_by_cm_id(session_cm_id)
+            if session:
+                session_id = session["id"]
+
+        deleted_count = debug_repo.clear_by_filter(
+            session_id=session_id,
+            source_field=source_field,
+        )
+    else:
+        # No filters - clear all
+        deleted_count = debug_repo.clear_all()
 
     if deleted_count < 0:
         raise HTTPException(status_code=500, detail="Failed to clear parse analysis results")
@@ -392,7 +428,6 @@ async def list_original_requests_with_parse_status(
     session_cm_id: list[int] | None = Query(default=None, description="Filter by session CM ID(s)"),
     source_field: SourceFieldType | None = Query(default=None, description="Filter by source field"),
     limit: int = Query(default=100, ge=1, le=500, description="Maximum results"),
-    offset: int = Query(default=0, ge=0, description="Pagination offset"),
 ) -> OriginalRequestsWithParseResponse:
     """List original_bunk_requests with their parse status flags.
 
@@ -414,13 +449,17 @@ async def list_original_requests_with_parse_status(
 
     debug_repo = get_debug_parse_repository()
 
+    # Use batch status check for efficiency (2 queries instead of N*2)
+    record_ids = [r.id for r in records]
+    status_map = debug_repo.check_parse_status_batch(record_ids)
+
     items = []
     for record in records:
         first = record.preferred_name or record.first_name
         requester_name = f"{first} {record.last_name}".strip()
 
-        # Check parse status for this record
-        has_debug, has_production = debug_repo.check_parse_status(record.id)
+        # Get status from batch result
+        has_debug, has_production = status_map.get(record.id, (False, False))
 
         items.append(
             OriginalRequestWithStatus(
@@ -438,6 +477,72 @@ async def list_original_requests_with_parse_status(
     return OriginalRequestsWithParseResponse(items=items, total=len(items))
 
 
+# AI-processed fields only (excludes socialize_with which is dropdown-based)
+AI_PARSED_FIELDS = {"bunk_with", "not_bunk_with", "bunking_notes", "internal_notes"}
+
+
+@router.get("/original-requests-grouped", response_model=GroupedRequestsResponse)
+async def list_original_requests_grouped(
+    year: int = Query(description="Year to filter by (required)"),
+    session_cm_id: list[int] | None = Query(default=None, description="Filter by session CM ID(s)"),
+    source_field: SourceFieldType | None = Query(default=None, description="Filter by source field"),
+    limit: int = Query(default=50, ge=1, le=500, description="Maximum campers to return"),
+) -> GroupedRequestsResponse:
+    """List original requests grouped by camper.
+
+    Excludes socialize_with (not AI parsed).
+    Each camper group contains all their AI-parseable fields.
+    """
+    # Create loader with specified year
+    loader = OriginalRequestsLoader(pb, year)
+    loader.load_persons_cache()
+
+    # Load records - if source_field filter is specified, only load that field
+    # Otherwise, load ALL records (no field filter) and filter AI fields in Python
+    records = loader.load_by_filter(
+        session_cm_id=session_cm_id,
+        source_field=source_field,
+        limit=limit * 4,  # Fetch more since we're grouping (up to 4 fields per camper)
+    )
+
+    # Filter out socialize_with (not AI parsed)
+    ai_records = [r for r in records if r.field in AI_PARSED_FIELDS]
+
+    debug_repo = get_debug_parse_repository()
+
+    # Use batch status check for efficiency
+    record_ids = [r.id for r in ai_records]
+    status_map = debug_repo.check_parse_status_batch(record_ids)
+
+    # Group by camper (requester_cm_id) - build CamperGroupedRequests directly
+    camper_groups: dict[int, CamperGroupedRequests] = {}
+    for record in ai_records:
+        cm_id = record.requester_cm_id
+        if cm_id not in camper_groups:
+            first = record.preferred_name or record.first_name
+            camper_groups[cm_id] = CamperGroupedRequests(
+                requester_cm_id=cm_id,
+                requester_name=f"{first} {record.last_name}".strip(),
+                fields=[],
+            )
+
+        has_debug, has_production = status_map.get(record.id, (False, False))
+        camper_groups[cm_id].fields.append(
+            FieldParseResult(
+                original_request_id=record.id,
+                source_field=record.field,
+                original_text=record.content,
+                has_debug_result=has_debug,
+                has_production_result=has_production,
+            )
+        )
+
+    # Apply camper limit
+    items = list(camper_groups.values())[:limit]
+
+    return GroupedRequestsResponse(items=items, total=len(items))
+
+
 @router.get("/parse-result/{original_request_id}", response_model=ParseResultWithSource)
 async def get_parse_result_with_fallback(original_request_id: str) -> ParseResultWithSource:
     """Get Phase 1 parse result for an original request with fallback.
@@ -446,10 +551,33 @@ async def get_parse_result_with_fallback(original_request_id: str) -> ParseResul
     1. debug_parse_results (if exists) - returns source="debug"
     2. bunk_requests via bunk_request_sources (fallback) - returns source="production"
     3. Neither exists - returns source="none" with empty parsed_intents
+
+    IMPORTANT: Original request data (requester_name, source_field, original_text)
+    is ALWAYS loaded from original_bunk_requests, regardless of whether debug
+    or production results exist.
     """
+    # 1. ALWAYS load original request first to get base data
+    loader = get_original_requests_loader()
+    originals = loader.load_by_ids([original_request_id])
+    if not originals:
+        raise HTTPException(status_code=404, detail="Original request not found")
+
+    orig = originals[0]
+
+    # Build base response from original request (always populated)
+    first = orig.preferred_name or orig.first_name
+    requester_name = f"{first} {orig.last_name}".strip()
+
+    # Base data from original request (always populated)
+    base_original_request_id = original_request_id
+    base_requester_name = requester_name
+    base_requester_cm_id = orig.requester_cm_id
+    base_source_field = orig.field
+    base_original_text = orig.content
+
     debug_repo = get_debug_parse_repository()
 
-    # First, check for debug result
+    # 2. Check for debug result
     debug_result = debug_repo.get_by_original_request(original_request_id)
     if debug_result:
         # Convert parsed_intents to proper model
@@ -480,11 +608,6 @@ async def get_parse_result_with_fallback(original_request_id: str) -> ParseResul
         return ParseResultWithSource(
             source="debug",
             id=debug_result.get("id"),
-            original_request_id=original_request_id,
-            requester_name=debug_result.get("requester_name"),
-            requester_cm_id=debug_result.get("requester_cm_id"),
-            source_field=debug_result.get("source_field"),
-            original_text=debug_result.get("original_text"),
             parsed_intents=parsed_intents,
             is_valid=debug_result.get("is_valid", True),
             error_message=debug_result.get("error_message"),
@@ -492,9 +615,14 @@ async def get_parse_result_with_fallback(original_request_id: str) -> ParseResul
             processing_time_ms=debug_result.get("processing_time_ms"),
             prompt_version=debug_result.get("prompt_version"),
             created=created_dt,
+            original_request_id=base_original_request_id,
+            requester_name=base_requester_name,
+            requester_cm_id=base_requester_cm_id,
+            source_field=base_source_field,
+            original_text=base_original_text,
         )
 
-    # Fallback to production data
+    # 3. Fallback to production data
     production_result = debug_repo.get_production_fallback(original_request_id)
     if production_result:
         # Convert parsed_intents to proper model
@@ -515,16 +643,24 @@ async def get_parse_result_with_fallback(original_request_id: str) -> ParseResul
 
         return ParseResultWithSource(
             source="production",
-            original_request_id=original_request_id,
             parsed_intents=parsed_intents,
             is_valid=production_result.get("is_valid", True),
+            original_request_id=base_original_request_id,
+            requester_name=base_requester_name,
+            requester_cm_id=base_requester_cm_id,
+            source_field=base_source_field,
+            original_text=base_original_text,
         )
 
-    # Neither debug nor production exists
+    # 4. Neither debug nor production exists - still include original data
     return ParseResultWithSource(
         source="none",
-        original_request_id=original_request_id,
         parsed_intents=[],
+        original_request_id=base_original_request_id,
+        requester_name=base_requester_name,
+        requester_cm_id=base_requester_cm_id,
+        source_field=base_source_field,
+        original_text=base_original_text,
     )
 
 

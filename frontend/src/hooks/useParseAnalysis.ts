@@ -10,6 +10,8 @@ import type {
   ParseAnalysisFilters,
   OriginalRequestsFilters,
   OriginalRequestsWithStatusFilters,
+  GroupedRequestsFilters,
+  ScopedClearFilters,
   Phase1OnlyRequest,
 } from '../services/debug';
 
@@ -153,17 +155,60 @@ export function useReparseSingle() {
 }
 
 /**
- * Hook to clear all parse analysis results
+ * Hook to clear parse analysis results (with optional scoped filters)
  */
 export function useClearParseAnalysis() {
   const { fetchWithAuth } = useApiWithAuth();
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: () => debugService.clearParseAnalysis(fetchWithAuth),
+    mutationFn: (filters?: ScopedClearFilters) =>
+      debugService.clearParseAnalysis(fetchWithAuth, filters),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['parse-analysis'] });
+      queryClient.invalidateQueries({ queryKey: ['original-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['grouped-requests'] });
     },
+  });
+}
+
+/**
+ * Hook to clear a single parse analysis result
+ */
+export function useClearSingleParseAnalysis() {
+  const { fetchWithAuth } = useApiWithAuth();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (originalRequestId: string) =>
+      debugService.clearSingleParseAnalysis(originalRequestId, fetchWithAuth),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['parse-analysis'] });
+      queryClient.invalidateQueries({ queryKey: ['original-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['grouped-requests'] });
+    },
+  });
+}
+
+/**
+ * Hook to fetch original requests grouped by camper
+ */
+export function useGroupedRequests(filters: GroupedRequestsFilters) {
+  const { fetchWithAuth, isAuthenticated } = useApiWithAuth();
+
+  const filterArg =
+    filters.session_cm_ids !== undefined || filters.source_field !== undefined
+      ? {
+          ...(filters.session_cm_ids !== undefined && { sessionCmIds: filters.session_cm_ids }),
+          ...(filters.source_field !== undefined && { sourceField: filters.source_field }),
+        }
+      : undefined;
+
+  return useQuery({
+    queryKey: ['grouped-requests', filters.year, filterArg],
+    queryFn: () => debugService.listGroupedRequests(filters, fetchWithAuth),
+    enabled: isAuthenticated && !!filters.year,
+    ...userDataOptions,
   });
 }
 
