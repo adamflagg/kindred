@@ -514,20 +514,20 @@ async def list_original_requests_grouped(
     record_ids = [r.id for r in ai_records]
     status_map = debug_repo.check_parse_status_batch(record_ids)
 
-    # Group by camper (requester_cm_id)
-    camper_groups: dict[int, dict] = {}
+    # Group by camper (requester_cm_id) - build CamperGroupedRequests directly
+    camper_groups: dict[int, CamperGroupedRequests] = {}
     for record in ai_records:
         cm_id = record.requester_cm_id
         if cm_id not in camper_groups:
             first = record.preferred_name or record.first_name
-            camper_groups[cm_id] = {
-                "requester_cm_id": cm_id,
-                "requester_name": f"{first} {record.last_name}".strip(),
-                "fields": [],
-            }
+            camper_groups[cm_id] = CamperGroupedRequests(
+                requester_cm_id=cm_id,
+                requester_name=f"{first} {record.last_name}".strip(),
+                fields=[],
+            )
 
         has_debug, has_production = status_map.get(record.id, (False, False))
-        camper_groups[cm_id]["fields"].append(
+        camper_groups[cm_id].fields.append(
             FieldParseResult(
                 original_request_id=record.id,
                 source_field=record.field,
@@ -537,16 +537,8 @@ async def list_original_requests_grouped(
             )
         )
 
-    # Convert to response models and apply camper limit
-    items = []
-    for group_data in list(camper_groups.values())[:limit]:
-        items.append(
-            CamperGroupedRequests(
-                requester_cm_id=group_data["requester_cm_id"],
-                requester_name=group_data["requester_name"],
-                fields=group_data["fields"],
-            )
-        )
+    # Apply camper limit
+    items = list(camper_groups.values())[:limit]
 
     return GroupedRequestsResponse(items=items, total=len(items))
 
@@ -576,13 +568,12 @@ async def get_parse_result_with_fallback(original_request_id: str) -> ParseResul
     first = orig.preferred_name or orig.first_name
     requester_name = f"{first} {orig.last_name}".strip()
 
-    base_data = {
-        "original_request_id": original_request_id,
-        "requester_name": requester_name,
-        "requester_cm_id": orig.requester_cm_id,
-        "source_field": orig.field,
-        "original_text": orig.content,
-    }
+    # Base data from original request (always populated)
+    base_original_request_id = original_request_id
+    base_requester_name = requester_name
+    base_requester_cm_id = orig.requester_cm_id
+    base_source_field = orig.field
+    base_original_text = orig.content
 
     debug_repo = get_debug_parse_repository()
 
@@ -624,7 +615,11 @@ async def get_parse_result_with_fallback(original_request_id: str) -> ParseResul
             processing_time_ms=debug_result.get("processing_time_ms"),
             prompt_version=debug_result.get("prompt_version"),
             created=created_dt,
-            **base_data,
+            original_request_id=base_original_request_id,
+            requester_name=base_requester_name,
+            requester_cm_id=base_requester_cm_id,
+            source_field=base_source_field,
+            original_text=base_original_text,
         )
 
     # 3. Fallback to production data
@@ -650,14 +645,22 @@ async def get_parse_result_with_fallback(original_request_id: str) -> ParseResul
             source="production",
             parsed_intents=parsed_intents,
             is_valid=production_result.get("is_valid", True),
-            **base_data,
+            original_request_id=base_original_request_id,
+            requester_name=base_requester_name,
+            requester_cm_id=base_requester_cm_id,
+            source_field=base_source_field,
+            original_text=base_original_text,
         )
 
     # 4. Neither debug nor production exists - still include original data
     return ParseResultWithSource(
         source="none",
         parsed_intents=[],
-        **base_data,
+        original_request_id=base_original_request_id,
+        requester_name=base_requester_name,
+        requester_cm_id=base_requester_cm_id,
+        source_field=base_source_field,
+        original_text=base_original_text,
     )
 
 

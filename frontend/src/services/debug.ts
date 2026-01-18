@@ -136,6 +136,38 @@ export interface OriginalRequestsWithStatusFilters {
   offset?: number | undefined;
 }
 
+// Types for grouped-by-camper view
+export interface FieldParseResult {
+  original_request_id: string;
+  source_field: string;
+  original_text: string;
+  has_debug_result: boolean;
+  has_production_result: boolean;
+}
+
+export interface CamperGroupedRequests {
+  requester_cm_id: number;
+  requester_name: string;
+  fields: FieldParseResult[];
+}
+
+export interface GroupedRequestsResponse {
+  items: CamperGroupedRequests[];
+  total: number;
+}
+
+export interface GroupedRequestsFilters {
+  year: number;
+  session_cm_ids?: number[] | undefined;
+  source_field?: SourceFieldType | undefined;
+  limit?: number | undefined;
+}
+
+export interface ScopedClearFilters {
+  session_cm_ids?: number[] | undefined;
+  source_field?: SourceFieldType | undefined;
+}
+
 // Prompt Editor Types
 
 export interface PromptListItem {
@@ -222,17 +254,45 @@ export const debugService = {
   },
 
   /**
-   * Clear all parse analysis results
+   * Clear parse analysis results (with optional scoped filters)
    */
   async clearParseAnalysis(
-    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>,
+    filters?: ScopedClearFilters
   ): Promise<ClearAnalysisResponse> {
-    const response = await fetchWithAuth(`${API_BASE}/parse-analysis`, {
+    const params = new URLSearchParams();
+    if (filters?.session_cm_ids) {
+      filters.session_cm_ids.forEach((cmId) => {
+        params.append('session_cm_id', String(cmId));
+      });
+    }
+    if (filters?.source_field) params.set('source_field', filters.source_field);
+
+    const url = `${API_BASE}/parse-analysis${params.toString() ? `?${params}` : ''}`;
+    const response = await fetchWithAuth(url, {
       method: 'DELETE',
     });
 
     if (!response.ok) {
       throw new Error('Failed to clear parse analysis results');
+    }
+    return response.json();
+  },
+
+  /**
+   * Clear a single parse analysis result by original request ID
+   */
+  async clearSingleParseAnalysis(
+    originalRequestId: string,
+    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+  ): Promise<ClearAnalysisResponse> {
+    const response = await fetchWithAuth(
+      `${API_BASE}/parse-analysis/by-original/${encodeURIComponent(originalRequestId)}`,
+      { method: 'DELETE' }
+    );
+
+    if (!response.ok) {
+      throw new Error('Failed to clear parse analysis result');
     }
     return response.json();
   },
@@ -296,6 +356,31 @@ export const debugService = {
 
     if (!response.ok) {
       throw new Error('Failed to fetch parse result');
+    }
+    return response.json();
+  },
+
+  /**
+   * List original requests grouped by camper (excludes socialize_with)
+   */
+  async listGroupedRequests(
+    filters: GroupedRequestsFilters,
+    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+  ): Promise<GroupedRequestsResponse> {
+    const params = new URLSearchParams();
+    params.set('year', String(filters.year));
+    if (filters.session_cm_ids) {
+      filters.session_cm_ids.forEach((cmId) => {
+        params.append('session_cm_id', String(cmId));
+      });
+    }
+    if (filters.source_field) params.set('source_field', filters.source_field);
+    if (filters.limit) params.set('limit', String(filters.limit));
+
+    const response = await fetchWithAuth(`${API_BASE}/original-requests-grouped?${params}`);
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch grouped requests');
     }
     return response.json();
   },
