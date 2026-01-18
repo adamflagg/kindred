@@ -17,6 +17,7 @@ import {
   useClearParseAnalysis,
   useReparseSingle,
   useClearSingleParseAnalysis,
+  useParseResultWithFallback,
 } from '../../hooks/useParseAnalysis';
 import { queryKeys, syncDataOptions } from '../../utils/queryKeys';
 import {
@@ -27,6 +28,7 @@ import {
 
 import { ParseAnalysisFilters } from './ParseAnalysisFilters';
 import { ParseAnalysisGroupedList } from './ParseAnalysisGroupedList';
+import { ParseAnalysisDetail } from './ParseAnalysisDetail';
 import type { SourceFieldType } from './types';
 
 interface Session {
@@ -45,6 +47,9 @@ export function ParseAnalysisTab() {
   const [sessionCmId, setSessionCmId] = useState<number | null>(null);
   const [sourceField, setSourceField] = useState<SourceFieldType | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Selection state for detail panel
+  const [selectedOriginalRequestId, setSelectedOriginalRequestId] = useState<string | null>(null);
 
   // Operation tracking state
   const [reparsingIds, setReparsingIds] = useState<Set<string>>(new Set());
@@ -100,6 +105,15 @@ export function ParseAnalysisTab() {
   const clearMutation = useClearParseAnalysis();
   const reparseSingleMutation = useReparseSingle();
   const clearSingleMutation = useClearSingleParseAnalysis();
+
+  // Fetch parse result for selected field (detail panel)
+  const { data: selectedParseResult, isLoading: isLoadingDetail } =
+    useParseResultWithFallback(selectedOriginalRequestId);
+
+  // Handle field selection from grouped list
+  const handleFieldSelect = (originalRequestId: string) => {
+    setSelectedOriginalRequestId(originalRequestId);
+  };
 
   // Handle single item reparse
   const handleReparseSingle = async (originalRequestId: string) => {
@@ -194,6 +208,12 @@ export function ParseAnalysisTab() {
     [groupedData?.items]
   );
 
+  // Handle reparse from detail panel (updates selection after reparse)
+  const handleDetailReparse = async () => {
+    if (!selectedOriginalRequestId) return;
+    await handleReparseSingle(selectedOriginalRequestId);
+  };
+
   return (
     <div className="space-y-6">
       {/* Filters */}
@@ -212,25 +232,40 @@ export function ParseAnalysisTab() {
         selectedCount={totalFields}
       />
 
-      {/* Grouped accordion list */}
-      <div>
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
-          Campers
-          {groupedData && groupedData.items.length > 0 && (
-            <span className="px-2 py-0.5 rounded-full bg-muted text-xs font-medium">
-              {groupedData.items.length} camper{groupedData.items.length !== 1 ? 's' : ''}, {totalFields} field{totalFields !== 1 ? 's' : ''}
-            </span>
-          )}
-        </h3>
-        <ParseAnalysisGroupedList
-          items={groupedData?.items ?? []}
-          isLoading={isLoadingGrouped}
-          reparsingIds={reparsingIds}
-          clearingIds={clearingIds}
-          onReparse={handleReparseSingle}
-          onClear={handleClearSingle}
-          searchQuery={searchQuery}
-        />
+      {/* Two-panel layout: Grouped accordion (left) + Detail (right) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Left panel: Grouped accordion (4 cols) */}
+        <div className="lg:col-span-4">
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+            Campers
+            {groupedData && groupedData.items.length > 0 && (
+              <span className="px-2 py-0.5 rounded-full bg-muted text-xs font-medium">
+                {groupedData.items.length} camper{groupedData.items.length !== 1 ? 's' : ''}, {totalFields} field{totalFields !== 1 ? 's' : ''}
+              </span>
+            )}
+          </h3>
+          <ParseAnalysisGroupedList
+            items={groupedData?.items ?? []}
+            isLoading={isLoadingGrouped}
+            reparsingIds={reparsingIds}
+            clearingIds={clearingIds}
+            onReparse={handleReparseSingle}
+            onClear={handleClearSingle}
+            searchQuery={searchQuery}
+            selectedFieldId={selectedOriginalRequestId}
+            onFieldSelect={handleFieldSelect}
+          />
+        </div>
+
+        {/* Right panel: Detail view (8 cols) */}
+        <div className="lg:col-span-8">
+          <ParseAnalysisDetail
+            item={selectedParseResult ?? null}
+            isLoading={isLoadingDetail}
+            onReparse={handleDetailReparse}
+            isReparsing={selectedOriginalRequestId ? reparsingIds.has(selectedOriginalRequestId) : false}
+          />
+        </div>
       </div>
     </div>
   );
