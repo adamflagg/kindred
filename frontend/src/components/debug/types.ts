@@ -83,6 +83,26 @@ export const SOURCE_FIELD_LABELS: Record<SourceFieldType, string> = {
   internal_notes: 'Internal Notes',
 };
 
+// Types for grouped-by-camper view (Phase 5)
+export interface FieldParseResult {
+  original_request_id: string;
+  source_field: string;
+  original_text: string;
+  has_debug_result: boolean;
+  has_production_result: boolean;
+}
+
+export interface CamperGroupedRequests {
+  requester_cm_id: number;
+  requester_name: string;
+  fields: FieldParseResult[];
+}
+
+export interface GroupedRequestsResponse {
+  items: CamperGroupedRequests[];
+  total: number;
+}
+
 export const REQUEST_TYPE_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   bunk_with: {
     bg: 'bg-emerald-50 dark:bg-emerald-950/30',

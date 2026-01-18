@@ -359,9 +359,7 @@ class DebugParseRepository:
 
         return has_debug, has_production
 
-    def check_parse_status_batch(
-        self, original_request_ids: list[str]
-    ) -> dict[str, tuple[bool, bool]]:
+    def check_parse_status_batch(self, original_request_ids: list[str]) -> dict[str, tuple[bool, bool]]:
         """Check parse status for multiple original requests in batch.
 
         This is much more efficient than calling check_parse_status() individually
@@ -388,13 +386,13 @@ class DebugParseRepository:
             debug_results = self.pb.collection(self.COLLECTION_NAME).get_full_list(
                 query_params={"filter": filter_str, "fields": "original_request"}
             )
-            debug_ids = {r.original_request for r in debug_results}
+            debug_ids = {r.original_request for r in debug_results}  # type: ignore[attr-defined]
 
             # Single query: bunk_request_sources (production)
             prod_results = self.pb.collection("bunk_request_sources").get_full_list(
                 query_params={"filter": filter_str, "fields": "original_request"}
             )
-            prod_ids = {r.original_request for r in prod_results}
+            prod_ids = {r.original_request for r in prod_results}  # type: ignore[attr-defined]
 
             # Update result dict
             for rid in original_request_ids:
