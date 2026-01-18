@@ -1,50 +1,40 @@
 /**
- * CamperFieldBlock - Floating block showing field data with expandable parsed intents
+ * CamperFieldBlock - Navigation item showing field data for selection
  *
  * Displays original text, status badge, and action buttons for a single field.
- * Parsed intents are collapsible within the block.
+ * Clicking selects the field to show its detail in the right panel.
  * Sierra Lodge aesthetic with warm, nature-inspired styling.
  */
 
-import { useState } from 'react';
 import {
-  ChevronDown,
-  ChevronRight,
   Database,
   FlaskConical,
   Loader2,
   RefreshCw,
   Trash2,
 } from 'lucide-react';
-import { ParseIntentCard } from './ParseIntentCard';
 import { SOURCE_FIELD_LABELS } from './types';
-import type { FieldParseResult, ParseResultWithSource, SourceFieldType } from './types';
+import type { FieldParseResult, SourceFieldType } from './types';
 
 interface CamperFieldBlockProps {
   field: FieldParseResult;
-  parseResult: ParseResultWithSource | null;
-  isLoadingDetail: boolean;
   isReparsing: boolean;
   isClearing: boolean;
   onReparse: () => void;
   onClear: () => void;
-  onExpand: () => void;
-  isExpanded: boolean;
+  onSelect: () => void;
+  isSelected: boolean;
 }
 
 export function CamperFieldBlock({
   field,
-  parseResult,
-  isLoadingDetail,
   isReparsing,
   isClearing,
   onReparse,
   onClear,
-  onExpand,
-  isExpanded,
+  onSelect,
+  isSelected,
 }: CamperFieldBlockProps) {
-  const [showIntents, setShowIntents] = useState(false);
-
   const sourceLabel =
     SOURCE_FIELD_LABELS[field.source_field as SourceFieldType] || field.source_field || 'Unknown';
 
@@ -79,14 +69,18 @@ export function CamperFieldBlock({
     }
   })();
 
-  const hasAnyResult = field.has_debug_result || field.has_production_result;
-  const intentsCount = parseResult?.parsed_intents?.length ?? 0;
+  // Selection styling
+  const selectedClass = isSelected
+    ? 'ring-2 ring-forest-500 dark:ring-forest-400 ring-offset-2 dark:ring-offset-bark-900'
+    : 'hover:ring-1 hover:ring-bark-300 dark:hover:ring-bark-600';
 
   return (
     <div
+      onClick={onSelect}
       className={`
         card-lodge border-l-4 ${fieldColorClass} ${fieldBgClass}
-        transition-all duration-200
+        transition-all duration-200 cursor-pointer
+        ${selectedClass}
       `}
     >
       {/* Header row with field type, status badge, and actions */}
@@ -166,52 +160,12 @@ export function CamperFieldBlock({
         </div>
       </div>
 
-      {/* Original text */}
+      {/* Original text preview */}
       <div className="px-4 pb-3">
-        <div className="font-mono text-sm leading-relaxed text-foreground bg-white/50 dark:bg-bark-800/50 rounded-lg p-3">
+        <div className="font-mono text-sm leading-relaxed text-foreground bg-white/50 dark:bg-bark-800/50 rounded-lg p-3 line-clamp-2">
           {field.original_text || <em className="text-muted-foreground">No text</em>}
         </div>
       </div>
-
-      {/* Expandable parsed intents section */}
-      {hasAnyResult && (
-        <div className="border-t border-bark-200/50 dark:border-bark-700/50">
-          <button
-            onClick={() => {
-              if (!isExpanded) {
-                onExpand();
-              }
-              setShowIntents(!showIntents);
-            }}
-            className="flex items-center gap-2 w-full px-4 py-2 text-left text-sm font-medium text-bark-600 dark:text-bark-300 hover:bg-white/30 dark:hover:bg-bark-700/30 transition-colors"
-          >
-            {showIntents ? (
-              <ChevronDown className="w-4 h-4" />
-            ) : (
-              <ChevronRight className="w-4 h-4" />
-            )}
-            Parsed Intents ({isLoadingDetail ? '...' : intentsCount})
-          </button>
-
-          {showIntents && (
-            <div className="px-4 pb-4 space-y-2">
-              {isLoadingDetail ? (
-                <div className="flex items-center justify-center py-4">
-                  <Loader2 className="w-5 h-5 animate-spin text-forest-600" />
-                </div>
-              ) : intentsCount === 0 ? (
-                <div className="text-sm text-muted-foreground text-center py-2">
-                  No intents parsed
-                </div>
-              ) : (
-                parseResult?.parsed_intents.map((intent, idx) => (
-                  <ParseIntentCard key={idx} intent={intent} index={idx} />
-                ))
-              )}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
