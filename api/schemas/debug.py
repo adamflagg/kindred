@@ -190,3 +190,31 @@ class PromptUpdateResponse(BaseModel):
 
     name: str = Field(description="Prompt name")
     success: bool = Field(description="Whether update succeeded")
+
+
+# Grouped by Camper Schemas (Phase 3)
+
+
+class FieldParseResult(BaseModel):
+    """A single field's parse result within a camper group."""
+
+    original_request_id: str = Field(description="Original bunk request record ID")
+    source_field: str = Field(description="Source field type")
+    original_text: str = Field(description="Original request text")
+    has_debug_result: bool = Field(description="Whether debug parse result exists")
+    has_production_result: bool = Field(description="Whether production bunk_requests exist")
+
+
+class CamperGroupedRequests(BaseModel):
+    """Requests grouped by camper with their field parse results."""
+
+    requester_cm_id: int = Field(description="CampMinder ID of the requester")
+    requester_name: str = Field(description="Name of the camper")
+    fields: list[FieldParseResult] = Field(description="List of fields for this camper")
+
+
+class GroupedRequestsResponse(BaseModel):
+    """Response for grouped original requests endpoint."""
+
+    items: list[CamperGroupedRequests] = Field(description="List of camper groups")
+    total: int = Field(description="Total number of campers")

@@ -736,8 +736,10 @@ class TestListOriginalRequestsWithParseStatusEndpoint:
 
         mock_loader.load_by_filter.return_value = [mock_original]
 
-        # Mock parse status check - has production result but no debug
-        mock_repos["debug_repo"].check_parse_status.return_value = (False, True)
+        # Mock batch status check - returns dict mapping ID to (has_debug, has_production)
+        mock_repos["debug_repo"].check_parse_status_batch.return_value = {
+            "orig_req_1": (False, True),
+        }
 
         response = client.get("/api/debug/original-requests-with-parse-status?year=2025")
 
@@ -759,6 +761,7 @@ class TestListOriginalRequestsWithParseStatusEndpoint:
         client, mock_repos, mock_loader = client_with_mocks
 
         mock_loader.load_by_filter.return_value = []
+        mock_repos["debug_repo"].check_parse_status_batch.return_value = {}
 
         response = client.get(
             "/api/debug/original-requests-with-parse-status?year=2025&session_cm_id=1000002&source_field=bunking_notes"
@@ -767,7 +770,8 @@ class TestListOriginalRequestsWithParseStatusEndpoint:
         assert response.status_code == 200
 
         call_kwargs = mock_loader.load_by_filter.call_args[1]
-        assert call_kwargs.get("session_cm_id") == 1000002
+        # session_cm_id is passed as a list since the endpoint supports multiple sessions
+        assert call_kwargs.get("session_cm_id") == [1000002]
         assert call_kwargs.get("source_field") == "bunking_notes"
 
     def test_list_year_required(self, client_with_mocks: tuple[TestClient, dict[str, Mock], Mock]) -> None:
@@ -783,37 +787,63 @@ class TestGetParseResultWithFallbackEndpoint:
     """Test GET /api/debug/parse-result/{original_request_id} endpoint."""
 
     @pytest.fixture
-    def mock_repos(self) -> dict[str, Mock]:
-        """Create mock repositories for testing."""
-        return {"debug_repo": Mock()}
+    def mock_deps(self) -> dict[str, Mock]:
+        """Create mock dependencies for testing."""
+        return {
+            "debug_repo": Mock(),
+            "loader": Mock(),
+        }
 
     @pytest.fixture
     def client_with_mocks(
-        self, mock_repos: dict[str, Mock]
+        self, mock_deps: dict[str, Mock]
     ) -> Generator[tuple[TestClient, dict[str, Mock]], None, None]:
-        """Create test client with mocked repositories."""
+        """Create test client with mocked dependencies."""
         with patch("api.routers.debug.get_debug_parse_repository") as mock_get_debug_repo:
-            mock_get_debug_repo.return_value = mock_repos["debug_repo"]
+            with patch("api.routers.debug.get_original_requests_loader") as mock_get_loader:
+                mock_get_debug_repo.return_value = mock_deps["debug_repo"]
+                mock_get_loader.return_value = mock_deps["loader"]
 
-            from api.routers.debug import router
+                from api.routers.debug import router
 
-            app = FastAPI()
-            app.include_router(router)
+                app = FastAPI()
+                app.include_router(router)
 
-            yield TestClient(app), mock_repos
+                yield TestClient(app), mock_deps
+
+    def _create_mock_original(
+        self,
+        request_id: str = "orig_req_456",
+        preferred_name: str | None = None,
+        first_name: str = "Emma",
+        last_name: str = "Johnson",
+        requester_cm_id: int = 12345,
+        field: str = "bunk_with",
+        content: str = "With Mia please",
+    ) -> Mock:
+        """Create a mock OriginalRequest object."""
+        mock = Mock()
+        mock.id = request_id
+        mock.preferred_name = preferred_name
+        mock.first_name = first_name
+        mock.last_name = last_name
+        mock.requester_cm_id = requester_cm_id
+        mock.field = field
+        mock.content = content
+        return mock
 
     def test_returns_debug_result_when_available(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
         """Test that endpoint returns debug result when it exists."""
-        client, mock_repos = client_with_mocks
+        client, mock_deps = client_with_mocks
+
+        # Set up original request
+        mock_original = self._create_mock_original()
+        mock_deps["loader"].load_by_ids.return_value = [mock_original]
 
         # Debug result exists
-        mock_repos["debug_repo"].get_by_original_request.return_value = {
+        mock_deps["debug_repo"].get_by_original_request.return_value = {
             "id": "debug_123",
             "original_request_id": "orig_req_456",
-            "requester_name": "Emma Johnson",
-            "requester_cm_id": 12345,
-            "source_field": "bunk_with",
-            "original_text": "With Mia please",
             "parsed_intents": [
                 {
                     "request_type": "bunk_with",
@@ -844,13 +874,17 @@ class TestGetParseResultWithFallbackEndpoint:
         self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
     ) -> None:
         """Test that endpoint returns production data when debug result doesn't exist."""
-        client, mock_repos = client_with_mocks
+        client, mock_deps = client_with_mocks
+
+        # Set up original request
+        mock_original = self._create_mock_original()
+        mock_deps["loader"].load_by_ids.return_value = [mock_original]
 
         # No debug result
-        mock_repos["debug_repo"].get_by_original_request.return_value = None
+        mock_deps["debug_repo"].get_by_original_request.return_value = None
 
         # Production fallback exists
-        mock_repos["debug_repo"].get_production_fallback.return_value = {
+        mock_deps["debug_repo"].get_production_fallback.return_value = {
             "source": "production",
             "parsed_intents": [
                 {
@@ -876,12 +910,16 @@ class TestGetParseResultWithFallbackEndpoint:
 
     def test_returns_none_source_when_no_results(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
         """Test that endpoint returns source='none' when neither debug nor production exists."""
-        client, mock_repos = client_with_mocks
+        client, mock_deps = client_with_mocks
+
+        # Set up original request
+        mock_original = self._create_mock_original(request_id="orig_req_789")
+        mock_deps["loader"].load_by_ids.return_value = [mock_original]
 
         # No debug result
-        mock_repos["debug_repo"].get_by_original_request.return_value = None
+        mock_deps["debug_repo"].get_by_original_request.return_value = None
         # No production fallback
-        mock_repos["debug_repo"].get_production_fallback.return_value = None
+        mock_deps["debug_repo"].get_production_fallback.return_value = None
 
         response = client.get("/api/debug/parse-result/orig_req_789")
 
@@ -892,17 +930,21 @@ class TestGetParseResultWithFallbackEndpoint:
 
     def test_debug_takes_priority_over_production(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
         """Test that debug result takes priority even when production exists."""
-        client, mock_repos = client_with_mocks
+        client, mock_deps = client_with_mocks
+
+        # Set up original request
+        mock_original = self._create_mock_original()
+        mock_deps["loader"].load_by_ids.return_value = [mock_original]
 
         # Both debug and production exist
-        mock_repos["debug_repo"].get_by_original_request.return_value = {
+        mock_deps["debug_repo"].get_by_original_request.return_value = {
             "id": "debug_123",
             "original_request_id": "orig_req_456",
             "parsed_intents": [{"request_type": "bunk_with", "target_name": "Debug Target"}],
             "is_valid": True,
         }
 
-        mock_repos["debug_repo"].get_production_fallback.return_value = {
+        mock_deps["debug_repo"].get_production_fallback.return_value = {
             "source": "production",
             "parsed_intents": [{"request_type": "bunk_with", "target_name": "Production Target"}],
         }
@@ -916,7 +958,7 @@ class TestGetParseResultWithFallbackEndpoint:
         assert data["parsed_intents"][0]["target_name"] == "Debug Target"
 
         # get_production_fallback should NOT have been called since debug was found
-        mock_repos["debug_repo"].get_production_fallback.assert_not_called()
+        mock_deps["debug_repo"].get_production_fallback.assert_not_called()
 
 
 # =============================================================================
