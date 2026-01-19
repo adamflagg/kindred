@@ -15,7 +15,7 @@ interface AuthContextType {
   checkAuth: () => Promise<boolean>;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Mock user for bypass mode
 const BYPASS_USER: RecordModel = {
