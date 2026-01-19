@@ -147,22 +147,24 @@ class BunkRequestsRepository:
                         except json.JSONDecodeError:
                             pass
 
-                records.append({
-                    "id": item.id,
-                    "requester_id": getattr(item, "requester_id", None),
-                    "requestee_id": getattr(item, "requestee_id", None),
-                    "requested_person_name": getattr(item, "requested_person_name", None),
-                    "request_type": getattr(item, "request_type", None),
-                    "source_field": getattr(item, "source_field", None),
-                    "confidence_score": getattr(item, "confidence_score", None),
-                    "confidence_level": getattr(item, "confidence_level", None),
-                    "keywords_found": keywords,
-                    "parse_notes": getattr(item, "parse_notes", None),
-                    "ai_p1_reasoning": ai_p1,
-                    "status": getattr(item, "status", None),
-                    "is_active": getattr(item, "is_active", None),
-                    "original_text": getattr(item, "original_text", None),
-                })
+                records.append(
+                    {
+                        "id": item.id,
+                        "requester_id": getattr(item, "requester_id", None),
+                        "requestee_id": getattr(item, "requestee_id", None),
+                        "requested_person_name": getattr(item, "requested_person_name", None),
+                        "request_type": getattr(item, "request_type", None),
+                        "source_field": getattr(item, "source_field", None),
+                        "confidence_score": getattr(item, "confidence_score", None),
+                        "confidence_level": getattr(item, "confidence_level", None),
+                        "keywords_found": keywords,
+                        "parse_notes": getattr(item, "parse_notes", None),
+                        "ai_p1_reasoning": ai_p1,
+                        "status": getattr(item, "status", None),
+                        "is_active": getattr(item, "is_active", None),
+                        "original_text": getattr(item, "original_text", None),
+                    }
+                )
 
             return records
 
