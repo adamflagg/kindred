@@ -29,9 +29,26 @@ Even if text mentions friendship ("still friends"), the intent is separation.
 
 === SPECIAL PLACEHOLDERS ===
 
-Use "SIBLING" when the text references:
+Use "SIBLING" when the text references the REQUESTER'S OWN family:
 - Family members: twin, sister, brother, sibling
-- Family names: "other Miller kids", "Miller twins"
+- Family names: "other [requester's last name] kids", "[requester's last name] twins"
+
+Do NOT use SIBLING for other families mentioned - extract those as named individuals.
+
+=== NAME PATTERN RULES ===
+
+CRITICAL: When multiple first names share a single last name, apply the last name to ALL first names:
+- "Maya & Emma Chen" -> "Maya Chen" AND "Emma Chen" (2 separate requests)
+- "Ben, Max & Zoe Miller" -> "Ben Miller", "Max Miller", "Zoe Miller" (3 separate requests)
+- "The Parker twins (Ava, Lily)" -> "Ava Parker" AND "Lily Parker" (2 separate requests)
+
+Common separators between shared-last-name individuals:
+- Ampersand: "Maya & Emma"
+- Comma: "Ben, Zoe"
+- "and": "Ben and Max"
+- Slash: "Ava/Lily"
+
+This pattern is common for siblings or relatives who share a surname.
 
 === FIELD-SPECIFIC PATTERNS ===
 
@@ -47,9 +64,22 @@ Example 3 - Name with parenthetical alternate:
 Input: "Nico (Nicholas) Park"
 Output: 1 not_bunk_with for "Nico Park", parse_notes: "Also known as Nicholas"
 
-Example 4 - Multiple names with separators:
+Example 4a - Multiple names with different last names:
 Input: "Chloe Bennett & Bella Torres"
-Output: 2 not_bunk_with requests, one for each name
+Output: 2 not_bunk_with requests - "Chloe Bennett" and "Bella Torres"
+
+Example 4b - Multiple first names sharing one last name:
+Input: "Maya & Emma Chen"
+Output: 2 not_bunk_with requests - "Maya Chen" and "Emma Chen"
+parse_notes for each: "Likely siblings - shared last name"
+
+Example 4c - Three or more sharing a last name:
+Input: "Ben, Max & Zoe Miller"
+Output: 3 not_bunk_with requests - "Ben Miller", "Max Miller", "Zoe Miller"
+
+Example 4d - Mixed pattern (some shared, some not):
+Input: "Riley Brooks, Nora Kim, Maya & Emma Chen"
+Output: 4 not_bunk_with requests - "Riley Brooks", "Nora Kim", "Maya Chen", "Emma Chen"
 
 Example 5 - Name with staff rationale:
 Input: "Emma Johnson (neg relationship together at hebrew school) - ok if together but Jordan call if so"
@@ -63,9 +93,10 @@ Example 7 - Multiple with uncertainty markers:
 Input: "Kai Williams (Ses 4), Daniel Garcia-Lopez (?) Ryan Murphy (Ses 2) Marco Silva (?)"
 Output: 4 not_bunk_with requests, confidence lower for (?) entries, session info in parse_notes
 
-Example 8 - Family reference:
-Input: "Not with Lily Chen/other Miller kids if possible (they go to school together)"
-Output: 2 not_bunk_with requests - "Lily Chen" and a second with target_name "SIBLING" for family reference
+Example 8 - Requester's own sibling reference:
+Input: "Not with twin" or "Separate from her brother"
+Output: 1 not_bunk_with with target_name "SIBLING"
+Note: Use SIBLING only when referring to the requester's own family member, not other families
 
 Example 9 - Flexibility note:
 Input: "Isla Reyes-Kim, Leo Nakamura (ideal if all 3 are in separate cabins but ok if not)"
@@ -74,6 +105,11 @@ Output: 2 not_bunk_with requests with "flexibility noted" in parse_notes
 Example 10 - Staff friendship note (still negative intent):
 Input: "Sofia Petrov (mom understands that they will be together)"
 Output: 1 not_bunk_with for "Sofia Petrov", parse_notes: "low priority - mom understands if bunked together"
+
+Example 11 - Historical session reference with multiple names:
+Input: "Ses 3 G4 '24 - Riley Brooks, Nora Kim, Ava Collins, Maya & Emma Chen"
+Output: 5 not_bunk_with requests for each named person (Riley Brooks, Nora Kim, Ava Collins, Maya Chen, Emma Chen)
+parse_notes: "From Session 3 G4 2024"
 
 === TEMPORAL CONFLICTS ===
 
