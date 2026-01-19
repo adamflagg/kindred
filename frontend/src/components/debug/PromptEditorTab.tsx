@@ -158,7 +158,7 @@ export function PromptEditorTab() {
     return () => {
       viewRef.current?.destroy();
     };
-  }, [editorContent, isDark, promptContent?.content]);
+  }, [isDark, promptContent?.content]);
 
   // Handle save
   const handleSave = useCallback(async () => {
