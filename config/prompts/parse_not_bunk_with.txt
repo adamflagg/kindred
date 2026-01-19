@@ -54,7 +54,7 @@ This pattern is common for siblings or relatives who share a surname.
 
 Example 1 - Simple name:
 Input: "Maya Anderson"
-Output: 1 not_bunk_with for "Maya Anderson"
+Output: 1 not_bunk_with for "Maya Anderson", parse_notes: "Direct separation request"
 
 Example 2 - Name with alternate/nickname:
 Input: "Riley 'Alex' Cooper"
@@ -128,6 +128,8 @@ Example: "Previously wanted separate from Mia, now ok to bunk together"
 - Generic groups: "campers", "friends"
 - The requester themselves
 
+{output_field_rules}
+
 === OUTPUT REQUIREMENTS ===
 
 For each valid request, provide:
@@ -137,6 +139,6 @@ For each valid request, provide:
 - temporal_info: null OR {{date_mentioned, is_superseded, supersedes_reason}}
 - keywords_found: Priority words if present
 - source_type: "staff" (always for this field)
-- parse_notes: Include rationale, session qualifier, flexibility notes
-- reasoning: Why you extracted this name
+- parse_notes: Brief explanation (see rules above)
+- reasoning: Why you extracted this name (see rules above)
 - list_position: Position in multi-name fields (0-indexed)
