@@ -112,6 +112,19 @@ export function PromptEditorTab() {
     }
   }, [promptContent, selectedPrompt, lastLoadedPromptName]);
 
+  // Sync editorContent to CodeMirror when it changes externally (e.g., prompt switch)
+  useEffect(() => {
+    if (viewRef.current) {
+      const currentDoc = viewRef.current.state.doc.toString();
+      // Only dispatch if content actually differs (prevents infinite loops)
+      if (editorContent !== currentDoc) {
+        viewRef.current.dispatch({
+          changes: { from: 0, to: viewRef.current.state.doc.length, insert: editorContent },
+        });
+      }
+    }
+  }, [editorContent]);
+
   // Setup CodeMirror
   useEffect(() => {
     if (!editorRef.current) return;
