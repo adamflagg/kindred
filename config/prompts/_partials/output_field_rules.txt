@@ -1,11 +1,15 @@
-=== OUTPUT FIELD RULES ===
+=== STANDARDIZED OUTPUT FIELDS ===
 
-PARSE_NOTES RULE: Always provide a brief parse_notes for EVERY extracted request.
-- For simple name-only inputs: "Direct bunk request" or "Direct separation request"
-- For names with context: Include relevant context (nickname, session, rationale)
-- For multi-name extractions: Each name gets its own parse_notes
+- temporal_info: null OR {{date_mentioned, is_superseded, supersedes_reason}}
 
-REASONING RULE: Always explain WHY you categorized this request.
-- What keywords or patterns led to your interpretation
-- Why you chose this request_type
-- Any ambiguity or uncertainty in the input
+- parse_notes: Brief explanation of what was extracted
+  - For simple name-only inputs: "Direct bunk request" or "Direct separation request"
+  - For names with context: Include relevant context (nickname, session, rationale)
+  - For multi-name extractions: Each name gets its own parse_notes
+
+- reasoning: Why you categorized this as this request_type
+  - What keywords or patterns led to your interpretation
+  - Why you chose this request_type
+  - Any ambiguity or uncertainty in the input
+
+- list_position: Position in multi-item extractions (0-indexed)

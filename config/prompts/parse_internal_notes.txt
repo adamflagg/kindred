@@ -101,17 +101,14 @@ Staff shorthand can be ambiguous. Use confidence scoring:
 - Abbreviated or unclear: 0.5-0.7
 - Very ambiguous: 0.3-0.5 (flag for review)
 
-{output_field_rules}
-
 === OUTPUT REQUIREMENTS ===
 
 For each valid request, provide:
 - request_type: "bunk_with" | "not_bunk_with" | "age_preference"
 - target_name: Person's name, placeholder, or age value
 - confidence: 0.0-1.0 (lower for abbreviated/unclear content)
-- temporal_info: null (rarely needed for internal notes)
 - keywords_found: Priority words like "must", "first choice"
-- source_type: "staff" (always for this field)
-- parse_notes: Brief explanation (see rules above)
-- reasoning: How you interpreted the shorthand (see rules above)
-- list_position: Position in multi-request content (0-indexed)
+
+Note: temporal_info is rarely needed for internal notes shorthand.
+
+{output_field_rules}
