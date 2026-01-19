@@ -61,9 +61,7 @@ class TestRequestBuilderMetadata:
             notes=None,
         )
 
-    def test_build_request_metadata_stores_reasoning_from_correct_key(
-        self, builder, parsed_request_with_reasoning
-    ):
+    def test_build_request_metadata_stores_reasoning_from_correct_key(self, builder, parsed_request_with_reasoning):
         """Verify ai_p1_reasoning is populated from metadata['reasoning'], not 'ai_reasoning'.
 
         This test exposes the bug where line 199 uses the wrong key 'ai_reasoning'
@@ -77,9 +75,7 @@ class TestRequestBuilderMetadata:
         }
         ai_parsed = False  # Phase 1 parsing, not Phase 3 disambiguation
 
-        metadata = builder.build_request_metadata(
-            parsed_request_with_reasoning, resolution_info, ai_parsed
-        )
+        metadata = builder.build_request_metadata(parsed_request_with_reasoning, resolution_info, ai_parsed)
 
         # The bug: metadata uses "ai_reasoning" key but AI provider stores "reasoning"
         # Expected: ai_p1_reasoning should contain the reasoning string
@@ -90,24 +86,18 @@ class TestRequestBuilderMetadata:
             "Bug: request_builder.py line 199 uses wrong key 'ai_reasoning' instead of 'reasoning'."
         )
 
-    def test_build_request_metadata_stores_parse_notes(
-        self, builder, parsed_request_with_reasoning
-    ):
+    def test_build_request_metadata_stores_parse_notes(self, builder, parsed_request_with_reasoning):
         """Verify parse_notes is properly extracted from metadata"""
         resolution_info = {
             "requester_cm_id": 12345,
             "requester_name": "Test Camper",
         }
 
-        metadata = builder.build_request_metadata(
-            parsed_request_with_reasoning, resolution_info, ai_parsed=False
-        )
+        metadata = builder.build_request_metadata(parsed_request_with_reasoning, resolution_info, ai_parsed=False)
 
         assert metadata["parse_notes"] == "Direct separation request"
 
-    def test_build_request_metadata_ai_p1_reasoning_empty_when_phase3(
-        self, builder, parsed_request_with_reasoning
-    ):
+    def test_build_request_metadata_ai_p1_reasoning_empty_when_phase3(self, builder, parsed_request_with_reasoning):
         """When ai_parsed=True (Phase 3), ai_p1_reasoning should be empty."""
         resolution_info = {
             "requester_cm_id": 12345,
@@ -118,16 +108,12 @@ class TestRequestBuilderMetadata:
             },
         }
 
-        metadata = builder.build_request_metadata(
-            parsed_request_with_reasoning, resolution_info, ai_parsed=True
-        )
+        metadata = builder.build_request_metadata(parsed_request_with_reasoning, resolution_info, ai_parsed=True)
 
         # Phase 3 should have empty ai_p1_reasoning
         assert metadata["ai_p1_reasoning"] == ""
 
-    def test_build_request_metadata_reasoning_type_is_string(
-        self, builder, parsed_request_with_reasoning
-    ):
+    def test_build_request_metadata_reasoning_type_is_string(self, builder, parsed_request_with_reasoning):
         """ai_p1_reasoning should be a string, not a dict.
 
         The bug also uses {} as default, but reasoning should be a string.
@@ -137,9 +123,7 @@ class TestRequestBuilderMetadata:
             "requester_name": "Test Camper",
         }
 
-        metadata = builder.build_request_metadata(
-            parsed_request_with_reasoning, resolution_info, ai_parsed=False
-        )
+        metadata = builder.build_request_metadata(parsed_request_with_reasoning, resolution_info, ai_parsed=False)
 
         assert isinstance(metadata["ai_p1_reasoning"], str), (
             f"ai_p1_reasoning should be a string, got {type(metadata['ai_p1_reasoning'])}. "
@@ -192,9 +176,7 @@ class TestRequestBuilderIntegration:
             "confidence": 0.92,
         }
 
-        bunk_request = builder.build_single_request(
-            parsed_req, resolution_info, [parsed_req], 12345
-        )
+        bunk_request = builder.build_single_request(parsed_req, resolution_info, [parsed_req], 12345)
 
         assert bunk_request is not None
         assert bunk_request.metadata["ai_p1_reasoning"] == "Separation request based on staff input."
