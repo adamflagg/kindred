@@ -535,46 +535,43 @@ class TestDebugParseRepositoryGetProductionFallback:
     def test_get_production_fallback_returns_bunk_request_data(
         self, repository: "DebugParseRepository", mock_pb_client: tuple[Mock, Mock]
     ) -> None:
-        """Test that get_production_fallback returns ai_p1_reasoning from bunk_requests."""
+        """Test that get_production_fallback returns data from bunk_requests."""
         mock_client, _ = mock_pb_client
 
-        # Mock bunk_request_sources collection
+        # Mock original_bunk_requests.get_one() - this is the first query
+        mock_requester = Mock()
+        mock_requester.cm_id = 123456
+
+        mock_orig_request = Mock()
+        mock_orig_request.expand = {"requester": mock_requester}
+        mock_orig_request.content = "I want to bunk with Emma Johnson"
+        mock_orig_request.field = "bunk_with"
+
+        # Mock bunk_requests.get_list() - the production query result
         mock_bunk_request = Mock()
         mock_bunk_request.id = "br_123"
         mock_bunk_request.request_type = "bunk_with"
-        mock_bunk_request.requested_person_name = "Emma Johnson"
-        mock_bunk_request.ai_p1_reasoning = {
-            "parsed_intents": [
-                {
-                    "request_type": "bunk_with",
-                    "target_name": "Emma Johnson",
-                    "keywords_found": ["with"],
-                    "parse_notes": "Standard request pattern",
-                    "reasoning": "Clear bunk_with intent",
-                    "list_position": 0,
-                    "needs_clarification": False,
-                }
-            ],
-            "raw_response": {"completion_tokens": 100},
+        mock_bunk_request.target_name = "Emma Johnson"
+        mock_bunk_request.metadata = {
+            "target_name": "Emma Johnson",
+            "keywords_found": ["with"],
+            "parse_notes": "Standard request pattern",
+            "reasoning": "Clear bunk_with intent",
         }
-        mock_bunk_request.parse_notes = "Standard request pattern"
+        mock_bunk_request.csv_position = 0
+        mock_bunk_request.requires_manual_review = False
         mock_bunk_request.keywords_found = ["with"]
+        mock_bunk_request.parse_notes = "Standard request pattern"
 
-        mock_source = Mock()
-        mock_source.id = "src_456"
-        mock_source.source_field = "bunk_with"
-        mock_source.is_primary = True
-        mock_source.expand = {"bunk_request": mock_bunk_request}
+        mock_bunk_results = Mock()
+        mock_bunk_results.items = [mock_bunk_request]
 
-        mock_sources_result = Mock()
-        mock_sources_result.items = [mock_source]
-        mock_sources_result.total_items = 1
-
-        # Configure mock to return sources collection first
         def collection_side_effect(name: str) -> Mock:
             mock_col = Mock()
-            if name == "bunk_request_sources":
-                mock_col.get_list.return_value = mock_sources_result
+            if name == "original_bunk_requests":
+                mock_col.get_one.return_value = mock_orig_request
+            elif name == "bunk_requests":
+                mock_col.get_list.return_value = mock_bunk_results
             return mock_col
 
         mock_client.collection.side_effect = collection_side_effect
@@ -647,59 +644,46 @@ class TestDebugParseRepositoryGetProductionFallback:
         """Test that get_production_fallback aggregates intents from multiple bunk_requests."""
         mock_client, _ = mock_pb_client
 
-        # First bunk_request
+        # Mock original_bunk_requests.get_one()
+        mock_requester = Mock()
+        mock_requester.cm_id = 123456
+
+        mock_orig_request = Mock()
+        mock_orig_request.expand = {"requester": mock_requester}
+        mock_orig_request.content = "I want to bunk with Emma and Mia"
+        mock_orig_request.field = "bunk_with"
+
+        # First bunk_request in production
         mock_bunk_request_1 = Mock()
         mock_bunk_request_1.id = "br_1"
         mock_bunk_request_1.request_type = "bunk_with"
-        mock_bunk_request_1.requested_person_name = "Emma"
-        mock_bunk_request_1.ai_p1_reasoning = {
-            "parsed_intents": [
-                {
-                    "request_type": "bunk_with",
-                    "target_name": "Emma",
-                    "list_position": 0,
-                }
-            ]
-        }
+        mock_bunk_request_1.target_name = "Emma"
+        mock_bunk_request_1.metadata = {"target_name": "Emma"}
+        mock_bunk_request_1.csv_position = 0
+        mock_bunk_request_1.requires_manual_review = False
         mock_bunk_request_1.parse_notes = ""
         mock_bunk_request_1.keywords_found = []
 
-        # Second bunk_request
+        # Second bunk_request in production
         mock_bunk_request_2 = Mock()
         mock_bunk_request_2.id = "br_2"
         mock_bunk_request_2.request_type = "bunk_with"
-        mock_bunk_request_2.requested_person_name = "Mia"
-        mock_bunk_request_2.ai_p1_reasoning = {
-            "parsed_intents": [
-                {
-                    "request_type": "bunk_with",
-                    "target_name": "Mia",
-                    "list_position": 1,
-                }
-            ]
-        }
+        mock_bunk_request_2.target_name = "Mia"
+        mock_bunk_request_2.metadata = {"target_name": "Mia"}
+        mock_bunk_request_2.csv_position = 1
+        mock_bunk_request_2.requires_manual_review = False
         mock_bunk_request_2.parse_notes = ""
         mock_bunk_request_2.keywords_found = []
 
-        mock_source_1 = Mock()
-        mock_source_1.id = "src_1"
-        mock_source_1.source_field = "bunk_with"
-        mock_source_1.is_primary = True
-        mock_source_1.expand = {"bunk_request": mock_bunk_request_1}
-
-        mock_source_2 = Mock()
-        mock_source_2.id = "src_2"
-        mock_source_2.source_field = "bunk_with"
-        mock_source_2.is_primary = False
-        mock_source_2.expand = {"bunk_request": mock_bunk_request_2}
-
-        mock_sources_result = Mock()
-        mock_sources_result.items = [mock_source_1, mock_source_2]
+        mock_bunk_results = Mock()
+        mock_bunk_results.items = [mock_bunk_request_1, mock_bunk_request_2]
 
         def collection_side_effect(name: str) -> Mock:
             mock_col = Mock()
-            if name == "bunk_request_sources":
-                mock_col.get_list.return_value = mock_sources_result
+            if name == "original_bunk_requests":
+                mock_col.get_one.return_value = mock_orig_request
+            elif name == "bunk_requests":
+                mock_col.get_list.return_value = mock_bunk_results
             return mock_col
 
         mock_client.collection.side_effect = collection_side_effect
@@ -762,16 +746,27 @@ class TestDebugParseRepositoryCheckParseStatus:
         mock_debug_result = Mock()
         mock_debug_result.items = [Mock(id="debug_123")]
 
-        # Mock bunk_request_sources is empty
-        mock_sources_result = Mock()
-        mock_sources_result.items = []
+        # Mock original_bunk_requests.get_one() for production check
+        mock_requester = Mock()
+        mock_requester.cm_id = 123456
+
+        mock_orig_request = Mock()
+        mock_orig_request.expand = {"requester": mock_requester}
+        mock_orig_request.content = "Bunk with Emma"
+        mock_orig_request.field = "bunk_with"
+
+        # Mock bunk_requests is empty (no production result)
+        mock_bunk_result = Mock()
+        mock_bunk_result.items = []
 
         def collection_side_effect(name: str) -> Mock:
             mock_col = Mock()
             if name == "debug_parse_results":
                 mock_col.get_list.return_value = mock_debug_result
-            elif name == "bunk_request_sources":
-                mock_col.get_list.return_value = mock_sources_result
+            elif name == "original_bunk_requests":
+                mock_col.get_one.return_value = mock_orig_request
+            elif name == "bunk_requests":
+                mock_col.get_list.return_value = mock_bunk_result
             return mock_col
 
         mock_client.collection.side_effect = collection_side_effect
@@ -791,16 +786,27 @@ class TestDebugParseRepositoryCheckParseStatus:
         mock_debug_result = Mock()
         mock_debug_result.items = []
 
-        # Mock bunk_request_sources has entry
-        mock_sources_result = Mock()
-        mock_sources_result.items = [Mock(id="src_123")]
+        # Mock original_bunk_requests.get_one() for production check
+        mock_requester = Mock()
+        mock_requester.cm_id = 123456
+
+        mock_orig_request = Mock()
+        mock_orig_request.expand = {"requester": mock_requester}
+        mock_orig_request.content = "Bunk with Emma"
+        mock_orig_request.field = "bunk_with"
+
+        # Mock bunk_requests has matching entry (production result exists)
+        mock_bunk_result = Mock()
+        mock_bunk_result.items = [Mock(id="br_123")]
 
         def collection_side_effect(name: str) -> Mock:
             mock_col = Mock()
             if name == "debug_parse_results":
                 mock_col.get_list.return_value = mock_debug_result
-            elif name == "bunk_request_sources":
-                mock_col.get_list.return_value = mock_sources_result
+            elif name == "original_bunk_requests":
+                mock_col.get_one.return_value = mock_orig_request
+            elif name == "bunk_requests":
+                mock_col.get_list.return_value = mock_bunk_result
             return mock_col
 
         mock_client.collection.side_effect = collection_side_effect
@@ -816,19 +822,31 @@ class TestDebugParseRepositoryCheckParseStatus:
         """Test that check_parse_status detects when both debug and production exist."""
         mock_client, _ = mock_pb_client
 
-        # Both collections have entries
+        # Debug collection has entry
         mock_debug_result = Mock()
         mock_debug_result.items = [Mock(id="debug_123")]
 
-        mock_sources_result = Mock()
-        mock_sources_result.items = [Mock(id="src_123")]
+        # Mock original_bunk_requests.get_one() for production check
+        mock_requester = Mock()
+        mock_requester.cm_id = 123456
+
+        mock_orig_request = Mock()
+        mock_orig_request.expand = {"requester": mock_requester}
+        mock_orig_request.content = "Bunk with Emma"
+        mock_orig_request.field = "bunk_with"
+
+        # Mock bunk_requests has matching entry (production result exists)
+        mock_bunk_result = Mock()
+        mock_bunk_result.items = [Mock(id="br_123")]
 
         def collection_side_effect(name: str) -> Mock:
             mock_col = Mock()
             if name == "debug_parse_results":
                 mock_col.get_list.return_value = mock_debug_result
-            elif name == "bunk_request_sources":
-                mock_col.get_list.return_value = mock_sources_result
+            elif name == "original_bunk_requests":
+                mock_col.get_one.return_value = mock_orig_request
+            elif name == "bunk_requests":
+                mock_col.get_list.return_value = mock_bunk_result
             return mock_col
 
         mock_client.collection.side_effect = collection_side_effect
@@ -844,19 +862,31 @@ class TestDebugParseRepositoryCheckParseStatus:
         """Test that check_parse_status correctly detects when no parse results exist."""
         mock_client, _ = mock_pb_client
 
-        # Both collections empty
+        # Debug collection is empty
         mock_debug_result = Mock()
         mock_debug_result.items = []
 
-        mock_sources_result = Mock()
-        mock_sources_result.items = []
+        # Mock original_bunk_requests.get_one() for production check
+        mock_requester = Mock()
+        mock_requester.cm_id = 123456
+
+        mock_orig_request = Mock()
+        mock_orig_request.expand = {"requester": mock_requester}
+        mock_orig_request.content = "Bunk with Emma"
+        mock_orig_request.field = "bunk_with"
+
+        # Mock bunk_requests is empty (no production result)
+        mock_bunk_result = Mock()
+        mock_bunk_result.items = []
 
         def collection_side_effect(name: str) -> Mock:
             mock_col = Mock()
             if name == "debug_parse_results":
                 mock_col.get_list.return_value = mock_debug_result
-            elif name == "bunk_request_sources":
-                mock_col.get_list.return_value = mock_sources_result
+            elif name == "original_bunk_requests":
+                mock_col.get_one.return_value = mock_orig_request
+            elif name == "bunk_requests":
+                mock_col.get_list.return_value = mock_bunk_result
             return mock_col
 
         mock_client.collection.side_effect = collection_side_effect
