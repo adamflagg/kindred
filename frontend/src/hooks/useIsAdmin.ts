@@ -12,8 +12,13 @@ import { useAuth } from '../contexts/AuthContext';
 export function useIsAdmin(): boolean {
   const { user, isBypassMode } = useAuth();
 
-  // TODO: Implement - this is a stub that will fail tests
-  void user;
-  void isBypassMode;
-  return false;
+  // Bypass mode = full access (dev environment)
+  if (isBypassMode) return true;
+
+  // No admin configured = everyone is admin
+  const adminUserId = import.meta.env['ADMIN_USER'] as string | undefined;
+  if (!adminUserId) return true;
+
+  // Check if current user matches configured admin
+  return user?.id === adminUserId;
 }
