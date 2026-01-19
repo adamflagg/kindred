@@ -21,6 +21,39 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _normalize_content_for_matching(content: str, field_type: str | None) -> str:
+    """Normalize content from original_bunk_requests to match bunk_requests.original_text.
+
+    During processing, bunk_requests.original_text may be sanitized:
+    1. For bunking_notes: staff attribution is stripped (e.g., "STAFF NAME (date)")
+    2. For some fields: multiple consecutive spaces are collapsed to single space
+       (but newlines and other structure is preserved)
+
+    Args:
+        content: The raw content from original_bunk_requests
+        field_type: The field type (bunk_with, bunking_notes, etc.)
+
+    Returns:
+        Normalized content that matches how it appears in bunk_requests.original_text
+    """
+    if not content:
+        return content
+
+    text = content
+
+    # Step 1: Strip staff attribution for bunking_notes
+    if field_type == "bunking_notes":
+        text, _ = extract_staff_pattern(text)
+
+    # Step 2: Collapse multiple consecutive spaces to single space
+    # (preserves newlines and other whitespace characters)
+    import re
+
+    text = re.sub(r" {2,}", " ", text)
+
+    return text
+
+
 class DebugParseRepository:
     """Repository for debug parse results."""
 
@@ -306,13 +339,9 @@ class DebugParseRepository:
             if not requester_cm_id or not original_text:
                 return None
 
-            # For bunking_notes, the bunk_requests.original_text has staff attribution
-            # stripped (e.g., "STAFFNAME (May 30 2024 2:18PM)"), so we need to match
-            # using the cleaned version
-            text_to_match = original_text
-            if field_type == "bunking_notes":
-                cleaned_text, _ = extract_staff_pattern(original_text)
-                text_to_match = cleaned_text
+            # Normalize content to match how it appears in bunk_requests.original_text
+            # (staff stripping for bunking_notes, whitespace normalization for all)
+            text_to_match = _normalize_content_for_matching(original_text, field_type)
 
             # Query bunk_requests directly by requester_id and original_text
             # Need to escape quotes in original_text for PocketBase filter
@@ -398,9 +427,13 @@ class DebugParseRepository:
                 if requester:
                     requester_cm_id = getattr(requester, "cm_id", None)
                     original_text = getattr(orig_result, "content", None)
+                    field_type = getattr(orig_result, "field", None)
 
                     if requester_cm_id and original_text:
-                        escaped_text = original_text.replace('"', '\\"')
+                        # Normalize content to match bunk_requests.original_text
+                        text_to_match = _normalize_content_for_matching(original_text, field_type)
+
+                        escaped_text = text_to_match.replace('"', '\\"')
                         filter_str = f'requester_id = {requester_cm_id} && original_text = "{escaped_text}"'
 
                         prod_result = self.pb.collection("bunk_requests").get_list(
@@ -445,7 +478,8 @@ class DebugParseRepository:
                 query_params={"filter": orig_filter, "expand": "requester"}
             )
 
-            # Build lookup: original_request_id -> (cm_id, content)
+            # Build lookup: original_request_id -> (cm_id, content_to_match)
+            # Normalize content to match bunk_requests.original_text
             orig_lookup: dict[str, tuple[int, str]] = {}
             for orig in orig_results:
                 requester = None
@@ -454,8 +488,11 @@ class DebugParseRepository:
                 if requester:
                     cm_id = getattr(requester, "cm_id", None)
                     content = getattr(orig, "content", None)
+                    field_type = getattr(orig, "field", None)
                     if cm_id and content:
-                        orig_lookup[orig.id] = (cm_id, content)
+                        # Normalize content to match bunk_requests.original_text
+                        content_to_match = _normalize_content_for_matching(content, field_type)
+                        orig_lookup[orig.id] = (cm_id, content_to_match)
 
             # Get unique requester cm_ids to batch query bunk_requests
             cm_ids = {v[0] for v in orig_lookup.values()}
@@ -551,7 +588,9 @@ class DebugParseRepository:
                 }
 
                 if requester_cm_id and content:
-                    orig_lookup[orig.id] = (requester_cm_id, content)
+                    # Normalize content to match bunk_requests.original_text
+                    content_to_match = _normalize_content_for_matching(content, field)
+                    orig_lookup[orig.id] = (requester_cm_id, content_to_match)
 
             # Query 2: Load all debug results
             debug_filter = "(" + " || ".join(f'original_request = "{rid}"' for rid in original_request_ids) + ")"
