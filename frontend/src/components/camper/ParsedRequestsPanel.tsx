@@ -2,7 +2,7 @@
  * Panel showing parsed bunk requests with expandable details
  */
 import { useState } from 'react';
-import { Users, ChevronDown, ChevronRight } from 'lucide-react';
+import { Users, ChevronDown, ChevronRight, Hash, Zap } from 'lucide-react';
 import type { EnhancedBunkRequest } from '../../hooks/camper/useAllBunkRequests';
 
 // Source field normalization - maps CSV column names to normalized keys
@@ -320,6 +320,12 @@ function RequestDetails({ request }: { request: EnhancedBunkRequest }) {
         </div>
       )}
 
+      {/* Keywords found */}
+      <KeywordsDisplay request={request} />
+
+      {/* AI Reasoning */}
+      <ReasoningDisplay request={request} />
+
       {/* Technical details grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
         <DetailField label="Record ID" value={request.id || 'N/A'} mono color={undefined} />
@@ -372,11 +378,6 @@ function RequestDetails({ request }: { request: EnhancedBunkRequest }) {
           }
         />
         <DetailField
-          label="Source"
-          value={request.source?.replace(/_/g, ' ') || 'N/A'}
-          color={undefined}
-        />
-        <DetailField
           label="Created"
           value={
             request.created
@@ -409,6 +410,78 @@ function RequestDetails({ request }: { request: EnhancedBunkRequest }) {
           {request.priority_locked ? 'Priority Locked' : 'Priority Unlocked'}
         </span>
       </div>
+    </div>
+  );
+}
+
+// Helper to extract keywords array from various formats
+function getKeywordsArray(request: EnhancedBunkRequest): string[] {
+  // Direct keywords_found field (should be array)
+  if (request.keywords_found) {
+    if (Array.isArray(request.keywords_found)) {
+      return request.keywords_found as string[];
+    }
+    // Handle if stored as JSON object with array
+    if (typeof request.keywords_found === 'object' && 'keywords' in request.keywords_found) {
+      return (request.keywords_found as { keywords: string[] }).keywords;
+    }
+  }
+  // Check metadata['keywords_found']
+  const metadataKeywords = request.metadata?.['keywords_found'];
+  if (metadataKeywords) {
+    if (Array.isArray(metadataKeywords)) {
+      return metadataKeywords as string[];
+    }
+  }
+  return [];
+}
+
+// Helper to extract reasoning from various formats
+function getReasoning(request: EnhancedBunkRequest): string | null {
+  // Check ai_reasoning['reasoning'] (most common)
+  const aiReasoning = request.ai_reasoning?.['reasoning'];
+  if (aiReasoning) {
+    return aiReasoning as string;
+  }
+  // Check metadata['ai_p1_reasoning'].reasoning
+  const p1Reasoning = request.metadata?.['ai_p1_reasoning'] as { reasoning?: string } | undefined;
+  if (p1Reasoning?.reasoning) {
+    return p1Reasoning.reasoning;
+  }
+  return null;
+}
+
+function KeywordsDisplay({ request }: { request: EnhancedBunkRequest }) {
+  const keywords = getKeywordsArray(request);
+  if (keywords.length === 0) return null;
+
+  return (
+    <div className="mb-4 flex items-start gap-2">
+      <Hash className="w-4 h-4 text-forest-500 mt-0.5 flex-shrink-0" />
+      <div className="flex flex-wrap gap-1.5">
+        {keywords.map((keyword, i) => (
+          <span
+            key={i}
+            className="inline-flex px-2 py-0.5 text-xs font-medium rounded-md bg-white/80 dark:bg-bark-700/50 text-foreground border border-bark-200 dark:border-bark-600"
+          >
+            {keyword}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ReasoningDisplay({ request }: { request: EnhancedBunkRequest }) {
+  const reasoning = getReasoning(request);
+  if (!reasoning) return null;
+
+  return (
+    <div className="mb-4 flex items-start gap-2">
+      <Zap className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+      <p className="text-sm text-muted-foreground leading-relaxed italic">
+        {reasoning}
+      </p>
     </div>
   );
 }
