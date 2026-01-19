@@ -1688,9 +1688,7 @@ class TestProductionRequestsEndpoint:
 
         assert response.status_code == 422  # Validation error - year required
 
-    def test_returns_empty_groups_when_no_requests(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
-    ) -> None:
+    def test_returns_empty_groups_when_no_requests(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
         """Test that endpoint returns empty groups when no production requests exist."""
         client, mock_deps = client_with_mocks
 
@@ -1739,9 +1737,7 @@ class TestProductionRequestsEndpoint:
         assert req["parse_notes"] == "Clear positive request"
         assert req["ai_p1_reasoning"] == {"reasoning": "Standard pattern"}
 
-    def test_camper_cm_id_is_path_parameter(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
-    ) -> None:
+    def test_camper_cm_id_is_path_parameter(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
         """Test that camper_cm_id is correctly extracted from path."""
         client, mock_deps = client_with_mocks
 
@@ -1812,9 +1808,7 @@ class TestProductionRequestsResponseSchema:
         assert "bunking_notes" in data["groups"]
         assert "internal_notes" in data["groups"]
 
-    def test_production_request_item_schema(
-        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
-    ) -> None:
+    def test_production_request_item_schema(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
         """Test that individual production request items have expected schema."""
         client, mock_deps = client_with_mocks
 
