@@ -156,6 +156,7 @@ export interface BunkRequest {
   parse_notes?: string;
   socialize_explain?: string;
   source?: 'family' | 'staff' | 'notes';
+  source_field?: string;  // CSV field this came from (bunk_with, not_bunk_with, etc.)
   is_reciprocal?: boolean;
   priority_locked?: boolean;
   manual_notes?: string;

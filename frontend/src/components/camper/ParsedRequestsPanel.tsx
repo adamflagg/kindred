@@ -5,6 +5,35 @@ import { useState } from 'react';
 import { Users, ChevronDown, ChevronRight } from 'lucide-react';
 import type { EnhancedBunkRequest } from '../../hooks/camper/useAllBunkRequests';
 
+// Source field normalization - maps CSV column names to normalized keys
+const normalizeSourceField = (field: string): string => {
+  const normalized = field.toLowerCase().trim();
+  if (normalized.includes('share bunk with') && !normalized.includes('do not')) return 'bunk_with';
+  if (normalized.includes('do not share') || normalized.includes('not_bunk')) return 'not_bunk_with';
+  if (normalized.includes('bunkingnotes') || normalized.includes('bunking_notes')) return 'bunking_notes';
+  if (normalized.includes('internal')) return 'internal_notes';
+  if (normalized.includes('socialize')) return 'socialize_with';
+  return field; // Return original if no match
+};
+
+// Source field display labels
+const SOURCE_FIELD_LABELS: Record<string, string> = {
+  bunk_with: 'Bunk With',
+  not_bunk_with: 'Not Bunk',
+  bunking_notes: 'Bunking Notes',
+  internal_notes: 'Internal Notes',
+  socialize_with: 'Socialize',
+};
+
+// Source field colors (matches debug page style)
+const SOURCE_FIELD_COLORS: Record<string, string> = {
+  bunk_with: 'bg-forest-100 text-forest-700 dark:bg-forest-900/40 dark:text-forest-400',
+  not_bunk_with: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400',
+  bunking_notes: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400',
+  internal_notes: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400',
+  socialize_with: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-400',
+};
+
 interface ParsedRequestsPanelProps {
   requests: EnhancedBunkRequest[];
 }
@@ -76,6 +105,9 @@ interface RequestCardProps {
 }
 
 function RequestCard({ request, isExpanded, onToggle }: RequestCardProps) {
+  // Check direct source_field first, then ai_reasoning.csv_source_field
+  const sourceField = request.source_field || (request.ai_reasoning?.csv_source_field as string | undefined);
+
   const borderColor =
     request.request_type === 'bunk_with'
       ? 'border-l-green-500'
@@ -153,6 +185,7 @@ function RequestCard({ request, isExpanded, onToggle }: RequestCardProps) {
             {request.confidence_score && (
               <ConfidenceBadge score={request.confidence_score} />
             )}
+            <SourceFieldBadge sourceField={sourceField} />
             {request.is_reciprocal && (
               <span className="text-forest-600 dark:text-forest-400">
                 Reciprocal
@@ -210,15 +243,41 @@ function ConfidenceBadge({ score }: { score: number }) {
   );
 }
 
+// Badge showing which source field the request came from
+function SourceFieldBadge({ sourceField }: { sourceField: string | undefined }) {
+  if (!sourceField) return null;
+
+  const normalized = normalizeSourceField(sourceField);
+  const label = SOURCE_FIELD_LABELS[normalized] || sourceField;
+  const colorClass = SOURCE_FIELD_COLORS[normalized] || 'bg-bark-100 text-bark-600 dark:bg-bark-800 dark:text-bark-400';
+
+  return (
+    <span
+      className={`
+        inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide
+        ${colorClass}
+      `}
+    >
+      {label}
+    </span>
+  );
+}
+
 function RequestDetails({ request }: { request: EnhancedBunkRequest }) {
+  // Check direct source_field first, then ai_reasoning.csv_source_field
+  const sourceField = request.source_field || (request.ai_reasoning?.csv_source_field as string | undefined);
+
   return (
     <div className="px-4 pb-4 pt-2 border-t border-border bg-muted/20">
-      {/* Original text */}
+      {/* Original text with source field badge */}
       {request.original_text && (
         <div className="mb-4 p-3 rounded-lg bg-stone-100 dark:bg-stone-800/50">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
-            Original Text
-          </p>
+          <div className="flex items-center gap-2 mb-1">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Original Text
+            </p>
+            <SourceFieldBadge sourceField={sourceField} />
+          </div>
           <p className="text-sm text-foreground">{request.original_text}</p>
         </div>
       )}
