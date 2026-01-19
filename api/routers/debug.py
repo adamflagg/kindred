@@ -486,7 +486,7 @@ async def list_original_requests_grouped(
     year: int = Query(description="Year to filter by (required)"),
     session_cm_id: list[int] | None = Query(default=None, description="Filter by session CM ID(s)"),
     source_field: SourceFieldType | None = Query(default=None, description="Filter by source field"),
-    limit: int = Query(default=50, ge=1, le=500, description="Maximum campers to return"),
+    limit: int = Query(default=5000, ge=1, description="Maximum campers to return"),
 ) -> GroupedRequestsResponse:
     """List original requests grouped by camper.
 
@@ -499,10 +499,11 @@ async def list_original_requests_grouped(
 
     # Load records - if source_field filter is specified, only load that field
     # Otherwise, load ALL records (no field filter) and filter AI fields in Python
+    # Pass limit=0 to get all records via get_full_list, then apply limit after grouping
     records = loader.load_by_filter(
         session_cm_id=session_cm_id,
         source_field=source_field,
-        limit=limit * 4,  # Fetch more since we're grouping (up to 4 fields per camper)
+        limit=0,  # Fetch all, apply camper limit after grouping
     )
 
     # Filter out socialize_with (not AI parsed)
@@ -541,6 +542,81 @@ async def list_original_requests_grouped(
     items = list(camper_groups.values())[:limit]
 
     return GroupedRequestsResponse(items=items, total=len(items))
+
+
+@router.post("/parse-results-batch", response_model=list[ParseResultWithSource])
+async def get_parse_results_batch(
+    original_request_ids: list[str],
+) -> list[ParseResultWithSource]:
+    """Get Phase 1 parse results for multiple original requests in one call.
+
+    This is optimized to use only 3 database queries regardless of how many
+    IDs are requested, making it much faster than calling the single endpoint
+    multiple times.
+
+    Args:
+        original_request_ids: List of original_bunk_requests record IDs
+
+    Returns:
+        List of ParseResultWithSource in the same order as input IDs
+    """
+    if not original_request_ids:
+        return []
+
+    debug_repo = get_debug_parse_repository()
+    results_map = debug_repo.get_results_batch(original_request_ids)
+
+    # Convert to response models, preserving input order
+    responses: list[ParseResultWithSource] = []
+
+    for rid in original_request_ids:
+        data = results_map.get(rid, {})
+
+        # Convert parsed_intents to proper model
+        parsed_intents = []
+        for intent in data.get("parsed_intents", []):
+            parsed_intents.append(
+                ParsedIntent(
+                    request_type=intent.get("request_type", "unknown"),
+                    target_name=intent.get("target_name"),
+                    keywords_found=intent.get("keywords_found", []),
+                    parse_notes=intent.get("parse_notes", ""),
+                    reasoning=intent.get("reasoning", ""),
+                    list_position=intent.get("list_position", 0),
+                    needs_clarification=intent.get("needs_clarification", False),
+                    temporal_info=intent.get("temporal_info"),
+                )
+            )
+
+        # Parse created timestamp if present
+        created_dt = None
+        created_str = data.get("created")
+        if created_str:
+            try:
+                created_dt = datetime.fromisoformat(str(created_str).replace("Z", "+00:00"))
+            except (ValueError, TypeError):
+                pass
+
+        responses.append(
+            ParseResultWithSource(
+                source=data.get("source", "none"),
+                id=data.get("id"),
+                parsed_intents=parsed_intents,
+                is_valid=data.get("is_valid", True),
+                error_message=data.get("error_message"),
+                token_count=data.get("token_count"),
+                processing_time_ms=data.get("processing_time_ms"),
+                prompt_version=data.get("prompt_version"),
+                created=created_dt,
+                original_request_id=data.get("original_request_id", rid),
+                requester_name=data.get("requester_name", ""),
+                requester_cm_id=data.get("requester_cm_id"),
+                source_field=data.get("source_field", ""),
+                original_text=data.get("original_text", ""),
+            )
+        )
+
+    return responses
 
 
 @router.get("/parse-result/{original_request_id}", response_model=ParseResultWithSource)
