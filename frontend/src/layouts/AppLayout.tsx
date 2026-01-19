@@ -12,6 +12,7 @@ import CacheStatus from '../components/CacheStatus';
 import BunkRequestsUpload from '../components/BunkRequestsUpload';
 import { BrandedLogo } from '../components/BrandedLogo';
 import { useYear } from '../hooks/useCurrentYear';
+import { useIsAdmin } from '../hooks/useIsAdmin';
 import { useSyncStatusAPI } from '../hooks/useSyncStatusAPI';
 import { formatDistanceToNow } from 'date-fns';
 import { useProgram } from '../contexts/ProgramContext';
@@ -24,6 +25,7 @@ export const AppLayout = () => {
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
   const { user, isAuthenticated, logout } = useAuth();
+  const isAdmin = useIsAdmin();
   const { fetchWithAuth } = useApiWithAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProgramMenuOpen, setIsProgramMenuOpen] = useState(false);
@@ -225,12 +227,14 @@ export const AppLayout = () => {
                     >
                       Admin
                     </Link>
-                    <Link
-                      to="/summer/debug"
-                      className={`nav-link-lodge ${isActiveRoute('/debug') ? 'active' : ''}`}
-                    >
-                      Debug
-                    </Link>
+                    {isAdmin && (
+                      <Link
+                        to="/summer/debug"
+                        className={`nav-link-lodge ${isActiveRoute('/debug') ? 'active' : ''}`}
+                      >
+                        Debug
+                      </Link>
+                    )}
                   </>
                 )}
               </div>
@@ -451,17 +455,19 @@ export const AppLayout = () => {
                     >
                       Admin
                     </Link>
-                    <Link
-                      to="/summer/debug"
-                      className={`block px-4 py-3 text-base font-semibold rounded-xl transition-all ${
-                        isActiveRoute('/debug')
-                          ? 'bg-primary text-primary-foreground'
-                          : 'text-foreground hover:bg-muted/50'
-                      }`}
-                      onClick={() => setIsMobileMenuOpen(false)}
-                    >
-                      Debug
-                    </Link>
+                    {isAdmin && (
+                      <Link
+                        to="/summer/debug"
+                        className={`block px-4 py-3 text-base font-semibold rounded-xl transition-all ${
+                          isActiveRoute('/debug')
+                            ? 'bg-primary text-primary-foreground'
+                            : 'text-foreground hover:bg-muted/50'
+                        }`}
+                        onClick={() => setIsMobileMenuOpen(false)}
+                      >
+                        Debug
+                      </Link>
+                    )}
                   </>
                 )}
               </div>

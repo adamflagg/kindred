@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Calendar } from 'lucide-react';
 import { pb } from '../lib/pocketbase';
 import { useYear } from '../hooks/useCurrentYear';
+import { useIsAdmin } from '../hooks/useIsAdmin';
 import { getLocationDisplay } from '../utils/addressUtils';
 import type { PersonsResponse } from '../types/pocketbase-types';
 
@@ -73,6 +74,7 @@ function getSessionShortName(session: {
 export default function CamperDetail() {
   const { camperId } = useParams<{ camperId: string }>();
   const currentYear = useYear();
+  const isAdmin = useIsAdmin();
 
   // Parse and validate the person CampMinder ID
   const personCmId = camperId ? parseInt(camperId, 10) : null;
@@ -271,8 +273,8 @@ export default function CamperDetail() {
             />
           )}
 
-          {/* Parsed Bunk Requests */}
-          <ParsedRequestsPanel requests={allBunkRequests} />
+          {/* Parsed Bunk Requests (admin only) */}
+          {isAdmin && <ParsedRequestsPanel requests={allBunkRequests} />}
         </div>
 
         {/* Sidebar */}

@@ -1,6 +1,7 @@
 # Build arguments (passed from CI/CD)
 ARG VERSION=dev
 ARG BUILD_DATE
+ARG ADMIN_USER
 
 # =============================================================================
 # Stage 1: Frontend build
@@ -10,8 +11,10 @@ FROM node:25-alpine AS frontend-builder
 # Pass version info to frontend build
 ARG VERSION
 ARG BUILD_DATE
+ARG ADMIN_USER
 ENV VITE_APP_VERSION=${VERSION}
 ENV VITE_APP_BUILD_DATE=${BUILD_DATE}
+ENV ADMIN_USER=${ADMIN_USER}
 
 WORKDIR /app
 COPY frontend/package*.json ./
