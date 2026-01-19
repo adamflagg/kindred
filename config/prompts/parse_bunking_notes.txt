@@ -117,6 +117,8 @@ DO NOT extract:
 - Unit placement: "Same unit as..." (different from cabin/bunk)
 - Generic notes: "Would benefit from experienced counselors"
 
+{output_field_rules}
+
 === OUTPUT REQUIREMENTS ===
 
 For each valid request, provide:
@@ -126,6 +128,6 @@ For each valid request, provide:
 - temporal_info: null OR {{date_mentioned, is_superseded, supersedes_reason}}
 - keywords_found: Priority words like "must", "recommend", "counselors noted"
 - source_type: "staff" (always for this field)
-- parse_notes: Include historical context, reasoning, staff perspective
-- reasoning: Why this is an actionable bunking request
+- parse_notes: Brief explanation (see rules above)
+- reasoning: Why this is actionable (see rules above)
 - list_position: Position in multi-request content (0-indexed)
