@@ -158,6 +158,9 @@ export function PromptEditorTab() {
     return () => {
       viewRef.current?.destroy();
     };
+    // editorContent is intentionally excluded - it's only used for initial value
+    // Including it would cause editor to recreate on every keystroke
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDark, promptContent?.content]);
 
   // Handle save
