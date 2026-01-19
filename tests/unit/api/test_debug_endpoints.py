@@ -1557,5 +1557,303 @@ class TestScopedClearEndpoint:
         assert call_kwargs.get("source_field") == "bunk_with"
 
 
+# =============================================================================
+# Phase 5: Production Requests Endpoint for 3-Column Layout
+# =============================================================================
+
+
+class TestProductionRequestsEndpoint:
+    """Test GET /api/debug/production-requests/{camper_cm_id} endpoint.
+
+    This endpoint returns all bunk_requests for a camper, grouped by source_field.
+    Used by the 3-column debug layout to show production data in the right column.
+    """
+
+    @pytest.fixture
+    def mock_deps(self) -> dict[str, Mock]:
+        """Create mock dependencies for testing."""
+        return {
+            "bunk_requests_repo": Mock(),
+            "session_repo": Mock(),
+        }
+
+    @pytest.fixture
+    def client_with_mocks(
+        self, mock_deps: dict[str, Mock]
+    ) -> Generator[tuple[TestClient, dict[str, Mock]], None, None]:
+        """Create test client with mocked dependencies."""
+        with patch("api.routers.debug.get_bunk_requests_repository") as mock_get_bunk_repo:
+            with patch("api.routers.debug.get_session_repository") as mock_get_session_repo:
+                mock_get_bunk_repo.return_value = mock_deps["bunk_requests_repo"]
+                mock_get_session_repo.return_value = mock_deps["session_repo"]
+
+                from api.routers.debug import router
+
+                app = FastAPI()
+                app.include_router(router)
+
+                yield TestClient(app), mock_deps
+
+    def test_returns_production_requests_grouped_by_source_field(
+        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
+    ) -> None:
+        """Test that endpoint returns production requests grouped by source_field."""
+        client, mock_deps = client_with_mocks
+
+        # Mock production requests for a camper
+        mock_deps["bunk_requests_repo"].find_by_requester.return_value = [
+            {
+                "id": "br_1",
+                "requester_id": 12345,
+                "requestee_id": 67890,
+                "requested_person_name": "Emma Johnson",
+                "request_type": "bunk_with",
+                "source_field": "bunk_with",
+                "confidence_score": 0.95,
+                "keywords_found": ["with", "please"],
+                "parse_notes": "Clear positive request",
+                "ai_p1_reasoning": {"reasoning": "Standard pattern"},
+            },
+            {
+                "id": "br_2",
+                "requester_id": 12345,
+                "requestee_id": 11111,
+                "requested_person_name": "Liam Garcia",
+                "request_type": "not_bunk_with",
+                "source_field": "not_bunk_with",
+                "confidence_score": 0.87,
+                "keywords_found": ["not", "separate"],
+                "parse_notes": "Negative request",
+                "ai_p1_reasoning": {"reasoning": "Separation pattern"},
+            },
+            {
+                "id": "br_3",
+                "requester_id": 12345,
+                "requestee_id": 22222,
+                "requested_person_name": "Noah Smith",
+                "request_type": "bunk_with",
+                "source_field": "bunk_with",
+                "confidence_score": 0.92,
+                "keywords_found": ["bunk"],
+                "parse_notes": "Second bunk_with request",
+                "ai_p1_reasoning": {"reasoning": "Direct pattern"},
+            },
+        ]
+
+        response = client.get("/api/debug/production-requests/12345?year=2025")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # Verify structure - grouped by source_field
+        assert "groups" in data
+        assert "total" in data
+        assert data["total"] == 3
+
+        # Should have 2 groups: bunk_with (2 items) and not_bunk_with (1 item)
+        groups = data["groups"]
+        assert "bunk_with" in groups
+        assert "not_bunk_with" in groups
+        assert len(groups["bunk_with"]) == 2
+        assert len(groups["not_bunk_with"]) == 1
+
+        # Verify bunk_with group content
+        bunk_with_names = [r["requested_person_name"] for r in groups["bunk_with"]]
+        assert "Emma Johnson" in bunk_with_names
+        assert "Noah Smith" in bunk_with_names
+
+        # Verify not_bunk_with group content
+        assert groups["not_bunk_with"][0]["requested_person_name"] == "Liam Garcia"
+
+    def test_filters_by_session(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
+        """Test that endpoint filters by session_cm_id when provided."""
+        client, mock_deps = client_with_mocks
+
+        mock_deps["bunk_requests_repo"].find_by_requester.return_value = []
+
+        response = client.get("/api/debug/production-requests/12345?year=2025&session_cm_id=1000002")
+
+        assert response.status_code == 200
+
+        # Verify filter was passed to repository
+        call_kwargs = mock_deps["bunk_requests_repo"].find_by_requester.call_args[1]
+        assert call_kwargs.get("session_cm_id") == 1000002
+        assert call_kwargs.get("year") == 2025
+
+    def test_year_is_required(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
+        """Test that year parameter is required."""
+        client, _mock_deps = client_with_mocks
+
+        response = client.get("/api/debug/production-requests/12345")
+
+        assert response.status_code == 422  # Validation error - year required
+
+    def test_returns_empty_groups_when_no_requests(
+        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
+    ) -> None:
+        """Test that endpoint returns empty groups when no production requests exist."""
+        client, mock_deps = client_with_mocks
+
+        mock_deps["bunk_requests_repo"].find_by_requester.return_value = []
+
+        response = client.get("/api/debug/production-requests/99999?year=2025")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["groups"] == {}
+        assert data["total"] == 0
+
+    def test_includes_request_metadata(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
+        """Test that each production request includes AI metadata fields."""
+        client, mock_deps = client_with_mocks
+
+        mock_deps["bunk_requests_repo"].find_by_requester.return_value = [
+            {
+                "id": "br_1",
+                "requester_id": 12345,
+                "requestee_id": 67890,
+                "requested_person_name": "Emma Johnson",
+                "request_type": "bunk_with",
+                "source_field": "bunking_notes",
+                "confidence_score": 0.95,
+                "confidence_level": "high",
+                "keywords_found": ["together", "please"],
+                "parse_notes": "Clear positive request",
+                "ai_p1_reasoning": {"reasoning": "Standard pattern"},
+                "status": "resolved",
+                "is_active": True,
+            },
+        ]
+
+        response = client.get("/api/debug/production-requests/12345?year=2025")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # Verify metadata is included in response
+        req = data["groups"]["bunking_notes"][0]
+        assert req["requested_person_name"] == "Emma Johnson"
+        assert req["confidence_score"] == 0.95
+        assert req["confidence_level"] == "high"
+        assert req["keywords_found"] == ["together", "please"]
+        assert req["parse_notes"] == "Clear positive request"
+        assert req["ai_p1_reasoning"] == {"reasoning": "Standard pattern"}
+
+    def test_camper_cm_id_is_path_parameter(
+        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
+    ) -> None:
+        """Test that camper_cm_id is correctly extracted from path."""
+        client, mock_deps = client_with_mocks
+
+        mock_deps["bunk_requests_repo"].find_by_requester.return_value = []
+
+        response = client.get("/api/debug/production-requests/54321?year=2025")
+
+        assert response.status_code == 200
+
+        # Verify correct camper_cm_id was passed to repository
+        call_args = mock_deps["bunk_requests_repo"].find_by_requester.call_args
+        assert call_args[0][0] == 54321  # First positional arg is camper_cm_id
+
+
+class TestProductionRequestsResponseSchema:
+    """Test that the response schema matches the expected format for 3-column layout."""
+
+    @pytest.fixture
+    def mock_deps(self) -> dict[str, Mock]:
+        """Create mock dependencies for testing."""
+        return {
+            "bunk_requests_repo": Mock(),
+        }
+
+    @pytest.fixture
+    def client_with_mocks(
+        self, mock_deps: dict[str, Mock]
+    ) -> Generator[tuple[TestClient, dict[str, Mock]], None, None]:
+        """Create test client with mocked dependencies."""
+        with patch("api.routers.debug.get_bunk_requests_repository") as mock_get_bunk_repo:
+            mock_get_bunk_repo.return_value = mock_deps["bunk_requests_repo"]
+
+            from api.routers.debug import router
+
+            app = FastAPI()
+            app.include_router(router)
+
+            yield TestClient(app), mock_deps
+
+    def test_response_includes_all_source_field_types(
+        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
+    ) -> None:
+        """Test that response can include all AI-parsed source field types."""
+        client, mock_deps = client_with_mocks
+
+        # Mock requests from all 4 AI-parsed source fields
+        mock_deps["bunk_requests_repo"].find_by_requester.return_value = [
+            {
+                "id": f"br_{i}",
+                "requester_id": 12345,
+                "requestee_id": 10000 + i,
+                "requested_person_name": f"Camper {i}",
+                "request_type": "bunk_with" if i < 2 else "not_bunk_with",
+                "source_field": field,
+                "confidence_score": 0.9,
+            }
+            for i, field in enumerate(["bunk_with", "not_bunk_with", "bunking_notes", "internal_notes"])
+        ]
+
+        response = client.get("/api/debug/production-requests/12345?year=2025")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # All 4 source fields should be present as groups
+        assert "bunk_with" in data["groups"]
+        assert "not_bunk_with" in data["groups"]
+        assert "bunking_notes" in data["groups"]
+        assert "internal_notes" in data["groups"]
+
+    def test_production_request_item_schema(
+        self, client_with_mocks: tuple[TestClient, dict[str, Mock]]
+    ) -> None:
+        """Test that individual production request items have expected schema."""
+        client, mock_deps = client_with_mocks
+
+        mock_deps["bunk_requests_repo"].find_by_requester.return_value = [
+            {
+                "id": "br_1",
+                "requester_id": 12345,
+                "requestee_id": 67890,
+                "requested_person_name": "Emma Johnson",
+                "request_type": "bunk_with",
+                "source_field": "bunk_with",
+                "confidence_score": 0.95,
+                "confidence_level": "high",
+                "keywords_found": ["with"],
+                "parse_notes": "Clear request",
+                "ai_p1_reasoning": {"reasoning": "Pattern match"},
+                "status": "resolved",
+                "is_active": True,
+                "original_text": "Want to be with Emma please",
+            },
+        ]
+
+        response = client.get("/api/debug/production-requests/12345?year=2025")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        req = data["groups"]["bunk_with"][0]
+
+        # Verify all expected fields are present
+        assert "id" in req
+        assert "requestee_id" in req
+        assert "requested_person_name" in req
+        assert "request_type" in req
+        assert "confidence_score" in req
+        assert "keywords_found" in req
+        assert "parse_notes" in req
+        assert "ai_p1_reasoning" in req
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
