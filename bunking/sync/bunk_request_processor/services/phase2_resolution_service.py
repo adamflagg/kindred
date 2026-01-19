@@ -551,8 +551,13 @@ class Phase2ResolutionService:
             if case_id in case_map:
                 case = case_map[case_id]
                 if case.resolution_results:
-                    # Filter out None values from resolution_results
-                    filtered_results: list[ResolutionResult] = [r for r in case.resolution_results if r is not None]
+                    # Replace None values with fallback results to preserve list length
+                    # IMPORTANT: Length must match parsed_requests for zip(..., strict=True) in
+                    # _filter_post_expansion_conflicts to work correctly
+                    filtered_results: list[ResolutionResult] = [
+                        r if r is not None else ResolutionResult(confidence=0.0, method="resolution_incomplete")
+                        for r in case.resolution_results
+                    ]
                     results.append((parse_result, filtered_results))
                 else:
                     # No resolution results - create empty list with one failed result per request

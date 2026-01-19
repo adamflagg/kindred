@@ -958,6 +958,100 @@ class TestAgePreferenceDeduplication:
         assert len(result.kept_requests) == 2
         assert result.statistics["duplicates_removed"] == 0
 
+    def test_age_preference_with_is_placeholder_true_not_duplicated(self, deduplicator):
+        """BUG FIX: AGE_PREFERENCE with is_placeholder=True must not be added twice.
+
+        Root cause: AGE_PREFERENCE requests have is_placeholder=True (no target person)
+        but ALSO get a valid dedup key (requester, None, type, "", year, session).
+
+        The buggy code:
+        1. Lines 130-132: Adds ALL is_placeholder=True requests unconditionally
+        2. Lines 135-138: Adds keyed requests from request_groups (including AGE_PREFERENCE)
+
+        Result: Every AGE_PREFERENCE request is added to kept_requests TWICE,
+        causing DB unique constraint violations even on an empty table.
+
+        Fix: Use the key as source of truth. If key=None, add directly. Otherwise,
+        only add via request_groups processing.
+        """
+        # Single AGE_PREFERENCE request with is_placeholder=True (real production behavior)
+        age_pref = BunkRequest(
+            requester_cm_id=12345,
+            requested_cm_id=None,  # No target for age preferences
+            request_type=RequestType.AGE_PREFERENCE,
+            session_cm_id=1000002,
+            priority=1,
+            confidence_score=0.90,
+            source=RequestSource.FAMILY,
+            source_field="ret_parent_socialize_with_best",
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=True,  # THE KEY: production AGE_PREFERENCE has this True
+            metadata={"age_preference": "older"},
+        )
+
+        result = deduplicator.deduplicate_batch([age_pref])
+
+        # MUST be exactly 1 - not duplicated
+        assert len(result.kept_requests) == 1, (
+            f"Expected 1 kept request, got {len(result.kept_requests)}. "
+            f"Bug: AGE_PREFERENCE with is_placeholder=True being added twice."
+        )
+        assert result.statistics["unique_requests"] == 1
+        assert result.statistics["duplicates_removed"] == 0
+
+    def test_age_preference_with_is_placeholder_true_deduplicates_across_sources(self, deduplicator):
+        """Test that AGE_PREFERENCE with is_placeholder=True still deduplicates across sources.
+
+        Even though is_placeholder=True, multiple AGE_PREFERENCE requests for the same
+        requester/session/year from different sources should deduplicate to 1.
+        """
+        # AI-parsed from bunking_notes (STAFF source)
+        ai_parsed = BunkRequest(
+            requester_cm_id=12345,
+            requested_cm_id=None,
+            request_type=RequestType.AGE_PREFERENCE,
+            session_cm_id=1000002,
+            priority=1,
+            confidence_score=0.85,
+            source=RequestSource.STAFF,
+            source_field="bunking_notes",
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=True,  # Production behavior
+            metadata={"age_preference": "older", "origin": "ai_parsed"},
+        )
+
+        # Dropdown selection (FAMILY source)
+        dropdown = BunkRequest(
+            requester_cm_id=12345,
+            requested_cm_id=None,
+            request_type=RequestType.AGE_PREFERENCE,
+            session_cm_id=1000002,
+            priority=1,
+            confidence_score=1.0,
+            source=RequestSource.FAMILY,
+            source_field="ret_parent_socialize_with_best",
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=True,  # Production behavior
+            metadata={"age_preference": "older", "origin": "dropdown"},
+        )
+
+        result = deduplicator.deduplicate_batch([ai_parsed, dropdown])
+
+        # Should deduplicate to 1 (not 2 from dedup, and not 4 from double-add bug)
+        assert len(result.kept_requests) == 1, (
+            f"Expected 1 kept request after dedup, got {len(result.kept_requests)}. "
+            f"Possible bugs: double-add or no dedup across sources."
+        )
+        assert result.statistics["duplicates_removed"] == 1
+        # STAFF wins over FAMILY
+        assert result.kept_requests[0].source == RequestSource.STAFF
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

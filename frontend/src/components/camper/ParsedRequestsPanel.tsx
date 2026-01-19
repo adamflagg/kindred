@@ -2,8 +2,37 @@
  * Panel showing parsed bunk requests with expandable details
  */
 import { useState } from 'react';
-import { Users, ChevronDown, ChevronRight } from 'lucide-react';
+import { Users, ChevronDown, ChevronRight, Hash, Zap } from 'lucide-react';
 import type { EnhancedBunkRequest } from '../../hooks/camper/useAllBunkRequests';
+
+// Source field normalization - maps CSV column names to normalized keys
+const normalizeSourceField = (field: string): string => {
+  const normalized = field.toLowerCase().trim();
+  if (normalized.includes('share bunk with') && !normalized.includes('do not')) return 'bunk_with';
+  if (normalized.includes('do not share') || normalized.includes('not_bunk')) return 'not_bunk_with';
+  if (normalized.includes('bunkingnotes') || normalized.includes('bunking_notes')) return 'bunking_notes';
+  if (normalized.includes('internal')) return 'internal_notes';
+  if (normalized.includes('socialize')) return 'socialize_with';
+  return field; // Return original if no match
+};
+
+// Source field display labels
+const SOURCE_FIELD_LABELS: Record<string, string> = {
+  bunk_with: 'Bunk With',
+  not_bunk_with: 'Not Bunk',
+  bunking_notes: 'Bunking Notes',
+  internal_notes: 'Internal Notes',
+  socialize_with: 'Socialize',
+};
+
+// Source field colors (matches debug page style)
+const SOURCE_FIELD_COLORS: Record<string, string> = {
+  bunk_with: 'bg-forest-100 text-forest-700 dark:bg-forest-900/40 dark:text-forest-400',
+  not_bunk_with: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400',
+  bunking_notes: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400',
+  internal_notes: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400',
+  socialize_with: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-400',
+};
 
 interface ParsedRequestsPanelProps {
   requests: EnhancedBunkRequest[];
@@ -76,6 +105,9 @@ interface RequestCardProps {
 }
 
 function RequestCard({ request, isExpanded, onToggle }: RequestCardProps) {
+  // Check direct source_field first, then ai_reasoning.csv_source_field
+  const sourceField = request.source_field || (request.ai_reasoning?.csv_source_field as string | undefined);
+
   const borderColor =
     request.request_type === 'bunk_with'
       ? 'border-l-green-500'
@@ -153,6 +185,7 @@ function RequestCard({ request, isExpanded, onToggle }: RequestCardProps) {
             {request.confidence_score && (
               <ConfidenceBadge score={request.confidence_score} />
             )}
+            <SourceFieldBadge sourceField={sourceField} />
             {request.is_reciprocal && (
               <span className="text-forest-600 dark:text-forest-400">
                 Reciprocal
@@ -210,15 +243,41 @@ function ConfidenceBadge({ score }: { score: number }) {
   );
 }
 
+// Badge showing which source field the request came from
+function SourceFieldBadge({ sourceField }: { sourceField: string | undefined }) {
+  if (!sourceField) return null;
+
+  const normalized = normalizeSourceField(sourceField);
+  const label = SOURCE_FIELD_LABELS[normalized] || sourceField;
+  const colorClass = SOURCE_FIELD_COLORS[normalized] || 'bg-bark-100 text-bark-600 dark:bg-bark-800 dark:text-bark-400';
+
+  return (
+    <span
+      className={`
+        inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide
+        ${colorClass}
+      `}
+    >
+      {label}
+    </span>
+  );
+}
+
 function RequestDetails({ request }: { request: EnhancedBunkRequest }) {
+  // Check direct source_field first, then ai_reasoning.csv_source_field
+  const sourceField = request.source_field || (request.ai_reasoning?.csv_source_field as string | undefined);
+
   return (
     <div className="px-4 pb-4 pt-2 border-t border-border bg-muted/20">
-      {/* Original text */}
+      {/* Original text with source field badge */}
       {request.original_text && (
         <div className="mb-4 p-3 rounded-lg bg-stone-100 dark:bg-stone-800/50">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
-            Original Text
-          </p>
+          <div className="flex items-center gap-2 mb-1">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Original Text
+            </p>
+            <SourceFieldBadge sourceField={sourceField} />
+          </div>
           <p className="text-sm text-foreground">{request.original_text}</p>
         </div>
       )}
@@ -260,6 +319,12 @@ function RequestDetails({ request }: { request: EnhancedBunkRequest }) {
           )}
         </div>
       )}
+
+      {/* Keywords found */}
+      <KeywordsDisplay request={request} />
+
+      {/* AI Reasoning */}
+      <ReasoningDisplay request={request} />
 
       {/* Technical details grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
@@ -313,11 +378,6 @@ function RequestDetails({ request }: { request: EnhancedBunkRequest }) {
           }
         />
         <DetailField
-          label="Source"
-          value={request.source?.replace(/_/g, ' ') || 'N/A'}
-          color={undefined}
-        />
-        <DetailField
           label="Created"
           value={
             request.created
@@ -350,6 +410,78 @@ function RequestDetails({ request }: { request: EnhancedBunkRequest }) {
           {request.priority_locked ? 'Priority Locked' : 'Priority Unlocked'}
         </span>
       </div>
+    </div>
+  );
+}
+
+// Helper to extract keywords array from various formats
+function getKeywordsArray(request: EnhancedBunkRequest): string[] {
+  // Direct keywords_found field (should be array)
+  if (request.keywords_found) {
+    if (Array.isArray(request.keywords_found)) {
+      return request.keywords_found as string[];
+    }
+    // Handle if stored as JSON object with array
+    if (typeof request.keywords_found === 'object' && 'keywords' in request.keywords_found) {
+      return (request.keywords_found as { keywords: string[] }).keywords;
+    }
+  }
+  // Check metadata['keywords_found']
+  const metadataKeywords = request.metadata?.['keywords_found'];
+  if (metadataKeywords) {
+    if (Array.isArray(metadataKeywords)) {
+      return metadataKeywords as string[];
+    }
+  }
+  return [];
+}
+
+// Helper to extract reasoning from various formats
+function getReasoning(request: EnhancedBunkRequest): string | null {
+  // Check ai_reasoning['reasoning'] (most common)
+  const aiReasoning = request.ai_reasoning?.['reasoning'];
+  if (aiReasoning) {
+    return aiReasoning as string;
+  }
+  // Check metadata['ai_p1_reasoning'].reasoning
+  const p1Reasoning = request.metadata?.['ai_p1_reasoning'] as { reasoning?: string } | undefined;
+  if (p1Reasoning?.reasoning) {
+    return p1Reasoning.reasoning;
+  }
+  return null;
+}
+
+function KeywordsDisplay({ request }: { request: EnhancedBunkRequest }) {
+  const keywords = getKeywordsArray(request);
+  if (keywords.length === 0) return null;
+
+  return (
+    <div className="mb-4 flex items-start gap-2">
+      <Hash className="w-4 h-4 text-forest-500 mt-0.5 flex-shrink-0" />
+      <div className="flex flex-wrap gap-1.5">
+        {keywords.map((keyword, i) => (
+          <span
+            key={i}
+            className="inline-flex px-2 py-0.5 text-xs font-medium rounded-md bg-white/80 dark:bg-bark-700/50 text-foreground border border-bark-200 dark:border-bark-600"
+          >
+            {keyword}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ReasoningDisplay({ request }: { request: EnhancedBunkRequest }) {
+  const reasoning = getReasoning(request);
+  if (!reasoning) return null;
+
+  return (
+    <div className="mb-4 flex items-start gap-2">
+      <Zap className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+      <p className="text-sm text-muted-foreground leading-relaxed italic">
+        {reasoning}
+      </p>
     </div>
   );
 }

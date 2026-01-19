@@ -62,7 +62,9 @@ class Deduplicator:
             DeduplicationResult with kept requests and statistics
         """
         # Group requests by duplicate key
-        request_groups: dict[tuple[int, int | None, RequestType, str, int, int] | None, list[BunkRequest]] = {}
+        # Requests with key=None are truly unique and added directly to unique_requests
+        request_groups: dict[tuple[int, int | None, RequestType, str, int, int], list[BunkRequest]] = {}
+        unique_requests: list[BunkRequest] = []  # No dedup key → add directly
 
         for request in requests:
             key: tuple[int, int | None, RequestType, str, int, int] | None
@@ -116,20 +118,20 @@ class Deduplicator:
                         request.session_cm_id,
                     )
 
-            if key:
+            # Use key as single source of truth:
+            # - key=None → truly unique, add to unique_requests
+            # - key!=None → potential duplicate, add to request_groups for dedup
+            if key is None:
+                unique_requests.append(request)
+            else:
                 if key not in request_groups:
                     request_groups[key] = []
                 request_groups[key].append(request)
 
         # Process each group
-        kept_requests = []
+        kept_requests = list(unique_requests)  # Start with truly unique requests
         duplicate_groups = []
         total_duplicates = 0
-
-        # Handle unique requests (no key) - only placeholders now
-        for request in requests:
-            if request.is_placeholder:
-                kept_requests.append(request)
 
         # Handle potential duplicate groups
         for key, group_requests in request_groups.items():
