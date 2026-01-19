@@ -46,7 +46,7 @@ function createMockUser(id: string): RecordModel {
 
 describe('useIsAdmin', () => {
   // Store original env value
-  const originalEnv = import.meta.env['ADMIN_USER_ID'];
+  const originalEnv = import.meta.env['ADMIN_USER'];
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -54,12 +54,12 @@ describe('useIsAdmin', () => {
 
   afterEach(() => {
     // Restore original env value
-    import.meta.env['ADMIN_USER_ID'] = originalEnv;
+    import.meta.env['ADMIN_USER'] = originalEnv;
   });
 
   describe('bypass mode', () => {
     it('returns true when in bypass mode regardless of env var', () => {
-      import.meta.env['ADMIN_USER_ID'] = 'some-admin-id';
+      import.meta.env['ADMIN_USER'] = 'some-admin-id';
       const mockContext = createMockAuthContext({
         user: createMockUser('different-user'),
         isBypassMode: true,
@@ -74,7 +74,7 @@ describe('useIsAdmin', () => {
     });
 
     it('returns true when in bypass mode even with no user', () => {
-      import.meta.env['ADMIN_USER_ID'] = 'some-admin-id';
+      import.meta.env['ADMIN_USER'] = 'some-admin-id';
       const mockContext = createMockAuthContext({
         user: null,
         isBypassMode: true,
@@ -90,8 +90,8 @@ describe('useIsAdmin', () => {
   });
 
   describe('no admin configured (default full access)', () => {
-    it('returns true when ADMIN_USER_ID is empty string', () => {
-      import.meta.env['ADMIN_USER_ID'] = '';
+    it('returns true when ADMIN_USER is empty string', () => {
+      import.meta.env['ADMIN_USER'] = '';
       const mockContext = createMockAuthContext({
         user: createMockUser('any-user'),
         isBypassMode: false,
@@ -105,8 +105,8 @@ describe('useIsAdmin', () => {
       expect(result.current).toBe(true);
     });
 
-    it('returns true when ADMIN_USER_ID is undefined', () => {
-      import.meta.env['ADMIN_USER_ID'] = undefined;
+    it('returns true when ADMIN_USER is undefined', () => {
+      delete import.meta.env['ADMIN_USER'];
       const mockContext = createMockAuthContext({
         user: createMockUser('any-user'),
         isBypassMode: false,
@@ -124,7 +124,7 @@ describe('useIsAdmin', () => {
   describe('admin user ID configured', () => {
     it('returns true when user ID matches configured admin ID', () => {
       const adminId = 'admin-user-123';
-      import.meta.env['ADMIN_USER_ID'] = adminId;
+      import.meta.env['ADMIN_USER'] = adminId;
       const mockContext = createMockAuthContext({
         user: createMockUser(adminId),
         isBypassMode: false,
@@ -139,7 +139,7 @@ describe('useIsAdmin', () => {
     });
 
     it('returns false when user ID does not match configured admin ID', () => {
-      import.meta.env['ADMIN_USER_ID'] = 'admin-user-123';
+      import.meta.env['ADMIN_USER'] = 'admin-user-123';
       const mockContext = createMockAuthContext({
         user: createMockUser('different-user-456'),
         isBypassMode: false,
@@ -154,7 +154,7 @@ describe('useIsAdmin', () => {
     });
 
     it('returns false when user is null', () => {
-      import.meta.env['ADMIN_USER_ID'] = 'admin-user-123';
+      import.meta.env['ADMIN_USER'] = 'admin-user-123';
       const mockContext = createMockAuthContext({
         user: null,
         isBypassMode: false,
