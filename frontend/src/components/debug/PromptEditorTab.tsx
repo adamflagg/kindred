@@ -158,6 +158,7 @@ export function PromptEditorTab() {
     return () => {
       viewRef.current?.destroy();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- editorContent intentionally excluded to prevent cursor jump on every keystroke
   }, [isDark, promptContent?.content]);
 
   // Handle save
