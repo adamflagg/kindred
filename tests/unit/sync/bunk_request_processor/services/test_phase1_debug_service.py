@@ -13,6 +13,8 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from bunking.sync.bunk_request_processor.shared.constants import SourceField
+
 if TYPE_CHECKING:
     from bunking.sync.bunk_request_processor.services.phase1_debug_service import (
         Phase1DebugService,
@@ -362,7 +364,7 @@ class TestPhase1DebugServiceConvertToParseRequest:
         assert parse_request.requester_name == "Li Garcia"  # Uses preferred_name
         assert parse_request.requester_cm_id == 12345
         assert parse_request.request_text == "With Emma"
-        assert parse_request.field_name == "bunk_with"
+        assert parse_request.field_name == SourceField.BUNK_WITH
 
     def test_convert_uses_first_name_when_no_preferred(self, debug_service: "Phase1DebugService") -> None:
         """Test that first_name is used when preferred_name is None."""

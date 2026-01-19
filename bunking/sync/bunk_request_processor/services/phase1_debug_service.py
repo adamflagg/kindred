@@ -14,6 +14,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from ..core.models import ParseRequest, ParseResult, RequestType
+from ..shared.constants import FIELD_TO_SOURCE_FIELD
 
 if TYPE_CHECKING:
     from ..data.repositories.debug_parse_repository import DebugParseRepository
@@ -226,7 +227,7 @@ class Phase1DebugService:
 
             return ParseRequest(
                 request_text=content,
-                field_name=field,
+                field_name=FIELD_TO_SOURCE_FIELD.get(field, field),
                 requester_name=requester_name,
                 requester_cm_id=requester_cm_id,
                 requester_grade=str(grade) if grade else "",
