@@ -11,6 +11,7 @@ import { ProgramProvider, useProgram } from './contexts/ProgramContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { queryClient } from './utils/queryClient';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { AdminRoute } from './components/AdminRoute';
 import { AuthLayout } from './layouts/AuthLayout';
 import { AppLayout } from './layouts/AppLayout';
 import LoginPage from './pages/LoginPage';
@@ -137,9 +138,11 @@ function App() {
                             </Suspense>
                           } />
                           <Route path="debug" element={
-                            <Suspense fallback={<PageSkeleton />}>
-                              <DebugPage />
-                            </Suspense>
+                            <AdminRoute>
+                              <Suspense fallback={<PageSkeleton />}>
+                                <DebugPage />
+                              </Suspense>
+                            </AdminRoute>
                           } />
                         </Route>
 

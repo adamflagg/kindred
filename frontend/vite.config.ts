@@ -168,6 +168,11 @@ const versionDefines = {
   'import.meta.env.VITE_APP_BUILD_DATE': JSON.stringify(process.env.VITE_APP_BUILD_DATE || new Date().toISOString()),
 };
 
+// Admin UI access control
+const adminDefines = {
+  'import.meta.env.ADMIN_USER': JSON.stringify(process.env.ADMIN_USER || ''),
+};
+
 // =============================================================================
 // Base Configuration
 // =============================================================================
@@ -182,6 +187,7 @@ const baseConfig: UserConfig = {
   define: {
     ...testAuthDefines,
     ...versionDefines,
+    ...adminDefines,
     // Inject branding for frontend to use
     VITE_LOCAL_BRANDING: JSON.stringify(localBranding),
   },
