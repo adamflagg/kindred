@@ -6,10 +6,6 @@ and inject them into prompts via {partial_name} placeholders.
 
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
-from unittest.mock import patch
-
 import pytest
 
 from bunking.sync.bunk_request_processor.prompts.loader import (
@@ -62,7 +58,6 @@ class TestPromptLoaderPartials:
     def test_format_prompt_injects_partials_from_partials_dir(self):
         """Test that partials from _partials dir are auto-injected.
 
-        This test will FAIL until the partial loading feature is implemented.
         The feature should:
         1. Scan config/prompts/_partials/ for .txt files
         2. Make each file available as {filename_without_ext} placeholder
@@ -70,10 +65,9 @@ class TestPromptLoaderPartials:
         """
         clear_cache()
 
-        # Create a temporary partial file in the actual _partials directory
         partials_dir = PROMPTS_DIR / "_partials"
 
-        # Skip if partials dir doesn't exist yet (feature not implemented)
+        # Skip if partials dir doesn't exist yet
         if not partials_dir.exists():
             pytest.skip("_partials directory doesn't exist - feature not yet implemented")
 
@@ -82,26 +76,21 @@ class TestPromptLoaderPartials:
         if not partial_file.exists():
             pytest.skip("output_field_rules.txt partial doesn't exist yet")
 
-        # Create a test prompt that uses the partial
-        test_prompt_content = "Test prompt with rules:\n{output_field_rules}\nEnd of prompt."
+        # Format parse_not_bunk_with which uses {output_field_rules} placeholder
+        formatted = format_prompt(
+            "parse_not_bunk_with",
+            requester_info="Test",
+            request_text="Maya Anderson",
+        )
 
-        # Mock load_prompt to return our test content
-        with patch.object(
-            Path(PROMPTS_DIR / "test_partial_injection.txt"),
-            "read_text",
-            return_value=test_prompt_content,
-        ):
-            # This should fail until partial loading is implemented
-            formatted = format_prompt(
-                "parse_not_bunk_with",  # Use a real prompt that has {output_field_rules}
-                requester_info="Test",
-                request_text="Maya Anderson",
-            )
-
-            # Check that partial content was injected
-            assert "PARSE_NOTES RULE" in formatted or "{output_field_rules}" not in formatted, (
-                "Partial content should be injected, replacing {output_field_rules} placeholder"
-            )
+        # Check that partial content was injected (contains content from partial file)
+        assert "PARSE_NOTES RULE" in formatted, (
+            "Partial content should be injected, replacing {output_field_rules} placeholder"
+        )
+        # Placeholder should be replaced
+        assert "{output_field_rules}" not in formatted, (
+            "Placeholder {output_field_rules} should be replaced with partial content"
+        )
 
     def test_partials_are_loaded_alongside_branding_vars(self):
         """Test that both branding vars and partials can be used in same prompt."""
