@@ -361,6 +361,30 @@ export const debugService = {
   },
 
   /**
+   * Get parse results for multiple original requests in one batch call.
+   * Much faster than calling getParseResultWithFallback multiple times.
+   */
+  async getParseResultsBatch(
+    originalRequestIds: string[],
+    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+  ): Promise<ParseResultWithSource[]> {
+    if (originalRequestIds.length === 0) {
+      return [];
+    }
+
+    const response = await fetchWithAuth(`${API_BASE}/parse-results-batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(originalRequestIds),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch parse results batch');
+    }
+    return response.json();
+  },
+
+  /**
    * List original requests grouped by camper (excludes socialize_with)
    */
   async listGroupedRequests(

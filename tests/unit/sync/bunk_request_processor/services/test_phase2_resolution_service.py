@@ -1324,3 +1324,85 @@ class TestValidateNameMatch:
         service = self._create_service()
 
         assert service._validate_name_match("John Smith", None) is False
+
+
+class TestBuildResultsLengthPreservation:
+    """Tests for _build_results maintaining length alignment.
+
+    BUG FIX: _build_results was filtering out None values from resolution_results,
+    causing length mismatches between parse_result.parsed_requests and resolution_list.
+    This caused zip(..., strict=True) errors in _filter_post_expansion_conflicts.
+    """
+
+    def _create_service(self):
+        """Create a Phase2ResolutionService with mocked pipeline."""
+        pipeline = Mock()
+        pipeline.batch_resolve.return_value = []
+        return Phase2ResolutionService(resolution_pipeline=pipeline)
+
+    def test_build_results_preserves_length_with_none_values(self):
+        """BUG FIX: _build_results must NOT filter out None values from resolution_results.
+
+        When resolution_results contains None values (e.g., from incomplete batch resolution),
+        the resulting list must have the same length as parse_result.parsed_requests.
+        Otherwise, zip(..., strict=True) in _filter_post_expansion_conflicts will fail.
+        """
+        service = self._create_service()
+
+        # Create a parse result with 3 parsed requests
+        parsed_requests = [
+            _create_parsed_request(target_name="Hannah"),
+            _create_parsed_request(target_name="Sarah"),
+            _create_parsed_request(target_name="Mike"),
+        ]
+        parse_result = _create_parse_result(parsed_requests=parsed_requests)
+
+        # Create a resolution case with 3 results, but one is None (simulating incomplete batch)
+        case = ResolutionCase(parse_result)
+        case.resolution_results = [
+            _create_resolution_result(person=_create_person(cm_id=1), confidence=0.9, method="exact"),
+            None,  # This represents an unfilled batch result
+            _create_resolution_result(person=_create_person(cm_id=3), confidence=0.9, method="exact"),
+        ]
+
+        # Build results
+        results = service._build_results([parse_result], [case])
+
+        # Should return exactly one result tuple
+        assert len(results) == 1
+        returned_parse_result, resolution_list = results[0]
+
+        # CRITICAL: The resolution_list length MUST match parsed_requests length
+        # This is required for zip(..., strict=True) in _filter_post_expansion_conflicts
+        assert len(resolution_list) == len(parsed_requests), (
+            f"Length mismatch! parsed_requests has {len(parsed_requests)} items, "
+            f"but resolution_list has {len(resolution_list)} items. "
+            "This will cause zip() errors in _filter_post_expansion_conflicts."
+        )
+
+    def test_build_results_replaces_none_with_fallback_result(self):
+        """None values should be replaced with a proper fallback ResolutionResult."""
+        service = self._create_service()
+
+        # Create a parse result with 2 parsed requests
+        parsed_requests = [
+            _create_parsed_request(target_name="Hannah"),
+            _create_parsed_request(target_name="Sarah"),
+        ]
+        parse_result = _create_parse_result(parsed_requests=parsed_requests)
+
+        # Create a resolution case with one None value
+        case = ResolutionCase(parse_result)
+        case.resolution_results = [
+            _create_resolution_result(person=_create_person(cm_id=1), confidence=0.9, method="exact"),
+            None,  # This should be replaced with a fallback
+        ]
+
+        # Build results
+        results = service._build_results([parse_result], [case])
+        _, resolution_list = results[0]
+
+        # The None should be replaced with a ResolutionResult, not filtered out
+        assert all(isinstance(r, ResolutionResult) for r in resolution_list), (
+            "All items in resolution_list must be ResolutionResult objects"
+        )

@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import logging
 import re
+from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -46,6 +48,8 @@ from ..schemas.debug import (
     ParseResultWithSource,
     Phase1OnlyRequest,
     Phase1OnlyResponse,
+    ProductionRequestItem,
+    ProductionRequestsResponse,
     PromptContentResponse,
     PromptListItem,
     PromptListResponse,
@@ -75,6 +79,103 @@ def get_debug_parse_repository() -> DebugParseRepository:
 def get_session_repository() -> SessionRepository:
     """Get a SessionRepository instance."""
     return SessionRepository(pb)
+
+
+class BunkRequestsRepository:
+    """Simple repository for fetching bunk_requests for debug display."""
+
+    def __init__(self, pb_client: Any) -> None:
+        """Initialize with PocketBase client."""
+        self.pb = pb_client
+
+    def find_by_requester(
+        self,
+        camper_cm_id: int,
+        *,
+        year: int,
+        session_cm_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Find all bunk_requests for a camper.
+
+        Args:
+            camper_cm_id: CampMinder ID of the requester
+            year: Year to filter by
+            session_cm_id: Optional session filter
+
+        Returns:
+            List of bunk_request records as dicts
+        """
+        import json
+
+        filter_parts = [
+            f"requester_id = {camper_cm_id}",
+            f"year = {year}",
+            'merged_into = ""',  # Exclude soft-deleted/merged requests
+        ]
+
+        if session_cm_id is not None:
+            filter_parts.append(f"session_id = {session_cm_id}")
+
+        filter_str = " && ".join(filter_parts)
+
+        try:
+            result = self.pb.collection("bunk_requests").get_full_list(
+                query_params={"filter": filter_str, "sort": "source_field,created"}
+            )
+
+            # Convert PocketBase records to dicts
+            records = []
+            for item in result:
+                # Parse JSON fields
+                keywords = []
+                if hasattr(item, "keywords_found") and item.keywords_found:
+                    if isinstance(item.keywords_found, list):
+                        keywords = item.keywords_found
+                    elif isinstance(item.keywords_found, str):
+                        try:
+                            keywords = json.loads(item.keywords_found)
+                        except json.JSONDecodeError:
+                            pass
+
+                ai_p1 = None
+                if hasattr(item, "ai_p1_reasoning") and item.ai_p1_reasoning:
+                    if isinstance(item.ai_p1_reasoning, dict):
+                        ai_p1 = item.ai_p1_reasoning
+                    elif isinstance(item.ai_p1_reasoning, str):
+                        try:
+                            ai_p1 = json.loads(item.ai_p1_reasoning)
+                        except json.JSONDecodeError:
+                            pass
+
+                records.append(
+                    {
+                        "id": item.id,
+                        "requester_id": getattr(item, "requester_id", None),
+                        "requestee_id": getattr(item, "requestee_id", None),
+                        "requested_person_name": getattr(item, "requested_person_name", None),
+                        "request_type": getattr(item, "request_type", None),
+                        "source_field": getattr(item, "source_field", None),
+                        "confidence_score": getattr(item, "confidence_score", None),
+                        "confidence_level": getattr(item, "confidence_level", None),
+                        "keywords_found": keywords,
+                        "parse_notes": getattr(item, "parse_notes", None),
+                        "ai_p1_reasoning": ai_p1,
+                        "status": getattr(item, "status", None),
+                        "is_active": getattr(item, "is_active", None),
+                        "original_text": getattr(item, "original_text", None),
+                    }
+                )
+
+            return records
+
+        except Exception as e:
+            logger.warning(f"Error finding bunk_requests for requester {camper_cm_id}: {e}")
+            return []
+
+
+def get_bunk_requests_repository() -> BunkRequestsRepository:
+    """Get a BunkRequestsRepository instance."""
+    return BunkRequestsRepository(pb)
 
 
 def get_original_requests_loader() -> OriginalRequestsLoader:
@@ -486,7 +587,7 @@ async def list_original_requests_grouped(
     year: int = Query(description="Year to filter by (required)"),
     session_cm_id: list[int] | None = Query(default=None, description="Filter by session CM ID(s)"),
     source_field: SourceFieldType | None = Query(default=None, description="Filter by source field"),
-    limit: int = Query(default=50, ge=1, le=500, description="Maximum campers to return"),
+    limit: int = Query(default=5000, ge=1, description="Maximum campers to return"),
 ) -> GroupedRequestsResponse:
     """List original requests grouped by camper.
 
@@ -499,10 +600,11 @@ async def list_original_requests_grouped(
 
     # Load records - if source_field filter is specified, only load that field
     # Otherwise, load ALL records (no field filter) and filter AI fields in Python
+    # Pass limit=0 to get all records via get_full_list, then apply limit after grouping
     records = loader.load_by_filter(
         session_cm_id=session_cm_id,
         source_field=source_field,
-        limit=limit * 4,  # Fetch more since we're grouping (up to 4 fields per camper)
+        limit=0,  # Fetch all, apply camper limit after grouping
     )
 
     # Filter out socialize_with (not AI parsed)
@@ -541,6 +643,81 @@ async def list_original_requests_grouped(
     items = list(camper_groups.values())[:limit]
 
     return GroupedRequestsResponse(items=items, total=len(items))
+
+
+@router.post("/parse-results-batch", response_model=list[ParseResultWithSource])
+async def get_parse_results_batch(
+    original_request_ids: list[str],
+) -> list[ParseResultWithSource]:
+    """Get Phase 1 parse results for multiple original requests in one call.
+
+    This is optimized to use only 3 database queries regardless of how many
+    IDs are requested, making it much faster than calling the single endpoint
+    multiple times.
+
+    Args:
+        original_request_ids: List of original_bunk_requests record IDs
+
+    Returns:
+        List of ParseResultWithSource in the same order as input IDs
+    """
+    if not original_request_ids:
+        return []
+
+    debug_repo = get_debug_parse_repository()
+    results_map = debug_repo.get_results_batch(original_request_ids)
+
+    # Convert to response models, preserving input order
+    responses: list[ParseResultWithSource] = []
+
+    for rid in original_request_ids:
+        data = results_map.get(rid, {})
+
+        # Convert parsed_intents to proper model
+        parsed_intents = []
+        for intent in data.get("parsed_intents", []):
+            parsed_intents.append(
+                ParsedIntent(
+                    request_type=intent.get("request_type", "unknown"),
+                    target_name=intent.get("target_name"),
+                    keywords_found=intent.get("keywords_found", []),
+                    parse_notes=intent.get("parse_notes", ""),
+                    reasoning=intent.get("reasoning", ""),
+                    list_position=intent.get("list_position", 0),
+                    needs_clarification=intent.get("needs_clarification", False),
+                    temporal_info=intent.get("temporal_info"),
+                )
+            )
+
+        # Parse created timestamp if present
+        created_dt = None
+        created_str = data.get("created")
+        if created_str:
+            try:
+                created_dt = datetime.fromisoformat(str(created_str).replace("Z", "+00:00"))
+            except (ValueError, TypeError):
+                pass
+
+        responses.append(
+            ParseResultWithSource(
+                source=data.get("source", "none"),
+                id=data.get("id"),
+                parsed_intents=parsed_intents,
+                is_valid=data.get("is_valid", True),
+                error_message=data.get("error_message"),
+                token_count=data.get("token_count"),
+                processing_time_ms=data.get("processing_time_ms"),
+                prompt_version=data.get("prompt_version"),
+                created=created_dt,
+                original_request_id=data.get("original_request_id", rid),
+                requester_name=data.get("requester_name", ""),
+                requester_cm_id=data.get("requester_cm_id"),
+                source_field=data.get("source_field", ""),
+                original_text=data.get("original_text", ""),
+            )
+        )
+
+    return responses
 
 
 @router.get("/parse-result/{original_request_id}", response_model=ParseResultWithSource)
@@ -755,3 +932,65 @@ async def update_prompt(name: str, request: PromptUpdateRequest) -> PromptUpdate
     clear_prompt_cache()
 
     return PromptUpdateResponse(name=name, success=True)
+
+
+# =============================================================================
+# Production Requests Endpoint (3-Column Layout)
+# =============================================================================
+
+
+@router.get("/production-requests/{camper_cm_id}", response_model=ProductionRequestsResponse)
+async def get_production_requests(
+    camper_cm_id: int,
+    year: int = Query(description="Year to filter by (required)"),
+    session_cm_id: int | None = Query(default=None, description="Filter by session CM ID"),
+) -> ProductionRequestsResponse:
+    """Get all production bunk_requests for a camper, grouped by source_field.
+
+    This endpoint is used by the 3-column debug layout to show production
+    data in the right column, allowing side-by-side comparison with debug
+    parse results in the center column.
+
+    Args:
+        camper_cm_id: CampMinder ID of the camper
+        year: Year to filter by (required)
+        session_cm_id: Optional session filter
+
+    Returns:
+        Production requests grouped by source_field (bunk_with, not_bunk_with, etc.)
+    """
+    bunk_repo = get_bunk_requests_repository()
+
+    # Fetch all bunk_requests for this camper
+    records = bunk_repo.find_by_requester(
+        camper_cm_id,
+        year=year,
+        session_cm_id=session_cm_id,
+    )
+
+    # Group by source_field
+    groups: dict[str, list[ProductionRequestItem]] = defaultdict(list)
+
+    for record in records:
+        source_field = record.get("source_field") or "unknown"
+        groups[source_field].append(
+            ProductionRequestItem(
+                id=record.get("id", ""),
+                requestee_id=record.get("requestee_id"),
+                requested_person_name=record.get("requested_person_name"),
+                request_type=record.get("request_type", ""),
+                confidence_score=record.get("confidence_score"),
+                confidence_level=record.get("confidence_level"),
+                keywords_found=record.get("keywords_found", []),
+                parse_notes=record.get("parse_notes"),
+                ai_p1_reasoning=record.get("ai_p1_reasoning"),
+                status=record.get("status"),
+                is_active=record.get("is_active"),
+                original_text=record.get("original_text"),
+            )
+        )
+
+    return ProductionRequestsResponse(
+        groups=dict(groups),
+        total=len(records),
+    )

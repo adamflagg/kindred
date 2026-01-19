@@ -218,3 +218,34 @@ class GroupedRequestsResponse(BaseModel):
 
     items: list[CamperGroupedRequests] = Field(description="List of camper groups")
     total: int = Field(description="Total number of campers")
+
+
+# =============================================================================
+# Production Requests Schemas (3-Column Layout)
+# =============================================================================
+
+
+class ProductionRequestItem(BaseModel):
+    """A single production bunk_request for display in the right column."""
+
+    id: str = Field(description="PocketBase record ID")
+    requestee_id: int | None = Field(default=None, description="CampMinder ID of the target person")
+    requested_person_name: str | None = Field(default=None, description="Name of the target person")
+    request_type: str = Field(description="Request type (bunk_with, not_bunk_with, age_preference)")
+    confidence_score: float | None = Field(default=None, description="AI confidence score (0-1)")
+    confidence_level: str | None = Field(default=None, description="Confidence level description")
+    keywords_found: list[str] = Field(default_factory=list, description="Keywords detected by AI")
+    parse_notes: str | None = Field(default=None, description="Parsing notes")
+    ai_p1_reasoning: dict[str, Any] | None = Field(default=None, description="Phase 1 AI reasoning")
+    status: str | None = Field(default=None, description="Request status")
+    is_active: bool | None = Field(default=None, description="Whether request is active")
+    original_text: str | None = Field(default=None, description="Original request text")
+
+
+class ProductionRequestsResponse(BaseModel):
+    """Response for production requests endpoint, grouped by source_field."""
+
+    groups: dict[str, list[ProductionRequestItem]] = Field(
+        description="Production requests grouped by source_field (bunk_with, not_bunk_with, etc.)"
+    )
+    total: int = Field(description="Total number of production requests")

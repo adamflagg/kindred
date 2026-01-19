@@ -2,7 +2,7 @@
  * React Query hooks for debug parse analysis
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useApiWithAuth } from './useApiWithAuth';
 import { queryKeys, userDataOptions } from '../utils/queryKeys';
 import { debugService } from '../services/debug';
@@ -119,6 +119,43 @@ export function useParseResultWithFallback(originalRequestId: string | null) {
 }
 
 /**
+ * Hook to fetch parse results for multiple fields in parallel
+ * Used when viewing all fields for a selected camper
+ * @deprecated Use useParseResultsBatch instead - it's much faster
+ */
+export function useMultiFieldParseResults(originalRequestIds: string[]) {
+  const { fetchWithAuth, isAuthenticated } = useApiWithAuth();
+
+  return useQueries({
+    queries: originalRequestIds.map((id) => ({
+      queryKey: queryKeys.parseResultWithFallback(id),
+      queryFn: () => debugService.getParseResultWithFallback(id, fetchWithAuth),
+      enabled: isAuthenticated && !!id,
+      ...userDataOptions,
+    })),
+  });
+}
+
+/**
+ * Hook to fetch parse results for multiple fields in a single batch call.
+ * Much faster than useMultiFieldParseResults as it makes only 1 API call
+ * regardless of how many fields are requested.
+ */
+export function useParseResultsBatch(originalRequestIds: string[]) {
+  const { fetchWithAuth, isAuthenticated } = useApiWithAuth();
+
+  // Create a stable key from sorted IDs to avoid unnecessary refetches
+  const idsKey = originalRequestIds.length > 0 ? originalRequestIds.slice().sort().join(',') : '';
+
+  return useQuery({
+    queryKey: ['parse-results-batch', idsKey],
+    queryFn: () => debugService.getParseResultsBatch(originalRequestIds, fetchWithAuth),
+    enabled: isAuthenticated && originalRequestIds.length > 0,
+    ...userDataOptions,
+  });
+}
+
+/**
  * Hook to run Phase 1 parsing on selected requests
  */
 export function useParsePhase1Only() {
@@ -129,8 +166,10 @@ export function useParsePhase1Only() {
     mutationFn: (request: Phase1OnlyRequest) =>
       debugService.parsePhase1Only(request, fetchWithAuth),
     onSuccess: () => {
-      // Invalidate all parse analysis queries to refresh the list
+      // Invalidate all related queries to refresh data
       queryClient.invalidateQueries({ queryKey: ['parse-analysis'] });
+      queryClient.invalidateQueries({ queryKey: ['grouped-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['parse-result-with-fallback'] });
     },
   });
 }
