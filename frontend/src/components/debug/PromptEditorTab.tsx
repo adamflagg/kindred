@@ -112,6 +112,21 @@ export function PromptEditorTab() {
     }
   }, [promptContent, selectedPrompt, lastLoadedPromptName]);
 
+  // Sync editorContent state to existing CodeMirror editor
+  // This handles the case where editorContent changes externally (prompt switch)
+  // without causing double-render on user typing (content already matches)
+  useEffect(() => {
+    if (viewRef.current) {
+      const currentDoc = viewRef.current.state.doc.toString();
+      // Only dispatch if content actually differs (avoids loop from user typing)
+      if (editorContent !== currentDoc) {
+        viewRef.current.dispatch({
+          changes: { from: 0, to: viewRef.current.state.doc.length, insert: editorContent },
+        });
+      }
+    }
+  }, [editorContent]);
+
   // Setup CodeMirror
   useEffect(() => {
     if (!editorRef.current) return;
@@ -158,8 +173,8 @@ export function PromptEditorTab() {
     return () => {
       viewRef.current?.destroy();
     };
-    // editorContent is intentionally excluded - it's only used for initial value
-    // Including it would cause editor to recreate on every keystroke
+    // editorContent intentionally excluded - we sync it via dispatch in the
+    // useEffect above to avoid recreating the editor on every keystroke
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDark, promptContent?.content]);
 
