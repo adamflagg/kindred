@@ -897,5 +897,176 @@ class TestDebugParseRepositoryCheckParseStatus:
         assert has_production is False
 
 
+class TestDebugParseRepositoryAiP1ReasoningBugs:
+    """Tests for ai_p1_reasoning storage/retrieval bugs.
+
+    These tests expose bugs where:
+    - get_production_fallback reads reasoning from metadata instead of ai_p1_reasoning column
+    - get_results_batch reads reasoning from metadata instead of ai_p1_reasoning column
+
+    The ai_p1_reasoning column should be the source of truth for Phase 1 AI reasoning.
+    """
+
+    @pytest.fixture
+    def mock_pb_client(self) -> tuple[Mock, Mock]:
+        """Create a mock PocketBase client."""
+        mock_client = Mock()
+        mock_collection = Mock()
+        mock_client.collection.return_value = mock_collection
+        return mock_client, mock_collection
+
+    @pytest.fixture
+    def repository(self, mock_pb_client: tuple[Mock, Mock]) -> "DebugParseRepository":
+        """Create a DebugParseRepository with mocked client."""
+        from bunking.sync.bunk_request_processor.data.repositories.debug_parse_repository import (
+            DebugParseRepository,
+        )
+
+        mock_client, _ = mock_pb_client
+        return DebugParseRepository(mock_client)
+
+    def test_get_production_fallback_reads_ai_p1_reasoning_column(
+        self, repository: "DebugParseRepository", mock_pb_client: tuple[Mock, Mock]
+    ) -> None:
+        """Test that get_production_fallback reads reasoning from ai_p1_reasoning column.
+
+        Bug: Line 373 reads from metadata.get("reasoning") but should use
+        getattr(br, "ai_p1_reasoning") since reasoning is stored in the column,
+        not in the metadata JSON blob.
+        """
+        mock_client, _ = mock_pb_client
+
+        # Mock original_bunk_requests.get_one()
+        mock_requester = Mock()
+        mock_requester.cm_id = 123456
+
+        mock_orig_request = Mock()
+        mock_orig_request.expand = {"requester": mock_requester}
+        mock_orig_request.content = "Kyla Udell"
+        mock_orig_request.field = "do_not_share_bunk_with"
+
+        # Mock bunk_request with ai_p1_reasoning in COLUMN, not metadata
+        mock_bunk_request = Mock()
+        mock_bunk_request.id = "br_123"
+        mock_bunk_request.request_type = "not_bunk_with"
+        mock_bunk_request.target_name = "Kyla Udell"
+        # The reasoning is in the COLUMN, not in metadata
+        mock_bunk_request.ai_p1_reasoning = "Direct mention of name Kyla Udell indicating separation request."
+        mock_bunk_request.metadata = {
+            "target_name": "Kyla Udell",
+            "keywords_found": [],
+            "parse_notes": "Direct separation request",
+            # Note: metadata does NOT contain "reasoning" - it's in the column
+        }
+        mock_bunk_request.csv_position = 0
+        mock_bunk_request.requires_manual_review = False
+        mock_bunk_request.parse_notes = "Direct separation request"
+        mock_bunk_request.keywords_found = []
+
+        mock_bunk_results = Mock()
+        mock_bunk_results.items = [mock_bunk_request]
+
+        def collection_side_effect(name: str) -> Mock:
+            mock_col = Mock()
+            if name == "original_bunk_requests":
+                mock_col.get_one.return_value = mock_orig_request
+            elif name == "bunk_requests":
+                mock_col.get_list.return_value = mock_bunk_results
+            return mock_col
+
+        mock_client.collection.side_effect = collection_side_effect
+
+        result = repository.get_production_fallback("orig_req_789")
+
+        assert result is not None
+        assert len(result["parsed_intents"]) == 1
+        intent = result["parsed_intents"][0]
+
+        # This is the bug test: reasoning should come from ai_p1_reasoning column
+        expected_reasoning = "Direct mention of name Kyla Udell indicating separation request."
+        assert intent["reasoning"] == expected_reasoning, (
+            f"reasoning should be '{expected_reasoning}', got '{intent['reasoning']}'. "
+            "Bug: debug_parse_repository.py line 373 reads from metadata.get('reasoning') "
+            "instead of getattr(br, 'ai_p1_reasoning')."
+        )
+
+    def test_get_results_batch_reads_ai_p1_reasoning_column(
+        self, repository: "DebugParseRepository", mock_pb_client: tuple[Mock, Mock]
+    ) -> None:
+        """Test that get_results_batch reads reasoning from ai_p1_reasoning column.
+
+        Bug: Line 673 reads from metadata.get("reasoning") but should use
+        getattr(br, "ai_p1_reasoning") since reasoning is stored in the column.
+        """
+        mock_client, _ = mock_pb_client
+
+        # Mock debug_parse_results is empty (force production fallback path)
+        mock_debug_result = Mock()
+        mock_debug_result.items = []
+
+        # Mock original_bunk_requests
+        mock_requester = Mock()
+        mock_requester.cm_id = 123456
+        mock_requester.first_name = "Test"
+        mock_requester.last_name = "Camper"
+        mock_requester.preferred_name = None
+
+        mock_orig_request = Mock()
+        mock_orig_request.id = "orig_req_789"
+        mock_orig_request.expand = {"requester": mock_requester}
+        mock_orig_request.content = "Jane Smith"
+        mock_orig_request.field = "do_not_share_bunk_with"
+
+        mock_orig_results = Mock()
+        mock_orig_results.items = [mock_orig_request]
+
+        # Mock bunk_request with ai_p1_reasoning in COLUMN
+        mock_bunk_request = Mock()
+        mock_bunk_request.id = "br_123"
+        mock_bunk_request.request_type = "not_bunk_with"
+        mock_bunk_request.target_name = "Jane Smith"
+        mock_bunk_request.ai_p1_reasoning = "Separation request identified from staff notes."
+        mock_bunk_request.metadata = {
+            "target_name": "Jane Smith",
+            "original_text": "Jane Smith",
+            "keywords_found": [],
+            "parse_notes": "",
+            # Note: "reasoning" is NOT in metadata - it's in ai_p1_reasoning column
+        }
+        mock_bunk_request.csv_position = 0
+        mock_bunk_request.requires_manual_review = False
+        mock_bunk_request.parse_notes = ""
+        mock_bunk_request.keywords_found = []
+
+        mock_bunk_results = Mock()
+        mock_bunk_results.items = [mock_bunk_request]
+
+        def collection_side_effect(name: str) -> Mock:
+            mock_col = Mock()
+            if name == "debug_parse_results":
+                mock_col.get_list.return_value = mock_debug_result
+            elif name == "original_bunk_requests":
+                mock_col.get_list.return_value = mock_orig_results
+            elif name == "bunk_requests":
+                mock_col.get_list.return_value = mock_bunk_results
+            return mock_col
+
+        mock_client.collection.side_effect = collection_side_effect
+
+        result = repository.get_results_batch(["orig_req_789"])
+
+        assert "orig_req_789" in result
+        assert result["orig_req_789"]["source"] == "production"
+        assert len(result["orig_req_789"]["parsed_intents"]) == 1
+
+        intent = result["orig_req_789"]["parsed_intents"][0]
+        expected_reasoning = "Separation request identified from staff notes."
+        assert intent["reasoning"] == expected_reasoning, (
+            f"reasoning should be '{expected_reasoning}', got '{intent['reasoning']}'. "
+            "Bug: debug_parse_repository.py line 673 reads from metadata.get('reasoning') "
+            "instead of getattr(br, 'ai_p1_reasoning')."
+        )
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
