@@ -75,6 +75,18 @@ export const queryKeys = {
   // Prompts (Tier 2 - editable config files)
   prompts: () => ['prompts'] as const,
   prompt: (name: string) => ['prompts', name] as const,
+
+  // Metrics (Tier 1 - sync data, historical analysis)
+  retention: (baseYear: number, compareYear: number, sessionTypes?: string) =>
+    sessionTypes
+      ? (['metrics', 'retention', baseYear, compareYear, sessionTypes] as const)
+      : (['metrics', 'retention', baseYear, compareYear] as const),
+  registration: (year: number, sessionTypes?: string) =>
+    sessionTypes
+      ? (['metrics', 'registration', year, sessionTypes] as const)
+      : (['metrics', 'registration', year] as const),
+  comparison: (yearA: number, yearB: number) =>
+    ['metrics', 'comparison', yearA, yearB] as const,
 };
 
 /**
