@@ -4,19 +4,19 @@
  */
 
 import { useState } from 'react';
+import { useCurrentYear } from '../../hooks/useCurrentYear';
 import { YearModeToggle } from '../../components/metrics/YearModeToggle';
 import { RetentionTab } from './RetentionTab';
 import { RegistrationTab } from './RegistrationTab';
 
 type TabType = 'retention' | 'registration';
 
-// Available years for selection (could be fetched from API in future)
-const AVAILABLE_YEARS = [2026, 2025, 2024, 2023];
-
 export function RegistrationMetricsPage() {
+  const { currentYear, availableYears } = useCurrentYear();
   const [mode, setMode] = useState<'single' | 'comparison'>('single');
-  const [yearA, setYearA] = useState(2026);
-  const [yearB, setYearB] = useState(2025);
+  // Default to currentYear (from context), comparison defaults to previous year
+  const [yearA, setYearA] = useState(currentYear);
+  const [yearB, setYearB] = useState(currentYear - 1);
   const [activeTab, setActiveTab] = useState<TabType>('registration');
 
   return (
@@ -39,7 +39,7 @@ export function RegistrationMetricsPage() {
             yearB={yearB}
             onYearAChange={setYearA}
             onYearBChange={setYearB}
-            availableYears={AVAILABLE_YEARS}
+            availableYears={availableYears}
           />
         </div>
 
