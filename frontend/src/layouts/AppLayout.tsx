@@ -75,13 +75,15 @@ export const AppLayout = () => {
     navigate('/login');
   };
 
-  const handleProgramSwitch = (program: 'summer' | 'family') => {
+  const handleProgramSwitch = (program: 'summer' | 'family' | 'metrics') => {
     setProgram(program);
     setIsProgramMenuOpen(false);
     if (program === 'summer') {
       navigate('/summer/sessions');
-    } else {
+    } else if (program === 'family') {
       navigate('/family/');
+    } else {
+      navigate('/metrics');
     }
   };
 
@@ -146,10 +148,15 @@ export const AppLayout = () => {
                       <TreePine className="w-4 h-4 text-amber-400" />
                       <span className="hidden sm:inline">Summer</span>
                     </>
-                  ) : (
+                  ) : activeProgram === 'family' ? (
                     <>
                       <Home className="w-4 h-4 text-amber-400" />
                       <span className="hidden sm:inline">Family</span>
+                    </>
+                  ) : (
+                    <>
+                      <BarChart3 className="w-4 h-4 text-sky-400" />
+                      <span className="hidden sm:inline">Metrics</span>
                     </>
                   )}
                   <ChevronDown className={`w-3 h-3 transition-transform ${isProgramMenuOpen ? 'rotate-180' : ''}`} />
@@ -178,6 +185,17 @@ export const AppLayout = () => {
                     >
                       <Home className="w-4 h-4" />
                       Family Camp
+                    </button>
+                    <button
+                      onClick={() => handleProgramSwitch('metrics')}
+                      className={`w-full px-3 py-2.5 text-left text-sm font-medium rounded-lg transition-colors flex items-center gap-3 ${
+                        activeProgram === 'metrics'
+                          ? 'bg-sky-500/10 text-sky-600 dark:text-sky-400'
+                          : 'hover:bg-muted/50 text-foreground'
+                      }`}
+                    >
+                      <BarChart3 className="w-4 h-4" />
+                      Metrics
                     </button>
                     <div className="h-px bg-border my-2" />
                     <button
@@ -221,13 +239,6 @@ export const AppLayout = () => {
                 </Link>
                 {activeProgram === 'summer' && (
                   <>
-                    <Link
-                      to="/summer/metrics"
-                      className={`nav-link-lodge ${isActiveRoute('/metrics') ? 'active' : ''}`}
-                    >
-                      <BarChart3 className="w-4 h-4 inline mr-1" />
-                      Metrics
-                    </Link>
                     <Link
                       to="/summer/admin"
                       className={`nav-link-lodge ${isActiveRoute('/admin') ? 'active' : ''}`}
@@ -375,6 +386,17 @@ export const AppLayout = () => {
                     <Home className="w-4 h-4" />
                     Family
                   </button>
+                  <button
+                    onClick={() => handleProgramSwitch('metrics')}
+                    className={`flex-1 px-3 py-2.5 text-sm font-medium rounded-xl transition-colors flex items-center justify-center gap-2 ${
+                      activeProgram === 'metrics'
+                        ? 'bg-sky-500 text-white'
+                        : 'bg-muted/50 text-foreground hover:bg-muted'
+                    }`}
+                  >
+                    <BarChart3 className="w-4 h-4" />
+                    Metrics
+                  </button>
                 </div>
               </div>
 
@@ -451,17 +473,6 @@ export const AppLayout = () => {
                 </Link>
                 {activeProgram === 'summer' && (
                   <>
-                    <Link
-                      to="/summer/metrics"
-                      className={`block px-4 py-3 text-base font-semibold rounded-xl transition-all ${
-                        isActiveRoute('/metrics')
-                          ? 'bg-primary text-primary-foreground'
-                          : 'text-foreground hover:bg-muted/50'
-                      }`}
-                      onClick={() => setIsMobileMenuOpen(false)}
-                    >
-                      Metrics
-                    </Link>
                     <Link
                       to="/summer/admin"
                       className={`block px-4 py-3 text-base font-semibold rounded-xl transition-all ${

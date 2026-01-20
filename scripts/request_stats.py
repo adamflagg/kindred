@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Show bunk request statistics: raw CampMinder data vs processed requests."""
 
+from typing import Any
+
 import requests
 
 
-def get_auth_headers() -> dict:
+def get_auth_headers() -> dict[str, str]:
     """Authenticate and return headers."""
     auth = requests.post(
         "http://127.0.0.1:8090/api/collections/_superusers/auth-with-password",
@@ -13,7 +15,9 @@ def get_auth_headers() -> dict:
     return {"Authorization": auth["token"]}
 
 
-def get_all_records(headers: dict, collection: str, filter_str: str | None = None) -> tuple[list, int]:
+def get_all_records(
+    headers: dict[str, str], collection: str, filter_str: str | None = None
+) -> tuple[list[dict[str, Any]], int]:
     """Fetch all records with pagination."""
     items = []
     page = 1
