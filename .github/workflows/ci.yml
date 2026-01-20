@@ -45,7 +45,7 @@ jobs:
         fetch-depth: 0  # Full history for commit range
 
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v6
       with:
         node-version: '22'
 
@@ -179,7 +179,7 @@ jobs:
       uses: astral-sh/setup-uv@v5
 
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v6
       with:
         node-version: '22'
         cache: 'npm'
@@ -189,7 +189,7 @@ jobs:
           pocketbase/package-lock.json
 
     - name: Setup Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
         go-version: '1.24'
         cache: true
@@ -350,14 +350,14 @@ jobs:
       uses: astral-sh/setup-uv@v5
 
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v6
       with:
         node-version: '22'
         cache: 'npm'
         cache-dependency-path: frontend/package-lock.json
 
     - name: Setup Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
         go-version: '1.24'
         cache: true
