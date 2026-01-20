@@ -30,6 +30,7 @@ const AdminConfig = lazy(() => import('./components/AdminConfig').then(m => ({ d
 const FamilyCampDashboard = lazy(() => import('./pages/FamilyCampDashboard'));
 const ScenarioComparisonPage = lazy(() => import('./pages/ScenarioComparisonPage'));
 const DebugPage = lazy(() => import('./pages/summer/DebugPage'));
+const RegistrationMetricsPage = lazy(() => import('./pages/metrics/RegistrationMetricsPage').then(m => ({ default: m.RegistrationMetricsPage })));
 
 // Loading skeleton component for route transitions
 function PageSkeleton() {
@@ -143,6 +144,11 @@ function App() {
                                 <DebugPage />
                               </Suspense>
                             </AdminRoute>
+                          } />
+                          <Route path="metrics" element={
+                            <Suspense fallback={<PageSkeleton />}>
+                              <RegistrationMetricsPage />
+                            </Suspense>
                           } />
                         </Route>
 

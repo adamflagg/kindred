@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useApiWithAuth } from '../hooks/useApiWithAuth';
 import { syncService } from '../services/sync';
 import { useMutation } from '@tanstack/react-query';
-import { RefreshCw, Loader2, User, Home, ChevronDown, Menu, X, Sun, Moon, TreePine, Clock, LogOut, Settings } from 'lucide-react';
+import { RefreshCw, Loader2, User, Home, ChevronDown, Menu, X, Sun, Moon, TreePine, Clock, LogOut, Settings, BarChart3 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import YearSelector from '../components/YearSelector';
 import CacheStatus from '../components/CacheStatus';
@@ -221,6 +221,13 @@ export const AppLayout = () => {
                 </Link>
                 {activeProgram === 'summer' && (
                   <>
+                    <Link
+                      to="/summer/metrics"
+                      className={`nav-link-lodge ${isActiveRoute('/metrics') ? 'active' : ''}`}
+                    >
+                      <BarChart3 className="w-4 h-4 inline mr-1" />
+                      Metrics
+                    </Link>
                     <Link
                       to="/summer/admin"
                       className={`nav-link-lodge ${isActiveRoute('/admin') ? 'active' : ''}`}
@@ -444,6 +451,17 @@ export const AppLayout = () => {
                 </Link>
                 {activeProgram === 'summer' && (
                   <>
+                    <Link
+                      to="/summer/metrics"
+                      className={`block px-4 py-3 text-base font-semibold rounded-xl transition-all ${
+                        isActiveRoute('/metrics')
+                          ? 'bg-primary text-primary-foreground'
+                          : 'text-foreground hover:bg-muted/50'
+                      }`}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                    >
+                      Metrics
+                    </Link>
                     <Link
                       to="/summer/admin"
                       className={`block px-4 py-3 text-base font-semibold rounded-xl transition-all ${
