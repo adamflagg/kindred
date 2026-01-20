@@ -13,9 +13,7 @@ def get_auth_headers() -> dict:
     return {"Authorization": auth["token"]}
 
 
-def get_all_records(
-    headers: dict, collection: str, filter_str: str | None = None
-) -> tuple[list, int]:
+def get_all_records(headers: dict, collection: str, filter_str: str | None = None) -> tuple[list, int]:
     """Fetch all records with pagination."""
     items = []
     page = 1
@@ -51,9 +49,7 @@ def main() -> None:
     ]
     total_raw = 0
     for field in fields:
-        _, count = get_all_records(
-            headers, "original_bunk_requests", f"field = '{field}'"
-        )
+        _, count = get_all_records(headers, "original_bunk_requests", f"field = '{field}'")
         total_raw += count
         print(f"  {field:20} {count:>5}")
     print(f"  {'TOTAL':20} {total_raw:>5}")
@@ -63,9 +59,7 @@ def main() -> None:
     print("=" * 60)
     request_types = ["bunk_with", "not_bunk_with", "age_preference"]
     for rtype in request_types:
-        items, count = get_all_records(
-            headers, "bunk_requests", f"request_type = '{rtype}'"
-        )
+        items, count = get_all_records(headers, "bunk_requests", f"request_type = '{rtype}'")
         print(f"\n{rtype}: {count}")
 
         source_counts: dict[str, int] = {}
