@@ -514,7 +514,9 @@ else
 fi
 
 # Check if git-cliff output is valid (contains actual content)
-if [[ -z "$CHANGELOG" ]] || echo "$CHANGELOG" | grep -q "panicked\|Error\|error"; then
+# Match only "error:" or "Error:" at start of line or "panicked" anywhere (actual failures)
+# Don't match "error" in commit messages like "fix: auto-reload on chunk load errors"
+if [[ -z "$CHANGELOG" ]] || echo "$CHANGELOG" | grep -qE "^(error:|Error:)|panicked"; then
     echo -e "${YELLOW}  git-cliff failed, generating formatted notes from commits...${NC}"
     # Fallback: generate notes matching git-cliff format (without PR/author attribution)
     # Format: * FULL_HASH: type(scope): message
