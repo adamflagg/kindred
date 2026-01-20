@@ -8,13 +8,12 @@ using mocked PocketBase data.
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from api.main import create_app
-
 
 # ============================================================================
 # Test Data Factories
@@ -625,9 +624,7 @@ class TestStatusMetrics:
 
     def test_active_enrolled_filter(self, mixed_status_attendees: list[Mock]):
         """Test filtering for active enrolled campers (is_active AND status_id=2)."""
-        active_enrolled = [
-            a for a in mixed_status_attendees if a.is_active and a.status_id == 2
-        ]
+        active_enrolled = [a for a in mixed_status_attendees if a.is_active and a.status_id == 2]
         assert len(active_enrolled) == 3
 
 
@@ -709,23 +706,42 @@ class TestMetricsAPIEndpoints:
         """Create test client."""
         return TestClient(app)
 
-    @pytest.mark.skip(reason="Requires metrics router implementation")
-    def test_retention_endpoint_returns_200(self, client):
+    def test_retention_endpoint_returns_200(self, client, mock_pocketbase):
         """Test that retention endpoint returns 200."""
-        with patch("api.dependencies.authenticate_pb"):
+        # Set up mock to return empty lists
+        mock_pb = mock_pocketbase
+        mock_pb.collection.return_value.get_full_list.return_value = []
+
+        with patch("api.routers.metrics.pb", mock_pb):
             response = client.get("/api/metrics/retention?base_year=2025&compare_year=2026")
             assert response.status_code == 200
+            data = response.json()
+            assert data["base_year"] == 2025
+            assert data["compare_year"] == 2026
+            assert "overall_retention_rate" in data
 
-    @pytest.mark.skip(reason="Requires metrics router implementation")
-    def test_registration_endpoint_returns_200(self, client):
+    def test_registration_endpoint_returns_200(self, client, mock_pocketbase):
         """Test that registration endpoint returns 200."""
-        with patch("api.dependencies.authenticate_pb"):
+        mock_pb = mock_pocketbase
+        mock_pb.collection.return_value.get_full_list.return_value = []
+
+        with patch("api.routers.metrics.pb", mock_pb):
             response = client.get("/api/metrics/registration?year=2026")
             assert response.status_code == 200
+            data = response.json()
+            assert data["year"] == 2026
+            assert "total_enrolled" in data
+            assert "new_vs_returning" in data
 
-    @pytest.mark.skip(reason="Requires metrics router implementation")
-    def test_comparison_endpoint_returns_200(self, client):
+    def test_comparison_endpoint_returns_200(self, client, mock_pocketbase):
         """Test that comparison endpoint returns 200."""
-        with patch("api.dependencies.authenticate_pb"):
+        mock_pb = mock_pocketbase
+        mock_pb.collection.return_value.get_full_list.return_value = []
+
+        with patch("api.routers.metrics.pb", mock_pb):
             response = client.get("/api/metrics/comparison?year_a=2025&year_b=2026")
             assert response.status_code == 200
+            data = response.json()
+            assert data["year_a"]["year"] == 2025
+            assert data["year_b"]["year"] == 2026
+            assert "delta" in data

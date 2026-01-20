@@ -35,6 +35,23 @@ from .solver import (
     SolverRequest,
     SolverResponse,
 )
+from .metrics import (
+    ComparisonDelta,
+    ComparisonMetricsResponse,
+    GenderBreakdown,
+    GradeBreakdown,
+    NewVsReturning,
+    RegistrationMetricsResponse,
+    RetentionByGender,
+    RetentionByGrade,
+    RetentionBySession,
+    RetentionByYearsAtCamp,
+    RetentionMetricsResponse,
+    SessionBreakdown,
+    SessionLengthBreakdown,
+    YearSummary,
+    YearsAtCampBreakdown,
+)
 from .validation import ValidateBunkingRequest
 
 __all__ = [
@@ -68,4 +85,20 @@ __all__ = [
     "SolverResponse",
     # Validation
     "ValidateBunkingRequest",
+    # Metrics
+    "ComparisonDelta",
+    "ComparisonMetricsResponse",
+    "GenderBreakdown",
+    "GradeBreakdown",
+    "NewVsReturning",
+    "RegistrationMetricsResponse",
+    "RetentionByGender",
+    "RetentionByGrade",
+    "RetentionBySession",
+    "RetentionByYearsAtCamp",
+    "RetentionMetricsResponse",
+    "SessionBreakdown",
+    "SessionLengthBreakdown",
+    "YearSummary",
+    "YearsAtCampBreakdown",
 ]
