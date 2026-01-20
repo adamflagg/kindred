@@ -324,7 +324,13 @@ class Phase2ResolutionService:
                     )
                 else:
                     # Other requests that don't need resolution
-                    case.resolution_results.append(ResolutionResult(confidence=0.0, method="no_target_name"))
+                    case.resolution_results.append(
+                        ResolutionResult(
+                            confidence=0.0,
+                            method="no_target_name",
+                            target_name=parsed_request.target_name or "",
+                        )
+                    )
 
         # If no batch requests remain after staff filtering, we're done
         if not batch_requests:
@@ -354,7 +360,8 @@ class Phase2ResolutionService:
             parsed = case.parsed_requests[req_idx]
             parse_result = case.parse_result
 
-            # Store result at the correct index
+            # Store result at the correct index, preserving target_name for debugging
+            result.target_name = parsed.target_name or ""
             case.resolution_results[req_idx] = result
 
             # Apply confidence scoring if available and resolved
@@ -563,22 +570,43 @@ class Phase2ResolutionService:
                     # Replace None values with fallback results to preserve list length
                     # IMPORTANT: Length must match parsed_requests for zip(..., strict=True) in
                     # _filter_post_expansion_conflicts to work correctly
-                    filtered_results: list[ResolutionResult] = [
-                        r if r is not None else ResolutionResult(confidence=0.0, method="resolution_incomplete")
-                        for r in case.resolution_results
-                    ]
+                    filtered_results: list[ResolutionResult] = []
+                    for i, r in enumerate(case.resolution_results):
+                        if r is not None:
+                            filtered_results.append(r)
+                        else:
+                            target = case.parsed_requests[i].target_name if i < len(case.parsed_requests) else ""
+                            filtered_results.append(
+                                ResolutionResult(
+                                    confidence=0.0,
+                                    method="resolution_incomplete",
+                                    target_name=target or "",
+                                )
+                            )
                     results.append((parse_result, filtered_results))
                 else:
                     # No resolution results - create empty list with one failed result per request
                     failed_results = []
-                    for _ in parse_result.parsed_requests:
-                        failed_results.append(ResolutionResult(confidence=0.0, method="no_resolution"))
+                    for req in parse_result.parsed_requests:
+                        failed_results.append(
+                            ResolutionResult(
+                                confidence=0.0,
+                                method="no_resolution",
+                                target_name=req.target_name or "",
+                            )
+                        )
                     results.append((parse_result, failed_results))
             else:
                 # Parse result wasn't valid or wasn't processed
                 failed_results = []
-                for _ in parse_result.parsed_requests:
-                    failed_results.append(ResolutionResult(confidence=0.0, method="invalid_parse"))
+                for req in parse_result.parsed_requests:
+                    failed_results.append(
+                        ResolutionResult(
+                            confidence=0.0,
+                            method="invalid_parse",
+                            target_name=req.target_name or "",
+                        )
+                    )
                 results.append((parse_result, failed_results))
 
         return results
@@ -604,11 +632,9 @@ class Phase2ResolutionService:
                 else:
                     self._stats["failed"] += 1
                     logger.warning(
-                        f"Resolution failed: is_resolved={resolution_result.is_resolved}, "
-                        f"is_ambiguous={resolution_result.is_ambiguous}, "
-                        f"confidence={resolution_result.confidence}, "
+                        f"Resolution failed for '{resolution_result.target_name}': "
                         f"method={resolution_result.method}, "
-                        f"metadata={resolution_result.metadata}"
+                        f"confidence={resolution_result.confidence}"
                     )
 
     def get_stats(self) -> dict[str, Any]:
