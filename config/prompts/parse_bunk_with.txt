@@ -98,7 +98,7 @@ RULE: The EARLIER/FIRST request is SUPERSEDED. The LATER/CURRENT one survives.
 
 Example: "Wanted to be without Zoe and then changed to bunk together"
 - Request 1: not_bunk_with "Zoe", temporal_info: {{is_superseded: true, supersedes_reason: "then changed to bunk together"}}
-- Request 2: bunk_with "SIBLING", temporal_info: {{is_superseded: false}}
+- Request 2: bunk_with "Zoe", temporal_info: {{is_superseded: false}}
 
 === FAMILY CAMP (SKIP) ===
 
