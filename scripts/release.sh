@@ -103,7 +103,8 @@ git_cliff() {
     # Pass token explicitly to ensure npx subprocess receives it
     # RUST_LOG=error suppresses WARN about non-conventional commits (merge commits, etc.)
     # These warnings get interleaved without newlines when piped, breaking grep filtering
-    RUST_LOG=error GITHUB_TOKEN="$GITHUB_TOKEN" npx git-cliff@latest "$@" 2>&1
+    # --yes auto-accepts npx install prompts (avoids interactive hang)
+    RUST_LOG=error GITHUB_TOKEN="$GITHUB_TOKEN" npx --yes git-cliff@latest "$@" 2>&1
 }
 
 # ===== PRE-RELEASE CHECKS =====
