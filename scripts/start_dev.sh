@@ -27,6 +27,12 @@ if [ -f "$PROJECT_ROOT/.env" ]; then
     set +a
 fi
 
+# Port configuration (can be overridden via .env for worktrees)
+POCKETBASE_PORT="${POCKETBASE_PORT:-8090}"
+VITE_PORT="${VITE_PORT:-3000}"
+FASTAPI_PORT="${FASTAPI_PORT:-8000}"
+CADDY_PORT="${CADDY_PORT:-8080}"
+
 # Always rebuild PocketBase in development
 echo -e "${YELLOW}Building PocketBase...${NC}"
 cd "$PROJECT_ROOT/pocketbase"
@@ -40,16 +46,15 @@ cd "$PROJECT_ROOT"
 
 # Kill any existing processes on our ports
 echo -e "${YELLOW}Cleaning up existing processes...${NC}"
-lsof -ti:8090 | xargs kill -9 2>/dev/null || true
-lsof -ti:3000 | xargs kill -9 2>/dev/null || true
-lsof -ti:8000 | xargs kill -9 2>/dev/null || true
-lsof -ti:8080 | xargs kill -9 2>/dev/null || true
-lsof -ti:8081 | xargs kill -9 2>/dev/null || true
+lsof -ti:"$POCKETBASE_PORT" | xargs kill -9 2>/dev/null || true
+lsof -ti:"$VITE_PORT" | xargs kill -9 2>/dev/null || true
+lsof -ti:"$FASTAPI_PORT" | xargs kill -9 2>/dev/null || true
+lsof -ti:"$CADDY_PORT" | xargs kill -9 2>/dev/null || true
 
 # Start PocketBase
-echo -e "${BLUE}Starting PocketBase on port 8090...${NC}"
+echo -e "${BLUE}Starting PocketBase on port ${POCKETBASE_PORT:-8090}...${NC}"
 cd "$PROJECT_ROOT/pocketbase"
-./pocketbase serve --http=0.0.0.0:8090 &
+./pocketbase serve --http=0.0.0.0:$POCKETBASE_PORT &
 POCKETBASE_PID=$!
 
 # Wait for PocketBase to start
@@ -77,7 +82,7 @@ if [ ! -f "$INITIALIZED_MARKER" ]; then
     
     # Wait a bit more to ensure PocketBase is fully ready
     for i in {1..30}; do
-        if curl -s http://127.0.0.1:8090/api/health > /dev/null 2>&1; then
+        if curl -s http://127.0.0.1:$POCKETBASE_PORT/api/health > /dev/null 2>&1; then
             echo -e "${GREEN}PocketBase is ready${NC}"
             break
         fi
@@ -124,7 +129,7 @@ echo -e "${GREEN}Python dependencies installed${NC}"
 # Ensure PocketBase is fully ready before starting solver
 echo -e "${BLUE}Ensuring PocketBase is fully ready...${NC}"
 for i in {1..30}; do
-    if curl -s http://localhost:8090/api/health > /dev/null 2>&1; then
+    if curl -s http://localhost:$POCKETBASE_PORT/api/health > /dev/null 2>&1; then
         echo -e "${GREEN}PocketBase health check passed${NC}"
         break
     fi
@@ -153,12 +158,12 @@ else
 fi
 
 # Start the API service (using new modular api/ package)
-echo -e "${BLUE}Starting API Service on port 8000...${NC}"
+echo -e "${BLUE}Starting API Service on port ${FASTAPI_PORT:-8000}...${NC}"
 cd "$PROJECT_ROOT"
 # Create a log file for API service
 API_LOG="$PROJECT_ROOT/solver_service.log"  # Keep same log name for compatibility
 echo "Starting API service at $(date)" > "$API_LOG"
-uv run uvicorn api.main:app --host 0.0.0.0 --port 8000 >> "$API_LOG" 2>&1 &
+uv run uvicorn api.main:app --host 0.0.0.0 --port $FASTAPI_PORT >> "$API_LOG" 2>&1 &
 API_PID=$!
 echo -e "${GREEN}API service started with PID: $API_PID${NC}"
 echo -e "${YELLOW}API logs: $API_LOG${NC}"
@@ -168,7 +173,7 @@ echo "Waiting for API Service to start..."
 sleep 5
 
 # Check if API service is running
-if ! curl -s http://127.0.0.1:8000/health > /dev/null 2>&1; then
+if ! curl -s http://127.0.0.1:$FASTAPI_PORT/health > /dev/null 2>&1; then
     echo -e "${RED}Warning: API service may not have started properly${NC}"
     echo -e "${YELLOW}Check logs at: $API_LOG${NC}"
 else
@@ -197,10 +202,11 @@ fi
 echo -e "${GREEN}Frontend copied to PocketBase${NC}"
 
 # Start Caddy on port 8080
-echo -e "${BLUE}Starting Caddy on port 8080...${NC}"
+echo -e "${BLUE}Starting Caddy on port ${CADDY_PORT:-8080}...${NC}"
 # Set environment variables for Caddy
 # Use pb_public since it has both frontend build AND local assets
 export FRONTEND_BUILD_PATH="$PROJECT_ROOT/pocketbase/pb_public"
+export CADDY_PORT POCKETBASE_PORT FASTAPI_PORT
 cd "$PROJECT_ROOT/frontend"
 caddy run --config Caddyfile --adapter caddyfile &
 CADDY_PID=$!
@@ -214,11 +220,11 @@ echo -e "${BLUE}Clearing Vite cache...${NC}"
 rm -rf "$PROJECT_ROOT/frontend/node_modules/.vite"
 
 # Start the React frontend in dev mode
-echo -e "${BLUE}Starting React Frontend on port 3000...${NC}"
+echo -e "${BLUE}Starting React Frontend on port ${VITE_PORT:-3000}...${NC}"
 cd "$PROJECT_ROOT/frontend"
 # Set VITE_DISABLE_AUTH=true so Vite injects admin credentials for bypass mode
 # Add --clearScreen false to prevent Vite from clearing the terminal
-VITE_DISABLE_AUTH=true npm run dev -- --host --clearScreen false &
+VITE_DISABLE_AUTH=true npm run dev -- --host --port $VITE_PORT --clearScreen false &
 FRONTEND_PID=$!
 
 # All services are now started
@@ -241,11 +247,11 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 echo -e "\n${GREEN}=== All services started! ===${NC}"
-echo -e "${GREEN}React Frontend: ${YELLOW}http://localhost:3000${NC} (Vite dev server with HMR)"
-echo -e "${GREEN}Caddy: ${YELLOW}http://localhost:8080${NC} (serves production build and proxies APIs)"
-echo -e "${GREEN}PocketBase Admin: ${YELLOW}http://localhost:8080/_/${NC} (via Caddy)"
-echo -e "${GREEN}PocketBase API: ${YELLOW}http://localhost:8090/api${NC} (direct access)"
-echo -e "${GREEN}Bunking API: ${YELLOW}http://localhost:8000${NC} (direct access)"
+echo -e "${GREEN}React Frontend: ${YELLOW}http://localhost:${VITE_PORT:-3000}${NC} (Vite dev server with HMR)"
+echo -e "${GREEN}Caddy: ${YELLOW}http://localhost:${CADDY_PORT:-8080}${NC} (serves production build and proxies APIs)"
+echo -e "${GREEN}PocketBase Admin: ${YELLOW}http://localhost:${CADDY_PORT:-8080}/_/${NC} (via Caddy)"
+echo -e "${GREEN}PocketBase API: ${YELLOW}http://localhost:${POCKETBASE_PORT:-8090}/api${NC} (direct access)"
+echo -e "${GREEN}Bunking API: ${YELLOW}http://localhost:${FASTAPI_PORT:-8000}${NC} (direct access)"
 echo -e "\n${YELLOW}Admin credentials: ${POCKETBASE_ADMIN_EMAIL:-admin@camp.local}${NC}"
 if [ -n "$POCKETBASE_ADMIN_PASSWORD" ]; then
     echo -e "${YELLOW}Password is set in .env (not shown for security)${NC}"
