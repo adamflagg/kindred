@@ -19,6 +19,23 @@ from .bunk_requests import (
 )
 from .config import SolverConfigUpdate
 from .manual_review import ManualReviewDecision, ManualReviewResponse
+from .metrics import (
+    ComparisonDelta,
+    ComparisonMetricsResponse,
+    GenderBreakdown,
+    GradeBreakdown,
+    NewVsReturning,
+    RegistrationMetricsResponse,
+    RetentionByGender,
+    RetentionByGrade,
+    RetentionBySession,
+    RetentionByYearsAtCamp,
+    RetentionMetricsResponse,
+    SessionBreakdown,
+    SessionLengthBreakdown,
+    YearsAtCampBreakdown,
+    YearSummary,
+)
 from .social_graph import (
     BunkGraphMetrics,
     BunkGraphResponse,
@@ -68,4 +85,20 @@ __all__ = [
     "SolverResponse",
     # Validation
     "ValidateBunkingRequest",
+    # Metrics
+    "ComparisonDelta",
+    "ComparisonMetricsResponse",
+    "GenderBreakdown",
+    "GradeBreakdown",
+    "NewVsReturning",
+    "RegistrationMetricsResponse",
+    "RetentionByGender",
+    "RetentionByGrade",
+    "RetentionBySession",
+    "RetentionByYearsAtCamp",
+    "RetentionMetricsResponse",
+    "SessionBreakdown",
+    "SessionLengthBreakdown",
+    "YearSummary",
+    "YearsAtCampBreakdown",
 ]

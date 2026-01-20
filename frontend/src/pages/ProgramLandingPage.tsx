@@ -2,18 +2,20 @@ import { useNavigate } from 'react-router';
 import { useProgram } from '../contexts/ProgramContext';
 import { BrandedLogo } from '../components/BrandedLogo';
 import { getCampName } from '../config/branding';
-import { Users, Trees, Mountain, Sun, ArrowRight, Tent } from 'lucide-react';
+import { Users, Trees, Mountain, Sun, ArrowRight, Tent, BarChart3 } from 'lucide-react';
 
 export default function ProgramLandingPage() {
   const navigate = useNavigate();
   const { setProgram } = useProgram();
 
-  const handleProgramSelect = (program: 'summer' | 'family') => {
+  const handleProgramSelect = (program: 'summer' | 'family' | 'metrics') => {
     setProgram(program);
     if (program === 'summer') {
       navigate('/summer/sessions');
-    } else {
+    } else if (program === 'family') {
       navigate('/family/');
+    } else {
+      navigate('/metrics');
     }
   };
 
@@ -66,7 +68,7 @@ export default function ProgramLandingPage() {
           </div>
 
           {/* Program Selection Cards */}
-          <div className="grid sm:grid-cols-2 gap-5 lg:gap-6 max-w-3xl mx-auto">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 lg:gap-6 max-w-7xl mx-auto">
 
             {/* Summer Camp Card */}
             <button
@@ -76,7 +78,7 @@ export default function ProgramLandingPage() {
             >
               <div className="absolute -inset-px bg-gradient-to-br from-primary/20 via-primary/5 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-xl" />
 
-              <div className="relative card-lodge p-6 lg:p-8 h-full text-left group-hover:border-primary/40 group-hover:-translate-y-1 transition-all duration-300">
+              <div className="relative card-lodge p-5 lg:p-6 h-full text-left group-hover:border-primary/40 group-hover:-translate-y-1 transition-all duration-300">
                 {/* Decorative corner */}
                 <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-primary/5 to-transparent rounded-2xl" />
 
@@ -94,7 +96,7 @@ export default function ProgramLandingPage() {
                 </h2>
 
                 <p className="text-sm text-muted-foreground mb-5 leading-relaxed">
-                  Youth sessions with cabin optimization
+                  Youth cabin assignments
                 </p>
 
                 {/* Features */}
@@ -127,7 +129,7 @@ export default function ProgramLandingPage() {
             >
               <div className="absolute -inset-px bg-gradient-to-br from-accent/20 via-accent/5 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-xl" />
 
-              <div className="relative card-lodge p-6 lg:p-8 h-full text-left group-hover:border-accent/40 group-hover:-translate-y-1 transition-all duration-300">
+              <div className="relative card-lodge p-5 lg:p-6 h-full text-left group-hover:border-accent/40 group-hover:-translate-y-1 transition-all duration-300">
                 {/* Decorative corner */}
                 <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-accent/5 to-transparent rounded-2xl" />
 
@@ -165,6 +167,57 @@ export default function ProgramLandingPage() {
                 {/* CTA */}
                 <div className="flex items-center gap-2 text-amber-600 dark:text-accent font-semibold text-sm">
                   <span>Enter Family Camp</span>
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </div>
+            </button>
+
+            {/* Metrics Card */}
+            <button
+              onClick={() => handleProgramSelect('metrics')}
+              className="group relative animate-slide-up stagger-3"
+              style={{ animationFillMode: 'both' }}
+            >
+              <div className="absolute -inset-px bg-gradient-to-br from-sky-500/20 via-sky-500/5 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-xl" />
+
+              <div className="relative card-lodge p-5 lg:p-6 h-full text-left group-hover:border-sky-500/40 group-hover:-translate-y-1 transition-all duration-300">
+                {/* Decorative corner */}
+                <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-sky-500/5 to-transparent rounded-2xl" />
+
+                {/* Icon */}
+                <div className="relative w-14 h-14 mb-5">
+                  <div className="absolute inset-0 bg-sky-500/10 rounded-xl rotate-6 group-hover:rotate-12 transition-transform duration-300" />
+                  <div className="absolute inset-0 bg-sky-500/20 rounded-xl flex items-center justify-center">
+                    <BarChart3 className="w-7 h-7 text-sky-600 dark:text-sky-400" />
+                  </div>
+                </div>
+
+                {/* Content */}
+                <h2 className="text-xl lg:text-2xl font-display font-bold text-foreground mb-2 group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
+                  Metrics
+                </h2>
+
+                <p className="text-sm text-muted-foreground mb-5 leading-relaxed">
+                  Registration and retention analysis
+                </p>
+
+                {/* Features */}
+                <ul className="space-y-2 mb-6">
+                  {[
+                    'Retention trends',
+                    'Year-over-year comparison',
+                    'Enrollment breakdowns',
+                  ].map((feature, i) => (
+                    <li key={i} className="flex items-center gap-2.5 text-sm text-muted-foreground">
+                      <span className="w-1.5 h-1.5 rounded-full bg-sky-500 flex-shrink-0" />
+                      {feature}
+                    </li>
+                  ))}
+                </ul>
+
+                {/* CTA */}
+                <div className="flex items-center gap-2 text-sky-600 dark:text-sky-400 font-semibold text-sm">
+                  <span>View Metrics</span>
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </div>
               </div>
