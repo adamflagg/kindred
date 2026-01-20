@@ -104,7 +104,7 @@ def mock_pb_client():
 
 
 @pytest.fixture
-def sample_sessions_2025():
+def sample_sessions_2025() -> list[Mock]:
     """Sample sessions for 2025."""
     return [
         create_mock_session(1001, "Session 2", 2025, "main"),
@@ -115,7 +115,7 @@ def sample_sessions_2025():
 
 
 @pytest.fixture
-def sample_sessions_2026():
+def sample_sessions_2026() -> list[Mock]:
     """Sample sessions for 2026."""
     return [
         create_mock_session(2001, "Session 2", 2026, "main"),
@@ -127,7 +127,7 @@ def sample_sessions_2026():
 
 
 @pytest.fixture
-def sample_persons_2025():
+def sample_persons_2025() -> list[Mock]:
     """Sample persons for 2025 (last year's campers)."""
     return [
         create_mock_person(101, "Emma", "Johnson", "F", 5, 1, 2025, 2025),
@@ -139,7 +139,7 @@ def sample_persons_2025():
 
 
 @pytest.fixture
-def sample_persons_2026():
+def sample_persons_2026() -> list[Mock]:
     """Sample persons for 2026 (current year campers)."""
     return [
         # Returning campers (same cm_id as 2025, updated year)
@@ -153,7 +153,7 @@ def sample_persons_2026():
 
 
 @pytest.fixture
-def sample_attendees_2025(sample_sessions_2025: list[Mock]):
+def sample_attendees_2025(sample_sessions_2025: list[Mock]) -> list[Mock]:
     """Sample attendees for 2025."""
     return [
         create_mock_attendee(101, 1001, 2025),  # Emma in Session 2
@@ -165,7 +165,7 @@ def sample_attendees_2025(sample_sessions_2025: list[Mock]):
 
 
 @pytest.fixture
-def sample_attendees_2026(sample_sessions_2026: list[Mock]):
+def sample_attendees_2026(sample_sessions_2026: list[Mock]) -> list[Mock]:
     """Sample attendees for 2026."""
     return [
         # Returning from 2025
@@ -192,7 +192,7 @@ class TestRetentionMetrics:
         sample_persons_2026: list[Mock],
         sample_attendees_2025: list[Mock],
         sample_attendees_2026: list[Mock],
-    ):
+    ) -> None:
         """Test basic retention rate calculation.
 
         Given 5 campers in 2025, 3 returned in 2026.
@@ -219,7 +219,7 @@ class TestRetentionMetrics:
         sample_persons_2026: list[Mock],
         sample_attendees_2025: list[Mock],
         sample_attendees_2026: list[Mock],
-    ):
+    ) -> None:
         """Test retention breakdown by gender.
 
         2025 females: Emma (101), Olivia (103), Ava (105) = 3
@@ -257,7 +257,7 @@ class TestRetentionMetrics:
         sample_persons_2025: list[Mock],
         sample_attendees_2025: list[Mock],
         sample_attendees_2026: list[Mock],
-    ):
+    ) -> None:
         """Test retention breakdown by grade (2025 grade).
 
         Grade 5 (2025): Emma (101), Olivia (103) = 2
@@ -296,7 +296,7 @@ class TestRetentionMetrics:
         sample_persons_2025: list[Mock],
         sample_attendees_2025: list[Mock],
         sample_attendees_2026: list[Mock],
-    ):
+    ) -> None:
         """Test retention breakdown by years_at_camp.
 
         1 year (2025): Emma, Olivia = 2, returned: Emma = 1 -> 50%
@@ -330,7 +330,7 @@ class TestRetentionMetrics:
         sample_attendees_2025: list[Mock],
         sample_attendees_2026: list[Mock],
         sample_sessions_2025: list[Mock],
-    ):
+    ) -> None:
         """Test retention breakdown by 2025 session.
 
         Session 2 (1001): Emma (101), Liam (102) = 2, returned: Emma, Liam = 2 -> 100%
@@ -364,7 +364,7 @@ class TestRetentionMetrics:
 class TestRegistrationMetrics:
     """Tests for registration metrics endpoint."""
 
-    def test_total_enrollment_count(self, sample_attendees_2026: list[Mock]):
+    def test_total_enrollment_count(self, sample_attendees_2026: list[Mock]) -> None:
         """Test total enrollment count for a year."""
         enrolled = [a for a in sample_attendees_2026 if a.status == "enrolled"]
         assert len(enrolled) == 5
@@ -373,7 +373,7 @@ class TestRegistrationMetrics:
         self,
         sample_persons_2026: list[Mock],
         sample_attendees_2026: list[Mock],
-    ):
+    ) -> None:
         """Test enrollment breakdown by gender.
 
         2026: Emma (F), Liam (M), Noah (M), Sophia (F), Jackson (M)
@@ -394,7 +394,7 @@ class TestRegistrationMetrics:
         self,
         sample_persons_2026: list[Mock],
         sample_attendees_2026: list[Mock],
-    ):
+    ) -> None:
         """Test enrollment breakdown by grade.
 
         2026 grades: Emma (6), Liam (7), Noah (8), Sophia (5), Jackson (6)
@@ -417,7 +417,7 @@ class TestRegistrationMetrics:
         self,
         sample_attendees_2026: list[Mock],
         sample_sessions_2026: list[Mock],
-    ):
+    ) -> None:
         """Test enrollment breakdown by session.
 
         Session 2 (2001): Emma, Sophia = 2
@@ -437,7 +437,7 @@ class TestRegistrationMetrics:
         self,
         sample_persons_2026: list[Mock],
         sample_attendees_2026: list[Mock],
-    ):
+    ) -> None:
         """Test new vs returning camper breakdown.
 
         New (years_at_camp == 1): Sophia, Jackson = 2
@@ -461,7 +461,7 @@ class TestRegistrationMetrics:
         self,
         sample_persons_2026: list[Mock],
         sample_attendees_2026: list[Mock],
-    ):
+    ) -> None:
         """Test enrollment breakdown by years at camp.
 
         1 year: Sophia, Jackson = 2
@@ -482,7 +482,7 @@ class TestRegistrationMetrics:
         assert by_years[3] == 1
         assert by_years[4] == 1
 
-    def test_session_length_categorization(self, sample_sessions_2026: list[Mock]):
+    def test_session_length_categorization(self, sample_sessions_2026: list[Mock]) -> None:
         """Test session length categorization.
 
         Taste of Camp = 1-week
@@ -535,7 +535,7 @@ class TestComparisonMetrics:
         self,
         sample_attendees_2025: list[Mock],
         sample_attendees_2026: list[Mock],
-    ):
+    ) -> None:
         """Test total enrollment change between years.
 
         2025: 5 enrolled
@@ -559,7 +559,7 @@ class TestComparisonMetrics:
         sample_persons_2026: list[Mock],
         sample_attendees_2025: list[Mock],
         sample_attendees_2026: list[Mock],
-    ):
+    ) -> None:
         """Test gender breakdown comparison between years.
 
         2025: F=3, M=2
@@ -612,17 +612,17 @@ class TestStatusMetrics:
             create_mock_attendee(106, 2002, 2026, "waitlisted", 4, True),
         ]
 
-    def test_waitlist_count(self, mixed_status_attendees: list[Mock]):
+    def test_waitlist_count(self, mixed_status_attendees: list[Mock]) -> None:
         """Test counting waitlisted campers."""
         waitlisted = [a for a in mixed_status_attendees if a.status == "waitlisted"]
         assert len(waitlisted) == 2
 
-    def test_cancelled_count(self, mixed_status_attendees: list[Mock]):
+    def test_cancelled_count(self, mixed_status_attendees: list[Mock]) -> None:
         """Test counting cancelled campers."""
         cancelled = [a for a in mixed_status_attendees if a.status == "cancelled"]
         assert len(cancelled) == 1
 
-    def test_active_enrolled_filter(self, mixed_status_attendees: list[Mock]):
+    def test_active_enrolled_filter(self, mixed_status_attendees: list[Mock]) -> None:
         """Test filtering for active enrolled campers (is_active AND status_id=2)."""
         active_enrolled = [a for a in mixed_status_attendees if a.is_active and a.status_id == 2]
         assert len(active_enrolled) == 3
@@ -636,13 +636,13 @@ class TestStatusMetrics:
 class TestEdgeCases:
     """Tests for edge cases and error handling."""
 
-    def test_empty_year_data(self):
+    def test_empty_year_data(self) -> None:
         """Test handling when a year has no data."""
         empty_attendees: list[Mock] = []
         enrolled = [a for a in empty_attendees if a.status == "enrolled"]
         assert len(enrolled) == 0
 
-    def test_retention_with_no_prior_year(self):
+    def test_retention_with_no_prior_year(self) -> None:
         """Test retention calculation when prior year has no data."""
         prior_year_ids: set[int] = set()
         current_year_ids = {101, 102, 103}
@@ -654,7 +654,7 @@ class TestEdgeCases:
         retention_rate = len(returned) / len(prior_year_ids) if prior_year_ids else 0
         assert retention_rate == 0
 
-    def test_missing_person_data(self):
+    def test_missing_person_data(self) -> None:
         """Test handling attendees with missing person data."""
         attendees = [
             create_mock_attendee(101, 2001, 2026),
@@ -672,7 +672,7 @@ class TestEdgeCases:
         known_persons = [a for a in attendees if a.person_id in persons_by_id]
         assert len(known_persons) == 1
 
-    def test_grade_with_none_values(self):
+    def test_grade_with_none_values(self) -> None:
         """Test handling persons with None grade."""
         persons = [
             create_mock_person(101, "Emma", "Johnson", grade=5),
@@ -697,16 +697,16 @@ class TestMetricsAPIEndpoints:
     """Integration tests for metrics API endpoints."""
 
     @pytest.fixture
-    def app(self):
+    def app(self) -> Any:
         """Create test application."""
         return create_app()
 
     @pytest.fixture
-    def client(self, app):
+    def client(self, app: Any) -> TestClient:
         """Create test client."""
         return TestClient(app)
 
-    def test_retention_endpoint_returns_200(self, client, mock_pocketbase):
+    def test_retention_endpoint_returns_200(self, client: TestClient, mock_pocketbase: Mock) -> None:
         """Test that retention endpoint returns 200."""
         # Set up mock to return empty lists
         mock_pb = mock_pocketbase
@@ -720,7 +720,7 @@ class TestMetricsAPIEndpoints:
             assert data["compare_year"] == 2026
             assert "overall_retention_rate" in data
 
-    def test_registration_endpoint_returns_200(self, client, mock_pocketbase):
+    def test_registration_endpoint_returns_200(self, client: TestClient, mock_pocketbase: Mock) -> None:
         """Test that registration endpoint returns 200."""
         mock_pb = mock_pocketbase
         mock_pb.collection.return_value.get_full_list.return_value = []
@@ -733,7 +733,7 @@ class TestMetricsAPIEndpoints:
             assert "total_enrolled" in data
             assert "new_vs_returning" in data
 
-    def test_comparison_endpoint_returns_200(self, client, mock_pocketbase):
+    def test_comparison_endpoint_returns_200(self, client: TestClient, mock_pocketbase: Mock) -> None:
         """Test that comparison endpoint returns 200."""
         mock_pb = mock_pocketbase
         mock_pb.collection.return_value.get_full_list.return_value = []

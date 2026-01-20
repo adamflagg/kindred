@@ -74,6 +74,9 @@ function RootRedirect() {
   if (currentProgram === 'family') {
     return <Navigate to="/family" replace />;
   }
+  if (currentProgram === 'metrics') {
+    return <Navigate to="/metrics" replace />;
+  }
 
   // First-time users see the program picker
   return <ProgramLandingPage />;
@@ -145,7 +148,11 @@ function App() {
                               </Suspense>
                             </AdminRoute>
                           } />
-                          <Route path="metrics" element={
+                        </Route>
+
+                        {/* Metrics routes - top-level program */}
+                        <Route path="/metrics" element={<AppLayout />}>
+                          <Route index element={
                             <Suspense fallback={<PageSkeleton />}>
                               <RegistrationMetricsPage />
                             </Suspense>
