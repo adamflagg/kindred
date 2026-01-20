@@ -12,6 +12,8 @@ from typing import Any
 from pocketbase.models.utils.list_result import ListResult
 from pocketbase.services.record_service import RecordService
 
+# Import TRACE constant and ensure trace method is available
+from bunking.logging_config import TRACE  # noqa: F401
 from pocketbase import PocketBase
 
 logger = logging.getLogger(__name__)
@@ -67,8 +69,8 @@ class WrappedRecordService(RecordService):
             # Actually, let's try a different approach - let httpx handle it but fix the encoding
             params["filter"] = filter_value
 
-        # Log for debugging
-        logger.debug(f"Sending get_list with params: {params}")
+        # Log at TRACE level (very verbose, use LOG_LEVEL=TRACE to see)
+        logger.log(TRACE, f"Sending get_list with params: {params}")
 
         try:
             # Use the original client's send method directly to have more control
