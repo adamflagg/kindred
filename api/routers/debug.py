@@ -35,6 +35,7 @@ from ..dependencies import pb
 from ..schemas.debug import (
     CamperGroupedRequests,
     ClearAnalysisResponse,
+    DualSourceParseResult,
     FieldParseResult,
     GroupedRequestsResponse,
     OriginalRequestItem,
@@ -45,6 +46,7 @@ from ..schemas.debug import (
     ParseAnalysisItem,
     ParseAnalysisListResponse,
     ParsedIntent,
+    ParseResultData,
     ParseResultWithSource,
     Phase1OnlyRequest,
     Phase1OnlyResponse,
@@ -714,6 +716,115 @@ async def get_parse_results_batch(
                 requester_cm_id=data.get("requester_cm_id"),
                 source_field=data.get("source_field", ""),
                 original_text=data.get("original_text", ""),
+            )
+        )
+
+    return responses
+
+
+@router.post("/parse-results-batch-dual", response_model=list[DualSourceParseResult])
+async def get_parse_results_batch_dual(
+    original_request_ids: list[str],
+) -> list[DualSourceParseResult]:
+    """Get BOTH debug and production parse results for multiple original requests.
+
+    Unlike /parse-results-batch, this returns both sources separately,
+    allowing the frontend to toggle between viewing debug and production results.
+
+    Args:
+        original_request_ids: List of original_bunk_requests record IDs
+
+    Returns:
+        List of DualSourceParseResult in the same order as input IDs
+    """
+    if not original_request_ids:
+        return []
+
+    debug_repo = get_debug_parse_repository()
+    results_map = debug_repo.get_results_batch_dual(original_request_ids)
+
+    # Convert to response models, preserving input order
+    responses: list[DualSourceParseResult] = []
+
+    for rid in original_request_ids:
+        data = results_map.get(rid, {})
+
+        # Convert debug_result if present
+        debug_result_data: ParseResultData | None = None
+        if data.get("debug_result"):
+            dr = data["debug_result"]
+            # Convert parsed_intents
+            debug_intents = []
+            for intent in dr.get("parsed_intents", []):
+                debug_intents.append(
+                    ParsedIntent(
+                        request_type=intent.get("request_type", "unknown"),
+                        target_name=intent.get("target_name"),
+                        keywords_found=intent.get("keywords_found", []),
+                        parse_notes=intent.get("parse_notes", ""),
+                        reasoning=intent.get("reasoning", ""),
+                        list_position=intent.get("list_position", 0),
+                        needs_clarification=intent.get("needs_clarification", False),
+                        temporal_info=intent.get("temporal_info"),
+                    )
+                )
+
+            # Parse created timestamp if present
+            created_dt = None
+            created_str = dr.get("created")
+            if created_str:
+                try:
+                    created_dt = datetime.fromisoformat(str(created_str).replace("Z", "+00:00"))
+                except (ValueError, TypeError):
+                    pass
+
+            debug_result_data = ParseResultData(
+                id=dr.get("id"),
+                parsed_intents=debug_intents,
+                is_valid=dr.get("is_valid", True),
+                error_message=dr.get("error_message"),
+                token_count=dr.get("token_count"),
+                processing_time_ms=dr.get("processing_time_ms"),
+                prompt_version=dr.get("prompt_version"),
+                created=created_dt,
+            )
+
+        # Convert production_result if present
+        prod_result_data: ParseResultData | None = None
+        if data.get("production_result"):
+            pr = data["production_result"]
+            # Convert parsed_intents
+            prod_intents = []
+            for intent in pr.get("parsed_intents", []):
+                prod_intents.append(
+                    ParsedIntent(
+                        request_type=intent.get("request_type", "unknown"),
+                        target_name=intent.get("target_name"),
+                        keywords_found=intent.get("keywords_found", []),
+                        parse_notes=intent.get("parse_notes", ""),
+                        reasoning=intent.get("reasoning", ""),
+                        list_position=intent.get("list_position", 0),
+                        needs_clarification=intent.get("needs_clarification", False),
+                        temporal_info=intent.get("temporal_info"),
+                    )
+                )
+
+            prod_result_data = ParseResultData(
+                parsed_intents=prod_intents,
+                is_valid=pr.get("is_valid", True),
+            )
+
+        responses.append(
+            DualSourceParseResult(
+                original_request_id=data.get("original_request_id", rid),
+                requester_name=data.get("requester_name"),
+                requester_cm_id=data.get("requester_cm_id"),
+                source_field=data.get("source_field"),
+                original_text=data.get("original_text"),
+                has_debug=data.get("has_debug", False),
+                has_production=data.get("has_production", False),
+                debug_result=debug_result_data,
+                production_result=prod_result_data,
             )
         )
 

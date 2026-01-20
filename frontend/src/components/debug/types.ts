@@ -83,6 +83,44 @@ export const SOURCE_FIELD_LABELS: Record<SourceFieldType, string> = {
   internal_notes: 'Internal Notes',
 };
 
+// =============================================================================
+// Dual-Source Types (Debug/Prod Toggle)
+// =============================================================================
+
+/**
+ * Inner parse result data for a single source (debug or production)
+ */
+export interface ParseResultData {
+  id: string | null;
+  parsed_intents: ParsedIntent[];
+  is_valid: boolean;
+  error_message: string | null;
+  token_count: number | null;
+  processing_time_ms: number | null;
+  prompt_version: string | null;
+  created: string | null;
+}
+
+/**
+ * Parse result containing BOTH debug and production data for toggle UI
+ */
+export interface DualSourceParseResult {
+  original_request_id: string;
+  requester_name: string | null;
+  requester_cm_id: number | null;
+  source_field: string | null;
+  original_text: string | null;
+  has_debug: boolean;
+  has_production: boolean;
+  debug_result: ParseResultData | null;
+  production_result: ParseResultData | null;
+}
+
+/**
+ * View mode for source toggle: 'debug' or 'production'
+ */
+export type SourceViewMode = 'debug' | 'production';
+
 // Types for grouped-by-camper view (Phase 5)
 export interface FieldParseResult {
   original_request_id: string;

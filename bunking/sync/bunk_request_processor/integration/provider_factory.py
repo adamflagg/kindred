@@ -170,6 +170,7 @@ class ProviderFactory:
                 model=config.model,
                 base_url=config.base_url,
                 timeout=float(config.timeout),
+                debug=config.debug,
             )
 
         # Use mock provider for testing

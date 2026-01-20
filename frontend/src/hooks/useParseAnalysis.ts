@@ -156,6 +156,24 @@ export function useParseResultsBatch(originalRequestIds: string[]) {
 }
 
 /**
+ * Hook to fetch BOTH debug and production parse results for multiple fields.
+ * Returns both sources separately for toggle UI instead of using fallback pattern.
+ */
+export function useParseResultsBatchDual(originalRequestIds: string[]) {
+  const { fetchWithAuth, isAuthenticated } = useApiWithAuth();
+
+  // Create a stable key from sorted IDs to avoid unnecessary refetches
+  const idsKey = originalRequestIds.length > 0 ? originalRequestIds.slice().sort().join(',') : '';
+
+  return useQuery({
+    queryKey: ['parse-results-batch-dual', idsKey],
+    queryFn: () => debugService.getParseResultsBatchDual(originalRequestIds, fetchWithAuth),
+    enabled: isAuthenticated && originalRequestIds.length > 0,
+    ...userDataOptions,
+  });
+}
+
+/**
  * Hook to run Phase 1 parsing on selected requests
  */
 export function useParsePhase1Only() {
@@ -170,6 +188,8 @@ export function useParsePhase1Only() {
       queryClient.invalidateQueries({ queryKey: ['parse-analysis'] });
       queryClient.invalidateQueries({ queryKey: ['grouped-requests'] });
       queryClient.invalidateQueries({ queryKey: ['parse-result-with-fallback'] });
+      queryClient.invalidateQueries({ queryKey: ['parse-results-batch'] });
+      queryClient.invalidateQueries({ queryKey: ['parse-results-batch-dual'] });
     },
   });
 }
@@ -207,6 +227,8 @@ export function useClearParseAnalysis() {
       queryClient.invalidateQueries({ queryKey: ['parse-analysis'] });
       queryClient.invalidateQueries({ queryKey: ['original-requests'] });
       queryClient.invalidateQueries({ queryKey: ['grouped-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['parse-results-batch'] });
+      queryClient.invalidateQueries({ queryKey: ['parse-results-batch-dual'] });
     },
   });
 }
@@ -225,6 +247,8 @@ export function useClearSingleParseAnalysis() {
       queryClient.invalidateQueries({ queryKey: ['parse-analysis'] });
       queryClient.invalidateQueries({ queryKey: ['original-requests'] });
       queryClient.invalidateQueries({ queryKey: ['grouped-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['parse-results-batch'] });
+      queryClient.invalidateQueries({ queryKey: ['parse-results-batch-dual'] });
     },
   });
 }

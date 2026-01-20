@@ -163,6 +163,33 @@ export interface GroupedRequestsFilters {
   limit?: number | undefined;
 }
 
+// =============================================================================
+// Dual-Source Types (Debug/Prod Toggle)
+// =============================================================================
+
+export interface ParseResultData {
+  id: string | null;
+  parsed_intents: ParsedIntent[];
+  is_valid: boolean;
+  error_message: string | null;
+  token_count: number | null;
+  processing_time_ms: number | null;
+  prompt_version: string | null;
+  created: string | null;
+}
+
+export interface DualSourceParseResult {
+  original_request_id: string;
+  requester_name: string | null;
+  requester_cm_id: number | null;
+  source_field: string | null;
+  original_text: string | null;
+  has_debug: boolean;
+  has_production: boolean;
+  debug_result: ParseResultData | null;
+  production_result: ParseResultData | null;
+}
+
 export interface ScopedClearFilters {
   session_cm_ids?: number[] | undefined;
   source_field?: SourceFieldType | undefined;
@@ -380,6 +407,30 @@ export const debugService = {
 
     if (!response.ok) {
       throw new Error('Failed to fetch parse results batch');
+    }
+    return response.json();
+  },
+
+  /**
+   * Get BOTH debug and production parse results for multiple original requests.
+   * Unlike getParseResultsBatch, returns both sources separately for toggle UI.
+   */
+  async getParseResultsBatchDual(
+    originalRequestIds: string[],
+    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+  ): Promise<DualSourceParseResult[]> {
+    if (originalRequestIds.length === 0) {
+      return [];
+    }
+
+    const response = await fetchWithAuth(`${API_BASE}/parse-results-batch-dual`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(originalRequestIds),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch dual parse results batch');
     }
     return response.json();
   },
