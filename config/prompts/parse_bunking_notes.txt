@@ -88,7 +88,7 @@ Example 8 - Superseded request:
 Input: "Wanted to be without Zoe and then changed a day later in June to say bunk together"
 Output: 2 requests:
 - not_bunk_with "Zoe", temporal_info: {{is_superseded: true, supersedes_reason: "changed to bunk together"}}
-- bunk_with "SIBLING", temporal_info: {{is_superseded: false}}
+- bunk_with "Zoe", temporal_info: {{is_superseded: false}}
 
 Example 9 - Unit placement (not bunk request):
 Input: "Same unit as twin Lily Thompson if possible"
