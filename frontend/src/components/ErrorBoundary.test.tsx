@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ErrorBoundary } from './ErrorBoundary';
+import * as autoReloadModule from '../utils/autoReload';
 
 /**
  * Tests for ErrorBoundary component.
@@ -175,6 +176,77 @@ describe('ErrorBoundary', () => {
 
       expect(screen.getByText('Custom error: Custom test error')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /custom reset/i })).toBeInTheDocument();
+    });
+  });
+
+  describe('auto-reload behavior', () => {
+    let shouldAutoReloadSpy: ReturnType<typeof vi.spyOn>;
+    let autoReloadSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      shouldAutoReloadSpy = vi.spyOn(autoReloadModule, 'shouldAutoReload');
+      autoReloadSpy = vi.spyOn(autoReloadModule, 'autoReload').mockImplementation(() => {
+        // Mock implementation - don't actually reload
+      });
+    });
+
+    afterEach(() => {
+      shouldAutoReloadSpy.mockRestore();
+      autoReloadSpy.mockRestore();
+    });
+
+    it('should auto-reload for chunk load errors when cooldown allows', () => {
+      shouldAutoReloadSpy.mockReturnValue(true);
+
+      const error = new Error(
+        'Failed to fetch dynamically imported module: https://example.com/assets/chunk.js'
+      );
+
+      render(
+        <ErrorBoundary>
+          <ThrowError error={error} />
+        </ErrorBoundary>
+      );
+
+      expect(shouldAutoReloadSpy).toHaveBeenCalled();
+      expect(autoReloadSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('should show reload UI for chunk errors when within cooldown', () => {
+      shouldAutoReloadSpy.mockReturnValue(false);
+
+      const error = new Error(
+        'Failed to fetch dynamically imported module: https://example.com/assets/chunk.js'
+      );
+
+      render(
+        <ErrorBoundary>
+          <ThrowError error={error} />
+        </ErrorBoundary>
+      );
+
+      expect(shouldAutoReloadSpy).toHaveBeenCalled();
+      expect(autoReloadSpy).not.toHaveBeenCalled();
+      // Fallback UI should be shown
+      expect(screen.getByText('App Update Available')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /reload page/i })).toBeInTheDocument();
+    });
+
+    it('should NOT auto-reload for regular errors', () => {
+      shouldAutoReloadSpy.mockReturnValue(true);
+
+      const error = new Error('Regular application error');
+
+      render(
+        <ErrorBoundary>
+          <ThrowError error={error} />
+        </ErrorBoundary>
+      );
+
+      // shouldAutoReload should not be called for non-chunk errors
+      expect(autoReloadSpy).not.toHaveBeenCalled();
+      // Regular error UI should be shown
+      expect(screen.getByText('Something went wrong')).toBeInTheDocument();
     });
   });
 });
