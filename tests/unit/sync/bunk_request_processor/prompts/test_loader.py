@@ -84,7 +84,7 @@ class TestPromptLoaderPartials:
         )
 
         # Check that partial content was injected (contains content from partial file)
-        assert "PARSE_NOTES RULE" in formatted, (
+        assert "STANDARDIZED OUTPUT FIELDS" in formatted, (
             "Partial content should be injected, replacing {output_field_rules} placeholder"
         )
         # Placeholder should be replaced
