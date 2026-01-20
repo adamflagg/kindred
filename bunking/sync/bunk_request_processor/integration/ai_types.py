@@ -37,6 +37,7 @@ class AIServiceConfig:
     max_concurrent_requests: int = 5
     api_key: str | None = None
     base_url: str | None = None  # For custom API endpoints
+    debug: bool = False  # Enable verbose AI parse logging
 
     def __post_init__(self) -> None:
         """Validate configuration"""

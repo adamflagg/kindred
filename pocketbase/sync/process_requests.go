@@ -25,6 +25,7 @@ type RequestProcessor struct {
 	Force        bool     // Force reprocess by clearing processed flags first
 	SourceFields []string // Optional source field filter (empty = all fields)
 	Debug        bool     // Enable debug logging in Python processor
+	Trace        bool     // Enable trace logging (very verbose) in Python processor
 }
 
 // NewRequestProcessor creates a new processor
@@ -36,6 +37,7 @@ func NewRequestProcessor(app core.App) *RequestProcessor {
 		Force:           false,                        // Default to no force
 		SourceFields:    nil,                          // Default to all fields
 		Debug:           false,                        // Default to no debug
+		Trace:           false,                        // Default to no trace
 	}
 }
 
@@ -58,6 +60,7 @@ func (p *RequestProcessor) Sync(ctx context.Context) error {
 		"force", p.Force,
 		"sourceFields", p.SourceFields,
 		"debug", p.Debug,
+		"trace", p.Trace,
 	)
 
 	// If force mode, clear processed flags first
@@ -144,6 +147,11 @@ func (p *RequestProcessor) callPythonProcessor(ctx context.Context) (Stats, erro
 		args = append(args, "--debug")
 	}
 
+	// Add trace flag for very verbose logging (overrides debug)
+	if p.Trace {
+		args = append(args, "--trace")
+	}
+
 	//nolint:gosec // G204: args are from trusted internal config
 	cmd := exec.CommandContext(ctx, pythonPath, args...)
 	cmd.Dir = projectRoot
@@ -157,6 +165,12 @@ func (p *RequestProcessor) callPythonProcessor(ctx context.Context) (Stats, erro
 	slog.Debug("Stats output file", "path", statsFilePath)
 
 	output, err := cmd.CombinedOutput()
+
+	// In debug/trace mode, log Python output for visibility
+	if (p.Debug || p.Trace) && len(output) > 0 {
+		slog.Info("Python processor output", "output", string(output))
+	}
+
 	if err != nil {
 		// Try to read stats file even on error - Python may have written error stats
 		statsData, readErr := os.ReadFile(statsFilePath) //nolint:gosec // G304: trusted temp file
