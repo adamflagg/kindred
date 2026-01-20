@@ -5,7 +5,10 @@ Provides unified logging format across all Python services:
 Format: 2026-01-06T14:05:52Z [source] LEVEL message
 
 Environment Variables:
-    LOG_LEVEL: Set to "DEBUG" to enable verbose logging including health checks
+    LOG_LEVEL: Set to "DEBUG", "TRACE", or "INFO" (default)
+               - INFO: Normal operation logs
+               - DEBUG: Detailed diagnostic information
+               - TRACE: Very verbose low-level diagnostics (API params, etc.)
 
 Usage:
     from bunking.logging_config import configure_logging, get_logger
@@ -21,6 +24,20 @@ import logging
 import os
 import sys
 from datetime import UTC, datetime
+
+# Custom TRACE level for very verbose diagnostics
+TRACE = 5
+logging.addLevelName(TRACE, "TRACE")
+
+
+def _trace(self: logging.Logger, message: object, *args: object, **kw: object) -> None:
+    """Log a message at TRACE level (5)."""
+    if self.isEnabledFor(TRACE):
+        self._log(TRACE, message, args, **kw)  # type: ignore[arg-type]
+
+
+# Add trace method to Logger class
+logging.Logger.trace = _trace  # type: ignore[attr-defined]
 
 
 class ISO8601Formatter(logging.Formatter):
@@ -93,19 +110,21 @@ def configure_logging(
 
     Args:
         source: Source identifier for log messages (e.g., "api", "sync", "solver")
-        level: Logging level (defaults to INFO, or DEBUG if debug=True)
+        level: Logging level (defaults to INFO, or DEBUG/TRACE from LOG_LEVEL env var)
         debug: Enable debug mode (overrides level to DEBUG)
 
     Returns:
         Configured root logger
     """
-    # Determine debug mode from environment or parameter
-    if debug is None:
-        debug = os.getenv("LOG_LEVEL", "").upper() == "DEBUG"
-
-    # Determine level
+    # Determine level from environment or parameters
     if level is None:
-        level = logging.DEBUG if debug else logging.INFO
+        log_level_env = os.getenv("LOG_LEVEL", "").upper()
+        if log_level_env == "TRACE":
+            level = TRACE
+        elif log_level_env == "DEBUG" or debug:
+            level = logging.DEBUG
+        else:
+            level = logging.INFO
 
     # Get root logger
     root_logger = logging.getLogger()
@@ -134,6 +153,7 @@ def configure_logging(
     # Suppress noisy third-party loggers
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("openai").setLevel(logging.WARNING)  # Suppress full prompt dumps
 
     return root_logger
 

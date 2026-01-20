@@ -272,9 +272,14 @@ uv run python scripts/restore_from_scenario.py --scenario-id [ID]
 
 ### Enable Debug Logging
 ```bash
-# Python
+# Standard debugging (AI prompts, resolution details)
 export LOG_LEVEL=DEBUG
 uv run python scripts/sync/sync_01_persons.py
+
+# Very verbose debugging (API params, SDK internals)
+export LOG_LEVEL=TRACE
+uv run python -m bunking.sync.bunk_request_processor.process_requests \
+    --year 2025 --session all --dry-run
 
 # Frontend
 ```

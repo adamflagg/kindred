@@ -162,6 +162,7 @@ describe('ProcessRequestOptions', () => {
       forceReprocess: false,
       sourceFields: [],
       debug: false,
+      trace: false,
     });
   });
 
@@ -184,6 +185,7 @@ describe('ProcessRequestOptions', () => {
       forceReprocess: false,
       sourceFields: [],
       debug: false,
+      trace: false,
     });
   });
 
@@ -206,6 +208,7 @@ describe('ProcessRequestOptions', () => {
       forceReprocess: false,
       sourceFields: [],
       debug: false,
+      trace: false,
     });
   });
 
@@ -244,6 +247,7 @@ describe('ProcessRequestOptions', () => {
       forceReprocess: false,
       sourceFields: [],
       debug: false,
+      trace: false,
     });
   });
 
@@ -261,6 +265,7 @@ describe('ProcessRequestOptions', () => {
       forceReprocess: true,
       sourceFields: [],
       debug: false,
+      trace: false,
     });
   });
 
@@ -297,6 +302,7 @@ describe('ProcessRequestOptions', () => {
       forceReprocess: true,
       sourceFields: expect.arrayContaining(['internal_notes', 'bunking_notes']),
       debug: false,
+      trace: false,
     });
   });
 
@@ -329,6 +335,7 @@ describe('ProcessRequestOptions', () => {
       forceReprocess: false,
       sourceFields: [],
       debug: false,
+      trace: false,
     });
   });
 

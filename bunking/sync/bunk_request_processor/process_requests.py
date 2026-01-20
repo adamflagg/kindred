@@ -68,6 +68,7 @@ async def process_bunk_requests(
     dry_run: bool = False,
     source_fields: list[str] | None = None,
     force: bool = False,
+    debug: bool = False,
 ) -> dict[str, Any]:
     """Process bunk requests from a data source.
 
@@ -80,6 +81,7 @@ async def process_bunk_requests(
         dry_run: If True, don't save to database
         source_fields: Optional list of source fields to filter by
         force: If True, clear processed flags before fetching (enables reprocessing)
+        debug: If True, enable verbose AI parse logging
 
     Returns:
         Processing results
@@ -94,6 +96,7 @@ async def process_bunk_requests(
         year=year,
         session_cm_ids=session_cm_ids,
         data_context=data_context,
+        debug=debug,
     )
 
     # Get pb reference for database loading (DataAccessContext provides it)
@@ -284,6 +287,7 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="Process without saving")
     parser.add_argument("--stats-output", type=str, help="Write JSON stats to this file (for Go integration)")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    parser.add_argument("--trace", action="store_true", help="Enable trace logging (very verbose)")
     parser.add_argument(
         "--force",
         action="store_true",
@@ -295,14 +299,25 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    # Setup logging
+    # Setup logging - import TRACE level for trace mode
+    from bunking.logging_config import TRACE
+
+    if args.trace:
+        log_level = TRACE
+    elif args.debug:
+        log_level = logging.DEBUG
+    else:
+        log_level = logging.INFO
+
     logging.basicConfig(
-        level=logging.DEBUG if args.debug else logging.INFO,
+        level=log_level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-    # Suppress noisy HTTP client logging
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    # Suppress noisy HTTP client logging (unless trace mode)
+    if not args.trace:
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+        logging.getLogger("httpcore").setLevel(logging.WARNING)
+        logging.getLogger("openai").setLevel(logging.WARNING)
 
     # Validate source fields if provided
     source_fields: list[str] | None = None
@@ -375,6 +390,7 @@ def main() -> None:
                 dry_run=args.dry_run,
                 source_fields=source_fields,
                 force=args.force,
+                debug=args.debug,
             )
 
         result = asyncio.run(process_with_related_sessions())

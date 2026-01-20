@@ -10,6 +10,7 @@ interface ProcessRequestsResponse {
   limit: number;
   force: boolean;
   debug: boolean;
+  trace: boolean;
 }
 
 /**
@@ -44,6 +45,10 @@ export function useProcessRequests() {
 
       if (options.debug) {
         params.set('debug', 'true');
+      }
+
+      if (options.trace) {
+        params.set('trace', 'true');
       }
 
       const queryString = params.toString();
@@ -91,8 +96,10 @@ export function useProcessRequests() {
         parts.push('force reprocess');
       }
 
-      // Add debug indicator
-      if (options.debug) {
+      // Add debug/trace indicator
+      if (options.trace) {
+        parts.push('trace mode');
+      } else if (options.debug) {
         parts.push('debug mode');
       }
 

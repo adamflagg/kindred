@@ -42,6 +42,7 @@ class OpenAIProvider(AIProvider):
         model: str,
         base_url: str | None = None,
         timeout: float = 60.0,
+        debug: bool = False,
     ):
         """Initialize the V2 AI provider.
 
@@ -50,10 +51,12 @@ class OpenAIProvider(AIProvider):
             model: Model name (e.g., 'gpt-4.1-nano')
             base_url: Optional custom API base URL
             timeout: Request timeout in seconds
+            debug: Enable verbose AI parse logging
         """
         self.api_key = api_key
         self.model = model
         self.base_url = base_url
+        self.debug = debug
 
         # Track token usage
         self._total_prompt_tokens = 0
@@ -94,11 +97,24 @@ class OpenAIProvider(AIProvider):
 
             logger.debug(f"AI prompt: {prompt[:500]}..." if len(prompt) > 500 else f"AI prompt: {prompt}")
 
+            # Debug logging: show exact AI input
+            if self.debug:
+                logger.info(
+                    f"[AI-PARSE] Input: field='{context.field_type}' "
+                    f"requester='{context.requester_name}' text='{request_text}'"
+                )
+
             # Call OpenAI with structured output
             parsed_response = await self._call_with_structured_output(
                 prompt=prompt,
                 response_model=AIParseResponse,
             )
+
+            # Debug logging: show exact AI output
+            if self.debug and isinstance(parsed_response, AIParseResponse):
+                target_names = [r.target_name for r in parsed_response.requests]
+                request_types = [r.request_type for r in parsed_response.requests]
+                logger.info(f"[AI-PARSE] Output: targets={target_names} request_types={request_types}")
 
             # Log response for debugging
             preview = request_text if len(request_text) <= 200 else f"{request_text[:200]}..."

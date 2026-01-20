@@ -109,7 +109,10 @@ APPDATA_DIR=/path/to/appdata
 
 ### Logging & Monitoring
 ```bash
-# Log levels: DEBUG, INFO, WARNING, ERROR
+# Log levels: TRACE, DEBUG, INFO, WARNING, ERROR
+# TRACE: Very verbose low-level diagnostics (API params, SDK internals)
+# DEBUG: Detailed diagnostics (AI prompts, resolution details)
+# INFO:  Normal operation (default)
 LOG_LEVEL=INFO
 LOG_FILE=/var/log/bunking/app.log
 LOG_MAX_SIZE=100M
