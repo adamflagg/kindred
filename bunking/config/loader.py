@@ -161,11 +161,8 @@ class ConfigLoader:
         """
         if not cls._initialized or cls._instance is None:
             # Auto-initialize with defaults for backwards compatibility
-            # but log a warning
-            logger.warning(
-                "ConfigLoader accessed before initialization. "
-                "Call ConfigLoader.initialize() at application startup for proper validation."
-            )
+            # This is expected behavior for CLI scripts that don't call initialize()
+            logger.debug("ConfigLoader auto-initializing (no explicit initialize() call)")
             return cls.initialize(validate_on_init=False)
         return cls._instance
 
