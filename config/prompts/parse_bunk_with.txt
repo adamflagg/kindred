@@ -57,15 +57,15 @@ Parents may indicate priority. Capture in keywords_found:
 
 Example 1 - Simple name (just a name = bunk_with):
 Input: "Emma Wilson"
-Output: 1 bunk_with request for "Emma Wilson"
+Output: 1 bunk_with request for "Emma Wilson", parse_notes: "Direct bunk request"
 
 Example 1b - Another simple name:
 Input: "Noah Chen"
-Output: 1 bunk_with request for "Noah Chen"
+Output: 1 bunk_with request for "Noah Chen", parse_notes: "Direct bunk request"
 
 Example 1c - Name with hyphen:
 Input: "Liam Patel"
-Output: 1 bunk_with request for "Liam Patel"
+Output: 1 bunk_with request for "Liam Patel", parse_notes: "Direct bunk request"
 
 Example 2 - Multiple names with priority:
 Input: "1. Sophia Martinez (Cousin). 2. Olivia Rose Thompson"
@@ -116,6 +116,8 @@ IGNORE Family Camp content entirely:
 - The requester themselves (self-reference)
 - Parent names mentioned as context, not bunking targets
 
+{output_field_rules}
+
 === OUTPUT REQUIREMENTS ===
 
 For each valid request, provide:
@@ -125,6 +127,6 @@ For each valid request, provide:
 - temporal_info: null OR {{date_mentioned, is_superseded, supersedes_reason}}
 - keywords_found: Priority words like "must", "important", "critical", "first choice"
 - source_type: "parent" (always for this field)
-- parse_notes: Brief explanation including any context (cousin, school friend, etc.)
-- reasoning: Why you categorized this request this way
+- parse_notes: Brief explanation (see rules above)
+- reasoning: Why you categorized this (see rules above)
 - list_position: Position in multi-request fields (0-indexed)
