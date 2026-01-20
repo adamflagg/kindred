@@ -134,6 +134,7 @@ class RequestOrchestrator:
         session_cm_ids: list[int] | None = None,
         ai_config: dict[str, Any] | None = None,
         data_context: DataAccessContext | None = None,
+        debug: bool = False,
     ):
         """Initialize the request orchestrator.
 
@@ -143,6 +144,7 @@ class RequestOrchestrator:
             session_cm_ids: Optional list of session CM IDs to filter by
             ai_config: Optional AI configuration override
             data_context: DataAccessContext for repository access (preferred)
+            debug: Enable verbose AI parse logging
 
         Note:
             Either pb or data_context must be provided. Using pb directly is
@@ -177,6 +179,9 @@ class RequestOrchestrator:
 
         # Load AI configuration - use ConfigLoader if not provided
         self.ai_config = ai_config or self._load_ai_config()
+
+        # Debug mode for verbose AI parse logging
+        self.debug = debug
 
         # Initialize components
         self._initialize_components()
@@ -595,6 +600,7 @@ class RequestOrchestrator:
             api_key=self.ai_config.get("api_key"),
             model=self.ai_config.get("model", "gpt-4o-mini"),
             base_url=self.ai_config.get("endpoint"),
+            debug=self.debug,
         )
         self.ai_provider = provider_factory.create(ai_service_config)
 
