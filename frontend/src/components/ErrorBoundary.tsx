@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import React, { Component } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { isChunkLoadError } from '../utils/chunkLoadError';
+import { shouldAutoReload, autoReload } from '../utils/autoReload';
 
 interface Props {
   children: ReactNode;
@@ -25,6 +26,15 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    // Auto-reload for chunk load errors (stale deployment)
+    if (isChunkLoadError(error)) {
+      if (shouldAutoReload()) {
+        autoReload();
+        return; // Don't report error if we're reloading
+      }
+      // If within cooldown, fall through to show fallback UI
+    }
+
     // React 19 feature: reportError for better error tracking
     if ('reportError' in window && typeof window.reportError === 'function') {
       window.reportError({
