@@ -15,6 +15,7 @@ import {
   Cell,
   Legend,
 } from 'recharts';
+import type { PieLabelRenderProps } from 'recharts';
 
 const COLORS = [
   'hsl(160, 100%, 35%)', // Primary green
@@ -95,11 +96,12 @@ export function BreakdownChart({
               cx="50%"
               cy="50%"
               outerRadius={80}
-              label={({ name, payload }) => {
-                const pct = (payload as ChartData).percentage;
+              label={(props: PieLabelRenderProps) => {
+                const pct = (props.payload as ChartData).percentage;
+                const labelName = props.name ?? '';
                 return showPercentage && pct !== undefined
-                  ? `${name} (${pct.toFixed(0)}%)`
-                  : name;
+                  ? `${labelName} (${pct.toFixed(0)}%)`
+                  : labelName;
               }}
               labelLine={false}
             >
