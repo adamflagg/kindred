@@ -20,6 +20,7 @@ class ResolutionResult:
     method: str = "unknown"
     candidates: list[Person] | None = None
     metadata: dict[str, Any] | None = None
+    target_name: str = ""  # Original name being resolved (for debugging)
 
     def __post_init__(self) -> None:
         """Initialize defaults"""
