@@ -1,0 +1,11 @@
+=== OUTPUT FIELD RULES ===
+
+PARSE_NOTES RULE: Always provide a brief parse_notes for EVERY extracted request.
+- For simple name-only inputs: "Direct bunk request" or "Direct separation request"
+- For names with context: Include relevant context (nickname, session, rationale)
+- For multi-name extractions: Each name gets its own parse_notes
+
+REASONING RULE: Always explain WHY you categorized this request.
+- What keywords or patterns led to your interpretation
+- Why you chose this request_type
+- Any ambiguity or uncertainty in the input

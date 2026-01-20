@@ -101,6 +101,8 @@ Staff shorthand can be ambiguous. Use confidence scoring:
 - Abbreviated or unclear: 0.5-0.7
 - Very ambiguous: 0.3-0.5 (flag for review)
 
+{output_field_rules}
+
 === OUTPUT REQUIREMENTS ===
 
 For each valid request, provide:
@@ -110,6 +112,6 @@ For each valid request, provide:
 - temporal_info: null (rarely needed for internal notes)
 - keywords_found: Priority words like "must", "first choice"
 - source_type: "staff" (always for this field)
-- parse_notes: Expand abbreviations, note context
-- reasoning: How you interpreted the shorthand
+- parse_notes: Brief explanation (see rules above)
+- reasoning: How you interpreted the shorthand (see rules above)
 - list_position: Position in multi-request content (0-indexed)
