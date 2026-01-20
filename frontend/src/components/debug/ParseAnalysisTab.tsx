@@ -16,7 +16,7 @@ import {
   useParsePhase1Only,
   useClearParseAnalysis,
   useClearSingleParseAnalysis,
-  useParseResultsBatch,
+  useParseResultsBatchDual,
 } from '../../hooks/useParseAnalysis';
 import { queryKeys, syncDataOptions } from '../../utils/queryKeys';
 import {
@@ -123,8 +123,8 @@ export function ParseAnalysisTab() {
     [selectedCamperFields]
   );
 
-  // Fetch parse results for all visible fields of selected camper (batch call)
-  const { data: batchResults, isLoading: isLoadingDetail } = useParseResultsBatch(selectedFieldIds);
+  // Fetch parse results for all visible fields of selected camper (batch call with dual sources)
+  const { data: batchResults, isLoading: isLoadingDetail } = useParseResultsBatchDual(selectedFieldIds);
 
   // Map batch results to match the expected format (array aligned with selectedCamperFields)
   const parseResults = useMemo(() => {

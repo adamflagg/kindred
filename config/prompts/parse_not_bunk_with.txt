@@ -22,18 +22,10 @@ TASK: Extract ALL separation requests from this field. ALL requests are "not_bun
 This field ONLY contains separation requests:
 
 "not_bunk_with" - Camper should NOT share a cabin with specific person(s)
-   target_name = person's name or "SIBLING"
+   target_name = person's name (always extract the actual name)
 
 IMPORTANT: Do NOT extract bunk_with or age_preference from this field.
 Even if text mentions friendship ("still friends"), the intent is separation.
-
-=== SPECIAL PLACEHOLDERS ===
-
-Use "SIBLING" when the text references the REQUESTER'S OWN family:
-- Family members: twin, sister, brother, sibling
-- Family names: "other [requester's last name] kids", "[requester's last name] twins"
-
-Do NOT use SIBLING for other families mentioned - extract those as named individuals.
 
 === NAME PATTERN RULES ===
 
@@ -93,20 +85,15 @@ Example 7 - Multiple with uncertainty markers:
 Input: "Kai Williams (Ses 4), Daniel Garcia-Lopez (?) Ryan Murphy (Ses 2) Marco Silva (?)"
 Output: 4 not_bunk_with requests, confidence lower for (?) entries, session info in parse_notes
 
-Example 8 - Requester's own sibling reference:
-Input: "Not with twin" or "Separate from her brother"
-Output: 1 not_bunk_with with target_name "SIBLING"
-Note: Use SIBLING only when referring to the requester's own family member, not other families
-
-Example 9 - Flexibility note:
+Example 8 - Flexibility note:
 Input: "Isla Reyes-Kim, Leo Nakamura (ideal if all 3 are in separate cabins but ok if not)"
 Output: 2 not_bunk_with requests with "flexibility noted" in parse_notes
 
-Example 10 - Staff friendship note (still negative intent):
+Example 9 - Staff friendship note (still negative intent):
 Input: "Sofia Petrov (mom understands that they will be together)"
 Output: 1 not_bunk_with for "Sofia Petrov", parse_notes: "low priority - mom understands if bunked together"
 
-Example 11 - Historical session reference with multiple names:
+Example 10 - Historical session reference with multiple names:
 Input: "Ses 3 G4 '24 - Riley Brooks, Nora Kim, Ava Collins, Maya & Emma Chen"
 Output: 5 not_bunk_with requests for each named person (Riley Brooks, Nora Kim, Ava Collins, Maya Chen, Emma Chen)
 parse_notes: "From Session 3 G4 2024"
@@ -128,17 +115,12 @@ Example: "Previously wanted separate from Mia, now ok to bunk together"
 - Generic groups: "campers", "friends"
 - The requester themselves
 
-{output_field_rules}
-
 === OUTPUT REQUIREMENTS ===
 
 For each valid request, provide:
 - request_type: "not_bunk_with" (always for this field)
-- target_name: Person's name or "SIBLING"
+- target_name: Person's full name (always extract actual names, never placeholders)
 - confidence: 0.0-1.0 (lower for (?) entries, uncertain names)
-- temporal_info: null OR {{date_mentioned, is_superseded, supersedes_reason}}
 - keywords_found: Priority words if present
-- source_type: "staff" (always for this field)
-- parse_notes: Brief explanation (see rules above)
-- reasoning: Why you extracted this name (see rules above)
-- list_position: Position in multi-name fields (0-indexed)
+
+{output_field_rules}
