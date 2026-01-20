@@ -221,9 +221,7 @@ class DualSourceParseResult(BaseModel):
     has_debug: bool = Field(default=False, description="Whether debug parse result exists")
     has_production: bool = Field(default=False, description="Whether production bunk_requests exist")
     debug_result: ParseResultData | None = Field(default=None, description="Debug parse result if available")
-    production_result: ParseResultData | None = Field(
-        default=None, description="Production parse result if available"
-    )
+    production_result: ParseResultData | None = Field(default=None, description="Production parse result if available")
 
 
 # Grouped by Camper Schemas (Phase 3)
