@@ -1,7 +1,14 @@
 import type { ReactNode } from 'react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ErrorBoundary } from './ErrorBoundary';
+import { shouldAutoReload, autoReload } from '../utils/autoReload';
+
+// Mock the autoReload module - must be before imports that use it
+vi.mock('../utils/autoReload', () => ({
+  shouldAutoReload: vi.fn(() => false), // Default to false
+  autoReload: vi.fn(),
+}));
 
 /**
  * Tests for ErrorBoundary component.
@@ -175,6 +182,82 @@ describe('ErrorBoundary', () => {
 
       expect(screen.getByText('Custom error: Custom test error')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /custom reset/i })).toBeInTheDocument();
+    });
+  });
+
+  describe('auto-reload behavior', () => {
+    const mockShouldAutoReload = shouldAutoReload as Mock;
+    const mockAutoReload = autoReload as Mock;
+
+    beforeEach(() => {
+      mockShouldAutoReload.mockReset();
+      mockAutoReload.mockReset();
+      // Default to not auto-reloading
+      mockShouldAutoReload.mockReturnValue(false);
+    });
+
+    it('should auto-reload for chunk load errors when cooldown allows', async () => {
+      mockShouldAutoReload.mockReturnValue(true);
+
+      const error = new Error(
+        'Failed to fetch dynamically imported module: https://example.com/assets/chunk.js'
+      );
+
+      render(
+        <ErrorBoundary>
+          <ThrowError error={error} />
+        </ErrorBoundary>
+      );
+
+      // componentDidUpdate is called after render, need to wait
+      await waitFor(() => {
+        expect(mockShouldAutoReload).toHaveBeenCalled();
+      });
+      expect(mockAutoReload).toHaveBeenCalledTimes(1);
+    });
+
+    it('should show reload UI for chunk errors when within cooldown', async () => {
+      mockShouldAutoReload.mockReturnValue(false);
+
+      const error = new Error(
+        'Failed to fetch dynamically imported module: https://example.com/assets/chunk.js'
+      );
+
+      render(
+        <ErrorBoundary>
+          <ThrowError error={error} />
+        </ErrorBoundary>
+      );
+
+      // componentDidUpdate is called after render, need to wait
+      await waitFor(() => {
+        expect(mockShouldAutoReload).toHaveBeenCalled();
+      });
+      expect(mockAutoReload).not.toHaveBeenCalled();
+      // Fallback UI should be shown
+      expect(screen.getByText('App Update Available')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /reload page/i })).toBeInTheDocument();
+    });
+
+    it('should NOT auto-reload for regular errors', async () => {
+      mockShouldAutoReload.mockReturnValue(true);
+
+      const error = new Error('Regular application error');
+
+      render(
+        <ErrorBoundary>
+          <ThrowError error={error} />
+        </ErrorBoundary>
+      );
+
+      // Wait for any potential componentDidUpdate calls
+      await waitFor(() => {
+        expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+      });
+
+      // shouldAutoReload should not be called for non-chunk errors
+      expect(mockShouldAutoReload).not.toHaveBeenCalled();
+      expect(mockAutoReload).not.toHaveBeenCalled();
     });
   });
 });
