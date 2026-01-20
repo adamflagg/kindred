@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
 import { isChunkLoadError } from './utils/chunkLoadError'
+import { shouldAutoReload, autoReload } from './utils/autoReload'
 
 /**
  * Global handler for dynamic import failures that bypass React error boundaries.
@@ -14,7 +15,9 @@ import { isChunkLoadError } from './utils/chunkLoadError'
  * 4. Server returns HTML (SPA fallback) instead of JS
  * 5. Browser gets MIME type error or fetch failure
  *
- * This handler detects these failures and prompts the user to reload.
+ * This handler detects these failures and auto-reloads to get the new version.
+ * Loop prevention: If a reload already happened within the last 10 seconds,
+ * the error is silently ignored (ErrorBoundary will show fallback UI).
  */
 function handleChunkLoadError(event: PromiseRejectionEvent | ErrorEvent) {
   const error = 'reason' in event ? event.reason : event.error;
@@ -22,15 +25,11 @@ function handleChunkLoadError(event: PromiseRejectionEvent | ErrorEvent) {
   if (isChunkLoadError(error)) {
     event.preventDefault();
 
-    // Show a confirmation dialog to avoid surprising the user
-    const shouldReload = window.confirm(
-      'A new version of the app is available.\n\n' +
-      'Would you like to reload the page to get the latest updates?'
-    );
-
-    if (shouldReload) {
-      window.location.reload();
+    // Auto-reload if not within cooldown period (prevents infinite loops)
+    if (shouldAutoReload()) {
+      autoReload();
     }
+    // If within cooldown, silently ignore - ErrorBoundary will show fallback UI
   }
 }
 
