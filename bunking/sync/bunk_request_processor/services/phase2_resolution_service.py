@@ -398,6 +398,15 @@ class Phase2ResolutionService:
                     # Handle both enum and string age_preference values
                     age_pref = parsed_request.age_preference
                     if age_pref is None:
+                        # Still need to append a result to maintain list alignment
+                        case.resolution_results.append(
+                            ResolutionResult(
+                                person=None,
+                                confidence=0.0,
+                                method="age_preference",
+                                metadata={"age_preference": None, "error": "No age preference specified"},
+                            )
+                        )
                         continue
                     age_pref_value = age_pref.value if hasattr(age_pref, "value") else age_pref
                     case.resolution_results.append(
