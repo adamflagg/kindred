@@ -192,6 +192,40 @@ class PromptUpdateResponse(BaseModel):
     success: bool = Field(description="Whether update succeeded")
 
 
+# =============================================================================
+# Dual-Source Parse Results Schemas (Debug/Prod Toggle)
+# =============================================================================
+
+
+class ParseResultData(BaseModel):
+    """Inner parse result data for a single source (debug or production)."""
+
+    id: str | None = Field(default=None, description="Record ID (debug only)")
+    parsed_intents: list[ParsedIntent] = Field(default_factory=list, description="Parsed intents")
+    is_valid: bool = Field(default=True, description="Whether parsing succeeded")
+    error_message: str | None = Field(default=None, description="Error message if parsing failed")
+    token_count: int | None = Field(default=None, description="Number of tokens used (debug only)")
+    processing_time_ms: int | None = Field(default=None, description="Processing time in ms (debug only)")
+    prompt_version: str | None = Field(default=None, description="Prompt version (debug only)")
+    created: datetime | None = Field(default=None, description="When result was created (debug only)")
+
+
+class DualSourceParseResult(BaseModel):
+    """Parse result containing BOTH debug and production data for toggle UI."""
+
+    original_request_id: str = Field(description="Original bunk request record ID")
+    requester_name: str | None = Field(default=None, description="Name of the camper")
+    requester_cm_id: int | None = Field(default=None, description="CampMinder ID of the requester")
+    source_field: str | None = Field(default=None, description="Source field type")
+    original_text: str | None = Field(default=None, description="Original request text")
+    has_debug: bool = Field(default=False, description="Whether debug parse result exists")
+    has_production: bool = Field(default=False, description="Whether production bunk_requests exist")
+    debug_result: ParseResultData | None = Field(default=None, description="Debug parse result if available")
+    production_result: ParseResultData | None = Field(
+        default=None, description="Production parse result if available"
+    )
+
+
 # Grouped by Camper Schemas (Phase 3)
 
 
