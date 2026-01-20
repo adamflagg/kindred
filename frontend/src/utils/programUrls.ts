@@ -20,7 +20,7 @@ export function getProgramUrl(path: string, program: Program): string {
  * Check if a path is a program-specific route
  */
 export function isProgramRoute(path: string): boolean {
-  return path.startsWith('/summer/') || path.startsWith('/family/');
+  return path.startsWith('/summer/') || path.startsWith('/family/') || path.startsWith('/metrics');
 }
 
 /**
@@ -29,6 +29,7 @@ export function isProgramRoute(path: string): boolean {
 export function getProgramFromPath(path: string): Program | null {
   if (path.startsWith('/summer/')) return 'summer';
   if (path.startsWith('/family/')) return 'family';
+  if (path.startsWith('/metrics')) return 'metrics';
   return null;
 }
 
@@ -38,6 +39,8 @@ export function getProgramFromPath(path: string): Program | null {
 export function removeProgramPrefix(path: string): string {
   if (path.startsWith('/summer/')) return path.slice(7);
   if (path.startsWith('/family/')) return path.slice(7);
+  if (path.startsWith('/metrics/')) return path.slice(8);
+  if (path === '/metrics') return '/';
   return path;
 }
 
@@ -57,6 +60,13 @@ export function getFamilyUrl(path: string): string {
   // Remove leading slash if present
   const cleanPath = path.startsWith('/') ? path.slice(1) : path;
   return `/family/${cleanPath}`;
+}
+
+/**
+ * Generate a metrics URL
+ */
+export function getMetricsUrl(): string {
+  return '/metrics';
 }
 
 /**

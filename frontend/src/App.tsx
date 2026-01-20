@@ -30,6 +30,7 @@ const AdminConfig = lazy(() => import('./components/AdminConfig').then(m => ({ d
 const FamilyCampDashboard = lazy(() => import('./pages/FamilyCampDashboard'));
 const ScenarioComparisonPage = lazy(() => import('./pages/ScenarioComparisonPage'));
 const DebugPage = lazy(() => import('./pages/summer/DebugPage'));
+const RegistrationMetricsPage = lazy(() => import('./pages/metrics/RegistrationMetricsPage').then(m => ({ default: m.RegistrationMetricsPage })));
 
 // Loading skeleton component for route transitions
 function PageSkeleton() {
@@ -72,6 +73,9 @@ function RootRedirect() {
   }
   if (currentProgram === 'family') {
     return <Navigate to="/family" replace />;
+  }
+  if (currentProgram === 'metrics') {
+    return <Navigate to="/metrics" replace />;
   }
 
   // First-time users see the program picker
@@ -143,6 +147,15 @@ function App() {
                                 <DebugPage />
                               </Suspense>
                             </AdminRoute>
+                          } />
+                        </Route>
+
+                        {/* Metrics routes - top-level program */}
+                        <Route path="/metrics" element={<AppLayout />}>
+                          <Route index element={
+                            <Suspense fallback={<PageSkeleton />}>
+                              <RegistrationMetricsPage />
+                            </Suspense>
                           } />
                         </Route>
 
