@@ -157,6 +157,8 @@ function App() {
                               <RegistrationMetricsPage />
                             </Suspense>
                           } />
+                          <Route path="user" element={<User />} />
+                          <Route path="users" element={<Users />} />
                         </Route>
 
                         {/* Family Camp routes - with app layout */}
