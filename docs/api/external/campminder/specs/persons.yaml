@@ -1,71 +1,83 @@
 openapi: 3.0.0
 info:
   title: Persons API
-  description: "This API will give access to persons data"
-  version: "2023-12-01"
+  description: This API will give access to persons data
+  version: '2023-12-01'
   contact:
-    url: https://campminder.com
+    url: 'https://campminder.com'
 paths:
-  /{personid}:
+  '/{personid}':
     get:
-      summary: "Get Person by ID"
-      description: "Returns the person."
+      summary: Get Person by ID
+      description: Returns the person.
       operationId: Get2
       responses:
-        "200":
-          description: "A successful response."
+        '200':
+          description: A successful response.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PersonResponse"
-        "400":
-          description: This request is invalid. It is either missing required parameters or one of the supplied parameters is invalid.
+                $ref: '#/components/schemas/PersonResponse'
+        '400':
+          description: >-
+            This request is invalid. It is either missing required parameters or
+            one of the supplied parameters is invalid.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 400
-                message: "'pagenumber' is invalid"
-        "401":
-          description: This request lacks valid credentials, please try again making sure to supply a valid token.
+                message: '''pagenumber'' is invalid'
+        '401':
+          description: >-
+            This request lacks valid credentials, please try again making sure
+            to supply a valid token.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 401
                 message: Unauthorized
-        "403":
-          description: The supplied credentials do not have permission to make this request.
+        '403':
+          description: >-
+            The supplied credentials do not have permission to make this
+            request.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 403
                 message: Forbidden
-        "500":
-          description: Our server could not process this request. If the issue persists, contact CampMinder support.
+        '500':
+          description: >-
+            Our server could not process this request. If the issue persists,
+            contact CampMinder support.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 500
                 message: Internal Server Error
       parameters:
         - name: Authorization
           in: header
-          description: The JWT token should be in the format `Bearer {token}`.
+          description: 'The JWT token should be in the format `Bearer {token}`.'
           required: true
           schema:
             type: string
-            example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+            example: >-
+              Bearer
+              eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
         - name: X-Request-ID
           in: header
           required: false
-          description: "If supplied, we can use this to identify exact requests during troubleshooting. Must be globally unique to be useful."
+          description: >-
+            If supplied, we can use this to identify exact requests during
+            troubleshooting. Must be globally unique to be useful.
           schema:
             type: string
             example: DEEE3D21-F0FA-459E-87BB-A565DBCC0784
@@ -86,53 +98,60 @@ paths:
             minimum: 1
             maximum: 1000000000
             format: integer
-            example: 444 
+            example: 444
       tags:
         - Persons
     patch:
-      summary: "Patch a Person"
-      description: "Patches provided fields for a person with the given person ID."
+      summary: Patch a Person
+      description: Patches provided fields for a person with the given person ID.
       operationId: PersonPatch
       responses:
-        "200":
-          description: "A successful response."
+        '200':
+          description: A successful response.
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: >-
+            This request is invalid. It is either missing required parameters or
+            one of the supplied parameters is invalid.
           content:
             application/json:
               schema:
-                {}
-        "400":
-          description: This request is invalid. It is either missing required parameters or one of the supplied parameters is invalid.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 400
-                message: "'pagenumber' is invalid"
-        "401":
-          description: This request lacks valid credentials, please try again making sure to supply a valid token.
+                message: '''pagenumber'' is invalid'
+        '401':
+          description: >-
+            This request lacks valid credentials, please try again making sure
+            to supply a valid token.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 401
                 message: Unauthorized
-        "403":
-          description: The supplied credentials do not have permission to make this request.
+        '403':
+          description: >-
+            The supplied credentials do not have permission to make this
+            request.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 403
                 message: Forbidden
-        "500":
-          description: Our server could not process this request. If the issue persists, contact CampMinder support.
+        '500':
+          description: >-
+            Our server could not process this request. If the issue persists,
+            contact CampMinder support.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 500
                 message: Internal Server Error
@@ -140,42 +159,46 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/PersonPatchRequest"
+              $ref: '#/components/schemas/PersonPatchRequest'
         required: true
       parameters:
         - name: Authorization
           in: header
-          description: The JWT token should be in the format `Bearer {token}`.
+          description: 'The JWT token should be in the format `Bearer {token}`.'
           required: true
           schema:
             type: string
-            example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+            example: >-
+              Bearer
+              eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
         - name: X-Request-ID
           in: header
           required: false
-          description: "If supplied, we can use this to identify exact requests during troubleshooting. Must be globally unique to be useful."
+          description: >-
+            If supplied, we can use this to identify exact requests during
+            troubleshooting. Must be globally unique to be useful.
           schema:
             type: string
             example: DEEE3D21-F0FA-459E-87BB-A565DBCC0784
         - name: personid
           in: path
           required: true
-          description: "The CampMinder person id to add an external ID to."
+          description: The CampMinder person id to add an external ID to.
           schema:
             type: integer
             minimum: 1
             maximum: 1000000000
-            format: integer 
+            format: integer
       tags:
         - Persons
   /:
     get:
-      summary: "List Persons"
-      description: "Returns a list of persons that match the supplied criteria."
+      summary: List Persons
+      description: Returns a list of persons that match the supplied criteria.
       operationId: List2
       responses:
-        "200":
-          description: "A successful response."
+        '200':
+          description: A successful response.
           content:
             application/json:
               schema:
@@ -191,62 +214,76 @@ paths:
                     type: array
                     description: The array of records returned.
                     items:
-                      $ref: "#/components/schemas/PersonResponse"
-        "400":
-          description: This request is invalid. It is either missing required parameters or one of the supplied parameters is invalid.
+                      $ref: '#/components/schemas/PersonResponse'
+        '400':
+          description: >-
+            This request is invalid. It is either missing required parameters or
+            one of the supplied parameters is invalid.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 400
-                message: "'pagenumber' is invalid"
-        "401":
-          description: This request lacks valid credentials, please try again making sure to supply a valid token.
+                message: '''pagenumber'' is invalid'
+        '401':
+          description: >-
+            This request lacks valid credentials, please try again making sure
+            to supply a valid token.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 401
                 message: Unauthorized
-        "403":
-          description: The supplied credentials do not have permission to make this request.
+        '403':
+          description: >-
+            The supplied credentials do not have permission to make this
+            request.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 403
                 message: Forbidden
-        "500":
-          description: Our server could not process this request. If the issue persists, contact CampMinder support.
+        '500':
+          description: >-
+            Our server could not process this request. If the issue persists,
+            contact CampMinder support.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 500
                 message: Internal Server Error
       parameters:
         - name: Authorization
           in: header
-          description: The JWT token should be in the format `Bearer {token}`.
+          description: 'The JWT token should be in the format `Bearer {token}`.'
           required: true
           schema:
             type: string
-            example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+            example: >-
+              Bearer
+              eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
         - name: X-Request-ID
           in: header
           required: false
-          description: "If supplied, we can use this to identify exact requests during troubleshooting. Must be globally unique to be useful."
+          description: >-
+            If supplied, we can use this to identify exact requests during
+            troubleshooting. Must be globally unique to be useful.
           schema:
             type: string
             example: DEEE3D21-F0FA-459E-87BB-A565DBCC0784
         - name: clientid
           in: query
           required: true
-          description: "The CampMinder id of the camp. This value can be retrieved from the response of a successful call to Auth/Login."
+          description: >-
+            The CampMinder id of the camp. This value can be retrieved from the
+            response of a successful call to Auth/Login.
           schema:
             type: integer
             minimum: 1
@@ -256,7 +293,7 @@ paths:
         - name: pagenumber
           in: query
           required: true
-          description: "Set a minimum value of 1."
+          description: Set a minimum value of 1.
           schema:
             type: integer
             minimum: 1
@@ -266,7 +303,9 @@ paths:
         - name: pagesize
           in: query
           required: true
-          description: "The maximum number of records to retrieve per page. The valid range is 1 to 1000."
+          description: >-
+            The maximum number of records to retrieve per page. The valid range
+            is 1 to 1000.
           schema:
             type: integer
             minimum: 1
@@ -276,7 +315,7 @@ paths:
         - name: genderid
           in: query
           required: false
-          description: "The gender id of the person. Female = 0, Male = 1, Undefined = 3"
+          description: 'The gender id of the person. Female = 0, Male = 1, Undefined = 3'
           schema:
             type: integer
             minimum: 0
@@ -286,20 +325,24 @@ paths:
         - name: id
           in: query
           required: false
-          description: "A single or multiple personids. For multiple ids, each personid needs to be added as a parameter."
+          description: >-
+            A single or multiple personids. For multiple ids, each personid
+            needs to be added as a parameter.
           explode: true
           schema:
-              type: array
-              items:
-                type: integer
-                format: int64
-              example:
-                - 13456
-                - 13457
+            type: array
+            items:
+              type: integer
+              format: int64
+            example:
+              - 13456
+              - 13457
         - name: includecontactdetails
           in: query
           required: false
-          description: "Valid values: true or false. Used to indicate if the contact details of the input person should be included in the response."
+          description: >-
+            Valid values: true or false. Used to indicate if the contact details
+            of the input person should be included in the response.
           schema:
             type: boolean
             format: boolean
@@ -307,7 +350,9 @@ paths:
         - name: includerelatives
           in: query
           required: false
-          description: "Valid values: true or false. Used to indicate if relatives(parents, siblings) should be included in the response."
+          description: >-
+            Valid values: true or false. Used to indicate if relatives(parents,
+            siblings) should be included in the response.
           schema:
             type: boolean
             format: boolean
@@ -315,7 +360,9 @@ paths:
         - name: includefamilypersons
           in: query
           required: false
-          description: "Valid values: true or false. Used to indicate if family persons should be included in the response."
+          description: >-
+            Valid values: true or false. Used to indicate if family persons
+            should be included in the response.
           schema:
             type: boolean
             format: boolean
@@ -323,7 +370,10 @@ paths:
         - name: includecamperdetails
           in: query
           required: false
-          description: "Valid values: true or false. Used to indicate if camper details such as the camper's partition, grade and years at camp should be included in the response."
+          description: >-
+            Valid values: true or false. Used to indicate if camper details such
+            as the camper's partition, grade and years at camp should be
+            included in the response.
           schema:
             type: boolean
             format: boolean
@@ -331,18 +381,20 @@ paths:
         - name: email
           in: query
           required: false
-          description: "A single or multiple email addresses to filter on."
+          description: A single or multiple email addresses to filter on.
           explode: true
           schema:
-              type: array
-              items:
-                type: string
-                format: string
-                example: "steve.doe@mailinator.com"
+            type: array
+            items:
+              type: string
+              format: string
+              example: steve.doe@mailinator.com
         - name: seasonid
           in: query
           required: false
-          description: "A optional SeasonId for gathering data.  If not provided the default current season will be used."
+          description: >-
+            A optional SeasonId for gathering data.  If not provided the default
+            current season will be used.
           schema:
             type: integer
             minimum: 1920
@@ -352,17 +404,22 @@ paths:
         - name: lastupdated
           in: query
           required: false
-          description: "A datetime, formatted as an RFC3339 string, representing the cutoff before which you are not interested in the results."
+          description: >-
+            A datetime, formatted as an RFC3339 string, representing the cutoff
+            before which you are not interested in the results.
           schema:
             type: string
             minimum: 0
             maximum: 0
             format: string
-            example: 2023-02-20T23:20:50.52Z
+            example: '2023-02-20T23:20:50.52Z'
         - name: includedeleted
           in: query
           required: false
-          description: "Valid values: true or false. Whether or not we include results that have been deleted. Defaults to false, where deleted records are not returned."
+          description: >-
+            Valid values: true or false. Whether or not we include results that
+            have been deleted. Defaults to false, where deleted records are not
+            returned.
           schema:
             type: boolean
             format: boolean
@@ -370,7 +427,10 @@ paths:
         - name: includehouseholddetails
           in: query
           required: false
-          description: "Valid values: true or false. Used to indicate if household details such as the mailing titles and billing address should be included in the response."
+          description: >-
+            Valid values: true or false. Used to indicate if household details
+            such as the mailing titles and billing address should be included in
+            the response.
           schema:
             type: boolean
             format: boolean
@@ -378,7 +438,9 @@ paths:
         - name: includetags
           in: query
           required: false
-          description: "Valid values: true or false. Used to indicate if tags should be included in the response."
+          description: >-
+            Valid values: true or false. Used to indicate if tags should be
+            included in the response.
           schema:
             type: boolean
             format: boolean
@@ -386,26 +448,28 @@ paths:
         - name: tags
           in: query
           required: false
-          description: "Single or multiple tag names to filter on.  If it is a seasonal tag, the record is returned if the tag is assigned for the input season"
+          description: >-
+            Single or multiple tag names to filter on.  If it is a seasonal tag,
+            the record is returned if the tag is assigned for the input season
           explode: true
           schema:
-              type: array
-              items:
-                type: string
-                format: string
-              example:
-                - "Alumni"
-                - "Volunteer" 
+            type: array
+            items:
+              type: string
+              format: string
+            example:
+              - Alumni
+              - Volunteer
       tags:
         - Persons
   /tags:
     get:
-      summary: "List Person Tag Definitions"
-      description: "Returns the person tag definitions."
+      summary: List Person Tag Definitions
+      description: Returns the person tag definitions.
       operationId: GetTags
       responses:
-        "200":
-          description: "A successful response."
+        '200':
+          description: A successful response.
           content:
             application/json:
               schema:
@@ -421,55 +485,67 @@ paths:
                     type: array
                     description: The array of records returned.
                     items:
-                      $ref: "#/components/schemas/TagDef"
-        "400":
-          description: This request is invalid. It is either missing required parameters or one of the supplied parameters is invalid.
+                      $ref: '#/components/schemas/TagDef'
+        '400':
+          description: >-
+            This request is invalid. It is either missing required parameters or
+            one of the supplied parameters is invalid.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 400
-                message: "'pagenumber' is invalid"
-        "401":
-          description: This request lacks valid credentials, please try again making sure to supply a valid token.
+                message: '''pagenumber'' is invalid'
+        '401':
+          description: >-
+            This request lacks valid credentials, please try again making sure
+            to supply a valid token.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 401
                 message: Unauthorized
-        "403":
-          description: The supplied credentials do not have permission to make this request.
+        '403':
+          description: >-
+            The supplied credentials do not have permission to make this
+            request.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 403
                 message: Forbidden
-        "500":
-          description: Our server could not process this request. If the issue persists, contact CampMinder support.
+        '500':
+          description: >-
+            Our server could not process this request. If the issue persists,
+            contact CampMinder support.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 500
                 message: Internal Server Error
       parameters:
         - name: Authorization
           in: header
-          description: The JWT token should be in the format `Bearer {token}`.
+          description: 'The JWT token should be in the format `Bearer {token}`.'
           required: true
           schema:
             type: string
-            example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+            example: >-
+              Bearer
+              eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
         - name: X-Request-ID
           in: header
           required: false
-          description: "If supplied, we can use this to identify exact requests during troubleshooting. Must be globally unique to be useful."
+          description: >-
+            If supplied, we can use this to identify exact requests during
+            troubleshooting. Must be globally unique to be useful.
           schema:
             type: string
             example: DEEE3D21-F0FA-459E-87BB-A565DBCC0784
@@ -481,17 +557,22 @@ paths:
             minimum: 1
             maximum: 1000000000
             format: integer
-            example: 754 
+            example: 754
       tags:
         - Persons
   /custom-fields:
     get:
-      summary: "List Custom Field Definitions"
-      description: "<p>Returns the custom field definitions.</p><p>The DataType can be one of these values:<ul><li>None</li><li>String</li><li>Integer</li><li>Decimal</li><li>Date</li><li>Time</li><li>DateTime</li><li>Boolean</li></ul><p/><p>The Partition can be one or more of these values:<ul><li>None</li><li>Family</li><li>Alumnus</li><li>Staff</li><li>Camper</li><li>Parent</li><li>Adult</li><ul></p>"
+      summary: List Custom Field Definitions
+      description: >-
+        <p>Returns the custom field definitions.</p><p>The DataType can be one
+        of these
+        values:<ul><li>None</li><li>String</li><li>Integer</li><li>Decimal</li><li>Date</li><li>Time</li><li>DateTime</li><li>Boolean</li></ul><p/><p>The
+        Partition can be one or more of these
+        values:<ul><li>None</li><li>Family</li><li>Alumnus</li><li>Staff</li><li>Camper</li><li>Parent</li><li>Adult</li><ul></p>
       operationId: ListCustomFieldDefinitions
       responses:
-        "200":
-          description: "A successful response."
+        '200':
+          description: A successful response.
           content:
             application/json:
               schema:
@@ -507,80 +588,94 @@ paths:
                     type: array
                     description: The array of records returned.
                     items:
-                      $ref: "#/components/schemas/CustomFieldDefinition"
-        "422":
-          description: "Invalid input"
+                      $ref: '#/components/schemas/CustomFieldDefinition'
+        '400':
+          description: >-
+            This request is invalid. It is either missing required parameters or
+            one of the supplied parameters is invalid.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  TotalCount:
-                    type: integer
-                    description: The total number of records returned in the call.
-                  Next:
-                    type: string
-                    description: The link to the next page of records.
-                  Results:
-                    type: array
-                    description: The array of records returned.
-                    items:
-                      $ref: "#/components/schemas/CustomFieldDefinition"
-        "400":
-          description: This request is invalid. It is either missing required parameters or one of the supplied parameters is invalid.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 400
-                message: "'pagenumber' is invalid"
-        "401":
-          description: This request lacks valid credentials, please try again making sure to supply a valid token.
+                message: '''pagenumber'' is invalid'
+        '401':
+          description: >-
+            This request lacks valid credentials, please try again making sure
+            to supply a valid token.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 401
                 message: Unauthorized
-        "403":
-          description: The supplied credentials do not have permission to make this request.
+        '403':
+          description: >-
+            The supplied credentials do not have permission to make this
+            request.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 403
                 message: Forbidden
-        "500":
-          description: Our server could not process this request. If the issue persists, contact CampMinder support.
+        '422':
+          description: Invalid input
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                type: object
+                properties:
+                  TotalCount:
+                    type: integer
+                    description: The total number of records returned in the call.
+                  Next:
+                    type: string
+                    description: The link to the next page of records.
+                  Results:
+                    type: array
+                    description: The array of records returned.
+                    items:
+                      $ref: '#/components/schemas/CustomFieldDefinition'
+        '500':
+          description: >-
+            Our server could not process this request. If the issue persists,
+            contact CampMinder support.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
               example:
                 code: 500
                 message: Internal Server Error
       parameters:
         - name: Authorization
           in: header
-          description: The JWT token should be in the format `Bearer {token}`.
+          description: 'The JWT token should be in the format `Bearer {token}`.'
           required: true
           schema:
             type: string
-            example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+            example: >-
+              Bearer
+              eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
         - name: X-Request-ID
           in: header
           required: false
-          description: "If supplied, we can use this to identify exact requests during troubleshooting. Must be globally unique to be useful."
+          description: >-
+            If supplied, we can use this to identify exact requests during
+            troubleshooting. Must be globally unique to be useful.
           schema:
             type: string
             example: DEEE3D21-F0FA-459E-87BB-A565DBCC0784
         - name: clientid
           in: query
           required: false
-          description: "CampMinder's identifier for the camp the person record is a member of."
+          description: >-
+            CampMinder's identifier for the camp the person record is a member
+            of.
           schema:
             type: integer
             minimum: 1
@@ -590,7 +685,7 @@ paths:
         - name: pagenumber
           in: query
           required: true
-          description: "The page number to retrieve. Set a minimum value of 1."
+          description: The page number to retrieve. Set a minimum value of 1.
           schema:
             type: integer
             minimum: 1
@@ -600,94 +695,115 @@ paths:
         - name: pagesize
           in: query
           required: true
-          description: "The maximum number of records to retrieve per page. The valid range is 1 to 1000."
+          description: >-
+            The maximum number of records to retrieve per page. The valid range
+            is 1 to 1000.
           schema:
             type: integer
             minimum: 1
             maximum: 1000
             format: integer
-            example: 50 
+            example: 50
       tags:
         - Persons
-  /custom-fields/{id}:
+  '/custom-fields/{id}':
     get:
-      summary: "Get Custom Field Definition by ID"
-      description: "<p>Returns the custom field definition.</p><p>The DataType can be one of these values:<ul><li>None</li><li>String</li><li>Integer</li><li>Decimal</li><li>Date</li><li>Time</li><li>DateTime</li><li>Boolean</li></ul><p/><p>The Partition can be one or more of these values:<ul><li>None</li><li>Family</li><li>Alumnus</li><li>Staff</li><li>Camper</li><li>Parent</li><li>Adult</li><ul></p>"
+      summary: Get Custom Field Definition by ID
+      description: >-
+        <p>Returns the custom field definition.</p><p>The DataType can be one of
+        these
+        values:<ul><li>None</li><li>String</li><li>Integer</li><li>Decimal</li><li>Date</li><li>Time</li><li>DateTime</li><li>Boolean</li></ul><p/><p>The
+        Partition can be one or more of these
+        values:<ul><li>None</li><li>Family</li><li>Alumnus</li><li>Staff</li><li>Camper</li><li>Parent</li><li>Adult</li><ul></p>
       operationId: GetCustomFieldDefinition
       responses:
-        "200":
-          description: "A successful response."
+        '200':
+          description: A successful response.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CustomFieldDefinition"
-        "404":
-          description: "Not found"
+                $ref: '#/components/schemas/CustomFieldDefinition'
+        '400':
+          description: >-
+            This request is invalid. It is either missing required parameters or
+            one of the supplied parameters is invalid.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
-        "422":
-          description: "Invalid input"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response"
-        "400":
-          description: This request is invalid. It is either missing required parameters or one of the supplied parameters is invalid.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 400
-                message: "'pagenumber' is invalid"
-        "401":
-          description: This request lacks valid credentials, please try again making sure to supply a valid token.
+                message: '''pagenumber'' is invalid'
+        '401':
+          description: >-
+            This request lacks valid credentials, please try again making sure
+            to supply a valid token.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 401
                 message: Unauthorized
-        "403":
-          description: The supplied credentials do not have permission to make this request.
+        '403':
+          description: >-
+            The supplied credentials do not have permission to make this
+            request.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 403
                 message: Forbidden
-        "500":
-          description: Our server could not process this request. If the issue persists, contact CampMinder support.
+        '404':
+          description: Not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
+        '422':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+        '500':
+          description: >-
+            Our server could not process this request. If the issue persists,
+            contact CampMinder support.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
               example:
                 code: 500
                 message: Internal Server Error
       parameters:
         - name: Authorization
           in: header
-          description: The JWT token should be in the format `Bearer {token}`.
+          description: 'The JWT token should be in the format `Bearer {token}`.'
           required: true
           schema:
             type: string
-            example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+            example: >-
+              Bearer
+              eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
         - name: X-Request-ID
           in: header
           required: false
-          description: "If supplied, we can use this to identify exact requests during troubleshooting. Must be globally unique to be useful."
+          description: >-
+            If supplied, we can use this to identify exact requests during
+            troubleshooting. Must be globally unique to be useful.
           schema:
             type: string
             example: DEEE3D21-F0FA-459E-87BB-A565DBCC0784
         - name: clientid
           in: query
           required: false
-          description: "CampMinder's identifier for the camp the person record is a member of."
+          description: >-
+            CampMinder's identifier for the camp the person record is a member
+            of.
           schema:
             type: integer
             minimum: 1
@@ -697,23 +813,23 @@ paths:
         - name: id
           in: path
           required: true
-          description: "The ID of the custom field definition to retrieve."
+          description: The ID of the custom field definition to retrieve.
           schema:
             type: integer
             minimum: 1
             maximum: 1000000000
             format: integer
-            example: 123 
+            example: 123
       tags:
         - Persons
-  /{id}/custom-fields:
+  '/{id}/custom-fields':
     get:
-      summary: "List Custom Field Values by Person"
-      description: "Returns the custom field values for a person."
+      summary: List Custom Field Values by Person
+      description: Returns the custom field values for a person.
       operationId: ListCustomFieldValues
       responses:
-        "200":
-          description: "A successful response."
+        '200':
+          description: A successful response.
           content:
             application/json:
               schema:
@@ -729,98 +845,112 @@ paths:
                     type: array
                     description: The array of records returned.
                     items:
-                      $ref: "#/components/schemas/CustomFieldValue"
-        "404":
-          description: "Not found"
+                      $ref: '#/components/schemas/CustomFieldValue'
+        '400':
+          description: >-
+            This request is invalid. It is either missing required parameters or
+            one of the supplied parameters is invalid.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  TotalCount:
-                    type: integer
-                    description: The total number of records returned in the call.
-                  Next:
-                    type: string
-                    description: The link to the next page of records.
-                  Results:
-                    type: array
-                    description: The array of records returned.
-                    items:
-                      $ref: "#/components/schemas/CustomFieldValue"
-        "422":
-          description: "Invalid input"
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  TotalCount:
-                    type: integer
-                    description: The total number of records returned in the call.
-                  Next:
-                    type: string
-                    description: The link to the next page of records.
-                  Results:
-                    type: array
-                    description: The array of records returned.
-                    items:
-                      $ref: "#/components/schemas/CustomFieldValue"
-        "400":
-          description: This request is invalid. It is either missing required parameters or one of the supplied parameters is invalid.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 400
-                message: "'pagenumber' is invalid"
-        "401":
-          description: This request lacks valid credentials, please try again making sure to supply a valid token.
+                message: '''pagenumber'' is invalid'
+        '401':
+          description: >-
+            This request lacks valid credentials, please try again making sure
+            to supply a valid token.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 401
                 message: Unauthorized
-        "403":
-          description: The supplied credentials do not have permission to make this request.
+        '403':
+          description: >-
+            The supplied credentials do not have permission to make this
+            request.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 403
                 message: Forbidden
-        "500":
-          description: Our server could not process this request. If the issue persists, contact CampMinder support.
+        '404':
+          description: Not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                type: object
+                properties:
+                  TotalCount:
+                    type: integer
+                    description: The total number of records returned in the call.
+                  Next:
+                    type: string
+                    description: The link to the next page of records.
+                  Results:
+                    type: array
+                    description: The array of records returned.
+                    items:
+                      $ref: '#/components/schemas/CustomFieldValue'
+        '422':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  TotalCount:
+                    type: integer
+                    description: The total number of records returned in the call.
+                  Next:
+                    type: string
+                    description: The link to the next page of records.
+                  Results:
+                    type: array
+                    description: The array of records returned.
+                    items:
+                      $ref: '#/components/schemas/CustomFieldValue'
+        '500':
+          description: >-
+            Our server could not process this request. If the issue persists,
+            contact CampMinder support.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
               example:
                 code: 500
                 message: Internal Server Error
       parameters:
         - name: Authorization
           in: header
-          description: The JWT token should be in the format `Bearer {token}`.
+          description: 'The JWT token should be in the format `Bearer {token}`.'
           required: true
           schema:
             type: string
-            example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+            example: >-
+              Bearer
+              eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
         - name: X-Request-ID
           in: header
           required: false
-          description: "If supplied, we can use this to identify exact requests during troubleshooting. Must be globally unique to be useful."
+          description: >-
+            If supplied, we can use this to identify exact requests during
+            troubleshooting. Must be globally unique to be useful.
           schema:
             type: string
             example: DEEE3D21-F0FA-459E-87BB-A565DBCC0784
         - name: clientid
           in: query
           required: false
-          description: "CampMinder's identifier for the camp the person record is a member of."
+          description: >-
+            CampMinder's identifier for the camp the person record is a member
+            of.
           schema:
             type: integer
             minimum: 1
@@ -830,7 +960,7 @@ paths:
         - name: pagenumber
           in: query
           required: true
-          description: "The page number to retrieve. Set a minimum value of 1."
+          description: The page number to retrieve. Set a minimum value of 1.
           schema:
             type: integer
             minimum: 1
@@ -840,7 +970,9 @@ paths:
         - name: pagesize
           in: query
           required: true
-          description: "The maximum number of records to retrieve per page. The valid range is 1 to 1000."
+          description: >-
+            The maximum number of records to retrieve per page. The valid range
+            is 1 to 1000.
           schema:
             type: integer
             minimum: 1
@@ -850,7 +982,7 @@ paths:
         - name: id
           in: path
           required: true
-          description: "The ID of the person to retrieve custom field values for."
+          description: The ID of the person to retrieve custom field values for.
           schema:
             type: integer
             minimum: 1
@@ -860,7 +992,9 @@ paths:
         - name: seasonid
           in: query
           required: false
-          description: "The ID of the season to retrieve custom field values for. Defaults to the current seasonID."
+          description: >-
+            The ID of the season to retrieve custom field values for. Defaults
+            to the current seasonID.
           schema:
             type: integer
             minimum: 1
@@ -870,85 +1004,103 @@ paths:
         - name: lastupdated
           in: query
           required: false
-          description: "The last updated date before which custom field values should not be retrieved."
+          description: >-
+            The last updated date before which custom field values should not be
+            retrieved.
           schema:
             type: string
             format: string
-            example: "2016-12-29T12:03:28.817Z" 
+            example: '2016-12-29T12:03:28.817Z'
       tags:
         - Persons
-  /{id}/custom-fields/{fieldid}:
+  '/{id}/custom-fields/{fieldid}':
     get:
-      summary: "Get Custom Field Value by ID"
-      description: "<p>Returns the custom field value for a person.</p><p>A custom field can be seasonal or non-seasonal. All non-seasonal custom fields will be returned, and only the seasonal custom fieldsfor the given seasonID. If the seasonID is not specified, the current seasonID will be used.</p>"
+      summary: Get Custom Field Value by ID
+      description: >-
+        <p>Returns the custom field value for a person.</p><p>A custom field can
+        be seasonal or non-seasonal. All non-seasonal custom fields will be
+        returned, and only the seasonal custom fieldsfor the given seasonID. If
+        the seasonID is not specified, the current seasonID will be used.</p>
       operationId: GetCustomFieldValue
       responses:
-        "200":
-          description: "A successful response."
+        '200':
+          description: A successful response.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CustomFieldValue"
-        "404":
-          description: "Not found"
+                $ref: '#/components/schemas/CustomFieldValue'
+        '400':
+          description: >-
+            This request is invalid. It is either missing required parameters or
+            one of the supplied parameters is invalid.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
-        "422":
-          description: "Invalid input"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response"
-        "400":
-          description: This request is invalid. It is either missing required parameters or one of the supplied parameters is invalid.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 400
-                message: "'pagenumber' is invalid"
-        "401":
-          description: This request lacks valid credentials, please try again making sure to supply a valid token.
+                message: '''pagenumber'' is invalid'
+        '401':
+          description: >-
+            This request lacks valid credentials, please try again making sure
+            to supply a valid token.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 401
                 message: Unauthorized
-        "403":
-          description: The supplied credentials do not have permission to make this request.
+        '403':
+          description: >-
+            The supplied credentials do not have permission to make this
+            request.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 403
                 message: Forbidden
-        "500":
-          description: Our server could not process this request. If the issue persists, contact CampMinder support.
+        '404':
+          description: Not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
+        '422':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+        '500':
+          description: >-
+            Our server could not process this request. If the issue persists,
+            contact CampMinder support.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
               example:
                 code: 500
                 message: Internal Server Error
       parameters:
         - name: Authorization
           in: header
-          description: The JWT token should be in the format `Bearer {token}`.
+          description: 'The JWT token should be in the format `Bearer {token}`.'
           required: true
           schema:
             type: string
-            example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+            example: >-
+              Bearer
+              eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
         - name: X-Request-ID
           in: header
           required: false
-          description: "If supplied, we can use this to identify exact requests during troubleshooting. Must be globally unique to be useful."
+          description: >-
+            If supplied, we can use this to identify exact requests during
+            troubleshooting. Must be globally unique to be useful.
           schema:
             type: string
             example: DEEE3D21-F0FA-459E-87BB-A565DBCC0784
@@ -964,7 +1116,7 @@ paths:
         - name: id
           in: path
           required: true
-          description: "The ID of the person to retrieve custom field values for."
+          description: The ID of the person to retrieve custom field values for.
           schema:
             type: integer
             minimum: 1
@@ -975,17 +1127,21 @@ paths:
           required: true
           schema:
             type: integer
-            format: integer 
+            format: integer
       tags:
         - Persons
-  /households/{id}/custom-fields:
+  '/households/{id}/custom-fields':
     get:
-      summary: "List Household Custom Field Values"
-      description: "<p>Returns the custom field values for a household.</p><p>A custom field can be seasonal or non-seasonal. All non-seasonal custom fields will be returned, and only the seasonal custom fieldsfor the given seasonID. If the seasonID is not specified, the current seasonID will be used.</p>"
+      summary: List Household Custom Field Values
+      description: >-
+        <p>Returns the custom field values for a household.</p><p>A custom field
+        can be seasonal or non-seasonal. All non-seasonal custom fields will be
+        returned, and only the seasonal custom fieldsfor the given seasonID. If
+        the seasonID is not specified, the current seasonID will be used.</p>
       operationId: ListHouseholdCustomFieldValues
       responses:
-        "200":
-          description: "A successful response."
+        '200':
+          description: A successful response.
           content:
             application/json:
               schema:
@@ -1001,98 +1157,112 @@ paths:
                     type: array
                     description: The array of records returned.
                     items:
-                      $ref: "#/components/schemas/CustomFieldValue"
-        "404":
-          description: "Not found"
+                      $ref: '#/components/schemas/CustomFieldValue'
+        '400':
+          description: >-
+            This request is invalid. It is either missing required parameters or
+            one of the supplied parameters is invalid.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  TotalCount:
-                    type: integer
-                    description: The total number of records returned in the call.
-                  Next:
-                    type: string
-                    description: The link to the next page of records.
-                  Results:
-                    type: array
-                    description: The array of records returned.
-                    items:
-                      $ref: "#/components/schemas/CustomFieldValue"
-        "422":
-          description: "Invalid input"
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  TotalCount:
-                    type: integer
-                    description: The total number of records returned in the call.
-                  Next:
-                    type: string
-                    description: The link to the next page of records.
-                  Results:
-                    type: array
-                    description: The array of records returned.
-                    items:
-                      $ref: "#/components/schemas/CustomFieldValue"
-        "400":
-          description: This request is invalid. It is either missing required parameters or one of the supplied parameters is invalid.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 400
-                message: "'pagenumber' is invalid"
-        "401":
-          description: This request lacks valid credentials, please try again making sure to supply a valid token.
+                message: '''pagenumber'' is invalid'
+        '401':
+          description: >-
+            This request lacks valid credentials, please try again making sure
+            to supply a valid token.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 401
                 message: Unauthorized
-        "403":
-          description: The supplied credentials do not have permission to make this request.
+        '403':
+          description: >-
+            The supplied credentials do not have permission to make this
+            request.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 403
                 message: Forbidden
-        "500":
-          description: Our server could not process this request. If the issue persists, contact CampMinder support.
+        '404':
+          description: Not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                type: object
+                properties:
+                  TotalCount:
+                    type: integer
+                    description: The total number of records returned in the call.
+                  Next:
+                    type: string
+                    description: The link to the next page of records.
+                  Results:
+                    type: array
+                    description: The array of records returned.
+                    items:
+                      $ref: '#/components/schemas/CustomFieldValue'
+        '422':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  TotalCount:
+                    type: integer
+                    description: The total number of records returned in the call.
+                  Next:
+                    type: string
+                    description: The link to the next page of records.
+                  Results:
+                    type: array
+                    description: The array of records returned.
+                    items:
+                      $ref: '#/components/schemas/CustomFieldValue'
+        '500':
+          description: >-
+            Our server could not process this request. If the issue persists,
+            contact CampMinder support.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
               example:
                 code: 500
                 message: Internal Server Error
       parameters:
         - name: Authorization
           in: header
-          description: The JWT token should be in the format `Bearer {token}`.
+          description: 'The JWT token should be in the format `Bearer {token}`.'
           required: true
           schema:
             type: string
-            example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+            example: >-
+              Bearer
+              eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
         - name: X-Request-ID
           in: header
           required: false
-          description: "If supplied, we can use this to identify exact requests during troubleshooting. Must be globally unique to be useful."
+          description: >-
+            If supplied, we can use this to identify exact requests during
+            troubleshooting. Must be globally unique to be useful.
           schema:
             type: string
             example: DEEE3D21-F0FA-459E-87BB-A565DBCC0784
         - name: clientid
           in: query
           required: false
-          description: "CampMinder's identifier for the camp the person record is a member of."
+          description: >-
+            CampMinder's identifier for the camp the person record is a member
+            of.
           schema:
             type: integer
             minimum: 1
@@ -1102,7 +1272,7 @@ paths:
         - name: pagenumber
           in: query
           required: true
-          description: "The page number to retrieve. Set a minimum value of 1."
+          description: The page number to retrieve. Set a minimum value of 1.
           schema:
             type: integer
             minimum: 1
@@ -1112,7 +1282,9 @@ paths:
         - name: pagesize
           in: query
           required: true
-          description: "The maximum number of records to retrieve per page. The valid range is 1 to 1000."
+          description: >-
+            The maximum number of records to retrieve per page. The valid range
+            is 1 to 1000.
           schema:
             type: integer
             minimum: 1
@@ -1122,7 +1294,7 @@ paths:
         - name: id
           in: path
           required: true
-          description: "The ID of the person household to retrieve custom field values for."
+          description: The ID of the person household to retrieve custom field values for.
           schema:
             type: integer
             minimum: 1
@@ -1132,7 +1304,9 @@ paths:
         - name: seasonid
           in: query
           required: false
-          description: "The ID of the season to retrieve custom field values for. Defaults to the current seasonID."
+          description: >-
+            The ID of the season to retrieve custom field values for. Defaults
+            to the current seasonID.
           schema:
             type: integer
             minimum: 1
@@ -1142,85 +1316,103 @@ paths:
         - name: lastupdated
           in: query
           required: false
-          description: "The last updated date before which custom field values should not be retrieved."
+          description: >-
+            The last updated date before which custom field values should not be
+            retrieved.
           schema:
             type: string
             format: string
-            example: "2016-12-29T12:03:28.817Z" 
+            example: '2016-12-29T12:03:28.817Z'
       tags:
         - Persons
-  /households/{id}/custom-fields/{fieldid}:
+  '/households/{id}/custom-fields/{fieldid}':
     get:
-      summary: "Get Household Custom Field Value by ID"
-      description: "<p>Returns the custom field value for a household.</p><p>A custom field can be seasonal or non-seasonal. All non-seasonal custom fields will be returned, and only the seasonal custom fieldsfor the given seasonID. If the seasonID is not specified, the current seasonID will be used.</p>"
+      summary: Get Household Custom Field Value by ID
+      description: >-
+        <p>Returns the custom field value for a household.</p><p>A custom field
+        can be seasonal or non-seasonal. All non-seasonal custom fields will be
+        returned, and only the seasonal custom fieldsfor the given seasonID. If
+        the seasonID is not specified, the current seasonID will be used.</p>
       operationId: GetHouseholdCustomFieldValue
       responses:
-        "200":
-          description: "A successful response."
+        '200':
+          description: A successful response.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CustomFieldValue"
-        "404":
-          description: "Not found"
+                $ref: '#/components/schemas/CustomFieldValue'
+        '400':
+          description: >-
+            This request is invalid. It is either missing required parameters or
+            one of the supplied parameters is invalid.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
-        "422":
-          description: "Invalid input"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response"
-        "400":
-          description: This request is invalid. It is either missing required parameters or one of the supplied parameters is invalid.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 400
-                message: "'pagenumber' is invalid"
-        "401":
-          description: This request lacks valid credentials, please try again making sure to supply a valid token.
+                message: '''pagenumber'' is invalid'
+        '401':
+          description: >-
+            This request lacks valid credentials, please try again making sure
+            to supply a valid token.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 401
                 message: Unauthorized
-        "403":
-          description: The supplied credentials do not have permission to make this request.
+        '403':
+          description: >-
+            The supplied credentials do not have permission to make this
+            request.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
               example:
                 code: 403
                 message: Forbidden
-        "500":
-          description: Our server could not process this request. If the issue persists, contact CampMinder support.
+        '404':
+          description: Not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response"
+                $ref: '#/components/schemas/Response'
+        '422':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+        '500':
+          description: >-
+            Our server could not process this request. If the issue persists,
+            contact CampMinder support.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
               example:
                 code: 500
                 message: Internal Server Error
       parameters:
         - name: Authorization
           in: header
-          description: The JWT token should be in the format `Bearer {token}`.
+          description: 'The JWT token should be in the format `Bearer {token}`.'
           required: true
           schema:
             type: string
-            example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+            example: >-
+              Bearer
+              eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
         - name: X-Request-ID
           in: header
           required: false
-          description: "If supplied, we can use this to identify exact requests during troubleshooting. Must be globally unique to be useful."
+          description: >-
+            If supplied, we can use this to identify exact requests during
+            troubleshooting. Must be globally unique to be useful.
           schema:
             type: string
             example: DEEE3D21-F0FA-459E-87BB-A565DBCC0784
@@ -1236,7 +1428,7 @@ paths:
         - name: id
           in: path
           required: true
-          description: "The ID of the person household to retrieve custom field values for."
+          description: The ID of the person household to retrieve custom field values for.
           schema:
             type: integer
             minimum: 1
@@ -1245,10 +1437,10 @@ paths:
         - name: fieldid
           in: path
           required: true
-          description: "The ID of the custom field to retrieve the value for."
+          description: The ID of the custom field to retrieve the value for.
           schema:
             type: integer
-            format: integer 
+            format: integer
       tags:
         - Persons
 security:
@@ -1256,19 +1448,23 @@ security:
   - apiKeyQuery: []
   - jwtBearerAuth: []
 servers:
-  - url: https://api.campminder.com/persons
+  - url: 'https://api.campminder.com/persons'
 tags:
   - name: Persons
 components:
   securitySchemes:
     apiKeyHeader:
       type: apiKey
-      description: Required for protected endpoints. Only one of the two apiKey security schemes is required.
+      description: >-
+        Required for protected endpoints. Only one of the two apiKey security
+        schemes is required.
       name: Ocp-Apim-Subscription-Key
       in: header
     apiKeyQuery:
       type: apiKey
-      description: Required for protected endpoints. Only one of the two apiKey security schemes is required.
+      description: >-
+        Required for protected endpoints. Only one of the two apiKey security
+        schemes is required.
       name: subscription-key
       in: query
     jwtBearerAuth:
@@ -1278,431 +1474,473 @@ components:
       bearerFormat: JWT
   schemas:
     Address:
-      description: "Mailing address information"
+      description: Mailing address information
       type: object
       properties:
         Address1:
           type: string
-          example: "123 adress 1"
-          description: "The first line of the address."
+          example: 123 adress 1
+          description: The first line of the address.
         Address2:
           type: string
-          example: "apt 1"
-          description: "The second line of the address if it exists."
+          example: apt 1
+          description: The second line of the address if it exists.
         City:
           type: string
-          example: "Boulder"
-          description: "The city for the address."
+          example: Boulder
+          description: The city for the address.
         StateProvince:
           type: string
-          example: "CO"
-          description: "A 2 character state code or foreign province."
+          example: CO
+          description: A 2 character state code or foreign province.
         PostalCode:
           type: string
-          example: "80303"
-          description: "A zip code for the US or foreign postal code."
+          example: '80303'
+          description: A zip code for the US or foreign postal code.
         Country:
           type: string
-          example: "US"
-          description: "A 2 character country code."
+          example: US
+          description: A 2 character country code.
         LastUpdatedUTC:
           type: string
-          example: "2016-12-29T12:03:28.817Z"
-          description: "The UTC datetime as an RFC3339 string of when this address was last updated or modified."
+          example: '2016-12-29T12:03:28.817Z'
+          description: >-
+            The UTC datetime as an RFC3339 string of when this address was last
+            updated or modified.
     CamperDetails:
-      description: "Details of the Camper."
+      description: Details of the Camper.
       type: object
       properties:
         PartitionID:
           type: integer
-          description: "The partition the Camper belongs to."
+          description: The partition the Camper belongs to.
         CampGradeID:
           type: integer
-          description: "The campgrade for the camper. Infant = -3, Toddler = -2, Nursery = -1, PreK = 0, K = 1, First = 2, Second = 3, Third = 4, Fourth = 5, Fifth = 6, Sixth = 7, Seventh = 8, Eighth = 9, Ninth = 10, Tenth = 11, Eleventh = 12, Twelfth = 13, TwelfthPlus = 14"
+          description: >-
+            The campgrade for the camper. Infant = -3, Toddler = -2, Nursery =
+            -1, PreK = 0, K = 1, First = 2, Second = 3, Third = 4, Fourth = 5,
+            Fifth = 6, Sixth = 7, Seventh = 8, Eighth = 9, Ninth = 10, Tenth =
+            11, Eleventh = 12, Twelfth = 13, TwelfthPlus = 14
         School:
           type: string
           example: Nuevo Vista School
-          description: "The camper's school"
+          description: The camper's school
         CampGradeName:
           type: string
-          example: "7th"
-          description: "The name associated with the CampGradeID"
+          example: 7th
+          description: The name associated with the CampGradeID
         SchoolGradeID:
           type: integer
           example: 8
-          description: "The school grade of the camper."
+          description: The school grade of the camper.
         SchoolGradeName:
           type: string
-          example: "Eighth"
-          description: "The name associated with the SchooGradeID"
+          example: Eighth
+          description: The name associated with the SchooGradeID
         YearsAtCamp:
           type: integer
           example: 2
-          description: "Indicates the number of years the camper has been at this camp."
+          description: Indicates the number of years the camper has been at this camp.
         LastYearAttended:
           type: integer
           example: 2019
-          description: "The last year the camper attended."
+          description: The last year the camper attended.
         LeadDate:
           type: string
-          example: "2016-12-29"
-          description: "The date the camper inquired about camp."
+          example: '2016-12-29'
+          description: The date the camper inquired about camp.
         TShirtSize:
           type: string
-          example: "Child small"
-          description: "The t-shirt size for the camper."
+          example: Child small
+          description: The t-shirt size for the camper.
         DivisionID:
           type: integer
           example: 2
-          description: "Division ID."
+          description: Division ID.
         LastUpdatedUTC:
           type: string
-          example: "2016-12-29T12:03:28.817Z"
-          description: "The UTC datetime as an RFC3339 string of when this persons camper details was last updated or modified."
+          example: '2016-12-29T12:03:28.817Z'
+          description: >-
+            The UTC datetime as an RFC3339 string of when this persons camper
+            details was last updated or modified.
     ContactDetails:
       type: object
       properties:
         PhoneNumbers:
           type: array
           items:
-            allOf: 
+            allOf:
               - $ref: '#/components/schemas/PhoneNumber'
         Emails:
           type: array
           items:
-            allOf: 
+            allOf:
               - $ref: '#/components/schemas/Email'
     CustomFieldDefinition:
       type: object
       properties:
         Id:
           type: integer
-          description: "The ID of the custom field."
+          description: The ID of the custom field.
         Name:
           type: string
-          description: "The name of the custom field."
+          description: The name of the custom field.
         DataType:
           type: string
-          description: "The data type of the custom field."
+          description: The data type of the custom field.
         Partition:
           type: string
-          description: "The partition of the custom field."
+          description: The partition of the custom field.
         IsSeasonal:
           type: boolean
-          description: "Indicates if the custom field  is seasonal."
+          description: Indicates if the custom field  is seasonal.
         IsArray:
           type: boolean
-          description: "Indicates if the custom field is defined as an array."
+          description: Indicates if the custom field is defined as an array.
         IsActive:
           type: boolean
-          description: "Indicates if the custom field is active."
+          description: Indicates if the custom field is active.
     CustomFieldValue:
       type: object
       properties:
         Id:
           type: integer
-          description: "The ID of the custom field definition to which this value belongs."
+          description: The ID of the custom field definition to which this value belongs.
         ClientID:
           type: integer
-          description: "CampMinder's identifier for the camp the person record is a member of."
+          description: >-
+            CampMinder's identifier for the camp the person record is a member
+            of.
         SeasonID:
           type: integer
-          description: "The ID of the season to which this value belongs."
+          description: The ID of the season to which this value belongs.
         Value:
           type: string
-          description: "The value of the custom field."
+          description: The value of the custom field.
         LastUpdated:
           type: string
-          description: "The datetime as an RFC3339 string of when this custom field value was last updated or modified."
+          description: >-
+            The datetime as an RFC3339 string of when this custom field value
+            was last updated or modified.
     Email:
-      description: "The email object."
+      description: The email object.
       type: object
       properties:
         Address:
           type: string
-          example: "thisisanemailaddress@mailinator.com"
-          description: "The email address of the person."
+          example: thisisanemailaddress@mailinator.com
+          description: The email address of the person.
         IsLogin:
           type: boolean
           example: true
-          description: "Indicates whether this email address is the login."
+          description: Indicates whether this email address is the login.
     FamilyPerson:
       type: object
       properties:
         FamilyID:
           type: integer
           example: 3862806
-          description: ""
+          description: ''
         PersonID:
           type: integer
           example: 1258963
-          description: ""
+          description: ''
         RoleID:
           type: integer
           example: 3
-          description: ""
+          description: ''
         RoleName:
           type: string
-          example: "Primary Child"
-          description: ""
+          example: Primary Child
+          description: ''
     HouseholdDetails:
       type: object
       properties:
         ID:
           type: integer
           example: 123856
-          description: "Household ID."
+          description: Household ID.
         ClientID:
           type: integer
           example: 248
-          description: "The CampMinder id of the camp. This value can be retrieved from the response of a successful call to Auth/Login"
+          description: >-
+            The CampMinder id of the camp. This value can be retrieved from the
+            response of a successful call to Auth/Login
         Greeting:
           type: string
-          example: "Hunter and Ashely"
-          description: "A simple greeting string."
+          example: Hunter and Ashely
+          description: A simple greeting string.
         MailingTitle:
           type: string
-          example: "Mr. and Mrs Hunter Doe"
-          description: "Preferred mailing title often a combination of names and prefixes."
+          example: Mr. and Mrs Hunter Doe
+          description: Preferred mailing title often a combination of names and prefixes.
         AlternateMailingTitle:
           type: string
-          example: "The Doe Family"
-          description: "A secondary mailing title often a combination of names and prefixes."
+          example: The Doe Family
+          description: A secondary mailing title often a combination of names and prefixes.
         BillingMailingTitle:
           type: string
-          example: "Mr. and Mrs Hunter Doe"
-          description: "A mailing title set up for billing documents."
+          example: Mr. and Mrs Hunter Doe
+          description: A mailing title set up for billing documents.
         HouseholdPhone:
           type: string
-          example: "212-523-5555"
-          description: "The household's primary phone number."
+          example: 212-523-5555
+          description: The household's primary phone number.
         BillingAddress:
-          allOf: 
-            - $ref: '#/components/schemas/Address'  
-            - description: "The household's billing address.  This may be different than the mailing address."
+          allOf:
+            - $ref: '#/components/schemas/Address'
+            - description: >-
+                The household's billing address.  This may be different than the
+                mailing address.
         LastUpdatedUTC:
           type: string
-          example: "2016-12-29T12:03:28.817Z"
-          description: "The UTC datetime as an RFC3339 string of when this person was last updated or modified."
+          example: '2016-12-29T12:03:28.817Z'
+          description: >-
+            The UTC datetime as an RFC3339 string of when this person was last
+            updated or modified.
     Households:
-      description: "A collection of household details and contact information"
+      description: A collection of household details and contact information
       type: object
       properties:
         PrincipalHousehold:
-          allOf: 
-            - $ref: '#/components/schemas/HouseholdDetails'  
-            - description: "The principle household details."
+          allOf:
+            - $ref: '#/components/schemas/HouseholdDetails'
+            - description: The principle household details.
         PrimaryChildhoodHousehold:
-          allOf: 
-            - $ref: '#/components/schemas/HouseholdDetails'  
-            - description: "The Primary childhood household details."
+          allOf:
+            - $ref: '#/components/schemas/HouseholdDetails'
+            - description: The Primary childhood household details.
         AlternateChildhoodHousehold:
-          allOf: 
-            - $ref: '#/components/schemas/HouseholdDetails'  
-            - description: "An Alternate childhood household's details."
+          allOf:
+            - $ref: '#/components/schemas/HouseholdDetails'
+            - description: An Alternate childhood household's details.
     Name:
-      description: "The name object."
+      description: The name object.
       type: object
       properties:
         First:
           type: string
-          example: "MyName"
-          description: "First Name of the person"
+          example: MyName
+          description: First Name of the person
         Last:
           type: string
-          example: "MySecondName"
-          description: "Last Name of the person"
+          example: MySecondName
+          description: Last Name of the person
         Preferred:
           type: string
           example: MyNickName
-          description: "Preferred Name of the person"
+          description: Preferred Name of the person
     PersonPatchRequest:
-      description: "Request to add a external ID to a person."
+      description: Request to add a external ID to a person.
       type: object
       properties:
         PersonID:
           type: integer
           minimum: 1
           maximum: 1000000000
-          description: "The CampMinder person id to add an external ID to."
+          description: The CampMinder person id to add an external ID to.
         ClientID:
           type: integer
           minimum: 1
           maximum: 1000000000
-          description: "The CampMinder id of the camp. This value can be retrieved from the response of a successful call to Auth/Login."
+          description: >-
+            The CampMinder id of the camp. This value can be retrieved from the
+            response of a successful call to Auth/Login.
         ExternalID:
           type: string
-          format: ^[a-zA-Z0-9!@#$%^&*]{2,50}$
-          description: "The value to add as an external id to the person (50 character limit)."
+          format: '^[a-zA-Z0-9!@#$%^&*]{2,50}$'
+          description: >-
+            The value to add as an external id to the person (50 character
+            limit).
     PersonResponse:
       type: object
       properties:
         ID:
           type: integer
           example: 333
-          description: "personId"
+          description: personId
         ClientID:
           type: integer
           example: 754
-          description: "CampMinder's identifier for the camp the person record is a member of."
+          description: >-
+            CampMinder's identifier for the camp the person record is a member
+            of.
         Name:
-          allOf: 
-            - $ref: '#/components/schemas/Name'  
-            - description: "The name object."
+          allOf:
+            - $ref: '#/components/schemas/Name'
+            - description: The name object.
         Relatives:
           type: array
           items:
-            allOf: 
+            allOf:
               - $ref: '#/components/schemas/Relative'
         ContactDetails:
-          allOf: 
-            - $ref: '#/components/schemas/ContactDetails'  
-            - description: "Contains the email and phone numbers of the person."
+          allOf:
+            - $ref: '#/components/schemas/ContactDetails'
+            - description: Contains the email and phone numbers of the person.
         FamilyPersons:
           type: array
           items:
-            allOf: 
+            allOf:
               - $ref: '#/components/schemas/FamilyPerson'
         CamperDetails:
-          allOf: 
-            - $ref: '#/components/schemas/CamperDetails'  
-            - description: "Details of the Camper."
+          allOf:
+            - $ref: '#/components/schemas/CamperDetails'
+            - description: Details of the Camper.
         DateOfBirth:
           type: string
-          example: 2005-02-02
-          description: "The date of birth of the person."
+          example: '2005-02-02'
+          description: The date of birth of the person.
         Age:
           type: number
           example: 14.1
-          description: "The Age of person where the second half of the age is a month calculation.  10.11  would indicate 10 years and 11 months."
+          description: >-
+            The Age of person where the second half of the age is a month
+            calculation.  10.11  would indicate 10 years and 11 months.
         MaritalStatus:
           type: string
           example: Married
-          description: "The Marital Status of the person."
+          description: The Marital Status of the person.
         GenderID:
           type: integer
           example: 0
-          description: "Indicates the gender of the person. Female = 0, Male = 1, Undefined = 3"
+          description: >-
+            Indicates the gender of the person. Female = 0, Male = 1, Undefined
+            = 3
         GenderName:
           type: string
           example: female
-          description: "Indicates the gender of the person as a string."
+          description: Indicates the gender of the person as a string.
         GenderPronounID:
           type: integer
-          description: "Indicates the gender pronoun ID of the person."
+          description: Indicates the gender pronoun ID of the person.
         GenderPronounName:
           type: string
-          description: "Indicates the gender pronoun of the person."
+          description: Indicates the gender pronoun of the person.
         GenderPronounWriteIn:
           type: string
-          description: "Indicates the pronoun write in of the person.."
+          description: Indicates the pronoun write in of the person..
         GenderIdentityID:
           type: integer
-          description: "Indicates the gender identity ID of the person."
+          description: Indicates the gender identity ID of the person.
         GenderIdentityName:
           type: string
-          description: "Indicates the gender identity name of the person."
+          description: Indicates the gender identity name of the person.
         GenderIdentityWriteIn:
           type: string
-          description: "Indicates the gender write in identity of the person."
+          description: Indicates the gender write in identity of the person.
         ExternalID:
           type: string
-          description: "An external identifier for the person."
+          description: An external identifier for the person.
         Households:
-          allOf: 
-            - $ref: '#/components/schemas/Households'  
-            - description: "Details of the persons households."
+          allOf:
+            - $ref: '#/components/schemas/Households'
+            - description: Details of the persons households.
         PrimaryMailingAddress:
-          allOf: 
-            - $ref: '#/components/schemas/Address'  
-            - description: "The primary mailing address for the person."
+          allOf:
+            - $ref: '#/components/schemas/Address'
+            - description: The primary mailing address for the person.
         IsDeceased:
           type: boolean
           example: false
-          description: "Indicates if the person is deceased or not."
+          description: Indicates if the person is deceased or not.
         LastUpdatedUTC:
           type: string
-          example: 2023-02-22T02:58:44.9800Z
-          description: "The UTC datetime as an RFC3339 string of when this person was last updated or modified."
+          example: '2023-02-22T02:58:44.9800Z'
+          description: >-
+            The UTC datetime as an RFC3339 string of when this person was last
+            updated or modified.
         IsDeleted:
           type: boolean
           example: false
-          description: "Is this person deleted from the system."
+          description: Is this person deleted from the system.
         Tags:
           type: array
           items:
-            allOf: 
+            allOf:
               - $ref: '#/components/schemas/Tag'
     PhoneNumber:
-      description: "The phone number object."
+      description: The phone number object.
       type: object
       properties:
         Type:
           type: string
-          example: "Mobile"
-          description: "The type of phone number: Undefined, Landline, Mobile, Fax, Pager."
+          example: Mobile
+          description: 'The type of phone number: Undefined, Landline, Mobile, Fax, Pager.'
         Location:
           type: string
-          example: "Home"
-          description: "The location of the phone: Undefined, Home, Work, Other."
+          example: Home
+          description: 'The location of the phone: Undefined, Home, Work, Other.'
         Original:
           type: string
-          example: "(720)555-1234"
-          description: "The original phone number that was entered."
+          example: (720)555-1234
+          description: The original phone number that was entered.
         Number:
           type: string
-          example: "7205551234"
-          description: "The standardized, numeric phone number."
+          example: '7205551234'
+          description: 'The standardized, numeric phone number.'
     Relative:
       type: object
       properties:
         IsWard:
           type: boolean
           example: true
-          description: "Indicates if the person is a child or not. It is true for primary childhood household child and false for alternative childhood household child."
+          description: >-
+            Indicates if the person is a child or not. It is true for primary
+            childhood household child and false for alternative childhood
+            household child.
         IsGuardian:
           type: boolean
           example: true
-          description: "Indicates if the person is a guardian or not. It is true if the guardian's principal household is the person object's primary childhood household."
+          description: >-
+            Indicates if the person is a guardian or not. It is true if the
+            guardian's principal household is the person object's primary
+            childhood household.
         ID:
           type: integer
-          description: "Person ID of the relative."
+          description: Person ID of the relative.
         IsPrimary:
           type: boolean
           example: true
-          description: "Indicates if the parent is the primary parent. isPrimary is true if this person is \"parent 1\"."
+          description: >-
+            Indicates if the parent is the primary parent. isPrimary is true if
+            this person is "parent 1".
     Tag:
       type: object
       properties:
         Name:
           type: string
-          description: "The name of the tag"
+          description: The name of the tag
         IsSeasonal:
           type: boolean
-          description: "Is this tag seasonal, it changes year to year."
+          description: 'Is this tag seasonal, it changes year to year.'
         LastUpdatedUTC:
           type: string
-          description: "The UTC datetime as an RFC3339 string of when this Tag was last updated or modified."
+          description: >-
+            The UTC datetime as an RFC3339 string of when this Tag was last
+            updated or modified.
     TagDef:
-      description: "Details of a Tag"
+      description: Details of a Tag
       type: object
       properties:
         Name:
           type: string
-          example: "Volunteer"
-          description: "The name of the tag."
+          example: Volunteer
+          description: The name of the tag.
         IsSeasonal:
           type: boolean
           example: true
-          description: "Indicates if this tag is seasonal or not."
+          description: Indicates if this tag is seasonal or not.
         IsHidden:
           type: boolean
           example: false
-          description: "Indicates if this tag is hidden in the UI or not."
+          description: Indicates if this tag is hidden in the UI or not.
         LastUpdatedUTC:
           type: string
-          example: "2016-12-29T12:03:28.817Z"
-          description: "The UTC datetime as an RFC3339 string of when this tag was last updated or modified."
+          example: '2016-12-29T12:03:28.817Z'
+          description: >-
+            The UTC datetime as an RFC3339 string of when this tag was last
+            updated or modified.
     Response:
       type: object
       properties:
