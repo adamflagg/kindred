@@ -38,7 +38,9 @@ func NewRealSheetsWriter(service *sheets.Service) *RealSheetsWriter {
 }
 
 // WriteToSheet writes data to a specific sheet tab
-func (w *RealSheetsWriter) WriteToSheet(ctx context.Context, spreadsheetID, sheetTab string, data [][]interface{}) error {
+func (w *RealSheetsWriter) WriteToSheet(
+	ctx context.Context, spreadsheetID, sheetTab string, data [][]interface{},
+) error {
 	valueRange := &sheets.ValueRange{
 		Values: data,
 	}
@@ -175,7 +177,7 @@ func (g *GoogleSheetsExport) queryAttendees() ([]AttendeeRecord, error) {
 		slog.Warn("Failed to load sessions", "error", err)
 	}
 
-	var attendees []AttendeeRecord
+	attendees := make([]AttendeeRecord, 0, len(records))
 	for _, record := range records {
 		attendee := AttendeeRecord{
 			Status: safeString(record.Get("status")),
@@ -290,7 +292,7 @@ func (g *GoogleSheetsExport) querySessions() ([]SessionRecord, error) {
 		return nil, fmt.Errorf("querying sessions: %w", err)
 	}
 
-	var sessions []SessionRecord
+	sessions := make([]SessionRecord, 0, len(records))
 	for _, record := range records {
 		session := SessionRecord{
 			Name: safeString(record.Get("name")),
@@ -335,7 +337,9 @@ func safeString(v interface{}) string {
 }
 
 // ExportToSheets exports attendee and session data to Google Sheets
-func (g *GoogleSheetsExport) ExportToSheets(ctx context.Context, attendees []AttendeeRecord, sessions []SessionRecord) error {
+func (g *GoogleSheetsExport) ExportToSheets(
+	ctx context.Context, attendees []AttendeeRecord, sessions []SessionRecord,
+) error {
 	startTime := time.Now()
 	slog.Info("Exporting to Google Sheets",
 		"attendee_count", len(attendees),
@@ -384,10 +388,13 @@ func (g *GoogleSheetsExport) exportTab(ctx context.Context, tabName string, data
 
 // FormatAttendeesData formats attendee records for Google Sheets
 func FormatAttendeesData(records []AttendeeRecord) [][]interface{} {
+	// Preallocate with capacity: 1 header + len(records) data rows
+	data := make([][]interface{}, 0, 1+len(records))
+
 	// Header row
-	data := [][]interface{}{
-		{"First Name", "Last Name", "Grade", "Gender", "Session", "Session Type", "Enrollment Date", "Status"},
-	}
+	data = append(data, []interface{}{
+		"First Name", "Last Name", "Grade", "Gender", "Session", "Session Type", "Enrollment Date", "Status",
+	})
 
 	// Data rows
 	for _, r := range records {
@@ -408,10 +415,11 @@ func FormatAttendeesData(records []AttendeeRecord) [][]interface{} {
 
 // FormatSessionsData formats session records for Google Sheets
 func FormatSessionsData(records []SessionRecord) [][]interface{} {
+	// Preallocate with capacity: 1 header + len(records) data rows
+	data := make([][]interface{}, 0, 1+len(records))
+
 	// Header row
-	data := [][]interface{}{
-		{"Name", "Type", "Start Date", "End Date", "Year"},
-	}
+	data = append(data, []interface{}{"Name", "Type", "Start Date", "End Date", "Year"})
 
 	// Data rows
 	for _, r := range records {

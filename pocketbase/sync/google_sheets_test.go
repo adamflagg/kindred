@@ -20,7 +20,7 @@ func NewMockSheetsWriter() *MockSheetsWriter {
 	}
 }
 
-func (m *MockSheetsWriter) WriteToSheet(_ context.Context, spreadsheetID, sheetTab string, data [][]interface{}) error {
+func (m *MockSheetsWriter) WriteToSheet(_ context.Context, _, sheetTab string, data [][]interface{}) error {
 	if m.WriteError != nil {
 		return m.WriteError
 	}
@@ -28,7 +28,7 @@ func (m *MockSheetsWriter) WriteToSheet(_ context.Context, spreadsheetID, sheetT
 	return nil
 }
 
-func (m *MockSheetsWriter) ClearSheet(_ context.Context, spreadsheetID, sheetTab string) error {
+func (m *MockSheetsWriter) ClearSheet(_ context.Context, _, sheetTab string) error {
 	if m.ClearError != nil {
 		return m.ClearError
 	}

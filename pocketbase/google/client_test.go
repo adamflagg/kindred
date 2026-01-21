@@ -2,14 +2,13 @@ package google
 
 import (
 	"context"
-	"os"
 	"testing"
 )
 
 func TestNewSheetsClient_Disabled(t *testing.T) {
 	// When GOOGLE_SHEETS_ENABLED is not set or false, should return nil client without error
-	os.Unsetenv("GOOGLE_SHEETS_ENABLED")
-	os.Unsetenv("GOOGLE_SERVICE_ACCOUNT_KEY_JSON")
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "")
+	t.Setenv("GOOGLE_SERVICE_ACCOUNT_KEY_JSON", "")
 
 	client, err := NewSheetsClient(context.Background())
 	if err != nil {
@@ -22,8 +21,7 @@ func TestNewSheetsClient_Disabled(t *testing.T) {
 
 func TestNewSheetsClient_DisabledExplicitly(t *testing.T) {
 	// Explicit false should also return nil
-	os.Setenv("GOOGLE_SHEETS_ENABLED", "false")
-	defer os.Unsetenv("GOOGLE_SHEETS_ENABLED")
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "false")
 
 	client, err := NewSheetsClient(context.Background())
 	if err != nil {
@@ -36,9 +34,8 @@ func TestNewSheetsClient_DisabledExplicitly(t *testing.T) {
 
 func TestNewSheetsClient_EnabledButNoCredentials(t *testing.T) {
 	// Enabled but no credentials should return error
-	os.Setenv("GOOGLE_SHEETS_ENABLED", "true")
-	os.Unsetenv("GOOGLE_SERVICE_ACCOUNT_KEY_JSON")
-	defer os.Unsetenv("GOOGLE_SHEETS_ENABLED")
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "true")
+	t.Setenv("GOOGLE_SERVICE_ACCOUNT_KEY_JSON", "")
 
 	_, err := NewSheetsClient(context.Background())
 	if err == nil {
@@ -48,12 +45,8 @@ func TestNewSheetsClient_EnabledButNoCredentials(t *testing.T) {
 
 func TestNewSheetsClient_InvalidJSON(t *testing.T) {
 	// Invalid JSON should return error
-	os.Setenv("GOOGLE_SHEETS_ENABLED", "true")
-	os.Setenv("GOOGLE_SERVICE_ACCOUNT_KEY_JSON", "not valid json")
-	defer func() {
-		os.Unsetenv("GOOGLE_SHEETS_ENABLED")
-		os.Unsetenv("GOOGLE_SERVICE_ACCOUNT_KEY_JSON")
-	}()
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "true")
+	t.Setenv("GOOGLE_SERVICE_ACCOUNT_KEY_JSON", "not valid json")
 
 	_, err := NewSheetsClient(context.Background())
 	if err == nil {
@@ -63,6 +56,7 @@ func TestNewSheetsClient_InvalidJSON(t *testing.T) {
 
 func TestNewSheetsClient_ValidInlineJSON(t *testing.T) {
 	// Test inline JSON credentials
+	// nolint:gosec // G101: This is a fake test credential, not a real private key
 	testJSON := `{
 		"type": "service_account",
 		"project_id": "test-project",
@@ -74,12 +68,8 @@ func TestNewSheetsClient_ValidInlineJSON(t *testing.T) {
 		"token_uri": "https://oauth2.googleapis.com/token"
 	}`
 
-	os.Setenv("GOOGLE_SHEETS_ENABLED", "true")
-	os.Setenv("GOOGLE_SERVICE_ACCOUNT_KEY_JSON", testJSON)
-	defer func() {
-		os.Unsetenv("GOOGLE_SHEETS_ENABLED")
-		os.Unsetenv("GOOGLE_SERVICE_ACCOUNT_KEY_JSON")
-	}()
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "true")
+	t.Setenv("GOOGLE_SERVICE_ACCOUNT_KEY_JSON", testJSON)
 
 	// Similar to above - will fail at auth but should parse JSON correctly
 	_, err := NewSheetsClient(context.Background())
@@ -101,12 +91,7 @@ func TestGetSpreadsheetID(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.envValue != "" {
-				os.Setenv("GOOGLE_SHEETS_SPREADSHEET_ID", tt.envValue)
-				defer os.Unsetenv("GOOGLE_SHEETS_SPREADSHEET_ID")
-			} else {
-				os.Unsetenv("GOOGLE_SHEETS_SPREADSHEET_ID")
-			}
+			t.Setenv("GOOGLE_SHEETS_SPREADSHEET_ID", tt.envValue)
 
 			got := GetSpreadsheetID()
 			if got != tt.want {
@@ -132,12 +117,7 @@ func TestIsEnabled(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.envValue != "" {
-				os.Setenv("GOOGLE_SHEETS_ENABLED", tt.envValue)
-				defer os.Unsetenv("GOOGLE_SHEETS_ENABLED")
-			} else {
-				os.Unsetenv("GOOGLE_SHEETS_ENABLED")
-			}
+			t.Setenv("GOOGLE_SHEETS_ENABLED", tt.envValue)
 
 			got := IsEnabled()
 			if got != tt.want {
