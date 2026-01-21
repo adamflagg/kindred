@@ -229,13 +229,14 @@ func (o *Orchestrator) RunSingleSync(_ context.Context, syncType string) error {
 func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 	// Define sync order (respecting dependencies)
 	orderedJobs := []string{
-		"session_groups",          // No dependencies - sync first for group data
-		"sessions",                // Depends on session_groups (for session_group relation)
-		"attendees",               // Depends on sessions
-		"person_tag_definitions",  // No dependencies - sync before persons
-		"persons",                 // Depends on attendees (attendee-driven sync)
-		"households",              // Extracts from persons response (no extra API calls)
-		"person_tags",             // Extracts from persons response (depends on person_tag_definitions)
+		"session_groups",            // No dependencies - sync first for group data
+		"sessions",                  // Depends on session_groups (for session_group relation)
+		"attendees",                 // Depends on sessions
+		"person_tag_definitions",    // No dependencies - sync before persons
+		"custom_field_definitions",  // No dependencies - sync before persons for Phase 5 custom field values
+		"persons",                   // Depends on attendees (attendee-driven sync)
+		"households",                // Extracts from persons response (no extra API calls)
+		"person_tags",               // Extracts from persons response (depends on person_tag_definitions)
 		"bunks",                   // No dependencies
 		"bunk_plans",              // Depends on sessions and bunks
 		"bunk_assignments",        // Depends on sessions, persons, bunks
@@ -433,6 +434,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 			"sessions",
 			"attendees",
 			"person_tag_definitions",
+			"custom_field_definitions",
 			"persons",
 			"households",
 			"person_tags",
@@ -616,6 +618,7 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	o.RegisterService("sessions", NewSessionsSync(o.app, client))
 	o.RegisterService("attendees", NewAttendeesSync(o.app, client))
 	o.RegisterService("person_tag_definitions", NewPersonTagDefinitionsSync(o.app, client))
+	o.RegisterService("custom_field_definitions", NewCustomFieldDefinitionsSync(o.app, client))
 	o.RegisterService("persons", NewPersonsSync(o.app, client))
 	o.RegisterService("households", NewHouseholdsSync(o.app, client))
 	o.RegisterService("person_tags", NewPersonTagsSync(o.app, client))

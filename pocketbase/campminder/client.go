@@ -619,3 +619,32 @@ func (c *Client) GetPersonTagDefinitions() ([]map[string]interface{}, error) {
 
 	return response.Results, nil
 }
+
+// GetCustomFieldDefinitionsPage retrieves custom field definitions with pagination
+// Endpoint: GET /persons/custom-fields
+// Returns: array of custom field definitions with Id, Name, DataType, Partition, IsSeasonal, IsArray, IsActive
+func (c *Client) GetCustomFieldDefinitionsPage(page, pageSize int) ([]map[string]interface{}, bool, error) {
+	params := map[string]string{
+		"clientid":   c.clientID,
+		"pagenumber": strconv.Itoa(page),
+		"pagesize":   strconv.Itoa(pageSize),
+	}
+
+	body, err := c.makeRequest("GET", "persons/custom-fields", params)
+	if err != nil {
+		return nil, false, err
+	}
+
+	var response struct {
+		TotalCount int                      `json:"TotalCount"`
+		Next       *string                  `json:"Next"`
+		Results    []map[string]interface{} `json:"Results"`
+	}
+
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, false, fmt.Errorf("decode custom field definitions response: %w", err)
+	}
+
+	hasMore := response.Next != nil && *response.Next != ""
+	return response.Results, hasMore, nil
+}

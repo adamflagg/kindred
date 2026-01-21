@@ -23,6 +23,7 @@ export interface SyncStatusResponse {
   sessions: SyncStatus;
   attendees: SyncStatus;
   person_tag_definitions: SyncStatus;
+  custom_field_definitions: SyncStatus;
   persons: SyncStatus;
   households: SyncStatus;
   person_tags: SyncStatus;

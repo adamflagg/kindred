@@ -11,6 +11,7 @@ import {
   Tag,
   Building2,
   Tags,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 // Sync type configuration for the sync status grid
@@ -19,6 +20,7 @@ export const SYNC_TYPES = [
   { id: 'sessions', name: 'Sessions', icon: Calendar, color: 'text-sky-600' },
   { id: 'attendees', name: 'Attendees', icon: Users, color: 'text-emerald-600' },
   { id: 'person_tag_definitions', name: 'Tag Definitions', icon: Tag, color: 'text-pink-600' },
+  { id: 'custom_field_definitions', name: 'Custom Field Defs', icon: FileSpreadsheet, color: 'text-lime-600' },
   { id: 'persons', name: 'Persons', icon: User, color: 'text-violet-600' },
   { id: 'households', name: 'Households', icon: Building2, color: 'text-purple-600' },
   { id: 'person_tags', name: 'Person Tags', icon: Tags, color: 'text-fuchsia-600' },
@@ -35,6 +37,7 @@ export const HISTORICAL_SYNC_TYPES = [
   { id: 'sessions', name: 'Sessions' },
   { id: 'attendees', name: 'Attendees' },
   { id: 'person_tag_definitions', name: 'Tag Definitions' },
+  { id: 'custom_field_definitions', name: 'Custom Field Defs' },
   { id: 'persons', name: 'Persons' },
   { id: 'households', name: 'Households' },
   { id: 'person_tags', name: 'Person Tags' },

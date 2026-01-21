@@ -258,6 +258,11 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 		return handleIndividualSync(e, scheduler, "person_tags")
 	}))
 
+	// Custom field definitions sync
+	e.Router.POST("/api/custom/sync/custom-field-definitions", requireAuth(func(e *core.RequestEvent) error {
+		return handleIndividualSync(e, scheduler, "custom_field_definitions")
+	}))
+
 	return nil
 }
 
@@ -496,6 +501,7 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 		"sessions",
 		"attendees",
 		"person_tag_definitions",
+		"custom_field_definitions",
 		"persons",
 		"households",
 		"person_tags",
