@@ -93,6 +93,7 @@ pocketbase/pb_migrations/*_updated_users.js
 !pocketbase/logging/
 !pocketbase/campminder/
 !pocketbase/ratelimit/
+!pocketbase/google/
 !pocketbase/config/
 !pocketbase/README.md
 # JS tooling for migrations/hooks linting
