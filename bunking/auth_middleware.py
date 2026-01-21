@@ -320,6 +320,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         final_response = await call_next(request)
         return final_response
 
+
 def get_current_user(request: Request) -> AuthUser:
     """
     Dependency to get the current authenticated user.
