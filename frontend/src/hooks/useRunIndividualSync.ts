@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 
 // Map of sync types to their display names
 export const SYNC_TYPE_NAMES: Record<string, string> = {
+  session_groups: 'Session Groups',
   sessions: 'Sessions',
   attendees: 'Attendees',
   persons: 'Persons',
@@ -16,6 +17,7 @@ export const SYNC_TYPE_NAMES: Record<string, string> = {
 
 // Map of sync types to their endpoint names
 const SYNC_ENDPOINT_MAP: Record<string, string> = {
+  session_groups: 'session-groups',
   sessions: 'sessions',
   attendees: 'attendees',
   persons: 'persons',

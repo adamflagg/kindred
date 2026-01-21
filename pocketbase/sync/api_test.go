@@ -323,6 +323,7 @@ func parseYearParameter(yearStr string, maxYear int) (int, bool) {
 // TestSyncTypeValidation tests sync type validation
 func TestSyncTypeValidation(t *testing.T) {
 	validSyncTypes := map[string]bool{
+		"session_groups":   true,
 		"sessions":         true,
 		"attendees":        true,
 		"persons":          true,
@@ -338,6 +339,7 @@ func TestSyncTypeValidation(t *testing.T) {
 		syncType  string
 		wantValid bool
 	}{
+		{"session_groups", "session_groups", true},
 		{"sessions", "sessions", true},
 		{"attendees", "attendees", true},
 		{"persons", "persons", true},
@@ -366,6 +368,7 @@ func TestSyncTypeValidation(t *testing.T) {
 // TestStatusResponseFormat tests that status responses have expected format
 func TestStatusResponseFormat(t *testing.T) {
 	syncTypes := []string{
+		"session_groups",
 		"sessions",
 		"attendees",
 		"persons",
@@ -376,9 +379,9 @@ func TestStatusResponseFormat(t *testing.T) {
 		"process_requests",
 	}
 
-	// Verify all expected sync types are covered
-	if len(syncTypes) != 8 {
-		t.Errorf("expected 8 sync types, got %d", len(syncTypes))
+	// Verify all expected sync types are covered (9 sync types)
+	if len(syncTypes) != 9 {
+		t.Errorf("expected 9 sync types, got %d", len(syncTypes))
 	}
 
 	// Verify no duplicates
@@ -388,6 +391,23 @@ func TestStatusResponseFormat(t *testing.T) {
 			t.Errorf("duplicate sync type: %s", st)
 		}
 		seen[st] = true
+	}
+
+	// Verify session-related types are in correct dependency order
+	expectedSessionOrder := []string{"session_groups", "sessions"}
+	sessionTypes := []string{}
+	for _, st := range syncTypes {
+		if strings.HasPrefix(st, "session") {
+			sessionTypes = append(sessionTypes, st)
+		}
+	}
+	if len(sessionTypes) != 2 {
+		t.Errorf("expected 2 session-related types, got %d: %v", len(sessionTypes), sessionTypes)
+	}
+	for i, expected := range expectedSessionOrder {
+		if i < len(sessionTypes) && sessionTypes[i] != expected {
+			t.Errorf("session type order[%d]: expected %q, got %q", i, expected, sessionTypes[i])
+		}
 	}
 }
 

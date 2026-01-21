@@ -26,6 +26,7 @@ const serviceNameSessions = "sessions"
 // SessionsSync handles syncing session data from CampMinder
 type SessionsSync struct {
 	BaseSyncService
+	groupIDMap map[int]string // Maps CampMinder group ID to PocketBase record ID
 }
 
 // NewSessionsSync creates a new sessions sync service
@@ -55,6 +56,23 @@ func (s *SessionsSync) Sync(ctx context.Context) error {
 	})
 	if err != nil {
 		return err
+	}
+
+	// Pre-load session_groups to resolve group_id -> PocketBase record ID
+	s.groupIDMap = make(map[int]string)
+	groupRecords, err := s.PreloadRecords("session_groups", filter, func(record *core.Record) (interface{}, bool) {
+		if cmID, ok := record.Get("cm_id").(float64); ok {
+			// Store the PocketBase ID for this group's CampMinder ID
+			s.groupIDMap[int(cmID)] = record.Id
+			return int(cmID), true
+		}
+		return nil, false
+	})
+	if err != nil {
+		slog.Warn("Failed to preload session_groups", "error", err)
+		// Continue without group resolution - groups will be nil
+	} else {
+		slog.Info("Preloaded session_groups for relation resolution", "count", len(groupRecords))
 	}
 
 	// Start the sync process
@@ -150,8 +168,13 @@ func (s *SessionsSync) Sync(ctx context.Context) error {
 		}
 		s.TrackProcessedKey(key, year)
 
-		// Process the record - specify fields to compare (including parent_id now)
-		compareFields := []string{"cm_id", "name", "start_date", "end_date", "session_type", "parent_id"}
+		// Process the record - specify fields to compare (including parent_id and all new fields)
+		compareFields := []string{
+			"cm_id", "name", "start_date", "end_date", "session_type", "parent_id",
+			"description", "is_active", "sort_order", "session_group",
+			"is_day", "is_residential", "is_for_children", "is_for_adults",
+			"start_grade_id", "end_grade_id", "gender_id",
+		}
 		if err := s.ProcessSimpleRecord("camp_sessions", key, pbData, existingRecords, compareFields); err != nil {
 			slog.Error("Error processing session", "error", err)
 			s.Stats.Errors++
@@ -250,6 +273,28 @@ func (s *SessionsSync) transformSessionToPBWithParent(
 	if parentID > 0 {
 		pbData["parent_id"] = parentID
 	}
+
+	// Extract new fields from CampMinder (all optional, pass through as-is)
+	pbData["description"] = data["Description"]
+	pbData["is_active"] = data["IsActive"]
+	pbData["sort_order"] = data["SortOrder"]
+
+	// Resolve GroupID to PocketBase session_group relation
+	if groupID, ok := data["GroupID"].(float64); ok && groupID > 0 {
+		if pbID, exists := s.groupIDMap[int(groupID)]; exists {
+			pbData["session_group"] = pbID
+		} else {
+			slog.Debug("No session_group found for GroupID", "groupID", int(groupID))
+		}
+	}
+
+	pbData["is_day"] = data["IsDay"]
+	pbData["is_residential"] = data["IsResidential"]
+	pbData["is_for_children"] = data["IsForChilden"] // Note: CampMinder API has typo (missing 'r')
+	pbData["is_for_adults"] = data["IsForAdults"]
+	pbData["start_grade_id"] = data["StartGradeID"]
+	pbData["end_grade_id"] = data["EndGradeID"]
+	pbData["gender_id"] = data["GenderID"]
 
 	return pbData, nil
 }

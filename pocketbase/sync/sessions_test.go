@@ -86,6 +86,183 @@ func TestSessionsSync_Name(t *testing.T) {
 	}
 }
 
+// TestTransformSessionExtractsAllFields tests that all CampMinder fields are extracted to PocketBase format
+func TestTransformSessionExtractsAllFields(t *testing.T) {
+	// Create SessionsSync with groupIDMap populated for session_group relation
+	s := &SessionsSync{
+		groupIDMap: map[int]string{
+			100: "group_pb_id_100", // Maps GroupID 100 to PocketBase ID
+		},
+	}
+
+	// Mock CampMinder API response with all fields
+	// Note: CampMinder API has typo "IsForChilden" (missing 'r')
+	sessionData := map[string]interface{}{
+		"ID":            float64(12345),
+		"Name":          "Session 2",
+		"StartDate":     "2025-06-15T00:00:00Z",
+		"EndDate":       "2025-07-13T00:00:00Z",
+		"SeasonID":      float64(2025),
+		"Description":   "Main summer session",
+		"IsActive":      true,
+		"SortOrder":     float64(2),
+		"GroupID":       float64(100),
+		"IsDay":         false,
+		"IsResidential": true,
+		"IsForChilden":  true, // CampMinder API typo - missing 'r'
+		"IsForAdults":   false,
+		"StartGradeID":  float64(3),
+		"EndGradeID":    float64(10),
+		"GenderID":      float64(0),
+	}
+
+	// No parent sessions for this test (empty map)
+	mainSessions := make(map[string]int)
+
+	pbData, err := s.transformSessionToPBWithParent(sessionData, mainSessions)
+	if err != nil {
+		t.Fatalf("transformSessionToPBWithParent returned error: %v", err)
+	}
+
+	// Verify existing fields still work
+	if got, want := pbData["cm_id"].(int), 12345; got != want {
+		t.Errorf("cm_id = %d, want %d", got, want)
+	}
+	if got, want := pbData["name"].(string), "Session 2"; got != want {
+		t.Errorf("name = %q, want %q", got, want)
+	}
+	if got, want := pbData["year"].(int), 2025; got != want {
+		t.Errorf("year = %d, want %d", got, want)
+	}
+	if got, want := pbData["session_type"].(string), "main"; got != want {
+		t.Errorf("session_type = %q, want %q", got, want)
+	}
+
+	// Verify new fields are extracted
+	if got, want := pbData["description"], "Main summer session"; got != want {
+		t.Errorf("description = %v, want %v", got, want)
+	}
+	if got, want := pbData["is_active"], true; got != want {
+		t.Errorf("is_active = %v, want %v", got, want)
+	}
+	if got, want := pbData["sort_order"], float64(2); got != want {
+		t.Errorf("sort_order = %v, want %v", got, want)
+	}
+	// session_group is resolved from GroupID via groupIDMap
+	if got, want := pbData["session_group"], "group_pb_id_100"; got != want {
+		t.Errorf("session_group = %v, want %v", got, want)
+	}
+	if got, want := pbData["is_day"], false; got != want {
+		t.Errorf("is_day = %v, want %v", got, want)
+	}
+	if got, want := pbData["is_residential"], true; got != want {
+		t.Errorf("is_residential = %v, want %v", got, want)
+	}
+	if got, want := pbData["is_for_children"], true; got != want {
+		t.Errorf("is_for_children = %v, want %v", got, want)
+	}
+	if got, want := pbData["is_for_adults"], false; got != want {
+		t.Errorf("is_for_adults = %v, want %v", got, want)
+	}
+	if got, want := pbData["start_grade_id"], float64(3); got != want {
+		t.Errorf("start_grade_id = %v, want %v", got, want)
+	}
+	if got, want := pbData["end_grade_id"], float64(10); got != want {
+		t.Errorf("end_grade_id = %v, want %v", got, want)
+	}
+	if got, want := pbData["gender_id"], float64(0); got != want {
+		t.Errorf("gender_id = %v, want %v", got, want)
+	}
+}
+
+// TestTransformSessionHandlesMissingFields tests that nil/missing fields don't cause errors
+func TestTransformSessionHandlesMissingFields(t *testing.T) {
+	s := &SessionsSync{}
+
+	// Minimal session data with only required fields
+	sessionData := map[string]interface{}{
+		"ID":       float64(12345),
+		"Name":     "Session 2",
+		"SeasonID": float64(2025),
+		// All optional fields are missing
+	}
+
+	mainSessions := make(map[string]int)
+
+	pbData, err := s.transformSessionToPBWithParent(sessionData, mainSessions)
+	if err != nil {
+		t.Fatalf("transformSessionToPBWithParent returned error: %v", err)
+	}
+
+	// Required fields should be set
+	if got, want := pbData["cm_id"].(int), 12345; got != want {
+		t.Errorf("cm_id = %d, want %d", got, want)
+	}
+
+	// Optional fields that are always present (may be nil)
+	// Note: session_group is NOT included because it's only set when GroupID is present
+	// and can be resolved via groupIDMap
+	optionalFields := []string{
+		"description", "is_active", "sort_order",
+		"is_day", "is_residential", "is_for_children", "is_for_adults",
+		"start_grade_id", "end_grade_id", "gender_id",
+	}
+
+	for _, field := range optionalFields {
+		// Field should exist in pbData but can be nil
+		if _, exists := pbData[field]; !exists {
+			t.Errorf("field %q missing from pbData (should be present even if nil)", field)
+		}
+	}
+
+	// session_group should NOT be present when GroupID is missing/not resolvable
+	if _, exists := pbData["session_group"]; exists {
+		t.Errorf("session_group should not be present when GroupID is missing")
+	}
+}
+
+// TestTransformSessionHandlesNullFields tests that explicit null values are handled
+func TestTransformSessionHandlesNullFields(t *testing.T) {
+	s := &SessionsSync{}
+
+	// Session data with explicit nil values (as might come from JSON null)
+	sessionData := map[string]interface{}{
+		"ID":            float64(12345),
+		"Name":          "Session 2",
+		"StartDate":     "2025-06-15T00:00:00Z",
+		"EndDate":       "2025-07-13T00:00:00Z",
+		"SeasonID":      float64(2025),
+		"Description":   nil, // explicit null
+		"IsActive":      nil,
+		"SortOrder":     nil,
+		"GroupID":       nil,
+		"IsDay":         nil,
+		"IsResidential": nil,
+		"IsForChildren": nil,
+		"IsForAdults":   nil,
+		"StartGradeID":  nil,
+		"EndGradeID":    nil,
+		"GenderID":      nil,
+	}
+
+	mainSessions := make(map[string]int)
+
+	pbData, err := s.transformSessionToPBWithParent(sessionData, mainSessions)
+	if err != nil {
+		t.Fatalf("transformSessionToPBWithParent returned error: %v", err)
+	}
+
+	// Should not panic and required fields should still work
+	if got, want := pbData["cm_id"].(int), 12345; got != want {
+		t.Errorf("cm_id = %d, want %d", got, want)
+	}
+
+	// Null fields should be nil in the result
+	if pbData["description"] != nil {
+		t.Errorf("description should be nil for null input, got %v", pbData["description"])
+	}
+}
+
 func TestGetSessionTypeFromName(t *testing.T) {
 	tests := []struct {
 		name     string

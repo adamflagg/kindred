@@ -11,6 +11,8 @@ export const queryKeys = {
   sessions: (year: number) => ['sessions', year] as const,
   allSessions: (year: number) => ['all-sessions', year] as const,
   session: (id: string) => ['session', id] as const,
+  sessionGroups: (year: number) => ['session-groups', year] as const,
+  sessionPrograms: (year: number) => ['session-programs', year] as const,
 
   // Campers (Tier 1 - sync data)
   allCampers: () => ['all-campers'] as const,

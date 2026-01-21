@@ -229,7 +229,8 @@ func (o *Orchestrator) RunSingleSync(_ context.Context, syncType string) error {
 func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 	// Define sync order (respecting dependencies)
 	orderedJobs := []string{
-		"sessions",         // No dependencies
+		"session_groups",   // No dependencies - sync first for group data
+		"sessions",         // Depends on session_groups (for session_group relation)
 		"attendees",        // Depends on sessions
 		"persons",          // Depends on attendees (attendee-driven sync)
 		"bunks",            // No dependencies
@@ -425,6 +426,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 	if len(servicesToRun) == 0 {
 		// Run all services in dependency order
 		servicesToRun = []string{
+			"session_groups",
 			"sessions",
 			"attendees",
 			"persons",
@@ -485,6 +487,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		o.mu.Unlock()
 
 		// Re-register with year client
+		o.RegisterService("session_groups", NewSessionGroupsSync(o.app, yearClient))
 		o.RegisterService("sessions", NewSessionsSync(o.app, yearClient))
 		o.RegisterService("attendees", NewAttendeesSync(o.app, yearClient))
 		o.RegisterService("persons", NewPersonsSync(o.app, yearClient))
@@ -600,6 +603,7 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	o.baseClient = client
 
 	// Register sync services in dependency order
+	o.RegisterService("session_groups", NewSessionGroupsSync(o.app, client))
 	o.RegisterService("sessions", NewSessionsSync(o.app, client))
 	o.RegisterService("attendees", NewAttendeesSync(o.app, client))
 	o.RegisterService("persons", NewPersonsSync(o.app, client))
