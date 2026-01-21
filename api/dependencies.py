@@ -14,7 +14,6 @@ import asyncio
 import logging
 from typing import Any
 
-from bunking.auth_middleware import set_pocketbase_client
 from bunking.graph.graph_cache_manager import GraphCacheManager
 from pocketbase import PocketBase
 
@@ -60,10 +59,6 @@ async def authenticate_pb() -> None:
             settings.pocketbase_admin_password,
         )
         logger.info("Successfully authenticated with PocketBase")
-
-        # Set PocketBase client in auth middleware
-        set_pocketbase_client(pb)
-        logger.info("Set PocketBase client in auth middleware")
     except Exception as e:
         logger.error(f"Failed to authenticate with PocketBase: {e}")
         raise
