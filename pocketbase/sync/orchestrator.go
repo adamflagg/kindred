@@ -235,6 +235,7 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 		"person_tag_definitions",  // No dependencies - sync before persons
 		"persons",                 // Depends on attendees (attendee-driven sync)
 		"households",              // Extracts from persons response (no extra API calls)
+		"person_tags",             // Extracts from persons response (depends on person_tag_definitions)
 		"bunks",                   // No dependencies
 		"bunk_plans",              // Depends on sessions and bunks
 		"bunk_assignments",        // Depends on sessions, persons, bunks
@@ -434,6 +435,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 			"person_tag_definitions",
 			"persons",
 			"households",
+			"person_tags",
 			"bunks",
 			"bunk_plans",
 			"bunk_assignments",
@@ -497,6 +499,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		o.RegisterService("person_tag_definitions", NewPersonTagDefinitionsSync(o.app, yearClient))
 		o.RegisterService("persons", NewPersonsSync(o.app, yearClient))
 		o.RegisterService("households", NewHouseholdsSync(o.app, yearClient))
+		o.RegisterService("person_tags", NewPersonTagsSync(o.app, yearClient))
 		o.RegisterService("bunks", NewBunksSync(o.app, yearClient))
 		o.RegisterService("bunk_plans", NewBunkPlansSync(o.app, yearClient))
 		o.RegisterService("bunk_assignments", NewBunkAssignmentsSync(o.app, yearClient))
@@ -615,6 +618,7 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	o.RegisterService("person_tag_definitions", NewPersonTagDefinitionsSync(o.app, client))
 	o.RegisterService("persons", NewPersonsSync(o.app, client))
 	o.RegisterService("households", NewHouseholdsSync(o.app, client))
+	o.RegisterService("person_tags", NewPersonTagsSync(o.app, client))
 	o.RegisterService("bunks", NewBunksSync(o.app, client))
 	o.RegisterService("bunk_plans", NewBunkPlansSync(o.app, client))
 	o.RegisterService("bunk_assignments", NewBunkAssignmentsSync(o.app, client))

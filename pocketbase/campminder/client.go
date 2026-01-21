@@ -347,6 +347,7 @@ func (c *Client) GetPersons(personIDs []int) ([]map[string]interface{}, error) {
 	values.Add("includerelatives", "true")
 	values.Add("includefamilypersons", "true")
 	values.Add("includehouseholddetails", "true")
+	values.Add("includetags", "true")
 	values.Add("pagenumber", "1")
 	values.Add("pagesize", strconv.Itoa(len(personIDs)))
 
@@ -398,6 +399,7 @@ func (c *Client) GetPersonsPage(page, pageSize int) ([]map[string]interface{}, b
 		"includerelatives":        "true",
 		"includefamilypersons":    "true",
 		"includehouseholddetails": "true",
+		"includetags":             "true",
 		// No seasonid - gets latest data
 	}
 

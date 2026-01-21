@@ -10,6 +10,7 @@ import {
   Brain,
   Tag,
   Building2,
+  Tags,
 } from 'lucide-react';
 
 // Sync type configuration for the sync status grid
@@ -20,6 +21,7 @@ export const SYNC_TYPES = [
   { id: 'person_tag_definitions', name: 'Tag Definitions', icon: Tag, color: 'text-pink-600' },
   { id: 'persons', name: 'Persons', icon: User, color: 'text-violet-600' },
   { id: 'households', name: 'Households', icon: Building2, color: 'text-purple-600' },
+  { id: 'person_tags', name: 'Person Tags', icon: Tags, color: 'text-fuchsia-600' },
   { id: 'bunks', name: 'Bunks', icon: Home, color: 'text-amber-600' },
   { id: 'bunk_plans', name: 'Bunk Plans', icon: Layout, color: 'text-rose-600' },
   { id: 'bunk_assignments', name: 'Assignments', icon: UserCheck, color: 'text-indigo-600' },
@@ -35,6 +37,7 @@ export const HISTORICAL_SYNC_TYPES = [
   { id: 'person_tag_definitions', name: 'Tag Definitions' },
   { id: 'persons', name: 'Persons' },
   { id: 'households', name: 'Households' },
+  { id: 'person_tags', name: 'Person Tags' },
   { id: 'bunks', name: 'Bunks' },
   { id: 'bunk_plans', name: 'Bunk Plans' },
   { id: 'bunk_assignments', name: 'Assignments' },
