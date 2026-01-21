@@ -4,13 +4,10 @@ Authentication middleware v2 - supports both JWT validation and legacy modes.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
 import time
-from collections.abc import Callable
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +17,6 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.responses import JSONResponse, Response
 
 from api.settings import _is_github_actions
-from pocketbase import PocketBase
 
 from .jwt_auth import JWTValidator, PocketBaseTokenValidator, extract_bearer_token
 
@@ -74,12 +70,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
     - production: Validate JWT tokens from OIDC provider
     """
 
-    def __init__(self, app: Any, auth_mode: str, admin_group: str, pb_client: PocketBase | None = None):
+    def __init__(self, app: Any, auth_mode: str, admin_group: str):
         super().__init__(app)
         self.auth_mode = auth_mode.lower()
         self.admin_group = admin_group
-        self.pb = pb_client
-        self._pb_client_setter: Callable[[PocketBase], None] | None = None
         self._userinfo_cache: dict[str, dict[str, Any]] = {}
 
         # Validate auth mode
@@ -311,14 +305,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # (BaseHTTPMiddleware wraps raised exceptions causing 500 errors)
             return JSONResponse(status_code=401, content={"detail": "Authentication required"})
 
-        # Sync user to PocketBase if we have a client
-        if user and self.pb:
-            try:
-                await self._sync_user_to_pocketbase(user)
-            except Exception as e:
-                # Log but don't fail the request if sync fails
-                logger.error(f"Failed to sync user to PocketBase: {e}")
-
         # Add user to request state
         request.state.user = user
 
@@ -333,54 +319,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         final_response = await call_next(request)
         return final_response
-
-    async def _sync_user_to_pocketbase(self, user: AuthUser) -> None:
-        """Sync user information to PocketBase."""
-        if not self.pb:
-            return
-
-        try:
-            # Try to find existing user in app_users collection
-            existing = None
-            try:
-                result = await asyncio.to_thread(
-                    self.pb.collection("app_users").get_list,
-                    page=1,
-                    per_page=1,
-                    query_params={"filter": f'username="{user.username}"'},
-                )
-                if result.items:
-                    existing = result.items[0]
-            except Exception as e:
-                logger.debug(f"User not found or error searching: {e}")
-
-            now = datetime.now(UTC).isoformat()
-
-            user_data = {
-                "username": user.username,
-                "email": user.email,
-                "display_name": user.display_name,
-                "groups": user.groups,
-                "is_admin": user.is_admin,
-                "last_login": now,
-                "active": True,
-            }
-
-            if existing:
-                # Update existing user
-                await asyncio.to_thread(self.pb.collection("app_users").update, existing.id, user_data)
-                logger.debug(f"Updated user {user.username} in PocketBase")
-            else:
-                # Create new user
-                user_data["first_seen"] = now
-
-                await asyncio.to_thread(self.pb.collection("app_users").create, user_data)
-                logger.info(f"Created new user {user.username} in PocketBase")
-
-        except Exception as e:
-            logger.error(f"Error syncing user {user.username} to PocketBase: {e}")
-            # Don't raise - we don't want auth to fail if PocketBase is down
-
 
 def get_current_user(request: Request) -> AuthUser:
     """
@@ -413,20 +351,6 @@ def require_admin(user: AuthUser = Depends(get_current_user)) -> AuthUser:
     return user
 
 
-# Global reference to middleware instance for PocketBase client updates
-_auth_middleware_instance = None
-
-
 def create_auth_middleware(app: Any, auth_mode: str, admin_group: str) -> AuthMiddleware:
-    """Create auth middleware instance and store global reference."""
-    global _auth_middleware_instance
-    _auth_middleware_instance = AuthMiddleware(app, auth_mode, admin_group, pb_client=None)
-    return _auth_middleware_instance
-
-
-def set_pocketbase_client(pb_client: PocketBase) -> None:
-    """Set PocketBase client on the middleware instance."""
-    global _auth_middleware_instance
-    if _auth_middleware_instance:
-        _auth_middleware_instance.pb = pb_client
-        logger.info("Updated auth middleware with PocketBase client")
+    """Create auth middleware instance."""
+    return AuthMiddleware(app, auth_mode, admin_group)

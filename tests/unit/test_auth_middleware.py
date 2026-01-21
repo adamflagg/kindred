@@ -14,7 +14,6 @@ from bunking.auth_middleware import (
     create_auth_middleware,
     get_current_user,
     require_admin,
-    set_pocketbase_client,
 )
 
 
@@ -122,7 +121,6 @@ class TestAuthMiddlewareInit:
             middleware = AuthMiddleware.__new__(AuthMiddleware)
             middleware.auth_mode = "bypass"
             middleware.admin_group = "admin"
-            middleware.pb = None
             middleware._userinfo_cache = {}
             middleware.jwt_validator = None
             middleware.pb_token_validator = None
@@ -256,36 +254,6 @@ class TestCreateAuthMiddleware:
 
             assert middleware.auth_mode == "bypass"
             assert middleware.admin_group == "admin"
-
-
-class TestSetPocketbaseClient:
-    """Tests for set_pocketbase_client function."""
-
-    def test_set_client_when_middleware_exists(self):
-        """Test setting PocketBase client when middleware exists."""
-        import bunking.auth_middleware as auth_module
-
-        # Create a mock middleware
-        mock_middleware = MagicMock()
-        auth_module._auth_middleware_instance = mock_middleware
-
-        pb_client = MagicMock()
-        set_pocketbase_client(pb_client)
-
-        assert mock_middleware.pb == pb_client
-
-        # Cleanup
-        auth_module._auth_middleware_instance = None
-
-    def test_set_client_when_no_middleware(self):
-        """Test setting PocketBase client when no middleware exists."""
-        import bunking.auth_middleware as auth_module
-
-        auth_module._auth_middleware_instance = None
-
-        pb_client = MagicMock()
-        # Should not raise
-        set_pocketbase_client(pb_client)
 
 
 class TestAuthMiddlewareDispatch:
