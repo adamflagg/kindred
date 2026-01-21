@@ -377,6 +377,77 @@ func (b *BaseSyncService) ProcessSimpleRecord(
 	return nil
 }
 
+// ProcessSimpleRecordGlobal handles standard create/update logic for a record that is NOT year-scoped.
+// Used for entities like tag definitions and custom field definitions that are global across years.
+// Unlike ProcessSimpleRecord, this does NOT require 'year' in recordData.
+func (b *BaseSyncService) ProcessSimpleRecordGlobal(
+	collection string,
+	key interface{},
+	recordData map[string]interface{},
+	existingRecords map[interface{}]*core.Record,
+	compareFields []string, // Optional: specific fields to check for updates
+) error {
+	// Use key directly - no year component for global entities
+	existing := existingRecords[key]
+
+	if existing != nil {
+		// Check if update is needed
+		needsUpdate := false
+
+		if len(compareFields) > 0 {
+			// Only compare specified fields
+			for _, field := range compareFields {
+				if value, exists := recordData[field]; exists {
+					if !b.FieldEquals(existing.Get(field), value) {
+						needsUpdate = true
+						break
+					}
+				}
+			}
+		} else {
+			// Compare all fields
+			for field, value := range recordData {
+				if !b.FieldEquals(existing.Get(field), value) {
+					needsUpdate = true
+					break
+				}
+			}
+		}
+
+		if needsUpdate {
+			// Update existing record
+			for field, value := range recordData {
+				existing.Set(field, value)
+			}
+
+			if err := b.App.Save(existing); err != nil {
+				return fmt.Errorf("updating record: %w", err)
+			}
+			b.Stats.Updated++
+		} else {
+			b.Stats.Skipped++
+		}
+	} else {
+		// Create new record
+		col, err := b.App.FindCollectionByNameOrId(collection)
+		if err != nil {
+			return fmt.Errorf("finding collection %s: %w", collection, err)
+		}
+
+		record := core.NewRecord(col)
+		for field, value := range recordData {
+			record.Set(field, value)
+		}
+
+		if err := b.App.Save(record); err != nil {
+			return fmt.Errorf("creating record: %w", err)
+		}
+		b.Stats.Created++
+	}
+
+	return nil
+}
+
 // PreloadCompositeRecords pre-loads records with composite keys
 // keyBuilder should build a composite key string from a record
 func (b *BaseSyncService) PreloadCompositeRecords(

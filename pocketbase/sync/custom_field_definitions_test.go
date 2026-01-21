@@ -16,23 +16,22 @@ func TestCustomFieldDefinitionsSync_Name(t *testing.T) {
 }
 
 // TestTransformCustomFieldDefinitionToPB tests transformation to PocketBase format
+// Note: CampMinder API uses camelCase field names for this endpoint
 func TestTransformCustomFieldDefinitionToPB(t *testing.T) {
 	s := &CustomFieldDefinitionsSync{}
 
-	// Mock CampMinder API response
+	// Mock CampMinder API response (camelCase field names)
 	data := map[string]interface{}{
-		"Id":         float64(12345),
-		"Name":       "Dietary Restrictions",
-		"DataType":   "String",
-		"Partition":  "Camper",
-		"IsSeasonal": false,
-		"IsArray":    true,
-		"IsActive":   true,
+		"id":         float64(12345),
+		"name":       "Dietary Restrictions",
+		"dataType":   "String",
+		"partition":  "Camper",
+		"isSeasonal": false,
+		"isArray":    true,
+		"isActive":   true,
 	}
 
-	year := 2025
-
-	pbData, err := s.transformCustomFieldDefinitionToPB(data, year)
+	pbData, err := s.transformCustomFieldDefinitionToPB(data)
 	if err != nil {
 		t.Fatalf("transformCustomFieldDefinitionToPB returned error: %v", err)
 	}
@@ -59,8 +58,9 @@ func TestTransformCustomFieldDefinitionToPB(t *testing.T) {
 	if got, want := pbData["is_active"].(bool), true; got != want {
 		t.Errorf("is_active = %v, want %v", got, want)
 	}
-	if got, want := pbData["year"].(int), 2025; got != want {
-		t.Errorf("year = %d, want %d", got, want)
+	// Note: year field removed - custom field definitions are global (not year-specific)
+	if _, hasYear := pbData["year"]; hasYear {
+		t.Error("year field should not be present - definitions are global")
 	}
 }
 
@@ -68,15 +68,13 @@ func TestTransformCustomFieldDefinitionToPB(t *testing.T) {
 func TestTransformCustomFieldDefinitionHandlesMissingFields(t *testing.T) {
 	s := &CustomFieldDefinitionsSync{}
 
-	// Minimal data with only required fields
+	// Minimal data with only required fields (camelCase)
 	data := map[string]interface{}{
-		"Id":   float64(12345),
-		"Name": "Test Field",
+		"id":   float64(12345),
+		"name": "Test Field",
 	}
 
-	year := 2025
-
-	pbData, err := s.transformCustomFieldDefinitionToPB(data, year)
+	pbData, err := s.transformCustomFieldDefinitionToPB(data)
 	if err != nil {
 		t.Fatalf("transformCustomFieldDefinitionToPB returned error: %v", err)
 	}
@@ -113,10 +111,10 @@ func TestTransformCustomFieldDefinitionRequiredIDError(t *testing.T) {
 
 	// Missing ID field
 	data := map[string]interface{}{
-		"Name": "Test Field",
+		"name": "Test Field",
 	}
 
-	_, err := s.transformCustomFieldDefinitionToPB(data, 2025)
+	_, err := s.transformCustomFieldDefinitionToPB(data)
 	if err == nil {
 		t.Error("expected error for missing ID, got nil")
 	}
@@ -128,10 +126,10 @@ func TestTransformCustomFieldDefinitionRequiredNameError(t *testing.T) {
 
 	// Missing Name field
 	data := map[string]interface{}{
-		"Id": float64(12345),
+		"id": float64(12345),
 	}
 
-	_, err := s.transformCustomFieldDefinitionToPB(data, 2025)
+	_, err := s.transformCustomFieldDefinitionToPB(data)
 	if err == nil {
 		t.Error("expected error for missing Name, got nil")
 	}
@@ -143,11 +141,11 @@ func TestTransformCustomFieldDefinitionZeroIDError(t *testing.T) {
 
 	// ID=0 (invalid)
 	data := map[string]interface{}{
-		"Id":   float64(0),
-		"Name": "Test Field",
+		"id":   float64(0),
+		"name": "Test Field",
 	}
 
-	_, err := s.transformCustomFieldDefinitionToPB(data, 2025)
+	_, err := s.transformCustomFieldDefinitionToPB(data)
 	if err == nil {
 		t.Error("expected error for ID=0, got nil")
 	}
@@ -159,11 +157,11 @@ func TestTransformCustomFieldDefinitionEmptyNameError(t *testing.T) {
 
 	// Empty Name
 	data := map[string]interface{}{
-		"Id":   float64(12345),
-		"Name": "",
+		"id":   float64(12345),
+		"name": "",
 	}
 
-	_, err := s.transformCustomFieldDefinitionToPB(data, 2025)
+	_, err := s.transformCustomFieldDefinitionToPB(data)
 	if err == nil {
 		t.Error("expected error for empty Name, got nil")
 	}
@@ -177,12 +175,12 @@ func TestTransformCustomFieldDefinitionValidDataTypes(t *testing.T) {
 
 	for _, dt := range validDataTypes {
 		data := map[string]interface{}{
-			"Id":       float64(12345),
-			"Name":     "Test Field",
-			"DataType": dt,
+			"id":       float64(12345),
+			"name":     "Test Field",
+			"dataType": dt,
 		}
 
-		pbData, err := s.transformCustomFieldDefinitionToPB(data, 2025)
+		pbData, err := s.transformCustomFieldDefinitionToPB(data)
 		if err != nil {
 			t.Errorf("transformCustomFieldDefinitionToPB returned error for DataType %q: %v", dt, err)
 			continue
@@ -202,12 +200,12 @@ func TestTransformCustomFieldDefinitionValidPartitions(t *testing.T) {
 
 	for _, p := range validPartitions {
 		data := map[string]interface{}{
-			"Id":        float64(12345),
-			"Name":      "Test Field",
-			"Partition": p,
+			"id":        float64(12345),
+			"name":      "Test Field",
+			"partition": p,
 		}
 
-		pbData, err := s.transformCustomFieldDefinitionToPB(data, 2025)
+		pbData, err := s.transformCustomFieldDefinitionToPB(data)
 		if err != nil {
 			t.Errorf("transformCustomFieldDefinitionToPB returned error for Partition %q: %v", p, err)
 			continue

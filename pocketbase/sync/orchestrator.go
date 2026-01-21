@@ -95,6 +95,13 @@ func (o *Orchestrator) RegisterService(name string, service Service) {
 	slog.Info("Registered sync service", "name", name)
 }
 
+// GetService returns a registered sync service by name
+func (o *Orchestrator) GetService(name string) Service {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	return o.services[name]
+}
+
 // IsRunning checks if a sync type is currently running
 func (o *Orchestrator) IsRunning(syncType string) bool {
 	o.mu.RLock()
@@ -429,19 +436,28 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 	servicesToRun := opts.Services
 	if len(servicesToRun) == 0 {
 		// Run all services in dependency order
+		// Note: person_tag_definitions and custom_field_definitions are only included
+		// for current year syncs (opts.Year == 0) because they are global definitions
+		// that don't accept a season parameter in CampMinder's API
 		servicesToRun = []string{
 			"session_groups",
 			"sessions",
 			"attendees",
-			"person_tag_definitions",
-			"custom_field_definitions",
+		}
+
+		// Only include definition syncs for current year (they're global, not year-specific)
+		if opts.Year == 0 {
+			servicesToRun = append(servicesToRun, "person_tag_definitions", "custom_field_definitions")
+		}
+
+		servicesToRun = append(servicesToRun,
 			"persons",
 			"households",
 			"person_tags",
 			"bunks",
 			"bunk_plans",
 			"bunk_assignments",
-		}
+		)
 
 		// Only include bunk_requests for current year syncs (not historical)
 		// Bunk requests are populated during the current year's processing
@@ -495,10 +511,11 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		o.mu.Unlock()
 
 		// Re-register with year client
+		// Note: person_tag_definitions and custom_field_definitions are NOT re-registered
+		// because they are global (not year-specific) and shouldn't run in historical syncs
 		o.RegisterService("session_groups", NewSessionGroupsSync(o.app, yearClient))
 		o.RegisterService("sessions", NewSessionsSync(o.app, yearClient))
 		o.RegisterService("attendees", NewAttendeesSync(o.app, yearClient))
-		o.RegisterService("person_tag_definitions", NewPersonTagDefinitionsSync(o.app, yearClient))
 		o.RegisterService("persons", NewPersonsSync(o.app, yearClient))
 		o.RegisterService("households", NewHouseholdsSync(o.app, yearClient))
 		o.RegisterService("person_tags", NewPersonTagsSync(o.app, yearClient))
@@ -645,6 +662,11 @@ func (o *Orchestrator) InitializeSyncServices() error {
 			}
 		}
 	}
+
+	// Register on-demand sync services (NOT part of daily sync)
+	// These require N API calls (one per entity) so are triggered manually
+	o.RegisterService("person_custom_field_values", NewPersonCustomFieldValuesSync(o.app, client))
+	o.RegisterService("household_custom_field_values", NewHouseholdCustomFieldValuesSync(o.app, client))
 
 	slog.Info("All sync services registered")
 	return nil

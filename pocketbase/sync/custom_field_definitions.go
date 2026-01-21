@@ -31,12 +31,10 @@ func (s *CustomFieldDefinitionsSync) Name() string {
 }
 
 // Sync performs the custom field definitions sync
+// Note: Custom field definitions are global (not year-specific) in CampMinder's API
 func (s *CustomFieldDefinitionsSync) Sync(ctx context.Context) error {
-	year := s.Client.GetSeasonID()
-	filter := fmt.Sprintf("year = %d", year)
-
-	// Pre-load existing records for this year
-	existingRecords, err := s.PreloadRecords("custom_field_definitions", filter, func(record *core.Record) (interface{}, bool) {
+	// Pre-load all existing records (no year filter - definitions are global)
+	existingRecords, err := s.PreloadRecords("custom_field_definitions", "", func(record *core.Record) (interface{}, bool) {
 		if cmID, ok := record.Get("cm_id").(float64); ok && cmID > 0 {
 			return int(cmID), true
 		}
@@ -88,7 +86,7 @@ func (s *CustomFieldDefinitionsSync) Sync(ctx context.Context) error {
 			}
 
 			// Transform to PocketBase format
-			pbData, err := s.transformCustomFieldDefinitionToPB(defData, year)
+			pbData, err := s.transformCustomFieldDefinitionToPB(defData)
 			if err != nil {
 				slog.Error("Error transforming custom field definition", "error", err)
 				s.Stats.Errors++
@@ -103,12 +101,12 @@ func (s *CustomFieldDefinitionsSync) Sync(ctx context.Context) error {
 				continue
 			}
 
-			// Track as processed
-			s.TrackProcessedKey(cmID, year)
+			// Track as processed (no year - definitions are global)
+			s.TrackProcessedKey(cmID, 0)
 
 			// Process the record using cm_id as key
 			compareFields := []string{"cm_id", "name", "data_type", "partition", "is_seasonal", "is_array", "is_active"}
-			if err := s.ProcessSimpleRecord("custom_field_definitions", cmID, pbData, existingRecords, compareFields); err != nil {
+			if err := s.ProcessSimpleRecordGlobal("custom_field_definitions", cmID, pbData, existingRecords, compareFields); err != nil {
 				slog.Error("Error processing custom field definition", "cm_id", cmID, "error", err)
 				s.Stats.Errors++
 			}
@@ -121,23 +119,20 @@ func (s *CustomFieldDefinitionsSync) Sync(ctx context.Context) error {
 		page++
 	}
 
-	// Delete orphans
+	// Delete orphans (no year filter - definitions are global)
 	if err := s.DeleteOrphans(
 		"custom_field_definitions",
 		func(record *core.Record) (string, bool) {
 			cmIDValue := record.Get("cm_id")
-			yearValue := record.Get("year")
-
 			cmID, cmIDOK := cmIDValue.(float64)
-			yr, yearOK := yearValue.(float64)
-
-			if cmIDOK && yearOK && cmID > 0 {
-				return CompositeKey(int(cmID), int(yr)), true
+			if cmIDOK && cmID > 0 {
+				// Use cm_id as the key (no year component)
+				return fmt.Sprintf("%d", int(cmID)), true
 			}
 			return "", false
 		},
 		"custom_field_definition",
-		filter,
+		"", // No filter - all records
 	); err != nil {
 		slog.Error("Error deleting orphans", "error", err)
 	}
@@ -152,59 +147,56 @@ func (s *CustomFieldDefinitionsSync) Sync(ctx context.Context) error {
 }
 
 // transformCustomFieldDefinitionToPB transforms CampMinder custom field definition data to PocketBase format
+// Note: CampMinder /persons/custom-fields endpoint uses camelCase field names
 func (s *CustomFieldDefinitionsSync) transformCustomFieldDefinitionToPB(
 	data map[string]interface{},
-	year int,
 ) (map[string]interface{}, error) {
 	pbData := make(map[string]interface{})
 
-	// Extract ID (required)
-	idFloat, ok := data["Id"].(float64)
+	// Extract ID (required) - API uses "id" (camelCase)
+	idFloat, ok := data["id"].(float64)
 	if !ok || idFloat == 0 {
-		return nil, fmt.Errorf("invalid or missing custom field definition Id")
+		return nil, fmt.Errorf("invalid or missing custom field definition id")
 	}
 	pbData["cm_id"] = int(idFloat)
 
 	// Extract name (required)
-	name, ok := data["Name"].(string)
+	name, ok := data["name"].(string)
 	if !ok || name == "" {
-		return nil, fmt.Errorf("invalid or missing custom field definition Name")
+		return nil, fmt.Errorf("invalid or missing custom field definition name")
 	}
 	pbData["name"] = name
 
-	// Extract optional fields with defaults
-	if dataType, ok := data["DataType"].(string); ok {
+	// Extract optional fields with defaults (all camelCase from API)
+	if dataType, ok := data["dataType"].(string); ok {
 		pbData["data_type"] = dataType
 	} else {
 		pbData["data_type"] = "None"
 	}
 
-	if partition, ok := data["Partition"].(string); ok {
+	if partition, ok := data["partition"].(string); ok {
 		pbData["partition"] = partition
 	} else {
 		pbData["partition"] = "None"
 	}
 
-	if isSeasonal, ok := data["IsSeasonal"].(bool); ok {
+	if isSeasonal, ok := data["isSeasonal"].(bool); ok {
 		pbData["is_seasonal"] = isSeasonal
 	} else {
 		pbData["is_seasonal"] = false
 	}
 
-	if isArray, ok := data["IsArray"].(bool); ok {
+	if isArray, ok := data["isArray"].(bool); ok {
 		pbData["is_array"] = isArray
 	} else {
 		pbData["is_array"] = false
 	}
 
-	if isActive, ok := data["IsActive"].(bool); ok {
+	if isActive, ok := data["isActive"].(bool); ok {
 		pbData["is_active"] = isActive
 	} else {
 		pbData["is_active"] = true
 	}
-
-	// Set year
-	pbData["year"] = year
 
 	return pbData, nil
 }

@@ -598,6 +598,7 @@ func (c *Client) GetSessionGroups() ([]map[string]interface{}, error) {
 // GetPersonTagDefinitions retrieves person tag definitions from CampMinder
 // Endpoint: /persons/tags
 // Returns: array of tag definitions with Name, IsSeasonal, IsHidden, LastUpdatedUTC
+// Note: This endpoint returns a raw array, not a paginated response
 func (c *Client) GetPersonTagDefinitions() ([]map[string]interface{}, error) {
 	params := map[string]string{
 		"clientid": c.clientID,
@@ -608,16 +609,13 @@ func (c *Client) GetPersonTagDefinitions() ([]map[string]interface{}, error) {
 		return nil, err
 	}
 
-	var response struct {
-		TotalCount int                      `json:"TotalCount"`
-		Results    []map[string]interface{} `json:"Results"`
-	}
-
-	if err := json.Unmarshal(body, &response); err != nil {
+	// This endpoint returns a raw array, not a paginated response
+	var results []map[string]interface{}
+	if err := json.Unmarshal(body, &results); err != nil {
 		return nil, fmt.Errorf("decode person tag definitions response: %w", err)
 	}
 
-	return response.Results, nil
+	return results, nil
 }
 
 // GetCustomFieldDefinitionsPage retrieves custom field definitions with pagination
@@ -635,10 +633,12 @@ func (c *Client) GetCustomFieldDefinitionsPage(page, pageSize int) ([]map[string
 		return nil, false, err
 	}
 
+	// CampMinder uses inconsistent casing across endpoints
+	// /persons/custom-fields uses camelCase: totalCount, next, result
 	var response struct {
-		TotalCount int                      `json:"TotalCount"`
-		Next       *string                  `json:"Next"`
-		Results    []map[string]interface{} `json:"Results"`
+		TotalCount int                      `json:"totalCount"`
+		Next       *string                  `json:"next"`
+		Result     []map[string]interface{} `json:"result"`
 	}
 
 	if err := json.Unmarshal(body, &response); err != nil {
@@ -646,5 +646,71 @@ func (c *Client) GetCustomFieldDefinitionsPage(page, pageSize int) ([]map[string
 	}
 
 	hasMore := response.Next != nil && *response.Next != ""
-	return response.Results, hasMore, nil
+	return response.Result, hasMore, nil
+}
+
+// GetPersonCustomFieldValuesPage retrieves custom field values for a specific person with pagination
+// Endpoint: GET /persons/{id}/custom-fields
+// Returns: array of custom field values with Id, ClientID, SeasonID, Value, LastUpdated
+// Note: Requires 1 API call per person - use sparingly
+func (c *Client) GetPersonCustomFieldValuesPage(personID, page, pageSize int) ([]map[string]interface{}, bool, error) {
+	endpoint := fmt.Sprintf("persons/%d/custom-fields", personID)
+	params := map[string]string{
+		"clientid":   c.clientID,
+		"seasonid":   strconv.Itoa(c.seasonID),
+		"pagenumber": strconv.Itoa(page),
+		"pagesize":   strconv.Itoa(pageSize),
+	}
+
+	body, err := c.makeRequest("GET", endpoint, params)
+	if err != nil {
+		return nil, false, err
+	}
+
+	// CampMinder uses camelCase for custom field endpoints
+	var response struct {
+		TotalCount int                      `json:"totalCount"`
+		Next       *string                  `json:"next"`
+		Result     []map[string]interface{} `json:"result"`
+	}
+
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, false, fmt.Errorf("decode person custom field values response: %w", err)
+	}
+
+	hasMore := response.Next != nil && *response.Next != ""
+	return response.Result, hasMore, nil
+}
+
+// GetHouseholdCustomFieldValuesPage retrieves custom field values for a specific household with pagination
+// Endpoint: GET /persons/households/{id}/custom-fields
+// Returns: array of custom field values with Id, ClientID, SeasonID, Value, LastUpdated
+// Note: Requires 1 API call per household - use sparingly
+func (c *Client) GetHouseholdCustomFieldValuesPage(householdID, page, pageSize int) ([]map[string]interface{}, bool, error) {
+	endpoint := fmt.Sprintf("persons/households/%d/custom-fields", householdID)
+	params := map[string]string{
+		"clientid":   c.clientID,
+		"seasonid":   strconv.Itoa(c.seasonID),
+		"pagenumber": strconv.Itoa(page),
+		"pagesize":   strconv.Itoa(pageSize),
+	}
+
+	body, err := c.makeRequest("GET", endpoint, params)
+	if err != nil {
+		return nil, false, err
+	}
+
+	// CampMinder uses camelCase for custom field endpoints
+	var response struct {
+		TotalCount int                      `json:"totalCount"`
+		Next       *string                  `json:"next"`
+		Result     []map[string]interface{} `json:"result"`
+	}
+
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, false, fmt.Errorf("decode household custom field values response: %w", err)
+	}
+
+	hasMore := response.Next != nil && *response.Next != ""
+	return response.Result, hasMore, nil
 }

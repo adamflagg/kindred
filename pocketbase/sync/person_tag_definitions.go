@@ -31,13 +31,11 @@ func (s *PersonTagDefinitionsSync) Name() string {
 }
 
 // Sync performs the person tag definitions sync
+// Note: Person tag definitions are global (not year-specific) in CampMinder's API
 func (s *PersonTagDefinitionsSync) Sync(ctx context.Context) error {
-	year := s.Client.GetSeasonID()
-	filter := fmt.Sprintf("year = %d", year)
-
-	// Pre-load existing records for this year
+	// Pre-load all existing records (no year filter - definitions are global)
 	// Note: TagDef uses Name as identifier (no CM ID), so we key by name
-	existingRecords, err := s.PreloadRecords("person_tag_definitions", filter, func(record *core.Record) (interface{}, bool) {
+	existingRecords, err := s.PreloadRecords("person_tag_definitions", "", func(record *core.Record) (interface{}, bool) {
 		if name, ok := record.Get("name").(string); ok && name != "" {
 			return name, true
 		}
@@ -80,7 +78,7 @@ func (s *PersonTagDefinitionsSync) Sync(ctx context.Context) error {
 		}
 
 		// Transform to PocketBase format
-		pbData, err := s.transformPersonTagDefinitionToPB(tagData, year)
+		pbData, err := s.transformPersonTagDefinitionToPB(tagData)
 		if err != nil {
 			slog.Error("Error transforming person tag definition", "error", err)
 			s.Stats.Errors++
@@ -95,34 +93,31 @@ func (s *PersonTagDefinitionsSync) Sync(ctx context.Context) error {
 			continue
 		}
 
-		// Track as processed (using name as key)
-		s.TrackProcessedKey(name, year)
+		// Track as processed (no year - definitions are global)
+		s.TrackProcessedKey(name, 0)
 
 		// Process the record using name as key
 		compareFields := []string{"name", "is_seasonal", "is_hidden", "last_updated_utc"}
-		if err := s.ProcessSimpleRecord("person_tag_definitions", name, pbData, existingRecords, compareFields); err != nil {
+		if err := s.ProcessSimpleRecordGlobal("person_tag_definitions", name, pbData, existingRecords, compareFields); err != nil {
 			slog.Error("Error processing person tag definition", "name", name, "error", err)
 			s.Stats.Errors++
 		}
 	}
 
-	// Delete orphans
+	// Delete orphans (no year filter - definitions are global)
 	if err := s.DeleteOrphans(
 		"person_tag_definitions",
 		func(record *core.Record) (string, bool) {
 			nameValue := record.Get("name")
-			yearValue := record.Get("year")
-
 			name, nameOK := nameValue.(string)
-			yr, yearOK := yearValue.(float64)
-
-			if nameOK && yearOK && name != "" {
-				return CompositeKey(name, int(yr)), true
+			if nameOK && name != "" {
+				// Use name as the key (no year component)
+				return name, true
 			}
 			return "", false
 		},
 		"person_tag_definition",
-		filter,
+		"", // No filter - all records
 	); err != nil {
 		slog.Error("Error deleting orphans", "error", err)
 	}
@@ -139,7 +134,6 @@ func (s *PersonTagDefinitionsSync) Sync(ctx context.Context) error {
 // transformPersonTagDefinitionToPB transforms CampMinder tag definition data to PocketBase format
 func (s *PersonTagDefinitionsSync) transformPersonTagDefinitionToPB(
 	data map[string]interface{},
-	year int,
 ) (map[string]interface{}, error) {
 	pbData := make(map[string]interface{})
 
@@ -154,9 +148,6 @@ func (s *PersonTagDefinitionsSync) transformPersonTagDefinitionToPB(
 	pbData["is_seasonal"] = data["IsSeasonal"]
 	pbData["is_hidden"] = data["IsHidden"]
 	pbData["last_updated_utc"] = data["LastUpdatedUTC"]
-
-	// Set year
-	pbData["year"] = year
 
 	return pbData, nil
 }

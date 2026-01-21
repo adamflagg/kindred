@@ -15,11 +15,13 @@ import { useYear } from '../../hooks/useCurrentYear';
 import { type SyncStatus } from '../../hooks/useSyncStatusAPI';
 import { useSyncCompletionToasts } from '../../hooks/useSyncCompletionToasts';
 import { useRunIndividualSync } from '../../hooks/useRunIndividualSync';
+import { useRunOnDemandSync } from '../../hooks/useRunOnDemandSync';
 import { useHistoricalSync } from '../../hooks/useHistoricalSync';
 import { useProcessRequests } from '../../hooks/useProcessRequests';
 import { StatusIcon, formatDuration } from './ConfigInputs';
 import { clearCache } from '../../utils/queryClient';
 import ProcessRequestOptions, { type ProcessRequestOptionsState } from './ProcessRequestOptions';
+import EntitySyncOptions, { type EntitySyncOptionsState } from './EntitySyncOptions';
 import { SYNC_TYPES, HISTORICAL_SYNC_TYPES } from './syncTypes';
 
 // Run all syncs mutation
@@ -43,17 +45,23 @@ function useRunAllSyncs() {
   });
 }
 
+// Entity types that support custom field values sync option
+const ENTITY_SYNC_TYPES = ['persons', 'households'] as const;
+type EntitySyncType = typeof ENTITY_SYNC_TYPES[number];
+
 export function SyncTab() {
   const currentYear = useYear();
   const [showHistorical, setShowHistorical] = useState(false);
   const [historicalYear, setHistoricalYear] = useState(currentYear - 1);
   const [historicalService, setHistoricalService] = useState('all');
   const [showProcessOptions, setShowProcessOptions] = useState(false);
+  const [entityModalSyncType, setEntityModalSyncType] = useState<EntitySyncType | null>(null);
 
   // Use the completion toasts hook - it wraps useSyncStatusAPI and fires toasts on completion
   const syncStatus = useSyncCompletionToasts();
   const isLoading = !syncStatus;
   const runIndividualSync = useRunIndividualSync();
+  const runOnDemandSync = useRunOnDemandSync();
   const runAllSyncs = useRunAllSyncs();
   const runHistoricalSync = useHistoricalSync();
   const processRequests = useProcessRequests();
@@ -210,7 +218,7 @@ export function SyncTab() {
                 )}
               </div>
 
-              {/* Run button always at bottom - special handling for process_requests */}
+              {/* Run button always at bottom - special handling for process_requests and entity syncs */}
               {syncType.id === 'process_requests' ? (
                 <div className="flex gap-2 mt-3">
                   <button
@@ -229,6 +237,33 @@ export function SyncTab() {
                     disabled={isRunning}
                     className="px-3 py-2 text-xs sm:text-sm font-medium rounded-lg bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 hover:bg-teal-200 dark:hover:bg-teal-900/60 disabled:opacity-50 flex items-center justify-center transition-colors"
                     title="Advanced options"
+                  >
+                    <Settings2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : ENTITY_SYNC_TYPES.includes(syncType.id as EntitySyncType) ? (
+                // Persons/Households - have settings button for custom field values option
+                <div className="flex gap-2 mt-3">
+                  <button
+                    onClick={() => runIndividualSync.mutate(syncType.id)}
+                    disabled={isRunning || runIndividualSync.isPending}
+                    className="flex-1 py-2 text-xs sm:text-sm font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    {isRunning ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <><Play className="w-4 h-4" /> Run</>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setEntityModalSyncType(syncType.id as EntitySyncType)}
+                    disabled={isRunning}
+                    className={`px-3 py-2 text-xs sm:text-sm font-medium rounded-lg disabled:opacity-50 flex items-center justify-center transition-colors ${
+                      syncType.id === 'persons'
+                        ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 hover:bg-violet-200 dark:hover:bg-violet-900/60'
+                        : 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/60'
+                    }`}
+                    title="Sync options (include custom field values)"
                   >
                     <Settings2 className="w-4 h-4" />
                   </button>
@@ -261,6 +296,32 @@ export function SyncTab() {
         }}
         isProcessing={processRequests.isPending}
       />
+
+      {/* Entity Sync Options Modal (Persons/Households with custom field values option) */}
+      {entityModalSyncType && (
+        <EntitySyncOptions
+          isOpen={!!entityModalSyncType}
+          onClose={() => setEntityModalSyncType(null)}
+          onSubmit={(options: EntitySyncOptionsState) => {
+            // Run the main entity sync
+            runIndividualSync.mutate(entityModalSyncType);
+
+            // If custom field values option is enabled, also trigger that sync
+            if (options.includeCustomFieldValues) {
+              const cfSyncType = entityModalSyncType === 'persons'
+                ? 'person_custom_field_values'
+                : 'household_custom_field_values';
+              runOnDemandSync.mutate({
+                syncType: cfSyncType,
+                sessionFilter: options.sessionFilter,
+              });
+            }
+            setEntityModalSyncType(null);
+          }}
+          isProcessing={runIndividualSync.isPending || runOnDemandSync.isPending}
+          entityType={entityModalSyncType}
+        />
+      )}
     </div>
   );
 }

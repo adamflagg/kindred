@@ -263,6 +263,19 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 		return handleIndividualSync(e, scheduler, "custom_field_definitions")
 	}))
 
+	// On-demand sync endpoints (require N API calls - one per entity)
+	// Person custom field values sync
+	// Accepts optional ?session=X parameter (0 or empty = all, 1-4 = specific session)
+	e.Router.POST("/api/custom/sync/person-custom-field-values", requireAuth(func(e *core.RequestEvent) error {
+		return handlePersonCustomFieldValuesSync(e, scheduler)
+	}))
+
+	// Household custom field values sync
+	// Accepts optional ?session=X parameter (0 or empty = all, 1-4 = specific session)
+	e.Router.POST("/api/custom/sync/household-custom-field-values", requireAuth(func(e *core.RequestEvent) error {
+		return handleHouseholdCustomFieldValuesSync(e, scheduler)
+	}))
+
 	return nil
 }
 
@@ -511,6 +524,9 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 		"bunk_requests",
 		"process_requests",
 		"google_sheets_export",
+		// On-demand syncs (not part of daily sync)
+		"person_custom_field_values",
+		"household_custom_field_values",
 	}
 
 	statuses := make(map[string]interface{})
@@ -750,5 +766,137 @@ func handleGoogleSheetsExport(e *core.RequestEvent, scheduler *Scheduler) error 
 		"status":         "started",
 		"syncType":       "google_sheets_export",
 		"spreadsheet_id": spreadsheetID,
+	})
+}
+
+// handlePersonCustomFieldValuesSync handles the on-demand person custom field values sync
+// This is expensive (1 API call per person) so supports session filtering
+func handlePersonCustomFieldValuesSync(e *core.RequestEvent, scheduler *Scheduler) error {
+	orchestrator := scheduler.GetOrchestrator()
+	syncType := "person_custom_field_values"
+
+	// Check if already running
+	if orchestrator.IsRunning(syncType) {
+		return e.JSON(http.StatusConflict, map[string]interface{}{
+			"error":    "Sync already in progress",
+			"status":   "running",
+			"syncType": syncType,
+		})
+	}
+
+	// Parse session filter (0 = all, 1-4 = specific session)
+	sessionFilter := 0
+	sessionParam := e.Request.URL.Query().Get("session")
+	if sessionParam != "" && sessionParam != "all" && sessionParam != "0" {
+		if s, err := strconv.Atoi(sessionParam); err == nil && s >= 1 && s <= 4 {
+			sessionFilter = s
+		} else {
+			return e.JSON(http.StatusBadRequest, map[string]interface{}{
+				"error": "Invalid session parameter. Must be 0, 1, 2, 3, or 4.",
+			})
+		}
+	}
+
+	// Get the service and set session filter
+	service, ok := orchestrator.GetService(syncType).(*PersonCustomFieldValuesSync)
+	if !ok || service == nil {
+		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+			"error": "Person custom field values sync service not found",
+		})
+	}
+	service.SetSessionFilter(sessionFilter)
+
+	// Run in background
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
+		defer cancel()
+
+		slog.Info("Starting person_custom_field_values sync",
+			"session_filter", sessionFilter,
+		)
+		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
+			slog.Error("Person custom field values sync failed", "error", err)
+		} else {
+			stats := service.GetStats()
+			slog.Info("Person custom field values sync completed",
+				"created", stats.Created,
+				"updated", stats.Updated,
+				"skipped", stats.Skipped,
+				"errors", stats.Errors,
+			)
+		}
+	}()
+
+	return e.JSON(http.StatusOK, map[string]interface{}{
+		"message":        fmt.Sprintf("%s sync started", syncType),
+		"status":         "started",
+		"syncType":       syncType,
+		"session_filter": sessionFilter,
+	})
+}
+
+// handleHouseholdCustomFieldValuesSync handles the on-demand household custom field values sync
+// This is expensive (1 API call per household) so supports session filtering
+func handleHouseholdCustomFieldValuesSync(e *core.RequestEvent, scheduler *Scheduler) error {
+	orchestrator := scheduler.GetOrchestrator()
+	syncType := "household_custom_field_values"
+
+	// Check if already running
+	if orchestrator.IsRunning(syncType) {
+		return e.JSON(http.StatusConflict, map[string]interface{}{
+			"error":    "Sync already in progress",
+			"status":   "running",
+			"syncType": syncType,
+		})
+	}
+
+	// Parse session filter (0 = all, 1-4 = specific session)
+	sessionFilter := 0
+	sessionParam := e.Request.URL.Query().Get("session")
+	if sessionParam != "" && sessionParam != "all" && sessionParam != "0" {
+		if s, err := strconv.Atoi(sessionParam); err == nil && s >= 1 && s <= 4 {
+			sessionFilter = s
+		} else {
+			return e.JSON(http.StatusBadRequest, map[string]interface{}{
+				"error": "Invalid session parameter. Must be 0, 1, 2, 3, or 4.",
+			})
+		}
+	}
+
+	// Get the service and set session filter
+	service, ok := orchestrator.GetService(syncType).(*HouseholdCustomFieldValuesSync)
+	if !ok || service == nil {
+		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+			"error": "Household custom field values sync service not found",
+		})
+	}
+	service.SetSessionFilter(sessionFilter)
+
+	// Run in background
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
+		defer cancel()
+
+		slog.Info("Starting household_custom_field_values sync",
+			"session_filter", sessionFilter,
+		)
+		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
+			slog.Error("Household custom field values sync failed", "error", err)
+		} else {
+			stats := service.GetStats()
+			slog.Info("Household custom field values sync completed",
+				"created", stats.Created,
+				"updated", stats.Updated,
+				"skipped", stats.Skipped,
+				"errors", stats.Errors,
+			)
+		}
+	}()
+
+	return e.JSON(http.StatusOK, map[string]interface{}{
+		"message":        fmt.Sprintf("%s sync started", syncType),
+		"status":         "started",
+		"syncType":       syncType,
+		"session_filter": sessionFilter,
 	})
 }

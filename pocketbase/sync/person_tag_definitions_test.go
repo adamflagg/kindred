@@ -28,9 +28,7 @@ func TestTransformPersonTagDefinitionToPB(t *testing.T) {
 		"LastUpdatedUTC": "2025-01-15T10:30:00.000Z",
 	}
 
-	year := 2025
-
-	pbData, err := s.transformPersonTagDefinitionToPB(tagData, year)
+	pbData, err := s.transformPersonTagDefinitionToPB(tagData)
 	if err != nil {
 		t.Fatalf("transformPersonTagDefinitionToPB returned error: %v", err)
 	}
@@ -48,8 +46,9 @@ func TestTransformPersonTagDefinitionToPB(t *testing.T) {
 	if got, want := pbData["last_updated_utc"], "2025-01-15T10:30:00.000Z"; got != want {
 		t.Errorf("last_updated_utc = %v, want %v", got, want)
 	}
-	if got, want := pbData["year"].(int), 2025; got != want {
-		t.Errorf("year = %d, want %d", got, want)
+	// Note: year field removed - person tag definitions are global (not year-specific)
+	if _, hasYear := pbData["year"]; hasYear {
+		t.Error("year field should not be present - definitions are global")
 	}
 }
 
@@ -62,9 +61,7 @@ func TestTransformPersonTagDefinitionHandlesMissingFields(t *testing.T) {
 		"Name": "Volunteer",
 	}
 
-	year := 2025
-
-	pbData, err := s.transformPersonTagDefinitionToPB(tagData, year)
+	pbData, err := s.transformPersonTagDefinitionToPB(tagData)
 	if err != nil {
 		t.Fatalf("transformPersonTagDefinitionToPB returned error: %v", err)
 	}
@@ -92,7 +89,7 @@ func TestTransformPersonTagDefinitionRequiredNameError(t *testing.T) {
 		"IsSeasonal": true,
 	}
 
-	_, err := s.transformPersonTagDefinitionToPB(tagData, 2025)
+	_, err := s.transformPersonTagDefinitionToPB(tagData)
 	if err == nil {
 		t.Error("expected error for missing Name, got nil")
 	}
@@ -107,7 +104,7 @@ func TestTransformPersonTagDefinitionEmptyNameError(t *testing.T) {
 		"Name": "",
 	}
 
-	_, err := s.transformPersonTagDefinitionToPB(tagData, 2025)
+	_, err := s.transformPersonTagDefinitionToPB(tagData)
 	if err == nil {
 		t.Error("expected error for empty Name, got nil")
 	}

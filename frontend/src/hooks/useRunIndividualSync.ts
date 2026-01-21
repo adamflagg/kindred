@@ -17,6 +17,9 @@ export const SYNC_TYPE_NAMES: Record<string, string> = {
   bunk_assignments: 'Bunk Assignments',
   bunk_requests: 'Bunk Requests',
   process_requests: 'Process Requests',
+  // On-demand syncs (not part of daily sync)
+  person_custom_field_values: 'Person Custom Field Values',
+  household_custom_field_values: 'Household Custom Field Values',
 };
 
 // Convert sync type ID to API endpoint (snake_case -> kebab-case)
