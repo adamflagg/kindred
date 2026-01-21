@@ -229,14 +229,15 @@ func (o *Orchestrator) RunSingleSync(_ context.Context, syncType string) error {
 func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 	// Define sync order (respecting dependencies)
 	orderedJobs := []string{
-		"session_groups",   // No dependencies - sync first for group data
-		"sessions",         // Depends on session_groups (for session_group relation)
-		"attendees",        // Depends on sessions
-		"persons",          // Depends on attendees (attendee-driven sync)
-		"bunks",            // No dependencies
-		"bunk_plans",       // Depends on sessions and bunks
-		"bunk_assignments", // Depends on sessions, persons, bunks
-		"bunk_requests",    // CSV import, depends on persons
+		"session_groups",          // No dependencies - sync first for group data
+		"sessions",                // Depends on session_groups (for session_group relation)
+		"attendees",               // Depends on sessions
+		"person_tag_definitions",  // No dependencies - sync before persons
+		"persons",                 // Depends on attendees (attendee-driven sync)
+		"bunks",                   // No dependencies
+		"bunk_plans",              // Depends on sessions and bunks
+		"bunk_assignments",        // Depends on sessions, persons, bunks
+		"bunk_requests",           // CSV import, depends on persons
 	}
 
 	// Only include process_requests in production (Docker) mode
@@ -429,6 +430,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 			"session_groups",
 			"sessions",
 			"attendees",
+			"person_tag_definitions",
 			"persons",
 			"bunks",
 			"bunk_plans",
@@ -490,6 +492,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		o.RegisterService("session_groups", NewSessionGroupsSync(o.app, yearClient))
 		o.RegisterService("sessions", NewSessionsSync(o.app, yearClient))
 		o.RegisterService("attendees", NewAttendeesSync(o.app, yearClient))
+		o.RegisterService("person_tag_definitions", NewPersonTagDefinitionsSync(o.app, yearClient))
 		o.RegisterService("persons", NewPersonsSync(o.app, yearClient))
 		o.RegisterService("bunks", NewBunksSync(o.app, yearClient))
 		o.RegisterService("bunk_plans", NewBunkPlansSync(o.app, yearClient))
@@ -606,6 +609,7 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	o.RegisterService("session_groups", NewSessionGroupsSync(o.app, client))
 	o.RegisterService("sessions", NewSessionsSync(o.app, client))
 	o.RegisterService("attendees", NewAttendeesSync(o.app, client))
+	o.RegisterService("person_tag_definitions", NewPersonTagDefinitionsSync(o.app, client))
 	o.RegisterService("persons", NewPersonsSync(o.app, client))
 	o.RegisterService("bunks", NewBunksSync(o.app, client))
 	o.RegisterService("bunk_plans", NewBunkPlansSync(o.app, client))

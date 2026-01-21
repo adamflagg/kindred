@@ -19,8 +19,10 @@ export interface SyncStatus {
 }
 
 export interface SyncStatusResponse {
+  session_groups: SyncStatus;
   sessions: SyncStatus;
   attendees: SyncStatus;
+  person_tag_definitions: SyncStatus;
   persons: SyncStatus;
   bunks: SyncStatus;
   bunk_plans: SyncStatus;

@@ -243,6 +243,11 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 		return handleGoogleSheetsExport(e, scheduler)
 	})
 
+	// Person tag definitions sync
+	e.Router.POST("/api/custom/sync/person-tag-definitions", requireAuth(func(e *core.RequestEvent) error {
+		return handleIndividualSync(e, scheduler, "person_tag_definitions")
+	}))
+
 	return nil
 }
 
@@ -480,6 +485,7 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 		"session_groups",
 		"sessions",
 		"attendees",
+		"person_tag_definitions",
 		"persons",
 		"bunks",
 		"bunk_plans",

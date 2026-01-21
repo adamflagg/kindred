@@ -8,6 +8,7 @@ import {
   UserCheck,
   FileText,
   Brain,
+  Tag,
 } from 'lucide-react';
 
 // Sync type configuration for the sync status grid
@@ -15,6 +16,7 @@ export const SYNC_TYPES = [
   { id: 'session_groups', name: 'Session Groups', icon: FolderTree, color: 'text-cyan-600' },
   { id: 'sessions', name: 'Sessions', icon: Calendar, color: 'text-sky-600' },
   { id: 'attendees', name: 'Attendees', icon: Users, color: 'text-emerald-600' },
+  { id: 'person_tag_definitions', name: 'Tag Definitions', icon: Tag, color: 'text-pink-600' },
   { id: 'persons', name: 'Persons', icon: User, color: 'text-violet-600' },
   { id: 'bunks', name: 'Bunks', icon: Home, color: 'text-amber-600' },
   { id: 'bunk_plans', name: 'Bunk Plans', icon: Layout, color: 'text-rose-600' },
@@ -28,6 +30,7 @@ export const HISTORICAL_SYNC_TYPES = [
   { id: 'session_groups', name: 'Session Groups' },
   { id: 'sessions', name: 'Sessions' },
   { id: 'attendees', name: 'Attendees' },
+  { id: 'person_tag_definitions', name: 'Tag Definitions' },
   { id: 'persons', name: 'Persons' },
   { id: 'bunks', name: 'Bunks' },
   { id: 'bunk_plans', name: 'Bunk Plans' },

@@ -592,3 +592,28 @@ func (c *Client) GetSessionGroups() ([]map[string]interface{}, error) {
 
 	return response.Results, nil
 }
+
+// GetPersonTagDefinitions retrieves person tag definitions from CampMinder
+// Endpoint: /persons/tags
+// Returns: array of tag definitions with Name, IsSeasonal, IsHidden, LastUpdatedUTC
+func (c *Client) GetPersonTagDefinitions() ([]map[string]interface{}, error) {
+	params := map[string]string{
+		"clientid": c.clientID,
+	}
+
+	body, err := c.makeRequest("GET", "persons/tags", params)
+	if err != nil {
+		return nil, err
+	}
+
+	var response struct {
+		TotalCount int                      `json:"TotalCount"`
+		Results    []map[string]interface{} `json:"Results"`
+	}
+
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("decode person tag definitions response: %w", err)
+	}
+
+	return response.Results, nil
+}
