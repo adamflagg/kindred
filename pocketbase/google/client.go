@@ -72,7 +72,7 @@ func getCredentialsJSON() ([]byte, error) {
 		keyFile = defaultKeyFile
 	}
 
-	data, err := os.ReadFile(keyFile)
+	data, err := os.ReadFile(keyFile) //nolint:gosec // G304: path from trusted env var or hardcoded default
 	if err != nil {
 		return nil, fmt.Errorf("failed to read credentials file %s: %w", keyFile, err)
 	}
