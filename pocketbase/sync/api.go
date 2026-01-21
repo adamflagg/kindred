@@ -227,19 +227,9 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 		return handleIndividualSync(e, scheduler, "bunk_requests")
 	}))
 
-	// Session groups sync (individual - for CLI)
+	// Session groups sync
 	e.Router.POST("/api/custom/sync/session-groups", requireAuth(func(e *core.RequestEvent) error {
 		return handleIndividualSync(e, scheduler, "session_groups")
-	}))
-
-	// Session programs sync (individual - for CLI)
-	e.Router.POST("/api/custom/sync/session-programs", requireAuth(func(e *core.RequestEvent) error {
-		return handleIndividualSync(e, scheduler, "session_programs")
-	}))
-
-	// Sessions-full: chains session_groups → sessions → session_programs (for GUI button)
-	e.Router.POST("/api/custom/sync/sessions-full", requireAuth(func(e *core.RequestEvent) error {
-		return handleSessionsFullSync(e, scheduler)
 	}))
 
 	return nil
@@ -274,61 +264,6 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 		"message":  fmt.Sprintf("%s sync started", syncType),
 		"status":   "started",
 		"syncType": syncType,
-	})
-}
-
-// getSessionsFullServices returns the ordered list of services for sessions-full sync
-func getSessionsFullServices() []string {
-	return []string{"session_groups", "sessions", "session_programs"}
-}
-
-// expandHistoricalSyncServices expands "sessions" to all 3 session-related services
-// For historical sync, "sessions" needs to run session_groups → sessions → session_programs
-func expandHistoricalSyncServices(service string) []string {
-	if service == "sessions" {
-		return []string{"session_groups", "sessions", "session_programs"}
-	}
-	if service == "all" {
-		return []string{} // Empty means all services in orchestrator
-	}
-	return []string{service}
-}
-
-// handleSessionsFullSync runs session_groups → sessions → session_programs in sequence
-func handleSessionsFullSync(e *core.RequestEvent, scheduler *Scheduler) error {
-	orchestrator := scheduler.GetOrchestrator()
-	services := getSessionsFullServices()
-
-	// Check if any of the three are already running
-	for _, svc := range services {
-		if orchestrator.IsRunning(svc) {
-			return e.JSON(http.StatusConflict, map[string]interface{}{
-				"error":    "Sync already in progress",
-				"status":   "running",
-				"syncType": svc,
-			})
-		}
-	}
-
-	// Run in sequence in background
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-		defer cancel()
-
-		for _, svc := range services {
-			slog.Info("Running chained sync", "service", svc)
-			if err := orchestrator.RunSingleSync(ctx, svc); err != nil {
-				e.App.Logger().Error("Sessions full sync failed", "syncType", svc, "error", err)
-				return
-			}
-		}
-		slog.Info("Sessions full sync completed", "services", services)
-	}()
-
-	return e.JSON(http.StatusOK, map[string]interface{}{
-		"message":  "Sessions full sync started (groups → sessions → programs)",
-		"status":   "started",
-		"services": services,
 	})
 }
 
@@ -533,7 +468,6 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 	syncTypes := []string{
 		"session_groups",
 		"sessions",
-		"session_programs",
 		"attendees",
 		"persons",
 		"bunks",
@@ -639,8 +573,12 @@ func handleHistoricalSync(e *core.RequestEvent, scheduler *Scheduler) error {
 		Year: year,
 	}
 
-	// Expand service to full list using helper
-	opts.Services = expandHistoricalSyncServices(service)
+	// Set services to sync
+	if service == "all" {
+		opts.Services = []string{} // Empty means all services in orchestrator
+	} else {
+		opts.Services = []string{service}
+	}
 
 	// Run in background
 	go func() {

@@ -325,7 +325,6 @@ func TestSyncTypeValidation(t *testing.T) {
 	validSyncTypes := map[string]bool{
 		"session_groups":   true,
 		"sessions":         true,
-		"session_programs": true,
 		"attendees":        true,
 		"persons":          true,
 		"bunks":            true,
@@ -342,7 +341,6 @@ func TestSyncTypeValidation(t *testing.T) {
 	}{
 		{"session_groups", "session_groups", true},
 		{"sessions", "sessions", true},
-		{"session_programs", "session_programs", true},
 		{"attendees", "attendees", true},
 		{"persons", "persons", true},
 		{"bunks", "bunks", true},
@@ -372,7 +370,6 @@ func TestStatusResponseFormat(t *testing.T) {
 	syncTypes := []string{
 		"session_groups",
 		"sessions",
-		"session_programs",
 		"attendees",
 		"persons",
 		"bunks",
@@ -382,9 +379,9 @@ func TestStatusResponseFormat(t *testing.T) {
 		"process_requests",
 	}
 
-	// Verify all expected sync types are covered (now 10 with session_groups and session_programs)
-	if len(syncTypes) != 10 {
-		t.Errorf("expected 10 sync types, got %d", len(syncTypes))
+	// Verify all expected sync types are covered (9 sync types)
+	if len(syncTypes) != 9 {
+		t.Errorf("expected 9 sync types, got %d", len(syncTypes))
 	}
 
 	// Verify no duplicates
@@ -397,15 +394,15 @@ func TestStatusResponseFormat(t *testing.T) {
 	}
 
 	// Verify session-related types are in correct dependency order
-	expectedSessionOrder := []string{"session_groups", "sessions", "session_programs"}
+	expectedSessionOrder := []string{"session_groups", "sessions"}
 	sessionTypes := []string{}
 	for _, st := range syncTypes {
 		if strings.HasPrefix(st, "session") {
 			sessionTypes = append(sessionTypes, st)
 		}
 	}
-	if len(sessionTypes) != 3 {
-		t.Errorf("expected 3 session-related types, got %d: %v", len(sessionTypes), sessionTypes)
+	if len(sessionTypes) != 2 {
+		t.Errorf("expected 2 session-related types, got %d: %v", len(sessionTypes), sessionTypes)
 	}
 	for i, expected := range expectedSessionOrder {
 		if i < len(sessionTypes) && sessionTypes[i] != expected {
@@ -548,73 +545,4 @@ func parseSourceFieldParameter(param string) ([]string, bool) {
 	}
 
 	return fields, true
-}
-
-// TestSessionsFullServices tests the sessions-full service list
-func TestSessionsFullServices(t *testing.T) {
-	// The sessions-full endpoint should run these 3 services in order
-	expected := []string{"session_groups", "sessions", "session_programs"}
-	actual := getSessionsFullServices()
-
-	if len(actual) != len(expected) {
-		t.Errorf("expected %d services, got %d", len(expected), len(actual))
-	}
-
-	for i, exp := range expected {
-		if i < len(actual) && actual[i] != exp {
-			t.Errorf("service[%d]: expected %q, got %q", i, exp, actual[i])
-		}
-	}
-}
-
-// TestHistoricalSyncSessionsExpansion tests that historical sync expands "sessions" to all 3
-func TestHistoricalSyncSessionsExpansion(t *testing.T) {
-	tests := []struct {
-		name             string
-		service          string
-		expectedServices []string
-	}{
-		{
-			name:             "sessions expands to all 3",
-			service:          "sessions",
-			expectedServices: []string{"session_groups", "sessions", "session_programs"},
-		},
-		{
-			name:             "all stays empty (runs all)",
-			service:          "all",
-			expectedServices: []string{}, // Empty means all services
-		},
-		{
-			name:             "other services stay as-is",
-			service:          "attendees",
-			expectedServices: []string{"attendees"},
-		},
-		{
-			name:             "session_groups stays as-is",
-			service:          "session_groups",
-			expectedServices: []string{"session_groups"},
-		},
-		{
-			name:             "session_programs stays as-is",
-			service:          "session_programs",
-			expectedServices: []string{"session_programs"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			actual := expandHistoricalSyncServices(tt.service)
-
-			if len(actual) != len(tt.expectedServices) {
-				t.Errorf("expected %d services, got %d: %v", len(tt.expectedServices), len(actual), actual)
-				return
-			}
-
-			for i, exp := range tt.expectedServices {
-				if actual[i] != exp {
-					t.Errorf("service[%d]: expected %q, got %q", i, exp, actual[i])
-				}
-			}
-		})
-	}
 }
