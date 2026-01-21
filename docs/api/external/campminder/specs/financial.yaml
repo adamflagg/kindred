@@ -1,0 +1,291 @@
+openapi: 3.0.1
+info:
+  title: Financial Api
+  description: Financial Api available for CampMinder clients
+  version: v1
+security:
+  - apiKeyHeader: []
+  - apiKeyQuery: []
+  - jwtBearerAuth: []
+paths:
+  /financialcategories:
+    get:
+      tags:
+        - Financial
+      summary: Gets a list of Financial Categories.
+      description: "<p>\r\nFinancial Categories are a tool to categorize financial transactions and are defined by the client.\r\n</p>"
+      operationId: GetFinancialCategories
+      parameters:
+        - name: clientid
+          in: query
+          required: false
+          description: CampMinder's identifier for the camp.
+          schema:
+            type: integer
+            format: int32
+        - name: includeArchived
+          in: query
+          required: false
+          description: 'Include archived Financial Categories. Optional, default is false.'
+          style: form
+          schema:
+            type: boolean
+        - name: pageNumber
+          in: query
+          required: false
+          description: 'The page number. Optional, defaults to 1.'
+          style: form
+          schema:
+            type: integer
+            format: int32
+        - name: pageSize
+          in: query
+          required: false
+          description: 'The page size. Optional, defaults to 100.'
+          style: form
+          schema:
+            type: integer
+            format: int32
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FinancialCategory'
+        '422':
+          description: Client error
+  /paymentmethods:
+    get:
+      tags:
+        - Financial
+      summary: Gets a list of Payment Methods.
+      description: "<p>\r\nUsed for Payment and Refund transactions.\r\n</p>"
+      operationId: GetPaymentMethods
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PaymentMethod'
+        '422':
+          description: Client error
+  /transactionreporting/transactiondetails:
+    get:
+      tags:
+        - Financial Transaction Reporting
+      summary: Gets transaction details for the requested parameters.
+      description: "<p>\r\nTransactions are seasonal, and have both a Post Date and Effective Date. The season, or the Post Date range, or the Effective Date range must be provided.\r\n</p>"
+      operationId: GetTransactionDetails
+      parameters:
+        - name: clientid
+          in: query
+          required: false
+          description: >-
+            CampMinder's identifier for the camp the person record is a member
+            of.
+          schema:
+            type: integer
+            format: int32
+        - name: season
+          in: query
+          description: Include transactions only for this season.
+          style: form
+          schema:
+            type: integer
+            format: int32
+        - name: postDateStart
+          in: query
+          description: Include transactions starting with this Post Date.
+          style: form
+          schema:
+            type: string
+        - name: postDateEnd
+          in: query
+          description: Include transactions on or earlier than this Post Date.
+          style: form
+          schema:
+            type: string
+        - name: effectiveDateStart
+          in: query
+          description: Include transactions starting with this Effective Date.
+          style: form
+          schema:
+            type: string
+        - name: effectiveDateEnd
+          in: query
+          description: Include transactions on or earlier than this Effective Date.
+          style: form
+          schema:
+            type: string
+        - name: includeReversals
+          in: query
+          description: Whether or not reversals should be included. Defaults to false.
+          style: form
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TransactionDetail'
+        '422':
+          description: Client error
+components:
+  securitySchemes:
+    apiKeyHeader:
+      type: apiKey
+      description: >-
+        Required for protected endpoints. Only one of the two apiKey security
+        schemes is required.
+      name: Ocp-Apim-Subscription-Key
+      in: header
+    apiKeyQuery:
+      type: apiKey
+      description: >-
+        Required for protected endpoints. Only one of the two apiKey security
+        schemes is required.
+      name: subscription-key
+      in: query
+    jwtBearerAuth:
+      type: http
+      description: Use the auth service to generate a valid JWT token.
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    FinancialCategory:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int32
+        name:
+          type: string
+          nullable: true
+        isArchived:
+          type: boolean
+      additionalProperties: false
+    FinancialCategoryIEnumerablePaginatedResult:
+      type: object
+      properties:
+        totalCount:
+          type: integer
+          format: int32
+        next:
+          type: string
+          nullable: true
+        result:
+          type: array
+          items:
+            type: array
+            items:
+              $ref: '#/components/schemas/FinancialCategory'
+          nullable: true
+      additionalProperties: false
+    PaymentMethod:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int32
+        name:
+          type: string
+          nullable: true
+      additionalProperties: false
+    TransactionDetail:
+      type: object
+      properties:
+        transactionId:
+          type: integer
+          format: int32
+        transactionNumber:
+          type: integer
+          format: int32
+        season:
+          type: integer
+          format: int32
+        postDate:
+          type: string
+          format: date-time
+        effectiveDate:
+          type: string
+          format: date-time
+        isReversed:
+          type: boolean
+        reversalDate:
+          type: string
+          format: date-time
+          nullable: true
+        financialCategoryId:
+          type: integer
+          format: int32
+        description:
+          type: string
+          nullable: true
+        quantity:
+          type: integer
+          format: int32
+        unitAmount:
+          type: number
+          format: double
+        amount:
+          type: number
+          format: double
+        recognitionGLAccountId:
+          type: string
+          nullable: true
+        deferralGLAccountId:
+          type: string
+          nullable: true
+        glAccountNote:
+          type: string
+          nullable: true
+        transactionNote:
+          type: string
+          nullable: true
+        paymentMethodId:
+          type: integer
+          format: int32
+          nullable: true
+        sessionId:
+          type: integer
+          format: int32
+          nullable: true
+        programId:
+          type: integer
+          format: int32
+          nullable: true
+        sessionGroupId:
+          type: integer
+          format: int32
+          nullable: true
+        divisionId:
+          type: integer
+          format: int32
+          nullable: true
+        personId:
+          type: integer
+          format: int32
+          nullable: true
+        householdId:
+          type: integer
+          format: int32
+          nullable: true
+        serviceStartDate:
+          type: string
+          format: date-time
+        serviceEndDate:
+          type: string
+          format: date-time
+      additionalProperties: false
+servers:
+  - url: 'https://api.campminder.com/financials'
