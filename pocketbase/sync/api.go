@@ -24,6 +24,16 @@ import (
 // DefaultSession is the default value for session parameter meaning "all sessions"
 const DefaultSession = "all"
 
+// requireAuth wraps a handler function to require authentication
+func requireAuth(handler func(*core.RequestEvent) error) func(*core.RequestEvent) error {
+	return func(e *core.RequestEvent) error {
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("Authentication required", nil)
+		}
+		return handler(e)
+	}
+}
+
 // InitializeSyncService sets up the sync API endpoints
 func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error {
 	// Get the scheduler instance
@@ -33,54 +43,29 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	// For PocketBase v0.28.4, we use the e.Router directly
 
 	// Refresh bunking endpoint
-	e.Router.POST("/api/custom/sync/refresh-bunking", func(e *core.RequestEvent) error {
-		// Check authentication
-		if e.Auth == nil {
-			return apis.NewUnauthorizedError("Authentication required", nil)
-		}
-
+	e.Router.POST("/api/custom/sync/refresh-bunking", requireAuth(func(e *core.RequestEvent) error {
 		return handleRefreshBunking(e, scheduler)
-	})
+	}))
 
 	// Bunk requests CSV upload endpoint
-	e.Router.POST("/api/custom/sync/bunk_requests_upload", func(e *core.RequestEvent) error {
-		// Check authentication
-		if e.Auth == nil {
-			return apis.NewUnauthorizedError("Authentication required", nil)
-		}
-
+	e.Router.POST("/api/custom/sync/bunk_requests_upload", requireAuth(func(e *core.RequestEvent) error {
 		return handleBunkRequestsUpload(e, scheduler)
-	})
+	}))
 
 	// Status endpoint
-	e.Router.GET("/api/custom/sync/status", func(e *core.RequestEvent) error {
-		// Check authentication
-		if e.Auth == nil {
-			return apis.NewUnauthorizedError("Authentication required", nil)
-		}
-
+	e.Router.GET("/api/custom/sync/status", requireAuth(func(e *core.RequestEvent) error {
 		return handleSyncStatus(e, scheduler)
-	})
+	}))
 
 	// Daily sync endpoint
-	e.Router.POST("/api/custom/sync/daily", func(e *core.RequestEvent) error {
-		// Check authentication
-		if e.Auth == nil {
-			return apis.NewUnauthorizedError("Authentication required", nil)
-		}
-
+	e.Router.POST("/api/custom/sync/daily", requireAuth(func(e *core.RequestEvent) error {
 		return handleDailySync(e, scheduler)
-	})
+	}))
 
 	// Hourly sync endpoint
-	e.Router.POST("/api/custom/sync/hourly", func(e *core.RequestEvent) error {
-		// Check authentication
-		if e.Auth == nil {
-			return apis.NewUnauthorizedError("Authentication required", nil)
-		}
-
+	e.Router.POST("/api/custom/sync/hourly", requireAuth(func(e *core.RequestEvent) error {
 		return handleHourlySync(e, scheduler)
-	})
+	}))
 
 	// Process requests endpoint
 	// Processes original_bunk_requests → bunk_requests via Python
@@ -92,12 +77,7 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	// - ?source_field=X,Y (comma-separated list of fields to process)
 	// - ?debug=true (enable verbose debug logging in Python processor)
 	// - ?trace=true (enable very verbose trace logging in Python processor)
-	e.Router.POST("/api/custom/sync/process-requests", func(e *core.RequestEvent) error {
-		// Check authentication
-		if e.Auth == nil {
-			return apis.NewUnauthorizedError("Authentication required", nil)
-		}
-
+	e.Router.POST("/api/custom/sync/process-requests", requireAuth(func(e *core.RequestEvent) error {
 		// Parse optional session parameter (now accepts string: all, 1, 2, 2a, etc.)
 		session := e.Request.URL.Query().Get("session")
 		if session == "" {
@@ -193,139 +173,74 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 			"debug":         debug,
 			"trace":         trace,
 		})
-	})
+	}))
 
 	// Historical sync endpoints
 	// Sync specific year and service
-	e.Router.POST("/api/custom/sync/historical/{year}/{service}", func(e *core.RequestEvent) error {
-		// Check authentication
-		if e.Auth == nil {
-			return apis.NewUnauthorizedError("Authentication required", nil)
-		}
-
+	e.Router.POST("/api/custom/sync/historical/{year}/{service}", requireAuth(func(e *core.RequestEvent) error {
 		return handleHistoricalSync(e, scheduler)
-	})
+	}))
 
 	// Get available years from database
-	e.Router.GET("/api/custom/sync/years", func(e *core.RequestEvent) error {
-		// Check authentication
-		if e.Auth == nil {
-			return apis.NewUnauthorizedError("Authentication required", nil)
-		}
-
+	e.Router.GET("/api/custom/sync/years", requireAuth(func(e *core.RequestEvent) error {
 		return handleGetAvailableYears(e, app)
-	})
+	}))
 
 	// Test connection endpoint
-	e.Router.GET("/api/custom/sync/test-connection", func(e *core.RequestEvent) error {
-		// Check authentication
-		if e.Auth == nil {
-			return apis.NewUnauthorizedError("Authentication required", nil)
-		}
-
+	e.Router.GET("/api/custom/sync/test-connection", requireAuth(func(e *core.RequestEvent) error {
 		return handleTestConnection(e, scheduler)
-	})
+	}))
 
 	// Individual sync endpoints
 	// Sessions sync
-	e.Router.POST("/api/custom/sync/sessions", func(e *core.RequestEvent) error {
-		// Check authentication
-		if e.Auth == nil {
-			return apis.NewUnauthorizedError("Authentication required", nil)
-		}
-
+	e.Router.POST("/api/custom/sync/sessions", requireAuth(func(e *core.RequestEvent) error {
 		return handleIndividualSync(e, scheduler, "sessions")
-	})
+	}))
 
 	// Attendees sync
-	e.Router.POST("/api/custom/sync/attendees", func(e *core.RequestEvent) error {
-		// Check authentication
-		if e.Auth == nil {
-			return apis.NewUnauthorizedError("Authentication required", nil)
-		}
-
+	e.Router.POST("/api/custom/sync/attendees", requireAuth(func(e *core.RequestEvent) error {
 		return handleIndividualSync(e, scheduler, "attendees")
-	})
+	}))
 
 	// Persons sync
-	e.Router.POST("/api/custom/sync/persons", func(e *core.RequestEvent) error {
-		// Check authentication
-		if e.Auth == nil {
-			return apis.NewUnauthorizedError("Authentication required", nil)
-		}
-
+	e.Router.POST("/api/custom/sync/persons", requireAuth(func(e *core.RequestEvent) error {
 		return handleIndividualSync(e, scheduler, "persons")
-	})
+	}))
 
 	// Bunks sync
-	e.Router.POST("/api/custom/sync/bunks", func(e *core.RequestEvent) error {
-		// Check authentication
-		if e.Auth == nil {
-			return apis.NewUnauthorizedError("Authentication required", nil)
-		}
-
+	e.Router.POST("/api/custom/sync/bunks", requireAuth(func(e *core.RequestEvent) error {
 		return handleIndividualSync(e, scheduler, "bunks")
-	})
+	}))
 
 	// Bunk plans sync
-	e.Router.POST("/api/custom/sync/bunk-plans", func(e *core.RequestEvent) error {
-		// Check authentication
-		if e.Auth == nil {
-			return apis.NewUnauthorizedError("Authentication required", nil)
-		}
-
+	e.Router.POST("/api/custom/sync/bunk-plans", requireAuth(func(e *core.RequestEvent) error {
 		return handleIndividualSync(e, scheduler, "bunk_plans")
-	})
+	}))
 
 	// Bunk assignments sync
-	e.Router.POST("/api/custom/sync/bunk-assignments", func(e *core.RequestEvent) error {
-		// Check authentication
-		if e.Auth == nil {
-			return apis.NewUnauthorizedError("Authentication required", nil)
-		}
-
+	e.Router.POST("/api/custom/sync/bunk-assignments", requireAuth(func(e *core.RequestEvent) error {
 		return handleIndividualSync(e, scheduler, "bunk_assignments")
-	})
+	}))
 
 	// Bunk requests sync
-	e.Router.POST("/api/custom/sync/bunk-requests", func(e *core.RequestEvent) error {
-		// Check authentication
-		if e.Auth == nil {
-			return apis.NewUnauthorizedError("Authentication required", nil)
-		}
-
+	e.Router.POST("/api/custom/sync/bunk-requests", requireAuth(func(e *core.RequestEvent) error {
 		return handleIndividualSync(e, scheduler, "bunk_requests")
-	})
+	}))
 
 	// Session groups sync (individual - for CLI)
-	e.Router.POST("/api/custom/sync/session-groups", func(e *core.RequestEvent) error {
-		// Check authentication
-		if e.Auth == nil {
-			return apis.NewUnauthorizedError("Authentication required", nil)
-		}
-
+	e.Router.POST("/api/custom/sync/session-groups", requireAuth(func(e *core.RequestEvent) error {
 		return handleIndividualSync(e, scheduler, "session_groups")
-	})
+	}))
 
 	// Session programs sync (individual - for CLI)
-	e.Router.POST("/api/custom/sync/session-programs", func(e *core.RequestEvent) error {
-		// Check authentication
-		if e.Auth == nil {
-			return apis.NewUnauthorizedError("Authentication required", nil)
-		}
-
+	e.Router.POST("/api/custom/sync/session-programs", requireAuth(func(e *core.RequestEvent) error {
 		return handleIndividualSync(e, scheduler, "session_programs")
-	})
+	}))
 
 	// Sessions-full: chains session_groups → sessions → session_programs (for GUI button)
-	e.Router.POST("/api/custom/sync/sessions-full", func(e *core.RequestEvent) error {
-		// Check authentication
-		if e.Auth == nil {
-			return apis.NewUnauthorizedError("Authentication required", nil)
-		}
-
+	e.Router.POST("/api/custom/sync/sessions-full", requireAuth(func(e *core.RequestEvent) error {
 		return handleSessionsFullSync(e, scheduler)
-	})
+	}))
 
 	return nil
 }
