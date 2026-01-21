@@ -14,8 +14,9 @@ import (
 
 const (
 	envEnabled     = "GOOGLE_SHEETS_ENABLED"
-	envKeyJSON     = "GOOGLE_SERVICE_ACCOUNT_KEY_JSON"
+	envKeyFile     = "GOOGLE_SERVICE_ACCOUNT_KEY_FILE"
 	envSpreadsheet = "GOOGLE_SHEETS_SPREADSHEET_ID"
+	defaultKeyFile = "../google_sheets.json" // repo root, alongside .env
 )
 
 // IsEnabled returns true if Google Sheets sync is enabled via environment variable
@@ -62,12 +63,18 @@ func NewSheetsClient(ctx context.Context) (*sheets.Service, error) {
 	return srv, nil
 }
 
-// getCredentialsJSON retrieves the service account credentials JSON
-// from the GOOGLE_SERVICE_ACCOUNT_KEY_JSON environment variable
+// getCredentialsJSON retrieves the service account credentials JSON.
+// Reads from file specified by GOOGLE_SERVICE_ACCOUNT_KEY_FILE env var,
+// defaulting to "google_sheets.json" in the working directory.
 func getCredentialsJSON() ([]byte, error) {
-	keyJSON := strings.TrimSpace(os.Getenv(envKeyJSON))
-	if keyJSON == "" {
-		return nil, fmt.Errorf("no credentials provided: set %s", envKeyJSON)
+	keyFile := strings.TrimSpace(os.Getenv(envKeyFile))
+	if keyFile == "" {
+		keyFile = defaultKeyFile
 	}
-	return []byte(keyJSON), nil
+
+	data, err := os.ReadFile(keyFile) //nolint:gosec // G304: path from trusted env var or hardcoded default
+	if err != nil {
+		return nil, fmt.Errorf("failed to read credentials file %s: %w", keyFile, err)
+	}
+	return data, nil
 }

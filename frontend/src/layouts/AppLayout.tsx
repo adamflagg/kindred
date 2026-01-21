@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useApiWithAuth } from '../hooks/useApiWithAuth';
 import { syncService } from '../services/sync';
 import { useMutation } from '@tanstack/react-query';
-import { RefreshCw, Loader2, User, Home, ChevronDown, Menu, X, Sun, Moon, TreePine, Clock, LogOut, Settings, BarChart3 } from 'lucide-react';
+import { RefreshCw, Loader2, User, Home, ChevronDown, Menu, X, Sun, Moon, TreePine, Clock, LogOut, Settings, BarChart3, FileSpreadsheet } from 'lucide-react';
 import toast from 'react-hot-toast';
 import YearSelector from '../components/YearSelector';
 import CacheStatus from '../components/CacheStatus';
@@ -92,6 +92,17 @@ export const AppLayout = () => {
     mutationFn: () => syncService.refreshBunking(fetchWithAuth),
     onError: (error: Error) => {
       toast.error(`Failed to refresh cabin assignments: ${error.message}`);
+    },
+  });
+
+  // Google Sheets export mutation
+  const sheetsExportMutation = useMutation({
+    mutationFn: () => syncService.exportToGoogleSheets(fetchWithAuth),
+    onSuccess: () => {
+      toast.success('Google Sheets export started');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to export: ${error.message}`);
     },
   });
 
@@ -524,27 +535,55 @@ export const AppLayout = () => {
                 </div>
 
                 <YearSelector />
-                <BunkRequestsUpload />
 
-                <button
-                  onClick={() => {
-                    toast(`Refreshing bunking assignments for ${currentYear}...`, {
-                      icon: '🔄',
-                      duration: 2000,
-                    });
-                    refreshBunkingMutation.mutate();
-                    setIsMobileMenuOpen(false);
-                  }}
-                  disabled={refreshBunkingMutation.isPending}
-                  className="btn-primary w-full"
-                >
-                  {refreshBunkingMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4" />
-                  )}
-                  <span>Refresh Bunking</span>
-                </button>
+                {/* Summer-only: Bunking controls */}
+                {activeProgram === 'summer' && (
+                  <>
+                    <BunkRequestsUpload />
+                    <button
+                      onClick={() => {
+                        toast(`Refreshing bunking assignments for ${currentYear}...`, {
+                          icon: '🔄',
+                          duration: 2000,
+                        });
+                        refreshBunkingMutation.mutate();
+                        setIsMobileMenuOpen(false);
+                      }}
+                      disabled={refreshBunkingMutation.isPending}
+                      className="btn-primary w-full"
+                    >
+                      {refreshBunkingMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4" />
+                      )}
+                      <span>Refresh Bunking</span>
+                    </button>
+                  </>
+                )}
+
+                {/* Metrics-only: Sheets export */}
+                {activeProgram === 'metrics' && (
+                  <button
+                    onClick={() => {
+                      toast('Exporting to Google Sheets...', {
+                        icon: '📊',
+                        duration: 2000,
+                      });
+                      sheetsExportMutation.mutate();
+                      setIsMobileMenuOpen(false);
+                    }}
+                    disabled={sheetsExportMutation.isPending}
+                    className="btn-primary w-full"
+                  >
+                    {sheetsExportMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <FileSpreadsheet className="h-4 w-4" />
+                    )}
+                    <span>Export to Sheets</span>
+                  </button>
+                )}
 
                 {/* Sign Out - Mobile */}
                 {isAuthenticated && (
@@ -566,13 +605,13 @@ export const AppLayout = () => {
       <div className="hidden sm:block bg-muted/20 border-b border-border/30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-14">
-            {/* Left side: Year context + sync status */}
+            {/* Left side: Year context + sync status (summer only) */}
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-3">
                 <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Year</span>
                 <YearSelector />
               </div>
-              {(syncStatus?.bunk_assignments?.end_time || syncStatus?.bunk_requests?.end_time) && (
+              {activeProgram === 'summer' && (syncStatus?.bunk_assignments?.end_time || syncStatus?.bunk_requests?.end_time) && (
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   {syncStatus?.bunk_assignments?.end_time && (
                     <span className="flex items-center gap-1.5" title="Last bunk assignments sync">
@@ -590,34 +629,54 @@ export const AppLayout = () => {
               )}
             </div>
 
-            {/* Center: Version info (desktop only) */}
-            {/* <div className="hidden lg:block">
-              <VersionInfo />
-            </div> */}
-
-            {/* Right side: Data actions */}
+            {/* Right side: Program-specific actions */}
             <div className="flex items-center gap-2">
-              <BunkRequestsUpload />
-              <button
-                onClick={() => {
-                  toast(`Refreshing bunking assignments for ${currentYear}...`, {
-                    icon: '🔄',
-                    duration: 2000,
-                  });
-                  refreshBunkingMutation.mutate();
-                }}
-                disabled={refreshBunkingMutation.isPending}
-                className="btn-primary py-2 px-4 nav-btn-icon-only"
-                title="Refresh bunking assignments from CampMinder"
-              >
-                {refreshBunkingMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
-                ) : (
-                  <RefreshCw className="h-4 w-4 flex-shrink-0" />
-                )}
-                <span className="nav-text-short">Refresh</span>
-                <span className="nav-text-full">Refresh Bunking</span>
-              </button>
+              {activeProgram === 'summer' && (
+                <>
+                  <BunkRequestsUpload />
+                  <button
+                    onClick={() => {
+                      toast(`Refreshing bunking assignments for ${currentYear}...`, {
+                        icon: '🔄',
+                        duration: 2000,
+                      });
+                      refreshBunkingMutation.mutate();
+                    }}
+                    disabled={refreshBunkingMutation.isPending}
+                    className="btn-primary py-2 px-4 nav-btn-icon-only"
+                    title="Refresh bunking assignments from CampMinder"
+                  >
+                    {refreshBunkingMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 flex-shrink-0" />
+                    )}
+                    <span className="nav-text-short">Refresh</span>
+                    <span className="nav-text-full">Refresh Bunking</span>
+                  </button>
+                </>
+              )}
+              {activeProgram === 'metrics' && (
+                <button
+                  onClick={() => {
+                    toast('Exporting to Google Sheets...', {
+                      icon: '📊',
+                      duration: 2000,
+                    });
+                    sheetsExportMutation.mutate();
+                  }}
+                  disabled={sheetsExportMutation.isPending}
+                  className="btn-primary py-2 px-4"
+                  title="Export attendee data to Google Sheets"
+                >
+                  {sheetsExportMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
+                  ) : (
+                    <FileSpreadsheet className="h-4 w-4 flex-shrink-0" />
+                  )}
+                  <span>Export to Sheets</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
