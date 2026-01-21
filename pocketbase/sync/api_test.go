@@ -567,12 +567,6 @@ func TestSessionsFullServices(t *testing.T) {
 	}
 }
 
-// getSessionsFullServices returns the list of services for sessions-full endpoint
-// in the correct dependency order: session_groups → sessions → session_programs
-func getSessionsFullServices() []string {
-	return []string{"session_groups", "sessions", "session_programs"}
-}
-
 // TestHistoricalSyncSessionsExpansion tests that historical sync expands "sessions" to all 3
 func TestHistoricalSyncSessionsExpansion(t *testing.T) {
 	tests := []struct {
@@ -623,18 +617,4 @@ func TestHistoricalSyncSessionsExpansion(t *testing.T) {
 			}
 		})
 	}
-}
-
-// expandHistoricalSyncServices expands the service parameter for historical sync
-// "sessions" expands to all 3 session-related services in dependency order
-// "all" returns empty slice (meaning all services)
-// other services return as single-element slice
-func expandHistoricalSyncServices(service string) []string {
-	if service == "sessions" {
-		return []string{"session_groups", "sessions", "session_programs"}
-	}
-	if service == "all" {
-		return []string{}
-	}
-	return []string{service}
 }
