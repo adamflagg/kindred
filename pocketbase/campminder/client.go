@@ -567,4 +567,54 @@ func (c *Client) parseRateLimitSeconds(body string) int {
 	return 60
 }
 
-// Additional methods for other endpoints can be added here...
+// GetSessionGroups retrieves session groupings for the configured season
+func (c *Client) GetSessionGroups() ([]map[string]interface{}, error) {
+	params := map[string]string{
+		"clientid":   c.clientID,
+		"seasonid":   strconv.Itoa(c.seasonID),
+		"pagenumber": "1",
+		"pagesize":   "100",
+	}
+
+	body, err := c.makeRequest("GET", "sessions/groups", params)
+	if err != nil {
+		return nil, err
+	}
+
+	var response struct {
+		TotalCount int                      `json:"TotalCount"`
+		Results    []map[string]interface{} `json:"Results"`
+	}
+
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("decode session groups response: %w", err)
+	}
+
+	return response.Results, nil
+}
+
+// GetSessionPrograms retrieves program definitions for the configured season
+func (c *Client) GetSessionPrograms() ([]map[string]interface{}, error) {
+	params := map[string]string{
+		"clientid":   c.clientID,
+		"seasonid":   strconv.Itoa(c.seasonID),
+		"pagenumber": "1",
+		"pagesize":   "100",
+	}
+
+	body, err := c.makeRequest("GET", "sessions/programs", params)
+	if err != nil {
+		return nil, err
+	}
+
+	var response struct {
+		TotalCount int                      `json:"TotalCount"`
+		Results    []map[string]interface{} `json:"Results"`
+	}
+
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("decode session programs response: %w", err)
+	}
+
+	return response.Results, nil
+}
