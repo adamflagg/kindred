@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/camp/kindred/pocketbase/google"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
@@ -297,6 +298,16 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 		return handleIndividualSync(e, scheduler, "bunk_requests")
 	})
 
+	// Google Sheets export endpoint
+	e.Router.POST("/api/custom/sync/google-sheets-export", func(e *core.RequestEvent) error {
+		// Check authentication
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("Authentication required", nil)
+		}
+
+		return handleGoogleSheetsExport(e, scheduler)
+	})
+
 	return nil
 }
 
@@ -539,6 +550,7 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 		"bunk_assignments",
 		"bunk_requests",
 		"process_requests",
+		"google_sheets_export",
 	}
 
 	statuses := make(map[string]interface{})
@@ -731,5 +743,52 @@ func handleTestConnection(e *core.RequestEvent, scheduler *Scheduler) error {
 			"season_id":      orchestrator.baseClient.GetSeasonID(),
 			"sessions_found": len(sessions),
 		},
+	})
+}
+
+// handleGoogleSheetsExport handles manual triggering of Google Sheets export
+func handleGoogleSheetsExport(e *core.RequestEvent, scheduler *Scheduler) error {
+	// Check if Google Sheets is configured
+	if !google.IsEnabled() {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Google Sheets export is not enabled",
+			"hint":  "Set GOOGLE_SHEETS_ENABLED=true and configure credentials",
+		})
+	}
+
+	spreadsheetID := google.GetSpreadsheetID()
+	if spreadsheetID == "" {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Google Sheets spreadsheet ID not configured",
+			"hint":  "Set GOOGLE_SHEETS_SPREADSHEET_ID environment variable",
+		})
+	}
+
+	orchestrator := scheduler.GetOrchestrator()
+
+	// Check if already running
+	if orchestrator.IsRunning("google_sheets_export") {
+		return e.JSON(http.StatusConflict, map[string]interface{}{
+			"error":    "Google Sheets export already in progress",
+			"status":   "running",
+			"syncType": "google_sheets_export",
+		})
+	}
+
+	// Run in background
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+
+		if err := orchestrator.RunSingleSync(ctx, "google_sheets_export"); err != nil {
+			slog.Error("Google Sheets export failed", "error", err)
+		}
+	}()
+
+	return e.JSON(http.StatusOK, map[string]interface{}{
+		"message":        "Google Sheets export started",
+		"status":         "started",
+		"syncType":       "google_sheets_export",
+		"spreadsheet_id": spreadsheetID,
 	})
 }

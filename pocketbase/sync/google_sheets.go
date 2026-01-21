@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"strconv"
 	"time"
 
+	"github.com/pocketbase/pocketbase/core"
 	"google.golang.org/api/sheets/v4"
 )
 
@@ -86,17 +89,28 @@ type GoogleSheetsExport struct {
 	BaseSyncService
 	sheetsWriter  SheetsWriter
 	spreadsheetID string
+	year          int
 }
 
 // NewGoogleSheetsExport creates a new Google Sheets export service
-func NewGoogleSheetsExport(sheetsService *sheets.Service, spreadsheetID string) *GoogleSheetsExport {
+func NewGoogleSheetsExport(app core.App, sheetsService *sheets.Service, spreadsheetID string) *GoogleSheetsExport {
+	// Get year from environment (same as other sync services)
+	year := 2025 // Default
+	if yearStr := os.Getenv("CAMPMINDER_SEASON_ID"); yearStr != "" {
+		if parsed, err := strconv.Atoi(yearStr); err == nil {
+			year = parsed
+		}
+	}
+
 	return &GoogleSheetsExport{
 		BaseSyncService: BaseSyncService{
+			App:           app,
 			Stats:         Stats{},
 			ProcessedKeys: make(map[string]bool),
 		},
 		sheetsWriter:  NewRealSheetsWriter(sheetsService),
 		spreadsheetID: spreadsheetID,
+		year:          year,
 	}
 }
 
@@ -108,17 +122,216 @@ func (g *GoogleSheetsExport) Name() string {
 // Sync implements the Service interface - exports data to Google Sheets
 func (g *GoogleSheetsExport) Sync(ctx context.Context) error {
 	startTime := time.Now()
-	slog.Info("Starting Google Sheets export", "spreadsheet_id", g.spreadsheetID)
+	slog.Info("Starting Google Sheets export", "spreadsheet_id", g.spreadsheetID, "year", g.year)
 
 	g.Stats = Stats{}
 	g.SyncSuccessful = false
 
-	// This will be called from orchestrator with PocketBase app context
-	// For now, return error indicating it needs to be called with data
-	slog.Warn("Sync() called without data - use ExportFromPocketBase() instead")
+	// Query attendees from PocketBase
+	attendees, err := g.queryAttendees()
+	if err != nil {
+		return fmt.Errorf("querying attendees: %w", err)
+	}
+
+	// Query sessions from PocketBase
+	sessions, err := g.querySessions()
+	if err != nil {
+		return fmt.Errorf("querying sessions: %w", err)
+	}
+
+	// Export to Google Sheets
+	if err := g.ExportToSheets(ctx, attendees, sessions); err != nil {
+		return err
+	}
 
 	g.Stats.Duration = int(time.Since(startTime).Seconds())
 	return nil
+}
+
+// queryAttendees queries attendee records from PocketBase
+func (g *GoogleSheetsExport) queryAttendees() ([]AttendeeRecord, error) {
+	// Query enrolled, active attendees for the configured year
+	filter := fmt.Sprintf("year = %d && is_active = 1 && status_id = 2", g.year)
+
+	records, err := g.App.FindRecordsByFilter(
+		"attendees",
+		filter,
+		"", // no sort
+		0,  // no limit
+		0,  // no offset
+	)
+	if err != nil {
+		return nil, fmt.Errorf("querying attendees: %w", err)
+	}
+
+	// Pre-load persons and sessions for efficient lookup
+	personMap, err := g.loadPersons()
+	if err != nil {
+		slog.Warn("Failed to load persons", "error", err)
+	}
+
+	sessionMap, err := g.loadSessions()
+	if err != nil {
+		slog.Warn("Failed to load sessions", "error", err)
+	}
+
+	var attendees []AttendeeRecord
+	for _, record := range records {
+		attendee := AttendeeRecord{
+			Status: safeString(record.Get("status")),
+		}
+
+		// Get enrollment date
+		if enrollDate := record.Get("enrollment_date"); enrollDate != nil {
+			if dateStr, ok := enrollDate.(string); ok {
+				attendee.EnrollmentDate = dateStr
+			}
+		}
+
+		// Get person data from map (using PB ID)
+		if personID := safeString(record.Get("person")); personID != "" {
+			if person, ok := personMap[personID]; ok {
+				attendee.FirstName = person.FirstName
+				attendee.LastName = person.LastName
+				attendee.Gender = person.Gender
+				attendee.Grade = person.Grade
+			}
+		}
+
+		// Get session data from map (using PB ID)
+		if sessionID := safeString(record.Get("session")); sessionID != "" {
+			if session, ok := sessionMap[sessionID]; ok {
+				attendee.SessionName = session.Name
+				attendee.SessionType = session.Type
+			}
+		}
+
+		attendees = append(attendees, attendee)
+	}
+
+	slog.Info("Queried attendees", "count", len(attendees))
+	return attendees, nil
+}
+
+// PersonInfo holds person data for lookup
+type PersonInfo struct {
+	FirstName string
+	LastName  string
+	Gender    string
+	Grade     int
+}
+
+// loadPersons loads all persons into a map keyed by PB ID
+func (g *GoogleSheetsExport) loadPersons() (map[string]PersonInfo, error) {
+	filter := fmt.Sprintf("year = %d", g.year)
+	records, err := g.App.FindRecordsByFilter("persons", filter, "", 0, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	personMap := make(map[string]PersonInfo)
+	for _, r := range records {
+		grade := 0
+		if gradeVal := r.Get("grade"); gradeVal != nil {
+			if gradeFloat, ok := gradeVal.(float64); ok {
+				grade = int(gradeFloat)
+			}
+		}
+		personMap[r.Id] = PersonInfo{
+			FirstName: safeString(r.Get("first_name")),
+			LastName:  safeString(r.Get("last_name")),
+			Gender:    safeString(r.Get("gender")),
+			Grade:     grade,
+		}
+	}
+	return personMap, nil
+}
+
+// loadSessions loads all sessions into a map keyed by PB ID
+func (g *GoogleSheetsExport) loadSessions() (map[string]SessionRecord, error) {
+	filter := fmt.Sprintf("year = %d", g.year)
+	records, err := g.App.FindRecordsByFilter("camp_sessions", filter, "", 0, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	sessionMap := make(map[string]SessionRecord)
+	for _, r := range records {
+		year := 0
+		if yearVal := r.Get("year"); yearVal != nil {
+			if yearFloat, ok := yearVal.(float64); ok {
+				year = int(yearFloat)
+			}
+		}
+		sessionMap[r.Id] = SessionRecord{
+			Name:      safeString(r.Get("name")),
+			Type:      safeString(r.Get("session_type")),
+			StartDate: safeString(r.Get("start_date")),
+			EndDate:   safeString(r.Get("end_date")),
+			Year:      year,
+		}
+	}
+	return sessionMap, nil
+}
+
+// querySessions queries session records from PocketBase
+func (g *GoogleSheetsExport) querySessions() ([]SessionRecord, error) {
+	// Query sessions for the configured year (main and embedded only)
+	filter := fmt.Sprintf("year = %d && (session_type = 'main' || session_type = 'embedded')", g.year)
+
+	records, err := g.App.FindRecordsByFilter(
+		"camp_sessions",
+		filter,
+		"name", // sort by name
+		0,      // no limit
+		0,      // no offset
+	)
+	if err != nil {
+		return nil, fmt.Errorf("querying sessions: %w", err)
+	}
+
+	var sessions []SessionRecord
+	for _, record := range records {
+		session := SessionRecord{
+			Name: safeString(record.Get("name")),
+			Type: safeString(record.Get("session_type")),
+		}
+
+		// Get dates
+		if startDate := record.Get("start_date"); startDate != nil {
+			if dateStr, ok := startDate.(string); ok {
+				session.StartDate = dateStr
+			}
+		}
+		if endDate := record.Get("end_date"); endDate != nil {
+			if dateStr, ok := endDate.(string); ok {
+				session.EndDate = dateStr
+			}
+		}
+
+		// Get year
+		if year := record.Get("year"); year != nil {
+			if yearFloat, ok := year.(float64); ok {
+				session.Year = int(yearFloat)
+			}
+		}
+
+		sessions = append(sessions, session)
+	}
+
+	slog.Info("Queried sessions", "count", len(sessions))
+	return sessions, nil
+}
+
+// safeString safely converts an interface{} to string
+func safeString(v interface{}) string {
+	if v == nil {
+		return ""
+	}
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return fmt.Sprintf("%v", v)
 }
 
 // ExportToSheets exports attendee and session data to Google Sheets

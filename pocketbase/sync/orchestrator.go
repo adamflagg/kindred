@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/camp/kindred/pocketbase/campminder"
+	"github.com/camp/kindred/pocketbase/google"
 	"github.com/pocketbase/pocketbase/core"
 )
 
@@ -244,6 +245,11 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 		orderedJobs = append(orderedJobs, "process_requests")
 	} else {
 		slog.Info("Skipping process_requests in development mode (set IS_DOCKER=true to enable)")
+	}
+
+	// Add Google Sheets export if enabled (runs after all data syncs complete)
+	if google.IsEnabled() && google.GetSpreadsheetID() != "" {
+		orderedJobs = append(orderedJobs, "google_sheets_export")
 	}
 
 	// Set daily sync flag and queue
@@ -603,6 +609,23 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	o.RegisterService("bunk_requests", NewBunkRequestsSync(o.app, client))
 	// Register the request processor (no CampMinder client needed)
 	o.RegisterService("process_requests", NewRequestProcessor(o.app))
+
+	// Register Google Sheets export service (optional, requires configuration)
+	if google.IsEnabled() {
+		ctx := context.Background()
+		sheetsClient, err := google.NewSheetsClient(ctx)
+		if err != nil {
+			slog.Warn("Google Sheets disabled due to client error", "error", err)
+		} else if sheetsClient != nil {
+			spreadsheetID := google.GetSpreadsheetID()
+			if spreadsheetID != "" {
+				o.RegisterService("google_sheets_export", NewGoogleSheetsExport(o.app, sheetsClient, spreadsheetID))
+				slog.Info("Google Sheets export service registered", "spreadsheet_id", spreadsheetID)
+			} else {
+				slog.Warn("Google Sheets enabled but no spreadsheet ID configured")
+			}
+		}
+	}
 
 	slog.Info("All sync services registered")
 	return nil
