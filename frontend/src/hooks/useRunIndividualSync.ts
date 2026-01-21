@@ -15,8 +15,10 @@ export const SYNC_TYPE_NAMES: Record<string, string> = {
 };
 
 // Map of sync types to their endpoint names
+// Note: 'sessions' maps to 'sessions-full' which chains:
+// session_groups → sessions → session_programs in dependency order
 const SYNC_ENDPOINT_MAP: Record<string, string> = {
-  sessions: 'sessions',
+  sessions: 'sessions-full',
   attendees: 'attendees',
   persons: 'persons',
   bunks: 'bunks',

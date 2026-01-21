@@ -244,7 +244,7 @@ func TestStatusStruct(t *testing.T) {
 	endTime := now.Add(time.Minute)
 
 	status := Status{
-		Type:      "sessions",
+		Type:      serviceNameSessions,
 		Status:    "completed",
 		StartTime: now,
 		EndTime:   &endTime,
@@ -257,8 +257,8 @@ func TestStatusStruct(t *testing.T) {
 		Year: 2024,
 	}
 
-	if status.Type != "sessions" {
-		t.Errorf("expected type 'sessions', got %q", status.Type)
+	if status.Type != serviceNameSessions {
+		t.Errorf("expected type %q, got %q", serviceNameSessions, status.Type)
 	}
 
 	if status.Year != 2024 {
