@@ -248,6 +248,11 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 		return handleIndividualSync(e, scheduler, "person_tag_definitions")
 	}))
 
+	// Households sync
+	e.Router.POST("/api/custom/sync/households", requireAuth(func(e *core.RequestEvent) error {
+		return handleIndividualSync(e, scheduler, "households")
+	}))
+
 	return nil
 }
 
@@ -487,6 +492,7 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 		"attendees",
 		"person_tag_definitions",
 		"persons",
+		"households",
 		"bunks",
 		"bunk_plans",
 		"bunk_assignments",

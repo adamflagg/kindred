@@ -24,6 +24,7 @@ export interface SyncStatusResponse {
   attendees: SyncStatus;
   person_tag_definitions: SyncStatus;
   persons: SyncStatus;
+  households: SyncStatus;
   bunks: SyncStatus;
   bunk_plans: SyncStatus;
   bunk_assignments: SyncStatus;
