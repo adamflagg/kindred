@@ -21,6 +21,13 @@ export interface UploadError {
   file_size?: number;
 }
 
+export interface GoogleSheetsExportResponse {
+  message: string;
+  status: string;
+  syncType: string;
+  spreadsheet_id: string;
+}
+
 export const syncService = {
   /**
    * Refresh bunking assignments from CampMinder
@@ -56,6 +63,22 @@ export const syncService = {
     if (!response.ok) {
       const error = await response.json();
       throw error as UploadError;
+    }
+    return response.json();
+  },
+
+  /**
+   * Export data to Google Sheets
+   */
+  async exportToGoogleSheets(
+    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+  ): Promise<GoogleSheetsExportResponse> {
+    const response = await fetchWithAuth(`${API_BASE}/google-sheets-export`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to export to Google Sheets');
     }
     return response.json();
   },

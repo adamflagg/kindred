@@ -18,6 +18,9 @@ secrets.json
 .env.*
 !.env.example
 
+# Google Sheets service account credentials
+google_sheets.json
+
 # CampMinder token cache
 .campminder_token_cache.json
 
