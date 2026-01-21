@@ -20,6 +20,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Maximum IDs per query to avoid URL length limits
+# Each ID adds ~40 chars to filter, 50 IDs keeps URLs under 2KB
+BATCH_SIZE = 50
+
 
 def _normalize_content_for_matching(content: str, field_type: str | None) -> str:
     """Normalize content from original_bunk_requests to match bunk_requests.original_text.
@@ -462,62 +466,69 @@ class DebugParseRepository:
         result: dict[str, tuple[bool, bool]] = {rid: (False, False) for rid in original_request_ids}
 
         try:
-            # Build filter for debug results
-            id_conditions = [f'original_request = "{rid}"' for rid in original_request_ids]
-            filter_str = "(" + " || ".join(id_conditions) + ")"
+            # Collect debug IDs from batched queries
+            debug_ids: set[str] = set()
+            for i in range(0, len(original_request_ids), BATCH_SIZE):
+                batch_ids = original_request_ids[i : i + BATCH_SIZE]
+                id_conditions = [f'original_request = "{rid}"' for rid in batch_ids]
+                filter_str = "(" + " || ".join(id_conditions) + ")"
 
-            # Single query: debug_parse_results
-            debug_results = self.pb.collection(self.COLLECTION_NAME).get_full_list(
-                query_params={"filter": filter_str, "fields": "original_request"}
-            )
-            debug_ids = {r.original_request for r in debug_results}  # type: ignore[attr-defined]
+                debug_results = self.pb.collection(self.COLLECTION_NAME).get_full_list(
+                    query_params={"filter": filter_str, "fields": "original_request"}
+                )
+                debug_ids.update(r.original_request for r in debug_results)  # type: ignore[attr-defined]
 
-            # For production: load original requests to get (cm_id, content) pairs
-            orig_filter = "(" + " || ".join(f'id = "{rid}"' for rid in original_request_ids) + ")"
-            orig_results = self.pb.collection("original_bunk_requests").get_full_list(
-                query_params={"filter": orig_filter, "expand": "requester"}
-            )
-
-            # Build lookup: original_request_id -> (cm_id, content_to_match)
-            # Normalize content to match bunk_requests.original_text
+            # For production: load original requests in batches to get (cm_id, content) pairs
             orig_lookup: dict[str, tuple[int, str]] = {}
-            for orig in orig_results:
-                requester = None
-                if hasattr(orig, "expand") and orig.expand:
-                    requester = orig.expand.get("requester")
-                if requester:
-                    cm_id = getattr(requester, "cm_id", None)
-                    content = getattr(orig, "content", None)
-                    field_type = getattr(orig, "field", None)
-                    if cm_id and content:
-                        # Normalize content to match bunk_requests.original_text
-                        content_to_match = _normalize_content_for_matching(content, field_type)
-                        orig_lookup[orig.id] = (cm_id, content_to_match)
-
-            # Get unique requester cm_ids to batch query bunk_requests
-            cm_ids = {v[0] for v in orig_lookup.values()}
-            if cm_ids:
-                cm_id_filter = " || ".join(f"requester_id = {cm_id}" for cm_id in cm_ids)
-                bunk_results = self.pb.collection("bunk_requests").get_full_list(
-                    query_params={
-                        "filter": f"({cm_id_filter})",
-                        "fields": "requester_id,original_text",
-                    }
+            for i in range(0, len(original_request_ids), BATCH_SIZE):
+                batch_ids = original_request_ids[i : i + BATCH_SIZE]
+                orig_filter = "(" + " || ".join(f'id = "{rid}"' for rid in batch_ids) + ")"
+                orig_results = self.pb.collection("original_bunk_requests").get_full_list(
+                    query_params={"filter": orig_filter, "expand": "requester"}
                 )
 
-                # Build set of (cm_id, original_text) pairs that exist in bunk_requests
-                prod_pairs: set[tuple[int, str]] = set()
-                for br in bunk_results:
-                    cm_id = getattr(br, "requester_id", None)
-                    text = getattr(br, "original_text", None)
-                    if cm_id and text:
-                        prod_pairs.add((cm_id, text))
+                # Build lookup: original_request_id -> (cm_id, content_to_match)
+                for orig in orig_results:
+                    requester = None
+                    if hasattr(orig, "expand") and orig.expand:
+                        requester = orig.expand.get("requester")
+                    if requester:
+                        cm_id = getattr(requester, "cm_id", None)
+                        content = getattr(orig, "content", None)
+                        field_type = getattr(orig, "field", None)
+                        if cm_id and content:
+                            # Normalize content to match bunk_requests.original_text
+                            content_to_match = _normalize_content_for_matching(content, field_type)
+                            orig_lookup[orig.id] = (cm_id, content_to_match)
 
-                # Check each original request against the production pairs
-                for rid, (cm_id, content) in orig_lookup.items():
-                    has_prod = (cm_id, content) in prod_pairs
-                    has_debug = rid in debug_ids
-                    result[rid] = (has_debug, has_prod)
+            # Get unique requester cm_ids to batch query bunk_requests
+            cm_ids = list({v[0] for v in orig_lookup.values()})
+            prod_pairs: set[tuple[int, str]] = set()
+
+            if cm_ids:
+                # Batch the cm_id queries too
+                for i in range(0, len(cm_ids), BATCH_SIZE):
+                    batch_cm_ids = cm_ids[i : i + BATCH_SIZE]
+                    cm_id_filter = " || ".join(f"requester_id = {cm_id}" for cm_id in batch_cm_ids)
+                    bunk_results = self.pb.collection("bunk_requests").get_full_list(
+                        query_params={
+                            "filter": f"({cm_id_filter})",
+                            "fields": "requester_id,original_text",
+                        }
+                    )
+
+                    # Build set of (cm_id, original_text) pairs that exist in bunk_requests
+                    for br in bunk_results:
+                        cm_id = getattr(br, "requester_id", None)
+                        text = getattr(br, "original_text", None)
+                        if cm_id and text:
+                            prod_pairs.add((cm_id, text))
+
+            # Check each original request against the production pairs
+            for rid, (cm_id, content) in orig_lookup.items():
+                has_prod = (cm_id, content) in prod_pairs
+                has_debug = rid in debug_ids
+                result[rid] = (has_debug, has_prod)
 
             # Update debug status for requests not in orig_lookup
             for rid in original_request_ids:
@@ -552,78 +563,82 @@ class DebugParseRepository:
         result: dict[str, dict[str, Any]] = {}
 
         try:
-            # Query 1: Load all original requests with expanded requester
-            orig_filter = "(" + " || ".join(f'id = "{rid}"' for rid in original_request_ids) + ")"
-            orig_results = self.pb.collection("original_bunk_requests").get_full_list(
-                query_params={"filter": orig_filter, "expand": "requester"}
-            )
-
-            # Build lookup for original request data
+            # Query 1: Load all original requests with expanded requester (batched)
             orig_data: dict[str, dict[str, Any]] = {}
             orig_lookup: dict[str, tuple[int, str]] = {}  # id -> (cm_id, content)
 
-            for orig in orig_results:
-                requester = None
-                if hasattr(orig, "expand") and orig.expand:
-                    requester = orig.expand.get("requester")
-
-                requester_cm_id = getattr(requester, "cm_id", None) if requester else None
-                first_name = (
-                    getattr(requester, "preferred_name", None) or getattr(requester, "first_name", "")
-                    if requester
-                    else ""
+            for i in range(0, len(original_request_ids), BATCH_SIZE):
+                batch_ids = original_request_ids[i : i + BATCH_SIZE]
+                orig_filter = "(" + " || ".join(f'id = "{rid}"' for rid in batch_ids) + ")"
+                orig_results = self.pb.collection("original_bunk_requests").get_full_list(
+                    query_params={"filter": orig_filter, "expand": "requester"}
                 )
-                last_name = getattr(requester, "last_name", "") if requester else ""
-                requester_name = f"{first_name} {last_name}".strip()
 
-                content = getattr(orig, "content", "")
-                field = getattr(orig, "field", "")
+                for orig in orig_results:
+                    requester = None
+                    if hasattr(orig, "expand") and orig.expand:
+                        requester = orig.expand.get("requester")
 
-                orig_data[orig.id] = {
-                    "original_request_id": orig.id,
-                    "requester_name": requester_name,
-                    "requester_cm_id": requester_cm_id,
-                    "source_field": field,
-                    "original_text": content,
-                }
+                    requester_cm_id = getattr(requester, "cm_id", None) if requester else None
+                    first_name = (
+                        getattr(requester, "preferred_name", None) or getattr(requester, "first_name", "")
+                        if requester
+                        else ""
+                    )
+                    last_name = getattr(requester, "last_name", "") if requester else ""
+                    requester_name = f"{first_name} {last_name}".strip()
 
-                if requester_cm_id and content:
-                    # Normalize content to match bunk_requests.original_text
-                    content_to_match = _normalize_content_for_matching(content, field)
-                    orig_lookup[orig.id] = (requester_cm_id, content_to_match)
+                    content = getattr(orig, "content", "")
+                    field = getattr(orig, "field", "")
 
-            # Query 2: Load all debug results
-            debug_filter = "(" + " || ".join(f'original_request = "{rid}"' for rid in original_request_ids) + ")"
-            debug_results = self.pb.collection(self.COLLECTION_NAME).get_full_list(
-                query_params={"filter": debug_filter}
-            )
+                    orig_data[orig.id] = {
+                        "original_request_id": orig.id,
+                        "requester_name": requester_name,
+                        "requester_cm_id": requester_cm_id,
+                        "source_field": field,
+                        "original_text": content,
+                    }
 
-            # Build debug results lookup
+                    if requester_cm_id and content:
+                        # Normalize content to match bunk_requests.original_text
+                        content_to_match = _normalize_content_for_matching(content, field)
+                        orig_lookup[orig.id] = (requester_cm_id, content_to_match)
+
+            # Query 2: Load all debug results (batched)
             debug_by_orig: dict[str, Any] = {}
-            for dr in debug_results:
-                orig_id = getattr(dr, "original_request", None)
-                if orig_id:
-                    debug_by_orig[orig_id] = dr
+            for i in range(0, len(original_request_ids), BATCH_SIZE):
+                batch_ids = original_request_ids[i : i + BATCH_SIZE]
+                debug_filter = "(" + " || ".join(f'original_request = "{rid}"' for rid in batch_ids) + ")"
+                debug_results = self.pb.collection(self.COLLECTION_NAME).get_full_list(
+                    query_params={"filter": debug_filter}
+                )
 
-            # Query 3: Load bunk_requests for production fallback
-            cm_ids = {v[0] for v in orig_lookup.values()}
+                for dr in debug_results:
+                    orig_id = getattr(dr, "original_request", None)
+                    if orig_id:
+                        debug_by_orig[orig_id] = dr
+
+            # Query 3: Load bunk_requests for production fallback (batched)
+            cm_ids = list({v[0] for v in orig_lookup.values()})
             prod_by_pair: dict[tuple[int, str], list[Any]] = {}
 
             if cm_ids:
-                cm_id_filter = " || ".join(f"requester_id = {cm_id}" for cm_id in cm_ids)
-                bunk_results = self.pb.collection("bunk_requests").get_full_list(
-                    query_params={"filter": f"({cm_id_filter})"}
-                )
+                for i in range(0, len(cm_ids), BATCH_SIZE):
+                    batch_cm_ids = cm_ids[i : i + BATCH_SIZE]
+                    cm_id_filter = " || ".join(f"requester_id = {cm_id}" for cm_id in batch_cm_ids)
+                    bunk_results = self.pb.collection("bunk_requests").get_full_list(
+                        query_params={"filter": f"({cm_id_filter})"}
+                    )
 
-                # Group bunk_requests by (cm_id, original_text)
-                for br in bunk_results:
-                    cm_id = getattr(br, "requester_id", None)
-                    text = getattr(br, "original_text", None)
-                    if cm_id and text:
-                        key = (cm_id, text)
-                        if key not in prod_by_pair:
-                            prod_by_pair[key] = []
-                        prod_by_pair[key].append(br)
+                    # Group bunk_requests by (cm_id, original_text)
+                    for br in bunk_results:
+                        cm_id = getattr(br, "requester_id", None)
+                        text = getattr(br, "original_text", None)
+                        if cm_id and text:
+                            key = (cm_id, text)
+                            if key not in prod_by_pair:
+                                prod_by_pair[key] = []
+                            prod_by_pair[key].append(br)
 
             # Build results for each original request
             for rid in original_request_ids:
@@ -736,78 +751,82 @@ class DebugParseRepository:
         result: dict[str, dict[str, Any]] = {}
 
         try:
-            # Query 1: Load all original requests with expanded requester
-            orig_filter = "(" + " || ".join(f'id = "{rid}"' for rid in original_request_ids) + ")"
-            orig_results = self.pb.collection("original_bunk_requests").get_full_list(
-                query_params={"filter": orig_filter, "expand": "requester"}
-            )
-
-            # Build lookup for original request data
+            # Query 1: Load all original requests with expanded requester (batched)
             orig_data: dict[str, dict[str, Any]] = {}
             orig_lookup: dict[str, tuple[int, str]] = {}  # id -> (cm_id, content)
 
-            for orig in orig_results:
-                requester = None
-                if hasattr(orig, "expand") and orig.expand:
-                    requester = orig.expand.get("requester")
-
-                requester_cm_id = getattr(requester, "cm_id", None) if requester else None
-                first_name = (
-                    getattr(requester, "preferred_name", None) or getattr(requester, "first_name", "")
-                    if requester
-                    else ""
+            for i in range(0, len(original_request_ids), BATCH_SIZE):
+                batch_ids = original_request_ids[i : i + BATCH_SIZE]
+                orig_filter = "(" + " || ".join(f'id = "{rid}"' for rid in batch_ids) + ")"
+                orig_results = self.pb.collection("original_bunk_requests").get_full_list(
+                    query_params={"filter": orig_filter, "expand": "requester"}
                 )
-                last_name = getattr(requester, "last_name", "") if requester else ""
-                requester_name = f"{first_name} {last_name}".strip()
 
-                content = getattr(orig, "content", "")
-                field = getattr(orig, "field", "")
+                for orig in orig_results:
+                    requester = None
+                    if hasattr(orig, "expand") and orig.expand:
+                        requester = orig.expand.get("requester")
 
-                orig_data[orig.id] = {
-                    "original_request_id": orig.id,
-                    "requester_name": requester_name,
-                    "requester_cm_id": requester_cm_id,
-                    "source_field": field,
-                    "original_text": content,
-                }
+                    requester_cm_id = getattr(requester, "cm_id", None) if requester else None
+                    first_name = (
+                        getattr(requester, "preferred_name", None) or getattr(requester, "first_name", "")
+                        if requester
+                        else ""
+                    )
+                    last_name = getattr(requester, "last_name", "") if requester else ""
+                    requester_name = f"{first_name} {last_name}".strip()
 
-                if requester_cm_id and content:
-                    # Normalize content to match bunk_requests.original_text
-                    content_to_match = _normalize_content_for_matching(content, field)
-                    orig_lookup[orig.id] = (requester_cm_id, content_to_match)
+                    content = getattr(orig, "content", "")
+                    field = getattr(orig, "field", "")
 
-            # Query 2: Load all debug results
-            debug_filter = "(" + " || ".join(f'original_request = "{rid}"' for rid in original_request_ids) + ")"
-            debug_results = self.pb.collection(self.COLLECTION_NAME).get_full_list(
-                query_params={"filter": debug_filter}
-            )
+                    orig_data[orig.id] = {
+                        "original_request_id": orig.id,
+                        "requester_name": requester_name,
+                        "requester_cm_id": requester_cm_id,
+                        "source_field": field,
+                        "original_text": content,
+                    }
 
-            # Build debug results lookup
+                    if requester_cm_id and content:
+                        # Normalize content to match bunk_requests.original_text
+                        content_to_match = _normalize_content_for_matching(content, field)
+                        orig_lookup[orig.id] = (requester_cm_id, content_to_match)
+
+            # Query 2: Load all debug results (batched)
             debug_by_orig: dict[str, Any] = {}
-            for dr in debug_results:
-                orig_id = getattr(dr, "original_request", None)
-                if orig_id:
-                    debug_by_orig[orig_id] = dr
+            for i in range(0, len(original_request_ids), BATCH_SIZE):
+                batch_ids = original_request_ids[i : i + BATCH_SIZE]
+                debug_filter = "(" + " || ".join(f'original_request = "{rid}"' for rid in batch_ids) + ")"
+                debug_results = self.pb.collection(self.COLLECTION_NAME).get_full_list(
+                    query_params={"filter": debug_filter}
+                )
 
-            # Query 3: Load bunk_requests for production results
-            cm_ids = {v[0] for v in orig_lookup.values()}
+                for dr in debug_results:
+                    orig_id = getattr(dr, "original_request", None)
+                    if orig_id:
+                        debug_by_orig[orig_id] = dr
+
+            # Query 3: Load bunk_requests for production results (batched)
+            cm_ids = list({v[0] for v in orig_lookup.values()})
             prod_by_pair: dict[tuple[int, str], list[Any]] = {}
 
             if cm_ids:
-                cm_id_filter = " || ".join(f"requester_id = {cm_id}" for cm_id in cm_ids)
-                bunk_results = self.pb.collection("bunk_requests").get_full_list(
-                    query_params={"filter": f"({cm_id_filter})"}
-                )
+                for i in range(0, len(cm_ids), BATCH_SIZE):
+                    batch_cm_ids = cm_ids[i : i + BATCH_SIZE]
+                    cm_id_filter = " || ".join(f"requester_id = {cm_id}" for cm_id in batch_cm_ids)
+                    bunk_results = self.pb.collection("bunk_requests").get_full_list(
+                        query_params={"filter": f"({cm_id_filter})"}
+                    )
 
-                # Group bunk_requests by (cm_id, original_text)
-                for br in bunk_results:
-                    cm_id = getattr(br, "requester_id", None)
-                    text = getattr(br, "original_text", None)
-                    if cm_id and text:
-                        key = (cm_id, text)
-                        if key not in prod_by_pair:
-                            prod_by_pair[key] = []
-                        prod_by_pair[key].append(br)
+                    # Group bunk_requests by (cm_id, original_text)
+                    for br in bunk_results:
+                        cm_id = getattr(br, "requester_id", None)
+                        text = getattr(br, "original_text", None)
+                        if cm_id and text:
+                            key = (cm_id, text)
+                            if key not in prod_by_pair:
+                                prod_by_pair[key] = []
+                            prod_by_pair[key].append(br)
 
             # Build results for each original request
             for rid in original_request_ids:
