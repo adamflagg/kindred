@@ -88,9 +88,15 @@ func TestSessionsSync_Name(t *testing.T) {
 
 // TestTransformSessionExtractsAllFields tests that all CampMinder fields are extracted to PocketBase format
 func TestTransformSessionExtractsAllFields(t *testing.T) {
-	s := &SessionsSync{}
+	// Create SessionsSync with groupIDMap populated for session_group relation
+	s := &SessionsSync{
+		groupIDMap: map[int]string{
+			100: "group_pb_id_100", // Maps GroupID 100 to PocketBase ID
+		},
+	}
 
 	// Mock CampMinder API response with all fields
+	// Note: CampMinder API has typo "IsForChilden" (missing 'r')
 	sessionData := map[string]interface{}{
 		"ID":            float64(12345),
 		"Name":          "Session 2",
@@ -103,10 +109,8 @@ func TestTransformSessionExtractsAllFields(t *testing.T) {
 		"GroupID":       float64(100),
 		"IsDay":         false,
 		"IsResidential": true,
-		"IsForChildren": true,
+		"IsForChilden":  true, // CampMinder API typo - missing 'r'
 		"IsForAdults":   false,
-		"StartAge":      float64(8),
-		"EndAge":        float64(15),
 		"StartGradeID":  float64(3),
 		"EndGradeID":    float64(10),
 		"GenderID":      float64(0),
@@ -144,8 +148,9 @@ func TestTransformSessionExtractsAllFields(t *testing.T) {
 	if got, want := pbData["sort_order"], float64(2); got != want {
 		t.Errorf("sort_order = %v, want %v", got, want)
 	}
-	if got, want := pbData["group_id"], float64(100); got != want {
-		t.Errorf("group_id = %v, want %v", got, want)
+	// session_group is resolved from GroupID via groupIDMap
+	if got, want := pbData["session_group"], "group_pb_id_100"; got != want {
+		t.Errorf("session_group = %v, want %v", got, want)
 	}
 	if got, want := pbData["is_day"], false; got != want {
 		t.Errorf("is_day = %v, want %v", got, want)
@@ -158,12 +163,6 @@ func TestTransformSessionExtractsAllFields(t *testing.T) {
 	}
 	if got, want := pbData["is_for_adults"], false; got != want {
 		t.Errorf("is_for_adults = %v, want %v", got, want)
-	}
-	if got, want := pbData["start_age"], float64(8); got != want {
-		t.Errorf("start_age = %v, want %v", got, want)
-	}
-	if got, want := pbData["end_age"], float64(15); got != want {
-		t.Errorf("end_age = %v, want %v", got, want)
 	}
 	if got, want := pbData["start_grade_id"], float64(3); got != want {
 		t.Errorf("start_grade_id = %v, want %v", got, want)
@@ -200,12 +199,13 @@ func TestTransformSessionHandlesMissingFields(t *testing.T) {
 		t.Errorf("cm_id = %d, want %d", got, want)
 	}
 
-	// Optional fields should be nil (not panic or error)
-	// The actual behavior for missing fields should be nil in the map
+	// Optional fields that are always present (may be nil)
+	// Note: session_group is NOT included because it's only set when GroupID is present
+	// and can be resolved via groupIDMap
 	optionalFields := []string{
-		"description", "is_active", "sort_order", "group_id",
+		"description", "is_active", "sort_order",
 		"is_day", "is_residential", "is_for_children", "is_for_adults",
-		"start_age", "end_age", "start_grade_id", "end_grade_id", "gender_id",
+		"start_grade_id", "end_grade_id", "gender_id",
 	}
 
 	for _, field := range optionalFields {
@@ -213,6 +213,11 @@ func TestTransformSessionHandlesMissingFields(t *testing.T) {
 		if _, exists := pbData[field]; !exists {
 			t.Errorf("field %q missing from pbData (should be present even if nil)", field)
 		}
+	}
+
+	// session_group should NOT be present when GroupID is missing/not resolvable
+	if _, exists := pbData["session_group"]; exists {
+		t.Errorf("session_group should not be present when GroupID is missing")
 	}
 }
 
@@ -235,8 +240,6 @@ func TestTransformSessionHandlesNullFields(t *testing.T) {
 		"IsResidential": nil,
 		"IsForChildren": nil,
 		"IsForAdults":   nil,
-		"StartAge":      nil,
-		"EndAge":        nil,
 		"StartGradeID":  nil,
 		"EndGradeID":    nil,
 		"GenderID":      nil,

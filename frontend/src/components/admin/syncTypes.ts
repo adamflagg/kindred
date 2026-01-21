@@ -1,4 +1,5 @@
 import {
+  FolderTree,
   Calendar,
   Users,
   User,
@@ -11,6 +12,7 @@ import {
 
 // Sync type configuration for the sync status grid
 export const SYNC_TYPES = [
+  { id: 'session_groups', name: 'Session Groups', icon: FolderTree, color: 'text-cyan-600' },
   { id: 'sessions', name: 'Sessions', icon: Calendar, color: 'text-sky-600' },
   { id: 'attendees', name: 'Attendees', icon: Users, color: 'text-emerald-600' },
   { id: 'persons', name: 'Persons', icon: User, color: 'text-violet-600' },
@@ -23,6 +25,7 @@ export const SYNC_TYPES = [
 
 // Subset of sync types available for historical import
 export const HISTORICAL_SYNC_TYPES = [
+  { id: 'session_groups', name: 'Session Groups' },
   { id: 'sessions', name: 'Sessions' },
   { id: 'attendees', name: 'Attendees' },
   { id: 'persons', name: 'Persons' },
