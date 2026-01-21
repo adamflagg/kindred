@@ -251,6 +251,21 @@ func (s *SessionsSync) transformSessionToPBWithParent(
 		pbData["parent_id"] = parentID
 	}
 
+	// Extract new fields from CampMinder (all optional, pass through as-is)
+	pbData["description"] = data["Description"]
+	pbData["is_active"] = data["IsActive"]
+	pbData["sort_order"] = data["SortOrder"]
+	pbData["group_id"] = data["GroupID"]
+	pbData["is_day"] = data["IsDay"]
+	pbData["is_residential"] = data["IsResidential"]
+	pbData["is_for_children"] = data["IsForChildren"]
+	pbData["is_for_adults"] = data["IsForAdults"]
+	pbData["start_age"] = data["StartAge"]
+	pbData["end_age"] = data["EndAge"]
+	pbData["start_grade_id"] = data["StartGradeID"]
+	pbData["end_grade_id"] = data["EndGradeID"]
+	pbData["gender_id"] = data["GenderID"]
+
 	return pbData, nil
 }
 

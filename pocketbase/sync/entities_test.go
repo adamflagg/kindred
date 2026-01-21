@@ -304,7 +304,7 @@ func getSessionTypeForTest(name string) string {
 	mainSessions := []string{"Session 2", "Session 3", "Session 4", "Taste of Camp"}
 	for _, main := range mainSessions {
 		if name == main {
-			return "main"
+			return sessionTypeMain
 		}
 	}
 
