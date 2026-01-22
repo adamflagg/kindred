@@ -42,14 +42,15 @@ type Status struct {
 
 // Stats holds statistics for a sync operation
 type Stats struct {
-	Created          int `json:"created"`
-	Updated          int `json:"updated"`
-	Deleted          int `json:"deleted,omitempty"` // For tracking deletions (e.g., removed bunk requests)
-	Skipped          int `json:"skipped"`
-	Errors           int `json:"errors"`
-	Expanded         int `json:"expanded,omitempty"`          // For tracking many-to-many expansions (e.g., bunk plans)
-	AlreadyProcessed int `json:"already_processed,omitempty"` // For process_requests: records already processed
-	Duration         int `json:"duration"`                    // Duration in seconds
+	Created          int              `json:"created"`
+	Updated          int              `json:"updated"`
+	Deleted          int              `json:"deleted,omitempty"` // For tracking deletions (e.g., removed bunk requests)
+	Skipped          int              `json:"skipped"`
+	Errors           int              `json:"errors"`
+	Expanded         int              `json:"expanded,omitempty"`          // For tracking many-to-many expansions (e.g., bunk plans)
+	AlreadyProcessed int              `json:"already_processed,omitempty"` // For process_requests: records already processed
+	Duration         int              `json:"duration"`                    // Duration in seconds
+	SubStats         map[string]Stats `json:"sub_stats,omitempty"`         // For combined syncs (e.g., persons includes households, person_tags)
 }
 
 // Options configures how syncs are executed

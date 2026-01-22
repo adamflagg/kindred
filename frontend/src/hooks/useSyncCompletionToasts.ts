@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { useSyncStatusAPI, type SyncStatus, type SyncStatusResponse } from './useSyncStatusAPI';
+import { useSyncStatusAPI, type SyncStatus, type SyncStatusResponse, type SubStats } from './useSyncStatusAPI';
 import { invalidateSyncData } from '../utils/queryClient';
 
 // Map sync type IDs to display names
@@ -14,6 +14,16 @@ const SYNC_DISPLAY_NAMES: Record<string, string> = {
   bunk_requests: 'Bunk Requests',
   process_requests: 'Process Requests',
 };
+
+// Helper to format stats for a single entity
+function formatStatsText(stats: SubStats, label: string): string {
+  const parts: string[] = [];
+  if (stats.created > 0) parts.push(`${stats.created} created`);
+  if (stats.updated > 0) parts.push(`${stats.updated} updated`);
+  if (stats.errors > 0) parts.push(`${stats.errors} errors`);
+  if (parts.length === 0) return '';
+  return `${label}: ${parts.join(', ')}`;
+}
 
 // Track previous statuses to detect transitions
 type PreviousStatuses = Record<string, string>;
@@ -60,13 +70,41 @@ export function useSyncCompletionToasts() {
           });
         } else if (summary) {
           // Success toast with stats
-          const parts: string[] = [];
-          if (summary.created > 0) parts.push(`${summary.created} created`);
-          if (summary.updated > 0) parts.push(`${summary.updated} updated`);
-          if (summary.skipped > 0) parts.push(`${summary.skipped} skipped`);
-          if (summary.errors > 0) parts.push(`${summary.errors} errors`);
+          let statsText: string;
 
-          const statsText = parts.length > 0 ? parts.join(', ') : 'no changes';
+          // For persons sync with sub_stats, show combined stats
+          if (syncType === 'persons' && summary.sub_stats) {
+            const statsParts: string[] = [];
+
+            // Main persons stats
+            const personsText = formatStatsText(summary, 'Persons');
+            if (personsText) statsParts.push(personsText);
+
+            // Households sub-stats
+            const householdsStats = summary.sub_stats['households'];
+            if (householdsStats) {
+              const householdsText = formatStatsText(householdsStats, 'Households');
+              if (householdsText) statsParts.push(householdsText);
+            }
+
+            // Person tags sub-stats
+            const tagsStats = summary.sub_stats['person_tags'];
+            if (tagsStats) {
+              const tagsText = formatStatsText(tagsStats, 'Tags');
+              if (tagsText) statsParts.push(tagsText);
+            }
+
+            statsText = statsParts.length > 0 ? statsParts.join(' | ') : 'no changes';
+          } else {
+            // Standard stats formatting for other syncs
+            const parts: string[] = [];
+            if (summary.created > 0) parts.push(`${summary.created} created`);
+            if (summary.updated > 0) parts.push(`${summary.updated} updated`);
+            if (summary.skipped > 0) parts.push(`${summary.skipped} skipped`);
+            if (summary.errors > 0) parts.push(`${summary.errors} errors`);
+            statsText = parts.length > 0 ? parts.join(', ') : 'no changes';
+          }
+
           const hasErrors = summary.errors > 0;
 
           if (hasErrors) {

@@ -20,6 +20,10 @@ type PersonsSync struct {
 	// Track data quality issues
 	missingDataStats map[string]int
 	skippedStaff     int
+
+	// Sub-entity stats for combined sync (households, person_tags)
+	householdStats *Stats
+	personTagStats *Stats
 }
 
 // personHouseholdIDs holds the CampMinder IDs for a person's households
@@ -41,6 +45,21 @@ func NewPersonsSync(app core.App, client *campminder.Client) *PersonsSync {
 // Name returns the name of this sync service
 func (s *PersonsSync) Name() string {
 	return "persons"
+}
+
+// GetStats returns stats for this sync, including sub-entity stats for combined sync
+func (s *PersonsSync) GetStats() Stats {
+	stats := s.Stats
+	if s.householdStats != nil || s.personTagStats != nil {
+		stats.SubStats = make(map[string]Stats)
+		if s.householdStats != nil {
+			stats.SubStats["households"] = *s.householdStats
+		}
+		if s.personTagStats != nil {
+			stats.SubStats["person_tags"] = *s.personTagStats
+		}
+	}
+	return stats
 }
 
 // getPersonIDsFromAttendees gets unique person IDs from attendees for a specific year
@@ -319,6 +338,10 @@ func (s *PersonsSync) Sync(ctx context.Context) error {
 	if err := s.ForceWALCheckpoint(); err != nil {
 		slog.Warn("WAL checkpoint failed", "error", err)
 	}
+
+	// Store sub-entity stats for combined sync output
+	s.householdStats = &householdStats
+	s.personTagStats = &personTagStats
 
 	// Report results
 	s.printDataQualitySummary()
@@ -1076,6 +1099,22 @@ func (s *PersonsSync) processPersonTagRecord(
 		}
 
 		if needsUpdate {
+			// Log which fields differ to diagnose idempotency issues
+			for _, field := range compareFields {
+				if value, exists := pbData[field]; exists {
+					existingVal := existing.Get(field)
+					if !s.FieldEquals(existingVal, value) {
+						slog.Debug("person_tag field mismatch triggering update",
+							"compositeKey", compositeKey,
+							"field", field,
+							"existingValue", existingVal,
+							"existingType", fmt.Sprintf("%T", existingVal),
+							"newValue", value,
+							"newType", fmt.Sprintf("%T", value))
+					}
+				}
+			}
+
 			for field, value := range pbData {
 				existing.Set(field, value)
 			}

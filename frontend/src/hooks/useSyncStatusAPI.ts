@@ -2,6 +2,14 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { pb } from '../lib/pocketbase';
 
+// Sub-entity stats for combined syncs (e.g., persons includes households, person_tags)
+export interface SubStats {
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: number;
+}
+
 export interface SyncStatus {
   status: 'idle' | 'running' | 'success' | 'failed' | 'pending';
   start_time?: string;
@@ -14,6 +22,7 @@ export interface SyncStatus {
     errors: number;
     already_processed?: number; // For process_requests: records already processed
     duration?: number;
+    sub_stats?: Record<string, SubStats>; // For combined syncs (e.g., persons includes households, person_tags)
   };
   year?: number; // Year being synced (0 or undefined = current year)
 }
