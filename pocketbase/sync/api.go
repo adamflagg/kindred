@@ -539,9 +539,9 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 		"bunks",
 		"bunk_plans",
 		"bunk_assignments",
+		"staff", // Year-scoped staff records (depends on divisions, bunks, persons)
 		"bunk_requests",
 		"process_requests",
-		"staff", // Year-scoped staff records (depends on staff_lookups from weekly sync)
 		"google_sheets_export",
 		// On-demand syncs (not part of daily sync)
 		"person_custom_field_values",

@@ -269,8 +269,8 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 		"bunks",            // No dependencies
 		"bunk_plans",       // Depends on sessions and bunks
 		"bunk_assignments", // Depends on sessions, persons, bunks
-		"bunk_requests",    // CSV import, depends on persons
 		"staff",            // Staff sync: depends on divisions, bunks, persons
+		"bunk_requests",    // CSV import, depends on persons
 	}
 
 	// Only include process_requests in production (Docker) mode
@@ -524,6 +524,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 			"bunks",
 			"bunk_plans",
 			"bunk_assignments",
+			"staff", // Staff sync: depends on divisions, bunks, persons
 		}
 
 		// Only include bunk_requests for current year syncs (not historical)
