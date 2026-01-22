@@ -72,6 +72,22 @@ func (s *HouseholdCustomFieldValuesSync) Sync(ctx context.Context) error {
 		return fmt.Errorf("getting household IDs to sync: %w", err)
 	}
 
+	// Deduplicate household IDs (in case session resolver returns duplicates)
+	seenHouseholdIDs := make(map[int]bool)
+	uniqueHouseholdIDs := make([]int, 0, len(householdIDs))
+	for _, id := range householdIDs {
+		if !seenHouseholdIDs[id] {
+			seenHouseholdIDs[id] = true
+			uniqueHouseholdIDs = append(uniqueHouseholdIDs, id)
+		}
+	}
+	if len(uniqueHouseholdIDs) < len(householdIDs) {
+		slog.Warn("Removed duplicate household IDs",
+			"original", len(householdIDs),
+			"deduplicated", len(uniqueHouseholdIDs))
+	}
+	householdIDs = uniqueHouseholdIDs
+
 	if len(householdIDs) == 0 {
 		slog.Info("No households to sync custom field values for",
 			"session", s.Session,
@@ -355,6 +371,8 @@ func (s *HouseholdCustomFieldValuesSync) syncHouseholdCustomFieldValues(
 					s.Stats.Errors++
 				} else {
 					s.Stats.Created++
+					// Add to existingRecords to prevent duplicate creation if API returns duplicates
+					existingRecords[compositeKey] = record
 				}
 			}
 		}

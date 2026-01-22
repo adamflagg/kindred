@@ -72,6 +72,22 @@ func (s *PersonCustomFieldValuesSync) Sync(ctx context.Context) error {
 		return fmt.Errorf("getting person IDs to sync: %w", err)
 	}
 
+	// Deduplicate person IDs (in case session resolver returns duplicates)
+	seenPersonIDs := make(map[int]bool)
+	uniquePersonIDs := make([]int, 0, len(personIDs))
+	for _, id := range personIDs {
+		if !seenPersonIDs[id] {
+			seenPersonIDs[id] = true
+			uniquePersonIDs = append(uniquePersonIDs, id)
+		}
+	}
+	if len(uniquePersonIDs) < len(personIDs) {
+		slog.Warn("Removed duplicate person IDs",
+			"original", len(personIDs),
+			"deduplicated", len(uniquePersonIDs))
+	}
+	personIDs = uniquePersonIDs
+
 	if len(personIDs) == 0 {
 		slog.Info("No persons to sync custom field values for",
 			"session", s.Session,
@@ -359,6 +375,8 @@ func (s *PersonCustomFieldValuesSync) syncPersonCustomFieldValues(
 					s.Stats.Errors++
 				} else {
 					s.Stats.Created++
+					// Add to existingRecords to prevent duplicate creation if API returns duplicates
+					existingRecords[compositeKey] = record
 				}
 			}
 		}
