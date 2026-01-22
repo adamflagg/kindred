@@ -652,7 +652,7 @@ func (c *Client) GetCustomFieldDefinitionsPage(page, pageSize int) ([]map[string
 
 // GetPersonCustomFieldValuesPage retrieves custom field values for a specific person with pagination
 // Endpoint: GET /persons/{id}/custom-fields
-// Returns: array of custom field values with Id, ClientID, SeasonID, Value, LastUpdated
+// Returns: array of custom field values with id, clientId, seasonId, value, lastUpdated (camelCase)
 // Note: Requires 1 API call per person - use sparingly
 func (c *Client) GetPersonCustomFieldValuesPage(personID, page, pageSize int) ([]map[string]interface{}, bool, error) {
 	endpoint := fmt.Sprintf("persons/%d/custom-fields", personID)
@@ -685,7 +685,7 @@ func (c *Client) GetPersonCustomFieldValuesPage(personID, page, pageSize int) ([
 
 // GetHouseholdCustomFieldValuesPage retrieves custom field values for a specific household with pagination
 // Endpoint: GET /persons/households/{id}/custom-fields
-// Returns: array of custom field values with Id, ClientID, SeasonID, Value, LastUpdated
+// Returns: array of custom field values with id, clientId, seasonId, value, lastUpdated (camelCase)
 // Note: Requires 1 API call per household - use sparingly
 func (c *Client) GetHouseholdCustomFieldValuesPage(householdID, page, pageSize int) ([]map[string]interface{}, bool, error) {
 	endpoint := fmt.Sprintf("persons/households/%d/custom-fields", householdID)
@@ -858,4 +858,189 @@ func (c *Client) GetStaffPage(status, page, pageSize int) ([]map[string]interfac
 
 	hasMore := response.Next != nil && *response.Next != ""
 	return response.Results, hasMore, nil
+}
+
+// GetFinancialCategories retrieves financial category definitions from CampMinder
+// Endpoint: GET /financials/financialcategories
+// Returns: array of categories with id, name, isArchived
+// Note: Global lookup table (not year-specific)
+func (c *Client) GetFinancialCategories(includeArchived bool) ([]map[string]interface{}, error) {
+	params := map[string]string{
+		"clientid":        c.clientID,
+		"includeArchived": strconv.FormatBool(includeArchived),
+		"pagenumber":      "1",
+		"pagesize":        "500", // Get all in one call (typically < 100)
+	}
+
+	body, err := c.makeRequest("GET", "financials/financialcategories", params)
+	if err != nil {
+		return nil, err
+	}
+
+	// CampMinder uses inconsistent casing across endpoints
+	// Try PascalCase paginated response first (TotalCount, Results)
+	var pascalResponse struct {
+		TotalCount int                      `json:"TotalCount"`
+		Results    []map[string]interface{} `json:"Results"`
+	}
+	if err := json.Unmarshal(body, &pascalResponse); err == nil && pascalResponse.Results != nil {
+		return pascalResponse.Results, nil
+	}
+
+	// Try camelCase paginated response (totalCount, result - singular like custom fields)
+	var camelResponse struct {
+		TotalCount int                      `json:"totalCount"`
+		Result     []map[string]interface{} `json:"result"`
+	}
+	if err := json.Unmarshal(body, &camelResponse); err == nil && camelResponse.Result != nil {
+		return camelResponse.Result, nil
+	}
+
+	// Try camelCase with plural results
+	var camelPluralResponse struct {
+		TotalCount int                      `json:"totalCount"`
+		Results    []map[string]interface{} `json:"results"`
+	}
+	if err := json.Unmarshal(body, &camelPluralResponse); err == nil && camelPluralResponse.Results != nil {
+		return camelPluralResponse.Results, nil
+	}
+
+	// Fall back to raw array response (API may return either)
+	var results []map[string]interface{}
+	if err := json.Unmarshal(body, &results); err != nil {
+		return nil, fmt.Errorf("decode financial categories response: %w", err)
+	}
+
+	return results, nil
+}
+
+// GetPaymentMethods retrieves payment method definitions from CampMinder
+// Endpoint: GET /financials/paymentmethods
+// Returns: array of methods with id, name
+// Note: Global lookup table (not year-specific)
+func (c *Client) GetPaymentMethods() ([]map[string]interface{}, error) {
+	// This endpoint doesn't take any parameters per the OpenAPI spec
+	body, err := c.makeRequest("GET", "financials/paymentmethods", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// CampMinder uses inconsistent casing - try paginated responses first
+	// Try PascalCase
+	var pascalResponse struct {
+		TotalCount int                      `json:"TotalCount"`
+		Results    []map[string]interface{} `json:"Results"`
+	}
+	if err := json.Unmarshal(body, &pascalResponse); err == nil && pascalResponse.Results != nil {
+		return pascalResponse.Results, nil
+	}
+
+	// Try camelCase with singular result
+	var camelResponse struct {
+		TotalCount int                      `json:"totalCount"`
+		Result     []map[string]interface{} `json:"result"`
+	}
+	if err := json.Unmarshal(body, &camelResponse); err == nil && camelResponse.Result != nil {
+		return camelResponse.Result, nil
+	}
+
+	// Try camelCase with plural results
+	var camelPluralResponse struct {
+		TotalCount int                      `json:"totalCount"`
+		Results    []map[string]interface{} `json:"results"`
+	}
+	if err := json.Unmarshal(body, &camelPluralResponse); err == nil && camelPluralResponse.Results != nil {
+		return camelPluralResponse.Results, nil
+	}
+
+	// Fall back to raw array response
+	var results []map[string]interface{}
+	if err := json.Unmarshal(body, &results); err != nil {
+		return nil, fmt.Errorf("decode payment methods response: %w", err)
+	}
+
+	return results, nil
+}
+
+// GetTransactionDetails retrieves financial transaction details from CampMinder
+// Endpoint: GET /financials/transactionreporting/transactiondetails
+// Parameters: season (required), includeReversals (optional, default false)
+// Returns: array of transactions with full detail (see TransactionDetail schema)
+// Note: Year-scoped data - uses seasonID
+// Note: This endpoint doesn't support pagination, so we fetch by month chunks
+// to avoid timeouts on large datasets (10,000+ transactions)
+func (c *Client) GetTransactionDetails(season int, includeReversals bool) ([]map[string]interface{}, error) {
+	var allResults []map[string]interface{}
+
+	// Fetch transactions month by month to avoid timeout on large datasets
+	// Camp season typically runs Jan-Dec, so we cover the full year
+	for month := 1; month <= 12; month++ {
+		// Calculate month date range
+		startDate := time.Date(season, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
+		endDate := startDate.AddDate(0, 1, -1) // Last day of month
+
+		params := map[string]string{
+			"clientid":         c.clientID,
+			"season":           strconv.Itoa(season),
+			"includeReversals": strconv.FormatBool(includeReversals),
+			"postDateStart":    startDate.Format("2006-01-02"),
+			"postDateEnd":      endDate.Format("2006-01-02"),
+		}
+
+		slog.Info("Fetching transactions", "month", fmt.Sprintf("%d/12", month), "year", season)
+
+		body, err := c.makeRequest("GET", "financials/transactionreporting/transactiondetails", params)
+		if err != nil {
+			return nil, fmt.Errorf("fetch transactions for month %d: %w", month, err)
+		}
+
+		results, err := c.parseTransactionResponse(body)
+		if err != nil {
+			return nil, fmt.Errorf("parse transactions for month %d: %w", month, err)
+		}
+
+		allResults = append(allResults, results...)
+		slog.Info("Fetched transactions", "month", fmt.Sprintf("%d/12", month), "batch", len(results), "total", len(allResults))
+	}
+
+	return allResults, nil
+}
+
+// parseTransactionResponse parses the transaction details API response
+// CampMinder uses inconsistent casing across endpoints
+func (c *Client) parseTransactionResponse(body []byte) ([]map[string]interface{}, error) {
+	// Try PascalCase paginated response
+	var pascalResponse struct {
+		TotalCount int                      `json:"TotalCount"`
+		Results    []map[string]interface{} `json:"Results"`
+	}
+	if err := json.Unmarshal(body, &pascalResponse); err == nil && pascalResponse.Results != nil {
+		return pascalResponse.Results, nil
+	}
+
+	// Try camelCase with singular result
+	var camelResponse struct {
+		TotalCount int                      `json:"totalCount"`
+		Result     []map[string]interface{} `json:"result"`
+	}
+	if err := json.Unmarshal(body, &camelResponse); err == nil && camelResponse.Result != nil {
+		return camelResponse.Result, nil
+	}
+
+	// Try camelCase with plural results
+	var camelPluralResponse struct {
+		TotalCount int                      `json:"totalCount"`
+		Results    []map[string]interface{} `json:"results"`
+	}
+	if err := json.Unmarshal(body, &camelPluralResponse); err == nil && camelPluralResponse.Results != nil {
+		return camelPluralResponse.Results, nil
+	}
+
+	// Fall back to raw array response
+	var results []map[string]interface{}
+	if err := json.Unmarshal(body, &results); err != nil {
+		return nil, fmt.Errorf("decode transaction details response: %w", err)
+	}
+
+	return results, nil
 }
