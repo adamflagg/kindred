@@ -120,3 +120,84 @@ func TestBaseSyncService_TrackProcessedCompositeKey(t *testing.T) {
 		t.Error("Expected key bunk-1|plan-2|2024 to be tracked")
 	}
 }
+
+func TestBaseSyncService_FindOrphansFromPreloaded(t *testing.T) {
+	tests := []struct {
+		name           string
+		syncSuccessful bool
+		processedKeys  map[string]bool
+		preloadedKeys  []string
+		wantOrphanKeys []string
+	}{
+		{
+			name:           "sync failed - no orphans returned",
+			syncSuccessful: false,
+			processedKeys:  map[string]bool{"key1": true},
+			preloadedKeys:  []string{"key1", "key2"},
+			wantOrphanKeys: []string{}, // Empty because sync failed
+		},
+		{
+			name:           "empty preloaded map",
+			syncSuccessful: true,
+			processedKeys:  map[string]bool{"key1": true},
+			preloadedKeys:  []string{},
+			wantOrphanKeys: []string{},
+		},
+		{
+			name:           "all records processed - no orphans",
+			syncSuccessful: true,
+			processedKeys:  map[string]bool{"key1": true, "key2": true, "key3": true},
+			preloadedKeys:  []string{"key1", "key2", "key3"},
+			wantOrphanKeys: []string{},
+		},
+		{
+			name:           "some records not processed - orphans detected",
+			syncSuccessful: true,
+			processedKeys:  map[string]bool{"key1": true, "key3": true},
+			preloadedKeys:  []string{"key1", "key2", "key3", "key4"},
+			wantOrphanKeys: []string{"key2", "key4"},
+		},
+		{
+			name:           "no records processed - all are orphans",
+			syncSuccessful: true,
+			processedKeys:  map[string]bool{},
+			preloadedKeys:  []string{"key1", "key2"},
+			wantOrphanKeys: []string{"key1", "key2"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service := BaseSyncService{
+				ProcessedKeys:  tt.processedKeys,
+				SyncSuccessful: tt.syncSuccessful,
+			}
+
+			// Build preloaded map with string keys (simulating composite keys)
+			preloaded := make(map[interface{}]any)
+			for _, key := range tt.preloadedKeys {
+				preloaded[key] = "pb-id-" + key // PB record ID (or *core.Record in real usage)
+			}
+
+			orphanKeys := service.FindOrphansFromPreloaded(preloaded)
+
+			// Check count
+			if len(orphanKeys) != len(tt.wantOrphanKeys) {
+				t.Errorf("FindOrphansFromPreloaded() returned %d orphans, want %d",
+					len(orphanKeys), len(tt.wantOrphanKeys))
+				return
+			}
+
+			// Check each expected orphan is present
+			orphanSet := make(map[string]bool)
+			for _, key := range orphanKeys {
+				orphanSet[key] = true
+			}
+			for _, wantKey := range tt.wantOrphanKeys {
+				if !orphanSet[wantKey] {
+					t.Errorf("Expected orphan key %q not found in result", wantKey)
+				}
+			}
+		})
+	}
+}

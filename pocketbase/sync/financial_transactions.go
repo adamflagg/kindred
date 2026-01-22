@@ -148,22 +148,8 @@ func (s *FinancialTransactionsSync) SyncForYear(ctx context.Context, year int) e
 		}
 	}
 
-	// Delete orphans for this year (keyed by cm_id + amount)
-	if err := s.DeleteOrphans(
-		"financial_transactions",
-		func(record *core.Record) (string, bool) {
-			cmID, ok1 := record.Get("cm_id").(float64)
-			amount, ok2 := record.Get("amount").(float64)
-			yearVal, ok3 := record.Get("year").(float64)
-			if ok1 && cmID > 0 && ok2 && ok3 {
-				txnKey := s.transactionKey(int(cmID), amount)
-				return CompositeKey(txnKey, int(yearVal)), true
-			}
-			return "", false
-		},
-		"financial transaction",
-		filter,
-	); err != nil {
+	// Delete orphans using preloaded data (avoids re-querying 22K+ records)
+	if err := s.DeleteOrphansFromPreloaded(existingRecords, "financial transaction"); err != nil {
 		slog.Error("Error deleting orphan transactions", "error", err)
 	}
 
