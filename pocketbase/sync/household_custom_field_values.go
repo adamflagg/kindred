@@ -115,15 +115,16 @@ func (s *HouseholdCustomFieldValuesSync) Sync(ctx context.Context) error {
 	}
 
 	// Pre-load existing records for this year
-	// Key: householdPBId:fieldDefPBId:year
+	// KeyBuilder returns identity only (householdPBId:fieldDefPBId)
+	// PreloadCompositeRecords appends |year to create yearScopedKey
 	filter := fmt.Sprintf("year = %d", year)
 	existingRecords, err := s.PreloadCompositeRecords("household_custom_values", filter, func(record *core.Record) (string, bool) {
 		householdPBId := record.GetString("household")
 		fieldDefPBId := record.GetString("field_definition")
-		recordYear := record.GetInt("year")
 
 		if householdPBId != "" && fieldDefPBId != "" {
-			return fmt.Sprintf("%s:%s:%d", householdPBId, fieldDefPBId, recordYear), true
+			// Return identity only - PreloadCompositeRecords adds |year
+			return fmt.Sprintf("%s:%s", householdPBId, fieldDefPBId), true
 		}
 		return "", false
 	})
@@ -325,12 +326,16 @@ func (s *HouseholdCustomFieldValuesSync) syncHouseholdCustomFieldValues(
 			// Transform to PB format (simplified: only value and year)
 			pbData := s.transformHouseholdCustomFieldValueToPB(valueData, householdPBId, fieldDefPBId, year)
 
-			// Build composite key: householdPBId:fieldDefPBId:year
-			compositeKey := fmt.Sprintf("%s:%s:%d", householdPBId, fieldDefPBId, year)
+			// Build composite key: identity only (no year)
+			// yearScopedKey matches format from PreloadCompositeRecords
+			compositeKey := fmt.Sprintf("%s:%s", householdPBId, fieldDefPBId)
+			yearScopedKey := fmt.Sprintf("%s|%d", compositeKey, year)
 
-			s.TrackProcessedKey(compositeKey, 0)
+			// Track as processed using yearScopedKey format
+			s.TrackProcessedKey(yearScopedKey, 0)
 
-			if existing, found := existingRecords[compositeKey]; found {
+			// Check for existing record using yearScopedKey
+			if existing, found := existingRecords[yearScopedKey]; found {
 				// Fast path: if lastUpdated unchanged, skip entirely
 				existingLastUpdated := existing.GetString("last_updated")
 				newLastUpdated, hasNewLastUpdated := pbData["last_updated"].(string)
@@ -372,7 +377,7 @@ func (s *HouseholdCustomFieldValuesSync) syncHouseholdCustomFieldValues(
 				} else {
 					s.Stats.Created++
 					// Add to existingRecords to prevent duplicate creation if API returns duplicates
-					existingRecords[compositeKey] = record
+					existingRecords[yearScopedKey] = record
 				}
 			}
 		}
@@ -400,9 +405,10 @@ func (s *HouseholdCustomFieldValuesSync) deleteOrphans(year int) error {
 		fieldDefPBId := record.GetString("field_definition")
 		recordYear := record.GetInt("year")
 
-		compositeKey := fmt.Sprintf("%s:%s:%d", householdPBId, fieldDefPBId, recordYear)
+		// Use yearScopedKey format to match TrackProcessedKey
+		yearScopedKey := fmt.Sprintf("%s:%s|%d", householdPBId, fieldDefPBId, recordYear)
 
-		if !s.ProcessedKeys[compositeKey] {
+		if !s.ProcessedKeys[yearScopedKey] {
 			if err := s.App.Delete(record); err != nil {
 				slog.Error("Error deleting orphan custom field value",
 					"household", householdPBId,
