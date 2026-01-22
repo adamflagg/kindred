@@ -302,7 +302,7 @@ func (s *PersonCustomFieldValuesSync) resolveRelations(record *core.Record, pers
 
 	// Resolve field_definition relation (no year filter - definitions are global)
 	fieldFilter := fmt.Sprintf("cm_id = %d", fieldID)
-	fields, err := s.App.FindRecordsByFilter("custom_field_definitions", fieldFilter, "", 1, 0, nil)
+	fields, err := s.App.FindRecordsByFilter("custom_field_defs", fieldFilter, "", 1, 0, nil)
 	if err == nil && len(fields) > 0 {
 		record.Set("field_definition", fields[0].Id)
 	}

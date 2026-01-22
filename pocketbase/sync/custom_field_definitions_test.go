@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"reflect"
 	"testing"
 )
 
@@ -8,7 +9,7 @@ func TestCustomFieldDefinitionsSync_Name(t *testing.T) {
 	s := &CustomFieldDefinitionsSync{}
 
 	got := s.Name()
-	want := "custom_field_definitions"
+	want := "custom_field_defs"
 
 	if got != want {
 		t.Errorf("CustomFieldDefinitionsSync.Name() = %q, want %q", got, want)
@@ -46,8 +47,9 @@ func TestTransformCustomFieldDefinitionToPB(t *testing.T) {
 	if got, want := pbData["data_type"].(string), "String"; got != want {
 		t.Errorf("data_type = %q, want %q", got, want)
 	}
-	if got, want := pbData["partition"].(string), "Camper"; got != want {
-		t.Errorf("partition = %q, want %q", got, want)
+	// Partition is now a []string (multi-select)
+	if got, want := pbData["partition"].([]string), []string{"Camper"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("partition = %v, want %v", got, want)
 	}
 	if got, want := pbData["is_seasonal"].(bool), false; got != want {
 		t.Errorf("is_seasonal = %v, want %v", got, want)
@@ -211,8 +213,56 @@ func TestTransformCustomFieldDefinitionValidPartitions(t *testing.T) {
 			continue
 		}
 
-		if got := pbData["partition"].(string); got != p {
-			t.Errorf("partition = %q, want %q", got, p)
+		// Partition is now a []string (multi-select)
+		want := []string{p}
+		if got := pbData["partition"].([]string); !reflect.DeepEqual(got, want) {
+			t.Errorf("partition = %v, want %v", got, want)
 		}
+	}
+}
+
+// TestTransformCustomFieldDefinitionMultiValuePartition tests handling of multi-value partitions
+func TestTransformCustomFieldDefinitionMultiValuePartition(t *testing.T) {
+	s := &CustomFieldDefinitionsSync{}
+
+	// Test multi-value partition (as returned by CampMinder API)
+	data := map[string]interface{}{
+		"id":        float64(12345),
+		"name":      "Multi-Partition Field",
+		"partition": "Camper, Adult",
+	}
+
+	pbData, err := s.transformCustomFieldDefinitionToPB(data)
+	if err != nil {
+		t.Fatalf("transformCustomFieldDefinitionToPB returned error: %v", err)
+	}
+
+	// Should split into array
+	want := []string{"Camper", "Adult"}
+	if got := pbData["partition"].([]string); !reflect.DeepEqual(got, want) {
+		t.Errorf("partition = %v, want %v", got, want)
+	}
+}
+
+// TestTransformCustomFieldDefinitionTripleValuePartition tests handling of three-value partitions
+func TestTransformCustomFieldDefinitionTripleValuePartition(t *testing.T) {
+	s := &CustomFieldDefinitionsSync{}
+
+	// Test three-value partition
+	data := map[string]interface{}{
+		"id":        float64(12345),
+		"name":      "Triple-Partition Field",
+		"partition": "Staff, Camper, Parent",
+	}
+
+	pbData, err := s.transformCustomFieldDefinitionToPB(data)
+	if err != nil {
+		t.Fatalf("transformCustomFieldDefinitionToPB returned error: %v", err)
+	}
+
+	// Should split into array
+	want := []string{"Staff", "Camper", "Parent"}
+	if got := pbData["partition"].([]string); !reflect.DeepEqual(got, want) {
+		t.Errorf("partition = %v, want %v", got, want)
 	}
 }

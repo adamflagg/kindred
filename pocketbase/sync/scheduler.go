@@ -65,6 +65,16 @@ func (s *Scheduler) Start() error {
 		return fmt.Errorf("adding daily schedule: %w", err)
 	}
 
+	// Add weekly schedule for global data (runs Sunday at 4am, after daily sync)
+	// These are expensive syncs (N API calls per entity) not suitable for daily runs
+	_, err = s.cron.AddFunc("0 4 * * 0", func() {
+		slog.Info("Starting scheduled weekly sync (global data)")
+		s.runWeeklySync()
+	})
+	if err != nil {
+		return fmt.Errorf("adding weekly schedule: %w", err)
+	}
+
 	// Start the cron scheduler
 	s.cron.Start()
 	s.running = true
@@ -118,6 +128,19 @@ func (s *Scheduler) runDailySync() {
 		slog.Error("Daily sync failed", "error", err)
 	} else {
 		slog.Info("Daily sync completed successfully")
+	}
+}
+
+// runWeeklySync runs the weekly sync tasks (global data)
+func (s *Scheduler) runWeeklySync() {
+	// Use background context for scheduled jobs
+	ctx := context.Background()
+
+	// Run weekly sync
+	if err := s.orchestrator.RunWeeklySync(ctx); err != nil {
+		slog.Error("Weekly sync failed", "error", err)
+	} else {
+		slog.Info("Weekly sync completed successfully")
 	}
 }
 
@@ -175,6 +198,8 @@ func (s *Scheduler) TriggerSync(ctx context.Context, syncType string) error {
 		return s.orchestrator.RunDailySync(ctx)
 	case "hourly":
 		return s.orchestrator.RunSingleSync(ctx, "bunk_assignments")
+	case "weekly":
+		return s.orchestrator.RunWeeklySync(ctx)
 	default:
 		return fmt.Errorf("unknown sync type: %s", syncType)
 	}
@@ -196,6 +221,11 @@ func (s *Scheduler) IsHourlySyncRunning() bool {
 	return s.orchestrator.IsRunning("bunk_assignments")
 }
 
+// IsWeeklySyncRunning checks if weekly sync is currently running
+func (s *Scheduler) IsWeeklySyncRunning() bool {
+	return s.orchestrator.IsWeeklySyncRunning()
+}
+
 // TriggerDailySync manually triggers the daily sync
 func (s *Scheduler) TriggerDailySync() {
 	go s.runDailySync()
@@ -204,6 +234,11 @@ func (s *Scheduler) TriggerDailySync() {
 // TriggerHourlySync manually triggers the hourly sync
 func (s *Scheduler) TriggerHourlySync() {
 	go s.runHourlySync()
+}
+
+// TriggerWeeklySync manually triggers the weekly sync
+func (s *Scheduler) TriggerWeeklySync() {
+	go s.runWeeklySync()
 }
 
 // Global scheduler instance

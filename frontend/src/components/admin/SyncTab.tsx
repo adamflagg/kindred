@@ -7,6 +7,7 @@ import {
   Zap,
   RefreshCw,
   Settings2,
+  Calendar,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -22,7 +23,7 @@ import { StatusIcon, formatDuration } from './ConfigInputs';
 import { clearCache } from '../../utils/queryClient';
 import ProcessRequestOptions, { type ProcessRequestOptionsState } from './ProcessRequestOptions';
 import EntitySyncOptions, { type EntitySyncOptionsState } from './EntitySyncOptions';
-import { SYNC_TYPES, HISTORICAL_SYNC_TYPES } from './syncTypes';
+import { GLOBAL_SYNC_TYPES, CURRENT_YEAR_SYNC_TYPES, HISTORICAL_SYNC_TYPES, Globe } from './syncTypes';
 
 // Run all syncs mutation
 function useRunAllSyncs() {
@@ -46,7 +47,9 @@ function useRunAllSyncs() {
 }
 
 // Entity types that support custom field values sync option
-const ENTITY_SYNC_TYPES = ['persons', 'households'] as const;
+// Note: "persons" is a combined sync that populates persons, households, AND person_tags
+// tables from a single API call - there is no separate households sync type
+const ENTITY_SYNC_TYPES = ['persons'] as const;
 type EntitySyncType = typeof ENTITY_SYNC_TYPES[number];
 
 export function SyncTab() {
@@ -163,112 +166,191 @@ export function SyncTab() {
         </div>
       )}
 
-      {/* Sync Status Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {SYNC_TYPES.map((syncType) => {
-          const statusValue = syncStatus?.[syncType.id as keyof typeof syncStatus];
-          const status = (statusValue && typeof statusValue === 'object' && 'status' in statusValue)
-            ? statusValue as SyncStatus
-            : { status: 'idle' } as SyncStatus;
-          const Icon = syncType.icon;
-          const isRunning = status.status === 'running';
+      {/* Current Year Sync Types Section */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Calendar className="w-4 h-4" />
+          <span className="text-sm font-medium">Current Year</span>
+          <span className="text-xs text-muted-foreground/70">({currentYear})</span>
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          {CURRENT_YEAR_SYNC_TYPES.map((syncType) => {
+            const statusValue = syncStatus?.[syncType.id as keyof typeof syncStatus];
+            const status = (statusValue && typeof statusValue === 'object' && 'status' in statusValue)
+              ? statusValue as SyncStatus
+              : { status: 'idle' } as SyncStatus;
+            const Icon = syncType.icon;
+            const isRunning = status.status === 'running';
 
-          return (
-            <div
-              key={syncType.id}
-              className="bg-card rounded-xl border border-border p-4 sm:p-5 hover:border-primary/30 transition-colors flex flex-col"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Icon className={`w-5 h-5 flex-shrink-0 ${syncType.color}`} />
-                  <span className="font-semibold text-sm sm:text-base truncate">{syncType.name}</span>
+            return (
+              <div
+                key={syncType.id}
+                className="bg-card rounded-xl border border-border p-4 sm:p-5 hover:border-primary/30 transition-colors flex flex-col"
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Icon className={`w-5 h-5 flex-shrink-0 ${syncType.color}`} />
+                    <span className="font-semibold text-sm sm:text-base truncate">{syncType.name}</span>
+                  </div>
+                  <StatusIcon status={status.status} />
                 </div>
-                <StatusIcon status={status.status} />
-              </div>
 
-              {/* Status info - grows to fill available space */}
-              <div className="flex-1 min-h-[3rem]">
-                {status.summary && status.status !== 'idle' ? (
-                  <div className="space-y-1.5">
-                    <div className="flex flex-wrap gap-x-2 gap-y-1 text-xs sm:text-sm">
-                      {status.summary.created > 0 && (
-                        <span className="text-emerald-600 dark:text-emerald-400 font-medium">{status.summary.created} new</span>
-                      )}
-                      {status.summary.updated > 0 && (
-                        <span className="text-sky-600 dark:text-sky-400 font-medium">{status.summary.updated} upd</span>
-                      )}
-                      {(status.summary.already_processed || 0) > 0 && (
-                        <span className="text-muted-foreground">{status.summary.already_processed} done</span>
-                      )}
-                      {(status.summary.skipped || 0) > 0 && (
-                        <span className="text-muted-foreground">{status.summary.skipped} skip</span>
-                      )}
-                      {status.summary.errors > 0 && (
-                        <span className="text-red-600 dark:text-red-400 font-medium">{status.summary.errors} err</span>
-                      )}
+                {/* Status info - grows to fill available space */}
+                <div className="flex-1 min-h-[3rem]">
+                  {status.summary && status.status !== 'idle' ? (
+                    <div className="space-y-1.5">
+                      <div className="flex flex-wrap gap-x-2 gap-y-1 text-xs sm:text-sm">
+                        {status.summary.created > 0 && (
+                          <span className="text-emerald-600 dark:text-emerald-400 font-medium">{status.summary.created} new</span>
+                        )}
+                        {status.summary.updated > 0 && (
+                          <span className="text-sky-600 dark:text-sky-400 font-medium">{status.summary.updated} upd</span>
+                        )}
+                        {(status.summary.already_processed || 0) > 0 && (
+                          <span className="text-muted-foreground">{status.summary.already_processed} done</span>
+                        )}
+                        {(status.summary.skipped || 0) > 0 && (
+                          <span className="text-muted-foreground">{status.summary.skipped} skip</span>
+                        )}
+                        {status.summary.errors > 0 && (
+                          <span className="text-red-600 dark:text-red-400 font-medium">{status.summary.errors} err</span>
+                        )}
+                      </div>
+                      <div className="text-muted-foreground text-xs sm:text-sm truncate">
+                        {status.summary.duration !== undefined && formatDuration(status.summary.duration)}
+                        {status.summary.duration !== undefined && status.end_time && ' · '}
+                        {status.end_time && format(new Date(status.end_time), 'MMM d, h:mm a')}
+                      </div>
                     </div>
-                    <div className="text-muted-foreground text-xs sm:text-sm truncate">
-                      {status.summary.duration !== undefined && formatDuration(status.summary.duration)}
-                      {status.summary.duration !== undefined && status.end_time && ' · '}
-                      {status.end_time && format(new Date(status.end_time), 'MMM d, h:mm a')}
-                    </div>
+                  ) : (
+                    <div className="text-xs sm:text-sm text-muted-foreground">Not run yet</div>
+                  )}
+                </div>
+
+                {/* Run button always at bottom - special handling for process_requests and entity syncs */}
+                {syncType.id === 'process_requests' ? (
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      onClick={() => runIndividualSync.mutate(syncType.id)}
+                      disabled={isRunning || runIndividualSync.isPending}
+                      className="flex-1 py-2 text-xs sm:text-sm font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      {isRunning ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <><Play className="w-4 h-4" /> Run</>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setShowProcessOptions(true)}
+                      disabled={isRunning}
+                      className="px-3 py-2 text-xs sm:text-sm font-medium rounded-lg bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 hover:bg-teal-200 dark:hover:bg-teal-900/60 disabled:opacity-50 flex items-center justify-center transition-colors"
+                      title="Advanced options"
+                    >
+                      <Settings2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : ENTITY_SYNC_TYPES.includes(syncType.id as EntitySyncType) ? (
+                  // Persons/Households - have settings button for custom field values option
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      onClick={() => runIndividualSync.mutate(syncType.id)}
+                      disabled={isRunning || runIndividualSync.isPending}
+                      className="flex-1 py-2 text-xs sm:text-sm font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      {isRunning ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <><Play className="w-4 h-4" /> Run</>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setEntityModalSyncType(syncType.id as EntitySyncType)}
+                      disabled={isRunning}
+                      className="px-3 py-2 text-xs sm:text-sm font-medium rounded-lg disabled:opacity-50 flex items-center justify-center transition-colors bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 hover:bg-violet-200 dark:hover:bg-violet-900/60"
+                      title="Sync options (include custom field values)"
+                    >
+                      <Settings2 className="w-4 h-4" />
+                    </button>
                   </div>
                 ) : (
-                  <div className="text-xs sm:text-sm text-muted-foreground">Not run yet</div>
+                  <button
+                    onClick={() => runIndividualSync.mutate(syncType.id)}
+                    disabled={isRunning || runIndividualSync.isPending}
+                    className="w-full py-2 mt-3 text-xs sm:text-sm font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    {isRunning ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <><Play className="w-4 h-4" /> Run</>
+                    )}
+                  </button>
                 )}
               </div>
+            );
+          })}
+        </div>
+      </div>
 
-              {/* Run button always at bottom - special handling for process_requests and entity syncs */}
-              {syncType.id === 'process_requests' ? (
-                <div className="flex gap-2 mt-3">
-                  <button
-                    onClick={() => runIndividualSync.mutate(syncType.id)}
-                    disabled={isRunning || runIndividualSync.isPending}
-                    className="flex-1 py-2 text-xs sm:text-sm font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
-                  >
-                    {isRunning ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <><Play className="w-4 h-4" /> Run</>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => setShowProcessOptions(true)}
-                    disabled={isRunning}
-                    className="px-3 py-2 text-xs sm:text-sm font-medium rounded-lg bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 hover:bg-teal-200 dark:hover:bg-teal-900/60 disabled:opacity-50 flex items-center justify-center transition-colors"
-                    title="Advanced options"
-                  >
-                    <Settings2 className="w-4 h-4" />
-                  </button>
+      {/* Global Sync Types Section */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Globe className="w-4 h-4" />
+          <span className="text-sm font-medium">Global Definitions</span>
+          <span className="text-xs text-muted-foreground/70">(cross-year)</span>
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          {GLOBAL_SYNC_TYPES.map((syncType) => {
+            const statusValue = syncStatus?.[syncType.id as keyof typeof syncStatus];
+            const status = (statusValue && typeof statusValue === 'object' && 'status' in statusValue)
+              ? statusValue as SyncStatus
+              : { status: 'idle' } as SyncStatus;
+            const Icon = syncType.icon;
+            const isRunning = status.status === 'running';
+
+            return (
+              <div
+                key={syncType.id}
+                className="bg-card rounded-xl border border-border p-4 sm:p-5 hover:border-primary/30 transition-colors flex flex-col"
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Icon className={`w-5 h-5 flex-shrink-0 ${syncType.color}`} />
+                    <span className="font-semibold text-sm sm:text-base truncate">{syncType.name}</span>
+                  </div>
+                  <StatusIcon status={status.status} />
                 </div>
-              ) : ENTITY_SYNC_TYPES.includes(syncType.id as EntitySyncType) ? (
-                // Persons/Households - have settings button for custom field values option
-                <div className="flex gap-2 mt-3">
-                  <button
-                    onClick={() => runIndividualSync.mutate(syncType.id)}
-                    disabled={isRunning || runIndividualSync.isPending}
-                    className="flex-1 py-2 text-xs sm:text-sm font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
-                  >
-                    {isRunning ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <><Play className="w-4 h-4" /> Run</>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => setEntityModalSyncType(syncType.id as EntitySyncType)}
-                    disabled={isRunning}
-                    className={`px-3 py-2 text-xs sm:text-sm font-medium rounded-lg disabled:opacity-50 flex items-center justify-center transition-colors ${
-                      syncType.id === 'persons'
-                        ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 hover:bg-violet-200 dark:hover:bg-violet-900/60'
-                        : 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/60'
-                    }`}
-                    title="Sync options (include custom field values)"
-                  >
-                    <Settings2 className="w-4 h-4" />
-                  </button>
+
+                {/* Status info */}
+                <div className="flex-1 min-h-[3rem]">
+                  {status.summary && status.status !== 'idle' ? (
+                    <div className="space-y-1.5">
+                      <div className="flex flex-wrap gap-x-2 gap-y-1 text-xs sm:text-sm">
+                        {status.summary.created > 0 && (
+                          <span className="text-emerald-600 dark:text-emerald-400 font-medium">{status.summary.created} new</span>
+                        )}
+                        {status.summary.updated > 0 && (
+                          <span className="text-sky-600 dark:text-sky-400 font-medium">{status.summary.updated} upd</span>
+                        )}
+                        {(status.summary.skipped || 0) > 0 && (
+                          <span className="text-muted-foreground">{status.summary.skipped} skip</span>
+                        )}
+                        {status.summary.errors > 0 && (
+                          <span className="text-red-600 dark:text-red-400 font-medium">{status.summary.errors} err</span>
+                        )}
+                      </div>
+                      <div className="text-muted-foreground text-xs sm:text-sm truncate">
+                        {status.summary.duration !== undefined && formatDuration(status.summary.duration)}
+                        {status.summary.duration !== undefined && status.end_time && ' · '}
+                        {status.end_time && format(new Date(status.end_time), 'MMM d, h:mm a')}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-xs sm:text-sm text-muted-foreground">Not run yet</div>
+                  )}
                 </div>
-              ) : (
+
+                {/* Run button */}
                 <button
                   onClick={() => runIndividualSync.mutate(syncType.id)}
                   disabled={isRunning || runIndividualSync.isPending}
@@ -280,10 +362,10 @@ export function SyncTab() {
                     <><Play className="w-4 h-4" /> Run</>
                   )}
                 </button>
-              )}
-            </div>
-          );
-        })}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Process Requests Options Modal */}
@@ -303,16 +385,14 @@ export function SyncTab() {
           isOpen={!!entityModalSyncType}
           onClose={() => setEntityModalSyncType(null)}
           onSubmit={(options: EntitySyncOptionsState) => {
-            // Run the main entity sync
+            // Run the combined persons sync (populates persons + households + person_tags)
             runIndividualSync.mutate(entityModalSyncType);
 
             // If custom field values option is enabled, also trigger that sync
             if (options.includeCustomFieldValues) {
-              const cfSyncType = entityModalSyncType === 'persons'
-                ? 'person_custom_field_values'
-                : 'household_custom_field_values';
+              // entityModalSyncType can only be 'persons' now, so we always use person_custom_field_values
               runOnDemandSync.mutate({
-                syncType: cfSyncType,
+                syncType: 'person_custom_field_values',
                 sessionFilter: options.sessionFilter,
               });
             }

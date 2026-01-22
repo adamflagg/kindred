@@ -304,7 +304,7 @@ func (s *HouseholdCustomFieldValuesSync) resolveRelations(record *core.Record, h
 	}
 
 	fieldFilter := fmt.Sprintf("cm_id = %d && year = %d", fieldID, year)
-	fields, err := s.App.FindRecordsByFilter("custom_field_definitions", fieldFilter, "", 1, 0, nil)
+	fields, err := s.App.FindRecordsByFilter("custom_field_defs", fieldFilter, "", 1, 0, nil)
 	if err == nil && len(fields) > 0 {
 		record.Set("field_definition", fields[0].Id)
 	}

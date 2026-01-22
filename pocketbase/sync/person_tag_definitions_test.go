@@ -8,7 +8,7 @@ func TestPersonTagDefinitionsSync_Name(t *testing.T) {
 	s := &PersonTagDefinitionsSync{}
 
 	got := s.Name()
-	want := "person_tag_definitions"
+	want := "person_tag_defs"
 
 	if got != want {
 		t.Errorf("PersonTagDefinitionsSync.Name() = %q, want %q", got, want)

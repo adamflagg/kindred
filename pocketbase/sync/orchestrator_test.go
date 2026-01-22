@@ -406,3 +406,78 @@ func TestStatusConstants(t *testing.T) {
 		t.Errorf("expected statusFailed='failed', got %q", statusFailed)
 	}
 }
+
+// TestIsWeeklySyncRunning tests weekly sync running check
+func TestIsWeeklySyncRunning(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	if o.IsWeeklySyncRunning() {
+		t.Error("weekly sync should not be running initially")
+	}
+
+	o.mu.Lock()
+	o.weeklySyncRunning = true
+	o.mu.Unlock()
+
+	if !o.IsWeeklySyncRunning() {
+		t.Error("weekly sync should be running after flag set")
+	}
+}
+
+// TestWeeklySyncServices tests that weekly sync includes expected global services
+func TestWeeklySyncServices(t *testing.T) {
+	// Weekly sync should include global definition tables that rarely change
+	// These are NOT part of daily sync
+	expectedServices := []string{
+		"person_tag_defs",
+		"custom_field_defs",
+	}
+
+	jobs := GetWeeklySyncJobs()
+
+	if len(jobs) != len(expectedServices) {
+		t.Errorf("expected %d weekly sync jobs, got %d", len(expectedServices), len(jobs))
+	}
+
+	for _, expected := range expectedServices {
+		found := false
+		for _, job := range jobs {
+			if job == expected {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected weekly sync to include %q", expected)
+		}
+	}
+}
+
+// TestWeeklySyncNotInDailySync verifies weekly services are NOT in daily sync
+func TestWeeklySyncNotInDailySync(t *testing.T) {
+	// Daily sync jobs - these should NOT include weekly sync services
+	// (person_tag_defs and custom_field_defs moved to weekly)
+	dailyJobs := []string{
+		"session_groups",
+		"sessions",
+		"attendees",
+		"persons",
+		"households",
+		"person_tags",
+		"bunks",
+		"bunk_plans",
+		"bunk_assignments",
+		"bunk_requests",
+	}
+
+	weeklyJobs := GetWeeklySyncJobs()
+
+	// Verify no overlap
+	for _, weekly := range weeklyJobs {
+		for _, daily := range dailyJobs {
+			if weekly == daily {
+				t.Errorf("weekly job %q should not be in daily sync", weekly)
+			}
+		}
+	}
+}

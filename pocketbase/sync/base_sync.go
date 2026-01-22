@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"strings"
 	"time"
 
@@ -288,6 +289,34 @@ func (b *BaseSyncService) PreloadRecords(
 	}
 
 	slog.Info("Loaded existing records from database", "collection", collection, "count", len(existingRecords))
+	return existingRecords, nil
+}
+
+// PreloadRecordsGlobal loads existing records for global tables (no year field).
+// Unlike PreloadRecords, this does not require a year field and stores keys directly
+// without year-based composite keys.
+func (b *BaseSyncService) PreloadRecordsGlobal(
+	collection string,
+	filter string,
+	keyExtractor func(*core.Record) (interface{}, bool),
+) (map[interface{}]*core.Record, error) {
+	existingRecords := make(map[interface{}]*core.Record)
+
+	allRecords, err := b.App.FindRecordsByFilter(collection, filter, "", 0, 0)
+	if err != nil {
+		slog.Warn("Error loading existing records", "collection", collection, "error", err)
+		// Return empty map instead of error to allow fallback to individual checks
+		return existingRecords, nil
+	}
+
+	// Build map using direct keys (no year component for global entities)
+	for _, record := range allRecords {
+		if key, ok := keyExtractor(record); ok {
+			existingRecords[key] = record
+		}
+	}
+
+	slog.Info("Loaded existing global records from database", "collection", collection, "count", len(existingRecords))
 	return existingRecords, nil
 }
 
@@ -756,6 +785,16 @@ func (b *BaseSyncService) FieldEquals(existingValue interface{}, newValue interf
 	if existingBool, ok := existingValue.(bool); ok {
 		if newInt, ok := newValue.(float64); ok {
 			return existingBool == (newInt != 0)
+		}
+	}
+
+	// Handle slice comparisons (e.g., []string for multi-select fields)
+	// Slices are not comparable with == so we need reflect.DeepEqual
+	existingKind := reflect.TypeOf(existingValue)
+	newKind := reflect.TypeOf(newValue)
+	if existingKind != nil && newKind != nil {
+		if existingKind.Kind() == reflect.Slice || newKind.Kind() == reflect.Slice {
+			return reflect.DeepEqual(existingValue, newValue)
 		}
 	}
 

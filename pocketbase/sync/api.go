@@ -68,6 +68,11 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 		return handleHourlySync(e, scheduler)
 	}))
 
+	// Weekly sync endpoint (global data - expensive N API call syncs)
+	e.Router.POST("/api/custom/sync/weekly", requireAuth(func(e *core.RequestEvent) error {
+		return handleWeeklySync(e, scheduler)
+	}))
+
 	// Process requests endpoint
 	// Processes original_bunk_requests → bunk_requests via Python
 	// Accepts optional query parameters:
@@ -244,23 +249,16 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	})
 
 	// Person tag definitions sync
-	e.Router.POST("/api/custom/sync/person-tag-definitions", requireAuth(func(e *core.RequestEvent) error {
-		return handleIndividualSync(e, scheduler, "person_tag_definitions")
+	e.Router.POST("/api/custom/sync/person-tag-defs", requireAuth(func(e *core.RequestEvent) error {
+		return handleIndividualSync(e, scheduler, "person_tag_defs")
 	}))
 
-	// Households sync
-	e.Router.POST("/api/custom/sync/households", requireAuth(func(e *core.RequestEvent) error {
-		return handleIndividualSync(e, scheduler, "households")
-	}))
-
-	// Person tags sync
-	e.Router.POST("/api/custom/sync/person-tags", requireAuth(func(e *core.RequestEvent) error {
-		return handleIndividualSync(e, scheduler, "person_tags")
-	}))
+	// Note: households and person_tags are now part of the combined "persons" sync
+	// and no longer have separate endpoints
 
 	// Custom field definitions sync
-	e.Router.POST("/api/custom/sync/custom-field-definitions", requireAuth(func(e *core.RequestEvent) error {
-		return handleIndividualSync(e, scheduler, "custom_field_definitions")
+	e.Router.POST("/api/custom/sync/custom-field-defs", requireAuth(func(e *core.RequestEvent) error {
+		return handleIndividualSync(e, scheduler, "custom_field_defs")
 	}))
 
 	// On-demand sync endpoints (require N API calls - one per entity)
@@ -509,15 +507,15 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 	orchestrator := scheduler.GetOrchestrator()
 
 	// Get status of all known sync types (in dependency order)
+	// Note: "persons" is a combined sync that populates persons, households, AND person_tags
+	// tables from a single API call - there are no separate households or person_tags syncs
 	syncTypes := []string{
 		"session_groups",
 		"sessions",
 		"attendees",
-		"person_tag_definitions",
-		"custom_field_definitions",
-		"persons",
-		"households",
-		"person_tags",
+		"person_tag_defs",
+		"custom_field_defs",
+		"persons", // Combined sync: persons + households + person_tags
 		"bunks",
 		"bunk_plans",
 		"bunk_assignments",
@@ -542,6 +540,9 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 
 	// Add daily sync status
 	statuses["_daily_sync_running"] = orchestrator.IsDailySyncRunning()
+
+	// Add weekly sync status
+	statuses["_weekly_sync_running"] = orchestrator.IsWeeklySyncRunning()
 
 	// Add historical sync status
 	statuses["_historical_sync_running"] = orchestrator.IsHistoricalSyncRunning()
@@ -583,6 +584,24 @@ func handleHourlySync(e *core.RequestEvent, scheduler *Scheduler) error {
 
 	return e.JSON(http.StatusOK, map[string]interface{}{
 		"message": "Hourly sync triggered",
+	})
+}
+
+// handleWeeklySync triggers the weekly sync sequence (global data jobs)
+func handleWeeklySync(e *core.RequestEvent, scheduler *Scheduler) error {
+	// Check if weekly sync is already running
+	if scheduler.IsWeeklySyncRunning() {
+		return e.JSON(http.StatusConflict, map[string]interface{}{
+			"error": "Weekly sync already in progress",
+		})
+	}
+
+	// Trigger weekly sync
+	scheduler.TriggerWeeklySync()
+
+	return e.JSON(http.StatusOK, map[string]interface{}{
+		"message":  "Weekly sync triggered",
+		"services": GetWeeklySyncJobs(),
 	})
 }
 

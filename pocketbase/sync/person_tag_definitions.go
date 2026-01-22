@@ -11,7 +11,7 @@ import (
 )
 
 // Service name constant
-const serviceNamePersonTagDefinitions = "person_tag_definitions"
+const serviceNamePersonTagDefinitions = "person_tag_defs"
 
 // PersonTagDefinitionsSync handles syncing person tag definitions from CampMinder
 type PersonTagDefinitionsSync struct {
@@ -35,7 +35,8 @@ func (s *PersonTagDefinitionsSync) Name() string {
 func (s *PersonTagDefinitionsSync) Sync(ctx context.Context) error {
 	// Pre-load all existing records (no year filter - definitions are global)
 	// Note: TagDef uses Name as identifier (no CM ID), so we key by name
-	existingRecords, err := s.PreloadRecords("person_tag_definitions", "", func(record *core.Record) (interface{}, bool) {
+	// Use PreloadRecordsGlobal since this table has no year field
+	existingRecords, err := s.PreloadRecordsGlobal("person_tag_defs", "", func(record *core.Record) (interface{}, bool) {
 		if name, ok := record.Get("name").(string); ok && name != "" {
 			return name, true
 		}
@@ -98,7 +99,7 @@ func (s *PersonTagDefinitionsSync) Sync(ctx context.Context) error {
 
 		// Process the record using name as key
 		compareFields := []string{"name", "is_seasonal", "is_hidden", "last_updated_utc"}
-		if err := s.ProcessSimpleRecordGlobal("person_tag_definitions", name, pbData, existingRecords, compareFields); err != nil {
+		if err := s.ProcessSimpleRecordGlobal("person_tag_defs", name, pbData, existingRecords, compareFields); err != nil {
 			slog.Error("Error processing person tag definition", "name", name, "error", err)
 			s.Stats.Errors++
 		}
@@ -106,13 +107,13 @@ func (s *PersonTagDefinitionsSync) Sync(ctx context.Context) error {
 
 	// Delete orphans (no year filter - definitions are global)
 	if err := s.DeleteOrphans(
-		"person_tag_definitions",
+		"person_tag_defs",
 		func(record *core.Record) (string, bool) {
 			nameValue := record.Get("name")
 			name, nameOK := nameValue.(string)
 			if nameOK && name != "" {
-				// Use name as the key (no year component)
-				return name, true
+				// Use CompositeKey to match TrackProcessedKey format (name|0)
+				return CompositeKey(name, 0), true
 			}
 			return "", false
 		},

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { User, Building2, Loader2, ChevronDown, AlertTriangle } from 'lucide-react';
+import { User, Loader2, ChevronDown, AlertTriangle } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 
 export interface EntitySyncOptionsState {
@@ -12,29 +12,22 @@ interface EntitySyncOptionsProps {
   onClose: () => void;
   onSubmit: (options: EntitySyncOptionsState) => void;
   isProcessing: boolean;
-  entityType: 'persons' | 'households';
+  // Note: "persons" is a combined sync that populates persons, households, AND person_tags
+  // tables from a single API call - there is no separate households entity type
+  entityType: 'persons';
 }
 
+// Note: "persons" is a combined sync that populates persons, households, AND person_tags
 const ENTITY_CONFIG = {
   persons: {
     title: 'Persons Sync',
-    description: 'Sync person data from CampMinder',
+    description: 'Sync persons, households & tags from CampMinder',
     icon: User,
     color: 'violet',
     bgClass: 'bg-violet-100 dark:bg-violet-900/40',
     textClass: 'text-violet-600 dark:text-violet-400',
     buttonBg: 'bg-violet-600 hover:bg-violet-700',
     cfWarning: 'Custom field values requires 1 API call per person (~500 calls for active campers).',
-  },
-  households: {
-    title: 'Households Sync',
-    description: 'Sync household data from CampMinder',
-    icon: Building2,
-    color: 'purple',
-    bgClass: 'bg-purple-100 dark:bg-purple-900/40',
-    textClass: 'text-purple-600 dark:text-purple-400',
-    buttonBg: 'bg-purple-600 hover:bg-purple-700',
-    cfWarning: 'Custom field values requires 1 API call per household (~250 calls for unique households).',
   },
 };
 

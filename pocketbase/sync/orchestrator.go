@@ -74,6 +74,8 @@ type Orchestrator struct {
 	historicalSyncRunning bool               // Track if historical sync sequence is in progress
 	historicalSyncQueue   []string           // Services queued for historical sync
 	historicalSyncYear    int                // Year being synced in historical sync
+	weeklySyncRunning     bool               // Track if weekly sync sequence is in progress
+	weeklySyncQueue       []string           // Services queued for weekly sync
 }
 
 // NewOrchestrator creates a new orchestrator
@@ -144,6 +146,22 @@ func (o *Orchestrator) GetHistoricalSyncYear() int {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 	return o.historicalSyncYear
+}
+
+// IsWeeklySyncRunning returns whether a weekly sync sequence is in progress
+func (o *Orchestrator) IsWeeklySyncRunning() bool {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	return o.weeklySyncRunning
+}
+
+// GetWeeklySyncJobs returns the list of services that run in the weekly sync.
+// These are global definition tables that rarely change and don't need daily updates.
+func GetWeeklySyncJobs() []string {
+	return []string{
+		"person_tag_defs",
+		"custom_field_defs",
+	}
 }
 
 // RunSingleSync runs a single sync service
@@ -235,19 +253,19 @@ func (o *Orchestrator) RunSingleSync(_ context.Context, syncType string) error {
 // RunDailySync runs all base data syncs in the correct order
 func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 	// Define sync order (respecting dependencies)
+	// Note: person_tag_defs and custom_field_defs are NOT included here -
+	// they run in the weekly sync since they're global definitions that rarely change
+	// Note: "persons" is a combined sync that populates persons, households, AND person_tags
+	// tables from a single API call - eliminating 2/3 of the previous API calls
 	orderedJobs := []string{
-		"session_groups",            // No dependencies - sync first for group data
-		"sessions",                  // Depends on session_groups (for session_group relation)
-		"attendees",                 // Depends on sessions
-		"person_tag_definitions",    // No dependencies - sync before persons
-		"custom_field_definitions",  // No dependencies - sync before persons for Phase 5 custom field values
-		"persons",                   // Depends on attendees (attendee-driven sync)
-		"households",                // Extracts from persons response (no extra API calls)
-		"person_tags",               // Extracts from persons response (depends on person_tag_definitions)
-		"bunks",                   // No dependencies
-		"bunk_plans",              // Depends on sessions and bunks
-		"bunk_assignments",        // Depends on sessions, persons, bunks
-		"bunk_requests",           // CSV import, depends on persons
+		"session_groups",   // No dependencies - sync first for group data
+		"sessions",         // Depends on session_groups (for session_group relation)
+		"attendees",        // Depends on sessions
+		"persons",          // Depends on attendees (combined sync: persons + households + person_tags)
+		"bunks",            // No dependencies
+		"bunk_plans",       // Depends on sessions and bunks
+		"bunk_assignments", // Depends on sessions, persons, bunks
+		"bunk_requests",    // CSV import, depends on persons
 	}
 
 	// Only include process_requests in production (Docker) mode
@@ -306,6 +324,57 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 	}
 
 	slog.Info("Daily sync sequence completed")
+	return nil
+}
+
+// RunWeeklySync runs global data syncs that are too expensive for daily sync.
+// These services require N API calls (one per entity) and run once per week.
+func (o *Orchestrator) RunWeeklySync(ctx context.Context) error {
+	// Get the weekly sync jobs
+	weeklyJobs := GetWeeklySyncJobs()
+
+	// Set weekly sync flag and queue
+	o.mu.Lock()
+	o.weeklySyncRunning = true
+	o.weeklySyncQueue = weeklyJobs
+	o.mu.Unlock()
+
+	// Ensure flag and queue are cleared on exit
+	defer func() {
+		o.mu.Lock()
+		o.weeklySyncRunning = false
+		o.weeklySyncQueue = nil
+		o.mu.Unlock()
+	}()
+
+	slog.Info("Starting weekly sync sequence", "services", weeklyJobs)
+
+	for i, jobName := range weeklyJobs {
+		// Check if context is cancelled
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		// Add spacing between jobs (except for the first one)
+		if i > 0 {
+			slog.Info("Waiting before next sync", "duration", o.jobSpacing)
+			time.Sleep(o.jobSpacing)
+		}
+
+		slog.Info("Weekly sync: Starting service", "service", jobName, "progress", fmt.Sprintf("%d/%d", i+1, len(weeklyJobs)))
+
+		// Run sync and wait for completion
+		if err := o.runSyncAndWait(ctx, jobName); err != nil {
+			slog.Error("Weekly sync: service failed", "service", jobName, "error", err)
+			// Continue with other syncs even if one fails
+		} else {
+			slog.Info("Weekly sync: service completed", "service", jobName)
+		}
+	}
+
+	slog.Info("Weekly sync sequence completed")
 	return nil
 }
 
@@ -436,28 +505,19 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 	servicesToRun := opts.Services
 	if len(servicesToRun) == 0 {
 		// Run all services in dependency order
-		// Note: person_tag_definitions and custom_field_definitions are only included
-		// for current year syncs (opts.Year == 0) because they are global definitions
-		// that don't accept a season parameter in CampMinder's API
+		// Note: person_tag_defs and custom_field_defs are NOT included here -
+		// they run in the weekly sync since they're global definitions that rarely change.
+		// They can still be run explicitly via opts.Services if needed.
+		// Note: "persons" is a combined sync that populates persons, households, AND person_tags
 		servicesToRun = []string{
 			"session_groups",
 			"sessions",
 			"attendees",
-		}
-
-		// Only include definition syncs for current year (they're global, not year-specific)
-		if opts.Year == 0 {
-			servicesToRun = append(servicesToRun, "person_tag_definitions", "custom_field_definitions")
-		}
-
-		servicesToRun = append(servicesToRun,
-			"persons",
-			"households",
-			"person_tags",
+			"persons", // Combined sync: persons + households + person_tags
 			"bunks",
 			"bunk_plans",
 			"bunk_assignments",
-		)
+		}
 
 		// Only include bunk_requests for current year syncs (not historical)
 		// Bunk requests are populated during the current year's processing
@@ -511,14 +571,13 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		o.mu.Unlock()
 
 		// Re-register with year client
-		// Note: person_tag_definitions and custom_field_definitions are NOT re-registered
+		// Note: person_tag_defs and custom_field_defs are NOT re-registered
 		// because they are global (not year-specific) and shouldn't run in historical syncs
+		// Note: "persons" is a combined sync that populates persons, households, AND person_tags
 		o.RegisterService("session_groups", NewSessionGroupsSync(o.app, yearClient))
 		o.RegisterService("sessions", NewSessionsSync(o.app, yearClient))
 		o.RegisterService("attendees", NewAttendeesSync(o.app, yearClient))
-		o.RegisterService("persons", NewPersonsSync(o.app, yearClient))
-		o.RegisterService("households", NewHouseholdsSync(o.app, yearClient))
-		o.RegisterService("person_tags", NewPersonTagsSync(o.app, yearClient))
+		o.RegisterService("persons", NewPersonsSync(o.app, yearClient)) // Combined: persons + households + person_tags
 		o.RegisterService("bunks", NewBunksSync(o.app, yearClient))
 		o.RegisterService("bunk_plans", NewBunkPlansSync(o.app, yearClient))
 		o.RegisterService("bunk_assignments", NewBunkAssignmentsSync(o.app, yearClient))
@@ -634,11 +693,11 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	o.RegisterService("session_groups", NewSessionGroupsSync(o.app, client))
 	o.RegisterService("sessions", NewSessionsSync(o.app, client))
 	o.RegisterService("attendees", NewAttendeesSync(o.app, client))
-	o.RegisterService("person_tag_definitions", NewPersonTagDefinitionsSync(o.app, client))
-	o.RegisterService("custom_field_definitions", NewCustomFieldDefinitionsSync(o.app, client))
+	o.RegisterService("person_tag_defs", NewPersonTagDefinitionsSync(o.app, client))
+	o.RegisterService("custom_field_defs", NewCustomFieldDefinitionsSync(o.app, client))
+	// "persons" is a combined sync that populates persons, households, AND person_tags
+	// tables from a single API call - eliminating 2/3 of the previous API calls
 	o.RegisterService("persons", NewPersonsSync(o.app, client))
-	o.RegisterService("households", NewHouseholdsSync(o.app, client))
-	o.RegisterService("person_tags", NewPersonTagsSync(o.app, client))
 	o.RegisterService("bunks", NewBunksSync(o.app, client))
 	o.RegisterService("bunk_plans", NewBunkPlansSync(o.app, client))
 	o.RegisterService("bunk_assignments", NewBunkAssignmentsSync(o.app, client))

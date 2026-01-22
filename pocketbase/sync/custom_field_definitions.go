@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/pocketbase/pocketbase/core"
 
@@ -11,7 +12,7 @@ import (
 )
 
 // Service name constant
-const serviceNameCustomFieldDefinitions = "custom_field_definitions"
+const serviceNameCustomFieldDefinitions = "custom_field_defs"
 
 // CustomFieldDefinitionsSync handles syncing custom field definitions from CampMinder
 type CustomFieldDefinitionsSync struct {
@@ -34,7 +35,8 @@ func (s *CustomFieldDefinitionsSync) Name() string {
 // Note: Custom field definitions are global (not year-specific) in CampMinder's API
 func (s *CustomFieldDefinitionsSync) Sync(ctx context.Context) error {
 	// Pre-load all existing records (no year filter - definitions are global)
-	existingRecords, err := s.PreloadRecords("custom_field_definitions", "", func(record *core.Record) (interface{}, bool) {
+	// Use PreloadRecordsGlobal since this table has no year field
+	existingRecords, err := s.PreloadRecordsGlobal("custom_field_defs", "", func(record *core.Record) (interface{}, bool) {
 		if cmID, ok := record.Get("cm_id").(float64); ok && cmID > 0 {
 			return int(cmID), true
 		}
@@ -106,7 +108,7 @@ func (s *CustomFieldDefinitionsSync) Sync(ctx context.Context) error {
 
 			// Process the record using cm_id as key
 			compareFields := []string{"cm_id", "name", "data_type", "partition", "is_seasonal", "is_array", "is_active"}
-			if err := s.ProcessSimpleRecordGlobal("custom_field_definitions", cmID, pbData, existingRecords, compareFields); err != nil {
+			if err := s.ProcessSimpleRecordGlobal("custom_field_defs", cmID, pbData, existingRecords, compareFields); err != nil {
 				slog.Error("Error processing custom field definition", "cm_id", cmID, "error", err)
 				s.Stats.Errors++
 			}
@@ -121,13 +123,13 @@ func (s *CustomFieldDefinitionsSync) Sync(ctx context.Context) error {
 
 	// Delete orphans (no year filter - definitions are global)
 	if err := s.DeleteOrphans(
-		"custom_field_definitions",
+		"custom_field_defs",
 		func(record *core.Record) (string, bool) {
 			cmIDValue := record.Get("cm_id")
 			cmID, cmIDOK := cmIDValue.(float64)
 			if cmIDOK && cmID > 0 {
-				// Use cm_id as the key (no year component)
-				return fmt.Sprintf("%d", int(cmID)), true
+				// Use CompositeKey to match TrackProcessedKey format (cmID|0)
+				return CompositeKey(int(cmID), 0), true
 			}
 			return "", false
 		},
@@ -174,10 +176,13 @@ func (s *CustomFieldDefinitionsSync) transformCustomFieldDefinitionToPB(
 		pbData["data_type"] = "None"
 	}
 
-	if partition, ok := data["partition"].(string); ok {
-		pbData["partition"] = partition
+	// Handle partition as multi-select (CampMinder returns comma-separated values like "Camper, Adult")
+	if partition, ok := data["partition"].(string); ok && partition != "" {
+		// Split by ", " (comma + space) to handle multi-value partitions
+		parts := strings.Split(partition, ", ")
+		pbData["partition"] = parts
 	} else {
-		pbData["partition"] = "None"
+		pbData["partition"] = []string{"None"}
 	}
 
 	if isSeasonal, ok := data["isSeasonal"].(bool); ok {

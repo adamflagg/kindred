@@ -18,15 +18,15 @@ export interface SyncStatus {
   year?: number; // Year being synced (0 or undefined = current year)
 }
 
+// Note: "persons" is a combined sync that populates persons, households, AND person_tags
+// tables from a single API call - there are no separate households or person_tags statuses
 export interface SyncStatusResponse {
   session_groups: SyncStatus;
   sessions: SyncStatus;
   attendees: SyncStatus;
-  person_tag_definitions: SyncStatus;
-  custom_field_definitions: SyncStatus;
-  persons: SyncStatus;
-  households: SyncStatus;
-  person_tags: SyncStatus;
+  person_tag_defs: SyncStatus;
+  custom_field_defs: SyncStatus;
+  persons: SyncStatus; // Combined sync: persons + households + person_tags
   bunks: SyncStatus;
   bunk_plans: SyncStatus;
   bunk_assignments: SyncStatus;

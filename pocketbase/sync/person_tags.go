@@ -102,9 +102,9 @@ func (s *PersonTagsSync) Sync(ctx context.Context) error {
 	slog.Info("Found unique persons from attendees for tag extraction", "count", len(personIDs), "year", year)
 
 	// Pre-load tag definitions for relation lookups
+	// Note: person_tag_defs is global (no year filter - definitions are not year-specific)
 	tagDefsByName := make(map[string]*core.Record)
-	tagDefFilter := fmt.Sprintf("year = %d", year)
-	tagDefs, err := s.App.FindRecordsByFilter("person_tag_definitions", tagDefFilter, "", 0, 0)
+	tagDefs, err := s.App.FindRecordsByFilter("person_tag_defs", "", "", 0, 0)
 	if err != nil {
 		slog.Warn("Error loading tag definitions", "error", err)
 	} else {
