@@ -10,32 +10,39 @@ import (
 	"github.com/camp/kindred/pocketbase/campminder"
 )
 
-// Service name constant
-const serviceNamePersonCustomFieldValues = "person_custom_field_values"
+// Service name constant - uses new table name
+const serviceNamePersonCustomValues = "person_custom_values"
 
 // PersonCustomFieldValuesSync handles syncing custom field values for persons from CampMinder
 // This is an ON-DEMAND sync (not part of daily sync) because it requires 1 API call per person
 type PersonCustomFieldValuesSync struct {
 	BaseSyncService
-	SessionFilter int // 0 = all sessions, 1-4 = specific session
+	Session string // Session filter: "all", "1", "2", "2a", "3", "4", etc.
+	Debug   bool   // Enable debug logging
 }
 
 // NewPersonCustomFieldValuesSync creates a new person custom field values sync service
 func NewPersonCustomFieldValuesSync(app core.App, client *campminder.Client) *PersonCustomFieldValuesSync {
 	return &PersonCustomFieldValuesSync{
 		BaseSyncService: NewBaseSyncService(app, client),
-		SessionFilter:   0, // Default to all sessions
+		Session:         DefaultSession, // Default to all sessions
+		Debug:           false,
 	}
 }
 
 // Name returns the name of this sync service
 func (s *PersonCustomFieldValuesSync) Name() string {
-	return serviceNamePersonCustomFieldValues
+	return serviceNamePersonCustomValues
 }
 
-// SetSessionFilter sets the session filter for this sync
-func (s *PersonCustomFieldValuesSync) SetSessionFilter(session int) {
-	s.SessionFilter = session
+// SetSession sets the session filter for this sync (e.g., "1", "2", "2a", "all")
+func (s *PersonCustomFieldValuesSync) SetSession(session string) {
+	s.Session = session
+}
+
+// SetDebug enables or disables debug logging
+func (s *PersonCustomFieldValuesSync) SetDebug(debug bool) {
+	s.Debug = debug
 }
 
 // Sync performs the person custom field values sync
@@ -43,7 +50,7 @@ func (s *PersonCustomFieldValuesSync) Sync(ctx context.Context) error {
 	year := s.Client.GetSeasonID()
 
 	// Start the sync process
-	s.LogSyncStart(serviceNamePersonCustomFieldValues)
+	s.LogSyncStart(serviceNamePersonCustomValues)
 	s.Stats = Stats{}
 	s.SyncSuccessful = false
 
@@ -57,7 +64,9 @@ func (s *PersonCustomFieldValuesSync) Sync(ctx context.Context) error {
 	}
 
 	if len(personIDs) == 0 {
-		slog.Info("No persons to sync custom field values for")
+		slog.Info("No persons to sync custom field values for",
+			"session", s.Session,
+			"year", year)
 		s.SyncSuccessful = true
 		s.LogSyncComplete("PersonCustomFieldValues")
 		return nil
@@ -65,19 +74,31 @@ func (s *PersonCustomFieldValuesSync) Sync(ctx context.Context) error {
 
 	slog.Info("Syncing custom field values for persons",
 		"count", len(personIDs),
-		"session_filter", s.SessionFilter,
+		"session", s.Session,
 		"year", year)
 
-	// Pre-load existing records for this year
-	filter := fmt.Sprintf("year = %d", year)
-	existingRecords, err := s.PreloadCompositeRecords("person_custom_field_values", filter, func(record *core.Record) (string, bool) {
-		personID, _ := record.Get("person_id").(float64)
-		fieldID, _ := record.Get("field_id").(float64)
-		seasonID, _ := record.Get("season_id").(float64)
+	// Pre-load person CM ID -> PB ID mapping for the year
+	personMapping, err := s.preloadPersonMapping(year)
+	if err != nil {
+		return fmt.Errorf("preloading person mapping: %w", err)
+	}
 
-		if personID > 0 && fieldID > 0 {
-			// Composite key: person_id:field_id:season_id
-			return fmt.Sprintf("%d:%d:%d", int(personID), int(fieldID), int(seasonID)), true
+	// Pre-load field definition CM ID -> PB ID mapping
+	fieldDefMapping, err := s.preloadFieldDefMapping()
+	if err != nil {
+		return fmt.Errorf("preloading field definition mapping: %w", err)
+	}
+
+	// Pre-load existing records for this year
+	// Key: personPBId:fieldDefPBId:year
+	filter := fmt.Sprintf("year = %d", year)
+	existingRecords, err := s.PreloadCompositeRecords("person_custom_values", filter, func(record *core.Record) (string, bool) {
+		personPBId := record.GetString("person")
+		fieldDefPBId := record.GetString("field_definition")
+		recordYear := record.GetInt("year")
+
+		if personPBId != "" && fieldDefPBId != "" {
+			return fmt.Sprintf("%s:%s:%d", personPBId, fieldDefPBId, recordYear), true
 		}
 		return "", false
 	})
@@ -88,7 +109,7 @@ func (s *PersonCustomFieldValuesSync) Sync(ctx context.Context) error {
 	s.SyncSuccessful = true
 
 	// Process each person
-	for i, personID := range personIDs {
+	for i, personCMID := range personIDs {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -103,17 +124,25 @@ func (s *PersonCustomFieldValuesSync) Sync(ctx context.Context) error {
 				"percent", fmt.Sprintf("%.1f%%", float64(i)/float64(len(personIDs))*100))
 		}
 
+		// Get PB ID for this person
+		personPBId, found := personMapping[personCMID]
+		if !found {
+			slog.Warn("Person not found in PocketBase, skipping custom field values",
+				"person_cm_id", personCMID)
+			continue
+		}
+
 		// Fetch custom field values for this person (paginated)
-		if err := s.syncPersonCustomFieldValues(ctx, personID, year, existingRecords); err != nil {
+		if err := s.syncPersonCustomFieldValues(ctx, personCMID, personPBId, year, fieldDefMapping, existingRecords); err != nil {
 			slog.Error("Error syncing custom field values for person",
-				"person_id", personID,
+				"person_cm_id", personCMID,
 				"error", err)
 			s.Stats.Errors++
 		}
 	}
 
-	// Delete orphans (values for persons no longer in the sync set)
-	if err := s.deleteOrphans(year, personIDs); err != nil {
+	// Delete orphans (values no longer present in API response)
+	if err := s.deleteOrphans(year); err != nil {
 		slog.Error("Error deleting orphan custom field values", "error", err)
 	}
 
@@ -126,58 +155,72 @@ func (s *PersonCustomFieldValuesSync) Sync(ctx context.Context) error {
 	return nil
 }
 
-// getPersonIDsToSync returns the list of person IDs to sync based on session filter
+// preloadPersonMapping loads CM ID -> PB ID mapping for persons in the given year
+func (s *PersonCustomFieldValuesSync) preloadPersonMapping(year int) (map[int]string, error) {
+	filter := fmt.Sprintf("year = %d", year)
+	persons, err := s.App.FindRecordsByFilter("persons", filter, "", 10000, 0, nil)
+	if err != nil {
+		return nil, fmt.Errorf("finding persons: %w", err)
+	}
+
+	mapping := make(map[int]string, len(persons))
+	for _, person := range persons {
+		if cmID, ok := person.Get("cm_id").(float64); ok && cmID > 0 {
+			mapping[int(cmID)] = person.Id
+		}
+	}
+
+	if s.Debug {
+		slog.Debug("Preloaded person mapping", "count", len(mapping))
+	}
+
+	return mapping, nil
+}
+
+// preloadFieldDefMapping loads CM ID -> PB ID mapping for custom field definitions
+func (s *PersonCustomFieldValuesSync) preloadFieldDefMapping() (map[int]string, error) {
+	// Field definitions are global (no year filter)
+	fieldDefs, err := s.App.FindRecordsByFilter("custom_field_defs", "", "", 10000, 0, nil)
+	if err != nil {
+		return nil, fmt.Errorf("finding field definitions: %w", err)
+	}
+
+	mapping := make(map[int]string, len(fieldDefs))
+	for _, fieldDef := range fieldDefs {
+		if cmID, ok := fieldDef.Get("cm_id").(float64); ok && cmID > 0 {
+			mapping[int(cmID)] = fieldDef.Id
+		}
+	}
+
+	if s.Debug {
+		slog.Debug("Preloaded field definition mapping", "count", len(mapping))
+	}
+
+	return mapping, nil
+}
+
+// getPersonIDsToSync returns the list of person CampMinder IDs to sync based on session filter
 func (s *PersonCustomFieldValuesSync) getPersonIDsToSync(year int) ([]int, error) {
-	var filter string
-
-	if s.SessionFilter > 0 {
-		// Get persons enrolled in the specific session
-		// First, find the session by session number (1-4 maps to session names)
-		sessionFilter := fmt.Sprintf("year = %d && session_type = 'main'", year)
-		sessions, err := s.App.FindRecordsByFilter("camp_sessions", sessionFilter, "", 100, 0, nil)
+	// Use session resolver if session filter is specified
+	if s.Session != "" && s.Session != DefaultSession {
+		resolver := NewSessionResolver(s.App)
+		personIDs, err := resolver.GetPersonIDsForSession(s.Session, year)
 		if err != nil {
-			return nil, fmt.Errorf("finding sessions: %w", err)
+			return nil, err
 		}
 
-		// Find the session that matches our filter (session 1, 2, 3, or 4)
-		var targetSessionID string
-		for _, sess := range sessions {
-			name := sess.GetString("name")
-			// Match session number in name (e.g., "Session 1", "Session 2", etc.)
-			if name == fmt.Sprintf("Session %d", s.SessionFilter) {
-				targetSessionID = sess.Id
-				break
-			}
+		if s.Debug {
+			slog.Debug("Resolved session to person IDs",
+				"session", s.Session,
+				"count", len(personIDs),
+				"year", year)
 		}
 
-		if targetSessionID == "" {
-			return nil, fmt.Errorf("session %d not found for year %d", s.SessionFilter, year)
-		}
-
-		// Get attendees for this session
-		attendeeFilter := fmt.Sprintf("year = %d && session = '%s'", year, targetSessionID)
-		attendees, err := s.App.FindRecordsByFilter("attendees", attendeeFilter, "", 10000, 0, nil)
-		if err != nil {
-			return nil, fmt.Errorf("finding attendees: %w", err)
-		}
-
-		// Extract unique person IDs
-		personIDSet := make(map[int]bool)
-		for _, attendee := range attendees {
-			if personID, ok := attendee.Get("person_id").(float64); ok && personID > 0 {
-				personIDSet[int(personID)] = true
-			}
-		}
-
-		personIDs := make([]int, 0, len(personIDSet))
-		for id := range personIDSet {
-			personIDs = append(personIDs, id)
-		}
 		return personIDs, nil
 	}
 
 	// No session filter - get all persons synced for this year
-	filter = fmt.Sprintf("year = %d", year)
+	filter := fmt.Sprintf("year = %d", year)
 	persons, err := s.App.FindRecordsByFilter("persons", filter, "", 10000, 0, nil)
 	if err != nil {
 		return nil, fmt.Errorf("finding persons: %w", err)
@@ -189,14 +232,23 @@ func (s *PersonCustomFieldValuesSync) getPersonIDsToSync(year int) ([]int, error
 			personIDs = append(personIDs, int(cmID))
 		}
 	}
+
+	if s.Debug {
+		slog.Debug("Getting all persons for year",
+			"count", len(personIDs),
+			"year", year)
+	}
+
 	return personIDs, nil
 }
 
 // syncPersonCustomFieldValues fetches and stores custom field values for a single person
 func (s *PersonCustomFieldValuesSync) syncPersonCustomFieldValues(
 	ctx context.Context,
-	personID int,
+	personCMID int,
+	personPBId string,
 	year int,
+	fieldDefMapping map[int]string,
 	existingRecords map[string]*core.Record,
 ) error {
 	page := 1
@@ -210,42 +262,48 @@ func (s *PersonCustomFieldValuesSync) syncPersonCustomFieldValues(
 		}
 
 		// Fetch page of custom field values
-		values, hasMore, err := s.Client.GetPersonCustomFieldValuesPage(personID, page, pageSize)
+		values, hasMore, err := s.Client.GetPersonCustomFieldValuesPage(personCMID, page, pageSize)
 		if err != nil {
 			return fmt.Errorf("fetching custom field values page %d: %w", page, err)
 		}
 
 		// Process each value
 		for _, valueData := range values {
-			pbData, err := s.transformPersonCustomFieldValueToPB(valueData, personID, year)
-			if err != nil {
-				slog.Error("Error transforming custom field value",
-					"person_id", personID,
-					"error", err)
+			// Extract field ID from API response
+			fieldCMIDFloat, ok := valueData["id"].(float64)
+			if !ok || fieldCMIDFloat == 0 {
+				slog.Warn("Invalid or missing field id in custom field value",
+					"person_cm_id", personCMID)
 				s.Stats.Errors++
 				continue
 			}
+			fieldCMID := int(fieldCMIDFloat)
 
-			// Build composite key
-			fieldID := pbData["field_id"].(int)
-			seasonID := pbData["season_id"].(int)
-			compositeKey := fmt.Sprintf("%d:%d:%d", personID, fieldID, seasonID)
+			// Look up field definition PB ID
+			fieldDefPBId, found := fieldDefMapping[fieldCMID]
+			if !found {
+				// Field definition not synced, skip
+				if s.Debug {
+					slog.Debug("Field definition not found, skipping",
+						"field_cm_id", fieldCMID,
+						"person_cm_id", personCMID)
+				}
+				continue
+			}
+
+			// Transform to PB format (simplified: only value and year)
+			pbData := s.transformPersonCustomFieldValueToPB(valueData, personPBId, fieldDefPBId, year)
+
+			// Build composite key: personPBId:fieldDefPBId:year
+			compositeKey := fmt.Sprintf("%s:%s:%d", personPBId, fieldDefPBId, year)
 
 			// Track as processed
-			s.TrackProcessedKey(compositeKey, 0) // 0 because key already includes all components
+			s.TrackProcessedKey(compositeKey, 0)
 
 			// Check for existing record
 			if existing, found := existingRecords[compositeKey]; found {
-				// Update if changed
-				changed := false
+				// Update if value changed
 				if existing.GetString("value") != pbData["value"].(string) {
-					changed = true
-				}
-				if existing.GetString("last_updated") != pbData["last_updated"].(string) {
-					changed = true
-				}
-
-				if changed {
 					for key, val := range pbData {
 						existing.Set(key, val)
 					}
@@ -260,7 +318,7 @@ func (s *PersonCustomFieldValuesSync) syncPersonCustomFieldValues(
 				}
 			} else {
 				// Create new record
-				collection, err := s.App.FindCollectionByNameOrId("person_custom_field_values")
+				collection, err := s.App.FindCollectionByNameOrId("person_custom_values")
 				if err != nil {
 					return fmt.Errorf("finding collection: %w", err)
 				}
@@ -269,9 +327,6 @@ func (s *PersonCustomFieldValuesSync) syncPersonCustomFieldValues(
 				for key, val := range pbData {
 					record.Set(key, val)
 				}
-
-				// Try to resolve relations
-				s.resolveRelations(record, personID, fieldID, year)
 
 				if err := s.App.Save(record); err != nil {
 					slog.Error("Error creating custom field value", "error", err)
@@ -291,56 +346,28 @@ func (s *PersonCustomFieldValuesSync) syncPersonCustomFieldValues(
 	return nil
 }
 
-// resolveRelations attempts to set the person and field_definition relation fields
-func (s *PersonCustomFieldValuesSync) resolveRelations(record *core.Record, personID, fieldID, year int) {
-	// Resolve person relation
-	personFilter := fmt.Sprintf("cm_id = %d && year = %d", personID, year)
-	persons, err := s.App.FindRecordsByFilter("persons", personFilter, "", 1, 0, nil)
-	if err == nil && len(persons) > 0 {
-		record.Set("person", persons[0].Id)
-	}
-
-	// Resolve field_definition relation (no year filter - definitions are global)
-	fieldFilter := fmt.Sprintf("cm_id = %d", fieldID)
-	fields, err := s.App.FindRecordsByFilter("custom_field_defs", fieldFilter, "", 1, 0, nil)
-	if err == nil && len(fields) > 0 {
-		record.Set("field_definition", fields[0].Id)
-	}
-}
-
-// deleteOrphans removes custom field values for persons not in the sync set
-func (s *PersonCustomFieldValuesSync) deleteOrphans(year int, validPersonIDs []int) error {
-	// Build set of valid person IDs
-	validSet := make(map[int]bool)
-	for _, id := range validPersonIDs {
-		validSet[id] = true
-	}
-
-	// Find records for persons not in valid set
+// deleteOrphans removes custom field values that were not seen in this sync
+func (s *PersonCustomFieldValuesSync) deleteOrphans(year int) error {
 	filter := fmt.Sprintf("year = %d", year)
-	records, err := s.App.FindRecordsByFilter("person_custom_field_values", filter, "", 10000, 0, nil)
+	records, err := s.App.FindRecordsByFilter("person_custom_values", filter, "", 10000, 0, nil)
 	if err != nil {
 		return fmt.Errorf("finding records for orphan check: %w", err)
 	}
 
 	deleted := 0
 	for _, record := range records {
-		personID, ok := record.Get("person_id").(float64)
-		if !ok {
-			continue
-		}
+		personPBId := record.GetString("person")
+		fieldDefPBId := record.GetString("field_definition")
+		recordYear := record.GetInt("year")
 
-		// Check if this value was processed (still valid)
-		fieldID, _ := record.Get("field_id").(float64)
-		seasonID, _ := record.Get("season_id").(float64)
-		compositeKey := fmt.Sprintf("%d:%d:%d", int(personID), int(fieldID), int(seasonID))
+		compositeKey := fmt.Sprintf("%s:%s:%d", personPBId, fieldDefPBId, recordYear)
 
 		if !s.ProcessedKeys[compositeKey] {
 			// This value was not seen in the sync, delete it
 			if err := s.App.Delete(record); err != nil {
 				slog.Error("Error deleting orphan custom field value",
-					"person_id", int(personID),
-					"field_id", int(fieldID),
+					"person", personPBId,
+					"field_definition", fieldDefPBId,
 					"error", err)
 			} else {
 				deleted++
@@ -356,46 +383,28 @@ func (s *PersonCustomFieldValuesSync) deleteOrphans(year int, validPersonIDs []i
 }
 
 // transformPersonCustomFieldValueToPB transforms CampMinder custom field value data to PocketBase format
+// Simplified schema: only person, field_definition, value, year
 func (s *PersonCustomFieldValuesSync) transformPersonCustomFieldValueToPB(
 	data map[string]interface{},
-	personID int,
+	personPBId string,
+	fieldDefPBId string,
 	year int,
-) (map[string]interface{}, error) {
+) map[string]interface{} {
 	pbData := make(map[string]interface{})
 
-	// Extract field ID (required) - this is the custom field definition ID
-	fieldIDFloat, ok := data["Id"].(float64)
-	if !ok || fieldIDFloat == 0 {
-		return nil, fmt.Errorf("invalid or missing custom field value Id")
-	}
-	pbData["field_id"] = int(fieldIDFloat)
-
-	// Set person ID
-	pbData["person_id"] = personID
-
-	// Extract season ID (optional - 0 for non-seasonal fields)
-	if seasonID, ok := data["SeasonID"].(float64); ok {
-		pbData["season_id"] = int(seasonID)
-	} else {
-		pbData["season_id"] = 0
-	}
+	// Set relations
+	pbData["person"] = personPBId
+	pbData["field_definition"] = fieldDefPBId
 
 	// Extract value (can be empty or nil)
-	if value, ok := data["Value"].(string); ok {
+	if value, ok := data["value"].(string); ok {
 		pbData["value"] = value
 	} else {
 		pbData["value"] = ""
 	}
 
-	// Extract last updated
-	if lastUpdated, ok := data["LastUpdated"].(string); ok {
-		pbData["last_updated"] = lastUpdated
-	} else {
-		pbData["last_updated"] = ""
-	}
-
 	// Set year
 	pbData["year"] = year
 
-	return pbData, nil
+	return pbData
 }

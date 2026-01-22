@@ -10,32 +10,39 @@ import (
 	"github.com/camp/kindred/pocketbase/campminder"
 )
 
-// Service name constant
-const serviceNameHouseholdCustomFieldValues = "household_custom_field_values"
+// Service name constant - uses new table name
+const serviceNameHouseholdCustomValues = "household_custom_values"
 
 // HouseholdCustomFieldValuesSync handles syncing custom field values for households from CampMinder
 // This is an ON-DEMAND sync (not part of daily sync) because it requires 1 API call per household
 type HouseholdCustomFieldValuesSync struct {
 	BaseSyncService
-	SessionFilter int // 0 = all sessions, 1-4 = specific session (filters by persons in session)
+	Session string // Session filter: "all", "1", "2", "2a", "3", "4", etc.
+	Debug   bool   // Enable debug logging
 }
 
 // NewHouseholdCustomFieldValuesSync creates a new household custom field values sync service
 func NewHouseholdCustomFieldValuesSync(app core.App, client *campminder.Client) *HouseholdCustomFieldValuesSync {
 	return &HouseholdCustomFieldValuesSync{
 		BaseSyncService: NewBaseSyncService(app, client),
-		SessionFilter:   0,
+		Session:         DefaultSession, // Default to all sessions
+		Debug:           false,
 	}
 }
 
 // Name returns the name of this sync service
 func (s *HouseholdCustomFieldValuesSync) Name() string {
-	return serviceNameHouseholdCustomFieldValues
+	return serviceNameHouseholdCustomValues
 }
 
-// SetSessionFilter sets the session filter for this sync
-func (s *HouseholdCustomFieldValuesSync) SetSessionFilter(session int) {
-	s.SessionFilter = session
+// SetSession sets the session filter for this sync (e.g., "1", "2", "2a", "all")
+func (s *HouseholdCustomFieldValuesSync) SetSession(session string) {
+	s.Session = session
+}
+
+// SetDebug enables or disables debug logging
+func (s *HouseholdCustomFieldValuesSync) SetDebug(debug bool) {
+	s.Debug = debug
 }
 
 // Sync performs the household custom field values sync
@@ -43,7 +50,7 @@ func (s *HouseholdCustomFieldValuesSync) Sync(ctx context.Context) error {
 	year := s.Client.GetSeasonID()
 
 	// Start the sync process
-	s.LogSyncStart(serviceNameHouseholdCustomFieldValues)
+	s.LogSyncStart(serviceNameHouseholdCustomValues)
 	s.Stats = Stats{}
 	s.SyncSuccessful = false
 
@@ -57,7 +64,9 @@ func (s *HouseholdCustomFieldValuesSync) Sync(ctx context.Context) error {
 	}
 
 	if len(householdIDs) == 0 {
-		slog.Info("No households to sync custom field values for")
+		slog.Info("No households to sync custom field values for",
+			"session", s.Session,
+			"year", year)
 		s.SyncSuccessful = true
 		s.LogSyncComplete("HouseholdCustomFieldValues")
 		return nil
@@ -65,18 +74,31 @@ func (s *HouseholdCustomFieldValuesSync) Sync(ctx context.Context) error {
 
 	slog.Info("Syncing custom field values for households",
 		"count", len(householdIDs),
-		"session_filter", s.SessionFilter,
+		"session", s.Session,
 		"year", year)
 
-	// Pre-load existing records for this year
-	filter := fmt.Sprintf("year = %d", year)
-	existingRecords, err := s.PreloadCompositeRecords("household_custom_field_values", filter, func(record *core.Record) (string, bool) {
-		householdID, _ := record.Get("household_id").(float64)
-		fieldID, _ := record.Get("field_id").(float64)
-		seasonID, _ := record.Get("season_id").(float64)
+	// Pre-load household CM ID -> PB ID mapping for the year
+	householdMapping, err := s.preloadHouseholdMapping(year)
+	if err != nil {
+		return fmt.Errorf("preloading household mapping: %w", err)
+	}
 
-		if householdID > 0 && fieldID > 0 {
-			return fmt.Sprintf("%d:%d:%d", int(householdID), int(fieldID), int(seasonID)), true
+	// Pre-load field definition CM ID -> PB ID mapping
+	fieldDefMapping, err := s.preloadFieldDefMapping()
+	if err != nil {
+		return fmt.Errorf("preloading field definition mapping: %w", err)
+	}
+
+	// Pre-load existing records for this year
+	// Key: householdPBId:fieldDefPBId:year
+	filter := fmt.Sprintf("year = %d", year)
+	existingRecords, err := s.PreloadCompositeRecords("household_custom_values", filter, func(record *core.Record) (string, bool) {
+		householdPBId := record.GetString("household")
+		fieldDefPBId := record.GetString("field_definition")
+		recordYear := record.GetInt("year")
+
+		if householdPBId != "" && fieldDefPBId != "" {
+			return fmt.Sprintf("%s:%s:%d", householdPBId, fieldDefPBId, recordYear), true
 		}
 		return "", false
 	})
@@ -87,7 +109,7 @@ func (s *HouseholdCustomFieldValuesSync) Sync(ctx context.Context) error {
 	s.SyncSuccessful = true
 
 	// Process each household
-	for i, householdID := range householdIDs {
+	for i, householdCMID := range householdIDs {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -102,17 +124,25 @@ func (s *HouseholdCustomFieldValuesSync) Sync(ctx context.Context) error {
 				"percent", fmt.Sprintf("%.1f%%", float64(i)/float64(len(householdIDs))*100))
 		}
 
+		// Get PB ID for this household
+		householdPBId, found := householdMapping[householdCMID]
+		if !found {
+			slog.Warn("Household not found in PocketBase, skipping custom field values",
+				"household_cm_id", householdCMID)
+			continue
+		}
+
 		// Fetch custom field values for this household
-		if err := s.syncHouseholdCustomFieldValues(ctx, householdID, year, existingRecords); err != nil {
+		if err := s.syncHouseholdCustomFieldValues(ctx, householdCMID, householdPBId, year, fieldDefMapping, existingRecords); err != nil {
 			slog.Error("Error syncing custom field values for household",
-				"household_id", householdID,
+				"household_cm_id", householdCMID,
 				"error", err)
 			s.Stats.Errors++
 		}
 	}
 
 	// Delete orphans
-	if err := s.deleteOrphans(year, householdIDs); err != nil {
+	if err := s.deleteOrphans(year); err != nil {
 		slog.Error("Error deleting orphan custom field values", "error", err)
 	}
 
@@ -125,66 +155,67 @@ func (s *HouseholdCustomFieldValuesSync) Sync(ctx context.Context) error {
 	return nil
 }
 
-// getHouseholdIDsToSync returns the list of household IDs to sync based on session filter
+// preloadHouseholdMapping loads CM ID -> PB ID mapping for households in the given year
+func (s *HouseholdCustomFieldValuesSync) preloadHouseholdMapping(year int) (map[int]string, error) {
+	filter := fmt.Sprintf("year = %d", year)
+	households, err := s.App.FindRecordsByFilter("households", filter, "", 10000, 0, nil)
+	if err != nil {
+		return nil, fmt.Errorf("finding households: %w", err)
+	}
+
+	mapping := make(map[int]string, len(households))
+	for _, household := range households {
+		if cmID, ok := household.Get("cm_id").(float64); ok && cmID > 0 {
+			mapping[int(cmID)] = household.Id
+		}
+	}
+
+	if s.Debug {
+		slog.Debug("Preloaded household mapping", "count", len(mapping))
+	}
+
+	return mapping, nil
+}
+
+// preloadFieldDefMapping loads CM ID -> PB ID mapping for custom field definitions
+func (s *HouseholdCustomFieldValuesSync) preloadFieldDefMapping() (map[int]string, error) {
+	// Field definitions are global (no year filter)
+	fieldDefs, err := s.App.FindRecordsByFilter("custom_field_defs", "", "", 10000, 0, nil)
+	if err != nil {
+		return nil, fmt.Errorf("finding field definitions: %w", err)
+	}
+
+	mapping := make(map[int]string, len(fieldDefs))
+	for _, fieldDef := range fieldDefs {
+		if cmID, ok := fieldDef.Get("cm_id").(float64); ok && cmID > 0 {
+			mapping[int(cmID)] = fieldDef.Id
+		}
+	}
+
+	if s.Debug {
+		slog.Debug("Preloaded field definition mapping", "count", len(mapping))
+	}
+
+	return mapping, nil
+}
+
+// getHouseholdIDsToSync returns the list of household CampMinder IDs to sync based on session filter
 func (s *HouseholdCustomFieldValuesSync) getHouseholdIDsToSync(year int) ([]int, error) {
-	if s.SessionFilter > 0 {
-		// Get households for persons enrolled in the specific session
-		sessionFilter := fmt.Sprintf("year = %d && session_type = 'main'", year)
-		sessions, err := s.App.FindRecordsByFilter("camp_sessions", sessionFilter, "", 100, 0, nil)
+	// Use session resolver if session filter is specified
+	if s.Session != "" && s.Session != DefaultSession {
+		resolver := NewSessionResolver(s.App)
+		householdIDs, err := resolver.GetHouseholdIDsForSession(s.Session, year)
 		if err != nil {
-			return nil, fmt.Errorf("finding sessions: %w", err)
+			return nil, err
 		}
 
-		var targetSessionID string
-		for _, sess := range sessions {
-			name := sess.GetString("name")
-			if name == fmt.Sprintf("Session %d", s.SessionFilter) {
-				targetSessionID = sess.Id
-				break
-			}
+		if s.Debug {
+			slog.Debug("Resolved session to household IDs",
+				"session", s.Session,
+				"count", len(householdIDs),
+				"year", year)
 		}
 
-		if targetSessionID == "" {
-			return nil, fmt.Errorf("session %d not found for year %d", s.SessionFilter, year)
-		}
-
-		// Get attendees for this session
-		attendeeFilter := fmt.Sprintf("year = %d && session = '%s'", year, targetSessionID)
-		attendees, err := s.App.FindRecordsByFilter("attendees", attendeeFilter, "", 10000, 0, nil)
-		if err != nil {
-			return nil, fmt.Errorf("finding attendees: %w", err)
-		}
-
-		// Get person IDs from attendees
-		personIDSet := make(map[int]bool)
-		for _, attendee := range attendees {
-			if personID, ok := attendee.Get("person_id").(float64); ok && personID > 0 {
-				personIDSet[int(personID)] = true
-			}
-		}
-
-		// Get households for these persons
-		householdIDSet := make(map[int]bool)
-		personFilter := fmt.Sprintf("year = %d", year)
-		persons, err := s.App.FindRecordsByFilter("persons", personFilter, "", 10000, 0, nil)
-		if err != nil {
-			return nil, fmt.Errorf("finding persons: %w", err)
-		}
-
-		for _, person := range persons {
-			cmID, ok := person.Get("cm_id").(float64)
-			if !ok || !personIDSet[int(cmID)] {
-				continue
-			}
-			if householdID, ok := person.Get("household_id").(float64); ok && householdID > 0 {
-				householdIDSet[int(householdID)] = true
-			}
-		}
-
-		householdIDs := make([]int, 0, len(householdIDSet))
-		for id := range householdIDSet {
-			householdIDs = append(householdIDs, id)
-		}
 		return householdIDs, nil
 	}
 
@@ -201,14 +232,23 @@ func (s *HouseholdCustomFieldValuesSync) getHouseholdIDsToSync(year int) ([]int,
 			householdIDs = append(householdIDs, int(cmID))
 		}
 	}
+
+	if s.Debug {
+		slog.Debug("Getting all households for year",
+			"count", len(householdIDs),
+			"year", year)
+	}
+
 	return householdIDs, nil
 }
 
 // syncHouseholdCustomFieldValues fetches and stores custom field values for a single household
 func (s *HouseholdCustomFieldValuesSync) syncHouseholdCustomFieldValues(
 	ctx context.Context,
-	householdID int,
+	householdCMID int,
+	householdPBId string,
 	year int,
+	fieldDefMapping map[int]string,
 	existingRecords map[string]*core.Record,
 ) error {
 	page := 1
@@ -221,37 +261,45 @@ func (s *HouseholdCustomFieldValuesSync) syncHouseholdCustomFieldValues(
 		default:
 		}
 
-		values, hasMore, err := s.Client.GetHouseholdCustomFieldValuesPage(householdID, page, pageSize)
+		values, hasMore, err := s.Client.GetHouseholdCustomFieldValuesPage(householdCMID, page, pageSize)
 		if err != nil {
 			return fmt.Errorf("fetching custom field values page %d: %w", page, err)
 		}
 
 		for _, valueData := range values {
-			pbData, err := s.transformHouseholdCustomFieldValueToPB(valueData, householdID, year)
-			if err != nil {
-				slog.Error("Error transforming custom field value",
-					"household_id", householdID,
-					"error", err)
+			// Extract field ID from API response
+			fieldCMIDFloat, ok := valueData["id"].(float64)
+			if !ok || fieldCMIDFloat == 0 {
+				slog.Warn("Invalid or missing field id in custom field value",
+					"household_cm_id", householdCMID)
 				s.Stats.Errors++
 				continue
 			}
+			fieldCMID := int(fieldCMIDFloat)
 
-			fieldID := pbData["field_id"].(int)
-			seasonID := pbData["season_id"].(int)
-			compositeKey := fmt.Sprintf("%d:%d:%d", householdID, fieldID, seasonID)
+			// Look up field definition PB ID
+			fieldDefPBId, found := fieldDefMapping[fieldCMID]
+			if !found {
+				// Field definition not synced, skip
+				if s.Debug {
+					slog.Debug("Field definition not found, skipping",
+						"field_cm_id", fieldCMID,
+						"household_cm_id", householdCMID)
+				}
+				continue
+			}
+
+			// Transform to PB format (simplified: only value and year)
+			pbData := s.transformHouseholdCustomFieldValueToPB(valueData, householdPBId, fieldDefPBId, year)
+
+			// Build composite key: householdPBId:fieldDefPBId:year
+			compositeKey := fmt.Sprintf("%s:%s:%d", householdPBId, fieldDefPBId, year)
 
 			s.TrackProcessedKey(compositeKey, 0)
 
 			if existing, found := existingRecords[compositeKey]; found {
-				changed := false
+				// Update if value changed
 				if existing.GetString("value") != pbData["value"].(string) {
-					changed = true
-				}
-				if existing.GetString("last_updated") != pbData["last_updated"].(string) {
-					changed = true
-				}
-
-				if changed {
 					for key, val := range pbData {
 						existing.Set(key, val)
 					}
@@ -265,7 +313,7 @@ func (s *HouseholdCustomFieldValuesSync) syncHouseholdCustomFieldValues(
 					s.Stats.Skipped++
 				}
 			} else {
-				collection, err := s.App.FindCollectionByNameOrId("household_custom_field_values")
+				collection, err := s.App.FindCollectionByNameOrId("household_custom_values")
 				if err != nil {
 					return fmt.Errorf("finding collection: %w", err)
 				}
@@ -274,8 +322,6 @@ func (s *HouseholdCustomFieldValuesSync) syncHouseholdCustomFieldValues(
 				for key, val := range pbData {
 					record.Set(key, val)
 				}
-
-				s.resolveRelations(record, householdID, fieldID, year)
 
 				if err := s.App.Save(record); err != nil {
 					slog.Error("Error creating custom field value", "error", err)
@@ -295,50 +341,27 @@ func (s *HouseholdCustomFieldValuesSync) syncHouseholdCustomFieldValues(
 	return nil
 }
 
-// resolveRelations attempts to set the household and field_definition relation fields
-func (s *HouseholdCustomFieldValuesSync) resolveRelations(record *core.Record, householdID, fieldID, year int) {
-	householdFilter := fmt.Sprintf("cm_id = %d && year = %d", householdID, year)
-	households, err := s.App.FindRecordsByFilter("households", householdFilter, "", 1, 0, nil)
-	if err == nil && len(households) > 0 {
-		record.Set("household", households[0].Id)
-	}
-
-	fieldFilter := fmt.Sprintf("cm_id = %d && year = %d", fieldID, year)
-	fields, err := s.App.FindRecordsByFilter("custom_field_defs", fieldFilter, "", 1, 0, nil)
-	if err == nil && len(fields) > 0 {
-		record.Set("field_definition", fields[0].Id)
-	}
-}
-
-// deleteOrphans removes custom field values for households not in the sync set
-func (s *HouseholdCustomFieldValuesSync) deleteOrphans(year int, validHouseholdIDs []int) error {
-	validSet := make(map[int]bool)
-	for _, id := range validHouseholdIDs {
-		validSet[id] = true
-	}
-
+// deleteOrphans removes custom field values that were not seen in this sync
+func (s *HouseholdCustomFieldValuesSync) deleteOrphans(year int) error {
 	filter := fmt.Sprintf("year = %d", year)
-	records, err := s.App.FindRecordsByFilter("household_custom_field_values", filter, "", 10000, 0, nil)
+	records, err := s.App.FindRecordsByFilter("household_custom_values", filter, "", 10000, 0, nil)
 	if err != nil {
 		return fmt.Errorf("finding records for orphan check: %w", err)
 	}
 
 	deleted := 0
 	for _, record := range records {
-		householdID, ok := record.Get("household_id").(float64)
-		if !ok {
-			continue
-		}
+		householdPBId := record.GetString("household")
+		fieldDefPBId := record.GetString("field_definition")
+		recordYear := record.GetInt("year")
 
-		fieldID, _ := record.Get("field_id").(float64)
-		seasonID, _ := record.Get("season_id").(float64)
-		compositeKey := fmt.Sprintf("%d:%d:%d", int(householdID), int(fieldID), int(seasonID))
+		compositeKey := fmt.Sprintf("%s:%s:%d", householdPBId, fieldDefPBId, recordYear)
 
 		if !s.ProcessedKeys[compositeKey] {
 			if err := s.App.Delete(record); err != nil {
 				slog.Error("Error deleting orphan custom field value",
-					"household_id", int(householdID),
-					"field_id", int(fieldID),
+					"household", householdPBId,
+					"field_definition", fieldDefPBId,
 					"error", err)
 			} else {
 				deleted++
@@ -354,40 +377,28 @@ func (s *HouseholdCustomFieldValuesSync) deleteOrphans(year int, validHouseholdI
 }
 
 // transformHouseholdCustomFieldValueToPB transforms CampMinder custom field value data to PocketBase format
+// Simplified schema: only household, field_definition, value, year
 func (s *HouseholdCustomFieldValuesSync) transformHouseholdCustomFieldValueToPB(
 	data map[string]interface{},
-	householdID int,
+	householdPBId string,
+	fieldDefPBId string,
 	year int,
-) (map[string]interface{}, error) {
+) map[string]interface{} {
 	pbData := make(map[string]interface{})
 
-	fieldIDFloat, ok := data["Id"].(float64)
-	if !ok || fieldIDFloat == 0 {
-		return nil, fmt.Errorf("invalid or missing custom field value Id")
-	}
-	pbData["field_id"] = int(fieldIDFloat)
+	// Set relations
+	pbData["household"] = householdPBId
+	pbData["field_definition"] = fieldDefPBId
 
-	pbData["household_id"] = householdID
-
-	if seasonID, ok := data["SeasonID"].(float64); ok {
-		pbData["season_id"] = int(seasonID)
-	} else {
-		pbData["season_id"] = 0
-	}
-
-	if value, ok := data["Value"].(string); ok {
+	// Extract value (can be empty or nil)
+	if value, ok := data["value"].(string); ok {
 		pbData["value"] = value
 	} else {
 		pbData["value"] = ""
 	}
 
-	if lastUpdated, ok := data["LastUpdated"].(string); ok {
-		pbData["last_updated"] = lastUpdated
-	} else {
-		pbData["last_updated"] = ""
-	}
-
+	// Set year
 	pbData["year"] = year
 
-	return pbData, nil
+	return pbData
 }
