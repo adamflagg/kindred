@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/camp/kindred/pocketbase/campminder"
 	"github.com/pocketbase/pocketbase/core"
@@ -396,45 +395,27 @@ func (s *BunkAssignmentsSync) processAssignment(
 		return nil
 	}
 
-	// Extract other fields
-	grade := 0
-	if g, ok := assignmentData["Grade"].(float64); ok {
-		grade = int(g)
-	}
-
-	age := 0
-	if a, ok := assignmentData["Age"].(float64); ok {
-		age = int(a)
-	}
-
-	// Parse assignment date
-	var assignedDate *time.Time
-	if dateStr, ok := assignmentData["AssignedDate"].(string); ok && dateStr != "" {
-		if t, err := time.Parse("2006-01-02", dateStr); err == nil {
-			assignedDate = &t
-		}
-	}
-
 	// Get CampMinder assignment ID
 	var assignmentCMID int
 	if id, ok := assignmentData["ID"].(float64); ok {
 		assignmentCMID = int(id)
 	}
 
+	// Extract IsDeleted (defaults to false if not present)
+	isDeleted := false
+	if val, ok := assignmentData["IsDeleted"].(bool); ok {
+		isDeleted = val
+	}
+
 	// Check if assignment already exists using composite key
 	year := s.Client.GetSeasonID()
 	key := fmt.Sprintf("%d:%d:%d", personCMID, sessionCMID, year)
 
-	// Prepare record data with CM ID
+	// Prepare record data with CM ID and is_deleted
 	recordData := map[string]interface{}{
-		"year":  year,
-		"grade": grade,
-		"age":   age,
-		"cm_id": assignmentCMID, // The assignment's own CampMinder ID
-	}
-
-	if assignedDate != nil {
-		recordData["assigned_date"] = assignedDate.Format("2006-01-02 15:04:05.000Z")
+		"year":       year,
+		"cm_id":      assignmentCMID, // The assignment's own CampMinder ID
+		"is_deleted": isDeleted,
 	}
 
 	// Populate all relations - person, session, and bunk are all required
