@@ -21,9 +21,9 @@ type PersonsSync struct {
 	missingDataStats map[string]int
 	skippedStaff     int
 
-	// Sub-entity stats for combined sync (households, person_tags)
+	// Sub-entity stats for combined sync (households)
+	// Note: person_tags removed - tags are now a multi-select relation on persons
 	householdStats *Stats
-	personTagStats *Stats
 }
 
 // personHouseholdIDs holds the CampMinder IDs for a person's households
@@ -50,14 +50,9 @@ func (s *PersonsSync) Name() string {
 // GetStats returns stats for this sync, including sub-entity stats for combined sync
 func (s *PersonsSync) GetStats() Stats {
 	stats := s.Stats
-	if s.householdStats != nil || s.personTagStats != nil {
+	if s.householdStats != nil {
 		stats.SubStats = make(map[string]Stats)
-		if s.householdStats != nil {
-			stats.SubStats["households"] = *s.householdStats
-		}
-		if s.personTagStats != nil {
-			stats.SubStats["person_tags"] = *s.personTagStats
-		}
+		stats.SubStats["households"] = *s.householdStats
 	}
 	return stats
 }
@@ -88,13 +83,12 @@ func (s *PersonsSync) getPersonIDsFromAttendees(year int) ([]int, error) {
 	return personIDs, nil
 }
 
-// Sync performs the combined persons/households/person_tags synchronization
-// This is a combined sync that fetches persons data once and populates all three tables:
-// 1. persons - Core person data with CamperDetails fields
+// Sync performs the combined persons/households synchronization
+// This is a combined sync that fetches persons data once and populates both tables:
+// 1. persons - Core person data with CamperDetails fields (tags as multi-select relation)
 // 2. households - Deduplicated household records (shared across family members)
-// 3. person_tags - Tag assignments with proper relations
 func (s *PersonsSync) Sync(ctx context.Context) error {
-	s.LogSyncStart("persons (combined: persons + households + person_tags)")
+	s.LogSyncStart("persons (combined: persons + households)")
 	s.Stats = Stats{}        // Reset stats
 	s.SyncSuccessful = false // Reset sync status
 	s.ClearProcessedKeys()   // Reset processed tracking
@@ -145,50 +139,30 @@ func (s *PersonsSync) Sync(ctx context.Context) error {
 		slog.Info("Loaded existing households from database", "count", len(existingHouseholds), "year", year)
 	}
 
-	// Pre-load existing person_tags by composite key for this year
-	existingPersonTags := make(map[string]*core.Record)
-	allPersonTags, err := s.App.FindRecordsByFilter("person_tags", filter, "", 0, 0)
-	if err != nil {
-		slog.Warn("Error loading existing person_tags", "year", year, "error", err)
-	} else {
-		for _, record := range allPersonTags {
-			personID, personOK := record.Get("person_id").(float64)
-			tagName, tagOK := record.Get("tag_name").(string)
-			yr, yearOK := record.Get("year").(float64)
-			if personOK && tagOK && yearOK {
-				key := fmt.Sprintf("%d:%s:%d", int(personID), tagName, int(yr))
-				existingPersonTags[key] = record
-			}
-		}
-		slog.Info("Loaded existing person_tags from database", "count", len(existingPersonTags), "year", year)
-	}
-
-	// Pre-load tag definitions for relation lookups (global - no year filter)
-	tagDefsByName := make(map[string]*core.Record)
+	// Pre-load tag definitions for tags multi-select relation (global - no year filter)
+	// Maps tag name -> PocketBase ID for direct population on persons.tags field
+	tagDefsByName := make(map[string]string)
 	tagDefs, err := s.App.FindRecordsByFilter("person_tag_defs", "", "", 0, 0)
 	if err != nil {
 		slog.Warn("Error loading tag definitions", "error", err)
 	} else {
 		for _, td := range tagDefs {
 			if name, ok := td.Get("name").(string); ok && name != "" {
-				tagDefsByName[name] = td
+				tagDefsByName[name] = td.Id
 			}
 		}
-		slog.Info("Loaded tag definitions for relation lookup", "count", len(tagDefsByName))
+		slog.Info("Loaded tag definitions for tags field", "count", len(tagDefsByName))
 	}
 
 	// Track unique households across all batches
 	allExtractedHouseholds := make(map[int]map[string]any)
 	// Track processed household IDs for orphan detection
 	processedHouseholdIDs := make(map[int]bool)
-	// Track processed person_tag keys for orphan detection
-	processedPersonTagKeys := make(map[string]bool)
 	// Track household IDs for each person (for relation population)
 	personHouseholdIDMap := make(map[int]personHouseholdIDs)
 
 	// Stats for combined sync
 	householdStats := Stats{}
-	personTagStats := Stats{}
 
 	// Process persons in batches (CampMinder API can handle multiple IDs)
 	batchSize := 500
@@ -220,10 +194,10 @@ func (s *PersonsSync) Sync(ctx context.Context) error {
 			s.SyncSuccessful = true
 		}
 
-		// Process each person and extract households/tags
+		// Process each person and extract households
 		for _, personData := range persons {
-			// 1. Process person record
-			if err := s.processPerson(personData, existingPersons, year); err != nil {
+			// 1. Process person record (includes tags as multi-select relation)
+			if err := s.processPerson(personData, existingPersons, tagDefsByName, year); err != nil {
 				slog.Error("Error processing person", "error", err)
 				s.Stats.Errors++
 			}
@@ -242,44 +216,13 @@ func (s *PersonsSync) Sync(ctx context.Context) error {
 				continue
 			}
 			personHouseholdIDMap[int(personID)] = s.extractHouseholdIDsFromPerson(personData)
-
-			// 4. Extract and process person_tags immediately
-			tags := s.extractTagsFromPerson(personData)
-			for _, tagData := range tags {
-				pbData, err := s.transformPersonTagToPB(tagData, int(personID), year)
-				if err != nil {
-					slog.Debug("Error transforming person tag", "personID", int(personID), "error", err)
-					personTagStats.Errors++
-					continue
-				}
-
-				// Look up relations
-				tagName, _ := pbData["tag_name"].(string)
-				if tagDef, exists := tagDefsByName[tagName]; exists {
-					pbData["tag_definition"] = tagDef.Id
-				}
-				// Person relation will be set after persons are saved
-				if person, exists := existingPersons[int(personID)]; exists {
-					pbData["person"] = person.Id
-				}
-
-				// Create composite key
-				compositeKey := fmt.Sprintf("%d:%s:%d", int(personID), tagName, year)
-				processedPersonTagKeys[compositeKey] = true
-
-				// Process the record
-				if err := s.processPersonTagRecord(compositeKey, pbData, existingPersonTags, &personTagStats); err != nil {
-					slog.Error("Error processing person tag", "personID", int(personID), "tagName", tagName, "error", err)
-					personTagStats.Errors++
-				}
-			}
 		}
 	}
 
 	slog.Info("Extracted unique households from persons", "count", len(allExtractedHouseholds))
 
 	// Process all unique households
-	householdCompareFields := []string{"cm_id", "greeting", "mailing_title", "alternate_mailing_title", "billing_mailing_title", "household_phone", "billing_address", "last_updated_utc"}
+	householdCompareFields := []string{"cm_id", "greeting", "mailing_title", "alternate_mailing_title", "billing_mailing_title", "household_phone", "billing_address"}
 	for householdID, householdData := range allExtractedHouseholds {
 		pbData, err := s.transformHouseholdToPB(householdData, year)
 		if err != nil {
@@ -314,11 +257,6 @@ func (s *PersonsSync) Sync(ctx context.Context) error {
 		slog.Warn("Failed to update person-household relations", "error", err)
 	}
 
-	// Update person relations in person_tags (person records may be newly created)
-	if err := s.updatePersonTagRelations(year, existingPersons); err != nil {
-		slog.Warn("Failed to update person_tag relations", "error", err)
-	}
-
 	// Delete orphans for persons
 	if err := s.deleteOrphans(year); err != nil {
 		slog.Warn("Failed to delete orphaned persons", "error", err)
@@ -329,11 +267,6 @@ func (s *PersonsSync) Sync(ctx context.Context) error {
 		slog.Warn("Failed to delete orphaned households", "error", err)
 	}
 
-	// Delete orphans for person_tags
-	if err := s.deletePersonTagOrphans(year, processedPersonTagKeys); err != nil {
-		slog.Warn("Failed to delete orphaned person_tags", "error", err)
-	}
-
 	// Force WAL checkpoint to ensure data is flushed
 	if err := s.ForceWALCheckpoint(); err != nil {
 		slog.Warn("WAL checkpoint failed", "error", err)
@@ -341,7 +274,6 @@ func (s *PersonsSync) Sync(ctx context.Context) error {
 
 	// Store sub-entity stats for combined sync output
 	s.householdStats = &householdStats
-	s.personTagStats = &personTagStats
 
 	// Report results
 	s.printDataQualitySummary()
@@ -354,10 +286,6 @@ func (s *PersonsSync) Sync(ctx context.Context) error {
 		"households_updated", householdStats.Updated,
 		"households_skipped", householdStats.Skipped,
 		"households_errors", householdStats.Errors,
-		"person_tags_created", personTagStats.Created,
-		"person_tags_updated", personTagStats.Updated,
-		"person_tags_skipped", personTagStats.Skipped,
-		"person_tags_errors", personTagStats.Errors,
 	)
 	s.LogSyncComplete("Persons (combined)")
 
@@ -373,6 +301,7 @@ func (s *PersonsSync) Sync(ctx context.Context) error {
 func (s *PersonsSync) processPerson(
 	personData map[string]interface{},
 	existingPersons map[int]*core.Record,
+	tagDefsByName map[string]string,
 	year int,
 ) error {
 	// Transform to PocketBase format
@@ -388,6 +317,11 @@ func (s *PersonsSync) processPerson(
 		return nil
 	}
 
+	// Extract tags and populate multi-select relation field
+	if tagIDs := s.extractTagIDs(personData, tagDefsByName); tagIDs != nil {
+		pbData["tags"] = tagIDs
+	}
+
 	// Get person ID
 	personID, ok := personData["ID"].(float64)
 	if !ok {
@@ -401,16 +335,17 @@ func (s *PersonsSync) processPerson(
 	// Track this person as processed for orphan detection with year
 	s.TrackProcessedKey(personIDInt, year)
 
-	// Fields to compare for updates (includes expanded CamperDetails fields and household relations)
-	// Note: Household relations are populated after save via updatePersonHouseholdRelations
+	// Fields to compare for updates (includes expanded CamperDetails fields)
+	// Note: Household relation fields (household, primary_childhood_household, alternate_childhood_household)
+	// are excluded because they're populated separately in updatePersonHouseholdRelations after save.
+	// Tags field IS included - FieldEquals normalizes []interface{} vs []string for proper comparison.
 	compareFields := []string{"cm_id", "first_name", "last_name", "preferred_name",
 		"birthdate", "gender", "age", "grade", "school", "years_at_camp",
 		"last_year_attended", "gender_identity_id", "gender_identity_name", "gender_identity_write_in",
 		"gender_pronoun_id", "gender_pronoun_name", "gender_pronoun_write_in", "phone_numbers",
 		"email_addresses", "address", "household_id", "is_camper", "year", "parent_names",
 		"division_id", "partition_id", "lead_date", "tshirt_size",
-		// Household relations (populated after households are saved)
-		"household", "primary_childhood_household", "alternate_childhood_household"}
+		"tags"}
 
 	if existing != nil {
 		// Check if update is needed
@@ -418,12 +353,7 @@ func (s *PersonsSync) processPerson(
 		for _, field := range compareFields {
 			if value, exists := pbData[field]; exists {
 				if !s.FieldEquals(existing.Get(field), value) {
-					slog.Debug("Person field differs",
-						"personID", personIDInt,
-						"field", field,
-						"existing", existing.Get(field),
-						"new", value,
-					)
+					slog.Debug("Person field differs", "personID", personIDInt, "field", field)
 					needsUpdate = true
 					break
 				}
@@ -923,8 +853,11 @@ func (s *PersonsSync) extractHouseholdIDsFromPerson(personData map[string]interf
 	return result
 }
 
-// extractTagsFromPerson extracts tags from person data (combined sync)
-func (s *PersonsSync) extractTagsFromPerson(personData map[string]interface{}) []map[string]interface{} {
+// extractTagIDs extracts PocketBase tag definition IDs from person data
+// Returns nil if no tags, empty slice if Tags array is empty
+// tagDefsByName maps tag name -> PocketBase ID
+// Note: CampMinder may return duplicate tags - we deduplicate here to match PocketBase behavior
+func (s *PersonsSync) extractTagIDs(personData map[string]any, tagDefsByName map[string]string) []string {
 	tagsRaw, ok := personData["Tags"]
 	if !ok || tagsRaw == nil {
 		return nil
@@ -935,14 +868,27 @@ func (s *PersonsSync) extractTagsFromPerson(personData map[string]interface{}) [
 		return nil
 	}
 
-	result := make([]map[string]interface{}, 0, len(tagsArray))
+	if len(tagsArray) == 0 {
+		return []string{}
+	}
+
+	// Use map to deduplicate - CampMinder sometimes returns duplicate tags
+	seen := make(map[string]bool)
+	var tagIDs []string
 	for _, tagRaw := range tagsArray {
 		if tag, ok := tagRaw.(map[string]interface{}); ok {
-			result = append(result, tag)
+			if name, ok := tag["Name"].(string); ok && name != "" {
+				if tagID, exists := tagDefsByName[name]; exists {
+					if !seen[tagID] {
+						seen[tagID] = true
+						tagIDs = append(tagIDs, tagID)
+					}
+				}
+			}
 		}
 	}
 
-	return result
+	return tagIDs
 }
 
 // transformHouseholdToPB transforms CampMinder household data to PocketBase format (combined sync)
@@ -990,32 +936,6 @@ func (s *PersonsSync) transformHouseholdToPB(data map[string]interface{}, year i
 	// Extract billing address as JSON
 	pbData["billing_address"] = data["BillingAddress"]
 
-	// Extract last updated
-	pbData["last_updated_utc"] = data["LastUpdatedUTC"]
-
-	// Set year
-	pbData["year"] = year
-
-	return pbData, nil
-}
-
-// transformPersonTagToPB transforms CampMinder tag data to PocketBase format (combined sync)
-func (s *PersonsSync) transformPersonTagToPB(data map[string]interface{}, personID int, year int) (map[string]interface{}, error) {
-	pbData := make(map[string]interface{})
-
-	// Extract tag name (required)
-	tagName, ok := data["Name"].(string)
-	if !ok || tagName == "" {
-		return nil, fmt.Errorf("invalid or missing tag Name")
-	}
-	pbData["tag_name"] = tagName
-
-	// Set person ID
-	pbData["person_id"] = personID
-
-	// Extract last updated
-	pbData["last_updated_utc"] = data["LastUpdatedUTC"]
-
 	// Set year
 	pbData["year"] = year
 
@@ -1038,6 +958,7 @@ func (s *PersonsSync) processHouseholdRecord(
 		for _, field := range compareFields {
 			if value, exists := pbData[field]; exists {
 				if !s.FieldEquals(existing.Get(field), value) {
+					slog.Debug("Household field differs", "householdID", householdID, "field", field)
 					needsUpdate = true
 					break
 				}
@@ -1069,76 +990,6 @@ func (s *PersonsSync) processHouseholdRecord(
 
 		if err := s.App.Save(record); err != nil {
 			return fmt.Errorf("creating household: %w", err)
-		}
-		stats.Created++
-	}
-
-	return nil
-}
-
-// processPersonTagRecord processes a single person tag record (combined sync)
-func (s *PersonsSync) processPersonTagRecord(
-	compositeKey string,
-	pbData map[string]any,
-	existingPersonTags map[string]*core.Record,
-	stats *Stats,
-) error {
-	compareFields := []string{"person_id", "tag_name", "year", "last_updated_utc", "person", "tag_definition"}
-	existing := existingPersonTags[compositeKey]
-
-	if existing != nil {
-		// Check if update is needed
-		needsUpdate := false
-		for _, field := range compareFields {
-			if value, exists := pbData[field]; exists {
-				if !s.FieldEquals(existing.Get(field), value) {
-					needsUpdate = true
-					break
-				}
-			}
-		}
-
-		if needsUpdate {
-			// Log which fields differ to diagnose idempotency issues
-			for _, field := range compareFields {
-				if value, exists := pbData[field]; exists {
-					existingVal := existing.Get(field)
-					if !s.FieldEquals(existingVal, value) {
-						slog.Debug("person_tag field mismatch triggering update",
-							"compositeKey", compositeKey,
-							"field", field,
-							"existingValue", existingVal,
-							"existingType", fmt.Sprintf("%T", existingVal),
-							"newValue", value,
-							"newType", fmt.Sprintf("%T", value))
-					}
-				}
-			}
-
-			for field, value := range pbData {
-				existing.Set(field, value)
-			}
-			if err := s.App.Save(existing); err != nil {
-				return fmt.Errorf("updating person_tag: %w", err)
-			}
-			stats.Updated++
-		} else {
-			stats.Skipped++
-		}
-	} else {
-		// Create new record
-		collection, err := s.App.FindCollectionByNameOrId("person_tags")
-		if err != nil {
-			return fmt.Errorf("finding person_tags collection: %w", err)
-		}
-
-		record := core.NewRecord(collection)
-		for field, value := range pbData {
-			record.Set(field, value)
-		}
-
-		if err := s.App.Save(record); err != nil {
-			return fmt.Errorf("creating person_tag: %w", err)
 		}
 		stats.Created++
 	}
@@ -1228,57 +1079,6 @@ func (s *PersonsSync) updatePersonHouseholdRelations(year int, householdsByID ma
 	return nil
 }
 
-// updatePersonTagRelations updates person_tag records to populate the person relation field
-func (s *PersonsSync) updatePersonTagRelations(year int, _ map[int]*core.Record) error {
-	slog.Info("Updating person_tag person relations")
-
-	// Reload persons to get any newly created records
-	filter := fmt.Sprintf("year = %d", year)
-	allPersons, err := s.App.FindRecordsByFilter("persons", filter, "", 0, 0)
-	if err != nil {
-		return fmt.Errorf("reloading persons for relation update: %w", err)
-	}
-
-	personsByCMID := make(map[int]*core.Record)
-	for _, record := range allPersons {
-		if cmID, ok := record.Get("cm_id").(float64); ok {
-			personsByCMID[int(cmID)] = record
-		}
-	}
-
-	// Query person_tags with person_id but no person relation
-	tagFilter := fmt.Sprintf("year = %d && person_id > 0 && person = ''", year)
-	records, err := s.App.FindRecordsByFilter("person_tags", tagFilter, "", 0, 0)
-	if err != nil {
-		return fmt.Errorf("querying person_tags for relation update: %w", err)
-	}
-
-	if len(records) == 0 {
-		slog.Info("No person_tag relations to update")
-		return nil
-	}
-
-	updated := 0
-	errors := 0
-	for _, tag := range records {
-		personCMID, _ := tag.Get("person_id").(float64)
-		if personCMID > 0 {
-			if personRecord, exists := personsByCMID[int(personCMID)]; exists {
-				tag.Set("person", personRecord.Id)
-				if err := s.App.Save(tag); err != nil {
-					slog.Error("Error updating person_tag relation", "personCMID", int(personCMID), "error", err)
-					errors++
-				} else {
-					updated++
-				}
-			}
-		}
-	}
-
-	slog.Info("Updated person_tag person relations", "updated", updated, "errors", errors)
-	return nil
-}
-
 // deleteHouseholdOrphans deletes households that exist in PocketBase but weren't processed from CampMinder
 func (s *PersonsSync) deleteHouseholdOrphans(year int, processedIDs map[int]bool) error {
 	slog.Info("Checking for orphaned households")
@@ -1311,38 +1111,3 @@ func (s *PersonsSync) deleteHouseholdOrphans(year int, processedIDs map[int]bool
 	return nil
 }
 
-// deletePersonTagOrphans deletes person_tags that exist in PocketBase but weren't processed from CampMinder
-func (s *PersonsSync) deletePersonTagOrphans(year int, processedKeys map[string]bool) error {
-	slog.Info("Checking for orphaned person_tags")
-
-	filter := fmt.Sprintf("year = %d", year)
-	records, err := s.App.FindRecordsByFilter("person_tags", filter, "", 0, 0)
-	if err != nil {
-		return fmt.Errorf("querying person_tags for orphan check: %w", err)
-	}
-
-	deleted := 0
-	for _, record := range records {
-		personID, personOK := record.Get("person_id").(float64)
-		tagName, tagOK := record.Get("tag_name").(string)
-		yr, yearOK := record.Get("year").(float64)
-
-		if !personOK || !tagOK || !yearOK {
-			continue
-		}
-
-		key := fmt.Sprintf("%d:%s:%d", int(personID), tagName, int(yr))
-		if !processedKeys[key] {
-			if err := s.App.Delete(record); err != nil {
-				slog.Error("Error deleting orphaned person_tag", "key", key, "error", err)
-			} else {
-				deleted++
-			}
-		}
-	}
-
-	if deleted > 0 {
-		slog.Info("Deleted orphaned person_tags", "count", deleted)
-	}
-	return nil
-}

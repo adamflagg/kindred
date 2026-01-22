@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
+	"sort"
 	"strings"
 	"time"
 
@@ -670,6 +671,37 @@ func (b *BaseSyncService) FieldEquals(existingValue interface{}, newValue interf
 		return true
 	}
 
+	// Handle types.JSONRaw("null") vs Go nil equivalence
+	// PocketBase stores JSON null as types.JSONRaw containing the bytes "null"
+	// When new data has Go nil, these should be considered equal
+	// Note: types.JSONRaw is a named type, so we check via fmt.Stringer interface
+	if newValue == nil && existingValue != nil {
+		// Check if existing is a JSON-like type that represents null
+		if stringer, ok := existingValue.(fmt.Stringer); ok {
+			if stringer.String() == "null" {
+				return true
+			}
+		}
+		// Also try direct []byte assertion (for raw byte slices)
+		if bytes, ok := existingValue.([]byte); ok {
+			if string(bytes) == "null" {
+				return true
+			}
+		}
+	}
+	if existingValue == nil && newValue != nil {
+		if stringer, ok := newValue.(fmt.Stringer); ok {
+			if stringer.String() == "null" {
+				return true
+			}
+		}
+		if bytes, ok := newValue.([]byte); ok {
+			if string(bytes) == "null" {
+				return true
+			}
+		}
+	}
+
 	// Handle JSON comparisons - check for both string and types.JSONRaw
 	var existingStr, newStr string
 	var existingIsJSON, newIsJSON bool
@@ -788,12 +820,50 @@ func (b *BaseSyncService) FieldEquals(existingValue interface{}, newValue interf
 		}
 	}
 
-	// Handle slice comparisons (e.g., []string for multi-select fields)
-	// Slices are not comparable with == so we need reflect.DeepEqual
+	// Handle JSON comparisons (types.JSONRaw from PocketBase vs map/string)
+	// types.JSONRaw is []byte containing JSON data
 	existingKind := reflect.TypeOf(existingValue)
 	newKind := reflect.TypeOf(newValue)
 	if existingKind != nil && newKind != nil {
+		existingTypeName := existingKind.String()
+		newTypeName := newKind.String()
+
+		// Check if either is types.JSONRaw (PocketBase JSON storage)
+		if existingTypeName == "types.JSONRaw" || newTypeName == "types.JSONRaw" {
+			// Normalize both to comparable JSON, then serialize for comparison
+			// This handles map ordering differences and type coercion
+			existingJSON := normalizeToJSON(existingValue)
+			newJSON := normalizeToJSON(newValue)
+
+			// Both nil means equal (handles JSON "null" vs Go nil)
+			if existingJSON == nil && newJSON == nil {
+				return true
+			}
+
+			// Serialize to JSON strings for consistent comparison
+			existingBytes, err1 := json.Marshal(existingJSON)
+			newBytes, err2 := json.Marshal(newJSON)
+			if err1 != nil || err2 != nil {
+				return reflect.DeepEqual(existingJSON, newJSON)
+			}
+			return string(existingBytes) == string(newBytes)
+		}
+	}
+
+	// Handle slice comparisons (e.g., []string for multi-select relation fields)
+	// PocketBase may return []interface{} while our code produces []string
+	// Normalize both to sorted []string for comparison
+	if existingKind != nil && newKind != nil {
 		if existingKind.Kind() == reflect.Slice || newKind.Kind() == reflect.Slice {
+			existingSlice := normalizeToStringSlice(existingValue)
+			newSlice := normalizeToStringSlice(newValue)
+			if existingSlice != nil && newSlice != nil {
+				// Sort both slices for order-independent comparison
+				sort.Strings(existingSlice)
+				sort.Strings(newSlice)
+				return reflect.DeepEqual(existingSlice, newSlice)
+			}
+			// Fall back to direct comparison if normalization failed
 			return reflect.DeepEqual(existingValue, newValue)
 		}
 	}
@@ -836,6 +906,88 @@ func normalizeDateString(dateStr string) string {
 	result = strings.TrimSpace(result)
 
 	return result
+}
+
+// normalizeToStringSlice converts various slice types to []string for comparison
+// Handles: []string, []interface{} with string elements, []any with string elements
+// Returns nil if the value is not a slice or cannot be converted
+func normalizeToStringSlice(value any) []string {
+	if value == nil {
+		return nil
+	}
+
+	// Single string (PocketBase returns single-value relations as string, not []string)
+	if str, ok := value.(string); ok {
+		if str == "" {
+			return []string{}
+		}
+		return []string{str}
+	}
+
+	// Direct []string
+	if strSlice, ok := value.([]string); ok {
+		result := make([]string, len(strSlice))
+		copy(result, strSlice)
+		return result
+	}
+
+	// []interface{} (common from JSON unmarshaling)
+	if ifaceSlice, ok := value.([]interface{}); ok {
+		result := make([]string, 0, len(ifaceSlice))
+		for _, v := range ifaceSlice {
+			if s, ok := v.(string); ok {
+				result = append(result, s)
+			} else {
+				// Non-string element, can't normalize
+				return nil
+			}
+		}
+		return result
+	}
+
+	// []any (alias for []interface{})
+	if anySlice, ok := value.([]any); ok {
+		result := make([]string, 0, len(anySlice))
+		for _, v := range anySlice {
+			if s, ok := v.(string); ok {
+				result = append(result, s)
+			} else {
+				return nil
+			}
+		}
+		return result
+	}
+
+	return nil
+}
+
+// normalizeToJSON converts a value to a comparable JSON representation
+// Handles: types.JSONRaw ([]byte), string (JSON), map[string]interface{}, etc.
+func normalizeToJSON(value any) any {
+	if value == nil {
+		return nil
+	}
+
+	// Handle []byte (types.JSONRaw is []byte)
+	if bytes, ok := value.([]byte); ok {
+		var result any
+		if err := json.Unmarshal(bytes, &result); err != nil {
+			return value // Return as-is if not valid JSON
+		}
+		return result
+	}
+
+	// Handle string (JSON string)
+	if str, ok := value.(string); ok {
+		var result any
+		if err := json.Unmarshal([]byte(str), &result); err != nil {
+			return value // Return as-is if not valid JSON
+		}
+		return result
+	}
+
+	// Already a comparable type (map, slice, etc.)
+	return value
 }
 
 // ParseRateLimitWait extracts the wait time from a rate limit error message
