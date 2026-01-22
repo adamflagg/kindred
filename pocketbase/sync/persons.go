@@ -97,18 +97,34 @@ func (s *PersonsSync) Sync(ctx context.Context) error {
 	year := s.Client.GetSeasonID()
 
 	// Get unique person IDs from attendees for this year
-	personIDs, err := s.getPersonIDsFromAttendees(year)
+	attendeePersonIDs, err := s.getPersonIDsFromAttendees(year)
 	if err != nil {
 		return fmt.Errorf("getting person IDs from attendees: %w", err)
 	}
 
+	// Get unique person IDs from staff for this year
+	// This ensures staff members exist in the persons table so staff.person relation can be populated
+	staffPersonIDs, err := s.getPersonIDsFromStaff()
+	if err != nil {
+		slog.Warn("Error getting staff person IDs, continuing with attendees only", "error", err)
+		staffPersonIDs = nil
+	}
+
+	// Merge and deduplicate person IDs from both sources
+	personIDs := s.mergePersonIDs(attendeePersonIDs, staffPersonIDs)
+
 	if len(personIDs) == 0 {
-		slog.Info("No attendees found, skipping persons sync", "year", year)
+		slog.Info("No attendees or staff found, skipping persons sync", "year", year)
 		s.SyncSuccessful = true
 		return nil
 	}
 
-	slog.Info("Found unique persons from attendees", "count", len(personIDs), "year", year)
+	slog.Info("Found unique persons",
+		"attendees", len(attendeePersonIDs),
+		"staff", len(staffPersonIDs),
+		"total", len(personIDs),
+		"year", year,
+	)
 	filter := fmt.Sprintf("year = %d", year)
 
 	// Pre-load all existing persons by cm_id for this year
@@ -154,6 +170,21 @@ func (s *PersonsSync) Sync(ctx context.Context) error {
 		slog.Info("Loaded tag definitions for tags field", "count", len(tagDefsByName))
 	}
 
+	// Pre-load divisions for division relation (global - no year filter)
+	// Maps cm_id -> PocketBase ID for direct population on persons.division field
+	divisionsByID := make(map[int]string)
+	divisions, err := s.App.FindRecordsByFilter("divisions", "", "", 0, 0)
+	if err != nil {
+		slog.Warn("Error loading divisions", "error", err)
+	} else {
+		for _, div := range divisions {
+			if cmID, ok := div.Get("cm_id").(float64); ok && cmID > 0 {
+				divisionsByID[int(cmID)] = div.Id
+			}
+		}
+		slog.Info("Loaded divisions for division relation", "count", len(divisionsByID))
+	}
+
 	// Track unique households across all batches
 	allExtractedHouseholds := make(map[int]map[string]any)
 	// Track processed household IDs for orphan detection
@@ -197,7 +228,7 @@ func (s *PersonsSync) Sync(ctx context.Context) error {
 		// Process each person and extract households
 		for _, personData := range persons {
 			// 1. Process person record (includes tags as multi-select relation)
-			if err := s.processPerson(personData, existingPersons, tagDefsByName, year); err != nil {
+			if err := s.processPerson(personData, existingPersons, tagDefsByName, divisionsByID, year); err != nil {
 				slog.Error("Error processing person", "error", err)
 				s.Stats.Errors++
 			}
@@ -302,6 +333,7 @@ func (s *PersonsSync) processPerson(
 	personData map[string]interface{},
 	existingPersons map[int]*core.Record,
 	tagDefsByName map[string]string,
+	divisionsByID map[int]string,
 	year int,
 ) error {
 	// Transform to PocketBase format
@@ -321,6 +353,15 @@ func (s *PersonsSync) processPerson(
 	if tagIDs := s.extractTagIDs(personData, tagDefsByName); tagIDs != nil {
 		pbData["tags"] = tagIDs
 	}
+
+	// Resolve division relation from DivisionID in CamperDetails
+	if divisionCMID, ok := pbData["division_cm_id"].(int); ok && divisionCMID > 0 {
+		if divisionPBID, exists := divisionsByID[divisionCMID]; exists {
+			pbData["division"] = divisionPBID
+		}
+	}
+	// Remove temporary field
+	delete(pbData, "division_cm_id")
 
 	// Get person ID
 	personID, ok := personData["ID"].(float64)
@@ -344,7 +385,7 @@ func (s *PersonsSync) processPerson(
 		"last_year_attended", "gender_identity_id", "gender_identity_name", "gender_identity_write_in",
 		"gender_pronoun_id", "gender_pronoun_name", "gender_pronoun_write_in", "phone_numbers",
 		"email_addresses", "address", "household_id", "is_camper", "year", "parent_names",
-		"division_id", "partition_id", "lead_date", "tshirt_size",
+		"division", "partition_id", "lead_date", "tshirt_size",
 		"tags"}
 
 	if existing != nil {
@@ -494,7 +535,7 @@ func (s *PersonsSync) transformPersonToPB(cmPerson map[string]interface{}, year 
 	pbData["years_at_camp"] = s.getInt(camperDetails, "YearsAtCamp", 0)
 
 	// Extract expanded CamperDetails fields (database expansion)
-	pbData["division_id"] = s.getInt(camperDetails, "DivisionID", 0)
+	pbData["division_cm_id"] = s.getInt(camperDetails, "DivisionID", 0)
 	pbData["partition_id"] = s.getInt(camperDetails, "PartitionID", 0)
 	pbData["lead_date"] = s.getString(camperDetails, "LeadDate", "")
 	pbData["tshirt_size"] = s.getString(camperDetails, "TShirtSize", "")
@@ -1109,5 +1150,92 @@ func (s *PersonsSync) deleteHouseholdOrphans(year int, processedIDs map[int]bool
 		slog.Info("Deleted orphaned households", "count", deleted)
 	}
 	return nil
+}
+
+// =============================================================================
+// Staff person ID extraction - enables staff members to have person records
+// =============================================================================
+
+// getPersonIDsFromStaff fetches staff records from CampMinder and extracts their person IDs
+// This ensures staff members are included in the persons sync so their person relation
+// can be populated in the staff table.
+// Note: Uses the client's configured seasonID internally via GetStaffPage
+func (s *PersonsSync) getPersonIDsFromStaff() ([]int, error) {
+	slog.Debug("Fetching staff person IDs from CampMinder")
+
+	page := 1
+	pageSize := 500
+	var allStaffRecords []map[string]interface{}
+
+	// Fetch all staff pages (status=1 for active staff)
+	for {
+		staffRecords, hasMore, err := s.Client.GetStaffPage(1, page, pageSize)
+		if err != nil {
+			return nil, fmt.Errorf("fetching staff page %d: %w", page, err)
+		}
+
+		allStaffRecords = append(allStaffRecords, staffRecords...)
+
+		if !hasMore {
+			break
+		}
+		page++
+	}
+
+	personIDs := s.extractPersonIDsFromStaffRecords(allStaffRecords)
+	slog.Debug("Extracted staff person IDs", "staffRecords", len(allStaffRecords), "uniquePersonIDs", len(personIDs))
+
+	return personIDs, nil
+}
+
+// extractPersonIDsFromStaffRecords extracts unique person IDs from staff API records
+// Handles deduplication and skips invalid/missing person IDs
+func (s *PersonsSync) extractPersonIDsFromStaffRecords(staffRecords []map[string]interface{}) []int {
+	if len(staffRecords) == 0 {
+		return []int{}
+	}
+
+	personIDMap := make(map[int]bool)
+
+	for _, staff := range staffRecords {
+		personIDValue, ok := staff["PersonID"].(float64)
+		if !ok {
+			continue // Skip if not a float64 (wrong type or missing)
+		}
+
+		personID := int(personIDValue)
+		if personID > 0 {
+			personIDMap[personID] = true
+		}
+	}
+
+	// Convert map to slice
+	personIDs := make([]int, 0, len(personIDMap))
+	for id := range personIDMap {
+		personIDs = append(personIDs, id)
+	}
+
+	return personIDs
+}
+
+// mergePersonIDs merges and deduplicates person IDs from attendees and staff
+// Returns a single slice of unique person IDs
+func (s *PersonsSync) mergePersonIDs(attendeeIDs, staffIDs []int) []int {
+	personIDMap := make(map[int]bool)
+
+	for _, id := range attendeeIDs {
+		personIDMap[id] = true
+	}
+	for _, id := range staffIDs {
+		personIDMap[id] = true
+	}
+
+	// Convert map to slice
+	merged := make([]int, 0, len(personIDMap))
+	for id := range personIDMap {
+		merged = append(merged, id)
+	}
+
+	return merged
 }
 
