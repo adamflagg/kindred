@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -64,7 +65,7 @@ func NewClient(cfg *Config) (*Client, error) {
 // authenticate gets a new JWT token from CampMinder
 func (c *Client) authenticate() error {
 	authURL := fmt.Sprintf("%s/auth/apikey", baseURL)
-	fmt.Printf("CampMinder: Authenticating with clientID: %s\n", c.clientID)
+	slog.Debug("CampMinder authenticating", "clientID", c.clientID)
 
 	req, err := http.NewRequest("GET", authURL, nil)
 	if err != nil {
@@ -105,7 +106,7 @@ func (c *Client) authenticate() error {
 		return fmt.Errorf("auth failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
-	fmt.Println("CampMinder: Authentication successful")
+	slog.Debug("CampMinder authentication successful")
 
 	var authResp struct {
 		Token string `json:"Token"` // Capital T as per Python response

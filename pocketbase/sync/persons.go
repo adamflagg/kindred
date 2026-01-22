@@ -387,7 +387,7 @@ func (s *PersonsSync) processPerson(
 		"email_addresses", "address", "household_id", "is_camper", "year", "parent_names",
 		"division_id", "partition_id", "lead_date", "tshirt_size",
 		// Household relations (populated after households are saved)
-		"principal_household", "primary_childhood_household", "alternate_childhood_household"}
+		"household", "primary_childhood_household", "alternate_childhood_household"}
 
 	if existing != nil {
 		// Check if update is needed
@@ -1119,7 +1119,7 @@ func (s *PersonsSync) updatePersonHouseholdRelations(year int, householdsByID ma
 
 	// Query all persons for this year that might need household relations updated
 	filter := fmt.Sprintf(`year = %d && (
-		principal_household = '' ||
+		household = '' ||
 		primary_childhood_household = '' ||
 		alternate_childhood_household = ''
 	)`, year)
@@ -1151,10 +1151,10 @@ func (s *PersonsSync) updatePersonHouseholdRelations(year int, householdsByID ma
 
 		needsSave := false
 
-		// Principal household
-		if hhIDs.PrincipalID > 0 && person.GetString("principal_household") == "" {
+		// Principal household (stored in 'household' relation field)
+		if hhIDs.PrincipalID > 0 && person.GetString("household") == "" {
 			if householdRecord, exists := householdsByID[hhIDs.PrincipalID]; exists {
-				person.Set("principal_household", householdRecord.Id)
+				person.Set("household", householdRecord.Id)
 				needsSave = true
 			}
 		}
@@ -1190,7 +1190,7 @@ func (s *PersonsSync) updatePersonHouseholdRelations(year int, householdsByID ma
 }
 
 // updatePersonTagRelations updates person_tag records to populate the person relation field
-func (s *PersonsSync) updatePersonTagRelations(year int, existingPersons map[int]*core.Record) error {
+func (s *PersonsSync) updatePersonTagRelations(year int, _ map[int]*core.Record) error {
 	slog.Info("Updating person_tag person relations")
 
 	// Reload persons to get any newly created records

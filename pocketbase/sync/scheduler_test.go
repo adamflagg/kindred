@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"context"
 	"testing"
 )
 
@@ -53,7 +54,7 @@ func TestSchedulerTriggerSyncTypes(t *testing.T) {
 func TestSchedulerUnknownSyncType(t *testing.T) {
 	s := NewScheduler(nil)
 
-	err := s.TriggerSync(nil, "invalid-type")
+	err := s.TriggerSync(context.Background(), "invalid-type")
 	if err == nil {
 		t.Error("expected error for unknown sync type")
 	}
