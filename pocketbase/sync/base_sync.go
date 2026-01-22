@@ -666,8 +666,15 @@ func CompositeKey(id interface{}, year int) string {
 	return fmt.Sprintf("%v|%d", id, year)
 }
 
-// ForceWALCheckpoint forces a SQLite WAL checkpoint to ensure data is flushed
+// ForceWALCheckpoint forces a SQLite WAL checkpoint to ensure data is flushed.
+// Skips the checkpoint if no records were created or updated to avoid unnecessary blocking.
 func (b *BaseSyncService) ForceWALCheckpoint() error {
+	// Skip checkpoint if no writes occurred - avoids blocking on lock acquisition
+	if b.Stats.Created == 0 && b.Stats.Updated == 0 {
+		slog.Debug("Skipping WAL checkpoint - no writes to flush")
+		return nil
+	}
+
 	// Get the database connection from PocketBase
 	db := b.App.DB()
 	if db == nil {
