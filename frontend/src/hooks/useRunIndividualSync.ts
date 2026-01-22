@@ -10,6 +10,7 @@ export const SYNC_TYPE_NAMES: Record<string, string> = {
   // Weekly syncs (global definitions)
   person_tag_defs: 'Tags',
   custom_field_defs: 'Custom Fields',
+  staff_lookups: 'Staff Lookups', // Global: positions, org_categories, program_areas
   // Daily syncs
   session_groups: 'Session Groups',
   sessions: 'Sessions',
@@ -21,6 +22,7 @@ export const SYNC_TYPE_NAMES: Record<string, string> = {
   bunk_assignments: 'Bunk Assignments',
   bunk_requests: 'Intake Requests',
   process_requests: 'Process Requests',
+  staff: 'Staff', // Year-scoped staff records
   // On-demand syncs (not part of daily sync)
   person_custom_field_values: 'Person Custom Field Values',
   household_custom_field_values: 'Household Custom Field Values',

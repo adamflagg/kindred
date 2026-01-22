@@ -40,6 +40,7 @@ func TestSchedulerTriggerSyncTypes(t *testing.T) {
 			mock := &MockService{name: "test"}
 			s.orchestrator.RegisterService("bunk_assignments", mock)
 			// Weekly sync services (definition tables)
+			s.orchestrator.RegisterService("divisions", mock)
 			s.orchestrator.RegisterService("person_tag_defs", mock)
 			s.orchestrator.RegisterService("custom_field_defs", mock)
 

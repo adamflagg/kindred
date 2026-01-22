@@ -743,3 +743,119 @@ func (c *Client) GetDivisions() ([]map[string]interface{}, error) {
 
 	return response.Results, nil
 }
+
+// GetStaffProgramAreas retrieves staff program area definitions from CampMinder
+// Endpoint: GET /staff/programareas
+// Returns: array of program areas with ID, Name
+// Note: Global lookup table (not year-specific)
+func (c *Client) GetStaffProgramAreas() ([]map[string]interface{}, error) {
+	params := map[string]string{
+		"clientid":   c.clientID,
+		"pagenumber": "1",
+		"pagesize":   "500", // Get all in one call (typically < 100)
+	}
+
+	body, err := c.makeRequest("GET", "staff/programareas", params)
+	if err != nil {
+		return nil, err
+	}
+
+	var response struct {
+		TotalCount int                      `json:"TotalCount"`
+		Results    []map[string]interface{} `json:"Results"`
+	}
+
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("decode staff program areas response: %w", err)
+	}
+
+	return response.Results, nil
+}
+
+// GetStaffOrgCategories retrieves staff organizational category definitions from CampMinder
+// Endpoint: GET /staff/organizationalcategories
+// Returns: array of org categories with ID, Name
+// Note: Global lookup table (not year-specific)
+func (c *Client) GetStaffOrgCategories() ([]map[string]interface{}, error) {
+	params := map[string]string{
+		"clientid":   c.clientID,
+		"pagenumber": "1",
+		"pagesize":   "500", // Get all in one call (typically < 100)
+	}
+
+	body, err := c.makeRequest("GET", "staff/organizationalcategories", params)
+	if err != nil {
+		return nil, err
+	}
+
+	var response struct {
+		TotalCount int                      `json:"TotalCount"`
+		Results    []map[string]interface{} `json:"Results"`
+	}
+
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("decode staff org categories response: %w", err)
+	}
+
+	return response.Results, nil
+}
+
+// GetStaffPositions retrieves staff position definitions from CampMinder
+// Endpoint: GET /staff/positions
+// Returns: array of positions with ID, Name, ProgramAreaID, ProgramAreaName
+// Note: Global lookup table (not year-specific)
+func (c *Client) GetStaffPositions() ([]map[string]interface{}, error) {
+	params := map[string]string{
+		"clientid":   c.clientID,
+		"pagenumber": "1",
+		"pagesize":   "500", // Get all in one call (typically < 100)
+	}
+
+	body, err := c.makeRequest("GET", "staff/positions", params)
+	if err != nil {
+		return nil, err
+	}
+
+	var response struct {
+		TotalCount int                      `json:"TotalCount"`
+		Results    []map[string]interface{} `json:"Results"`
+	}
+
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("decode staff positions response: %w", err)
+	}
+
+	return response.Results, nil
+}
+
+// GetStaffPage retrieves staff records with pagination
+// Endpoint: GET /staff
+// Parameters: seasonid (year), status (1=Active, 2=Resigned, 3=Dismissed, 4=Cancelled)
+// Returns: array of staff with PersonID, StatusID, Position1ID, Position2ID, BunkAssignments, etc.
+func (c *Client) GetStaffPage(status, page, pageSize int) ([]map[string]interface{}, bool, error) {
+	params := map[string]string{
+		"clientid":   c.clientID,
+		"seasonid":   strconv.Itoa(c.seasonID),
+		"status":     strconv.Itoa(status),
+		"pagenumber": strconv.Itoa(page),
+		"pagesize":   strconv.Itoa(pageSize),
+	}
+
+	body, err := c.makeRequest("GET", "staff", params)
+	if err != nil {
+		return nil, false, err
+	}
+
+	var response struct {
+		TotalCount int                      `json:"TotalCount"`
+		Next       *string                  `json:"Next"`
+		Results    []map[string]interface{} `json:"Results"`
+	}
+
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, false, fmt.Errorf("decode staff response: %w", err)
+	}
+
+	hasMore := response.Next != nil && *response.Next != ""
+	return response.Results, hasMore, nil
+}

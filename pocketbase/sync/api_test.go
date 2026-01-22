@@ -333,6 +333,7 @@ func TestSyncTypeValidation(t *testing.T) {
 		"bunk_assignments": true,
 		"bunk_requests":    true,
 		"process_requests": true,
+		"staff":            true, // Staff sync: program_areas, org_categories, positions, staff table
 	}
 
 	tests := []struct {
@@ -350,6 +351,7 @@ func TestSyncTypeValidation(t *testing.T) {
 		{"bunk_assignments", "bunk_assignments", true},
 		{"bunk_requests", "bunk_requests", true},
 		{"process_requests", "process_requests", true},
+		{"staff", "staff", true},
 		{"invalid type", "invalid", false},
 		{"empty", "", false},
 		{"typo", "session", false},

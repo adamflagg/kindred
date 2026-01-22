@@ -111,6 +111,12 @@ func (b *BaseSyncService) TrackProcessedKey(id interface{}, year int) {
 	b.ProcessedKeys[compKey] = true
 }
 
+// IsKeyProcessed checks if a key has already been processed in the current sync run
+func (b *BaseSyncService) IsKeyProcessed(id interface{}, year int) bool {
+	compKey := CompositeKey(id, year)
+	return b.ProcessedKeys[compKey]
+}
+
 // TrackProcessedCompositeKey adds a pre-built composite key to the processed keys map
 func (b *BaseSyncService) TrackProcessedCompositeKey(compositeKey string, year int) {
 	// Append year to make it year-scoped
@@ -358,6 +364,11 @@ func (b *BaseSyncService) ProcessSimpleRecord(
 			for _, field := range compareFields {
 				if value, exists := recordData[field]; exists {
 					if !b.FieldEquals(existing.Get(field), value) {
+						slog.Info("Field differs, will update",
+							"collection", collection,
+							"field", field,
+							"existing", existing.Get(field),
+							"new", value)
 						needsUpdate = true
 						break
 					}
@@ -367,6 +378,11 @@ func (b *BaseSyncService) ProcessSimpleRecord(
 			// Compare all fields
 			for field, value := range recordData {
 				if !b.FieldEquals(existing.Get(field), value) {
+					slog.Info("Field differs, will update",
+						"collection", collection,
+						"field", field,
+						"existing", existing.Get(field),
+						"new", value)
 					needsUpdate = true
 					break
 				}

@@ -162,6 +162,7 @@ func GetWeeklySyncJobs() []string {
 	return []string{
 		"person_tag_defs",
 		"custom_field_defs",
+		"staff_lookups", // Global: positions, org_categories, program_areas
 	}
 }
 
@@ -269,6 +270,7 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 		"bunk_plans",       // Depends on sessions and bunks
 		"bunk_assignments", // Depends on sessions, persons, bunks
 		"bunk_requests",    // CSV import, depends on persons
+		"staff",            // Staff sync: depends on divisions, bunks, persons
 	}
 
 	// Only include process_requests in production (Docker) mode
@@ -590,6 +592,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		o.RegisterService("bunk_assignments", NewBunkAssignmentsSync(o.app, yearClient))
 		o.RegisterService("bunk_requests", NewBunkRequestsSync(o.app, yearClient))
 		o.RegisterService("process_requests", NewRequestProcessor(o.app))
+		o.RegisterService("staff", NewStaffSync(o.app, yearClient))
 
 		// Restore original services after sync completes
 		defer func() {
@@ -702,7 +705,8 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	o.RegisterService("attendees", NewAttendeesSync(o.app, client))
 	o.RegisterService("person_tag_defs", NewPersonTagDefinitionsSync(o.app, client))
 	o.RegisterService("custom_field_defs", NewCustomFieldDefinitionsSync(o.app, client))
-	o.RegisterService("divisions", NewDivisionsSync(o.app, client)) // Division definitions
+	o.RegisterService("staff_lookups", NewStaffLookupsSync(o.app, client)) // Global: positions, org_categories, program_areas
+	o.RegisterService("divisions", NewDivisionsSync(o.app, client))        // Division definitions
 	// "persons" is a combined sync that populates persons and households tables
 	// from a single API call (tags are stored as multi-select relation on persons)
 	// Division relation on persons is set during persons sync (derived from persons API)
@@ -713,6 +717,8 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	o.RegisterService("bunk_requests", NewBunkRequestsSync(o.app, client))
 	// Register the request processor (no CampMinder client needed)
 	o.RegisterService("process_requests", NewRequestProcessor(o.app))
+	// Staff sync: year-scoped staff records (depends on staff_lookups running in weekly sync)
+	o.RegisterService("staff", NewStaffSync(o.app, client))
 
 	// Register Google Sheets export service (optional, requires configuration)
 	if google.IsEnabled() {

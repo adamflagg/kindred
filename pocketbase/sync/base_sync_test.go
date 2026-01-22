@@ -74,6 +74,35 @@ func TestBaseSyncService_TrackProcessedKey(t *testing.T) {
 	}
 }
 
+func TestBaseSyncService_IsKeyProcessed(t *testing.T) {
+	service := BaseSyncService{
+		ProcessedKeys: make(map[string]bool),
+	}
+
+	// Initially no keys are processed
+	if service.IsKeyProcessed(12345, 2025) {
+		t.Error("Key should not be processed initially")
+	}
+
+	// Track a key
+	service.TrackProcessedKey(12345, 2025)
+
+	// Now it should be processed
+	if !service.IsKeyProcessed(12345, 2025) {
+		t.Error("Key 12345|2025 should be processed after tracking")
+	}
+
+	// Different year should not be processed
+	if service.IsKeyProcessed(12345, 2024) {
+		t.Error("Key 12345|2024 should not be processed")
+	}
+
+	// Different ID should not be processed
+	if service.IsKeyProcessed(99999, 2025) {
+		t.Error("Key 99999|2025 should not be processed")
+	}
+}
+
 func TestBaseSyncService_TrackProcessedCompositeKey(t *testing.T) {
 	service := BaseSyncService{
 		ProcessedKeys: make(map[string]bool),

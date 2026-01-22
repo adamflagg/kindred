@@ -12,6 +12,8 @@ import {
   BedDouble,
   Globe,
   Layers,
+  Tent,
+  ClipboardList,
 } from 'lucide-react';
 
 // Global sync types - cross-year data not tied to a specific season
@@ -19,6 +21,7 @@ import {
 export const GLOBAL_SYNC_TYPES = [
   { id: 'person_tag_defs', name: 'Tag Definitions', icon: Tag, color: 'text-pink-600' },
   { id: 'custom_field_defs', name: 'Field Definitions', icon: FileSpreadsheet, color: 'text-lime-600' },
+  { id: 'staff_lookups', name: 'Staff Lookups', icon: ClipboardList, color: 'text-stone-600' }, // positions, org_categories, program_areas
 ] as const;
 
 // Current year sync types - year-specific data that follows the sync chain
@@ -36,6 +39,7 @@ export const CURRENT_YEAR_SYNC_TYPES = [
   { id: 'bunk_assignments', name: 'Assignments', icon: UserCheck, color: 'text-indigo-600' },
   { id: 'bunk_requests', name: 'Intake Requests', icon: FileText, color: 'text-orange-600' },
   { id: 'process_requests', name: 'Process Requests', icon: Brain, color: 'text-teal-600' },
+  { id: 'staff', name: 'Staff', icon: Tent, color: 'text-slate-600' },
 ] as const;
 
 // Combined sync types for backward compatibility
@@ -54,6 +58,7 @@ export const HISTORICAL_SYNC_TYPES = [
   { id: 'bunks', name: 'Bunks' },
   { id: 'bunk_plans', name: 'Bunk Plans' },
   { id: 'bunk_assignments', name: 'Assignments' },
+  { id: 'staff', name: 'Staff' },
 ] as const;
 
 // Icon for global section header

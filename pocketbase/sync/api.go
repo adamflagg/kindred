@@ -266,6 +266,16 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 		return handleIndividualSync(e, scheduler, "divisions")
 	}))
 
+	// Staff lookups sync (global: positions, org_categories, program_areas - runs in weekly sync)
+	e.Router.POST("/api/custom/sync/staff-lookups", requireAuth(func(e *core.RequestEvent) error {
+		return handleIndividualSync(e, scheduler, "staff_lookups")
+	}))
+
+	// Staff sync (year-scoped staff records - runs in daily sync)
+	e.Router.POST("/api/custom/sync/staff", requireAuth(func(e *core.RequestEvent) error {
+		return handleIndividualSync(e, scheduler, "staff")
+	}))
+
 	// On-demand sync endpoints (require N API calls - one per entity)
 	// Person custom field values sync
 	// Accepts optional ?session=X parameter (0 or empty = all, 1-4 = specific session)
@@ -519,10 +529,11 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 		// Weekly syncs - global definitions that rarely change
 		"person_tag_defs",   // Global sync: tag definitions
 		"custom_field_defs", // Global sync: custom field definitions
+		"staff_lookups",     // Global sync: positions, org_categories, program_areas
 		// Daily syncs (in dependency order)
 		"session_groups",
 		"sessions",
-		"divisions",        // Division definitions (runs before persons in daily sync)
+		"divisions",  // Division definitions (runs before persons in daily sync)
 		"attendees",
 		"persons", // Combined sync: persons + households + person_tags (includes division relation)
 		"bunks",
@@ -530,6 +541,7 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 		"bunk_assignments",
 		"bunk_requests",
 		"process_requests",
+		"staff", // Year-scoped staff records (depends on staff_lookups from weekly sync)
 		"google_sheets_export",
 		// On-demand syncs (not part of daily sync)
 		"person_custom_field_values",
