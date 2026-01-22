@@ -431,7 +431,8 @@ func TestWeeklySyncServices(t *testing.T) {
 	expectedServices := []string{
 		"person_tag_defs",
 		"custom_field_defs",
-		"staff_lookups", // Global: positions, org_categories, program_areas
+		"staff_lookups",     // Global: positions, org_categories, program_areas
+		"financial_lookups", // Global: financial_categories, payment_methods
 	}
 
 	jobs := GetWeeklySyncJobs()

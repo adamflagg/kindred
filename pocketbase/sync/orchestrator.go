@@ -62,21 +62,23 @@ type Options struct {
 
 // Orchestrator manages sync service execution
 type Orchestrator struct {
-	app                   core.App
-	services              map[string]Service
-	mu                    sync.RWMutex
-	runningJobs           map[string]*Status
-	lastCompletedStatus   map[string]*Status // Store last completed status for each job
-	jobSpacing            time.Duration
-	baseClient            *campminder.Client // Base client for year overrides
-	currentSyncYear       int                // Year being synced (0 = current year from env)
-	dailySyncRunning      bool               // Track if daily sync sequence is in progress
-	dailySyncQueue        []string           // Services queued for daily sync
-	historicalSyncRunning bool               // Track if historical sync sequence is in progress
-	historicalSyncQueue   []string           // Services queued for historical sync
-	historicalSyncYear    int                // Year being synced in historical sync
-	weeklySyncRunning     bool               // Track if weekly sync sequence is in progress
-	weeklySyncQueue       []string           // Services queued for weekly sync
+	app                        core.App
+	services                   map[string]Service
+	mu                         sync.RWMutex
+	runningJobs                map[string]*Status
+	lastCompletedStatus        map[string]*Status // Store last completed status for each job
+	jobSpacing                 time.Duration
+	baseClient                 *campminder.Client // Base client for year overrides
+	currentSyncYear            int                // Year being synced (0 = current year from env)
+	dailySyncRunning           bool               // Track if daily sync sequence is in progress
+	dailySyncQueue             []string           // Services queued for daily sync
+	historicalSyncRunning      bool               // Track if historical sync sequence is in progress
+	historicalSyncQueue        []string           // Services queued for historical sync
+	historicalSyncYear         int                // Year being synced in historical sync
+	weeklySyncRunning          bool               // Track if weekly sync sequence is in progress
+	weeklySyncQueue            []string           // Services queued for weekly sync
+	customValuesSyncRunning    bool               // Track if custom values sync sequence is in progress
+	customValuesSyncQueue      []string           // Services queued for custom values sync
 }
 
 // NewOrchestrator creates a new orchestrator
@@ -156,13 +158,30 @@ func (o *Orchestrator) IsWeeklySyncRunning() bool {
 	return o.weeklySyncRunning
 }
 
+// IsCustomValuesSyncRunning returns whether a custom values sync sequence is in progress
+func (o *Orchestrator) IsCustomValuesSyncRunning() bool {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	return o.customValuesSyncRunning
+}
+
 // GetWeeklySyncJobs returns the list of services that run in the weekly sync.
 // These are global definition tables that rarely change and don't need daily updates.
 func GetWeeklySyncJobs() []string {
 	return []string{
 		"person_tag_defs",
 		"custom_field_defs",
-		"staff_lookups", // Global: positions, org_categories, program_areas
+		"staff_lookups",     // Global: positions, org_categories, program_areas
+		"financial_lookups", // Global: financial_categories, payment_methods
+	}
+}
+
+// GetCustomValuesSyncJobs returns the list of services that run in the custom values sync.
+// These are expensive syncs (1 API call per entity) that run weekly after the main weekly sync.
+func GetCustomValuesSyncJobs() []string {
+	return []string{
+		"person_custom_values",
+		"household_custom_values",
 	}
 }
 
@@ -261,16 +280,17 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 	// tables from a single API call (tags are stored as multi-select relation on persons)
 	// Note: "divisions" runs early so persons can resolve their division relation
 	orderedJobs := []string{
-		"session_groups",   // No dependencies - sync first for group data
-		"sessions",         // Depends on session_groups (for session_group relation)
-		"divisions",        // Division definitions (global, not year-specific) - runs before persons
-		"attendees",        // Depends on sessions
-		"persons",          // Depends on attendees and divisions (combined sync: persons + households)
-		"bunks",            // No dependencies
-		"bunk_plans",       // Depends on sessions and bunks
-		"bunk_assignments", // Depends on sessions, persons, bunks
-		"staff",            // Staff sync: depends on divisions, bunks, persons
-		"bunk_requests",    // CSV import, depends on persons
+		"session_groups",         // No dependencies - sync first for group data
+		"sessions",               // Depends on session_groups (for session_group relation)
+		"divisions",              // Division definitions (global, not year-specific) - runs before persons
+		"attendees",              // Depends on sessions
+		"persons",                // Depends on attendees and divisions (combined sync: persons + households)
+		"bunks",                  // No dependencies
+		"bunk_plans",             // Depends on sessions and bunks
+		"bunk_assignments",       // Depends on sessions, persons, bunks
+		"staff",                  // Staff sync: depends on divisions, bunks, persons
+		"financial_transactions", // Financial data: depends on sessions, persons, households, divisions
+		"bunk_requests",          // CSV import, depends on persons
 	}
 
 	// Only include process_requests in production (Docker) mode
@@ -380,6 +400,57 @@ func (o *Orchestrator) RunWeeklySync(ctx context.Context) error {
 	}
 
 	slog.Info("Weekly sync sequence completed")
+	return nil
+}
+
+// RunCustomValuesSync runs custom field values syncs for person and household entities.
+// These are expensive syncs (1 API call per entity) that run weekly after the main weekly sync.
+func (o *Orchestrator) RunCustomValuesSync(ctx context.Context) error {
+	// Get the custom values sync jobs
+	customValuesJobs := GetCustomValuesSyncJobs()
+
+	// Set custom values sync flag and queue
+	o.mu.Lock()
+	o.customValuesSyncRunning = true
+	o.customValuesSyncQueue = customValuesJobs
+	o.mu.Unlock()
+
+	// Ensure flag and queue are cleared on exit
+	defer func() {
+		o.mu.Lock()
+		o.customValuesSyncRunning = false
+		o.customValuesSyncQueue = nil
+		o.mu.Unlock()
+	}()
+
+	slog.Info("Starting custom values sync sequence", "services", customValuesJobs)
+
+	for i, jobName := range customValuesJobs {
+		// Check if context is cancelled
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		// Add spacing between jobs (except for the first one)
+		if i > 0 {
+			slog.Info("Waiting before next sync", "duration", o.jobSpacing)
+			time.Sleep(o.jobSpacing)
+		}
+
+		slog.Info("Custom values sync: Starting service", "service", jobName, "progress", fmt.Sprintf("%d/%d", i+1, len(customValuesJobs)))
+
+		// Run sync and wait for completion
+		if err := o.runSyncAndWait(ctx, jobName); err != nil {
+			slog.Error("Custom values sync: service failed", "service", jobName, "error", err)
+			// Continue with other syncs even if one fails
+		} else {
+			slog.Info("Custom values sync: service completed", "service", jobName)
+		}
+	}
+
+	slog.Info("Custom values sync sequence completed")
 	return nil
 }
 
@@ -524,7 +595,8 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 			"bunks",
 			"bunk_plans",
 			"bunk_assignments",
-			"staff", // Staff sync: depends on divisions, bunks, persons
+			"staff",                  // Staff sync: depends on divisions, bunks, persons
+			"financial_transactions", // Financial data: depends on sessions, persons, households, divisions
 		}
 
 		// Only include bunk_requests for current year syncs (not historical)
@@ -594,6 +666,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		o.RegisterService("bunk_requests", NewBunkRequestsSync(o.app, yearClient))
 		o.RegisterService("process_requests", NewRequestProcessor(o.app))
 		o.RegisterService("staff", NewStaffSync(o.app, yearClient))
+		o.RegisterService("financial_transactions", NewFinancialTransactionsSync(o.app, yearClient))
 
 		// Restore original services after sync completes
 		defer func() {
@@ -706,8 +779,9 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	o.RegisterService("attendees", NewAttendeesSync(o.app, client))
 	o.RegisterService("person_tag_defs", NewPersonTagDefinitionsSync(o.app, client))
 	o.RegisterService("custom_field_defs", NewCustomFieldDefinitionsSync(o.app, client))
-	o.RegisterService("staff_lookups", NewStaffLookupsSync(o.app, client)) // Global: positions, org_categories, program_areas
-	o.RegisterService("divisions", NewDivisionsSync(o.app, client))        // Division definitions
+	o.RegisterService("staff_lookups", NewStaffLookupsSync(o.app, client))       // Global: positions, org_categories, program_areas
+	o.RegisterService("financial_lookups", NewFinancialLookupsSync(o.app, client)) // Global: financial_categories, payment_methods
+	o.RegisterService("divisions", NewDivisionsSync(o.app, client))               // Division definitions
 	// "persons" is a combined sync that populates persons and households tables
 	// from a single API call (tags are stored as multi-select relation on persons)
 	// Division relation on persons is set during persons sync (derived from persons API)
@@ -720,6 +794,8 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	o.RegisterService("process_requests", NewRequestProcessor(o.app))
 	// Staff sync: year-scoped staff records (depends on staff_lookups running in weekly sync)
 	o.RegisterService("staff", NewStaffSync(o.app, client))
+	// Financial transactions: year-scoped transaction data (depends on financial_lookups running in weekly sync)
+	o.RegisterService("financial_transactions", NewFinancialTransactionsSync(o.app, client))
 
 	// Register Google Sheets export service (optional, requires configuration)
 	if google.IsEnabled() {
@@ -740,8 +816,8 @@ func (o *Orchestrator) InitializeSyncServices() error {
 
 	// Register on-demand sync services (NOT part of daily sync)
 	// These require N API calls (one per entity) so are triggered manually
-	o.RegisterService("person_custom_field_values", NewPersonCustomFieldValuesSync(o.app, client))
-	o.RegisterService("household_custom_field_values", NewHouseholdCustomFieldValuesSync(o.app, client))
+	o.RegisterService("person_custom_values", NewPersonCustomFieldValuesSync(o.app, client))
+	o.RegisterService("household_custom_values", NewHouseholdCustomFieldValuesSync(o.app, client))
 
 	slog.Info("All sync services registered")
 	return nil

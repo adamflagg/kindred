@@ -76,6 +76,16 @@ func (s *Scheduler) Start() error {
 		return fmt.Errorf("adding weekly schedule: %w", err)
 	}
 
+	// Add weekly schedule for custom values sync (runs Sunday at 4am, after weekly globals)
+	// These are expensive syncs (1 API call per entity) - person + household custom field values
+	_, err = s.cron.AddFunc("0 4 * * 0", func() {
+		slog.Info("Starting scheduled custom values sync")
+		s.runCustomValuesSync()
+	})
+	if err != nil {
+		return fmt.Errorf("adding custom values schedule: %w", err)
+	}
+
 	// Start the cron scheduler
 	s.cron.Start()
 	s.running = true
@@ -145,6 +155,34 @@ func (s *Scheduler) runWeeklySync() {
 	}
 }
 
+// runCustomValuesSync runs the weekly custom field values sync for current year
+func (s *Scheduler) runCustomValuesSync() {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
+	defer cancel()
+
+	jobs := GetCustomValuesSyncJobs()
+	slog.Info("Custom values sync starting", "services", jobs)
+
+	for _, job := range jobs {
+		if err := s.orchestrator.RunSingleSync(ctx, job); err != nil {
+			slog.Error("Custom values sync failed", "job", job, "error", err)
+		} else {
+			slog.Info("Custom values sync completed", "job", job)
+		}
+	}
+	slog.Info("Custom values sync sequence completed")
+}
+
+// TriggerCustomValuesSync manually triggers the custom values sync
+func (s *Scheduler) TriggerCustomValuesSync() {
+	go s.runCustomValuesSync()
+}
+
+// IsCustomValuesSyncRunning checks if custom values sync is currently running
+func (s *Scheduler) IsCustomValuesSyncRunning() bool {
+	return s.orchestrator.IsCustomValuesSyncRunning()
+}
+
 // pruneOldSolverRuns deletes solver_runs records older than LogRetentionDays
 func (s *Scheduler) pruneOldSolverRuns() error {
 	cutoff := time.Now().AddDate(0, 0, -LogRetentionDays)
@@ -201,6 +239,8 @@ func (s *Scheduler) TriggerSync(ctx context.Context, syncType string) error {
 		return s.orchestrator.RunSingleSync(ctx, "bunk_assignments")
 	case "weekly":
 		return s.orchestrator.RunWeeklySync(ctx)
+	case "custom-values":
+		return s.orchestrator.RunCustomValuesSync(ctx)
 	default:
 		return fmt.Errorf("unknown sync type: %s", syncType)
 	}

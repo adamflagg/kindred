@@ -74,3 +74,45 @@ func TestSchedulerIsWeeklySyncRunning(t *testing.T) {
 		t.Error("weekly sync should not be running initially")
 	}
 }
+
+// TestIsCustomValuesSyncRunning tests custom values sync status check via scheduler
+func TestSchedulerIsCustomValuesSyncRunning(t *testing.T) {
+	s := NewScheduler(nil)
+
+	if s.IsCustomValuesSyncRunning() {
+		t.Error("custom values sync should not be running initially")
+	}
+}
+
+// TestTriggerSyncCustomValues tests that TriggerSync handles custom-values type
+func TestSchedulerTriggerSyncCustomValues(t *testing.T) {
+	s := NewScheduler(nil)
+
+	// Register mock services for custom values sync
+	mock := &MockService{name: "test"}
+	s.orchestrator.RegisterService("person_custom_values", mock)
+	s.orchestrator.RegisterService("household_custom_values", mock)
+
+	// TriggerSync should handle custom-values type
+	err := s.TriggerSync(context.Background(), "custom-values")
+	// It should not return "unknown sync type" error
+	if err != nil && err.Error() == "unknown sync type: custom-values" {
+		t.Error("TriggerSync should handle custom-values type")
+	}
+}
+
+// TestGetCustomValuesSyncJobs tests that custom values sync jobs are returned correctly
+func TestGetCustomValuesSyncJobs(t *testing.T) {
+	jobs := GetCustomValuesSyncJobs()
+
+	expected := []string{"person_custom_values", "household_custom_values"}
+	if len(jobs) != len(expected) {
+		t.Errorf("expected %d jobs, got %d", len(expected), len(jobs))
+	}
+
+	for i, job := range expected {
+		if jobs[i] != job {
+			t.Errorf("expected job %d to be %q, got %q", i, job, jobs[i])
+		}
+	}
+}

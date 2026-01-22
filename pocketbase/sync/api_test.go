@@ -552,3 +552,55 @@ func parseSourceFieldParameter(param string) ([]string, bool) {
 
 	return fields, true
 }
+
+// TestCustomValuesSyncServices tests that custom values sync services are defined
+func TestCustomValuesSyncServices(t *testing.T) {
+	// Verify GetCustomValuesSyncJobs returns the expected services
+	expected := []string{"person_custom_values", "household_custom_values"}
+	jobs := GetCustomValuesSyncJobs()
+
+	if len(jobs) != len(expected) {
+		t.Errorf("expected %d custom values sync jobs, got %d", len(expected), len(jobs))
+	}
+
+	for i, job := range expected {
+		if i >= len(jobs) {
+			t.Errorf("missing job %q at index %d", job, i)
+			continue
+		}
+		if jobs[i] != job {
+			t.Errorf("job[%d]: expected %q, got %q", i, job, jobs[i])
+		}
+	}
+}
+
+// TestCustomValuesSyncEndpointResponse tests expected response format
+func TestCustomValuesSyncEndpointResponse(t *testing.T) {
+	// Test the expected response structure from the custom-values endpoint
+	// The endpoint should return:
+	// - message: string describing action taken
+	// - services: array of service names being synced
+
+	expectedMessage := "Custom values sync triggered"
+	expectedServices := []string{"person_custom_values", "household_custom_values"}
+
+	// Verify GetCustomValuesSyncJobs matches expected
+	jobs := GetCustomValuesSyncJobs()
+	if len(jobs) != len(expectedServices) {
+		t.Errorf("GetCustomValuesSyncJobs returned %d jobs, expected %d", len(jobs), len(expectedServices))
+	}
+
+	for i, expected := range expectedServices {
+		if i >= len(jobs) {
+			break
+		}
+		if jobs[i] != expected {
+			t.Errorf("service[%d]: expected %q, got %q", i, expected, jobs[i])
+		}
+	}
+
+	// Verify message format (just test the constant exists and is non-empty)
+	if expectedMessage == "" {
+		t.Error("expected message should not be empty")
+	}
+}

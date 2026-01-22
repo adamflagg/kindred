@@ -39,6 +39,7 @@ type BaseSyncService struct {
 	Stats          Stats
 	SyncSuccessful bool            // Track if the main sync operation succeeded
 	ProcessedKeys  map[string]bool // Track processed composite keys for orphan detection
+	FieldDiffStats map[string]int  // Track which fields cause updates (for debugging)
 }
 
 // NewBaseSyncService creates a new base sync service
@@ -49,6 +50,7 @@ func NewBaseSyncService(app core.App, client *campminder.Client) BaseSyncService
 		Stats:          Stats{},
 		SyncSuccessful: false,
 		ProcessedKeys:  make(map[string]bool),
+		FieldDiffStats: make(map[string]int),
 	}
 }
 
@@ -358,17 +360,17 @@ func (b *BaseSyncService) ProcessSimpleRecord(
 	if existing != nil {
 		// Check if update is needed
 		needsUpdate := false
+		var triggeringField string
+		var existingVal, newVal interface{}
 
 		if len(compareFields) > 0 {
 			// Only compare specified fields
 			for _, field := range compareFields {
 				if value, exists := recordData[field]; exists {
 					if !b.FieldEquals(existing.Get(field), value) {
-						slog.Info("Field differs, will update",
-							"collection", collection,
-							"field", field,
-							"existing", existing.Get(field),
-							"new", value)
+						triggeringField = field
+						existingVal = existing.Get(field)
+						newVal = value
 						needsUpdate = true
 						break
 					}
@@ -378,11 +380,9 @@ func (b *BaseSyncService) ProcessSimpleRecord(
 			// Compare all fields
 			for field, value := range recordData {
 				if !b.FieldEquals(existing.Get(field), value) {
-					slog.Info("Field differs, will update",
-						"collection", collection,
-						"field", field,
-						"existing", existing.Get(field),
-						"new", value)
+					triggeringField = field
+					existingVal = existing.Get(field)
+					newVal = value
 					needsUpdate = true
 					break
 				}
@@ -390,6 +390,20 @@ func (b *BaseSyncService) ProcessSimpleRecord(
 		}
 
 		if needsUpdate {
+			// Track which fields cause updates (for idempotency debugging)
+			fieldKey := fmt.Sprintf("%s.%s", collection, triggeringField)
+			b.FieldDiffStats[fieldKey]++
+
+			// Log first 3 occurrences per field at DEBUG level for debugging
+			if b.FieldDiffStats[fieldKey] <= 3 {
+				slog.Debug("Field differs, triggering update",
+					"collection", collection,
+					"field", triggeringField,
+					"existing", formatFieldValue(existingVal),
+					"existingType", fmt.Sprintf("%T", existingVal),
+					"new", formatFieldValue(newVal),
+					"newType", fmt.Sprintf("%T", newVal))
+			}
 			// Update existing record
 			for field, value := range recordData {
 				existing.Set(field, value)
@@ -677,6 +691,25 @@ func (b *BaseSyncService) FieldEquals(existingValue interface{}, newValue interf
 	// Handle nil vs empty string equivalence
 	if (existingValue == nil && newValue == "") || (existingValue == "" && newValue == nil) {
 		return true
+	}
+
+	// Handle empty types.DateTime vs empty string equivalence
+	// PocketBase DateTime has String() method returning "" for zero value
+	if newStr, ok := newValue.(string); ok && newStr == "" {
+		if stringer, ok := existingValue.(fmt.Stringer); ok {
+			existingStr := stringer.String()
+			if existingStr == "" {
+				return true
+			}
+		}
+	}
+	if existingStr, ok := existingValue.(string); ok && existingStr == "" {
+		if stringer, ok := newValue.(fmt.Stringer); ok {
+			newStr := stringer.String()
+			if newStr == "" {
+				return true
+			}
+		}
 	}
 
 	// Handle nil vs 0 equivalence for numeric fields
@@ -1196,4 +1229,64 @@ func (b *BaseSyncService) LookupBunkPlan(planCMID, bunkCMID, sessionCMID int) (s
 	}
 
 	return records[0].Id, true
+}
+
+// LogFieldDiffSummary logs a summary of which fields caused updates (for idempotency debugging)
+// Call this at the end of a sync to see which fields are triggering unnecessary updates
+func (b *BaseSyncService) LogFieldDiffSummary() {
+	if len(b.FieldDiffStats) == 0 {
+		return
+	}
+
+	// Sort by count (descending) for easier analysis
+	type fieldCount struct {
+		field string
+		count int
+	}
+	var counts []fieldCount
+	for field, count := range b.FieldDiffStats {
+		counts = append(counts, fieldCount{field, count})
+	}
+	sort.Slice(counts, func(i, j int) bool {
+		return counts[i].count > counts[j].count
+	})
+
+	slog.Debug("Field diff summary (fields causing updates)",
+		"totalFields", len(counts))
+	for _, fc := range counts {
+		slog.Debug("  field diff count", "field", fc.field, "updates", fc.count)
+	}
+}
+
+// ClearFieldDiffStats resets the field diff statistics
+func (b *BaseSyncService) ClearFieldDiffStats() {
+	for k := range b.FieldDiffStats {
+		delete(b.FieldDiffStats, k)
+	}
+}
+
+// formatFieldValue formats a field value for logging, truncating long values
+func formatFieldValue(v interface{}) string {
+	if v == nil {
+		return "<nil>"
+	}
+
+	var s string
+	switch val := v.(type) {
+	case string:
+		s = val
+	case []byte:
+		s = string(val)
+	case fmt.Stringer:
+		s = val.String()
+	default:
+		s = fmt.Sprintf("%v", v)
+	}
+
+	// Truncate long values for readability
+	const maxLen = 100
+	if len(s) > maxLen {
+		return s[:maxLen] + "..."
+	}
+	return s
 }
