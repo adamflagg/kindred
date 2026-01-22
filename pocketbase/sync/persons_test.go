@@ -61,8 +61,8 @@ func TestTransformPersonToPB_CamperDetailsExpanded(t *testing.T) {
 	}
 
 	// Verify new CamperDetails fields
-	if got, want := pbData["division_id"].(int), 5; got != want {
-		t.Errorf("division_id = %d, want %d", got, want)
+	if got, want := pbData["division_cm_id"].(int), 5; got != want {
+		t.Errorf("division_cm_id = %d, want %d", got, want)
 	}
 	if got, want := pbData["partition_id"].(int), 2; got != want {
 		t.Errorf("partition_id = %d, want %d", got, want)
@@ -116,8 +116,8 @@ func TestTransformPersonToPB_MissingCamperDetailsFields(t *testing.T) {
 	}
 
 	// New fields should have zero/empty values (not error)
-	if pbData["division_id"] != 0 {
-		t.Errorf("division_id = %v, want 0 for missing field", pbData["division_id"])
+	if pbData["division_cm_id"] != 0 {
+		t.Errorf("division_cm_id = %v, want 0 for missing field", pbData["division_cm_id"])
 	}
 	if pbData["partition_id"] != 0 {
 		t.Errorf("partition_id = %v, want 0 for missing field", pbData["partition_id"])
@@ -643,5 +643,194 @@ func TestExtractTagIDs_EmptyTagName(t *testing.T) {
 
 	if tagIDs[0] != "rec_alumni_001" {
 		t.Errorf("expected Alumni tag ID, got %q", tagIDs[0])
+	}
+}
+
+// =============================================================================
+// Tests for extractPersonIDsFromStaffRecords - Staff person ID extraction
+// =============================================================================
+
+// TestExtractPersonIDsFromStaffRecords tests extraction of person IDs from staff records
+func TestExtractPersonIDsFromStaffRecords(t *testing.T) {
+	s := &PersonsSync{}
+
+	staffRecords := []map[string]interface{}{
+		{"PersonID": float64(1001), "StatusID": float64(1), "Position1ID": float64(10)},
+		{"PersonID": float64(1002), "StatusID": float64(1), "Position1ID": float64(20)},
+		{"PersonID": float64(1003), "StatusID": float64(2), "Position1ID": float64(30)},
+	}
+
+	personIDs := s.extractPersonIDsFromStaffRecords(staffRecords)
+
+	if len(personIDs) != 3 {
+		t.Fatalf("expected 3 person IDs, got %d", len(personIDs))
+	}
+
+	// Build a set for easier verification
+	idSet := make(map[int]bool)
+	for _, id := range personIDs {
+		idSet[id] = true
+	}
+
+	expectedIDs := []int{1001, 1002, 1003}
+	for _, expected := range expectedIDs {
+		if !idSet[expected] {
+			t.Errorf("expected person ID %d in result", expected)
+		}
+	}
+}
+
+// TestExtractPersonIDsFromStaffRecords_SkipsInvalidIDs tests that invalid person IDs are skipped
+func TestExtractPersonIDsFromStaffRecords_SkipsInvalidIDs(t *testing.T) {
+	s := &PersonsSync{}
+
+	staffRecords := []map[string]interface{}{
+		{"PersonID": float64(1001), "StatusID": float64(1)},
+		{"PersonID": float64(0), "StatusID": float64(1)},    // Invalid: zero ID
+		{"PersonID": float64(-5), "StatusID": float64(1)},   // Invalid: negative ID
+		{"StatusID": float64(1)},                            // Invalid: missing PersonID
+		{"PersonID": "not-a-number", "StatusID": float64(1)}, // Invalid: wrong type
+		{"PersonID": float64(1002), "StatusID": float64(1)},
+	}
+
+	personIDs := s.extractPersonIDsFromStaffRecords(staffRecords)
+
+	if len(personIDs) != 2 {
+		t.Fatalf("expected 2 valid person IDs, got %d", len(personIDs))
+	}
+
+	// Build a set for verification
+	idSet := make(map[int]bool)
+	for _, id := range personIDs {
+		idSet[id] = true
+	}
+
+	if !idSet[1001] || !idSet[1002] {
+		t.Errorf("expected person IDs 1001 and 1002 in result, got %v", personIDs)
+	}
+}
+
+// TestExtractPersonIDsFromStaffRecords_EmptyInput tests handling of empty input
+func TestExtractPersonIDsFromStaffRecords_EmptyInput(t *testing.T) {
+	s := &PersonsSync{}
+
+	personIDs := s.extractPersonIDsFromStaffRecords(nil)
+	if len(personIDs) != 0 {
+		t.Errorf("expected 0 person IDs for nil input, got %d", len(personIDs))
+	}
+
+	personIDs = s.extractPersonIDsFromStaffRecords([]map[string]interface{}{})
+	if len(personIDs) != 0 {
+		t.Errorf("expected 0 person IDs for empty input, got %d", len(personIDs))
+	}
+}
+
+// TestExtractPersonIDsFromStaffRecords_Deduplicates tests that duplicate IDs are removed
+func TestExtractPersonIDsFromStaffRecords_Deduplicates(t *testing.T) {
+	s := &PersonsSync{}
+
+	// Staff member appears in multiple records (e.g., different status pages)
+	staffRecords := []map[string]interface{}{
+		{"PersonID": float64(1001), "StatusID": float64(1)},
+		{"PersonID": float64(1001), "StatusID": float64(2)}, // Duplicate
+		{"PersonID": float64(1002), "StatusID": float64(1)},
+		{"PersonID": float64(1002), "StatusID": float64(1)}, // Duplicate
+	}
+
+	personIDs := s.extractPersonIDsFromStaffRecords(staffRecords)
+
+	if len(personIDs) != 2 {
+		t.Fatalf("expected 2 unique person IDs, got %d", len(personIDs))
+	}
+}
+
+// =============================================================================
+// Tests for mergePersonIDs - Merging attendee and staff person IDs
+// =============================================================================
+
+// TestMergePersonIDs tests merging of attendee and staff person IDs
+func TestMergePersonIDs(t *testing.T) {
+	s := &PersonsSync{}
+
+	attendeeIDs := []int{1001, 1002, 1003}
+	staffIDs := []int{2001, 2002, 2003}
+
+	merged := s.mergePersonIDs(attendeeIDs, staffIDs)
+
+	if len(merged) != 6 {
+		t.Fatalf("expected 6 merged IDs, got %d", len(merged))
+	}
+
+	// Verify all IDs are present
+	idSet := make(map[int]bool)
+	for _, id := range merged {
+		idSet[id] = true
+	}
+
+	expectedIDs := []int{1001, 1002, 1003, 2001, 2002, 2003}
+	for _, expected := range expectedIDs {
+		if !idSet[expected] {
+			t.Errorf("expected person ID %d in merged result", expected)
+		}
+	}
+}
+
+// TestMergePersonIDs_WithOverlap tests merging when some IDs appear in both lists
+func TestMergePersonIDs_WithOverlap(t *testing.T) {
+	s := &PersonsSync{}
+
+	// Former campers who are now staff (appear in both lists)
+	attendeeIDs := []int{1001, 1002, 1003}
+	staffIDs := []int{1002, 2001, 2002} // 1002 is both camper and staff
+
+	merged := s.mergePersonIDs(attendeeIDs, staffIDs)
+
+	if len(merged) != 5 {
+		t.Fatalf("expected 5 unique IDs (1 duplicate removed), got %d", len(merged))
+	}
+
+	// Verify all unique IDs are present exactly once
+	idSet := make(map[int]bool)
+	for _, id := range merged {
+		if idSet[id] {
+			t.Errorf("duplicate ID %d found in merged result", id)
+		}
+		idSet[id] = true
+	}
+
+	expectedIDs := []int{1001, 1002, 1003, 2001, 2002}
+	for _, expected := range expectedIDs {
+		if !idSet[expected] {
+			t.Errorf("expected person ID %d in merged result", expected)
+		}
+	}
+}
+
+// TestMergePersonIDs_EmptyInputs tests merging with empty or nil inputs
+func TestMergePersonIDs_EmptyInputs(t *testing.T) {
+	s := &PersonsSync{}
+
+	// Both empty
+	merged := s.mergePersonIDs(nil, nil)
+	if len(merged) != 0 {
+		t.Errorf("expected 0 IDs for nil inputs, got %d", len(merged))
+	}
+
+	// Only attendees
+	merged = s.mergePersonIDs([]int{1001, 1002}, nil)
+	if len(merged) != 2 {
+		t.Errorf("expected 2 IDs from attendees only, got %d", len(merged))
+	}
+
+	// Only staff
+	merged = s.mergePersonIDs(nil, []int{2001, 2002})
+	if len(merged) != 2 {
+		t.Errorf("expected 2 IDs from staff only, got %d", len(merged))
+	}
+
+	// Empty slices (not nil)
+	merged = s.mergePersonIDs([]int{}, []int{})
+	if len(merged) != 0 {
+		t.Errorf("expected 0 IDs for empty slices, got %d", len(merged))
 	}
 }
