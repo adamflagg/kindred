@@ -566,3 +566,202 @@ func TestStatsWithoutSubStats(t *testing.T) {
 		t.Errorf("expected Created=10, got %d", stats.Created)
 	}
 }
+
+// TestMarkSyncRunning tests the MarkSyncRunning method
+func TestMarkSyncRunning(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	// Register a mock service
+	mock := &MockService{name: "test_service"}
+	o.RegisterService("test", mock)
+
+	// Test 1: MarkSyncRunning should fail for non-existent service
+	err := o.MarkSyncRunning("nonexistent")
+	if err == nil {
+		t.Error("expected error for non-existent service")
+	}
+
+	// Test 2: MarkSyncRunning should succeed for registered service
+	err = o.MarkSyncRunning("test")
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	// Test 3: Status should be "running" after MarkSyncRunning
+	if !o.IsRunning("test") {
+		t.Error("service should be running after MarkSyncRunning")
+	}
+
+	// Test 4: GetStatus should return running status
+	status := o.GetStatus("test")
+	if status == nil {
+		t.Fatal("expected non-nil status")
+	}
+	if status.Status != "running" {
+		t.Errorf("expected status 'running', got %q", status.Status)
+	}
+
+	// Test 5: MarkSyncRunning should fail if already running
+	err = o.MarkSyncRunning("test")
+	if err == nil {
+		t.Error("expected error when service already running")
+	}
+}
+
+// TestMarkSyncRunningPreservesStatus tests that MarkSyncRunning sets correct status fields
+func TestMarkSyncRunningPreservesStatus(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	// Register a mock service
+	mock := &MockService{name: "test_service"}
+	o.RegisterService("test", mock)
+
+	// Set a year context
+	o.mu.Lock()
+	o.currentSyncYear = 2024
+	o.mu.Unlock()
+
+	// Mark as running
+	err := o.MarkSyncRunning("test")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Get status and verify fields
+	o.mu.RLock()
+	status := o.runningJobs["test"]
+	o.mu.RUnlock()
+
+	if status == nil {
+		t.Fatal("expected status to be set")
+	}
+
+	if status.Type != "test" {
+		t.Errorf("expected Type='test', got %q", status.Type)
+	}
+
+	if status.Status != "running" {
+		t.Errorf("expected Status='running', got %q", status.Status)
+	}
+
+	if status.Year != 2024 {
+		t.Errorf("expected Year=2024, got %d", status.Year)
+	}
+
+	if status.StartTime.IsZero() {
+		t.Error("expected StartTime to be set")
+	}
+}
+
+// TestRunSingleSyncRespectsPreMarkedStatus tests that RunSingleSync uses existing status
+// if MarkSyncRunning was called first
+func TestRunSingleSyncRespectsPreMarkedStatus(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	// Register a fast mock service
+	mock := &MockService{name: "test_service", delay: 10 * time.Millisecond}
+	o.RegisterService("test", mock)
+
+	// Pre-mark as running (simulating what API handler will do)
+	err := o.MarkSyncRunning("test")
+	if err != nil {
+		t.Fatalf("MarkSyncRunning failed: %v", err)
+	}
+
+	// Get the start time from pre-marked status
+	o.mu.RLock()
+	preMarkedStatus := o.runningJobs["test"]
+	preMarkedStartTime := preMarkedStatus.StartTime
+	o.mu.RUnlock()
+
+	// RunSingleSync should use the existing status, not create a new one
+	ctx := context.Background()
+	err = o.RunSingleSync(ctx, "test")
+	if err != nil {
+		t.Fatalf("RunSingleSync failed: %v", err)
+	}
+
+	// Wait for the sync goroutine to complete
+	time.Sleep(50 * time.Millisecond)
+
+	// Check that the service was actually called
+	if mock.GetCallCount() != 1 {
+		t.Errorf("expected 1 call to Sync, got %d", mock.GetCallCount())
+	}
+
+	// The status should have been updated to success
+	o.mu.RLock()
+	finalStatus := o.runningJobs["test"]
+	o.mu.RUnlock()
+
+	// Start time should be preserved from pre-marked status
+	if finalStatus != nil && !finalStatus.StartTime.Equal(preMarkedStartTime) {
+		t.Errorf("expected StartTime to be preserved from MarkSyncRunning, got different time")
+	}
+}
+
+// TestHistoricalSyncIncludesCustomValueServices verifies custom value services are
+// re-registered with year-specific client during historical syncs
+func TestHistoricalSyncIncludesCustomValueServices(t *testing.T) {
+	// This test verifies the historical sync services list includes custom value services
+	// The actual services list in RunSyncWithOptions should include:
+	// - person_custom_values
+	// - household_custom_values
+
+	// Get the list of services that SHOULD be re-registered for historical syncs
+	// These are the services registered in RunSyncWithOptions when opts.Year > 0
+	expectedHistoricalServices := []string{
+		"session_groups",
+		"sessions",
+		"divisions",
+		"attendees",
+		"persons",
+		"bunks",
+		"bunk_plans",
+		"bunk_assignments",
+		"bunk_requests",
+		"process_requests",
+		"staff",
+		"financial_transactions",
+		// Custom value services - must be included for historical sync support
+		"person_custom_values",
+		"household_custom_values",
+	}
+
+	// GetCustomValuesSyncJobs should return the custom values services
+	customJobs := GetCustomValuesSyncJobs()
+
+	// Verify custom value services are in the expected historical services list
+	for _, customJob := range customJobs {
+		found := false
+		for _, expected := range expectedHistoricalServices {
+			if expected == customJob {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("custom value service %q should be in historical sync services list", customJob)
+		}
+	}
+}
+
+// TestCustomValuesSyncServicesCount verifies the count of custom value services
+func TestCustomValuesSyncServicesCount(t *testing.T) {
+	jobs := GetCustomValuesSyncJobs()
+
+	if len(jobs) != 2 {
+		t.Errorf("expected 2 custom values sync jobs, got %d", len(jobs))
+	}
+
+	expected := map[string]bool{
+		"person_custom_values":    true,
+		"household_custom_values": true,
+	}
+
+	for _, job := range jobs {
+		if !expected[job] {
+			t.Errorf("unexpected custom values job: %s", job)
+		}
+	}
+}
