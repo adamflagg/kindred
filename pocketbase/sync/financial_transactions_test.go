@@ -100,10 +100,7 @@ func TestTransformTransactionToPB(t *testing.T) {
 		t.Errorf("reversal_date should be nil/empty, got %v", pbData["reversal_date"])
 	}
 
-	// Verify category (CM ID + relation)
-	if got, want := pbData["financial_category_id"].(int), 22650; got != want {
-		t.Errorf("financial_category_id = %d, want %d", got, want)
-	}
+	// Verify category (relation only)
 	if got, want := pbData["financial_category"].(string), "pb_cat_22650"; got != want {
 		t.Errorf("financial_category = %q, want %q", got, want)
 	}
@@ -138,55 +135,37 @@ func TestTransformTransactionToPB(t *testing.T) {
 		t.Errorf("deferral_gl_account_id = %q, want %q", got, want)
 	}
 
-	// Verify payment method (CM ID + relation)
-	if got, want := pbData["payment_method_id"].(int), 1; got != want {
-		t.Errorf("payment_method_id = %d, want %d", got, want)
-	}
+	// Verify payment method (relation only)
 	if got, want := pbData["payment_method"].(string), "pb_pm_1"; got != want {
 		t.Errorf("payment_method = %q, want %q", got, want)
 	}
 
-	// Verify session (CM ID + relation)
-	if got, want := pbData["session_cm_id"].(int), 1335115; got != want {
-		t.Errorf("session_cm_id = %d, want %d", got, want)
-	}
+	// Verify session (relation only)
 	if got, want := pbData["session"].(string), "pb_session_1335115"; got != want {
 		t.Errorf("session = %q, want %q", got, want)
 	}
 
-	// Verify program (CM ID only)
+	// Verify program (CM ID only - no program table)
 	if got, want := pbData["program_id"].(int), 500; got != want {
 		t.Errorf("program_id = %d, want %d", got, want)
 	}
 
-	// Verify session group (CM ID + relation)
-	if got, want := pbData["session_group_id"].(int), 100; got != want {
-		t.Errorf("session_group_id = %d, want %d", got, want)
-	}
+	// Verify session group (relation only)
 	if got, want := pbData["session_group"].(string), "pb_group_100"; got != want {
 		t.Errorf("session_group = %q, want %q", got, want)
 	}
 
-	// Verify division (CM ID + relation)
-	if got, want := pbData["division_id"].(int), 85; got != want {
-		t.Errorf("division_id = %d, want %d", got, want)
-	}
+	// Verify division (relation only)
 	if got, want := pbData["division"].(string), "pb_div_85"; got != want {
 		t.Errorf("division = %q, want %q", got, want)
 	}
 
-	// Verify person (CM ID + relation)
-	if got, want := pbData["person_cm_id"].(int), 3451504; got != want {
-		t.Errorf("person_cm_id = %d, want %d", got, want)
-	}
+	// Verify person (relation only)
 	if got, want := pbData["person"].(string), "pb_person_3451504"; got != want {
 		t.Errorf("person = %q, want %q", got, want)
 	}
 
-	// Verify household (CM ID + relation)
-	if got, want := pbData["household_cm_id"].(int), 3539709; got != want {
-		t.Errorf("household_cm_id = %d, want %d", got, want)
-	}
+	// Verify household (relation only)
 	if got, want := pbData["household"].(string), "pb_hh_3539709"; got != want {
 		t.Errorf("household = %q, want %q", got, want)
 	}
@@ -323,20 +302,6 @@ func TestTransformTransactionToPB_UnknownRelations(t *testing.T) {
 	pbData, err := s.transformTransactionToPB(transactionData, 2025, lookupMaps)
 	if err != nil {
 		t.Fatalf("transformTransactionToPB returned error: %v", err)
-	}
-
-	// CM IDs should still be stored
-	if got, want := pbData["financial_category_id"].(int), 999; got != want {
-		t.Errorf("financial_category_id = %d, want %d", got, want)
-	}
-	if got, want := pbData["payment_method_id"].(int), 999; got != want {
-		t.Errorf("payment_method_id = %d, want %d", got, want)
-	}
-	if got, want := pbData["session_cm_id"].(int), 999; got != want {
-		t.Errorf("session_cm_id = %d, want %d", got, want)
-	}
-	if got, want := pbData["person_cm_id"].(int), 999; got != want {
-		t.Errorf("person_cm_id = %d, want %d", got, want)
 	}
 
 	// PB relations should NOT be set when not in lookup map
