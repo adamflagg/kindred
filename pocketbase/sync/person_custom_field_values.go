@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 
 	"github.com/camp/kindred/pocketbase/campminder"
+	"github.com/camp/kindred/pocketbase/ratelimit"
 )
 
 // Service name constant - uses new table name
@@ -17,8 +19,9 @@ const serviceNamePersonCustomValues = "person_custom_values"
 // This is an ON-DEMAND sync (not part of daily sync) because it requires 1 API call per person
 type PersonCustomFieldValuesSync struct {
 	BaseSyncService
-	Session string // Session filter: "all", "1", "2", "2a", "3", "4", etc.
-	Debug   bool   // Enable debug logging
+	Session     string                 // Session filter: "all", "1", "2", "2a", "3", "4", etc.
+	Debug       bool                   // Enable debug logging
+	rateLimiter *ratelimit.RateLimiter // Rate limiter for API calls
 }
 
 // NewPersonCustomFieldValuesSync creates a new person custom field values sync service
@@ -27,6 +30,12 @@ func NewPersonCustomFieldValuesSync(app core.App, client *campminder.Client) *Pe
 		BaseSyncService: NewBaseSyncService(app, client),
 		Session:         DefaultSession, // Default to all sessions
 		Debug:           false,
+		rateLimiter: ratelimit.NewRateLimiter(&ratelimit.Config{
+			APIDelay:          300 * time.Millisecond, // ~3 req/sec
+			BackoffMultiplier: 2.0,
+			MaxDelay:          120 * time.Second, // CampMinder rate limits are aggressive
+			MaxAttempts:       10,
+		}),
 	}
 }
 
@@ -261,10 +270,17 @@ func (s *PersonCustomFieldValuesSync) syncPersonCustomFieldValues(
 		default:
 		}
 
-		// Fetch page of custom field values
-		values, hasMore, err := s.Client.GetPersonCustomFieldValuesPage(personCMID, page, pageSize)
+		// Fetch page of custom field values with rate limiting and retry
+		var values []map[string]interface{}
+		var hasMore bool
+
+		err := s.rateLimiter.ExecuteWithRetry(ctx, func() error {
+			var fetchErr error
+			values, hasMore, fetchErr = s.Client.GetPersonCustomFieldValuesPage(personCMID, page, pageSize)
+			return fetchErr
+		})
 		if err != nil {
-			return fmt.Errorf("fetching custom field values page %d: %w", page, err)
+			return fmt.Errorf("fetching custom field values page %d after retries: %w", page, err)
 		}
 
 		// Process each value
