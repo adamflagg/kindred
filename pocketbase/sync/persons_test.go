@@ -576,3 +576,185 @@ func TestPersonsSync_GetStats_PartialSubStats(t *testing.T) {
 		t.Error("expected 'person_tags' key to NOT be in SubStats when not set")
 	}
 }
+
+// =============================================================================
+// Tests for extractTagIDs - Multi-select relation field population
+// =============================================================================
+
+// mockTagDefRecord simulates a core.Record for testing tag definition lookups
+type mockTagDefRecord struct {
+	id   string
+	name string
+}
+
+// TestExtractTagIDs tests extracting PocketBase tag definition IDs from person data
+func TestExtractTagIDs(t *testing.T) {
+	s := &PersonsSync{}
+
+	// Mock tag definitions map (name -> PocketBase ID)
+	tagDefsByName := map[string]string{
+		"Alumni":     "rec_alumni_001",
+		"Leadership": "rec_leadership_002",
+		"Sibling":    "rec_sibling_003",
+	}
+
+	personData := map[string]interface{}{
+		"ID": float64(12345),
+		"Tags": []interface{}{
+			map[string]interface{}{
+				"Name":           "Alumni",
+				"LastUpdatedUTC": "2025-01-15T10:30:00.000Z",
+			},
+			map[string]interface{}{
+				"Name":           "Leadership",
+				"LastUpdatedUTC": "2025-01-16T11:00:00.000Z",
+			},
+		},
+	}
+
+	tagIDs := s.extractTagIDs(personData, tagDefsByName)
+
+	if len(tagIDs) != 2 {
+		t.Fatalf("expected 2 tag IDs, got %d", len(tagIDs))
+	}
+
+	// Verify both IDs are present (order may vary)
+	foundAlumni := false
+	foundLeadership := false
+	for _, id := range tagIDs {
+		if id == "rec_alumni_001" {
+			foundAlumni = true
+		}
+		if id == "rec_leadership_002" {
+			foundLeadership = true
+		}
+	}
+
+	if !foundAlumni {
+		t.Error("expected Alumni tag ID in result")
+	}
+	if !foundLeadership {
+		t.Error("expected Leadership tag ID in result")
+	}
+}
+
+// TestExtractTagIDs_NoTags tests handling when Tags is missing
+func TestExtractTagIDs_NoTags(t *testing.T) {
+	s := &PersonsSync{}
+
+	tagDefsByName := map[string]string{
+		"Alumni": "rec_alumni_001",
+	}
+
+	personData := map[string]interface{}{
+		"ID": float64(12345),
+	}
+
+	tagIDs := s.extractTagIDs(personData, tagDefsByName)
+
+	if tagIDs != nil {
+		t.Errorf("expected nil for person without Tags, got %v", tagIDs)
+	}
+}
+
+// TestExtractTagIDs_EmptyTags tests handling when Tags is empty array
+func TestExtractTagIDs_EmptyTags(t *testing.T) {
+	s := &PersonsSync{}
+
+	tagDefsByName := map[string]string{
+		"Alumni": "rec_alumni_001",
+	}
+
+	personData := map[string]interface{}{
+		"ID":   float64(12345),
+		"Tags": []interface{}{},
+	}
+
+	tagIDs := s.extractTagIDs(personData, tagDefsByName)
+
+	if len(tagIDs) != 0 {
+		t.Errorf("expected 0 tag IDs for empty Tags array, got %d", len(tagIDs))
+	}
+}
+
+// TestExtractTagIDs_NilTags tests handling when Tags is nil
+func TestExtractTagIDs_NilTags(t *testing.T) {
+	s := &PersonsSync{}
+
+	tagDefsByName := map[string]string{
+		"Alumni": "rec_alumni_001",
+	}
+
+	personData := map[string]interface{}{
+		"ID":   float64(12345),
+		"Tags": nil,
+	}
+
+	tagIDs := s.extractTagIDs(personData, tagDefsByName)
+
+	if tagIDs != nil {
+		t.Errorf("expected nil for nil Tags, got %v", tagIDs)
+	}
+}
+
+// TestExtractTagIDs_UnknownTag tests handling when tag name not in definitions
+func TestExtractTagIDs_UnknownTag(t *testing.T) {
+	s := &PersonsSync{}
+
+	tagDefsByName := map[string]string{
+		"Alumni": "rec_alumni_001",
+	}
+
+	personData := map[string]interface{}{
+		"ID": float64(12345),
+		"Tags": []interface{}{
+			map[string]interface{}{
+				"Name": "UnknownTag", // Not in tag definitions
+			},
+			map[string]interface{}{
+				"Name": "Alumni", // In tag definitions
+			},
+		},
+	}
+
+	tagIDs := s.extractTagIDs(personData, tagDefsByName)
+
+	if len(tagIDs) != 1 {
+		t.Fatalf("expected 1 tag ID (unknown tags skipped), got %d", len(tagIDs))
+	}
+
+	if tagIDs[0] != "rec_alumni_001" {
+		t.Errorf("expected Alumni tag ID, got %q", tagIDs[0])
+	}
+}
+
+// TestExtractTagIDs_EmptyTagName tests handling when tag Name is empty
+func TestExtractTagIDs_EmptyTagName(t *testing.T) {
+	s := &PersonsSync{}
+
+	tagDefsByName := map[string]string{
+		"Alumni": "rec_alumni_001",
+	}
+
+	personData := map[string]interface{}{
+		"ID": float64(12345),
+		"Tags": []interface{}{
+			map[string]interface{}{
+				"Name": "", // Empty name
+			},
+			map[string]interface{}{
+				"Name": "Alumni",
+			},
+		},
+	}
+
+	tagIDs := s.extractTagIDs(personData, tagDefsByName)
+
+	if len(tagIDs) != 1 {
+		t.Fatalf("expected 1 tag ID (empty name skipped), got %d", len(tagIDs))
+	}
+
+	if tagIDs[0] != "rec_alumni_001" {
+		t.Errorf("expected Alumni tag ID, got %q", tagIDs[0])
+	}
+}
