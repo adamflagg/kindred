@@ -258,11 +258,13 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 	// they run in the weekly sync since they're global definitions that rarely change
 	// Note: "persons" is a combined sync that populates persons and households
 	// tables from a single API call (tags are stored as multi-select relation on persons)
+	// Note: "divisions" runs early so persons can resolve their division relation
 	orderedJobs := []string{
 		"session_groups",   // No dependencies - sync first for group data
 		"sessions",         // Depends on session_groups (for session_group relation)
+		"divisions",        // Division definitions (global, not year-specific) - runs before persons
 		"attendees",        // Depends on sessions
-		"persons",          // Depends on attendees (combined sync: persons + households)
+		"persons",          // Depends on attendees and divisions (combined sync: persons + households)
 		"bunks",            // No dependencies
 		"bunk_plans",       // Depends on sessions and bunks
 		"bunk_assignments", // Depends on sessions, persons, bunks
@@ -510,9 +512,11 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		// they run in the weekly sync since they're global definitions that rarely change.
 		// They can still be run explicitly via opts.Services if needed.
 		// Note: "persons" is a combined sync that populates persons and households
+		// Note: "divisions" runs early so persons can resolve their division relation
 		servicesToRun = []string{
 			"session_groups",
 			"sessions",
+			"divisions", // Division definitions - runs before persons
 			"attendees",
 			"persons", // Combined sync: persons + households
 			"bunks",
@@ -575,8 +579,10 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		// Note: person_tag_defs and custom_field_defs are NOT re-registered
 		// because they are global (not year-specific) and shouldn't run in historical syncs
 		// Note: "persons" is a combined sync that populates persons and households
+		// Note: "divisions" is included since persons.division relation needs it
 		o.RegisterService("session_groups", NewSessionGroupsSync(o.app, yearClient))
 		o.RegisterService("sessions", NewSessionsSync(o.app, yearClient))
+		o.RegisterService("divisions", NewDivisionsSync(o.app, yearClient))
 		o.RegisterService("attendees", NewAttendeesSync(o.app, yearClient))
 		o.RegisterService("persons", NewPersonsSync(o.app, yearClient)) // Combined: persons + households
 		o.RegisterService("bunks", NewBunksSync(o.app, yearClient))
@@ -696,8 +702,10 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	o.RegisterService("attendees", NewAttendeesSync(o.app, client))
 	o.RegisterService("person_tag_defs", NewPersonTagDefinitionsSync(o.app, client))
 	o.RegisterService("custom_field_defs", NewCustomFieldDefinitionsSync(o.app, client))
+	o.RegisterService("divisions", NewDivisionsSync(o.app, client)) // Division definitions
 	// "persons" is a combined sync that populates persons and households tables
 	// from a single API call (tags are stored as multi-select relation on persons)
+	// Division relation on persons is set during persons sync (derived from persons API)
 	o.RegisterService("persons", NewPersonsSync(o.app, client))
 	o.RegisterService("bunks", NewBunksSync(o.app, client))
 	o.RegisterService("bunk_plans", NewBunkPlansSync(o.app, client))

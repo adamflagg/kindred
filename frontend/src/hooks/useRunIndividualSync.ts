@@ -5,13 +5,17 @@ import toast from 'react-hot-toast';
 // Map of sync types to their display names
 // Note: "persons" is a combined sync that populates persons and households tables
 // from a single API call (tags are stored as multi-select relation on persons)
+// Note: "divisions" now runs in daily sync (before persons) rather than weekly
 export const SYNC_TYPE_NAMES: Record<string, string> = {
-  session_groups: 'Session Groups',
-  sessions: 'Sessions',
-  attendees: 'Attendees',
+  // Weekly syncs (global definitions)
   person_tag_defs: 'Tags',
   custom_field_defs: 'Custom Fields',
-  persons: 'Persons', // Combined sync: persons + households
+  // Daily syncs
+  session_groups: 'Session Groups',
+  sessions: 'Sessions',
+  divisions: 'Divisions', // Runs before persons in daily sync
+  attendees: 'Attendees',
+  persons: 'Persons', // Combined sync: persons + households (includes division relation)
   bunks: 'Bunks',
   bunk_plans: 'Bunk Plans',
   bunk_assignments: 'Bunk Assignments',

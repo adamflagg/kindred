@@ -261,6 +261,11 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 		return handleIndividualSync(e, scheduler, "custom_field_defs")
 	}))
 
+	// Divisions sync (division definitions - runs in daily sync before persons)
+	e.Router.POST("/api/custom/sync/divisions", requireAuth(func(e *core.RequestEvent) error {
+		return handleIndividualSync(e, scheduler, "divisions")
+	}))
+
 	// On-demand sync endpoints (require N API calls - one per entity)
 	// Person custom field values sync
 	// Accepts optional ?session=X parameter (0 or empty = all, 1-4 = specific session)
@@ -509,13 +514,17 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Get status of all known sync types (in dependency order)
 	// Note: "persons" is a combined sync that populates persons, households, AND person_tags
 	// tables from a single API call - there are no separate households or person_tags syncs
+	// Note: "divisions" now runs in daily sync (before persons) rather than weekly
 	syncTypes := []string{
+		// Weekly syncs - global definitions that rarely change
+		"person_tag_defs",   // Global sync: tag definitions
+		"custom_field_defs", // Global sync: custom field definitions
+		// Daily syncs (in dependency order)
 		"session_groups",
 		"sessions",
+		"divisions",        // Division definitions (runs before persons in daily sync)
 		"attendees",
-		"person_tag_defs",
-		"custom_field_defs",
-		"persons", // Combined sync: persons + households + person_tags
+		"persons", // Combined sync: persons + households + person_tags (includes division relation)
 		"bunks",
 		"bunk_plans",
 		"bunk_assignments",

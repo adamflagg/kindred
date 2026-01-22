@@ -65,9 +65,10 @@ func (s *Scheduler) Start() error {
 		return fmt.Errorf("adding daily schedule: %w", err)
 	}
 
-	// Add weekly schedule for global data (runs Sunday at 4am, after daily sync)
+	// Add weekly schedule for global data (runs Sunday at 2am, before daily sync)
 	// These are expensive syncs (N API calls per entity) not suitable for daily runs
-	_, err = s.cron.AddFunc("0 4 * * 0", func() {
+	// Currently includes: person_tag_defs, custom_field_defs
+	_, err = s.cron.AddFunc("0 2 * * 0", func() {
 		slog.Info("Starting scheduled weekly sync (global data)")
 		s.runWeeklySync()
 	})

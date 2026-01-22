@@ -204,3 +204,22 @@ func TestGetClientID(t *testing.T) {
 		t.Errorf("GetClientID() = %s, want test-client-123", client.GetClientID())
 	}
 }
+
+// TestGetDivisions_MethodSignature verifies the GetDivisions method exists and has correct signature
+// Full integration testing requires CampMinder API credentials
+func TestGetDivisions_MethodSignature(t *testing.T) {
+	client := &Client{
+		clientID: "test-client",
+		seasonID: 2025,
+	}
+
+	// Verify the method exists with correct signature
+	// This will fail at compile time if signature is wrong
+	var fn func() ([]map[string]interface{}, error)
+	fn = client.GetDivisions
+
+	// Method should exist - just verify it's callable (won't succeed without auth)
+	if fn == nil {
+		t.Error("GetDivisions method should exist")
+	}
+}

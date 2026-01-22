@@ -715,3 +715,31 @@ func (c *Client) GetHouseholdCustomFieldValuesPage(householdID, page, pageSize i
 	hasMore := response.Next != nil && *response.Next != ""
 	return response.Result, hasMore, nil
 }
+
+// GetDivisions retrieves all division definitions from CampMinder
+// Endpoint: GET /divisions
+// Returns: array of divisions with ID, Name, Description, GradeRange, GenderID, Capacity, etc.
+// Note: Divisions are global (not year-specific) - they define age/gender groups
+func (c *Client) GetDivisions() ([]map[string]interface{}, error) {
+	params := map[string]string{
+		"clientid":   c.clientID,
+		"pagenumber": "1",
+		"pagesize":   "500", // Get all divisions in one call (typically < 50)
+	}
+
+	body, err := c.makeRequest("GET", "divisions", params)
+	if err != nil {
+		return nil, err
+	}
+
+	var response struct {
+		TotalCount int                      `json:"TotalCount"`
+		Results    []map[string]interface{} `json:"Results"`
+	}
+
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("decode divisions response: %w", err)
+	}
+
+	return response.Results, nil
+}

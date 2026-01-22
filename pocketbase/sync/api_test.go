@@ -325,8 +325,9 @@ func TestSyncTypeValidation(t *testing.T) {
 	validSyncTypes := map[string]bool{
 		"session_groups":   true,
 		"sessions":         true,
+		"divisions":        true, // Division definitions (runs in daily sync before persons)
 		"attendees":        true,
-		"persons":          true,
+		"persons":          true, // Combined sync: persons + households (includes division relation)
 		"bunks":            true,
 		"bunk_plans":       true,
 		"bunk_assignments": true,
@@ -341,6 +342,7 @@ func TestSyncTypeValidation(t *testing.T) {
 	}{
 		{"session_groups", "session_groups", true},
 		{"sessions", "sessions", true},
+		{"divisions", "divisions", true},
 		{"attendees", "attendees", true},
 		{"persons", "persons", true},
 		{"bunks", "bunks", true},
@@ -352,6 +354,7 @@ func TestSyncTypeValidation(t *testing.T) {
 		{"empty", "", false},
 		{"typo", "session", false},
 		{"case sensitive", "Sessions", false},
+		{"division typo", "division_attendees", false}, // No longer exists
 	}
 
 	for _, tt := range tests {
@@ -370,8 +373,9 @@ func TestStatusResponseFormat(t *testing.T) {
 	syncTypes := []string{
 		"session_groups",
 		"sessions",
+		"divisions", // Division definitions (runs in daily sync before persons)
 		"attendees",
-		"persons",
+		"persons", // Combined sync: persons + households (includes division relation)
 		"bunks",
 		"bunk_plans",
 		"bunk_assignments",
@@ -379,9 +383,9 @@ func TestStatusResponseFormat(t *testing.T) {
 		"process_requests",
 	}
 
-	// Verify all expected sync types are covered (9 sync types)
-	if len(syncTypes) != 9 {
-		t.Errorf("expected 9 sync types, got %d", len(syncTypes))
+	// Verify all expected sync types are covered (10 sync types)
+	if len(syncTypes) != 10 {
+		t.Errorf("expected 10 sync types, got %d", len(syncTypes))
 	}
 
 	// Verify no duplicates

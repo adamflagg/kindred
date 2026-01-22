@@ -230,7 +230,10 @@ func TestNormalizeToStringSlice(t *testing.T) {
 		{"[]interface{} with non-strings", []interface{}{"a", 123}, nil},
 		{"[]any with strings", []any{"p", "q"}, []string{"p", "q"}},
 		{"[]any with mixed types", []any{"a", true}, nil},
-		{"non-slice type", "not a slice", nil},
+		// Single string is intentionally converted to []string{str} because
+		// PocketBase returns single-value relations as string, not []string
+		{"single string", "not a slice", []string{"not a slice"}},
+		{"empty string", "", []string{}},
 		{"int type", 42, nil},
 	}
 

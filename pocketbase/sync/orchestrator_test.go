@@ -427,7 +427,7 @@ func TestIsWeeklySyncRunning(t *testing.T) {
 // TestWeeklySyncServices tests that weekly sync includes expected global services
 func TestWeeklySyncServices(t *testing.T) {
 	// Weekly sync should include global definition tables that rarely change
-	// These are NOT part of daily sync
+	// These are NOT part of daily sync (divisions moved to daily sync)
 	expectedServices := []string{
 		"person_tag_defs",
 		"custom_field_defs",
@@ -456,14 +456,13 @@ func TestWeeklySyncServices(t *testing.T) {
 // TestWeeklySyncNotInDailySync verifies weekly services are NOT in daily sync
 func TestWeeklySyncNotInDailySync(t *testing.T) {
 	// Daily sync jobs - these should NOT include weekly sync services
-	// (person_tag_defs and custom_field_defs moved to weekly)
+	// (person_tag_defs and custom_field_defs are weekly; divisions is now daily)
 	dailyJobs := []string{
 		"session_groups",
 		"sessions",
+		"divisions", // Moved from weekly to daily sync
 		"attendees",
-		"persons",
-		"households",
-		"person_tags",
+		"persons", // Combined sync: persons + households
 		"bunks",
 		"bunk_plans",
 		"bunk_assignments",
