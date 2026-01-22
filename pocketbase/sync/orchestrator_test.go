@@ -481,3 +481,87 @@ func TestWeeklySyncNotInDailySync(t *testing.T) {
 		}
 	}
 }
+
+// TestStatsWithSubStats tests Stats struct with SubStats for combined syncs
+func TestStatsWithSubStats(t *testing.T) {
+	stats := Stats{
+		Created:  10,
+		Updated:  5,
+		Skipped:  2,
+		Errors:   1,
+		Duration: 30,
+		SubStats: map[string]Stats{
+			"households": {
+				Created: 3,
+				Updated: 2,
+				Skipped: 1,
+				Errors:  0,
+			},
+			"person_tags": {
+				Created: 15,
+				Updated: 80,
+				Skipped: 5,
+				Errors:  0,
+			},
+		},
+	}
+
+	// Verify main stats
+	if stats.Created != 10 {
+		t.Errorf("expected Created=10, got %d", stats.Created)
+	}
+
+	// Verify SubStats exists and has correct values
+	if stats.SubStats == nil {
+		t.Fatal("expected SubStats to be non-nil")
+	}
+
+	if len(stats.SubStats) != 2 {
+		t.Errorf("expected 2 sub-stats entries, got %d", len(stats.SubStats))
+	}
+
+	// Verify households sub-stats
+	householdStats, exists := stats.SubStats["households"]
+	if !exists {
+		t.Fatal("expected 'households' key in SubStats")
+	}
+	if householdStats.Created != 3 {
+		t.Errorf("expected households.Created=3, got %d", householdStats.Created)
+	}
+	if householdStats.Updated != 2 {
+		t.Errorf("expected households.Updated=2, got %d", householdStats.Updated)
+	}
+
+	// Verify person_tags sub-stats
+	personTagStats, exists := stats.SubStats["person_tags"]
+	if !exists {
+		t.Fatal("expected 'person_tags' key in SubStats")
+	}
+	if personTagStats.Created != 15 {
+		t.Errorf("expected person_tags.Created=15, got %d", personTagStats.Created)
+	}
+	if personTagStats.Updated != 80 {
+		t.Errorf("expected person_tags.Updated=80, got %d", personTagStats.Updated)
+	}
+}
+
+// TestStatsWithoutSubStats tests Stats struct backwards compatibility without SubStats
+func TestStatsWithoutSubStats(t *testing.T) {
+	stats := Stats{
+		Created:  10,
+		Updated:  5,
+		Skipped:  2,
+		Errors:   1,
+		Duration: 30,
+	}
+
+	// SubStats should be nil when not set
+	if stats.SubStats != nil {
+		t.Errorf("expected SubStats to be nil when not set, got %v", stats.SubStats)
+	}
+
+	// Verify main stats still work
+	if stats.Created != 10 {
+		t.Errorf("expected Created=10, got %d", stats.Created)
+	}
+}

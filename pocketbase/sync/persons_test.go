@@ -431,3 +431,148 @@ func TestAllCapsNameFix(t *testing.T) {
 		}
 	}
 }
+
+// TestPersonsSync_GetStats_WithSubStats tests that GetStats returns combined stats
+// including households and person_tags sub-entity stats from combined sync
+func TestPersonsSync_GetStats_WithSubStats(t *testing.T) {
+	s := &PersonsSync{
+		missingDataStats: make(map[string]int),
+	}
+
+	// Set main persons stats
+	s.Stats = Stats{
+		Created: 10,
+		Updated: 5,
+		Skipped: 85,
+		Errors:  0,
+	}
+
+	// Set household stats (simulating combined sync)
+	householdStats := Stats{
+		Created: 3,
+		Updated: 2,
+		Skipped: 45,
+		Errors:  0,
+	}
+	s.householdStats = &householdStats
+
+	// Set person_tags stats (simulating combined sync)
+	personTagStats := Stats{
+		Created: 15,
+		Updated: 80,
+		Skipped: 5,
+		Errors:  0,
+	}
+	s.personTagStats = &personTagStats
+
+	// Get stats - should include SubStats
+	stats := s.GetStats()
+
+	// Verify main stats
+	if stats.Created != 10 {
+		t.Errorf("expected Created=10, got %d", stats.Created)
+	}
+	if stats.Updated != 5 {
+		t.Errorf("expected Updated=5, got %d", stats.Updated)
+	}
+
+	// Verify SubStats is populated
+	if stats.SubStats == nil {
+		t.Fatal("expected SubStats to be non-nil for combined sync")
+	}
+
+	// Verify households sub-stats
+	householdSubStats, exists := stats.SubStats["households"]
+	if !exists {
+		t.Fatal("expected 'households' key in SubStats")
+	}
+	if householdSubStats.Created != 3 {
+		t.Errorf("expected households.Created=3, got %d", householdSubStats.Created)
+	}
+	if householdSubStats.Updated != 2 {
+		t.Errorf("expected households.Updated=2, got %d", householdSubStats.Updated)
+	}
+
+	// Verify person_tags sub-stats
+	personTagSubStats, exists := stats.SubStats["person_tags"]
+	if !exists {
+		t.Fatal("expected 'person_tags' key in SubStats")
+	}
+	if personTagSubStats.Created != 15 {
+		t.Errorf("expected person_tags.Created=15, got %d", personTagSubStats.Created)
+	}
+	if personTagSubStats.Updated != 80 {
+		t.Errorf("expected person_tags.Updated=80, got %d", personTagSubStats.Updated)
+	}
+}
+
+// TestPersonsSync_GetStats_WithoutSubStats tests backwards compatibility
+// when sub-entity stats are not set (not a combined sync)
+func TestPersonsSync_GetStats_WithoutSubStats(t *testing.T) {
+	s := &PersonsSync{
+		missingDataStats: make(map[string]int),
+	}
+
+	// Set only main stats (no sub-entity stats)
+	s.Stats = Stats{
+		Created: 10,
+		Updated: 5,
+		Skipped: 85,
+		Errors:  0,
+	}
+
+	// Get stats - should not have SubStats
+	stats := s.GetStats()
+
+	// Verify main stats
+	if stats.Created != 10 {
+		t.Errorf("expected Created=10, got %d", stats.Created)
+	}
+
+	// SubStats should be nil when not set
+	if stats.SubStats != nil {
+		t.Errorf("expected SubStats to be nil when sub-entity stats not set, got %v", stats.SubStats)
+	}
+}
+
+// TestPersonsSync_GetStats_PartialSubStats tests when only some sub-entity stats are set
+func TestPersonsSync_GetStats_PartialSubStats(t *testing.T) {
+	s := &PersonsSync{
+		missingDataStats: make(map[string]int),
+	}
+
+	// Set main stats
+	s.Stats = Stats{
+		Created: 10,
+		Updated: 5,
+		Skipped: 85,
+		Errors:  0,
+	}
+
+	// Set only household stats (no person_tags)
+	householdStats := Stats{
+		Created: 3,
+		Updated: 2,
+		Skipped: 45,
+		Errors:  0,
+	}
+	s.householdStats = &householdStats
+
+	// Get stats
+	stats := s.GetStats()
+
+	// Verify SubStats exists
+	if stats.SubStats == nil {
+		t.Fatal("expected SubStats to be non-nil")
+	}
+
+	// Verify households sub-stats present
+	if _, exists := stats.SubStats["households"]; !exists {
+		t.Error("expected 'households' key in SubStats")
+	}
+
+	// Verify person_tags sub-stats NOT present
+	if _, exists := stats.SubStats["person_tags"]; exists {
+		t.Error("expected 'person_tags' key to NOT be in SubStats when not set")
+	}
+}
