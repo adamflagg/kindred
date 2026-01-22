@@ -315,8 +315,18 @@ func (s *HouseholdCustomFieldValuesSync) syncHouseholdCustomFieldValues(
 			s.TrackProcessedKey(compositeKey, 0)
 
 			if existing, found := existingRecords[compositeKey]; found {
-				// Update if value changed
-				if existing.GetString("value") != pbData["value"].(string) {
+				// Fast path: if lastUpdated unchanged, skip entirely
+				existingLastUpdated := existing.GetString("last_updated")
+				newLastUpdated, hasNewLastUpdated := pbData["last_updated"].(string)
+
+				if existingLastUpdated != "" && hasNewLastUpdated && existingLastUpdated == newLastUpdated {
+					// lastUpdated matches - no changes, skip update
+					s.Stats.Skipped++
+					continue
+				}
+
+				// Value or lastUpdated changed - update record
+				if existing.GetString("value") != pbData["value"].(string) || existingLastUpdated != newLastUpdated {
 					for key, val := range pbData {
 						existing.Set(key, val)
 					}
@@ -394,7 +404,7 @@ func (s *HouseholdCustomFieldValuesSync) deleteOrphans(year int) error {
 }
 
 // transformHouseholdCustomFieldValueToPB transforms CampMinder custom field value data to PocketBase format
-// Simplified schema: only household, field_definition, value, year
+// Schema: household, field_definition, value, year, last_updated (optional)
 func (s *HouseholdCustomFieldValuesSync) transformHouseholdCustomFieldValueToPB(
 	data map[string]interface{},
 	householdPBId string,
@@ -416,6 +426,11 @@ func (s *HouseholdCustomFieldValuesSync) transformHouseholdCustomFieldValueToPB(
 
 	// Set year
 	pbData["year"] = year
+
+	// Capture lastUpdated for delta sync (if present and non-empty)
+	if lastUpdated, ok := data["lastUpdated"].(string); ok && lastUpdated != "" {
+		pbData["last_updated"] = lastUpdated
+	}
 
 	return pbData
 }

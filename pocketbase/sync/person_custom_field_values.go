@@ -318,8 +318,18 @@ func (s *PersonCustomFieldValuesSync) syncPersonCustomFieldValues(
 
 			// Check for existing record
 			if existing, found := existingRecords[compositeKey]; found {
-				// Update if value changed
-				if existing.GetString("value") != pbData["value"].(string) {
+				// Fast path: if lastUpdated unchanged, skip entirely
+				existingLastUpdated := existing.GetString("last_updated")
+				newLastUpdated, hasNewLastUpdated := pbData["last_updated"].(string)
+
+				if existingLastUpdated != "" && hasNewLastUpdated && existingLastUpdated == newLastUpdated {
+					// lastUpdated matches - no changes, skip update
+					s.Stats.Skipped++
+					continue
+				}
+
+				// Value or lastUpdated changed - update record
+				if existing.GetString("value") != pbData["value"].(string) || existingLastUpdated != newLastUpdated {
 					for key, val := range pbData {
 						existing.Set(key, val)
 					}
@@ -399,7 +409,7 @@ func (s *PersonCustomFieldValuesSync) deleteOrphans(year int) error {
 }
 
 // transformPersonCustomFieldValueToPB transforms CampMinder custom field value data to PocketBase format
-// Simplified schema: only person, field_definition, value, year
+// Schema: person, field_definition, value, year, last_updated (optional)
 func (s *PersonCustomFieldValuesSync) transformPersonCustomFieldValueToPB(
 	data map[string]interface{},
 	personPBId string,
@@ -421,6 +431,11 @@ func (s *PersonCustomFieldValuesSync) transformPersonCustomFieldValueToPB(
 
 	// Set year
 	pbData["year"] = year
+
+	// Capture lastUpdated for delta sync (if present and non-empty)
+	if lastUpdated, ok := data["lastUpdated"].(string); ok && lastUpdated != "" {
+		pbData["last_updated"] = lastUpdated
+	}
 
 	return pbData
 }
