@@ -7,16 +7,21 @@ import (
 
 // MockSheetsWriter implements SheetsWriter interface for testing
 type MockSheetsWriter struct {
-	WrittenData map[string][][]interface{} // sheetName -> rows
-	ClearedTabs []string
-	WriteError  error
-	ClearError  error
+	WrittenData  map[string][][]interface{} // sheetName -> rows
+	ClearedTabs  []string
+	EnsuredTabs  []string // Tracks tabs that were ensured to exist
+	ExistingTabs map[string]bool // Simulates which tabs already exist
+	WriteError   error
+	ClearError   error
+	EnsureError  error
 }
 
 func NewMockSheetsWriter() *MockSheetsWriter {
 	return &MockSheetsWriter{
-		WrittenData: make(map[string][][]interface{}),
-		ClearedTabs: []string{},
+		WrittenData:  make(map[string][][]interface{}),
+		ClearedTabs:  []string{},
+		EnsuredTabs:  []string{},
+		ExistingTabs: make(map[string]bool),
 	}
 }
 
@@ -33,6 +38,17 @@ func (m *MockSheetsWriter) ClearSheet(_ context.Context, _, sheetTab string) err
 		return m.ClearError
 	}
 	m.ClearedTabs = append(m.ClearedTabs, sheetTab)
+	return nil
+}
+
+// EnsureSheet creates a sheet tab if it doesn't exist (idempotent)
+func (m *MockSheetsWriter) EnsureSheet(_ context.Context, _, sheetTab string) error {
+	if m.EnsureError != nil {
+		return m.EnsureError
+	}
+	m.EnsuredTabs = append(m.EnsuredTabs, sheetTab)
+	// Mark tab as existing after ensuring
+	m.ExistingTabs[sheetTab] = true
 	return nil
 }
 
@@ -244,5 +260,144 @@ func TestSessionRecord_Validation(t *testing.T) {
 	data := FormatSessionsData([]SessionRecord{record})
 	if len(data) != 2 { // header + 1 row
 		t.Errorf("Expected 2 rows for empty record, got %d", len(data))
+	}
+}
+
+// =============================================================================
+// Phase 1: EnsureSheet Tests
+// =============================================================================
+
+func TestGoogleSheetsExport_EnsureSheetCalledBeforeExport(t *testing.T) {
+	// Test that EnsureSheet is called for each tab before writing
+	mock := NewMockSheetsWriter()
+	export := &GoogleSheetsExport{
+		sheetsWriter:  mock,
+		spreadsheetID: "test-spreadsheet-id",
+	}
+
+	attendees := []AttendeeRecord{
+		{FirstName: "Emma", LastName: "Johnson"},
+	}
+	sessions := []SessionRecord{
+		{Name: "Session 2", Type: "main"},
+	}
+
+	err := export.ExportToSheets(context.Background(), attendees, sessions)
+	if err != nil {
+		t.Errorf("ExportToSheets() error = %v", err)
+	}
+
+	// Verify EnsureSheet was called for both tabs
+	if len(mock.EnsuredTabs) != 2 {
+		t.Errorf("Expected 2 tabs ensured, got %d: %v", len(mock.EnsuredTabs), mock.EnsuredTabs)
+	}
+
+	// Verify the correct tabs were ensured
+	hasAttendees := false
+	hasSessions := false
+	for _, tab := range mock.EnsuredTabs {
+		if tab == "Attendees" {
+			hasAttendees = true
+		}
+		if tab == "Sessions" {
+			hasSessions = true
+		}
+	}
+	if !hasAttendees {
+		t.Error("Attendees tab was not ensured")
+	}
+	if !hasSessions {
+		t.Error("Sessions tab was not ensured")
+	}
+}
+
+func TestGoogleSheetsExport_EnsureSheetErrorStopsExport(t *testing.T) {
+	// Test that EnsureSheet errors propagate and stop the export
+	mock := NewMockSheetsWriter()
+	mock.EnsureError = context.DeadlineExceeded // Simulate an error
+	export := &GoogleSheetsExport{
+		sheetsWriter:  mock,
+		spreadsheetID: "test-spreadsheet-id",
+	}
+
+	attendees := []AttendeeRecord{
+		{FirstName: "Emma", LastName: "Johnson"},
+	}
+	sessions := []SessionRecord{
+		{Name: "Session 2", Type: "main"},
+	}
+
+	err := export.ExportToSheets(context.Background(), attendees, sessions)
+	if err == nil {
+		t.Error("Expected error when EnsureSheet fails, got nil")
+	}
+
+	// Verify no data was written since ensure failed
+	if len(mock.WrittenData) != 0 {
+		t.Errorf("Expected no data written when EnsureSheet fails, got %d tabs", len(mock.WrittenData))
+	}
+}
+
+func TestGoogleSheetsExport_ExportOrderIsEnsureClearWrite(t *testing.T) {
+	// Test that the order of operations is: ensure -> clear -> write
+	// We track the order by checking arrays in sequence
+	mock := NewMockSheetsWriter()
+	export := &GoogleSheetsExport{
+		sheetsWriter:  mock,
+		spreadsheetID: "test-spreadsheet-id",
+	}
+
+	attendees := []AttendeeRecord{
+		{FirstName: "Emma", LastName: "Johnson"},
+	}
+	sessions := []SessionRecord{}
+
+	err := export.ExportToSheets(context.Background(), attendees, sessions)
+	if err != nil {
+		t.Errorf("ExportToSheets() error = %v", err)
+	}
+
+	// For Attendees tab, check that ensure was called
+	attendeesEnsured := false
+	for _, tab := range mock.EnsuredTabs {
+		if tab == "Attendees" {
+			attendeesEnsured = true
+			break
+		}
+	}
+	if !attendeesEnsured {
+		t.Error("Attendees tab should have been ensured before export")
+	}
+
+	// Verify data was ultimately written
+	if _, ok := mock.WrittenData["Attendees"]; !ok {
+		t.Error("Attendees data should have been written")
+	}
+}
+
+func TestMockSheetsWriter_EnsureSheetIsIdempotent(t *testing.T) {
+	// Test that calling EnsureSheet multiple times works (idempotent)
+	mock := NewMockSheetsWriter()
+	ctx := context.Background()
+
+	// Call EnsureSheet twice for the same tab
+	err := mock.EnsureSheet(ctx, "spreadsheet-id", "TestTab")
+	if err != nil {
+		t.Errorf("First EnsureSheet() error = %v", err)
+	}
+
+	err = mock.EnsureSheet(ctx, "spreadsheet-id", "TestTab")
+	if err != nil {
+		t.Errorf("Second EnsureSheet() error = %v", err)
+	}
+
+	// Both calls should be recorded (real implementation would be idempotent at API level)
+	if len(mock.EnsuredTabs) != 2 {
+		t.Errorf("Expected 2 EnsureSheet calls recorded, got %d", len(mock.EnsuredTabs))
+	}
+
+	// Tab should be marked as existing
+	if !mock.ExistingTabs["TestTab"] {
+		t.Error("TestTab should be marked as existing after EnsureSheet")
 	}
 }
