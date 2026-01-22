@@ -14,6 +14,8 @@ import {
   Layers,
   Tent,
   ClipboardList,
+  DollarSign,
+  Receipt,
 } from 'lucide-react';
 
 // Global sync types - cross-year data not tied to a specific season
@@ -22,6 +24,7 @@ export const GLOBAL_SYNC_TYPES = [
   { id: 'person_tag_defs', name: 'Tag Definitions', icon: Tag, color: 'text-pink-600' },
   { id: 'custom_field_defs', name: 'Field Definitions', icon: FileSpreadsheet, color: 'text-lime-600' },
   { id: 'staff_lookups', name: 'Staff Lookups', icon: ClipboardList, color: 'text-stone-600' }, // positions, org_categories, program_areas
+  { id: 'financial_lookups', name: 'Financial Lookups', icon: DollarSign, color: 'text-emerald-600' }, // financial_categories, payment_methods
 ] as const;
 
 // Current year sync types - year-specific data that follows the sync chain
@@ -37,9 +40,10 @@ export const CURRENT_YEAR_SYNC_TYPES = [
   { id: 'bunks', name: 'Bunks', icon: BedDouble, color: 'text-amber-600' },
   { id: 'bunk_plans', name: 'Bunk Plans', icon: Layout, color: 'text-rose-600' },
   { id: 'bunk_assignments', name: 'Assignments', icon: UserCheck, color: 'text-indigo-600' },
+  { id: 'staff', name: 'Staff', icon: Tent, color: 'text-slate-600' },
+  { id: 'financial_transactions', name: 'Financial Transactions', icon: Receipt, color: 'text-green-600' },
   { id: 'bunk_requests', name: 'Intake Requests', icon: FileText, color: 'text-orange-600' },
   { id: 'process_requests', name: 'Process Requests', icon: Brain, color: 'text-teal-600' },
-  { id: 'staff', name: 'Staff', icon: Tent, color: 'text-slate-600' },
 ] as const;
 
 // Combined sync types for backward compatibility
@@ -58,7 +62,8 @@ export const HISTORICAL_SYNC_TYPES = [
   { id: 'bunks', name: 'Bunks' },
   { id: 'bunk_plans', name: 'Bunk Plans' },
   { id: 'bunk_assignments', name: 'Assignments' },
-  { id: 'staff', name: 'Staff' },
+  { id: 'staff', name: 'Staff' }, // Depends on divisions, bunks, persons
+  { id: 'financial_transactions', name: 'Financial Transactions' }, // Depends on sessions, persons, households
 ] as const;
 
 // Icon for global section header

@@ -1,10 +1,15 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { User, Loader2, ChevronDown, AlertTriangle } from 'lucide-react';
 import { Modal } from '../ui/Modal';
+import { pb } from '../../lib/pocketbase';
+import { useYear } from '../../hooks/useCurrentYear';
+import { queryKeys, syncDataOptions } from '../../utils/queryKeys';
 
 export interface EntitySyncOptionsState {
   includeCustomFieldValues: boolean;
-  sessionFilter: number; // 0 = all, 1-4 = specific session (only used if includeCustomFieldValues is true)
+  session: string; // "all", "1", "2", "2a", etc. (only used if includeCustomFieldValues is true)
+  debug: boolean;
 }
 
 interface EntitySyncOptionsProps {
@@ -31,13 +36,16 @@ const ENTITY_CONFIG = {
   },
 };
 
-const SESSION_OPTIONS = [
-  { value: 0, label: 'All Sessions' },
-  { value: 1, label: 'Session 1 (Taste of Camp)' },
-  { value: 2, label: 'Session 2' },
-  { value: 3, label: 'Session 3' },
-  { value: 4, label: 'Session 4' },
-];
+// Regex patterns to extract friendly names from session names (matches backend logic)
+const SESSION_NAME_PATTERN = /Session\s+(\d+[a-z]?)/i;
+const TOC_PATTERN = /Taste\s+of\s+Camp/i;
+
+function extractFriendlyName(name: string): string | null {
+  if (TOC_PATTERN.test(name)) return '1';
+  const match = name.match(SESSION_NAME_PATTERN);
+  const captured = match?.[1];
+  return captured ? captured.toLowerCase() : null;
+}
 
 export default function EntitySyncOptions({
   isOpen,
@@ -46,24 +54,69 @@ export default function EntitySyncOptions({
   isProcessing,
   entityType,
 }: EntitySyncOptionsProps) {
+  const currentYear = useYear();
+
   const [includeCustomFieldValues, setIncludeCustomFieldValues] = useState(false);
-  const [sessionFilter, setSessionFilter] = useState<number>(0);
+  const [session, setSession] = useState<string>('all');
+  const [debug, setDebug] = useState(false);
   const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
 
   const config = ENTITY_CONFIG[entityType];
   const Icon = config.icon;
 
-  // Reset form when modal closes
+  // Reset form when modal closes (render-time check to avoid setState in effect)
   if (!isOpen && prevIsOpen) {
     setPrevIsOpen(isOpen);
     setIncludeCustomFieldValues(false);
-    setSessionFilter(0);
+    setSession('all');
+    setDebug(false);
   } else if (isOpen !== prevIsOpen) {
     setPrevIsOpen(isOpen);
   }
 
+  // Fetch sessions dynamically from database (adapts to each year)
+  const { data: sessions } = useQuery({
+    queryKey: queryKeys.sessions(currentYear),
+    queryFn: async () => {
+      const records = await pb.collection('camp_sessions').getFullList({
+        filter: `year = ${currentYear} && (session_type = "main" || session_type = "embedded")`,
+        sort: 'start_date',
+      });
+      return records;
+    },
+    ...syncDataOptions, // 1 hour stale - sessions don't change often
+    enabled: isOpen && includeCustomFieldValues, // Only fetch when modal is open AND custom fields enabled
+  });
+
+  // Build session options dynamically from database
+  const sessionOptions = useMemo(() => {
+    const options: Array<{ value: string; label: string }> = [{ value: 'all', label: 'All Sessions' }];
+
+    if (sessions) {
+      // Sort logically: 1, 2, 2a, 2b, 3, 3a, 4
+      const sorted = [...sessions].sort((a, b) => {
+        const aName = extractFriendlyName(a.name) || '';
+        const bName = extractFriendlyName(b.name) || '';
+        // Compare numeric part first, then alpha suffix
+        const aNum = parseInt(aName) || 0;
+        const bNum = parseInt(bName) || 0;
+        if (aNum !== bNum) return aNum - bNum;
+        return aName.localeCompare(bName);
+      });
+
+      for (const s of sorted) {
+        const friendly = extractFriendlyName(s.name);
+        if (friendly) {
+          options.push({ value: friendly, label: s.name });
+        }
+      }
+    }
+
+    return options;
+  }, [sessions]);
+
   const handleSubmit = () => {
-    onSubmit({ includeCustomFieldValues, sessionFilter });
+    onSubmit({ includeCustomFieldValues, session, debug });
   };
 
   return (
@@ -123,12 +176,12 @@ export default function EntitySyncOptions({
                 <div className="relative">
                   <select
                     id="session-filter-select"
-                    value={sessionFilter}
-                    onChange={(e) => setSessionFilter(parseInt(e.target.value))}
+                    value={session}
+                    onChange={(e) => setSession(e.target.value)}
                     disabled={isProcessing}
                     className="w-full px-4 py-2.5 border border-border rounded-lg bg-background text-foreground appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {SESSION_OPTIONS.map((opt) => (
+                    {sessionOptions.map((opt) => (
                       <option key={opt.value} value={opt.value}>
                         {opt.label}
                       </option>
@@ -138,6 +191,25 @@ export default function EntitySyncOptions({
                 </div>
                 <p className="text-xs text-muted-foreground mt-1.5">
                   Filter to only sync custom fields for {entityType} in the selected session
+                </p>
+              </div>
+
+              {/* Debug Checkbox */}
+              <div>
+                <label className="flex items-center gap-3 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={debug}
+                    onChange={(e) => setDebug(e.target.checked)}
+                    disabled={isProcessing}
+                    className="w-4 h-4 rounded border-border text-primary focus:ring-primary/30 focus:ring-offset-0 disabled:opacity-50"
+                  />
+                  <span className="text-sm group-hover:text-foreground transition-colors">
+                    Debug logging
+                  </span>
+                </label>
+                <p className="text-xs text-muted-foreground ml-7">
+                  Enable verbose logging for troubleshooting
                 </p>
               </div>
             </>

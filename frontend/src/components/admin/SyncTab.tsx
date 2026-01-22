@@ -8,6 +8,7 @@ import {
   RefreshCw,
   Settings2,
   Calendar,
+  AlertTriangle,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -57,6 +58,7 @@ export function SyncTab() {
   const [showHistorical, setShowHistorical] = useState(false);
   const [historicalYear, setHistoricalYear] = useState(currentYear - 1);
   const [historicalService, setHistoricalService] = useState('all');
+  const [includeHistoricalCustomValues, setIncludeHistoricalCustomValues] = useState(false);
   const [showProcessOptions, setShowProcessOptions] = useState(false);
   const [entityModalSyncType, setEntityModalSyncType] = useState<EntitySyncType | null>(null);
 
@@ -140,7 +142,13 @@ export function SyncTab() {
               <label className="block text-sm font-medium text-muted-foreground mb-1.5">Service</label>
               <select
                 value={historicalService}
-                onChange={(e) => setHistoricalService(e.target.value)}
+                onChange={(e) => {
+                  setHistoricalService(e.target.value);
+                  // Reset custom values checkbox when switching away from all/persons
+                  if (e.target.value !== 'all' && e.target.value !== 'persons') {
+                    setIncludeHistoricalCustomValues(false);
+                  }
+                }}
                 className="w-full sm:w-auto px-4 py-2.5 border border-border rounded-lg text-base bg-background text-foreground"
                 disabled={runHistoricalSync.isPending}
               >
@@ -151,7 +159,19 @@ export function SyncTab() {
               </select>
             </div>
             <button
-              onClick={() => runHistoricalSync.mutate({ year: historicalYear, service: historicalService })}
+              onClick={() => {
+                runHistoricalSync.mutate({ year: historicalYear, service: historicalService });
+                // If custom field values option is enabled and we're syncing all/persons,
+                // trigger custom values sync after a delay to allow persons/households to populate first
+                const shouldSyncCustomValues = includeHistoricalCustomValues &&
+                  (historicalService === 'all' || historicalService === 'persons');
+                if (shouldSyncCustomValues) {
+                  setTimeout(() => {
+                    runHistoricalSync.mutate({ year: historicalYear, service: 'person_custom_values' });
+                    runHistoricalSync.mutate({ year: historicalYear, service: 'household_custom_values' });
+                  }, 2000);
+                }
+              }}
               disabled={runHistoricalSync.isPending || hasRunningSyncs}
               className="px-5 py-2.5 bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 font-semibold rounded-lg hover:bg-amber-200 dark:hover:bg-amber-900/60 disabled:opacity-50 flex items-center justify-center gap-2 text-sm"
             >
@@ -162,6 +182,32 @@ export function SyncTab() {
               )}
             </button>
           </div>
+
+          {/* Custom field values option - only show when syncing all services or persons */}
+          {(historicalService === 'all' || historicalService === 'persons') && (
+            <div className="mt-4 space-y-2">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={includeHistoricalCustomValues}
+                  onChange={(e) => setIncludeHistoricalCustomValues(e.target.checked)}
+                  className="rounded border-gray-300"
+                  disabled={runHistoricalSync.isPending}
+                />
+                <span className="text-sm">Include custom field values</span>
+              </label>
+
+              {includeHistoricalCustomValues && (
+                <div className="flex items-center gap-2 rounded-md bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
+                  <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                  <span>
+                    Custom values sync requires ~1 API call per person/household.
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
           <p className="text-sm text-muted-foreground mt-4">Import historical bunking data for enrolled campers.</p>
         </div>
       )}
@@ -402,12 +448,19 @@ export function SyncTab() {
             // Run the combined persons sync (populates persons + households)
             runIndividualSync.mutate(entityModalSyncType);
 
-            // If custom field values option is enabled, also trigger that sync
+            // If custom field values option is enabled, also trigger custom field syncs
+            // The persons sync populates both persons and households tables,
+            // so we sync custom field values for both entity types
             if (options.includeCustomFieldValues) {
-              // entityModalSyncType can only be 'persons' now, so we always use person_custom_field_values
               runOnDemandSync.mutate({
-                syncType: 'person_custom_field_values',
-                sessionFilter: options.sessionFilter,
+                syncType: 'person_custom_values',
+                session: options.session,
+                debug: options.debug,
+              });
+              runOnDemandSync.mutate({
+                syncType: 'household_custom_values',
+                session: options.session,
+                debug: options.debug,
               });
             }
             setEntityModalSyncType(null);

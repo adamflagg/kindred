@@ -11,6 +11,7 @@ export const SYNC_TYPE_NAMES: Record<string, string> = {
   person_tag_defs: 'Tags',
   custom_field_defs: 'Custom Fields',
   staff_lookups: 'Staff Lookups', // Global: positions, org_categories, program_areas
+  financial_lookups: 'Financial Lookups', // Global: financial_categories, payment_methods
   // Daily syncs
   session_groups: 'Session Groups',
   sessions: 'Sessions',
@@ -20,12 +21,13 @@ export const SYNC_TYPE_NAMES: Record<string, string> = {
   bunks: 'Bunks',
   bunk_plans: 'Bunk Plans',
   bunk_assignments: 'Bunk Assignments',
+  staff: 'Staff', // Year-scoped staff records
+  financial_transactions: 'Financial Transactions', // Year-scoped financial data
   bunk_requests: 'Intake Requests',
   process_requests: 'Process Requests',
-  staff: 'Staff', // Year-scoped staff records
   // On-demand syncs (not part of daily sync)
-  person_custom_field_values: 'Person Custom Field Values',
-  household_custom_field_values: 'Household Custom Field Values',
+  person_custom_values: 'Person Custom Values',
+  household_custom_values: 'Household Custom Values',
 };
 
 // Convert sync type ID to API endpoint (snake_case -> kebab-case)
