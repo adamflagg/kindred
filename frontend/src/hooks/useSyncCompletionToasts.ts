@@ -72,7 +72,8 @@ export function useSyncCompletionToasts() {
           // Success toast with stats
           let statsText: string;
 
-          // For persons sync with sub_stats, show combined stats
+          // For persons sync with sub_stats, show combined stats (persons + households)
+          // Note: Tags are now stored as multi-select relation on persons, not as separate sub-stats
           if (syncType === 'persons' && summary.sub_stats) {
             const statsParts: string[] = [];
 
@@ -87,14 +88,7 @@ export function useSyncCompletionToasts() {
               if (householdsText) statsParts.push(householdsText);
             }
 
-            // Person tags sub-stats
-            const tagsStats = summary.sub_stats['person_tags'];
-            if (tagsStats) {
-              const tagsText = formatStatsText(tagsStats, 'Tags');
-              if (tagsText) statsParts.push(tagsText);
-            }
-
-            statsText = statsParts.length > 0 ? statsParts.join(' | ') : 'no changes';
+            statsText = statsParts.length > 0 ? statsParts.join('\n') : 'no changes';
           } else {
             // Standard stats formatting for other syncs
             const parts: string[] = [];

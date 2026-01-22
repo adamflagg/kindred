@@ -21,6 +21,7 @@ function formatStats(stats: SubStats, label: string): string {
 }
 
 // Helper to format combined stats message for persons sync
+// Note: Tags are now stored as multi-select relation on persons, not as separate sub-stats
 function formatPersonsSyncMessage(
   mainStats: SubStats,
   subStats?: Record<string, SubStats>
@@ -40,13 +41,7 @@ function formatPersonsSyncMessage(
     if (householdsText) parts.push(householdsText);
   }
 
-  const tagsStats = subStats['person_tags'];
-  if (tagsStats) {
-    const tagsText = formatStats(tagsStats, 'Tags');
-    if (tagsText) parts.push(tagsText);
-  }
-
-  return parts.join(' | ');
+  return parts.join('\n');
 }
 
 describe('formatStats helper', () => {
@@ -77,47 +72,35 @@ describe('formatPersonsSyncMessage', () => {
     expect(formatPersonsSyncMessage(mainStats)).toBe('Persons: 10 created, 5 updated');
   });
 
-  it('should format message with all sub_stats', () => {
-    const mainStats: SubStats = { created: 10, updated: 5, skipped: 85, errors: 0 };
-    const subStats: Record<string, SubStats> = {
-      households: { created: 3, updated: 2, skipped: 45, errors: 0 },
-      person_tags: { created: 15, updated: 80, skipped: 5, errors: 0 },
-    };
-
-    const result = formatPersonsSyncMessage(mainStats, subStats);
-    expect(result).toBe('Persons: 10 created, 5 updated | Households: 3 created, 2 updated | Tags: 15 created, 80 updated');
-  });
-
-  it('should format message with only households sub_stats', () => {
+  it('should format message with households sub_stats', () => {
     const mainStats: SubStats = { created: 10, updated: 5, skipped: 85, errors: 0 };
     const subStats: Record<string, SubStats> = {
       households: { created: 3, updated: 2, skipped: 45, errors: 0 },
     };
 
     const result = formatPersonsSyncMessage(mainStats, subStats);
-    expect(result).toBe('Persons: 10 created, 5 updated | Households: 3 created, 2 updated');
+    expect(result).toBe('Persons: 10 created, 5 updated\nHouseholds: 3 created, 2 updated');
   });
 
   it('should skip sub_stats with no meaningful data', () => {
     const mainStats: SubStats = { created: 10, updated: 5, skipped: 85, errors: 0 };
     const subStats: Record<string, SubStats> = {
       households: { created: 0, updated: 0, skipped: 50, errors: 0 }, // No changes
-      person_tags: { created: 15, updated: 80, skipped: 5, errors: 0 },
     };
 
     const result = formatPersonsSyncMessage(mainStats, subStats);
-    expect(result).toBe('Persons: 10 created, 5 updated | Tags: 15 created, 80 updated');
+    // Only persons stats shown when households has no changes
+    expect(result).toBe('Persons: 10 created, 5 updated');
   });
 
   it('should handle errors in sub_stats', () => {
     const mainStats: SubStats = { created: 10, updated: 5, skipped: 85, errors: 0 };
     const subStats: Record<string, SubStats> = {
-      households: { created: 3, updated: 2, skipped: 45, errors: 0 },
-      person_tags: { created: 15, updated: 80, skipped: 5, errors: 2 },
+      households: { created: 3, updated: 2, skipped: 45, errors: 2 },
     };
 
     const result = formatPersonsSyncMessage(mainStats, subStats);
-    expect(result).toBe('Persons: 10 created, 5 updated | Households: 3 created, 2 updated | Tags: 15 created, 80 updated, 2 errors');
+    expect(result).toBe('Persons: 10 created, 5 updated\nHouseholds: 3 created, 2 updated, 2 errors');
   });
 
   it('should handle main stats with errors', () => {
@@ -127,6 +110,6 @@ describe('formatPersonsSyncMessage', () => {
     };
 
     const result = formatPersonsSyncMessage(mainStats, subStats);
-    expect(result).toBe('Persons: 10 created, 5 updated, 1 errors | Households: 3 created, 2 updated');
+    expect(result).toBe('Persons: 10 created, 5 updated, 1 errors\nHouseholds: 3 created, 2 updated');
   });
 });

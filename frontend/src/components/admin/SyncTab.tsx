@@ -47,8 +47,8 @@ function useRunAllSyncs() {
 }
 
 // Entity types that support custom field values sync option
-// Note: "persons" is a combined sync that populates persons, households, AND person_tags
-// tables from a single API call - there is no separate households sync type
+// Note: "persons" is a combined sync that populates persons and households tables
+// from a single API call (tags are stored as multi-select relation on persons)
 const ENTITY_SYNC_TYPES = ['persons'] as const;
 type EntitySyncType = typeof ENTITY_SYNC_TYPES[number];
 
@@ -221,6 +221,20 @@ export function SyncTab() {
                         {status.summary.duration !== undefined && status.end_time && ' · '}
                         {status.end_time && format(new Date(status.end_time), 'MMM d, h:mm a')}
                       </div>
+                      {/* Sub-stats for combined syncs (e.g., persons + households) */}
+                      {status.summary.sub_stats && Object.keys(status.summary.sub_stats).length > 0 && (
+                        <div className="mt-1 space-y-0.5">
+                          {Object.entries(status.summary.sub_stats).map(([name, subStats]) => (
+                            <div key={name} className="flex flex-wrap gap-x-2 text-xs text-muted-foreground">
+                              <span className="capitalize font-medium">{name}:</span>
+                              {subStats.created > 0 && <span className="text-emerald-600 dark:text-emerald-400">{subStats.created} new</span>}
+                              {subStats.updated > 0 && <span className="text-sky-600 dark:text-sky-400">{subStats.updated} upd</span>}
+                              {subStats.skipped > 0 && <span>{subStats.skipped} skip</span>}
+                              {subStats.errors > 0 && <span className="text-red-600 dark:text-red-400">{subStats.errors} err</span>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="text-xs sm:text-sm text-muted-foreground">Not run yet</div>
@@ -385,7 +399,7 @@ export function SyncTab() {
           isOpen={!!entityModalSyncType}
           onClose={() => setEntityModalSyncType(null)}
           onSubmit={(options: EntitySyncOptionsState) => {
-            // Run the combined persons sync (populates persons + households + person_tags)
+            // Run the combined persons sync (populates persons + households)
             runIndividualSync.mutate(entityModalSyncType);
 
             // If custom field values option is enabled, also trigger that sync

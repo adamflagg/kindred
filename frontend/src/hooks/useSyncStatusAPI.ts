@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { pb } from '../lib/pocketbase';
 
-// Sub-entity stats for combined syncs (e.g., persons includes households, person_tags)
+// Sub-entity stats for combined syncs (e.g., persons includes households)
 export interface SubStats {
   created: number;
   updated: number;
@@ -22,20 +22,20 @@ export interface SyncStatus {
     errors: number;
     already_processed?: number; // For process_requests: records already processed
     duration?: number;
-    sub_stats?: Record<string, SubStats>; // For combined syncs (e.g., persons includes households, person_tags)
+    sub_stats?: Record<string, SubStats>; // For combined syncs (e.g., persons includes households)
   };
   year?: number; // Year being synced (0 or undefined = current year)
 }
 
-// Note: "persons" is a combined sync that populates persons, households, AND person_tags
-// tables from a single API call - there are no separate households or person_tags statuses
+// Note: "persons" is a combined sync that populates persons and households tables
+// from a single API call (tags are stored as multi-select relation on persons)
 export interface SyncStatusResponse {
   session_groups: SyncStatus;
   sessions: SyncStatus;
   attendees: SyncStatus;
   person_tag_defs: SyncStatus;
   custom_field_defs: SyncStatus;
-  persons: SyncStatus; // Combined sync: persons + households + person_tags
+  persons: SyncStatus; // Combined sync: persons + households
   bunks: SyncStatus;
   bunk_plans: SyncStatus;
   bunk_assignments: SyncStatus;

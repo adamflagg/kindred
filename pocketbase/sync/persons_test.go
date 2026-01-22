@@ -163,62 +163,6 @@ func TestExtractHouseholdsFromPersonData(t *testing.T) {
 	}
 }
 
-// TestExtractTagsFromPersonData tests tag extraction during combined sync
-func TestExtractTagsFromPersonData(t *testing.T) {
-	s := &PersonsSync{
-		missingDataStats: make(map[string]int),
-	}
-
-	// Mock person data with tags
-	personData := map[string]interface{}{
-		"ID": float64(12345),
-		"Tags": []interface{}{
-			map[string]interface{}{
-				"Name":           "Alumni",
-				"IsSeasonal":     false,
-				"LastUpdatedUTC": "2025-01-15T10:30:00.000Z",
-			},
-			map[string]interface{}{
-				"Name":           "Leadership",
-				"IsSeasonal":     true,
-				"LastUpdatedUTC": "2025-01-16T11:00:00.000Z",
-			},
-		},
-	}
-
-	tags := s.extractTagsFromPerson(personData)
-
-	if len(tags) != 2 {
-		t.Fatalf("expected 2 tags, got %d", len(tags))
-	}
-
-	// Verify tag names
-	if tags[0]["Name"] != "Alumni" {
-		t.Errorf("first tag Name = %v, want Alumni", tags[0]["Name"])
-	}
-	if tags[1]["Name"] != "Leadership" {
-		t.Errorf("second tag Name = %v, want Leadership", tags[1]["Name"])
-	}
-}
-
-// TestExtractTagsFromPersonData_NoTags tests handling when Tags is missing
-func TestExtractTagsFromPersonData_NoTags(t *testing.T) {
-	s := &PersonsSync{
-		missingDataStats: make(map[string]int),
-	}
-
-	// Person without Tags
-	personData := map[string]interface{}{
-		"ID": float64(12345),
-	}
-
-	tags := s.extractTagsFromPerson(personData)
-
-	if len(tags) != 0 {
-		t.Errorf("expected 0 tags for person without Tags, got %d", len(tags))
-	}
-}
-
 // TestExtractHouseholdsFromPersonData_NoHouseholds tests handling when Households is missing
 func TestExtractHouseholdsFromPersonData_NoHouseholds(t *testing.T) {
 	s := &PersonsSync{
@@ -274,37 +218,6 @@ func TestPersonsSync_TransformHouseholdToPB(t *testing.T) {
 		t.Errorf("greeting = %q, want %q", got, want)
 	}
 
-	if got, want := pbData["year"].(int), 2025; got != want {
-		t.Errorf("year = %d, want %d", got, want)
-	}
-}
-
-// TestPersonsSync_TransformPersonTagToPB tests person tag transformation for combined sync
-func TestPersonsSync_TransformPersonTagToPB(t *testing.T) {
-	s := &PersonsSync{
-		missingDataStats: make(map[string]int),
-	}
-
-	tagData := map[string]interface{}{
-		"Name":           "Alumni",
-		"IsSeasonal":     false,
-		"LastUpdatedUTC": "2025-01-15T10:30:00.000Z",
-	}
-	personID := 12345
-	year := 2025
-
-	pbData, err := s.transformPersonTagToPB(tagData, personID, year)
-	if err != nil {
-		t.Fatalf("transformPersonTagToPB returned error: %v", err)
-	}
-
-	// Verify fields
-	if got, want := pbData["person_id"].(int), 12345; got != want {
-		t.Errorf("person_id = %d, want %d", got, want)
-	}
-	if got, want := pbData["tag_name"].(string), "Alumni"; got != want {
-		t.Errorf("tag_name = %q, want %q", got, want)
-	}
 	if got, want := pbData["year"].(int), 2025; got != want {
 		t.Errorf("year = %d, want %d", got, want)
 	}
@@ -433,7 +346,8 @@ func TestAllCapsNameFix(t *testing.T) {
 }
 
 // TestPersonsSync_GetStats_WithSubStats tests that GetStats returns combined stats
-// including households and person_tags sub-entity stats from combined sync
+// including households sub-entity stats from combined sync
+// Note: person_tags stats removed - tags are now a multi-select relation on persons
 func TestPersonsSync_GetStats_WithSubStats(t *testing.T) {
 	s := &PersonsSync{
 		missingDataStats: make(map[string]int),
@@ -455,15 +369,6 @@ func TestPersonsSync_GetStats_WithSubStats(t *testing.T) {
 		Errors:  0,
 	}
 	s.householdStats = &householdStats
-
-	// Set person_tags stats (simulating combined sync)
-	personTagStats := Stats{
-		Created: 15,
-		Updated: 80,
-		Skipped: 5,
-		Errors:  0,
-	}
-	s.personTagStats = &personTagStats
 
 	// Get stats - should include SubStats
 	stats := s.GetStats()
@@ -491,18 +396,6 @@ func TestPersonsSync_GetStats_WithSubStats(t *testing.T) {
 	}
 	if householdSubStats.Updated != 2 {
 		t.Errorf("expected households.Updated=2, got %d", householdSubStats.Updated)
-	}
-
-	// Verify person_tags sub-stats
-	personTagSubStats, exists := stats.SubStats["person_tags"]
-	if !exists {
-		t.Fatal("expected 'person_tags' key in SubStats")
-	}
-	if personTagSubStats.Created != 15 {
-		t.Errorf("expected person_tags.Created=15, got %d", personTagSubStats.Created)
-	}
-	if personTagSubStats.Updated != 80 {
-		t.Errorf("expected person_tags.Updated=80, got %d", personTagSubStats.Updated)
 	}
 }
 
@@ -580,12 +473,6 @@ func TestPersonsSync_GetStats_PartialSubStats(t *testing.T) {
 // =============================================================================
 // Tests for extractTagIDs - Multi-select relation field population
 // =============================================================================
-
-// mockTagDefRecord simulates a core.Record for testing tag definition lookups
-type mockTagDefRecord struct {
-	id   string
-	name string
-}
 
 // TestExtractTagIDs tests extracting PocketBase tag definition IDs from person data
 func TestExtractTagIDs(t *testing.T) {

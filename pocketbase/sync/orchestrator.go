@@ -50,7 +50,7 @@ type Stats struct {
 	Expanded         int              `json:"expanded,omitempty"`          // For tracking many-to-many expansions (e.g., bunk plans)
 	AlreadyProcessed int              `json:"already_processed,omitempty"` // For process_requests: records already processed
 	Duration         int              `json:"duration"`                    // Duration in seconds
-	SubStats         map[string]Stats `json:"sub_stats,omitempty"`         // For combined syncs (e.g., persons includes households, person_tags)
+	SubStats         map[string]Stats `json:"sub_stats,omitempty"`         // For combined syncs (e.g., persons includes households)
 }
 
 // Options configures how syncs are executed
@@ -256,13 +256,13 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 	// Define sync order (respecting dependencies)
 	// Note: person_tag_defs and custom_field_defs are NOT included here -
 	// they run in the weekly sync since they're global definitions that rarely change
-	// Note: "persons" is a combined sync that populates persons, households, AND person_tags
-	// tables from a single API call - eliminating 2/3 of the previous API calls
+	// Note: "persons" is a combined sync that populates persons and households
+	// tables from a single API call (tags are stored as multi-select relation on persons)
 	orderedJobs := []string{
 		"session_groups",   // No dependencies - sync first for group data
 		"sessions",         // Depends on session_groups (for session_group relation)
 		"attendees",        // Depends on sessions
-		"persons",          // Depends on attendees (combined sync: persons + households + person_tags)
+		"persons",          // Depends on attendees (combined sync: persons + households)
 		"bunks",            // No dependencies
 		"bunk_plans",       // Depends on sessions and bunks
 		"bunk_assignments", // Depends on sessions, persons, bunks
@@ -509,12 +509,12 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		// Note: person_tag_defs and custom_field_defs are NOT included here -
 		// they run in the weekly sync since they're global definitions that rarely change.
 		// They can still be run explicitly via opts.Services if needed.
-		// Note: "persons" is a combined sync that populates persons, households, AND person_tags
+		// Note: "persons" is a combined sync that populates persons and households
 		servicesToRun = []string{
 			"session_groups",
 			"sessions",
 			"attendees",
-			"persons", // Combined sync: persons + households + person_tags
+			"persons", // Combined sync: persons + households
 			"bunks",
 			"bunk_plans",
 			"bunk_assignments",
@@ -574,11 +574,11 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		// Re-register with year client
 		// Note: person_tag_defs and custom_field_defs are NOT re-registered
 		// because they are global (not year-specific) and shouldn't run in historical syncs
-		// Note: "persons" is a combined sync that populates persons, households, AND person_tags
+		// Note: "persons" is a combined sync that populates persons and households
 		o.RegisterService("session_groups", NewSessionGroupsSync(o.app, yearClient))
 		o.RegisterService("sessions", NewSessionsSync(o.app, yearClient))
 		o.RegisterService("attendees", NewAttendeesSync(o.app, yearClient))
-		o.RegisterService("persons", NewPersonsSync(o.app, yearClient)) // Combined: persons + households + person_tags
+		o.RegisterService("persons", NewPersonsSync(o.app, yearClient)) // Combined: persons + households
 		o.RegisterService("bunks", NewBunksSync(o.app, yearClient))
 		o.RegisterService("bunk_plans", NewBunkPlansSync(o.app, yearClient))
 		o.RegisterService("bunk_assignments", NewBunkAssignmentsSync(o.app, yearClient))
@@ -696,8 +696,8 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	o.RegisterService("attendees", NewAttendeesSync(o.app, client))
 	o.RegisterService("person_tag_defs", NewPersonTagDefinitionsSync(o.app, client))
 	o.RegisterService("custom_field_defs", NewCustomFieldDefinitionsSync(o.app, client))
-	// "persons" is a combined sync that populates persons, households, AND person_tags
-	// tables from a single API call - eliminating 2/3 of the previous API calls
+	// "persons" is a combined sync that populates persons and households tables
+	// from a single API call (tags are stored as multi-select relation on persons)
 	o.RegisterService("persons", NewPersonsSync(o.app, client))
 	o.RegisterService("bunks", NewBunksSync(o.app, client))
 	o.RegisterService("bunk_plans", NewBunkPlansSync(o.app, client))

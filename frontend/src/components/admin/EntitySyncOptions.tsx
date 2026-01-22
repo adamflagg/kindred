@@ -12,16 +12,16 @@ interface EntitySyncOptionsProps {
   onClose: () => void;
   onSubmit: (options: EntitySyncOptionsState) => void;
   isProcessing: boolean;
-  // Note: "persons" is a combined sync that populates persons, households, AND person_tags
-  // tables from a single API call - there is no separate households entity type
+  // Note: "persons" is a combined sync that populates persons and households tables
+  // from a single API call (tags are stored as multi-select relation on persons)
   entityType: 'persons';
 }
 
-// Note: "persons" is a combined sync that populates persons, households, AND person_tags
+// Note: "persons" is a combined sync that populates persons and households
 const ENTITY_CONFIG = {
   persons: {
     title: 'Persons Sync',
-    description: 'Sync persons, households & tags from CampMinder',
+    description: 'Sync persons & households from CampMinder',
     icon: User,
     color: 'violet',
     bgClass: 'bg-violet-100 dark:bg-violet-900/40',

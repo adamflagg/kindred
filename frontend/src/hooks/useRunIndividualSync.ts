@@ -3,15 +3,15 @@ import { pb } from '../lib/pocketbase';
 import toast from 'react-hot-toast';
 
 // Map of sync types to their display names
-// Note: "persons" is a combined sync that populates persons, households, AND person_tags
-// tables from a single API call - there are no separate households or person_tags syncs
+// Note: "persons" is a combined sync that populates persons and households tables
+// from a single API call (tags are stored as multi-select relation on persons)
 export const SYNC_TYPE_NAMES: Record<string, string> = {
   session_groups: 'Session Groups',
   sessions: 'Sessions',
   attendees: 'Attendees',
   person_tag_defs: 'Tags',
   custom_field_defs: 'Custom Fields',
-  persons: 'Persons', // Combined sync: persons + households + person_tags
+  persons: 'Persons', // Combined sync: persons + households
   bunks: 'Bunks',
   bunk_plans: 'Bunk Plans',
   bunk_assignments: 'Bunk Assignments',
