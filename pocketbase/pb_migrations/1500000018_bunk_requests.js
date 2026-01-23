@@ -417,8 +417,8 @@ migrate((app) => {
       "CREATE INDEX idx_bunk_requests_priority ON bunk_requests (priority)",
       "CREATE INDEX idx_bunk_requests_year_session ON bunk_requests (year, session_id)",
       "CREATE INDEX `idx_bunk_requests_requester_year` ON `bunk_requests` (`requester_id`, `year`)",
-      "CREATE UNIQUE INDEX `idx_bunk_requests_unique_with_source` ON `bunk_requests` (`requester_id`, `requestee_id`, `request_type`, `year`, `session_id`, `source_field`)",
-      "CREATE INDEX idx_bunk_requests_merged_into ON bunk_requests (merged_into)"
+      "CREATE UNIQUE INDEX `idx_bunk_requests_unique_with_source` ON `bunk_requests` (`requester_id`, `requestee_id`, `request_type`, `year`, `session_id`, `source_field`)"
+      // Note: merged_into index added after field is created (see below)
     ]
   });
 
@@ -436,6 +436,8 @@ migrate((app) => {
     minSelect: null,
     maxSelect: 1
   }));
+  // Add merged_into index now that the field exists
+  savedCollection.indexes.push("CREATE INDEX idx_bunk_requests_merged_into ON bunk_requests (merged_into)");
   app.save(savedCollection);
 }, (app) => {
   const collection = app.findCollectionByNameOrId("bunk_requests");

@@ -66,14 +66,11 @@ IMAGE_TAG="${IMAGE_TAG:-$(date +%Y.%m.%d)}"
 # Handle semver tags (v0.7.0 -> 0.7.0)
 DOCKER_TAG="$IMAGE_TAG"
 MINOR_TAG=""
-MAJOR_TAG=""
 if [[ "$IMAGE_TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+ ]]; then
     # Strip v prefix for Docker tag
     DOCKER_TAG="${IMAGE_TAG#v}"
     # Extract minor version (1.1 from 1.1.1)
     MINOR_TAG=$(echo "$DOCKER_TAG" | cut -d. -f1-2)
-    # Extract major version (1 from 1.1.1)
-    MAJOR_TAG=$(echo "$DOCKER_TAG" | cut -d. -f1)
 fi
 
 if [[ "$BUILD_ONLY" == "true" ]]; then
@@ -85,9 +82,6 @@ echo "Registry: $REGISTRY/$USERNAME"
 echo "Tag: $DOCKER_TAG"
 if [[ -n "$MINOR_TAG" && "$MINOR_TAG" != "$DOCKER_TAG" ]]; then
     echo "Minor tag: $MINOR_TAG"
-fi
-if [[ -n "$MAJOR_TAG" && "$MAJOR_TAG" != "$MINOR_TAG" ]]; then
-    echo "Major tag: $MAJOR_TAG"
 fi
 echo ""
 
@@ -117,11 +111,6 @@ if [[ -n "$MINOR_TAG" && "$MINOR_TAG" != "$DOCKER_TAG" ]]; then
     docker tag "$REGISTRY/$USERNAME/kindred:$DOCKER_TAG" "$REGISTRY/$USERNAME/kindred:$MINOR_TAG"
 fi
 
-# Add major version tag if semver
-if [[ -n "$MAJOR_TAG" && "$MAJOR_TAG" != "$MINOR_TAG" ]]; then
-    docker tag "$REGISTRY/$USERNAME/kindred:$DOCKER_TAG" "$REGISTRY/$USERNAME/kindred:$MAJOR_TAG"
-fi
-
 # Push images (unless --build-only)
 if [[ "$BUILD_ONLY" == "true" ]]; then
     echo ""
@@ -131,9 +120,6 @@ if [[ "$BUILD_ONLY" == "true" ]]; then
     echo "  - $REGISTRY/$USERNAME/kindred:$DOCKER_TAG"
     if [[ -n "$MINOR_TAG" && "$MINOR_TAG" != "$DOCKER_TAG" ]]; then
         echo "  - $REGISTRY/$USERNAME/kindred:$MINOR_TAG"
-    fi
-    if [[ -n "$MAJOR_TAG" && "$MAJOR_TAG" != "$MINOR_TAG" ]]; then
-        echo "  - $REGISTRY/$USERNAME/kindred:$MAJOR_TAG"
     fi
     echo "  - $REGISTRY/$USERNAME/kindred:latest"
 else
@@ -148,11 +134,6 @@ else
         docker push "$REGISTRY/$USERNAME/kindred:$MINOR_TAG"
     fi
 
-    if [[ -n "$MAJOR_TAG" && "$MAJOR_TAG" != "$MINOR_TAG" ]]; then
-        echo "Pushing kindred:$MAJOR_TAG..."
-        docker push "$REGISTRY/$USERNAME/kindred:$MAJOR_TAG"
-    fi
-
     echo "Pushing kindred:latest..."
     docker push "$REGISTRY/$USERNAME/kindred:latest"
 
@@ -163,9 +144,6 @@ else
     echo "  - $REGISTRY/$USERNAME/kindred:$DOCKER_TAG"
     if [[ -n "$MINOR_TAG" && "$MINOR_TAG" != "$DOCKER_TAG" ]]; then
         echo "  - $REGISTRY/$USERNAME/kindred:$MINOR_TAG"
-    fi
-    if [[ -n "$MAJOR_TAG" && "$MAJOR_TAG" != "$MINOR_TAG" ]]; then
-        echo "  - $REGISTRY/$USERNAME/kindred:$MAJOR_TAG"
     fi
     echo "  - $REGISTRY/$USERNAME/kindred:latest"
 fi

@@ -436,12 +436,6 @@ jobs:
           if [[ "$MINOR_TAG" != "$DOCKER_TAG" ]]; then
             TAGS="${TAGS},${IMAGE}:${MINOR_TAG}"
           fi
-
-          # Add major version tag (e.g., 1 from 1.0.0)
-          MAJOR_TAG=$(echo "$DOCKER_TAG" | cut -d. -f1)
-          if [[ "$MAJOR_TAG" != "$MINOR_TAG" ]]; then
-            TAGS="${TAGS},${IMAGE}:${MAJOR_TAG}"
-          fi
         fi
         echo "tags=$TAGS" >> $GITHUB_OUTPUT
         echo "Using tags: $TAGS"
