@@ -29,11 +29,9 @@ migrate((app) => {
         type: "number",
         required: true,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
+        min: null,
+        max: null,
+        onlyInt: true
       },
       {
         name: "first_name",
@@ -95,22 +93,18 @@ migrate((app) => {
         type: "number",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
+        min: null,
+        max: null,
+        onlyInt: true
       },
       {
         name: "age",
         type: "number",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
+        min: null,
+        max: null,
+        onlyInt: true
       },
       {
         name: "school",
@@ -128,33 +122,27 @@ migrate((app) => {
         type: "number",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
+        min: null,
+        max: null,
+        onlyInt: true
       },
       {
         name: "last_year_attended",
         type: "number",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
+        min: null,
+        max: null,
+        onlyInt: true
       },
       {
         name: "gender_identity_id",
         type: "number",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
+        min: null,
+        max: null,
+        onlyInt: true
       },
       {
         name: "gender_identity_name",
@@ -183,11 +171,9 @@ migrate((app) => {
         type: "number",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
+        min: null,
+        max: null,
+        onlyInt: true
       },
       {
         name: "gender_pronoun_name",
@@ -249,6 +235,15 @@ migrate((app) => {
         maxSelect: 1
       },
       {
+        name: "household_id",
+        type: "number",
+        required: false,
+        presentable: false,
+        min: null,
+        max: null,
+        onlyInt: true
+      },
+      {
         type: "relation",
         name: "primary_childhood_household",
         required: false,
@@ -283,11 +278,9 @@ migrate((app) => {
         type: "number",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
+        min: null,
+        max: null,
+        onlyInt: true
       },
       {
         name: "lead_date",
@@ -350,11 +343,9 @@ migrate((app) => {
         type: "number",
         required: true,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
+        min: null,
+        max: null,
+        onlyInt: true
       },
       {
         type: "autodate",
