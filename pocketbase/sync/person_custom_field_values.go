@@ -353,7 +353,12 @@ func (s *PersonCustomFieldValuesSync) syncPersonCustomFieldValues(
 						existing.Set(key, val)
 					}
 					if err := s.App.Save(existing); err != nil {
-						slog.Error("Error updating custom field value", "error", err)
+						valueStr, _ := pbData["value"].(string)
+						slog.Error("Error updating custom field value",
+							"error", err,
+							"person_cm_id", personCMID,
+							"field_cm_id", fieldCMID,
+							"value_length", len(valueStr))
 						s.Stats.Errors++
 					} else {
 						s.Stats.Updated++
@@ -374,7 +379,12 @@ func (s *PersonCustomFieldValuesSync) syncPersonCustomFieldValues(
 				}
 
 				if err := s.App.Save(record); err != nil {
-					slog.Error("Error creating custom field value", "error", err)
+					valueStr, _ := pbData["value"].(string)
+					slog.Error("Error creating custom field value",
+						"error", err,
+						"person_cm_id", personCMID,
+						"field_cm_id", fieldCMID,
+						"value_length", len(valueStr))
 					s.Stats.Errors++
 				} else {
 					s.Stats.Created++

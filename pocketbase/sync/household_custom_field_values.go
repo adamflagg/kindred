@@ -352,7 +352,12 @@ func (s *HouseholdCustomFieldValuesSync) syncHouseholdCustomFieldValues(
 						existing.Set(key, val)
 					}
 					if err := s.App.Save(existing); err != nil {
-						slog.Error("Error updating custom field value", "error", err)
+						valueStr, _ := pbData["value"].(string)
+						slog.Error("Error updating household custom field value",
+							"error", err,
+							"household_cm_id", householdCMID,
+							"field_cm_id", fieldCMID,
+							"value_length", len(valueStr))
 						s.Stats.Errors++
 					} else {
 						s.Stats.Updated++
@@ -372,7 +377,12 @@ func (s *HouseholdCustomFieldValuesSync) syncHouseholdCustomFieldValues(
 				}
 
 				if err := s.App.Save(record); err != nil {
-					slog.Error("Error creating custom field value", "error", err)
+					valueStr, _ := pbData["value"].(string)
+					slog.Error("Error creating household custom field value",
+						"error", err,
+						"household_cm_id", householdCMID,
+						"field_cm_id", fieldCMID,
+						"value_length", len(valueStr))
 					s.Stats.Errors++
 				} else {
 					s.Stats.Created++
