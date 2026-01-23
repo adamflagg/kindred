@@ -89,172 +89,245 @@ func (s *PersonsSync) getPersonIDsFromAttendees(year int) ([]int, error) {
 // 2. households - Deduplicated household records (shared across family members)
 func (s *PersonsSync) Sync(ctx context.Context) error {
 	s.LogSyncStart("persons (combined: persons + households)")
-	s.Stats = Stats{}        // Reset stats
-	s.SyncSuccessful = false // Reset sync status
-	s.ClearProcessedKeys()   // Reset processed tracking
+	s.Stats = Stats{}
+	s.SyncSuccessful = false
+	s.ClearProcessedKeys()
 
-	// Get the year we're syncing for
 	year := s.Client.GetSeasonID()
 
-	// Get unique person IDs from attendees for this year
-	attendeePersonIDs, err := s.getPersonIDsFromAttendees(year)
+	// Gather person IDs from attendees and staff
+	personIDs, err := s.gatherPersonIDs(year)
 	if err != nil {
-		return fmt.Errorf("getting person IDs from attendees: %w", err)
+		return err
 	}
-
-	// Get unique person IDs from staff for this year
-	// This ensures staff members exist in the persons table so staff.person relation can be populated
-	staffPersonIDs, err := s.getPersonIDsFromStaff()
-	if err != nil {
-		slog.Warn("Error getting staff person IDs, continuing with attendees only", "error", err)
-		staffPersonIDs = nil
-	}
-
-	// Merge and deduplicate person IDs from both sources
-	personIDs := s.mergePersonIDs(attendeePersonIDs, staffPersonIDs)
-
 	if len(personIDs) == 0 {
 		slog.Info("No attendees or staff found, skipping persons sync", "year", year)
 		s.SyncSuccessful = true
 		return nil
 	}
 
+	filter := fmt.Sprintf("year = %d", year)
+
+	// Pre-load lookup data
+	existingPersons := s.preloadExistingPersons(filter, year)
+	existingHouseholds := s.preloadExistingHouseholds(filter, year)
+	tagDefsByName := s.preloadTagDefinitions()
+	divisionsByID := s.preloadDivisions()
+
+	// Process persons and collect household data
+	processResult, err := s.processPersonBatches(
+		ctx, personIDs, existingPersons, tagDefsByName, divisionsByID, year)
+	if err != nil {
+		return err
+	}
+
+	// Process households
+	householdStats := s.processHouseholds(processResult.extractedHouseholds, existingHouseholds, year)
+
+	// Reload households for relation updates
+	householdsByID := s.preloadExistingHouseholds(filter, year)
+
+	// Update relations and cleanup
+	s.updateRelationsAndCleanup(year, householdsByID, processResult.personHouseholdMap,
+		processResult.processedHouseholdIDs)
+
+	// Final reporting
+	s.householdStats = &householdStats
+	s.printDataQualitySummary()
+	s.logSyncResults(householdStats)
+	s.LogSyncComplete("Persons (combined)")
+
+	if err := s.updateAttendeeRelations(year); err != nil {
+		slog.Warn("Failed to update attendee relations", "error", err)
+	}
+
+	return nil
+}
+
+// gatherPersonIDs collects person IDs from both attendees and staff.
+func (s *PersonsSync) gatherPersonIDs(year int) ([]int, error) {
+	attendeePersonIDs, err := s.getPersonIDsFromAttendees(year)
+	if err != nil {
+		return nil, fmt.Errorf("getting person IDs from attendees: %w", err)
+	}
+
+	staffPersonIDs, err := s.getPersonIDsFromStaff()
+	if err != nil {
+		slog.Warn("Error getting staff person IDs, continuing with attendees only", "error", err)
+		staffPersonIDs = nil
+	}
+
+	personIDs := s.mergePersonIDs(attendeePersonIDs, staffPersonIDs)
 	slog.Info("Found unique persons",
 		"attendees", len(attendeePersonIDs),
 		"staff", len(staffPersonIDs),
 		"total", len(personIDs),
-		"year", year,
-	)
-	filter := fmt.Sprintf("year = %d", year)
+		"year", year)
 
-	// Pre-load all existing persons by cm_id for this year
-	existingPersons := make(map[int]*core.Record)
-	allPersons, err := s.App.FindRecordsByFilter("persons", filter, "", 0, 0)
+	return personIDs, nil
+}
+
+// preloadExistingPersons loads existing person records indexed by cm_id.
+func (s *PersonsSync) preloadExistingPersons(filter string, year int) map[int]*core.Record {
+	result := make(map[int]*core.Record)
+	records, err := s.App.FindRecordsByFilter("persons", filter, "", 0, 0)
 	if err != nil {
 		slog.Warn("Error loading existing persons", "year", year, "error", err)
-	} else {
-		for _, record := range allPersons {
-			if cmID, ok := record.Get("cm_id").(float64); ok {
-				existingPersons[int(cmID)] = record
-			}
-		}
-		slog.Info("Loaded existing persons from database", "count", len(existingPersons), "year", year)
+		return result
 	}
+	for _, record := range records {
+		if cmID, ok := record.Get("cm_id").(float64); ok {
+			result[int(cmID)] = record
+		}
+	}
+	slog.Info("Loaded existing persons from database", "count", len(result), "year", year)
+	return result
+}
 
-	// Pre-load existing households by cm_id for this year
-	existingHouseholds := make(map[int]*core.Record)
-	allHouseholds, err := s.App.FindRecordsByFilter("households", filter, "", 0, 0)
+// preloadExistingHouseholds loads existing household records indexed by cm_id.
+func (s *PersonsSync) preloadExistingHouseholds(filter string, year int) map[int]*core.Record {
+	result := make(map[int]*core.Record)
+	records, err := s.App.FindRecordsByFilter("households", filter, "", 0, 0)
 	if err != nil {
 		slog.Warn("Error loading existing households", "year", year, "error", err)
-	} else {
-		for _, record := range allHouseholds {
-			if cmID, ok := record.Get("cm_id").(float64); ok {
-				existingHouseholds[int(cmID)] = record
-			}
-		}
-		slog.Info("Loaded existing households from database", "count", len(existingHouseholds), "year", year)
+		return result
 	}
+	for _, record := range records {
+		if cmID, ok := record.Get("cm_id").(float64); ok {
+			result[int(cmID)] = record
+		}
+	}
+	slog.Info("Loaded existing households from database", "count", len(result), "year", year)
+	return result
+}
 
-	// Pre-load tag definitions for tags multi-select relation (global - no year filter)
-	// Maps tag name -> PocketBase ID for direct population on persons.tags field
-	tagDefsByName := make(map[string]string)
+// preloadTagDefinitions loads tag definitions indexed by name.
+func (s *PersonsSync) preloadTagDefinitions() map[string]string {
+	result := make(map[string]string)
 	tagDefs, err := s.App.FindRecordsByFilter("person_tag_defs", "", "", 0, 0)
 	if err != nil {
 		slog.Warn("Error loading tag definitions", "error", err)
-	} else {
-		for _, td := range tagDefs {
-			if name, ok := td.Get("name").(string); ok && name != "" {
-				tagDefsByName[name] = td.Id
-			}
-		}
-		slog.Info("Loaded tag definitions for tags field", "count", len(tagDefsByName))
+		return result
 	}
+	for _, td := range tagDefs {
+		if name, ok := td.Get("name").(string); ok && name != "" {
+			result[name] = td.Id
+		}
+	}
+	slog.Info("Loaded tag definitions for tags field", "count", len(result))
+	return result
+}
 
-	// Pre-load divisions for division relation (global - no year filter)
-	// Maps cm_id -> PocketBase ID for direct population on persons.division field
-	divisionsByID := make(map[int]string)
+// preloadDivisions loads division records indexed by cm_id.
+func (s *PersonsSync) preloadDivisions() map[int]string {
+	result := make(map[int]string)
 	divisions, err := s.App.FindRecordsByFilter("divisions", "", "", 0, 0)
 	if err != nil {
 		slog.Warn("Error loading divisions", "error", err)
-	} else {
-		for _, div := range divisions {
-			if cmID, ok := div.Get("cm_id").(float64); ok && cmID > 0 {
-				divisionsByID[int(cmID)] = div.Id
-			}
+		return result
+	}
+	for _, div := range divisions {
+		if cmID, ok := div.Get("cm_id").(float64); ok && cmID > 0 {
+			result[int(cmID)] = div.Id
 		}
-		slog.Info("Loaded divisions for division relation", "count", len(divisionsByID))
+	}
+	slog.Info("Loaded divisions for division relation", "count", len(result))
+	return result
+}
+
+// personBatchResult holds results from processing person batches.
+type personBatchResult struct {
+	extractedHouseholds   map[int]map[string]any
+	processedHouseholdIDs map[int]bool
+	personHouseholdMap    map[int]personHouseholdIDs
+}
+
+// processPersonBatches processes persons in batches and collects household data.
+func (s *PersonsSync) processPersonBatches(
+	ctx context.Context,
+	personIDs []int,
+	existingPersons map[int]*core.Record,
+	tagDefsByName map[string]string,
+	divisionsByID map[int]string,
+	year int,
+) (*personBatchResult, error) {
+	result := &personBatchResult{
+		extractedHouseholds:   make(map[int]map[string]any),
+		processedHouseholdIDs: make(map[int]bool),
+		personHouseholdMap:    make(map[int]personHouseholdIDs),
 	}
 
-	// Track unique households across all batches
-	allExtractedHouseholds := make(map[int]map[string]any)
-	// Track processed household IDs for orphan detection
-	processedHouseholdIDs := make(map[int]bool)
-	// Track household IDs for each person (for relation population)
-	personHouseholdIDMap := make(map[int]personHouseholdIDs)
-
-	// Stats for combined sync
-	householdStats := Stats{}
-
-	// Process persons in batches (CampMinder API can handle multiple IDs)
 	batchSize := 500
 	for i := 0; i < len(personIDs); i += batchSize {
-		// Check context cancellation
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return nil, ctx.Err()
 		default:
 		}
 
-		// Get batch
-		end := i + batchSize
-		if end > len(personIDs) {
-			end = len(personIDs)
-		}
+		end := min(i+batchSize, len(personIDs))
 		batch := personIDs[i:end]
 
 		slog.Info("Processing persons batch", "start", i+1, "end", end, "total", len(personIDs))
 
-		// Fetch persons for this batch (includes households and tags via include flags)
 		persons, err := s.Client.GetPersons(batch)
 		if err != nil {
-			return fmt.Errorf("fetching persons batch: %w", err)
+			return nil, fmt.Errorf("fetching persons batch: %w", err)
 		}
 
-		// Mark sync as successful once we've successfully fetched data
 		if i == 0 && len(persons) > 0 {
 			s.SyncSuccessful = true
 		}
 
-		// Process each person and extract households
-		for _, personData := range persons {
-			// 1. Process person record (includes tags as multi-select relation)
-			if err := s.processPerson(personData, existingPersons, tagDefsByName, divisionsByID, year); err != nil {
-				slog.Error("Error processing person", "error", err)
-				s.Stats.Errors++
-			}
-
-			// 2. Extract households (deduplicated across batches)
-			batchHouseholds := s.extractUniqueHouseholds([]map[string]any{personData})
-			for _, household := range batchHouseholds {
-				if id, ok := household["ID"].(float64); ok && id > 0 {
-					allExtractedHouseholds[int(id)] = household
-				}
-			}
-
-			// 3. Track household IDs for this person (for relation population later)
-			personID, ok := personData["ID"].(float64)
-			if !ok {
-				continue
-			}
-			personHouseholdIDMap[int(personID)] = s.extractHouseholdIDsFromPerson(personData)
-		}
+		s.processBatchPersons(persons, existingPersons, tagDefsByName, divisionsByID, year, result)
 	}
 
-	slog.Info("Extracted unique households from persons", "count", len(allExtractedHouseholds))
+	slog.Info("Extracted unique households from persons", "count", len(result.extractedHouseholds))
+	return result, nil
+}
 
-	// Process all unique households
-	householdCompareFields := []string{"cm_id", "greeting", "mailing_title", "alternate_mailing_title", "billing_mailing_title", "household_phone", "billing_address"}
-	for householdID, householdData := range allExtractedHouseholds {
+// processBatchPersons processes a batch of person records.
+func (s *PersonsSync) processBatchPersons(
+	persons []map[string]any,
+	existingPersons map[int]*core.Record,
+	tagDefsByName map[string]string,
+	divisionsByID map[int]string,
+	year int,
+	result *personBatchResult,
+) {
+	for _, personData := range persons {
+		if err := s.processPerson(personData, existingPersons, tagDefsByName, divisionsByID, year); err != nil {
+			slog.Error("Error processing person", "error", err)
+			s.Stats.Errors++
+		}
+
+		batchHouseholds := s.extractUniqueHouseholds([]map[string]any{personData})
+		for _, household := range batchHouseholds {
+			if id, ok := household["ID"].(float64); ok && id > 0 {
+				result.extractedHouseholds[int(id)] = household
+			}
+		}
+
+		personID, ok := personData["ID"].(float64)
+		if ok {
+			result.personHouseholdMap[int(personID)] = s.extractHouseholdIDsFromPerson(personData)
+		}
+	}
+}
+
+// processHouseholds processes all collected households.
+func (s *PersonsSync) processHouseholds(
+	households map[int]map[string]any,
+	existingHouseholds map[int]*core.Record,
+	year int,
+) Stats {
+	householdStats := Stats{}
+	compareFields := []string{
+		"cm_id", "greeting", "mailing_title", "alternate_mailing_title",
+		"billing_mailing_title", "household_phone", "billing_address",
+	}
+
+	for householdID, householdData := range households {
 		pbData, err := s.transformHouseholdToPB(householdData, year)
 		if err != nil {
 			slog.Error("Error transforming household", "id", householdID, "error", err)
@@ -262,52 +335,42 @@ func (s *PersonsSync) Sync(ctx context.Context) error {
 			continue
 		}
 
-		processedHouseholdIDs[householdID] = true
-
-		if err := s.processHouseholdRecord(householdID, pbData, existingHouseholds, householdCompareFields, &householdStats); err != nil {
+		err = s.processHouseholdRecord(householdID, pbData, existingHouseholds, compareFields, &householdStats)
+		if err != nil {
 			slog.Error("Error processing household", "id", householdID, "error", err)
 			householdStats.Errors++
 		}
 	}
 
-	// Reload households after saving to get PocketBase IDs for relations
-	householdsByID := make(map[int]*core.Record)
-	updatedHouseholds, err := s.App.FindRecordsByFilter("households", filter, "", 0, 0)
-	if err != nil {
-		slog.Warn("Error reloading households for relation update", "error", err)
-	} else {
-		for _, record := range updatedHouseholds {
-			if cmID, ok := record.Get("cm_id").(float64); ok {
-				householdsByID[int(cmID)] = record
-			}
-		}
-	}
+	return householdStats
+}
 
-	// Update person-household relations (uses tracked IDs from sync)
-	if err := s.updatePersonHouseholdRelations(year, householdsByID, personHouseholdIDMap); err != nil {
+// updateRelationsAndCleanup handles relation updates and orphan deletion.
+func (s *PersonsSync) updateRelationsAndCleanup(
+	year int,
+	householdsByID map[int]*core.Record,
+	personHouseholdMap map[int]personHouseholdIDs,
+	processedHouseholdIDs map[int]bool,
+) {
+	if err := s.updatePersonHouseholdRelations(year, householdsByID, personHouseholdMap); err != nil {
 		slog.Warn("Failed to update person-household relations", "error", err)
 	}
 
-	// Delete orphans for persons
 	if err := s.deleteOrphans(year); err != nil {
 		slog.Warn("Failed to delete orphaned persons", "error", err)
 	}
 
-	// Delete orphans for households
 	if err := s.deleteHouseholdOrphans(year, processedHouseholdIDs); err != nil {
 		slog.Warn("Failed to delete orphaned households", "error", err)
 	}
 
-	// Force WAL checkpoint to ensure data is flushed
 	if err := s.ForceWALCheckpoint(); err != nil {
 		slog.Warn("WAL checkpoint failed", "error", err)
 	}
+}
 
-	// Store sub-entity stats for combined sync output
-	s.householdStats = &householdStats
-
-	// Report results
-	s.printDataQualitySummary()
+// logSyncResults logs the final sync statistics.
+func (s *PersonsSync) logSyncResults(householdStats Stats) {
 	slog.Info("Combined sync complete",
 		"persons_created", s.Stats.Created,
 		"persons_updated", s.Stats.Updated,
@@ -316,16 +379,7 @@ func (s *PersonsSync) Sync(ctx context.Context) error {
 		"households_created", householdStats.Created,
 		"households_updated", householdStats.Updated,
 		"households_skipped", householdStats.Skipped,
-		"households_errors", householdStats.Errors,
-	)
-	s.LogSyncComplete("Persons (combined)")
-
-	// Update attendee relations now that persons are synced
-	if err := s.updateAttendeeRelations(year); err != nil {
-		slog.Warn("Failed to update attendee relations", "error", err)
-	}
-
-	return nil
+		"households_errors", householdStats.Errors)
 }
 
 // processPerson processes a single person using pre-loaded existing persons
@@ -1040,7 +1094,11 @@ func (s *PersonsSync) processHouseholdRecord(
 
 // updatePersonHouseholdRelations updates person records to populate all three household relation fields
 // Uses the personHouseholdIDMap collected during sync to know which households to link
-func (s *PersonsSync) updatePersonHouseholdRelations(year int, householdsByID map[int]*core.Record, personHouseholdIDMap map[int]personHouseholdIDs) error {
+func (s *PersonsSync) updatePersonHouseholdRelations(
+	year int,
+	householdsByID map[int]*core.Record,
+	personHouseholdIDMap map[int]personHouseholdIDs,
+) error {
 	slog.Info("Updating person household relations", "personsWithHouseholds", len(personHouseholdIDMap))
 
 	if len(personHouseholdIDMap) == 0 {

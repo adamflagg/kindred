@@ -65,16 +65,19 @@ func (s *StaffLookupsSync) Sync(ctx context.Context) error {
 }
 
 // syncProgramAreas syncs staff_program_areas from CampMinder
+//
+//nolint:dupl // Similar pattern to syncPaymentMethods, intentional for lookup table sync
 func (s *StaffLookupsSync) syncProgramAreas(ctx context.Context) error {
 	slog.Info("Syncing staff program areas")
 
 	// Pre-load existing records (global - no year filter)
-	existingRecords, err := s.PreloadRecordsGlobal("staff_program_areas", "", func(record *core.Record) (interface{}, bool) {
+	preloadFn := func(record *core.Record) (interface{}, bool) {
 		if cmID, ok := record.Get("cm_id").(float64); ok && cmID > 0 {
 			return int(cmID), true
 		}
 		return nil, false
-	})
+	}
+	existingRecords, err := s.PreloadRecordsGlobal("staff_program_areas", "", preloadFn)
 	if err != nil {
 		return err
 	}
@@ -114,7 +117,9 @@ func (s *StaffLookupsSync) syncProgramAreas(ctx context.Context) error {
 		s.TrackProcessedKey(cmID, 0) // Global table - no year
 
 		compareFields := []string{"cm_id", "name"}
-		if err := s.ProcessSimpleRecordGlobal("staff_program_areas", cmID, pbData, existingRecords, compareFields); err != nil {
+		err = s.ProcessSimpleRecordGlobal(
+			"staff_program_areas", cmID, pbData, existingRecords, compareFields)
+		if err != nil {
 			slog.Error("Error processing program area", "cm_id", cmID, "error", err)
 			s.Stats.Errors++
 		}
@@ -141,16 +146,19 @@ func (s *StaffLookupsSync) syncProgramAreas(ctx context.Context) error {
 }
 
 // syncOrgCategories syncs staff_org_categories from CampMinder
+//
+//nolint:dupl // Similar pattern to syncPaymentMethods, intentional for lookup table sync
 func (s *StaffLookupsSync) syncOrgCategories(ctx context.Context) error {
 	slog.Info("Syncing staff org categories")
 
 	// Pre-load existing records (global - no year filter)
-	existingRecords, err := s.PreloadRecordsGlobal("staff_org_categories", "", func(record *core.Record) (interface{}, bool) {
+	preloadFn := func(record *core.Record) (interface{}, bool) {
 		if cmID, ok := record.Get("cm_id").(float64); ok && cmID > 0 {
 			return int(cmID), true
 		}
 		return nil, false
-	})
+	}
+	existingRecords, err := s.PreloadRecordsGlobal("staff_org_categories", "", preloadFn)
 	if err != nil {
 		return err
 	}
@@ -190,7 +198,9 @@ func (s *StaffLookupsSync) syncOrgCategories(ctx context.Context) error {
 		s.TrackProcessedKey(cmID, 0) // Global table - no year
 
 		compareFields := []string{"cm_id", "name"}
-		if err := s.ProcessSimpleRecordGlobal("staff_org_categories", cmID, pbData, existingRecords, compareFields); err != nil {
+		err = s.ProcessSimpleRecordGlobal(
+			"staff_org_categories", cmID, pbData, existingRecords, compareFields)
+		if err != nil {
 			slog.Error("Error processing org category", "cm_id", cmID, "error", err)
 			s.Stats.Errors++
 		}
@@ -347,7 +357,10 @@ func (s *StaffLookupsSync) transformOrgCategoryToPB(data map[string]interface{})
 	return pbData, nil
 }
 
-func (s *StaffLookupsSync) transformPositionToPB(data map[string]interface{}, programAreaMap map[int]string) (map[string]interface{}, error) {
+func (s *StaffLookupsSync) transformPositionToPB(
+	data map[string]interface{},
+	programAreaMap map[int]string,
+) (map[string]interface{}, error) {
 	pbData := make(map[string]interface{})
 
 	// ID (required)

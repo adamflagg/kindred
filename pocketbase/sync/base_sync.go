@@ -32,6 +32,9 @@ const (
 	LargePageSize = 500
 )
 
+// JSON null string representation for field comparison
+const jsonNullString = "null"
+
 // BaseSyncService provides common functionality for all sync services
 type BaseSyncService struct {
 	App            core.App
@@ -797,25 +800,25 @@ func (b *BaseSyncService) FieldEquals(existingValue interface{}, newValue interf
 	if newValue == nil && existingValue != nil {
 		// Check if existing is a JSON-like type that represents null
 		if stringer, ok := existingValue.(fmt.Stringer); ok {
-			if stringer.String() == "null" {
+			if stringer.String() == jsonNullString {
 				return true
 			}
 		}
 		// Also try direct []byte assertion (for raw byte slices)
 		if bytes, ok := existingValue.([]byte); ok {
-			if string(bytes) == "null" {
+			if string(bytes) == jsonNullString {
 				return true
 			}
 		}
 	}
 	if existingValue == nil && newValue != nil {
 		if stringer, ok := newValue.(fmt.Stringer); ok {
-			if stringer.String() == "null" {
+			if stringer.String() == jsonNullString {
 				return true
 			}
 		}
 		if bytes, ok := newValue.([]byte); ok {
-			if string(bytes) == "null" {
+			if string(bytes) == jsonNullString {
 				return true
 			}
 		}
@@ -954,7 +957,7 @@ func (b *BaseSyncService) FieldEquals(existingValue interface{}, newValue interf
 			existingJSON := normalizeToJSON(existingValue)
 			newJSON := normalizeToJSON(newValue)
 
-			// Both nil means equal (handles JSON "null" vs Go nil)
+			// Both nil means equal (handles JSON "jsonNullString" vs Go nil)
 			if existingJSON == nil && newJSON == nil {
 				return true
 			}
@@ -1313,7 +1316,7 @@ func (b *BaseSyncService) LogFieldDiffSummary() {
 		field string
 		count int
 	}
-	var counts []fieldCount
+	counts := make([]fieldCount, 0, len(b.FieldDiffStats))
 	for field, count := range b.FieldDiffStats {
 		counts = append(counts, fieldCount{field, count})
 	}

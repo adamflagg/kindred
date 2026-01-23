@@ -163,7 +163,8 @@ func (r *SessionResolver) GetPersonIDsForSession(session string, year int) ([]in
 	return personIDs, nil
 }
 
-// GetHouseholdIDsForSession returns CampMinder household IDs for households with persons enrolled in the specified session.
+// GetHouseholdIDsForSession returns CampMinder household IDs for households
+// with persons enrolled in the specified session.
 // For "all" or empty session, returns nil (caller should handle all households case).
 func (r *SessionResolver) GetHouseholdIDsForSession(session string, year int) ([]int, error) {
 	cmIDs, err := r.ResolveSessionCMIDs(session, year)

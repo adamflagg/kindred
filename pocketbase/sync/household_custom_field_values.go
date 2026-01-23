@@ -1,3 +1,4 @@
+//nolint:dupl // Similar pattern to person_custom_field_values.go, intentional for household variant
 package sync
 
 import (
@@ -118,7 +119,7 @@ func (s *HouseholdCustomFieldValuesSync) Sync(ctx context.Context) error {
 	// KeyBuilder returns identity only (householdPBId:fieldDefPBId)
 	// PreloadCompositeRecords appends |year to create yearScopedKey
 	filter := fmt.Sprintf("year = %d", year)
-	existingRecords, err := s.PreloadCompositeRecords("household_custom_values", filter, func(record *core.Record) (string, bool) {
+	preloadFn := func(record *core.Record) (string, bool) {
 		householdPBId := record.GetString("household")
 		fieldDefPBId := record.GetString("field_definition")
 
@@ -127,7 +128,9 @@ func (s *HouseholdCustomFieldValuesSync) Sync(ctx context.Context) error {
 			return fmt.Sprintf("%s:%s", householdPBId, fieldDefPBId), true
 		}
 		return "", false
-	})
+	}
+	existingRecords, err := s.PreloadCompositeRecords(
+		"household_custom_values", filter, preloadFn)
 	if err != nil {
 		return fmt.Errorf("preloading existing records: %w", err)
 	}
@@ -159,7 +162,9 @@ func (s *HouseholdCustomFieldValuesSync) Sync(ctx context.Context) error {
 		}
 
 		// Fetch custom field values for this household
-		if err := s.syncHouseholdCustomFieldValues(ctx, householdCMID, householdPBId, year, fieldDefMapping, existingRecords); err != nil {
+		err := s.syncHouseholdCustomFieldValues(
+			ctx, householdCMID, householdPBId, year, fieldDefMapping, existingRecords)
+		if err != nil {
 			slog.Error("Error syncing custom field values for household",
 				"household_cm_id", householdCMID,
 				"error", err)

@@ -61,14 +61,15 @@ func (s *FinancialTransactionsSync) SyncForYear(ctx context.Context, year int) e
 	// Pre-load existing records for this year
 	// Key by cm_id + amount since CampMinder returns original+reversal with same transactionId
 	filter := fmt.Sprintf("year = %d", year)
-	existingRecords, err := s.PreloadRecords("financial_transactions", filter, func(record *core.Record) (interface{}, bool) {
+	preloadFn := func(record *core.Record) (interface{}, bool) {
 		cmID, ok1 := record.Get("cm_id").(float64)
 		amount, ok2 := record.Get("amount").(float64)
 		if ok1 && cmID > 0 && ok2 {
 			return s.transactionKey(int(cmID), amount), true
 		}
 		return nil, false
-	})
+	}
+	existingRecords, err := s.PreloadRecords("financial_transactions", filter, preloadFn)
 	if err != nil {
 		return err
 	}
@@ -142,7 +143,9 @@ func (s *FinancialTransactionsSync) SyncForYear(ctx context.Context, year int) e
 			"person",
 			"household",
 		}
-		if err := s.ProcessSimpleRecord("financial_transactions", txnKey, pbData, existingRecords, compareFields); err != nil {
+		err = s.ProcessSimpleRecord(
+			"financial_transactions", txnKey, pbData, existingRecords, compareFields)
+		if err != nil {
 			slog.Error("Error processing transaction", "cm_id", cmID, "amount", amount, "error", err)
 			s.Stats.Errors++
 		}
@@ -276,7 +279,11 @@ func (s *FinancialTransactionsSync) buildLookupMaps(year int) (TransactionLookup
 }
 
 // transformTransactionToPB transforms CampMinder API data to PocketBase format
-func (s *FinancialTransactionsSync) transformTransactionToPB(data map[string]interface{}, year int, maps TransactionLookupMaps) (map[string]interface{}, error) {
+func (s *FinancialTransactionsSync) transformTransactionToPB(
+	data map[string]interface{},
+	year int,
+	maps TransactionLookupMaps,
+) (map[string]interface{}, error) {
 	pbData := make(map[string]interface{})
 
 	// transactionId (required)
@@ -285,102 +292,45 @@ func (s *FinancialTransactionsSync) transformTransactionToPB(data map[string]int
 		return nil, fmt.Errorf("invalid or missing transactionId")
 	}
 	pbData["cm_id"] = int(txnID)
-
-	// transactionNumber (optional)
-	if txnNum, ok := data["transactionNumber"].(float64); ok {
-		pbData["transaction_number"] = int(txnNum)
-	}
-
-	// year
 	pbData["year"] = year
+
+	// Optional int/float fields
+	setIntFromFloat(pbData, data, "transactionNumber", "transaction_number")
+	setIntFromFloat(pbData, data, "quantity", "quantity")
+	setFloatFromFloat(pbData, data, "unitAmount", "unit_amount")
+	setFloatFromFloat(pbData, data, "amount", "amount")
 
 	// Dates
 	pbData["post_date"] = s.parseDate(data["postDate"])
 	pbData["effective_date"] = s.parseDate(data["effectiveDate"])
 	pbData["service_start_date"] = s.parseDate(data["serviceStartDate"])
 	pbData["service_end_date"] = s.parseDate(data["serviceEndDate"])
-
-	// Reversal tracking
-	if isReversed, ok := data["isReversed"].(bool); ok {
-		pbData["is_reversed"] = isReversed
-	} else {
-		pbData["is_reversed"] = false
-	}
 	pbData["reversal_date"] = s.parseDate(data["reversalDate"])
 
-	// Financial category (relation only)
-	if catID, ok := data["financialCategoryId"].(float64); ok && catID > 0 {
-		if pbID, found := maps.FinancialCategories[int(catID)]; found {
-			pbData["financial_category"] = pbID
-		}
+	// Reversal tracking
+	pbData["is_reversed"] = false
+	if isReversed, ok := data["isReversed"].(bool); ok {
+		pbData["is_reversed"] = isReversed
 	}
 
-	// Description and notes
+	// String fields
 	pbData["description"] = getStringOrEmpty(data, "description")
 	pbData["transaction_note"] = getStringOrEmpty(data, "transactionNote")
 	pbData["gl_account_note"] = getStringOrEmpty(data, "glAccountNote")
-
-	// Amounts
-	if qty, ok := data["quantity"].(float64); ok {
-		pbData["quantity"] = int(qty)
-	}
-	if unitAmt, ok := data["unitAmount"].(float64); ok {
-		pbData["unit_amount"] = unitAmt
-	}
-	if amt, ok := data["amount"].(float64); ok {
-		pbData["amount"] = amt
-	}
-
-	// GL accounts (string IDs)
 	pbData["recognition_gl_account_id"] = getStringOrEmpty(data, "recognitionGLAccountId")
 	pbData["deferral_gl_account_id"] = getStringOrEmpty(data, "deferralGLAccountId")
 
-	// Payment method (relation only)
-	if pmID, ok := data["paymentMethodId"].(float64); ok && pmID > 0 {
-		if pbID, found := maps.PaymentMethods[int(pmID)]; found {
-			pbData["payment_method"] = pbID
-		}
-	}
-
-	// Session (relation only)
-	if sessID, ok := data["sessionId"].(float64); ok && sessID > 0 {
-		if pbID, found := maps.Sessions[int(sessID)]; found {
-			pbData["session"] = pbID
-		}
-	}
-
 	// Program (CM ID only - no program table)
-	if progID, ok := data["programId"].(float64); ok && progID > 0 {
-		pbData["program_id"] = int(progID)
-	}
+	setIntFromFloat(pbData, data, "programId", "program_id")
 
-	// Session group (relation only)
-	if groupID, ok := data["sessionGroupId"].(float64); ok && groupID > 0 {
-		if pbID, found := maps.SessionGroups[int(groupID)]; found {
-			pbData["session_group"] = pbID
-		}
-	}
-
-	// Division (relation only)
-	if divID, ok := data["divisionId"].(float64); ok && divID > 0 {
-		if pbID, found := maps.Divisions[int(divID)]; found {
-			pbData["division"] = pbID
-		}
-	}
-
-	// Person (relation only)
-	if personID, ok := data["personId"].(float64); ok && personID > 0 {
-		if pbID, found := maps.Persons[int(personID)]; found {
-			pbData["person"] = pbID
-		}
-	}
-
-	// Household (relation only)
-	if hhID, ok := data["householdId"].(float64); ok && hhID > 0 {
-		if pbID, found := maps.Households[int(hhID)]; found {
-			pbData["household"] = pbID
-		}
-	}
+	// Relations
+	setRelation(pbData, data, "financialCategoryId", "financial_category", maps.FinancialCategories)
+	setRelation(pbData, data, "paymentMethodId", "payment_method", maps.PaymentMethods)
+	setRelation(pbData, data, "sessionId", "session", maps.Sessions)
+	setRelation(pbData, data, "sessionGroupId", "session_group", maps.SessionGroups)
+	setRelation(pbData, data, "divisionId", "division", maps.Divisions)
+	setRelation(pbData, data, "personId", "person", maps.Persons)
+	setRelation(pbData, data, "householdId", "household", maps.Households)
 
 	return pbData, nil
 }
@@ -426,6 +376,31 @@ func getStringOrEmpty(data map[string]interface{}, key string) string {
 	return ""
 }
 
+// setRelation maps a CampMinder ID field to a PocketBase relation.
+// It extracts the float64 ID from data[srcKey], looks it up in lookupMap,
+// and sets pbData[dstKey] if found.
+func setRelation(pbData, data map[string]interface{}, srcKey, dstKey string, lookupMap map[int]string) {
+	if id, ok := data[srcKey].(float64); ok && id > 0 {
+		if pbID, found := lookupMap[int(id)]; found {
+			pbData[dstKey] = pbID
+		}
+	}
+}
+
+// setIntFromFloat extracts a float64 from data and sets it as int in pbData.
+func setIntFromFloat(pbData, data map[string]interface{}, srcKey, dstKey string) {
+	if val, ok := data[srcKey].(float64); ok {
+		pbData[dstKey] = int(val)
+	}
+}
+
+// setFloatFromFloat extracts a float64 from data and sets it in pbData.
+func setFloatFromFloat(pbData, data map[string]interface{}, srcKey, dstKey string) {
+	if val, ok := data[srcKey].(float64); ok {
+		pbData[dstKey] = val
+	}
+}
+
 // transactionKey creates a composite key from cm_id and amount
 // CampMinder returns both original and reversal transactions with the same transactionId
 // but opposite amounts, so we need both fields for uniqueness
@@ -435,7 +410,9 @@ func (s *FinancialTransactionsSync) transactionKey(cmID int, amount float64) str
 
 // deduplicateTransactions removes exact duplicate transactions from CampMinder
 // This handles a CampMinder bug where some $0 transactions are returned twice
-func (s *FinancialTransactionsSync) deduplicateTransactions(transactions []map[string]interface{}) []map[string]interface{} {
+func (s *FinancialTransactionsSync) deduplicateTransactions(
+	transactions []map[string]interface{},
+) []map[string]interface{} {
 	seen := make(map[string]bool)
 	result := make([]map[string]interface{}, 0, len(transactions))
 	duplicates := 0

@@ -1,3 +1,4 @@
+//nolint:dupl // Similar pattern to household_custom_field_values_test.go, intentional for person variant
 package sync
 
 import (

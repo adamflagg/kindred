@@ -868,6 +868,8 @@ func handleGoogleSheetsExport(e *core.RequestEvent, scheduler *Scheduler) error 
 
 // handlePersonCustomFieldValuesSync handles the on-demand person custom field values sync
 // This is expensive (1 API call per person) so supports session filtering
+//
+//nolint:dupl // Similar pattern to handleHouseholdCustomFieldValuesSync, intentional for person variant
 func handlePersonCustomFieldValuesSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	orchestrator := scheduler.GetOrchestrator()
 	syncType := "person_custom_values"
@@ -945,6 +947,8 @@ func handlePersonCustomFieldValuesSync(e *core.RequestEvent, scheduler *Schedule
 
 // handleHouseholdCustomFieldValuesSync handles the on-demand household custom field values sync
 // This is expensive (1 API call per household) so supports session filtering
+//
+//nolint:dupl // Similar pattern to handlePersonCustomFieldValuesSync, intentional for household variant
 func handleHouseholdCustomFieldValuesSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	orchestrator := scheduler.GetOrchestrator()
 	syncType := "household_custom_values"

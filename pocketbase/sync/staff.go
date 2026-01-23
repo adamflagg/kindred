@@ -246,121 +246,117 @@ func (s *StaffSync) transformStaffToPB(
 		return nil, fmt.Errorf("invalid or missing staff PersonID")
 	}
 	personID := int(personIDFloat)
-	// Note: person_id field was removed from schema - we now use the person relation field
 
 	// Resolve person relation
 	if pbID, found := personMap[personID]; found {
 		pbData["person"] = pbID
 	}
 
-	// Year
 	pbData["year"] = year
 
-	// StatusID and Status
-	if statusID, ok := data["StatusID"].(float64); ok {
-		pbData["status_id"] = int(statusID)
-	}
-	if statusName, ok := data["StatusName"].(string); ok {
-		// Map to select values: active, resigned, dismissed, cancelled
-		status := strings.ToLower(statusName)
-		// Handle common variations
-		switch status {
-		case "active", "resigned", "dismissed", "cancelled":
-			pbData["status"] = status
-		default:
-			// Keep as lowercase for any other status
-			pbData["status"] = status
-		}
-	}
+	// Status
+	s.setStatusFields(pbData, data)
 
-	// Organizational Category relation
-	if orgCatID, ok := data["OrganizationalCategoryID"].(float64); ok && orgCatID > 0 {
-		if pbID, found := orgCategoryMap[int(orgCatID)]; found {
-			pbData["organizational_category"] = pbID
-		}
-	}
-
-	// Position1 relation
-	if pos1ID, ok := data["Position1ID"].(float64); ok && pos1ID > 0 {
-		if pbID, found := positionMap[int(pos1ID)]; found {
-			pbData["position1"] = pbID
-		}
-	}
-
-	// Position2 relation (optional second position)
-	if pos2ID, ok := data["Position2ID"].(float64); ok && pos2ID > 0 {
-		if pbID, found := positionMap[int(pos2ID)]; found {
-			pbData["position2"] = pbID
-		}
-	}
-
-	// Division relation
-	if divID, ok := data["DivisionID"].(float64); ok && divID > 0 {
-		if pbID, found := divisionMap[int(divID)]; found {
-			pbData["division"] = pbID
-		}
-	}
+	// Relations
+	s.setStaffRelation(pbData, data, "OrganizationalCategoryID", "organizational_category", orgCategoryMap)
+	s.setStaffRelation(pbData, data, "Position1ID", "position1", positionMap)
+	s.setStaffRelation(pbData, data, "Position2ID", "position2", positionMap)
+	s.setStaffRelation(pbData, data, "DivisionID", "division", divisionMap)
 
 	// Bunk assignments (multi-relation)
-	// BunkAssignments is an array of objects with ID field
-	if bunkAssignments, ok := data["BunkAssignments"].([]interface{}); ok && len(bunkAssignments) > 0 {
-		var bunkIDs []string
-		for _, ba := range bunkAssignments {
-			if baMap, ok := ba.(map[string]interface{}); ok {
-				if bunkID, ok := baMap["ID"].(float64); ok && bunkID > 0 {
-					if pbID, found := bunkMap[int(bunkID)]; found {
-						bunkIDs = append(bunkIDs, pbID)
-					}
-				}
-			}
-		}
-		if len(bunkIDs) > 0 {
-			pbData["bunks"] = bunkIDs
-		}
-	}
+	s.setBunkAssignments(pbData, data, bunkMap)
 
-	// BunkStaff
+	// Boolean
 	if bunkStaff, ok := data["BunkStaff"].(bool); ok {
 		pbData["bunk_staff"] = bunkStaff
 	}
 
 	// Date fields
-	if hireDate, ok := data["HireDate"].(string); ok && hireDate != "" {
-		pbData["hire_date"] = s.parseDate(hireDate)
-	}
-	if empStartDate, ok := data["EmploymentStartDate"].(string); ok && empStartDate != "" {
-		pbData["employment_start_date"] = s.parseDate(empStartDate)
-	}
-	if empEndDate, ok := data["EmploymentEndDate"].(string); ok && empEndDate != "" {
-		pbData["employment_end_date"] = s.parseDate(empEndDate)
-	}
-	if contractInDate, ok := data["ContractInDate"].(string); ok && contractInDate != "" {
-		pbData["contract_in_date"] = s.parseDate(contractInDate)
-	}
-	if contractOutDate, ok := data["ContractOutDate"].(string); ok && contractOutDate != "" {
-		pbData["contract_out_date"] = s.parseDate(contractOutDate)
-	}
-	if contractDueDate, ok := data["ContractDueDate"].(string); ok && contractDueDate != "" {
-		pbData["contract_due_date"] = s.parseDate(contractDueDate)
-	}
+	s.setDateField(pbData, data, "HireDate", "hire_date")
+	s.setDateField(pbData, data, "EmploymentStartDate", "employment_start_date")
+	s.setDateField(pbData, data, "EmploymentEndDate", "employment_end_date")
+	s.setDateField(pbData, data, "ContractInDate", "contract_in_date")
+	s.setDateField(pbData, data, "ContractOutDate", "contract_out_date")
+	s.setDateField(pbData, data, "ContractDueDate", "contract_due_date")
 
 	// International
 	if international, ok := data["International"].(string); ok && international != "" {
-		// Map "Domestic" or "International" to lowercase select values
 		pbData["international"] = strings.ToLower(international)
 	}
 
-	// Years (as staff)
-	if years, ok := data["Years"].(float64); ok {
-		pbData["years"] = int(years)
-	}
-
-	// Salary
-	if salary, ok := data["Salary"].(float64); ok {
-		pbData["salary"] = salary
-	}
+	// Numeric fields
+	s.setStaffIntField(pbData, data, "Years", "years")
+	s.setStaffFloatField(pbData, data, "Salary", "salary")
 
 	return pbData, nil
+}
+
+// setStatusFields extracts StatusID and StatusName from data.
+func (s *StaffSync) setStatusFields(pbData, data map[string]interface{}) {
+	if statusID, ok := data["StatusID"].(float64); ok {
+		pbData["status_id"] = int(statusID)
+	}
+	if statusName, ok := data["StatusName"].(string); ok {
+		pbData["status"] = strings.ToLower(statusName)
+	}
+}
+
+// setStaffRelation maps a CampMinder ID field to a PocketBase relation.
+func (s *StaffSync) setStaffRelation(
+	pbData, data map[string]interface{},
+	srcKey, dstKey string,
+	lookupMap map[int]string,
+) {
+	if id, ok := data[srcKey].(float64); ok && id > 0 {
+		if pbID, found := lookupMap[int(id)]; found {
+			pbData[dstKey] = pbID
+		}
+	}
+}
+
+// setBunkAssignments extracts bunk assignments array and maps to PB IDs.
+func (s *StaffSync) setBunkAssignments(
+	pbData, data map[string]interface{},
+	bunkMap map[int]string,
+) {
+	bunkAssignments, ok := data["BunkAssignments"].([]interface{})
+	if !ok || len(bunkAssignments) == 0 {
+		return
+	}
+	var bunkIDs []string
+	for _, ba := range bunkAssignments {
+		if baMap, ok := ba.(map[string]interface{}); ok {
+			if bunkID, ok := baMap["ID"].(float64); ok && bunkID > 0 {
+				if pbID, found := bunkMap[int(bunkID)]; found {
+					bunkIDs = append(bunkIDs, pbID)
+				}
+			}
+		}
+	}
+	if len(bunkIDs) > 0 {
+		pbData["bunks"] = bunkIDs
+	}
+}
+
+// setDateField extracts a date string and parses it.
+func (s *StaffSync) setDateField(pbData, data map[string]interface{}, srcKey, dstKey string) {
+	if dateStr, ok := data[srcKey].(string); ok && dateStr != "" {
+		pbData[dstKey] = s.parseDate(dateStr)
+	}
+}
+
+// setStaffIntField extracts a float64 and sets as int.
+func (s *StaffSync) setStaffIntField(pbData, data map[string]interface{}, srcKey, dstKey string) {
+	if val, ok := data[srcKey].(float64); ok {
+		pbData[dstKey] = int(val)
+	}
+}
+
+// setStaffFloatField extracts and sets a float64.
+func (s *StaffSync) setStaffFloatField(pbData, data map[string]interface{}, srcKey, dstKey string) {
+	if val, ok := data[srcKey].(float64); ok {
+		pbData[dstKey] = val
+	}
 }
 
 // parseDate converts CampMinder date format to PocketBase format

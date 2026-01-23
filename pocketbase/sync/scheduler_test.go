@@ -33,7 +33,7 @@ func TestSchedulerTriggerSyncTypes(t *testing.T) {
 	}
 
 	for _, syncType := range validTypes {
-		t.Run(syncType, func(t *testing.T) {
+		t.Run(syncType, func(_ *testing.T) {
 			s := NewScheduler(nil)
 
 			// Register mock services for testing

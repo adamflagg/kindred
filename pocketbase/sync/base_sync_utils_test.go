@@ -245,11 +245,12 @@ func TestNormalizeToStringSlice(t *testing.T) {
 					t.Errorf("normalizeToStringSlice(%v) = %v, want nil", tt.input, result)
 				}
 			} else {
-				if result == nil {
+				switch {
+				case result == nil:
 					t.Errorf("normalizeToStringSlice(%v) = nil, want %v", tt.input, tt.expected)
-				} else if len(result) != len(tt.expected) {
-					t.Errorf("normalizeToStringSlice(%v) length = %d, want %d", tt.input, len(result), len(tt.expected))
-				} else {
+				case len(result) != len(tt.expected):
+					t.Errorf("normalizeToStringSlice(%v) len = %d, want %d", tt.input, len(result), len(tt.expected))
+				default:
 					for i, v := range result {
 						if v != tt.expected[i] {
 							t.Errorf("normalizeToStringSlice(%v)[%d] = %q, want %q", tt.input, i, v, tt.expected[i])

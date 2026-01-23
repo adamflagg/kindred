@@ -18,6 +18,8 @@ import (
 const (
 	// statusFailed indicates a sync job has failed
 	statusFailed = "failed"
+	// statusRunning indicates a sync job is currently running
+	statusRunning = "running"
 	// boolTrueStr is used for string comparisons with boolean environment variables
 	boolTrueStr = "true"
 )
@@ -42,15 +44,19 @@ type Status struct {
 
 // Stats holds statistics for a sync operation
 type Stats struct {
-	Created          int              `json:"created"`
-	Updated          int              `json:"updated"`
-	Deleted          int              `json:"deleted,omitempty"` // For tracking deletions (e.g., removed bunk requests)
-	Skipped          int              `json:"skipped"`
-	Errors           int              `json:"errors"`
-	Expanded         int              `json:"expanded,omitempty"`          // For tracking many-to-many expansions (e.g., bunk plans)
-	AlreadyProcessed int              `json:"already_processed,omitempty"` // For process_requests: records already processed
-	Duration         int              `json:"duration"`                    // Duration in seconds
-	SubStats         map[string]Stats `json:"sub_stats,omitempty"`         // For combined syncs (e.g., persons includes households)
+	Created int `json:"created"`
+	Updated int `json:"updated"`
+	Deleted int `json:"deleted,omitempty"` // For tracking deletions (e.g., removed bunk requests)
+	Skipped int `json:"skipped"`
+	Errors  int `json:"errors"`
+	// Expanded tracks many-to-many expansions (e.g., bunk plans)
+	Expanded int `json:"expanded,omitempty"`
+	// AlreadyProcessed tracks records already processed (for process_requests)
+	AlreadyProcessed int `json:"already_processed,omitempty"`
+	// Duration in seconds
+	Duration int `json:"duration"`
+	// SubStats for combined syncs (e.g., persons includes households)
+	SubStats map[string]Stats `json:"sub_stats,omitempty"`
 }
 
 // Options configures how syncs are executed
@@ -115,7 +121,7 @@ func (o *Orchestrator) IsRunning(syncType string) bool {
 	defer o.mu.RUnlock()
 
 	status, exists := o.runningJobs[syncType]
-	return exists && status.Status == "running"
+	return exists && status.Status == statusRunning
 }
 
 // GetRunningJobs returns all currently running jobs
@@ -125,7 +131,7 @@ func (o *Orchestrator) GetRunningJobs() []string {
 
 	var running []string
 	for name, status := range o.runningJobs {
-		if status.Status == "running" {
+		if status.Status == statusRunning {
 			running = append(running, name)
 		}
 	}
@@ -214,7 +220,7 @@ func (o *Orchestrator) RunSingleSync(_ context.Context, syncType string) error {
 		// Create status entry
 		status = &Status{
 			Type:      syncType,
-			Status:    "running",
+			Status:    statusRunning,
 			StartTime: time.Now(),
 			Summary:   Stats{},
 			Year:      o.currentSyncYear,
@@ -302,7 +308,7 @@ func (o *Orchestrator) MarkSyncRunning(syncType string) error {
 	// Create status entry
 	status := &Status{
 		Type:      syncType,
-		Status:    "running",
+		Status:    statusRunning,
 		StartTime: time.Now(),
 		Summary:   Stats{},
 		Year:      o.currentSyncYear,
@@ -398,6 +404,8 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 
 // RunWeeklySync runs global data syncs that are too expensive for daily sync.
 // These services require N API calls (one per entity) and run once per week.
+//
+//nolint:dupl // Similar pattern to RunCustomValuesSync, intentional for sync orchestration
 func (o *Orchestrator) RunWeeklySync(ctx context.Context) error {
 	// Get the weekly sync jobs
 	weeklyJobs := GetWeeklySyncJobs()
@@ -449,6 +457,8 @@ func (o *Orchestrator) RunWeeklySync(ctx context.Context) error {
 
 // RunCustomValuesSync runs custom field values syncs for person and household entities.
 // These are expensive syncs (1 API call per entity) that run weekly after the main weekly sync.
+//
+//nolint:dupl // Similar pattern to RunWeeklySync, intentional for sync orchestration
 func (o *Orchestrator) RunCustomValuesSync(ctx context.Context) error {
 	// Get the custom values sync jobs
 	customValuesJobs := GetCustomValuesSyncJobs()
@@ -483,7 +493,8 @@ func (o *Orchestrator) RunCustomValuesSync(ctx context.Context) error {
 			time.Sleep(o.jobSpacing)
 		}
 
-		slog.Info("Custom values sync: Starting service", "service", jobName, "progress", fmt.Sprintf("%d/%d", i+1, len(customValuesJobs)))
+		progress := fmt.Sprintf("%d/%d", i+1, len(customValuesJobs))
+		slog.Info("Custom values sync: Starting service", "service", jobName, "progress", progress)
 
 		// Run sync and wait for completion
 		if err := o.runSyncAndWait(ctx, jobName); err != nil {
@@ -841,9 +852,11 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	o.RegisterService("attendees", NewAttendeesSync(o.app, client))
 	o.RegisterService("person_tag_defs", NewPersonTagDefinitionsSync(o.app, client))
 	o.RegisterService("custom_field_defs", NewCustomFieldDefinitionsSync(o.app, client))
-	o.RegisterService("staff_lookups", NewStaffLookupsSync(o.app, client))         // Global: positions, org_categories, program_areas
-	o.RegisterService("financial_lookups", NewFinancialLookupsSync(o.app, client)) // Global: financial_categories, payment_methods
-	o.RegisterService("divisions", NewDivisionsSync(o.app, client))                // Division definitions
+	// Global lookups: positions, org_categories, program_areas
+	o.RegisterService("staff_lookups", NewStaffLookupsSync(o.app, client))
+	// Global lookups: financial_categories, payment_methods
+	o.RegisterService("financial_lookups", NewFinancialLookupsSync(o.app, client))
+	o.RegisterService("divisions", NewDivisionsSync(o.app, client)) // Division definitions
 	// "persons" is a combined sync that populates persons and households tables
 	// from a single API call (tags are stored as multi-select relation on persons)
 	// Division relation on persons is set during persons sync (derived from persons API)

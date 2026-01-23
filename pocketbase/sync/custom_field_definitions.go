@@ -108,7 +108,9 @@ func (s *CustomFieldDefinitionsSync) Sync(ctx context.Context) error {
 
 			// Process the record using cm_id as key
 			compareFields := []string{"cm_id", "name", "data_type", "partition", "is_seasonal", "is_array", "is_active"}
-			if err := s.ProcessSimpleRecordGlobal("custom_field_defs", cmID, pbData, existingRecords, compareFields); err != nil {
+			err = s.ProcessSimpleRecordGlobal(
+				"custom_field_defs", cmID, pbData, existingRecords, compareFields)
+			if err != nil {
 				slog.Error("Error processing custom field definition", "cm_id", cmID, "error", err)
 				s.Stats.Errors++
 			}

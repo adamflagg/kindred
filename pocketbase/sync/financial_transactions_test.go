@@ -67,107 +67,110 @@ func TestTransformTransactionToPB(t *testing.T) {
 		t.Fatalf("transformTransactionToPB returned error: %v", err)
 	}
 
-	// Verify identity fields
-	if got, want := pbData["cm_id"].(int), 57783711; got != want {
-		t.Errorf("cm_id = %d, want %d", got, want)
-	}
-	if got, want := pbData["transaction_number"].(int), 12345; got != want {
-		t.Errorf("transaction_number = %d, want %d", got, want)
-	}
-	if got, want := pbData["year"].(int), 2025; got != want {
-		t.Errorf("year = %d, want %d", got, want)
-	}
+	t.Run("identity_fields", func(t *testing.T) {
+		verifyIntField(t, pbData, "cm_id", 57783711)
+		verifyIntField(t, pbData, "transaction_number", 12345)
+		verifyIntField(t, pbData, "year", 2025)
+	})
 
-	// Verify dates
-	if pbData["post_date"] == nil || pbData["post_date"] == "" {
-		t.Error("post_date should be set")
-	}
-	if pbData["effective_date"] == nil || pbData["effective_date"] == "" {
-		t.Error("effective_date should be set")
-	}
-	if pbData["service_start_date"] == nil || pbData["service_start_date"] == "" {
-		t.Error("service_start_date should be set")
-	}
-	if pbData["service_end_date"] == nil || pbData["service_end_date"] == "" {
-		t.Error("service_end_date should be set")
-	}
+	t.Run("dates", func(t *testing.T) {
+		verifyFieldSet(t, pbData, "post_date")
+		verifyFieldSet(t, pbData, "effective_date")
+		verifyFieldSet(t, pbData, "service_start_date")
+		verifyFieldSet(t, pbData, "service_end_date")
+	})
 
-	// Verify reversal tracking
-	if got, want := pbData["is_reversed"].(bool), false; got != want {
-		t.Errorf("is_reversed = %v, want %v", got, want)
-	}
-	if pbData["reversal_date"] != nil && pbData["reversal_date"] != "" {
-		t.Errorf("reversal_date should be nil/empty, got %v", pbData["reversal_date"])
-	}
+	t.Run("reversal_tracking", func(t *testing.T) {
+		verifyBoolField(t, pbData, "is_reversed", false)
+		verifyFieldEmpty(t, pbData, "reversal_date")
+	})
 
-	// Verify category (relation only)
-	if got, want := pbData["financial_category"].(string), "pb_cat_22650"; got != want {
-		t.Errorf("financial_category = %q, want %q", got, want)
-	}
+	t.Run("text_fields", func(t *testing.T) {
+		verifyStringField(t, pbData, "description", "Session 2 - Camper Fee")
+		verifyStringField(t, pbData, "transaction_note", "Test transaction note")
+		verifyStringField(t, pbData, "gl_account_note", "Test GL note")
+		verifyStringField(t, pbData, "recognition_gl_account_id", "1000")
+		verifyStringField(t, pbData, "deferral_gl_account_id", "2000")
+	})
 
-	// Verify description and notes
-	if got, want := pbData["description"].(string), "Session 2 - Camper Fee"; got != want {
-		t.Errorf("description = %q, want %q", got, want)
-	}
-	if got, want := pbData["transaction_note"].(string), "Test transaction note"; got != want {
-		t.Errorf("transaction_note = %q, want %q", got, want)
-	}
-	if got, want := pbData["gl_account_note"].(string), "Test GL note"; got != want {
-		t.Errorf("gl_account_note = %q, want %q", got, want)
-	}
+	t.Run("amounts", func(t *testing.T) {
+		verifyIntField(t, pbData, "quantity", 1)
+		verifyFloatField(t, pbData, "unit_amount", 128.0)
+		verifyFloatField(t, pbData, "amount", 128.0)
+	})
 
-	// Verify amounts
-	if got, want := pbData["quantity"].(int), 1; got != want {
-		t.Errorf("quantity = %d, want %d", got, want)
-	}
-	if got, want := pbData["unit_amount"].(float64), 128.0; got != want {
-		t.Errorf("unit_amount = %f, want %f", got, want)
-	}
-	if got, want := pbData["amount"].(float64), 128.0; got != want {
-		t.Errorf("amount = %f, want %f", got, want)
-	}
+	t.Run("relations", func(t *testing.T) {
+		verifyStringField(t, pbData, "financial_category", "pb_cat_22650")
+		verifyStringField(t, pbData, "payment_method", "pb_pm_1")
+		verifyStringField(t, pbData, "session", "pb_session_1335115")
+		verifyStringField(t, pbData, "session_group", "pb_group_100")
+		verifyStringField(t, pbData, "division", "pb_div_85")
+		verifyStringField(t, pbData, "person", "pb_person_3451504")
+		verifyStringField(t, pbData, "household", "pb_hh_3539709")
+		verifyIntField(t, pbData, "program_id", 500)
+	})
+}
 
-	// Verify GL accounts (string IDs)
-	if got, want := pbData["recognition_gl_account_id"].(string), "1000"; got != want {
-		t.Errorf("recognition_gl_account_id = %q, want %q", got, want)
+// Test helper functions for field verification
+func verifyIntField(t *testing.T, data map[string]interface{}, field string, want int) {
+	t.Helper()
+	got, ok := data[field].(int)
+	if !ok {
+		t.Errorf("%s: not an int, got %T", field, data[field])
+		return
 	}
-	if got, want := pbData["deferral_gl_account_id"].(string), "2000"; got != want {
-		t.Errorf("deferral_gl_account_id = %q, want %q", got, want)
+	if got != want {
+		t.Errorf("%s = %d, want %d", field, got, want)
 	}
+}
 
-	// Verify payment method (relation only)
-	if got, want := pbData["payment_method"].(string), "pb_pm_1"; got != want {
-		t.Errorf("payment_method = %q, want %q", got, want)
+func verifyFloatField(t *testing.T, data map[string]interface{}, field string, want float64) {
+	t.Helper()
+	got, ok := data[field].(float64)
+	if !ok {
+		t.Errorf("%s: not a float64, got %T", field, data[field])
+		return
 	}
-
-	// Verify session (relation only)
-	if got, want := pbData["session"].(string), "pb_session_1335115"; got != want {
-		t.Errorf("session = %q, want %q", got, want)
+	if got != want {
+		t.Errorf("%s = %f, want %f", field, got, want)
 	}
+}
 
-	// Verify program (CM ID only - no program table)
-	if got, want := pbData["program_id"].(int), 500; got != want {
-		t.Errorf("program_id = %d, want %d", got, want)
+func verifyStringField(t *testing.T, data map[string]interface{}, field, want string) {
+	t.Helper()
+	got, ok := data[field].(string)
+	if !ok {
+		t.Errorf("%s: not a string, got %T", field, data[field])
+		return
 	}
-
-	// Verify session group (relation only)
-	if got, want := pbData["session_group"].(string), "pb_group_100"; got != want {
-		t.Errorf("session_group = %q, want %q", got, want)
+	if got != want {
+		t.Errorf("%s = %q, want %q", field, got, want)
 	}
+}
 
-	// Verify division (relation only)
-	if got, want := pbData["division"].(string), "pb_div_85"; got != want {
-		t.Errorf("division = %q, want %q", got, want)
+func verifyBoolField(t *testing.T, data map[string]interface{}, field string, want bool) {
+	t.Helper()
+	got, ok := data[field].(bool)
+	if !ok {
+		t.Errorf("%s: not a bool, got %T", field, data[field])
+		return
 	}
-
-	// Verify person (relation only)
-	if got, want := pbData["person"].(string), "pb_person_3451504"; got != want {
-		t.Errorf("person = %q, want %q", got, want)
+	if got != want {
+		t.Errorf("%s = %v, want %v", field, got, want)
 	}
+}
 
-	// Verify household (relation only)
-	if got, want := pbData["household"].(string), "pb_hh_3539709"; got != want {
-		t.Errorf("household = %q, want %q", got, want)
+func verifyFieldSet(t *testing.T, data map[string]interface{}, field string) {
+	t.Helper()
+	if data[field] == nil || data[field] == "" {
+		t.Errorf("%s should be set", field)
+	}
+}
+
+func verifyFieldEmpty(t *testing.T, data map[string]interface{}, field string) {
+	t.Helper()
+	if data[field] != nil && data[field] != "" {
+		t.Errorf("%s should be nil/empty, got %v", field, data[field])
 	}
 }
 

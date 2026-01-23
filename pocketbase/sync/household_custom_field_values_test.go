@@ -1,9 +1,12 @@
+//nolint:dupl // Similar pattern to person_custom_field_values_test.go, intentional for household variant
 package sync
 
 import (
 	"strings"
 	"testing"
 )
+
+const testFieldDefPBID = "pb_field_100"
 
 func TestHouseholdCustomFieldValuesSync_Name(t *testing.T) {
 	s := &HouseholdCustomFieldValuesSync{}
@@ -28,7 +31,7 @@ func TestTransformHouseholdCustomFieldValueToPB(t *testing.T) {
 
 	// PB IDs (would be resolved by caller before calling transform)
 	householdPBId := "pb_household_123"
-	fieldDefPBId := "pb_field_100"
+	fieldDefPBId := testFieldDefPBID
 	year := 2025
 
 	pbData := s.transformHouseholdCustomFieldValueToPB(data, householdPBId, fieldDefPBId, year)
@@ -101,7 +104,7 @@ func TestTransformHouseholdCustomFieldValueNilValue(t *testing.T) {
 // so the keyBuilder must NOT include year, and all lookups must use "key|year" format.
 func TestHouseholdCustomFieldValuesCompositeKeyFormat(t *testing.T) {
 	householdPBId := "pb_household_123"
-	fieldDefPBId := "pb_field_100"
+	fieldDefPBId := testFieldDefPBID
 	year := 2025
 
 	// The identity key (what keyBuilder should return - NO year)

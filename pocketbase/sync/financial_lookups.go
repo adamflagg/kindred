@@ -64,12 +64,13 @@ func (s *FinancialLookupsSync) syncFinancialCategories(ctx context.Context) erro
 	slog.Info("Syncing financial categories")
 
 	// Pre-load existing records (global - no year filter)
-	existingRecords, err := s.PreloadRecordsGlobal("financial_categories", "", func(record *core.Record) (interface{}, bool) {
+	preloadFn := func(record *core.Record) (interface{}, bool) {
 		if cmID, ok := record.Get("cm_id").(float64); ok && cmID > 0 {
 			return int(cmID), true
 		}
 		return nil, false
-	})
+	}
+	existingRecords, err := s.PreloadRecordsGlobal("financial_categories", "", preloadFn)
 	if err != nil {
 		return err
 	}
@@ -109,7 +110,9 @@ func (s *FinancialLookupsSync) syncFinancialCategories(ctx context.Context) erro
 		s.TrackProcessedKey(cmID, 0) // Global table - no year
 
 		compareFields := []string{"cm_id", "name", "is_archived"}
-		if err := s.ProcessSimpleRecordGlobal("financial_categories", cmID, pbData, existingRecords, compareFields); err != nil {
+		err = s.ProcessSimpleRecordGlobal(
+			"financial_categories", cmID, pbData, existingRecords, compareFields)
+		if err != nil {
 			slog.Error("Error processing financial category", "cm_id", cmID, "error", err)
 			s.Stats.Errors++
 		}
@@ -136,6 +139,8 @@ func (s *FinancialLookupsSync) syncFinancialCategories(ctx context.Context) erro
 }
 
 // syncPaymentMethods syncs payment_methods from CampMinder
+//
+//nolint:dupl // Similar pattern to syncProgramAreas, intentional for lookup table sync
 func (s *FinancialLookupsSync) syncPaymentMethods(ctx context.Context) error {
 	slog.Info("Syncing payment methods")
 
@@ -213,7 +218,9 @@ func (s *FinancialLookupsSync) syncPaymentMethods(ctx context.Context) error {
 
 // Transform functions
 
-func (s *FinancialLookupsSync) transformFinancialCategoryToPB(data map[string]interface{}) (map[string]interface{}, error) {
+func (s *FinancialLookupsSync) transformFinancialCategoryToPB(
+	data map[string]interface{},
+) (map[string]interface{}, error) {
 	pbData := make(map[string]interface{})
 
 	// id (required) - API uses lowercase field names

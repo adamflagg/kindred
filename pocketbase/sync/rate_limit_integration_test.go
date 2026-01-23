@@ -223,7 +223,7 @@ type MockCustomFieldFetcher struct {
 	values       []map[string]interface{}
 }
 
-func (m *MockCustomFieldFetcher) GetPersonCustomFieldValuesPage(personID, page, pageSize int) ([]map[string]interface{}, bool, error) {
+func (m *MockCustomFieldFetcher) GetPersonCustomFieldValuesPage(_, _, _ int) ([]map[string]interface{}, bool, error) {
 	m.callCount++
 	if m.callCount <= m.failUntil {
 		if m.errorMessage != "" {
@@ -344,7 +344,9 @@ type MockHouseholdCustomFieldFetcher struct {
 	values       []map[string]interface{}
 }
 
-func (m *MockHouseholdCustomFieldFetcher) GetHouseholdCustomFieldValuesPage(householdID, page, pageSize int) ([]map[string]interface{}, bool, error) {
+func (m *MockHouseholdCustomFieldFetcher) GetHouseholdCustomFieldValuesPage(
+	_, _, _ int,
+) ([]map[string]interface{}, bool, error) {
 	m.callCount++
 	if m.callCount <= m.failUntil {
 		if m.errorMessage != "" {

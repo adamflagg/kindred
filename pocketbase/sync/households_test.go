@@ -100,7 +100,10 @@ func TestTransformHouseholdHandlesMissingFields(t *testing.T) {
 	}
 
 	// Optional fields should be present (even if nil/zero value)
-	optionalFields := []string{"greeting", "mailing_title", "alternate_mailing_title", "billing_mailing_title", "household_phone", "billing_address", "last_updated_utc"}
+	optionalFields := []string{
+		"greeting", "mailing_title", "alternate_mailing_title",
+		"billing_mailing_title", "household_phone", "billing_address", "last_updated_utc",
+	}
 	for _, field := range optionalFields {
 		if _, exists := pbData[field]; !exists {
 			t.Errorf("field %q missing from pbData (should be present even if nil)", field)

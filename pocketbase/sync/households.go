@@ -141,7 +141,10 @@ func (s *HouseholdsSync) Sync(ctx context.Context) error {
 	slog.Info("Extracted unique households from persons", "count", len(allHouseholds))
 
 	// Process each unique household
-	compareFields := []string{"cm_id", "greeting", "mailing_title", "alternate_mailing_title", "billing_mailing_title", "household_phone", "billing_address", "last_updated_utc"}
+	compareFields := []string{
+		"cm_id", "greeting", "mailing_title", "alternate_mailing_title",
+		"billing_mailing_title", "household_phone", "billing_address", "last_updated_utc",
+	}
 	for householdID, householdData := range allHouseholds {
 		// Transform to PocketBase format
 		pbData, err := s.transformHouseholdToPB(householdData, year)

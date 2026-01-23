@@ -4,6 +4,8 @@ import (
 	"testing"
 )
 
+const testAlumniTagID = "rec_alumni_001"
+
 func TestPersonsSync_Name(t *testing.T) {
 	s := &PersonsSync{}
 
@@ -480,7 +482,7 @@ func TestExtractTagIDs(t *testing.T) {
 
 	// Mock tag definitions map (name -> PocketBase ID)
 	tagDefsByName := map[string]string{
-		"Alumni":     "rec_alumni_001",
+		"Alumni":     testAlumniTagID,
 		"Leadership": "rec_leadership_002",
 		"Sibling":    "rec_sibling_003",
 	}
@@ -509,7 +511,7 @@ func TestExtractTagIDs(t *testing.T) {
 	foundAlumni := false
 	foundLeadership := false
 	for _, id := range tagIDs {
-		if id == "rec_alumni_001" {
+		if id == testAlumniTagID {
 			foundAlumni = true
 		}
 		if id == "rec_leadership_002" {
@@ -530,7 +532,7 @@ func TestExtractTagIDs_NoTags(t *testing.T) {
 	s := &PersonsSync{}
 
 	tagDefsByName := map[string]string{
-		"Alumni": "rec_alumni_001",
+		"Alumni": testAlumniTagID,
 	}
 
 	personData := map[string]interface{}{
@@ -549,7 +551,7 @@ func TestExtractTagIDs_EmptyTags(t *testing.T) {
 	s := &PersonsSync{}
 
 	tagDefsByName := map[string]string{
-		"Alumni": "rec_alumni_001",
+		"Alumni": testAlumniTagID,
 	}
 
 	personData := map[string]interface{}{
@@ -569,7 +571,7 @@ func TestExtractTagIDs_NilTags(t *testing.T) {
 	s := &PersonsSync{}
 
 	tagDefsByName := map[string]string{
-		"Alumni": "rec_alumni_001",
+		"Alumni": testAlumniTagID,
 	}
 
 	personData := map[string]interface{}{
@@ -589,7 +591,7 @@ func TestExtractTagIDs_UnknownTag(t *testing.T) {
 	s := &PersonsSync{}
 
 	tagDefsByName := map[string]string{
-		"Alumni": "rec_alumni_001",
+		"Alumni": testAlumniTagID,
 	}
 
 	personData := map[string]interface{}{
@@ -610,7 +612,7 @@ func TestExtractTagIDs_UnknownTag(t *testing.T) {
 		t.Fatalf("expected 1 tag ID (unknown tags skipped), got %d", len(tagIDs))
 	}
 
-	if tagIDs[0] != "rec_alumni_001" {
+	if tagIDs[0] != testAlumniTagID {
 		t.Errorf("expected Alumni tag ID, got %q", tagIDs[0])
 	}
 }
@@ -620,7 +622,7 @@ func TestExtractTagIDs_EmptyTagName(t *testing.T) {
 	s := &PersonsSync{}
 
 	tagDefsByName := map[string]string{
-		"Alumni": "rec_alumni_001",
+		"Alumni": testAlumniTagID,
 	}
 
 	personData := map[string]interface{}{
@@ -641,7 +643,7 @@ func TestExtractTagIDs_EmptyTagName(t *testing.T) {
 		t.Fatalf("expected 1 tag ID (empty name skipped), got %d", len(tagIDs))
 	}
 
-	if tagIDs[0] != "rec_alumni_001" {
+	if tagIDs[0] != testAlumniTagID {
 		t.Errorf("expected Alumni tag ID, got %q", tagIDs[0])
 	}
 }

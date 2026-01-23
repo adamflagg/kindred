@@ -654,6 +654,8 @@ func (c *Client) GetCustomFieldDefinitionsPage(page, pageSize int) ([]map[string
 // Endpoint: GET /persons/{id}/custom-fields
 // Returns: array of custom field values with id, clientId, seasonId, value, lastUpdated (camelCase)
 // Note: Requires 1 API call per person - use sparingly
+//
+//nolint:dupl // Similar pattern to GetHouseholdCustomFieldValuesPage, intentional for person variant
 func (c *Client) GetPersonCustomFieldValuesPage(personID, page, pageSize int) ([]map[string]interface{}, bool, error) {
 	endpoint := fmt.Sprintf("persons/%d/custom-fields", personID)
 	params := map[string]string{
@@ -687,7 +689,11 @@ func (c *Client) GetPersonCustomFieldValuesPage(personID, page, pageSize int) ([
 // Endpoint: GET /persons/households/{id}/custom-fields
 // Returns: array of custom field values with id, clientId, seasonId, value, lastUpdated (camelCase)
 // Note: Requires 1 API call per household - use sparingly
-func (c *Client) GetHouseholdCustomFieldValuesPage(householdID, page, pageSize int) ([]map[string]interface{}, bool, error) {
+//
+//nolint:dupl // Similar pattern to GetPersonCustomFieldValuesPage, intentional for household variant
+func (c *Client) GetHouseholdCustomFieldValuesPage(
+	householdID, page, pageSize int,
+) ([]map[string]interface{}, bool, error) {
 	endpoint := fmt.Sprintf("persons/households/%d/custom-fields", householdID)
 	params := map[string]string{
 		"clientid":   c.clientID,
@@ -1000,7 +1006,10 @@ func (c *Client) GetTransactionDetails(season int, includeReversals bool) ([]map
 		}
 
 		allResults = append(allResults, results...)
-		slog.Info("Fetched transactions", "month", fmt.Sprintf("%d/12", month), "batch", len(results), "total", len(allResults))
+		slog.Info("Fetched transactions",
+			"month", fmt.Sprintf("%d/12", month),
+			"batch", len(results),
+			"total", len(allResults))
 	}
 
 	return allResults, nil
