@@ -686,9 +686,9 @@ func TestExtractPersonIDsFromStaffRecords_SkipsInvalidIDs(t *testing.T) {
 
 	staffRecords := []map[string]interface{}{
 		{"PersonID": float64(1001), "StatusID": float64(1)},
-		{"PersonID": float64(0), "StatusID": float64(1)},    // Invalid: zero ID
-		{"PersonID": float64(-5), "StatusID": float64(1)},   // Invalid: negative ID
-		{"StatusID": float64(1)},                            // Invalid: missing PersonID
+		{"PersonID": float64(0), "StatusID": float64(1)},     // Invalid: zero ID
+		{"PersonID": float64(-5), "StatusID": float64(1)},    // Invalid: negative ID
+		{"StatusID": float64(1)},                             // Invalid: missing PersonID
 		{"PersonID": "not-a-number", "StatusID": float64(1)}, // Invalid: wrong type
 		{"PersonID": float64(1002), "StatusID": float64(1)},
 	}

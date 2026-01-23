@@ -29,8 +29,8 @@ type PersonsSync struct {
 // personHouseholdIDs holds the CampMinder IDs for a person's households
 // Used temporarily during sync to populate relation fields
 type personHouseholdIDs struct {
-	PrincipalID        int
-	PrimaryChildhoodID int
+	PrincipalID          int
+	PrimaryChildhoodID   int
 	AlternateChildhoodID int
 }
 
@@ -1238,4 +1238,3 @@ func (s *PersonsSync) mergePersonIDs(attendeeIDs, staffIDs []int) []int {
 
 	return merged
 }
-

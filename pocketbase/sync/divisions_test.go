@@ -21,16 +21,16 @@ func TestTransformDivisionToPB(t *testing.T) {
 
 	// Mock CampMinder API response based on divisions endpoint schema
 	divisionData := map[string]interface{}{
-		"ID":                          float64(12345),
-		"Name":                        "Boys 3rd-4th Grade",
-		"Description":                 "Division for boys in 3rd-4th grade",
-		"StartGradeRangeID":           float64(3),
-		"EndGradeRangeID":             float64(4),
-		"GenderID":                    float64(1), // 1=Male
-		"Capacity":                    float64(48),
-		"SubOfDivisionID":             float64(100), // Parent division
+		"ID":                           float64(12345),
+		"Name":                         "Boys 3rd-4th Grade",
+		"Description":                  "Division for boys in 3rd-4th grade",
+		"StartGradeRangeID":            float64(3),
+		"EndGradeRangeID":              float64(4),
+		"GenderID":                     float64(1), // 1=Male
+		"Capacity":                     float64(48),
+		"SubOfDivisionID":              float64(100), // Parent division
 		"AssignDuringCamperEnrollment": true,
-		"StaffOnly":                   false,
+		"StaffOnly":                    false,
 	}
 
 	pbData, err := s.transformDivisionToPB(divisionData)

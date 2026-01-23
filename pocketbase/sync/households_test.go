@@ -21,14 +21,14 @@ func TestTransformHouseholdToPB(t *testing.T) {
 
 	// Mock CampMinder API response (based on HouseholdDetails schema in persons.yaml)
 	householdData := map[string]interface{}{
-		"ID":                     float64(123456),
-		"ClientID":               float64(754),
-		"Greeting":               "Hunter and Ashley",
-		"MailingTitle":           "Mr. and Mrs Hunter Doe",
-		"AlternateMailingTitle":  "The Doe Family",
-		"BillingMailingTitle":    "Mr. and Mrs Hunter Doe",
-		"HouseholdPhone":         "212-523-5555",
-		"LastUpdatedUTC":         "2025-01-15T10:30:00.000Z",
+		"ID":                    float64(123456),
+		"ClientID":              float64(754),
+		"Greeting":              "Hunter and Ashley",
+		"MailingTitle":          "Mr. and Mrs Hunter Doe",
+		"AlternateMailingTitle": "The Doe Family",
+		"BillingMailingTitle":   "Mr. and Mrs Hunter Doe",
+		"HouseholdPhone":        "212-523-5555",
+		"LastUpdatedUTC":        "2025-01-15T10:30:00.000Z",
 		"BillingAddress": map[string]interface{}{
 			"Address1":      "123 Main St",
 			"Address2":      "Apt 4B",

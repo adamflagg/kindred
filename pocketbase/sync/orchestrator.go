@@ -55,30 +55,32 @@ type Stats struct {
 
 // Options configures how syncs are executed
 type Options struct {
-	Year       int      // Override year (0 = use default from env)
-	Services   []string // Specific services to run (empty = all)
-	Concurrent bool     // Run services in parallel
+	Year                int      // Override year (0 = use default from env)
+	Services            []string // Specific services to run (empty = all)
+	Concurrent          bool     // Run services in parallel
+	IncludeCustomValues bool     // Include custom field values in historical sync
+	Debug               bool     // Enable debug logging for custom values sync
 }
 
 // Orchestrator manages sync service execution
 type Orchestrator struct {
-	app                        core.App
-	services                   map[string]Service
-	mu                         sync.RWMutex
-	runningJobs                map[string]*Status
-	lastCompletedStatus        map[string]*Status // Store last completed status for each job
-	jobSpacing                 time.Duration
-	baseClient                 *campminder.Client // Base client for year overrides
-	currentSyncYear            int                // Year being synced (0 = current year from env)
-	dailySyncRunning           bool               // Track if daily sync sequence is in progress
-	dailySyncQueue             []string           // Services queued for daily sync
-	historicalSyncRunning      bool               // Track if historical sync sequence is in progress
-	historicalSyncQueue        []string           // Services queued for historical sync
-	historicalSyncYear         int                // Year being synced in historical sync
-	weeklySyncRunning          bool               // Track if weekly sync sequence is in progress
-	weeklySyncQueue            []string           // Services queued for weekly sync
-	customValuesSyncRunning    bool               // Track if custom values sync sequence is in progress
-	customValuesSyncQueue      []string           // Services queued for custom values sync
+	app                     core.App
+	services                map[string]Service
+	mu                      sync.RWMutex
+	runningJobs             map[string]*Status
+	lastCompletedStatus     map[string]*Status // Store last completed status for each job
+	jobSpacing              time.Duration
+	baseClient              *campminder.Client // Base client for year overrides
+	currentSyncYear         int                // Year being synced (0 = current year from env)
+	dailySyncRunning        bool               // Track if daily sync sequence is in progress
+	dailySyncQueue          []string           // Services queued for daily sync
+	historicalSyncRunning   bool               // Track if historical sync sequence is in progress
+	historicalSyncQueue     []string           // Services queued for historical sync
+	historicalSyncYear      int                // Year being synced in historical sync
+	weeklySyncRunning       bool               // Track if weekly sync sequence is in progress
+	weeklySyncQueue         []string           // Services queued for weekly sync
+	customValuesSyncRunning bool               // Track if custom values sync sequence is in progress
+	customValuesSyncQueue   []string           // Services queued for custom values sync
 }
 
 // NewOrchestrator creates a new orchestrator
@@ -653,6 +655,12 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 				servicesToRun = append(servicesToRun, "process_requests")
 			}
 		}
+
+		// Include custom field values if requested (for historical syncs)
+		// These run after persons/households since they depend on those records existing
+		if opts.IncludeCustomValues {
+			servicesToRun = append(servicesToRun, "person_custom_values", "household_custom_values")
+		}
 	}
 
 	// If this is a historical sync, set up tracking
@@ -712,8 +720,15 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 
 		// Custom value services for historical sync support
 		// These use GetSeasonID() to determine the year, so they need year-specific client
-		o.RegisterService("person_custom_values", NewPersonCustomFieldValuesSync(o.app, yearClient))
-		o.RegisterService("household_custom_values", NewHouseholdCustomFieldValuesSync(o.app, yearClient))
+		personCustomValuesSync := NewPersonCustomFieldValuesSync(o.app, yearClient)
+		personCustomValuesSync.SetDebug(opts.Debug)
+		personCustomValuesSync.SetSession("all") // Historical syncs all sessions
+		o.RegisterService("person_custom_values", personCustomValuesSync)
+
+		householdCustomValuesSync := NewHouseholdCustomFieldValuesSync(o.app, yearClient)
+		householdCustomValuesSync.SetDebug(opts.Debug)
+		householdCustomValuesSync.SetSession("all") // Historical syncs all sessions
+		o.RegisterService("household_custom_values", householdCustomValuesSync)
 
 		// Restore original services after sync completes
 		defer func() {
@@ -826,9 +841,9 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	o.RegisterService("attendees", NewAttendeesSync(o.app, client))
 	o.RegisterService("person_tag_defs", NewPersonTagDefinitionsSync(o.app, client))
 	o.RegisterService("custom_field_defs", NewCustomFieldDefinitionsSync(o.app, client))
-	o.RegisterService("staff_lookups", NewStaffLookupsSync(o.app, client))       // Global: positions, org_categories, program_areas
+	o.RegisterService("staff_lookups", NewStaffLookupsSync(o.app, client))         // Global: positions, org_categories, program_areas
 	o.RegisterService("financial_lookups", NewFinancialLookupsSync(o.app, client)) // Global: financial_categories, payment_methods
-	o.RegisterService("divisions", NewDivisionsSync(o.app, client))               // Division definitions
+	o.RegisterService("divisions", NewDivisionsSync(o.app, client))                // Division definitions
 	// "persons" is a combined sync that populates persons and households tables
 	// from a single API call (tags are stored as multi-select relation on persons)
 	// Division relation on persons is set during persons sync (derived from persons API)

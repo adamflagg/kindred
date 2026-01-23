@@ -59,6 +59,7 @@ export function SyncTab() {
   const [historicalYear, setHistoricalYear] = useState(currentYear - 1);
   const [historicalService, setHistoricalService] = useState('all');
   const [includeHistoricalCustomValues, setIncludeHistoricalCustomValues] = useState(false);
+  const [historicalDebug, setHistoricalDebug] = useState(false);
   const [showProcessOptions, setShowProcessOptions] = useState(false);
   const [entityModalSyncType, setEntityModalSyncType] = useState<EntitySyncType | null>(null);
 
@@ -160,17 +161,15 @@ export function SyncTab() {
             </div>
             <button
               onClick={() => {
-                runHistoricalSync.mutate({ year: historicalYear, service: historicalService });
-                // If custom field values option is enabled and we're syncing all/persons,
-                // trigger custom values sync after a delay to allow persons/households to populate first
-                const shouldSyncCustomValues = includeHistoricalCustomValues &&
+                // Include custom values in the sync sequence when checkbox is enabled
+                const shouldIncludeCustomValues = includeHistoricalCustomValues &&
                   (historicalService === 'all' || historicalService === 'persons');
-                if (shouldSyncCustomValues) {
-                  setTimeout(() => {
-                    runHistoricalSync.mutate({ year: historicalYear, service: 'person_custom_values' });
-                    runHistoricalSync.mutate({ year: historicalYear, service: 'household_custom_values' });
-                  }, 2000);
-                }
+                runHistoricalSync.mutate({
+                  year: historicalYear,
+                  service: historicalService,
+                  includeCustomValues: shouldIncludeCustomValues,
+                  debug: shouldIncludeCustomValues && historicalDebug,
+                });
               }}
               disabled={runHistoricalSync.isPending || hasRunningSyncs}
               className="px-5 py-2.5 bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 font-semibold rounded-lg hover:bg-amber-200 dark:hover:bg-amber-900/60 disabled:opacity-50 flex items-center justify-center gap-2 text-sm"
@@ -198,12 +197,24 @@ export function SyncTab() {
               </label>
 
               {includeHistoricalCustomValues && (
-                <div className="flex items-center gap-2 rounded-md bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
-                  <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-                  <span>
-                    Custom values sync requires ~1 API call per person/household.
-                  </span>
-                </div>
+                <>
+                  <div className="flex items-center gap-2 rounded-md bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
+                    <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                    <span>
+                      Custom values sync requires ~1 API call per person/household.
+                    </span>
+                  </div>
+                  <label className="flex items-center gap-2 ml-6">
+                    <input
+                      type="checkbox"
+                      checked={historicalDebug}
+                      onChange={(e) => setHistoricalDebug(e.target.checked)}
+                      className="rounded border-gray-300"
+                      disabled={runHistoricalSync.isPending}
+                    />
+                    <span className="text-sm text-muted-foreground">Enable debug logging</span>
+                  </label>
+                </>
               )}
             </div>
           )}

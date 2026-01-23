@@ -544,14 +544,14 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Note: "divisions" now runs in daily sync (before persons) rather than weekly
 	syncTypes := []string{
 		// Weekly syncs - global definitions that rarely change
-		"person_tag_defs",    // Global sync: tag definitions
-		"custom_field_defs",  // Global sync: custom field definitions
-		"staff_lookups",      // Global sync: positions, org_categories, program_areas
-		"financial_lookups",  // Global sync: financial_categories, payment_methods
+		"person_tag_defs",   // Global sync: tag definitions
+		"custom_field_defs", // Global sync: custom field definitions
+		"staff_lookups",     // Global sync: positions, org_categories, program_areas
+		"financial_lookups", // Global sync: financial_categories, payment_methods
 		// Daily syncs (in dependency order)
 		"session_groups",
 		"sessions",
-		"divisions",  // Division definitions (runs before persons in daily sync)
+		"divisions", // Division definitions (runs before persons in daily sync)
 		"attendees",
 		"persons", // Combined sync: persons + households + person_tags (includes division relation)
 		"bunks",
@@ -699,9 +699,18 @@ func handleHistoricalSync(e *core.RequestEvent, scheduler *Scheduler) error {
 		})
 	}
 
+	// Parse optional query parameters
+	includeCustomValuesParam := e.Request.URL.Query().Get("includeCustomValues")
+	includeCustomValues := includeCustomValuesParam == boolTrueStr || includeCustomValuesParam == "1"
+
+	debugParam := e.Request.URL.Query().Get("debug")
+	debug := debugParam == boolTrueStr || debugParam == "1"
+
 	// Create sync options
 	opts := Options{
-		Year: year,
+		Year:                year,
+		IncludeCustomValues: includeCustomValues,
+		Debug:               debug,
 	}
 
 	// Set services to sync
@@ -713,6 +722,13 @@ func handleHistoricalSync(e *core.RequestEvent, scheduler *Scheduler) error {
 
 	// Run in background
 	go func() {
+		slog.Info("Historical sync: Job started",
+			"year", year,
+			"service", service,
+			"includeCustomValues", includeCustomValues,
+			"debug", debug,
+		)
+
 		// Create context inside goroutine so it doesn't get canceled immediately
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
@@ -724,9 +740,11 @@ func handleHistoricalSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	}()
 
 	return e.JSON(http.StatusOK, map[string]interface{}{
-		"message": "Historical sync started",
-		"year":    year,
-		"service": service,
+		"message":             "Historical sync started",
+		"year":                year,
+		"service":             service,
+		"includeCustomValues": includeCustomValues,
+		"debug":               debug,
 	})
 }
 

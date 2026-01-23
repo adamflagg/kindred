@@ -5,22 +5,31 @@ import toast from 'react-hot-toast';
 interface HistoricalSyncParams {
   year: number;
   service: string; // 'all' or specific service name
+  includeCustomValues?: boolean;
+  debug?: boolean;
 }
 
 export function useHistoricalSync() {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async ({ year, service }: HistoricalSyncParams) => {
-      const response = await pb.send(`/api/custom/sync/historical/${year}/${service}`, {
+    mutationFn: async ({ year, service, includeCustomValues, debug }: HistoricalSyncParams) => {
+      const params = new URLSearchParams();
+      if (includeCustomValues) params.set('includeCustomValues', 'true');
+      if (debug) params.set('debug', 'true');
+      const queryString = params.toString();
+      const url = `/api/custom/sync/historical/${year}/${service}${queryString ? `?${queryString}` : ''}`;
+
+      const response = await pb.send(url, {
         method: 'POST',
       });
-      
+
       return response;
     },
     onSuccess: (_, variables) => {
       const serviceDisplay = variables.service === 'all' ? 'all services' : variables.service;
-      toast.success(`Historical sync started for ${variables.year} - ${serviceDisplay}`, {
+      const customValuesNote = variables.includeCustomValues ? ' (+ custom values)' : '';
+      toast.success(`Historical sync started for ${variables.year} - ${serviceDisplay}${customValuesNote}`, {
         duration: 5000,
       });
       

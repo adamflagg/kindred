@@ -160,7 +160,7 @@ func TestPersonCustomFieldValuesKeyBuilderShouldNotIncludeYear(t *testing.T) {
 	correctKey := correctKeyBuilder()
 
 	// Simulate PreloadCompositeRecords wrapping
-	wrongYearScoped := wrongKey + "|" + "2025"  // Results in "abc123:def456:2025|2025" - BAD!
+	wrongYearScoped := wrongKey + "|" + "2025"     // Results in "abc123:def456:2025|2025" - BAD!
 	correctYearScoped := correctKey + "|" + "2025" // Results in "abc123:def456|2025" - GOOD!
 
 	// The correct format should NOT have double year

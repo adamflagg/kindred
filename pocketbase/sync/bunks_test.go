@@ -9,15 +9,15 @@ func TestBunksSync_transformBunkToPB_WithNewFields(t *testing.T) {
 	// Since we can't easily mock the full service, we test the transformation logic directly
 
 	tests := []struct {
-		name           string
-		input          map[string]interface{}
-		wantCMID       int
-		wantName       string
-		wantGender     string
-		wantIsActive   bool
-		wantSortOrder  int
-		wantAreaID     int
-		wantErr        bool
+		name          string
+		input         map[string]interface{}
+		wantCMID      int
+		wantName      string
+		wantGender    string
+		wantIsActive  bool
+		wantSortOrder int
+		wantAreaID    int
+		wantErr       bool
 	}{
 		{
 			name: "bunk with all new fields",

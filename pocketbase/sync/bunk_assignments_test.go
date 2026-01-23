@@ -9,9 +9,9 @@ func TestBunkAssignmentsSync_processAssignment_ExtractsIsDeleted(t *testing.T) {
 	// Since processAssignment requires a full PocketBase app, we test the extraction logic
 
 	tests := []struct {
-		name            string
-		assignmentData  map[string]interface{}
-		wantIsDeleted   bool
+		name             string
+		assignmentData   map[string]interface{}
+		wantIsDeleted    bool
 		wantInRecordData bool
 	}{
 		{
@@ -24,7 +24,7 @@ func TestBunkAssignmentsSync_processAssignment_ExtractsIsDeleted(t *testing.T) {
 				"BunkPlanID": float64(50),
 				"IsDeleted":  false,
 			},
-			wantIsDeleted:   false,
+			wantIsDeleted:    false,
 			wantInRecordData: true,
 		},
 		{
@@ -37,7 +37,7 @@ func TestBunkAssignmentsSync_processAssignment_ExtractsIsDeleted(t *testing.T) {
 				"BunkPlanID": float64(51),
 				"IsDeleted":  true,
 			},
-			wantIsDeleted:   true,
+			wantIsDeleted:    true,
 			wantInRecordData: true,
 		},
 		{
@@ -50,7 +50,7 @@ func TestBunkAssignmentsSync_processAssignment_ExtractsIsDeleted(t *testing.T) {
 				"BunkPlanID": float64(52),
 				// IsDeleted omitted
 			},
-			wantIsDeleted:   false,
+			wantIsDeleted:    false,
 			wantInRecordData: true,
 		},
 	}
