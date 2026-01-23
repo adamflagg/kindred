@@ -89,31 +89,31 @@ ENV VIRTUAL_ENV="/app/.venv"
 # 2. STABLE CONFIG
 COPY --from=caddy:2 /usr/bin/caddy /usr/local/bin/caddy
 COPY docker/Caddyfile /etc/caddy/Caddyfile
-RUN caddy validate --config /etc/caddy/Caddyfile
-COPY config/ ./config/
-COPY campminder/ ./campminder/
+RUN chmod 644 /etc/caddy/Caddyfile && caddy validate --config /etc/caddy/Caddyfile
+COPY --chown=kindred:kindred config/ ./config/
+COPY --chown=kindred:kindred campminder/ ./campminder/
 RUN mkdir -p /pb_data/bunk_requests /app/logs /app/csv_history
 
 # 3. API + DOCKER
-COPY api/ ./api/
+COPY --chown=kindred:kindred api/ ./api/
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY docker/combined-entrypoint.sh /entrypoint.sh
 RUN chmod 755 /entrypoint.sh
 
 # 4. BUNKING
-COPY bunking/ ./bunking/
+COPY --chown=kindred:kindred bunking/ ./bunking/
 
 # 5. POCKETBASE
-COPY pocketbase/pb_hooks /pb_hooks
-COPY pocketbase/pb_migrations /pb_migrations
+COPY --chown=kindred:kindred pocketbase/pb_hooks /pb_hooks
+COPY --chown=kindred:kindred pocketbase/pb_migrations /pb_migrations
 COPY --from=go-builder /build/pocketbase /usr/local/bin/pocketbase
 RUN chmod +x /usr/local/bin/pocketbase
 
 # 6. FRONTEND
-COPY --from=frontend-builder /app/dist /pb_public
+COPY --chown=kindred:kindred --from=frontend-builder /app/dist /pb_public
 # Copy local assets (logos) - CI ensures local/ exists (empty if not unlocked)
 # See: .github/workflows/cd.yml "Prepare local assets" step
-COPY local/ /pb_public/local/
+COPY --chown=kindred:kindred local/ /pb_public/local/
 
 # Verify local assets aren't git-crypt encrypted (would start with "GITCRYPT" header)
 # This catches builds where git-crypt wasn't unlocked before building
@@ -126,7 +126,7 @@ RUN for f in /pb_public/local/assets/*; do \
 # Create Caddy config/data directories and set ownership for writable directories
 # (skip .venv - it's read-only)
 RUN mkdir -p /app/.config/caddy /app/.local/share/caddy && \
-    chown -R kindred:kindred /pb_data /app/logs /app/csv_history /pb_public /pb_hooks /pb_migrations /app/.config /app/.local
+    chown -R kindred:kindred /pb_data /app/logs /app/csv_history /app/.config /app/.local
 USER kindred
 
 EXPOSE 8080
