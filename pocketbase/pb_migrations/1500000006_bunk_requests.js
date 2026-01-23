@@ -9,28 +9,11 @@
  * IMPORTANT: Uses fixed collection ID for consistency.
  */
 
-// Fixed collection IDs - must match across all migrations
-const COLLECTION_IDS = {
-  camp_sessions: "col_camp_sessions",
-  persons: "col_persons",
-  bunks: "col_bunks",
-  attendees: "col_attendees",
-  bunk_plans: "col_bunk_plans",
-  bunk_requests: "col_bunk_requests",
-  bunk_assignments: "col_bunk_assignments",
-  bunk_assignments_draft: "col_bunk_drafts",
-  saved_scenarios: "col_scenarios",
-  solver_runs: "col_solver_runs",
-  original_bunk_requests: "col_orig_requests",
-  locked_groups: "col_locked_groups",
-  locked_group_members: "col_locked_members",
-  config: "col_config",
-  config_sections: "col_config_sections"
-}
+const COLLECTION_ID_BUNK_REQUESTS = "col_bunk_requests";
 
 migrate((app) => {
   const collection = new Collection({
-    id: COLLECTION_IDS.bunk_requests,
+    id: COLLECTION_ID_BUNK_REQUESTS,
     name: "bunk_requests",
     type: "base",
     system: false,
@@ -282,12 +265,12 @@ migrate((app) => {
         unique: false,
         options: {}
       },
-      // CSV field this came from
+      // CSV field this came from (required for unique constraint)
       {
         name: "source_field",
         type: "text",
         system: false,
-        required: false,
+        required: true,
         unique: false,
         options: {
           min: null,
@@ -434,6 +417,28 @@ migrate((app) => {
         unique: false,
         options: {}
       },
+      // Array of all contributing source field names
+      {
+        name: "source_fields",
+        type: "json",
+        system: false,
+        required: false,
+        unique: false,
+        options: {
+          maxSize: 2000000
+        }
+      },
+      // Self-reference for soft-delete merge tracking
+      {
+        name: "merged_into",
+        type: "relation",
+        system: false,
+        required: false,
+        collectionId: COLLECTION_ID_BUNK_REQUESTS,
+        cascadeDelete: false,
+        minSelect: null,
+        maxSelect: 1
+      },
       {
         type: "autodate",
         name: "created",
@@ -462,7 +467,8 @@ migrate((app) => {
       "CREATE INDEX idx_bunk_requests_priority ON bunk_requests (priority)",
       "CREATE INDEX idx_bunk_requests_year_session ON bunk_requests (year, session_id)",
       "CREATE INDEX `idx_bunk_requests_requester_year` ON `bunk_requests` (`requester_id`, `year`)",
-      "CREATE UNIQUE INDEX `idx_i29qcpH8Ye` ON `bunk_requests` (`requester_id`, `requestee_id`, `request_type`, `year`, `session_id`)"
+      "CREATE UNIQUE INDEX `idx_bunk_requests_unique_with_source` ON `bunk_requests` (`requester_id`, `requestee_id`, `request_type`, `year`, `session_id`, `source_field`)",
+      "CREATE INDEX idx_bunk_requests_merged_into ON bunk_requests (merged_into)"
     ],
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',

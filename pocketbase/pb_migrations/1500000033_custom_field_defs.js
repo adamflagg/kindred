@@ -1,20 +1,19 @@
 /// <reference path="../pb_data/types.d.ts" />
 /**
- * Migration: Create custom_field_definitions collection
+ * Migration: Create custom_field_defs collection
  * Dependencies: None
  *
  * Stores custom field definitions from CampMinder /persons/custom-fields endpoint.
  * Defines the schema for custom fields that can be attached to persons or households.
  */
 
-// Fixed collection ID for custom_field_definitions
-const COLLECTION_ID_CUSTOM_FIELD_DEFINITIONS = "col_custom_field_defs";
+const COLLECTION_ID_CUSTOM_FIELD_DEFS = "col_custom_field_defs";
 
 migrate((app) => {
   const collection = new Collection({
-    id: COLLECTION_ID_CUSTOM_FIELD_DEFINITIONS,
+    id: COLLECTION_ID_CUSTOM_FIELD_DEFS,
     type: "base",
-    name: "custom_field_definitions",
+    name: "custom_field_defs",
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',
     createRule: '@request.auth.id != ""',
@@ -25,7 +24,7 @@ migrate((app) => {
         type: "number",
         name: "cm_id",
         required: true,
-        presentable: true,
+        presentable: false,
         system: false,
         options: {
           min: 1,
@@ -61,7 +60,7 @@ migrate((app) => {
         presentable: false,
         system: false,
         values: ["None", "Family", "Alumnus", "Staff", "Camper", "Parent", "Adult"],
-        maxSelect: 1
+        maxSelect: 7
       },
       {
         type: "bool",
@@ -85,18 +84,6 @@ migrate((app) => {
         system: false
       },
       {
-        type: "number",
-        name: "year",
-        required: true,
-        presentable: false,
-        system: false,
-        options: {
-          min: 2010,
-          max: 2100,
-          noDecimal: true
-        }
-      },
-      {
         type: "autodate",
         name: "created",
         required: false,
@@ -114,14 +101,13 @@ migrate((app) => {
       }
     ],
     indexes: [
-      "CREATE UNIQUE INDEX `idx_custom_field_defs_cm_id_year` ON `custom_field_definitions` (`cm_id`, `year`)",
-      "CREATE INDEX `idx_custom_field_defs_year` ON `custom_field_definitions` (`year`)",
-      "CREATE INDEX `idx_custom_field_defs_partition` ON `custom_field_definitions` (`partition`)"
+      "CREATE UNIQUE INDEX `idx_custom_field_defs_cm_id` ON `custom_field_defs` (`cm_id`)",
+      "CREATE INDEX `idx_custom_field_defs_partition` ON `custom_field_defs` (`partition`)"
     ]
   });
 
   app.save(collection);
 }, (app) => {
-  const collection = app.findCollectionByNameOrId("custom_field_definitions");
+  const collection = app.findCollectionByNameOrId("custom_field_defs");
   app.delete(collection);
 });

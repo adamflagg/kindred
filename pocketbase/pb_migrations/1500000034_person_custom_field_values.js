@@ -1,24 +1,26 @@
 /// <reference path="../pb_data/types.d.ts" />
 /**
- * Migration: Create person_custom_field_values collection
- * Dependencies: persons, custom_field_definitions
+ * Migration: Create person_custom_values collection
+ * Dependencies: persons, custom_field_defs
  *
  * Stores custom field values for persons from CampMinder /{personId}/custom-fields endpoint.
  * This is an on-demand sync (not part of daily sync) due to requiring 1 API call per person.
+ *
+ * IMPORTANT: Uses fixed collection ID so dependent migrations can reference
+ * it directly without findCollectionByNameOrId (which fails in fresh DB).
  */
 
-// Fixed collection ID for person_custom_field_values
-const COLLECTION_ID_PERSON_CUSTOM_FIELD_VALUES = "col_person_cf_vals";
+const COLLECTION_ID_PERSON_CUSTOM_VALUES = "col_person_cf_vals";
 
 migrate((app) => {
   // Get collection IDs for relations
   const personsCol = app.findCollectionByNameOrId("persons");
-  const customFieldDefsCol = app.findCollectionByNameOrId("custom_field_definitions");
+  const customFieldDefsCol = app.findCollectionByNameOrId("custom_field_defs");
 
   const collection = new Collection({
-    id: COLLECTION_ID_PERSON_CUSTOM_FIELD_VALUES,
+    id: COLLECTION_ID_PERSON_CUSTOM_VALUES,
     type: "base",
-    name: "person_custom_field_values",
+    name: "person_custom_values",
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',
     createRule: '@request.auth.id != ""',
@@ -31,62 +33,21 @@ migrate((app) => {
         name: "person",
         required: false,
         presentable: false,
-        system: false,
         collectionId: personsCol.id,
         cascadeDelete: false,
         minSelect: null,
         maxSelect: 1
       },
-      // Relation to custom_field_definitions collection
+      // Relation to custom_field_defs collection
       {
         type: "relation",
         name: "field_definition",
         required: false,
         presentable: false,
-        system: false,
         collectionId: customFieldDefsCol.id,
         cascadeDelete: false,
         minSelect: null,
         maxSelect: 1
-      },
-      // CampMinder person ID (for sync lookups)
-      {
-        type: "number",
-        name: "person_id",
-        required: true,
-        presentable: false,
-        system: false,
-        options: {
-          min: 1,
-          max: null,
-          noDecimal: true
-        }
-      },
-      // CampMinder custom field definition ID (for sync lookups)
-      {
-        type: "number",
-        name: "field_id",
-        required: true,
-        presentable: false,
-        system: false,
-        options: {
-          min: 1,
-          max: null,
-          noDecimal: true
-        }
-      },
-      // Season ID for seasonal fields (0 or null for non-seasonal)
-      {
-        type: "number",
-        name: "season_id",
-        required: false,
-        presentable: false,
-        system: false,
-        options: {
-          min: 0,
-          max: null,
-          noDecimal: true
-        }
       },
       // The actual value (stored as text, typed by definition)
       {
@@ -94,7 +55,6 @@ migrate((app) => {
         name: "value",
         required: false,
         presentable: true,
-        system: false,
         options: {
           min: null,
           max: 10000,
@@ -107,7 +67,6 @@ migrate((app) => {
         name: "year",
         required: true,
         presentable: false,
-        system: false,
         options: {
           min: 2010,
           max: 2100,
@@ -120,7 +79,6 @@ migrate((app) => {
         name: "last_updated",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -145,17 +103,14 @@ migrate((app) => {
       }
     ],
     indexes: [
-      // Unique composite key: person + field + season + year
-      "CREATE UNIQUE INDEX `idx_person_cf_vals_unique` ON `person_custom_field_values` (`person_id`, `field_id`, `season_id`, `year`)",
-      // Index for querying by person
-      "CREATE INDEX `idx_person_cf_vals_person` ON `person_custom_field_values` (`person_id`, `year`)",
-      // Index for querying by field definition
-      "CREATE INDEX `idx_person_cf_vals_field` ON `person_custom_field_values` (`field_id`, `year`)"
+      "CREATE UNIQUE INDEX `idx_person_cf_vals_unique` ON `person_custom_values` (`year`, `person`, `field_definition`)",
+      "CREATE INDEX `idx_person_cf_vals_person` ON `person_custom_values` (`year`, `person`)",
+      "CREATE INDEX `idx_person_cf_vals_field` ON `person_custom_values` (`year`, `field_definition`)"
     ]
   });
 
   app.save(collection);
 }, (app) => {
-  const collection = app.findCollectionByNameOrId("person_custom_field_values");
+  const collection = app.findCollectionByNameOrId("person_custom_values");
   app.delete(collection);
 });

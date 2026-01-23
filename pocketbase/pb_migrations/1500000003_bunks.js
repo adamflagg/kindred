@@ -7,28 +7,11 @@
  * it directly without findCollectionByNameOrId (which fails in fresh DB).
  */
 
-// Fixed collection IDs - must match across all migrations
-const COLLECTION_IDS = {
-  camp_sessions: "col_camp_sessions",
-  persons: "col_persons",
-  bunks: "col_bunks",
-  attendees: "col_attendees",
-  bunk_plans: "col_bunk_plans",
-  bunk_requests: "col_bunk_requests",
-  bunk_assignments: "col_bunk_assignments",
-  bunk_assignments_draft: "col_bunk_drafts",
-  saved_scenarios: "col_scenarios",
-  solver_runs: "col_solver_runs",
-  original_bunk_requests: "col_orig_requests",
-  locked_groups: "col_locked_groups",
-  locked_group_members: "col_locked_members",
-  config: "col_config",
-  config_sections: "col_config_sections"
-}
+const COLLECTION_ID_BUNKS = "col_bunks";
 
 migrate((app) => {
   const collection = new Collection({
-    id: COLLECTION_IDS.bunks,
+    id: COLLECTION_ID_BUNKS,
     name: "bunks",
     type: "base",
     system: false,
@@ -79,6 +62,34 @@ migrate((app) => {
           min: null,
           max: 10,
           pattern: ""
+        }
+      },
+      {
+        name: "is_active",
+        type: "bool",
+        required: false,
+        presentable: false
+      },
+      {
+        name: "sort_order",
+        type: "number",
+        required: false,
+        presentable: false,
+        options: {
+          min: null,
+          max: null,
+          noDecimal: true
+        }
+      },
+      {
+        name: "area_id",
+        type: "number",
+        required: false,
+        presentable: false,
+        options: {
+          min: null,
+          max: null,
+          noDecimal: true
         }
       },
       {

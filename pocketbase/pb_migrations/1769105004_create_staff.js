@@ -29,19 +29,7 @@ migrate((app) => {
     updateRule: '@request.auth.id != ""',
     deleteRule: '@request.auth.id != ""',
     fields: [
-      // Identity
-      {
-        type: "number",
-        name: "person_id",
-        required: true,
-        presentable: false,
-        system: false,
-        options: {
-          min: 1,
-          max: null,
-          noDecimal: true
-        }
-      },
+      // Person relation
       {
         type: "relation",
         name: "person",
@@ -144,8 +132,8 @@ migrate((app) => {
         system: false,
         collectionId: bunksCol.id,
         cascadeDelete: false,
-        minSelect: null,
-        maxSelect: null
+        minSelect: 0,
+        maxSelect: 999
       },
       {
         type: "bool",
@@ -259,18 +247,6 @@ migrate((app) => {
           noDecimal: false
         }
       },
-      {
-        type: "text",
-        name: "last_updated",
-        required: false,
-        presentable: false,
-        system: false,
-        options: {
-          min: null,
-          max: null,
-          pattern: ""
-        }
-      },
 
       // Auto dates
       {
@@ -291,9 +267,10 @@ migrate((app) => {
       }
     ],
     indexes: [
-      "CREATE UNIQUE INDEX `idx_staff_person_year` ON `staff` (`person_id`, `year`)",
+      "CREATE UNIQUE INDEX `idx_staff_person_year` ON `staff` (`year`, `person`)",
       "CREATE INDEX `idx_staff_year` ON `staff` (`year`)",
-      "CREATE INDEX `idx_staff_status_id` ON `staff` (`status_id`)"
+      "CREATE INDEX `idx_staff_status_id` ON `staff` (`status_id`)",
+      "CREATE INDEX `idx_staff_person` ON `staff` (`person`)"
     ]
   });
 

@@ -1,17 +1,21 @@
 /// <reference path="../pb_data/types.d.ts" />
 /**
  * Migration: Create bunk_plans collection
- * Dependencies: bunks (1500000006), camp_sessions (1500000001)
+ * Dependencies: bunks, camp_sessions
  *
- * Uses dynamic collection lookups via findCollectionByNameOrId().
+ * IMPORTANT: Uses fixed collection ID so dependent migrations can reference
+ * it directly without findCollectionByNameOrId (which fails in fresh DB).
  */
 
+const COLLECTION_ID_BUNK_PLANS = "col_bunk_plans";
+
 migrate((app) => {
-  // Dynamic lookups - these collections were created in earlier migrations
+  // Dynamic lookups for relations
   const bunksCol = app.findCollectionByNameOrId("bunks")
   const sessionsCol = app.findCollectionByNameOrId("camp_sessions")
 
   const collection = new Collection({
+    id: COLLECTION_ID_BUNK_PLANS,
     name: "bunk_plans",
     type: "base",
     system: false,
@@ -85,6 +89,13 @@ migrate((app) => {
           max: null,
           noDecimal: true
         }
+      },
+      {
+        name: "is_active",
+        type: "bool",
+        system: false,
+        required: false,
+        presentable: false
       },
       {
         type: "autodate",

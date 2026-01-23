@@ -65,6 +65,18 @@ migrate((app) => {
           pattern: ""
         }
       },
+      // AI parse notes from the original bunk_request when merging
+      {
+        type: "text",
+        name: "parse_notes",
+        required: false,
+        presentable: false,
+        options: {
+          min: null,
+          max: 5000,
+          pattern: ""
+        }
+      },
       {
         type: "autodate",
         name: "created",

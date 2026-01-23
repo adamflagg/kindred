@@ -136,19 +136,7 @@ migrate((app) => {
         }
       },
 
-      // Financial category (CM ID for sync + relation for joins)
-      {
-        type: "number",
-        name: "financial_category_id",
-        required: false,
-        presentable: false,
-        system: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
-      },
+      // Financial category relation
       {
         type: "relation",
         name: "financial_category",
@@ -263,19 +251,7 @@ migrate((app) => {
         }
       },
 
-      // Payment method (CM ID for sync + relation for joins)
-      {
-        type: "number",
-        name: "payment_method_id",
-        required: false,
-        presentable: false,
-        system: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
-      },
+      // Payment method relation
       {
         type: "relation",
         name: "payment_method",
@@ -288,19 +264,7 @@ migrate((app) => {
         maxSelect: 1
       },
 
-      // Session (CM ID for sync + relation for joins)
-      {
-        type: "number",
-        name: "session_cm_id",
-        required: false,
-        presentable: false,
-        system: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
-      },
+      // Session relation
       {
         type: "relation",
         name: "session",
@@ -327,19 +291,7 @@ migrate((app) => {
         }
       },
 
-      // Session group (CM ID for sync + relation for joins)
-      {
-        type: "number",
-        name: "session_group_id",
-        required: false,
-        presentable: false,
-        system: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
-      },
+      // Session group relation
       {
         type: "relation",
         name: "session_group",
@@ -352,19 +304,7 @@ migrate((app) => {
         maxSelect: 1
       },
 
-      // Division (CM ID for sync + relation for joins)
-      {
-        type: "number",
-        name: "division_id",
-        required: false,
-        presentable: false,
-        system: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
-      },
+      // Division relation
       {
         type: "relation",
         name: "division",
@@ -377,19 +317,7 @@ migrate((app) => {
         maxSelect: 1
       },
 
-      // Person (CM ID for sync + relation for joins)
-      {
-        type: "number",
-        name: "person_cm_id",
-        required: false,
-        presentable: false,
-        system: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
-      },
+      // Person relation
       {
         type: "relation",
         name: "person",
@@ -402,19 +330,7 @@ migrate((app) => {
         maxSelect: 1
       },
 
-      // Household (CM ID for sync + relation for joins)
-      {
-        type: "number",
-        name: "household_cm_id",
-        required: false,
-        presentable: false,
-        system: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
-      },
+      // Household relation
       {
         type: "relation",
         name: "household",
@@ -451,10 +367,10 @@ migrate((app) => {
       "CREATE UNIQUE INDEX `idx_financial_transactions_cm_id_amount` ON `financial_transactions` (`cm_id`, `amount`)",
       "CREATE INDEX `idx_financial_transactions_year` ON `financial_transactions` (`year`)",
       "CREATE INDEX `idx_financial_transactions_post_date` ON `financial_transactions` (`post_date`)",
-      "CREATE INDEX `idx_financial_transactions_person` ON `financial_transactions` (`person_cm_id`)",
-      "CREATE INDEX `idx_financial_transactions_household` ON `financial_transactions` (`household_cm_id`)",
-      "CREATE INDEX `idx_financial_transactions_session` ON `financial_transactions` (`session_cm_id`)",
-      "CREATE INDEX `idx_financial_transactions_category` ON `financial_transactions` (`financial_category_id`)"
+      "CREATE INDEX `idx_financial_transactions_person` ON `financial_transactions` (`person`)",
+      "CREATE INDEX `idx_financial_transactions_session` ON `financial_transactions` (`session`)",
+      "CREATE INDEX `idx_financial_transactions_category` ON `financial_transactions` (`financial_category`)",
+      "CREATE INDEX `idx_financial_transactions_division` ON `financial_transactions` (`division`)"
     ]
   });
 

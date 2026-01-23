@@ -1,34 +1,21 @@
 /// <reference path="../pb_data/types.d.ts" />
 /**
  * Migration: Create persons collection
- * Dependencies: None
+ * Dependencies: households, divisions, person_tag_defs
  *
  * IMPORTANT: Uses fixed collection ID so dependent migrations can reference
  * it directly without findCollectionByNameOrId (which fails in fresh DB).
  */
 
-// Fixed collection IDs - must match across all migrations
-const COLLECTION_IDS = {
-  camp_sessions: "col_camp_sessions",
-  persons: "col_persons",
-  bunks: "col_bunks",
-  attendees: "col_attendees",
-  bunk_plans: "col_bunk_plans",
-  bunk_requests: "col_bunk_requests",
-  bunk_assignments: "col_bunk_assignments",
-  bunk_assignments_draft: "col_bunk_drafts",
-  saved_scenarios: "col_scenarios",
-  solver_runs: "col_solver_runs",
-  original_bunk_requests: "col_orig_requests",
-  locked_groups: "col_locked_groups",
-  locked_group_members: "col_locked_members",
-  config: "col_config",
-  config_sections: "col_config_sections"
-}
+const COLLECTION_ID_PERSONS = "col_persons";
 
 migrate((app) => {
+  const householdsCol = app.findCollectionByNameOrId("households");
+  const divisionsCol = app.findCollectionByNameOrId("divisions");
+  const tagDefsCol = app.findCollectionByNameOrId("person_tag_defs");
+
   const collection = new Collection({
-    id: COLLECTION_IDS.persons,
+    id: COLLECTION_ID_PERSONS,
     name: "persons",
     type: "base",
     system: false,
@@ -278,6 +265,86 @@ migrate((app) => {
           max: null,
           noDecimal: true
         }
+      },
+      {
+        type: "relation",
+        name: "primary_childhood_household",
+        required: false,
+        presentable: false,
+        system: false,
+        collectionId: householdsCol.id,
+        cascadeDelete: false,
+        minSelect: null,
+        maxSelect: 1
+      },
+      {
+        type: "relation",
+        name: "alternate_childhood_household",
+        required: false,
+        presentable: false,
+        system: false,
+        collectionId: householdsCol.id,
+        cascadeDelete: false,
+        minSelect: null,
+        maxSelect: 1
+      },
+      {
+        type: "relation",
+        name: "division",
+        required: false,
+        presentable: false,
+        system: false,
+        collectionId: divisionsCol.id,
+        cascadeDelete: false,
+        minSelect: null,
+        maxSelect: 1
+      },
+      {
+        name: "partition_id",
+        type: "number",
+        required: false,
+        presentable: false,
+        system: false,
+        options: {
+          min: null,
+          max: null,
+          noDecimal: true
+        }
+      },
+      {
+        name: "lead_date",
+        type: "text",
+        required: false,
+        presentable: false,
+        system: false,
+        options: {
+          min: null,
+          max: null,
+          pattern: ""
+        }
+      },
+      {
+        name: "tshirt_size",
+        type: "text",
+        required: false,
+        presentable: false,
+        system: false,
+        options: {
+          min: null,
+          max: 50,
+          pattern: ""
+        }
+      },
+      {
+        type: "relation",
+        name: "tags",
+        required: false,
+        presentable: false,
+        system: false,
+        collectionId: tagDefsCol.id,
+        cascadeDelete: true,
+        minSelect: null,
+        maxSelect: 999
       },
       {
         name: "is_camper",

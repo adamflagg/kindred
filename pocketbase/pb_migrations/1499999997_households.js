@@ -1,24 +1,20 @@
 /// <reference path="../pb_data/types.d.ts" />
 /**
- * Migration: Create divisions collection
+ * Migration: Create households collection
  * Dependencies: None
  *
- * Stores division definitions from CampMinder /divisions endpoint.
- * Divisions define age/gender groups like "Boys 3rd-4th Grade".
- * Note: Divisions are global (not year-specific) - they define group structures.
- *
- * The parent_division self-reference relation is added in a separate migration
- * since the collection must exist first.
+ * Stores household data extracted from CampMinder persons response.
+ * Households contain mailing titles, phone, and billing address.
  */
 
-// Fixed collection ID for divisions
-const COLLECTION_ID_DIVISIONS = "col_divisions";
+// Fixed collection ID for households
+const COLLECTION_ID_HOUSEHOLDS = "col_households";
 
 migrate((app) => {
   const collection = new Collection({
-    id: COLLECTION_ID_DIVISIONS,
+    id: COLLECTION_ID_HOUSEHOLDS,
     type: "base",
-    name: "divisions",
+    name: "households",
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',
     createRule: '@request.auth.id != ""',
@@ -39,89 +35,85 @@ migrate((app) => {
       },
       {
         type: "text",
-        name: "name",
-        required: true,
-        presentable: true,
+        name: "greeting",
+        required: false,
+        presentable: false,
         system: false,
         options: {
-          min: 1,
-          max: 200,
+          min: null,
+          max: 500,
           pattern: ""
         }
       },
       {
         type: "text",
-        name: "description",
+        name: "mailing_title",
         required: false,
-        presentable: false,
+        presentable: true,
         system: false,
         options: {
           min: null,
-          max: 1000,
+          max: 500,
           pattern: ""
         }
       },
       {
-        type: "number",
-        name: "start_grade_id",
+        type: "text",
+        name: "alternate_mailing_title",
         required: false,
         presentable: false,
         system: false,
         options: {
           min: null,
-          max: null,
-          noDecimal: true
+          max: 500,
+          pattern: ""
         }
       },
       {
-        type: "number",
-        name: "end_grade_id",
+        type: "text",
+        name: "billing_mailing_title",
         required: false,
         presentable: false,
         system: false,
         options: {
           min: null,
-          max: null,
-          noDecimal: true
+          max: 500,
+          pattern: ""
         }
       },
       {
-        type: "number",
-        name: "gender_id",
+        type: "text",
+        name: "household_phone",
         required: false,
         presentable: false,
         system: false,
         options: {
           min: null,
-          max: null,
-          noDecimal: true
+          max: 50,
+          pattern: ""
         }
       },
       {
-        type: "number",
-        name: "capacity",
+        type: "json",
+        name: "billing_address",
         required: false,
         presentable: false,
         system: false,
         options: {
-          min: null,
-          max: null,
-          noDecimal: true
+          maxSize: 10000
         }
       },
       {
-        type: "bool",
-        name: "assign_on_enrollment",
-        required: false,
+        type: "number",
+        name: "year",
+        required: true,
         presentable: false,
-        system: false
-      },
-      {
-        type: "bool",
-        name: "staff_only",
-        required: false,
-        presentable: false,
-        system: false
+        system: false,
+        options: {
+          min: 2010,
+          max: 2100,
+          noDecimal: true
+        }
       },
       {
         type: "autodate",
@@ -141,12 +133,13 @@ migrate((app) => {
       }
     ],
     indexes: [
-      "CREATE UNIQUE INDEX `idx_divisions_cm_id` ON `divisions` (`cm_id`)"
+      "CREATE UNIQUE INDEX `idx_households_cm_id_year` ON `households` (`cm_id`, `year`)",
+      "CREATE INDEX `idx_households_year` ON `households` (`year`)"
     ]
   });
 
   app.save(collection);
 }, (app) => {
-  const collection = app.findCollectionByNameOrId("divisions");
+  const collection = app.findCollectionByNameOrId("households");
   app.delete(collection);
 });

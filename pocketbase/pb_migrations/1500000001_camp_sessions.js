@@ -1,34 +1,19 @@
 /// <reference path="../pb_data/types.d.ts" />
 /**
  * Migration: Create camp_sessions collection
- * Dependencies: None
+ * Dependencies: session_groups (for relation)
  *
  * IMPORTANT: Uses fixed collection ID so dependent migrations can reference
  * it directly without findCollectionByNameOrId (which fails in fresh DB).
  */
 
-// Fixed collection IDs - used across migrations for relation fields
-const COLLECTION_IDS = {
-  camp_sessions: "col_camp_sessions",
-  persons: "col_persons",
-  bunks: "col_bunks",
-  attendees: "col_attendees",
-  bunk_plans: "col_bunk_plans",
-  bunk_requests: "col_bunk_requests",
-  bunk_assignments: "col_bunk_assignments",
-  bunk_assignments_draft: "col_bunk_drafts",
-  saved_scenarios: "col_scenarios",
-  solver_runs: "col_solver_runs",
-  original_bunk_requests: "col_orig_requests",
-  locked_groups: "col_locked_groups",
-  locked_group_members: "col_locked_members",
-  config: "col_config",
-  config_sections: "col_config_sections"
-}
+const COLLECTION_ID_CAMP_SESSIONS = "col_camp_sessions";
 
 migrate((app) => {
+  const sessionGroupsCol = app.findCollectionByNameOrId("session_groups");
+
   let collection = new Collection({
-    id: COLLECTION_IDS.camp_sessions,
+    id: COLLECTION_ID_CAMP_SESSIONS,
     type: "base",
     name: "camp_sessions",
     listRule: '@request.auth.id != ""',
@@ -42,7 +27,6 @@ migrate((app) => {
         name: "cm_id",
         required: true,
         presentable: false,
-        system: false,
         options: {
           min: 0,
           max: null,
@@ -54,7 +38,6 @@ migrate((app) => {
         name: "name",
         required: true,
         presentable: true,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -66,7 +49,6 @@ migrate((app) => {
         name: "year",
         required: true,
         presentable: false,
-        system: false,
         options: {
           min: 2010,
           max: 2100,
@@ -78,7 +60,6 @@ migrate((app) => {
         name: "start_date",
         required: true,
         presentable: false,
-        system: false,
         options: {
           min: "",
           max: ""
@@ -89,7 +70,6 @@ migrate((app) => {
         name: "end_date",
         required: true,
         presentable: false,
-        system: false,
         options: {
           min: "",
           max: ""
@@ -100,7 +80,6 @@ migrate((app) => {
         name: "session_type",
         required: true,
         presentable: false,
-        system: false,
         values: ["main", "embedded", "ag", "family", "quest", "training", "bmitzvah", "tli", "adult", "school", "hebrew", "teen", "other"],
         maxSelect: 1
       },
@@ -109,9 +88,103 @@ migrate((app) => {
         name: "parent_id",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: 0,
+          max: null,
+          noDecimal: true
+        }
+      },
+      {
+        type: "text",
+        name: "description",
+        required: false,
+        presentable: false,
+        options: {
+          min: null,
+          max: null,
+          pattern: ""
+        }
+      },
+      {
+        type: "bool",
+        name: "is_active",
+        required: false,
+        presentable: false
+      },
+      {
+        type: "number",
+        name: "sort_order",
+        required: false,
+        presentable: false,
+        options: {
+          min: null,
+          max: null,
+          noDecimal: true
+        }
+      },
+      {
+        type: "relation",
+        name: "session_group",
+        required: false,
+        presentable: false,
+        collectionId: sessionGroupsCol.id,
+        cascadeDelete: false,
+        minSelect: null,
+        maxSelect: 1
+      },
+      {
+        type: "bool",
+        name: "is_day",
+        required: false,
+        presentable: false
+      },
+      {
+        type: "bool",
+        name: "is_residential",
+        required: false,
+        presentable: false
+      },
+      {
+        type: "bool",
+        name: "is_for_children",
+        required: false,
+        presentable: false
+      },
+      {
+        type: "bool",
+        name: "is_for_adults",
+        required: false,
+        presentable: false
+      },
+      {
+        type: "number",
+        name: "start_grade_id",
+        required: false,
+        presentable: false,
+        options: {
+          min: null,
+          max: null,
+          noDecimal: true
+        }
+      },
+      {
+        type: "number",
+        name: "end_grade_id",
+        required: false,
+        presentable: false,
+        options: {
+          min: null,
+          max: null,
+          noDecimal: true
+        }
+      },
+      {
+        type: "number",
+        name: "gender_id",
+        required: false,
+        presentable: false,
+        options: {
+          min: null,
           max: null,
           noDecimal: true
         }

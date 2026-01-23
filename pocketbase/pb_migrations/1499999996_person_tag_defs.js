@@ -1,21 +1,23 @@
 /// <reference path="../pb_data/types.d.ts" />
 /**
- * Migration: Create person_tag_definitions collection
+ * Migration: Create person_tag_defs collection
  * Dependencies: None
  *
  * Stores tag definitions from CampMinder /persons/tags endpoint.
  * Tags like "Alumni", "Volunteer", "Leadership", etc.
  * Note: CampMinder TagDef uses Name as identifier (no ID field).
+ *
+ * IMPORTANT: Uses fixed collection ID so dependent migrations can reference
+ * it directly without findCollectionByNameOrId (which fails in fresh DB).
  */
 
-// Fixed collection ID for person_tag_definitions
-const COLLECTION_ID_PERSON_TAG_DEFINITIONS = "col_person_tag_defs";
+const COLLECTION_ID_PERSON_TAG_DEFS = "col_person_tag_defs";
 
 migrate((app) => {
   const collection = new Collection({
-    id: COLLECTION_ID_PERSON_TAG_DEFINITIONS,
+    id: COLLECTION_ID_PERSON_TAG_DEFS,
     type: "base",
-    name: "person_tag_definitions",
+    name: "person_tag_defs",
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',
     createRule: '@request.auth.id != ""',
@@ -61,18 +63,6 @@ migrate((app) => {
         }
       },
       {
-        type: "number",
-        name: "year",
-        required: true,
-        presentable: false,
-        system: false,
-        options: {
-          min: 2010,
-          max: 2100,
-          noDecimal: true
-        }
-      },
-      {
         type: "autodate",
         name: "created",
         required: false,
@@ -90,13 +80,12 @@ migrate((app) => {
       }
     ],
     indexes: [
-      "CREATE UNIQUE INDEX `idx_person_tag_defs_name_year` ON `person_tag_definitions` (`name`, `year`)",
-      "CREATE INDEX `idx_person_tag_defs_year` ON `person_tag_definitions` (`year`)"
+      "CREATE UNIQUE INDEX `idx_person_tag_defs_name` ON `person_tag_defs` (`name`)"
     ]
   });
 
   app.save(collection);
 }, (app) => {
-  const collection = app.findCollectionByNameOrId("person_tag_definitions");
+  const collection = app.findCollectionByNameOrId("person_tag_defs");
   app.delete(collection);
 });
