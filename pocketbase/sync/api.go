@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -370,39 +371,31 @@ func handleRefreshBunking(e *core.RequestEvent, scheduler *Scheduler) error {
 	})
 }
 
-// handleBunkRequestsUpload handles CSV file upload for bunk requests
-func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error {
-	// Parse multipart form
-	form, err := e.Request.MultipartReader()
-	if err != nil {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
-			"error": "Invalid multipart form",
-		})
-	}
+// csvUploadResult holds the result of reading a CSV from multipart form
+type csvUploadResult struct {
+	data     []byte
+	filename string
+}
 
-	var csvData []byte
-	var filename string
+// readCSVFromMultipart extracts CSV data from a multipart form
+func readCSVFromMultipart(form *multipart.Reader) (*csvUploadResult, error) {
+	var result csvUploadResult
 
-	// Read form parts
 	for {
 		part, err := form.NextPart()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return e.JSON(http.StatusBadRequest, map[string]interface{}{
-				"error": "Error reading form data",
-			})
+			return nil, fmt.Errorf("error reading form data")
 		}
 
-		// Check if this is the CSV file
 		if part.FormName() == "file" {
-			filename = part.FileName()
-			csvData, err = io.ReadAll(part)
+			result.filename = part.FileName()
+			result.data, err = io.ReadAll(part)
 			if err != nil {
-				return e.JSON(http.StatusBadRequest, map[string]interface{}{
-					"error": "Error reading CSV file",
-				})
+				_ = part.Close()
+				return nil, fmt.Errorf("error reading CSV file")
 			}
 		}
 		if err := part.Close(); err != nil {
@@ -410,33 +403,29 @@ func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error 
 		}
 	}
 
-	if len(csvData) == 0 {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
-			"error": "No CSV file provided",
-		})
+	if len(result.data) == 0 {
+		return nil, fmt.Errorf("no CSV file provided")
 	}
 
 	// Strip UTF-8 BOM if present
-	if len(csvData) >= 3 && csvData[0] == 0xEF && csvData[1] == 0xBB && csvData[2] == 0xBF {
-		csvData = csvData[3:]
+	if len(result.data) >= 3 && result.data[0] == 0xEF && result.data[1] == 0xBB && result.data[2] == 0xBF {
+		result.data = result.data[3:]
 		slog.Info("Stripped UTF-8 BOM from CSV file")
 	}
 
-	// Validate CSV structure
+	return &result, nil
+}
+
+// parseAndValidateCSV parses CSV headers and validates required columns
+func parseAndValidateCSV(csvData []byte) ([]string, error) {
 	reader := csv.NewReader(bytes.NewReader(csvData))
-	// Configure reader for flexibility
-	reader.LazyQuotes = true       // Allow improperly quoted fields
-	reader.TrimLeadingSpace = true // Trim spaces
-	reader.FieldsPerRecord = -1    // Allow variable number of fields
+	reader.LazyQuotes = true
+	reader.TrimLeadingSpace = true
+	reader.FieldsPerRecord = -1
 
 	headers, err := reader.Read()
 	if err != nil {
-		slog.Error("CSV parsing error", "error", err)
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
-			"error":     fmt.Sprintf("Invalid CSV format: %v", err),
-			"details":   "Please ensure the file is a valid CSV with comma-separated values",
-			"file_size": len(csvData),
-		})
+		return nil, fmt.Errorf("invalid CSV format: %w", err)
 	}
 
 	// Trim whitespace from headers
@@ -444,67 +433,122 @@ func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error 
 		headers[i] = strings.TrimSpace(headers[i])
 	}
 
-	slog.Info("CSV headers found", "headers", headers)
+	return headers, nil
+}
 
-	// Check required columns (case-insensitive)
-	requiredColumns := []string{"PersonID", "Last Name", "First Name"}
-	missingColumns := []string{}
-
-	for _, required := range requiredColumns {
+// findMissingColumns checks for required columns (case-insensitive)
+func findMissingColumns(headers []string, required []string) []string {
+	var missing []string
+	for _, req := range required {
 		found := false
 		for _, header := range headers {
-			if strings.EqualFold(header, required) {
+			if strings.EqualFold(header, req) {
 				found = true
 				break
 			}
 		}
 		if !found {
-			missingColumns = append(missingColumns, required)
+			missing = append(missing, req)
 		}
 	}
+	return missing
+}
 
-	if len(missingColumns) > 0 {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
-			"error":            "Missing required columns",
-			"missing_columns":  missingColumns,
-			"found_columns":    headers,
-			"required_columns": requiredColumns,
-		})
+// determineUploadYear determines the year for CSV storage from env and query param
+func determineUploadYear(yearParam string) int {
+	uploadYear := time.Now().Year()
+	if yearStr := os.Getenv("CAMPMINDER_SEASON_ID"); yearStr != "" {
+		if y, err := strconv.Atoi(yearStr); err == nil {
+			uploadYear = y
+		}
 	}
+	if yearParam != "" {
+		if y, err := strconv.Atoi(yearParam); err == nil && y >= 2017 && y <= 2050 {
+			uploadYear = y
+		}
+	}
+	return uploadYear
+}
 
-	// Create directory if it doesn't exist
-	csvDir := filepath.Join(scheduler.app.DataDir(), "bunk_requests")
+// saveCSVWithBackup saves CSV data with automatic backup of existing file
+func saveCSVWithBackup(csvDir string, uploadYear int, csvData []byte) (string, error) {
 	if err := os.MkdirAll(csvDir, 0750); err != nil { //nolint:gosec // G301: data dir permissions
-		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
-			"error": "Failed to create directory",
-		})
+		return "", fmt.Errorf("failed to create directory")
 	}
+
+	latestFilename := fmt.Sprintf("%d_latest.csv", uploadYear)
+	latestPath := filepath.Join(csvDir, latestFilename)
 
 	// Create backup of existing file if it exists
-	latestPath := filepath.Join(csvDir, "latest.csv")
 	if _, err := os.Stat(latestPath); err == nil {
-		backupName := fmt.Sprintf("backup_%s.csv", time.Now().Format("20060102_150405"))
+		backupName := fmt.Sprintf("%d_backup_%s.csv", uploadYear, time.Now().Format("20060102_150405"))
 		backupPath := filepath.Join(csvDir, backupName)
 		if err := os.Rename(latestPath, backupPath); err != nil {
 			slog.Warn("Failed to create backup", "error", err)
 		}
 	}
 
-	// Write new CSV file
 	if err := os.WriteFile(latestPath, csvData, 0600); err != nil {
-		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
-			"error": "Failed to save CSV file",
+		return "", fmt.Errorf("failed to save CSV file")
+	}
+
+	return latestPath, nil
+}
+
+// handleBunkRequestsUpload handles CSV file upload for bunk requests
+func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error {
+	form, err := e.Request.MultipartReader()
+	if err != nil {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{"error": "Invalid multipart form"})
+	}
+
+	// Read and validate CSV from form
+	uploadResult, err := readCSVFromMultipart(form)
+	if err != nil {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{"error": err.Error()})
+	}
+
+	// Parse and validate CSV headers
+	headers, err := parseAndValidateCSV(uploadResult.data)
+	if err != nil {
+		slog.Error("CSV parsing error", "error", err)
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error":     err.Error(),
+			"details":   "Please ensure the file is a valid CSV with comma-separated values",
+			"file_size": len(uploadResult.data),
+		})
+	}
+	slog.Info("CSV headers found", "headers", headers)
+
+	// Check required columns
+	requiredColumns := []string{"PersonID", "Last Name", "First Name"}
+	if missing := findMissingColumns(headers, requiredColumns); len(missing) > 0 {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error":            "Missing required columns",
+			"missing_columns":  missing,
+			"found_columns":    headers,
+			"required_columns": requiredColumns,
 		})
 	}
 
+	// Determine upload year and save file
+	uploadYear := determineUploadYear(e.Request.URL.Query().Get("year"))
+	csvDir := filepath.Join(scheduler.app.DataDir(), "bunk_requests")
+
+	latestPath, err := saveCSVWithBackup(csvDir, uploadYear, uploadResult.data)
+	if err != nil {
+		return e.JSON(http.StatusInternalServerError, map[string]interface{}{"error": err.Error()})
+	}
+	slog.Info("CSV file saved", "year", uploadYear, "path", latestPath)
+
 	// Update metadata
 	metadata := map[string]interface{}{
-		"filename":     filename,
+		"filename":     uploadResult.filename,
 		"uploaded_at":  time.Now().Format(time.RFC3339),
-		"size":         len(csvData),
+		"size":         len(uploadResult.data),
 		"header_count": len(headers),
+		"year":         uploadYear,
 	}
-
 	metadataPath := filepath.Join(csvDir, "upload_metadata.json")
 	metadataJSON, _ := json.MarshalIndent(metadata, "", "  ")
 	if err := os.WriteFile(metadataPath, metadataJSON, 0600); err != nil {
@@ -528,9 +572,10 @@ func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error 
 
 	return e.JSON(http.StatusOK, map[string]interface{}{
 		"message":      "CSV uploaded successfully",
-		"filename":     filename,
+		"filename":     uploadResult.filename,
 		"header_count": len(headers),
 		"sync_started": runSync,
+		"year":         uploadYear,
 	})
 }
 
@@ -589,6 +634,15 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 	if orchestrator.IsHistoricalSyncRunning() {
 		statuses["_historical_sync_year"] = orchestrator.GetHistoricalSyncYear()
 	}
+
+	// Add configured year from environment (CAMPMINDER_SEASON_ID)
+	configuredYear := time.Now().Year()
+	if yearStr := os.Getenv("CAMPMINDER_SEASON_ID"); yearStr != "" {
+		if y, err := strconv.Atoi(yearStr); err == nil {
+			configuredYear = y
+		}
+	}
+	statuses["_configured_year"] = configuredYear
 
 	return e.JSON(http.StatusOK, statuses)
 }

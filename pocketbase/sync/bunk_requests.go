@@ -315,9 +315,13 @@ func (s *BunkRequestsSync) Name() string {
 	return "bunk_requests"
 }
 
-// Sync implements the Service interface - calls RunSync with default CSV path
+// Sync implements the Service interface - calls RunSync with year-prefixed CSV path
 func (s *BunkRequestsSync) Sync(_ context.Context) error {
-	// Use the uploaded CSV file from pb_data directory
-	csvPath := filepath.Join(s.App.DataDir(), "bunk_requests", "latest.csv")
+	// Get current year from config
+	currentYear := s.getCurrentYear()
+
+	// Use year-prefixed CSV file from pb_data directory
+	csvFilename := fmt.Sprintf("%d_latest.csv", currentYear)
+	csvPath := filepath.Join(s.App.DataDir(), "bunk_requests", csvFilename)
 	return s.RunSync(csvPath, 0)
 }
