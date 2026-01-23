@@ -41,9 +41,20 @@ export interface SyncStatusResponse {
   bunk_assignments: SyncStatus;
   bunk_requests: SyncStatus;
   process_requests: SyncStatus;
+  divisions: SyncStatus;
+  staff: SyncStatus;
+  financial_transactions: SyncStatus;
+  staff_lookups: SyncStatus;
+  financial_lookups: SyncStatus;
+  google_sheets_export: SyncStatus;
+  // On-demand custom value syncs (expensive, 1 API call per entity)
+  person_custom_values: SyncStatus;
+  household_custom_values: SyncStatus;
+  // Special flags
   _daily_sync_running?: boolean;
   _historical_sync_running?: boolean;
   _historical_sync_year?: number;
+  _weekly_sync_running?: boolean;
 }
 
 export function useSyncStatusAPI() {

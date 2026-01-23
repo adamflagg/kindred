@@ -854,14 +854,8 @@ func handlePersonCustomFieldValuesSync(e *core.RequestEvent, scheduler *Schedule
 	orchestrator := scheduler.GetOrchestrator()
 	syncType := "person_custom_values"
 
-	// Check if already running
-	if orchestrator.IsRunning(syncType) {
-		return e.JSON(http.StatusConflict, map[string]interface{}{
-			"error":    "Sync already in progress",
-			"status":   "running",
-			"syncType": syncType,
-		})
-	}
+	// Note: "already running" check is handled by MarkSyncRunning below,
+	// which returns an error if the sync is already in progress
 
 	// Parse session filter (accepts string: all, 1, 2, 2a, 3, 4, etc.)
 	session := e.Request.URL.Query().Get("session")
@@ -889,6 +883,16 @@ func handlePersonCustomFieldValuesSync(e *core.RequestEvent, scheduler *Schedule
 	}
 	service.SetSession(session)
 	service.SetDebug(debug)
+
+	// Mark as running BEFORE starting goroutine to prevent race condition
+	// This ensures the first frontend poll sees the sync as active
+	if err := orchestrator.MarkSyncRunning(syncType); err != nil {
+		return e.JSON(http.StatusConflict, map[string]interface{}{
+			"error":    err.Error(),
+			"status":   "running",
+			"syncType": syncType,
+		})
+	}
 
 	// Run in background
 	go func() {
@@ -927,14 +931,8 @@ func handleHouseholdCustomFieldValuesSync(e *core.RequestEvent, scheduler *Sched
 	orchestrator := scheduler.GetOrchestrator()
 	syncType := "household_custom_values"
 
-	// Check if already running
-	if orchestrator.IsRunning(syncType) {
-		return e.JSON(http.StatusConflict, map[string]interface{}{
-			"error":    "Sync already in progress",
-			"status":   "running",
-			"syncType": syncType,
-		})
-	}
+	// Note: "already running" check is handled by MarkSyncRunning below,
+	// which returns an error if the sync is already in progress
 
 	// Parse session filter (accepts string: all, 1, 2, 2a, 3, 4, etc.)
 	session := e.Request.URL.Query().Get("session")
@@ -962,6 +960,16 @@ func handleHouseholdCustomFieldValuesSync(e *core.RequestEvent, scheduler *Sched
 	}
 	service.SetSession(session)
 	service.SetDebug(debug)
+
+	// Mark as running BEFORE starting goroutine to prevent race condition
+	// This ensures the first frontend poll sees the sync as active
+	if err := orchestrator.MarkSyncRunning(syncType); err != nil {
+		return e.JSON(http.StatusConflict, map[string]interface{}{
+			"error":    err.Error(),
+			"status":   "running",
+			"syncType": syncType,
+		})
+	}
 
 	// Run in background
 	go func() {

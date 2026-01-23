@@ -190,29 +190,38 @@ func (o *Orchestrator) RunSingleSync(_ context.Context, syncType string) error {
 	// Check if service exists
 	o.mu.RLock()
 	service, exists := o.services[syncType]
+	existingStatus := o.runningJobs[syncType]
 	o.mu.RUnlock()
 
 	if !exists {
 		return fmt.Errorf("sync service not found: %s", syncType)
 	}
 
-	// Check if already running
-	if o.IsRunning(syncType) {
-		return fmt.Errorf("sync already in progress: %s", syncType)
-	}
+	// Check if status was pre-marked by MarkSyncRunning
+	// If so, reuse it; otherwise create a new status
+	var status *Status
+	if existingStatus != nil {
+		// Reuse pre-marked status (set by MarkSyncRunning before goroutine started)
+		status = existingStatus
+	} else {
+		// No pre-marked status - check if something else is running
+		if o.IsRunning(syncType) {
+			return fmt.Errorf("sync already in progress: %s", syncType)
+		}
 
-	// Create status entry
-	status := &Status{
-		Type:      syncType,
-		Status:    "running",
-		StartTime: time.Now(),
-		Summary:   Stats{},
-		Year:      o.currentSyncYear,
-	}
+		// Create status entry
+		status = &Status{
+			Type:      syncType,
+			Status:    "running",
+			StartTime: time.Now(),
+			Summary:   Stats{},
+			Year:      o.currentSyncYear,
+		}
 
-	o.mu.Lock()
-	o.runningJobs[syncType] = status
-	o.mu.Unlock()
+		o.mu.Lock()
+		o.runningJobs[syncType] = status
+		o.mu.Unlock()
+	}
 
 	// Run sync with panic recovery
 	go func() {
@@ -267,6 +276,39 @@ func (o *Orchestrator) RunSingleSync(_ context.Context, syncType string) error {
 		delete(o.runningJobs, syncType)
 		o.mu.Unlock()
 	}()
+
+	return nil
+}
+
+// MarkSyncRunning sets a sync's status to "running" without starting it.
+// Used by API handlers to ensure status is visible before the goroutine executes.
+// This prevents the race condition where the frontend polls before the status is set.
+func (o *Orchestrator) MarkSyncRunning(syncType string) error {
+	// Check if service exists
+	o.mu.RLock()
+	_, exists := o.services[syncType]
+	o.mu.RUnlock()
+	if !exists {
+		return fmt.Errorf("sync service not found: %s", syncType)
+	}
+
+	// Check if already running
+	if o.IsRunning(syncType) {
+		return fmt.Errorf("sync already in progress: %s", syncType)
+	}
+
+	// Create status entry
+	status := &Status{
+		Type:      syncType,
+		Status:    "running",
+		StartTime: time.Now(),
+		Summary:   Stats{},
+		Year:      o.currentSyncYear,
+	}
+
+	o.mu.Lock()
+	o.runningJobs[syncType] = status
+	o.mu.Unlock()
 
 	return nil
 }
@@ -667,6 +709,11 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		o.RegisterService("process_requests", NewRequestProcessor(o.app))
 		o.RegisterService("staff", NewStaffSync(o.app, yearClient))
 		o.RegisterService("financial_transactions", NewFinancialTransactionsSync(o.app, yearClient))
+
+		// Custom value services for historical sync support
+		// These use GetSeasonID() to determine the year, so they need year-specific client
+		o.RegisterService("person_custom_values", NewPersonCustomFieldValuesSync(o.app, yearClient))
+		o.RegisterService("household_custom_values", NewHouseholdCustomFieldValuesSync(o.app, yearClient))
 
 		// Restore original services after sync completes
 		defer func() {
