@@ -226,8 +226,13 @@ if [ "$CHECKS_PASSED" = "false" ]; then
     fi
 fi
 
-# Run tests (unless skipped)
-if [[ "$SKIP_TESTS" == "false" ]]; then
+# Run tests (unless skipped or CI already verified clean code)
+if [[ "$SKIP_TESTS" == "true" ]]; then
+    echo -e "${YELLOW}⚠ Skipping tests (--skip-tests)${NC}"
+elif [[ "$CHECKS_PASSED" == "true" && "$ALLOW_DIRTY" != "true" ]]; then
+    # CI passed on this exact commit and working tree is clean - no need to re-run locally
+    echo -e "${GREEN}✓ CI verified this commit - skipping redundant local checks${NC}"
+else
     echo -e "\n${YELLOW}▶ Running quick checks...${NC}"
     if ./scripts/ci/quick_check.sh; then
         echo -e "${GREEN}✓ All checks passed${NC}"
@@ -235,8 +240,6 @@ if [[ "$SKIP_TESTS" == "false" ]]; then
         echo -e "${RED}✗ Checks failed${NC}"
         exit 1
     fi
-else
-    echo -e "${YELLOW}⚠ Skipping tests (--skip-tests)${NC}"
 fi
 
 # ===== HANDLE EXISTING VERSION (RE-RELEASE) =====
@@ -434,10 +437,16 @@ echo -e "\n${YELLOW}▶ Release notes preview:${NC}"
 echo "─────────────────────────────────────────────────"
 # For re-releases, use explicit range and --tag to force all commits into single release
 # (ignores intermediate tags that may exist in dry-run mode)
+# Cache the output to avoid running git-cliff twice (reused after confirmation)
 if [[ "$RE_RELEASE" == "true" ]]; then
-    git_cliff "$LAST_TAG"..HEAD --tag "$NEW_VERSION" --strip header || echo "(no conventional commits)"
+    CHANGELOG_PREVIEW=$(git_cliff "$LAST_TAG"..HEAD --tag "$NEW_VERSION" --strip header || true)
 else
-    git_cliff --unreleased --strip header || echo "(no conventional commits)"
+    CHANGELOG_PREVIEW=$(git_cliff --unreleased --strip header || true)
+fi
+if [[ -n "$CHANGELOG_PREVIEW" ]]; then
+    echo "$CHANGELOG_PREVIEW"
+else
+    echo "(no conventional commits)"
 fi
 echo "─────────────────────────────────────────────────"
 
@@ -505,13 +514,8 @@ fi
 # ===== CREATE RELEASE =====
 echo -e "\n${YELLOW}▶ Creating release...${NC}"
 
-# Generate changelog for release notes
-# For re-releases, use explicit range and --tag to group all commits under new version
-if [[ "$RE_RELEASE" == "true" ]]; then
-    CHANGELOG=$(git_cliff "$LAST_TAG"..HEAD --tag "$NEW_VERSION" --strip header || true)
-else
-    CHANGELOG=$(git_cliff --unreleased --strip header || true)
-fi
+# Reuse cached changelog from preview (same git-cliff command)
+CHANGELOG="$CHANGELOG_PREVIEW"
 
 # Check if git-cliff output is valid (contains actual content)
 # Match only "error:" or "Error:" at start of line or "panicked" anywhere (actual failures)
