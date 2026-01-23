@@ -92,7 +92,7 @@ COPY docker/Caddyfile /etc/caddy/Caddyfile
 RUN chmod 644 /etc/caddy/Caddyfile && caddy validate --config /etc/caddy/Caddyfile
 COPY --chown=kindred:kindred config/ ./config/
 COPY --chown=kindred:kindred campminder/ ./campminder/
-RUN mkdir -p /pb_data/bunk_requests /app/logs /app/csv_history
+RUN mkdir -p /pb_data/bunk_requests /app/logs /app/csv_history /config
 
 # 3. API + DOCKER
 COPY --chown=kindred:kindred api/ ./api/
@@ -126,7 +126,7 @@ RUN for f in /pb_public/local/assets/*; do \
 # Create Caddy config/data directories and set ownership for writable directories
 # (skip .venv - it's read-only)
 RUN mkdir -p /app/.config/caddy /app/.local/share/caddy && \
-    chown -R kindred:kindred /pb_data /app/logs /app/csv_history /app/.config /app/.local
+    chown -R kindred:kindred /pb_data /app/logs /app/csv_history /app/.config /app/.local /config
 USER kindred
 
 EXPOSE 8080
