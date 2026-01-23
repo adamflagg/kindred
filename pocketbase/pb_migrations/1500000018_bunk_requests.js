@@ -90,11 +90,9 @@ migrate((app) => {
         type: "number",
         required: true,
         unique: false,
-        options: {
-          min: 2000,
-          max: 2100,
-          noDecimal: true
-        }
+        min: 2000,
+        max: 2100,
+        onlyInt: true
       },
       // Session ID
       {
@@ -102,11 +100,9 @@ migrate((app) => {
         type: "number",
         required: true,
         unique: false,
-        options: {
-          min: 0,
-          max: null,
-          noDecimal: true
-        }
+        min: 0,
+        max: null,
+        onlyInt: true
       },
       // Priority (1-10, higher is more important)
       {
@@ -114,11 +110,9 @@ migrate((app) => {
         type: "number",
         required: false,
         unique: false,
-        options: {
-          min: 1,
-          max: 10,
-          noDecimal: true
-        }
+        min: 1,
+        max: 10,
+        onlyInt: true
       },
       // Original request text
       {
@@ -265,11 +259,9 @@ migrate((app) => {
         type: "number",
         required: false,
         unique: false,
-        options: {
-          min: 0,
-          max: null,
-          noDecimal: true
-        }
+        min: 0,
+        max: null,
+        onlyInt: true
       },
       // Additional source details
       {
@@ -388,7 +380,16 @@ migrate((app) => {
           maxSize: 2000000
         }
       },
-      // Note: merged_into self-reference added after collection exists (see below)
+      // Self-reference for merged requests - uses fixed collection ID
+      {
+        type: "relation",
+        name: "merged_into",
+        required: false,
+        collectionId: COLLECTION_ID_BUNK_REQUESTS,
+        cascadeDelete: false,
+        minSelect: null,
+        maxSelect: 1
+      },
       {
         type: "autodate",
         name: "created",
@@ -417,28 +418,12 @@ migrate((app) => {
       "CREATE INDEX idx_bunk_requests_priority ON bunk_requests (priority)",
       "CREATE INDEX idx_bunk_requests_year_session ON bunk_requests (year, session_id)",
       "CREATE INDEX `idx_bunk_requests_requester_year` ON `bunk_requests` (`requester_id`, `year`)",
-      "CREATE UNIQUE INDEX `idx_bunk_requests_unique_with_source` ON `bunk_requests` (`requester_id`, `requestee_id`, `request_type`, `year`, `session_id`, `source_field`)"
-      // Note: merged_into index added after field is created (see below)
+      "CREATE UNIQUE INDEX `idx_bunk_requests_unique_with_source` ON `bunk_requests` (`requester_id`, `requestee_id`, `request_type`, `year`, `session_id`, `source_field`)",
+      "CREATE INDEX idx_bunk_requests_merged_into ON bunk_requests (merged_into)"
     ]
   });
 
-  // Save collection first (self-reference requires collection to exist)
   app.save(collection);
-
-  // Add merged_into self-reference relation after collection exists
-  const savedCollection = app.findCollectionByNameOrId("bunk_requests");
-  savedCollection.fields.add(new Field({
-    type: "relation",
-    name: "merged_into",
-    required: false,
-    collectionId: savedCollection.id,
-    cascadeDelete: false,
-    minSelect: null,
-    maxSelect: 1
-  }));
-  // Add merged_into index now that the field exists
-  savedCollection.indexes.push("CREATE INDEX idx_bunk_requests_merged_into ON bunk_requests (merged_into)");
-  app.save(savedCollection);
 }, (app) => {
   const collection = app.findCollectionByNameOrId("bunk_requests");
   app.delete(collection);

@@ -27,11 +27,9 @@ migrate((app) => {
         name: "cm_id",
         required: true,
         presentable: false,
-        options: {
-          min: 1,
-          max: null,
-          noDecimal: true
-        }
+        min: 1,
+        max: null,
+        onlyInt: true
       },
       {
         type: "text",

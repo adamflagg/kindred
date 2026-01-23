@@ -52,11 +52,9 @@ migrate((app) => {
         type: "number",
         required: true,
         presentable: false,
-        options: {
-          min: 0,
-          max: null,
-          noDecimal: true
-        }
+        min: 0,
+        max: null,
+        onlyInt: true
       },
       {
         name: "expanded_by_default",

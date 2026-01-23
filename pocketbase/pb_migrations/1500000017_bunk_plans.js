@@ -31,11 +31,9 @@ migrate((app) => {
         type: "number",
         required: true,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
+        min: null,
+        max: null,
+        onlyInt: true
       },
       {
         name: "bunk",
@@ -84,11 +82,9 @@ migrate((app) => {
         type: "number",
         required: true,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
+        min: null,
+        max: null,
+        onlyInt: true
       },
       {
         name: "is_active",
