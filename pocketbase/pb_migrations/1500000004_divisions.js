@@ -132,19 +132,22 @@ migrate((app) => {
     ]
   });
 
-  // Add parent_division self-reference relation (uses fixed ID)
-  collection.fields.add(new Field({
+  // Save collection first (self-reference requires collection to exist)
+  app.save(collection);
+
+  // Add parent_division self-reference relation after collection exists
+  const savedCollection = app.findCollectionByNameOrId("divisions");
+  savedCollection.fields.add(new Field({
     type: "relation",
     name: "parent_division",
     required: false,
     presentable: false,
-    collectionId: COLLECTION_ID_DIVISIONS,
+    collectionId: savedCollection.id,
     cascadeDelete: false,
     minSelect: null,
     maxSelect: 1
   }));
-
-  app.save(collection);
+  app.save(savedCollection);
 }, (app) => {
   const collection = app.findCollectionByNameOrId("divisions");
   app.delete(collection);
