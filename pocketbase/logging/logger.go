@@ -47,6 +47,8 @@ func (h *ISO8601Handler) Enabled(_ context.Context, level slog.Level) bool {
 }
 
 // Handle formats and writes the log record
+//
+//nolint:gocritic // slog.Handler interface requires Record by value
 func (h *ISO8601Handler) Handle(_ context.Context, r slog.Record) error {
 	// Format: 2026-01-06T14:05:52Z [source] LEVEL message key=value...
 	timestamp := r.Time.UTC().Format(time.RFC3339)

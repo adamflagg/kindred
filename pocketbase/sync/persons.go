@@ -659,38 +659,40 @@ func (s *PersonsSync) transformPersonToPB(cmPerson map[string]interface{}, year 
 	if relatives, ok := cmPerson["Relatives"].([]interface{}); ok {
 		parents := make([]map[string]interface{}, 0)
 		for _, rel := range relatives {
-			if relMap, ok := rel.(map[string]interface{}); ok {
-				// Only include guardians (parents, legal guardians, etc.)
-				isGuardian, _ := relMap["IsGuardian"].(bool)
-				if !isGuardian {
-					continue
+			relMap, ok := rel.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			// Only include guardians (parents, legal guardians, etc.)
+			isGuardian, _ := relMap["IsGuardian"].(bool)
+			if !isGuardian {
+				continue
+			}
+
+			parentData := make(map[string]interface{})
+
+			// Extract name
+			if nameData, ok := relMap["Name"].(map[string]interface{}); ok {
+				firstName := s.getString(nameData, "First", "")
+				lastName := s.getString(nameData, "Last", "")
+				if firstName != "" || lastName != "" {
+					parentData["first"] = s.fixAllCapsName(firstName)
+					parentData["last"] = s.fixAllCapsName(lastName)
 				}
+			}
 
-				parentData := make(map[string]interface{})
+			// Extract relationship type (Mother, Father, Guardian, etc.)
+			if relType := s.getString(relMap, "RelationshipType", ""); relType != "" {
+				parentData["relationship"] = relType
+			}
 
-				// Extract name
-				if nameData, ok := relMap["Name"].(map[string]interface{}); ok {
-					firstName := s.getString(nameData, "First", "")
-					lastName := s.getString(nameData, "Last", "")
-					if firstName != "" || lastName != "" {
-						parentData["first"] = s.fixAllCapsName(firstName)
-						parentData["last"] = s.fixAllCapsName(lastName)
-					}
-				}
+			// Extract primary flag
+			isPrimary, _ := relMap["IsPrimary"].(bool)
+			parentData["is_primary"] = isPrimary
 
-				// Extract relationship type (Mother, Father, Guardian, etc.)
-				if relType := s.getString(relMap, "RelationshipType", ""); relType != "" {
-					parentData["relationship"] = relType
-				}
-
-				// Extract primary flag
-				isPrimary, _ := relMap["IsPrimary"].(bool)
-				parentData["is_primary"] = isPrimary
-
-				// Only add if we have name data
-				if _, hasFirst := parentData["first"]; hasFirst {
-					parents = append(parents, parentData)
-				}
+			// Only add if we have name data
+			if _, hasFirst := parentData["first"]; hasFirst {
+				parents = append(parents, parentData)
 			}
 		}
 
@@ -773,7 +775,7 @@ func (s *PersonsSync) fixAllCapsName(name string) string {
 	// Convert to title case
 	words := strings.Fields(strings.ToLower(name))
 	for i, word := range words {
-		if len(word) > 0 {
+		if word != "" {
 			words[i] = strings.ToUpper(word[:1]) + word[1:]
 		}
 	}

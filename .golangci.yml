@@ -83,6 +83,11 @@ linters:
         linters:
           - revive
         text: "unused-parameter"
+      # Sync package has inherently complex data synchronization logic
+      - path: sync/
+        linters:
+          - gocyclo
+          - dupl
 
 output:
   show-stats: true

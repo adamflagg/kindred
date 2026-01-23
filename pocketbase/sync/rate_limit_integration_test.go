@@ -206,7 +206,7 @@ func TestRateLimiterContextCancellation(t *testing.T) {
 
 	err := rl.ExecuteWithRetry(ctx, fn)
 	if err == nil {
-		t.Error("ExecuteWithRetry should return error when context is cancelled")
+		t.Error("ExecuteWithRetry should return error when context is canceled")
 	}
 
 	// Should stop shortly after cancellation
@@ -223,7 +223,9 @@ type MockCustomFieldFetcher struct {
 	values       []map[string]interface{}
 }
 
-func (m *MockCustomFieldFetcher) GetPersonCustomFieldValuesPage(_, _, _ int) ([]map[string]interface{}, bool, error) {
+func (m *MockCustomFieldFetcher) GetPersonCustomFieldValuesPage(
+	_, _, _ int,
+) (results []map[string]interface{}, hasMore bool, err error) {
 	m.callCount++
 	if m.callCount <= m.failUntil {
 		if m.errorMessage != "" {
@@ -346,7 +348,7 @@ type MockHouseholdCustomFieldFetcher struct {
 
 func (m *MockHouseholdCustomFieldFetcher) GetHouseholdCustomFieldValuesPage(
 	_, _, _ int,
-) ([]map[string]interface{}, bool, error) {
+) (results []map[string]interface{}, hasMore bool, err error) {
 	m.callCount++
 	if m.callCount <= m.failUntil {
 		if m.errorMessage != "" {
