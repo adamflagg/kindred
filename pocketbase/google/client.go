@@ -16,7 +16,7 @@ const (
 	envEnabled     = "GOOGLE_SHEETS_ENABLED"
 	envKeyFile     = "GOOGLE_SERVICE_ACCOUNT_KEY_FILE"
 	envSpreadsheet = "GOOGLE_SHEETS_SPREADSHEET_ID"
-	defaultKeyFile = "../google_sheets.json" // repo root, alongside .env
+	defaultKeyFile = "/config/google_sheets.json" // Docker: /config volume, Dev: set via env
 )
 
 // IsEnabled returns true if Google Sheets sync is enabled via environment variable
