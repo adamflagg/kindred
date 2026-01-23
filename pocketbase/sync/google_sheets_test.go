@@ -7,7 +7,7 @@ import (
 
 // Test data constants
 const (
-	testFirstName  = "Emma"
+	testFirstName   = "Emma"
 	testSessionName = "Session 2"
 )
 
