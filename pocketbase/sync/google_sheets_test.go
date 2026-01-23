@@ -5,6 +5,12 @@ import (
 	"testing"
 )
 
+// Test data constants
+const (
+	testFirstName  = "Emma"
+	testSessionName = "Session 2"
+)
+
 // MockSheetsWriter implements SheetsWriter interface for testing
 type MockSheetsWriter struct {
 	WrittenData  map[string][][]interface{} // sheetName -> rows
@@ -63,11 +69,11 @@ func TestFormatAttendeesData(t *testing.T) {
 	// Test data formatting for attendees
 	records := []AttendeeRecord{
 		{
-			FirstName:      "Emma",
+			FirstName:      testFirstName,
 			LastName:       "Johnson",
 			Grade:          5,
 			Gender:         "F",
-			SessionName:    "Session 2",
+			SessionName:    testSessionName,
 			SessionType:    "main",
 			EnrollmentDate: "2025-01-15",
 			Status:         "enrolled",
@@ -111,8 +117,8 @@ func TestFormatAttendeesData(t *testing.T) {
 
 	// Check first data row
 	row1 := data[1]
-	if row1[0] != "Emma" {
-		t.Errorf("Row 1 FirstName = %v, want Emma", row1[0])
+	if row1[0] != testFirstName {
+		t.Errorf("Row 1 FirstName = %v, want %s", row1[0], testFirstName)
 	}
 	if row1[1] != "Johnson" {
 		t.Errorf("Row 1 LastName = %v, want Johnson", row1[1])
@@ -126,7 +132,7 @@ func TestFormatSessionsData(t *testing.T) {
 	// Test data formatting for sessions
 	records := []SessionRecord{
 		{
-			Name:      "Session 2",
+			Name:      testSessionName,
 			Type:      "main",
 			StartDate: "2025-06-15",
 			EndDate:   "2025-07-06",
@@ -160,8 +166,8 @@ func TestFormatSessionsData(t *testing.T) {
 
 	// Check first data row
 	row1 := data[1]
-	if row1[0] != "Session 2" {
-		t.Errorf("Row 1 Name = %v, want Session 2", row1[0])
+	if row1[0] != testSessionName {
+		t.Errorf("Row 1 Name = %v, want %s", row1[0], testSessionName)
 	}
 	if row1[4] != 2025 {
 		t.Errorf("Row 1 Year = %v, want 2025", row1[4])
@@ -177,11 +183,11 @@ func TestGoogleSheetsExport_ExportToSheets(t *testing.T) {
 
 	attendees := []AttendeeRecord{
 		{
-			FirstName:      "Emma",
+			FirstName:      testFirstName,
 			LastName:       "Johnson",
 			Grade:          5,
 			Gender:         "F",
-			SessionName:    "Session 2",
+			SessionName:    testSessionName,
 			SessionType:    "main",
 			EnrollmentDate: "2025-01-15",
 			Status:         "enrolled",
@@ -190,7 +196,7 @@ func TestGoogleSheetsExport_ExportToSheets(t *testing.T) {
 
 	sessions := []SessionRecord{
 		{
-			Name:      "Session 2",
+			Name:      testSessionName,
 			Type:      "main",
 			StartDate: "2025-06-15",
 			EndDate:   "2025-07-06",
