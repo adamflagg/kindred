@@ -46,16 +46,26 @@ export const syncService = {
 
   /**
    * Upload a bunk requests CSV file
+   * @param file The CSV file to upload
+   * @param fetchWithAuth Authenticated fetch function
+   * @param year Optional year to associate the CSV with (for year-prefixed storage)
    * @throws UploadError on validation or server errors
    */
   async uploadBunkRequestsCSV(
     file: File,
-    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>,
+    year?: number
   ): Promise<UploadResponse> {
     const formData = new FormData();
     formData.append('file', file);
 
-    const response = await fetchWithAuth(`${API_BASE}/bunk_requests_upload`, {
+    // Build URL with optional year parameter
+    let url = `${API_BASE}/bunk_requests_upload`;
+    if (year !== undefined) {
+      url += `?year=${year}`;
+    }
+
+    const response = await fetchWithAuth(url, {
       method: 'POST',
       body: formData,
     });
