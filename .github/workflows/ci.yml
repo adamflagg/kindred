@@ -472,11 +472,13 @@ jobs:
       run: npm run test -- --run
 
   # Submit dependencies to GitHub's dependency graph
+  # Non-blocking: informational only, GitHub API errors shouldn't fail CI
   dependency-submission:
     name: Dependency Submission
     runs-on: ubuntu-latest
     # Only submit on main branch pushes (not PRs, not other branches)
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    continue-on-error: true
     permissions:
       contents: write  # Required for dependency submission API
     steps:
@@ -527,9 +529,8 @@ jobs:
           echo "❌ Tests failed!"
           exit 1
         fi
-        # dependency-submission only runs on main pushes, skipped on PRs
-        if [ "${{ needs.dependency-submission.result }}" != "success" ] && [ "${{ needs.dependency-submission.result }}" != "skipped" ]; then
-          echo "❌ Dependency submission failed!"
-          exit 1
+        # dependency-submission is non-blocking (informational only)
+        if [ "${{ needs.dependency-submission.result }}" == "failure" ]; then
+          echo "⚠️ Dependency submission failed (non-blocking)"
         fi
         echo "✅ All CI checks passed!"
