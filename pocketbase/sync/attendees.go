@@ -232,7 +232,7 @@ func (s *AttendeesSync) processEnrollment(
 		4:   "applied",
 		8:   "waitlisted",
 		16:  "left_early",
-		32:  "cancelled",
+		32:  "cancelled", //nolint:misspell // CampMinder status value
 		64:  "dismissed",
 		128: "inquiry",
 		256: "withdrawn",
