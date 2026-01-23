@@ -317,6 +317,25 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v6
 
+    - name: Cache apt packages
+      uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        packages: git-crypt
+        version: git-crypt-v1
+
+    - name: Unlock git-crypt for config files
+      env:
+        GIT_CRYPT_KEY: ${{ secrets.GIT_CRYPT_KEY }}
+      run: |
+        if [ -n "$GIT_CRYPT_KEY" ]; then
+          echo "$GIT_CRYPT_KEY" | base64 -d > /tmp/git-crypt-key
+          git-crypt unlock /tmp/git-crypt-key
+          rm /tmp/git-crypt-key
+          echo "✅ git-crypt unlocked - config files available"
+        else
+          echo "⚠️ GIT_CRYPT_KEY not set - skipping unlock"
+        fi
+
     - name: Setup Node.js
       uses: actions/setup-node@v6
       with:
