@@ -109,7 +109,7 @@ func TestRateLimiter_Wait_CancelledContext(t *testing.T) {
 
 	err := rl.Wait(ctx)
 	if err == nil {
-		t.Error("Wait() with cancelled context should return error")
+		t.Error("Wait() with canceled context should return error")
 	}
 }
 
@@ -456,7 +456,7 @@ func TestRateLimiter_ExecuteWithRetry_ContextCancellation(t *testing.T) {
 
 	err := rl.ExecuteWithRetry(ctx, fn)
 	if err == nil {
-		t.Error("ExecuteWithRetry() should return error when context is cancelled")
+		t.Error("ExecuteWithRetry() should return error when context is canceled")
 	}
 
 	// Should have stopped after cancellation

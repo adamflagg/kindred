@@ -203,7 +203,7 @@ func NewTableExporter(writer SheetsWriter, resolver *FieldResolver, spreadsheetI
 }
 
 // Export exports records to a Google Sheet tab
-func (e *TableExporter) Export(ctx context.Context, config ExportConfig, records []map[string]interface{}) error {
+func (e *TableExporter) Export(ctx context.Context, config *ExportConfig, records []map[string]interface{}) error {
 	// Get the resolved sheet name
 	sheetName := config.GetResolvedSheetName(e.year)
 

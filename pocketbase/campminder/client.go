@@ -67,7 +67,7 @@ func (c *Client) authenticate() error {
 	authURL := fmt.Sprintf("%s/auth/apikey", baseURL)
 	slog.Debug("CampMinder authenticating", "clientID", c.clientID)
 
-	req, err := http.NewRequest("GET", authURL, nil)
+	req, err := http.NewRequest("GET", authURL, http.NoBody)
 	if err != nil {
 		return fmt.Errorf("create auth request: %w", err)
 	}
@@ -172,7 +172,7 @@ func (c *Client) makeRequestWithURLRetry(method, fullURL string, retryCount int)
 		return nil, fmt.Errorf("authentication failed: %w", err)
 	}
 
-	req, err := http.NewRequest(method, fullURL, nil)
+	req, err := http.NewRequest(method, fullURL, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
@@ -238,7 +238,7 @@ func (c *Client) makeRequest(method, endpoint string, params map[string]string) 
 	var err error
 
 	if method == "GET" {
-		req, err = http.NewRequest(method, fullURL, nil)
+		req, err = http.NewRequest(method, fullURL, http.NoBody)
 	} else {
 		// For POST/PUT, send params as JSON body
 		jsonBody, _ := json.Marshal(params)
@@ -277,6 +277,8 @@ func (c *Client) makeRequest(method, endpoint string, params map[string]string) 
 }
 
 // GetSessions retrieves all sessions for the configured season
+//
+//nolint:dupl // Similar pattern to GetSessionGroups, intentional for different endpoints
 func (c *Client) GetSessions() ([]map[string]interface{}, error) {
 	params := map[string]string{
 		"clientid":   c.clientID,
@@ -303,7 +305,7 @@ func (c *Client) GetSessions() ([]map[string]interface{}, error) {
 }
 
 // GetAttendeesPage retrieves attendees with pagination
-func (c *Client) GetAttendeesPage(page, pageSize int) ([]map[string]interface{}, bool, error) {
+func (c *Client) GetAttendeesPage(page, pageSize int) (results []map[string]interface{}, hasMore bool, err error) {
 	params := map[string]string{
 		"clientid":   c.clientID,
 		"seasonid":   strconv.Itoa(c.seasonID),
@@ -326,7 +328,7 @@ func (c *Client) GetAttendeesPage(page, pageSize int) ([]map[string]interface{},
 		return nil, false, fmt.Errorf("decode attendees response: %w", err)
 	}
 
-	hasMore := response.Next != nil && *response.Next != ""
+	hasMore = response.Next != nil && *response.Next != ""
 	return response.Results, hasMore, nil
 }
 
@@ -390,7 +392,7 @@ func (c *Client) GetPersons(personIDs []int) ([]map[string]interface{}, error) {
 }
 
 // GetPersonsPage retrieves all persons with pagination (no seasonid for latest data)
-func (c *Client) GetPersonsPage(page, pageSize int) ([]map[string]interface{}, bool, error) {
+func (c *Client) GetPersonsPage(page, pageSize int) (results []map[string]interface{}, hasMore bool, err error) {
 	params := map[string]string{
 		"clientid":                c.clientID,
 		"pagenumber":              strconv.Itoa(page),
@@ -419,7 +421,7 @@ func (c *Client) GetPersonsPage(page, pageSize int) ([]map[string]interface{}, b
 		return nil, false, fmt.Errorf("decode persons response: %w", err)
 	}
 
-	hasMore := response.Next != nil && *response.Next != ""
+	hasMore = response.Next != nil && *response.Next != ""
 	return response.Results, hasMore, nil
 }
 
@@ -462,7 +464,7 @@ func (c *Client) GetBunks() ([]map[string]interface{}, error) {
 }
 
 // GetBunkPlansPage retrieves a page of bunk plans
-func (c *Client) GetBunkPlansPage(page, pageSize int) ([]map[string]interface{}, bool, error) {
+func (c *Client) GetBunkPlansPage(page, pageSize int) (results []map[string]interface{}, hasMore bool, err error) {
 	params := map[string]string{
 		"clientid":       c.clientID,
 		"seasonid":       strconv.Itoa(c.seasonID),
@@ -486,7 +488,7 @@ func (c *Client) GetBunkPlansPage(page, pageSize int) ([]map[string]interface{},
 		return nil, false, fmt.Errorf("decode bunk plans response: %w", err)
 	}
 
-	hasMore := response.Next != nil && *response.Next != ""
+	hasMore = response.Next != nil && *response.Next != ""
 	return response.Results, hasMore, nil
 }
 
@@ -571,6 +573,8 @@ func (c *Client) parseRateLimitSeconds(body string) int {
 }
 
 // GetSessionGroups retrieves session groupings for the configured season
+//
+//nolint:dupl // Similar pattern to GetSessions, intentional for different endpoints
 func (c *Client) GetSessionGroups() ([]map[string]interface{}, error) {
 	params := map[string]string{
 		"clientid":   c.clientID,
@@ -622,7 +626,9 @@ func (c *Client) GetPersonTagDefinitions() ([]map[string]interface{}, error) {
 // GetCustomFieldDefinitionsPage retrieves custom field definitions with pagination
 // Endpoint: GET /persons/custom-fields
 // Returns: array of custom field definitions with Id, Name, DataType, Partition, IsSeasonal, IsArray, IsActive
-func (c *Client) GetCustomFieldDefinitionsPage(page, pageSize int) ([]map[string]interface{}, bool, error) {
+func (c *Client) GetCustomFieldDefinitionsPage(
+	page, pageSize int,
+) (results []map[string]interface{}, hasMore bool, err error) {
 	params := map[string]string{
 		"clientid":   c.clientID,
 		"pagenumber": strconv.Itoa(page),
@@ -646,7 +652,7 @@ func (c *Client) GetCustomFieldDefinitionsPage(page, pageSize int) ([]map[string
 		return nil, false, fmt.Errorf("decode custom field definitions response: %w", err)
 	}
 
-	hasMore := response.Next != nil && *response.Next != ""
+	hasMore = response.Next != nil && *response.Next != ""
 	return response.Result, hasMore, nil
 }
 
@@ -656,7 +662,9 @@ func (c *Client) GetCustomFieldDefinitionsPage(page, pageSize int) ([]map[string
 // Note: Requires 1 API call per person - use sparingly
 //
 //nolint:dupl // Similar pattern to GetHouseholdCustomFieldValuesPage, intentional for person variant
-func (c *Client) GetPersonCustomFieldValuesPage(personID, page, pageSize int) ([]map[string]interface{}, bool, error) {
+func (c *Client) GetPersonCustomFieldValuesPage(
+	personID, page, pageSize int,
+) (results []map[string]interface{}, hasMore bool, err error) {
 	endpoint := fmt.Sprintf("persons/%d/custom-fields", personID)
 	params := map[string]string{
 		"clientid":   c.clientID,
@@ -681,7 +689,7 @@ func (c *Client) GetPersonCustomFieldValuesPage(personID, page, pageSize int) ([
 		return nil, false, fmt.Errorf("decode person custom field values response: %w", err)
 	}
 
-	hasMore := response.Next != nil && *response.Next != ""
+	hasMore = response.Next != nil && *response.Next != ""
 	return response.Result, hasMore, nil
 }
 
@@ -693,7 +701,7 @@ func (c *Client) GetPersonCustomFieldValuesPage(personID, page, pageSize int) ([
 //nolint:dupl // Similar pattern to GetPersonCustomFieldValuesPage, intentional for household variant
 func (c *Client) GetHouseholdCustomFieldValuesPage(
 	householdID, page, pageSize int,
-) ([]map[string]interface{}, bool, error) {
+) (results []map[string]interface{}, hasMore bool, err error) {
 	endpoint := fmt.Sprintf("persons/households/%d/custom-fields", householdID)
 	params := map[string]string{
 		"clientid":   c.clientID,
@@ -718,7 +726,7 @@ func (c *Client) GetHouseholdCustomFieldValuesPage(
 		return nil, false, fmt.Errorf("decode household custom field values response: %w", err)
 	}
 
-	hasMore := response.Next != nil && *response.Next != ""
+	hasMore = response.Next != nil && *response.Next != ""
 	return response.Result, hasMore, nil
 }
 
@@ -836,9 +844,9 @@ func (c *Client) GetStaffPositions() ([]map[string]interface{}, error) {
 
 // GetStaffPage retrieves staff records with pagination
 // Endpoint: GET /staff
-// Parameters: seasonid (year), status (1=Active, 2=Resigned, 3=Dismissed, 4=Cancelled)
+// Parameters: seasonid (year), status (1=Active, 2=Resigned, 3=Dismissed, 4=Canceled)
 // Returns: array of staff with PersonID, StatusID, Position1ID, Position2ID, BunkAssignments, etc.
-func (c *Client) GetStaffPage(status, page, pageSize int) ([]map[string]interface{}, bool, error) {
+func (c *Client) GetStaffPage(status, page, pageSize int) (results []map[string]interface{}, hasMore bool, err error) {
 	params := map[string]string{
 		"clientid":   c.clientID,
 		"seasonid":   strconv.Itoa(c.seasonID),
@@ -862,7 +870,7 @@ func (c *Client) GetStaffPage(status, page, pageSize int) ([]map[string]interfac
 		return nil, false, fmt.Errorf("decode staff response: %w", err)
 	}
 
-	hasMore := response.Next != nil && *response.Next != ""
+	hasMore = response.Next != nil && *response.Next != ""
 	return response.Results, hasMore, nil
 }
 

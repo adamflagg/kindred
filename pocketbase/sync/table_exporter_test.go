@@ -381,7 +381,7 @@ func TestTableExporter_ExportCallsEnsureSheet(t *testing.T) {
 		{"name": "Test Record"},
 	}
 
-	err := exporter.Export(context.Background(), config, records)
+	err := exporter.Export(context.Background(), &config, records)
 	if err != nil {
 		t.Fatalf("Export() error = %v", err)
 	}
