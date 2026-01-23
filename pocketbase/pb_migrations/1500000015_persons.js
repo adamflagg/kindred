@@ -3,8 +3,8 @@
  * Migration: Create persons collection
  * Dependencies: households, divisions, person_tag_defs
  *
- * IMPORTANT: Uses fixed collection ID so dependent migrations can reference
- * it directly without findCollectionByNameOrId (which fails in fresh DB).
+ * Stores person records from CampMinder with demographic info, contact details,
+ * household relationships, and tag associations. Year-scoped for data isolation.
  */
 
 const COLLECTION_ID_PERSONS = "col_persons";
@@ -18,14 +18,17 @@ migrate((app) => {
     id: COLLECTION_ID_PERSONS,
     name: "persons",
     type: "base",
-    system: false,
+    listRule: '@request.auth.id != ""',
+    viewRule: '@request.auth.id != ""',
+    createRule: '@request.auth.id != ""',
+    updateRule: '@request.auth.id != ""',
+    deleteRule: '@request.auth.id != ""',
     fields: [
       {
         name: "cm_id",
         type: "number",
         required: true,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -37,7 +40,6 @@ migrate((app) => {
         type: "text",
         required: true,
         presentable: true,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -49,7 +51,6 @@ migrate((app) => {
         type: "text",
         required: true,
         presentable: true,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -61,7 +62,6 @@ migrate((app) => {
         type: "text",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -73,7 +73,6 @@ migrate((app) => {
         type: "text",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -85,7 +84,6 @@ migrate((app) => {
         type: "text",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: 10,
@@ -97,7 +95,6 @@ migrate((app) => {
         type: "number",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -109,7 +106,6 @@ migrate((app) => {
         type: "number",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -121,7 +117,6 @@ migrate((app) => {
         type: "text",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -133,7 +128,6 @@ migrate((app) => {
         type: "number",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -145,7 +139,6 @@ migrate((app) => {
         type: "number",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -157,7 +150,6 @@ migrate((app) => {
         type: "number",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -169,7 +161,6 @@ migrate((app) => {
         type: "text",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -181,7 +172,6 @@ migrate((app) => {
         type: "text",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -193,7 +183,6 @@ migrate((app) => {
         type: "number",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -205,7 +194,6 @@ migrate((app) => {
         type: "text",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -217,7 +205,6 @@ migrate((app) => {
         type: "text",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -229,7 +216,6 @@ migrate((app) => {
         type: "json",
         required: false,
         presentable: false,
-        system: false,
         options: {
           maxSize: 2000000
         }
@@ -239,7 +225,6 @@ migrate((app) => {
         type: "json",
         required: false,
         presentable: false,
-        system: false,
         options: {
           maxSize: 2000000
         }
@@ -249,7 +234,6 @@ migrate((app) => {
         type: "json",
         required: false,
         presentable: false,
-        system: false,
         options: {
           maxSize: 2000000
         }
@@ -259,7 +243,6 @@ migrate((app) => {
         type: "number",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -271,7 +254,6 @@ migrate((app) => {
         name: "primary_childhood_household",
         required: false,
         presentable: false,
-        system: false,
         collectionId: householdsCol.id,
         cascadeDelete: false,
         minSelect: null,
@@ -282,7 +264,6 @@ migrate((app) => {
         name: "alternate_childhood_household",
         required: false,
         presentable: false,
-        system: false,
         collectionId: householdsCol.id,
         cascadeDelete: false,
         minSelect: null,
@@ -293,7 +274,6 @@ migrate((app) => {
         name: "division",
         required: false,
         presentable: false,
-        system: false,
         collectionId: divisionsCol.id,
         cascadeDelete: false,
         minSelect: null,
@@ -304,7 +284,6 @@ migrate((app) => {
         type: "number",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -316,7 +295,6 @@ migrate((app) => {
         type: "text",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -328,7 +306,6 @@ migrate((app) => {
         type: "text",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: 50,
@@ -340,7 +317,6 @@ migrate((app) => {
         name: "tags",
         required: false,
         presentable: false,
-        system: false,
         collectionId: tagDefsCol.id,
         cascadeDelete: true,
         minSelect: null,
@@ -350,16 +326,13 @@ migrate((app) => {
         name: "is_camper",
         type: "bool",
         required: false,
-        presentable: false,
-        system: false,
-        options: {}
+        presentable: false
       },
       {
         name: "raw_data",
         type: "json",
         required: false,
         presentable: false,
-        system: false,
         options: {
           maxSize: 2000000
         }
@@ -369,7 +342,6 @@ migrate((app) => {
         type: "json",
         required: false,
         presentable: false,
-        system: false,
         options: {
           maxSize: 2000000
         }
@@ -379,7 +351,6 @@ migrate((app) => {
         type: "number",
         required: true,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -406,17 +377,11 @@ migrate((app) => {
     indexes: [
       "CREATE UNIQUE INDEX `idx_persons_campminder` ON `persons` (`cm_id`, `year`)",
       "CREATE INDEX idx_persons_family ON persons (household_id)"
-    ],
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
-    options: {}
-  })
+    ]
+  });
 
-  return app.save(collection)
+  app.save(collection);
 }, (app) => {
-  const collection = app.findCollectionByNameOrId("persons")
-  return app.delete(collection)
-})
+  const collection = app.findCollectionByNameOrId("persons");
+  app.delete(collection);
+});

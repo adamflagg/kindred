@@ -1,22 +1,26 @@
 /// <reference path="../pb_data/types.d.ts" />
 /**
  * Migration: Create debug_parse_results collection
- * Dependencies: original_bunk_requests (1500000011), camp_sessions (1500000001)
+ * Dependencies: original_bunk_requests, camp_sessions
  *
  * Stores Phase 1 AI parsing results separately from production bunk_requests
  * for debugging and iteration on AI prompts without affecting production data.
  *
- * Uses dynamic collection lookups via findCollectionByNameOrId().
+ * IMPORTANT: Uses fixed collection ID so dependent migrations can reference
+ * it directly without findCollectionByNameOrId (which fails in fresh DB).
  */
+
+const COLLECTION_ID_DEBUG_PARSE_RESULTS = "col_debug_parse_results";
 
 migrate((app) => {
   // Dynamic lookups - these collections were created in earlier migrations
-  const originalRequestsCol = app.findCollectionByNameOrId("original_bunk_requests")
-  const sessionsCol = app.findCollectionByNameOrId("camp_sessions")
+  const originalRequestsCol = app.findCollectionByNameOrId("original_bunk_requests");
+  const sessionsCol = app.findCollectionByNameOrId("camp_sessions");
 
   const collection = new Collection({
-    name: "debug_parse_results",
+    id: COLLECTION_ID_DEBUG_PARSE_RESULTS,
     type: "base",
+    name: "debug_parse_results",
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',
     createRule: '@request.auth.id != ""',

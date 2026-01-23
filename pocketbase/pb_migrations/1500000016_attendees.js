@@ -1,28 +1,33 @@
 /// <reference path="../pb_data/types.d.ts" />
 /**
  * Migration: Create attendees collection
- * Dependencies: camp_sessions (1500000001), persons (1500000005)
+ * Dependencies: persons, camp_sessions
  *
- * Uses dynamic collection lookups via findCollectionByNameOrId().
- * Dependencies must be created in earlier migrations.
+ * Links persons to camp sessions with enrollment status. Year-scoped to prevent
+ * data contamination when CampMinder reuses session IDs across years.
  */
 
+const COLLECTION_ID_ATTENDEES = "col_attendees";
+
 migrate((app) => {
-  // Dynamic lookups - these collections were created in earlier migrations
-  const personsCol = app.findCollectionByNameOrId("persons")
-  const sessionsCol = app.findCollectionByNameOrId("camp_sessions")
+  const personsCol = app.findCollectionByNameOrId("persons");
+  const sessionsCol = app.findCollectionByNameOrId("camp_sessions");
 
   const collection = new Collection({
+    id: COLLECTION_ID_ATTENDEES,
     name: "attendees",
     type: "base",
-    system: false,
+    listRule: '@request.auth.id != ""',
+    viewRule: '@request.auth.id != ""',
+    createRule: '@request.auth.id != ""',
+    updateRule: '@request.auth.id != ""',
+    deleteRule: '@request.auth.id != ""',
     fields: [
       {
         name: "person_id",
         type: "number",
-        system: false,
         required: true,
-        unique: false,
+        presentable: false,
         options: {
           min: null,
           max: null,
@@ -32,7 +37,6 @@ migrate((app) => {
       {
         name: "person",
         type: "relation",
-        system: false,
         required: false,
         presentable: false,
         collectionId: personsCol.id,
@@ -43,9 +47,8 @@ migrate((app) => {
       {
         name: "status",
         type: "select",
-        system: false,
         required: false,
-        unique: false,
+        presentable: false,
         values: [
           "enrolled",
           "applied",
@@ -63,9 +66,8 @@ migrate((app) => {
       {
         name: "status_id",
         type: "number",
-        system: false,
         required: false,
-        unique: false,
+        presentable: false,
         options: {
           min: null,
           max: null,
@@ -75,9 +77,8 @@ migrate((app) => {
       {
         name: "year",
         type: "number",
-        system: false,
         required: true,
-        unique: false,
+        presentable: false,
         options: {
           min: null,
           max: null,
@@ -87,9 +88,8 @@ migrate((app) => {
       {
         name: "enrollment_date",
         type: "date",
-        system: false,
         required: false,
-        unique: false,
+        presentable: false,
         options: {
           min: "",
           max: ""
@@ -98,15 +98,12 @@ migrate((app) => {
       {
         name: "is_active",
         type: "bool",
-        system: false,
         required: false,
-        unique: false,
-        options: {}
+        presentable: false
       },
       {
         name: "session",
         type: "relation",
-        system: false,
         required: true,
         presentable: false,
         collectionId: sessionsCol.id,
@@ -132,19 +129,13 @@ migrate((app) => {
       }
     ],
     indexes: [
-      "CREATE INDEX `idx_CTOLST0M8l` ON `attendees` (`person`)",
-      "CREATE UNIQUE INDEX `idx_ZT5KuF3OgF` ON `attendees` (`person_id`, `year`, `session`)"
-    ],
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
-    options: {}
-  })
+      "CREATE INDEX `idx_attendees_person` ON `attendees` (`person`)",
+      "CREATE UNIQUE INDEX `idx_attendees_unique` ON `attendees` (`person_id`, `year`, `session`)"
+    ]
+  });
 
-  return app.save(collection)
+  app.save(collection);
 }, (app) => {
-  const collection = app.findCollectionByNameOrId("attendees")
-  return app.delete(collection)
-})
+  const collection = app.findCollectionByNameOrId("attendees");
+  app.delete(collection);
+});

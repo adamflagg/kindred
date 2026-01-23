@@ -1,23 +1,27 @@
 /// <reference path="../pb_data/types.d.ts" />
 /**
- * Migration: Create bunk_assignments_draft collection
- * Dependencies: saved_scenarios (1500000014), persons (1500000005), camp_sessions (1500000001),
- *               bunks (1500000006), bunk_plans (1500000008)
+ * Migration: Create bunk_assignments collection
+ * Dependencies: persons, camp_sessions, bunks, bunk_plans
  *
- * Uses dynamic collection lookups via findCollectionByNameOrId().
+ * Stores camper-to-bunk assignments for each session and year.
+ * Links persons to bunks via bunk plans.
+ *
+ * Uses fixed collection ID for dependent migrations.
  */
 
+const COLLECTION_ID_BUNK_ASSIGNMENTS = "col_bunk_assignments";
+
 migrate((app) => {
-  // Dynamic lookups - these collections were created in earlier migrations
-  const scenariosCol = app.findCollectionByNameOrId("saved_scenarios")
+  // Dynamic lookups for relations
   const personsCol = app.findCollectionByNameOrId("persons")
   const sessionsCol = app.findCollectionByNameOrId("camp_sessions")
   const bunksCol = app.findCollectionByNameOrId("bunks")
   const bunkPlansCol = app.findCollectionByNameOrId("bunk_plans")
 
-  let collection = new Collection({
+  const collection = new Collection({
+    id: COLLECTION_ID_BUNK_ASSIGNMENTS,
+    name: "bunk_assignments",
     type: "base",
-    name: "bunk_assignments_draft",
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',
     createRule: '@request.auth.id != ""',
@@ -25,55 +29,44 @@ migrate((app) => {
     deleteRule: '@request.auth.id != ""',
     fields: [
       {
-        type: "relation",
-        name: "scenario",
+        type: "number",
+        name: "cm_id",
         required: false,
         presentable: false,
-        collectionId: scenariosCol.id,
-        cascadeDelete: false,
-        minSelect: null,
-        maxSelect: 1
-      },
-      {
-        type: "number",
-        name: "year",
-        required: true,
-        presentable: false,
-        system: false,
         options: {
-          min: 2010,
-          max: 2100,
+          min: 0,
+          max: null,
           noDecimal: true
         }
       },
       {
         type: "relation",
         name: "person",
-        required: false,
+        required: true,
         presentable: false,
         collectionId: personsCol.id,
         cascadeDelete: false,
-        minSelect: null,
+        minSelect: 1,
         maxSelect: 1
       },
       {
         type: "relation",
         name: "session",
-        required: false,
+        required: true,
         presentable: false,
         collectionId: sessionsCol.id,
         cascadeDelete: false,
-        minSelect: null,
+        minSelect: 1,
         maxSelect: 1
       },
       {
         type: "relation",
         name: "bunk",
-        required: false,
+        required: true,
         presentable: false,
         collectionId: bunksCol.id,
         cascadeDelete: false,
-        minSelect: null,
+        minSelect: 1,
         maxSelect: 1
       },
       {
@@ -87,8 +80,19 @@ migrate((app) => {
         maxSelect: 1
       },
       {
+        type: "number",
+        name: "year",
+        required: true,
+        presentable: false,
+        options: {
+          min: 2010,
+          max: 2100,
+          noDecimal: true
+        }
+      },
+      {
         type: "bool",
-        name: "assignment_locked",
+        name: "is_deleted",
         required: false,
         presentable: false
       },
@@ -110,13 +114,13 @@ migrate((app) => {
       }
     ],
     indexes: [
-      "CREATE UNIQUE INDEX `idx_bunk_assignments_draft_scenario_person_session_year` ON `bunk_assignments_draft` (`year`, `session`, `person`, `scenario`)",
-      "CREATE INDEX `idx_Xm26hDWOxe` ON `bunk_assignments_draft` (`scenario`)"
+      "CREATE UNIQUE INDEX `idx_bunk_assignments_person_session_year` ON `bunk_assignments` (`year`, `person`, `session`)",
+      "CREATE INDEX `idx_bunk_assignments_person_id` ON `bunk_assignments` (`cm_id`)"
     ]
   });
 
   app.save(collection);
 }, (app) => {
-  let collection = app.findCollectionByNameOrId("bunk_assignments_draft");
+  const collection = app.findCollectionByNameOrId("bunk_assignments");
   app.delete(collection);
 });

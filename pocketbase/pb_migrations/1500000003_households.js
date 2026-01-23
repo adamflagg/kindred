@@ -1,19 +1,19 @@
 /// <reference path="../pb_data/types.d.ts" />
 /**
- * Migration: Create session_groups collection
+ * Migration: Create households collection
  * Dependencies: None
  *
- * Stores session groupings from CampMinder (e.g., "Main Sessions", "Family Camps")
+ * Stores household data extracted from CampMinder persons response.
+ * Households contain mailing titles, phone, and billing address.
  */
 
-// Fixed collection ID for session_groups
-const COLLECTION_ID_SESSION_GROUPS = "col_session_groups";
+const COLLECTION_ID_HOUSEHOLDS = "col_households";
 
 migrate((app) => {
   const collection = new Collection({
-    id: COLLECTION_ID_SESSION_GROUPS,
+    id: COLLECTION_ID_HOUSEHOLDS,
     type: "base",
-    name: "session_groups",
+    name: "households",
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',
     createRule: '@request.auth.id != ""',
@@ -25,54 +25,74 @@ migrate((app) => {
         name: "cm_id",
         required: true,
         presentable: false,
-        system: false,
         options: {
-          min: 0,
+          min: 1,
           max: null,
           noDecimal: true
         }
       },
       {
         type: "text",
-        name: "name",
-        required: true,
+        name: "greeting",
+        required: false,
+        presentable: false,
+        options: {
+          min: null,
+          max: 500,
+          pattern: ""
+        }
+      },
+      {
+        type: "text",
+        name: "mailing_title",
+        required: false,
         presentable: true,
-        system: false,
         options: {
           min: null,
-          max: null,
+          max: 500,
           pattern: ""
         }
       },
       {
         type: "text",
-        name: "description",
+        name: "alternate_mailing_title",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
-          max: null,
+          max: 500,
           pattern: ""
         }
       },
       {
-        type: "bool",
-        name: "is_active",
+        type: "text",
+        name: "billing_mailing_title",
         required: false,
         presentable: false,
-        system: false
-      },
-      {
-        type: "number",
-        name: "sort_order",
-        required: false,
-        presentable: false,
-        system: false,
         options: {
           min: null,
-          max: null,
-          noDecimal: true
+          max: 500,
+          pattern: ""
+        }
+      },
+      {
+        type: "text",
+        name: "household_phone",
+        required: false,
+        presentable: false,
+        options: {
+          min: null,
+          max: 50,
+          pattern: ""
+        }
+      },
+      {
+        type: "json",
+        name: "billing_address",
+        required: false,
+        presentable: false,
+        options: {
+          maxSize: 10000
         }
       },
       {
@@ -80,7 +100,6 @@ migrate((app) => {
         name: "year",
         required: true,
         presentable: false,
-        system: false,
         options: {
           min: 2010,
           max: 2100,
@@ -105,13 +124,13 @@ migrate((app) => {
       }
     ],
     indexes: [
-      "CREATE UNIQUE INDEX `idx_session_groups_cm_id_year` ON `session_groups` (`cm_id`, `year`)",
-      "CREATE INDEX `idx_session_groups_year` ON `session_groups` (`year`)"
+      "CREATE UNIQUE INDEX `idx_households_cm_id_year` ON `households` (`cm_id`, `year`)",
+      "CREATE INDEX `idx_households_year` ON `households` (`year`)"
     ]
   });
 
   app.save(collection);
 }, (app) => {
-  const collection = app.findCollectionByNameOrId("session_groups");
+  const collection = app.findCollectionByNameOrId("households");
   app.delete(collection);
 });

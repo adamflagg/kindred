@@ -5,6 +5,9 @@
  *
  * Stores custom field values for households from CampMinder /households/{id}/custom-fields endpoint.
  * This is an on-demand sync (not part of daily sync) due to requiring 1 API call per household.
+ *
+ * IMPORTANT: Uses fixed collection ID so dependent migrations can reference
+ * it directly without findCollectionByNameOrId (which fails in fresh DB).
  */
 
 const COLLECTION_ID_HOUSEHOLD_CUSTOM_VALUES = "col_household_cf_vals";
@@ -29,7 +32,6 @@ migrate((app) => {
         name: "household",
         required: false,
         presentable: false,
-        system: false,
         collectionId: householdsCol.id,
         cascadeDelete: false,
         minSelect: null,
@@ -41,7 +43,6 @@ migrate((app) => {
         name: "field_definition",
         required: false,
         presentable: false,
-        system: false,
         collectionId: customFieldDefsCol.id,
         cascadeDelete: false,
         minSelect: null,
@@ -53,7 +54,6 @@ migrate((app) => {
         name: "value",
         required: false,
         presentable: true,
-        system: false,
         options: {
           min: null,
           max: 10000,
@@ -66,7 +66,6 @@ migrate((app) => {
         name: "year",
         required: true,
         presentable: false,
-        system: false,
         options: {
           min: 2010,
           max: 2100,
@@ -79,7 +78,6 @@ migrate((app) => {
         name: "last_updated",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: null,

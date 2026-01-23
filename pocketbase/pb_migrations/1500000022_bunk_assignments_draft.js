@@ -1,25 +1,28 @@
 /// <reference path="../pb_data/types.d.ts" />
 /**
- * Migration: Create bunk_assignments collection
- * Dependencies: persons, camp_sessions, bunks, bunk_plans
+ * Migration: Create bunk_assignments_draft collection
+ * Dependencies: saved_scenarios (1500000021), persons (1500000012), camp_sessions (1500000011),
+ *               bunks (1500000013), bunk_plans (1500000014)
  *
- * IMPORTANT: Uses fixed collection ID so dependent migrations can reference
- * it directly without findCollectionByNameOrId (which fails in fresh DB).
+ * Stores draft cabin assignments for scenario planning. Each assignment links
+ * a person to a bunk within a scenario, allowing what-if planning before
+ * committing assignments to production.
+ *
+ * Uses dynamic collection lookups via findCollectionByNameOrId().
  */
 
-const COLLECTION_ID_BUNK_ASSIGNMENTS = "col_bunk_assignments";
-
 migrate((app) => {
-  // Dynamic lookups for relations
+  // Dynamic lookups - these collections were created in earlier migrations
+  const scenariosCol = app.findCollectionByNameOrId("saved_scenarios")
   const personsCol = app.findCollectionByNameOrId("persons")
   const sessionsCol = app.findCollectionByNameOrId("camp_sessions")
   const bunksCol = app.findCollectionByNameOrId("bunks")
   const bunkPlansCol = app.findCollectionByNameOrId("bunk_plans")
 
-  let collection = new Collection({
-    id: COLLECTION_ID_BUNK_ASSIGNMENTS,
+  const collection = new Collection({
+    id: "col_bunk_drafts",
     type: "base",
-    name: "bunk_assignments",
+    name: "bunk_assignments_draft",
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',
     createRule: '@request.auth.id != ""',
@@ -27,45 +30,54 @@ migrate((app) => {
     deleteRule: '@request.auth.id != ""',
     fields: [
       {
-        type: "number",
-        name: "cm_id",
+        type: "relation",
+        name: "scenario",
         required: false,
         presentable: false,
-        system: false,
+        collectionId: scenariosCol.id,
+        cascadeDelete: false,
+        minSelect: null,
+        maxSelect: 1
+      },
+      {
+        type: "number",
+        name: "year",
+        required: true,
+        presentable: false,
         options: {
-          min: 0,
-          max: null,
+          min: 2010,
+          max: 2100,
           noDecimal: true
         }
       },
       {
         type: "relation",
         name: "person",
-        required: true,
+        required: false,
         presentable: false,
         collectionId: personsCol.id,
         cascadeDelete: false,
-        minSelect: 1,
+        minSelect: null,
         maxSelect: 1
       },
       {
         type: "relation",
         name: "session",
-        required: true,
+        required: false,
         presentable: false,
         collectionId: sessionsCol.id,
         cascadeDelete: false,
-        minSelect: 1,
+        minSelect: null,
         maxSelect: 1
       },
       {
         type: "relation",
         name: "bunk",
-        required: true,
+        required: false,
         presentable: false,
         collectionId: bunksCol.id,
         cascadeDelete: false,
-        minSelect: 1,
+        minSelect: null,
         maxSelect: 1
       },
       {
@@ -79,20 +91,8 @@ migrate((app) => {
         maxSelect: 1
       },
       {
-        type: "number",
-        name: "year",
-        required: true,
-        presentable: false,
-        system: false,
-        options: {
-          min: 2010,
-          max: 2100,
-          noDecimal: true
-        }
-      },
-      {
         type: "bool",
-        name: "is_deleted",
+        name: "assignment_locked",
         required: false,
         presentable: false
       },
@@ -114,13 +114,13 @@ migrate((app) => {
       }
     ],
     indexes: [
-      "CREATE UNIQUE INDEX `idx_bunk_assignments_person_session_year` ON `bunk_assignments` (`year`, `person`, `session`)",
-      "CREATE INDEX `idx_bunk_assignments_person_id` ON `bunk_assignments` (`cm_id`)"
+      "CREATE UNIQUE INDEX `idx_bunk_assignments_draft_scenario_person_session_year` ON `bunk_assignments_draft` (`year`, `session`, `person`, `scenario`)",
+      "CREATE INDEX `idx_bunk_assignments_draft_scenario` ON `bunk_assignments_draft` (`scenario`)"
     ]
   });
 
   app.save(collection);
 }, (app) => {
-  let collection = app.findCollectionByNameOrId("bunk_assignments");
+  const collection = app.findCollectionByNameOrId("bunk_assignments_draft");
   app.delete(collection);
 });

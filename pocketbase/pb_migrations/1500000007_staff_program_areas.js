@@ -7,7 +7,6 @@
  * Global lookup table (not year-specific).
  */
 
-// Fixed collection ID for staff_program_areas
 const COLLECTION_ID_STAFF_PROGRAM_AREAS = "col_staff_prog_areas";
 
 migrate((app) => {
@@ -26,7 +25,6 @@ migrate((app) => {
         name: "cm_id",
         required: true,
         presentable: false,
-        system: false,
         options: {
           min: 1,
           max: null,
@@ -38,7 +36,6 @@ migrate((app) => {
         name: "name",
         required: true,
         presentable: true,
-        system: false,
         options: {
           min: 1,
           max: 500,

@@ -1,7 +1,10 @@
 /// <reference path="../pb_data/types.d.ts" />
 /**
  * Migration: Create saved_scenarios collection
- * Dependencies: camp_sessions (1500000001)
+ * Dependencies: camp_sessions (1500000011)
+ *
+ * Stores named scenario configurations for cabin assignment planning.
+ * Each scenario is associated with a camp session and year.
  *
  * Uses dynamic collection lookups via findCollectionByNameOrId().
  */
@@ -10,7 +13,8 @@ migrate((app) => {
   // Dynamic lookups - these collections were created in earlier migrations
   const sessionsCol = app.findCollectionByNameOrId("camp_sessions")
 
-  let collection = new Collection({
+  const collection = new Collection({
+    id: "col_scenarios",
     type: "base",
     name: "saved_scenarios",
     listRule: '@request.auth.id != ""',
@@ -61,6 +65,7 @@ migrate((app) => {
         type: "number",
         name: "year",
         required: true,
+        presentable: false,
         min: 2020,
         max: 2030,
         onlyInt: true
@@ -99,6 +104,6 @@ migrate((app) => {
 
   app.save(collection);
 }, (app) => {
-  let collection = app.findCollectionByNameOrId("saved_scenarios");
+  const collection = app.findCollectionByNameOrId("saved_scenarios");
   app.delete(collection);
 });

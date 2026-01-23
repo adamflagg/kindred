@@ -1,36 +1,21 @@
 /// <reference path="../pb_data/types.d.ts" />
 /**
  * Migration: Create solver_runs collection
- * Dependencies: camp_sessions
+ * Dependencies: saved_scenarios (1500000021)
  *
- * IMPORTANT: Uses fixed collection ID for consistency.
+ * Tracks solver execution history including status, progress, results,
+ * and error information. Each run is associated with a scenario and
+ * contains detailed logs and statistics.
+ *
+ * Uses dynamic collection lookups via findCollectionByNameOrId().
  */
-
-// Fixed collection IDs - must match across all migrations
-const COLLECTION_IDS = {
-  camp_sessions: "col_camp_sessions",
-  persons: "col_persons",
-  bunks: "col_bunks",
-  attendees: "col_attendees",
-  bunk_plans: "col_bunk_plans",
-  bunk_requests: "col_bunk_requests",
-  bunk_assignments: "col_bunk_assignments",
-  bunk_assignments_draft: "col_bunk_drafts",
-  saved_scenarios: "col_scenarios",
-  solver_runs: "col_solver_runs",
-  original_bunk_requests: "col_orig_requests",
-  locked_groups: "col_locked_groups",
-  locked_group_members: "col_locked_members",
-  config: "col_config",
-  config_sections: "col_config_sections"
-}
 
 migrate((app) => {
   // Dynamic lookup for relation field
   const scenariosCol = app.findCollectionByNameOrId("saved_scenarios")
 
-  let collection = new Collection({
-    id: COLLECTION_IDS.solver_runs,
+  const collection = new Collection({
+    id: "col_solver_runs",
     type: "base",
     name: "solver_runs",
     listRule: '@request.auth.id != ""',
@@ -43,7 +28,7 @@ migrate((app) => {
         type: "text",
         name: "session",
         required: true,
-        system: false,
+        presentable: false,
         options: {
           min: null,
           max: 100,
@@ -54,7 +39,7 @@ migrate((app) => {
         type: "text",
         name: "run_id",
         required: true,
-        system: false,
+        presentable: false,
         options: {
           min: null,
           max: 100,
@@ -65,7 +50,7 @@ migrate((app) => {
         type: "select",
         name: "status",
         required: false,
-        system: false,
+        presentable: false,
         values: ["pending", "running", "success", "failed", "error"],
         maxSelect: 1
       },
@@ -73,7 +58,7 @@ migrate((app) => {
         type: "number",
         name: "progress",
         required: false,
-        system: false,
+        presentable: false,
         options: {
           min: 0,
           max: 100,
@@ -84,7 +69,7 @@ migrate((app) => {
         type: "date",
         name: "started_at",
         required: false,
-        system: false,
+        presentable: false,
         options: {
           min: "",
           max: ""
@@ -94,7 +79,7 @@ migrate((app) => {
         type: "date",
         name: "completed_at",
         required: false,
-        system: false,
+        presentable: false,
         options: {
           min: "",
           max: ""
@@ -104,7 +89,7 @@ migrate((app) => {
         type: "json",
         name: "logs",
         required: false,
-        system: false,
+        presentable: false,
         options: {
           maxSize: 2000000
         }
@@ -113,7 +98,7 @@ migrate((app) => {
         type: "json",
         name: "error",
         required: false,
-        system: false,
+        presentable: false,
         options: {
           maxSize: 2000000
         }
@@ -122,7 +107,7 @@ migrate((app) => {
         type: "json",
         name: "result",
         required: false,
-        system: false,
+        presentable: false,
         options: {
           maxSize: 2000000
         }
@@ -131,7 +116,7 @@ migrate((app) => {
         type: "json",
         name: "details",
         required: false,
-        system: false,
+        presentable: false,
         options: {
           maxSize: 2000000
         }
@@ -140,7 +125,7 @@ migrate((app) => {
         type: "json",
         name: "request_data",
         required: false,
-        system: false,
+        presentable: false,
         options: {
           maxSize: 2000000
         }
@@ -149,7 +134,7 @@ migrate((app) => {
         type: "json",
         name: "assignment_counts",
         required: false,
-        system: false,
+        presentable: false,
         options: {
           maxSize: 2000000
         }
@@ -158,7 +143,7 @@ migrate((app) => {
         type: "json",
         name: "stats",
         required: false,
-        system: false,
+        presentable: false,
         options: {
           maxSize: 2000000
         }
@@ -167,7 +152,7 @@ migrate((app) => {
         type: "relation",
         name: "scenario",
         required: false,
-        system: false,
+        presentable: false,
         collectionId: scenariosCol.id,
         cascadeDelete: false,
         minSelect: null,
@@ -177,7 +162,7 @@ migrate((app) => {
         type: "text",
         name: "run_type",
         required: false,
-        system: false,
+        presentable: false,
         options: {
           min: null,
           max: 50,
@@ -188,7 +173,7 @@ migrate((app) => {
         type: "text",
         name: "triggered_by",
         required: false,
-        system: false,
+        presentable: false,
         options: {
           min: null,
           max: 100,
@@ -199,7 +184,7 @@ migrate((app) => {
         type: "number",
         name: "session_id",
         required: false,
-        system: false,
+        presentable: false,
         options: {
           min: 0,
           max: null,
@@ -233,6 +218,6 @@ migrate((app) => {
 
   app.save(collection);
 }, (app) => {
-  let collection = app.findCollectionByNameOrId("solver_runs");
+  const collection = app.findCollectionByNameOrId("solver_runs");
   app.delete(collection);
 });

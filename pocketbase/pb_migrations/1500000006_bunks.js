@@ -3,8 +3,7 @@
  * Migration: Create bunks collection
  * Dependencies: None
  *
- * IMPORTANT: Uses fixed collection ID so dependent migrations can reference
- * it directly without findCollectionByNameOrId (which fails in fresh DB).
+ * Stores bunk/cabin definitions from CampMinder.
  */
 
 const COLLECTION_ID_BUNKS = "col_bunks";
@@ -12,16 +11,19 @@ const COLLECTION_ID_BUNKS = "col_bunks";
 migrate((app) => {
   const collection = new Collection({
     id: COLLECTION_ID_BUNKS,
-    name: "bunks",
     type: "base",
-    system: false,
+    name: "bunks",
+    listRule: '@request.auth.id != ""',
+    viewRule: '@request.auth.id != ""',
+    createRule: '@request.auth.id != ""',
+    updateRule: '@request.auth.id != ""',
+    deleteRule: '@request.auth.id != ""',
     fields: [
       {
-        name: "cm_id",
         type: "number",
+        name: "cm_id",
         required: true,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -29,11 +31,10 @@ migrate((app) => {
         }
       },
       {
-        name: "name",
         type: "text",
+        name: "name",
         required: true,
         presentable: true,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -41,11 +42,10 @@ migrate((app) => {
         }
       },
       {
-        name: "year",
         type: "number",
+        name: "year",
         required: true,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -53,11 +53,10 @@ migrate((app) => {
         }
       },
       {
-        name: "gender",
         type: "text",
+        name: "gender",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: 10,
@@ -65,14 +64,14 @@ migrate((app) => {
         }
       },
       {
-        name: "is_active",
         type: "bool",
+        name: "is_active",
         required: false,
         presentable: false
       },
       {
-        name: "sort_order",
         type: "number",
+        name: "sort_order",
         required: false,
         presentable: false,
         options: {
@@ -82,8 +81,8 @@ migrate((app) => {
         }
       },
       {
-        name: "area_id",
         type: "number",
+        name: "area_id",
         required: false,
         presentable: false,
         options: {
@@ -111,19 +110,13 @@ migrate((app) => {
     ],
     indexes: [
       "CREATE UNIQUE INDEX `idx_bunks_campminder_year` ON `bunks` (`cm_id`, `year`)",
-      "CREATE INDEX `idx_zL6XKZjgMQ` ON `bunks` (`name`)",
-      "CREATE INDEX `idx_03EsqBQcEG` ON `bunks` (`cm_id`)"
-    ],
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
-    options: {}
-  })
+      "CREATE INDEX `idx_bunks_name` ON `bunks` (`name`)",
+      "CREATE INDEX `idx_bunks_cm_id` ON `bunks` (`cm_id`)"
+    ]
+  });
 
-  return app.save(collection)
+  app.save(collection);
 }, (app) => {
-  const collection = app.findCollectionByNameOrId("bunks")
-  return app.delete(collection)
-})
+  const collection = app.findCollectionByNameOrId("bunks");
+  app.delete(collection);
+});

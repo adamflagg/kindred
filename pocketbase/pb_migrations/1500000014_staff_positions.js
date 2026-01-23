@@ -1,21 +1,21 @@
 /// <reference path="../pb_data/types.d.ts" />
 /**
- * Migration: Create payment_methods collection
- * Dependencies: None
+ * Migration: Create staff_positions collection
+ * Dependencies: staff_program_areas
  *
- * Stores payment method definitions from CampMinder /financials/paymentmethods endpoint.
- * Global lookup table (not year-specific).
- * Methods include Check, Credit Card, Cash, etc.
+ * Stores staff position definitions from CampMinder /staff/positions endpoint.
+ * Global lookup table (not year-specific). Each position can be linked to a program area.
  */
 
-// Fixed collection ID for payment_methods
-const COLLECTION_ID_PAYMENT_METHODS = "col_payment_methods";
+const COLLECTION_ID_STAFF_POSITIONS = "col_staff_positions";
 
 migrate((app) => {
+  const programAreasCol = app.findCollectionByNameOrId("staff_program_areas");
+
   const collection = new Collection({
-    id: COLLECTION_ID_PAYMENT_METHODS,
+    id: COLLECTION_ID_STAFF_POSITIONS,
     type: "base",
-    name: "payment_methods",
+    name: "staff_positions",
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',
     createRule: '@request.auth.id != ""',
@@ -27,7 +27,6 @@ migrate((app) => {
         name: "cm_id",
         required: true,
         presentable: false,
-        system: false,
         options: {
           min: 1,
           max: null,
@@ -37,14 +36,23 @@ migrate((app) => {
       {
         type: "text",
         name: "name",
-        required: false,
+        required: true,
         presentable: true,
-        system: false,
         options: {
-          min: null,
-          max: 200,
+          min: 1,
+          max: 500,
           pattern: ""
         }
+      },
+      {
+        type: "relation",
+        name: "program_area",
+        required: false,
+        presentable: false,
+        collectionId: programAreasCol.id,
+        cascadeDelete: false,
+        minSelect: null,
+        maxSelect: 1
       },
       {
         type: "autodate",
@@ -64,12 +72,12 @@ migrate((app) => {
       }
     ],
     indexes: [
-      "CREATE UNIQUE INDEX `idx_payment_methods_cm_id` ON `payment_methods` (`cm_id`)"
+      "CREATE UNIQUE INDEX `idx_staff_positions_cm_id` ON `staff_positions` (`cm_id`)"
     ]
   });
 
   app.save(collection);
 }, (app) => {
-  const collection = app.findCollectionByNameOrId("payment_methods");
+  const collection = app.findCollectionByNameOrId("staff_positions");
   app.delete(collection);
 });

@@ -1,19 +1,18 @@
 /// <reference path="../pb_data/types.d.ts" />
 /**
- * Migration: Create custom_field_defs collection
+ * Migration: Create session_groups collection
  * Dependencies: None
  *
- * Stores custom field definitions from CampMinder /persons/custom-fields endpoint.
- * Defines the schema for custom fields that can be attached to persons or households.
+ * Stores session groupings from CampMinder (e.g., "Main Sessions", "Family Camps").
  */
 
-const COLLECTION_ID_CUSTOM_FIELD_DEFS = "col_custom_field_defs";
+const COLLECTION_ID_SESSION_GROUPS = "col_session_groups";
 
 migrate((app) => {
   const collection = new Collection({
-    id: COLLECTION_ID_CUSTOM_FIELD_DEFS,
+    id: COLLECTION_ID_SESSION_GROUPS,
     type: "base",
-    name: "custom_field_defs",
+    name: "session_groups",
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',
     createRule: '@request.auth.id != ""',
@@ -25,9 +24,8 @@ migrate((app) => {
         name: "cm_id",
         required: true,
         presentable: false,
-        system: false,
         options: {
-          min: 1,
+          min: 0,
           max: null,
           noDecimal: true
         }
@@ -37,51 +35,50 @@ migrate((app) => {
         name: "name",
         required: true,
         presentable: true,
-        system: false,
         options: {
-          min: 1,
-          max: 500,
+          min: null,
+          max: null,
           pattern: ""
         }
       },
       {
-        type: "select",
-        name: "data_type",
+        type: "text",
+        name: "description",
         required: false,
         presentable: false,
-        system: false,
-        values: ["None", "String", "Integer", "Decimal", "Date", "Time", "DateTime", "Boolean"],
-        maxSelect: 1
-      },
-      {
-        type: "select",
-        name: "partition",
-        required: false,
-        presentable: false,
-        system: false,
-        values: ["None", "Family", "Alumnus", "Staff", "Camper", "Parent", "Adult"],
-        maxSelect: 7
-      },
-      {
-        type: "bool",
-        name: "is_seasonal",
-        required: false,
-        presentable: false,
-        system: false
-      },
-      {
-        type: "bool",
-        name: "is_array",
-        required: false,
-        presentable: false,
-        system: false
+        options: {
+          min: null,
+          max: null,
+          pattern: ""
+        }
       },
       {
         type: "bool",
         name: "is_active",
         required: false,
+        presentable: false
+      },
+      {
+        type: "number",
+        name: "sort_order",
+        required: false,
         presentable: false,
-        system: false
+        options: {
+          min: null,
+          max: null,
+          noDecimal: true
+        }
+      },
+      {
+        type: "number",
+        name: "year",
+        required: true,
+        presentable: false,
+        options: {
+          min: 2010,
+          max: 2100,
+          noDecimal: true
+        }
       },
       {
         type: "autodate",
@@ -101,13 +98,13 @@ migrate((app) => {
       }
     ],
     indexes: [
-      "CREATE UNIQUE INDEX `idx_custom_field_defs_cm_id` ON `custom_field_defs` (`cm_id`)",
-      "CREATE INDEX `idx_custom_field_defs_partition` ON `custom_field_defs` (`partition`)"
+      "CREATE UNIQUE INDEX `idx_session_groups_cm_id_year` ON `session_groups` (`cm_id`, `year`)",
+      "CREATE INDEX `idx_session_groups_year` ON `session_groups` (`year`)"
     ]
   });
 
   app.save(collection);
 }, (app) => {
-  const collection = app.findCollectionByNameOrId("custom_field_defs");
+  const collection = app.findCollectionByNameOrId("session_groups");
   app.delete(collection);
 });

@@ -1,24 +1,20 @@
 /// <reference path="../pb_data/types.d.ts" />
 /**
- * Migration: Create staff_positions collection
- * Dependencies: staff_program_areas
+ * Migration: Create financial_categories collection
+ * Dependencies: None
  *
- * Stores staff position definitions from CampMinder /staff/positions endpoint.
+ * Stores financial category definitions from CampMinder /financials/financialcategories endpoint.
  * Global lookup table (not year-specific).
- * Each position can be linked to a program area.
+ * Categories classify transactions (e.g., "Fees - Summer Camp", "Financial Assistance").
  */
 
-// Fixed collection ID for staff_positions
-const COLLECTION_ID_STAFF_POSITIONS = "col_staff_positions";
+const COLLECTION_ID_FINANCIAL_CATEGORIES = "col_financial_categories";
 
 migrate((app) => {
-  // Lookup staff_program_areas for relation
-  const programAreasCol = app.findCollectionByNameOrId("staff_program_areas");
-
   const collection = new Collection({
-    id: COLLECTION_ID_STAFF_POSITIONS,
+    id: COLLECTION_ID_FINANCIAL_CATEGORIES,
     type: "base",
-    name: "staff_positions",
+    name: "financial_categories",
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',
     createRule: '@request.auth.id != ""',
@@ -30,7 +26,6 @@ migrate((app) => {
         name: "cm_id",
         required: true,
         presentable: false,
-        system: false,
         options: {
           min: 1,
           max: null,
@@ -40,25 +35,19 @@ migrate((app) => {
       {
         type: "text",
         name: "name",
-        required: true,
+        required: false,
         presentable: true,
-        system: false,
         options: {
-          min: 1,
+          min: null,
           max: 500,
           pattern: ""
         }
       },
       {
-        type: "relation",
-        name: "program_area",
+        type: "bool",
+        name: "is_archived",
         required: false,
-        presentable: false,
-        system: false,
-        collectionId: programAreasCol.id,
-        cascadeDelete: false,
-        minSelect: null,
-        maxSelect: 1
+        presentable: false
       },
       {
         type: "autodate",
@@ -78,12 +67,12 @@ migrate((app) => {
       }
     ],
     indexes: [
-      "CREATE UNIQUE INDEX `idx_staff_positions_cm_id` ON `staff_positions` (`cm_id`)"
+      "CREATE UNIQUE INDEX `idx_financial_categories_cm_id` ON `financial_categories` (`cm_id`)"
     ]
   });
 
   app.save(collection);
 }, (app) => {
-  const collection = app.findCollectionByNameOrId("staff_positions");
+  const collection = app.findCollectionByNameOrId("financial_categories");
   app.delete(collection);
 });

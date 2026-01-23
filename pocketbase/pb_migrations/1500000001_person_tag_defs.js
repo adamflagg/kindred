@@ -6,9 +6,6 @@
  * Stores tag definitions from CampMinder /persons/tags endpoint.
  * Tags like "Alumni", "Volunteer", "Leadership", etc.
  * Note: CampMinder TagDef uses Name as identifier (no ID field).
- *
- * IMPORTANT: Uses fixed collection ID so dependent migrations can reference
- * it directly without findCollectionByNameOrId (which fails in fresh DB).
  */
 
 const COLLECTION_ID_PERSON_TAG_DEFS = "col_person_tag_defs";
@@ -29,7 +26,6 @@ migrate((app) => {
         name: "name",
         required: true,
         presentable: true,
-        system: false,
         options: {
           min: 1,
           max: 200,
@@ -40,22 +36,19 @@ migrate((app) => {
         type: "bool",
         name: "is_seasonal",
         required: false,
-        presentable: false,
-        system: false
+        presentable: false
       },
       {
         type: "bool",
         name: "is_hidden",
         required: false,
-        presentable: false,
-        system: false
+        presentable: false
       },
       {
         type: "text",
         name: "last_updated_utc",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: null,

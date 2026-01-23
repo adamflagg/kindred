@@ -1,20 +1,24 @@
 /// <reference path="../pb_data/types.d.ts" />
 /**
- * Migration: Create original_bunk_requests collection
- * Dependencies: persons (1500000005)
+ * Migration: Create bunk_plans collection
+ * Dependencies: bunks, camp_sessions
  *
- * Stores raw bunk request data from CampMinder CSV exports.
- * The Python processor reads from this table and writes to bunk_requests.
+ * Stores bunk plan configurations for each session and year.
+ * Links bunks to sessions with capacity and activation settings.
  *
- * Uses dynamic collection lookups via findCollectionByNameOrId().
+ * Uses fixed collection ID for dependent migrations.
  */
 
+const COLLECTION_ID_BUNK_PLANS = "col_bunk_plans";
+
 migrate((app) => {
-  // Dynamic lookups - these collections were created in earlier migrations
-  const personsCol = app.findCollectionByNameOrId("persons")
+  // Dynamic lookups for relations
+  const bunksCol = app.findCollectionByNameOrId("bunks")
+  const sessionsCol = app.findCollectionByNameOrId("camp_sessions")
 
   const collection = new Collection({
-    name: "original_bunk_requests",
+    id: COLLECTION_ID_BUNK_PLANS,
+    name: "bunk_plans",
     type: "base",
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',
@@ -23,44 +27,39 @@ migrate((app) => {
     deleteRule: '@request.auth.id != ""',
     fields: [
       {
+        name: "cm_id",
         type: "number",
-        name: "year",
         required: true,
         presentable: false,
-        system: false,
         options: {
-          min: 2010,
-          max: 2100,
+          min: null,
+          max: null,
           noDecimal: true
         }
       },
       {
+        name: "bunk",
         type: "relation",
-        name: "requester",
         required: true,
-        presentable: false,
-        collectionId: personsCol.id,
+        presentable: true,
+        collectionId: bunksCol.id,
         cascadeDelete: false,
         minSelect: null,
         maxSelect: 1
       },
       {
-        type: "select",
-        name: "field",
+        name: "session",
+        type: "relation",
         required: true,
-        presentable: false,
-        values: [
-          "bunk_with",
-          "not_bunk_with",
-          "bunking_notes",
-          "internal_notes",
-          "socialize_with"
-        ],
+        presentable: true,
+        collectionId: sessionsCol.id,
+        cascadeDelete: false,
+        minSelect: null,
         maxSelect: 1
       },
       {
+        name: "name",
         type: "text",
-        name: "content",
         required: true,
         presentable: false,
         options: {
@@ -70,25 +69,32 @@ migrate((app) => {
         }
       },
       {
+        name: "code",
         type: "text",
-        name: "content_hash",
         required: false,
         presentable: false,
         options: {
           min: null,
-          max: 32,
+          max: null,
           pattern: ""
         }
       },
       {
-        type: "date",
-        name: "processed",
-        required: false,
+        name: "year",
+        type: "number",
+        required: true,
         presentable: false,
         options: {
-          min: "",
-          max: ""
+          min: null,
+          max: null,
+          noDecimal: true
         }
+      },
+      {
+        name: "is_active",
+        type: "bool",
+        required: false,
+        presentable: false
       },
       {
         type: "autodate",
@@ -108,13 +114,14 @@ migrate((app) => {
       }
     ],
     indexes: [
-      "CREATE UNIQUE INDEX `idx_original_bunk_requests_person_year` ON `original_bunk_requests` (`year`, `field`, `requester`)",
-      "CREATE INDEX `idx_6mXste3Wlc` ON `original_bunk_requests` (`requester`)"
+      "CREATE UNIQUE INDEX `idx_bunk_plans_bunk_session_year` ON `bunk_plans` (`year`, `bunk`, `session`, `cm_id`)",
+      "CREATE INDEX `idx_uPmp70BdW2` ON `bunk_plans` (`name`)",
+      "CREATE INDEX `idx_K3h8VH7VB1` ON `bunk_plans` (`cm_id`)"
     ]
   });
 
   app.save(collection);
 }, (app) => {
-  const collection = app.findCollectionByNameOrId("original_bunk_requests");
+  const collection = app.findCollectionByNameOrId("bunk_plans");
   app.delete(collection);
 });

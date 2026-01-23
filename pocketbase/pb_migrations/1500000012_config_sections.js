@@ -1,7 +1,104 @@
 /// <reference path="../pb_data/types.d.ts" />
+/**
+ * Migration: Create config_sections collection
+ * Dependencies: None
+ *
+ * Creates the config_sections collection for organizing configuration UI sections
+ * and populates it with default section definitions.
+ */
+
 migrate((app) => {
-  const collection = app.findCollectionByNameOrId("config_sections");
-  
+  // Create config_sections collection
+  const collection = new Collection({
+    id: "col_config_sections",
+    name: "config_sections",
+    type: "base",
+    fields: [
+      {
+        name: "section_key",
+        type: "text",
+        required: true,
+        presentable: true,
+        options: {
+          min: null,
+          max: 100,
+          pattern: ""
+        }
+      },
+      {
+        name: "title",
+        type: "text",
+        required: true,
+        presentable: false,
+        options: {
+          min: null,
+          max: 255,
+          pattern: ""
+        }
+      },
+      {
+        name: "description",
+        type: "text",
+        required: false,
+        presentable: false,
+        options: {
+          min: null,
+          max: 1000,
+          pattern: ""
+        }
+      },
+      {
+        name: "display_order",
+        type: "number",
+        required: true,
+        presentable: false,
+        options: {
+          min: 0,
+          max: null,
+          noDecimal: true
+        }
+      },
+      {
+        name: "expanded_by_default",
+        type: "bool",
+        required: false,
+        presentable: false
+      },
+      {
+        type: "autodate",
+        name: "created",
+        required: false,
+        presentable: false,
+        onCreate: true,
+        onUpdate: false
+      },
+      {
+        type: "autodate",
+        name: "updated",
+        required: false,
+        presentable: false,
+        onCreate: true,
+        onUpdate: true
+      }
+    ],
+    indexes: [
+      "CREATE UNIQUE INDEX idx_config_sections_key ON config_sections (section_key)",
+      "CREATE INDEX idx_config_sections_order ON config_sections (display_order)"
+    ],
+    listRule: '@request.auth.id != ""',
+    viewRule: '@request.auth.id != ""',
+    createRule: '@request.auth.id != ""',
+    updateRule: '@request.auth.id != ""',
+    deleteRule: '@request.auth.id != ""',
+    options: {}
+  });
+
+  app.save(collection);
+
+  // ============================================================
+  // Populate config_sections with default section definitions
+  // ============================================================
+
   const sections = [
     {
       section_key: "core-constraints",
@@ -151,7 +248,7 @@ migrate((app) => {
     } catch (_e) {
       // Record doesn't exist, which is expected
     }
-    
+
     if (!existing) {
       const record = new Record(collection);
       record.set("section_key", sectionData.section_key);
@@ -159,16 +256,14 @@ migrate((app) => {
       record.set("description", sectionData.description);
       record.set("display_order", sectionData.display_order);
       record.set("expanded_by_default", sectionData.expanded_by_default);
-      
+
       app.save(record);
     }
   });
 
-  return null;
 }, (app) => {
-  // Rollback: Delete all sections
-  const collection = app.findCollectionByNameOrId("config_sections");
-  if (collection) {
+  // Rollback: Delete all section records first, then delete collection
+  try {
     const sections = app.findRecordsByFilter(
       "config_sections",
       "",
@@ -176,11 +271,15 @@ migrate((app) => {
       0,
       0
     );
-    
+
     sections.forEach((section) => {
       app.delete(section);
     });
+  } catch (_e) {
+    console.log("Error deleting section records during rollback:", _e);
   }
-  
-  return null;
+
+  // Delete the collection
+  const collection = app.findCollectionByNameOrId("config_sections");
+  app.delete(collection);
 });

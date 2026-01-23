@@ -1,12 +1,12 @@
 /// <reference path="../pb_data/types.d.ts" />
 /**
  * Migration: Create bunk_requests collection
- * Dependencies: persons, camp_sessions
+ * Dependencies: None (uses CampMinder IDs for cross-table relationships)
  *
- * This table stores all bunking requests parsed from CSV files and other sources.
- * It supports multiple request types including bunk_with, not_bunk_with, and age_preference.
+ * Stores all bunking requests parsed from CSV files and other sources.
+ * Supports multiple request types including bunk_with, not_bunk_with, and age_preference.
  *
- * IMPORTANT: Uses fixed collection ID for consistency.
+ * Uses fixed collection ID for dependent migrations.
  */
 
 const COLLECTION_ID_BUNK_REQUESTS = "col_bunk_requests";
@@ -16,13 +16,16 @@ migrate((app) => {
     id: COLLECTION_ID_BUNK_REQUESTS,
     name: "bunk_requests",
     type: "base",
-    system: false,
+    listRule: '@request.auth.id != ""',
+    viewRule: '@request.auth.id != ""',
+    createRule: '@request.auth.id != ""',
+    updateRule: '@request.auth.id != ""',
+    deleteRule: '@request.auth.id != ""',
     fields: [
       // Primary requester - always required
       {
         name: "requester_id",
         type: "number",
-        system: false,
         required: true,
         unique: false,
         options: {
@@ -35,7 +38,6 @@ migrate((app) => {
       {
         name: "requestee_id",
         type: "number",
-        system: false,
         required: false,
         unique: false,
         options: {
@@ -48,7 +50,6 @@ migrate((app) => {
       {
         name: "requested_person_name",
         type: "text",
-        system: false,
         required: false,
         unique: false,
         options: {
@@ -61,7 +62,6 @@ migrate((app) => {
       {
         name: "request_type",
         type: "select",
-        system: false,
         required: true,
         unique: false,
         values: [
@@ -75,7 +75,6 @@ migrate((app) => {
       {
         name: "status",
         type: "select",
-        system: false,
         required: true,
         unique: false,
         values: [
@@ -89,7 +88,6 @@ migrate((app) => {
       {
         name: "year",
         type: "number",
-        system: false,
         required: true,
         unique: false,
         options: {
@@ -102,7 +100,6 @@ migrate((app) => {
       {
         name: "session_id",
         type: "number",
-        system: false,
         required: true,
         unique: false,
         options: {
@@ -115,7 +112,6 @@ migrate((app) => {
       {
         name: "priority",
         type: "number",
-        system: false,
         required: false,
         unique: false,
         options: {
@@ -128,7 +124,6 @@ migrate((app) => {
       {
         name: "original_text",
         type: "text",
-        system: false,
         required: false,
         unique: false,
         options: {
@@ -141,7 +136,6 @@ migrate((app) => {
       {
         name: "confidence_score",
         type: "number",
-        system: false,
         required: false,
         unique: false,
         options: {
@@ -154,7 +148,6 @@ migrate((app) => {
       {
         name: "confidence_level",
         type: "text",
-        system: false,
         required: false,
         unique: false,
         options: {
@@ -167,7 +160,6 @@ migrate((app) => {
       {
         name: "confidence_explanation",
         type: "json",
-        system: false,
         required: false,
         unique: false,
         options: {
@@ -178,7 +170,6 @@ migrate((app) => {
       {
         name: "parse_notes",
         type: "text",
-        system: false,
         required: false,
         unique: false,
         options: {
@@ -191,7 +182,6 @@ migrate((app) => {
       {
         name: "resolution_notes",
         type: "text",
-        system: false,
         required: false,
         unique: false,
         options: {
@@ -204,16 +194,13 @@ migrate((app) => {
       {
         name: "is_reciprocal",
         type: "bool",
-        system: false,
         required: false,
-        unique: false,
-        options: {}
+        unique: false
       },
       // Source of the request
       {
         name: "source",
         type: "select",
-        system: false,
         required: false,
         unique: false,
         values: [
@@ -227,7 +214,6 @@ migrate((app) => {
       {
         name: "keywords_found",
         type: "json",
-        system: false,
         required: false,
         unique: false,
         options: {
@@ -238,7 +224,6 @@ migrate((app) => {
       {
         name: "ai_p1_reasoning",
         type: "json",
-        system: false,
         required: false,
         unique: false,
         options: {
@@ -249,7 +234,6 @@ migrate((app) => {
       {
         name: "ai_p3_reasoning",
         type: "json",
-        system: false,
         required: false,
         unique: false,
         options: {
@@ -260,16 +244,13 @@ migrate((app) => {
       {
         name: "ai_parsed",
         type: "bool",
-        system: false,
         required: false,
-        unique: false,
-        options: {}
+        unique: false
       },
       // CSV field this came from (required for unique constraint)
       {
         name: "source_field",
         type: "text",
-        system: false,
         required: true,
         unique: false,
         options: {
@@ -282,7 +263,6 @@ migrate((app) => {
       {
         name: "csv_position",
         type: "number",
-        system: false,
         required: false,
         unique: false,
         options: {
@@ -295,7 +275,6 @@ migrate((app) => {
       {
         name: "source_detail",
         type: "text",
-        system: false,
         required: false,
         unique: false,
         options: {
@@ -308,16 +287,13 @@ migrate((app) => {
       {
         name: "requires_manual_review",
         type: "bool",
-        system: false,
         required: false,
-        unique: false,
-        options: {}
+        unique: false
       },
       // Reason for manual review
       {
         name: "manual_review_reason",
         type: "text",
-        system: false,
         required: false,
         unique: false,
         options: {
@@ -330,7 +306,6 @@ migrate((app) => {
       {
         name: "metadata",
         type: "json",
-        system: false,
         required: false,
         unique: false,
         options: {
@@ -341,7 +316,6 @@ migrate((app) => {
       {
         name: "age_preference_target",
         type: "text",
-        system: false,
         required: false,
         unique: false,
         options: {
@@ -354,7 +328,6 @@ migrate((app) => {
       {
         name: "conflict_group_id",
         type: "text",
-        system: false,
         required: false,
         unique: false,
         options: {
@@ -367,61 +340,48 @@ migrate((app) => {
       {
         name: "requires_family_decision",
         type: "bool",
-        system: false,
         required: false,
-        unique: false,
-        options: {}
+        unique: false
       },
       // Can be dropped for spread
       {
         name: "can_be_dropped",
         type: "bool",
-        system: false,
         required: false,
-        unique: false,
-        options: {}
+        unique: false
       },
       // Was dropped for spread
       {
         name: "was_dropped_for_spread",
         type: "bool",
-        system: false,
         required: false,
-        unique: false,
-        options: {}
+        unique: false
       },
       // Is this request active?
       {
         name: "is_active",
         type: "bool",
-        system: false,
         required: false,
-        unique: false,
-        options: {}
+        unique: false
       },
       // Is this a placeholder for unresolved names
       {
         name: "is_placeholder",
         type: "bool",
-        system: false,
         required: false,
-        unique: false,
-        options: {}
+        unique: false
       },
       // Request locked to prevent sync overwrites
       {
         name: "request_locked",
         type: "bool",
-        system: false,
         required: false,
-        unique: false,
-        options: {}
+        unique: false
       },
       // Array of all contributing source field names
       {
         name: "source_fields",
         type: "json",
-        system: false,
         required: false,
         unique: false,
         options: {
@@ -432,7 +392,6 @@ migrate((app) => {
       {
         name: "merged_into",
         type: "relation",
-        system: false,
         required: false,
         collectionId: COLLECTION_ID_BUNK_REQUESTS,
         cascadeDelete: false,
@@ -469,17 +428,11 @@ migrate((app) => {
       "CREATE INDEX `idx_bunk_requests_requester_year` ON `bunk_requests` (`requester_id`, `year`)",
       "CREATE UNIQUE INDEX `idx_bunk_requests_unique_with_source` ON `bunk_requests` (`requester_id`, `requestee_id`, `request_type`, `year`, `session_id`, `source_field`)",
       "CREATE INDEX idx_bunk_requests_merged_into ON bunk_requests (merged_into)"
-    ],
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
-    options: {}
+    ]
   });
 
-  return app.save(collection);
+  app.save(collection);
 }, (app) => {
   const collection = app.findCollectionByNameOrId("bunk_requests");
-  return app.delete(collection);
+  app.delete(collection);
 });

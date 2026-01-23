@@ -1,20 +1,20 @@
 /// <reference path="../pb_data/types.d.ts" />
 /**
- * Migration: Create households collection
+ * Migration: Create divisions collection
  * Dependencies: None
  *
- * Stores household data extracted from CampMinder persons response.
- * Households contain mailing titles, phone, and billing address.
+ * Stores division definitions from CampMinder /divisions endpoint.
+ * Divisions define age/gender groups like "Boys 3rd-4th Grade".
+ * Note: Divisions are global (not year-specific) - they define group structures.
  */
 
-// Fixed collection ID for households
-const COLLECTION_ID_HOUSEHOLDS = "col_households";
+const COLLECTION_ID_DIVISIONS = "col_divisions";
 
 migrate((app) => {
   const collection = new Collection({
-    id: COLLECTION_ID_HOUSEHOLDS,
+    id: COLLECTION_ID_DIVISIONS,
     type: "base",
-    name: "households",
+    name: "divisions",
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',
     createRule: '@request.auth.id != ""',
@@ -26,7 +26,6 @@ migrate((app) => {
         name: "cm_id",
         required: true,
         presentable: false,
-        system: false,
         options: {
           min: 1,
           max: null,
@@ -35,85 +34,81 @@ migrate((app) => {
       },
       {
         type: "text",
-        name: "greeting",
-        required: false,
-        presentable: false,
-        system: false,
-        options: {
-          min: null,
-          max: 500,
-          pattern: ""
-        }
-      },
-      {
-        type: "text",
-        name: "mailing_title",
-        required: false,
+        name: "name",
+        required: true,
         presentable: true,
-        system: false,
         options: {
-          min: null,
-          max: 500,
+          min: 1,
+          max: 200,
           pattern: ""
         }
       },
       {
         type: "text",
-        name: "alternate_mailing_title",
+        name: "description",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
-          max: 500,
+          max: 1000,
           pattern: ""
-        }
-      },
-      {
-        type: "text",
-        name: "billing_mailing_title",
-        required: false,
-        presentable: false,
-        system: false,
-        options: {
-          min: null,
-          max: 500,
-          pattern: ""
-        }
-      },
-      {
-        type: "text",
-        name: "household_phone",
-        required: false,
-        presentable: false,
-        system: false,
-        options: {
-          min: null,
-          max: 50,
-          pattern: ""
-        }
-      },
-      {
-        type: "json",
-        name: "billing_address",
-        required: false,
-        presentable: false,
-        system: false,
-        options: {
-          maxSize: 10000
         }
       },
       {
         type: "number",
-        name: "year",
-        required: true,
+        name: "start_grade_id",
+        required: false,
         presentable: false,
-        system: false,
         options: {
-          min: 2010,
-          max: 2100,
+          min: null,
+          max: null,
           noDecimal: true
         }
+      },
+      {
+        type: "number",
+        name: "end_grade_id",
+        required: false,
+        presentable: false,
+        options: {
+          min: null,
+          max: null,
+          noDecimal: true
+        }
+      },
+      {
+        type: "number",
+        name: "gender_id",
+        required: false,
+        presentable: false,
+        options: {
+          min: null,
+          max: null,
+          noDecimal: true
+        }
+      },
+      {
+        type: "number",
+        name: "capacity",
+        required: false,
+        presentable: false,
+        options: {
+          min: null,
+          max: null,
+          noDecimal: true
+        }
+      },
+      {
+        type: "bool",
+        name: "assign_on_enrollment",
+        required: false,
+        presentable: false
+      },
+      {
+        type: "bool",
+        name: "staff_only",
+        required: false,
+        presentable: false
       },
       {
         type: "autodate",
@@ -133,13 +128,24 @@ migrate((app) => {
       }
     ],
     indexes: [
-      "CREATE UNIQUE INDEX `idx_households_cm_id_year` ON `households` (`cm_id`, `year`)",
-      "CREATE INDEX `idx_households_year` ON `households` (`year`)"
+      "CREATE UNIQUE INDEX `idx_divisions_cm_id` ON `divisions` (`cm_id`)"
     ]
   });
 
+  // Add parent_division self-reference relation (uses fixed ID)
+  collection.fields.add(new Field({
+    type: "relation",
+    name: "parent_division",
+    required: false,
+    presentable: false,
+    collectionId: COLLECTION_ID_DIVISIONS,
+    cascadeDelete: false,
+    minSelect: null,
+    maxSelect: 1
+  }));
+
   app.save(collection);
 }, (app) => {
-  const collection = app.findCollectionByNameOrId("households");
+  const collection = app.findCollectionByNameOrId("divisions");
   app.delete(collection);
 });

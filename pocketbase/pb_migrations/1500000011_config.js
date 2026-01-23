@@ -1,12 +1,116 @@
 /// <reference path="../pb_data/types.d.ts" />
 /**
- * Migration: Populate config table with default values
- * Dependencies: 1500000025_config.js
+ * Migration: Create config collection
+ * Dependencies: None
+ *
+ * Creates the config collection for storing application configuration values
+ * and populates it with default configuration entries.
  */
 
 migrate((app) => {
-  let collection = app.findCollectionByNameOrId("config");
-  
+  // Create config collection
+  const collection = new Collection({
+    id: "col_config",
+    name: "config",
+    type: "base",
+    fields: [
+      {
+        name: "category",
+        type: "text",
+        required: true,
+        presentable: false,
+        options: {
+          min: null,
+          max: 100,
+          pattern: ""
+        }
+      },
+      {
+        name: "subcategory",
+        type: "text",
+        required: false,
+        presentable: false,
+        options: {
+          min: null,
+          max: 100,
+          pattern: ""
+        }
+      },
+      {
+        name: "config_key",
+        type: "text",
+        required: true,
+        presentable: true,
+        options: {
+          min: null,
+          max: 255,
+          pattern: ""
+        }
+      },
+      {
+        name: "value",
+        type: "json",
+        required: true,
+        presentable: false,
+        options: {
+          maxSize: 2000000
+        }
+      },
+      {
+        name: "metadata",
+        type: "json",
+        required: false,
+        presentable: false,
+        options: {
+          maxSize: 2000000
+        }
+      },
+      {
+        name: "description",
+        type: "text",
+        required: false,
+        presentable: false,
+        options: {
+          min: null,
+          max: 1000,
+          pattern: ""
+        }
+      },
+      {
+        type: "autodate",
+        name: "created",
+        required: false,
+        presentable: false,
+        onCreate: true,
+        onUpdate: false
+      },
+      {
+        type: "autodate",
+        name: "updated",
+        required: false,
+        presentable: false,
+        onCreate: true,
+        onUpdate: true
+      }
+    ],
+    indexes: [
+      "CREATE UNIQUE INDEX idx_config_unique_key ON config (category, COALESCE(subcategory, ''), config_key)",
+      "CREATE INDEX idx_config_category ON config (category)"
+    ],
+    listRule: '@request.auth.id != ""',
+    viewRule: '@request.auth.id != ""',
+    createRule: '@request.auth.id != ""',
+    updateRule: '@request.auth.id != ""',
+    deleteRule: '@request.auth.id != ""',
+    options: {}
+  });
+
+  app.save(collection);
+
+  // ============================================================
+  // Populate config table with default values
+  // ============================================================
+
   // Helper to determine data type from value
   const inferDataType = (value) => {
     if (value === null || value === undefined) return 'string';
@@ -37,7 +141,7 @@ migrate((app) => {
     }
   };
 
-  // Determine business_category for UI grouping (from 1767200000)
+  // Determine business_category for UI grouping
   const getBusinessCategory = (category, subcategory) => {
     // Solver configs
     if (['constraint', 'objective', 'soft', 'solver'].includes(category)) {
@@ -63,14 +167,14 @@ migrate((app) => {
     'constraint.must_satisfy_one.fallback_to_age': 'Use Age Preference as Fallback',
     'constraint.must_satisfy_one.ignore_impossible_requests': 'Ignore Out-of-Session Requests',
     'constraint.must_satisfy_one.penalty': 'Request Satisfaction Penalty',
-    
+
     // Constraint Settings - Cabin Capacity
     'constraint.cabin_capacity.enabled': 'Enforce Cabin Capacity',
     'constraint.cabin_capacity.mode': 'Cabin Capacity Mode',
     'constraint.cabin_capacity.max': 'Maximum Cabin Size',
     'constraint.cabin_capacity.standard': 'Standard Cabin Size',
     'constraint.cabin_capacity.penalty': 'Over-Capacity Penalty',
-    
+
     // Constraint Settings - Age & Grade (unified spread limits)
     'spread.max_grade': 'Max Grade Spread',
     'spread.max_age_months': 'Max Age Difference (months)',
@@ -103,13 +207,13 @@ migrate((app) => {
     'objective.source_multipliers.bunking_notes': 'Bunking Notes Importance',
     'objective.source_multipliers.internal_notes': 'Internal Notes Importance',
     'objective.source_multipliers.socialize_preference': 'Socialize Preference Importance',
-    
+
     // Objective Settings - Diminishing Returns
     'objective.enable_diminishing_returns': 'Enable Diminishing Returns',
     'objective.first_request_multiplier': 'First Request Multiplier',
     'objective.second_request_multiplier': 'Second Request Multiplier',
     'objective.third_plus_request_multiplier': 'Third+ Request Multiplier',
-    
+
     // Solver Settings - Core (execution_mode removed, num_workers moved to .env)
     'solver.auto_apply_enabled': 'Auto-Apply Results',
     'solver.auto_apply_timeout': 'Auto-Apply Delay (seconds)',
@@ -118,7 +222,7 @@ migrate((app) => {
     // Soft Constraint Weights (penalty_multiplier removed - never applied)
     'soft.grade_spread.penalty': 'Soft Grade Spread Penalty',
     'soft.age_spread.penalty': 'Soft Age Spread Penalty',
-    
+
     // Smart Local Resolution (NetworkX)
     'smart_local_resolution.enabled': 'Enable Smart Name Resolution',
     'smart_local_resolution.significant_connection_threshold': 'Significant Connection Threshold',
@@ -128,7 +232,7 @@ migrate((app) => {
     'smart_local_resolution.mutual_request_bonus': 'Mutual Request Bonus',
     'smart_local_resolution.common_friends_weight': 'Common Friends Weight',
     'smart_local_resolution.historical_bunking_weight': 'Historical Bunking Weight',
-    
+
     // AI Processing Settings
     'ai.confidence_threshold': 'AI Confidence Threshold',
     'ai.model': 'AI Model',
@@ -143,14 +247,14 @@ migrate((app) => {
     'constraint.must_satisfy_one.fallback_to_age': 'If no specific requests, count age preference as satisfying the requirement',
     'constraint.must_satisfy_one.ignore_impossible_requests': 'Ignore requests for campers not attending the same session',
     'constraint.must_satisfy_one.penalty': 'How heavily the optimizer penalizes leaving a camper without any requests fulfilled. Higher = tries harder to satisfy everyone.',
-    
+
     // Constraint Settings - Cabin Capacity
     'constraint.cabin_capacity.enabled': 'Whether to enforce cabin capacity limits',
     'constraint.cabin_capacity.mode': 'Hard constraint prevents exceeding, soft adds penalty',
     'constraint.cabin_capacity.max': 'Maximum allowed campers per cabin (with override)',
     'constraint.cabin_capacity.standard': 'Standard cabin size for planning',
     'constraint.cabin_capacity.penalty': 'Penalty weight for exceeding capacity (soft mode only)',
-    
+
     // Constraint Settings - Age & Grade (unified spread limits)
     'spread.max_grade': 'Maximum grade difference allowed in bunks and bunk requests (e.g., 2 means 6th and 7th grade only)',
     'spread.max_age_months': 'Maximum age difference in months allowed in bunks and bunk requests',
@@ -183,13 +287,13 @@ migrate((app) => {
     'objective.source_multipliers.bunking_notes': 'Weight multiplier for bunking notes from registration (higher = more important)',
     'objective.source_multipliers.internal_notes': 'Weight multiplier for internal staff notes (higher = more important)',
     'objective.source_multipliers.socialize_preference': 'Weight multiplier for socialization preferences (higher = more important)',
-    
+
     // Objective Settings - Diminishing Returns
     'objective.enable_diminishing_returns': 'Reduce weight for multiple satisfied requests from same camper (prevents gaming)',
     'objective.first_request_multiplier': 'Weight multiplier for first satisfied request',
     'objective.second_request_multiplier': 'Weight multiplier for second satisfied request',
     'objective.third_plus_request_multiplier': 'Weight multiplier for third and subsequent satisfied requests',
-    
+
     // Solver Settings - Core (execution_mode removed, num_workers moved to SOLVER_NUM_WORKERS env var)
     'solver.auto_apply_enabled': 'Automatically apply solver results without confirmation prompt',
     'solver.auto_apply_timeout': 'Seconds to wait before auto-applying results (0 = immediate)',
@@ -198,7 +302,7 @@ migrate((app) => {
     // Soft Constraint Weights (penalty_multiplier removed - never applied)
     'soft.grade_spread.penalty': 'Penalty for soft grade spread violations',
     'soft.age_spread.penalty': 'Penalty for soft age spread violations',
-    
+
     // Smart Local Resolution (NetworkX)
     'smart_local_resolution.enabled': 'Use social graph analysis for ambiguous name resolution',
     'smart_local_resolution.significant_connection_threshold': 'Minimum connections to consider a relationship significant',
@@ -208,13 +312,13 @@ migrate((app) => {
     'smart_local_resolution.mutual_request_bonus': 'Bonus points when both campers request each other',
     'smart_local_resolution.common_friends_weight': 'Weight multiplier for common friends in social scoring',
     'smart_local_resolution.historical_bunking_weight': 'Weight for historical bunking patterns in scoring',
-    
+
     // AI Processing Settings
     'ai.confidence_threshold': 'Minimum confidence score (0.0-1.0) for AI to process a request',
     'ai.model': 'AI model to use for processing requests (e.g., gpt-4o-mini)',
     'ai.enable_processing': 'Whether to use AI for processing bunk requests',
     'ai.fuzzy_match_threshold': 'Minimum score (0-100) for fuzzy name matching',
-    
+
   };
 
   // Section mapping for each config
@@ -231,7 +335,7 @@ migrate((app) => {
     'constraint.cabin_capacity.max': 'cabin-capacity',
     'constraint.cabin_capacity.standard': 'cabin-capacity',
     'constraint.cabin_capacity.penalty': 'cabin-capacity',
-    
+
     // Age & Grade (unified spread limits)
     'spread.max_grade': 'age-grade',
     'spread.max_age_months': 'age-grade',
@@ -270,7 +374,7 @@ migrate((app) => {
     'objective.first_request_multiplier': 'request-weighting',
     'objective.second_request_multiplier': 'request-weighting',
     'objective.third_plus_request_multiplier': 'request-weighting',
-    
+
     // Solver Execution (execution_mode removed, num_workers moved to .env)
     'solver.auto_apply_enabled': 'solver-execution',
     'solver.auto_apply_timeout': 'solver-execution',
@@ -285,7 +389,7 @@ migrate((app) => {
     'smart_local_resolution.mutual_request_bonus': 'smart-resolution',
     'smart_local_resolution.common_friends_weight': 'smart-resolution',
     'smart_local_resolution.historical_bunking_weight': 'smart-resolution',
-    
+
     // AI Model Settings (ai.provider, ai.model.* now in .env)
     'ai.enable_processing': 'ai-model-settings',
     'ai.model': 'ai-model-settings',
@@ -377,7 +481,7 @@ migrate((app) => {
   const componentMappings = {
     // Weights/multipliers (0-10 sliders with decimals)
     weight: {
-      component_type: "slider", 
+      component_type: "slider",
       component_config: {
         min: 0,
         max: 10,
@@ -511,7 +615,7 @@ migrate((app) => {
       }
     }
   };
-  
+
   // Special case mappings by full key
   const fullKeyMappings = {
     "ai.model": componentMappings.model,
@@ -528,14 +632,14 @@ migrate((app) => {
       component_config: { min: 0, max: 10000, step: 100 }
     }
   };
-  
+
   // Helper function to determine component data for a config
   const getComponentData = (dotKey, key, value, metadata) => {
     // Check full key mappings first
     if (fullKeyMappings[dotKey]) {
       return fullKeyMappings[dotKey];
     }
-    
+
     // Check if key contains patterns
     for (const [pattern, data] of Object.entries(componentMappings)) {
       if (key.includes(pattern)) {
@@ -561,7 +665,7 @@ migrate((app) => {
         return data;
       }
     }
-    
+
     // Default to appropriate type based on value type
     if (typeof value === "boolean" || value === 0 || value === 1) {
       return {
@@ -832,7 +936,7 @@ migrate((app) => {
       min: 0,
       max: 10000
     },
-    
+
     // Smart Local Resolution (NetworkX) configurations
     "smart_local_resolution.enabled": {
       value: 1,
@@ -882,7 +986,7 @@ migrate((app) => {
       min: 0.0,
       max: 2.0
     },
-    
+
   };
 
   // AI configurations from ai_config.json (flattened structure)
@@ -907,7 +1011,7 @@ migrate((app) => {
       min: 0,
       max: 100
     },
-    
+
     // Confidence thresholds (simplified two-tier system)
     // >= auto_accept (0.95): High confidence, shown with checkmark, no staff review needed
     // >= resolved (0.85): Standard confidence, staff may spot-check
@@ -924,7 +1028,7 @@ migrate((app) => {
       min: 0.0,
       max: 1.0
     },
-    
+
     // Name matching
     "ai.name_matching.phonetic_threshold": {
       value: 0.85,
@@ -962,7 +1066,7 @@ migrate((app) => {
       min: 0,
       max: 60
     },
-    
+
     // Manual review triggers
     "ai.manual_review_triggers.conflicting_information": {
       value: 1,
@@ -994,7 +1098,7 @@ migrate((app) => {
       min: 0,
       max: 1
     },
-    
+
     // Field parsing
     "ai.field_parsing.extract_from_notes": {
       value: 1,
@@ -1018,7 +1122,7 @@ migrate((app) => {
       value: 5,
       description: "Priority for requests found in notes"
     },
-    
+
     // Source field weights
     "ai.source_field_weights.share_bunk_with": {
       value: 1.0,
@@ -1044,7 +1148,7 @@ migrate((app) => {
       min: 0.0,
       max: 2.0
     },
-    
+
     // Historical context
     "ai.historical_context.enabled": {
       value: 1,
@@ -1066,7 +1170,7 @@ migrate((app) => {
       value: 20,
       description: "Priority boost for sole requests"
     },
-    
+
     // Confidence scoring for bunk_with
     "ai.confidence_scoring.bunk_with.weights.name_match": {
       value: 0.70,
@@ -1116,7 +1220,7 @@ migrate((app) => {
       min: 1.0,
       max: 2.0
     },
-    
+
     // Network bonus for bunk_with
     "ai.confidence_scoring.bunk_with.network_bonus.enabled": {
       value: 1,
@@ -1166,7 +1270,7 @@ migrate((app) => {
       min: 0.0,
       max: 0.2
     },
-    
+
     // Confidence scoring for not_bunk_with
     "ai.confidence_scoring.not_bunk_with.weights.name_match": {
       value: 0.60,
@@ -1228,7 +1332,7 @@ migrate((app) => {
       min: 0.0,
       max: 1.0
     },
-    
+
     // Age preference and spread_limited
     "ai.confidence_scoring.age_preference.weights.ai_parsing": {
       value: 1.0,
@@ -1242,7 +1346,7 @@ migrate((app) => {
       min: 0.0,
       max: 1.0
     },
-    
+
     // History tracking
     "ai.history_tracking.enabled": {
       value: 1,
@@ -1260,7 +1364,7 @@ migrate((app) => {
       min: 0,
       max: 1
     },
-    
+
     // Spread validation
     "ai.spread_validation.enabled": {
       value: 1,
@@ -1281,7 +1385,7 @@ migrate((app) => {
       min: 0,
       max: 1
     },
-    
+
     // Dedup scoring
     "ai.dedup_scoring.staff_recommendation_weight": {
       value: 1000,
@@ -1303,7 +1407,7 @@ migrate((app) => {
       value: 11,
       description: "Maximum list positions to consider"
     },
-    
+
     // Age preference source priority
     "ai.age_preference_source_priority.explicit": {
       value: 3,
@@ -1317,7 +1421,7 @@ migrate((app) => {
       value: 1,
       description: "Priority for observed age preferences"
     },
-    
+
     // Context building
     "ai.context_building.max_age_difference_months": {
       value: 24,
@@ -1484,27 +1588,27 @@ migrate((app) => {
   // Insert each configuration
   Object.entries(configDefinitions).forEach(([dotKey, config]) => {
     const { category, subcategory, key } = transformKey(dotKey);
-    
+
     // Check if this config already exists
     let existing = null;
     try {
       existing = app.findFirstRecordByFilter(
         "config",
-        `category = "${category}" && config_key = "${key}"` + 
+        `category = "${category}" && config_key = "${key}"` +
         (subcategory ? ` && subcategory = "${subcategory}"` : ` && subcategory = null`)
       );
     } catch (_e) {
       // Record doesn't exist, which is expected for new configs
       // findFirstRecordByFilter throws "sql: no rows in result set" when no record found
     }
-    
+
     // Build metadata for this config
     const metadata = {
       data_type: inferDataType(config.value),
       source: 'default_config',
       default_value: config.value
     };
-    
+
     // Add min/max if they exist
     if (config.min !== undefined) {
       metadata.min_value = config.min;
@@ -1512,7 +1616,7 @@ migrate((app) => {
     if (config.max !== undefined) {
       metadata.max_value = config.max;
     }
-    
+
     // Add friendly name, tooltip, and section from lookup tables
     if (FRIENDLY_NAMES[dotKey]) {
       metadata.friendly_name = FRIENDLY_NAMES[dotKey];
@@ -1573,26 +1677,26 @@ migrate((app) => {
   // Also insert AI configurations
   Object.entries(aiConfigs).forEach(([dotKey, config]) => {
     const { category, subcategory, key } = transformKey(dotKey);
-    
+
     // Check if this config already exists
     let existing = null;
     try {
       existing = app.findFirstRecordByFilter(
         "config",
-        `category = "${category}" && config_key = "${key}"` + 
+        `category = "${category}" && config_key = "${key}"` +
         (subcategory ? ` && subcategory = "${subcategory}"` : ` && subcategory = null`)
       );
     } catch (_e) {
       // Record doesn't exist, which is expected for new configs
     }
-    
+
     // Build metadata for this config
     const metadata = {
       data_type: inferDataType(config.value),
       source: 'default_config',
       default_value: config.value
     };
-    
+
     // Add min/max if they exist
     if (config.min !== undefined) {
       metadata.min_value = config.min;
@@ -1600,7 +1704,7 @@ migrate((app) => {
     if (config.max !== undefined) {
       metadata.max_value = config.max;
     }
-    
+
     // Add friendly name, tooltip, and section from lookup tables
     if (FRIENDLY_NAMES[dotKey]) {
       metadata.friendly_name = FRIENDLY_NAMES[dotKey];
@@ -1658,27 +1762,25 @@ migrate((app) => {
     }
   });
 
-  return null;
 }, (app) => {
-  // Rollback: Delete all default configs
-  let collection = app.findCollectionByNameOrId("config");
-  if (collection) {
-    try {
-      const defaultConfigs = app.findRecordsByFilter(
-        "config",
-        `metadata.source = "default_config"`,
-        "",
-        0,
-        0
-      );
+  // Rollback: Delete all default configs first, then delete collection
+  try {
+    const defaultConfigs = app.findRecordsByFilter(
+      "config",
+      `metadata.source = "default_config"`,
+      "",
+      0,
+      0
+    );
 
-      defaultConfigs.forEach((config) => {
-        app.delete(config);
-      });
-    } catch (_e) {
-      console.log("Error during rollback:", _e);
-    }
+    defaultConfigs.forEach((config) => {
+      app.delete(config);
+    });
+  } catch (_e) {
+    console.log("Error deleting default configs during rollback:", _e);
   }
-  
-  return null;
-})
+
+  // Delete the collection
+  const collection = app.findCollectionByNameOrId("config");
+  app.delete(collection);
+});

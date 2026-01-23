@@ -1,10 +1,10 @@
 /// <reference path="../pb_data/types.d.ts" />
 /**
  * Migration: Create camp_sessions collection
- * Dependencies: session_groups (for relation)
+ * Dependencies: session_groups
  *
- * IMPORTANT: Uses fixed collection ID so dependent migrations can reference
- * it directly without findCollectionByNameOrId (which fails in fresh DB).
+ * Stores session definitions from CampMinder with support for main, embedded,
+ * AG, and other session types. Uses parent_id for AG session relationships.
  */
 
 const COLLECTION_ID_CAMP_SESSIONS = "col_camp_sessions";
@@ -213,8 +213,8 @@ migrate((app) => {
     ]
   });
 
-  return app.save(collection);
+  app.save(collection);
 }, (app) => {
   let collection = app.findCollectionByNameOrId("camp_sessions");
-  return app.delete(collection);
+  app.delete(collection);
 });

@@ -6,9 +6,11 @@
  * Stores staff records from CampMinder /staff endpoint.
  * Year-scoped table with relations to lookup tables and persons.
  * BunkAssignments stored as multi-relation to bunks.
+ *
+ * IMPORTANT: Uses fixed collection ID so dependent migrations can reference
+ * it directly without findCollectionByNameOrId (which fails in fresh DB).
  */
 
-// Fixed collection ID for staff
 const COLLECTION_ID_STAFF = "col_staff";
 
 migrate((app) => {
@@ -35,7 +37,6 @@ migrate((app) => {
         name: "person",
         required: false,
         presentable: true,
-        system: false,
         collectionId: personsCol.id,
         cascadeDelete: false,
         minSelect: null,
@@ -46,7 +47,6 @@ migrate((app) => {
         name: "year",
         required: true,
         presentable: false,
-        system: false,
         options: {
           min: 2010,
           max: 2100,
@@ -60,7 +60,6 @@ migrate((app) => {
         name: "status_id",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: 1,
           max: 4,
@@ -72,7 +71,6 @@ migrate((app) => {
         name: "status",
         required: false,
         presentable: false,
-        system: false,
         values: ["active", "resigned", "dismissed", "cancelled"],
         maxSelect: 1
       },
@@ -83,7 +81,6 @@ migrate((app) => {
         name: "organizational_category",
         required: false,
         presentable: false,
-        system: false,
         collectionId: orgCategoriesCol.id,
         cascadeDelete: false,
         minSelect: null,
@@ -94,7 +91,6 @@ migrate((app) => {
         name: "position1",
         required: false,
         presentable: false,
-        system: false,
         collectionId: positionsCol.id,
         cascadeDelete: false,
         minSelect: null,
@@ -105,7 +101,6 @@ migrate((app) => {
         name: "position2",
         required: false,
         presentable: false,
-        system: false,
         collectionId: positionsCol.id,
         cascadeDelete: false,
         minSelect: null,
@@ -116,7 +111,6 @@ migrate((app) => {
         name: "division",
         required: false,
         presentable: false,
-        system: false,
         collectionId: divisionsCol.id,
         cascadeDelete: false,
         minSelect: null,
@@ -129,7 +123,6 @@ migrate((app) => {
         name: "bunks",
         required: false,
         presentable: false,
-        system: false,
         collectionId: bunksCol.id,
         cascadeDelete: false,
         minSelect: 0,
@@ -139,8 +132,7 @@ migrate((app) => {
         type: "bool",
         name: "bunk_staff",
         required: false,
-        presentable: false,
-        system: false
+        presentable: false
       },
 
       // Employment dates
@@ -149,7 +141,6 @@ migrate((app) => {
         name: "hire_date",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: "",
           max: ""
@@ -160,7 +151,6 @@ migrate((app) => {
         name: "employment_start_date",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: "",
           max: ""
@@ -171,7 +161,6 @@ migrate((app) => {
         name: "employment_end_date",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: "",
           max: ""
@@ -184,7 +173,6 @@ migrate((app) => {
         name: "contract_in_date",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: "",
           max: ""
@@ -195,7 +183,6 @@ migrate((app) => {
         name: "contract_out_date",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: "",
           max: ""
@@ -206,7 +193,6 @@ migrate((app) => {
         name: "contract_due_date",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: "",
           max: ""
@@ -219,7 +205,6 @@ migrate((app) => {
         name: "international",
         required: false,
         presentable: false,
-        system: false,
         values: ["domestic", "international"],
         maxSelect: 1
       },
@@ -228,7 +213,6 @@ migrate((app) => {
         name: "years",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: 0,
           max: null,
@@ -240,7 +224,6 @@ migrate((app) => {
         name: "salary",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: null,

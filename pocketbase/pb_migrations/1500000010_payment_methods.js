@@ -1,21 +1,20 @@
 /// <reference path="../pb_data/types.d.ts" />
 /**
- * Migration: Create staff_org_categories collection
+ * Migration: Create payment_methods collection
  * Dependencies: None
  *
- * Stores staff organizational category definitions from CampMinder
- * /staff/organizationalcategories endpoint.
+ * Stores payment method definitions from CampMinder /financials/paymentmethods endpoint.
  * Global lookup table (not year-specific).
+ * Methods include Check, Credit Card, Cash, etc.
  */
 
-// Fixed collection ID for staff_org_categories
-const COLLECTION_ID_STAFF_ORG_CATEGORIES = "col_staff_org_cats";
+const COLLECTION_ID_PAYMENT_METHODS = "col_payment_methods";
 
 migrate((app) => {
   const collection = new Collection({
-    id: COLLECTION_ID_STAFF_ORG_CATEGORIES,
+    id: COLLECTION_ID_PAYMENT_METHODS,
     type: "base",
-    name: "staff_org_categories",
+    name: "payment_methods",
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',
     createRule: '@request.auth.id != ""',
@@ -27,7 +26,6 @@ migrate((app) => {
         name: "cm_id",
         required: true,
         presentable: false,
-        system: false,
         options: {
           min: 1,
           max: null,
@@ -37,12 +35,11 @@ migrate((app) => {
       {
         type: "text",
         name: "name",
-        required: true,
+        required: false,
         presentable: true,
-        system: false,
         options: {
-          min: 1,
-          max: 500,
+          min: null,
+          max: 200,
           pattern: ""
         }
       },
@@ -64,12 +61,12 @@ migrate((app) => {
       }
     ],
     indexes: [
-      "CREATE UNIQUE INDEX `idx_staff_org_categories_cm_id` ON `staff_org_categories` (`cm_id`)"
+      "CREATE UNIQUE INDEX `idx_payment_methods_cm_id` ON `payment_methods` (`cm_id`)"
     ]
   });
 
   app.save(collection);
 }, (app) => {
-  const collection = app.findCollectionByNameOrId("staff_org_categories");
+  const collection = app.findCollectionByNameOrId("payment_methods");
   app.delete(collection);
 });

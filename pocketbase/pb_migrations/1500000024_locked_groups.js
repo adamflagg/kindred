@@ -1,10 +1,11 @@
 /// <reference path="../pb_data/types.d.ts" />
 /**
- * Migration: Create locked_groups and locked_group_members collections
- * Dependencies: saved_scenarios (1500000014), camp_sessions (1500000001), attendees (1500000007)
+ * Migration: Create locked_groups collection
+ * Dependencies: saved_scenarios (1500000021), camp_sessions (1500000011)
  *
  * Lock groups allow staff to "lock" a set of campers together so the solver
- * keeps them in the same bunk. Groups are per-scenario (draft).
+ * keeps them in the same bunk. Groups are per-scenario (draft) and include
+ * metadata like color for visual identification.
  *
  * Uses dynamic collection lookups via findCollectionByNameOrId().
  */
@@ -13,13 +14,11 @@ migrate((app) => {
   // Dynamic lookups - these collections were created in earlier migrations
   const scenariosCol = app.findCollectionByNameOrId("saved_scenarios")
   const sessionsCol = app.findCollectionByNameOrId("camp_sessions")
-  const attendeesCol = app.findCollectionByNameOrId("attendees")
 
-  // Create locked_groups with relations
-  const lockedGroups = new Collection({
-    name: "locked_groups",
+  const collection = new Collection({
+    id: "col_locked_groups",
     type: "base",
-    system: false,
+    name: "locked_groups",
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',
     createRule: '@request.auth.id != ""',
@@ -31,7 +30,6 @@ migrate((app) => {
         name: "scenario",
         required: true,
         presentable: false,
-        system: false,
         collectionId: scenariosCol.id,
         cascadeDelete: true,
         minSelect: null,
@@ -42,7 +40,6 @@ migrate((app) => {
         name: "name",
         required: false,
         presentable: true,
-        system: false,
         options: {
           autogeneratePattern: "",
           min: 0,
@@ -56,7 +53,6 @@ migrate((app) => {
         name: "session",
         required: true,
         presentable: false,
-        system: false,
         collectionId: sessionsCol.id,
         cascadeDelete: false,
         minSelect: null,
@@ -67,7 +63,6 @@ migrate((app) => {
         name: "year",
         required: true,
         presentable: false,
-        system: false,
         options: {
           min: 2013,
           max: 2100,
@@ -79,7 +74,6 @@ migrate((app) => {
         name: "color",
         required: true,
         presentable: false,
-        system: false,
         options: {
           min: 1,
           max: 20,
@@ -91,7 +85,6 @@ migrate((app) => {
         name: "created_by",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: 255,
@@ -103,7 +96,6 @@ migrate((app) => {
         name: "created",
         required: false,
         presentable: false,
-        system: false,
         onCreate: true,
         onUpdate: false
       },
@@ -112,7 +104,6 @@ migrate((app) => {
         name: "updated",
         required: false,
         presentable: false,
-        system: false,
         onCreate: true,
         onUpdate: true
       }
@@ -121,80 +112,11 @@ migrate((app) => {
       "CREATE INDEX `idx_locked_groups_scenario` ON `locked_groups` (`scenario`)",
       "CREATE INDEX `idx_locked_groups_session` ON `locked_groups` (`session`)",
       "CREATE INDEX `idx_locked_groups_scenario_session_year` ON `locked_groups` (`scenario`, `session`, `year`)"
-    ],
-    options: {}
-  })
+    ]
+  });
 
-  app.save(lockedGroups)
-
-  // Need to look up locked_groups after saving it
-  const lockedGroupsCol = app.findCollectionByNameOrId("locked_groups")
-
-  // Create locked_group_members with relations
-  const lockedGroupMembers = new Collection({
-    name: "locked_group_members",
-    type: "base",
-    system: false,
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
-    fields: [
-      {
-        type: "relation",
-        name: "group",
-        required: true,
-        presentable: false,
-        system: false,
-        collectionId: lockedGroupsCol.id,
-        cascadeDelete: true,
-        minSelect: null,
-        maxSelect: 1
-      },
-      {
-        type: "relation",
-        name: "attendee",
-        required: true,
-        presentable: true,
-        system: false,
-        collectionId: attendeesCol.id,
-        cascadeDelete: false,
-        minSelect: null,
-        maxSelect: 1
-      },
-      {
-        type: "text",
-        name: "added_by",
-        required: false,
-        presentable: false,
-        system: false,
-        options: {
-          min: null,
-          max: 255,
-          pattern: ""
-        }
-      }
-    ],
-    indexes: [
-      "CREATE INDEX `idx_locked_group_members_group` ON `locked_group_members` (`group`)",
-      "CREATE INDEX `idx_locked_group_members_attendee` ON `locked_group_members` (`attendee`)",
-      "CREATE UNIQUE INDEX `idx_locked_group_members_unique` ON `locked_group_members` (`group`, `attendee`)"
-    ],
-    options: {}
-  })
-
-  return app.save(lockedGroupMembers)
-
+  app.save(collection);
 }, (app) => {
-  // Rollback: Remove the collections
-  const lockedGroupMembers = app.findCollectionByNameOrId("locked_group_members")
-  if (lockedGroupMembers) {
-    app.delete(lockedGroupMembers)
-  }
-
-  const lockedGroups = app.findCollectionByNameOrId("locked_groups")
-  if (lockedGroups) {
-    app.delete(lockedGroups)
-  }
-})
+  const collection = app.findCollectionByNameOrId("locked_groups");
+  app.delete(collection);
+});

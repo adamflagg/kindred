@@ -8,16 +8,22 @@
  * - Cross-run deduplication (Field B matches existing Field A)
  * - Partial invalidation (when source changes, find affected requests)
  * - Merge/split tracking (multi-source requests)
+ *
+ * IMPORTANT: Uses fixed collection ID so dependent migrations can reference
+ * it directly without findCollectionByNameOrId (which fails in fresh DB).
  */
+
+const COLLECTION_ID_BUNK_REQUEST_SOURCES = "col_bunk_request_sources";
 
 migrate((app) => {
   // Dynamic lookups - these collections were created in earlier migrations
-  const bunkRequestsCol = app.findCollectionByNameOrId("bunk_requests")
-  const originalRequestsCol = app.findCollectionByNameOrId("original_bunk_requests")
+  const bunkRequestsCol = app.findCollectionByNameOrId("bunk_requests");
+  const originalRequestsCol = app.findCollectionByNameOrId("original_bunk_requests");
 
   const collection = new Collection({
-    name: "bunk_request_sources",
+    id: COLLECTION_ID_BUNK_REQUEST_SOURCES,
     type: "base",
+    name: "bunk_request_sources",
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',
     createRule: '@request.auth.id != ""',

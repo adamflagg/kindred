@@ -1,21 +1,20 @@
 /// <reference path="../pb_data/types.d.ts" />
 /**
- * Migration: Create financial_categories collection
+ * Migration: Create staff_org_categories collection
  * Dependencies: None
  *
- * Stores financial category definitions from CampMinder /financials/financialcategories endpoint.
+ * Stores staff organizational category definitions from CampMinder
+ * /staff/organizationalcategories endpoint.
  * Global lookup table (not year-specific).
- * Categories classify transactions (e.g., "Fees - Summer Camp", "Financial Assistance").
  */
 
-// Fixed collection ID for financial_categories
-const COLLECTION_ID_FINANCIAL_CATEGORIES = "col_financial_categories";
+const COLLECTION_ID_STAFF_ORG_CATEGORIES = "col_staff_org_cats";
 
 migrate((app) => {
   const collection = new Collection({
-    id: COLLECTION_ID_FINANCIAL_CATEGORIES,
+    id: COLLECTION_ID_STAFF_ORG_CATEGORIES,
     type: "base",
-    name: "financial_categories",
+    name: "staff_org_categories",
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',
     createRule: '@request.auth.id != ""',
@@ -27,7 +26,6 @@ migrate((app) => {
         name: "cm_id",
         required: true,
         presentable: false,
-        system: false,
         options: {
           min: 1,
           max: null,
@@ -37,21 +35,13 @@ migrate((app) => {
       {
         type: "text",
         name: "name",
-        required: false,
+        required: true,
         presentable: true,
-        system: false,
         options: {
-          min: null,
+          min: 1,
           max: 500,
           pattern: ""
         }
-      },
-      {
-        type: "bool",
-        name: "is_archived",
-        required: false,
-        presentable: false,
-        system: false
       },
       {
         type: "autodate",
@@ -71,12 +61,12 @@ migrate((app) => {
       }
     ],
     indexes: [
-      "CREATE UNIQUE INDEX `idx_financial_categories_cm_id` ON `financial_categories` (`cm_id`)"
+      "CREATE UNIQUE INDEX `idx_staff_org_categories_cm_id` ON `staff_org_categories` (`cm_id`)"
     ]
   });
 
   app.save(collection);
 }, (app) => {
-  const collection = app.findCollectionByNameOrId("financial_categories");
+  const collection = app.findCollectionByNameOrId("staff_org_categories");
   app.delete(collection);
 });

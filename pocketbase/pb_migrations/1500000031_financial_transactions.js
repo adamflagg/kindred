@@ -7,9 +7,11 @@
  * Stores transaction details from CampMinder /financials/transactionreporting/transactiondetails endpoint.
  * Year-scoped table with relations to lookup tables, sessions, persons, and households.
  * Includes all transactions (normal and reversed) for complete audit trail.
+ *
+ * IMPORTANT: Uses fixed collection ID so dependent migrations can reference
+ * it directly without findCollectionByNameOrId (which fails in fresh DB).
  */
 
-// Fixed collection ID for financial_transactions
 const COLLECTION_ID_FINANCIAL_TRANSACTIONS = "col_financial_transactions";
 
 migrate((app) => {
@@ -38,7 +40,6 @@ migrate((app) => {
         name: "cm_id",
         required: true,
         presentable: false,
-        system: false,
         options: {
           min: 1,
           max: null,
@@ -50,7 +51,6 @@ migrate((app) => {
         name: "transaction_number",
         required: false,
         presentable: true,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -62,7 +62,6 @@ migrate((app) => {
         name: "year",
         required: true,
         presentable: false,
-        system: false,
         options: {
           min: 2010,
           max: 2100,
@@ -76,7 +75,6 @@ migrate((app) => {
         name: "post_date",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: "",
           max: ""
@@ -87,7 +85,6 @@ migrate((app) => {
         name: "effective_date",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: "",
           max: ""
@@ -98,7 +95,6 @@ migrate((app) => {
         name: "service_start_date",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: "",
           max: ""
@@ -109,7 +105,6 @@ migrate((app) => {
         name: "service_end_date",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: "",
           max: ""
@@ -121,15 +116,13 @@ migrate((app) => {
         type: "bool",
         name: "is_reversed",
         required: false,
-        presentable: false,
-        system: false
+        presentable: false
       },
       {
         type: "date",
         name: "reversal_date",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: "",
           max: ""
@@ -142,7 +135,6 @@ migrate((app) => {
         name: "financial_category",
         required: false,
         presentable: false,
-        system: false,
         collectionId: financialCategoriesCol.id,
         cascadeDelete: false,
         minSelect: null,
@@ -155,7 +147,6 @@ migrate((app) => {
         name: "description",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: 1000,
@@ -167,7 +158,6 @@ migrate((app) => {
         name: "transaction_note",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: 2000,
@@ -179,7 +169,6 @@ migrate((app) => {
         name: "gl_account_note",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: 500,
@@ -193,7 +182,6 @@ migrate((app) => {
         name: "quantity",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -205,7 +193,6 @@ migrate((app) => {
         name: "unit_amount",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -217,7 +204,6 @@ migrate((app) => {
         name: "amount",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -231,7 +217,6 @@ migrate((app) => {
         name: "recognition_gl_account_id",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: 100,
@@ -243,7 +228,6 @@ migrate((app) => {
         name: "deferral_gl_account_id",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: 100,
@@ -257,7 +241,6 @@ migrate((app) => {
         name: "payment_method",
         required: false,
         presentable: false,
-        system: false,
         collectionId: paymentMethodsCol.id,
         cascadeDelete: false,
         minSelect: null,
@@ -270,7 +253,6 @@ migrate((app) => {
         name: "session",
         required: false,
         presentable: false,
-        system: false,
         collectionId: sessionsCol.id,
         cascadeDelete: false,
         minSelect: null,
@@ -283,7 +265,6 @@ migrate((app) => {
         name: "program_id",
         required: false,
         presentable: false,
-        system: false,
         options: {
           min: null,
           max: null,
@@ -297,7 +278,6 @@ migrate((app) => {
         name: "session_group",
         required: false,
         presentable: false,
-        system: false,
         collectionId: sessionGroupsCol.id,
         cascadeDelete: false,
         minSelect: null,
@@ -310,7 +290,6 @@ migrate((app) => {
         name: "division",
         required: false,
         presentable: false,
-        system: false,
         collectionId: divisionsCol.id,
         cascadeDelete: false,
         minSelect: null,
@@ -323,7 +302,6 @@ migrate((app) => {
         name: "person",
         required: false,
         presentable: false,
-        system: false,
         collectionId: personsCol.id,
         cascadeDelete: false,
         minSelect: null,
@@ -336,7 +314,6 @@ migrate((app) => {
         name: "household",
         required: false,
         presentable: false,
-        system: false,
         collectionId: householdsCol.id,
         cascadeDelete: false,
         minSelect: null,
