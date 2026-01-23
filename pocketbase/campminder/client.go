@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -64,7 +65,7 @@ func NewClient(cfg *Config) (*Client, error) {
 // authenticate gets a new JWT token from CampMinder
 func (c *Client) authenticate() error {
 	authURL := fmt.Sprintf("%s/auth/apikey", baseURL)
-	fmt.Printf("CampMinder: Authenticating with clientID: %s\n", c.clientID)
+	slog.Debug("CampMinder authenticating", "clientID", c.clientID)
 
 	req, err := http.NewRequest("GET", authURL, nil)
 	if err != nil {
@@ -105,7 +106,7 @@ func (c *Client) authenticate() error {
 		return fmt.Errorf("auth failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
-	fmt.Println("CampMinder: Authentication successful")
+	slog.Debug("CampMinder authentication successful")
 
 	var authResp struct {
 		Token string `json:"Token"` // Capital T as per Python response
@@ -347,6 +348,7 @@ func (c *Client) GetPersons(personIDs []int) ([]map[string]interface{}, error) {
 	values.Add("includerelatives", "true")
 	values.Add("includefamilypersons", "true")
 	values.Add("includehouseholddetails", "true")
+	values.Add("includetags", "true")
 	values.Add("pagenumber", "1")
 	values.Add("pagesize", strconv.Itoa(len(personIDs)))
 
@@ -398,6 +400,7 @@ func (c *Client) GetPersonsPage(page, pageSize int) ([]map[string]interface{}, b
 		"includerelatives":        "true",
 		"includefamilypersons":    "true",
 		"includehouseholddetails": "true",
+		"includetags":             "true",
 		// No seasonid - gets latest data
 	}
 
@@ -591,4 +594,462 @@ func (c *Client) GetSessionGroups() ([]map[string]interface{}, error) {
 	}
 
 	return response.Results, nil
+}
+
+// GetPersonTagDefinitions retrieves person tag definitions from CampMinder
+// Endpoint: /persons/tags
+// Returns: array of tag definitions with Name, IsSeasonal, IsHidden, LastUpdatedUTC
+// Note: This endpoint returns a raw array, not a paginated response
+func (c *Client) GetPersonTagDefinitions() ([]map[string]interface{}, error) {
+	params := map[string]string{
+		"clientid": c.clientID,
+	}
+
+	body, err := c.makeRequest("GET", "persons/tags", params)
+	if err != nil {
+		return nil, err
+	}
+
+	// This endpoint returns a raw array, not a paginated response
+	var results []map[string]interface{}
+	if err := json.Unmarshal(body, &results); err != nil {
+		return nil, fmt.Errorf("decode person tag definitions response: %w", err)
+	}
+
+	return results, nil
+}
+
+// GetCustomFieldDefinitionsPage retrieves custom field definitions with pagination
+// Endpoint: GET /persons/custom-fields
+// Returns: array of custom field definitions with Id, Name, DataType, Partition, IsSeasonal, IsArray, IsActive
+func (c *Client) GetCustomFieldDefinitionsPage(page, pageSize int) ([]map[string]interface{}, bool, error) {
+	params := map[string]string{
+		"clientid":   c.clientID,
+		"pagenumber": strconv.Itoa(page),
+		"pagesize":   strconv.Itoa(pageSize),
+	}
+
+	body, err := c.makeRequest("GET", "persons/custom-fields", params)
+	if err != nil {
+		return nil, false, err
+	}
+
+	// CampMinder uses inconsistent casing across endpoints
+	// /persons/custom-fields uses camelCase: totalCount, next, result
+	var response struct {
+		TotalCount int                      `json:"totalCount"`
+		Next       *string                  `json:"next"`
+		Result     []map[string]interface{} `json:"result"`
+	}
+
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, false, fmt.Errorf("decode custom field definitions response: %w", err)
+	}
+
+	hasMore := response.Next != nil && *response.Next != ""
+	return response.Result, hasMore, nil
+}
+
+// GetPersonCustomFieldValuesPage retrieves custom field values for a specific person with pagination
+// Endpoint: GET /persons/{id}/custom-fields
+// Returns: array of custom field values with id, clientId, seasonId, value, lastUpdated (camelCase)
+// Note: Requires 1 API call per person - use sparingly
+//
+//nolint:dupl // Similar pattern to GetHouseholdCustomFieldValuesPage, intentional for person variant
+func (c *Client) GetPersonCustomFieldValuesPage(personID, page, pageSize int) ([]map[string]interface{}, bool, error) {
+	endpoint := fmt.Sprintf("persons/%d/custom-fields", personID)
+	params := map[string]string{
+		"clientid":   c.clientID,
+		"seasonid":   strconv.Itoa(c.seasonID),
+		"pagenumber": strconv.Itoa(page),
+		"pagesize":   strconv.Itoa(pageSize),
+	}
+
+	body, err := c.makeRequest("GET", endpoint, params)
+	if err != nil {
+		return nil, false, err
+	}
+
+	// CampMinder uses camelCase for custom field endpoints
+	var response struct {
+		TotalCount int                      `json:"totalCount"`
+		Next       *string                  `json:"next"`
+		Result     []map[string]interface{} `json:"result"`
+	}
+
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, false, fmt.Errorf("decode person custom field values response: %w", err)
+	}
+
+	hasMore := response.Next != nil && *response.Next != ""
+	return response.Result, hasMore, nil
+}
+
+// GetHouseholdCustomFieldValuesPage retrieves custom field values for a specific household with pagination
+// Endpoint: GET /persons/households/{id}/custom-fields
+// Returns: array of custom field values with id, clientId, seasonId, value, lastUpdated (camelCase)
+// Note: Requires 1 API call per household - use sparingly
+//
+//nolint:dupl // Similar pattern to GetPersonCustomFieldValuesPage, intentional for household variant
+func (c *Client) GetHouseholdCustomFieldValuesPage(
+	householdID, page, pageSize int,
+) ([]map[string]interface{}, bool, error) {
+	endpoint := fmt.Sprintf("persons/households/%d/custom-fields", householdID)
+	params := map[string]string{
+		"clientid":   c.clientID,
+		"seasonid":   strconv.Itoa(c.seasonID),
+		"pagenumber": strconv.Itoa(page),
+		"pagesize":   strconv.Itoa(pageSize),
+	}
+
+	body, err := c.makeRequest("GET", endpoint, params)
+	if err != nil {
+		return nil, false, err
+	}
+
+	// CampMinder uses camelCase for custom field endpoints
+	var response struct {
+		TotalCount int                      `json:"totalCount"`
+		Next       *string                  `json:"next"`
+		Result     []map[string]interface{} `json:"result"`
+	}
+
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, false, fmt.Errorf("decode household custom field values response: %w", err)
+	}
+
+	hasMore := response.Next != nil && *response.Next != ""
+	return response.Result, hasMore, nil
+}
+
+// GetDivisions retrieves all division definitions from CampMinder
+// Endpoint: GET /divisions
+// Returns: array of divisions with ID, Name, Description, GradeRange, GenderID, Capacity, etc.
+// Note: Divisions are global (not year-specific) - they define age/gender groups
+func (c *Client) GetDivisions() ([]map[string]interface{}, error) {
+	params := map[string]string{
+		"clientid":   c.clientID,
+		"pagenumber": "1",
+		"pagesize":   "500", // Get all divisions in one call (typically < 50)
+	}
+
+	body, err := c.makeRequest("GET", "divisions", params)
+	if err != nil {
+		return nil, err
+	}
+
+	var response struct {
+		TotalCount int                      `json:"TotalCount"`
+		Results    []map[string]interface{} `json:"Results"`
+	}
+
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("decode divisions response: %w", err)
+	}
+
+	return response.Results, nil
+}
+
+// GetStaffProgramAreas retrieves staff program area definitions from CampMinder
+// Endpoint: GET /staff/programareas
+// Returns: array of program areas with ID, Name
+// Note: Global lookup table (not year-specific)
+func (c *Client) GetStaffProgramAreas() ([]map[string]interface{}, error) {
+	params := map[string]string{
+		"clientid":   c.clientID,
+		"pagenumber": "1",
+		"pagesize":   "500", // Get all in one call (typically < 100)
+	}
+
+	body, err := c.makeRequest("GET", "staff/programareas", params)
+	if err != nil {
+		return nil, err
+	}
+
+	var response struct {
+		TotalCount int                      `json:"TotalCount"`
+		Results    []map[string]interface{} `json:"Results"`
+	}
+
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("decode staff program areas response: %w", err)
+	}
+
+	return response.Results, nil
+}
+
+// GetStaffOrgCategories retrieves staff organizational category definitions from CampMinder
+// Endpoint: GET /staff/organizationalcategories
+// Returns: array of org categories with ID, Name
+// Note: Global lookup table (not year-specific)
+func (c *Client) GetStaffOrgCategories() ([]map[string]interface{}, error) {
+	params := map[string]string{
+		"clientid":   c.clientID,
+		"pagenumber": "1",
+		"pagesize":   "500", // Get all in one call (typically < 100)
+	}
+
+	body, err := c.makeRequest("GET", "staff/organizationalcategories", params)
+	if err != nil {
+		return nil, err
+	}
+
+	var response struct {
+		TotalCount int                      `json:"TotalCount"`
+		Results    []map[string]interface{} `json:"Results"`
+	}
+
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("decode staff org categories response: %w", err)
+	}
+
+	return response.Results, nil
+}
+
+// GetStaffPositions retrieves staff position definitions from CampMinder
+// Endpoint: GET /staff/positions
+// Returns: array of positions with ID, Name, ProgramAreaID, ProgramAreaName
+// Note: Global lookup table (not year-specific)
+func (c *Client) GetStaffPositions() ([]map[string]interface{}, error) {
+	params := map[string]string{
+		"clientid":   c.clientID,
+		"pagenumber": "1",
+		"pagesize":   "500", // Get all in one call (typically < 100)
+	}
+
+	body, err := c.makeRequest("GET", "staff/positions", params)
+	if err != nil {
+		return nil, err
+	}
+
+	var response struct {
+		TotalCount int                      `json:"TotalCount"`
+		Results    []map[string]interface{} `json:"Results"`
+	}
+
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("decode staff positions response: %w", err)
+	}
+
+	return response.Results, nil
+}
+
+// GetStaffPage retrieves staff records with pagination
+// Endpoint: GET /staff
+// Parameters: seasonid (year), status (1=Active, 2=Resigned, 3=Dismissed, 4=Cancelled)
+// Returns: array of staff with PersonID, StatusID, Position1ID, Position2ID, BunkAssignments, etc.
+func (c *Client) GetStaffPage(status, page, pageSize int) ([]map[string]interface{}, bool, error) {
+	params := map[string]string{
+		"clientid":   c.clientID,
+		"seasonid":   strconv.Itoa(c.seasonID),
+		"status":     strconv.Itoa(status),
+		"pagenumber": strconv.Itoa(page),
+		"pagesize":   strconv.Itoa(pageSize),
+	}
+
+	body, err := c.makeRequest("GET", "staff", params)
+	if err != nil {
+		return nil, false, err
+	}
+
+	var response struct {
+		TotalCount int                      `json:"TotalCount"`
+		Next       *string                  `json:"Next"`
+		Results    []map[string]interface{} `json:"Results"`
+	}
+
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, false, fmt.Errorf("decode staff response: %w", err)
+	}
+
+	hasMore := response.Next != nil && *response.Next != ""
+	return response.Results, hasMore, nil
+}
+
+// GetFinancialCategories retrieves financial category definitions from CampMinder
+// Endpoint: GET /financials/financialcategories
+// Returns: array of categories with id, name, isArchived
+// Note: Global lookup table (not year-specific)
+func (c *Client) GetFinancialCategories(includeArchived bool) ([]map[string]interface{}, error) {
+	params := map[string]string{
+		"clientid":        c.clientID,
+		"includeArchived": strconv.FormatBool(includeArchived),
+		"pagenumber":      "1",
+		"pagesize":        "500", // Get all in one call (typically < 100)
+	}
+
+	body, err := c.makeRequest("GET", "financials/financialcategories", params)
+	if err != nil {
+		return nil, err
+	}
+
+	// CampMinder uses inconsistent casing across endpoints
+	// Try PascalCase paginated response first (TotalCount, Results)
+	var pascalResponse struct {
+		TotalCount int                      `json:"TotalCount"`
+		Results    []map[string]interface{} `json:"Results"`
+	}
+	if err := json.Unmarshal(body, &pascalResponse); err == nil && pascalResponse.Results != nil {
+		return pascalResponse.Results, nil
+	}
+
+	// Try camelCase paginated response (totalCount, result - singular like custom fields)
+	var camelResponse struct {
+		TotalCount int                      `json:"totalCount"`
+		Result     []map[string]interface{} `json:"result"`
+	}
+	if err := json.Unmarshal(body, &camelResponse); err == nil && camelResponse.Result != nil {
+		return camelResponse.Result, nil
+	}
+
+	// Try camelCase with plural results
+	var camelPluralResponse struct {
+		TotalCount int                      `json:"totalCount"`
+		Results    []map[string]interface{} `json:"results"`
+	}
+	if err := json.Unmarshal(body, &camelPluralResponse); err == nil && camelPluralResponse.Results != nil {
+		return camelPluralResponse.Results, nil
+	}
+
+	// Fall back to raw array response (API may return either)
+	var results []map[string]interface{}
+	if err := json.Unmarshal(body, &results); err != nil {
+		return nil, fmt.Errorf("decode financial categories response: %w", err)
+	}
+
+	return results, nil
+}
+
+// GetPaymentMethods retrieves payment method definitions from CampMinder
+// Endpoint: GET /financials/paymentmethods
+// Returns: array of methods with id, name
+// Note: Global lookup table (not year-specific)
+func (c *Client) GetPaymentMethods() ([]map[string]interface{}, error) {
+	// This endpoint doesn't take any parameters per the OpenAPI spec
+	body, err := c.makeRequest("GET", "financials/paymentmethods", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// CampMinder uses inconsistent casing - try paginated responses first
+	// Try PascalCase
+	var pascalResponse struct {
+		TotalCount int                      `json:"TotalCount"`
+		Results    []map[string]interface{} `json:"Results"`
+	}
+	if err := json.Unmarshal(body, &pascalResponse); err == nil && pascalResponse.Results != nil {
+		return pascalResponse.Results, nil
+	}
+
+	// Try camelCase with singular result
+	var camelResponse struct {
+		TotalCount int                      `json:"totalCount"`
+		Result     []map[string]interface{} `json:"result"`
+	}
+	if err := json.Unmarshal(body, &camelResponse); err == nil && camelResponse.Result != nil {
+		return camelResponse.Result, nil
+	}
+
+	// Try camelCase with plural results
+	var camelPluralResponse struct {
+		TotalCount int                      `json:"totalCount"`
+		Results    []map[string]interface{} `json:"results"`
+	}
+	if err := json.Unmarshal(body, &camelPluralResponse); err == nil && camelPluralResponse.Results != nil {
+		return camelPluralResponse.Results, nil
+	}
+
+	// Fall back to raw array response
+	var results []map[string]interface{}
+	if err := json.Unmarshal(body, &results); err != nil {
+		return nil, fmt.Errorf("decode payment methods response: %w", err)
+	}
+
+	return results, nil
+}
+
+// GetTransactionDetails retrieves financial transaction details from CampMinder
+// Endpoint: GET /financials/transactionreporting/transactiondetails
+// Parameters: season (required), includeReversals (optional, default false)
+// Returns: array of transactions with full detail (see TransactionDetail schema)
+// Note: Year-scoped data - uses seasonID
+// Note: This endpoint doesn't support pagination, so we fetch by month chunks
+// to avoid timeouts on large datasets (10,000+ transactions)
+func (c *Client) GetTransactionDetails(season int, includeReversals bool) ([]map[string]interface{}, error) {
+	var allResults []map[string]interface{}
+
+	// Fetch transactions month by month to avoid timeout on large datasets
+	// Camp season typically runs Jan-Dec, so we cover the full year
+	for month := 1; month <= 12; month++ {
+		// Calculate month date range
+		startDate := time.Date(season, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
+		endDate := startDate.AddDate(0, 1, -1) // Last day of month
+
+		params := map[string]string{
+			"clientid":         c.clientID,
+			"season":           strconv.Itoa(season),
+			"includeReversals": strconv.FormatBool(includeReversals),
+			"postDateStart":    startDate.Format("2006-01-02"),
+			"postDateEnd":      endDate.Format("2006-01-02"),
+		}
+
+		slog.Info("Fetching transactions", "month", fmt.Sprintf("%d/12", month), "year", season)
+
+		body, err := c.makeRequest("GET", "financials/transactionreporting/transactiondetails", params)
+		if err != nil {
+			return nil, fmt.Errorf("fetch transactions for month %d: %w", month, err)
+		}
+
+		results, err := c.parseTransactionResponse(body)
+		if err != nil {
+			return nil, fmt.Errorf("parse transactions for month %d: %w", month, err)
+		}
+
+		allResults = append(allResults, results...)
+		slog.Info("Fetched transactions",
+			"month", fmt.Sprintf("%d/12", month),
+			"batch", len(results),
+			"total", len(allResults))
+	}
+
+	return allResults, nil
+}
+
+// parseTransactionResponse parses the transaction details API response
+// CampMinder uses inconsistent casing across endpoints
+func (c *Client) parseTransactionResponse(body []byte) ([]map[string]interface{}, error) {
+	// Try PascalCase paginated response
+	var pascalResponse struct {
+		TotalCount int                      `json:"TotalCount"`
+		Results    []map[string]interface{} `json:"Results"`
+	}
+	if err := json.Unmarshal(body, &pascalResponse); err == nil && pascalResponse.Results != nil {
+		return pascalResponse.Results, nil
+	}
+
+	// Try camelCase with singular result
+	var camelResponse struct {
+		TotalCount int                      `json:"totalCount"`
+		Result     []map[string]interface{} `json:"result"`
+	}
+	if err := json.Unmarshal(body, &camelResponse); err == nil && camelResponse.Result != nil {
+		return camelResponse.Result, nil
+	}
+
+	// Try camelCase with plural results
+	var camelPluralResponse struct {
+		TotalCount int                      `json:"totalCount"`
+		Results    []map[string]interface{} `json:"results"`
+	}
+	if err := json.Unmarshal(body, &camelPluralResponse); err == nil && camelPluralResponse.Results != nil {
+		return camelPluralResponse.Results, nil
+	}
+
+	// Fall back to raw array response
+	var results []map[string]interface{}
+	if err := json.Unmarshal(body, &results); err != nil {
+		return nil, fmt.Errorf("decode transaction details response: %w", err)
+	}
+
+	return results, nil
 }

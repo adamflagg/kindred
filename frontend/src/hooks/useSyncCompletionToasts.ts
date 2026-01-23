@@ -1,19 +1,43 @@
 import { useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { useSyncStatusAPI, type SyncStatus, type SyncStatusResponse } from './useSyncStatusAPI';
+import { useSyncStatusAPI, type SyncStatus, type SyncStatusResponse, type SubStats } from './useSyncStatusAPI';
 import { invalidateSyncData } from '../utils/queryClient';
 
 // Map sync type IDs to display names
 const SYNC_DISPLAY_NAMES: Record<string, string> = {
+  // Global sync types (cross-year)
+  person_tag_defs: 'Tag Definitions',
+  custom_field_defs: 'Field Definitions',
+  staff_lookups: 'Staff Lookups',
+  financial_lookups: 'Financial Lookups',
+  // Current year sync types
+  session_groups: 'Session Groups',
   sessions: 'Sessions',
+  divisions: 'Divisions',
   attendees: 'Attendees',
   persons: 'Persons',
   bunks: 'Bunks',
   bunk_plans: 'Bunk Plans',
   bunk_assignments: 'Assignments',
-  bunk_requests: 'Bunk Requests',
+  staff: 'Staff',
+  financial_transactions: 'Financial Transactions',
+  bunk_requests: 'Intake Requests',
   process_requests: 'Process Requests',
+  // On-demand sync types
+  person_custom_values: 'Person Custom Values',
+  household_custom_values: 'Household Custom Values',
 };
+
+// Helper to format stats for a single entity
+function formatStatsText(stats: SubStats, label: string): string {
+  const parts: string[] = [];
+  if (stats.created > 0) parts.push(`${stats.created} created`);
+  if (stats.updated > 0) parts.push(`${stats.updated} updated`);
+  if (stats.skipped > 0) parts.push(`${stats.skipped} skipped`);
+  if (stats.errors > 0) parts.push(`${stats.errors} errors`);
+  if (parts.length === 0) return '';
+  return `${label}: ${parts.join(', ')}`;
+}
 
 // Track previous statuses to detect transitions
 type PreviousStatuses = Record<string, string>;
@@ -60,13 +84,35 @@ export function useSyncCompletionToasts() {
           });
         } else if (summary) {
           // Success toast with stats
-          const parts: string[] = [];
-          if (summary.created > 0) parts.push(`${summary.created} created`);
-          if (summary.updated > 0) parts.push(`${summary.updated} updated`);
-          if (summary.skipped > 0) parts.push(`${summary.skipped} skipped`);
-          if (summary.errors > 0) parts.push(`${summary.errors} errors`);
+          let statsText: string;
 
-          const statsText = parts.length > 0 ? parts.join(', ') : 'no changes';
+          // For persons sync with sub_stats, show combined stats (persons + households)
+          // Note: Tags are now stored as multi-select relation on persons, not as separate sub-stats
+          if (syncType === 'persons' && summary.sub_stats) {
+            const statsParts: string[] = [];
+
+            // Main persons stats
+            const personsText = formatStatsText(summary, 'Persons');
+            if (personsText) statsParts.push(personsText);
+
+            // Households sub-stats
+            const householdsStats = summary.sub_stats['households'];
+            if (householdsStats) {
+              const householdsText = formatStatsText(householdsStats, 'Households');
+              if (householdsText) statsParts.push(householdsText);
+            }
+
+            statsText = statsParts.length > 0 ? statsParts.join('\n') : 'no changes';
+          } else {
+            // Standard stats formatting for other syncs
+            const parts: string[] = [];
+            if (summary.created > 0) parts.push(`${summary.created} created`);
+            if (summary.updated > 0) parts.push(`${summary.updated} updated`);
+            if (summary.skipped > 0) parts.push(`${summary.skipped} skipped`);
+            if (summary.errors > 0) parts.push(`${summary.errors} errors`);
+            statsText = parts.length > 0 ? parts.join(', ') : 'no changes';
+          }
+
           const hasErrors = summary.errors > 0;
 
           if (hasErrors) {

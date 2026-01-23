@@ -3,46 +3,47 @@ import { pb } from '../lib/pocketbase';
 import toast from 'react-hot-toast';
 
 // Map of sync types to their display names
+// Note: "persons" is a combined sync that populates persons and households tables
+// from a single API call (tags are stored as multi-select relation on persons)
+// Note: "divisions" now runs in daily sync (before persons) rather than weekly
 export const SYNC_TYPE_NAMES: Record<string, string> = {
+  // Weekly syncs (global definitions)
+  person_tag_defs: 'Tags',
+  custom_field_defs: 'Custom Fields',
+  staff_lookups: 'Staff Lookups', // Global: positions, org_categories, program_areas
+  financial_lookups: 'Financial Lookups', // Global: financial_categories, payment_methods
+  // Daily syncs
   session_groups: 'Session Groups',
   sessions: 'Sessions',
+  divisions: 'Divisions', // Runs before persons in daily sync
   attendees: 'Attendees',
-  persons: 'Persons',
+  persons: 'Persons', // Combined sync: persons + households (includes division relation)
   bunks: 'Bunks',
   bunk_plans: 'Bunk Plans',
   bunk_assignments: 'Bunk Assignments',
-  bunk_requests: 'Bunk Requests',
+  staff: 'Staff', // Year-scoped staff records
+  financial_transactions: 'Financial Transactions', // Year-scoped financial data
+  bunk_requests: 'Intake Requests',
   process_requests: 'Process Requests',
+  // On-demand syncs (not part of daily sync)
+  person_custom_values: 'Person Custom Values',
+  household_custom_values: 'Household Custom Values',
 };
 
-// Map of sync types to their endpoint names
-const SYNC_ENDPOINT_MAP: Record<string, string> = {
-  session_groups: 'session-groups',
-  sessions: 'sessions',
-  attendees: 'attendees',
-  persons: 'persons',
-  bunks: 'bunks',
-  bunk_plans: 'bunk-plans',
-  bunk_assignments: 'bunk-assignments',
-  bunk_requests: 'bunk-requests',
-  process_requests: 'process-requests',
-};
+// Convert sync type ID to API endpoint (snake_case -> kebab-case)
+const toEndpoint = (syncType: string): string => syncType.replace(/_/g, '-');
 
 export function useRunIndividualSync() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async (syncType: string) => {
-      // For sync types that have scheduled jobs, check if we should use that
-      // This would be determined by checking if there's a job in sync_scheduler
-      // For now, we'll use the direct endpoints for all manual runs
-      
-      const endpoint = SYNC_ENDPOINT_MAP[syncType];
-      if (!endpoint) {
+      // Validate sync type exists
+      if (!SYNC_TYPE_NAMES[syncType]) {
         throw new Error(`Unknown sync type: ${syncType}`);
       }
-      
-      const response = await pb.send(`/api/custom/sync/${endpoint}`, {
+
+      const response = await pb.send(`/api/custom/sync/${toEndpoint(syncType)}`, {
         method: 'POST',
       });
       

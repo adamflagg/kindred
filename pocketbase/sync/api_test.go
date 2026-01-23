@@ -325,13 +325,15 @@ func TestSyncTypeValidation(t *testing.T) {
 	validSyncTypes := map[string]bool{
 		"session_groups":   true,
 		"sessions":         true,
+		"divisions":        true, // Division definitions (runs in daily sync before persons)
 		"attendees":        true,
-		"persons":          true,
+		"persons":          true, // Combined sync: persons + households (includes division relation)
 		"bunks":            true,
 		"bunk_plans":       true,
 		"bunk_assignments": true,
 		"bunk_requests":    true,
 		"process_requests": true,
+		"staff":            true, // Staff sync: program_areas, org_categories, positions, staff table
 	}
 
 	tests := []struct {
@@ -341,6 +343,7 @@ func TestSyncTypeValidation(t *testing.T) {
 	}{
 		{"session_groups", "session_groups", true},
 		{"sessions", "sessions", true},
+		{"divisions", "divisions", true},
 		{"attendees", "attendees", true},
 		{"persons", "persons", true},
 		{"bunks", "bunks", true},
@@ -348,10 +351,12 @@ func TestSyncTypeValidation(t *testing.T) {
 		{"bunk_assignments", "bunk_assignments", true},
 		{"bunk_requests", "bunk_requests", true},
 		{"process_requests", "process_requests", true},
+		{"staff", "staff", true},
 		{"invalid type", "invalid", false},
 		{"empty", "", false},
 		{"typo", "session", false},
 		{"case sensitive", "Sessions", false},
+		{"division typo", "division_attendees", false}, // No longer exists
 	}
 
 	for _, tt := range tests {
@@ -370,8 +375,9 @@ func TestStatusResponseFormat(t *testing.T) {
 	syncTypes := []string{
 		"session_groups",
 		"sessions",
+		"divisions", // Division definitions (runs in daily sync before persons)
 		"attendees",
-		"persons",
+		"persons", // Combined sync: persons + households (includes division relation)
 		"bunks",
 		"bunk_plans",
 		"bunk_assignments",
@@ -379,9 +385,9 @@ func TestStatusResponseFormat(t *testing.T) {
 		"process_requests",
 	}
 
-	// Verify all expected sync types are covered (9 sync types)
-	if len(syncTypes) != 9 {
-		t.Errorf("expected 9 sync types, got %d", len(syncTypes))
+	// Verify all expected sync types are covered (10 sync types)
+	if len(syncTypes) != 10 {
+		t.Errorf("expected 10 sync types, got %d", len(syncTypes))
 	}
 
 	// Verify no duplicates
@@ -545,4 +551,56 @@ func parseSourceFieldParameter(param string) ([]string, bool) {
 	}
 
 	return fields, true
+}
+
+// TestCustomValuesSyncServices tests that custom values sync services are defined
+func TestCustomValuesSyncServices(t *testing.T) {
+	// Verify GetCustomValuesSyncJobs returns the expected services
+	expected := []string{"person_custom_values", "household_custom_values"}
+	jobs := GetCustomValuesSyncJobs()
+
+	if len(jobs) != len(expected) {
+		t.Errorf("expected %d custom values sync jobs, got %d", len(expected), len(jobs))
+	}
+
+	for i, job := range expected {
+		if i >= len(jobs) {
+			t.Errorf("missing job %q at index %d", job, i)
+			continue
+		}
+		if jobs[i] != job {
+			t.Errorf("job[%d]: expected %q, got %q", i, job, jobs[i])
+		}
+	}
+}
+
+// TestCustomValuesSyncEndpointResponse tests expected response format
+func TestCustomValuesSyncEndpointResponse(t *testing.T) {
+	// Test the expected response structure from the custom-values endpoint
+	// The endpoint should return:
+	// - message: string describing action taken
+	// - services: array of service names being synced
+
+	expectedMessage := "Custom values sync triggered"
+	expectedServices := []string{"person_custom_values", "household_custom_values"}
+
+	// Verify GetCustomValuesSyncJobs matches expected
+	jobs := GetCustomValuesSyncJobs()
+	if len(jobs) != len(expectedServices) {
+		t.Errorf("GetCustomValuesSyncJobs returned %d jobs, expected %d", len(jobs), len(expectedServices))
+	}
+
+	for i, expected := range expectedServices {
+		if i >= len(jobs) {
+			break
+		}
+		if jobs[i] != expected {
+			t.Errorf("service[%d]: expected %q, got %q", i, expected, jobs[i])
+		}
+	}
+
+	// Verify message format (just test the constant exists and is non-empty)
+	if expectedMessage == "" {
+		t.Error("expected message should not be empty")
+	}
 }

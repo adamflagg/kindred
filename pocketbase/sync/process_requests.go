@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -454,8 +455,14 @@ func (p *RequestProcessor) clearRecordsWithFilter(filter string) (int, error) {
 
 // getPersonsInSession returns PocketBase IDs of persons enrolled in target sessions
 func (p *RequestProcessor) getPersonsInSession(_ context.Context, year string) ([]string, error) {
-	// Resolve session name to CM IDs using same logic as Python
-	sessionCMIDs, err := p.resolveSessionCMIDs(year)
+	// Use shared session resolver to get CM IDs
+	yearInt, err := strconv.Atoi(year)
+	if err != nil {
+		return nil, fmt.Errorf("invalid year: %s", year)
+	}
+
+	resolver := NewSessionResolver(p.App)
+	sessionCMIDs, err := resolver.ResolveSessionCMIDs(p.Session, yearInt)
 	if err != nil {
 		return nil, err
 	}
@@ -499,90 +506,4 @@ func (p *RequestProcessor) getPersonsInSession(_ context.Context, year string) (
 	}
 
 	return personIDs, nil
-}
-
-// resolveSessionCMIDs resolves p.Session to CampMinder session IDs
-func (p *RequestProcessor) resolveSessionCMIDs(year string) ([]int, error) {
-	// Map friendly names to session numbers/types
-	// This matches the Python session resolution logic
-	sessionNameMap := map[string]string{
-		"1":   "1",
-		"2":   "2",
-		"2a":  "2a",
-		"2b":  "2b",
-		"3":   "3",
-		"3a":  "3a",
-		"3b":  "3b",
-		"4":   "4",
-		"toc": "1", // Taste of Camp is session 1
-	}
-
-	sessionNum, ok := sessionNameMap[strings.ToLower(p.Session)]
-	if !ok {
-		return nil, fmt.Errorf("unknown session: %s", p.Session)
-	}
-
-	// Query camp_sessions to get CM IDs
-	// For main sessions (1, 2, 3, 4), include related AG sessions
-	var cmIDs []int
-
-	// Check if it's a main session or embedded
-	if isEmbeddedSession(sessionNum) {
-		// Embedded session - just get that specific session
-		filter := fmt.Sprintf("year = %s && session_type = 'embedded' && name ~ '%s'", year, sessionNum)
-		sessions, err := p.App.FindRecordsByFilter("camp_sessions", filter, "", 1, 0)
-		if err != nil {
-			return nil, fmt.Errorf("querying sessions: %w", err)
-		}
-		for _, s := range sessions {
-			if cmID, ok := s.Get("cm_id").(float64); ok {
-				cmIDs = append(cmIDs, int(cmID))
-			}
-		}
-	} else {
-		// Main session - get main + AG children
-		// First find the main session
-		namePattern := getSessionNamePattern(sessionNum)
-		filter := fmt.Sprintf("year = %s && session_type = 'main' && name ~ '%s'", year, namePattern)
-		sessions, err := p.App.FindRecordsByFilter("camp_sessions", filter, "", 1, 0)
-		if err != nil {
-			return nil, fmt.Errorf("querying main session: %w", err)
-		}
-
-		if len(sessions) > 0 {
-			mainSession := sessions[0]
-			if mainCMID, ok := mainSession.Get("cm_id").(float64); ok {
-				cmIDs = append(cmIDs, int(mainCMID))
-
-				// Find AG children (parent_id matches main session's cm_id)
-				agFilter := fmt.Sprintf("year = %s && session_type = 'ag' && parent_id = %d", year, int(mainCMID))
-				agSessions, err := p.App.FindRecordsByFilter("camp_sessions", agFilter, "", 0, 0)
-				if err != nil {
-					slog.Warn("Failed to find AG sessions", "error", err)
-				} else {
-					for _, ag := range agSessions {
-						if agCMID, ok := ag.Get("cm_id").(float64); ok {
-							cmIDs = append(cmIDs, int(agCMID))
-						}
-					}
-				}
-			}
-		}
-	}
-
-	return cmIDs, nil
-}
-
-// getSessionNamePattern returns the name pattern to match for a given session number.
-// Session 1 is "Taste of Camp", sessions 2-4 are "Session N".
-func getSessionNamePattern(sessionNum string) string {
-	if sessionNum == "1" {
-		return "Taste of Camp"
-	}
-	return fmt.Sprintf("Session %s", sessionNum)
-}
-
-// isEmbeddedSession returns true if the session number indicates an embedded session (2a, 2b, 3a, etc.)
-func isEmbeddedSession(sessionNum string) bool {
-	return strings.Contains(sessionNum, "a") || strings.Contains(sessionNum, "b")
 }

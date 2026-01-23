@@ -214,3 +214,90 @@ func TestByteSliceHandling(t *testing.T) {
 		})
 	}
 }
+
+// TestNormalizeToStringSlice tests the normalizeToStringSlice helper function
+func TestNormalizeToStringSlice(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    any
+		expected []string
+	}{
+		{"nil input", nil, nil},
+		{"empty []string", []string{}, []string{}},
+		{"[]string with values", []string{"a", "b", "c"}, []string{"a", "b", "c"}},
+		{"empty []interface{}", []interface{}{}, []string{}},
+		{"[]interface{} with strings", []interface{}{"x", "y", "z"}, []string{"x", "y", "z"}},
+		{"[]interface{} with non-strings", []interface{}{"a", 123}, nil},
+		{"[]any with strings", []any{"p", "q"}, []string{"p", "q"}},
+		{"[]any with mixed types", []any{"a", true}, nil},
+		// Single string is intentionally converted to []string{str} because
+		// PocketBase returns single-value relations as string, not []string
+		{"single string", "not a slice", []string{"not a slice"}},
+		{"empty string", "", []string{}},
+		{"int type", 42, nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := normalizeToStringSlice(tt.input)
+			if tt.expected == nil {
+				if result != nil {
+					t.Errorf("normalizeToStringSlice(%v) = %v, want nil", tt.input, result)
+				}
+			} else {
+				switch {
+				case result == nil:
+					t.Errorf("normalizeToStringSlice(%v) = nil, want %v", tt.input, tt.expected)
+				case len(result) != len(tt.expected):
+					t.Errorf("normalizeToStringSlice(%v) len = %d, want %d", tt.input, len(result), len(tt.expected))
+				default:
+					for i, v := range result {
+						if v != tt.expected[i] {
+							t.Errorf("normalizeToStringSlice(%v)[%d] = %q, want %q", tt.input, i, v, tt.expected[i])
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestFieldEqualsSliceComparison tests FieldEquals with slice types (multi-select relation fields)
+func TestFieldEqualsSliceComparison(t *testing.T) {
+	b := &BaseSyncService{}
+
+	tests := []struct {
+		name     string
+		existing interface{}
+		newVal   interface{}
+		expected bool
+	}{
+		// Same type comparisons
+		{"same []string", []string{"a", "b", "c"}, []string{"a", "b", "c"}, true},
+		{"different []string", []string{"a", "b"}, []string{"a", "c"}, false},
+		{"different length []string", []string{"a", "b"}, []string{"a", "b", "c"}, false},
+
+		// Cross-type comparisons (PocketBase returns []interface{}, we set []string)
+		{"[]interface{} vs []string same", []interface{}{"id1", "id2"}, []string{"id1", "id2"}, true},
+		{"[]string vs []interface{} same", []string{"id1", "id2"}, []interface{}{"id1", "id2"}, true},
+		{"[]interface{} vs []string different", []interface{}{"id1", "id2"}, []string{"id1", "id3"}, false},
+
+		// Order-independent comparison (sorted before compare)
+		{"same values different order", []string{"c", "a", "b"}, []string{"a", "b", "c"}, true},
+		{"[]interface{} vs []string different order", []interface{}{"z", "x", "y"}, []string{"x", "y", "z"}, true},
+
+		// Empty slices
+		{"both empty []string", []string{}, []string{}, true},
+		{"empty []interface{} vs empty []string", []interface{}{}, []string{}, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := b.FieldEquals(tt.existing, tt.newVal)
+			if result != tt.expected {
+				t.Errorf("FieldEquals(%v, %v) = %v, want %v",
+					tt.existing, tt.newVal, result, tt.expected)
+			}
+		})
+	}
+}
