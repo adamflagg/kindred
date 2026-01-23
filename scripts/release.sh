@@ -135,15 +135,7 @@ else
     echo -e "${GREEN}✓ Working tree clean${NC}"
 fi
 
-# Check on main branch (handle both "main" and "heads/main" formats)
-CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-if [[ "$CURRENT_BRANCH" != "main" && "$CURRENT_BRANCH" != "heads/main" ]]; then
-    echo -e "${RED}✗ Not on main branch (on: $CURRENT_BRANCH)${NC}"
-    exit 1
-fi
-echo -e "${GREEN}✓ On main branch${NC}"
-
-# Check up to date with remote
+# Check up to date with remote (branch name doesn't matter, only commit equality)
 git fetch origin main --quiet
 LOCAL=$(git rev-parse HEAD)
 REMOTE=$(git rev-parse origin/main)
