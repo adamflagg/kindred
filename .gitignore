@@ -200,6 +200,7 @@ tmp/
 !package-lock.json
 !**/sample_*.csv
 !config/staff_list.example.json
+!config/sheets_export.example.json
 !config/branding.json
 !config/branding.local.json
 !config/staff_list.json
