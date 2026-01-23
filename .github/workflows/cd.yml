@@ -159,6 +159,17 @@ jobs:
             --jq ".check_runs[] | select(.name == \"$check_name\") | {status: .status, conclusion: .conclusion}"
         }
 
+        # For tag pushes, check if CI already passed (commit was tested on branch)
+        # This saves ~1-5 minutes when tagging a commit that already passed CI
+        if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          EXISTING_SUCCESS=$(gh api repos/${{ github.repository }}/commits/${CHECK_SHA}/check-runs \
+            --jq '.check_runs[] | select(.name == "CI Summary" and .conclusion == "success") | .id' | head -1 || echo "")
+          if [ -n "$EXISTING_SUCCESS" ]; then
+            echo "✅ CI Summary already passed for this commit - skipping wait"
+            exit 0
+          fi
+        fi
+
         # Wait for CI Summary (required)
         echo "=== Verifying CI Summary ==="
         for i in {1..20}; do
@@ -242,8 +253,11 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v6
 
-    - name: Install git-crypt
-      run: sudo apt-get update && sudo apt-get install -y git-crypt
+    - name: Install git-crypt (cached)
+      uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        packages: git-crypt
+        version: git-crypt-v1
 
     - name: Unlock git-crypt
       env:
@@ -359,9 +373,12 @@ jobs:
       if: steps.check.outputs.build == 'true'
       uses: actions/checkout@v6
 
-    - name: Install git-crypt
+    - name: Install git-crypt (cached)
       if: steps.check.outputs.build == 'true'
-      run: sudo apt-get update && sudo apt-get install -y git-crypt
+      uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        packages: git-crypt
+        version: git-crypt-v1
 
     - name: Unlock git-crypt for branding assets
       if: steps.check.outputs.build == 'true' && env.GIT_CRYPT_KEY != ''
@@ -493,37 +510,16 @@ jobs:
       if: steps.check.outputs.build == 'true'
       run: |
         # Use CI override to avoid external network requirement
-        docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml up -d
-
-        echo "=== Initial service status ==="
-        docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml ps
-
-        echo "Waiting for service to become healthy..."
-        MAX_ATTEMPTS=30
-        SLEEP_TIME=5
-
-        for i in $(seq 1 $MAX_ATTEMPTS); do
-          echo "Attempt $i/$MAX_ATTEMPTS..."
-          # Note: docker compose ps --format json outputs NDJSON (one object per line), not an array
-          # Use jq -s (slurp) to collect into array, then check Health field
-          HEALTHY=$(docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml ps kindred --format json | jq -s '.[0].Health // .[0].health // "unknown"' | grep -c "healthy" || true)
-          echo "  Kindred: $([ "$HEALTHY" = "1" ] && echo "✓ healthy" || echo "✗ not ready")"
-
-          if [ "$HEALTHY" = "1" ]; then
-            echo "✅ Service is healthy!"
-            break
-          fi
-
-          if [ $i -eq $MAX_ATTEMPTS ]; then
-            echo "❌ Service failed to become healthy after $((MAX_ATTEMPTS * SLEEP_TIME)) seconds"
-            docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml ps
-            docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml logs --tail=50
-            exit 1
-          fi
-
-          sleep $SLEEP_TIME
-        done
-
+        # --wait uses Docker's native healthcheck polling (configured in docker-compose.yml)
+        # --wait-timeout 150 matches our previous 30 attempts × 5s = 150s max
+        if docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml up -d --wait --wait-timeout 150; then
+          echo "✅ Service is healthy!"
+        else
+          echo "❌ Service failed to become healthy within 150 seconds"
+          docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml ps
+          docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml logs --tail=50
+          exit 1
+        fi
         docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml ps
 
     - name: Test service endpoints
@@ -624,22 +620,24 @@ jobs:
         sarif_file: 'trivy-results-${{ matrix.image }}.sarif'
 
     # === Push to Registry (only if tests pass and not dry-run/PR) ===
+    # Tag and push the already-built :test image instead of rebuilding (~3-5 min savings)
     - name: Push Docker image
       if: |
         steps.check.outputs.build == 'true' &&
         github.event_name != 'pull_request' &&
         github.event.inputs.dry_run != 'true'
-      uses: docker/build-push-action@v6
-      with:
-        context: ${{ matrix.context }}
-        file: ${{ matrix.dockerfile }}
-        push: true
-        tags: ${{ steps.tags.outputs.tags }}
-        cache-from: type=gha
-        platforms: linux/amd64
-        build-args: |
-          VERSION=${{ steps.version.outputs.version }}
-          BUILD_DATE=${{ steps.version.outputs.build_date }}
+      run: |
+        TEST_IMAGE="${{ env.REGISTRY }}/${{ env.USERNAME }}/${{ matrix.image }}:test"
+
+        # Tags are comma-separated, iterate and push each
+        IFS=',' read -ra TAG_ARRAY <<< "${{ steps.tags.outputs.tags }}"
+        for tag in "${TAG_ARRAY[@]}"; do
+          echo "Tagging and pushing: $tag"
+          docker tag "$TEST_IMAGE" "$tag"
+          docker push "$tag"
+        done
+
+        echo "✅ All tags pushed successfully"
 
     - name: Skip push (dry-run or PR)
       if: |
