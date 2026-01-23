@@ -10,6 +10,7 @@ import (
 // FieldType defines how a column value should be transformed
 type FieldType int
 
+// Field type constants for column configuration
 const (
 	FieldTypeText FieldType = iota
 	FieldTypeNumber
@@ -155,7 +156,11 @@ func (r *FieldResolver) resolveMultiRelation(value interface{}, col ColumnConfig
 
 // BuildDataMatrix converts records to a 2D array for Google Sheets
 // First row contains headers, subsequent rows contain data
-func BuildDataMatrix(records []map[string]interface{}, columns []ColumnConfig, resolver *FieldResolver) [][]interface{} {
+func BuildDataMatrix(
+	records []map[string]interface{},
+	columns []ColumnConfig,
+	resolver *FieldResolver,
+) [][]interface{} {
 	// Preallocate: 1 header row + data rows
 	data := make([][]interface{}, 0, 1+len(records))
 
@@ -274,8 +279,14 @@ func GetYearSpecificExports() []ExportConfig {
 			Columns: []ColumnConfig{
 				{Field: "first_name", Header: "First Name", Type: FieldTypeText},
 				{Field: "last_name", Header: "Last Name", Type: FieldTypeText},
-				{Field: "position", Header: "Position", Type: FieldTypeRelation, RelatedCol: "staff_positions", RelatedField: "name"},
-				{Field: "bunks", Header: "Bunks", Type: FieldTypeMultiRelation, RelatedCol: "bunks", RelatedField: "name"},
+				{
+					Field: "position", Header: "Position", Type: FieldTypeRelation,
+					RelatedCol: "staff_positions", RelatedField: "name",
+				},
+				{
+					Field: "bunks", Header: "Bunks", Type: FieldTypeMultiRelation,
+					RelatedCol: "bunks", RelatedField: "name",
+				},
 			},
 		},
 		{
@@ -283,9 +294,18 @@ func GetYearSpecificExports() []ExportConfig {
 			SheetName:  "{year}-bunk-assignments",
 			IsGlobal:   false,
 			Columns: []ColumnConfig{
-				{Field: "person", Header: "Person", Type: FieldTypeRelation, RelatedCol: "persons", RelatedField: "display_name"},
-				{Field: "bunk", Header: "Bunk", Type: FieldTypeRelation, RelatedCol: "bunks", RelatedField: "name"},
-				{Field: "session", Header: "Session", Type: FieldTypeRelation, RelatedCol: "camp_sessions", RelatedField: "name"},
+				{
+					Field: "person", Header: "Person", Type: FieldTypeRelation,
+					RelatedCol: "persons", RelatedField: "display_name",
+				},
+				{
+					Field: "bunk", Header: "Bunk", Type: FieldTypeRelation,
+					RelatedCol: "bunks", RelatedField: "name",
+				},
+				{
+					Field: "session", Header: "Session", Type: FieldTypeRelation,
+					RelatedCol: "camp_sessions", RelatedField: "name",
+				},
 			},
 		},
 		{
@@ -295,7 +315,10 @@ func GetYearSpecificExports() []ExportConfig {
 			Columns: []ColumnConfig{
 				{Field: "amount", Header: "Amount", Type: FieldTypeNumber},
 				{Field: "date", Header: "Date", Type: FieldTypeDate},
-				{Field: "category", Header: "Category", Type: FieldTypeRelation, RelatedCol: "financial_categories", RelatedField: "name"},
+				{
+					Field: "category", Header: "Category", Type: FieldTypeRelation,
+					RelatedCol: "financial_categories", RelatedField: "name",
+				},
 				{Field: "description", Header: "Description", Type: FieldTypeText},
 			},
 		},

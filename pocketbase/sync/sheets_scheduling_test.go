@@ -8,7 +8,7 @@ import (
 // Phase 6-7: Scheduled and Historical Export Tests
 // =============================================================================
 
-func TestGoogleSheetsExport_SyncGlobalsOnly_MethodExists(t *testing.T) {
+func TestGoogleSheetsExport_SyncGlobalsOnly_MethodExists(_ *testing.T) {
 	// Test that SyncGlobalsOnly method exists and is callable
 	// Actual DB interaction is tested in integration tests
 	mock := NewMockSheetsWriter()
@@ -26,7 +26,7 @@ func TestGoogleSheetsExport_SyncGlobalsOnly_MethodExists(t *testing.T) {
 	// Integration tests will verify actual behavior with DB
 }
 
-func TestGoogleSheetsExport_SyncDailyOnly_MethodExists(t *testing.T) {
+func TestGoogleSheetsExport_SyncDailyOnly_MethodExists(_ *testing.T) {
 	// Test that SyncDailyOnly method exists and is callable
 	mock := NewMockSheetsWriter()
 	export := &GoogleSheetsExport{
@@ -41,7 +41,7 @@ func TestGoogleSheetsExport_SyncDailyOnly_MethodExists(t *testing.T) {
 	// Integration tests will verify actual behavior with DB
 }
 
-func TestGoogleSheetsExport_SyncForYears_MethodExists(t *testing.T) {
+func TestGoogleSheetsExport_SyncForYears_MethodExists(_ *testing.T) {
 	// Test that SyncForYears method exists and is callable
 	mock := NewMockSheetsWriter()
 	export := &GoogleSheetsExport{

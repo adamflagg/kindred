@@ -198,7 +198,8 @@ func (g *GoogleSheetsExport) queryCollection(collection, filter string, limit in
 }
 
 // preloadLookups preloads lookup data for relations
-func (g *GoogleSheetsExport) preloadLookups(resolver *FieldResolver, year int) error {
+// The year parameter is reserved for future year-scoped lookups
+func (g *GoogleSheetsExport) preloadLookups(resolver *FieldResolver, _ int) error {
 	// Load sessions
 	sessions, err := g.loadSessions()
 	if err == nil {

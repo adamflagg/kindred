@@ -78,7 +78,7 @@ func (c *SheetsConfig) GetYearTables() []string {
 // If the file doesn't exist, generates defaults and saves them
 func LoadSheetsConfig(configPath string) (*SheetsConfig, error) {
 	// Check if file exists
-	data, err := os.ReadFile(configPath)
+	data, err := os.ReadFile(configPath) //nolint:gosec // Config path is application-controlled
 	if err != nil {
 		if os.IsNotExist(err) {
 			// Generate defaults and save
