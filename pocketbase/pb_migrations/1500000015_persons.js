@@ -104,7 +104,6 @@ migrate((app) => {
         presentable: false,
         min: null,
         max: null,
-        onlyInt: true
       },
       {
         name: "school",
