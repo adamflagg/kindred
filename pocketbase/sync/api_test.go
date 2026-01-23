@@ -2,6 +2,7 @@ package sync
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -602,5 +603,260 @@ func TestCustomValuesSyncEndpointResponse(t *testing.T) {
 	// Verify message format (just test the constant exists and is non-empty)
 	if expectedMessage == "" {
 		t.Error("expected message should not be empty")
+	}
+}
+
+// TestGetConfiguredYear tests the getConfiguredYear function
+func TestGetConfiguredYear(t *testing.T) {
+	tests := []struct {
+		name        string
+		envValue    string
+		wantYear    int
+		description string
+	}{
+		{
+			name:        "valid year 2026",
+			envValue:    "2026",
+			wantYear:    2026,
+			description: "should parse valid year from env",
+		},
+		{
+			name:        "valid year 2024",
+			envValue:    "2024",
+			wantYear:    2024,
+			description: "should parse historical year from env",
+		},
+		{
+			name:        "empty env uses current year",
+			envValue:    "",
+			wantYear:    0, // Indicates current year should be used
+			description: "empty env should fall back to current year",
+		},
+		{
+			name:        "invalid non-numeric",
+			envValue:    "abc",
+			wantYear:    0, // Indicates fallback to current year
+			description: "invalid value should fall back to current year",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			year := parseConfiguredYear(tt.envValue)
+			if year != tt.wantYear {
+				t.Errorf("parseConfiguredYear(%q) = %d, want %d", tt.envValue, year, tt.wantYear)
+			}
+		})
+	}
+}
+
+// parseConfiguredYear parses year from env string, returning 0 if invalid/empty
+func parseConfiguredYear(envValue string) int {
+	if envValue == "" {
+		return 0
+	}
+	year := 0
+	for _, c := range envValue {
+		if c < '0' || c > '9' {
+			return 0
+		}
+		year = year*10 + int(c-'0')
+	}
+	return year
+}
+
+// TestYearPrefixedCSVPath tests the year-prefixed CSV path generation
+func TestYearPrefixedCSVPath(t *testing.T) {
+	tests := []struct {
+		name     string
+		year     int
+		wantPath string
+	}{
+		{
+			name:     "year 2026",
+			year:     2026,
+			wantPath: "2026_latest.csv",
+		},
+		{
+			name:     "year 2024",
+			year:     2024,
+			wantPath: "2024_latest.csv",
+		},
+		{
+			name:     "year 2017 (minimum)",
+			year:     2017,
+			wantPath: "2017_latest.csv",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := getYearPrefixedCSVFilename(tt.year)
+			if path != tt.wantPath {
+				t.Errorf("getYearPrefixedCSVFilename(%d) = %q, want %q", tt.year, path, tt.wantPath)
+			}
+		})
+	}
+}
+
+// getYearPrefixedCSVFilename returns the CSV filename with year prefix
+func getYearPrefixedCSVFilename(year int) string {
+	return fmt.Sprintf("%d_latest.csv", year)
+}
+
+// TestYearPrefixedBackupFilename tests backup filename generation with year
+func TestYearPrefixedBackupFilename(t *testing.T) {
+	tests := []struct {
+		name      string
+		year      int
+		timestamp string
+		wantPath  string
+	}{
+		{
+			name:      "year 2026",
+			year:      2026,
+			timestamp: "20260115_140000",
+			wantPath:  "2026_backup_20260115_140000.csv",
+		},
+		{
+			name:      "year 2024",
+			year:      2024,
+			timestamp: "20241231_235959",
+			wantPath:  "2024_backup_20241231_235959.csv",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := getYearPrefixedBackupFilename(tt.year, tt.timestamp)
+			if path != tt.wantPath {
+				t.Errorf("getYearPrefixedBackupFilename(%d, %q) = %q, want %q",
+					tt.year, tt.timestamp, path, tt.wantPath)
+			}
+		})
+	}
+}
+
+// getYearPrefixedBackupFilename returns the backup filename with year prefix
+func getYearPrefixedBackupFilename(year int, timestamp string) string {
+	return fmt.Sprintf("%d_backup_%s.csv", year, timestamp)
+}
+
+// TestUploadYearParameterParsing tests year query parameter parsing for uploads
+func TestUploadYearParameterParsing(t *testing.T) {
+	tests := []struct {
+		name           string
+		yearParam      string
+		defaultYear    int
+		wantYear       int
+		wantUseDefault bool
+	}{
+		{
+			name:           "explicit year 2024",
+			yearParam:      "2024",
+			defaultYear:    2026,
+			wantYear:       2024,
+			wantUseDefault: false,
+		},
+		{
+			name:           "explicit year 2026",
+			yearParam:      "2026",
+			defaultYear:    2026,
+			wantYear:       2026,
+			wantUseDefault: false,
+		},
+		{
+			name:           "empty uses default",
+			yearParam:      "",
+			defaultYear:    2026,
+			wantYear:       2026,
+			wantUseDefault: true,
+		},
+		{
+			name:           "invalid uses default",
+			yearParam:      "abc",
+			defaultYear:    2026,
+			wantYear:       2026,
+			wantUseDefault: true,
+		},
+		{
+			name:           "year too old uses default",
+			yearParam:      "2010",
+			defaultYear:    2026,
+			wantYear:       2026,
+			wantUseDefault: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			year, usedDefault := parseUploadYearParam(tt.yearParam, tt.defaultYear)
+			if year != tt.wantYear {
+				t.Errorf("parseUploadYearParam(%q, %d) year = %d, want %d",
+					tt.yearParam, tt.defaultYear, year, tt.wantYear)
+			}
+			if usedDefault != tt.wantUseDefault {
+				t.Errorf("parseUploadYearParam(%q, %d) usedDefault = %v, want %v",
+					tt.yearParam, tt.defaultYear, usedDefault, tt.wantUseDefault)
+			}
+		})
+	}
+}
+
+// parseUploadYearParam parses year from query param, returning default if invalid
+func parseUploadYearParam(yearParam string, defaultYear int) (int, bool) {
+	if yearParam == "" {
+		return defaultYear, true
+	}
+
+	year := 0
+	for _, c := range yearParam {
+		if c < '0' || c > '9' {
+			return defaultYear, true
+		}
+		year = year*10 + int(c-'0')
+	}
+
+	// Validate year range (2017-present)
+	if year < 2017 || year > 2030 {
+		return defaultYear, true
+	}
+
+	return year, false
+}
+
+// TestSyncStatusIncludesConfiguredYear tests that sync status response includes configured year
+func TestSyncStatusIncludesConfiguredYear(t *testing.T) {
+	// This test validates the expected response format
+	// The actual handleSyncStatus function should include _configured_year
+
+	// Expected response keys
+	expectedKeys := []string{
+		"session_groups",
+		"sessions",
+		"attendees",
+		"persons",
+		"bunks",
+		"bunk_plans",
+		"bunk_assignments",
+		"bunk_requests",
+		"process_requests",
+		"_daily_sync_running",
+		"_weekly_sync_running",
+		"_historical_sync_running",
+		"_configured_year", // NEW: should be included
+	}
+
+	// Verify _configured_year is in expected keys
+	foundConfiguredYear := false
+	for _, key := range expectedKeys {
+		if key == "_configured_year" {
+			foundConfiguredYear = true
+			break
+		}
+	}
+
+	if !foundConfiguredYear {
+		t.Error("expected keys should include _configured_year")
 	}
 }

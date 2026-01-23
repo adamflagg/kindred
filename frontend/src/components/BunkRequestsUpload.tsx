@@ -4,6 +4,7 @@ import { useApiWithAuth } from '../hooks/useApiWithAuth';
 import { syncService, type UploadError } from '../services/sync';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
+import { useCurrentYear } from '../hooks/useCurrentYear';
 
 interface BunkRequestsUploadProps {
   compact?: boolean;
@@ -12,12 +13,13 @@ interface BunkRequestsUploadProps {
 export default function BunkRequestsUpload({ compact = false }: BunkRequestsUploadProps) {
   const { fetchWithAuth } = useApiWithAuth();
   const queryClient = useQueryClient();
+  const { currentYear } = useCurrentYear();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [showModal, setShowModal] = useState(false);
 
   const uploadMutation = useMutation({
-    mutationFn: (file: File) => syncService.uploadBunkRequestsCSV(file, fetchWithAuth),
+    mutationFn: (file: File) => syncService.uploadBunkRequestsCSV(file, fetchWithAuth, currentYear),
     onSuccess: (data) => {
       toast.success(`CSV uploaded successfully: ${data.filename}`, {
         duration: 4000,
