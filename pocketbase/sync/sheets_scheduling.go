@@ -58,7 +58,7 @@ func (g *GoogleSheetsExport) SyncGlobalsOnly(ctx context.Context) error {
 		}
 
 		// Export to sheet
-		if err := exporter.Export(ctx, config, records); err != nil {
+		if err := exporter.Export(ctx, &config, records); err != nil {
 			slog.Error("Failed to export collection",
 				"collection", config.Collection,
 				"error", err,
@@ -148,7 +148,7 @@ func (g *GoogleSheetsExport) syncYearData(ctx context.Context, year int) error {
 		}
 
 		// Export to sheet
-		if err := exporter.Export(ctx, config, records); err != nil {
+		if err := exporter.Export(ctx, &config, records); err != nil {
 			slog.Error("Failed to export collection",
 				"collection", config.Collection,
 				"year", year,

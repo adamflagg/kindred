@@ -2,6 +2,7 @@
 package sync
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -343,24 +344,26 @@ func (b *BaseSyncService) PreloadRecords(
 
 	// Build map using composite keys (id|year) for year isolation
 	for _, record := range allRecords {
-		if idPart, ok := keyExtractor(record); ok {
-			// Extract year from the record
-			yearValue := record.Get("year")
-			var year int
-			switch v := yearValue.(type) {
-			case float64:
-				year = int(v)
-			case int:
-				year = v
-			default:
-				slog.Warn("Record missing or invalid year field", "collection", collection, "recordId", record.Id)
-				continue
-			}
-
-			// Use composite key for storage
-			compKey := CompositeKey(idPart, year)
-			existingRecords[compKey] = record
+		idPart, ok := keyExtractor(record)
+		if !ok {
+			continue
 		}
+		// Extract year from the record
+		yearValue := record.Get("year")
+		var year int
+		switch v := yearValue.(type) {
+		case float64:
+			year = int(v)
+		case int:
+			year = v
+		default:
+			slog.Warn("Record missing or invalid year field", "collection", collection, "recordId", record.Id)
+			continue
+		}
+
+		// Use composite key for storage
+		compKey := CompositeKey(idPart, year)
+		existingRecords[compKey] = record
 	}
 
 	slog.Info("Loaded existing records from database", "collection", collection, "count", len(existingRecords))
@@ -445,13 +448,14 @@ func (b *BaseSyncService) ProcessSimpleRecord(
 		} else {
 			// Compare all fields
 			for field, value := range recordData {
-				if !b.FieldEquals(existing.Get(field), value) {
-					triggeringField = field
-					existingVal = existing.Get(field)
-					newVal = value
-					needsUpdate = true
-					break
+				if b.FieldEquals(existing.Get(field), value) {
+					continue
 				}
+				triggeringField = field
+				existingVal = existing.Get(field)
+				newVal = value
+				needsUpdate = true
+				break
 			}
 		}
 
@@ -592,24 +596,26 @@ func (b *BaseSyncService) PreloadCompositeRecords(
 
 	// Build map using composite keys with year appended for isolation
 	for _, record := range allRecords {
-		if key, ok := keyBuilder(record); ok {
-			// Extract year from the record
-			yearValue := record.Get("year")
-			var year int
-			switch v := yearValue.(type) {
-			case float64:
-				year = int(v)
-			case int:
-				year = v
-			default:
-				slog.Warn("Record missing or invalid year field", "collection", collection, "recordId", record.Id)
-				continue
-			}
-
-			// Append year to the composite key
-			yearScopedKey := fmt.Sprintf("%s|%d", key, year)
-			existingRecords[yearScopedKey] = record
+		key, ok := keyBuilder(record)
+		if !ok {
+			continue
 		}
+		// Extract year from the record
+		yearValue := record.Get("year")
+		var year int
+		switch v := yearValue.(type) {
+		case float64:
+			year = int(v)
+		case int:
+			year = v
+		default:
+			slog.Warn("Record missing or invalid year field", "collection", collection, "recordId", record.Id)
+			continue
+		}
+
+		// Append year to the composite key
+		yearScopedKey := fmt.Sprintf("%s|%d", key, year)
+		existingRecords[yearScopedKey] = record
 	}
 
 	slog.Info("Loaded existing records from database", "collection", collection, "count", len(existingRecords))
@@ -760,7 +766,7 @@ func (b *BaseSyncService) ForceWALCheckpoint() error {
 // FieldEquals compares two field values for equality, handling type conversions and special cases
 //
 //nolint:gocyclo // complex type comparison logic requires many branches
-func (b *BaseSyncService) FieldEquals(existingValue interface{}, newValue interface{}) bool {
+func (b *BaseSyncService) FieldEquals(existingValue, newValue interface{}) bool {
 	// Handle nil vs empty string equivalence
 	if (existingValue == nil && newValue == "") || (existingValue == "" && newValue == nil) {
 		return true
@@ -805,8 +811,8 @@ func (b *BaseSyncService) FieldEquals(existingValue interface{}, newValue interf
 			}
 		}
 		// Also try direct []byte assertion (for raw byte slices)
-		if bytes, ok := existingValue.([]byte); ok {
-			if string(bytes) == jsonNullString {
+		if rawBytes, ok := existingValue.([]byte); ok {
+			if string(rawBytes) == jsonNullString {
 				return true
 			}
 		}
@@ -817,8 +823,8 @@ func (b *BaseSyncService) FieldEquals(existingValue interface{}, newValue interf
 				return true
 			}
 		}
-		if bytes, ok := newValue.([]byte); ok {
-			if string(bytes) == jsonNullString {
+		if rawBytes, ok := newValue.([]byte); ok {
+			if string(rawBytes) == jsonNullString {
 				return true
 			}
 		}
@@ -864,7 +870,7 @@ func (b *BaseSyncService) FieldEquals(existingValue interface{}, newValue interf
 				// Both parsed successfully, compare the parsed values
 				existingBytes, _ := json.Marshal(existingJSON)
 				newBytes, _ := json.Marshal(newJSON)
-				return string(existingBytes) == string(newBytes)
+				return bytes.Equal(existingBytes, newBytes)
 			}
 		}
 	}
@@ -968,7 +974,7 @@ func (b *BaseSyncService) FieldEquals(existingValue interface{}, newValue interf
 			if err1 != nil || err2 != nil {
 				return reflect.DeepEqual(existingJSON, newJSON)
 			}
-			return string(existingBytes) == string(newBytes)
+			return bytes.Equal(existingBytes, newBytes)
 		}
 	}
 
@@ -1091,9 +1097,9 @@ func normalizeToJSON(value any) any {
 	}
 
 	// Handle []byte (types.JSONRaw is []byte)
-	if bytes, ok := value.([]byte); ok {
+	if rawBytes, ok := value.([]byte); ok {
 		var result any
-		if err := json.Unmarshal(bytes, &result); err != nil {
+		if err := json.Unmarshal(rawBytes, &result); err != nil {
 			return value // Return as-is if not valid JSON
 		}
 		return result
