@@ -55,6 +55,8 @@ export interface SyncStatusResponse {
   _historical_sync_running?: boolean;
   _historical_sync_year?: number;
   _weekly_sync_running?: boolean;
+  // Configured year from backend (CAMPMINDER_SEASON_ID)
+  _configured_year?: number;
 }
 
 export function useSyncStatusAPI() {

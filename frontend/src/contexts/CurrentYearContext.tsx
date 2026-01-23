@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router';
 import { CurrentYearContext } from '../hooks/useCurrentYear';
+import { useSyncStatusAPI } from '../hooks/useSyncStatusAPI';
 
 const STORAGE_KEY = 'bunking-current-year';
 
@@ -10,39 +11,52 @@ const currentMonth = new Date().getMonth(); // 0-11
 
 // For summer camp: if we're in Jan-May (months 0-4), the most recent camp year
 // is the previous calendar year (last summer). Jun-Dec uses current year.
-const campSeasonYear = currentMonth < 5 ? currentCalendarYear - 1 : currentCalendarYear;
+const clientFallbackYear = currentMonth < 5 ? currentCalendarYear - 1 : currentCalendarYear;
 
-const AVAILABLE_YEARS = Array.from(
-  { length: 5 },
-  (_, i) => campSeasonYear - i
-);
+// Calculate available years based on a base year
+function calculateAvailableYears(baseYear: number): number[] {
+  return Array.from({ length: 5 }, (_, i) => baseYear - i);
+}
 
-function getStoredYear(): number | null {
+function getStoredYear(availableYears: number[]): number | null {
   const stored = localStorage.getItem(STORAGE_KEY);
   if (stored) {
     const year = parseInt(stored, 10);
-    if (!isNaN(year) && AVAILABLE_YEARS.includes(year)) {
+    if (!isNaN(year) && availableYears.includes(year)) {
       return year;
     }
   }
   return null;
 }
 
-function getDefaultYear(): number {
+function getDefaultYear(availableYears: number[], baseYear: number): number {
   // First try localStorage
-  const stored = getStoredYear();
+  const stored = getStoredYear(availableYears);
   if (stored) return stored;
 
-  // Default to camp season year (accounts for Jan-May = previous summer)
-  if (AVAILABLE_YEARS.includes(campSeasonYear)) {
-    return campSeasonYear;
+  // Default to base year
+  if (availableYears.includes(baseYear)) {
+    return baseYear;
   }
-  return AVAILABLE_YEARS[0] ?? campSeasonYear;
+  return availableYears[0] ?? baseYear;
 }
 
 export function CurrentYearProvider({ children }: { children: React.ReactNode }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [isTransitioning, setIsTransitioning] = useState(false);
+
+  // Fetch configured year from backend sync status
+  const { data: syncStatus } = useSyncStatusAPI();
+  const backendYear = syncStatus?._configured_year;
+
+  // Use backend year if available, otherwise fall back to client-side calculation
+  const configuredYear = backendYear ?? clientFallbackYear;
+
+  // Calculate available years based on configured year
+  const AVAILABLE_YEARS = useMemo(
+    () => calculateAvailableYears(configuredYear),
+    [configuredYear]
+  );
 
   // Get year from URL param, or fall back to stored/default
   const yearFromUrl = useMemo(() => {
@@ -54,10 +68,10 @@ export function CurrentYearProvider({ children }: { children: React.ReactNode })
       }
     }
     return null;
-  }, [searchParams]);
+  }, [searchParams, AVAILABLE_YEARS]);
 
   // The effective current year: URL param takes priority, then localStorage/default
-  const currentYear = yearFromUrl ?? getDefaultYear();
+  const currentYear = yearFromUrl ?? getDefaultYear(AVAILABLE_YEARS, configuredYear);
 
   // Persist to localStorage only when NOT coming from URL
   // (URL year is a "view override", not a preference change)
@@ -94,7 +108,7 @@ export function CurrentYearProvider({ children }: { children: React.ReactNode })
     setTimeout(() => {
       setIsTransitioning(false);
     }, 500);
-  }, [currentYear, setSearchParams]);
+  }, [currentYear, setSearchParams, AVAILABLE_YEARS]);
 
   return (
     <CurrentYearContext.Provider

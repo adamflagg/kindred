@@ -472,6 +472,21 @@ func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error 
 		})
 	}
 
+	// Determine year for CSV storage
+	// Use year query param if provided, otherwise default to configured year from env
+	uploadYear := time.Now().Year()
+	if yearStr := os.Getenv("CAMPMINDER_SEASON_ID"); yearStr != "" {
+		if y, err := strconv.Atoi(yearStr); err == nil {
+			uploadYear = y
+		}
+	}
+	// Override with query parameter if provided and valid
+	if yearParam := e.Request.URL.Query().Get("year"); yearParam != "" {
+		if y, err := strconv.Atoi(yearParam); err == nil && y >= 2017 && y <= 2050 {
+			uploadYear = y
+		}
+	}
+
 	// Create directory if it doesn't exist
 	csvDir := filepath.Join(scheduler.app.DataDir(), "bunk_requests")
 	if err := os.MkdirAll(csvDir, 0750); err != nil { //nolint:gosec // G301: data dir permissions
@@ -480,10 +495,13 @@ func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error 
 		})
 	}
 
+	// Use year-prefixed filename for storage
+	latestFilename := fmt.Sprintf("%d_latest.csv", uploadYear)
+	latestPath := filepath.Join(csvDir, latestFilename)
+
 	// Create backup of existing file if it exists
-	latestPath := filepath.Join(csvDir, "latest.csv")
 	if _, err := os.Stat(latestPath); err == nil {
-		backupName := fmt.Sprintf("backup_%s.csv", time.Now().Format("20060102_150405"))
+		backupName := fmt.Sprintf("%d_backup_%s.csv", uploadYear, time.Now().Format("20060102_150405"))
 		backupPath := filepath.Join(csvDir, backupName)
 		if err := os.Rename(latestPath, backupPath); err != nil {
 			slog.Warn("Failed to create backup", "error", err)
@@ -497,12 +515,15 @@ func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error 
 		})
 	}
 
+	slog.Info("CSV file saved", "year", uploadYear, "path", latestPath)
+
 	// Update metadata
 	metadata := map[string]interface{}{
 		"filename":     filename,
 		"uploaded_at":  time.Now().Format(time.RFC3339),
 		"size":         len(csvData),
 		"header_count": len(headers),
+		"year":         uploadYear,
 	}
 
 	metadataPath := filepath.Join(csvDir, "upload_metadata.json")
@@ -531,6 +552,7 @@ func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error 
 		"filename":     filename,
 		"header_count": len(headers),
 		"sync_started": runSync,
+		"year":         uploadYear,
 	})
 }
 
@@ -589,6 +611,15 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 	if orchestrator.IsHistoricalSyncRunning() {
 		statuses["_historical_sync_year"] = orchestrator.GetHistoricalSyncYear()
 	}
+
+	// Add configured year from environment (CAMPMINDER_SEASON_ID)
+	configuredYear := time.Now().Year()
+	if yearStr := os.Getenv("CAMPMINDER_SEASON_ID"); yearStr != "" {
+		if y, err := strconv.Atoi(yearStr); err == nil {
+			configuredYear = y
+		}
+	}
+	statuses["_configured_year"] = configuredYear
 
 	return e.JSON(http.StatusOK, statuses)
 }
