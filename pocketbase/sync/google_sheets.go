@@ -25,6 +25,7 @@ const (
 type SheetsWriter interface {
 	WriteToSheet(ctx context.Context, spreadsheetID, sheetTab string, data [][]interface{}) error
 	ClearSheet(ctx context.Context, spreadsheetID, sheetTab string) error
+	EnsureSheet(ctx context.Context, spreadsheetID, sheetTab string) error
 }
 
 // RealSheetsWriter implements SheetsWriter using the Google Sheets API
@@ -63,6 +64,44 @@ func (w *RealSheetsWriter) ClearSheet(ctx context.Context, spreadsheetID, sheetT
 	).Context(ctx).Do()
 
 	return err
+}
+
+// EnsureSheet creates a sheet tab if it doesn't exist (idempotent)
+func (w *RealSheetsWriter) EnsureSheet(ctx context.Context, spreadsheetID, sheetTab string) error {
+	// Get spreadsheet metadata to check existing tabs
+	spreadsheet, err := w.service.Spreadsheets.Get(spreadsheetID).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("getting spreadsheet: %w", err)
+	}
+
+	// Check if tab already exists
+	for _, sheet := range spreadsheet.Sheets {
+		if sheet.Properties.Title == sheetTab {
+			// Tab already exists, nothing to do
+			return nil
+		}
+	}
+
+	// Tab doesn't exist, create it
+	addSheetRequest := &sheets.Request{
+		AddSheet: &sheets.AddSheetRequest{
+			Properties: &sheets.SheetProperties{
+				Title: sheetTab,
+			},
+		},
+	}
+
+	batchUpdateRequest := &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: []*sheets.Request{addSheetRequest},
+	}
+
+	_, err = w.service.Spreadsheets.BatchUpdate(spreadsheetID, batchUpdateRequest).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("creating sheet tab %s: %w", sheetTab, err)
+	}
+
+	slog.Info("Created new sheet tab", "tab", sheetTab)
+	return nil
 }
 
 // AttendeeRecord represents an attendee for export
@@ -370,11 +409,16 @@ func (g *GoogleSheetsExport) ExportToSheets(
 	return nil
 }
 
-// exportTab clears and writes data to a single sheet tab
+// exportTab ensures sheet exists, clears, and writes data to a single sheet tab
 func (g *GoogleSheetsExport) exportTab(ctx context.Context, tabName string, data [][]interface{}) error {
+	// Ensure sheet tab exists (creates if missing)
+	if err := g.sheetsWriter.EnsureSheet(ctx, g.spreadsheetID, tabName); err != nil {
+		return fmt.Errorf("ensuring sheet %s: %w", tabName, err)
+	}
+
 	// Clear existing data
 	if err := g.sheetsWriter.ClearSheet(ctx, g.spreadsheetID, tabName); err != nil {
-		slog.Warn("Failed to clear sheet tab (may not exist yet)", "tab", tabName, "error", err)
+		slog.Warn("Failed to clear sheet tab", "tab", tabName, "error", err)
 		// Continue anyway - the write might still succeed
 	}
 

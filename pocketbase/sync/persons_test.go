@@ -31,7 +31,7 @@ func TestTransformPersonToPB_CamperDetailsExpanded(t *testing.T) {
 		"GenderID":    float64(0), // Female
 		// No "Age" field - triggers default age behavior without needing client
 		"Name": map[string]interface{}{
-			"First":     "Emma",
+			"First":     testFirstName,
 			"Last":      "Johnson",
 			"Preferred": "Emmy",
 		},
@@ -80,7 +80,7 @@ func TestTransformPersonToPB_CamperDetailsExpanded(t *testing.T) {
 	if got, want := pbData["cm_id"].(int), 12345; got != want {
 		t.Errorf("cm_id = %d, want %d", got, want)
 	}
-	if got, want := pbData["first_name"].(string), "Emma"; got != want {
+	if got, want := pbData["first_name"].(string), testFirstName; got != want {
 		t.Errorf("first_name = %q, want %q", got, want)
 	}
 	if got, want := pbData["school"].(string), "Riverside Elementary"; got != want {
