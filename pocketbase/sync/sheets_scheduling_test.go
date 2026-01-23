@@ -146,16 +146,16 @@ func TestSheetsExportServiceNames(t *testing.T) {
 func TestParseExportYearsParam(t *testing.T) {
 	// Test parsing years parameter from API request
 	tests := []struct {
-		input    string
-		want     []int
-		wantErr  bool
+		input   string
+		want    []int
+		wantErr bool
 	}{
 		{"", []int{}, false},                    // Empty = current year only
 		{"2024", []int{2024}, false},            // Single year
 		{"2024,2023", []int{2024, 2023}, false}, // Multiple years
 		{"2024,2023,2022", []int{2024, 2023, 2022}, false},
-		{"invalid", nil, true},                  // Invalid input
-		{"2024,invalid", nil, true},             // Partial invalid
+		{"invalid", nil, true},      // Invalid input
+		{"2024,invalid", nil, true}, // Partial invalid
 	}
 
 	for _, tt := range tests {
@@ -183,9 +183,9 @@ func TestValidateExportYears(t *testing.T) {
 	}{
 		{[]int{2024}, 2025, false},
 		{[]int{2024, 2023}, 2025, false},
-		{[]int{2017}, 2025, false},           // Oldest valid year
-		{[]int{2016}, 2025, true},            // Too old
-		{[]int{2026}, 2025, true},            // Future year
+		{[]int{2017}, 2025, false},                              // Oldest valid year
+		{[]int{2016}, 2025, true},                               // Too old
+		{[]int{2026}, 2025, true},                               // Future year
 		{[]int{2024, 2023, 2022, 2021, 2020, 2019}, 2025, true}, // Too many years (max 5)
 	}
 

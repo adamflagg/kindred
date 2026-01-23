@@ -9,7 +9,7 @@ import (
 type MockSheetsWriter struct {
 	WrittenData  map[string][][]interface{} // sheetName -> rows
 	ClearedTabs  []string
-	EnsuredTabs  []string // Tracks tabs that were ensured to exist
+	EnsuredTabs  []string        // Tracks tabs that were ensured to exist
 	ExistingTabs map[string]bool // Simulates which tabs already exist
 	WriteError   error
 	ClearError   error
