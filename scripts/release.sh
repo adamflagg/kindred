@@ -247,8 +247,9 @@ if [[ -n "$CUSTOM_VERSION" ]]; then
     fi
 
     # Check if version exists (locally, remotely, or as a release)
+    # Prune local tags that no longer exist on remote (handles deleted re-releases)
     VERSION_EXISTS=false
-    git fetch --tags --quiet 2>/dev/null || true
+    git fetch --tags --prune-tags --quiet 2>/dev/null || true
 
     if git rev-parse "$CHECK_VERSION" &>/dev/null; then
         VERSION_EXISTS=true
