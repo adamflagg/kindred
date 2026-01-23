@@ -388,16 +388,7 @@ migrate((app) => {
           maxSize: 2000000
         }
       },
-      // Self-reference for soft-delete merge tracking
-      {
-        name: "merged_into",
-        type: "relation",
-        required: false,
-        collectionId: COLLECTION_ID_BUNK_REQUESTS,
-        cascadeDelete: false,
-        minSelect: null,
-        maxSelect: 1
-      },
+      // Note: merged_into self-reference added after collection exists (see below)
       {
         type: "autodate",
         name: "created",
@@ -431,7 +422,21 @@ migrate((app) => {
     ]
   });
 
+  // Save collection first (self-reference requires collection to exist)
   app.save(collection);
+
+  // Add merged_into self-reference relation after collection exists
+  const savedCollection = app.findCollectionByNameOrId("bunk_requests");
+  savedCollection.fields.add(new Field({
+    type: "relation",
+    name: "merged_into",
+    required: false,
+    collectionId: savedCollection.id,
+    cascadeDelete: false,
+    minSelect: null,
+    maxSelect: 1
+  }));
+  app.save(savedCollection);
 }, (app) => {
   const collection = app.findCollectionByNameOrId("bunk_requests");
   app.delete(collection);
