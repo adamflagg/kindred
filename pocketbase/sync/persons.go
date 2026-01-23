@@ -305,6 +305,7 @@ func (s *PersonsSync) processBatchPersons(
 		for _, household := range batchHouseholds {
 			if id, ok := household["ID"].(float64); ok && id > 0 {
 				result.extractedHouseholds[int(id)] = household
+				result.processedHouseholdIDs[int(id)] = true
 			}
 		}
 
@@ -448,7 +449,12 @@ func (s *PersonsSync) processPerson(
 		for _, field := range compareFields {
 			if value, exists := pbData[field]; exists {
 				if !s.FieldEquals(existing.Get(field), value) {
-					slog.Debug("Person field differs", "personID", personIDInt, "field", field)
+					// DIAGNOSTIC: Log field differences to identify false-positive updates
+					slog.Info("Person field differs",
+						"personID", personIDInt,
+						"field", field,
+						"existingValue", existing.Get(field),
+						"newValue", value)
 					needsUpdate = true
 					break
 				}
