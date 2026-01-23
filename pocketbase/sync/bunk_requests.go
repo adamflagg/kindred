@@ -84,8 +84,6 @@ func (s *BunkRequestsSync) RunSync(csvPath string, _ int) error {
 		headers[i] = strings.TrimSpace(headers[i])
 	}
 
-	// logging.Printf("Sync process - CSV headers found: %v", headers)
-
 	// Create column index map
 	columnIndex := make(map[string]int)
 	for i, header := range headers {

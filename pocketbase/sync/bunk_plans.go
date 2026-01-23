@@ -163,20 +163,20 @@ func (s *BunkPlansSync) loadMappings() error {
 // extractGradeRange extracts grade range from a name.
 // Returns (min, max) grade numbers. For single grades, min == max.
 // Returns (0, 0) if no grades found.
-func extractGradeRange(name string) (int, int) {
+func extractGradeRange(name string) (minGrade, maxGrade int) {
 	// Pattern 1: "X/Y" format (e.g., "9/10", "7/8")
 	slashPattern := regexp.MustCompile(`(\d+)/(\d+)`)
 	if matches := slashPattern.FindStringSubmatch(name); len(matches) >= 3 {
-		minGrade, _ := strconv.Atoi(matches[1])
-		maxGrade, _ := strconv.Atoi(matches[2])
+		minGrade, _ = strconv.Atoi(matches[1])
+		maxGrade, _ = strconv.Atoi(matches[2])
 		return minGrade, maxGrade
 	}
 
 	// Pattern 2: "Xth - Yth" or "X & Y" format (e.g., "7th - 9th", "9th & 10th")
 	rangePattern := regexp.MustCompile(`(\d+)(?:st|nd|rd|th)?\s*[-–&]\s*(\d+)(?:st|nd|rd|th)?`)
 	if matches := rangePattern.FindStringSubmatch(name); len(matches) >= 3 {
-		minGrade, _ := strconv.Atoi(matches[1])
-		maxGrade, _ := strconv.Atoi(matches[2])
+		minGrade, _ = strconv.Atoi(matches[1])
+		maxGrade, _ = strconv.Atoi(matches[2])
 		return minGrade, maxGrade
 	}
 

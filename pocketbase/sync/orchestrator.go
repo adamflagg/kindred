@@ -374,7 +374,7 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 	slog.Info("Starting daily sync sequence")
 
 	for i, jobName := range orderedJobs {
-		// Check if context is cancelled
+		// Check if context is canceled
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -427,7 +427,7 @@ func (o *Orchestrator) RunWeeklySync(ctx context.Context) error {
 	slog.Info("Starting weekly sync sequence", "services", weeklyJobs)
 
 	for i, jobName := range weeklyJobs {
-		// Check if context is cancelled
+		// Check if context is canceled
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -480,7 +480,7 @@ func (o *Orchestrator) RunCustomValuesSync(ctx context.Context) error {
 	slog.Info("Starting custom values sync sequence", "services", customValuesJobs)
 
 	for i, jobName := range customValuesJobs {
-		// Check if context is cancelled
+		// Check if context is canceled
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -762,7 +762,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 
 	// Run sequentially
 	for i, serviceName := range servicesToRun {
-		// Check if context is cancelled
+		// Check if context is canceled
 		select {
 		case <-ctx.Done():
 			return ctx.Err()

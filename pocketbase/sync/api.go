@@ -437,7 +437,7 @@ func parseAndValidateCSV(csvData []byte) ([]string, error) {
 }
 
 // findMissingColumns checks for required columns (case-insensitive)
-func findMissingColumns(headers []string, required []string) []string {
+func findMissingColumns(headers, required []string) []string {
 	var missing []string
 	for _, req := range required {
 		found := false
