@@ -65,6 +65,27 @@ func (s *Scheduler) Start() error {
 		return fmt.Errorf("adding daily schedule: %w", err)
 	}
 
+	// Add weekly schedule for global data (runs Sunday at 2am, before daily sync)
+	// These are expensive syncs (N API calls per entity) not suitable for daily runs
+	// Currently includes: person_tag_defs, custom_field_defs
+	_, err = s.cron.AddFunc("0 2 * * 0", func() {
+		slog.Info("Starting scheduled weekly sync (global data)")
+		s.runWeeklySync()
+	})
+	if err != nil {
+		return fmt.Errorf("adding weekly schedule: %w", err)
+	}
+
+	// Add weekly schedule for custom values sync (runs Sunday at 4am, after weekly globals)
+	// These are expensive syncs (1 API call per entity) - person + household custom field values
+	_, err = s.cron.AddFunc("0 4 * * 0", func() {
+		slog.Info("Starting scheduled custom values sync")
+		s.runCustomValuesSync()
+	})
+	if err != nil {
+		return fmt.Errorf("adding custom values schedule: %w", err)
+	}
+
 	// Start the cron scheduler
 	s.cron.Start()
 	s.running = true
@@ -121,6 +142,47 @@ func (s *Scheduler) runDailySync() {
 	}
 }
 
+// runWeeklySync runs the weekly sync tasks (global data)
+func (s *Scheduler) runWeeklySync() {
+	// Use background context for scheduled jobs
+	ctx := context.Background()
+
+	// Run weekly sync
+	if err := s.orchestrator.RunWeeklySync(ctx); err != nil {
+		slog.Error("Weekly sync failed", "error", err)
+	} else {
+		slog.Info("Weekly sync completed successfully")
+	}
+}
+
+// runCustomValuesSync runs the weekly custom field values sync for current year
+func (s *Scheduler) runCustomValuesSync() {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
+	defer cancel()
+
+	jobs := GetCustomValuesSyncJobs()
+	slog.Info("Custom values sync starting", "services", jobs)
+
+	for _, job := range jobs {
+		if err := s.orchestrator.RunSingleSync(ctx, job); err != nil {
+			slog.Error("Custom values sync failed", "job", job, "error", err)
+		} else {
+			slog.Info("Custom values sync completed", "job", job)
+		}
+	}
+	slog.Info("Custom values sync sequence completed")
+}
+
+// TriggerCustomValuesSync manually triggers the custom values sync
+func (s *Scheduler) TriggerCustomValuesSync() {
+	go s.runCustomValuesSync()
+}
+
+// IsCustomValuesSyncRunning checks if custom values sync is currently running
+func (s *Scheduler) IsCustomValuesSyncRunning() bool {
+	return s.orchestrator.IsCustomValuesSyncRunning()
+}
+
 // pruneOldSolverRuns deletes solver_runs records older than LogRetentionDays
 func (s *Scheduler) pruneOldSolverRuns() error {
 	cutoff := time.Now().AddDate(0, 0, -LogRetentionDays)
@@ -175,6 +237,10 @@ func (s *Scheduler) TriggerSync(ctx context.Context, syncType string) error {
 		return s.orchestrator.RunDailySync(ctx)
 	case "hourly":
 		return s.orchestrator.RunSingleSync(ctx, "bunk_assignments")
+	case "weekly":
+		return s.orchestrator.RunWeeklySync(ctx)
+	case "custom-values":
+		return s.orchestrator.RunCustomValuesSync(ctx)
 	default:
 		return fmt.Errorf("unknown sync type: %s", syncType)
 	}
@@ -196,6 +262,11 @@ func (s *Scheduler) IsHourlySyncRunning() bool {
 	return s.orchestrator.IsRunning("bunk_assignments")
 }
 
+// IsWeeklySyncRunning checks if weekly sync is currently running
+func (s *Scheduler) IsWeeklySyncRunning() bool {
+	return s.orchestrator.IsWeeklySyncRunning()
+}
+
 // TriggerDailySync manually triggers the daily sync
 func (s *Scheduler) TriggerDailySync() {
 	go s.runDailySync()
@@ -204,6 +275,11 @@ func (s *Scheduler) TriggerDailySync() {
 // TriggerHourlySync manually triggers the hourly sync
 func (s *Scheduler) TriggerHourlySync() {
 	go s.runHourlySync()
+}
+
+// TriggerWeeklySync manually triggers the weekly sync
+func (s *Scheduler) TriggerWeeklySync() {
+	go s.runWeeklySync()
 }
 
 // Global scheduler instance

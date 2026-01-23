@@ -38,9 +38,9 @@ func TestGetSessionNamePattern(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := getSessionNamePattern(tt.sessionNum)
+			got := GetSessionNamePattern(tt.sessionNum)
 			if got != tt.wantPattern {
-				t.Errorf("getSessionNamePattern(%q) = %q, want %q", tt.sessionNum, got, tt.wantPattern)
+				t.Errorf("GetSessionNamePattern(%q) = %q, want %q", tt.sessionNum, got, tt.wantPattern)
 			}
 		})
 	}
@@ -67,9 +67,9 @@ func TestIsEmbeddedSession(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := isEmbeddedSession(tt.sessionNum)
+			got := IsEmbeddedSession(tt.sessionNum)
 			if got != tt.want {
-				t.Errorf("isEmbeddedSession(%q) = %v, want %v", tt.sessionNum, got, tt.want)
+				t.Errorf("IsEmbeddedSession(%q) = %v, want %v", tt.sessionNum, got, tt.want)
 			}
 		})
 	}

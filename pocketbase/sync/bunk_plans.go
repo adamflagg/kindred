@@ -273,6 +273,12 @@ func (s *BunkPlansSync) processBunkPlan(planData map[string]interface{}) (int, e
 	name, _ := planData["Name"].(string)
 	code, _ := planData["Code"].(string)
 
+	// Extract IsActive (defaults to true if not present)
+	isActive := true
+	if val, ok := planData["IsActive"].(bool); ok {
+		isActive = val
+	}
+
 	assignmentsCreated := 0
 
 	if len(bunkIDs) == 0 || len(sessionIDs) == 0 {
@@ -360,8 +366,8 @@ func (s *BunkPlansSync) processBunkPlan(planData map[string]interface{}) (int, e
 				continue
 			}
 
-			// Create bunk plan record with name and code
-			if err := s.createBunkPlan(int(planID), bunkCMID, sessionCMID, name, code); err != nil {
+			// Create bunk plan record with name, code, and is_active
+			if err := s.createBunkPlan(int(planID), bunkCMID, sessionCMID, name, code, isActive); err != nil {
 				return assignmentsCreated, err
 			}
 			assignmentsCreated++
@@ -372,7 +378,7 @@ func (s *BunkPlansSync) processBunkPlan(planData map[string]interface{}) (int, e
 }
 
 // createBunkPlan creates or updates a single bunk plan record
-func (s *BunkPlansSync) createBunkPlan(planID, bunkCMID, sessionCMID int, name, code string) error {
+func (s *BunkPlansSync) createBunkPlan(planID, bunkCMID, sessionCMID int, name, code string, isActive bool) error {
 	year := s.Client.GetSeasonID()
 	// Include plan ID in the key to handle multiple plans per session
 	key := fmt.Sprintf("%d:%d:%d", planID, bunkCMID, sessionCMID)
@@ -382,10 +388,11 @@ func (s *BunkPlansSync) createBunkPlan(planID, bunkCMID, sessionCMID int, name, 
 
 	// Prepare data for the record
 	recordData := map[string]interface{}{
-		"year":  year,
-		"cm_id": planID, // The plan's own CampMinder ID
-		"name":  name,
-		"code":  code,
+		"year":      year,
+		"cm_id":     planID, // The plan's own CampMinder ID
+		"name":      name,
+		"code":      code,
+		"is_active": isActive,
 	}
 
 	// Populate relations - both are required for a valid bunk plan

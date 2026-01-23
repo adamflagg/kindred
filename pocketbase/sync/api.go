@@ -68,6 +68,17 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 		return handleHourlySync(e, scheduler)
 	}))
 
+	// Weekly sync endpoint (global data - expensive N API call syncs)
+	e.Router.POST("/api/custom/sync/weekly", requireAuth(func(e *core.RequestEvent) error {
+		return handleWeeklySync(e, scheduler)
+	}))
+
+	// Custom values sync endpoint (runs person + household custom field values sync)
+	// This is separate from weekly sync because it's even more expensive (1 API call per entity)
+	e.Router.POST("/api/custom/sync/custom-values", requireAuth(func(e *core.RequestEvent) error {
+		return handleCustomValuesSync(e, scheduler)
+	}))
+
 	// Process requests endpoint
 	// Processes original_bunk_requests → bunk_requests via Python
 	// Accepts optional query parameters:
@@ -242,6 +253,58 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 
 		return handleGoogleSheetsExport(e, scheduler)
 	})
+
+	// Person tag definitions sync
+	e.Router.POST("/api/custom/sync/person-tag-defs", requireAuth(func(e *core.RequestEvent) error {
+		return handleIndividualSync(e, scheduler, "person_tag_defs")
+	}))
+
+	// Note: households and person_tags are now part of the combined "persons" sync
+	// and no longer have separate endpoints
+
+	// Custom field definitions sync
+	e.Router.POST("/api/custom/sync/custom-field-defs", requireAuth(func(e *core.RequestEvent) error {
+		return handleIndividualSync(e, scheduler, "custom_field_defs")
+	}))
+
+	// Divisions sync (division definitions - runs in daily sync before persons)
+	e.Router.POST("/api/custom/sync/divisions", requireAuth(func(e *core.RequestEvent) error {
+		return handleIndividualSync(e, scheduler, "divisions")
+	}))
+
+	// Staff lookups sync (global: positions, org_categories, program_areas - runs in weekly sync)
+	e.Router.POST("/api/custom/sync/staff-lookups", requireAuth(func(e *core.RequestEvent) error {
+		return handleIndividualSync(e, scheduler, "staff_lookups")
+	}))
+
+	// Staff sync (year-scoped staff records - runs in daily sync)
+	e.Router.POST("/api/custom/sync/staff", requireAuth(func(e *core.RequestEvent) error {
+		return handleIndividualSync(e, scheduler, "staff")
+	}))
+
+	// Financial lookups sync (global: financial_categories, payment_methods - runs in weekly sync)
+	e.Router.POST("/api/custom/sync/financial-lookups", requireAuth(func(e *core.RequestEvent) error {
+		return handleIndividualSync(e, scheduler, "financial_lookups")
+	}))
+
+	// Financial transactions sync (year-scoped - runs in daily sync)
+	// Accepts optional ?year=YYYY parameter for historical data sync
+	e.Router.POST("/api/custom/sync/financial-transactions", requireAuth(func(e *core.RequestEvent) error {
+		return handleFinancialTransactionsSync(e, scheduler)
+	}))
+
+	// On-demand sync endpoints (require N API calls - one per entity)
+	// Person custom values sync
+	// Accepts optional ?session=X parameter (0 or empty = all, 1-4 = specific session)
+	e.Router.POST("/api/custom/sync/person-custom-values", requireAuth(func(e *core.RequestEvent) error {
+		return handlePersonCustomFieldValuesSync(e, scheduler)
+	}))
+
+	// Household custom values sync
+	// Accepts optional ?session=X parameter (0 or empty = all, 1-4 = specific session)
+	e.Router.POST("/api/custom/sync/household-custom-values", requireAuth(func(e *core.RequestEvent) error {
+		return handleHouseholdCustomFieldValuesSync(e, scheduler)
+	}))
 
 	return nil
 }
@@ -476,17 +539,32 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 	orchestrator := scheduler.GetOrchestrator()
 
 	// Get status of all known sync types (in dependency order)
+	// Note: "persons" is a combined sync that populates persons, households, AND person_tags
+	// tables from a single API call - there are no separate households or person_tags syncs
+	// Note: "divisions" now runs in daily sync (before persons) rather than weekly
 	syncTypes := []string{
+		// Weekly syncs - global definitions that rarely change
+		"person_tag_defs",   // Global sync: tag definitions
+		"custom_field_defs", // Global sync: custom field definitions
+		"staff_lookups",     // Global sync: positions, org_categories, program_areas
+		"financial_lookups", // Global sync: financial_categories, payment_methods
+		// Daily syncs (in dependency order)
 		"session_groups",
 		"sessions",
+		"divisions", // Division definitions (runs before persons in daily sync)
 		"attendees",
-		"persons",
+		"persons", // Combined sync: persons + households + person_tags (includes division relation)
 		"bunks",
 		"bunk_plans",
 		"bunk_assignments",
+		"staff",                  // Year-scoped staff records (depends on divisions, bunks, persons)
+		"financial_transactions", // Year-scoped financial data (depends on sessions, persons, households)
 		"bunk_requests",
 		"process_requests",
 		"google_sheets_export",
+		// On-demand syncs (not part of daily sync)
+		"person_custom_values",
+		"household_custom_values",
 	}
 
 	statuses := make(map[string]interface{})
@@ -502,6 +580,9 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 
 	// Add daily sync status
 	statuses["_daily_sync_running"] = orchestrator.IsDailySyncRunning()
+
+	// Add weekly sync status
+	statuses["_weekly_sync_running"] = orchestrator.IsWeeklySyncRunning()
 
 	// Add historical sync status
 	statuses["_historical_sync_running"] = orchestrator.IsHistoricalSyncRunning()
@@ -546,6 +627,44 @@ func handleHourlySync(e *core.RequestEvent, scheduler *Scheduler) error {
 	})
 }
 
+// handleWeeklySync triggers the weekly sync sequence (global data jobs)
+func handleWeeklySync(e *core.RequestEvent, scheduler *Scheduler) error {
+	// Check if weekly sync is already running
+	if scheduler.IsWeeklySyncRunning() {
+		return e.JSON(http.StatusConflict, map[string]interface{}{
+			"error": "Weekly sync already in progress",
+		})
+	}
+
+	// Trigger weekly sync
+	scheduler.TriggerWeeklySync()
+
+	return e.JSON(http.StatusOK, map[string]interface{}{
+		"message":  "Weekly sync triggered",
+		"services": GetWeeklySyncJobs(),
+	})
+}
+
+// handleCustomValuesSync triggers the custom values sync (person + household custom field values)
+func handleCustomValuesSync(e *core.RequestEvent, scheduler *Scheduler) error {
+	orchestrator := scheduler.GetOrchestrator()
+
+	// Check if custom values sync is already running
+	if orchestrator.IsRunning("person_custom_values") || orchestrator.IsRunning("household_custom_values") {
+		return e.JSON(http.StatusConflict, map[string]interface{}{
+			"error": "Custom values sync already in progress",
+		})
+	}
+
+	// Trigger custom values sync
+	scheduler.TriggerCustomValuesSync()
+
+	return e.JSON(http.StatusOK, map[string]interface{}{
+		"message":  "Custom values sync triggered",
+		"services": GetCustomValuesSyncJobs(),
+	})
+}
+
 // handleHistoricalSync handles syncing a specific year and service
 func handleHistoricalSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Get parameters
@@ -580,9 +699,18 @@ func handleHistoricalSync(e *core.RequestEvent, scheduler *Scheduler) error {
 		})
 	}
 
+	// Parse optional query parameters
+	includeCustomValuesParam := e.Request.URL.Query().Get("includeCustomValues")
+	includeCustomValues := includeCustomValuesParam == boolTrueStr || includeCustomValuesParam == "1"
+
+	debugParam := e.Request.URL.Query().Get("debug")
+	debug := debugParam == boolTrueStr || debugParam == "1"
+
 	// Create sync options
 	opts := Options{
-		Year: year,
+		Year:                year,
+		IncludeCustomValues: includeCustomValues,
+		Debug:               debug,
 	}
 
 	// Set services to sync
@@ -594,6 +722,13 @@ func handleHistoricalSync(e *core.RequestEvent, scheduler *Scheduler) error {
 
 	// Run in background
 	go func() {
+		slog.Info("Historical sync: Job started",
+			"year", year,
+			"service", service,
+			"includeCustomValues", includeCustomValues,
+			"debug", debug,
+		)
+
 		// Create context inside goroutine so it doesn't get canceled immediately
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
@@ -605,9 +740,11 @@ func handleHistoricalSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	}()
 
 	return e.JSON(http.StatusOK, map[string]interface{}{
-		"message": "Historical sync started",
-		"year":    year,
-		"service": service,
+		"message":             "Historical sync started",
+		"year":                year,
+		"service":             service,
+		"includeCustomValues": includeCustomValues,
+		"debug":               debug,
 	})
 }
 
@@ -726,5 +863,261 @@ func handleGoogleSheetsExport(e *core.RequestEvent, scheduler *Scheduler) error 
 		"status":         "started",
 		"syncType":       "google_sheets_export",
 		"spreadsheet_id": spreadsheetID,
+	})
+}
+
+// handlePersonCustomFieldValuesSync handles the on-demand person custom field values sync
+// This is expensive (1 API call per person) so supports session filtering
+//
+//nolint:dupl // Similar pattern to handleHouseholdCustomFieldValuesSync, intentional for person variant
+func handlePersonCustomFieldValuesSync(e *core.RequestEvent, scheduler *Scheduler) error {
+	orchestrator := scheduler.GetOrchestrator()
+	syncType := "person_custom_values"
+
+	// Note: "already running" check is handled by MarkSyncRunning below,
+	// which returns an error if the sync is already in progress
+
+	// Parse session filter (accepts string: all, 1, 2, 2a, 3, 4, etc.)
+	session := e.Request.URL.Query().Get("session")
+	if session == "" || session == "0" {
+		session = DefaultSession
+	}
+
+	// Validate session parameter
+	if !IsValidSession(session) {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Invalid session parameter. Must be 'all', '1', '2', '2a', '2b', '3', '3a', '3b', '4', or 'toc'.",
+		})
+	}
+
+	// Parse debug parameter
+	debugParam := e.Request.URL.Query().Get("debug")
+	debug := debugParam == boolTrueStr || debugParam == "1"
+
+	// Get the service and set options
+	service, ok := orchestrator.GetService(syncType).(*PersonCustomFieldValuesSync)
+	if !ok || service == nil {
+		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+			"error": "Person custom field values sync service not found",
+		})
+	}
+	service.SetSession(session)
+	service.SetDebug(debug)
+
+	// Mark as running BEFORE starting goroutine to prevent race condition
+	// This ensures the first frontend poll sees the sync as active
+	if err := orchestrator.MarkSyncRunning(syncType); err != nil {
+		return e.JSON(http.StatusConflict, map[string]interface{}{
+			"error":    err.Error(),
+			"status":   "running",
+			"syncType": syncType,
+		})
+	}
+
+	// Run in background
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
+		defer cancel()
+
+		slog.Info("Starting person_custom_values sync",
+			"session", session,
+			"debug", debug,
+		)
+		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
+			slog.Error("Person custom field values sync failed", "error", err)
+		} else {
+			stats := service.GetStats()
+			slog.Info("Person custom field values sync completed",
+				"created", stats.Created,
+				"updated", stats.Updated,
+				"skipped", stats.Skipped,
+				"errors", stats.Errors,
+			)
+		}
+	}()
+
+	return e.JSON(http.StatusOK, map[string]interface{}{
+		"message":  fmt.Sprintf("%s sync started", syncType),
+		"status":   "started",
+		"syncType": syncType,
+		"session":  session,
+		"debug":    debug,
+	})
+}
+
+// handleHouseholdCustomFieldValuesSync handles the on-demand household custom field values sync
+// This is expensive (1 API call per household) so supports session filtering
+//
+//nolint:dupl // Similar pattern to handlePersonCustomFieldValuesSync, intentional for household variant
+func handleHouseholdCustomFieldValuesSync(e *core.RequestEvent, scheduler *Scheduler) error {
+	orchestrator := scheduler.GetOrchestrator()
+	syncType := "household_custom_values"
+
+	// Note: "already running" check is handled by MarkSyncRunning below,
+	// which returns an error if the sync is already in progress
+
+	// Parse session filter (accepts string: all, 1, 2, 2a, 3, 4, etc.)
+	session := e.Request.URL.Query().Get("session")
+	if session == "" || session == "0" {
+		session = DefaultSession
+	}
+
+	// Validate session parameter
+	if !IsValidSession(session) {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Invalid session parameter. Must be 'all', '1', '2', '2a', '2b', '3', '3a', '3b', '4', or 'toc'.",
+		})
+	}
+
+	// Parse debug parameter
+	debugParam := e.Request.URL.Query().Get("debug")
+	debug := debugParam == boolTrueStr || debugParam == "1"
+
+	// Get the service and set options
+	service, ok := orchestrator.GetService(syncType).(*HouseholdCustomFieldValuesSync)
+	if !ok || service == nil {
+		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+			"error": "Household custom field values sync service not found",
+		})
+	}
+	service.SetSession(session)
+	service.SetDebug(debug)
+
+	// Mark as running BEFORE starting goroutine to prevent race condition
+	// This ensures the first frontend poll sees the sync as active
+	if err := orchestrator.MarkSyncRunning(syncType); err != nil {
+		return e.JSON(http.StatusConflict, map[string]interface{}{
+			"error":    err.Error(),
+			"status":   "running",
+			"syncType": syncType,
+		})
+	}
+
+	// Run in background
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
+		defer cancel()
+
+		slog.Info("Starting household_custom_values sync",
+			"session", session,
+			"debug", debug,
+		)
+		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
+			slog.Error("Household custom field values sync failed", "error", err)
+		} else {
+			stats := service.GetStats()
+			slog.Info("Household custom field values sync completed",
+				"created", stats.Created,
+				"updated", stats.Updated,
+				"skipped", stats.Skipped,
+				"errors", stats.Errors,
+			)
+		}
+	}()
+
+	return e.JSON(http.StatusOK, map[string]interface{}{
+		"message":  fmt.Sprintf("%s sync started", syncType),
+		"status":   "started",
+		"syncType": syncType,
+		"session":  session,
+		"debug":    debug,
+	})
+}
+
+// handleFinancialTransactionsSync handles the financial transactions sync
+// Accepts optional ?year=YYYY parameter for historical data sync
+func handleFinancialTransactionsSync(e *core.RequestEvent, scheduler *Scheduler) error {
+	orchestrator := scheduler.GetOrchestrator()
+	syncType := "financial_transactions"
+
+	// Check if already running
+	if orchestrator.IsRunning(syncType) {
+		return e.JSON(http.StatusConflict, map[string]interface{}{
+			"error":    "Sync already in progress",
+			"status":   "running",
+			"syncType": syncType,
+		})
+	}
+
+	// Parse optional year parameter for historical sync
+	yearParam := e.Request.URL.Query().Get("year")
+	year := 0 // Default: current year from env
+	if yearParam != "" {
+		if y, err := strconv.Atoi(yearParam); err == nil && y >= 2017 && y <= time.Now().Year() {
+			year = y
+		} else {
+			return e.JSON(http.StatusBadRequest, map[string]interface{}{
+				"error": "Invalid year parameter. Must be between 2017 and current year.",
+			})
+		}
+	}
+
+	// For historical sync, use year-specific client
+	if year > 0 {
+		// Run in background with year override
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+			defer cancel()
+
+			slog.Info("Starting financial_transactions historical sync", "year", year)
+
+			// Clone the client with the specified year
+			if orchestrator.baseClient == nil {
+				slog.Error("Cannot run historical sync - baseClient is nil")
+				return
+			}
+			yearClient := orchestrator.baseClient.CloneWithYear(year)
+
+			// Create a new service with the year client
+			yearService := NewFinancialTransactionsSync(scheduler.app, yearClient)
+
+			if err := yearService.SyncForYear(ctx, year); err != nil {
+				slog.Error("Financial transactions historical sync failed", "year", year, "error", err)
+			} else {
+				stats := yearService.GetStats()
+				slog.Info("Financial transactions historical sync completed",
+					"year", year,
+					"created", stats.Created,
+					"updated", stats.Updated,
+					"skipped", stats.Skipped,
+					"errors", stats.Errors,
+				)
+			}
+		}()
+
+		return e.JSON(http.StatusOK, map[string]interface{}{
+			"message":  "Financial transactions historical sync started",
+			"status":   "started",
+			"syncType": syncType,
+			"year":     year,
+		})
+	}
+
+	// Current year: run in background using standard sync
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+
+		slog.Info("Starting financial_transactions sync")
+		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
+			slog.Error("Financial transactions sync failed", "error", err)
+		} else {
+			service := orchestrator.GetService(syncType)
+			if service != nil {
+				stats := service.GetStats()
+				slog.Info("Financial transactions sync completed",
+					"created", stats.Created,
+					"updated", stats.Updated,
+					"skipped", stats.Skipped,
+					"errors", stats.Errors,
+				)
+			}
+		}
+	}()
+
+	return e.JSON(http.StatusOK, map[string]interface{}{
+		"message":  "Financial transactions sync started",
+		"status":   "started",
+		"syncType": syncType,
 	})
 }
