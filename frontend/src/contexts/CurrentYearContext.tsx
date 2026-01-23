@@ -46,8 +46,9 @@ export function CurrentYearProvider({ children }: { children: React.ReactNode })
   const [isTransitioning, setIsTransitioning] = useState(false);
 
   // Fetch configured year from backend sync status
-  const { data: syncStatus } = useSyncStatusAPI();
+  const { data: syncStatus, isFetched } = useSyncStatusAPI();
   const backendYear = syncStatus?._configured_year;
+  const isConfigReady = isFetched || backendYear !== undefined;
 
   // Use backend year if available, otherwise fall back to client-side calculation
   const configuredYear = backendYear ?? clientFallbackYear;
@@ -76,10 +77,12 @@ export function CurrentYearProvider({ children }: { children: React.ReactNode })
   // Persist to localStorage only when NOT coming from URL
   // (URL year is a "view override", not a preference change)
   useEffect(() => {
-    if (!yearFromUrl) {
+    // Only persist to localStorage after backend config is known
+    // This prevents the fallback year from overwriting the user's preference
+    if (!yearFromUrl && isConfigReady) {
       localStorage.setItem(STORAGE_KEY, currentYear.toString());
     }
-  }, [currentYear, yearFromUrl]);
+  }, [currentYear, yearFromUrl, isConfigReady]);
 
   const setCurrentYear = useCallback((year: number) => {
     if (!AVAILABLE_YEARS.includes(year)) {
