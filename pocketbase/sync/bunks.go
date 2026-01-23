@@ -103,7 +103,7 @@ func (s *BunksSync) Sync(ctx context.Context) error {
 		s.TrackProcessedKey(key, year)
 
 		// Process the record - specify fields to compare (excluding year for idempotency)
-		compareFields := []string{"cm_id", "name", "gender"}
+		compareFields := []string{"cm_id", "name", "gender", "is_active", "sort_order", "area_id"}
 		if err := s.ProcessSimpleRecord("bunks", key, pbData, existingRecords, compareFields); err != nil {
 			slog.Error("Error processing bunk", "error", err)
 			s.Stats.Errors++
@@ -173,6 +173,27 @@ func (s *BunksSync) transformBunkToPB(cmBunk map[string]interface{}) (map[string
 	} else {
 		return nil, fmt.Errorf("missing bunk name")
 	}
+
+	// Extract IsActive (defaults to true if not present)
+	isActive := true
+	if val, ok := cmBunk["IsActive"].(bool); ok {
+		isActive = val
+	}
+	pbData["is_active"] = isActive
+
+	// Extract SortOrder (defaults to 0 if not present)
+	sortOrder := 0
+	if val, ok := cmBunk["SortOrder"].(float64); ok {
+		sortOrder = int(val)
+	}
+	pbData["sort_order"] = sortOrder
+
+	// Extract AreaID (defaults to 0 if not present)
+	areaID := 0
+	if val, ok := cmBunk["AreaID"].(float64); ok {
+		areaID = int(val)
+	}
+	pbData["area_id"] = areaID
 
 	// Add year field from the season being synced
 	pbData["year"] = s.Client.GetSeasonID()

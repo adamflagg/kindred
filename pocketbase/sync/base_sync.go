@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"reflect"
+	"sort"
 	"strings"
 	"time"
 
@@ -30,6 +32,9 @@ const (
 	LargePageSize = 500
 )
 
+// JSON null string representation for field comparison
+const jsonNullString = "null"
+
 // BaseSyncService provides common functionality for all sync services
 type BaseSyncService struct {
 	App            core.App
@@ -37,6 +42,7 @@ type BaseSyncService struct {
 	Stats          Stats
 	SyncSuccessful bool            // Track if the main sync operation succeeded
 	ProcessedKeys  map[string]bool // Track processed composite keys for orphan detection
+	FieldDiffStats map[string]int  // Track which fields cause updates (for debugging)
 }
 
 // NewBaseSyncService creates a new base sync service
@@ -47,6 +53,7 @@ func NewBaseSyncService(app core.App, client *campminder.Client) BaseSyncService
 		Stats:          Stats{},
 		SyncSuccessful: false,
 		ProcessedKeys:  make(map[string]bool),
+		FieldDiffStats: make(map[string]int),
 	}
 }
 
@@ -107,6 +114,12 @@ func (b *BaseSyncService) ClearProcessedKeys() {
 func (b *BaseSyncService) TrackProcessedKey(id interface{}, year int) {
 	compKey := CompositeKey(id, year)
 	b.ProcessedKeys[compKey] = true
+}
+
+// IsKeyProcessed checks if a key has already been processed in the current sync run
+func (b *BaseSyncService) IsKeyProcessed(id interface{}, year int) bool {
+	compKey := CompositeKey(id, year)
+	return b.ProcessedKeys[compKey]
 }
 
 // TrackProcessedCompositeKey adds a pre-built composite key to the processed keys map
@@ -181,6 +194,69 @@ func (b *BaseSyncService) DeleteOrphans(
 			break
 		}
 		page++
+	}
+
+	if orphanCount > 0 {
+		slog.Info("Deleted orphaned records", "entity", entityName, "count", orphanCount)
+	} else {
+		slog.Info("No orphaned records found", "entity", entityName)
+	}
+
+	return nil
+}
+
+// FindOrphansFromPreloaded identifies orphan keys from preloaded records.
+// Returns composite keys of records that exist in preloaded but weren't processed.
+// This is a pure function suitable for unit testing.
+// The preloaded map values can be any type (typically *core.Record or string PB IDs).
+func (b *BaseSyncService) FindOrphansFromPreloaded(preloaded map[interface{}]any) []string {
+	if !b.SyncSuccessful {
+		return []string{}
+	}
+
+	var orphanKeys []string
+	for compositeKey := range preloaded {
+		keyStr, ok := compositeKey.(string)
+		if !ok {
+			continue
+		}
+		if !b.ProcessedKeys[keyStr] {
+			orphanKeys = append(orphanKeys, keyStr)
+		}
+	}
+	return orphanKeys
+}
+
+// DeleteOrphansFromPreloaded deletes orphan records using preloaded data instead of re-querying.
+// This is ~200x faster than DeleteOrphans for large tables (e.g., 22K records).
+// Parameters:
+//   - preloadedRecords: Map from PreloadRecords (composite key -> *core.Record)
+//   - entityName: Human-readable name for logging
+func (b *BaseSyncService) DeleteOrphansFromPreloaded(
+	preloadedRecords map[interface{}]*core.Record,
+	entityName string,
+) error {
+	if !b.SyncSuccessful {
+		slog.Info("Skipping orphan deletion due to sync failure", "entity", entityName)
+		return nil
+	}
+
+	orphanCount := 0
+	for compositeKey, record := range preloadedRecords {
+		keyStr, ok := compositeKey.(string)
+		if !ok {
+			continue
+		}
+		if !b.ProcessedKeys[keyStr] {
+			orphanCount++
+			name := b.getRecordName(record, entityName)
+			slog.Info("Deleting orphaned record", "entity", entityName, "name", name, "key", keyStr)
+
+			if err := b.App.Delete(record); err != nil {
+				slog.Error("Failed to delete orphaned record", "entity", entityName, "key", keyStr, "error", err)
+				b.Stats.Errors++
+			}
+		}
 	}
 
 	if orphanCount > 0 {
@@ -291,6 +367,34 @@ func (b *BaseSyncService) PreloadRecords(
 	return existingRecords, nil
 }
 
+// PreloadRecordsGlobal loads existing records for global tables (no year field).
+// Unlike PreloadRecords, this does not require a year field and stores keys directly
+// without year-based composite keys.
+func (b *BaseSyncService) PreloadRecordsGlobal(
+	collection string,
+	filter string,
+	keyExtractor func(*core.Record) (interface{}, bool),
+) (map[interface{}]*core.Record, error) {
+	existingRecords := make(map[interface{}]*core.Record)
+
+	allRecords, err := b.App.FindRecordsByFilter(collection, filter, "", 0, 0)
+	if err != nil {
+		slog.Warn("Error loading existing records", "collection", collection, "error", err)
+		// Return empty map instead of error to allow fallback to individual checks
+		return existingRecords, nil
+	}
+
+	// Build map using direct keys (no year component for global entities)
+	for _, record := range allRecords {
+		if key, ok := keyExtractor(record); ok {
+			existingRecords[key] = record
+		}
+	}
+
+	slog.Info("Loaded existing global records from database", "collection", collection, "count", len(existingRecords))
+	return existingRecords, nil
+}
+
 // ProcessSimpleRecord handles standard create/update logic for a single record
 func (b *BaseSyncService) ProcessSimpleRecord(
 	collection string,
@@ -318,6 +422,99 @@ func (b *BaseSyncService) ProcessSimpleRecord(
 	// Use composite key for lookup to ensure year isolation
 	compKey := CompositeKey(key, year)
 	existing := existingRecords[compKey]
+
+	if existing != nil {
+		// Check if update is needed
+		needsUpdate := false
+		var triggeringField string
+		var existingVal, newVal interface{}
+
+		if len(compareFields) > 0 {
+			// Only compare specified fields
+			for _, field := range compareFields {
+				if value, exists := recordData[field]; exists {
+					if !b.FieldEquals(existing.Get(field), value) {
+						triggeringField = field
+						existingVal = existing.Get(field)
+						newVal = value
+						needsUpdate = true
+						break
+					}
+				}
+			}
+		} else {
+			// Compare all fields
+			for field, value := range recordData {
+				if !b.FieldEquals(existing.Get(field), value) {
+					triggeringField = field
+					existingVal = existing.Get(field)
+					newVal = value
+					needsUpdate = true
+					break
+				}
+			}
+		}
+
+		if needsUpdate {
+			// Track which fields cause updates (for idempotency debugging)
+			fieldKey := fmt.Sprintf("%s.%s", collection, triggeringField)
+			b.FieldDiffStats[fieldKey]++
+
+			// Log first 3 occurrences per field at DEBUG level for debugging
+			if b.FieldDiffStats[fieldKey] <= 3 {
+				slog.Debug("Field differs, triggering update",
+					"collection", collection,
+					"field", triggeringField,
+					"existing", formatFieldValue(existingVal),
+					"existingType", fmt.Sprintf("%T", existingVal),
+					"new", formatFieldValue(newVal),
+					"newType", fmt.Sprintf("%T", newVal))
+			}
+			// Update existing record
+			for field, value := range recordData {
+				existing.Set(field, value)
+			}
+
+			if err := b.App.Save(existing); err != nil {
+				return fmt.Errorf("updating record: %w", err)
+			}
+			b.Stats.Updated++
+		} else {
+			b.Stats.Skipped++
+		}
+	} else {
+		// Create new record
+		col, err := b.App.FindCollectionByNameOrId(collection)
+		if err != nil {
+			return fmt.Errorf("finding collection %s: %w", collection, err)
+		}
+
+		record := core.NewRecord(col)
+		for field, value := range recordData {
+			record.Set(field, value)
+		}
+
+		if err := b.App.Save(record); err != nil {
+			return fmt.Errorf("creating record: %w", err)
+		}
+		b.Stats.Created++
+	}
+
+	return nil
+}
+
+// ProcessSimpleRecordGlobal handles standard create/update logic for a record that is NOT year-scoped.
+// Used for entities like tag definitions and custom field definitions that are global across years.
+// Unlike ProcessSimpleRecord, this does NOT require 'year' in recordData.
+func (b *BaseSyncService) ProcessSimpleRecordGlobal(
+	collection string,
+	key interface{},
+	recordData map[string]interface{},
+	existingRecords map[interface{}]*core.Record,
+	compareFields []string, // Optional: specific fields to check for updates
+) error {
+	// Use key directly - no year component for global entities
+	existing := existingRecords[key]
 
 	if existing != nil {
 		// Check if update is needed
@@ -535,8 +732,15 @@ func CompositeKey(id interface{}, year int) string {
 	return fmt.Sprintf("%v|%d", id, year)
 }
 
-// ForceWALCheckpoint forces a SQLite WAL checkpoint to ensure data is flushed
+// ForceWALCheckpoint forces a SQLite WAL checkpoint to ensure data is flushed.
+// Skips the checkpoint if no records were created or updated to avoid unnecessary blocking.
 func (b *BaseSyncService) ForceWALCheckpoint() error {
+	// Skip checkpoint if no writes occurred - avoids blocking on lock acquisition
+	if b.Stats.Created == 0 && b.Stats.Updated == 0 {
+		slog.Debug("Skipping WAL checkpoint - no writes to flush")
+		return nil
+	}
+
 	// Get the database connection from PocketBase
 	db := b.App.DB()
 	if db == nil {
@@ -562,12 +766,62 @@ func (b *BaseSyncService) FieldEquals(existingValue interface{}, newValue interf
 		return true
 	}
 
+	// Handle empty types.DateTime vs empty string equivalence
+	// PocketBase DateTime has String() method returning "" for zero value
+	if newStr, ok := newValue.(string); ok && newStr == "" {
+		if stringer, ok := existingValue.(fmt.Stringer); ok {
+			existingStr := stringer.String()
+			if existingStr == "" {
+				return true
+			}
+		}
+	}
+	if existingStr, ok := existingValue.(string); ok && existingStr == "" {
+		if stringer, ok := newValue.(fmt.Stringer); ok {
+			newStr := stringer.String()
+			if newStr == "" {
+				return true
+			}
+		}
+	}
+
 	// Handle nil vs 0 equivalence for numeric fields
 	if existingValue == nil && newValue == 0 {
 		return true
 	}
 	if existingValue == 0 && newValue == nil {
 		return true
+	}
+
+	// Handle types.JSONRaw("null") vs Go nil equivalence
+	// PocketBase stores JSON null as types.JSONRaw containing the bytes "null"
+	// When new data has Go nil, these should be considered equal
+	// Note: types.JSONRaw is a named type, so we check via fmt.Stringer interface
+	if newValue == nil && existingValue != nil {
+		// Check if existing is a JSON-like type that represents null
+		if stringer, ok := existingValue.(fmt.Stringer); ok {
+			if stringer.String() == jsonNullString {
+				return true
+			}
+		}
+		// Also try direct []byte assertion (for raw byte slices)
+		if bytes, ok := existingValue.([]byte); ok {
+			if string(bytes) == jsonNullString {
+				return true
+			}
+		}
+	}
+	if existingValue == nil && newValue != nil {
+		if stringer, ok := newValue.(fmt.Stringer); ok {
+			if stringer.String() == jsonNullString {
+				return true
+			}
+		}
+		if bytes, ok := newValue.([]byte); ok {
+			if string(bytes) == jsonNullString {
+				return true
+			}
+		}
 	}
 
 	// Handle JSON comparisons - check for both string and types.JSONRaw
@@ -688,6 +942,54 @@ func (b *BaseSyncService) FieldEquals(existingValue interface{}, newValue interf
 		}
 	}
 
+	// Handle JSON comparisons (types.JSONRaw from PocketBase vs map/string)
+	// types.JSONRaw is []byte containing JSON data
+	existingKind := reflect.TypeOf(existingValue)
+	newKind := reflect.TypeOf(newValue)
+	if existingKind != nil && newKind != nil {
+		existingTypeName := existingKind.String()
+		newTypeName := newKind.String()
+
+		// Check if either is types.JSONRaw (PocketBase JSON storage)
+		if existingTypeName == "types.JSONRaw" || newTypeName == "types.JSONRaw" {
+			// Normalize both to comparable JSON, then serialize for comparison
+			// This handles map ordering differences and type coercion
+			existingJSON := normalizeToJSON(existingValue)
+			newJSON := normalizeToJSON(newValue)
+
+			// Both nil means equal (handles JSON "jsonNullString" vs Go nil)
+			if existingJSON == nil && newJSON == nil {
+				return true
+			}
+
+			// Serialize to JSON strings for consistent comparison
+			existingBytes, err1 := json.Marshal(existingJSON)
+			newBytes, err2 := json.Marshal(newJSON)
+			if err1 != nil || err2 != nil {
+				return reflect.DeepEqual(existingJSON, newJSON)
+			}
+			return string(existingBytes) == string(newBytes)
+		}
+	}
+
+	// Handle slice comparisons (e.g., []string for multi-select relation fields)
+	// PocketBase may return []interface{} while our code produces []string
+	// Normalize both to sorted []string for comparison
+	if existingKind != nil && newKind != nil {
+		if existingKind.Kind() == reflect.Slice || newKind.Kind() == reflect.Slice {
+			existingSlice := normalizeToStringSlice(existingValue)
+			newSlice := normalizeToStringSlice(newValue)
+			if existingSlice != nil && newSlice != nil {
+				// Sort both slices for order-independent comparison
+				sort.Strings(existingSlice)
+				sort.Strings(newSlice)
+				return reflect.DeepEqual(existingSlice, newSlice)
+			}
+			// Fall back to direct comparison if normalization failed
+			return reflect.DeepEqual(existingValue, newValue)
+		}
+	}
+
 	// Direct comparison for same types
 	return existingValue == newValue
 }
@@ -726,6 +1028,88 @@ func normalizeDateString(dateStr string) string {
 	result = strings.TrimSpace(result)
 
 	return result
+}
+
+// normalizeToStringSlice converts various slice types to []string for comparison
+// Handles: []string, []interface{} with string elements, []any with string elements
+// Returns nil if the value is not a slice or cannot be converted
+func normalizeToStringSlice(value any) []string {
+	if value == nil {
+		return nil
+	}
+
+	// Single string (PocketBase returns single-value relations as string, not []string)
+	if str, ok := value.(string); ok {
+		if str == "" {
+			return []string{}
+		}
+		return []string{str}
+	}
+
+	// Direct []string
+	if strSlice, ok := value.([]string); ok {
+		result := make([]string, len(strSlice))
+		copy(result, strSlice)
+		return result
+	}
+
+	// []interface{} (common from JSON unmarshaling)
+	if ifaceSlice, ok := value.([]interface{}); ok {
+		result := make([]string, 0, len(ifaceSlice))
+		for _, v := range ifaceSlice {
+			if s, ok := v.(string); ok {
+				result = append(result, s)
+			} else {
+				// Non-string element, can't normalize
+				return nil
+			}
+		}
+		return result
+	}
+
+	// []any (alias for []interface{})
+	if anySlice, ok := value.([]any); ok {
+		result := make([]string, 0, len(anySlice))
+		for _, v := range anySlice {
+			if s, ok := v.(string); ok {
+				result = append(result, s)
+			} else {
+				return nil
+			}
+		}
+		return result
+	}
+
+	return nil
+}
+
+// normalizeToJSON converts a value to a comparable JSON representation
+// Handles: types.JSONRaw ([]byte), string (JSON), map[string]interface{}, etc.
+func normalizeToJSON(value any) any {
+	if value == nil {
+		return nil
+	}
+
+	// Handle []byte (types.JSONRaw is []byte)
+	if bytes, ok := value.([]byte); ok {
+		var result any
+		if err := json.Unmarshal(bytes, &result); err != nil {
+			return value // Return as-is if not valid JSON
+		}
+		return result
+	}
+
+	// Handle string (JSON string)
+	if str, ok := value.(string); ok {
+		var result any
+		if err := json.Unmarshal([]byte(str), &result); err != nil {
+			return value // Return as-is if not valid JSON
+		}
+		return result
+	}
+
+	// Already a comparable type (map, slice, etc.)
+	return value
 }
 
 // ParseRateLimitWait extracts the wait time from a rate limit error message
@@ -918,4 +1302,64 @@ func (b *BaseSyncService) LookupBunkPlan(planCMID, bunkCMID, sessionCMID int) (s
 	}
 
 	return records[0].Id, true
+}
+
+// LogFieldDiffSummary logs a summary of which fields caused updates (for idempotency debugging)
+// Call this at the end of a sync to see which fields are triggering unnecessary updates
+func (b *BaseSyncService) LogFieldDiffSummary() {
+	if len(b.FieldDiffStats) == 0 {
+		return
+	}
+
+	// Sort by count (descending) for easier analysis
+	type fieldCount struct {
+		field string
+		count int
+	}
+	counts := make([]fieldCount, 0, len(b.FieldDiffStats))
+	for field, count := range b.FieldDiffStats {
+		counts = append(counts, fieldCount{field, count})
+	}
+	sort.Slice(counts, func(i, j int) bool {
+		return counts[i].count > counts[j].count
+	})
+
+	slog.Debug("Field diff summary (fields causing updates)",
+		"totalFields", len(counts))
+	for _, fc := range counts {
+		slog.Debug("  field diff count", "field", fc.field, "updates", fc.count)
+	}
+}
+
+// ClearFieldDiffStats resets the field diff statistics
+func (b *BaseSyncService) ClearFieldDiffStats() {
+	for k := range b.FieldDiffStats {
+		delete(b.FieldDiffStats, k)
+	}
+}
+
+// formatFieldValue formats a field value for logging, truncating long values
+func formatFieldValue(v interface{}) string {
+	if v == nil {
+		return "<nil>"
+	}
+
+	var s string
+	switch val := v.(type) {
+	case string:
+		s = val
+	case []byte:
+		s = string(val)
+	case fmt.Stringer:
+		s = val.String()
+	default:
+		s = fmt.Sprintf("%v", v)
+	}
+
+	// Truncate long values for readability
+	const maxLen = 100
+	if len(s) > maxLen {
+		return s[:maxLen] + "..."
+	}
+	return s
 }

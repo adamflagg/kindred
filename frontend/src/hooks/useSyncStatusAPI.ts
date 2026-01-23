@@ -2,6 +2,14 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { pb } from '../lib/pocketbase';
 
+// Sub-entity stats for combined syncs (e.g., persons includes households)
+export interface SubStats {
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: number;
+}
+
 export interface SyncStatus {
   status: 'idle' | 'running' | 'success' | 'failed' | 'pending';
   start_time?: string;
@@ -14,22 +22,39 @@ export interface SyncStatus {
     errors: number;
     already_processed?: number; // For process_requests: records already processed
     duration?: number;
+    sub_stats?: Record<string, SubStats>; // For combined syncs (e.g., persons includes households)
   };
   year?: number; // Year being synced (0 or undefined = current year)
 }
 
+// Note: "persons" is a combined sync that populates persons and households tables
+// from a single API call (tags are stored as multi-select relation on persons)
 export interface SyncStatusResponse {
+  session_groups: SyncStatus;
   sessions: SyncStatus;
   attendees: SyncStatus;
-  persons: SyncStatus;
+  person_tag_defs: SyncStatus;
+  custom_field_defs: SyncStatus;
+  persons: SyncStatus; // Combined sync: persons + households
   bunks: SyncStatus;
   bunk_plans: SyncStatus;
   bunk_assignments: SyncStatus;
   bunk_requests: SyncStatus;
   process_requests: SyncStatus;
+  divisions: SyncStatus;
+  staff: SyncStatus;
+  financial_transactions: SyncStatus;
+  staff_lookups: SyncStatus;
+  financial_lookups: SyncStatus;
+  google_sheets_export: SyncStatus;
+  // On-demand custom value syncs (expensive, 1 API call per entity)
+  person_custom_values: SyncStatus;
+  household_custom_values: SyncStatus;
+  // Special flags
   _daily_sync_running?: boolean;
   _historical_sync_running?: boolean;
   _historical_sync_year?: number;
+  _weekly_sync_running?: boolean;
 }
 
 export function useSyncStatusAPI() {
