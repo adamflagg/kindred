@@ -15,10 +15,6 @@ import (
 const (
 	// serviceNameGoogleSheets is the name of this sync service
 	serviceNameGoogleSheets = "google_sheets_export"
-
-	// Sheet tab names
-	tabAttendees = "Attendees"
-	tabSessions  = "Sessions"
 )
 
 // SheetsWriter interface for writing to Google Sheets (enables mocking)
@@ -104,19 +100,7 @@ func (w *RealSheetsWriter) EnsureSheet(ctx context.Context, spreadsheetID, sheet
 	return nil
 }
 
-// AttendeeRecord represents an attendee for export
-type AttendeeRecord struct {
-	FirstName      string
-	LastName       string
-	Grade          int
-	Gender         string
-	SessionName    string
-	SessionType    string
-	EnrollmentDate string
-	Status         string
-}
-
-// SessionRecord represents a session for export
+// SessionRecord represents a session for export (used by loadSessions for lookups)
 type SessionRecord struct {
 	Name      string
 	Type      string
@@ -161,97 +145,38 @@ func (g *GoogleSheetsExport) Name() string {
 }
 
 // Sync implements the Service interface - exports data to Google Sheets
+// This is the main entry point for full exports (both globals and year-specific data)
 func (g *GoogleSheetsExport) Sync(ctx context.Context) error {
 	startTime := time.Now()
-	slog.Info("Starting Google Sheets export", "spreadsheet_id", g.spreadsheetID, "year", g.year)
+	slog.Info("Starting Google Sheets full export",
+		"spreadsheet_id", g.spreadsheetID,
+		"year", g.year,
+		"expected_tabs", len(GetAllExportSheetNames(g.year)),
+	)
 
 	g.Stats = Stats{}
 	g.SyncSuccessful = false
 
-	// Query attendees from PocketBase
-	attendees, err := g.queryAttendees()
-	if err != nil {
-		return fmt.Errorf("querying attendees: %w", err)
+	// Export global tables (4 tabs: tag definitions, custom fields, etc.)
+	if err := g.SyncGlobalsOnly(ctx); err != nil {
+		slog.Error("Failed to export global tables", "error", err)
+		// Continue with year-specific data even if globals fail
 	}
 
-	// Query sessions from PocketBase
-	sessions, err := g.querySessions()
-	if err != nil {
-		return fmt.Errorf("querying sessions: %w", err)
+	// Export year-specific tables (6 tabs: attendees, persons, sessions, etc.)
+	if err := g.SyncDailyOnly(ctx); err != nil {
+		return fmt.Errorf("exporting year-specific data: %w", err)
 	}
 
-	// Export to Google Sheets
-	if err := g.ExportToSheets(ctx, attendees, sessions); err != nil {
-		return err
-	}
-
+	g.SyncSuccessful = true
 	g.Stats.Duration = int(time.Since(startTime).Seconds())
-	return nil
-}
 
-// queryAttendees queries attendee records from PocketBase
-func (g *GoogleSheetsExport) queryAttendees() ([]AttendeeRecord, error) {
-	// Query enrolled, active attendees for the configured year
-	filter := fmt.Sprintf("year = %d && is_active = 1 && status_id = 2", g.year)
-
-	records, err := g.App.FindRecordsByFilter(
-		"attendees",
-		filter,
-		"", // no sort
-		0,  // no limit
-		0,  // no offset
+	slog.Info("Google Sheets full export complete",
+		"duration_seconds", g.Stats.Duration,
+		"records_exported", g.Stats.Created,
 	)
-	if err != nil {
-		return nil, fmt.Errorf("querying attendees: %w", err)
-	}
 
-	// Pre-load persons and sessions for efficient lookup
-	personMap, err := g.loadPersons()
-	if err != nil {
-		slog.Warn("Failed to load persons", "error", err)
-	}
-
-	sessionMap, err := g.loadSessions()
-	if err != nil {
-		slog.Warn("Failed to load sessions", "error", err)
-	}
-
-	attendees := make([]AttendeeRecord, 0, len(records))
-	for _, record := range records {
-		attendee := AttendeeRecord{
-			Status: safeString(record.Get("status")),
-		}
-
-		// Get enrollment date
-		if enrollDate := record.Get("enrollment_date"); enrollDate != nil {
-			if dateStr, ok := enrollDate.(string); ok {
-				attendee.EnrollmentDate = dateStr
-			}
-		}
-
-		// Get person data from map (using PB ID)
-		if personID := safeString(record.Get("person")); personID != "" {
-			if person, ok := personMap[personID]; ok {
-				attendee.FirstName = person.FirstName
-				attendee.LastName = person.LastName
-				attendee.Gender = person.Gender
-				attendee.Grade = person.Grade
-			}
-		}
-
-		// Get session data from map (using PB ID)
-		if sessionID := safeString(record.Get("session")); sessionID != "" {
-			if session, ok := sessionMap[sessionID]; ok {
-				attendee.SessionName = session.Name
-				attendee.SessionType = session.Type
-			}
-		}
-
-		attendees = append(attendees, attendee)
-	}
-
-	slog.Info("Queried attendees", "count", len(attendees))
-	return attendees, nil
+	return nil
 }
 
 // PersonInfo holds person data for lookup
@@ -315,55 +240,6 @@ func (g *GoogleSheetsExport) loadSessions() (map[string]SessionRecord, error) {
 	return sessionMap, nil
 }
 
-// querySessions queries session records from PocketBase
-func (g *GoogleSheetsExport) querySessions() ([]SessionRecord, error) {
-	// Query sessions for the configured year (main and embedded only)
-	filter := fmt.Sprintf("year = %d && (session_type = 'main' || session_type = 'embedded')", g.year)
-
-	records, err := g.App.FindRecordsByFilter(
-		"camp_sessions",
-		filter,
-		"name", // sort by name
-		0,      // no limit
-		0,      // no offset
-	)
-	if err != nil {
-		return nil, fmt.Errorf("querying sessions: %w", err)
-	}
-
-	sessions := make([]SessionRecord, 0, len(records))
-	for _, record := range records {
-		session := SessionRecord{
-			Name: safeString(record.Get("name")),
-			Type: safeString(record.Get("session_type")),
-		}
-
-		// Get dates
-		if startDate := record.Get("start_date"); startDate != nil {
-			if dateStr, ok := startDate.(string); ok {
-				session.StartDate = dateStr
-			}
-		}
-		if endDate := record.Get("end_date"); endDate != nil {
-			if dateStr, ok := endDate.(string); ok {
-				session.EndDate = dateStr
-			}
-		}
-
-		// Get year
-		if year := record.Get("year"); year != nil {
-			if yearFloat, ok := year.(float64); ok {
-				session.Year = int(yearFloat)
-			}
-		}
-
-		sessions = append(sessions, session)
-	}
-
-	slog.Info("Queried sessions", "count", len(sessions))
-	return sessions, nil
-}
-
 // safeString safely converts an interface{} to string
 func safeString(v interface{}) string {
 	if v == nil {
@@ -375,106 +251,3 @@ func safeString(v interface{}) string {
 	return fmt.Sprintf("%v", v)
 }
 
-// ExportToSheets exports attendee and session data to Google Sheets
-func (g *GoogleSheetsExport) ExportToSheets(
-	ctx context.Context, attendees []AttendeeRecord, sessions []SessionRecord,
-) error {
-	startTime := time.Now()
-	slog.Info("Exporting to Google Sheets",
-		"attendee_count", len(attendees),
-		"session_count", len(sessions),
-	)
-
-	// Export Attendees
-	if err := g.exportTab(ctx, tabAttendees, FormatAttendeesData(attendees)); err != nil {
-		return fmt.Errorf("exporting attendees: %w", err)
-	}
-	g.Stats.Created += len(attendees)
-
-	// Export Sessions
-	if err := g.exportTab(ctx, tabSessions, FormatSessionsData(sessions)); err != nil {
-		return fmt.Errorf("exporting sessions: %w", err)
-	}
-	g.Stats.Updated += len(sessions)
-
-	g.SyncSuccessful = true
-	g.Stats.Duration = int(time.Since(startTime).Seconds())
-
-	slog.Info("Google Sheets export complete",
-		"attendees", len(attendees),
-		"sessions", len(sessions),
-		"duration_seconds", g.Stats.Duration,
-	)
-
-	return nil
-}
-
-// exportTab ensures sheet exists, clears, and writes data to a single sheet tab
-func (g *GoogleSheetsExport) exportTab(ctx context.Context, tabName string, data [][]interface{}) error {
-	// Ensure sheet tab exists (creates if missing)
-	if err := g.sheetsWriter.EnsureSheet(ctx, g.spreadsheetID, tabName); err != nil {
-		return fmt.Errorf("ensuring sheet %s: %w", tabName, err)
-	}
-
-	// Clear existing data
-	if err := g.sheetsWriter.ClearSheet(ctx, g.spreadsheetID, tabName); err != nil {
-		slog.Warn("Failed to clear sheet tab", "tab", tabName, "error", err)
-		// Continue anyway - the write might still succeed
-	}
-
-	// Write new data
-	if err := g.sheetsWriter.WriteToSheet(ctx, g.spreadsheetID, tabName, data); err != nil {
-		return fmt.Errorf("writing to %s: %w", tabName, err)
-	}
-
-	return nil
-}
-
-// FormatAttendeesData formats attendee records for Google Sheets
-func FormatAttendeesData(records []AttendeeRecord) [][]interface{} {
-	// Preallocate with capacity: 1 header + len(records) data rows
-	data := make([][]interface{}, 0, 1+len(records))
-
-	// Header row
-	data = append(data, []interface{}{
-		"First Name", "Last Name", "Grade", "Gender", "Session", "Session Type", "Enrollment Date", "Status",
-	})
-
-	// Data rows
-	for _, r := range records {
-		data = append(data, []interface{}{
-			r.FirstName,
-			r.LastName,
-			r.Grade,
-			r.Gender,
-			r.SessionName,
-			r.SessionType,
-			r.EnrollmentDate,
-			r.Status,
-		})
-	}
-
-	return data
-}
-
-// FormatSessionsData formats session records for Google Sheets
-func FormatSessionsData(records []SessionRecord) [][]interface{} {
-	// Preallocate with capacity: 1 header + len(records) data rows
-	data := make([][]interface{}, 0, 1+len(records))
-
-	// Header row
-	data = append(data, []interface{}{"Name", "Type", "Start Date", "End Date", "Year"})
-
-	// Data rows
-	for _, r := range records {
-		data = append(data, []interface{}{
-			r.Name,
-			r.Type,
-			r.StartDate,
-			r.EndDate,
-			r.Year,
-		})
-	}
-
-	return data
-}
