@@ -325,6 +325,26 @@ func GetYearSpecificExports() []ExportConfig {
 	}
 }
 
+// GetAllExportSheetNames returns all sheet tab names that will be created for a full export
+// This includes both year-specific and global tables
+func GetAllExportSheetNames(year int) []string {
+	yearSpecific := GetYearSpecificExports()
+	globals := GetGlobalExports()
+	names := make([]string, 0, len(yearSpecific)+len(globals))
+
+	// Add year-specific sheet names
+	for _, config := range yearSpecific {
+		names = append(names, config.GetResolvedSheetName(year))
+	}
+
+	// Add global sheet names (year parameter ignored for globals)
+	for _, config := range globals {
+		names = append(names, config.SheetName)
+	}
+
+	return names
+}
+
 // GetGlobalExports returns export configurations for global (non-year-scoped) tables
 func GetGlobalExports() []ExportConfig {
 	return []ExportConfig{
