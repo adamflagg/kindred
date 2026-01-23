@@ -239,15 +239,14 @@ migrate((app) => {
         }
       },
       {
-        name: "household_id",
-        type: "number",
+        type: "relation",
+        name: "household",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
+        collectionId: householdsCol.id,
+        cascadeDelete: false,
+        minSelect: null,
+        maxSelect: 1
       },
       {
         type: "relation",
@@ -376,7 +375,7 @@ migrate((app) => {
     ],
     indexes: [
       "CREATE UNIQUE INDEX `idx_persons_campminder` ON `persons` (`cm_id`, `year`)",
-      "CREATE INDEX idx_persons_family ON persons (household_id)"
+      "CREATE INDEX idx_persons_family ON persons (household)"
     ]
   });
 

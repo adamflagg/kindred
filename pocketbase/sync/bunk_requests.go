@@ -54,6 +54,13 @@ func (s *BunkRequestsSync) RunSync(csvPath string, _ int) error {
 	slog.Info("Starting bunk requests sync from CSV", "path", csvPath)
 	s.LogSyncStart("bunk_requests")
 
+	// Check if CSV file exists (fresh deployment may not have one yet)
+	if _, err := os.Stat(csvPath); os.IsNotExist(err) {
+		slog.Warn("Bunk requests CSV not found, skipping sync", "path", csvPath)
+		s.SyncSuccessful = true
+		return nil
+	}
+
 	// Load valid person IDs
 	if err := s.loadValidPersonIDs(); err != nil {
 		return fmt.Errorf("loading valid person IDs: %w", err)
