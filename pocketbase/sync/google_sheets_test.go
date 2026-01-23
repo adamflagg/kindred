@@ -5,7 +5,6 @@ import (
 	"testing"
 )
 
-
 // MockSheetsWriter implements SheetsWriter interface for testing
 type MockSheetsWriter struct {
 	WrittenData  map[string][][]interface{} // sheetName -> rows
@@ -175,15 +174,16 @@ func TestGetAllExportSheetNames_YearSubstitution(t *testing.T) {
 	}
 
 	// Global tabs should be the same for both years
+	const globalsTab = "globals-tag-definitions"
 	hasGlobals2024 := false
 	hasGlobals2025 := false
 	for _, n := range names2024 {
-		if n == "globals-tag-definitions" {
+		if n == globalsTab {
 			hasGlobals2024 = true
 		}
 	}
 	for _, n := range names2025 {
-		if n == "globals-tag-definitions" {
+		if n == globalsTab {
 			hasGlobals2025 = true
 		}
 	}
