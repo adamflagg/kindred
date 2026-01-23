@@ -26,11 +26,9 @@ migrate((app) => {
         name: "cm_id",
         required: true,
         presentable: false,
-        options: {
-          min: 1,
-          max: null,
-          noDecimal: true
-        }
+        min: 1,
+        max: null,
+        onlyInt: true
       },
       {
         type: "text",
@@ -59,44 +57,36 @@ migrate((app) => {
         name: "start_grade_id",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
+        min: null,
+        max: null,
+        onlyInt: true
       },
       {
         type: "number",
         name: "end_grade_id",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
+        min: null,
+        max: null,
+        onlyInt: true
       },
       {
         type: "number",
         name: "gender_id",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
+        min: null,
+        max: null,
+        onlyInt: true
       },
       {
         type: "number",
         name: "capacity",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
+        min: null,
+        max: null,
+        onlyInt: true
       },
       {
         type: "bool",

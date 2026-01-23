@@ -63,11 +63,9 @@ migrate((app) => {
         name: "year",
         required: true,
         presentable: false,
-        options: {
-          min: 2013,
-          max: 2100,
-          noDecimal: true
-        }
+        min: 2013,
+        max: 2100,
+        onlyInt: true
       },
       {
         type: "text",

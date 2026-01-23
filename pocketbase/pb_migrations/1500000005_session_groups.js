@@ -24,11 +24,9 @@ migrate((app) => {
         name: "cm_id",
         required: true,
         presentable: false,
-        options: {
-          min: 0,
-          max: null,
-          noDecimal: true
-        }
+        min: 0,
+        max: null,
+        onlyInt: true
       },
       {
         type: "text",
@@ -63,22 +61,18 @@ migrate((app) => {
         name: "sort_order",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
+        min: null,
+        max: null,
+        onlyInt: true
       },
       {
         type: "number",
         name: "year",
         required: true,
         presentable: false,
-        options: {
-          min: 2010,
-          max: 2100,
-          noDecimal: true
-        }
+        min: 2010,
+        max: 2100,
+        onlyInt: true
       },
       {
         type: "autodate",

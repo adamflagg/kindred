@@ -70,11 +70,9 @@ migrate((app) => {
         name: "token_count",
         required: false,
         presentable: false,
-        options: {
-          min: 0,
-          max: null,
-          noDecimal: true
-        }
+        min: 0,
+        max: null,
+        onlyInt: true
       },
       {
         type: "text",
@@ -92,11 +90,9 @@ migrate((app) => {
         name: "processing_time_ms",
         required: false,
         presentable: false,
-        options: {
-          min: 0,
-          max: null,
-          noDecimal: true
-        }
+        min: 0,
+        max: null,
+        onlyInt: true
       },
       {
         type: "bool",

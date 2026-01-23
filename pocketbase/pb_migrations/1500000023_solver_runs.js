@@ -185,11 +185,9 @@ migrate((app) => {
         name: "session_id",
         required: false,
         presentable: false,
-        options: {
-          min: 0,
-          max: null,
-          noDecimal: true
-        }
+        min: 0,
+        max: null,
+        onlyInt: true
       },
       {
         type: "autodate",

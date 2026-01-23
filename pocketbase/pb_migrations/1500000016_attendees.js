@@ -28,11 +28,9 @@ migrate((app) => {
         type: "number",
         required: true,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
+        min: null,
+        max: null,
+        onlyInt: true
       },
       {
         name: "person",
@@ -68,22 +66,18 @@ migrate((app) => {
         type: "number",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
+        min: null,
+        max: null,
+        onlyInt: true
       },
       {
         name: "year",
         type: "number",
         required: true,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
+        min: null,
+        max: null,
+        onlyInt: true
       },
       {
         name: "enrollment_date",
