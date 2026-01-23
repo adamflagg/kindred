@@ -66,11 +66,9 @@ migrate((app) => {
         name: "year",
         required: true,
         presentable: false,
-        options: {
-          min: 2010,
-          max: 2100,
-          noDecimal: true
-        }
+        min: 2010,
+        max: 2100,
+        onlyInt: true
       },
       // Last updated timestamp from CampMinder
       {

@@ -40,33 +40,27 @@ migrate((app) => {
         name: "cm_id",
         required: true,
         presentable: false,
-        options: {
-          min: 1,
-          max: null,
-          noDecimal: true
-        }
+        min: 1,
+        max: null,
+        onlyInt: true
       },
       {
         type: "number",
         name: "transaction_number",
         required: false,
         presentable: true,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
+        min: null,
+        max: null,
+        onlyInt: true
       },
       {
         type: "number",
         name: "year",
         required: true,
         presentable: false,
-        options: {
-          min: 2010,
-          max: 2100,
-          noDecimal: true
-        }
+        min: 2010,
+        max: 2100,
+        onlyInt: true
       },
 
       // Dates
@@ -182,33 +176,27 @@ migrate((app) => {
         name: "quantity",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
+        min: null,
+        max: null,
+        onlyInt: true
       },
       {
         type: "number",
         name: "unit_amount",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: false
-        }
+        min: null,
+        max: null,
+        onlyInt: false
       },
       {
         type: "number",
         name: "amount",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: false
-        }
+        min: null,
+        max: null,
+        onlyInt: false
       },
 
       // GL accounts (string IDs, not relations)
@@ -265,11 +253,9 @@ migrate((app) => {
         name: "program_id",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: true
-        }
+        min: null,
+        max: null,
+        onlyInt: true
       },
 
       // Session group relation

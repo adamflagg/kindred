@@ -47,11 +47,9 @@ migrate((app) => {
         name: "year",
         required: true,
         presentable: false,
-        options: {
-          min: 2010,
-          max: 2100,
-          noDecimal: true
-        }
+        min: 2010,
+        max: 2100,
+        onlyInt: true
       },
 
       // Status
@@ -60,11 +58,9 @@ migrate((app) => {
         name: "status_id",
         required: false,
         presentable: false,
-        options: {
-          min: 1,
-          max: 4,
-          noDecimal: true
-        }
+        min: 1,
+        max: 4,
+        onlyInt: true
       },
       {
         type: "select",
@@ -213,22 +209,18 @@ migrate((app) => {
         name: "years",
         required: false,
         presentable: false,
-        options: {
-          min: 0,
-          max: null,
-          noDecimal: true
-        }
+        min: 0,
+        max: null,
+        onlyInt: true
       },
       {
         type: "number",
         name: "salary",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: false
-        }
+        min: null,
+        max: null,
+        onlyInt: false
       },
 
       // Auto dates
