@@ -598,11 +598,9 @@ NEW_DOCKER_MINOR=$(echo "$NEW_DOCKER_TAG" | cut -d. -f1-2)
 echo -e "\n${CYAN}═══════════════════════════════════════════════════════════${NC}"
 echo -e "${GREEN}RELEASE $NEW_VERSION INITIATED${NC}"
 echo -e "${CYAN}═══════════════════════════════════════════════════════════${NC}"
-NEW_DOCKER_MAJOR=$(echo "$NEW_DOCKER_TAG" | cut -d. -f1)
 echo -e "\n${YELLOW}Docker tags created:${NC}"
 echo "  - ghcr.io/adamflagg/kindred:$NEW_DOCKER_TAG (patch)"
 echo "  - ghcr.io/adamflagg/kindred:$NEW_DOCKER_MINOR (minor)"
-echo "  - ghcr.io/adamflagg/kindred:$NEW_DOCKER_MAJOR (major)"
 echo "  - ghcr.io/adamflagg/kindred:latest"
 echo ""
 echo -e "${YELLOW}Next steps:${NC}"
