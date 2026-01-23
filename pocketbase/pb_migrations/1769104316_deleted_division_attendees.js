@@ -1,8 +1,14 @@
 /// <reference path="../pb_data/types.d.ts" />
 migrate((app) => {
-  const collection = app.findCollectionByNameOrId("col_div_attendees");
-
-  return app.delete(collection);
+  // Defensive: collection may not exist on fresh databases
+  try {
+    const collection = app.findCollectionByNameOrId("col_div_attendees");
+    if (collection) {
+      app.delete(collection);
+    }
+  } catch (e) {
+    // Collection doesn't exist - nothing to delete
+  }
 }, (app) => {
   const collection = new Collection({
     "createRule": "@request.auth.id != \"\"",
