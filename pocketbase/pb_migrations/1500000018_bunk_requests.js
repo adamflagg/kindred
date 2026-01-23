@@ -380,16 +380,6 @@ migrate((app) => {
           maxSize: 2000000
         }
       },
-      // Self-reference for merged requests - uses fixed collection ID
-      {
-        type: "relation",
-        name: "merged_into",
-        required: false,
-        collectionId: COLLECTION_ID_BUNK_REQUESTS,
-        cascadeDelete: false,
-        minSelect: null,
-        maxSelect: 1
-      },
       {
         type: "autodate",
         name: "created",
@@ -418,11 +408,24 @@ migrate((app) => {
       "CREATE INDEX idx_bunk_requests_priority ON bunk_requests (priority)",
       "CREATE INDEX idx_bunk_requests_year_session ON bunk_requests (year, session_id)",
       "CREATE INDEX `idx_bunk_requests_requester_year` ON `bunk_requests` (`requester_id`, `year`)",
-      "CREATE UNIQUE INDEX `idx_bunk_requests_unique_with_source` ON `bunk_requests` (`requester_id`, `requestee_id`, `request_type`, `year`, `session_id`, `source_field`)",
-      "CREATE INDEX idx_bunk_requests_merged_into ON bunk_requests (merged_into)"
+      "CREATE UNIQUE INDEX `idx_bunk_requests_unique_with_source` ON `bunk_requests` (`requester_id`, `requestee_id`, `request_type`, `year`, `session_id`, `source_field`)"
     ]
   });
 
+  // First save: create collection without self-reference
+  app.save(collection);
+
+  // Second save: add self-referencing relation after collection exists
+  collection.fields.add(new Field({
+    type: "relation",
+    name: "merged_into",
+    required: false,
+    collectionId: COLLECTION_ID_BUNK_REQUESTS,
+    cascadeDelete: false,
+    minSelect: null,
+    maxSelect: 1
+  }));
+  collection.indexes.push("CREATE INDEX idx_bunk_requests_merged_into ON bunk_requests (merged_into)");
   app.save(collection);
 }, (app) => {
   const collection = app.findCollectionByNameOrId("bunk_requests");

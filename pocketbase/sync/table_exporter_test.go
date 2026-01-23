@@ -99,9 +99,10 @@ func TestFieldResolver_ResolveValue_Text(t *testing.T) {
 		Type:   FieldTypeText,
 	}
 
-	got := resolver.ResolveValue("Emma", col)
-	if got != "Emma" {
-		t.Errorf("ResolveValue() = %v, want %v", got, "Emma")
+	const testName = "Emma"
+	got := resolver.ResolveValue(testName, col)
+	if got != testName {
+		t.Errorf("ResolveValue() = %v, want %v", got, testName)
 	}
 }
 
