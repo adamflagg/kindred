@@ -434,6 +434,34 @@ jobs:
       working-directory: ./pocketbase
       run: go test ./... -v
 
+    # Migration smoke test - catches self-reference and dependency issues
+    - name: Migration smoke test (fresh database)
+      working-directory: ./pocketbase
+      run: |
+        echo "Building PocketBase..."
+        go build -o pocketbase .
+
+        echo "Testing migrations on fresh database..."
+        rm -rf /tmp/pb_ci_test
+        ./pocketbase serve --dir /tmp/pb_ci_test --http 127.0.0.1:18999 &
+        PB_PID=$!
+
+        # Wait for startup (max 30s)
+        for i in {1..30}; do
+          if curl -sf http://127.0.0.1:18999/api/health >/dev/null 2>&1; then
+            echo "✅ PocketBase started successfully - migrations passed"
+            kill $PB_PID 2>/dev/null || true
+            rm -rf /tmp/pb_ci_test
+            exit 0
+          fi
+          sleep 1
+        done
+
+        echo "❌ PocketBase failed to start - migration error likely"
+        kill $PB_PID 2>/dev/null || true
+        rm -rf /tmp/pb_ci_test
+        exit 1
+
     # Frontend tests - Node.js pre-installed
     - name: Install frontend dependencies
       working-directory: ./frontend
