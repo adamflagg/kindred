@@ -1,0 +1,64 @@
+{
+  "tables": {
+    "persons": {
+      "enabled": true,
+      "sheet_name": "persons",
+      "is_global": false
+    },
+    "attendees": {
+      "enabled": true,
+      "sheet_name": "attendees",
+      "is_global": false
+    },
+    "camp_sessions": {
+      "enabled": true,
+      "sheet_name": "sessions",
+      "is_global": false
+    },
+    "staff": {
+      "enabled": true,
+      "sheet_name": "staff",
+      "is_global": false
+    },
+    "bunk_assignments": {
+      "enabled": true,
+      "sheet_name": "bunk-assignments",
+      "is_global": false
+    },
+    "financial_transactions": {
+      "enabled": true,
+      "sheet_name": "financial-transactions",
+      "is_global": false
+    },
+    "person_custom_field_values": {
+      "enabled": true,
+      "sheet_name": "custom-fields-persons",
+      "is_global": false
+    },
+    "household_custom_field_values": {
+      "enabled": true,
+      "sheet_name": "custom-fields-households",
+      "is_global": false
+    },
+    "person_tag_defs": {
+      "enabled": true,
+      "sheet_name": "tag-definitions",
+      "is_global": true
+    },
+    "custom_field_defs": {
+      "enabled": true,
+      "sheet_name": "custom-field-definitions",
+      "is_global": true
+    },
+    "financial_categories": {
+      "enabled": true,
+      "sheet_name": "financial-categories",
+      "is_global": true
+    },
+    "staff_positions": {
+      "enabled": true,
+      "sheet_name": "staff-positions",
+      "is_global": true
+    }
+  }
+}
