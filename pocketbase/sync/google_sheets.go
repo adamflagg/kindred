@@ -174,16 +174,16 @@ func (w *RealSheetsWriter) GetSheetMetadata(ctx context.Context, spreadsheetID s
 		return nil, fmt.Errorf("getting spreadsheet: %w", err)
 	}
 
-	var sheets []SheetInfo
+	result := make([]SheetInfo, 0, len(spreadsheet.Sheets))
 	for _, sheet := range spreadsheet.Sheets {
-		sheets = append(sheets, SheetInfo{
+		result = append(result, SheetInfo{
 			Title:   sheet.Properties.Title,
 			SheetID: sheet.Properties.SheetId,
 			Index:   int(sheet.Properties.Index),
 		})
 	}
 
-	return sheets, nil
+	return result, nil
 }
 
 // getSheetID looks up the sheet ID for a given tab name

@@ -79,17 +79,17 @@ func (m *MockSheetsWriter) SetTabIndex(_ context.Context, _, sheetTab string, in
 // GetSheetMetadata returns metadata for all sheets
 func (m *MockSheetsWriter) GetSheetMetadata(_ context.Context, _ string) ([]SheetInfo, error) {
 	// Build from existing tabs
-	var sheets []SheetInfo
+	result := make([]SheetInfo, 0, len(m.ExistingTabs))
 	i := 0
 	for tab := range m.ExistingTabs {
-		sheets = append(sheets, SheetInfo{
+		result = append(result, SheetInfo{
 			Title:   tab,
 			SheetID: int64(i),
 			Index:   m.TabIndices[tab],
 		})
 		i++
 	}
-	return sheets, nil
+	return result, nil
 }
 
 func TestGoogleSheetsExport_Name(t *testing.T) {
@@ -429,7 +429,7 @@ func TestSortExportTabs_FullExport(t *testing.T) {
 	}
 
 	// Verify 2026 comes before 2025 before 2024
-	var yearOrder []int
+	yearOrder := make([]int, 0, len(sorted)-2)
 	for _, tab := range sorted[2:] {
 		year := ExtractYear(tab)
 		yearOrder = append(yearOrder, year)

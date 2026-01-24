@@ -36,7 +36,7 @@ func SortExportTabs(tabs []string) []string {
 	sort.Strings(globals)
 
 	// Get years in descending order
-	var years []int
+	years := make([]int, 0, len(yearGroups))
 	for y := range yearGroups {
 		years = append(years, y)
 	}
