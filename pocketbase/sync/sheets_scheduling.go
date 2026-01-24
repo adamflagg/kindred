@@ -38,8 +38,11 @@ func (g *GoogleSheetsExport) SyncGlobalsOnly(ctx context.Context) error {
 		return nil
 	}
 
-	// Create resolver (no lookups needed for most global tables)
+	// Create resolver with global lookups
 	resolver := NewFieldResolver()
+	if err := g.preloadGlobalLookups(resolver); err != nil {
+		slog.Warn("Failed to preload global lookups", "error", err)
+	}
 
 	// Export each global table
 	exporter := NewTableExporter(g.sheetsWriter, resolver, g.spreadsheetID, g.year)
@@ -198,26 +201,47 @@ func (g *GoogleSheetsExport) queryCollection(collection, filter string, limit in
 }
 
 // preloadLookups preloads lookup data for relations
-// The year parameter is reserved for future year-scoped lookups
-func (g *GoogleSheetsExport) preloadLookups(resolver *FieldResolver, _ int) error {
-	// Load sessions
+// The year parameter filters year-scoped lookups
+func (g *GoogleSheetsExport) preloadLookups(resolver *FieldResolver, year int) error {
+	// Load sessions (names and CM IDs)
 	sessions, err := g.loadSessions()
 	if err == nil {
 		sessionLookup := make(map[string]string)
+		sessionCMIDs := make(map[string]int)
+		sessionByCMID := make(map[int]string)
 		for id, s := range sessions {
 			sessionLookup[id] = s.Name
+			// Extract cm_id from session data
+			if cmID := g.getCMIDFromRecord("camp_sessions", id); cmID > 0 {
+				sessionCMIDs[id] = cmID
+				sessionByCMID[cmID] = s.Name
+			}
 		}
 		resolver.SetLookupData("camp_sessions", sessionLookup)
+		resolver.SetCMIDLookupData("camp_sessions", sessionCMIDs)
+		resolver.SetCMIDIndexedLookup("camp_sessions", sessionByCMID)
 	}
 
-	// Load persons
+	// Load persons (names, CM IDs, and nested fields)
 	persons, err := g.loadPersons()
 	if err == nil {
 		personLookup := make(map[string]string)
+		personCMIDs := make(map[string]int)
+		personFirstNames := make(map[string]string)
+		personLastNames := make(map[string]string)
 		for id, p := range persons {
 			personLookup[id] = fmt.Sprintf("%s %s", p.FirstName, p.LastName)
+			personFirstNames[id] = p.FirstName
+			personLastNames[id] = p.LastName
+			// Get CM ID
+			if cmID := g.getCMIDFromRecord("persons", id); cmID > 0 {
+				personCMIDs[id] = cmID
+			}
 		}
 		resolver.SetLookupData("persons", personLookup)
+		resolver.SetCMIDLookupData("persons", personCMIDs)
+		resolver.SetNestedFieldLookupData("persons", "first_name", personFirstNames)
+		resolver.SetNestedFieldLookupData("persons", "last_name", personLastNames)
 	}
 
 	// Load person tag definitions (global)
@@ -226,16 +250,49 @@ func (g *GoogleSheetsExport) preloadLookups(resolver *FieldResolver, _ int) erro
 		resolver.SetLookupData("person_tag_defs", tagLookup)
 	}
 
-	// Load bunks
-	bunkLookup, err := g.loadSimpleLookup("bunks", "name", "")
+	// Load bunks (names and CM IDs)
+	bunkLookup, bunkCMIDs, err := g.loadLookupWithCMID("bunks", "name", "")
 	if err == nil {
 		resolver.SetLookupData("bunks", bunkLookup)
+		resolver.SetCMIDLookupData("bunks", bunkCMIDs)
 	}
 
-	// Load staff positions
+	// Load divisions (names and CM IDs)
+	divisionLookup, divisionCMIDs, err := g.loadLookupWithCMID("divisions", "name", "")
+	if err == nil {
+		resolver.SetLookupData("divisions", divisionLookup)
+		resolver.SetCMIDLookupData("divisions", divisionCMIDs)
+	}
+
+	// Load staff positions (with program_area link for double FK)
 	positionLookup, err := g.loadSimpleLookup("staff_positions", "name", "")
 	if err == nil {
 		resolver.SetLookupData("staff_positions", positionLookup)
+	}
+	// Load position → program_area mapping for double FK
+	positionToProgramArea, err := g.loadRelationMapping("staff_positions", "program_area")
+	if err == nil {
+		resolver.SetDoubleFKLookupData("staff_positions", "program_area", positionToProgramArea)
+	}
+
+	// Load staff program areas
+	programAreaLookup, err := g.loadSimpleLookup("staff_program_areas", "name", "")
+	if err == nil {
+		resolver.SetLookupData("staff_program_areas", programAreaLookup)
+	}
+
+	// Load staff org categories
+	orgCategoryLookup, err := g.loadSimpleLookup("staff_org_categories", "name", "")
+	if err == nil {
+		resolver.SetLookupData("staff_org_categories", orgCategoryLookup)
+	}
+
+	// Load session groups (year-scoped)
+	sessionGroupFilter := fmt.Sprintf("year = %d", year)
+	sessionGroupLookup, sessionGroupCMIDs, err := g.loadLookupWithCMID("session_groups", "name", sessionGroupFilter)
+	if err == nil {
+		resolver.SetLookupData("session_groups", sessionGroupLookup)
+		resolver.SetCMIDLookupData("session_groups", sessionGroupCMIDs)
 	}
 
 	// Load financial categories
@@ -245,6 +302,66 @@ func (g *GoogleSheetsExport) preloadLookups(resolver *FieldResolver, _ int) erro
 	}
 
 	return nil
+}
+
+// preloadGlobalLookups preloads lookup data needed for global exports
+func (g *GoogleSheetsExport) preloadGlobalLookups(resolver *FieldResolver) error {
+	// Load divisions (for parent_division resolution)
+	divisionLookup, divisionCMIDs, err := g.loadLookupWithCMID("divisions", "name", "")
+	if err == nil {
+		resolver.SetLookupData("divisions", divisionLookup)
+		resolver.SetCMIDLookupData("divisions", divisionCMIDs)
+	}
+	return nil
+}
+
+// loadLookupWithCMID loads a lookup with both display name and CM ID
+func (g *GoogleSheetsExport) loadLookupWithCMID(collection, field, filter string) (map[string]string, map[string]int, error) {
+	records, err := g.App.FindRecordsByFilter(collection, filter, "", 0, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	lookup := make(map[string]string)
+	cmids := make(map[string]int)
+	for _, r := range records {
+		lookup[r.Id] = safeString(r.Get(field))
+		if cmID := r.Get("cm_id"); cmID != nil {
+			if cmIDFloat, ok := cmID.(float64); ok {
+				cmids[r.Id] = int(cmIDFloat)
+			}
+		}
+	}
+	return lookup, cmids, nil
+}
+
+// loadRelationMapping loads a mapping from a collection's relation field
+func (g *GoogleSheetsExport) loadRelationMapping(collection, relationField string) (map[string]string, error) {
+	records, err := g.App.FindRecordsByFilter(collection, "", "", 0, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	mapping := make(map[string]string)
+	for _, r := range records {
+		relatedID := safeString(r.Get(relationField))
+		mapping[r.Id] = relatedID
+	}
+	return mapping, nil
+}
+
+// getCMIDFromRecord gets the CM ID for a record in a collection
+func (g *GoogleSheetsExport) getCMIDFromRecord(collection, pbID string) int {
+	record, err := g.App.FindRecordById(collection, pbID)
+	if err != nil {
+		return 0
+	}
+	if cmID := record.Get("cm_id"); cmID != nil {
+		if cmIDFloat, ok := cmID.(float64); ok {
+			return int(cmIDFloat)
+		}
+	}
+	return 0
 }
 
 // loadSimpleLookup loads a simple name lookup from a collection
