@@ -57,16 +57,37 @@ func SortExportTabs(tabs []string) []string {
 
 // ReorderAllTabs reorganizes all export tabs into correct positions
 // and applies colors. This should be called after all exports complete.
-func ReorderAllTabs(ctx context.Context, writer SheetsWriter, spreadsheetID string, exportedTabs []string) error {
-	// Sort tabs into correct order
-	sorted := SortExportTabs(exportedTabs)
+//
+// IMPORTANT: This function fetches ALL existing tabs from the spreadsheet,
+// not just the ones passed in exportedTabs. This ensures correct ordering
+// when running historical syncs (e.g., 2024 data) on a spreadsheet that
+// already contains newer data (e.g., 2025 tabs).
+//
+// The exportedTabs parameter is deprecated and ignored.
+func ReorderAllTabs(ctx context.Context, writer SheetsWriter, spreadsheetID string, _ []string) error {
+	// 1. Get ALL existing sheet tabs from the spreadsheet
+	allSheets, err := writer.GetSheetMetadata(ctx, spreadsheetID)
+	if err != nil {
+		return fmt.Errorf("getting sheet metadata: %w", err)
+	}
+
+	// 2. Filter to only our export tabs (g-* and YYYY-*)
+	var exportTabs []string
+	for _, sheet := range allSheets {
+		if IsExportTab(sheet.Title) {
+			exportTabs = append(exportTabs, sheet.Title)
+		}
+	}
+
+	// 3. Sort ALL export tabs together
+	sorted := SortExportTabs(exportTabs)
 
 	slog.Info("Reordering and coloring sheet tabs",
 		"total_tabs", len(sorted),
 		"globals", countGlobals(sorted),
 	)
 
-	// Apply colors and indices to each tab
+	// 4. Apply colors and indices to each tab
 	for i, tabName := range sorted {
 		// Set tab color
 		color := GetTabColor(tabName)
@@ -97,4 +118,14 @@ func countGlobals(tabs []string) int {
 		}
 	}
 	return count
+}
+
+// IsExportTab returns true if the tab name matches our export patterns
+// (g-* for globals or YYYY-* for year tabs where YYYY >= 2000)
+func IsExportTab(tabName string) bool {
+	if strings.HasPrefix(tabName, "g-") {
+		return true
+	}
+	year := ExtractYear(tabName)
+	return year >= 2000
 }
