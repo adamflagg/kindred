@@ -680,11 +680,12 @@ func GetAllExportSheetNames(year int) []string {
 }
 
 // GetGlobalExports returns export configurations for global (non-year-scoped) tables
+// Global tables use "g-" prefix for shorter, more readable tab names
 func GetGlobalExports() []ExportConfig {
 	return []ExportConfig{
 		{
 			Collection: "person_tag_defs",
-			SheetName:  "globals-tag-definitions",
+			SheetName:  "g-tag-definitions",
 			IsGlobal:   true,
 			Columns: []ColumnConfig{
 				{Field: "name", Header: "Tag Name", Type: FieldTypeText},
@@ -694,7 +695,7 @@ func GetGlobalExports() []ExportConfig {
 		},
 		{
 			Collection: "custom_field_defs",
-			SheetName:  "globals-custom-field-definitions",
+			SheetName:  "g-custom-field-definitions",
 			IsGlobal:   true,
 			Columns: []ColumnConfig{
 				{Field: "cm_id", Header: "Field ID", Type: FieldTypeNumber},
@@ -708,7 +709,7 @@ func GetGlobalExports() []ExportConfig {
 		},
 		{
 			Collection: "financial_categories",
-			SheetName:  "globals-financial-categories",
+			SheetName:  "g-financial-categories",
 			IsGlobal:   true,
 			Columns: []ColumnConfig{
 				{Field: "cm_id", Header: "Category ID", Type: FieldTypeNumber},
@@ -718,7 +719,7 @@ func GetGlobalExports() []ExportConfig {
 		},
 		{
 			Collection: "divisions",
-			SheetName:  "globals-divisions",
+			SheetName:  "g-divisions",
 			IsGlobal:   true,
 			Columns: []ColumnConfig{
 				{Field: "cm_id", Header: "Division ID", Type: FieldTypeNumber},
