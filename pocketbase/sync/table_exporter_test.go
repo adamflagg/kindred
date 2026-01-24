@@ -690,17 +690,17 @@ func TestGetGlobalExports_DivisionsIncluded(t *testing.T) {
 	if !hasDivisions {
 		t.Error("Expected 'divisions' in global exports")
 	}
-	if hasStaffPositions {
-		t.Error("staff_positions should NOT be in global exports (inlined on staff table)")
+	if !hasStaffPositions {
+		t.Error("Expected 'staff_positions' in global exports (reference table for FK resolution)")
 	}
 }
 
 func TestGetGlobalExports_Count(t *testing.T) {
-	// Test that we have exactly 4 global exports
+	// Test that we have exactly 5 global exports
 	configs := GetGlobalExports()
 
-	if len(configs) != 4 {
-		t.Errorf("Expected 4 global exports, got %d", len(configs))
+	if len(configs) != 5 {
+		t.Errorf("Expected 5 global exports, got %d", len(configs))
 		for _, c := range configs {
 			t.Logf("  - %s", c.Collection)
 		}
@@ -719,14 +719,14 @@ func TestFieldResolver_ResolveBool(t *testing.T) {
 
 	// True value
 	got := resolver.ResolveValue(true, col)
-	if got != "TRUE" {
-		t.Errorf("ResolveValue(true) = %v, want TRUE", got)
+	if got != "true" {
+		t.Errorf("ResolveValue(true) = %v, want true", got)
 	}
 
 	// False value
 	got = resolver.ResolveValue(false, col)
-	if got != "FALSE" {
-		t.Errorf("ResolveValue(false) = %v, want FALSE", got)
+	if got != "false" {
+		t.Errorf("ResolveValue(false) = %v, want false", got)
 	}
 
 	// Nil value

@@ -312,6 +312,13 @@ func (g *GoogleSheetsExport) preloadGlobalLookups(resolver *FieldResolver) error
 		resolver.SetLookupData("divisions", divisionLookup)
 		resolver.SetCMIDLookupData("divisions", divisionCMIDs)
 	}
+
+	// Load staff program areas (for staff_positions.program_area resolution)
+	programAreaLookup, err := g.loadSimpleLookup("staff_program_areas", "name", "")
+	if err == nil {
+		resolver.SetLookupData("staff_program_areas", programAreaLookup)
+	}
+
 	return nil
 }
 

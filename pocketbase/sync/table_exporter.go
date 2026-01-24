@@ -18,7 +18,8 @@ const (
 	FieldTypeJSON
 	FieldTypeRelation
 	FieldTypeMultiRelation
-	FieldTypeBool // Boolean field (exports as TRUE/FALSE)
+	FieldTypeMultiSelect // For multi-select fields (not relations) - joins values with comma
+	FieldTypeBool        // Boolean field (exports as true/false)
 	// New types for FK resolution
 	FieldTypeForeignKeyID    // Resolve relation to cm_id (not display name)
 	FieldTypeNestedField     // Resolve relation to specific nested property (e.g., person → first_name)
@@ -190,13 +191,17 @@ func (r *FieldResolver) ResolveValue(value interface{}, col ColumnConfig) interf
 		// For JSON fields, return as-is or stringify
 		return safeString(value)
 
+	case FieldTypeMultiSelect:
+		// Multi-select (not a relation) - join string values with comma
+		return r.resolveMultiSelect(value)
+
 	case FieldTypeBool:
-		// Boolean field - export as TRUE/FALSE for Sheets compatibility
+		// Boolean field - export as true/false
 		if b, ok := value.(bool); ok {
 			if b {
-				return "TRUE"
+				return "true"
 			}
-			return "FALSE"
+			return "false"
 		}
 		return ""
 
@@ -308,6 +313,34 @@ func (r *FieldResolver) resolveMultiRelation(value interface{}, col ColumnConfig
 	}
 
 	// Sort for consistent output
+	sort.Strings(values)
+	return strings.Join(values, ", ")
+}
+
+// resolveMultiSelect handles multi-select fields (non-relation) by joining values
+func (r *FieldResolver) resolveMultiSelect(value interface{}) string {
+	if value == nil {
+		return ""
+	}
+
+	var values []string
+	switch v := value.(type) {
+	case []interface{}:
+		for _, item := range v {
+			if s := safeString(item); s != "" {
+				values = append(values, s)
+			}
+		}
+	case []string:
+		values = v
+	default:
+		return ""
+	}
+
+	if len(values) == 0 {
+		return ""
+	}
+
 	sort.Strings(values)
 	return strings.Join(values, ", ")
 }
@@ -553,8 +586,9 @@ func GetGlobalExports() []ExportConfig {
 			SheetName:  "globals-tag-definitions",
 			IsGlobal:   true,
 			Columns: []ColumnConfig{
-				{Field: "name", Header: "Name", Type: FieldTypeText},
-				{Field: "description", Header: "Description", Type: FieldTypeText},
+				{Field: "name", Header: "Tag Name", Type: FieldTypeText},
+				{Field: "is_seasonal", Header: "Seasonal", Type: FieldTypeBool},
+				{Field: "is_hidden", Header: "Hidden", Type: FieldTypeBool},
 			},
 		},
 		{
@@ -562,9 +596,13 @@ func GetGlobalExports() []ExportConfig {
 			SheetName:  "globals-custom-field-definitions",
 			IsGlobal:   true,
 			Columns: []ColumnConfig{
+				{Field: "cm_id", Header: "Field ID", Type: FieldTypeNumber},
 				{Field: "name", Header: "Name", Type: FieldTypeText},
-				{Field: "field_type", Header: "Type", Type: FieldTypeText},
-				{Field: "entity_type", Header: "Entity Type", Type: FieldTypeText},
+				{Field: "data_type", Header: "Data Type", Type: FieldTypeText},
+				{Field: "partition", Header: "Entity Types", Type: FieldTypeMultiSelect},
+				{Field: "is_seasonal", Header: "Seasonal", Type: FieldTypeBool},
+				{Field: "is_array", Header: "Is Array", Type: FieldTypeBool},
+				{Field: "is_active", Header: "Active", Type: FieldTypeBool},
 			},
 		},
 		{
@@ -572,8 +610,9 @@ func GetGlobalExports() []ExportConfig {
 			SheetName:  "globals-financial-categories",
 			IsGlobal:   true,
 			Columns: []ColumnConfig{
+				{Field: "cm_id", Header: "Category ID", Type: FieldTypeNumber},
 				{Field: "name", Header: "Name", Type: FieldTypeText},
-				{Field: "category_type", Header: "Type", Type: FieldTypeText},
+				{Field: "is_archived", Header: "Archived", Type: FieldTypeBool},
 			},
 		},
 		{
@@ -585,6 +624,16 @@ func GetGlobalExports() []ExportConfig {
 				{Field: "name", Header: "Name", Type: FieldTypeText},
 				{Field: "parent_division", Header: "Parent Division ID", Type: FieldTypeForeignKeyID, RelatedCol: "divisions"},
 				{Field: "parent_division", Header: "Parent Division", Type: FieldTypeRelation, RelatedCol: "divisions", RelatedField: "name"},
+			},
+		},
+		{
+			Collection: "staff_positions",
+			SheetName:  "globals-staff-positions",
+			IsGlobal:   true,
+			Columns: []ColumnConfig{
+				{Field: "cm_id", Header: "Position ID", Type: FieldTypeNumber},
+				{Field: "name", Header: "Name", Type: FieldTypeText},
+				{Field: "program_area", Header: "Program Area", Type: FieldTypeRelation, RelatedCol: "staff_program_areas", RelatedField: "name"},
 			},
 		},
 	}
