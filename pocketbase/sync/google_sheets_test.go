@@ -11,9 +11,13 @@ type MockSheetsWriter struct {
 	ClearedTabs  []string
 	EnsuredTabs  []string        // Tracks tabs that were ensured to exist
 	ExistingTabs map[string]bool // Simulates which tabs already exist
+	TabColors    map[string]TabColor // sheetTab -> color (for SetTabColor)
+	TabIndices   map[string]int  // sheetTab -> index (for SetTabIndex)
 	WriteError   error
 	ClearError   error
 	EnsureError  error
+	SetColorError error
+	SetIndexError error
 }
 
 func NewMockSheetsWriter() *MockSheetsWriter {
@@ -22,6 +26,8 @@ func NewMockSheetsWriter() *MockSheetsWriter {
 		ClearedTabs:  []string{},
 		EnsuredTabs:  []string{},
 		ExistingTabs: make(map[string]bool),
+		TabColors:    make(map[string]TabColor),
+		TabIndices:   make(map[string]int),
 	}
 }
 
@@ -50,6 +56,40 @@ func (m *MockSheetsWriter) EnsureSheet(_ context.Context, _, sheetTab string) er
 	// Mark tab as existing after ensuring
 	m.ExistingTabs[sheetTab] = true
 	return nil
+}
+
+// SetTabColor sets the color for a sheet tab
+func (m *MockSheetsWriter) SetTabColor(_ context.Context, _, sheetTab string, color TabColor) error {
+	if m.SetColorError != nil {
+		return m.SetColorError
+	}
+	m.TabColors[sheetTab] = color
+	return nil
+}
+
+// SetTabIndex sets the position of a sheet tab
+func (m *MockSheetsWriter) SetTabIndex(_ context.Context, _, sheetTab string, index int) error {
+	if m.SetIndexError != nil {
+		return m.SetIndexError
+	}
+	m.TabIndices[sheetTab] = index
+	return nil
+}
+
+// GetSheetMetadata returns metadata for all sheets
+func (m *MockSheetsWriter) GetSheetMetadata(_ context.Context, _ string) ([]SheetInfo, error) {
+	// Build from existing tabs
+	var sheets []SheetInfo
+	i := 0
+	for tab := range m.ExistingTabs {
+		sheets = append(sheets, SheetInfo{
+			Title:   tab,
+			SheetID: int64(i),
+			Index:   m.TabIndices[tab],
+		})
+		i++
+	}
+	return sheets, nil
 }
 
 func TestGoogleSheetsExport_Name(t *testing.T) {
@@ -194,5 +234,235 @@ func TestGetAllExportSheetNames_YearSubstitution(t *testing.T) {
 	}
 	if !hasGlobals2024 || !hasGlobals2025 {
 		t.Error("Global tabs should be present regardless of year")
+	}
+}
+
+// =============================================================================
+// Tab Color Tests
+// =============================================================================
+
+func TestGetTabColor_GlobalTabs(t *testing.T) {
+	// Global tabs (g-*) should get light blue color
+	tests := []string{
+		"g-tag-definitions",
+		"g-custom-field-definitions",
+		"g-financial-categories",
+		"g-divisions",
+	}
+
+	for _, tab := range tests {
+		t.Run(tab, func(t *testing.T) {
+			color := GetTabColor(tab)
+			if color != TabColorGlobal {
+				t.Errorf("GetTabColor(%q) = %v, want %v (TabColorGlobal)", tab, color, TabColorGlobal)
+			}
+		})
+	}
+}
+
+func TestGetTabColor_YearTabs(t *testing.T) {
+	// Year tabs should get year-specific colors
+	tests := []struct {
+		tab      string
+		expected TabColor
+	}{
+		{"2024-attendees", TabColor2024},
+		{"2024-persons", TabColor2024},
+		{"2025-sessions", TabColor2025},
+		{"2025-staff", TabColor2025},
+		{"2026-bunks", TabColor2026},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.tab, func(t *testing.T) {
+			color := GetTabColor(tt.tab)
+			if color != tt.expected {
+				t.Errorf("GetTabColor(%q) = %v, want %v", tt.tab, color, tt.expected)
+			}
+		})
+	}
+}
+
+func TestGetTabColor_FutureYears(t *testing.T) {
+	// Future years (2027+) should cycle through palette
+	color2027 := GetTabColor("2027-attendees")
+	color2028 := GetTabColor("2028-attendees")
+
+	// Both should have valid RGB values (not empty)
+	if color2027.R == 0 && color2027.G == 0 && color2027.B == 0 {
+		t.Error("2027 should have a non-zero color")
+	}
+	if color2028.R == 0 && color2028.G == 0 && color2028.B == 0 {
+		t.Error("2028 should have a non-zero color")
+	}
+}
+
+func TestGetTabColor_UnknownTabs(t *testing.T) {
+	// Tabs that don't match g-* or YYYY-* should get default color
+	color := GetTabColor("random-sheet")
+	if color != TabColorDefault {
+		t.Errorf("GetTabColor(unknown) = %v, want %v (TabColorDefault)", color, TabColorDefault)
+	}
+}
+
+func TestTabColorConstants(t *testing.T) {
+	// Verify color constants are defined with valid RGB values
+	colors := map[string]TabColor{
+		"TabColorGlobal":  TabColorGlobal,
+		"TabColor2024":    TabColor2024,
+		"TabColor2025":    TabColor2025,
+		"TabColor2026":    TabColor2026,
+		"TabColorDefault": TabColorDefault,
+	}
+
+	for name, color := range colors {
+		t.Run(name, func(t *testing.T) {
+			// RGB values should be between 0 and 1
+			if color.R < 0 || color.R > 1 {
+				t.Errorf("%s.R = %v, want 0-1", name, color.R)
+			}
+			if color.G < 0 || color.G > 1 {
+				t.Errorf("%s.G = %v, want 0-1", name, color.G)
+			}
+			if color.B < 0 || color.B > 1 {
+				t.Errorf("%s.B = %v, want 0-1", name, color.B)
+			}
+		})
+	}
+}
+
+// =============================================================================
+// Tab Ordering Tests
+// =============================================================================
+
+func TestSortExportTabs_GlobalsFirst(t *testing.T) {
+	// Globals should always come before year tabs
+	tabs := []string{
+		"2025-attendees",
+		"g-divisions",
+		"2024-persons",
+		"g-tag-definitions",
+	}
+
+	sorted := SortExportTabs(tabs)
+
+	// First two should be globals (alphabetized)
+	if sorted[0] != "g-divisions" {
+		t.Errorf("sorted[0] = %q, want g-divisions", sorted[0])
+	}
+	if sorted[1] != "g-tag-definitions" {
+		t.Errorf("sorted[1] = %q, want g-tag-definitions", sorted[1])
+	}
+}
+
+func TestSortExportTabs_YearsDescending(t *testing.T) {
+	// Years should be in descending order (newest first)
+	tabs := []string{
+		"2024-attendees",
+		"2026-attendees",
+		"2025-attendees",
+	}
+
+	sorted := SortExportTabs(tabs)
+
+	if sorted[0] != "2026-attendees" {
+		t.Errorf("sorted[0] = %q, want 2026-attendees (newest first)", sorted[0])
+	}
+	if sorted[1] != "2025-attendees" {
+		t.Errorf("sorted[1] = %q, want 2025-attendees", sorted[1])
+	}
+	if sorted[2] != "2024-attendees" {
+		t.Errorf("sorted[2] = %q, want 2024-attendees (oldest last)", sorted[2])
+	}
+}
+
+func TestSortExportTabs_AlphabetizedWithinGroups(t *testing.T) {
+	// Within each group (globals, each year), tabs should be alphabetized
+	tabs := []string{
+		"2025-staff",
+		"2025-attendees",
+		"g-tag-definitions",
+		"g-divisions",
+		"2025-bunks",
+	}
+
+	sorted := SortExportTabs(tabs)
+
+	// Expected order:
+	// 1. g-divisions (global, alphabetized)
+	// 2. g-tag-definitions (global, alphabetized)
+	// 3. 2025-attendees (2025, alphabetized)
+	// 4. 2025-bunks (2025, alphabetized)
+	// 5. 2025-staff (2025, alphabetized)
+	expected := []string{
+		"g-divisions",
+		"g-tag-definitions",
+		"2025-attendees",
+		"2025-bunks",
+		"2025-staff",
+	}
+
+	for i, want := range expected {
+		if sorted[i] != want {
+			t.Errorf("sorted[%d] = %q, want %q", i, sorted[i], want)
+		}
+	}
+}
+
+func TestSortExportTabs_FullExport(t *testing.T) {
+	// Full export with multiple years and globals
+	tabs := []string{
+		"2024-attendees",
+		"g-financial-categories",
+		"2025-staff",
+		"2026-bunks",
+		"g-divisions",
+		"2025-attendees",
+		"2024-persons",
+	}
+
+	sorted := SortExportTabs(tabs)
+
+	// Verify globals come first
+	if sorted[0] != "g-divisions" || sorted[1] != "g-financial-categories" {
+		t.Errorf("Globals should be first and alphabetized: got %v", sorted[:2])
+	}
+
+	// Verify 2026 comes before 2025 before 2024
+	var yearOrder []int
+	for _, tab := range sorted[2:] {
+		year := ExtractYear(tab)
+		yearOrder = append(yearOrder, year)
+	}
+
+	// Years should be descending within same-year groups
+	for i := 1; i < len(yearOrder); i++ {
+		if yearOrder[i] > yearOrder[i-1] {
+			t.Errorf("Years should be descending, got %v", yearOrder)
+			break
+		}
+	}
+}
+
+func TestExtractYear(t *testing.T) {
+	tests := []struct {
+		tab  string
+		want int
+	}{
+		{"2025-attendees", 2025},
+		{"2024-persons", 2024},
+		{"2026-bunks", 2026},
+		{"g-divisions", 0},           // Global, no year
+		{"random", 0},                // Unknown format
+		{"25-attendees", 0},          // Too short for year
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.tab, func(t *testing.T) {
+			got := ExtractYear(tt.tab)
+			if got != tt.want {
+				t.Errorf("ExtractYear(%q) = %d, want %d", tt.tab, got, tt.want)
+			}
+		})
 	}
 }
