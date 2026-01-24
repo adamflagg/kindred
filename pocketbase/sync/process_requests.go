@@ -14,6 +14,8 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
+const boolTrue = "true"
+
 // RequestProcessor processes original_bunk_requests into structured bunk_requests
 // All processing is now done in Python - this is just a thin wrapper that:
 // 1. Handles PocketBase auth
@@ -234,7 +236,7 @@ func (p *RequestProcessor) callPythonProcessor(ctx context.Context) (Stats, erro
 // getProjectRoot returns the project root directory (parent of pocketbase)
 func (p *RequestProcessor) getProjectRoot() string {
 	// In Docker, project root is /app
-	if os.Getenv("IS_DOCKER") == "true" {
+	if os.Getenv("IS_DOCKER") == boolTrue {
 		return "/app"
 	}
 
@@ -257,7 +259,7 @@ func (p *RequestProcessor) getProjectRoot() string {
 // getPythonPath returns the Python interpreter path based on environment
 func (p *RequestProcessor) getPythonPath(projectRoot string) string {
 	// In Docker, Python is installed system-wide (no venv)
-	if os.Getenv("IS_DOCKER") == "true" {
+	if os.Getenv("IS_DOCKER") == boolTrue {
 		return "python3"
 	}
 

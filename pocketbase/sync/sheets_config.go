@@ -26,7 +26,7 @@ func DefaultSheetName(collection string) string {
 }
 
 // GetSheetName returns the full sheet tab name for a collection
-// For global tables: "globals-{sheet_name}"
+// For global tables: "g-{sheet_name}" (short prefix for readability)
 // For year tables: "{year}-{sheet_name}"
 // Falls back to default naming if collection not in config
 func (c *SheetsConfig) GetSheetName(collection string, year int) string {
@@ -37,7 +37,7 @@ func (c *SheetsConfig) GetSheetName(collection string, year int) string {
 	}
 
 	if table.IsGlobal {
-		return fmt.Sprintf("globals-%s", table.SheetName)
+		return fmt.Sprintf("g-%s", table.SheetName)
 	}
 	return fmt.Sprintf("%d-%s", year, table.SheetName)
 }

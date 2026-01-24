@@ -79,11 +79,27 @@ export const syncService = {
 
   /**
    * Export data to Google Sheets
+   * @param fetchWithAuth - Authenticated fetch function
+   * @param years - Optional array of years to export (defaults to current year if not specified)
+   * @param includeGlobals - Whether to include global tables in the export (default: false)
    */
   async exportToGoogleSheets(
-    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>,
+    years?: number[],
+    includeGlobals?: boolean
   ): Promise<GoogleSheetsExportResponse> {
-    const response = await fetchWithAuth(`${API_BASE}/google-sheets-export`, {
+    const params = new URLSearchParams();
+    if (years?.length) {
+      params.set('years', years.join(','));
+    }
+    if (includeGlobals) {
+      params.set('includeGlobals', 'true');
+    }
+    const queryString = params.toString();
+    const url = queryString
+      ? `${API_BASE}/google-sheets-export?${queryString}`
+      : `${API_BASE}/google-sheets-export`;
+    const response = await fetchWithAuth(url, {
       method: 'POST',
     });
     if (!response.ok) {

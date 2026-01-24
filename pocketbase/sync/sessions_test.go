@@ -4,6 +4,8 @@ import (
 	"testing"
 )
 
+const testSessionName = "Session 2"
+
 // TestParseDate tests date parsing from various CampMinder formats
 func TestParseDate(t *testing.T) {
 	s := &SessionsSync{}
@@ -99,7 +101,7 @@ func TestTransformSessionExtractsAllFields(t *testing.T) {
 	// Note: CampMinder API has typo "IsForChilden" (missing 'r')
 	sessionData := map[string]interface{}{
 		"ID":            float64(12345),
-		"Name":          "Session 2",
+		"Name":          testSessionName,
 		"StartDate":     "2025-06-15T00:00:00Z",
 		"EndDate":       "2025-07-13T00:00:00Z",
 		"SeasonID":      float64(2025),
@@ -128,7 +130,7 @@ func TestTransformSessionExtractsAllFields(t *testing.T) {
 	if got, want := pbData["cm_id"].(int), 12345; got != want {
 		t.Errorf("cm_id = %d, want %d", got, want)
 	}
-	if got, want := pbData["name"].(string), "Session 2"; got != want {
+	if got, want := pbData["name"].(string), testSessionName; got != want {
 		t.Errorf("name = %q, want %q", got, want)
 	}
 	if got, want := pbData["year"].(int), 2025; got != want {
@@ -182,7 +184,7 @@ func TestTransformSessionHandlesMissingFields(t *testing.T) {
 	// Minimal session data with only required fields
 	sessionData := map[string]interface{}{
 		"ID":       float64(12345),
-		"Name":     "Session 2",
+		"Name":     testSessionName,
 		"SeasonID": float64(2025),
 		// All optional fields are missing
 	}
@@ -228,7 +230,7 @@ func TestTransformSessionHandlesNullFields(t *testing.T) {
 	// Session data with explicit nil values (as might come from JSON null)
 	sessionData := map[string]interface{}{
 		"ID":            float64(12345),
-		"Name":          "Session 2",
+		"Name":          testSessionName,
 		"StartDate":     "2025-06-15T00:00:00Z",
 		"EndDate":       "2025-07-13T00:00:00Z",
 		"SeasonID":      float64(2025),
