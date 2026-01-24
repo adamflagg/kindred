@@ -126,11 +126,11 @@ func TestGetAllExportSheetNames(t *testing.T) {
 		"2025-session-groups",
 		"2025-person-custom-values",
 		"2025-household-custom-values",
-		// Global tables (4)
-		"globals-tag-definitions",
-		"globals-custom-field-definitions",
-		"globals-financial-categories",
-		"globals-divisions",
+		// Global tables (4) - use short "g-" prefix
+		"g-tag-definitions",
+		"g-custom-field-definitions",
+		"g-financial-categories",
+		"g-divisions",
 	}
 
 	if len(names) != len(expectedTabs) {
@@ -178,8 +178,8 @@ func TestGetAllExportSheetNames_YearSubstitution(t *testing.T) {
 		t.Error("Expected 2025-attendees in 2025 export")
 	}
 
-	// Global tabs should be the same for both years
-	const globalsTab = "globals-tag-definitions"
+	// Global tabs should be the same for both years (use short "g-" prefix)
+	const globalsTab = "g-tag-definitions"
 	hasGlobals2024 := false
 	hasGlobals2025 := false
 	for _, n := range names2024 {
