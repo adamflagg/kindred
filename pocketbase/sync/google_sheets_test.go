@@ -125,7 +125,7 @@ func TestGetAllExportSheetNames(t *testing.T) {
 		"globals-tag-definitions",
 		"globals-custom-field-definitions",
 		"globals-financial-categories",
-		"globals-staff-positions",
+		"globals-divisions",
 	}
 
 	if len(names) != len(expectedTabs) {

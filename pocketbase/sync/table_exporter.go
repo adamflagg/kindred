@@ -18,6 +18,12 @@ const (
 	FieldTypeJSON
 	FieldTypeRelation
 	FieldTypeMultiRelation
+	// New types for FK resolution
+	FieldTypeForeignKeyID    // Resolve relation to cm_id (not display name)
+	FieldTypeNestedField     // Resolve relation to specific nested property (e.g., person → first_name)
+	FieldTypeWriteInOverride // Check write_in field first, fallback to standard field
+	FieldTypeDoubleFKResolve // Resolve through two relations (position → program_area → name)
+	FieldTypeCMIDLookup      // Lookup by CM ID rather than PB ID (for self-references like parent_id)
 )
 
 // ColumnConfig defines a single column mapping for export
@@ -27,6 +33,12 @@ type ColumnConfig struct {
 	Type         FieldType // How to transform the value
 	RelatedCol   string    // For relations: target collection
 	RelatedField string    // For relations: display field (e.g., "name")
+
+	// Extended fields for advanced resolution
+	NestedField      string // For FieldTypeNestedField: specific field to extract (e.g., "first_name")
+	WriteInField     string // For FieldTypeWriteInOverride: override field name
+	IntermediateCol  string // For FieldTypeDoubleFKResolve: second lookup collection
+	IntermediateLink string // For FieldTypeDoubleFKResolve: field linking to intermediate collection
 }
 
 // ExportConfig defines how a table exports to Google Sheets
@@ -45,13 +57,21 @@ func (c *ExportConfig) GetResolvedSheetName(year int) string {
 
 // FieldResolver handles relation lookups and value transformations
 type FieldResolver struct {
-	lookupCache map[string]map[string]string // collection → pbID → displayValue
+	lookupCache       map[string]map[string]string    // collection → pbID → displayValue
+	cmidLookupCache   map[string]map[string]int       // collection → pbID → cmID
+	nestedFieldCache  map[string]map[string]string    // "collection.field" → pbID → fieldValue
+	doubleFKCache     map[string]map[string]string    // "collection.link" → pbID → intermediateID
+	cmidIndexedCache  map[string]map[int]string       // collection → cmID → displayValue
 }
 
 // NewFieldResolver creates a new FieldResolver
 func NewFieldResolver() *FieldResolver {
 	return &FieldResolver{
-		lookupCache: make(map[string]map[string]string),
+		lookupCache:       make(map[string]map[string]string),
+		cmidLookupCache:   make(map[string]map[string]int),
+		nestedFieldCache:  make(map[string]map[string]string),
+		doubleFKCache:     make(map[string]map[string]string),
+		cmidIndexedCache:  make(map[string]map[int]string),
 	}
 }
 
@@ -64,6 +84,82 @@ func (r *FieldResolver) SetLookupData(collection string, data map[string]string)
 func (r *FieldResolver) LookupValue(collection, pbID string) string {
 	if collData, ok := r.lookupCache[collection]; ok {
 		if val, ok := collData[pbID]; ok {
+			return val
+		}
+	}
+	return ""
+}
+
+// SetCMIDLookupData sets CM ID lookup data (pbID → cmID)
+func (r *FieldResolver) SetCMIDLookupData(collection string, data map[string]int) {
+	r.cmidLookupCache[collection] = data
+}
+
+// SetNestedFieldLookupData sets nested field lookup data
+func (r *FieldResolver) SetNestedFieldLookupData(collection, field string, data map[string]string) {
+	key := collection + "." + field
+	r.nestedFieldCache[key] = data
+}
+
+// SetDoubleFKLookupData sets double FK lookup data (first hop: pbID → intermediate pbID)
+func (r *FieldResolver) SetDoubleFKLookupData(collection, linkField string, data map[string]string) {
+	key := collection + "." + linkField
+	r.doubleFKCache[key] = data
+}
+
+// SetCMIDIndexedLookup sets lookup data indexed by CM ID (for self-references)
+func (r *FieldResolver) SetCMIDIndexedLookup(collection string, data map[int]string) {
+	r.cmidIndexedCache[collection] = data
+}
+
+// ResolveWriteInOverride resolves write-in override fields
+// Returns write_in value if non-empty, otherwise standard field value
+func (r *FieldResolver) ResolveWriteInOverride(record map[string]interface{}, col ColumnConfig) string {
+	// Check write-in field first
+	writeIn := safeString(record[col.WriteInField])
+	if writeIn != "" {
+		return writeIn
+	}
+	// Fall back to standard field
+	return safeString(record[col.Field])
+}
+
+// LookupCMID looks up a CM ID for a PB ID
+func (r *FieldResolver) LookupCMID(collection, pbID string) (int, bool) {
+	if collData, ok := r.cmidLookupCache[collection]; ok {
+		if val, ok := collData[pbID]; ok {
+			return val, true
+		}
+	}
+	return 0, false
+}
+
+// LookupNestedField looks up a nested field value
+func (r *FieldResolver) LookupNestedField(collection, field, pbID string) string {
+	key := collection + "." + field
+	if collData, ok := r.nestedFieldCache[key]; ok {
+		if val, ok := collData[pbID]; ok {
+			return val
+		}
+	}
+	return ""
+}
+
+// LookupDoubleFKIntermediate looks up the intermediate ID for double FK resolution
+func (r *FieldResolver) LookupDoubleFKIntermediate(collection, linkField, pbID string) string {
+	key := collection + "." + linkField
+	if collData, ok := r.doubleFKCache[key]; ok {
+		if val, ok := collData[pbID]; ok {
+			return val
+		}
+	}
+	return ""
+}
+
+// LookupByCMID looks up display value by CM ID
+func (r *FieldResolver) LookupByCMID(collection string, cmID int) string {
+	if collData, ok := r.cmidIndexedCache[collection]; ok {
+		if val, ok := collData[cmID]; ok {
 			return val
 		}
 	}
@@ -108,6 +204,57 @@ func (r *FieldResolver) ResolveValue(value interface{}, col ColumnConfig) interf
 	case FieldTypeMultiRelation:
 		// Multi-relation - lookup all values and join with comma
 		return r.resolveMultiRelation(value, col)
+
+	case FieldTypeForeignKeyID:
+		// Resolve relation to CM ID (not display name)
+		pbID := safeString(value)
+		if pbID == "" {
+			return ""
+		}
+		if cmID, ok := r.LookupCMID(col.RelatedCol, pbID); ok {
+			return cmID
+		}
+		return "" // Unknown ID returns empty
+
+	case FieldTypeNestedField:
+		// Resolve relation to specific nested property
+		pbID := safeString(value)
+		if pbID == "" {
+			return ""
+		}
+		return r.LookupNestedField(col.RelatedCol, col.NestedField, pbID)
+
+	case FieldTypeDoubleFKResolve:
+		// Resolve through two relations (e.g., position → program_area → name)
+		pbID := safeString(value)
+		if pbID == "" {
+			return ""
+		}
+		// First hop: get intermediate ID
+		intermediateID := r.LookupDoubleFKIntermediate(col.RelatedCol, col.IntermediateLink, pbID)
+		if intermediateID == "" {
+			return ""
+		}
+		// Second hop: get display value from intermediate collection
+		return r.LookupValue(col.IntermediateCol, intermediateID)
+
+	case FieldTypeCMIDLookup:
+		// Lookup by CM ID rather than PB ID (for self-references like parent_id)
+		var cmID int
+		switch v := value.(type) {
+		case float64:
+			cmID = int(v)
+		case int:
+			cmID = v
+		case int64:
+			cmID = int(v)
+		default:
+			return ""
+		}
+		if cmID == 0 {
+			return ""
+		}
+		return r.LookupByCMID(col.RelatedCol, cmID)
 
 	default:
 		return safeString(value)
@@ -377,11 +524,14 @@ func GetGlobalExports() []ExportConfig {
 			},
 		},
 		{
-			Collection: "staff_positions",
-			SheetName:  "globals-staff-positions",
+			Collection: "divisions",
+			SheetName:  "globals-divisions",
 			IsGlobal:   true,
 			Columns: []ColumnConfig{
+				{Field: "cm_id", Header: "Division ID", Type: FieldTypeNumber},
 				{Field: "name", Header: "Name", Type: FieldTypeText},
+				{Field: "parent_division", Header: "Parent Division ID", Type: FieldTypeForeignKeyID, RelatedCol: "divisions"},
+				{Field: "parent_division", Header: "Parent Division", Type: FieldTypeRelation, RelatedCol: "divisions", RelatedField: "name"},
 			},
 		},
 	}
