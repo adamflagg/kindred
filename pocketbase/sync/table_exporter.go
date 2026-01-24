@@ -116,7 +116,7 @@ func (r *FieldResolver) SetCMIDIndexedLookup(collection string, data map[int]str
 
 // ResolveWriteInOverride resolves write-in override fields
 // Returns write_in value if non-empty, otherwise standard field value
-func (r *FieldResolver) ResolveWriteInOverride(record map[string]interface{}, col ColumnConfig) string {
+func (r *FieldResolver) ResolveWriteInOverride(record map[string]interface{}, col *ColumnConfig) string {
 	// Check write-in field first
 	writeIn := safeString(record[col.WriteInField])
 	if writeIn != "" {
@@ -169,7 +169,7 @@ func (r *FieldResolver) LookupByCMID(collection string, cmID int) string {
 }
 
 // ResolveValue transforms a raw value based on column configuration
-func (r *FieldResolver) ResolveValue(value interface{}, col ColumnConfig) interface{} {
+func (r *FieldResolver) ResolveValue(value interface{}, col *ColumnConfig) interface{} {
 	if value == nil {
 		return ""
 	}
@@ -219,7 +219,7 @@ func (r *FieldResolver) ResolveValue(value interface{}, col ColumnConfig) interf
 
 	case FieldTypeMultiRelation:
 		// Multi-relation - lookup all values and join with comma
-		return r.resolveMultiRelation(value, col)
+		return r.resolveMultiRelation(value, col) // col is already *ColumnConfig
 
 	case FieldTypeForeignKeyID:
 		// Resolve relation to CM ID (not display name)
@@ -278,7 +278,7 @@ func (r *FieldResolver) ResolveValue(value interface{}, col ColumnConfig) interf
 }
 
 // resolveMultiRelation handles multi-select relation fields
-func (r *FieldResolver) resolveMultiRelation(value interface{}, col ColumnConfig) string {
+func (r *FieldResolver) resolveMultiRelation(value interface{}, col *ColumnConfig) string {
 	// Handle nil
 	if value == nil {
 		return ""
@@ -355,17 +355,18 @@ func BuildDataMatrix(
 	// Preallocate: 1 header row + data rows
 	data := make([][]interface{}, 0, 1+len(records))
 
-	// Build header row
+	// Build header row (use index to avoid copying 136-byte struct)
 	headers := make([]interface{}, len(columns))
-	for i, col := range columns {
-		headers[i] = col.Header
+	for i := range columns {
+		headers[i] = columns[i].Header
 	}
 	data = append(data, headers)
 
-	// Build data rows
+	// Build data rows (use index to avoid copying 136-byte struct)
 	for _, record := range records {
 		row := make([]interface{}, len(columns))
-		for i, col := range columns {
+		for i := range columns {
+			col := &columns[i]
 			// WriteInOverride needs access to full record
 			if col.Type == FieldTypeWriteInOverride {
 				row[i] = resolver.ResolveWriteInOverride(record, col)
@@ -435,10 +436,22 @@ func GetYearSpecificExports() []ExportConfig {
 			IsGlobal:   false,
 			Columns: []ColumnConfig{
 				{Field: "person_id", Header: "Person ID", Type: FieldTypeNumber},
-				{Field: "person", Header: "First Name", Type: FieldTypeNestedField, RelatedCol: "persons", NestedField: "first_name"},
-				{Field: "person", Header: "Last Name", Type: FieldTypeNestedField, RelatedCol: "persons", NestedField: "last_name"},
-				{Field: "session", Header: "Session ID", Type: FieldTypeForeignKeyID, RelatedCol: "camp_sessions"},
-				{Field: "session", Header: "Session", Type: FieldTypeRelation, RelatedCol: "camp_sessions", RelatedField: "name"},
+				{
+					Field: "person", Header: "First Name", Type: FieldTypeNestedField,
+					RelatedCol: "persons", NestedField: "first_name",
+				},
+				{
+					Field: "person", Header: "Last Name", Type: FieldTypeNestedField,
+					RelatedCol: "persons", NestedField: "last_name",
+				},
+				{
+					Field: "session", Header: "Session ID", Type: FieldTypeForeignKeyID,
+					RelatedCol: "camp_sessions",
+				},
+				{
+					Field: "session", Header: "Session", Type: FieldTypeRelation,
+					RelatedCol: "camp_sessions", RelatedField: "name",
+				},
 				{Field: "enrollment_date", Header: "Enrollment Date", Type: FieldTypeDate},
 				{Field: "status", Header: "Status", Type: FieldTypeText},
 			},
@@ -457,8 +470,14 @@ func GetYearSpecificExports() []ExportConfig {
 				{Field: "age", Header: "Age", Type: FieldTypeNumber},
 				{Field: "grade", Header: "Grade", Type: FieldTypeNumber},
 				{Field: "gender", Header: "Gender", Type: FieldTypeText},
-				{Field: "gender_identity_name", Header: "Gender Identity", Type: FieldTypeWriteInOverride, WriteInField: "gender_identity_write_in"},
-				{Field: "gender_pronoun_name", Header: "Gender Pronoun", Type: FieldTypeWriteInOverride, WriteInField: "gender_pronoun_write_in"},
+				{
+					Field: "gender_identity_name", Header: "Gender Identity",
+					Type: FieldTypeWriteInOverride, WriteInField: "gender_identity_write_in",
+				},
+				{
+					Field: "gender_pronoun_name", Header: "Gender Pronoun",
+					Type: FieldTypeWriteInOverride, WriteInField: "gender_pronoun_write_in",
+				},
 				{Field: "school", Header: "School", Type: FieldTypeText},
 				{Field: "years_at_camp", Header: "Years at Camp", Type: FieldTypeNumber},
 				{Field: "last_year_attended", Header: "Last Year Attended", Type: FieldTypeNumber},
@@ -492,8 +511,14 @@ func GetYearSpecificExports() []ExportConfig {
 				{Field: "is_for_adults", Header: "Is For Adults", Type: FieldTypeBool},
 				{Field: "start_grade_id", Header: "Start Grade", Type: FieldTypeNumber},
 				{Field: "end_grade_id", Header: "End Grade", Type: FieldTypeNumber},
-				{Field: "session_group", Header: "Session Group ID", Type: FieldTypeForeignKeyID, RelatedCol: "session_groups"},
-				{Field: "session_group", Header: "Session Group", Type: FieldTypeRelation, RelatedCol: "session_groups", RelatedField: "name"},
+				{
+					Field: "session_group", Header: "Session Group ID",
+					Type: FieldTypeForeignKeyID, RelatedCol: "session_groups",
+				},
+				{
+					Field: "session_group", Header: "Session Group", Type: FieldTypeRelation,
+					RelatedCol: "session_groups", RelatedField: "name",
+				},
 			},
 		},
 		// Staff - staff records with positions, assignments, dates
@@ -502,15 +527,41 @@ func GetYearSpecificExports() []ExportConfig {
 			SheetName:  "{year}-staff",
 			IsGlobal:   false,
 			Columns: []ColumnConfig{
-				{Field: "person", Header: "Person ID", Type: FieldTypeForeignKeyID, RelatedCol: "persons"},
-				{Field: "person", Header: "First Name", Type: FieldTypeNestedField, RelatedCol: "persons", NestedField: "first_name"},
-				{Field: "person", Header: "Last Name", Type: FieldTypeNestedField, RelatedCol: "persons", NestedField: "last_name"},
+				{
+					Field: "person", Header: "Person ID",
+					Type: FieldTypeForeignKeyID, RelatedCol: "persons",
+				},
+				{
+					Field: "person", Header: "First Name", Type: FieldTypeNestedField,
+					RelatedCol: "persons", NestedField: "first_name",
+				},
+				{
+					Field: "person", Header: "Last Name", Type: FieldTypeNestedField,
+					RelatedCol: "persons", NestedField: "last_name",
+				},
 				{Field: "status", Header: "Status", Type: FieldTypeText},
-				{Field: "position1", Header: "Position 1", Type: FieldTypeRelation, RelatedCol: "staff_positions", RelatedField: "name"},
-				{Field: "position1", Header: "Position 1 Program Area", Type: FieldTypeDoubleFKResolve, RelatedCol: "staff_positions", IntermediateCol: "staff_program_areas", IntermediateLink: "program_area"},
-				{Field: "position2", Header: "Position 2", Type: FieldTypeRelation, RelatedCol: "staff_positions", RelatedField: "name"},
-				{Field: "position2", Header: "Position 2 Program Area", Type: FieldTypeDoubleFKResolve, RelatedCol: "staff_positions", IntermediateCol: "staff_program_areas", IntermediateLink: "program_area"},
-				{Field: "organizational_category", Header: "Org Category", Type: FieldTypeRelation, RelatedCol: "staff_org_categories", RelatedField: "name"},
+				{
+					Field: "position1", Header: "Position 1", Type: FieldTypeRelation,
+					RelatedCol: "staff_positions", RelatedField: "name",
+				},
+				{
+					Field: "position1", Header: "Position 1 Program Area",
+					Type: FieldTypeDoubleFKResolve, RelatedCol: "staff_positions",
+					IntermediateCol: "staff_program_areas", IntermediateLink: "program_area",
+				},
+				{
+					Field: "position2", Header: "Position 2", Type: FieldTypeRelation,
+					RelatedCol: "staff_positions", RelatedField: "name",
+				},
+				{
+					Field: "position2", Header: "Position 2 Program Area",
+					Type: FieldTypeDoubleFKResolve, RelatedCol: "staff_positions",
+					IntermediateCol: "staff_program_areas", IntermediateLink: "program_area",
+				},
+				{
+					Field: "organizational_category", Header: "Org Category",
+					Type: FieldTypeRelation, RelatedCol: "staff_org_categories", RelatedField: "name",
+				},
 				{Field: "division", Header: "Division ID", Type: FieldTypeForeignKeyID, RelatedCol: "divisions"},
 				{Field: "division", Header: "Division", Type: FieldTypeRelation, RelatedCol: "divisions", RelatedField: "name"},
 				{Field: "bunks", Header: "Bunks", Type: FieldTypeMultiRelation, RelatedCol: "bunks", RelatedField: "name"},
@@ -560,8 +611,14 @@ func GetYearSpecificExports() []ExportConfig {
 				{Field: "is_reversed", Header: "Is Reversed", Type: FieldTypeBool},
 				{Field: "reversal_date", Header: "Reversal Date", Type: FieldTypeDate},
 				// Category (FK ID + name)
-				{Field: "financial_category", Header: "Category ID", Type: FieldTypeForeignKeyID, RelatedCol: "financial_categories"},
-				{Field: "financial_category", Header: "Category", Type: FieldTypeRelation, RelatedCol: "financial_categories", RelatedField: "name"},
+				{
+					Field: "financial_category", Header: "Category ID",
+					Type: FieldTypeForeignKeyID, RelatedCol: "financial_categories",
+				},
+				{
+					Field: "financial_category", Header: "Category", Type: FieldTypeRelation,
+					RelatedCol: "financial_categories", RelatedField: "name",
+				},
 				// Description & notes
 				{Field: "description", Header: "Description", Type: FieldTypeText},
 				{Field: "transaction_note", Header: "Transaction Note", Type: FieldTypeText},
@@ -574,24 +631,63 @@ func GetYearSpecificExports() []ExportConfig {
 				{Field: "recognition_gl_account_id", Header: "Recognition GL Account", Type: FieldTypeText},
 				{Field: "deferral_gl_account_id", Header: "Deferral GL Account", Type: FieldTypeText},
 				// Payment method (FK ID + name)
-				{Field: "payment_method", Header: "Payment Method ID", Type: FieldTypeForeignKeyID, RelatedCol: "payment_methods"},
-				{Field: "payment_method", Header: "Payment Method", Type: FieldTypeRelation, RelatedCol: "payment_methods", RelatedField: "name"},
+				{
+					Field: "payment_method", Header: "Payment Method ID",
+					Type: FieldTypeForeignKeyID, RelatedCol: "payment_methods",
+				},
+				{
+					Field: "payment_method", Header: "Payment Method", Type: FieldTypeRelation,
+					RelatedCol: "payment_methods", RelatedField: "name",
+				},
 				// Session (FK ID + name)
-				{Field: "session", Header: "Session ID", Type: FieldTypeForeignKeyID, RelatedCol: "camp_sessions"},
-				{Field: "session", Header: "Session", Type: FieldTypeRelation, RelatedCol: "camp_sessions", RelatedField: "name"},
+				{
+					Field: "session", Header: "Session ID",
+					Type: FieldTypeForeignKeyID, RelatedCol: "camp_sessions",
+				},
+				{
+					Field: "session", Header: "Session", Type: FieldTypeRelation,
+					RelatedCol: "camp_sessions", RelatedField: "name",
+				},
 				// Session group (FK ID + name)
-				{Field: "session_group", Header: "Session Group ID", Type: FieldTypeForeignKeyID, RelatedCol: "session_groups"},
-				{Field: "session_group", Header: "Session Group", Type: FieldTypeRelation, RelatedCol: "session_groups", RelatedField: "name"},
+				{
+					Field: "session_group", Header: "Session Group ID",
+					Type: FieldTypeForeignKeyID, RelatedCol: "session_groups",
+				},
+				{
+					Field: "session_group", Header: "Session Group", Type: FieldTypeRelation,
+					RelatedCol: "session_groups", RelatedField: "name",
+				},
 				// Division (FK ID + name)
-				{Field: "division", Header: "Division ID", Type: FieldTypeForeignKeyID, RelatedCol: "divisions"},
-				{Field: "division", Header: "Division", Type: FieldTypeRelation, RelatedCol: "divisions", RelatedField: "name"},
+				{
+					Field: "division", Header: "Division ID",
+					Type: FieldTypeForeignKeyID, RelatedCol: "divisions",
+				},
+				{
+					Field: "division", Header: "Division", Type: FieldTypeRelation,
+					RelatedCol: "divisions", RelatedField: "name",
+				},
 				// Person (FK ID + name)
-				{Field: "person", Header: "Person ID", Type: FieldTypeForeignKeyID, RelatedCol: "persons"},
-				{Field: "person", Header: "Person First Name", Type: FieldTypeNestedField, RelatedCol: "persons", NestedField: "first_name"},
-				{Field: "person", Header: "Person Last Name", Type: FieldTypeNestedField, RelatedCol: "persons", NestedField: "last_name"},
+				{
+					Field: "person", Header: "Person ID",
+					Type: FieldTypeForeignKeyID, RelatedCol: "persons",
+				},
+				{
+					Field: "person", Header: "Person First Name", Type: FieldTypeNestedField,
+					RelatedCol: "persons", NestedField: "first_name",
+				},
+				{
+					Field: "person", Header: "Person Last Name", Type: FieldTypeNestedField,
+					RelatedCol: "persons", NestedField: "last_name",
+				},
 				// Household (FK ID + name)
-				{Field: "household", Header: "Household ID", Type: FieldTypeForeignKeyID, RelatedCol: "households"},
-				{Field: "household", Header: "Household", Type: FieldTypeRelation, RelatedCol: "households", RelatedField: "mailing_title"},
+				{
+					Field: "household", Header: "Household ID",
+					Type: FieldTypeForeignKeyID, RelatedCol: "households",
+				},
+				{
+					Field: "household", Header: "Household", Type: FieldTypeRelation,
+					RelatedCol: "households", RelatedField: "mailing_title",
+				},
 			},
 		},
 		// Bunks - cabin definitions
@@ -635,11 +731,26 @@ func GetYearSpecificExports() []ExportConfig {
 			SheetName:  "{year}-person-cv",
 			IsGlobal:   false,
 			Columns: []ColumnConfig{
-				{Field: "person", Header: "Person First Name", Type: FieldTypeNestedField, RelatedCol: "persons", NestedField: "first_name"},
-				{Field: "person", Header: "Person Last Name", Type: FieldTypeNestedField, RelatedCol: "persons", NestedField: "last_name"},
-				{Field: "person", Header: "Person ID", Type: FieldTypeForeignKeyID, RelatedCol: "persons"},
-				{Field: "field_definition", Header: "Field Name", Type: FieldTypeRelation, RelatedCol: "custom_field_defs", RelatedField: "name"},
-				{Field: "field_definition", Header: "Field ID", Type: FieldTypeForeignKeyID, RelatedCol: "custom_field_defs"},
+				{
+					Field: "person", Header: "Person First Name", Type: FieldTypeNestedField,
+					RelatedCol: "persons", NestedField: "first_name",
+				},
+				{
+					Field: "person", Header: "Person Last Name", Type: FieldTypeNestedField,
+					RelatedCol: "persons", NestedField: "last_name",
+				},
+				{
+					Field: "person", Header: "Person ID",
+					Type: FieldTypeForeignKeyID, RelatedCol: "persons",
+				},
+				{
+					Field: "field_definition", Header: "Field Name", Type: FieldTypeRelation,
+					RelatedCol: "custom_field_defs", RelatedField: "name",
+				},
+				{
+					Field: "field_definition", Header: "Field ID",
+					Type: FieldTypeForeignKeyID, RelatedCol: "custom_field_defs",
+				},
 				{Field: "value", Header: "Value", Type: FieldTypeText},
 			},
 		},
@@ -649,10 +760,22 @@ func GetYearSpecificExports() []ExportConfig {
 			SheetName:  "{year}-household-cv",
 			IsGlobal:   false,
 			Columns: []ColumnConfig{
-				{Field: "household", Header: "Household", Type: FieldTypeRelation, RelatedCol: "households", RelatedField: "mailing_title"},
-				{Field: "household", Header: "Household ID", Type: FieldTypeForeignKeyID, RelatedCol: "households"},
-				{Field: "field_definition", Header: "Field Name", Type: FieldTypeRelation, RelatedCol: "custom_field_defs", RelatedField: "name"},
-				{Field: "field_definition", Header: "Field ID", Type: FieldTypeForeignKeyID, RelatedCol: "custom_field_defs"},
+				{
+					Field: "household", Header: "Household", Type: FieldTypeRelation,
+					RelatedCol: "households", RelatedField: "mailing_title",
+				},
+				{
+					Field: "household", Header: "Household ID",
+					Type: FieldTypeForeignKeyID, RelatedCol: "households",
+				},
+				{
+					Field: "field_definition", Header: "Field Name", Type: FieldTypeRelation,
+					RelatedCol: "custom_field_defs", RelatedField: "name",
+				},
+				{
+					Field: "field_definition", Header: "Field ID",
+					Type: FieldTypeForeignKeyID, RelatedCol: "custom_field_defs",
+				},
 				{Field: "value", Header: "Value", Type: FieldTypeText},
 			},
 		},
@@ -724,8 +847,14 @@ func GetGlobalExports() []ExportConfig {
 			Columns: []ColumnConfig{
 				{Field: "cm_id", Header: "Division ID", Type: FieldTypeNumber},
 				{Field: "name", Header: "Name", Type: FieldTypeText},
-				{Field: "parent_division", Header: "Parent Division ID", Type: FieldTypeForeignKeyID, RelatedCol: "divisions"},
-				{Field: "parent_division", Header: "Parent Division", Type: FieldTypeRelation, RelatedCol: "divisions", RelatedField: "name"},
+				{
+					Field: "parent_division", Header: "Parent Division ID",
+					Type: FieldTypeForeignKeyID, RelatedCol: "divisions",
+				},
+				{
+					Field: "parent_division", Header: "Parent Division", Type: FieldTypeRelation,
+					RelatedCol: "divisions", RelatedField: "name",
+				},
 			},
 		},
 	}

@@ -197,25 +197,27 @@ func TestGetAllExportSheetNames_YearSubstitution(t *testing.T) {
 	names2025 := GetAllExportSheetNames(2025)
 
 	// Year-specific tabs should have different years (shortened names)
+	const attendeeTab2024 = "2024-attendee"
+	const attendeeTab2025 = "2025-attendee"
 	has2024Attendee := false
 	has2025Attendee := false
 
 	for _, n := range names2024 {
-		if n == "2024-attendee" {
+		if n == attendeeTab2024 {
 			has2024Attendee = true
 		}
 	}
 	for _, n := range names2025 {
-		if n == "2025-attendee" {
+		if n == attendeeTab2025 {
 			has2025Attendee = true
 		}
 	}
 
 	if !has2024Attendee {
-		t.Error("Expected 2024-attendee in 2024 export")
+		t.Errorf("Expected %s in 2024 export", attendeeTab2024)
 	}
 	if !has2025Attendee {
-		t.Error("Expected 2025-attendee in 2025 export")
+		t.Errorf("Expected %s in 2025 export", attendeeTab2025)
 	}
 
 	// Global tabs should be the same for both years (use short "g-" prefix)

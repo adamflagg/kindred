@@ -379,14 +379,16 @@ func (g *GoogleSheetsExport) preloadGlobalLookups(resolver *FieldResolver) error
 }
 
 // loadLookupWithCMID loads a lookup with both display name and CM ID
-func (g *GoogleSheetsExport) loadLookupWithCMID(collection, field, filter string) (map[string]string, map[string]int, error) {
+func (g *GoogleSheetsExport) loadLookupWithCMID(
+	collection, field, filter string,
+) (lookup map[string]string, cmids map[string]int, err error) {
 	records, err := g.App.FindRecordsByFilter(collection, filter, "", 0, 0)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	lookup := make(map[string]string)
-	cmids := make(map[string]int)
+	lookup = make(map[string]string)
+	cmids = make(map[string]int)
 	for _, r := range records {
 		lookup[r.Id] = safeString(r.Get(field))
 		if cmID := r.Get("cm_id"); cmID != nil {

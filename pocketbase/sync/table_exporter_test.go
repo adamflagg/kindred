@@ -100,7 +100,7 @@ func TestFieldResolver_ResolveValue_Text(t *testing.T) {
 	}
 
 	const testName = "Emma"
-	got := resolver.ResolveValue(testName, col)
+	got := resolver.ResolveValue(testName, &col)
 	if got != testName {
 		t.Errorf("ResolveValue() = %v, want %v", got, testName)
 	}
@@ -117,7 +117,7 @@ func TestFieldResolver_ResolveValue_Number(t *testing.T) {
 	}
 
 	// Float64 input (as PocketBase returns)
-	got := resolver.ResolveValue(float64(5), col)
+	got := resolver.ResolveValue(float64(5), &col)
 	if got != 5 {
 		t.Errorf("ResolveValue() = %v, want %v", got, 5)
 	}
@@ -133,7 +133,7 @@ func TestFieldResolver_ResolveValue_NilValue(t *testing.T) {
 		Type:   FieldTypeText,
 	}
 
-	got := resolver.ResolveValue(nil, col)
+	got := resolver.ResolveValue(nil, &col)
 	if got != "" {
 		t.Errorf("ResolveValue(nil) = %v, want empty string", got)
 	}
@@ -183,7 +183,7 @@ func TestFieldResolver_ResolveMultiRelation(t *testing.T) {
 
 	// Input is array of PB IDs
 	ids := []interface{}{"tag_1", "tag_3"}
-	got := resolver.ResolveValue(ids, col)
+	got := resolver.ResolveValue(ids, &col)
 
 	// Should be comma-separated names
 	// Note: order may vary, so we check for presence
@@ -210,13 +210,13 @@ func TestFieldResolver_ResolveMultiRelation_Empty(t *testing.T) {
 	}
 
 	// Empty array
-	got := resolver.ResolveValue([]interface{}{}, col)
+	got := resolver.ResolveValue([]interface{}{}, &col)
 	if got != "" {
 		t.Errorf("ResolveValue([]) = %q, want empty", got)
 	}
 
 	// Nil value
-	got = resolver.ResolveValue(nil, col)
+	got = resolver.ResolveValue(nil, &col)
 	if got != "" {
 		t.Errorf("ResolveValue(nil) = %q, want empty", got)
 	}
@@ -239,7 +239,7 @@ func TestFieldResolver_ResolveSingleRelation(t *testing.T) {
 		RelatedField: "name",
 	}
 
-	got := resolver.ResolveValue("session_1", col)
+	got := resolver.ResolveValue("session_1", &col)
 	if got != "Session 2" {
 		t.Errorf("ResolveValue() = %q, want %q", got, "Session 2")
 	}
@@ -420,7 +420,10 @@ func TestFieldType_NewConstants(t *testing.T) {
 
 	// Verify all types are different from each other and from existing types
 	seen := make(map[FieldType]string)
-	existingTypes := []FieldType{FieldTypeText, FieldTypeNumber, FieldTypeDate, FieldTypeJSON, FieldTypeRelation, FieldTypeMultiRelation}
+	existingTypes := []FieldType{
+		FieldTypeText, FieldTypeNumber, FieldTypeDate,
+		FieldTypeJSON, FieldTypeRelation, FieldTypeMultiRelation,
+	}
 	for i, t := range existingTypes {
 		seen[t] = []string{"Text", "Number", "Date", "JSON", "Relation", "MultiRelation"}[i]
 	}
@@ -451,13 +454,13 @@ func TestFieldResolver_ResolveForeignKeyID(t *testing.T) {
 	}
 
 	// Should resolve to CM ID
-	got := resolver.ResolveValue("pb_person_1", col)
+	got := resolver.ResolveValue("pb_person_1", &col)
 	if got != 1000001 {
 		t.Errorf("ResolveValue() = %v, want %v", got, 1000001)
 	}
 
 	// Unknown ID should return empty
-	got = resolver.ResolveValue("unknown_pb_id", col)
+	got = resolver.ResolveValue("unknown_pb_id", &col)
 	if got != "" {
 		t.Errorf("ResolveValue(unknown) = %v, want empty string", got)
 	}
@@ -494,12 +497,12 @@ func TestFieldResolver_ResolveNestedField(t *testing.T) {
 	}
 
 	// Should resolve to the nested field value
-	got := resolver.ResolveValue("pb_person_1", colFirstName)
+	got := resolver.ResolveValue("pb_person_1", &colFirstName)
 	if got != "Emma" {
 		t.Errorf("ResolveValue(first_name) = %v, want Emma", got)
 	}
 
-	got = resolver.ResolveValue("pb_person_1", colLastName)
+	got = resolver.ResolveValue("pb_person_1", &colLastName)
 	if got != "Johnson" {
 		t.Errorf("ResolveValue(last_name) = %v, want Johnson", got)
 	}
@@ -522,7 +525,7 @@ func TestFieldResolver_ResolveWriteInOverride(t *testing.T) {
 		"gender_identity_name":     "",
 		"gender_identity_write_in": "",
 	}
-	got := resolver.ResolveWriteInOverride(record, col)
+	got := resolver.ResolveWriteInOverride(record, &col)
 	if got != "" {
 		t.Errorf("Both empty: got %q, want empty", got)
 	}
@@ -532,7 +535,7 @@ func TestFieldResolver_ResolveWriteInOverride(t *testing.T) {
 		"gender_identity_name":     "Non-binary",
 		"gender_identity_write_in": "",
 	}
-	got = resolver.ResolveWriteInOverride(record, col)
+	got = resolver.ResolveWriteInOverride(record, &col)
 	if got != "Non-binary" {
 		t.Errorf("Standard only: got %q, want Non-binary", got)
 	}
@@ -542,7 +545,7 @@ func TestFieldResolver_ResolveWriteInOverride(t *testing.T) {
 		"gender_identity_name":     "Other",
 		"gender_identity_write_in": "Genderqueer",
 	}
-	got = resolver.ResolveWriteInOverride(record, col)
+	got = resolver.ResolveWriteInOverride(record, &col)
 	if got != "Genderqueer" {
 		t.Errorf("Both set: got %q, want Genderqueer", got)
 	}
@@ -552,7 +555,7 @@ func TestFieldResolver_ResolveWriteInOverride(t *testing.T) {
 		"gender_identity_name":     "",
 		"gender_identity_write_in": "Custom Identity",
 	}
-	got = resolver.ResolveWriteInOverride(record, col)
+	got = resolver.ResolveWriteInOverride(record, &col)
 	if got != "Custom Identity" {
 		t.Errorf("Write-in only: got %q, want Custom Identity", got)
 	}
@@ -585,18 +588,18 @@ func TestFieldResolver_ResolveDoubleFKResolve(t *testing.T) {
 	}
 
 	// Should resolve through both relations
-	got := resolver.ResolveValue("pos_1", col)
+	got := resolver.ResolveValue("pos_1", &col)
 	if got != "Waterfront" {
 		t.Errorf("ResolveValue(pos_1) = %v, want Waterfront", got)
 	}
 
-	got = resolver.ResolveValue("pos_2", col)
+	got = resolver.ResolveValue("pos_2", &col)
 	if got != "Arts & Crafts" {
 		t.Errorf("ResolveValue(pos_2) = %v, want Arts & Crafts", got)
 	}
 
 	// Position without program area should return empty
-	got = resolver.ResolveValue("pos_3", col)
+	got = resolver.ResolveValue("pos_3", &col)
 	if got != "" {
 		t.Errorf("ResolveValue(pos_3) = %v, want empty", got)
 	}
@@ -621,25 +624,25 @@ func TestFieldResolver_ResolveCMIDLookup(t *testing.T) {
 	}
 
 	// Should resolve CM ID to display name
-	got := resolver.ResolveValue(float64(1335115), col)
+	got := resolver.ResolveValue(float64(1335115), &col)
 	if got != "Session 2" {
 		t.Errorf("ResolveValue(1335115) = %v, want Session 2", got)
 	}
 
 	// Integer input should also work
-	got = resolver.ResolveValue(1335116, col)
+	got = resolver.ResolveValue(1335116, &col)
 	if got != "Session 3" {
 		t.Errorf("ResolveValue(1335116 int) = %v, want Session 3", got)
 	}
 
 	// Unknown CM ID should return empty
-	got = resolver.ResolveValue(float64(9999999), col)
+	got = resolver.ResolveValue(float64(9999999), &col)
 	if got != "" {
 		t.Errorf("ResolveValue(unknown) = %v, want empty", got)
 	}
 
 	// Nil/zero should return empty
-	got = resolver.ResolveValue(nil, col)
+	got = resolver.ResolveValue(nil, &col)
 	if got != "" {
 		t.Errorf("ResolveValue(nil) = %v, want empty", got)
 	}
@@ -719,19 +722,19 @@ func TestFieldResolver_ResolveBool(t *testing.T) {
 	}
 
 	// True value
-	got := resolver.ResolveValue(true, col)
+	got := resolver.ResolveValue(true, &col)
 	if got != "true" {
 		t.Errorf("ResolveValue(true) = %v, want true", got)
 	}
 
 	// False value
-	got = resolver.ResolveValue(false, col)
+	got = resolver.ResolveValue(false, &col)
 	if got != "false" {
 		t.Errorf("ResolveValue(false) = %v, want false", got)
 	}
 
 	// Nil value
-	got = resolver.ResolveValue(nil, col)
+	got = resolver.ResolveValue(nil, &col)
 	if got != "" {
 		t.Errorf("ResolveValue(nil) = %v, want empty", got)
 	}
@@ -742,7 +745,10 @@ func TestBuildDataMatrix_WriteInOverride(t *testing.T) {
 	resolver := NewFieldResolver()
 
 	columns := []ColumnConfig{
-		{Field: "gender_identity_name", Header: "Gender Identity", Type: FieldTypeWriteInOverride, WriteInField: "gender_identity_write_in"},
+		{
+			Field: "gender_identity_name", Header: "Gender Identity",
+			Type: FieldTypeWriteInOverride, WriteInField: "gender_identity_write_in",
+		},
 	}
 
 	// Record with write-in value (should override)
