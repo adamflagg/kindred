@@ -112,21 +112,25 @@ func TestGetAllExportSheetNames(t *testing.T) {
 	year := 2025
 	names := GetAllExportSheetNames(year)
 
-	// Expected: 6 year-specific + 5 global = 11 total tabs
+	// Expected: 11 year-specific + 4 global = 15 total tabs
 	expectedTabs := []string{
-		// Year-specific tables (6)
+		// Year-specific tables (11)
 		"2025-attendees",
 		"2025-persons",
 		"2025-sessions",
 		"2025-staff",
 		"2025-bunk-assignments",
 		"2025-financial-transactions",
-		// Global tables (5)
+		"2025-bunks",
+		"2025-households",
+		"2025-session-groups",
+		"2025-person-custom-values",
+		"2025-household-custom-values",
+		// Global tables (4)
 		"globals-tag-definitions",
 		"globals-custom-field-definitions",
 		"globals-financial-categories",
 		"globals-divisions",
-		"globals-staff-positions",
 	}
 
 	if len(names) != len(expectedTabs) {

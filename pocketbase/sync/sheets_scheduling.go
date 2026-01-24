@@ -295,10 +295,33 @@ func (g *GoogleSheetsExport) preloadLookups(resolver *FieldResolver, year int) e
 		resolver.SetCMIDLookupData("session_groups", sessionGroupCMIDs)
 	}
 
-	// Load financial categories
-	categoryLookup, err := g.loadSimpleLookup("financial_categories", "name", "")
+	// Load financial categories (names and CM IDs)
+	categoryLookup, categoryCMIDs, err := g.loadLookupWithCMID("financial_categories", "name", "")
 	if err == nil {
 		resolver.SetLookupData("financial_categories", categoryLookup)
+		resolver.SetCMIDLookupData("financial_categories", categoryCMIDs)
+	}
+
+	// Load payment methods (names and CM IDs)
+	paymentMethodLookup, paymentMethodCMIDs, err := g.loadLookupWithCMID("payment_methods", "name", "")
+	if err == nil {
+		resolver.SetLookupData("payment_methods", paymentMethodLookup)
+		resolver.SetCMIDLookupData("payment_methods", paymentMethodCMIDs)
+	}
+
+	// Load households (mailing_title and CM IDs, year-scoped)
+	householdFilter := fmt.Sprintf("year = %d", year)
+	householdLookup, householdCMIDs, err := g.loadLookupWithCMID("households", "mailing_title", householdFilter)
+	if err == nil {
+		resolver.SetLookupData("households", householdLookup)
+		resolver.SetCMIDLookupData("households", householdCMIDs)
+	}
+
+	// Load custom field definitions (names and CM IDs, global)
+	customFieldLookup, customFieldCMIDs, err := g.loadLookupWithCMID("custom_field_defs", "name", "")
+	if err == nil {
+		resolver.SetLookupData("custom_field_defs", customFieldLookup)
+		resolver.SetCMIDLookupData("custom_field_defs", customFieldCMIDs)
 	}
 
 	return nil

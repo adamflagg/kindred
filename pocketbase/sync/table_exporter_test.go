@@ -674,7 +674,8 @@ func TestColumnConfig_NewFields(t *testing.T) {
 }
 
 func TestGetGlobalExports_DivisionsIncluded(t *testing.T) {
-	// Test that globals include divisions but NOT staff-positions
+	// Test that globals include divisions and NOT staff_positions
+	// staff_positions data is already inlined in staff export
 	configs := GetGlobalExports()
 
 	var hasDivisions, hasStaffPositions bool
@@ -690,17 +691,17 @@ func TestGetGlobalExports_DivisionsIncluded(t *testing.T) {
 	if !hasDivisions {
 		t.Error("Expected 'divisions' in global exports")
 	}
-	if !hasStaffPositions {
-		t.Error("Expected 'staff_positions' in global exports (reference table for FK resolution)")
+	if hasStaffPositions {
+		t.Error("staff_positions should NOT be in global exports (data is inlined in staff export)")
 	}
 }
 
 func TestGetGlobalExports_Count(t *testing.T) {
-	// Test that we have exactly 5 global exports
+	// Test that we have exactly 4 global exports (staff_positions removed)
 	configs := GetGlobalExports()
 
-	if len(configs) != 5 {
-		t.Errorf("Expected 5 global exports, got %d", len(configs))
+	if len(configs) != 4 {
+		t.Errorf("Expected 4 global exports, got %d", len(configs))
 		for _, c := range configs {
 			t.Logf("  - %s", c.Collection)
 		}
