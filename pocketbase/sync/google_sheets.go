@@ -270,6 +270,13 @@ func (g *GoogleSheetsExport) Sync(ctx context.Context) error {
 		return fmt.Errorf("exporting year-specific data: %w", err)
 	}
 
+	// Apply tab colors and reorder tabs (globals first, then years descending)
+	exportedTabs := GetAllExportSheetNames(g.year)
+	if err := ReorderAllTabs(ctx, g.sheetsWriter, g.spreadsheetID, exportedTabs); err != nil {
+		slog.Warn("Failed to reorder tabs", "error", err)
+		// Don't fail the sync if reordering fails
+	}
+
 	g.SyncSuccessful = true
 	g.Stats.Duration = int(time.Since(startTime).Seconds())
 

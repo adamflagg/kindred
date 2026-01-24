@@ -115,6 +115,27 @@ func (g *GoogleSheetsExport) SyncForYears(ctx context.Context, years []int, incl
 		}
 	}
 
+	// Gather all exported tab names for reordering
+	var exportedTabs []string
+	if includeGlobals {
+		for _, config := range GetGlobalExports() {
+			exportedTabs = append(exportedTabs, config.SheetName)
+		}
+	}
+	for _, year := range years {
+		for _, config := range GetYearSpecificExports() {
+			exportedTabs = append(exportedTabs, config.GetResolvedSheetName(year))
+		}
+	}
+
+	// Apply tab colors and reorder
+	if len(exportedTabs) > 0 {
+		if err := ReorderAllTabs(ctx, g.sheetsWriter, g.spreadsheetID, exportedTabs); err != nil {
+			slog.Warn("Failed to reorder tabs", "error", err)
+			// Don't fail the sync if reordering fails
+		}
+	}
+
 	return nil
 }
 
