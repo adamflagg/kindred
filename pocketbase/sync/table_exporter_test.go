@@ -59,14 +59,14 @@ func TestExportConfig_YearPlaceholder(t *testing.T) {
 	// Test that sheet name supports {year} placeholder
 	config := ExportConfig{
 		Collection: "attendees",
-		SheetName:  "{year}-attendees",
+		SheetName:  "{year}-attendee",
 		IsGlobal:   false,
 		Columns:    []ColumnConfig{},
 	}
 
 	// GetResolvedSheetName should replace {year}
 	got := config.GetResolvedSheetName(2025)
-	want := "2025-attendees"
+	want := "2025-attendee"
 	if got != want {
 		t.Errorf("GetResolvedSheetName(2025) = %q, want %q", got, want)
 	}
@@ -76,14 +76,14 @@ func TestExportConfig_GlobalSheetName(t *testing.T) {
 	// Test that global exports don't use year prefix
 	config := ExportConfig{
 		Collection: "person_tag_defs",
-		SheetName:  "globals-tag-definitions",
+		SheetName:  "g-tag-def",
 		IsGlobal:   true,
 		Columns:    []ColumnConfig{},
 	}
 
 	// Global sheets should keep the same name regardless of year
 	got := config.GetResolvedSheetName(2025)
-	want := "globals-tag-definitions"
+	want := "g-tag-def"
 	if got != want {
 		t.Errorf("GetResolvedSheetName(2025) = %q, want %q", got, want)
 	}

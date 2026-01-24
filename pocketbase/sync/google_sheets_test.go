@@ -154,23 +154,23 @@ func TestGetAllExportSheetNames(t *testing.T) {
 
 	// Expected: 11 year-specific + 4 global = 15 total tabs
 	expectedTabs := []string{
-		// Year-specific tables (11)
-		"2025-attendees",
-		"2025-persons",
-		"2025-sessions",
+		// Year-specific tables (11) - shortened names
+		"2025-attendee",
+		"2025-person",
+		"2025-session",
 		"2025-staff",
-		"2025-bunk-assignments",
-		"2025-financial-transactions",
-		"2025-bunks",
-		"2025-households",
-		"2025-session-groups",
-		"2025-person-custom-values",
-		"2025-household-custom-values",
-		// Global tables (4) - use short "g-" prefix
-		"g-tag-definitions",
-		"g-custom-field-definitions",
-		"g-financial-categories",
-		"g-divisions",
+		"2025-bunk-assign",
+		"2025-transactions",
+		"2025-bunk",
+		"2025-household",
+		"2025-sess-group",
+		"2025-person-cv",
+		"2025-household-cv",
+		// Global tables (4) - shortened names with "g-" prefix
+		"g-tag-def",
+		"g-cust-field-def",
+		"g-fin-cat",
+		"g-division",
 	}
 
 	if len(names) != len(expectedTabs) {
@@ -196,30 +196,30 @@ func TestGetAllExportSheetNames_YearSubstitution(t *testing.T) {
 	names2024 := GetAllExportSheetNames(2024)
 	names2025 := GetAllExportSheetNames(2025)
 
-	// Year-specific tabs should have different years
-	has2024Attendees := false
-	has2025Attendees := false
+	// Year-specific tabs should have different years (shortened names)
+	has2024Attendee := false
+	has2025Attendee := false
 
 	for _, n := range names2024 {
-		if n == "2024-attendees" {
-			has2024Attendees = true
+		if n == "2024-attendee" {
+			has2024Attendee = true
 		}
 	}
 	for _, n := range names2025 {
-		if n == "2025-attendees" {
-			has2025Attendees = true
+		if n == "2025-attendee" {
+			has2025Attendee = true
 		}
 	}
 
-	if !has2024Attendees {
-		t.Error("Expected 2024-attendees in 2024 export")
+	if !has2024Attendee {
+		t.Error("Expected 2024-attendee in 2024 export")
 	}
-	if !has2025Attendees {
-		t.Error("Expected 2025-attendees in 2025 export")
+	if !has2025Attendee {
+		t.Error("Expected 2025-attendee in 2025 export")
 	}
 
 	// Global tabs should be the same for both years (use short "g-" prefix)
-	const globalsTab = "g-tag-definitions"
+	const globalsTab = "g-tag-def"
 	hasGlobals2024 := false
 	hasGlobals2025 := false
 	for _, n := range names2024 {
@@ -244,10 +244,10 @@ func TestGetAllExportSheetNames_YearSubstitution(t *testing.T) {
 func TestGetTabColor_GlobalTabs(t *testing.T) {
 	// Global tabs (g-*) should get light blue color
 	tests := []string{
-		"g-tag-definitions",
-		"g-custom-field-definitions",
-		"g-financial-categories",
-		"g-divisions",
+		"g-tag-def",
+		"g-cust-field-def",
+		"g-fin-cat",
+		"g-division",
 	}
 
 	for _, tab := range tests {
@@ -266,11 +266,11 @@ func TestGetTabColor_YearTabs(t *testing.T) {
 		tab      string
 		expected TabColor
 	}{
-		{"2024-attendees", TabColor2024},
-		{"2024-persons", TabColor2024},
-		{"2025-sessions", TabColor2025},
+		{"2024-attendee", TabColor2024},
+		{"2024-person", TabColor2024},
+		{"2025-session", TabColor2025},
 		{"2025-staff", TabColor2025},
-		{"2026-bunks", TabColor2026},
+		{"2026-bunk", TabColor2026},
 	}
 
 	for _, tt := range tests {
@@ -338,41 +338,41 @@ func TestTabColorConstants(t *testing.T) {
 func TestSortExportTabs_GlobalsFirst(t *testing.T) {
 	// Globals should always come before year tabs
 	tabs := []string{
-		"2025-attendees",
-		"g-divisions",
-		"2024-persons",
-		"g-tag-definitions",
+		"2025-attendee",
+		"g-division",
+		"2024-person",
+		"g-tag-def",
 	}
 
 	sorted := SortExportTabs(tabs)
 
 	// First two should be globals (alphabetized)
-	if sorted[0] != "g-divisions" {
-		t.Errorf("sorted[0] = %q, want g-divisions", sorted[0])
+	if sorted[0] != "g-division" {
+		t.Errorf("sorted[0] = %q, want g-division", sorted[0])
 	}
-	if sorted[1] != "g-tag-definitions" {
-		t.Errorf("sorted[1] = %q, want g-tag-definitions", sorted[1])
+	if sorted[1] != "g-tag-def" {
+		t.Errorf("sorted[1] = %q, want g-tag-def", sorted[1])
 	}
 }
 
 func TestSortExportTabs_YearsDescending(t *testing.T) {
 	// Years should be in descending order (newest first)
 	tabs := []string{
-		"2024-attendees",
-		"2026-attendees",
-		"2025-attendees",
+		"2024-attendee",
+		"2026-attendee",
+		"2025-attendee",
 	}
 
 	sorted := SortExportTabs(tabs)
 
-	if sorted[0] != "2026-attendees" {
-		t.Errorf("sorted[0] = %q, want 2026-attendees (newest first)", sorted[0])
+	if sorted[0] != "2026-attendee" {
+		t.Errorf("sorted[0] = %q, want 2026-attendee (newest first)", sorted[0])
 	}
-	if sorted[1] != "2025-attendees" {
-		t.Errorf("sorted[1] = %q, want 2025-attendees", sorted[1])
+	if sorted[1] != "2025-attendee" {
+		t.Errorf("sorted[1] = %q, want 2025-attendee", sorted[1])
 	}
-	if sorted[2] != "2024-attendees" {
-		t.Errorf("sorted[2] = %q, want 2024-attendees (oldest last)", sorted[2])
+	if sorted[2] != "2024-attendee" {
+		t.Errorf("sorted[2] = %q, want 2024-attendee (oldest last)", sorted[2])
 	}
 }
 
@@ -380,25 +380,25 @@ func TestSortExportTabs_AlphabetizedWithinGroups(t *testing.T) {
 	// Within each group (globals, each year), tabs should be alphabetized
 	tabs := []string{
 		"2025-staff",
-		"2025-attendees",
-		"g-tag-definitions",
-		"g-divisions",
-		"2025-bunks",
+		"2025-attendee",
+		"g-tag-def",
+		"g-division",
+		"2025-bunk",
 	}
 
 	sorted := SortExportTabs(tabs)
 
 	// Expected order:
-	// 1. g-divisions (global, alphabetized)
-	// 2. g-tag-definitions (global, alphabetized)
-	// 3. 2025-attendees (2025, alphabetized)
-	// 4. 2025-bunks (2025, alphabetized)
+	// 1. g-division (global, alphabetized)
+	// 2. g-tag-def (global, alphabetized)
+	// 3. 2025-attendee (2025, alphabetized)
+	// 4. 2025-bunk (2025, alphabetized)
 	// 5. 2025-staff (2025, alphabetized)
 	expected := []string{
-		"g-divisions",
-		"g-tag-definitions",
-		"2025-attendees",
-		"2025-bunks",
+		"g-division",
+		"g-tag-def",
+		"2025-attendee",
+		"2025-bunk",
 		"2025-staff",
 	}
 
@@ -412,19 +412,19 @@ func TestSortExportTabs_AlphabetizedWithinGroups(t *testing.T) {
 func TestSortExportTabs_FullExport(t *testing.T) {
 	// Full export with multiple years and globals
 	tabs := []string{
-		"2024-attendees",
-		"g-financial-categories",
+		"2024-attendee",
+		"g-fin-cat",
 		"2025-staff",
-		"2026-bunks",
-		"g-divisions",
-		"2025-attendees",
-		"2024-persons",
+		"2026-bunk",
+		"g-division",
+		"2025-attendee",
+		"2024-person",
 	}
 
 	sorted := SortExportTabs(tabs)
 
 	// Verify globals come first
-	if sorted[0] != "g-divisions" || sorted[1] != "g-financial-categories" {
+	if sorted[0] != "g-division" || sorted[1] != "g-fin-cat" {
 		t.Errorf("Globals should be first and alphabetized: got %v", sorted[:2])
 	}
 
@@ -449,12 +449,12 @@ func TestExtractYear(t *testing.T) {
 		tab  string
 		want int
 	}{
-		{"2025-attendees", 2025},
-		{"2024-persons", 2024},
-		{"2026-bunks", 2026},
-		{"g-divisions", 0},           // Global, no year
+		{"2025-attendee", 2025},
+		{"2024-person", 2024},
+		{"2026-bunk", 2026},
+		{"g-division", 0},            // Global, no year
 		{"random", 0},                // Unknown format
-		{"25-attendees", 0},          // Too short for year
+		{"25-attendee", 0},           // Too short for year
 	}
 
 	for _, tt := range tests {

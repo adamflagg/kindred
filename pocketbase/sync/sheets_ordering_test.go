@@ -10,17 +10,17 @@ func TestIsExportTab(t *testing.T) {
 		tab  string
 		want bool
 	}{
-		// Global tabs should match
-		{"g-divisions", true},
-		{"g-tag-definitions", true},
-		{"g-custom-field-definitions", true},
-		{"g-financial-categories", true},
+		// Global tabs should match (shortened names)
+		{"g-division", true},
+		{"g-tag-def", true},
+		{"g-cust-field-def", true},
+		{"g-fin-cat", true},
 
-		// Year tabs should match
-		{"2025-attendees", true},
-		{"2024-persons", true},
-		{"2026-bunks", true},
-		{"2023-bunk-assignments", true},
+		// Year tabs should match (shortened names)
+		{"2025-attendee", true},
+		{"2024-person", true},
+		{"2026-bunk", true},
+		{"2023-bunk-assign", true},
 
 		// Non-export tabs should NOT match
 		{"Sheet1", false},           // Default Google Sheets tab
@@ -52,13 +52,13 @@ func TestReorderAllTabs_FetchesAllExistingTabs(t *testing.T) {
 
 	// Pre-existing tabs in the spreadsheet (from previous 2025 sync)
 	mock.ExistingTabs = map[string]bool{
-		"g-divisions":    true,
-		"2025-attendees": true,
-		"2025-persons":   true,
+		"g-division":    true,
+		"2025-attendee": true,
+		"2025-person":   true,
 	}
 
 	// Run a "2024 historical sync" - these are the only tabs we exported this run
-	exportedTabs := []string{"2024-attendees", "2024-persons"}
+	exportedTabs := []string{"2024-attendee", "2024-person"}
 
 	// Ensure the 2024 tabs also exist in the mock (as if they were just created)
 	for _, tab := range exportedTabs {
@@ -73,14 +73,14 @@ func TestReorderAllTabs_FetchesAllExistingTabs(t *testing.T) {
 
 	// The key assertion: ReorderAllTabs must fetch and reorder ALL tabs,
 	// not just the exportedTabs parameter.
-	// Expected order: g-divisions (0), 2025-attendees (1), 2025-persons (2), 2024-attendees (3), 2024-persons (4)
+	// Expected order: g-division (0), 2025-attendee (1), 2025-person (2), 2024-attendee (3), 2024-person (4)
 
 	expectedOrder := map[string]int{
-		"g-divisions":    0,
-		"2025-attendees": 1,
-		"2025-persons":   2,
-		"2024-attendees": 3,
-		"2024-persons":   4,
+		"g-division":    0,
+		"2025-attendee": 1,
+		"2025-person":   2,
+		"2024-attendee": 3,
+		"2024-person":   4,
 	}
 
 	for tab, expectedIndex := range expectedOrder {
@@ -106,10 +106,10 @@ func TestReorderAllTabs_IgnoresNonExportTabs(t *testing.T) {
 
 	// Mix of export tabs and user-created tabs
 	mock.ExistingTabs = map[string]bool{
-		"Sheet1":         true, // Default Google Sheets tab - should be ignored
-		"Notes":          true, // User-created tab - should be ignored
-		"g-divisions":    true,
-		"2025-attendees": true,
+		"Sheet1":        true, // Default Google Sheets tab - should be ignored
+		"Notes":         true, // User-created tab - should be ignored
+		"g-division":    true,
+		"2025-attendee": true,
 	}
 
 	err := ReorderAllTabs(context.Background(), mock, "test-spreadsheet-id", []string{})
@@ -126,10 +126,10 @@ func TestReorderAllTabs_IgnoresNonExportTabs(t *testing.T) {
 	}
 
 	// Export tabs should be reordered
-	if mock.TabIndices["g-divisions"] != 0 {
-		t.Errorf("g-divisions index = %d, want 0", mock.TabIndices["g-divisions"])
+	if mock.TabIndices["g-division"] != 0 {
+		t.Errorf("g-division index = %d, want 0", mock.TabIndices["g-division"])
 	}
-	if mock.TabIndices["2025-attendees"] != 1 {
-		t.Errorf("2025-attendees index = %d, want 1", mock.TabIndices["2025-attendees"])
+	if mock.TabIndices["2025-attendee"] != 1 {
+		t.Errorf("2025-attendee index = %d, want 1", mock.TabIndices["2025-attendee"])
 	}
 }
