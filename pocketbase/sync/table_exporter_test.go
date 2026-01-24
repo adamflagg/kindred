@@ -706,3 +706,70 @@ func TestGetGlobalExports_Count(t *testing.T) {
 		}
 	}
 }
+
+func TestFieldResolver_ResolveBool(t *testing.T) {
+	// Test resolving boolean fields
+	resolver := NewFieldResolver()
+
+	col := ColumnConfig{
+		Field:  "is_active",
+		Header: "Is Active",
+		Type:   FieldTypeBool,
+	}
+
+	// True value
+	got := resolver.ResolveValue(true, col)
+	if got != "TRUE" {
+		t.Errorf("ResolveValue(true) = %v, want TRUE", got)
+	}
+
+	// False value
+	got = resolver.ResolveValue(false, col)
+	if got != "FALSE" {
+		t.Errorf("ResolveValue(false) = %v, want FALSE", got)
+	}
+
+	// Nil value
+	got = resolver.ResolveValue(nil, col)
+	if got != "" {
+		t.Errorf("ResolveValue(nil) = %v, want empty", got)
+	}
+}
+
+func TestBuildDataMatrix_WriteInOverride(t *testing.T) {
+	// Test that BuildDataMatrix handles WriteInOverride correctly
+	resolver := NewFieldResolver()
+
+	columns := []ColumnConfig{
+		{Field: "gender_identity_name", Header: "Gender Identity", Type: FieldTypeWriteInOverride, WriteInField: "gender_identity_write_in"},
+	}
+
+	// Record with write-in value (should override)
+	records := []map[string]interface{}{
+		{"gender_identity_name": "Other", "gender_identity_write_in": "Genderqueer"},
+		{"gender_identity_name": "Non-binary", "gender_identity_write_in": ""},
+		{"gender_identity_name": "", "gender_identity_write_in": ""},
+	}
+
+	data := BuildDataMatrix(records, columns, resolver)
+
+	// Check header
+	if data[0][0] != "Gender Identity" {
+		t.Errorf("Header = %v, want Gender Identity", data[0][0])
+	}
+
+	// Check write-in override works
+	if data[1][0] != "Genderqueer" {
+		t.Errorf("Row 1 = %v, want Genderqueer (write-in override)", data[1][0])
+	}
+
+	// Check fallback to standard field
+	if data[2][0] != "Non-binary" {
+		t.Errorf("Row 2 = %v, want Non-binary (standard field)", data[2][0])
+	}
+
+	// Check empty case
+	if data[3][0] != "" {
+		t.Errorf("Row 3 = %v, want empty", data[3][0])
+	}
+}

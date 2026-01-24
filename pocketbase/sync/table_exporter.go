@@ -18,6 +18,7 @@ const (
 	FieldTypeJSON
 	FieldTypeRelation
 	FieldTypeMultiRelation
+	FieldTypeBool // Boolean field (exports as TRUE/FALSE)
 	// New types for FK resolution
 	FieldTypeForeignKeyID    // Resolve relation to cm_id (not display name)
 	FieldTypeNestedField     // Resolve relation to specific nested property (e.g., person → first_name)
@@ -189,6 +190,16 @@ func (r *FieldResolver) ResolveValue(value interface{}, col ColumnConfig) interf
 		// For JSON fields, return as-is or stringify
 		return safeString(value)
 
+	case FieldTypeBool:
+		// Boolean field - export as TRUE/FALSE for Sheets compatibility
+		if b, ok := value.(bool); ok {
+			if b {
+				return "TRUE"
+			}
+			return "FALSE"
+		}
+		return ""
+
 	case FieldTypeRelation:
 		// Single relation - lookup the display value
 		pbID := safeString(value)
@@ -322,8 +333,13 @@ func BuildDataMatrix(
 	for _, record := range records {
 		row := make([]interface{}, len(columns))
 		for i, col := range columns {
-			rawValue := record[col.Field]
-			row[i] = resolver.ResolveValue(rawValue, col)
+			// WriteInOverride needs access to full record
+			if col.Type == FieldTypeWriteInOverride {
+				row[i] = resolver.ResolveWriteInOverride(record, col)
+			} else {
+				rawValue := record[col.Field]
+				row[i] = resolver.ResolveValue(rawValue, col)
+			}
 		}
 		data = append(data, row)
 	}
@@ -379,82 +395,122 @@ func (e *TableExporter) Export(ctx context.Context, config *ExportConfig, record
 // GetYearSpecificExports returns export configurations for year-scoped tables
 func GetYearSpecificExports() []ExportConfig {
 	return []ExportConfig{
+		// Attendees - links persons to sessions with enrollment status
 		{
 			Collection: "attendees",
 			SheetName:  "{year}-attendees",
 			IsGlobal:   false,
 			Filter:     "is_active = 1 && status_id = 2",
 			Columns: []ColumnConfig{
-				{Field: "first_name", Header: "First Name", Type: FieldTypeText},
-				{Field: "last_name", Header: "Last Name", Type: FieldTypeText},
-				{Field: "grade", Header: "Grade", Type: FieldTypeNumber},
-				{Field: "gender", Header: "Gender", Type: FieldTypeText},
+				{Field: "person_id", Header: "Person ID", Type: FieldTypeNumber},
+				{Field: "person", Header: "First Name", Type: FieldTypeNestedField, RelatedCol: "persons", NestedField: "first_name"},
+				{Field: "person", Header: "Last Name", Type: FieldTypeNestedField, RelatedCol: "persons", NestedField: "last_name"},
+				{Field: "session", Header: "Session ID", Type: FieldTypeForeignKeyID, RelatedCol: "camp_sessions"},
 				{Field: "session", Header: "Session", Type: FieldTypeRelation, RelatedCol: "camp_sessions", RelatedField: "name"},
 				{Field: "enrollment_date", Header: "Enrollment Date", Type: FieldTypeDate},
 				{Field: "status", Header: "Status", Type: FieldTypeText},
 			},
 		},
+		// Persons - demographic info, contact details, tags
 		{
 			Collection: "persons",
 			SheetName:  "{year}-persons",
 			IsGlobal:   false,
 			Columns: []ColumnConfig{
+				{Field: "cm_id", Header: "Person ID", Type: FieldTypeNumber},
 				{Field: "first_name", Header: "First Name", Type: FieldTypeText},
 				{Field: "last_name", Header: "Last Name", Type: FieldTypeText},
+				{Field: "preferred_name", Header: "Preferred Name", Type: FieldTypeText},
+				{Field: "birthdate", Header: "Birthdate", Type: FieldTypeText},
+				{Field: "age", Header: "Age", Type: FieldTypeNumber},
 				{Field: "grade", Header: "Grade", Type: FieldTypeNumber},
 				{Field: "gender", Header: "Gender", Type: FieldTypeText},
+				{Field: "gender_identity_name", Header: "Gender Identity", Type: FieldTypeWriteInOverride, WriteInField: "gender_identity_write_in"},
+				{Field: "gender_pronoun_name", Header: "Gender Pronoun", Type: FieldTypeWriteInOverride, WriteInField: "gender_pronoun_write_in"},
 				{Field: "school", Header: "School", Type: FieldTypeText},
+				{Field: "years_at_camp", Header: "Years at Camp", Type: FieldTypeNumber},
+				{Field: "last_year_attended", Header: "Last Year Attended", Type: FieldTypeNumber},
+				{Field: "division", Header: "Division ID", Type: FieldTypeForeignKeyID, RelatedCol: "divisions"},
+				{Field: "division", Header: "Division", Type: FieldTypeRelation, RelatedCol: "divisions", RelatedField: "name"},
+				{Field: "household_id", Header: "Household ID", Type: FieldTypeNumber},
+				{Field: "lead_date", Header: "Lead Date", Type: FieldTypeText},
+				{Field: "is_camper", Header: "Is Camper", Type: FieldTypeBool},
+				{Field: "tshirt_size", Header: "T-Shirt Size", Type: FieldTypeText},
 				{Field: "tags", Header: "Tags", Type: FieldTypeMultiRelation, RelatedCol: "person_tag_defs", RelatedField: "name"},
 			},
 		},
+		// Sessions - session definitions (main and embedded only)
 		{
 			Collection: "camp_sessions",
 			SheetName:  "{year}-sessions",
 			IsGlobal:   false,
 			Filter:     "session_type = 'main' || session_type = 'embedded'",
 			Columns: []ColumnConfig{
+				{Field: "cm_id", Header: "Session ID", Type: FieldTypeNumber},
 				{Field: "name", Header: "Name", Type: FieldTypeText},
+				{Field: "description", Header: "Description", Type: FieldTypeText},
 				{Field: "session_type", Header: "Type", Type: FieldTypeText},
 				{Field: "start_date", Header: "Start Date", Type: FieldTypeDate},
 				{Field: "end_date", Header: "End Date", Type: FieldTypeDate},
+				{Field: "is_active", Header: "Is Active", Type: FieldTypeBool},
+				{Field: "parent_id", Header: "Parent ID", Type: FieldTypeNumber},
+				{Field: "parent_id", Header: "Parent Session", Type: FieldTypeCMIDLookup, RelatedCol: "camp_sessions"},
+				{Field: "is_day", Header: "Is Day", Type: FieldTypeBool},
+				{Field: "is_residential", Header: "Is Residential", Type: FieldTypeBool},
+				{Field: "is_for_children", Header: "Is For Children", Type: FieldTypeBool},
+				{Field: "is_for_adults", Header: "Is For Adults", Type: FieldTypeBool},
+				{Field: "start_grade_id", Header: "Start Grade", Type: FieldTypeNumber},
+				{Field: "end_grade_id", Header: "End Grade", Type: FieldTypeNumber},
+				{Field: "session_group", Header: "Session Group ID", Type: FieldTypeForeignKeyID, RelatedCol: "session_groups"},
+				{Field: "session_group", Header: "Session Group", Type: FieldTypeRelation, RelatedCol: "session_groups", RelatedField: "name"},
 			},
 		},
+		// Staff - staff records with positions, assignments, dates
 		{
 			Collection: "staff",
 			SheetName:  "{year}-staff",
 			IsGlobal:   false,
 			Columns: []ColumnConfig{
-				{Field: "first_name", Header: "First Name", Type: FieldTypeText},
-				{Field: "last_name", Header: "Last Name", Type: FieldTypeText},
-				{
-					Field: "position", Header: "Position", Type: FieldTypeRelation,
-					RelatedCol: "staff_positions", RelatedField: "name",
-				},
-				{
-					Field: "bunks", Header: "Bunks", Type: FieldTypeMultiRelation,
-					RelatedCol: "bunks", RelatedField: "name",
-				},
+				{Field: "person", Header: "Person ID", Type: FieldTypeForeignKeyID, RelatedCol: "persons"},
+				{Field: "person", Header: "First Name", Type: FieldTypeNestedField, RelatedCol: "persons", NestedField: "first_name"},
+				{Field: "person", Header: "Last Name", Type: FieldTypeNestedField, RelatedCol: "persons", NestedField: "last_name"},
+				{Field: "status", Header: "Status", Type: FieldTypeText},
+				{Field: "position1", Header: "Position 1", Type: FieldTypeRelation, RelatedCol: "staff_positions", RelatedField: "name"},
+				{Field: "position1", Header: "Position 1 Program Area", Type: FieldTypeDoubleFKResolve, RelatedCol: "staff_positions", IntermediateCol: "staff_program_areas", IntermediateLink: "program_area"},
+				{Field: "position2", Header: "Position 2", Type: FieldTypeRelation, RelatedCol: "staff_positions", RelatedField: "name"},
+				{Field: "position2", Header: "Position 2 Program Area", Type: FieldTypeDoubleFKResolve, RelatedCol: "staff_positions", IntermediateCol: "staff_program_areas", IntermediateLink: "program_area"},
+				{Field: "organizational_category", Header: "Org Category", Type: FieldTypeRelation, RelatedCol: "staff_org_categories", RelatedField: "name"},
+				{Field: "division", Header: "Division ID", Type: FieldTypeForeignKeyID, RelatedCol: "divisions"},
+				{Field: "division", Header: "Division", Type: FieldTypeRelation, RelatedCol: "divisions", RelatedField: "name"},
+				{Field: "bunks", Header: "Bunks", Type: FieldTypeMultiRelation, RelatedCol: "bunks", RelatedField: "name"},
+				{Field: "bunk_staff", Header: "Bunk Staff", Type: FieldTypeBool},
+				{Field: "years", Header: "Years", Type: FieldTypeNumber},
+				{Field: "international", Header: "International", Type: FieldTypeText},
+				{Field: "salary", Header: "Salary", Type: FieldTypeNumber},
+				{Field: "hire_date", Header: "Hire Date", Type: FieldTypeDate},
+				{Field: "employment_start_date", Header: "Employment Start", Type: FieldTypeDate},
+				{Field: "employment_end_date", Header: "Employment End", Type: FieldTypeDate},
+				{Field: "contract_in_date", Header: "Contract In", Type: FieldTypeDate},
+				{Field: "contract_out_date", Header: "Contract Out", Type: FieldTypeDate},
+				{Field: "contract_due_date", Header: "Contract Due", Type: FieldTypeDate},
 			},
 		},
+		// Bunk Assignments - camper to bunk assignments
 		{
 			Collection: "bunk_assignments",
 			SheetName:  "{year}-bunk-assignments",
 			IsGlobal:   false,
 			Columns: []ColumnConfig{
-				{
-					Field: "person", Header: "Person", Type: FieldTypeRelation,
-					RelatedCol: "persons", RelatedField: "display_name",
-				},
-				{
-					Field: "bunk", Header: "Bunk", Type: FieldTypeRelation,
-					RelatedCol: "bunks", RelatedField: "name",
-				},
-				{
-					Field: "session", Header: "Session", Type: FieldTypeRelation,
-					RelatedCol: "camp_sessions", RelatedField: "name",
-				},
+				{Field: "cm_id", Header: "Assignment ID", Type: FieldTypeNumber},
+				{Field: "person", Header: "Person ID", Type: FieldTypeForeignKeyID, RelatedCol: "persons"},
+				{Field: "person", Header: "Person", Type: FieldTypeRelation, RelatedCol: "persons", RelatedField: "name"},
+				{Field: "session", Header: "Session ID", Type: FieldTypeForeignKeyID, RelatedCol: "camp_sessions"},
+				{Field: "session", Header: "Session", Type: FieldTypeRelation, RelatedCol: "camp_sessions", RelatedField: "name"},
+				{Field: "bunk", Header: "Bunk ID", Type: FieldTypeForeignKeyID, RelatedCol: "bunks"},
+				{Field: "bunk", Header: "Bunk", Type: FieldTypeRelation, RelatedCol: "bunks", RelatedField: "name"},
 			},
 		},
+		// Financial Transactions - keeping minimal for Phase 2 expansion
 		{
 			Collection: "financial_transactions",
 			SheetName:  "{year}-financial-transactions",
@@ -462,10 +518,7 @@ func GetYearSpecificExports() []ExportConfig {
 			Columns: []ColumnConfig{
 				{Field: "amount", Header: "Amount", Type: FieldTypeNumber},
 				{Field: "date", Header: "Date", Type: FieldTypeDate},
-				{
-					Field: "category", Header: "Category", Type: FieldTypeRelation,
-					RelatedCol: "financial_categories", RelatedField: "name",
-				},
+				{Field: "category", Header: "Category", Type: FieldTypeRelation, RelatedCol: "financial_categories", RelatedField: "name"},
 				{Field: "description", Header: "Description", Type: FieldTypeText},
 			},
 		},
