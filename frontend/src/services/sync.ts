@@ -79,11 +79,17 @@ export const syncService = {
 
   /**
    * Export data to Google Sheets
+   * @param fetchWithAuth - Authenticated fetch function
+   * @param years - Optional array of years to export (defaults to current year if not specified)
    */
   async exportToGoogleSheets(
-    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>,
+    years?: number[]
   ): Promise<GoogleSheetsExportResponse> {
-    const response = await fetchWithAuth(`${API_BASE}/google-sheets-export`, {
+    const url = years?.length
+      ? `${API_BASE}/google-sheets-export?years=${years.join(',')}`
+      : `${API_BASE}/google-sheets-export`;
+    const response = await fetchWithAuth(url, {
       method: 'POST',
     });
     if (!response.ok) {
