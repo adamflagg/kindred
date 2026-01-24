@@ -87,11 +87,23 @@ func (g *GoogleSheetsExport) SyncDailyOnly(ctx context.Context) error {
 
 // SyncForYears exports year-specific tables for the specified years
 // This is for historical/backfill exports
-func (g *GoogleSheetsExport) SyncForYears(ctx context.Context, years []int) error {
+// If includeGlobals is true, global tables are also exported (once, before year data)
+func (g *GoogleSheetsExport) SyncForYears(ctx context.Context, years []int, includeGlobals bool) error {
 	slog.Info("Starting Google Sheets historical export",
 		"spreadsheet_id", g.spreadsheetID,
 		"years", years,
+		"includeGlobals", includeGlobals,
 	)
+
+	// Export globals first if requested
+	if includeGlobals {
+		if err := g.SyncGlobalsOnly(ctx); err != nil {
+			slog.Error("Failed to export globals",
+				"error", err,
+			)
+			// Continue with year data anyway
+		}
+	}
 
 	for _, year := range years {
 		if err := g.syncYearData(ctx, year); err != nil {

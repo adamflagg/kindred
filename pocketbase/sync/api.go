@@ -901,6 +901,10 @@ func handleGoogleSheetsExport(e *core.RequestEvent, scheduler *Scheduler) error 
 		})
 	}
 
+	// Parse optional includeGlobals parameter (defaults to false)
+	includeGlobalsParam := e.Request.URL.Query().Get("includeGlobals")
+	includeGlobals := includeGlobalsParam == boolTrueStr || includeGlobalsParam == "1"
+
 	// Validate years if provided
 	if len(years) > 0 {
 		currentYear := time.Now().Year()
@@ -937,9 +941,12 @@ func handleGoogleSheetsExport(e *core.RequestEvent, scheduler *Scheduler) error 
 		defer cancel()
 
 		if len(years) > 0 {
-			// Export specific years
-			slog.Info("Starting Google Sheets export for specific years", "years", years)
-			if err := sheetsExport.SyncForYears(ctx, years); err != nil {
+			// Export specific years (optionally with globals)
+			slog.Info("Starting Google Sheets export for specific years",
+				"years", years,
+				"includeGlobals", includeGlobals,
+			)
+			if err := sheetsExport.SyncForYears(ctx, years, includeGlobals); err != nil {
 				slog.Error("Google Sheets export failed", "error", err, "years", years)
 			}
 		} else {
@@ -959,6 +966,7 @@ func handleGoogleSheetsExport(e *core.RequestEvent, scheduler *Scheduler) error 
 	}
 	if len(years) > 0 {
 		response["years"] = years
+		response["includeGlobals"] = includeGlobals
 	}
 
 	return e.JSON(http.StatusOK, response)
