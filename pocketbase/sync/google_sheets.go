@@ -22,6 +22,9 @@ type SheetsWriter interface {
 	WriteToSheet(ctx context.Context, spreadsheetID, sheetTab string, data [][]interface{}) error
 	ClearSheet(ctx context.Context, spreadsheetID, sheetTab string) error
 	EnsureSheet(ctx context.Context, spreadsheetID, sheetTab string) error
+	SetTabColor(ctx context.Context, spreadsheetID, sheetTab string, color TabColor) error
+	SetTabIndex(ctx context.Context, spreadsheetID, sheetTab string, index int) error
+	GetSheetMetadata(ctx context.Context, spreadsheetID string) ([]SheetInfo, error)
 }
 
 // RealSheetsWriter implements SheetsWriter using the Google Sheets API
@@ -98,6 +101,105 @@ func (w *RealSheetsWriter) EnsureSheet(ctx context.Context, spreadsheetID, sheet
 
 	slog.Info("Created new sheet tab", "tab", sheetTab)
 	return nil
+}
+
+// SetTabColor sets the color for a sheet tab
+func (w *RealSheetsWriter) SetTabColor(ctx context.Context, spreadsheetID, sheetTab string, color TabColor) error {
+	// Get sheet ID by looking up tab name
+	sheetID, err := w.getSheetID(ctx, spreadsheetID, sheetTab)
+	if err != nil {
+		return fmt.Errorf("getting sheet ID: %w", err)
+	}
+
+	// Update tab color
+	req := &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: []*sheets.Request{{
+			UpdateSheetProperties: &sheets.UpdateSheetPropertiesRequest{
+				Properties: &sheets.SheetProperties{
+					SheetId: sheetID,
+					TabColorStyle: &sheets.ColorStyle{
+						RgbColor: &sheets.Color{
+							Red:   color.R,
+							Green: color.G,
+							Blue:  color.B,
+						},
+					},
+				},
+				Fields: "tabColorStyle",
+			},
+		}},
+	}
+
+	_, err = w.service.Spreadsheets.BatchUpdate(spreadsheetID, req).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("setting tab color for %s: %w", sheetTab, err)
+	}
+
+	return nil
+}
+
+// SetTabIndex sets the position (index) of a sheet tab
+func (w *RealSheetsWriter) SetTabIndex(ctx context.Context, spreadsheetID, sheetTab string, index int) error {
+	// Get sheet ID by looking up tab name
+	sheetID, err := w.getSheetID(ctx, spreadsheetID, sheetTab)
+	if err != nil {
+		return fmt.Errorf("getting sheet ID: %w", err)
+	}
+
+	// Update sheet index
+	req := &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: []*sheets.Request{{
+			UpdateSheetProperties: &sheets.UpdateSheetPropertiesRequest{
+				Properties: &sheets.SheetProperties{
+					SheetId: sheetID,
+					Index:   int64(index),
+				},
+				Fields: "index",
+			},
+		}},
+	}
+
+	_, err = w.service.Spreadsheets.BatchUpdate(spreadsheetID, req).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("setting tab index for %s: %w", sheetTab, err)
+	}
+
+	return nil
+}
+
+// GetSheetMetadata returns metadata for all sheets in the spreadsheet
+func (w *RealSheetsWriter) GetSheetMetadata(ctx context.Context, spreadsheetID string) ([]SheetInfo, error) {
+	spreadsheet, err := w.service.Spreadsheets.Get(spreadsheetID).Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("getting spreadsheet: %w", err)
+	}
+
+	var sheets []SheetInfo
+	for _, sheet := range spreadsheet.Sheets {
+		sheets = append(sheets, SheetInfo{
+			Title:   sheet.Properties.Title,
+			SheetID: sheet.Properties.SheetId,
+			Index:   int(sheet.Properties.Index),
+		})
+	}
+
+	return sheets, nil
+}
+
+// getSheetID looks up the sheet ID for a given tab name
+func (w *RealSheetsWriter) getSheetID(ctx context.Context, spreadsheetID, sheetTab string) (int64, error) {
+	spreadsheet, err := w.service.Spreadsheets.Get(spreadsheetID).Context(ctx).Do()
+	if err != nil {
+		return 0, fmt.Errorf("getting spreadsheet: %w", err)
+	}
+
+	for _, sheet := range spreadsheet.Sheets {
+		if sheet.Properties.Title == sheetTab {
+			return sheet.Properties.SheetId, nil
+		}
+	}
+
+	return 0, fmt.Errorf("sheet tab %q not found", sheetTab)
 }
 
 // SessionRecord represents a session for export (used by loadSessions for lookups)
