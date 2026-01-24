@@ -59,21 +59,21 @@ func (c *ExportConfig) GetResolvedSheetName(year int) string {
 
 // FieldResolver handles relation lookups and value transformations
 type FieldResolver struct {
-	lookupCache       map[string]map[string]string    // collection → pbID → displayValue
-	cmidLookupCache   map[string]map[string]int       // collection → pbID → cmID
-	nestedFieldCache  map[string]map[string]string    // "collection.field" → pbID → fieldValue
-	doubleFKCache     map[string]map[string]string    // "collection.link" → pbID → intermediateID
-	cmidIndexedCache  map[string]map[int]string       // collection → cmID → displayValue
+	lookupCache      map[string]map[string]string // collection → pbID → displayValue
+	cmidLookupCache  map[string]map[string]int    // collection → pbID → cmID
+	nestedFieldCache map[string]map[string]string // "collection.field" → pbID → fieldValue
+	doubleFKCache    map[string]map[string]string // "collection.link" → pbID → intermediateID
+	cmidIndexedCache map[string]map[int]string    // collection → cmID → displayValue
 }
 
 // NewFieldResolver creates a new FieldResolver
 func NewFieldResolver() *FieldResolver {
 	return &FieldResolver{
-		lookupCache:       make(map[string]map[string]string),
-		cmidLookupCache:   make(map[string]map[string]int),
-		nestedFieldCache:  make(map[string]map[string]string),
-		doubleFKCache:     make(map[string]map[string]string),
-		cmidIndexedCache:  make(map[string]map[int]string),
+		lookupCache:      make(map[string]map[string]string),
+		cmidLookupCache:  make(map[string]map[string]int),
+		nestedFieldCache: make(map[string]map[string]string),
+		doubleFKCache:    make(map[string]map[string]string),
+		cmidIndexedCache: make(map[string]map[int]string),
 	}
 }
 

@@ -23,14 +23,14 @@ func TestIsExportTab(t *testing.T) {
 		{"2023-bunk-assign", true},
 
 		// Non-export tabs should NOT match
-		{"Sheet1", false},           // Default Google Sheets tab
-		{"Notes", false},            // User-created tab
-		{"random-tab", false},       // Random tab
-		{"Summary", false},          // User-created tab
-		{"globals-old", false},      // Old prefix (no longer used)
-		{"test", false},             // Short name
-		{"", false},                 // Empty string
-		{"1999-data", false},        // Year < 2000 is not valid
+		{"Sheet1", false},      // Default Google Sheets tab
+		{"Notes", false},       // User-created tab
+		{"random-tab", false},  // Random tab
+		{"Summary", false},     // User-created tab
+		{"globals-old", false}, // Old prefix (no longer used)
+		{"test", false},        // Short name
+		{"", false},            // Empty string
+		{"1999-data", false},   // Year < 2000 is not valid
 	}
 
 	for _, tt := range tests {

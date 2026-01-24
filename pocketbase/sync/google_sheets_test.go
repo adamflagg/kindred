@@ -7,15 +7,15 @@ import (
 
 // MockSheetsWriter implements SheetsWriter interface for testing
 type MockSheetsWriter struct {
-	WrittenData  map[string][][]interface{} // sheetName -> rows
-	ClearedTabs  []string
-	EnsuredTabs  []string        // Tracks tabs that were ensured to exist
-	ExistingTabs map[string]bool // Simulates which tabs already exist
-	TabColors    map[string]TabColor // sheetTab -> color (for SetTabColor)
-	TabIndices   map[string]int  // sheetTab -> index (for SetTabIndex)
-	WriteError   error
-	ClearError   error
-	EnsureError  error
+	WrittenData   map[string][][]interface{} // sheetName -> rows
+	ClearedTabs   []string
+	EnsuredTabs   []string            // Tracks tabs that were ensured to exist
+	ExistingTabs  map[string]bool     // Simulates which tabs already exist
+	TabColors     map[string]TabColor // sheetTab -> color (for SetTabColor)
+	TabIndices    map[string]int      // sheetTab -> index (for SetTabIndex)
+	WriteError    error
+	ClearError    error
+	EnsureError   error
 	SetColorError error
 	SetIndexError error
 }
@@ -454,9 +454,9 @@ func TestExtractYear(t *testing.T) {
 		{"2025-attendee", 2025},
 		{"2024-person", 2024},
 		{"2026-bunk", 2026},
-		{"g-division", 0},            // Global, no year
-		{"random", 0},                // Unknown format
-		{"25-attendee", 0},           // Too short for year
+		{"g-division", 0},  // Global, no year
+		{"random", 0},      // Unknown format
+		{"25-attendee", 0}, // Too short for year
 	}
 
 	for _, tt := range tests {
