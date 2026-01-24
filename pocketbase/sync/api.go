@@ -874,6 +874,7 @@ func handleTestConnection(e *core.RequestEvent, scheduler *Scheduler) error {
 }
 
 // handleGoogleSheetsExport handles manual triggering of Google Sheets export
+// Accepts optional query parameter: years (comma-separated list of years to export)
 func handleGoogleSheetsExport(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Check if Google Sheets is configured
 	if !google.IsEnabled() {
@@ -891,6 +892,29 @@ func handleGoogleSheetsExport(e *core.RequestEvent, scheduler *Scheduler) error 
 		})
 	}
 
+	// Parse optional years parameter
+	yearsParam := e.Request.URL.Query().Get("years")
+	years, err := ParseExportYearsParam(yearsParam)
+	if err != nil {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": fmt.Sprintf("Invalid years parameter: %v", err),
+		})
+	}
+
+	// Parse optional includeGlobals parameter (defaults to false)
+	includeGlobalsParam := e.Request.URL.Query().Get("includeGlobals")
+	includeGlobals := includeGlobalsParam == boolTrueStr || includeGlobalsParam == "1"
+
+	// Validate years if provided
+	if len(years) > 0 {
+		currentYear := time.Now().Year()
+		if err := ValidateExportYears(years, currentYear); err != nil {
+			return e.JSON(http.StatusBadRequest, map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
+	}
+
 	orchestrator := scheduler.GetOrchestrator()
 
 	// Check if already running
@@ -902,22 +926,50 @@ func handleGoogleSheetsExport(e *core.RequestEvent, scheduler *Scheduler) error 
 		})
 	}
 
+	// Get the service to call directly for year-specific exports
+	service := orchestrator.GetService("google_sheets_export")
+	sheetsExport, ok := service.(*GoogleSheetsExport)
+	if !ok || sheetsExport == nil {
+		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+			"error": "Google Sheets export service not available",
+		})
+	}
+
 	// Run in background
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
 
-		if err := orchestrator.RunSingleSync(ctx, "google_sheets_export"); err != nil {
-			slog.Error("Google Sheets export failed", "error", err)
+		if len(years) > 0 {
+			// Export specific years (optionally with globals)
+			slog.Info("Starting Google Sheets export for specific years",
+				"years", years,
+				"includeGlobals", includeGlobals,
+			)
+			if err := sheetsExport.SyncForYears(ctx, years, includeGlobals); err != nil {
+				slog.Error("Google Sheets export failed", "error", err, "years", years)
+			}
+		} else {
+			// Default: full export (globals + current year)
+			if err := orchestrator.RunSingleSync(ctx, "google_sheets_export"); err != nil {
+				slog.Error("Google Sheets export failed", "error", err)
+			}
 		}
 	}()
 
-	return e.JSON(http.StatusOK, map[string]interface{}{
+	// Build response
+	response := map[string]interface{}{
 		"message":        "Google Sheets export started",
 		"status":         "started",
 		"syncType":       "google_sheets_export",
 		"spreadsheet_id": spreadsheetID,
-	})
+	}
+	if len(years) > 0 {
+		response["years"] = years
+		response["includeGlobals"] = includeGlobals
+	}
+
+	return e.JSON(http.StatusOK, response)
 }
 
 // handlePersonCustomFieldValuesSync handles the on-demand person custom field values sync

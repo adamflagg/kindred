@@ -71,17 +71,17 @@ func TestSheetsConfig_GetSheetName_YearPrefixed(t *testing.T) {
 }
 
 func TestSheetsConfig_GetSheetName_GlobalPrefixed(t *testing.T) {
-	// Test that global tables get globals- prefix
+	// Test that global tables get short "g-" prefix (not "globals-")
 	config := &SheetsConfig{
 		Tables: map[string]*TableConfig{
 			"person_tag_defs": {
 				Enabled:   true,
-				SheetName: "tag-definitions",
+				SheetName: "tag-def",
 				IsGlobal:  true,
 			},
 			"custom_field_defs": {
 				Enabled:   true,
-				SheetName: "custom-field-definitions",
+				SheetName: "cust-field-def",
 				IsGlobal:  true,
 			},
 		},
@@ -92,8 +92,8 @@ func TestSheetsConfig_GetSheetName_GlobalPrefixed(t *testing.T) {
 		year       int
 		want       string
 	}{
-		{"person_tag_defs", 2025, "globals-tag-definitions"},
-		{"custom_field_defs", 2024, "globals-custom-field-definitions"},
+		{"person_tag_defs", 2025, "g-tag-def"},
+		{"custom_field_defs", 2024, "g-cust-field-def"},
 	}
 
 	for _, tt := range tests {
