@@ -431,7 +431,7 @@ func GetYearSpecificExports() []ExportConfig {
 		// Attendees - links persons to sessions with enrollment status
 		{
 			Collection: "attendees",
-			SheetName:  "{year}-attendees",
+			SheetName:  "{year}-attendee",
 			IsGlobal:   false,
 			Columns: []ColumnConfig{
 				{Field: "person_id", Header: "Person ID", Type: FieldTypeNumber},
@@ -446,7 +446,7 @@ func GetYearSpecificExports() []ExportConfig {
 		// Persons - demographic info, contact details, tags
 		{
 			Collection: "persons",
-			SheetName:  "{year}-persons",
+			SheetName:  "{year}-person",
 			IsGlobal:   false,
 			Columns: []ColumnConfig{
 				{Field: "cm_id", Header: "Person ID", Type: FieldTypeNumber},
@@ -474,7 +474,7 @@ func GetYearSpecificExports() []ExportConfig {
 		// Sessions - session definitions
 		{
 			Collection: "camp_sessions",
-			SheetName:  "{year}-sessions",
+			SheetName:  "{year}-session",
 			IsGlobal:   false,
 			Columns: []ColumnConfig{
 				{Field: "cm_id", Header: "Session ID", Type: FieldTypeNumber},
@@ -529,7 +529,7 @@ func GetYearSpecificExports() []ExportConfig {
 		// Bunk Assignments - camper to bunk assignments
 		{
 			Collection: "bunk_assignments",
-			SheetName:  "{year}-bunk-assignments",
+			SheetName:  "{year}-bunk-assign",
 			IsGlobal:   false,
 			Columns: []ColumnConfig{
 				{Field: "cm_id", Header: "Assignment ID", Type: FieldTypeNumber},
@@ -545,7 +545,7 @@ func GetYearSpecificExports() []ExportConfig {
 		// Financial Transactions - comprehensive export
 		{
 			Collection: "financial_transactions",
-			SheetName:  "{year}-financial-transactions",
+			SheetName:  "{year}-transactions",
 			IsGlobal:   false,
 			Columns: []ColumnConfig{
 				// Identity
@@ -597,7 +597,7 @@ func GetYearSpecificExports() []ExportConfig {
 		// Bunks - cabin definitions
 		{
 			Collection: "bunks",
-			SheetName:  "{year}-bunks",
+			SheetName:  "{year}-bunk",
 			IsGlobal:   false,
 			Columns: []ColumnConfig{
 				{Field: "cm_id", Header: "Bunk ID", Type: FieldTypeNumber},
@@ -610,7 +610,7 @@ func GetYearSpecificExports() []ExportConfig {
 		// Households - family/household info
 		{
 			Collection: "households",
-			SheetName:  "{year}-households",
+			SheetName:  "{year}-household",
 			IsGlobal:   false,
 			Columns: []ColumnConfig{
 				{Field: "cm_id", Header: "Household ID", Type: FieldTypeNumber},
@@ -620,7 +620,7 @@ func GetYearSpecificExports() []ExportConfig {
 		// Session Groups - session groupings
 		{
 			Collection: "session_groups",
-			SheetName:  "{year}-session-groups",
+			SheetName:  "{year}-sess-group",
 			IsGlobal:   false,
 			Columns: []ColumnConfig{
 				{Field: "cm_id", Header: "Session Group ID", Type: FieldTypeNumber},
@@ -632,7 +632,7 @@ func GetYearSpecificExports() []ExportConfig {
 		// Person Custom Values - custom field values for persons
 		{
 			Collection: "person_custom_values",
-			SheetName:  "{year}-person-custom-values",
+			SheetName:  "{year}-person-cv",
 			IsGlobal:   false,
 			Columns: []ColumnConfig{
 				{Field: "person", Header: "Person First Name", Type: FieldTypeNestedField, RelatedCol: "persons", NestedField: "first_name"},
@@ -646,7 +646,7 @@ func GetYearSpecificExports() []ExportConfig {
 		// Household Custom Values - custom field values for households
 		{
 			Collection: "household_custom_values",
-			SheetName:  "{year}-household-custom-values",
+			SheetName:  "{year}-household-cv",
 			IsGlobal:   false,
 			Columns: []ColumnConfig{
 				{Field: "household", Header: "Household", Type: FieldTypeRelation, RelatedCol: "households", RelatedField: "mailing_title"},
@@ -685,7 +685,7 @@ func GetGlobalExports() []ExportConfig {
 	return []ExportConfig{
 		{
 			Collection: "person_tag_defs",
-			SheetName:  "g-tag-definitions",
+			SheetName:  "g-tag-def",
 			IsGlobal:   true,
 			Columns: []ColumnConfig{
 				{Field: "name", Header: "Tag Name", Type: FieldTypeText},
@@ -695,7 +695,7 @@ func GetGlobalExports() []ExportConfig {
 		},
 		{
 			Collection: "custom_field_defs",
-			SheetName:  "g-custom-field-definitions",
+			SheetName:  "g-cust-field-def",
 			IsGlobal:   true,
 			Columns: []ColumnConfig{
 				{Field: "cm_id", Header: "Field ID", Type: FieldTypeNumber},
@@ -709,7 +709,7 @@ func GetGlobalExports() []ExportConfig {
 		},
 		{
 			Collection: "financial_categories",
-			SheetName:  "g-financial-categories",
+			SheetName:  "g-fin-cat",
 			IsGlobal:   true,
 			Columns: []ColumnConfig{
 				{Field: "cm_id", Header: "Category ID", Type: FieldTypeNumber},
@@ -719,7 +719,7 @@ func GetGlobalExports() []ExportConfig {
 		},
 		{
 			Collection: "divisions",
-			SheetName:  "g-divisions",
+			SheetName:  "g-division",
 			IsGlobal:   true,
 			Columns: []ColumnConfig{
 				{Field: "cm_id", Header: "Division ID", Type: FieldTypeNumber},
