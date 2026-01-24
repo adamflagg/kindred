@@ -400,3 +400,309 @@ func TestTableExporter_ExportCallsEnsureSheet(t *testing.T) {
 		t.Error("Expected data written to 2025-test")
 	}
 }
+
+// =============================================================================
+// New Field Types Tests (Phase: Sheets Column Alignment)
+// =============================================================================
+
+func TestFieldType_NewConstants(t *testing.T) {
+	// Test that new field type constants are defined and unique
+	types := []struct {
+		name string
+		got  FieldType
+	}{
+		{"FieldTypeForeignKeyID", FieldTypeForeignKeyID},
+		{"FieldTypeNestedField", FieldTypeNestedField},
+		{"FieldTypeWriteInOverride", FieldTypeWriteInOverride},
+		{"FieldTypeDoubleFKResolve", FieldTypeDoubleFKResolve},
+		{"FieldTypeCMIDLookup", FieldTypeCMIDLookup},
+	}
+
+	// Verify all types are different from each other and from existing types
+	seen := make(map[FieldType]string)
+	existingTypes := []FieldType{FieldTypeText, FieldTypeNumber, FieldTypeDate, FieldTypeJSON, FieldTypeRelation, FieldTypeMultiRelation}
+	for i, t := range existingTypes {
+		seen[t] = []string{"Text", "Number", "Date", "JSON", "Relation", "MultiRelation"}[i]
+	}
+
+	for _, tt := range types {
+		if existing, ok := seen[tt.got]; ok {
+			t.Errorf("FieldType %s has same value as %s", tt.name, existing)
+		}
+		seen[tt.got] = tt.name
+	}
+}
+
+func TestFieldResolver_ResolveForeignKeyID(t *testing.T) {
+	// Test resolving a relation field to its cm_id (not display name)
+	resolver := NewFieldResolver()
+
+	// Set up lookup data with CM IDs
+	resolver.SetCMIDLookupData("persons", map[string]int{
+		"pb_person_1": 1000001,
+		"pb_person_2": 1000002,
+	})
+
+	col := ColumnConfig{
+		Field:      "person",
+		Header:     "Person ID",
+		Type:       FieldTypeForeignKeyID,
+		RelatedCol: "persons",
+	}
+
+	// Should resolve to CM ID
+	got := resolver.ResolveValue("pb_person_1", col)
+	if got != 1000001 {
+		t.Errorf("ResolveValue() = %v, want %v", got, 1000001)
+	}
+
+	// Unknown ID should return empty
+	got = resolver.ResolveValue("unknown_pb_id", col)
+	if got != "" {
+		t.Errorf("ResolveValue(unknown) = %v, want empty string", got)
+	}
+}
+
+func TestFieldResolver_ResolveNestedField(t *testing.T) {
+	// Test resolving a relation field to a specific nested property (e.g., person → first_name)
+	resolver := NewFieldResolver()
+
+	// Set up lookup data with nested fields
+	resolver.SetNestedFieldLookupData("persons", "first_name", map[string]string{
+		"pb_person_1": "Emma",
+		"pb_person_2": "Liam",
+	})
+	resolver.SetNestedFieldLookupData("persons", "last_name", map[string]string{
+		"pb_person_1": "Johnson",
+		"pb_person_2": "Garcia",
+	})
+
+	colFirstName := ColumnConfig{
+		Field:       "person",
+		Header:      "First Name",
+		Type:        FieldTypeNestedField,
+		RelatedCol:  "persons",
+		NestedField: "first_name",
+	}
+
+	colLastName := ColumnConfig{
+		Field:       "person",
+		Header:      "Last Name",
+		Type:        FieldTypeNestedField,
+		RelatedCol:  "persons",
+		NestedField: "last_name",
+	}
+
+	// Should resolve to the nested field value
+	got := resolver.ResolveValue("pb_person_1", colFirstName)
+	if got != "Emma" {
+		t.Errorf("ResolveValue(first_name) = %v, want Emma", got)
+	}
+
+	got = resolver.ResolveValue("pb_person_1", colLastName)
+	if got != "Johnson" {
+		t.Errorf("ResolveValue(last_name) = %v, want Johnson", got)
+	}
+}
+
+func TestFieldResolver_ResolveWriteInOverride(t *testing.T) {
+	// Test resolving write-in override fields (write_in takes precedence over standard)
+	resolver := NewFieldResolver()
+
+	// Column config for write-in override
+	col := ColumnConfig{
+		Field:        "gender_identity_name", // Standard field
+		Header:       "Gender Identity",
+		Type:         FieldTypeWriteInOverride,
+		WriteInField: "gender_identity_write_in", // Override field
+	}
+
+	// Test 1: Both fields empty - should return empty
+	record := map[string]interface{}{
+		"gender_identity_name":     "",
+		"gender_identity_write_in": "",
+	}
+	got := resolver.ResolveWriteInOverride(record, col)
+	if got != "" {
+		t.Errorf("Both empty: got %q, want empty", got)
+	}
+
+	// Test 2: Standard field set, write-in empty - should return standard
+	record = map[string]interface{}{
+		"gender_identity_name":     "Non-binary",
+		"gender_identity_write_in": "",
+	}
+	got = resolver.ResolveWriteInOverride(record, col)
+	if got != "Non-binary" {
+		t.Errorf("Standard only: got %q, want Non-binary", got)
+	}
+
+	// Test 3: Both set - write-in should take precedence
+	record = map[string]interface{}{
+		"gender_identity_name":     "Other",
+		"gender_identity_write_in": "Genderqueer",
+	}
+	got = resolver.ResolveWriteInOverride(record, col)
+	if got != "Genderqueer" {
+		t.Errorf("Both set: got %q, want Genderqueer", got)
+	}
+
+	// Test 4: Write-in set, standard empty - should return write-in
+	record = map[string]interface{}{
+		"gender_identity_name":     "",
+		"gender_identity_write_in": "Custom Identity",
+	}
+	got = resolver.ResolveWriteInOverride(record, col)
+	if got != "Custom Identity" {
+		t.Errorf("Write-in only: got %q, want Custom Identity", got)
+	}
+}
+
+func TestFieldResolver_ResolveDoubleFKResolve(t *testing.T) {
+	// Test resolving through two relations (staff.position1 → position.program_area → name)
+	resolver := NewFieldResolver()
+
+	// Set up position → program_area mapping
+	resolver.SetDoubleFKLookupData("staff_positions", "program_area", map[string]string{
+		"pos_1": "prog_area_1",
+		"pos_2": "prog_area_2",
+		"pos_3": "", // Position without program area
+	})
+
+	// Set up program_area → name mapping
+	resolver.SetLookupData("staff_program_areas", map[string]string{
+		"prog_area_1": "Waterfront",
+		"prog_area_2": "Arts & Crafts",
+	})
+
+	col := ColumnConfig{
+		Field:            "position1",
+		Header:           "Position 1 Program Area",
+		Type:             FieldTypeDoubleFKResolve,
+		RelatedCol:       "staff_positions",
+		IntermediateCol:  "staff_program_areas",
+		IntermediateLink: "program_area",
+	}
+
+	// Should resolve through both relations
+	got := resolver.ResolveValue("pos_1", col)
+	if got != "Waterfront" {
+		t.Errorf("ResolveValue(pos_1) = %v, want Waterfront", got)
+	}
+
+	got = resolver.ResolveValue("pos_2", col)
+	if got != "Arts & Crafts" {
+		t.Errorf("ResolveValue(pos_2) = %v, want Arts & Crafts", got)
+	}
+
+	// Position without program area should return empty
+	got = resolver.ResolveValue("pos_3", col)
+	if got != "" {
+		t.Errorf("ResolveValue(pos_3) = %v, want empty", got)
+	}
+}
+
+func TestFieldResolver_ResolveCMIDLookup(t *testing.T) {
+	// Test looking up by CM ID rather than PB ID (for session parent_id)
+	resolver := NewFieldResolver()
+
+	// Set up sessions indexed by CM ID
+	resolver.SetCMIDIndexedLookup("camp_sessions", map[int]string{
+		1335115: "Session 2",
+		1335116: "Session 3",
+		1335117: "Session 4",
+	})
+
+	col := ColumnConfig{
+		Field:      "parent_id",
+		Header:     "Parent Session",
+		Type:       FieldTypeCMIDLookup,
+		RelatedCol: "camp_sessions",
+	}
+
+	// Should resolve CM ID to display name
+	got := resolver.ResolveValue(float64(1335115), col)
+	if got != "Session 2" {
+		t.Errorf("ResolveValue(1335115) = %v, want Session 2", got)
+	}
+
+	// Integer input should also work
+	got = resolver.ResolveValue(1335116, col)
+	if got != "Session 3" {
+		t.Errorf("ResolveValue(1335116 int) = %v, want Session 3", got)
+	}
+
+	// Unknown CM ID should return empty
+	got = resolver.ResolveValue(float64(9999999), col)
+	if got != "" {
+		t.Errorf("ResolveValue(unknown) = %v, want empty", got)
+	}
+
+	// Nil/zero should return empty
+	got = resolver.ResolveValue(nil, col)
+	if got != "" {
+		t.Errorf("ResolveValue(nil) = %v, want empty", got)
+	}
+}
+
+func TestColumnConfig_NewFields(t *testing.T) {
+	// Test that ColumnConfig has new fields for advanced resolution
+	col := ColumnConfig{
+		Field:            "position1",
+		Header:           "Position 1 Program Area",
+		Type:             FieldTypeDoubleFKResolve,
+		RelatedCol:       "staff_positions",
+		RelatedField:     "name",
+		NestedField:      "first_name",
+		WriteInField:     "gender_identity_write_in",
+		IntermediateCol:  "staff_program_areas",
+		IntermediateLink: "program_area",
+	}
+
+	if col.NestedField != "first_name" {
+		t.Errorf("NestedField = %q, want first_name", col.NestedField)
+	}
+	if col.WriteInField != "gender_identity_write_in" {
+		t.Errorf("WriteInField = %q, want gender_identity_write_in", col.WriteInField)
+	}
+	if col.IntermediateCol != "staff_program_areas" {
+		t.Errorf("IntermediateCol = %q, want staff_program_areas", col.IntermediateCol)
+	}
+	if col.IntermediateLink != "program_area" {
+		t.Errorf("IntermediateLink = %q, want program_area", col.IntermediateLink)
+	}
+}
+
+func TestGetGlobalExports_DivisionsIncluded(t *testing.T) {
+	// Test that globals include divisions but NOT staff-positions
+	configs := GetGlobalExports()
+
+	var hasDivisions, hasStaffPositions bool
+	for _, config := range configs {
+		if config.Collection == "divisions" {
+			hasDivisions = true
+		}
+		if config.Collection == "staff_positions" {
+			hasStaffPositions = true
+		}
+	}
+
+	if !hasDivisions {
+		t.Error("Expected 'divisions' in global exports")
+	}
+	if hasStaffPositions {
+		t.Error("staff_positions should NOT be in global exports (inlined on staff table)")
+	}
+}
+
+func TestGetGlobalExports_Count(t *testing.T) {
+	// Test that we have exactly 4 global exports
+	configs := GetGlobalExports()
+
+	if len(configs) != 4 {
+		t.Errorf("Expected 4 global exports, got %d", len(configs))
+		for _, c := range configs {
+			t.Logf("  - %s", c.Collection)
+		}
+	}
+}
