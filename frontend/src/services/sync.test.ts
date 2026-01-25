@@ -21,9 +21,9 @@ describe('syncService', () => {
       // Call with year parameter
       await syncService.uploadBunkRequestsCSV(mockFile, mockFetchWithAuth, 2024);
 
-      // Verify the URL includes year parameter
+      // Verify the URL includes year parameter (appended with & since other params come first)
       expect(mockFetchWithAuth).toHaveBeenCalledWith(
-        expect.stringContaining('?year=2024'),
+        expect.stringContaining('&year=2024'),
         expect.any(Object)
       );
     });
@@ -88,6 +88,50 @@ describe('syncService', () => {
           error: 'Missing required columns',
           missing_columns: ['PersonID'],
         });
+    });
+
+    it('should include run_process_requests=true parameter in upload URL', async () => {
+      const mockFile = new File(['PersonID,Last Name,First Name\n123,Doe,John'], 'test.csv', { type: 'text/csv' });
+      const mockFetchWithAuth = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          message: 'CSV uploaded successfully',
+          filename: 'test.csv',
+          header_count: 3,
+          sync_started: true,
+          process_requests_started: true,
+        }),
+      });
+
+      await syncService.uploadBunkRequestsCSV(mockFile, mockFetchWithAuth, 2024);
+
+      // Verify the URL includes run_process_requests=true parameter
+      expect(mockFetchWithAuth).toHaveBeenCalledWith(
+        expect.stringContaining('run_process_requests=true'),
+        expect.any(Object)
+      );
+    });
+
+    it('should include both run_sync and run_process_requests parameters', async () => {
+      const mockFile = new File(['PersonID,Last Name,First Name\n123,Doe,John'], 'test.csv', { type: 'text/csv' });
+      const mockFetchWithAuth = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          message: 'CSV uploaded successfully',
+          filename: 'test.csv',
+          header_count: 3,
+          sync_started: true,
+          process_requests_started: true,
+        }),
+      });
+
+      await syncService.uploadBunkRequestsCSV(mockFile, mockFetchWithAuth);
+
+      const calledUrl = mockFetchWithAuth.mock.calls[0]?.[0] as string;
+
+      // Verify URL includes both parameters
+      expect(calledUrl).toContain('run_sync=true');
+      expect(calledUrl).toContain('run_process_requests=true');
     });
   });
 });

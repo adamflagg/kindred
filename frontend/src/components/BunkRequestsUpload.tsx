@@ -21,7 +21,10 @@ export default function BunkRequestsUpload({ compact = false }: BunkRequestsUplo
   const uploadMutation = useMutation({
     mutationFn: (file: File) => syncService.uploadBunkRequestsCSV(file, fetchWithAuth, currentYear),
     onSuccess: (data) => {
-      toast.success(`CSV uploaded successfully: ${data.filename}`, {
+      const message = data.process_requests_started
+        ? `CSV uploaded - syncing and processing requests...`
+        : `CSV uploaded successfully: ${data.filename}`;
+      toast.success(message, {
         duration: 4000,
       });
       setShowModal(false);
