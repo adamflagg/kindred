@@ -294,6 +294,13 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 		return handleFinancialTransactionsSync(e, scheduler)
 	}))
 
+	// Camper history computation endpoint
+	// Computes denormalized camper history with retention metrics
+	// Accepts required ?year=YYYY parameter
+	e.Router.POST("/api/custom/sync/camper-history", requireAuth(func(e *core.RequestEvent) error {
+		return handleCamperHistorySync(e, scheduler)
+	}))
+
 	// On-demand sync endpoints (require N API calls - one per entity)
 	// Person custom values sync
 	// Accepts optional ?session=X parameter (0 or empty = all, 1-4 = specific session)
@@ -1253,5 +1260,80 @@ func handleFinancialTransactionsSync(e *core.RequestEvent, scheduler *Scheduler)
 		"message":  "Financial transactions sync started",
 		"status":   "started",
 		"syncType": syncType,
+	})
+}
+
+// handleCamperHistorySync handles the camper history computation endpoint
+// Accepts required ?year=YYYY parameter to compute history for a specific year
+func handleCamperHistorySync(e *core.RequestEvent, scheduler *Scheduler) error {
+	orchestrator := scheduler.GetOrchestrator()
+	syncType := "camper_history"
+
+	// Check if already running
+	if orchestrator.IsRunning(syncType) {
+		return e.JSON(http.StatusConflict, map[string]interface{}{
+			"error":    "Camper history computation already in progress",
+			"status":   "running",
+			"syncType": syncType,
+		})
+	}
+
+	// Parse required year parameter
+	yearParam := e.Request.URL.Query().Get("year")
+	if yearParam == "" {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Missing required year parameter. Use ?year=YYYY",
+		})
+	}
+
+	year, err := strconv.Atoi(yearParam)
+	if err != nil || year < 2017 || year > 2050 {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Invalid year parameter. Must be between 2017 and 2050.",
+		})
+	}
+
+	// Parse optional dry-run parameter
+	dryRunParam := e.Request.URL.Query().Get("dry_run")
+	dryRun := dryRunParam == boolTrueStr || dryRunParam == "1"
+
+	// Get the service and set options
+	service, ok := orchestrator.GetService(syncType).(*CamperHistorySync)
+	if !ok || service == nil {
+		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+			"error": "Camper history sync service not found",
+		})
+	}
+	service.Year = year
+	service.DryRun = dryRun
+
+	// Run in background
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+
+		slog.Info("Starting camper_history computation",
+			"year", year,
+			"dry_run", dryRun,
+		)
+		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
+			slog.Error("Camper history computation failed", "year", year, "error", err)
+		} else {
+			stats := service.GetStats()
+			slog.Info("Camper history computation completed",
+				"year", year,
+				"created", stats.Created,
+				"deleted", stats.Deleted,
+				"errors", stats.Errors,
+			)
+		}
+	}()
+
+	return e.JSON(http.StatusOK, map[string]interface{}{
+		"message":  "Camper history computation started",
+		"status":   "started",
+		"syncType": syncType,
+		"year":     year,
+		"dry_run":  dryRun,
 	})
 }

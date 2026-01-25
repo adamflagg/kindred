@@ -785,6 +785,28 @@ func GetYearSpecificExports() []ExportConfig {
 				{Field: "value", Header: "Value", Type: FieldTypeText},
 			},
 		},
+		// Camper History - denormalized camper data with retention metrics
+		{
+			Collection: "camper_history",
+			SheetName:  "{year}-camper-history",
+			IsGlobal:   false,
+			Columns: []ColumnConfig{
+				{Field: "person_id", Header: "Person ID", Type: FieldTypeNumber},
+				{Field: "first_name", Header: "First Name", Type: FieldTypeText},
+				{Field: "last_name", Header: "Last Name", Type: FieldTypeText},
+				{Field: "year", Header: "Year", Type: FieldTypeNumber},
+				{Field: "sessions", Header: "Sessions", Type: FieldTypeText},
+				{Field: "bunks", Header: "Bunks", Type: FieldTypeText},
+				{Field: "school", Header: "School", Type: FieldTypeText},
+				{Field: "city", Header: "City", Type: FieldTypeText},
+				{Field: "grade", Header: "Grade", Type: FieldTypeNumber},
+				{Field: "is_returning", Header: "Is Returning", Type: FieldTypeBool},
+				{Field: "years_at_camp", Header: "Years at Camp", Type: FieldTypeNumber},
+				{Field: "prior_year_sessions", Header: "Prior Year Sessions", Type: FieldTypeText},
+				{Field: "prior_year_bunks", Header: "Prior Year Bunks", Type: FieldTypeText},
+				{Field: "retention_next_year", Header: "Retention Next Year", Type: FieldTypeBool},
+			},
+		},
 	}
 }
 

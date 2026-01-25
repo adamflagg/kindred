@@ -883,6 +883,8 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	o.RegisterService("bunk_requests", NewBunkRequestsSync(o.app, client))
 	// Register the request processor (no CampMinder client needed)
 	o.RegisterService("process_requests", NewRequestProcessor(o.app))
+	// Camper history computation (no CampMinder client needed - reads from PocketBase)
+	o.RegisterService("camper_history", NewCamperHistorySync(o.app))
 	// Staff sync: year-scoped staff records (depends on staff_lookups running in weekly sync)
 	o.RegisterService("staff", NewStaffSync(o.app, client))
 	// Financial transactions: year-scoped transaction data (depends on financial_lookups running in weekly sync)
