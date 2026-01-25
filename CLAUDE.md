@@ -98,6 +98,88 @@ bunk_requests table
 | `process_requests.go` | Thin wrapper calling Python processor |
 | `sessions.go`, `attendees.go`, `persons.go`, etc. | Entity syncs |
 
+### Adding a New Sync Job (Complete Checklist)
+
+When implementing a new sync job, ALL of these steps must be completed. Missing any step will result in partial functionality.
+
+#### 1. Go Sync Service (`pocketbase/sync/`)
+
+| File | Action |
+|------|--------|
+| `{job_name}.go` | Create service struct embedding `BaseSyncService`, implement `Name()`, `Sync()`, `GetStats()` |
+| `{job_name}_test.go` | Unit tests for service name, parameter validation, stats parsing |
+
+#### 2. Orchestrator Registration (`orchestrator.go`)
+
+| Location | Action |
+|----------|--------|
+| `InitializeSyncServices()` | Register service with `RegisterService()` in dependency order |
+| `RunDailySync()` orderedJobs | Add job ID string in correct position (respects dependencies) |
+| Historical sync section | Add to historical sync loop if year-specific data |
+
+**Common mistake**: Registering the service but forgetting to add to `orderedJobs` - job won't run in daily sync!
+
+#### 3. API Endpoint (`api.go`)
+
+| Action | Details |
+|--------|---------|
+| Add handler function | `handle{JobName}Sync()` with query param validation |
+| Register route | `POST /api/custom/sync/{job-name}` with `requireAuth` wrapper |
+| Add to status endpoint | Include in `handleSyncStatus()` known types list |
+
+#### 4. PocketBase Schema (if new table)
+
+| File | Action |
+|------|--------|
+| `pb_migrations/1500000XXX_{table_name}.js` | Collection definition with fields, indexes, access rules |
+
+#### 5. Frontend Type Registration (`frontend/src/`)
+
+| File | Action |
+|------|--------|
+| `components/admin/syncTypes.ts` | Add to `CURRENT_YEAR_SYNC_TYPES` or `GLOBAL_SYNC_TYPES` with id, name, icon, color |
+| `hooks/useRunIndividualSync.ts` | Add to `SYNC_TYPE_NAMES` map for toast display |
+
+#### 6. Frontend Special Handling (if needed)
+
+Only if job requires custom parameters (year, session, etc.):
+
+| File | Action |
+|------|--------|
+| `hooks/use{JobName}Sync.ts` | Custom hook with parameter handling |
+| `components/admin/SyncTab.tsx` | Conditional rendering for custom button/modal |
+
+#### 7. Historical Sync Support (if year-specific)
+
+| File | Action |
+|------|--------|
+| `syncTypes.ts` | Add to `HISTORICAL_SYNC_TYPES` array |
+| `orchestrator.go` | Ensure included in historical sync loop with year config |
+
+#### 8. Google Sheets Export (if needed)
+
+| File | Action |
+|------|--------|
+| `sync/table_exporter.go` | Add table to export list with sheet name pattern |
+
+#### Quick Reference: Sync ID Conventions
+
+- Go: `job_name` (snake_case in orderedJobs, maps to `job-name` endpoint)
+- Frontend: `job_name` in syncTypes.ts (auto-converted to `job-name` for API)
+- API: `/api/custom/sync/job-name` (kebab-case)
+
+#### Verification Checklist
+
+After implementation, verify ALL of these work:
+
+- [ ] `go build .` in pocketbase/ succeeds
+- [ ] `npm run build` in frontend/ succeeds
+- [ ] Job appears in Admin → Sync tab with correct icon/color
+- [ ] Individual "Run" button triggers the sync
+- [ ] "Run Daily Sync" includes the job (check logs)
+- [ ] Status shows created/updated/errors after completion
+- [ ] Historical import includes job (if applicable)
+
 ### Python Request Processor (`bunking/sync/bunk_request_processor/`)
 Unified processor for all 5 bunk request field types:
 
