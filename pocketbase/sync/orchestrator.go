@@ -3,6 +3,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -454,10 +455,10 @@ func (o *Orchestrator) RunWeeklySync(ctx context.Context) error {
 	return nil
 }
 
-// RunCustomValuesSync runs custom field values syncs for person and household entities.
+// RunCustomValuesSync runs custom field values syncs for person and household entities in parallel.
 // These are expensive syncs (1 API call per entity) that run weekly after the main weekly sync.
-//
-//nolint:dupl // Similar pattern to RunWeeklySync, intentional for sync orchestration
+// Running in parallel is safe because they sync independent tables (person_custom_values vs
+// household_custom_values) using different CampMinder API endpoints.
 func (o *Orchestrator) RunCustomValuesSync(ctx context.Context) error {
 	// Get the custom values sync jobs
 	customValuesJobs := GetCustomValuesSyncJobs()
@@ -476,36 +477,118 @@ func (o *Orchestrator) RunCustomValuesSync(ctx context.Context) error {
 		o.mu.Unlock()
 	}()
 
-	slog.Info("Starting custom values sync sequence", "services", customValuesJobs)
+	slog.Info("Starting custom values sync sequence (parallel)", "services", customValuesJobs)
 
-	for i, jobName := range customValuesJobs {
-		// Check if context is canceled
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(customValuesJobs))
 
-		// Add spacing between jobs (except for the first one)
-		if i > 0 {
-			slog.Info("Waiting before next sync", "duration", o.jobSpacing)
-			time.Sleep(o.jobSpacing)
-		}
+	for _, jobName := range customValuesJobs {
+		wg.Add(1)
+		go func(name string) {
+			defer wg.Done()
 
-		progress := fmt.Sprintf("%d/%d", i+1, len(customValuesJobs))
-		slog.Info("Custom values sync: Starting service", "service", jobName, "progress", progress)
+			// Check if context is canceled before starting
+			select {
+			case <-ctx.Done():
+				errChan <- ctx.Err()
+				return
+			default:
+			}
 
-		// Run sync and wait for completion
-		if err := o.runSyncAndWait(ctx, jobName); err != nil {
-			slog.Error("Custom values sync: service failed", "service", jobName, "error", err)
-			// Continue with other syncs even if one fails
-		} else {
-			slog.Info("Custom values sync: service completed", "service", jobName)
-		}
+			slog.Info("Custom values sync: Starting service", "service", name)
+
+			if err := o.runSyncAndWait(ctx, name); err != nil {
+				slog.Error("Custom values sync: service failed", "service", name, "error", err)
+				errChan <- err
+			} else {
+				slog.Info("Custom values sync: service completed", "service", name)
+			}
+		}(jobName)
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	// Collect any errors
+	var errs []error
+	for err := range errChan {
+		errs = append(errs, err)
 	}
 
 	slog.Info("Custom values sync sequence completed")
-	return nil
+	return errors.Join(errs...)
+}
+
+// contains checks if a string is present in a slice
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
+}
+
+// runCustomValuesSyncsInParallel runs both custom values syncs in parallel
+// and returns any errors that occurred
+func (o *Orchestrator) runCustomValuesSyncsInParallel(ctx context.Context, opts Options) error {
+	customValuesJobs := GetCustomValuesSyncJobs()
+
+	slog.Info("Running custom values syncs in parallel", "year", opts.Year, "services", customValuesJobs)
+
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(customValuesJobs))
+
+	for _, jobName := range customValuesJobs {
+		wg.Add(1)
+		go func(name string) {
+			defer wg.Done()
+
+			select {
+			case <-ctx.Done():
+				errChan <- ctx.Err()
+				return
+			default:
+			}
+
+			if opts.Year > 0 {
+				slog.Info("Historical sync: Starting custom values service (parallel)",
+					"year", opts.Year, "service", name)
+			} else {
+				slog.Info("Sync with options: Starting custom values service (parallel)",
+					"service", name)
+			}
+
+			if err := o.runSyncAndWait(ctx, name); err != nil {
+				if opts.Year > 0 {
+					slog.Error("Historical sync: custom values service failed",
+						"year", opts.Year, "service", name, "error", err)
+				} else {
+					slog.Error("Sync with options: custom values service failed",
+						"service", name, "error", err)
+				}
+				errChan <- err
+			} else {
+				if opts.Year > 0 {
+					slog.Info("Historical sync: custom values service completed",
+						"year", opts.Year, "service", name)
+				} else {
+					slog.Info("Sync with options: custom values service completed",
+						"service", name)
+				}
+			}
+		}(jobName)
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	var errs []error
+	for err := range errChan {
+		errs = append(errs, err)
+	}
+
+	return errors.Join(errs...)
 }
 
 // runSyncAndWait runs a sync and waits for it to complete
@@ -765,13 +848,37 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		slog.Info("Concurrent sync not yet implemented, running sequentially")
 	}
 
-	// Run sequentially
+	// Run sequentially, with parallel execution for custom values syncs
+	// Track whether we've already run custom values in parallel
+	customValuesRanParallel := false
+
 	for i, serviceName := range servicesToRun {
 		// Check if context is canceled
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
+		}
+
+		// Check if this is a custom values sync that should run in parallel
+		if serviceName == serviceNamePersonCustomValues && contains(servicesToRun, serviceNameHouseholdCustomValues) {
+			// Add spacing before running parallel syncs (if not first job)
+			if i > 0 {
+				slog.Info("Waiting before next sync", "duration", o.jobSpacing)
+				time.Sleep(o.jobSpacing)
+			}
+
+			// Run both custom values syncs in parallel
+			if err := o.runCustomValuesSyncsInParallel(ctx, opts); err != nil {
+				slog.Error("Custom values parallel sync had errors", "error", err)
+			}
+			customValuesRanParallel = true
+			continue
+		}
+
+		// Skip household_custom_values if we already ran it in parallel
+		if serviceName == serviceNameHouseholdCustomValues && customValuesRanParallel {
+			continue
 		}
 
 		// Add spacing between jobs (except for the first one)
