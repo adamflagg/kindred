@@ -9,17 +9,11 @@ on:
       - main
     tags-ignore:
       - '**'  # Skip CI on tag pushes (already tested on branch)
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - 'LICENSE'
   # Run on pull requests targeting main (covers all feature branch pushes)
+  # Note: No paths-ignore here - we need CI Summary to always report for branch protection
+  # The detect-changes job handles optimization by skipping jobs when only docs change
   pull_request:
     branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - 'LICENSE'
 
 # Permissions needed for Dependabot PRs (paths-filter needs to read commits)
 permissions:
