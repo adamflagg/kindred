@@ -16,6 +16,7 @@ import {
   ClipboardList,
   DollarSign,
   Receipt,
+  History,
 } from 'lucide-react';
 
 // Global sync types - cross-year data not tied to a specific season
@@ -41,6 +42,7 @@ export const CURRENT_YEAR_SYNC_TYPES = [
   { id: 'bunk_plans', name: 'Bunk Plans', icon: Layout, color: 'text-rose-600' },
   { id: 'bunk_assignments', name: 'Assignments', icon: UserCheck, color: 'text-indigo-600' },
   { id: 'staff', name: 'Staff', icon: Tent, color: 'text-slate-600' },
+  { id: 'camper_history', name: 'Camper History', icon: History, color: 'text-cyan-600' },
   { id: 'financial_transactions', name: 'Financial Transactions', icon: Receipt, color: 'text-green-600' },
   { id: 'bunk_requests', name: 'Intake Requests', icon: FileText, color: 'text-orange-600' },
   { id: 'process_requests', name: 'Process Requests', icon: Brain, color: 'text-teal-600' },
@@ -63,6 +65,7 @@ export const HISTORICAL_SYNC_TYPES = [
   { id: 'bunk_plans', name: 'Bunk Plans' },
   { id: 'bunk_assignments', name: 'Assignments' },
   { id: 'staff', name: 'Staff' }, // Depends on divisions, bunks, persons
+  { id: 'camper_history', name: 'Camper History' }, // Computed retention metrics
   { id: 'financial_transactions', name: 'Financial Transactions' }, // Depends on sessions, persons, households
 ] as const;
 
