@@ -638,6 +638,7 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 		"bunk_plans",
 		"bunk_assignments",
 		"staff",                  // Year-scoped staff records (depends on divisions, bunks, persons)
+		"camper_history",         // Computed camper denorm with retention metrics
 		"financial_transactions", // Year-scoped financial data (depends on sessions, persons, households)
 		"bunk_requests",
 		"process_requests",

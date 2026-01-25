@@ -22,6 +22,7 @@ export const SYNC_TYPE_NAMES: Record<string, string> = {
   bunk_plans: 'Bunk Plans',
   bunk_assignments: 'Bunk Assignments',
   staff: 'Staff', // Year-scoped staff records
+  camper_history: 'Camper History', // Computed retention metrics
   financial_transactions: 'Financial Transactions', // Year-scoped financial data
   bunk_requests: 'Intake Requests',
   process_requests: 'Process Requests',
