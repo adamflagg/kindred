@@ -337,6 +337,7 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 		"bunk_plans",             // Depends on sessions and bunks
 		"bunk_assignments",       // Depends on sessions, persons, bunks
 		"staff",                  // Staff sync: depends on divisions, bunks, persons
+		"camper_history",         // Computed table: depends on attendees
 		"financial_transactions", // Financial data: depends on sessions, persons, households, divisions
 		"bunk_requests",          // CSV import, depends on persons
 	}
@@ -725,6 +726,12 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		o.RegisterService("bunk_requests", NewBunkRequestsSync(o.app, yearClient))
 		o.RegisterService("process_requests", NewRequestProcessor(o.app))
 		o.RegisterService("staff", NewStaffSync(o.app, yearClient))
+
+		// Camper history computation (no CampMinder client needed - reads from PocketBase)
+		camperHistorySync := NewCamperHistorySync(o.app)
+		camperHistorySync.Year = opts.Year
+		o.RegisterService("camper_history", camperHistorySync)
+
 		o.RegisterService("financial_transactions", NewFinancialTransactionsSync(o.app, yearClient))
 
 		// Custom value services for historical sync support

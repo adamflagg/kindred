@@ -20,6 +20,7 @@ import { useRunIndividualSync } from '../../hooks/useRunIndividualSync';
 import { useRunOnDemandSync } from '../../hooks/useRunOnDemandSync';
 import { useHistoricalSync } from '../../hooks/useHistoricalSync';
 import { useProcessRequests } from '../../hooks/useProcessRequests';
+import { useCamperHistorySync } from '../../hooks/useCamperHistorySync';
 import { StatusIcon, formatDuration } from './ConfigInputs';
 import { clearCache } from '../../utils/queryClient';
 import ProcessRequestOptions, { type ProcessRequestOptionsState } from './ProcessRequestOptions';
@@ -71,6 +72,7 @@ export function SyncTab() {
   const runAllSyncs = useRunAllSyncs();
   const runHistoricalSync = useHistoricalSync();
   const processRequests = useProcessRequests();
+  const camperHistorySync = useCamperHistorySync();
 
   const hasRunningSyncs = syncStatus && Object.values(syncStatus).some(
     (status: SyncStatus) => status.status === 'running'
@@ -321,6 +323,19 @@ export function SyncTab() {
                       <Settings2 className="w-4 h-4" />
                     </button>
                   </div>
+                ) : syncType.id === 'camper_history' ? (
+                  // Camper history requires year parameter - use custom hook with current year
+                  <button
+                    onClick={() => camperHistorySync.mutate(currentYear)}
+                    disabled={isRunning || camperHistorySync.isPending}
+                    className="w-full py-2 mt-3 text-xs sm:text-sm font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    {isRunning ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <><Play className="w-4 h-4" /> Run</>
+                    )}
+                  </button>
                 ) : ENTITY_SYNC_TYPES.includes(syncType.id as EntitySyncType) ? (
                   // Persons/Households - have settings button for custom field values option
                   <div className="flex gap-2 mt-3">
