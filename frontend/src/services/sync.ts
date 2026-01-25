@@ -10,6 +10,7 @@ export interface UploadResponse {
   filename: string;
   header_count: number;
   sync_started: boolean;
+  process_requests_started?: boolean;
 }
 
 export interface UploadError {
@@ -59,10 +60,11 @@ export const syncService = {
     const formData = new FormData();
     formData.append('file', file);
 
-    // Build URL with optional year parameter
-    let url = `${API_BASE}/bunk_requests_upload`;
+    // Build URL with run_sync=true and run_process_requests=true
+    // This chains: CSV upload → bunk_requests sync → process_requests (AI processing)
+    let url = `${API_BASE}/bunk_requests_upload?run_sync=true&run_process_requests=true`;
     if (year !== undefined) {
-      url += `?year=${year}`;
+      url += `&year=${year}`;
     }
 
     const response = await fetchWithAuth(url, {

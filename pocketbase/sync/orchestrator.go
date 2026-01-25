@@ -20,8 +20,6 @@ const (
 	statusFailed = "failed"
 	// statusRunning indicates a sync job is currently running
 	statusRunning = "running"
-	// boolTrueStr is used for string comparisons with boolean environment variables
-	boolTrueStr = "true"
 )
 
 // Service defines the interface for sync services
@@ -797,6 +795,24 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 				slog.Info("Historical sync: service completed", "year", opts.Year, "service", serviceName)
 			} else {
 				slog.Info("Sync with options: service completed", "service", serviceName)
+			}
+		}
+	}
+
+	// After historical sync completes, trigger Google Sheets export for that year only (no globals)
+	if opts.Year > 0 && google.IsEnabled() && google.GetSpreadsheetID() != "" {
+		o.mu.RLock()
+		sheetsService := o.services["google_sheets_export"]
+		o.mu.RUnlock()
+
+		if sheetsService != nil {
+			if exporter, ok := sheetsService.(*GoogleSheetsExport); ok {
+				slog.Info("Historical sync: Exporting to Google Sheets", "year", opts.Year)
+				if err := exporter.SyncForYears(ctx, []int{opts.Year}, false); err != nil {
+					slog.Error("Historical sync: Google Sheets export failed", "year", opts.Year, "error", err)
+				} else {
+					slog.Info("Historical sync: Google Sheets export completed", "year", opts.Year)
+				}
 			}
 		}
 	}

@@ -555,27 +555,55 @@ func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error 
 		slog.Warn("Error writing upload metadata", "error", err)
 	}
 
-	// Optionally trigger sync
+	// Optionally trigger sync and/or process_requests
 	runSync := e.Request.URL.Query().Get("run_sync") == boolTrueStr
+	runProcessRequestsParam := e.Request.URL.Query().Get("run_process_requests")
+	runProcessRequests := runProcessRequestsParam == boolTrueStr || runProcessRequestsParam == "1"
+
+	// process_requests only runs if sync also runs (it depends on sync completing first)
+	processRequestsStarted := runSync && runProcessRequests
+
 	if runSync {
 		orchestrator := scheduler.GetOrchestrator()
 		if !orchestrator.IsRunning("bunk_requests") {
 			go func() {
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 				defer cancel()
-				if err := orchestrator.RunSingleSync(ctx, "bunk_requests"); err != nil {
-					slog.Warn("Error running bunk_requests sync", "error", err)
+
+				// Run bunk_requests sync first
+				syncErr := orchestrator.RunSingleSync(ctx, "bunk_requests")
+				if syncErr != nil {
+					slog.Warn("Error running bunk_requests sync", "error", syncErr)
+					return // Don't run process_requests if sync failed
+				}
+
+				// Chain process_requests after bunk_requests completes
+				if runProcessRequests {
+					slog.Info("Chaining process_requests after bunk_requests sync")
+					processor := NewRequestProcessor(scheduler.app)
+					// Use defaults: all sessions, no force, no field filter
+					if err := processor.Sync(ctx); err != nil {
+						slog.Error("process_requests failed after upload", "error", err)
+					} else {
+						stats := processor.GetStats()
+						slog.Info("process_requests completed after upload",
+							"created", stats.Created,
+							"skipped", stats.Skipped,
+							"errors", stats.Errors,
+						)
+					}
 				}
 			}()
 		}
 	}
 
 	return e.JSON(http.StatusOK, map[string]interface{}{
-		"message":      "CSV uploaded successfully",
-		"filename":     uploadResult.filename,
-		"header_count": len(headers),
-		"sync_started": runSync,
-		"year":         uploadYear,
+		"message":                  "CSV uploaded successfully",
+		"filename":                 uploadResult.filename,
+		"header_count":             len(headers),
+		"sync_started":             runSync,
+		"process_requests_started": processRequestsStarted,
+		"year":                     uploadYear,
 	})
 }
 

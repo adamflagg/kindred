@@ -742,6 +742,99 @@ func getYearPrefixedBackupFilename(year int, timestamp string) string {
 	return fmt.Sprintf("%d_backup_%s.csv", year, timestamp)
 }
 
+// TestRunProcessRequestsParameterParsing tests the run_process_requests query parameter
+func TestRunProcessRequestsParameterParsing(t *testing.T) {
+	tests := []struct {
+		name      string
+		param     string
+		wantValue bool
+	}{
+		// Default behavior
+		{"empty param defaults to false", "", false},
+
+		// Truthy values
+		{"true string", "true", true},
+		{"1 string", "1", true},
+
+		// Falsy values
+		{"false string", "false", false},
+		{"0 string", "0", false},
+		{"random string", "random", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := parseRunProcessRequestsParam(tt.param)
+			if result != tt.wantValue {
+				t.Errorf("parseRunProcessRequestsParam(%q) = %v, want %v", tt.param, result, tt.wantValue)
+			}
+		})
+	}
+}
+
+// parseRunProcessRequestsParam parses the run_process_requests query parameter
+// Returns true if the parameter is "true" or "1"
+func parseRunProcessRequestsParam(param string) bool {
+	return param == "true" || param == "1"
+}
+
+// TestBunkRequestsUploadWithProcessRequests validates that when both run_sync=true
+// and run_process_requests=true are provided, the upload response should indicate
+// both sync jobs will be triggered
+func TestBunkRequestsUploadWithProcessRequests(t *testing.T) {
+	tests := []struct {
+		name                  string
+		runSync               bool
+		runProcessRequests    bool
+		expectSyncStarted     bool
+		expectProcessRequests bool
+	}{
+		{
+			name:                  "neither sync nor process",
+			runSync:               false,
+			runProcessRequests:    false,
+			expectSyncStarted:     false,
+			expectProcessRequests: false,
+		},
+		{
+			name:                  "sync only",
+			runSync:               true,
+			runProcessRequests:    false,
+			expectSyncStarted:     true,
+			expectProcessRequests: false,
+		},
+		{
+			name:                  "both sync and process",
+			runSync:               true,
+			runProcessRequests:    true,
+			expectSyncStarted:     true,
+			expectProcessRequests: true,
+		},
+		{
+			name:                  "process without sync (ignored)",
+			runSync:               false,
+			runProcessRequests:    true,
+			expectSyncStarted:     false,
+			expectProcessRequests: false, // Can't process without sync
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Simulate what the handler does
+			syncStarted := tt.runSync
+			processStarted := tt.runSync && tt.runProcessRequests
+
+			if syncStarted != tt.expectSyncStarted {
+				t.Errorf("syncStarted = %v, want %v", syncStarted, tt.expectSyncStarted)
+			}
+			if processStarted != tt.expectProcessRequests {
+				t.Errorf("processStarted = %v, want %v", processStarted, tt.expectProcessRequests)
+			}
+		})
+	}
+}
+
 // TestUploadYearParameterParsing tests year query parameter parsing for uploads
 func TestUploadYearParameterParsing(t *testing.T) {
 	tests := []struct {

@@ -95,13 +95,12 @@ export const AppLayout = () => {
     },
   });
 
-  // Google Sheets export mutation - exports selected year from dropdown
-  // Always includes globals (reference data) along with year-specific data
+  // Google Sheets export mutation - uses env var year (not dropdown)
+  // Backend handles current year + globals when no params are passed
   const sheetsExportMutation = useMutation({
-    mutationFn: () =>
-      syncService.exportToGoogleSheets(fetchWithAuth, [currentYear], true),
+    mutationFn: () => syncService.exportToGoogleSheets(fetchWithAuth),
     onSuccess: () => {
-      toast.success(`Google Sheets export started for ${currentYear}`);
+      toast.success('Google Sheets export started');
     },
     onError: (error: Error) => {
       toast.error(`Failed to export: ${error.message}`);

@@ -28,6 +28,12 @@ const (
 	FieldTypeCMIDLookup      // Lookup by CM ID rather than PB ID (for self-references like parent_id)
 )
 
+// Boolean string constants for export
+const (
+	boolTrueStr  = "true"
+	boolFalseStr = "false"
+)
+
 // ColumnConfig defines a single column mapping for export
 type ColumnConfig struct {
 	Field        string    // PocketBase field name
@@ -199,9 +205,9 @@ func (r *FieldResolver) ResolveValue(value interface{}, col *ColumnConfig) inter
 		// Boolean field - export as true/false
 		if b, ok := value.(bool); ok {
 			if b {
-				return "true"
+				return boolTrueStr
 			}
-			return "false"
+			return boolFalseStr
 		}
 		return ""
 
