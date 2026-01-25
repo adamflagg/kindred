@@ -17,6 +17,7 @@ import {
   DollarSign,
   Receipt,
   History,
+  Home,
 } from 'lucide-react';
 
 // Global sync types - cross-year data not tied to a specific season
@@ -44,6 +45,7 @@ export const CURRENT_YEAR_SYNC_TYPES = [
   { id: 'staff', name: 'Staff', icon: Tent, color: 'text-slate-600' },
   { id: 'camper_history', name: 'Camper History', icon: History, color: 'text-cyan-600' },
   { id: 'financial_transactions', name: 'Financial Transactions', icon: Receipt, color: 'text-green-600' },
+  { id: 'family_camp_derived', name: 'Family Camp Derived', icon: Home, color: 'text-orange-500' },
   { id: 'bunk_requests', name: 'Intake Requests', icon: FileText, color: 'text-orange-600' },
   { id: 'process_requests', name: 'Process Requests', icon: Brain, color: 'text-teal-600' },
 ] as const;

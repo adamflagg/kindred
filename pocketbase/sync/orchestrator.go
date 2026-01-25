@@ -1026,6 +1026,9 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	o.RegisterService("person_custom_values", NewPersonCustomFieldValuesSync(o.app, client))
 	o.RegisterService("household_custom_values", NewHouseholdCustomFieldValuesSync(o.app, client))
 
+	// Family camp derived tables (computes from custom values - on-demand)
+	o.RegisterService("family_camp_derived", NewFamilyCampDerivedSync(o.app))
+
 	slog.Info("All sync services registered")
 	return nil
 }
