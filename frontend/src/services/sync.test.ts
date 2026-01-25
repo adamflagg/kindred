@@ -21,9 +21,9 @@ describe('syncService', () => {
       // Call with year parameter
       await syncService.uploadBunkRequestsCSV(mockFile, mockFetchWithAuth, 2024);
 
-      // Verify the URL includes year parameter
+      // Verify the URL includes year parameter (appended with & since other params come first)
       expect(mockFetchWithAuth).toHaveBeenCalledWith(
-        expect.stringContaining('?year=2024'),
+        expect.stringContaining('&year=2024'),
         expect.any(Object)
       );
     });
@@ -127,7 +127,7 @@ describe('syncService', () => {
 
       await syncService.uploadBunkRequestsCSV(mockFile, mockFetchWithAuth);
 
-      const calledUrl = mockFetchWithAuth.mock.calls[0][0] as string;
+      const calledUrl = mockFetchWithAuth.mock.calls[0]?.[0] as string;
 
       // Verify URL includes both parameters
       expect(calledUrl).toContain('run_sync=true');
