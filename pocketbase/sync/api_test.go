@@ -783,39 +783,39 @@ func parseRunProcessRequestsParam(param string) bool {
 // both sync jobs will be triggered
 func TestBunkRequestsUploadWithProcessRequests(t *testing.T) {
 	tests := []struct {
-		name                   string
-		runSync                bool
-		runProcessRequests     bool
-		expectSyncStarted      bool
-		expectProcessRequests  bool
+		name                  string
+		runSync               bool
+		runProcessRequests    bool
+		expectSyncStarted     bool
+		expectProcessRequests bool
 	}{
 		{
-			name:                   "neither sync nor process",
-			runSync:                false,
-			runProcessRequests:     false,
-			expectSyncStarted:      false,
-			expectProcessRequests:  false,
+			name:                  "neither sync nor process",
+			runSync:               false,
+			runProcessRequests:    false,
+			expectSyncStarted:     false,
+			expectProcessRequests: false,
 		},
 		{
-			name:                   "sync only",
-			runSync:                true,
-			runProcessRequests:     false,
-			expectSyncStarted:      true,
-			expectProcessRequests:  false,
+			name:                  "sync only",
+			runSync:               true,
+			runProcessRequests:    false,
+			expectSyncStarted:     true,
+			expectProcessRequests: false,
 		},
 		{
-			name:                   "both sync and process",
-			runSync:                true,
-			runProcessRequests:     true,
-			expectSyncStarted:      true,
-			expectProcessRequests:  true,
+			name:                  "both sync and process",
+			runSync:               true,
+			runProcessRequests:    true,
+			expectSyncStarted:     true,
+			expectProcessRequests: true,
 		},
 		{
-			name:                   "process without sync (ignored)",
-			runSync:                false,
-			runProcessRequests:     true,
-			expectSyncStarted:      false,
-			expectProcessRequests:  false, // Can't process without sync
+			name:                  "process without sync (ignored)",
+			runSync:               false,
+			runProcessRequests:    true,
+			expectSyncStarted:     false,
+			expectProcessRequests: false, // Can't process without sync
 		},
 	}
 

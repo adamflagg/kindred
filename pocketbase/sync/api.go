@@ -598,12 +598,12 @@ func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error 
 	}
 
 	return e.JSON(http.StatusOK, map[string]interface{}{
-		"message":                   "CSV uploaded successfully",
-		"filename":                  uploadResult.filename,
-		"header_count":              len(headers),
-		"sync_started":              runSync,
-		"process_requests_started":  processRequestsStarted,
-		"year":                      uploadYear,
+		"message":                  "CSV uploaded successfully",
+		"filename":                 uploadResult.filename,
+		"header_count":             len(headers),
+		"sync_started":             runSync,
+		"process_requests_started": processRequestsStarted,
+		"year":                     uploadYear,
 	})
 }
 
