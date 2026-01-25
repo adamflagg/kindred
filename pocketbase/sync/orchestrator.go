@@ -20,8 +20,6 @@ const (
 	statusFailed = "failed"
 	// statusRunning indicates a sync job is currently running
 	statusRunning = "running"
-	// boolTrueStr is used for string comparisons with boolean environment variables
-	boolTrueStr = "true"
 )
 
 // Service defines the interface for sync services
