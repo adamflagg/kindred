@@ -59,10 +59,10 @@ export const syncService = {
     const formData = new FormData();
     formData.append('file', file);
 
-    // Build URL with optional year parameter
-    let url = `${API_BASE}/bunk_requests_upload`;
+    // Build URL with run_sync=true to ensure data is imported (not just file saved)
+    let url = `${API_BASE}/bunk_requests_upload?run_sync=true`;
     if (year !== undefined) {
-      url += `?year=${year}`;
+      url += `&year=${year}`;
     }
 
     const response = await fetchWithAuth(url, {
