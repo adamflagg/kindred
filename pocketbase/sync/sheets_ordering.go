@@ -64,6 +64,9 @@ func SortExportTabs(tabs []string) []string {
 // already contains newer data (e.g., 2025 tabs).
 //
 // The exportedTabs parameter is deprecated and ignored.
+//
+// This function uses BatchUpdateTabProperties to minimize API calls and
+// avoid Google Sheets rate limits (60 writes per minute per user).
 func ReorderAllTabs(ctx context.Context, writer SheetsWriter, spreadsheetID string, _ []string) error {
 	// 1. Get ALL existing sheet tabs from the spreadsheet
 	allSheets, err := writer.GetSheetMetadata(ctx, spreadsheetID)
@@ -71,7 +74,13 @@ func ReorderAllTabs(ctx context.Context, writer SheetsWriter, spreadsheetID stri
 		return fmt.Errorf("getting sheet metadata: %w", err)
 	}
 
-	// 2. Filter to only our export tabs (g-* and YYYY-*)
+	// 2. Build sheet ID map from metadata (avoid redundant lookups)
+	sheetIDByName := make(map[string]int64)
+	for _, sheet := range allSheets {
+		sheetIDByName[sheet.Title] = sheet.SheetID
+	}
+
+	// 3. Filter to only our export tabs (g-* and YYYY-*)
 	var exportTabs []string
 	for _, sheet := range allSheets {
 		if IsExportTab(sheet.Title) {
@@ -79,7 +88,7 @@ func ReorderAllTabs(ctx context.Context, writer SheetsWriter, spreadsheetID stri
 		}
 	}
 
-	// 3. Sort ALL export tabs together
+	// 4. Sort ALL export tabs together
 	sorted := SortExportTabs(exportTabs)
 
 	slog.Info("Reordering and coloring sheet tabs",
@@ -87,22 +96,22 @@ func ReorderAllTabs(ctx context.Context, writer SheetsWriter, spreadsheetID stri
 		"globals", countGlobals(sorted),
 	)
 
-	// 4. Apply colors and indices to each tab
+	// 5. Build batch updates for all tabs (colors + indices)
+	updates := make([]TabPropertyUpdate, len(sorted))
 	for i, tabName := range sorted {
-		// Set tab color
 		color := GetTabColor(tabName)
-		if err := writer.SetTabColor(ctx, spreadsheetID, tabName, color); err != nil {
-			slog.Warn("Failed to set tab color",
-				"tab", tabName,
-				"error", err,
-			)
-			// Continue with other tabs
+		index := i
+		updates[i] = TabPropertyUpdate{
+			TabName: tabName,
+			SheetID: sheetIDByName[tabName],
+			Color:   &color,
+			Index:   &index,
 		}
+	}
 
-		// Set tab index (position)
-		if err := writer.SetTabIndex(ctx, spreadsheetID, tabName, i); err != nil {
-			return fmt.Errorf("setting tab index for %s: %w", tabName, err)
-		}
+	// 6. Apply all updates in a single batch call
+	if err := writer.BatchUpdateTabProperties(ctx, spreadsheetID, updates); err != nil {
+		return fmt.Errorf("batch updating tab properties: %w", err)
 	}
 
 	slog.Info("Tab reordering complete")

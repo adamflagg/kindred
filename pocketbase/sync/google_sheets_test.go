@@ -18,16 +18,28 @@ type MockSheetsWriter struct {
 	EnsureError   error
 	SetColorError error
 	SetIndexError error
+
+	// API call tracking for rate limit testing
+	SetColorCalls       int                   // Number of SetTabColor calls
+	SetIndexCalls       int                   // Number of SetTabIndex calls
+	BatchUpdateCalls    int                   // Number of BatchUpdateTabProperties calls
+	LastBatchUpdates    []TabPropertyUpdate   // Last batch update request
+	AllBatchUpdates     [][]TabPropertyUpdate // All batch update requests
+	BatchUpdateError    error
+	GetMetadataCalls    int // Number of GetSheetMetadata calls
+	SheetIDsByName      map[string]int64      // tab name -> sheet ID for metadata lookups
 }
 
 func NewMockSheetsWriter() *MockSheetsWriter {
 	return &MockSheetsWriter{
-		WrittenData:  make(map[string][][]interface{}),
-		ClearedTabs:  []string{},
-		EnsuredTabs:  []string{},
-		ExistingTabs: make(map[string]bool),
-		TabColors:    make(map[string]TabColor),
-		TabIndices:   make(map[string]int),
+		WrittenData:     make(map[string][][]interface{}),
+		ClearedTabs:     []string{},
+		EnsuredTabs:     []string{},
+		ExistingTabs:    make(map[string]bool),
+		TabColors:       make(map[string]TabColor),
+		TabIndices:      make(map[string]int),
+		AllBatchUpdates: [][]TabPropertyUpdate{},
+		SheetIDsByName:  make(map[string]int64),
 	}
 }
 
@@ -60,6 +72,7 @@ func (m *MockSheetsWriter) EnsureSheet(_ context.Context, _, sheetTab string) er
 
 // SetTabColor sets the color for a sheet tab
 func (m *MockSheetsWriter) SetTabColor(_ context.Context, _, sheetTab string, color TabColor) error {
+	m.SetColorCalls++
 	if m.SetColorError != nil {
 		return m.SetColorError
 	}
@@ -69,6 +82,7 @@ func (m *MockSheetsWriter) SetTabColor(_ context.Context, _, sheetTab string, co
 
 // SetTabIndex sets the position of a sheet tab
 func (m *MockSheetsWriter) SetTabIndex(_ context.Context, _, sheetTab string, index int) error {
+	m.SetIndexCalls++
 	if m.SetIndexError != nil {
 		return m.SetIndexError
 	}
@@ -78,18 +92,43 @@ func (m *MockSheetsWriter) SetTabIndex(_ context.Context, _, sheetTab string, in
 
 // GetSheetMetadata returns metadata for all sheets
 func (m *MockSheetsWriter) GetSheetMetadata(_ context.Context, _ string) ([]SheetInfo, error) {
+	m.GetMetadataCalls++
 	// Build from existing tabs
 	result := make([]SheetInfo, 0, len(m.ExistingTabs))
-	i := 0
+	i := int64(0)
 	for tab := range m.ExistingTabs {
+		sheetID := i
+		if id, ok := m.SheetIDsByName[tab]; ok {
+			sheetID = id
+		}
 		result = append(result, SheetInfo{
 			Title:   tab,
-			SheetID: int64(i),
+			SheetID: sheetID,
 			Index:   m.TabIndices[tab],
 		})
 		i++
 	}
 	return result, nil
+}
+
+// BatchUpdateTabProperties updates multiple tabs' properties in a single call
+func (m *MockSheetsWriter) BatchUpdateTabProperties(_ context.Context, _ string, updates []TabPropertyUpdate) error {
+	m.BatchUpdateCalls++
+	m.LastBatchUpdates = updates
+	m.AllBatchUpdates = append(m.AllBatchUpdates, updates)
+	if m.BatchUpdateError != nil {
+		return m.BatchUpdateError
+	}
+	// Apply the updates to our tracking maps (simulates what the real API would do)
+	for _, update := range updates {
+		if update.Color != nil {
+			m.TabColors[update.TabName] = *update.Color
+		}
+		if update.Index != nil {
+			m.TabIndices[update.TabName] = *update.Index
+		}
+	}
+	return nil
 }
 
 func TestGoogleSheetsExport_Name(t *testing.T) {
@@ -467,5 +506,205 @@ func TestExtractYear(t *testing.T) {
 				t.Errorf("ExtractYear(%q) = %d, want %d", tt.tab, got, tt.want)
 			}
 		})
+	}
+}
+
+// =============================================================================
+// BatchUpdateTabProperties Tests
+// =============================================================================
+
+func TestBatchUpdateTabProperties_CombinesAllUpdates(t *testing.T) {
+	// Test that BatchUpdateTabProperties accepts multiple tab updates
+	// and applies them all in a single call
+	mock := NewMockSheetsWriter()
+	ctx := context.Background()
+
+	color1 := TabColorGlobal
+	color2 := TabColor2025
+	idx0 := 0
+	idx1 := 1
+	idx2 := 2
+
+	updates := []TabPropertyUpdate{
+		{TabName: "g-division", SheetID: 100, Color: &color1, Index: &idx0},
+		{TabName: "2025-attendee", SheetID: 101, Color: &color2, Index: &idx1},
+		{TabName: "2025-person", SheetID: 102, Color: &color2, Index: &idx2},
+	}
+
+	err := mock.BatchUpdateTabProperties(ctx, "test-spreadsheet", updates)
+	if err != nil {
+		t.Fatalf("BatchUpdateTabProperties() error = %v", err)
+	}
+
+	// Verify only ONE batch call was made (not 3 separate calls)
+	if mock.BatchUpdateCalls != 1 {
+		t.Errorf("BatchUpdateCalls = %d, want 1", mock.BatchUpdateCalls)
+	}
+
+	// Verify all updates were captured
+	if len(mock.LastBatchUpdates) != 3 {
+		t.Errorf("LastBatchUpdates has %d items, want 3", len(mock.LastBatchUpdates))
+	}
+
+	// Verify the updates were applied correctly
+	if mock.TabColors["g-division"] != TabColorGlobal {
+		t.Error("g-division should have TabColorGlobal")
+	}
+	if mock.TabColors["2025-attendee"] != TabColor2025 {
+		t.Error("2025-attendee should have TabColor2025")
+	}
+	if mock.TabIndices["g-division"] != 0 {
+		t.Errorf("g-division index = %d, want 0", mock.TabIndices["g-division"])
+	}
+	if mock.TabIndices["2025-attendee"] != 1 {
+		t.Errorf("2025-attendee index = %d, want 1", mock.TabIndices["2025-attendee"])
+	}
+}
+
+func TestBatchUpdateTabProperties_PartialUpdates(t *testing.T) {
+	// Test that we can update only color or only index for individual tabs
+	mock := NewMockSheetsWriter()
+	ctx := context.Background()
+
+	color1 := TabColorGlobal
+	idx1 := 5
+
+	updates := []TabPropertyUpdate{
+		{TabName: "tab1", SheetID: 100, Color: &color1, Index: nil}, // Color only
+		{TabName: "tab2", SheetID: 101, Color: nil, Index: &idx1},   // Index only
+	}
+
+	err := mock.BatchUpdateTabProperties(ctx, "test-spreadsheet", updates)
+	if err != nil {
+		t.Fatalf("BatchUpdateTabProperties() error = %v", err)
+	}
+
+	// tab1 should have color but not index
+	if mock.TabColors["tab1"] != TabColorGlobal {
+		t.Error("tab1 should have TabColorGlobal")
+	}
+	if _, hasIndex := mock.TabIndices["tab1"]; hasIndex {
+		t.Error("tab1 should not have index set")
+	}
+
+	// tab2 should have index but not color
+	if _, hasColor := mock.TabColors["tab2"]; hasColor {
+		t.Error("tab2 should not have color set")
+	}
+	if mock.TabIndices["tab2"] != 5 {
+		t.Errorf("tab2 index = %d, want 5", mock.TabIndices["tab2"])
+	}
+}
+
+func TestBatchUpdateTabProperties_EmptyUpdates(t *testing.T) {
+	// Test that empty updates list doesn't cause errors
+	mock := NewMockSheetsWriter()
+	ctx := context.Background()
+
+	err := mock.BatchUpdateTabProperties(ctx, "test-spreadsheet", []TabPropertyUpdate{})
+	if err != nil {
+		t.Fatalf("BatchUpdateTabProperties() with empty updates should not error: %v", err)
+	}
+
+	if mock.BatchUpdateCalls != 1 {
+		t.Errorf("BatchUpdateCalls = %d, want 1", mock.BatchUpdateCalls)
+	}
+}
+
+func TestBatchUpdateTabProperties_PreservesSheetID(t *testing.T) {
+	// Verify that SheetID is correctly passed through for each update
+	mock := NewMockSheetsWriter()
+	ctx := context.Background()
+
+	color1 := TabColorGlobal
+	idx0 := 0
+
+	updates := []TabPropertyUpdate{
+		{TabName: "tab1", SheetID: 12345, Color: &color1, Index: &idx0},
+		{TabName: "tab2", SheetID: 67890, Color: &color1, Index: &idx0},
+	}
+
+	err := mock.BatchUpdateTabProperties(ctx, "test-spreadsheet", updates)
+	if err != nil {
+		t.Fatalf("BatchUpdateTabProperties() error = %v", err)
+	}
+
+	// Verify SheetIDs were captured correctly
+	if mock.LastBatchUpdates[0].SheetID != 12345 {
+		t.Errorf("First update SheetID = %d, want 12345", mock.LastBatchUpdates[0].SheetID)
+	}
+	if mock.LastBatchUpdates[1].SheetID != 67890 {
+		t.Errorf("Second update SheetID = %d, want 67890", mock.LastBatchUpdates[1].SheetID)
+	}
+}
+
+func TestBatchUpdateTabProperties_ErrorHandling(t *testing.T) {
+	// Test that errors are properly propagated
+	mock := NewMockSheetsWriter()
+	mock.BatchUpdateError = context.DeadlineExceeded
+	ctx := context.Background()
+
+	color1 := TabColorGlobal
+	idx0 := 0
+
+	updates := []TabPropertyUpdate{
+		{TabName: "tab1", SheetID: 100, Color: &color1, Index: &idx0},
+	}
+
+	err := mock.BatchUpdateTabProperties(ctx, "test-spreadsheet", updates)
+	if err != context.DeadlineExceeded {
+		t.Errorf("BatchUpdateTabProperties() error = %v, want context.DeadlineExceeded", err)
+	}
+}
+
+func TestBatchUpdateTabProperties_LargeBatch(t *testing.T) {
+	// Test that a large batch (similar to real 16+ tabs) works correctly
+	mock := NewMockSheetsWriter()
+	ctx := context.Background()
+
+	// Simulate 16 tabs (realistic scenario)
+	tabs := []string{
+		"g-division", "g-tag-def", "g-fin-cat", "g-cust-field-def",
+		"2025-attendee", "2025-person", "2025-session", "2025-staff",
+		"2025-bunk-assign", "2025-transactions", "2025-bunk", "2025-household",
+		"2025-sess-group", "2025-person-cv", "2025-household-cv", "2025-camper-history",
+	}
+
+	updates := make([]TabPropertyUpdate, len(tabs))
+	for i, tab := range tabs {
+		color := GetTabColor(tab)
+		idx := i
+		updates[i] = TabPropertyUpdate{
+			TabName: tab,
+			SheetID: int64(100 + i),
+			Color:   &color,
+			Index:   &idx,
+		}
+	}
+
+	err := mock.BatchUpdateTabProperties(ctx, "test-spreadsheet", updates)
+	if err != nil {
+		t.Fatalf("BatchUpdateTabProperties() error = %v", err)
+	}
+
+	// Verify single API call for all 16 tabs
+	if mock.BatchUpdateCalls != 1 {
+		t.Errorf("BatchUpdateCalls = %d, want 1 (should batch all 16 tabs)", mock.BatchUpdateCalls)
+	}
+
+	// Verify all tabs got their properties set
+	if len(mock.TabColors) != 16 {
+		t.Errorf("TabColors has %d entries, want 16", len(mock.TabColors))
+	}
+	if len(mock.TabIndices) != 16 {
+		t.Errorf("TabIndices has %d entries, want 16", len(mock.TabIndices))
+	}
+
+	// Spot-check some values
+	if mock.TabIndices["g-division"] != 0 {
+		t.Errorf("g-division index = %d, want 0", mock.TabIndices["g-division"])
+	}
+	if mock.TabIndices["2025-camper-history"] != 15 {
+		t.Errorf("2025-camper-history index = %d, want 15", mock.TabIndices["2025-camper-history"])
 	}
 }
