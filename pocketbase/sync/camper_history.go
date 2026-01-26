@@ -67,9 +67,9 @@ type personDemographics struct {
 
 // historicalData holds enrollment history for a person
 type historicalData struct {
-	enrolledYears    []int
+	enrolledYears     []int
 	priorYearSessions []string
-	priorYearBunks   []string
+	priorYearBunks    []string
 }
 
 // Sync executes the camper history computation
@@ -477,9 +477,9 @@ func (c *CamperHistorySync) loadHistoricalEnrollments(
 	// Initialize for all persons
 	for _, cmID := range personCMIDs {
 		result[cmID] = &historicalData{
-			enrolledYears:    []int{},
+			enrolledYears:     []int{},
 			priorYearSessions: []string{},
-			priorYearBunks:   []string{},
+			priorYearBunks:    []string{},
 		}
 	}
 

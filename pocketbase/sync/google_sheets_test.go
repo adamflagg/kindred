@@ -20,14 +20,14 @@ type MockSheetsWriter struct {
 	SetIndexError error
 
 	// API call tracking for rate limit testing
-	SetColorCalls       int                   // Number of SetTabColor calls
-	SetIndexCalls       int                   // Number of SetTabIndex calls
-	BatchUpdateCalls    int                   // Number of BatchUpdateTabProperties calls
-	LastBatchUpdates    []TabPropertyUpdate   // Last batch update request
-	AllBatchUpdates     [][]TabPropertyUpdate // All batch update requests
-	BatchUpdateError    error
-	GetMetadataCalls    int // Number of GetSheetMetadata calls
-	SheetIDsByName      map[string]int64      // tab name -> sheet ID for metadata lookups
+	SetColorCalls    int                   // Number of SetTabColor calls
+	SetIndexCalls    int                   // Number of SetTabIndex calls
+	BatchUpdateCalls int                   // Number of BatchUpdateTabProperties calls
+	LastBatchUpdates []TabPropertyUpdate   // Last batch update request
+	AllBatchUpdates  [][]TabPropertyUpdate // All batch update requests
+	BatchUpdateError error
+	GetMetadataCalls int              // Number of GetSheetMetadata calls
+	SheetIDsByName   map[string]int64 // tab name -> sheet ID for metadata lookups
 }
 
 func NewMockSheetsWriter() *MockSheetsWriter {

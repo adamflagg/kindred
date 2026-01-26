@@ -56,45 +56,45 @@ func TestCamperHistoryDeduplicatesMultiSessionCampers(t *testing.T) {
 // TestCamperHistoryComputesReturningStatus tests is_returning calculation
 func TestCamperHistoryComputesReturningStatus(t *testing.T) {
 	tests := []struct {
-		name               string
-		currentYear        int
-		enrolledYears      []int
-		expectedReturning  bool
+		name                string
+		currentYear         int
+		enrolledYears       []int
+		expectedReturning   bool
 		expectedYearsAtCamp int
 	}{
 		{
-			name:               "new camper - never attended before",
-			currentYear:        2025,
-			enrolledYears:      []int{}, // No prior years
-			expectedReturning:  false,
+			name:                "new camper - never attended before",
+			currentYear:         2025,
+			enrolledYears:       []int{}, // No prior years
+			expectedReturning:   false,
 			expectedYearsAtCamp: 1, // Just current year
 		},
 		{
-			name:               "returning from previous year",
-			currentYear:        2025,
-			enrolledYears:      []int{2024},
-			expectedReturning:  true,
+			name:                "returning from previous year",
+			currentYear:         2025,
+			enrolledYears:       []int{2024},
+			expectedReturning:   true,
 			expectedYearsAtCamp: 2,
 		},
 		{
-			name:               "returning after gap year",
-			currentYear:        2025,
-			enrolledYears:      []int{2023}, // Skipped 2024
-			expectedReturning:  false,       // Not returning (gap year)
+			name:                "returning after gap year",
+			currentYear:         2025,
+			enrolledYears:       []int{2023}, // Skipped 2024
+			expectedReturning:   false,       // Not returning (gap year)
 			expectedYearsAtCamp: 2,
 		},
 		{
-			name:               "veteran camper",
-			currentYear:        2025,
-			enrolledYears:      []int{2020, 2021, 2022, 2023, 2024},
-			expectedReturning:  true,
+			name:                "veteran camper",
+			currentYear:         2025,
+			enrolledYears:       []int{2020, 2021, 2022, 2023, 2024},
+			expectedReturning:   true,
 			expectedYearsAtCamp: 6, // 5 prior + current
 		},
 		{
-			name:               "returning with multiple gaps",
-			currentYear:        2025,
-			enrolledYears:      []int{2019, 2021, 2024},
-			expectedReturning:  true, // Was enrolled in 2024
+			name:                "returning with multiple gaps",
+			currentYear:         2025,
+			enrolledYears:       []int{2019, 2021, 2024},
+			expectedReturning:   true, // Was enrolled in 2024
 			expectedYearsAtCamp: 4,
 		},
 	}
@@ -280,9 +280,9 @@ func TestCamperHistoryStatusPriority(t *testing.T) {
 	// When a camper has multiple statuses across sessions,
 	// we should prefer the "best" status (enrolled > others)
 	tests := []struct {
-		name           string
-		statuses       []string
-		expectedBest   string
+		name         string
+		statuses     []string
+		expectedBest string
 	}{
 		{
 			name:         "enrolled wins",
@@ -542,4 +542,3 @@ func joinSorted(strs []string) string {
 	}
 	return result
 }
-
