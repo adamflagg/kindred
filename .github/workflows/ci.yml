@@ -267,7 +267,7 @@ jobs:
 
     - name: Go linting
       if: needs.detect-changes.outputs.backend == 'true'
-      uses: golangci/golangci-lint-action@v7
+      uses: golangci/golangci-lint-action@v9
       with:
         version: v2.8.0
         working-directory: pocketbase
