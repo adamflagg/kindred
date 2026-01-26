@@ -338,7 +338,10 @@ func (s *PersonCustomFieldValuesSync) syncPersonCustomFieldValues(
 			yearScopedKey := fmt.Sprintf("%s|%d", compositeKey, year)
 
 			// Track as processed using yearScopedKey format
-			s.TrackProcessedKey(yearScopedKey, 0)
+			// Use TrackProcessedCompositeKey to avoid double year suffix:
+			// TrackProcessedKey(yearScopedKey, 0) would create "key|year|0"
+			// but deleteOrphans looks for "key|year"
+			s.TrackProcessedCompositeKey(compositeKey, year)
 
 			// Check for existing record using yearScopedKey
 			if existing, found := existingRecords[yearScopedKey]; found {
