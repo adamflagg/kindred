@@ -155,16 +155,20 @@ func (s *Scheduler) runWeeklySync() {
 	}
 }
 
-// runCustomValuesSync runs the weekly custom field values sync for current year
+// runCustomValuesSync runs the weekly custom field values sync for current year.
+// Each sync runs sequentially to prevent doubling API load and hitting rate limits.
+// This fixes the "rate limiter wait: context deadline exceeded" issue.
 func (s *Scheduler) runCustomValuesSync() {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
 	defer cancel()
 
 	jobs := GetCustomValuesSyncJobs()
-	slog.Info("Custom values sync starting", "services", jobs)
+	slog.Info("Custom values sync starting (sequential)", "services", jobs)
 
 	for _, job := range jobs {
-		if err := s.orchestrator.RunSingleSync(ctx, job); err != nil {
+		// Use runSyncAndWait to ensure each sync completes before starting the next.
+		// This prevents concurrent API calls that would double rate limiter pressure.
+		if err := s.orchestrator.runSyncAndWait(ctx, job); err != nil {
 			slog.Error("Custom values sync failed", "job", job, "error", err)
 		} else {
 			slog.Info("Custom values sync completed", "job", job)
