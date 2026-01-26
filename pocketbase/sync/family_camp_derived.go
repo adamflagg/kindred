@@ -12,6 +12,9 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
+// serviceNameFamilyCampDerived is the canonical name for this sync service
+const serviceNameFamilyCampDerived = "family_camp_derived"
+
 // FamilyCampDerivedSync computes derived family camp tables from custom values.
 // This service reads from person_custom_values and household_custom_values
 // and populates family_camp_adults, family_camp_registrations, and family_camp_medical.
@@ -672,9 +675,9 @@ func (s *FamilyCampDerivedSync) clearExistingRecords(ctx context.Context, year i
 }
 
 // writeAdults writes adult records to the database
-func (s *FamilyCampDerivedSync) writeAdults(ctx context.Context, adults []*adultData, year int) (int, int) {
-	created := 0
-	errors := 0
+func (s *FamilyCampDerivedSync) writeAdults(ctx context.Context, adults []*adultData, year int) (created, errors int) {
+	created = 0
+	errors = 0
 
 	col, err := s.App.FindCollectionByNameOrId("family_camp_adults")
 	if err != nil {
@@ -714,9 +717,11 @@ func (s *FamilyCampDerivedSync) writeAdults(ctx context.Context, adults []*adult
 }
 
 // writeRegistrations writes registration records to the database
-func (s *FamilyCampDerivedSync) writeRegistrations(ctx context.Context, registrations []*registrationData, year int) (int, int) {
-	created := 0
-	errors := 0
+func (s *FamilyCampDerivedSync) writeRegistrations(
+	ctx context.Context, registrations []*registrationData, year int,
+) (created, errors int) {
+	created = 0
+	errors = 0
 
 	col, err := s.App.FindCollectionByNameOrId("family_camp_registrations")
 	if err != nil {
@@ -756,9 +761,11 @@ func (s *FamilyCampDerivedSync) writeRegistrations(ctx context.Context, registra
 }
 
 // writeMedical writes medical records to the database
-func (s *FamilyCampDerivedSync) writeMedical(ctx context.Context, medical []*medicalData, year int) (int, int) {
-	created := 0
-	errors := 0
+func (s *FamilyCampDerivedSync) writeMedical(
+	ctx context.Context, medical []*medicalData, year int,
+) (created, errors int) {
+	created = 0
+	errors = 0
 
 	col, err := s.App.FindCollectionByNameOrId("family_camp_medical")
 	if err != nil {

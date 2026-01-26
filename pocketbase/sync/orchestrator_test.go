@@ -779,14 +779,14 @@ func TestWeeklySyncIncludesDivisions(t *testing.T) {
 
 	found := false
 	for _, job := range jobs {
-		if job == "divisions" {
+		if job == serviceNameDivisions {
 			found = true
 			break
 		}
 	}
 
 	if !found {
-		t.Error("expected weekly sync to include 'divisions' (global table)")
+		t.Errorf("expected weekly sync to include %q (global table)", serviceNameDivisions)
 	}
 }
 
@@ -810,8 +810,8 @@ func TestDailySyncExcludesDivisions(t *testing.T) {
 	}
 
 	for _, job := range dailyJobs {
-		if job == "divisions" {
-			t.Error("daily sync should NOT include 'divisions' (moved to weekly)")
+		if job == serviceNameDivisions {
+			t.Errorf("daily sync should NOT include %q (moved to weekly)", serviceNameDivisions)
 		}
 	}
 }
@@ -836,14 +836,14 @@ func TestDailySyncIncludesFamilyCampDerived(t *testing.T) {
 
 	found := false
 	for _, job := range expectedDailyJobs {
-		if job == "family_camp_derived" {
+		if job == serviceNameFamilyCampDerived {
 			found = true
 			break
 		}
 	}
 
 	if !found {
-		t.Error("expected daily sync to include 'family_camp_derived'")
+		t.Errorf("expected daily sync to include %q", serviceNameFamilyCampDerived)
 	}
 }
 

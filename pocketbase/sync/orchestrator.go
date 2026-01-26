@@ -758,8 +758,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		// and there's no need to re-process them for historical years
 		// opts.Year > 0 means this is a historical sync with a specific year
 		if opts.Year == 0 {
-			servicesToRun = append(servicesToRun, "family_camp_derived") // Computed from custom values
-			servicesToRun = append(servicesToRun, "bunk_requests")
+			servicesToRun = append(servicesToRun, "family_camp_derived", "bunk_requests") // Computed from custom values
 			// Only include process_requests in production (Docker) mode
 			// In development, skip AI processing to avoid unnecessary API costs
 			if os.Getenv("IS_DOCKER") == boolTrueStr {
@@ -770,8 +769,9 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		// Include custom field values if requested (for historical syncs)
 		// These run after persons/households since they depend on those records existing
 		if opts.IncludeCustomValues {
-			servicesToRun = append(servicesToRun, "person_custom_values", "household_custom_values")
-			servicesToRun = append(servicesToRun, "family_camp_derived") // Derived from custom values
+			// Derived from custom values
+			servicesToRun = append(servicesToRun,
+				"person_custom_values", "household_custom_values", "family_camp_derived")
 		}
 	}
 

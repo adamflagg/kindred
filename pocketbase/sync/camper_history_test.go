@@ -8,11 +8,11 @@ import (
 // TestCamperHistorySync_Name verifies the service name is correct
 func TestCamperHistorySync_Name(t *testing.T) {
 	// The service name must be "camper_history" for orchestrator integration
-	expectedName := "camper_history"
+	expectedName := serviceNameCamperHistory
 
 	// Test that a mock sync would return the correct name
 	// (actual instance test requires PocketBase app)
-	if expectedName != "camper_history" {
+	if expectedName != serviceNameCamperHistory {
 		t.Errorf("expected service name %q", expectedName)
 	}
 }

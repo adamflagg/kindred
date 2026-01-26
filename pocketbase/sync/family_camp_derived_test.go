@@ -9,10 +9,10 @@ import (
 // TestFamilyCampDerivedSync_Name verifies the service name is correct
 func TestFamilyCampDerivedSync_Name(t *testing.T) {
 	// The service name must be "family_camp_derived" for orchestrator integration
-	expectedName := "family_camp_derived"
+	expectedName := serviceNameFamilyCampDerived
 
 	// Test that the expected name matches (actual instance test requires PocketBase app)
-	if expectedName != "family_camp_derived" {
+	if expectedName != serviceNameFamilyCampDerived {
 		t.Errorf("expected service name %q", expectedName)
 	}
 }

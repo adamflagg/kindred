@@ -15,6 +15,9 @@ import (
 // personBatchSize is the number of persons to process per batch for lookups
 const personBatchSize = 100
 
+// serviceNameCamperHistory is the canonical name for this sync service
+const serviceNameCamperHistory = "camper_history"
+
 // CamperHistorySync computes camper history records with retention metrics.
 // This is a pure Go implementation that reads from PocketBase collections
 // (attendees, persons, bunk_assignments, camp_sessions) and writes to camper_history.

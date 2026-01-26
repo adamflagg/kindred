@@ -1351,7 +1351,7 @@ func handleCamperHistorySync(e *core.RequestEvent, scheduler *Scheduler) error {
 // Accepts required ?year=YYYY parameter to compute derived tables for a specific year
 func handleFamilyCampDerivedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	orchestrator := scheduler.GetOrchestrator()
-	syncType := "family_camp_derived"
+	syncType := serviceNameFamilyCampDerived
 
 	// Check if already running
 	if orchestrator.IsRunning(syncType) {

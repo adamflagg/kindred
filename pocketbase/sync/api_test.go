@@ -775,7 +775,7 @@ func TestRunProcessRequestsParameterParsing(t *testing.T) {
 // parseRunProcessRequestsParam parses the run_process_requests query parameter
 // Returns true if the parameter is "true" or "1"
 func parseRunProcessRequestsParam(param string) bool {
-	return param == "true" || param == "1"
+	return param == boolTrueStr || param == "1"
 }
 
 // TestBunkRequestsUploadWithProcessRequests validates that when both run_sync=true
