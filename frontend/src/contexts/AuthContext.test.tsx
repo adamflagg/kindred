@@ -257,6 +257,175 @@ describe('AuthContext', () => {
     });
   });
 
+  describe('production mode token validation', () => {
+    it('validates cached token with backend on mount', async () => {
+      (globalThis.fetch as MockedFetch).mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ auth_mode: 'production' }),
+      });
+
+      const { getCurrentUser, pb } = await import('../lib/pocketbase');
+
+      // Return a cached user (regular users collection)
+      const cachedUser = {
+        id: 'user-123',
+        collectionId: 'users',
+        collectionName: 'users',
+        email: 'cached@test.com',
+        created: '',
+        updated: '',
+      };
+      vi.mocked(getCurrentUser).mockReturnValue(cachedUser);
+
+      // Mock successful authRefresh with updated user data
+      const refreshedUser = {
+        id: 'user-123',
+        collectionId: 'users',
+        collectionName: 'users',
+        email: 'refreshed@test.com',
+        created: '',
+        updated: '',
+      };
+      const mockAuthRefresh = vi.fn().mockResolvedValue({ record: refreshedUser });
+      vi.mocked(pb.collection).mockReturnValue({ authRefresh: mockAuthRefresh } as ReturnType<typeof pb.collection>);
+
+      render(
+        <AuthProvider>
+          <TestConsumer />
+        </AuthProvider>
+      );
+
+      await waitFor(() => {
+        // Should have called authRefresh to validate token
+        expect(pb.collection).toHaveBeenCalledWith('users');
+        expect(mockAuthRefresh).toHaveBeenCalled();
+      });
+
+      await waitFor(() => {
+        // Should use the refreshed user data
+        expect(screen.getByTestId('user').textContent).toBe('refreshed@test.com');
+      });
+    });
+
+    it('clears auth and sets user to null when token is invalid (401)', async () => {
+      (globalThis.fetch as MockedFetch).mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ auth_mode: 'production' }),
+      });
+
+      const { getCurrentUser, pb, isAuthenticated } = await import('../lib/pocketbase');
+
+      // Return a cached user
+      const cachedUser = {
+        id: 'user-123',
+        collectionId: 'users',
+        collectionName: 'users',
+        email: 'stale@test.com',
+        created: '',
+        updated: '',
+      };
+      vi.mocked(getCurrentUser).mockReturnValue(cachedUser);
+      vi.mocked(isAuthenticated).mockReturnValue(false);
+
+      // Mock authRefresh to fail with 401
+      const mockAuthRefresh = vi.fn().mockRejectedValue({ status: 401 });
+      vi.mocked(pb.collection).mockReturnValue({ authRefresh: mockAuthRefresh } as ReturnType<typeof pb.collection>);
+
+      render(
+        <AuthProvider>
+          <TestConsumer />
+        </AuthProvider>
+      );
+
+      await waitFor(() => {
+        // Should clear auth store on 401
+        expect(pb.authStore.clear).toHaveBeenCalled();
+      });
+
+      await waitFor(() => {
+        // User should be null after invalid token
+        expect(screen.getByTestId('user').textContent).toBe('no-user');
+        expect(screen.getByTestId('authenticated').textContent).toBe('no');
+      });
+    });
+
+    it('uses cached user on network error for graceful degradation', async () => {
+      (globalThis.fetch as MockedFetch).mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ auth_mode: 'production' }),
+      });
+
+      const { getCurrentUser, pb, isAuthenticated } = await import('../lib/pocketbase');
+
+      // Return a cached user
+      const cachedUser = {
+        id: 'user-123',
+        collectionId: 'users',
+        collectionName: 'users',
+        email: 'cached@test.com',
+        created: '',
+        updated: '',
+      };
+      vi.mocked(getCurrentUser).mockReturnValue(cachedUser);
+      vi.mocked(isAuthenticated).mockReturnValue(true);
+
+      // Mock authRefresh to fail with network error (no status)
+      const mockAuthRefresh = vi.fn().mockRejectedValue(new Error('Network error'));
+      vi.mocked(pb.collection).mockReturnValue({ authRefresh: mockAuthRefresh } as ReturnType<typeof pb.collection>);
+
+      // Suppress console.warn for this test
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      render(
+        <AuthProvider>
+          <TestConsumer />
+        </AuthProvider>
+      );
+
+      await waitFor(() => {
+        // Should NOT clear auth store on network error
+        expect(pb.authStore.clear).not.toHaveBeenCalled();
+      });
+
+      await waitFor(() => {
+        // Should still use cached user for graceful degradation
+        expect(screen.getByTestId('user').textContent).toBe('cached@test.com');
+        expect(screen.getByTestId('authenticated').textContent).toBe('yes');
+      });
+
+      consoleSpy.mockRestore();
+    });
+
+    it('skips backend validation when no cached token exists', async () => {
+      (globalThis.fetch as MockedFetch).mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ auth_mode: 'production' }),
+      });
+
+      const { getCurrentUser, pb } = await import('../lib/pocketbase');
+
+      // No cached user
+      vi.mocked(getCurrentUser).mockReturnValue(null);
+
+      const mockAuthRefresh = vi.fn();
+      vi.mocked(pb.collection).mockReturnValue({ authRefresh: mockAuthRefresh } as ReturnType<typeof pb.collection>);
+
+      render(
+        <AuthProvider>
+          <TestConsumer />
+        </AuthProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('loading').textContent).toBe('ready');
+      });
+
+      // Should NOT have called authRefresh when there's no cached user
+      expect(mockAuthRefresh).not.toHaveBeenCalled();
+      expect(screen.getByTestId('user').textContent).toBe('no-user');
+    });
+  });
+
   describe('BYPASS_USER constant', () => {
     it('has correct properties for mock user', async () => {
       (globalThis.fetch as MockedFetch).mockResolvedValue({
