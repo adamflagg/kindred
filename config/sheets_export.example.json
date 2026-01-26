@@ -30,12 +30,12 @@
       "sheet_name": "financial-transactions",
       "is_global": false
     },
-    "person_custom_field_values": {
+    "person_custom_values": {
       "enabled": true,
       "sheet_name": "custom-fields-persons",
       "is_global": false
     },
-    "household_custom_field_values": {
+    "household_custom_values": {
       "enabled": true,
       "sheet_name": "custom-fields-households",
       "is_global": false
