@@ -6,6 +6,9 @@ import (
 	"testing"
 )
 
+const testPersonPBID = "pb_person_123"
+const testFieldDefPBIDPerson = "pb_field_100"
+
 func TestPersonCustomFieldValuesSync_Name(t *testing.T) {
 	s := &PersonCustomFieldValuesSync{}
 
@@ -28,8 +31,8 @@ func TestTransformPersonCustomFieldValueToPB(t *testing.T) {
 	}
 
 	// PB IDs (would be resolved by caller before calling transform)
-	personPBId := "pb_person_123"
-	fieldDefPBId := "pb_field_100"
+	personPBId := testPersonPBID
+	fieldDefPBId := testFieldDefPBIDPerson
 	year := 2025
 
 	pbData := s.transformPersonCustomFieldValueToPB(data, personPBId, fieldDefPBId, year)
@@ -73,7 +76,7 @@ func TestTransformPersonCustomFieldValueEmptyValue(t *testing.T) {
 		"value": "",
 	}
 
-	pbData := s.transformPersonCustomFieldValueToPB(data, "pb_person_123", "pb_field_100", 2025)
+	pbData := s.transformPersonCustomFieldValueToPB(data, testPersonPBID, testFieldDefPBIDPerson, 2025)
 
 	if got := pbData["value"].(string); got != "" {
 		t.Errorf("value = %q, want empty string", got)
@@ -90,7 +93,7 @@ func TestTransformPersonCustomFieldValueNilValue(t *testing.T) {
 		// Value is missing/nil
 	}
 
-	pbData := s.transformPersonCustomFieldValueToPB(data, "pb_person_123", "pb_field_100", 2025)
+	pbData := s.transformPersonCustomFieldValueToPB(data, testPersonPBID, testFieldDefPBIDPerson, 2025)
 
 	// Should default to empty string
 	if got := pbData["value"].(string); got != "" {
@@ -103,8 +106,8 @@ func TestTransformPersonCustomFieldValueNilValue(t *testing.T) {
 // The PreloadCompositeRecords function appends "|year" to the keyBuilder result,
 // so the keyBuilder must NOT include year, and all lookups must use "key|year" format.
 func TestPersonCustomFieldValuesCompositeKeyFormat(t *testing.T) {
-	personPBId := "pb_person_123"
-	fieldDefPBId := "pb_field_100"
+	personPBId := testPersonPBID
+	fieldDefPBId := testFieldDefPBIDPerson
 	year := 2025
 
 	// The identity key (what keyBuilder should return - NO year)
@@ -192,8 +195,8 @@ func TestPersonCustomFieldValuesTrackingMatchesOrphanLookup(t *testing.T) {
 		},
 	}
 
-	personPBId := "pb_person_123"
-	fieldDefPBId := "pb_field_100"
+	personPBId := testPersonPBID
+	fieldDefPBId := testFieldDefPBIDPerson
 	year := 2025
 
 	// Simulate what the sync code does during record processing

@@ -7,6 +7,7 @@ import (
 )
 
 const testFieldDefPBID = "pb_field_100"
+const testHouseholdPBID = "pb_household_123"
 
 func TestHouseholdCustomFieldValuesSync_Name(t *testing.T) {
 	s := &HouseholdCustomFieldValuesSync{}
@@ -30,7 +31,7 @@ func TestTransformHouseholdCustomFieldValueToPB(t *testing.T) {
 	}
 
 	// PB IDs (would be resolved by caller before calling transform)
-	householdPBId := "pb_household_123"
+	householdPBId := testHouseholdPBID
 	fieldDefPBId := testFieldDefPBID
 	year := 2025
 
@@ -74,7 +75,7 @@ func TestTransformHouseholdCustomFieldValueEmptyValue(t *testing.T) {
 		"value": "",
 	}
 
-	pbData := s.transformHouseholdCustomFieldValueToPB(data, "pb_household_123", "pb_field_100", 2025)
+	pbData := s.transformHouseholdCustomFieldValueToPB(data, testHouseholdPBID, testFieldDefPBID, 2025)
 
 	if got := pbData["value"].(string); got != "" {
 		t.Errorf("value = %q, want empty string", got)
@@ -90,7 +91,7 @@ func TestTransformHouseholdCustomFieldValueNilValue(t *testing.T) {
 		// Value is missing/nil
 	}
 
-	pbData := s.transformHouseholdCustomFieldValueToPB(data, "pb_household_123", "pb_field_100", 2025)
+	pbData := s.transformHouseholdCustomFieldValueToPB(data, testHouseholdPBID, testFieldDefPBID, 2025)
 
 	// Should default to empty string
 	if got := pbData["value"].(string); got != "" {
@@ -103,7 +104,7 @@ func TestTransformHouseholdCustomFieldValueNilValue(t *testing.T) {
 // The PreloadCompositeRecords function appends "|year" to the keyBuilder result,
 // so the keyBuilder must NOT include year, and all lookups must use "key|year" format.
 func TestHouseholdCustomFieldValuesCompositeKeyFormat(t *testing.T) {
-	householdPBId := "pb_household_123"
+	householdPBId := testHouseholdPBID
 	fieldDefPBId := testFieldDefPBID
 	year := 2025
 
@@ -192,8 +193,8 @@ func TestHouseholdCustomFieldValuesTrackingMatchesOrphanLookup(t *testing.T) {
 		},
 	}
 
-	householdPBId := "pb_household_123"
-	fieldDefPBId := "pb_field_100"
+	householdPBId := testHouseholdPBID
+	fieldDefPBId := testFieldDefPBID
 	year := 2025
 
 	// Simulate what the sync code does during record processing
