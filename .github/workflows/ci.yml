@@ -499,7 +499,7 @@ jobs:
       uses: actions/checkout@v6
 
     - name: Submit dependencies
-      uses: advanced-security/component-detection-dependency-submission-action@v0.1.0
+      uses: advanced-security/component-detection-dependency-submission-action@v0.1.1
 
   # Summary job - gate for PR merges
   summary:
