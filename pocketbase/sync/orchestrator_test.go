@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -922,4 +923,171 @@ func TestWeeklySyncJobsCount(t *testing.T) {
 	if len(jobs) != expectedCount {
 		t.Errorf("expected %d weekly sync jobs, got %d: %v", expectedCount, len(jobs), jobs)
 	}
+}
+
+// TestRunSingleSyncContextDeadlineHandling verifies RunSingleSync respects parent context
+// deadlines appropriately, fixing the "rate limiter wait: context deadline exceeded" issue.
+func TestRunSingleSyncContextDeadlineHandling(t *testing.T) {
+	t.Run("uses parent context when deadline is generous", func(t *testing.T) {
+		o := NewOrchestrator(nil)
+
+		// Track what context the service receives
+		var receivedCtx context.Context
+		var ctxMu sync.Mutex
+
+		mock := &contextCaptureMockService{
+			MockService: &MockService{name: "test", delay: 50 * time.Millisecond},
+			onSync: func(ctx context.Context) {
+				ctxMu.Lock()
+				receivedCtx = ctx
+				ctxMu.Unlock()
+			},
+		}
+		o.RegisterService("test", mock)
+
+		// Create a parent context with 2-hour deadline (generous)
+		parentCtx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
+		defer cancel()
+
+		err := o.RunSingleSync(parentCtx, "test")
+		if err != nil {
+			t.Fatalf("RunSingleSync failed: %v", err)
+		}
+
+		// Wait for sync to complete
+		time.Sleep(100 * time.Millisecond)
+
+		ctxMu.Lock()
+		ctx := receivedCtx
+		ctxMu.Unlock()
+
+		if ctx == nil {
+			t.Fatal("service was never called with a context")
+		}
+
+		// When parent has generous deadline (>=30min), the sync context should
+		// have a deadline that's at least 30 minutes out (not just whatever is left
+		// on the parent context)
+		deadline, hasDeadline := ctx.Deadline()
+		if !hasDeadline {
+			t.Error("expected sync context to have a deadline")
+		} else {
+			timeUntilDeadline := time.Until(deadline)
+			// Should have at least 30 minutes remaining (allowing some margin for test execution)
+			if timeUntilDeadline < 29*time.Minute {
+				t.Errorf("sync context deadline too short: %v remaining", timeUntilDeadline)
+			}
+		}
+	})
+
+	t.Run("extends short parent deadline", func(t *testing.T) {
+		o := NewOrchestrator(nil)
+
+		var receivedCtx context.Context
+		var ctxMu sync.Mutex
+
+		mock := &contextCaptureMockService{
+			MockService: &MockService{name: "test", delay: 50 * time.Millisecond},
+			onSync: func(ctx context.Context) {
+				ctxMu.Lock()
+				receivedCtx = ctx
+				ctxMu.Unlock()
+			},
+		}
+		o.RegisterService("test", mock)
+
+		// Create a parent context with very short deadline (1 minute - too short for sync)
+		parentCtx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+		defer cancel()
+
+		err := o.RunSingleSync(parentCtx, "test")
+		if err != nil {
+			t.Fatalf("RunSingleSync failed: %v", err)
+		}
+
+		// Wait for sync to complete
+		time.Sleep(100 * time.Millisecond)
+
+		ctxMu.Lock()
+		ctx := receivedCtx
+		ctxMu.Unlock()
+
+		if ctx == nil {
+			t.Fatal("service was never called with a context")
+		}
+
+		// When parent has short deadline (<30min), the sync should create
+		// its own generous timeout
+		deadline, hasDeadline := ctx.Deadline()
+		if !hasDeadline {
+			t.Error("expected sync context to have a deadline")
+		} else {
+			timeUntilDeadline := time.Until(deadline)
+			// Should have at least 30 minutes (the default generous timeout)
+			if timeUntilDeadline < 29*time.Minute {
+				t.Errorf("sync context should extend short parent deadline: got %v remaining", timeUntilDeadline)
+			}
+		}
+	})
+
+	t.Run("creates deadline when parent has none", func(t *testing.T) {
+		o := NewOrchestrator(nil)
+
+		var receivedCtx context.Context
+		var ctxMu sync.Mutex
+
+		mock := &contextCaptureMockService{
+			MockService: &MockService{name: "test", delay: 50 * time.Millisecond},
+			onSync: func(ctx context.Context) {
+				ctxMu.Lock()
+				receivedCtx = ctx
+				ctxMu.Unlock()
+			},
+		}
+		o.RegisterService("test", mock)
+
+		// Parent context with no deadline
+		parentCtx := context.Background()
+
+		err := o.RunSingleSync(parentCtx, "test")
+		if err != nil {
+			t.Fatalf("RunSingleSync failed: %v", err)
+		}
+
+		// Wait for sync to complete
+		time.Sleep(100 * time.Millisecond)
+
+		ctxMu.Lock()
+		ctx := receivedCtx
+		ctxMu.Unlock()
+
+		if ctx == nil {
+			t.Fatal("service was never called with a context")
+		}
+
+		// When parent has no deadline, sync should create a generous timeout
+		deadline, hasDeadline := ctx.Deadline()
+		if !hasDeadline {
+			t.Error("expected sync context to have a deadline even when parent doesn't")
+		} else {
+			timeUntilDeadline := time.Until(deadline)
+			// Should have at least 1 hour (the extended timeout for no-deadline parents)
+			if timeUntilDeadline < 59*time.Minute {
+				t.Errorf("sync context deadline too short for no-deadline parent: %v remaining", timeUntilDeadline)
+			}
+		}
+	})
+}
+
+// contextCaptureMockService wraps MockService to capture the context passed to Sync
+type contextCaptureMockService struct {
+	*MockService
+	onSync func(ctx context.Context)
+}
+
+func (c *contextCaptureMockService) Sync(ctx context.Context) error {
+	if c.onSync != nil {
+		c.onSync(ctx)
+	}
+	return c.MockService.Sync(ctx)
 }
