@@ -723,8 +723,8 @@ func TestFieldResolver_ResolveBool(t *testing.T) {
 
 	// True value
 	got := resolver.ResolveValue(true, &col)
-	if got != "true" {
-		t.Errorf("ResolveValue(true) = %v, want true", got)
+	if got != boolTrueStr {
+		t.Errorf("ResolveValue(true) = %v, want %s", got, boolTrueStr)
 	}
 
 	// False value

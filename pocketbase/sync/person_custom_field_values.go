@@ -147,7 +147,7 @@ func (s *PersonCustomFieldValuesSync) Sync(ctx context.Context) error {
 
 		// Log progress every 50 persons
 		if i > 0 && i%50 == 0 {
-			slog.Info("Custom field values sync progress",
+			slog.Info("Person custom field values sync progress",
 				"processed", i,
 				"total", len(personIDs),
 				"percent", fmt.Sprintf("%.1f%%", float64(i)/float64(len(personIDs))*100))

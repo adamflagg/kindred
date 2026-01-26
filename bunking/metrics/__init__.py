@@ -1,17 +1,8 @@
 """Metrics module for camper retention and history analytics.
 
-This module provides tools for computing and exporting camper history data
-for nonprofit reporting and analytics.
+This module previously contained Python implementations for computing camper history.
+The computation has been moved to a native Go implementation in pocketbase/sync/camper_history.go
+for better performance and consistency with other sync services.
 """
 
-from .camper_history import (
-    CamperHistoryComputer,
-    CamperHistoryRecord,
-    CamperHistoryWriter,
-)
-
-__all__ = [
-    "CamperHistoryComputer",
-    "CamperHistoryRecord",
-    "CamperHistoryWriter",
-]
+__all__: list[str] = []

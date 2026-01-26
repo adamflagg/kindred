@@ -148,12 +148,12 @@ func GenerateDefaultConfig() *SheetsConfig {
 				SheetName: "financial-transactions",
 				IsGlobal:  false,
 			},
-			"person_custom_field_values": {
+			"person_custom_values": {
 				Enabled:   true,
 				SheetName: "custom-fields-persons",
 				IsGlobal:  false,
 			},
-			"household_custom_field_values": {
+			"household_custom_values": {
 				Enabled:   true,
 				SheetName: "custom-fields-households",
 				IsGlobal:  false,

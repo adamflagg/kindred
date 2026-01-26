@@ -133,3 +133,173 @@ func TestReorderAllTabs_IgnoresNonExportTabs(t *testing.T) {
 		t.Errorf("2025-attendee index = %d, want 1", mock.TabIndices["2025-attendee"])
 	}
 }
+
+// =============================================================================
+// API Call Efficiency Tests (Rate Limit Prevention)
+// =============================================================================
+
+// TestReorderAllTabs_UsesBatchUpdate verifies that ReorderAllTabs uses
+// BatchUpdateTabProperties instead of individual SetTabColor/SetTabIndex calls.
+// This is critical for avoiding Google Sheets API rate limits (60 writes/min).
+func TestReorderAllTabs_UsesBatchUpdate(t *testing.T) {
+	mock := NewMockSheetsWriter()
+
+	// Setup 5 tabs (realistic subset)
+	mock.ExistingTabs = map[string]bool{
+		"g-division":    true,
+		"g-tag-def":     true,
+		"2025-attendee": true,
+		"2025-person":   true,
+		"2025-session":  true,
+	}
+	// Setup sheet IDs for metadata lookup
+	mock.SheetIDsByName = map[string]int64{
+		"g-division":    100,
+		"g-tag-def":     101,
+		"2025-attendee": 102,
+		"2025-person":   103,
+		"2025-session":  104,
+	}
+
+	err := ReorderAllTabs(context.Background(), mock, "test-spreadsheet-id", []string{})
+	if err != nil {
+		t.Fatalf("ReorderAllTabs() error = %v", err)
+	}
+
+	// Should use batch update, NOT individual SetTabColor/SetTabIndex calls
+	if mock.BatchUpdateCalls != 1 {
+		t.Errorf("BatchUpdateCalls = %d, want 1 (should batch all updates)", mock.BatchUpdateCalls)
+	}
+
+	// Individual calls should be 0
+	if mock.SetColorCalls != 0 {
+		t.Errorf("SetColorCalls = %d, want 0 (should use batch instead)", mock.SetColorCalls)
+	}
+	if mock.SetIndexCalls != 0 {
+		t.Errorf("SetIndexCalls = %d, want 0 (should use batch instead)", mock.SetIndexCalls)
+	}
+
+	// Verify all tabs still got their properties set (via batch)
+	if len(mock.TabColors) != 5 {
+		t.Errorf("TabColors has %d entries, want 5", len(mock.TabColors))
+	}
+	if len(mock.TabIndices) != 5 {
+		t.Errorf("TabIndices has %d entries, want 5", len(mock.TabIndices))
+	}
+}
+
+// TestReorderAllTabs_SingleMetadataFetch verifies that ReorderAllTabs fetches
+// metadata only once, not per-tab. Each metadata fetch is an API call.
+func TestReorderAllTabs_SingleMetadataFetch(t *testing.T) {
+	mock := NewMockSheetsWriter()
+
+	// Setup 5 tabs
+	mock.ExistingTabs = map[string]bool{
+		"g-division":    true,
+		"g-tag-def":     true,
+		"2025-attendee": true,
+		"2025-person":   true,
+		"2025-session":  true,
+	}
+	mock.SheetIDsByName = map[string]int64{
+		"g-division":    100,
+		"g-tag-def":     101,
+		"2025-attendee": 102,
+		"2025-person":   103,
+		"2025-session":  104,
+	}
+
+	err := ReorderAllTabs(context.Background(), mock, "test-spreadsheet-id", []string{})
+	if err != nil {
+		t.Fatalf("ReorderAllTabs() error = %v", err)
+	}
+
+	// Should fetch metadata exactly once (not 5+ times)
+	if mock.GetMetadataCalls != 1 {
+		t.Errorf("GetMetadataCalls = %d, want 1 (should reuse fetched metadata)", mock.GetMetadataCalls)
+	}
+}
+
+// TestReorderAllTabs_LargeBatchAPIEfficiency tests the realistic scenario
+// of 16 tabs to verify we stay well under the 60 writes/minute limit.
+func TestReorderAllTabs_LargeBatchAPIEfficiency(t *testing.T) {
+	mock := NewMockSheetsWriter()
+
+	// Full 16-tab export scenario
+	tabs := []string{
+		"g-division", "g-tag-def", "g-fin-cat", "g-cust-field-def",
+		"2025-attendee", "2025-person", "2025-session", "2025-staff",
+		"2025-bunk-assign", "2025-transactions", "2025-bunk", "2025-household",
+		"2025-sess-group", "2025-person-cv", "2025-household-cv", "2025-camper-history",
+	}
+
+	for i, tab := range tabs {
+		mock.ExistingTabs[tab] = true
+		mock.SheetIDsByName[tab] = int64(100 + i)
+	}
+
+	err := ReorderAllTabs(context.Background(), mock, "test-spreadsheet-id", []string{})
+	if err != nil {
+		t.Fatalf("ReorderAllTabs() error = %v", err)
+	}
+
+	// Total API calls should be minimal:
+	// - 1 GetMetadata call (read)
+	// - 1 BatchUpdate call (write)
+	// = 2 total (vs old: 1 + 32 reads + 32 writes = 65 calls)
+
+	totalAPICalls := mock.GetMetadataCalls + mock.BatchUpdateCalls
+	if totalAPICalls > 2 {
+		t.Errorf("Total API calls = %d, want <= 2 (1 metadata + 1 batch)", totalAPICalls)
+	}
+
+	// Verify no individual calls
+	if mock.SetColorCalls > 0 || mock.SetIndexCalls > 0 {
+		t.Errorf("Individual calls made: SetColor=%d, SetIndex=%d, want 0 for both",
+			mock.SetColorCalls, mock.SetIndexCalls)
+	}
+
+	// Verify batch contains all updates
+	if mock.BatchUpdateCalls == 1 && len(mock.LastBatchUpdates) != 16 {
+		t.Errorf("Batch had %d updates, want 16", len(mock.LastBatchUpdates))
+	}
+}
+
+// TestReorderAllTabs_BatchIncludesCorrectSheetIDs verifies that the batch
+// update uses the correct SheetIDs from metadata (not redundant lookups).
+func TestReorderAllTabs_BatchIncludesCorrectSheetIDs(t *testing.T) {
+	mock := NewMockSheetsWriter()
+
+	mock.ExistingTabs = map[string]bool{
+		"g-division":    true,
+		"2025-attendee": true,
+	}
+	// Specific sheet IDs that must be used
+	mock.SheetIDsByName = map[string]int64{
+		"g-division":    12345,
+		"2025-attendee": 67890,
+	}
+
+	err := ReorderAllTabs(context.Background(), mock, "test-spreadsheet-id", []string{})
+	if err != nil {
+		t.Fatalf("ReorderAllTabs() error = %v", err)
+	}
+
+	// Verify the batch used the correct sheet IDs
+	if mock.BatchUpdateCalls != 1 {
+		t.Fatalf("Expected 1 batch call, got %d", mock.BatchUpdateCalls)
+	}
+
+	// Find updates for each tab and verify SheetID
+	sheetIDsByTab := make(map[string]int64)
+	for _, update := range mock.LastBatchUpdates {
+		sheetIDsByTab[update.TabName] = update.SheetID
+	}
+
+	if sheetIDsByTab["g-division"] != 12345 {
+		t.Errorf("g-division SheetID = %d, want 12345", sheetIDsByTab["g-division"])
+	}
+	if sheetIDsByTab["2025-attendee"] != 67890 {
+		t.Errorf("2025-attendee SheetID = %d, want 67890", sheetIDsByTab["2025-attendee"])
+	}
+}
