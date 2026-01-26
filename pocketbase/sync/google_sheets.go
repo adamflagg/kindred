@@ -17,6 +17,14 @@ const (
 	serviceNameGoogleSheets = "google_sheets_export"
 )
 
+// TabPropertyUpdate holds updates for a single tab in a batch operation
+type TabPropertyUpdate struct {
+	TabName string
+	SheetID int64
+	Color   *TabColor // nil if no color change
+	Index   *int      // nil if no index change
+}
+
 // SheetsWriter interface for writing to Google Sheets (enables mocking)
 type SheetsWriter interface {
 	WriteToSheet(ctx context.Context, spreadsheetID, sheetTab string, data [][]interface{}) error
@@ -25,6 +33,9 @@ type SheetsWriter interface {
 	SetTabColor(ctx context.Context, spreadsheetID, sheetTab string, color TabColor) error
 	SetTabIndex(ctx context.Context, spreadsheetID, sheetTab string, index int) error
 	GetSheetMetadata(ctx context.Context, spreadsheetID string) ([]SheetInfo, error)
+	// BatchUpdateTabProperties updates multiple tabs' colors and indices in a single API call.
+	// This significantly reduces API calls compared to individual SetTabColor/SetTabIndex calls.
+	BatchUpdateTabProperties(ctx context.Context, spreadsheetID string, updates []TabPropertyUpdate) error
 }
 
 // RealSheetsWriter implements SheetsWriter using the Google Sheets API
@@ -184,6 +195,76 @@ func (w *RealSheetsWriter) GetSheetMetadata(ctx context.Context, spreadsheetID s
 	}
 
 	return result, nil
+}
+
+// BatchUpdateTabProperties updates multiple tabs' colors and indices in a single API call.
+// This reduces API calls from O(n*2) to O(1) for n tabs, avoiding rate limits.
+func (w *RealSheetsWriter) BatchUpdateTabProperties(
+	ctx context.Context,
+	spreadsheetID string,
+	updates []TabPropertyUpdate,
+) error {
+	if len(updates) == 0 {
+		return nil
+	}
+
+	// Build batch request with all property updates
+	requests := make([]*sheets.Request, 0, len(updates)*2) // up to 2 requests per tab (color + index)
+
+	for _, update := range updates {
+		// Add color update if specified
+		if update.Color != nil {
+			requests = append(requests, &sheets.Request{
+				UpdateSheetProperties: &sheets.UpdateSheetPropertiesRequest{
+					Properties: &sheets.SheetProperties{
+						SheetId: update.SheetID,
+						TabColorStyle: &sheets.ColorStyle{
+							RgbColor: &sheets.Color{
+								Red:   update.Color.R,
+								Green: update.Color.G,
+								Blue:  update.Color.B,
+							},
+						},
+					},
+					Fields: "tabColorStyle",
+				},
+			})
+		}
+
+		// Add index update if specified
+		if update.Index != nil {
+			requests = append(requests, &sheets.Request{
+				UpdateSheetProperties: &sheets.UpdateSheetPropertiesRequest{
+					Properties: &sheets.SheetProperties{
+						SheetId: update.SheetID,
+						Index:   int64(*update.Index),
+					},
+					Fields: "index",
+				},
+			})
+		}
+	}
+
+	if len(requests) == 0 {
+		return nil
+	}
+
+	// Execute single batch request for all updates
+	batchReq := &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: requests,
+	}
+
+	_, err := w.service.Spreadsheets.BatchUpdate(spreadsheetID, batchReq).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("batch updating tab properties: %w", err)
+	}
+
+	slog.Info("Batch updated tab properties",
+		"tabs", len(updates),
+		"requests", len(requests),
+	)
+
+	return nil
 }
 
 // getSheetID looks up the sheet ID for a given tab name

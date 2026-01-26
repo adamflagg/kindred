@@ -21,6 +21,7 @@ import { useRunOnDemandSync } from '../../hooks/useRunOnDemandSync';
 import { useHistoricalSync } from '../../hooks/useHistoricalSync';
 import { useProcessRequests } from '../../hooks/useProcessRequests';
 import { useCamperHistorySync } from '../../hooks/useCamperHistorySync';
+import { useFamilyCampDerivedSync } from '../../hooks/useFamilyCampDerivedSync';
 import { StatusIcon, formatDuration } from './ConfigInputs';
 import { clearCache } from '../../utils/queryClient';
 import ProcessRequestOptions, { type ProcessRequestOptionsState } from './ProcessRequestOptions';
@@ -73,6 +74,7 @@ export function SyncTab() {
   const runHistoricalSync = useHistoricalSync();
   const processRequests = useProcessRequests();
   const camperHistorySync = useCamperHistorySync();
+  const familyCampDerivedSync = useFamilyCampDerivedSync();
 
   const hasRunningSyncs = syncStatus && Object.values(syncStatus).some(
     (status: SyncStatus) => status.status === 'running'
@@ -328,6 +330,19 @@ export function SyncTab() {
                   <button
                     onClick={() => camperHistorySync.mutate(currentYear)}
                     disabled={isRunning || camperHistorySync.isPending}
+                    className="w-full py-2 mt-3 text-xs sm:text-sm font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    {isRunning ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <><Play className="w-4 h-4" /> Run</>
+                    )}
+                  </button>
+                ) : syncType.id === 'family_camp_derived' ? (
+                  // Family camp derived requires year parameter - use custom hook with current year
+                  <button
+                    onClick={() => familyCampDerivedSync.mutate(currentYear)}
+                    disabled={isRunning || familyCampDerivedSync.isPending}
                     className="w-full py-2 mt-3 text-xs sm:text-sm font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
                   >
                     {isRunning ? (

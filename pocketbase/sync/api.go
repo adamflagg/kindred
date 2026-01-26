@@ -314,6 +314,13 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 		return handleHouseholdCustomFieldValuesSync(e, scheduler)
 	}))
 
+	// Family camp derived tables sync
+	// Computes derived tables from person/household custom values
+	// Accepts required ?year=YYYY parameter
+	e.Router.POST("/api/custom/sync/family-camp-derived", requireAuth(func(e *core.RequestEvent) error {
+		return handleFamilyCampDerivedSync(e, scheduler)
+	}))
+
 	return nil
 }
 
@@ -640,6 +647,7 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 		"staff",                  // Year-scoped staff records (depends on divisions, bunks, persons)
 		"camper_history",         // Computed camper denorm with retention metrics
 		"financial_transactions", // Year-scoped financial data (depends on sessions, persons, households)
+		"family_camp_derived",    // Computed from custom values (depends on person_custom_values, household_custom_values)
 		"bunk_requests",
 		"process_requests",
 		"google_sheets_export",
@@ -1332,6 +1340,81 @@ func handleCamperHistorySync(e *core.RequestEvent, scheduler *Scheduler) error {
 
 	return e.JSON(http.StatusOK, map[string]interface{}{
 		"message":  "Camper history computation started",
+		"status":   "started",
+		"syncType": syncType,
+		"year":     year,
+		"dry_run":  dryRun,
+	})
+}
+
+// handleFamilyCampDerivedSync handles the family camp derived tables computation endpoint
+// Accepts required ?year=YYYY parameter to compute derived tables for a specific year
+func handleFamilyCampDerivedSync(e *core.RequestEvent, scheduler *Scheduler) error {
+	orchestrator := scheduler.GetOrchestrator()
+	syncType := serviceNameFamilyCampDerived
+
+	// Check if already running
+	if orchestrator.IsRunning(syncType) {
+		return e.JSON(http.StatusConflict, map[string]interface{}{
+			"error":    "Family camp derived computation already in progress",
+			"status":   "running",
+			"syncType": syncType,
+		})
+	}
+
+	// Parse required year parameter
+	yearParam := e.Request.URL.Query().Get("year")
+	if yearParam == "" {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Missing required year parameter. Use ?year=YYYY",
+		})
+	}
+
+	year, err := strconv.Atoi(yearParam)
+	if err != nil || year < 2017 || year > 2050 {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Invalid year parameter. Must be between 2017 and 2050.",
+		})
+	}
+
+	// Parse optional dry-run parameter
+	dryRunParam := e.Request.URL.Query().Get("dry_run")
+	dryRun := dryRunParam == boolTrueStr || dryRunParam == "1"
+
+	// Get the service and set options
+	service, ok := orchestrator.GetService(syncType).(*FamilyCampDerivedSync)
+	if !ok || service == nil {
+		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+			"error": "Family camp derived sync service not found",
+		})
+	}
+	service.Year = year
+	service.DryRun = dryRun
+
+	// Run in background
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+
+		slog.Info("Starting family_camp_derived computation",
+			"year", year,
+			"dry_run", dryRun,
+		)
+		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
+			slog.Error("Family camp derived computation failed", "year", year, "error", err)
+		} else {
+			stats := service.GetStats()
+			slog.Info("Family camp derived computation completed",
+				"year", year,
+				"created", stats.Created,
+				"deleted", stats.Deleted,
+				"errors", stats.Errors,
+			)
+		}
+	}()
+
+	return e.JSON(http.StatusOK, map[string]interface{}{
+		"message":  "Family camp derived computation started",
 		"status":   "started",
 		"syncType": syncType,
 		"year":     year,

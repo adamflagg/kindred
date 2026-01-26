@@ -5,17 +5,17 @@ import toast from 'react-hot-toast';
 // Map of sync types to their display names
 // Note: "persons" is a combined sync that populates persons and households tables
 // from a single API call (tags are stored as multi-select relation on persons)
-// Note: "divisions" now runs in daily sync (before persons) rather than weekly
+// Note: "divisions" is global (no year field) - runs in weekly sync
 export const SYNC_TYPE_NAMES: Record<string, string> = {
   // Weekly syncs (global definitions)
   person_tag_defs: 'Tags',
   custom_field_defs: 'Custom Fields',
   staff_lookups: 'Staff Lookups', // Global: positions, org_categories, program_areas
   financial_lookups: 'Financial Lookups', // Global: financial_categories, payment_methods
+  divisions: 'Divisions', // Global: division definitions (no year field)
   // Daily syncs
   session_groups: 'Session Groups',
   sessions: 'Sessions',
-  divisions: 'Divisions', // Runs before persons in daily sync
   attendees: 'Attendees',
   persons: 'Persons', // Combined sync: persons + households (includes division relation)
   bunks: 'Bunks',
@@ -24,6 +24,7 @@ export const SYNC_TYPE_NAMES: Record<string, string> = {
   staff: 'Staff', // Year-scoped staff records
   camper_history: 'Camper History', // Computed retention metrics
   financial_transactions: 'Financial Transactions', // Year-scoped financial data
+  family_camp_derived: 'Family Camp Derived', // Computed from custom values
   bunk_requests: 'Intake Requests',
   process_requests: 'Process Requests',
   // On-demand syncs (not part of daily sync)

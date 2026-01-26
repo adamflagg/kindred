@@ -147,7 +147,7 @@ func (s *PersonCustomFieldValuesSync) Sync(ctx context.Context) error {
 
 		// Log progress every 50 persons
 		if i > 0 && i%50 == 0 {
-			slog.Info("Custom field values sync progress",
+			slog.Info("Person custom field values sync progress",
 				"processed", i,
 				"total", len(personIDs),
 				"percent", fmt.Sprintf("%.1f%%", float64(i)/float64(len(personIDs))*100))
@@ -338,7 +338,10 @@ func (s *PersonCustomFieldValuesSync) syncPersonCustomFieldValues(
 			yearScopedKey := fmt.Sprintf("%s|%d", compositeKey, year)
 
 			// Track as processed using yearScopedKey format
-			s.TrackProcessedKey(yearScopedKey, 0)
+			// Use TrackProcessedCompositeKey to avoid double year suffix:
+			// TrackProcessedKey(yearScopedKey, 0) would create "key|year|0"
+			// but deleteOrphans looks for "key|year"
+			s.TrackProcessedCompositeKey(compositeKey, year)
 
 			// Check for existing record using yearScopedKey
 			if existing, found := existingRecords[yearScopedKey]; found {
