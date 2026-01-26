@@ -194,7 +194,7 @@ func GetCustomValuesSyncJobs() []string {
 }
 
 // RunSingleSync runs a single sync service
-func (o *Orchestrator) RunSingleSync(_ context.Context, syncType string) error {
+func (o *Orchestrator) RunSingleSync(parentCtx context.Context, syncType string) error {
 	// Check if service exists
 	o.mu.RLock()
 	service, exists := o.services[syncType]
@@ -243,12 +243,25 @@ func (o *Orchestrator) RunSingleSync(_ context.Context, syncType string) error {
 			}
 		}()
 
-		// Create a background context with generous timeout for sync operations
-		// This prevents HTTP handler timeouts from canceling long-running syncs
-		syncCtx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		// Create sync context with appropriate timeout based on parent context deadline.
+		// This fixes the "rate limiter wait: context deadline exceeded" issue by:
+		// 1. Respecting generous parent deadlines (e.g., scheduler's 60-minute timeout)
+		// 2. Extending short deadlines to give syncs adequate time
+		// 3. Creating reasonable timeouts when parent has none
+		var syncCtx context.Context
+		var cancel context.CancelFunc
+
+		if parentDeadline, hasDeadline := parentCtx.Deadline(); hasDeadline && time.Until(parentDeadline) >= 30*time.Minute {
+			// Parent has generous deadline - derive from it to respect caller's timeout
+			syncCtx, cancel = context.WithCancel(parentCtx)
+		} else {
+			// No deadline or too short - create our own generous timeout
+			// Use 2 hours to handle large custom values syncs safely
+			syncCtx, cancel = context.WithTimeout(context.Background(), 2*time.Hour)
+		}
 		defer cancel()
 
-		// Execute sync with independent context
+		// Execute sync with the appropriately-configured context
 		err := service.Sync(syncCtx)
 
 		// Update status
