@@ -27,16 +27,16 @@ export const GLOBAL_SYNC_TYPES = [
   { id: 'custom_field_defs', name: 'Field Definitions', icon: FileSpreadsheet, color: 'text-lime-600' },
   { id: 'staff_lookups', name: 'Staff Lookups', icon: ClipboardList, color: 'text-stone-600' }, // positions, org_categories, program_areas
   { id: 'financial_lookups', name: 'Financial Lookups', icon: DollarSign, color: 'text-emerald-600' }, // financial_categories, payment_methods
+  { id: 'divisions', name: 'Divisions', icon: Layers, color: 'text-purple-600' }, // Global: division definitions (no year field)
 ] as const;
 
 // Current year sync types - year-specific data that follows the sync chain
 // Note: "persons" is a combined sync that populates persons and households tables
 // from a single API call (tags are stored as multi-select relation on persons)
-// Note: "divisions" runs early so persons can resolve their division relation
+// Note: divisions is now in GLOBAL_SYNC_TYPES (no year field)
 export const CURRENT_YEAR_SYNC_TYPES = [
   { id: 'session_groups', name: 'Session Groups', icon: FolderTree, color: 'text-cyan-600' },
   { id: 'sessions', name: 'Sessions', icon: Calendar, color: 'text-sky-600' },
-  { id: 'divisions', name: 'Divisions', icon: Layers, color: 'text-purple-600' },
   { id: 'attendees', name: 'Attendees', icon: Users, color: 'text-emerald-600' },
   { id: 'persons', name: 'Persons', icon: User, color: 'text-violet-600' }, // Combined: persons + households (includes division)
   { id: 'bunks', name: 'Bunks', icon: BedDouble, color: 'text-amber-600' },
@@ -54,13 +54,12 @@ export const CURRENT_YEAR_SYNC_TYPES = [
 export const SYNC_TYPES = [...GLOBAL_SYNC_TYPES, ...CURRENT_YEAR_SYNC_TYPES] as const;
 
 // Subset of sync types available for historical import
-// Excludes global types (tag_defs, custom_field_defs) since they're cross-year
+// Excludes global types (tag_defs, custom_field_defs, divisions) since they're cross-year
 // Note: "persons" sync also populates households table (tags are multi-select on persons)
-// Note: "divisions" is included since persons.division relation needs it
 export const HISTORICAL_SYNC_TYPES = [
   { id: 'session_groups', name: 'Session Groups' },
   { id: 'sessions', name: 'Sessions' },
-  { id: 'divisions', name: 'Divisions' },
+  // Note: divisions excluded - it's global (no year field)
   { id: 'attendees', name: 'Attendees' },
   { id: 'persons', name: 'Persons' }, // Combined: persons + households (includes division)
   { id: 'bunks', name: 'Bunks' },
@@ -69,6 +68,7 @@ export const HISTORICAL_SYNC_TYPES = [
   { id: 'staff', name: 'Staff' }, // Depends on divisions, bunks, persons
   { id: 'camper_history', name: 'Camper History' }, // Computed retention metrics
   { id: 'financial_transactions', name: 'Financial Transactions' }, // Depends on sessions, persons, households
+  { id: 'family_camp_derived', name: 'Family Camp Derived' }, // Computed from custom values
 ] as const;
 
 // Icon for global section header

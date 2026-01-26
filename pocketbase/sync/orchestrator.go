@@ -180,6 +180,7 @@ func GetWeeklySyncJobs() []string {
 		"custom_field_defs",
 		"staff_lookups",     // Global: positions, org_categories, program_areas
 		"financial_lookups", // Global: financial_categories, payment_methods
+		"divisions",         // Global: division definitions (no year field)
 	}
 }
 
@@ -320,18 +321,33 @@ func (o *Orchestrator) MarkSyncRunning(syncType string) error {
 	return nil
 }
 
+// checkGlobalTablesEmpty checks if essential global tables have been synced.
+// Returns true if global tables are empty and weekly sync should run first.
+func (o *Orchestrator) checkGlobalTablesEmpty() bool {
+	// Quick check on person_tag_defs - if empty, globals haven't run
+	records, _ := o.app.FindRecordsByFilter("person_tag_defs", "", "", 1, 0)
+	return len(records) == 0
+}
+
 // RunDailySync runs all base data syncs in the correct order
 func (o *Orchestrator) RunDailySync(ctx context.Context) error {
+	// Check if global tables are empty - if so, run weekly sync first
+	// This ensures fresh DB setups have required global definitions before daily sync
+	if o.checkGlobalTablesEmpty() {
+		slog.Info("Global tables empty - running weekly sync first")
+		if err := o.RunWeeklySync(ctx); err != nil {
+			slog.Error("Weekly sync failed, continuing with daily", "error", err)
+		}
+	}
+
 	// Define sync order (respecting dependencies)
-	// Note: person_tag_defs and custom_field_defs are NOT included here -
-	// they run in the weekly sync since they're global definitions that rarely change
+	// Note: person_tag_defs, custom_field_defs, and divisions run in weekly sync
+	// since they're global definitions that rarely change
 	// Note: "persons" is a combined sync that populates persons and households
 	// tables from a single API call (tags are stored as multi-select relation on persons)
-	// Note: "divisions" runs early so persons can resolve their division relation
 	orderedJobs := []string{
 		"session_groups",         // No dependencies - sync first for group data
 		"sessions",               // Depends on session_groups (for session_group relation)
-		"divisions",              // Division definitions (global, not year-specific) - runs before persons
 		"attendees",              // Depends on sessions
 		"persons",                // Depends on attendees and divisions (combined sync: persons + households)
 		"bunks",                  // No dependencies
@@ -340,6 +356,7 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 		"staff",                  // Staff sync: depends on divisions, bunks, persons
 		"camper_history",         // Computed table: depends on attendees
 		"financial_transactions", // Financial data: depends on sessions, persons, households, divisions
+		"family_camp_derived",    // Computed table: depends on custom values (uses existing data in daily)
 		"bunk_requests",          // CSV import, depends on persons
 	}
 
@@ -718,22 +735,22 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 	servicesToRun := opts.Services
 	if len(servicesToRun) == 0 {
 		// Run all services in dependency order
-		// Note: person_tag_defs and custom_field_defs are NOT included here -
+		// Note: person_tag_defs, custom_field_defs, and divisions are NOT included here -
 		// they run in the weekly sync since they're global definitions that rarely change.
 		// They can still be run explicitly via opts.Services if needed.
 		// Note: "persons" is a combined sync that populates persons and households
-		// Note: "divisions" runs early so persons can resolve their division relation
 		servicesToRun = []string{
 			"session_groups",
 			"sessions",
-			"divisions", // Division definitions - runs before persons
+			// Note: divisions is global (no year field) - runs in weekly sync
 			"attendees",
 			"persons", // Combined sync: persons + households
 			"bunks",
 			"bunk_plans",
 			"bunk_assignments",
 			"staff",                  // Staff sync: depends on divisions, bunks, persons
-			"financial_transactions", // Financial data: depends on sessions, persons, households, divisions
+			"camper_history",         // Computed table: depends on attendees
+			"financial_transactions", // Financial data: depends on sessions, persons, households
 		}
 
 		// Only include bunk_requests for current year syncs (not historical)
@@ -741,6 +758,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		// and there's no need to re-process them for historical years
 		// opts.Year > 0 means this is a historical sync with a specific year
 		if opts.Year == 0 {
+			servicesToRun = append(servicesToRun, "family_camp_derived") // Computed from custom values
 			servicesToRun = append(servicesToRun, "bunk_requests")
 			// Only include process_requests in production (Docker) mode
 			// In development, skip AI processing to avoid unnecessary API costs
@@ -753,6 +771,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		// These run after persons/households since they depend on those records existing
 		if opts.IncludeCustomValues {
 			servicesToRun = append(servicesToRun, "person_custom_values", "household_custom_values")
+			servicesToRun = append(servicesToRun, "family_camp_derived") // Derived from custom values
 		}
 	}
 
@@ -794,13 +813,12 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		o.mu.Unlock()
 
 		// Re-register with year client
-		// Note: person_tag_defs and custom_field_defs are NOT re-registered
+		// Note: person_tag_defs, custom_field_defs, and divisions are NOT re-registered
 		// because they are global (not year-specific) and shouldn't run in historical syncs
 		// Note: "persons" is a combined sync that populates persons and households
-		// Note: "divisions" is included since persons.division relation needs it
 		o.RegisterService("session_groups", NewSessionGroupsSync(o.app, yearClient))
 		o.RegisterService("sessions", NewSessionsSync(o.app, yearClient))
-		o.RegisterService("divisions", NewDivisionsSync(o.app, yearClient))
+		// Note: divisions is global (no year field) - not re-registered for historical sync
 		o.RegisterService("attendees", NewAttendeesSync(o.app, yearClient))
 		o.RegisterService("persons", NewPersonsSync(o.app, yearClient)) // Combined: persons + households
 		o.RegisterService("bunks", NewBunksSync(o.app, yearClient))
@@ -816,6 +834,11 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		o.RegisterService("camper_history", camperHistorySync)
 
 		o.RegisterService("financial_transactions", NewFinancialTransactionsSync(o.app, yearClient))
+
+		// Family camp derived tables (computed from custom values)
+		familyCampDerivedSync := NewFamilyCampDerivedSync(o.app)
+		familyCampDerivedSync.Year = opts.Year
+		o.RegisterService("family_camp_derived", familyCampDerivedSync)
 
 		// Custom value services for historical sync support
 		// These use GetSeasonID() to determine the year, so they need year-specific client

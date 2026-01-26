@@ -115,7 +115,8 @@ When implementing a new sync job, ALL of these steps must be completed. Missing 
 |----------|--------|
 | `InitializeSyncServices()` | Register service with `RegisterService()` in dependency order |
 | `RunDailySync()` orderedJobs | Add job ID string in correct position (respects dependencies) |
-| Historical sync section | Add to historical sync loop if year-specific data |
+| `RunSyncWithOptions()` servicesToRun | Add to default services list for historical syncs |
+| `RunSyncWithOptions()` re-registration | Add `NewXxxSync(o.app, yearClient)` call in historical re-registration block (~line 815) |
 
 **Common mistake**: Registering the service but forgetting to add to `orderedJobs` - job won't run in daily sync!
 
@@ -142,12 +143,18 @@ When implementing a new sync job, ALL of these steps must be completed. Missing 
 
 #### 6. Frontend Special Handling (if needed)
 
-Only if job requires custom parameters (year, session, etc.):
+**REQUIRED if API endpoint requires `year` parameter** (like `camper_history`, `family_camp_derived`):
 
 | File | Action |
 |------|--------|
-| `hooks/use{JobName}Sync.ts` | Custom hook with parameter handling |
-| `components/admin/SyncTab.tsx` | Conditional rendering for custom button/modal |
+| `hooks/use{JobName}Sync.ts` | Custom hook that passes year to endpoint (copy from `useCamperHistorySync.ts`) |
+| `components/admin/SyncTab.tsx` | Add conditional case: `syncType.id === 'job_name' ? ... : ...` with custom hook |
+
+Example pattern from `useCamperHistorySync.ts`:
+- Hook accepts year, calls `/api/custom/sync/{job}?year=${year}`
+- SyncTab.tsx uses `{jobName}Sync.mutate(currentYear)` instead of `runIndividualSync`
+
+For jobs with other custom parameters (session, etc.), similar pattern applies.
 
 #### 7. Historical Sync Support (if year-specific)
 
@@ -161,6 +168,18 @@ Only if job requires custom parameters (year, session, etc.):
 | File | Action |
 |------|--------|
 | `sync/table_exporter.go` | Add table to export list with sheet name pattern |
+
+#### 9. Computed/Derived Tables (if reading from other synced tables)
+
+If your sync reads from tables populated by OTHER syncs (not CampMinder directly):
+
+| Consideration | Action |
+|---------------|--------|
+| orderedJobs position | Place AFTER all dependency syncs in the array |
+| Custom values dependency | If needs `person_custom_values` or `household_custom_values`, these run weekly - sync will use existing data in daily runs |
+| Historical with custom values | When `IncludeCustomValues=true`, ensure your sync is listed AFTER custom values syncs in `RunSyncWithOptions()` |
+
+Example: `family_camp_derived` depends on `person_custom_values` and `household_custom_values`, so it's added to `servicesToRun` after the custom values syncs when `opts.IncludeCustomValues` is true.
 
 #### Quick Reference: Sync ID Conventions
 
@@ -179,6 +198,16 @@ After implementation, verify ALL of these work:
 - [ ] "Run Daily Sync" includes the job (check logs)
 - [ ] Status shows created/updated/errors after completion
 - [ ] Historical import includes job (if applicable)
+
+#### Common Mistakes (Lessons Learned)
+
+| Mistake | Consequence | Prevention |
+|---------|-------------|------------|
+| Service registered but not in `orderedJobs` | Won't run in daily sync | Always add to both places |
+| Year-param endpoint without custom hook | Frontend errors on "Run" button | Check if API handler has `year` query param |
+| Missing historical re-registration | Won't run in historical imports | Add `NewXxxSync()` call in `RunSyncWithOptions()` block |
+| Derived table before dependencies | Empty results, relation errors | Map dependency chain, place after deps in orderedJobs |
+| Global table in historical sync | Unnecessary re-sync of static data | Check if table has `year` field - if not, it's global |
 
 ### Python Request Processor (`bunking/sync/bunk_request_processor/`)
 Unified processor for all 5 bunk request field types:
