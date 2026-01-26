@@ -804,7 +804,6 @@ func GetYearSpecificExports() []ExportConfig {
 				{Field: "years_at_camp", Header: "Years at Camp", Type: FieldTypeNumber},
 				{Field: "prior_year_sessions", Header: "Prior Year Sessions", Type: FieldTypeText},
 				{Field: "prior_year_bunks", Header: "Prior Year Bunks", Type: FieldTypeText},
-				{Field: "retention_next_year", Header: "Retention Next Year", Type: FieldTypeBool},
 			},
 		},
 	}

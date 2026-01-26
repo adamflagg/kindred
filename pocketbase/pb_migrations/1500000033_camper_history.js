@@ -6,7 +6,7 @@
  * Stores denormalized camper history with pre-joined data and computed retention metrics.
  * One row per camper-year. Used for nonprofit reporting and analytics.
  *
- * Computed by Python: bunking.metrics.compute_camper_history
+ * Computed by Go: pocketbase/sync/camper_history.go
  * Exported to Google Sheets: {year}-camper-history
  */
 
@@ -36,7 +36,7 @@ migrate((app) => {
       {
         type: "text",
         name: "first_name",
-        required: true,
+        required: false,
         presentable: true,
         options: {
           min: null,
@@ -47,7 +47,7 @@ migrate((app) => {
       {
         type: "text",
         name: "last_name",
-        required: true,
+        required: false,
         presentable: true,
         options: {
           min: null,
@@ -165,14 +165,6 @@ migrate((app) => {
         }
       },
 
-      // Forward-looking retention (computed when next year data exists)
-      {
-        type: "bool",
-        name: "retention_next_year",
-        required: false,
-        presentable: false
-      },
-
       // Auto timestamps
       {
         type: "autodate",
@@ -194,8 +186,7 @@ migrate((app) => {
     indexes: [
       "CREATE UNIQUE INDEX `idx_camper_history_person_year` ON `camper_history` (`person_id`, `year`)",
       "CREATE INDEX `idx_camper_history_year` ON `camper_history` (`year`)",
-      "CREATE INDEX `idx_camper_history_is_returning` ON `camper_history` (`is_returning`)",
-      "CREATE INDEX `idx_camper_history_retention` ON `camper_history` (`retention_next_year`)"
+      "CREATE INDEX `idx_camper_history_is_returning` ON `camper_history` (`is_returning`)"
     ]
   });
 

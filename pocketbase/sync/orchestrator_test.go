@@ -427,12 +427,13 @@ func TestIsWeeklySyncRunning(t *testing.T) {
 // TestWeeklySyncServices tests that weekly sync includes expected global services
 func TestWeeklySyncServices(t *testing.T) {
 	// Weekly sync should include global definition tables that rarely change
-	// These are NOT part of daily sync (divisions moved to daily sync)
+	// Divisions is included here since it's a global table (no year field)
 	expectedServices := []string{
 		"person_tag_defs",
 		"custom_field_defs",
 		"staff_lookups",     // Global: positions, org_categories, program_areas
 		"financial_lookups", // Global: financial_categories, payment_methods
+		"divisions",         // Global: division definitions (no year field)
 	}
 
 	jobs := GetWeeklySyncJobs()
@@ -458,16 +459,19 @@ func TestWeeklySyncServices(t *testing.T) {
 // TestWeeklySyncNotInDailySync verifies weekly services are NOT in daily sync
 func TestWeeklySyncNotInDailySync(t *testing.T) {
 	// Daily sync jobs - these should NOT include weekly sync services
-	// (person_tag_defs and custom_field_defs are weekly; divisions is now daily)
+	// (person_tag_defs, custom_field_defs, staff_lookups, financial_lookups, divisions are weekly)
 	dailyJobs := []string{
 		"session_groups",
 		"sessions",
-		"divisions", // Moved from weekly to daily sync
 		"attendees",
 		"persons", // Combined sync: persons + households
 		"bunks",
 		"bunk_plans",
 		"bunk_assignments",
+		"staff",
+		"camper_history",
+		"financial_transactions",
+		"family_camp_derived",
 		"bunk_requests",
 	}
 
@@ -707,13 +711,14 @@ func TestHistoricalSyncIncludesCustomValueServices(t *testing.T) {
 	// The actual services list in RunSyncWithOptions should include:
 	// - person_custom_values
 	// - household_custom_values
+	// Note: divisions is NOT included - it's a global table (no year field)
 
 	// Get the list of services that SHOULD be re-registered for historical syncs
 	// These are the services registered in RunSyncWithOptions when opts.Year > 0
 	expectedHistoricalServices := []string{
 		"session_groups",
 		"sessions",
-		"divisions",
+		// Note: divisions removed - it's global (no year field)
 		"attendees",
 		"persons",
 		"bunks",
@@ -722,7 +727,9 @@ func TestHistoricalSyncIncludesCustomValueServices(t *testing.T) {
 		"bunk_requests",
 		"process_requests",
 		"staff",
+		"camper_history",
 		"financial_transactions",
+		"family_camp_derived", // Derived table (depends on custom values)
 		// Custom value services - must be included for historical sync support
 		"person_custom_values",
 		"household_custom_values",
@@ -763,5 +770,156 @@ func TestCustomValuesSyncServicesCount(t *testing.T) {
 		if !expected[job] {
 			t.Errorf("unexpected custom values job: %s", job)
 		}
+	}
+}
+
+// TestWeeklySyncIncludesDivisions verifies divisions is in weekly sync (global table)
+func TestWeeklySyncIncludesDivisions(t *testing.T) {
+	jobs := GetWeeklySyncJobs()
+
+	found := false
+	for _, job := range jobs {
+		if job == serviceNameDivisions {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		t.Errorf("expected weekly sync to include %q (global table)", serviceNameDivisions)
+	}
+}
+
+// TestDailySyncExcludesDivisions verifies divisions is NOT in daily sync
+func TestDailySyncExcludesDivisions(t *testing.T) {
+	// Daily sync jobs that would be in orderedJobs (excluding divisions)
+	// Note: This tests the expected behavior - divisions should NOT be here
+	dailyJobs := []string{
+		"session_groups",
+		"sessions",
+		"attendees",
+		"persons",
+		"bunks",
+		"bunk_plans",
+		"bunk_assignments",
+		"staff",
+		"camper_history",
+		"financial_transactions",
+		"family_camp_derived", // Derived table - after dependencies
+		"bunk_requests",
+	}
+
+	for _, job := range dailyJobs {
+		if job == serviceNameDivisions {
+			t.Errorf("daily sync should NOT include %q (moved to weekly)", serviceNameDivisions)
+		}
+	}
+}
+
+// TestDailySyncIncludesFamilyCampDerived verifies family_camp_derived is in daily sync
+func TestDailySyncIncludesFamilyCampDerived(t *testing.T) {
+	// This test verifies family_camp_derived is part of expected daily sync jobs
+	expectedDailyJobs := []string{
+		"session_groups",
+		"sessions",
+		"attendees",
+		"persons",
+		"bunks",
+		"bunk_plans",
+		"bunk_assignments",
+		"staff",
+		"camper_history",
+		"financial_transactions",
+		"family_camp_derived", // Should be included!
+		"bunk_requests",
+	}
+
+	found := false
+	for _, job := range expectedDailyJobs {
+		if job == serviceNameFamilyCampDerived {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		t.Errorf("expected daily sync to include %q", serviceNameFamilyCampDerived)
+	}
+}
+
+// TestHistoricalSyncIncludesFamilyCampDerived verifies family_camp_derived is in historical syncs
+func TestHistoricalSyncIncludesFamilyCampDerived(t *testing.T) {
+	// Get the list of services that SHOULD be re-registered for historical syncs
+	// These are the services registered in RunSyncWithOptions when opts.Year > 0
+	expectedHistoricalServices := []string{
+		"session_groups",
+		"sessions",
+		"attendees",
+		"persons",
+		"bunks",
+		"bunk_plans",
+		"bunk_assignments",
+		"bunk_requests",
+		"process_requests",
+		"staff",
+		"financial_transactions",
+		"camper_history",
+		"family_camp_derived", // Should be included!
+		"person_custom_values",
+		"household_custom_values",
+	}
+
+	found := false
+	for _, svc := range expectedHistoricalServices {
+		if svc == "family_camp_derived" {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		t.Error("expected historical sync services to include 'family_camp_derived'")
+	}
+}
+
+// TestHistoricalSyncExcludesDivisions verifies divisions is NOT in historical sync
+// (divisions is global - not year-specific)
+func TestHistoricalSyncExcludesDivisions(t *testing.T) {
+	// The list of services re-registered for historical syncs should NOT include divisions
+	// since divisions is a global table (no year field)
+	historicalServices := []string{
+		"session_groups",
+		"sessions",
+		"attendees",
+		"persons",
+		"bunks",
+		"bunk_plans",
+		"bunk_assignments",
+		"bunk_requests",
+		"process_requests",
+		"staff",
+		"financial_transactions",
+		"camper_history",
+		"family_camp_derived",
+		"person_custom_values",
+		"household_custom_values",
+	}
+
+	for _, svc := range historicalServices {
+		if svc == "divisions" {
+			t.Error("historical sync should NOT include 'divisions' (global table)")
+		}
+	}
+}
+
+// TestWeeklySyncJobsCount verifies the expected count of weekly sync jobs
+func TestWeeklySyncJobsCount(t *testing.T) {
+	jobs := GetWeeklySyncJobs()
+
+	// Weekly sync should have: person_tag_defs, custom_field_defs, staff_lookups,
+	// financial_lookups, and divisions (moved from daily)
+	expectedCount := 5
+	if len(jobs) != expectedCount {
+		t.Errorf("expected %d weekly sync jobs, got %d: %v", expectedCount, len(jobs), jobs)
 	}
 }

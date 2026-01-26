@@ -8,7 +8,7 @@ func TestDivisionsSync_Name(t *testing.T) {
 	s := &DivisionsSync{}
 
 	got := s.Name()
-	want := "divisions"
+	want := serviceNameDivisions
 
 	if got != want {
 		t.Errorf("DivisionsSync.Name() = %q, want %q", got, want)

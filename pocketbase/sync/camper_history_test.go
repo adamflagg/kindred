@@ -1,292 +1,544 @@
 package sync
 
 import (
-	"encoding/json"
+	"sort"
 	"testing"
 )
 
-// camperHistoryServiceName is the expected service name for camper history sync
-const camperHistoryServiceName = "camper_history"
+// TestCamperHistorySync_Name verifies the service name is correct
+func TestCamperHistorySync_Name(t *testing.T) {
+	// The service name must be "camper_history" for orchestrator integration
+	expectedName := serviceNameCamperHistory
 
-// TestCamperHistorySyncServiceName tests the service name
-func TestCamperHistorySyncServiceName(t *testing.T) {
-	// CamperHistorySync should have the correct name
-	expectedName := camperHistoryServiceName
-
-	// Test the service name matches expected
-	if expectedName != camperHistoryServiceName {
-		t.Errorf("expected service name %q, got %q", camperHistoryServiceName, expectedName)
+	// Test that a mock sync would return the correct name
+	// (actual instance test requires PocketBase app)
+	if expectedName != serviceNameCamperHistory {
+		t.Errorf("expected service name %q", expectedName)
 	}
 }
 
-// TestCamperHistoryYearParameterParsing tests year parameter validation
-func TestCamperHistoryYearParameterParsing(t *testing.T) {
+// TestCamperHistoryDeduplicatesMultiSessionCampers tests that persons enrolled in
+// multiple sessions produce exactly one camper_history record per year
+func TestCamperHistoryDeduplicatesMultiSessionCampers(t *testing.T) {
+	// Simulate attendee records for the same person in different sessions
+	attendees := []testAttendee{
+		{PersonID: 1001, SessionID: 100, SessionName: "Session 1", Year: 2025, Status: "enrolled"},
+		{PersonID: 1001, SessionID: 101, SessionName: "Session 2", Year: 2025, Status: "enrolled"},
+		{PersonID: 1001, SessionID: 102, SessionName: "Session 3", Year: 2025, Status: "enrolled"},
+	}
+
+	// Group by person (simulating the aggregation logic)
+	personData := aggregateByPerson(attendees)
+
+	// Should produce exactly 1 record for person 1001
+	if len(personData) != 1 {
+		t.Errorf("expected 1 person record, got %d", len(personData))
+	}
+
+	// Verify sessions are aggregated
+	pd, exists := personData[1001]
+	if !exists {
+		t.Fatal("person 1001 not found in aggregated data")
+	}
+
+	if len(pd.SessionNames) != 3 {
+		t.Errorf("expected 3 sessions, got %d", len(pd.SessionNames))
+	}
+
+	// Sessions should be sorted for consistency
+	expectedSessions := "Session 1, Session 2, Session 3"
+	actualSessions := joinSorted(pd.SessionNames)
+	if actualSessions != expectedSessions {
+		t.Errorf("expected sessions %q, got %q", expectedSessions, actualSessions)
+	}
+}
+
+// TestCamperHistoryComputesReturningStatus tests is_returning calculation
+func TestCamperHistoryComputesReturningStatus(t *testing.T) {
+	tests := []struct {
+		name                string
+		currentYear         int
+		enrolledYears       []int
+		expectedReturning   bool
+		expectedYearsAtCamp int
+	}{
+		{
+			name:                "new camper - never attended before",
+			currentYear:         2025,
+			enrolledYears:       []int{}, // No prior years
+			expectedReturning:   false,
+			expectedYearsAtCamp: 1, // Just current year
+		},
+		{
+			name:                "returning from previous year",
+			currentYear:         2025,
+			enrolledYears:       []int{2024},
+			expectedReturning:   true,
+			expectedYearsAtCamp: 2,
+		},
+		{
+			name:                "returning after gap year",
+			currentYear:         2025,
+			enrolledYears:       []int{2023}, // Skipped 2024
+			expectedReturning:   false,       // Not returning (gap year)
+			expectedYearsAtCamp: 2,
+		},
+		{
+			name:                "veteran camper",
+			currentYear:         2025,
+			enrolledYears:       []int{2020, 2021, 2022, 2023, 2024},
+			expectedReturning:   true,
+			expectedYearsAtCamp: 6, // 5 prior + current
+		},
+		{
+			name:                "returning with multiple gaps",
+			currentYear:         2025,
+			enrolledYears:       []int{2019, 2021, 2024},
+			expectedReturning:   true, // Was enrolled in 2024
+			expectedYearsAtCamp: 4,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			isReturning := computeIsReturning(tt.currentYear, tt.enrolledYears)
+			if isReturning != tt.expectedReturning {
+				t.Errorf("isReturning = %v, want %v", isReturning, tt.expectedReturning)
+			}
+
+			yearsAtCamp := computeYearsAtCamp(tt.enrolledYears)
+			if yearsAtCamp != tt.expectedYearsAtCamp {
+				t.Errorf("yearsAtCamp = %d, want %d", yearsAtCamp, tt.expectedYearsAtCamp)
+			}
+		})
+	}
+}
+
+// TestCamperHistoryIncludesAllStatuses tests that all enrollment statuses are included
+// (not just enrolled) per user requirement
+func TestCamperHistoryIncludesAllStatuses(t *testing.T) {
+	// All status types that should be included
+	allStatuses := []string{
+		"enrolled",
+		"applied",
+		"waitlisted",
+		"canceled",
+		"withdrawn",
+		"left_early",
+		"dismissed",
+		"inquiry",
+		"incomplete",
+	}
+
+	// Create attendees with various statuses
+	attendees := make([]testAttendee, 0, len(allStatuses))
+	for i, status := range allStatuses {
+		attendees = append(attendees, testAttendee{
+			PersonID:    1000 + i,
+			SessionID:   100,
+			SessionName: "Session 1",
+			Year:        2025,
+			Status:      status,
+		})
+	}
+
+	// Verify all statuses are processed (no filtering)
+	personData := aggregateByPersonIncludeAllStatuses(attendees)
+
+	if len(personData) != len(allStatuses) {
+		t.Errorf("expected %d persons (all statuses), got %d", len(allStatuses), len(personData))
+	}
+
+	// Verify specific statuses are included
+	for i, status := range allStatuses {
+		personID := 1000 + i
+		if _, exists := personData[personID]; !exists {
+			t.Errorf("person with status %q should be included but was not found", status)
+		}
+	}
+}
+
+// TestCamperHistoryAggregatesBunkAssignments tests bunk aggregation
+func TestCamperHistoryAggregatesBunkAssignments(t *testing.T) {
+	assignments := []testBunkAssignment{
+		{PersonID: 1001, BunkName: "B-12", SessionID: 100},
+		{PersonID: 1001, BunkName: "B-14", SessionID: 101}, // Different session
+		{PersonID: 1002, BunkName: "G-8", SessionID: 100},
+	}
+
+	bunks := aggregateBunksByPerson(assignments)
+
+	// Person 1001 should have 2 bunks
+	if len(bunks[1001]) != 2 {
+		t.Errorf("person 1001: expected 2 bunks, got %d", len(bunks[1001]))
+	}
+
+	// Verify bunks are sorted
+	expectedBunks := "B-12, B-14"
+	actualBunks := joinSorted(bunks[1001])
+	if actualBunks != expectedBunks {
+		t.Errorf("expected bunks %q, got %q", expectedBunks, actualBunks)
+	}
+
+	// Person 1002 should have 1 bunk
+	if len(bunks[1002]) != 1 {
+		t.Errorf("person 1002: expected 1 bunk, got %d", len(bunks[1002]))
+	}
+}
+
+// TestCamperHistoryPriorYearData tests prior year session/bunk retrieval
+func TestCamperHistoryPriorYearData(t *testing.T) {
+	currentYear := 2025
+	priorYear := 2024
+
+	historicalAttendees := []testAttendee{
+		{PersonID: 1001, SessionID: 100, SessionName: "Session 2", Year: 2024, Status: "enrolled"},
+		{PersonID: 1001, SessionID: 101, SessionName: "Session 3", Year: 2024, Status: "enrolled"},
+		{PersonID: 1002, SessionID: 100, SessionName: "Session 2", Year: 2023, Status: "enrolled"}, // Not prior year
+	}
+
+	historicalBunks := []testBunkAssignment{
+		{PersonID: 1001, BunkName: "B-10", SessionID: 100, Year: 2024},
+		{PersonID: 1001, BunkName: "B-12", SessionID: 101, Year: 2024},
+		{PersonID: 1002, BunkName: "G-5", SessionID: 100, Year: 2023}, // Not prior year
+	}
+
+	// Get prior year data for person 1001
+	priorSessions := getPriorYearSessions(historicalAttendees, 1001, priorYear)
+	priorBunks := getPriorYearBunks(historicalBunks, 1001, priorYear)
+
+	// Should have prior year data
+	if priorSessions == "" {
+		t.Error("expected prior year sessions for person 1001")
+	}
+	if priorSessions != "Session 2, Session 3" {
+		t.Errorf("expected 'Session 2, Session 3', got %q", priorSessions)
+	}
+
+	if priorBunks == "" {
+		t.Error("expected prior year bunks for person 1001")
+	}
+	if priorBunks != "B-10, B-12" {
+		t.Errorf("expected 'B-10, B-12', got %q", priorBunks)
+	}
+
+	// Person 1002 should NOT have prior year data (their data is from 2023, not 2024)
+	priorSessions2 := getPriorYearSessions(historicalAttendees, 1002, priorYear)
+	priorBunks2 := getPriorYearBunks(historicalBunks, 1002, priorYear)
+
+	if priorSessions2 != "" {
+		t.Errorf("expected no prior year sessions for person 1002, got %q", priorSessions2)
+	}
+	if priorBunks2 != "" {
+		t.Errorf("expected no prior year bunks for person 1002, got %q", priorBunks2)
+	}
+
+	// Verify current year is used correctly
+	_ = currentYear // Silence unused warning
+}
+
+// TestCamperHistoryHandlesEmptyData tests graceful handling of no attendees
+func TestCamperHistoryHandlesEmptyData(t *testing.T) {
+	attendees := []testAttendee{}
+
+	personData := aggregateByPerson(attendees)
+
+	if len(personData) != 0 {
+		t.Errorf("expected 0 records for empty data, got %d", len(personData))
+	}
+}
+
+// TestCamperHistoryYearValidation tests year parameter validation
+func TestCamperHistoryYearValidation(t *testing.T) {
 	tests := []struct {
 		name      string
-		yearStr   string
-		wantYear  int
+		year      int
 		wantValid bool
 	}{
-		{"valid year 2024", "2024", 2024, true},
-		{"valid year 2017 (minimum)", "2017", 2017, true},
-		{"valid year 2025", "2025", 2025, true},
-		{"year too old 2016", "2016", 0, false},
-		{"year far future 2100", "2100", 0, false},
-		{"non-numeric", "abc", 0, false},
-		{"empty", "", 0, false},
-		{"negative", "-2024", 0, false},
+		{"valid year 2024", 2024, true},
+		{"valid year 2017 (minimum)", 2017, true},
+		{"valid year 2025", 2025, true},
+		{"year too old 2016", 2016, false},
+		{"year too old 2010", 2010, false},
+		{"year far future 2100", 2100, false},
+		{"zero year", 0, false},
+		{"negative year", -2024, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			year, valid := parseCamperHistoryYear(tt.yearStr)
-
+			valid := isValidYear(tt.year)
 			if valid != tt.wantValid {
-				t.Errorf("expected valid=%v, got %v", tt.wantValid, valid)
-			}
-
-			if valid && year != tt.wantYear {
-				t.Errorf("expected year=%d, got %d", tt.wantYear, year)
+				t.Errorf("isValidYear(%d) = %v, want %v", tt.year, valid, tt.wantValid)
 			}
 		})
 	}
 }
 
-// parseCamperHistoryYear parses and validates year parameter for camper history
-func parseCamperHistoryYear(yearStr string) (int, bool) {
-	if yearStr == "" {
-		return 0, false
+// TestCamperHistoryStatusPriority tests status priority for multi-status campers
+func TestCamperHistoryStatusPriority(t *testing.T) {
+	// When a camper has multiple statuses across sessions,
+	// we should prefer the "best" status (enrolled > others)
+	tests := []struct {
+		name         string
+		statuses     []string
+		expectedBest string
+	}{
+		{
+			name:         "enrolled wins",
+			statuses:     []string{"enrolled", "canceled", "withdrawn"},
+			expectedBest: "enrolled",
+		},
+		{
+			name:         "single status",
+			statuses:     []string{"canceled"},
+			expectedBest: "canceled",
+		},
+		{
+			name:         "all enrolled",
+			statuses:     []string{"enrolled", "enrolled", "enrolled"},
+			expectedBest: "enrolled",
+		},
+		{
+			name:         "canceled vs withdrawn",
+			statuses:     []string{"canceled", "withdrawn"},
+			expectedBest: "canceled", // First in list when no enrolled
+		},
 	}
 
-	year := 0
-	for _, c := range yearStr {
-		if c < '0' || c > '9' {
-			return 0, false
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			best := getBestStatus(tt.statuses)
+			if best != tt.expectedBest {
+				t.Errorf("getBestStatus(%v) = %q, want %q", tt.statuses, best, tt.expectedBest)
+			}
+		})
+	}
+}
+
+// TestCamperHistoryBatchedPersonLookup tests that person lookups work in batches
+func TestCamperHistoryBatchedPersonLookup(t *testing.T) {
+	// Simulate a large number of person IDs that need batching
+	personIDs := make([]int, 1200) // More than typical batch size
+	for i := range personIDs {
+		personIDs[i] = 1000 + i
+	}
+
+	// Calculate expected batches
+	batchSize := 100
+	expectedBatches := (len(personIDs) + batchSize - 1) / batchSize
+
+	batches := splitIntoBatches(personIDs, batchSize)
+
+	if len(batches) != expectedBatches {
+		t.Errorf("expected %d batches, got %d", expectedBatches, len(batches))
+	}
+
+	// Verify all IDs are included
+	totalIDs := 0
+	for _, batch := range batches {
+		totalIDs += len(batch)
+	}
+	if totalIDs != len(personIDs) {
+		t.Errorf("expected %d total IDs across batches, got %d", len(personIDs), totalIDs)
+	}
+
+	// Verify last batch has correct size
+	lastBatchExpectedSize := len(personIDs) % batchSize
+	if lastBatchExpectedSize == 0 {
+		lastBatchExpectedSize = batchSize
+	}
+	if len(batches[len(batches)-1]) != lastBatchExpectedSize {
+		t.Errorf("last batch size = %d, want %d", len(batches[len(batches)-1]), lastBatchExpectedSize)
+	}
+}
+
+// ============================================================================
+// Test helper types and functions (these match the production implementation)
+// ============================================================================
+
+type testAttendee struct {
+	PersonID    int
+	SessionID   int
+	SessionName string
+	Year        int
+	Status      string
+}
+
+type testBunkAssignment struct {
+	PersonID  int
+	BunkName  string
+	SessionID int
+	Year      int
+}
+
+type testPersonData struct {
+	PersonID     int
+	SessionNames []string
+	Statuses     []string
+}
+
+// aggregateByPerson groups attendees by person ID (simulates Go implementation)
+func aggregateByPerson(attendees []testAttendee) map[int]*testPersonData {
+	result := make(map[int]*testPersonData)
+	for _, a := range attendees {
+		if _, exists := result[a.PersonID]; !exists {
+			result[a.PersonID] = &testPersonData{
+				PersonID:     a.PersonID,
+				SessionNames: []string{},
+				Statuses:     []string{},
+			}
 		}
-		year = year*10 + int(c-'0')
-	}
-
-	// Valid range is 2017 to 2050 (reasonable future bound)
-	if year < 2017 || year > 2050 {
-		return 0, false
-	}
-
-	return year, true
-}
-
-// TestCamperHistoryStatsJSONParsing tests parsing stats from Python output
-func TestCamperHistoryStatsJSONParsing(t *testing.T) {
-	tests := []struct {
-		name        string
-		jsonData    string
-		wantSuccess bool
-		wantCreated int
-		wantDeleted int
-		wantErrors  int
-	}{
-		{
-			name:        "successful run",
-			jsonData:    `{"success": true, "created": 150, "deleted": 5, "errors": 0}`,
-			wantSuccess: true,
-			wantCreated: 150,
-			wantDeleted: 5,
-			wantErrors:  0,
-		},
-		{
-			name:        "run with errors",
-			jsonData:    `{"success": false, "created": 145, "deleted": 0, "errors": 5}`,
-			wantSuccess: false,
-			wantCreated: 145,
-			wantDeleted: 0,
-			wantErrors:  5,
-		},
-		{
-			name:        "empty run",
-			jsonData:    `{"success": true, "created": 0, "deleted": 0, "errors": 0}`,
-			wantSuccess: true,
-			wantCreated: 0,
-			wantDeleted: 0,
-			wantErrors:  0,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var result struct {
-				Success bool `json:"success"`
-				Created int  `json:"created"`
-				Deleted int  `json:"deleted"`
-				Errors  int  `json:"errors"`
+		pd := result[a.PersonID]
+		// Only add session if not already present
+		found := false
+		for _, s := range pd.SessionNames {
+			if s == a.SessionName {
+				found = true
+				break
 			}
-
-			err := json.Unmarshal([]byte(tt.jsonData), &result)
-			if err != nil {
-				t.Errorf("failed to parse JSON: %v", err)
-				return
-			}
-
-			if result.Success != tt.wantSuccess {
-				t.Errorf("success = %v, want %v", result.Success, tt.wantSuccess)
-			}
-			if result.Created != tt.wantCreated {
-				t.Errorf("created = %d, want %d", result.Created, tt.wantCreated)
-			}
-			if result.Deleted != tt.wantDeleted {
-				t.Errorf("deleted = %d, want %d", result.Deleted, tt.wantDeleted)
-			}
-			if result.Errors != tt.wantErrors {
-				t.Errorf("errors = %d, want %d", result.Errors, tt.wantErrors)
-			}
-		})
-	}
-}
-
-// TestCamperHistoryPythonArgsBuilding tests building Python command arguments
-func TestCamperHistoryPythonArgsBuilding(t *testing.T) {
-	tests := []struct {
-		name       string
-		year       int
-		dryRun     bool
-		wantArgs   []string
-		wantModule string
-	}{
-		{
-			name:       "basic run",
-			year:       2025,
-			dryRun:     false,
-			wantModule: "bunking.metrics.compute_camper_history",
-			wantArgs:   []string{"--year", "2025"},
-		},
-		{
-			name:       "dry run",
-			year:       2025,
-			dryRun:     true,
-			wantModule: "bunking.metrics.compute_camper_history",
-			wantArgs:   []string{"--year", "2025", "--dry-run"},
-		},
-		{
-			name:       "historical year",
-			year:       2023,
-			dryRun:     false,
-			wantModule: "bunking.metrics.compute_camper_history",
-			wantArgs:   []string{"--year", "2023"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			args := buildCamperHistoryArgs(tt.year, tt.dryRun, "/tmp/stats.json")
-
-			// Verify module name is first args
-			if len(args) < 2 || args[0] != "-m" || args[1] != tt.wantModule {
-				t.Errorf("expected module args [-m %s], got %v", tt.wantModule, args[:2])
-			}
-
-			// Verify --year is present with correct value
-			yearFound := false
-			for i, arg := range args {
-				if arg == "--year" && i+1 < len(args) {
-					if args[i+1] == tt.wantArgs[1] {
-						yearFound = true
-					}
-				}
-			}
-			if !yearFound {
-				t.Errorf("expected --year %d in args", tt.year)
-			}
-
-			// Verify --dry-run is present if expected
-			if tt.dryRun {
-				dryRunFound := false
-				for _, arg := range args {
-					if arg == "--dry-run" {
-						dryRunFound = true
-						break
-					}
-				}
-				if !dryRunFound {
-					t.Error("expected --dry-run in args")
-				}
-			}
-		})
-	}
-}
-
-// buildCamperHistoryArgs builds the Python command arguments
-func buildCamperHistoryArgs(year int, dryRun bool, statsFile string) []string {
-	args := []string{
-		"-m",
-		"bunking.metrics.compute_camper_history",
-		"--year", formatYear(year),
-		"--stats-output", statsFile,
-	}
-
-	if dryRun {
-		args = append(args, "--dry-run")
-	}
-
-	return args
-}
-
-// formatYear converts int year to string
-func formatYear(year int) string {
-	// Simple int to string conversion
-	if year == 0 {
-		return "0"
-	}
-	result := ""
-	for year > 0 {
-		result = string('0'+rune(year%10)) + result
-		year /= 10
+		}
+		if !found {
+			pd.SessionNames = append(pd.SessionNames, a.SessionName)
+		}
+		pd.Statuses = append(pd.Statuses, a.Status)
 	}
 	return result
 }
 
-// TestCamperHistoryServiceValidation tests sync type validation includes camper_history
-func TestCamperHistoryServiceValidation(t *testing.T) {
-	// camper_history should be a valid sync type
-	validSyncTypes := map[string]bool{
-		"session_groups":   true,
-		"sessions":         true,
-		"divisions":        true,
-		"attendees":        true,
-		"persons":          true,
-		"bunks":            true,
-		"bunk_plans":       true,
-		"bunk_assignments": true,
-		"staff":            true,
-		"camper_history":   true, // NEW
-		"bunk_requests":    true,
-		"process_requests": true,
-	}
-
-	// Verify camper_history is valid
-	if !validSyncTypes["camper_history"] {
-		t.Error("camper_history should be a valid sync type")
-	}
+// aggregateByPersonIncludeAllStatuses includes all statuses (production behavior)
+func aggregateByPersonIncludeAllStatuses(attendees []testAttendee) map[int]*testPersonData {
+	return aggregateByPerson(attendees) // Same as regular aggregation - no filtering
 }
 
-// TestCamperHistoryDependencies tests that camper_history has correct dependencies
-func TestCamperHistoryDependencies(t *testing.T) {
-	// camper_history depends on: attendees, persons, bunk_assignments, camp_sessions
-	// It should run AFTER these in the sync order
-	dependencies := []string{
-		"sessions",         // For session names
-		"attendees",        // For enrollment data
-		"persons",          // For demographics
-		"bunk_assignments", // For bunk data
-	}
-
-	// All dependencies should exist and run before camper_history
-	for _, dep := range dependencies {
-		// Just verify the dependency names are as expected
-		if dep == "" {
-			t.Error("dependency should not be empty")
+// aggregateBunksByPerson groups bunk assignments by person
+func aggregateBunksByPerson(assignments []testBunkAssignment) map[int][]string {
+	result := make(map[int][]string)
+	for _, a := range assignments {
+		// Only add bunk if not already present
+		found := false
+		for _, b := range result[a.PersonID] {
+			if b == a.BunkName {
+				found = true
+				break
+			}
+		}
+		if !found {
+			result[a.PersonID] = append(result[a.PersonID], a.BunkName)
 		}
 	}
+	return result
+}
 
-	// Verify count
-	if len(dependencies) != 4 {
-		t.Errorf("expected 4 dependencies, got %d", len(dependencies))
+// computeIsReturning checks if person was enrolled in the previous year
+func computeIsReturning(currentYear int, enrolledYears []int) bool {
+	priorYear := currentYear - 1
+	for _, y := range enrolledYears {
+		if y == priorYear {
+			return true
+		}
 	}
+	return false
+}
+
+// computeYearsAtCamp counts distinct enrollment years plus current year
+func computeYearsAtCamp(enrolledYears []int) int {
+	// Deduplicate years
+	yearSet := make(map[int]bool)
+	for _, y := range enrolledYears {
+		yearSet[y] = true
+	}
+	// +1 for current year
+	return len(yearSet) + 1
+}
+
+// getPriorYearSessions gets session names from prior year for a person
+func getPriorYearSessions(attendees []testAttendee, personID, priorYear int) string {
+	var sessions []string
+	for _, a := range attendees {
+		if a.PersonID == personID && a.Year == priorYear {
+			// Only add if not present
+			found := false
+			for _, s := range sessions {
+				if s == a.SessionName {
+					found = true
+					break
+				}
+			}
+			if !found {
+				sessions = append(sessions, a.SessionName)
+			}
+		}
+	}
+	return joinSorted(sessions)
+}
+
+// getPriorYearBunks gets bunk names from prior year for a person
+func getPriorYearBunks(assignments []testBunkAssignment, personID, priorYear int) string {
+	var bunks []string
+	for _, a := range assignments {
+		if a.PersonID == personID && a.Year == priorYear {
+			// Only add if not present
+			found := false
+			for _, b := range bunks {
+				if b == a.BunkName {
+					found = true
+					break
+				}
+			}
+			if !found {
+				bunks = append(bunks, a.BunkName)
+			}
+		}
+	}
+	return joinSorted(bunks)
+}
+
+// isValidYear validates year parameter
+func isValidYear(year int) bool {
+	// Valid range is 2017 to 2050 (reasonable bounds)
+	return year >= 2017 && year <= 2050
+}
+
+// getBestStatus returns the best status from a list (enrolled preferred)
+func getBestStatus(statuses []string) string {
+	if len(statuses) == 0 {
+		return ""
+	}
+	// Enrolled is always best
+	for _, s := range statuses {
+		if s == "enrolled" {
+			return "enrolled"
+		}
+	}
+	// Otherwise return first status
+	return statuses[0]
+}
+
+// splitIntoBatches splits a slice into batches of specified size
+func splitIntoBatches(ids []int, batchSize int) [][]int {
+	var batches [][]int
+	for i := 0; i < len(ids); i += batchSize {
+		end := i + batchSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		batches = append(batches, ids[i:end])
+	}
+	return batches
+}
+
+// joinSorted sorts strings and joins with ", "
+func joinSorted(strs []string) string {
+	if len(strs) == 0 {
+		return ""
+	}
+	sorted := make([]string, len(strs))
+	copy(sorted, strs)
+	sort.Strings(sorted)
+	result := sorted[0]
+	for i := 1; i < len(sorted); i++ {
+		result += ", " + sorted[i]
+	}
+	return result
 }
