@@ -180,3 +180,43 @@ func TestHouseholdCustomFieldValuesKeyBuilderShouldNotIncludeYear(t *testing.T) 
 		t.Errorf("Correct year-scoped key = %q, want %q", correctYearScoped, expected)
 	}
 }
+
+// TestHouseholdCustomFieldValuesTrackingMatchesOrphanLookup verifies that the key format
+// used when tracking processed records matches the format used in orphan deletion lookup.
+// This is the actual bug: TrackProcessedKey(yearScopedKey, 0) creates "key|0" but
+// orphan deletion looks for "key" without the trailing "|0".
+func TestHouseholdCustomFieldValuesTrackingMatchesOrphanLookup(t *testing.T) {
+	s := &HouseholdCustomFieldValuesSync{
+		BaseSyncService: BaseSyncService{
+			ProcessedKeys: make(map[string]bool),
+		},
+	}
+
+	householdPBId := "pb_household_123"
+	fieldDefPBId := "pb_field_100"
+	year := 2025
+
+	// Simulate what the sync code does during record processing
+	compositeKey := householdPBId + ":" + fieldDefPBId
+	yearScopedKey := compositeKey + "|2025"
+
+	// This is what the current buggy code does:
+	// s.TrackProcessedKey(yearScopedKey, 0)
+	// It should instead do:
+	s.TrackProcessedCompositeKey(compositeKey, year)
+
+	// Simulate what orphan deletion does to check if a record was processed
+	orphanLookupKey := householdPBId + ":" + fieldDefPBId + "|" + "2025"
+
+	// The orphan lookup key must exist in ProcessedKeys
+	if !s.ProcessedKeys[orphanLookupKey] {
+		t.Errorf("Orphan lookup key %q not found in ProcessedKeys", orphanLookupKey)
+		t.Errorf("ProcessedKeys contains: %v", s.ProcessedKeys)
+		t.Error("This indicates a key format mismatch between tracking and orphan deletion")
+	}
+
+	// Also verify the exact key format
+	if yearScopedKey != orphanLookupKey {
+		t.Errorf("yearScopedKey %q != orphanLookupKey %q", yearScopedKey, orphanLookupKey)
+	}
+}
