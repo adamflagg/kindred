@@ -367,10 +367,11 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 		"bunk_plans",             // Depends on sessions and bunks
 		"bunk_assignments",       // Depends on sessions, persons, bunks
 		"staff",                  // Staff sync: depends on divisions, bunks, persons
-		"camper_history",         // Computed table: depends on attendees
-		"financial_transactions", // Financial data: depends on sessions, persons, households, divisions
-		"family_camp_derived",    // Computed table: depends on custom values (uses existing data in daily)
-		"bunk_requests",          // CSV import, depends on persons
+		"financial_transactions", // Source data: depends on sessions, persons, households, divisions
+		// Derived tables (computed from synced data) - grouped after source data
+		"camper_history",      // Derived: computes from attendees
+		"family_camp_derived", // Derived: computes from custom values (uses existing data in daily)
+		"bunk_requests",       // CSV import, depends on persons
 	}
 
 	// Only include process_requests in production (Docker) mode
@@ -549,78 +550,6 @@ func (o *Orchestrator) RunCustomValuesSync(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// contains checks if a string is present in a slice
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
-}
-
-// runCustomValuesSyncsInParallel runs both custom values syncs in parallel
-// and returns any errors that occurred
-func (o *Orchestrator) runCustomValuesSyncsInParallel(ctx context.Context, opts Options) error {
-	customValuesJobs := GetCustomValuesSyncJobs()
-
-	slog.Info("Running custom values syncs in parallel", "year", opts.Year, "services", customValuesJobs)
-
-	var wg sync.WaitGroup
-	errChan := make(chan error, len(customValuesJobs))
-
-	for _, jobName := range customValuesJobs {
-		wg.Add(1)
-		go func(name string) {
-			defer wg.Done()
-
-			select {
-			case <-ctx.Done():
-				errChan <- ctx.Err()
-				return
-			default:
-			}
-
-			if opts.Year > 0 {
-				slog.Info("Historical sync: Starting custom values service (parallel)",
-					"year", opts.Year, "service", name)
-			} else {
-				slog.Info("Sync with options: Starting custom values service (parallel)",
-					"service", name)
-			}
-
-			if err := o.runSyncAndWait(ctx, name); err != nil {
-				if opts.Year > 0 {
-					slog.Error("Historical sync: custom values service failed",
-						"year", opts.Year, "service", name, "error", err)
-				} else {
-					slog.Error("Sync with options: custom values service failed",
-						"service", name, "error", err)
-				}
-				errChan <- err
-			} else {
-				if opts.Year > 0 {
-					slog.Info("Historical sync: custom values service completed",
-						"year", opts.Year, "service", name)
-				} else {
-					slog.Info("Sync with options: custom values service completed",
-						"service", name)
-				}
-			}
-		}(jobName)
-	}
-
-	wg.Wait()
-	close(errChan)
-
-	var errs []error
-	for err := range errChan {
-		errs = append(errs, err)
-	}
-
-	return errors.Join(errs...)
-}
-
 // runSyncAndWait runs a sync and waits for it to complete
 func (o *Orchestrator) runSyncAndWait(ctx context.Context, syncType string) error {
 	// Start the sync
@@ -762,8 +691,9 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 			"bunk_plans",
 			"bunk_assignments",
 			"staff",                  // Staff sync: depends on divisions, bunks, persons
-			"camper_history",         // Computed table: depends on attendees
-			"financial_transactions", // Financial data: depends on sessions, persons, households
+			"financial_transactions", // Source data: depends on sessions, persons, households
+			// Note: derived tables (camper_history, family_camp_derived) are added below
+			// based on sync type to ensure they run AFTER their dependencies
 		}
 
 		// Only include bunk_requests for current year syncs (not historical)
@@ -771,7 +701,8 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		// and there's no need to re-process them for historical years
 		// opts.Year > 0 means this is a historical sync with a specific year
 		if opts.Year == 0 {
-			servicesToRun = append(servicesToRun, "family_camp_derived", "bunk_requests") // Computed from custom values
+			// Current year: derived tables can run immediately (use existing custom values data)
+			servicesToRun = append(servicesToRun, "camper_history", "family_camp_derived", "bunk_requests")
 			// Only include process_requests in production (Docker) mode
 			// In development, skip AI processing to avoid unnecessary API costs
 			if os.Getenv("IS_DOCKER") == boolTrueStr {
@@ -781,10 +712,11 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 
 		// Include custom field values if requested (for historical syncs)
 		// These run after persons/households since they depend on those records existing
+		// Derived tables (camper_history, family_camp_derived) run AFTER custom values
 		if opts.IncludeCustomValues {
-			// Derived from custom values
 			servicesToRun = append(servicesToRun,
-				"person_custom_values", "household_custom_values", "family_camp_derived")
+				"person_custom_values", "household_custom_values",
+				"camper_history", "family_camp_derived")
 		}
 	}
 
@@ -884,37 +816,14 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		slog.Info("Concurrent sync not yet implemented, running sequentially")
 	}
 
-	// Run sequentially, with parallel execution for custom values syncs
-	// Track whether we've already run custom values in parallel
-	customValuesRanParallel := false
-
+	// Run sequentially - custom values syncs run in order to prevent context deadline issues
+	// from concurrent API rate limiting during historical syncs
 	for i, serviceName := range servicesToRun {
 		// Check if context is canceled
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-		}
-
-		// Check if this is a custom values sync that should run in parallel
-		if serviceName == serviceNamePersonCustomValues && contains(servicesToRun, serviceNameHouseholdCustomValues) {
-			// Add spacing before running parallel syncs (if not first job)
-			if i > 0 {
-				slog.Info("Waiting before next sync", "duration", o.jobSpacing)
-				time.Sleep(o.jobSpacing)
-			}
-
-			// Run both custom values syncs in parallel
-			if err := o.runCustomValuesSyncsInParallel(ctx, opts); err != nil {
-				slog.Error("Custom values parallel sync had errors", "error", err)
-			}
-			customValuesRanParallel = true
-			continue
-		}
-
-		// Skip household_custom_values if we already ran it in parallel
-		if serviceName == serviceNameHouseholdCustomValues && customValuesRanParallel {
-			continue
 		}
 
 		// Add spacing between jobs (except for the first one)
