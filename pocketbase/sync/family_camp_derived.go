@@ -15,7 +15,6 @@ import (
 // serviceNameFamilyCampDerived is the canonical name for this sync service
 const serviceNameFamilyCampDerived = "family_camp_derived"
 
-
 // FamilyCampDerivedSync computes derived family camp tables from custom values.
 // This service reads from person_custom_values and household_custom_values
 // and populates family_camp_adults, family_camp_registrations, and family_camp_medical.
