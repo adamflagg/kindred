@@ -702,6 +702,7 @@ func (c *Client) GetPersonCustomFieldValuesPage(
 func (c *Client) GetHouseholdCustomFieldValuesPage(
 	householdID, page, pageSize int,
 ) (results []map[string]interface{}, hasMore bool, err error) {
+	// Verified via API testing: custom-fields (with hyphen) is the correct format
 	endpoint := fmt.Sprintf("persons/households/%d/custom-fields", householdID)
 	params := map[string]string{
 		"clientid":   c.clientID,
