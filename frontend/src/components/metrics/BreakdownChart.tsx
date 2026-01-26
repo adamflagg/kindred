@@ -106,7 +106,7 @@ export function BreakdownChart({
               labelLine={false}
             >
               {data.map((_, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length] ?? '#00b36b'} />
               ))}
             </Pie>
             <Tooltip content={<CustomTooltip />} />
