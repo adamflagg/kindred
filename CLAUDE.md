@@ -239,7 +239,20 @@ uv run python -m bunking.sync.bunk_request_processor.process_requests \
 **Session parameter**: 0=all sessions, 1=Taste of Camp, 2-4=Sessions 2-4
 
 ### Sync Dependencies (Order Matters)
-1. sessions → 2. attendees → 3. persons → 4. bunks → 5. bunk_plans → 6. bunk_assignments → 7. bunk_requests → 8. process_requests
+
+**Sync Order Principle**: Source data syncs must complete before derived tables run.
+
+| Category | Services | Notes |
+|----------|----------|-------|
+| **Source Data** | session_groups → sessions → attendees → persons → bunks → bunk_plans → bunk_assignments → staff → financial_transactions | Fetched from CampMinder API |
+| **Custom Values** | person_custom_values → household_custom_values | Expensive (1 API call per entity), run weekly or on-demand |
+| **Derived Tables** | camper_history, family_camp_derived | Computed from synced source data + custom values |
+| **Processing** | bunk_requests → process_requests | CSV import and AI processing |
+
+**Key ordering rules:**
+1. **Source → Derived**: All derived tables (`camper_history`, `family_camp_derived`) run AFTER source data syncs
+2. **Custom values → Derived**: When `IncludeCustomValues=true` (historical sync), custom values run BEFORE derived tables
+3. **Sequential custom values**: Custom values syncs run sequentially (not parallel) to prevent context deadline issues from concurrent API rate limiting
 
 ## 🔐 Secrets, Privacy & Test Data
 
