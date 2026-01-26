@@ -287,7 +287,7 @@ describe('AuthContext', () => {
         updated: '',
       };
       const mockAuthRefresh = vi.fn().mockResolvedValue({ record: refreshedUser });
-      vi.mocked(pb.collection).mockReturnValue({ authRefresh: mockAuthRefresh } as ReturnType<typeof pb.collection>);
+      vi.mocked(pb.collection).mockReturnValue({ authRefresh: mockAuthRefresh } as unknown as ReturnType<typeof pb.collection>);
 
       render(
         <AuthProvider>
@@ -329,7 +329,7 @@ describe('AuthContext', () => {
 
       // Mock authRefresh to fail with 401
       const mockAuthRefresh = vi.fn().mockRejectedValue({ status: 401 });
-      vi.mocked(pb.collection).mockReturnValue({ authRefresh: mockAuthRefresh } as ReturnType<typeof pb.collection>);
+      vi.mocked(pb.collection).mockReturnValue({ authRefresh: mockAuthRefresh } as unknown as ReturnType<typeof pb.collection>);
 
       render(
         <AuthProvider>
@@ -371,7 +371,7 @@ describe('AuthContext', () => {
 
       // Mock authRefresh to fail with network error (no status)
       const mockAuthRefresh = vi.fn().mockRejectedValue(new Error('Network error'));
-      vi.mocked(pb.collection).mockReturnValue({ authRefresh: mockAuthRefresh } as ReturnType<typeof pb.collection>);
+      vi.mocked(pb.collection).mockReturnValue({ authRefresh: mockAuthRefresh } as unknown as ReturnType<typeof pb.collection>);
 
       // Suppress console.warn for this test
       const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -408,7 +408,7 @@ describe('AuthContext', () => {
       vi.mocked(getCurrentUser).mockReturnValue(null);
 
       const mockAuthRefresh = vi.fn();
-      vi.mocked(pb.collection).mockReturnValue({ authRefresh: mockAuthRefresh } as ReturnType<typeof pb.collection>);
+      vi.mocked(pb.collection).mockReturnValue({ authRefresh: mockAuthRefresh } as unknown as ReturnType<typeof pb.collection>);
 
       render(
         <AuthProvider>

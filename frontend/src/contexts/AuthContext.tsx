@@ -107,7 +107,31 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
-      setUser(currentUser);
+      // If we have a cached token, validate it with the backend
+      if (currentUser) {
+        try {
+          const authData = await pb.collection('users').authRefresh();
+          // Check if effect was cleaned up during async operation
+          if (abortController.signal.aborted) return;
+          setUser(authData.record as RecordModel);
+        } catch (refreshError) {
+          // Check if effect was cleaned up during async operation
+          if (abortController.signal.aborted) return;
+          // Only clear auth if it's a 401 error (invalid token)
+          const httpError = refreshError as { status?: number } | null;
+          if (httpError?.status === 401) {
+            console.log('Cached token invalid, clearing auth');
+            pb.authStore.clear();
+            setUser(null);
+          } else {
+            // Network error - use cached user for graceful degradation
+            console.warn('Auth refresh failed (network?), using cached user:', refreshError);
+            setUser(currentUser);
+          }
+        }
+      } else {
+        setUser(null);
+      }
       setIsLoading(false);
 
       // Subscribe to auth changes with stable handler
