@@ -647,6 +647,7 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 		"staff",                  // Year-scoped staff records (depends on divisions, bunks, persons)
 		"camper_history",         // Computed camper denorm with retention metrics
 		"financial_transactions", // Year-scoped financial data (depends on sessions, persons, households)
+		"family_camp_derived",    // Computed from custom values (depends on person_custom_values, household_custom_values)
 		"bunk_requests",
 		"process_requests",
 		"google_sheets_export",
