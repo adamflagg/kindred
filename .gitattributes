@@ -58,3 +58,6 @@ scripts/vault.config filter=git-crypt diff=git-crypt
 
 # Vite local config (private FQDNs, HMR settings)
 frontend/vite.config.local.ts filter=git-crypt diff=git-crypt
+
+# Camp-specific documentation (analysis, metrics, planning)
+docs/camp/** filter=git-crypt diff=git-crypt
