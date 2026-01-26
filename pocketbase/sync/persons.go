@@ -450,7 +450,7 @@ func (s *PersonsSync) processPerson(
 			if value, exists := pbData[field]; exists {
 				if !s.FieldEquals(existing.Get(field), value) {
 					// DIAGNOSTIC: Log field differences to identify false-positive updates
-					slog.Info("Person field differs",
+					slog.Debug("Person field differs",
 						"personID", personIDInt,
 						"field", field,
 						"existingValue", existing.Get(field),

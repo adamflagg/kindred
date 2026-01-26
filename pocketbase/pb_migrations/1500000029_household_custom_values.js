@@ -54,11 +54,9 @@ migrate((app) => {
         name: "value",
         required: false,
         presentable: true,
-        options: {
-          min: null,
-          max: 10000,
-          pattern: ""
-        }
+        min: 0,
+        max: 100000,
+        pattern: ""
       },
       // Year for filtering
       {
@@ -76,11 +74,9 @@ migrate((app) => {
         name: "last_updated",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          pattern: ""
-        }
+        min: 0,
+        max: 0,
+        pattern: ""
       },
       {
         type: "autodate",

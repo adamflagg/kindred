@@ -6,6 +6,9 @@ import (
 	"testing"
 )
 
+const testPersonPBID = "pb_person_123"
+const testFieldDefPBIDPerson = "pb_field_100"
+
 func TestPersonCustomFieldValuesSync_Name(t *testing.T) {
 	s := &PersonCustomFieldValuesSync{}
 
@@ -28,8 +31,8 @@ func TestTransformPersonCustomFieldValueToPB(t *testing.T) {
 	}
 
 	// PB IDs (would be resolved by caller before calling transform)
-	personPBId := "pb_person_123"
-	fieldDefPBId := "pb_field_100"
+	personPBId := testPersonPBID
+	fieldDefPBId := testFieldDefPBIDPerson
 	year := 2025
 
 	pbData := s.transformPersonCustomFieldValueToPB(data, personPBId, fieldDefPBId, year)
@@ -73,7 +76,7 @@ func TestTransformPersonCustomFieldValueEmptyValue(t *testing.T) {
 		"value": "",
 	}
 
-	pbData := s.transformPersonCustomFieldValueToPB(data, "pb_person_123", "pb_field_100", 2025)
+	pbData := s.transformPersonCustomFieldValueToPB(data, testPersonPBID, testFieldDefPBIDPerson, 2025)
 
 	if got := pbData["value"].(string); got != "" {
 		t.Errorf("value = %q, want empty string", got)
@@ -90,7 +93,7 @@ func TestTransformPersonCustomFieldValueNilValue(t *testing.T) {
 		// Value is missing/nil
 	}
 
-	pbData := s.transformPersonCustomFieldValueToPB(data, "pb_person_123", "pb_field_100", 2025)
+	pbData := s.transformPersonCustomFieldValueToPB(data, testPersonPBID, testFieldDefPBIDPerson, 2025)
 
 	// Should default to empty string
 	if got := pbData["value"].(string); got != "" {
@@ -103,8 +106,8 @@ func TestTransformPersonCustomFieldValueNilValue(t *testing.T) {
 // The PreloadCompositeRecords function appends "|year" to the keyBuilder result,
 // so the keyBuilder must NOT include year, and all lookups must use "key|year" format.
 func TestPersonCustomFieldValuesCompositeKeyFormat(t *testing.T) {
-	personPBId := "pb_person_123"
-	fieldDefPBId := "pb_field_100"
+	personPBId := testPersonPBID
+	fieldDefPBId := testFieldDefPBIDPerson
 	year := 2025
 
 	// The identity key (what keyBuilder should return - NO year)
@@ -178,5 +181,45 @@ func TestPersonCustomFieldValuesKeyBuilderShouldNotIncludeYear(t *testing.T) {
 	expected := "abc123:def456|2025"
 	if correctYearScoped != expected {
 		t.Errorf("Correct year-scoped key = %q, want %q", correctYearScoped, expected)
+	}
+}
+
+// TestPersonCustomFieldValuesTrackingMatchesOrphanLookup verifies that the key format
+// used when tracking processed records matches the format used in orphan deletion lookup.
+// This is the actual bug: TrackProcessedKey(yearScopedKey, 0) creates "key|0" but
+// orphan deletion looks for "key" without the trailing "|0".
+func TestPersonCustomFieldValuesTrackingMatchesOrphanLookup(t *testing.T) {
+	s := &PersonCustomFieldValuesSync{
+		BaseSyncService: BaseSyncService{
+			ProcessedKeys: make(map[string]bool),
+		},
+	}
+
+	personPBId := testPersonPBID
+	fieldDefPBId := testFieldDefPBIDPerson
+	year := 2025
+
+	// Simulate what the sync code does during record processing
+	compositeKey := personPBId + ":" + fieldDefPBId
+	yearScopedKey := compositeKey + "|2025"
+
+	// This is what the current buggy code does:
+	// s.TrackProcessedKey(yearScopedKey, 0)
+	// It should instead do:
+	s.TrackProcessedCompositeKey(compositeKey, year)
+
+	// Simulate what orphan deletion does to check if a record was processed
+	orphanLookupKey := personPBId + ":" + fieldDefPBId + "|" + "2025"
+
+	// The orphan lookup key must exist in ProcessedKeys
+	if !s.ProcessedKeys[orphanLookupKey] {
+		t.Errorf("Orphan lookup key %q not found in ProcessedKeys", orphanLookupKey)
+		t.Errorf("ProcessedKeys contains: %v", s.ProcessedKeys)
+		t.Error("This indicates a key format mismatch between tracking and orphan deletion")
+	}
+
+	// Also verify the exact key format
+	if yearScopedKey != orphanLookupKey {
+		t.Errorf("yearScopedKey %q != orphanLookupKey %q", yearScopedKey, orphanLookupKey)
 	}
 }
