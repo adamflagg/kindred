@@ -21,6 +21,10 @@ const (
 	statusFailed = "failed"
 	// statusRunning indicates a sync job is currently running
 	statusRunning = "running"
+	// statusPending indicates a sync job is queued
+	statusPending = "pending"
+	// statusCompleted indicates a sync job has completed successfully
+	statusCompleted = "completed"
 )
 
 // Service defines the interface for sync services
@@ -612,7 +616,7 @@ func (o *Orchestrator) GetStatus(syncType string) *Status {
 				// Otherwise, it's pending
 				return &Status{
 					Type:   syncType,
-					Status: "pending",
+					Status: statusPending,
 					Year:   0, // Current year
 				}
 			}
@@ -635,8 +639,52 @@ func (o *Orchestrator) GetStatus(syncType string) *Status {
 				// Otherwise, it's pending
 				return &Status{
 					Type:   syncType,
-					Status: "pending",
+					Status: statusPending,
 					Year:   o.historicalSyncYear,
+				}
+			}
+		}
+	}
+
+	// If weekly sync is running and this service is queued, return pending status
+	if o.weeklySyncRunning {
+		for _, queuedService := range o.weeklySyncQueue {
+			if queuedService == syncType {
+				// Check if it has already completed in this sequence
+				if status, exists := o.lastCompletedStatus[syncType]; exists {
+					// If completed very recently (within the last hour), show that status
+					if status.EndTime != nil && time.Since(*status.EndTime) < time.Hour {
+						statusCopy := *status
+						return &statusCopy
+					}
+				}
+				// Otherwise, it's pending
+				return &Status{
+					Type:   syncType,
+					Status: statusPending,
+					Year:   0, // Global sync (no year)
+				}
+			}
+		}
+	}
+
+	// If custom values sync is running and this service is queued, return pending status
+	if o.customValuesSyncRunning {
+		for _, queuedService := range o.customValuesSyncQueue {
+			if queuedService == syncType {
+				// Check if it has already completed in this sequence
+				if status, exists := o.lastCompletedStatus[syncType]; exists {
+					// If completed very recently (within the last hour), show that status
+					if status.EndTime != nil && time.Since(*status.EndTime) < time.Hour {
+						statusCopy := *status
+						return &statusCopy
+					}
+				}
+				// Otherwise, it's pending
+				return &Status{
+					Type:   syncType,
+					Status: statusPending,
+					Year:   o.currentSyncYear, // Custom values sync uses current sync year
 				}
 			}
 		}

@@ -51,7 +51,7 @@ func TestStatusEndTime(t *testing.T) {
 		Type:      "test",
 		Status:    "running",
 		StartTime: now,
-		EndTime:   nil, // Not completed yet
+		EndTime:   nil, // Not statusCompleted yet
 	}
 
 	if status.EndTime != nil {
@@ -60,11 +60,11 @@ func TestStatusEndTime(t *testing.T) {
 
 	// Complete the status
 	endTime := now.Add(time.Minute)
-	status.Status = "completed"
+	status.Status = "statusCompleted"
 	status.EndTime = &endTime
 
 	if status.EndTime == nil {
-		t.Error("expected non-nil EndTime for completed status")
+		t.Error("expected non-nil EndTime for statusCompleted status")
 	}
 
 	duration := status.EndTime.Sub(status.StartTime)
