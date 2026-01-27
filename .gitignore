@@ -36,6 +36,7 @@ __pycache__/
 *.so
 .Python
 build/
+!scripts/build/
 develop-eggs/
 dist/
 !frontend/dist/
