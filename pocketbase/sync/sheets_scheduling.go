@@ -28,7 +28,7 @@ func NewGoogleSheetsExportOptions() *GoogleSheetsExportOptions {
 // This is designed for weekly scheduled exports
 func (g *GoogleSheetsExport) SyncGlobalsOnly(ctx context.Context) error {
 	slog.Info("Starting Google Sheets globals-only export",
-		"spreadsheet_id", g.spreadsheetID,
+		"spreadsheet_id", "configured",
 	)
 
 	// Get global export configs
@@ -90,7 +90,7 @@ func (g *GoogleSheetsExport) SyncDailyOnly(ctx context.Context) error {
 // If includeGlobals is true, global tables are also exported (once, before year data)
 func (g *GoogleSheetsExport) SyncForYears(ctx context.Context, years []int, includeGlobals bool) error {
 	slog.Info("Starting Google Sheets historical export",
-		"spreadsheet_id", g.spreadsheetID,
+		"spreadsheet_id", "configured",
 		"years", years,
 		"includeGlobals", includeGlobals,
 	)
@@ -145,7 +145,7 @@ func (g *GoogleSheetsExport) syncYearData(ctx context.Context, year int) error {
 	g.year = year
 
 	slog.Info("Exporting year-specific data",
-		"spreadsheet_id", g.spreadsheetID,
+		"spreadsheet_id", "configured",
 		"year", year,
 	)
 

@@ -332,7 +332,7 @@ func (g *GoogleSheetsExport) Name() string {
 func (g *GoogleSheetsExport) Sync(ctx context.Context) error {
 	startTime := time.Now()
 	slog.Info("Starting Google Sheets full export",
-		"spreadsheet_id", g.spreadsheetID,
+		"spreadsheet_id", "configured",
 		"year", g.year,
 		"expected_tabs", len(GetAllExportSheetNames(g.year)),
 	)
