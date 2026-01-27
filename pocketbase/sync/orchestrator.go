@@ -642,6 +642,50 @@ func (o *Orchestrator) GetStatus(syncType string) *Status {
 		}
 	}
 
+	// If weekly sync is running and this service is queued, return pending status
+	if o.weeklySyncRunning {
+		for _, queuedService := range o.weeklySyncQueue {
+			if queuedService == syncType {
+				// Check if it has already completed in this sequence
+				if status, exists := o.lastCompletedStatus[syncType]; exists {
+					// If completed very recently (within the last hour), show that status
+					if status.EndTime != nil && time.Since(*status.EndTime) < time.Hour {
+						statusCopy := *status
+						return &statusCopy
+					}
+				}
+				// Otherwise, it's pending
+				return &Status{
+					Type:   syncType,
+					Status: "pending",
+					Year:   0, // Global sync (no year)
+				}
+			}
+		}
+	}
+
+	// If custom values sync is running and this service is queued, return pending status
+	if o.customValuesSyncRunning {
+		for _, queuedService := range o.customValuesSyncQueue {
+			if queuedService == syncType {
+				// Check if it has already completed in this sequence
+				if status, exists := o.lastCompletedStatus[syncType]; exists {
+					// If completed very recently (within the last hour), show that status
+					if status.EndTime != nil && time.Since(*status.EndTime) < time.Hour {
+						statusCopy := *status
+						return &statusCopy
+					}
+				}
+				// Otherwise, it's pending
+				return &Status{
+					Type:   syncType,
+					Status: "pending",
+					Year:   o.currentSyncYear, // Custom values sync uses current sync year
+				}
+			}
+		}
+	}
+
 	// Check last completed status
 	if status, exists := o.lastCompletedStatus[syncType]; exists {
 		// Return a copy to avoid race conditions
