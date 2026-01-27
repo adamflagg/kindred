@@ -797,12 +797,8 @@ async def get_comparison_metrics(
 
 @router.get("/historical", response_model=HistoricalTrendsResponse)
 async def get_historical_trends(
-    years: str | None = Query(
-        None, description="Comma-separated years (default: last 5 years from current year)"
-    ),
-    session_types: str | None = Query(
-        "main,ag,embedded", description="Comma-separated session types to filter"
-    ),
+    years: str | None = Query(None, description="Comma-separated years (default: last 5 years from current year)"),
+    session_types: str | None = Query("main,ag,embedded", description="Comma-separated session types to filter"),
 ) -> HistoricalTrendsResponse:
     """Get historical trends across multiple years.
 
@@ -843,9 +839,7 @@ async def get_historical_trends(
             ]
 
             # New vs returning
-            new_count = sum(
-                1 for record in history if getattr(record, "years_at_camp", 0) == 1
-            )
+            new_count = sum(1 for record in history if getattr(record, "years_at_camp", 0) == 1)
             returning_count = total_enrolled - new_count
 
             new_vs_returning = NewVsReturning(

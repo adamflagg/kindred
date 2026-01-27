@@ -501,37 +501,19 @@ class TestRegistrationMetrics:
         # Create sessions with realistic dates
         sessions_with_dates = [
             # Taste of Camp: 4 days (Jun 15-18)
-            create_mock_session(
-                2004, "Taste of Camp 1", 2026, "main",
-                start_date="2026-06-15", end_date="2026-06-18"
-            ),
+            create_mock_session(2004, "Taste of Camp 1", 2026, "main", start_date="2026-06-15", end_date="2026-06-18"),
             # Session 2a embedded: 14 days (Jun 15-28)
-            create_mock_session(
-                2005, "Session 2a", 2026, "embedded",
-                start_date="2026-06-15", end_date="2026-06-28"
-            ),
+            create_mock_session(2005, "Session 2a", 2026, "embedded", start_date="2026-06-15", end_date="2026-06-28"),
             # Session 2 main: 21 days (Jun 15 - Jul 5)
-            create_mock_session(
-                2001, "Session 2", 2026, "main",
-                start_date="2026-06-15", end_date="2026-07-05"
-            ),
+            create_mock_session(2001, "Session 2", 2026, "main", start_date="2026-06-15", end_date="2026-07-05"),
             # Session 3 main: 21 days (Jul 6 - Jul 26)
-            create_mock_session(
-                2002, "Session 3", 2026, "main",
-                start_date="2026-07-06", end_date="2026-07-26"
-            ),
+            create_mock_session(2002, "Session 3", 2026, "main", start_date="2026-07-06", end_date="2026-07-26"),
             # Session 4: 14 days (Jul 27 - Aug 9)
-            create_mock_session(
-                2003, "Session 4", 2026, "main",
-                start_date="2026-07-27", end_date="2026-08-09"
-            ),
+            create_mock_session(2003, "Session 4", 2026, "main", start_date="2026-07-27", end_date="2026-08-09"),
         ]
 
         # Calculate categories from dates
-        categories = {
-            s.name: get_session_length_category(s.start_date, s.end_date)
-            for s in sessions_with_dates
-        }
+        categories = {s.name: get_session_length_category(s.start_date, s.end_date) for s in sessions_with_dates}
 
         assert categories["Taste of Camp 1"] == "1-week"
         assert categories["Session 2a"] == "2-week"
@@ -793,16 +775,10 @@ class TestDynamicSessionLengthCalculation:
         from api.routers.metrics import get_session_length_category
 
         # Full ISO format with time and Z suffix (common from APIs)
-        assert get_session_length_category(
-            "2025-06-01 00:00:00Z",
-            "2025-06-14 23:59:59Z"
-        ) == "2-week"
+        assert get_session_length_category("2025-06-01 00:00:00Z", "2025-06-14 23:59:59Z") == "2-week"
 
         # Just date portion should work
-        assert get_session_length_category(
-            "2025-06-01",
-            "2025-06-14"
-        ) == "2-week"
+        assert get_session_length_category("2025-06-01", "2025-06-14") == "2-week"
 
 
 # ============================================================================
@@ -822,43 +798,26 @@ class TestSessionTypeFiltering:
         """Sessions with various types including non-summer."""
         return [
             # Summer camp sessions
+            create_mock_session(1001, "Session 2", 2026, "main", start_date="2026-06-15", end_date="2026-07-05"),
+            create_mock_session(1002, "Session 3", 2026, "main", start_date="2026-07-06", end_date="2026-07-26"),
+            create_mock_session(1003, "Session 2a", 2026, "embedded", start_date="2026-06-15", end_date="2026-06-28"),
             create_mock_session(
-                1001, "Session 2", 2026, "main",
-                start_date="2026-06-15", end_date="2026-07-05"
-            ),
-            create_mock_session(
-                1002, "Session 3", 2026, "main",
-                start_date="2026-07-06", end_date="2026-07-26"
-            ),
-            create_mock_session(
-                1003, "Session 2a", 2026, "embedded",
-                start_date="2026-06-15", end_date="2026-06-28"
-            ),
-            create_mock_session(
-                1004, "All-Gender Cabin-Session 2", 2026, "ag",
-                start_date="2026-06-15", end_date="2026-07-05"
+                1004, "All-Gender Cabin-Session 2", 2026, "ag", start_date="2026-06-15", end_date="2026-07-05"
             ),
             # Non-summer sessions (should be excluded by default)
             create_mock_session(
-                2001, "Family Camp Weekend 1", 2026, "family",
-                start_date="2026-08-15", end_date="2026-08-17"
+                2001, "Family Camp Weekend 1", 2026, "family", start_date="2026-08-15", end_date="2026-08-17"
             ),
             create_mock_session(
-                2002, "Staff Training", 2026, "training",
-                start_date="2026-05-20", end_date="2026-05-25"
+                2002, "Staff Training", 2026, "training", start_date="2026-05-20", end_date="2026-05-25"
             ),
         ]
 
-    def test_default_filter_includes_summer_types_only(
-        self, sample_sessions_mixed_types: list[Mock]
-    ) -> None:
+    def test_default_filter_includes_summer_types_only(self, sample_sessions_mixed_types: list[Mock]) -> None:
         """Test that default filter includes only main, embedded, ag sessions."""
         # Simulate what the API does with default filter
         default_types = ["main", "embedded", "ag"]
-        filtered = [
-            s for s in sample_sessions_mixed_types
-            if s.session_type in default_types
-        ]
+        filtered = [s for s in sample_sessions_mixed_types if s.session_type in default_types]
 
         # Should include summer camp sessions
         assert len(filtered) == 4
@@ -872,15 +831,10 @@ class TestSessionTypeFiltering:
         assert "Family Camp Weekend 1" not in session_names
         assert "Staff Training" not in session_names
 
-    def test_explicit_filter_can_include_family_camp(
-        self, sample_sessions_mixed_types: list[Mock]
-    ) -> None:
+    def test_explicit_filter_can_include_family_camp(self, sample_sessions_mixed_types: list[Mock]) -> None:
         """Test that explicit filter can include family camp if requested."""
         explicit_types = ["main", "family"]
-        filtered = [
-            s for s in sample_sessions_mixed_types
-            if s.session_type in explicit_types
-        ]
+        filtered = [s for s in sample_sessions_mixed_types if s.session_type in explicit_types]
 
         assert len(filtered) == 3
         session_names = {s.name for s in filtered}
