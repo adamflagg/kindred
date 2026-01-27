@@ -258,9 +258,14 @@ uv run python -m bunking.sync.bunk_request_processor.process_requests \
 
 ### Environment & Private Files
 
-**Environment secrets**: Loaded from `.env` by `start_dev.sh`, or pre-injected from secrets manager.
+**Environment secrets**: Loaded from `.env` by `start_dev.sh`.
 
-**Private files** (branding, staff lists, assets): Listed in `.gitignore` and not tracked. These files exist locally but are never committed. See the "Private local files" section in `.gitignore` for the complete list.
+**Private files** (branding, staff lists, assets): Stored in private `kindred-local` repo.
+- **Local dev**: Run `scripts/setup/setup-local-config.sh` to symlink files
+- **CI/CD**: Cloned via deploy key during Docker build
+
+Files: `config/branding.local.json`, `config/staff_list.json`, `local/assets/`,
+`CLAUDE.local.md`, `frontend/vite.config.local.ts`, `scripts/vault.config`, `docs/camp/`
 
 ### NEVER Use Real Personal Information
 
@@ -275,11 +280,11 @@ All code, tests, comments, and documentation MUST use fictional data:
 
 ### Branding Configuration
 
-Generic "Kindred" branding by default. Camp-specific branding from local files (not tracked in git):
+Generic "Kindred" branding by default. Camp-specific branding from `kindred-local` repo:
 - `config/branding.local.json` - Camp name, descriptions, SSO display name
-- `local/assets/` - Camp logos
+- `local/assets/` - Camp logos (`camp-logo.png`, `camp-logo-nav.png`)
 
-Without these files, the system uses generic defaults.
+Without these files (or symlinks), the system uses generic defaults.
 
 ## 🔐 OAuth2 Configuration
 

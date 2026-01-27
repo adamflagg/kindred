@@ -253,23 +253,26 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v6
 
-    - name: Install git-crypt (cached)
-      uses: awalsh128/cache-apt-pkgs-action@latest
-      with:
-        packages: git-crypt
-        version: git-crypt-v1
-
-    - name: Unlock git-crypt
+    - name: Clone private config
       env:
-        GIT_CRYPT_KEY: ${{ secrets.GIT_CRYPT_KEY }}
+        DEPLOY_KEY: ${{ secrets.KINDRED_LOCAL_DEPLOY_KEY }}
       run: |
-        if [ -n "$GIT_CRYPT_KEY" ]; then
-          echo "$GIT_CRYPT_KEY" | base64 -d > /tmp/git-crypt-key
-          git-crypt unlock /tmp/git-crypt-key
-          rm /tmp/git-crypt-key
-          echo "✅ git-crypt unlocked"
+        if [ -n "$DEPLOY_KEY" ]; then
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+          git clone --depth 1 git@github.com:adamflagg/kindred-local.git /tmp/kindred-local
+
+          # Copy files to expected locations
+          cp /tmp/kindred-local/config/* config/ 2>/dev/null || true
+          cp -r /tmp/kindred-local/local . 2>/dev/null || true
+          cp /tmp/kindred-local/frontend/vite.config.local.ts frontend/ 2>/dev/null || true
+
+          rm -rf /tmp/kindred-local ~/.ssh/id_ed25519
+          echo "✅ Private config loaded"
         else
-          echo "⚠️ GIT_CRYPT_KEY not set"
+          echo "⚠️ KINDRED_LOCAL_DEPLOY_KEY not set - using default branding"
         fi
 
     - name: Setup Python
@@ -373,22 +376,28 @@ jobs:
       if: steps.check.outputs.build == 'true'
       uses: actions/checkout@v6
 
-    - name: Install git-crypt (cached)
+    - name: Clone private config for branding assets
       if: steps.check.outputs.build == 'true'
-      uses: awalsh128/cache-apt-pkgs-action@latest
-      with:
-        packages: git-crypt
-        version: git-crypt-v1
-
-    - name: Unlock git-crypt for branding assets
-      if: steps.check.outputs.build == 'true' && env.GIT_CRYPT_KEY != ''
       env:
-        GIT_CRYPT_KEY: ${{ secrets.GIT_CRYPT_KEY }}
+        DEPLOY_KEY: ${{ secrets.KINDRED_LOCAL_DEPLOY_KEY }}
       run: |
-        echo "$GIT_CRYPT_KEY" | base64 -d > /tmp/git-crypt-key
-        git-crypt unlock /tmp/git-crypt-key
-        rm /tmp/git-crypt-key
-        echo "✅ git-crypt unlocked - branding assets available"
+        if [ -n "$DEPLOY_KEY" ]; then
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+          git clone --depth 1 git@github.com:adamflagg/kindred-local.git /tmp/kindred-local
+
+          # Copy files to expected locations
+          cp /tmp/kindred-local/config/* config/ 2>/dev/null || true
+          cp -r /tmp/kindred-local/local . 2>/dev/null || true
+          cp /tmp/kindred-local/frontend/vite.config.local.ts frontend/ 2>/dev/null || true
+
+          rm -rf /tmp/kindred-local ~/.ssh/id_ed25519
+          echo "✅ Private config loaded - branding assets available"
+        else
+          echo "⚠️ KINDRED_LOCAL_DEPLOY_KEY not set - using default branding"
+        fi
 
     - name: Prepare local assets for Docker build
       if: steps.check.outputs.build == 'true'
