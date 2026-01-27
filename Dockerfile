@@ -21,10 +21,10 @@ COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ ./
 # Copy branding config so Vite can inject it (vite.config.local.ts loads from ../config/)
-# Note: branding.local.json is NOT copied here - it's a symlink to kindred-local repo
-# For local builds: run scripts/build/docker-build.sh (handles symlinks)
-# For CI: workflow copies files from kindred-local before build
-COPY config/branding.json ../config/
+# Wildcard copies branding.json (default) + branding.local.json (camp-specific) when available
+# For local builds: run scripts/build/docker-build.sh (resolves symlinks before build)
+# For CI: workflow copies real files from kindred-local before build
+COPY config/branding*.json ../config/
 RUN npm run build
 
 # =============================================================================
