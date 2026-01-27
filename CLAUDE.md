@@ -256,13 +256,11 @@ uv run python -m bunking.sync.bunk_request_processor.process_requests \
 
 ## 🔐 Secrets, Privacy & Test Data
 
-### Environment & Encrypted Files
+### Environment & Private Files
 
 **Environment secrets**: Loaded from `.env` by `start_dev.sh`, or pre-injected from secrets manager.
 
-**Private files** (branding, staff lists, assets): Encrypted via git-crypt. See `.gitattributes` for list. On new machine: `git-crypt unlock <keyfile>`. Setup: `./scripts/setup/setup_git_crypt.sh`
-
-**Adding/removing git-crypt files**: Update `.gitattributes` only. CI reads patterns from there for gitleaks exclusions.
+**Private files** (branding, staff lists, assets): Listed in `.gitignore` and not tracked. These files exist locally but are never committed. See the "Private local files" section in `.gitignore` for the complete list.
 
 ### NEVER Use Real Personal Information
 
@@ -277,11 +275,11 @@ All code, tests, comments, and documentation MUST use fictional data:
 
 ### Branding Configuration
 
-Generic "Kindred" branding by default. Camp-specific branding from git-crypt encrypted files:
+Generic "Kindred" branding by default. Camp-specific branding from local files (not tracked in git):
 - `config/branding.local.json` - Camp name, descriptions, SSO display name
 - `local/assets/` - Camp logos
 
-Without git-crypt key, these appear as binary blobs and system uses generic defaults.
+Without these files, the system uses generic defaults.
 
 ## 🔐 OAuth2 Configuration
 

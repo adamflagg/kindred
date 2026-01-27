@@ -23,7 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 
-# Local config overrides (vite.config.local.ts is git-crypt encrypted, not ignored)
+# Local config overrides (*.local pattern above covers vite.config.local.ts)
 
 # Test coverage output
 coverage/
