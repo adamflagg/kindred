@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-LOCAL_REPO="${KINDRED_LOCAL_PATH:-$HOME/repos/kindred-local}"
+LOCAL_REPO="${KINDRED_LOCAL_PATH:-$HOME/kindred-local}"
 
 if [[ ! -d "$LOCAL_REPO" ]]; then
     echo "kindred-local repo not found at $LOCAL_REPO"
