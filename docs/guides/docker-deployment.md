@@ -122,7 +122,7 @@ After first deployment:
 
 1. Run initial data sync:
 ```bash
-curl -X POST "http://localhost:8080/api/custom/sync/daily"
+curl -X POST "http://localhost:8080/api/custom/sync/run?year=2025&service=all"
 ```
 
 2. Access the application:
@@ -178,7 +178,7 @@ Syncs are managed via Go scheduler in PocketBase. Trigger manually:
 
 ```bash
 # Full daily sync (sessions, persons, bunks, attendees, requests)
-curl -X POST "http://localhost:8080/api/custom/sync/daily"
+curl -X POST "http://localhost:8080/api/custom/sync/run?year=2025&service=all"
 
 # Specific sync
 curl -X POST "http://localhost:8080/api/custom/sync/sessions"

@@ -58,7 +58,7 @@ Format: `type(scope): description` — Breaking changes: `feat(api)!: descriptio
 
 ```bash
 ./scripts/start_dev.sh                                    # Start all services
-curl -X POST "http://localhost:8090/api/custom/sync/daily" # Trigger sync
+curl -X POST "http://localhost:8090/api/custom/sync/run?year=2025&service=all" # Trigger sync
 uv run pytest tests/                                      # Python tests
 cd pocketbase && go test ./...                            # Go tests
 cd frontend && npm run test                               # Frontend tests
@@ -158,10 +158,12 @@ For jobs with other custom parameters (session, etc.), similar pattern applies.
 
 #### 7. Historical Sync Support (if year-specific)
 
-| File | Action |
-|------|--------|
-| `syncTypes.ts` | Add to `HISTORICAL_SYNC_TYPES` array |
-| `orchestrator.go` | Ensure included in historical sync loop with year config |
+> **Note**: All year-scoped sync types are automatically available for historical syncs unless marked with `currentYearOnly: true` in syncTypes.ts. No separate array registration needed.
+
+| Consideration | When to use `currentYearOnly: true` |
+|---------------|-------------------------------------|
+| Current-year-only jobs | Jobs like `bunk_requests` and `process_requests` that only make sense for current year |
+| Normal year-scoped jobs | Most jobs don't need this flag and work for any year |
 
 #### 8. Google Sheets Export (if needed)
 
@@ -195,9 +197,9 @@ After implementation, verify ALL of these work:
 - [ ] `npm run build` in frontend/ succeeds
 - [ ] Job appears in Admin → Sync tab with correct icon/color
 - [ ] Individual "Run" button triggers the sync
-- [ ] "Run Daily Sync" includes the job (check logs)
+- [ ] Unified sync (current year) includes the job
+- [ ] Unified sync (historical year) includes the job (unless `currentYearOnly: true`)
 - [ ] Status shows created/updated/errors after completion
-- [ ] Historical import includes job (if applicable)
 
 #### Common Mistakes (Lessons Learned)
 

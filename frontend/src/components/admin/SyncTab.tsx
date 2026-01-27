@@ -1,9 +1,8 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { format } from 'date-fns';
 import {
   Play,
   Loader2,
-  Clock3,
   Zap,
   RefreshCw,
   Settings2,
@@ -11,14 +10,12 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { pb } from '../../lib/pocketbase';
 import { useYear } from '../../hooks/useCurrentYear';
 import { type SyncStatus } from '../../hooks/useSyncStatusAPI';
 import { useSyncCompletionToasts } from '../../hooks/useSyncCompletionToasts';
 import { useRunIndividualSync } from '../../hooks/useRunIndividualSync';
 import { useRunOnDemandSync } from '../../hooks/useRunOnDemandSync';
-import { useHistoricalSync } from '../../hooks/useHistoricalSync';
+import { useUnifiedSync } from '../../hooks/useUnifiedSync';
 import { useProcessRequests } from '../../hooks/useProcessRequests';
 import { useCamperHistorySync } from '../../hooks/useCamperHistorySync';
 import { useFamilyCampDerivedSync } from '../../hooks/useFamilyCampDerivedSync';
@@ -26,28 +23,7 @@ import { StatusIcon, formatDuration } from './ConfigInputs';
 import { clearCache } from '../../utils/queryClient';
 import ProcessRequestOptions, { type ProcessRequestOptionsState } from './ProcessRequestOptions';
 import EntitySyncOptions, { type EntitySyncOptionsState } from './EntitySyncOptions';
-import { GLOBAL_SYNC_TYPES, CURRENT_YEAR_SYNC_TYPES, HISTORICAL_SYNC_TYPES, Globe } from './syncTypes';
-
-// Run all syncs mutation
-function useRunAllSyncs() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async () => {
-      return await pb.send('/api/custom/sync/daily', { method: 'POST' });
-    },
-    onMutate: () => {
-      toast('Starting daily sync...', { icon: '🚀', duration: 3000 });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sync-status-api'] });
-    },
-    onError: (error) => {
-      const msg = error instanceof Error ? error.message : 'Unknown error';
-      toast.error(msg.includes('already in progress') ? 'Sync already running' : `Failed: ${msg}`);
-    },
-  });
-}
+import { GLOBAL_SYNC_TYPES, CURRENT_YEAR_SYNC_TYPES, getYearSyncTypes, Globe } from './syncTypes';
 
 // Entity types that support custom field values sync option
 // Note: "persons" is a combined sync that populates persons and households tables
@@ -57,11 +33,11 @@ type EntitySyncType = typeof ENTITY_SYNC_TYPES[number];
 
 export function SyncTab() {
   const currentYear = useYear();
-  const [showHistorical, setShowHistorical] = useState(false);
-  const [historicalYear, setHistoricalYear] = useState(currentYear - 1);
-  const [historicalService, setHistoricalService] = useState('all');
-  const [includeHistoricalCustomValues, setIncludeHistoricalCustomValues] = useState(false);
-  const [historicalDebug, setHistoricalDebug] = useState(false);
+  // Unified sync state (replaces separate daily/historical)
+  const [syncYear, setSyncYear] = useState(currentYear);
+  const [syncService, setSyncService] = useState('all');
+  const [includeCustomValues, setIncludeCustomValues] = useState(false);
+  const [syncDebug, setSyncDebug] = useState(false);
   const [showProcessOptions, setShowProcessOptions] = useState(false);
   const [entityModalSyncType, setEntityModalSyncType] = useState<EntitySyncType | null>(null);
 
@@ -70,8 +46,7 @@ export function SyncTab() {
   const isLoading = !syncStatus;
   const runIndividualSync = useRunIndividualSync();
   const runOnDemandSync = useRunOnDemandSync();
-  const runAllSyncs = useRunAllSyncs();
-  const runHistoricalSync = useHistoricalSync();
+  const unifiedSync = useUnifiedSync();
   const processRequests = useProcessRequests();
   const camperHistorySync = useCamperHistorySync();
   const familyCampDerivedSync = useFamilyCampDerivedSync();
@@ -79,6 +54,22 @@ export function SyncTab() {
   const hasRunningSyncs = syncStatus && Object.values(syncStatus).some(
     (status: SyncStatus) => status.status === 'running'
   );
+
+  // Compute available sync types based on year (excludes currentYearOnly types for historical years)
+  const availableSyncTypes = useMemo(() =>
+    getYearSyncTypes(syncYear, currentYear),
+    [syncYear, currentYear]
+  );
+
+  // Handle year change - reset service if it becomes unavailable
+  const handleYearChange = (year: number) => {
+    setSyncYear(year);
+    // Reset service if it's a current-year-only type and we're switching to historical
+    if (year !== currentYear &&
+        (syncService === 'bunk_requests' || syncService === 'process_requests')) {
+      setSyncService('all');
+    }
+  };
 
   if (isLoading) {
     return (
@@ -90,28 +81,67 @@ export function SyncTab() {
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      {/* Actions Bar */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
-        <button
-          onClick={() => runAllSyncs.mutate()}
-          disabled={runAllSyncs.isPending || hasRunningSyncs}
-          className="btn-primary text-base"
-        >
-          {runAllSyncs.isPending ? (
-            <><Loader2 className="w-5 h-5 animate-spin" /> Starting...</>
-          ) : (
-            <><Zap className="w-5 h-5" /> Run Daily Sync</>
-          )}
-        </button>
+      {/* Unified Sync Panel */}
+      <div className="bg-muted/50 dark:bg-muted/30 rounded-xl p-4 sm:p-5 border border-border">
+        <div className="flex flex-col sm:flex-row flex-wrap gap-4 items-stretch sm:items-end">
+          <div className="flex-1 sm:flex-none">
+            <label className="block text-sm font-medium text-muted-foreground mb-1.5">Year</label>
+            <select
+              value={syncYear}
+              onChange={(e) => handleYearChange(parseInt(e.target.value))}
+              className="w-full sm:w-auto px-4 py-2.5 border border-border rounded-lg text-base bg-background text-foreground"
+              disabled={unifiedSync.isPending}
+            >
+              <option value={currentYear}>{currentYear} (Current)</option>
+              {Array.from({ length: currentYear - 2017 }, (_, i) => currentYear - 1 - i).map(year => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+          </div>
 
-        <div className="flex items-center gap-4">
+          <div className="flex-1 sm:flex-none">
+            <label className="block text-sm font-medium text-muted-foreground mb-1.5">Service</label>
+            <select
+              value={syncService}
+              onChange={(e) => {
+                setSyncService(e.target.value);
+                // Reset custom values checkbox when switching away from all/persons
+                if (e.target.value !== 'all' && e.target.value !== 'persons') {
+                  setIncludeCustomValues(false);
+                }
+              }}
+              className="w-full sm:w-auto px-4 py-2.5 border border-border rounded-lg text-base bg-background text-foreground"
+              disabled={unifiedSync.isPending}
+            >
+              <option value="all">All Services</option>
+              {availableSyncTypes.map(type => (
+                <option key={type.id} value={type.id}>{type.name}</option>
+              ))}
+            </select>
+          </div>
+
           <button
-            onClick={() => setShowHistorical(!showHistorical)}
-            className="text-base text-muted-foreground hover:text-foreground flex items-center justify-center sm:justify-start gap-2 font-medium"
+            onClick={() => {
+              // Include custom values in the sync sequence when checkbox is enabled
+              const shouldIncludeCustomValues = includeCustomValues &&
+                (syncService === 'all' || syncService === 'persons');
+              unifiedSync.mutate({
+                year: syncYear,
+                service: syncService,
+                includeCustomValues: shouldIncludeCustomValues,
+                debug: shouldIncludeCustomValues && syncDebug,
+              });
+            }}
+            disabled={unifiedSync.isPending || hasRunningSyncs}
+            className="btn-primary text-base"
           >
-            <Clock3 className="w-5 h-5" />
-            Historical Import
+            {unifiedSync.isPending ? (
+              <><Loader2 className="w-5 h-5 animate-spin" /> Starting...</>
+            ) : (
+              <><Zap className="w-5 h-5" /> Run Sync</>
+            )}
           </button>
+
           <button
             onClick={() => {
               clearCache();
@@ -121,111 +151,47 @@ export function SyncTab() {
             title="Clear cached data and force refresh from server"
           >
             <RefreshCw className="w-5 h-5" />
-            Refresh Data
+            Refresh
           </button>
         </div>
-      </div>
 
-      {/* Historical Import Panel */}
-      {showHistorical && (
-        <div className="bg-muted/50 dark:bg-muted/30 rounded-xl p-4 sm:p-5 border border-border">
-          <div className="flex flex-col sm:flex-row flex-wrap gap-4 items-stretch sm:items-end">
-            <div className="flex-1 sm:flex-none">
-              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Year</label>
-              <select
-                value={historicalYear}
-                onChange={(e) => setHistoricalYear(parseInt(e.target.value))}
-                className="w-full sm:w-auto px-4 py-2.5 border border-border rounded-lg text-base bg-background text-foreground"
-                disabled={runHistoricalSync.isPending}
-              >
-                {Array.from({ length: currentYear - 2017 }, (_, i) => currentYear - 1 - i).map(year => (
-                  <option key={year} value={year}>{year}</option>
-                ))}
-              </select>
-            </div>
-            <div className="flex-1 sm:flex-none">
-              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Service</label>
-              <select
-                value={historicalService}
-                onChange={(e) => {
-                  setHistoricalService(e.target.value);
-                  // Reset custom values checkbox when switching away from all/persons
-                  if (e.target.value !== 'all' && e.target.value !== 'persons') {
-                    setIncludeHistoricalCustomValues(false);
-                  }
-                }}
-                className="w-full sm:w-auto px-4 py-2.5 border border-border rounded-lg text-base bg-background text-foreground"
-                disabled={runHistoricalSync.isPending}
-              >
-                <option value="all">All Services</option>
-                {HISTORICAL_SYNC_TYPES.map(type => (
-                  <option key={type.id} value={type.id}>{type.name}</option>
-                ))}
-              </select>
-            </div>
-            <button
-              onClick={() => {
-                // Include custom values in the sync sequence when checkbox is enabled
-                const shouldIncludeCustomValues = includeHistoricalCustomValues &&
-                  (historicalService === 'all' || historicalService === 'persons');
-                runHistoricalSync.mutate({
-                  year: historicalYear,
-                  service: historicalService,
-                  includeCustomValues: shouldIncludeCustomValues,
-                  debug: shouldIncludeCustomValues && historicalDebug,
-                });
-              }}
-              disabled={runHistoricalSync.isPending || hasRunningSyncs}
-              className="px-5 py-2.5 bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 font-semibold rounded-lg hover:bg-amber-200 dark:hover:bg-amber-900/60 disabled:opacity-50 flex items-center justify-center gap-2 text-sm"
-            >
-              {runHistoricalSync.isPending ? (
-                <><Loader2 className="w-4 h-4 animate-spin" /> Importing...</>
-              ) : (
-                <><Clock3 className="w-4 h-4" /> Import</>
-              )}
-            </button>
+        {/* Custom field values option - only show when syncing all services or persons */}
+        {(syncService === 'all' || syncService === 'persons') && (
+          <div className="mt-4 space-y-2">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={includeCustomValues}
+                onChange={(e) => setIncludeCustomValues(e.target.checked)}
+                className="rounded border-gray-300"
+                disabled={unifiedSync.isPending}
+              />
+              <span className="text-sm">Include custom field values</span>
+            </label>
+
+            {includeCustomValues && (
+              <>
+                <div className="flex items-center gap-2 rounded-md bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
+                  <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                  <span>
+                    Custom values sync requires ~1 API call per person/household.
+                  </span>
+                </div>
+                <label className="flex items-center gap-2 ml-6">
+                  <input
+                    type="checkbox"
+                    checked={syncDebug}
+                    onChange={(e) => setSyncDebug(e.target.checked)}
+                    className="rounded border-gray-300"
+                    disabled={unifiedSync.isPending}
+                  />
+                  <span className="text-sm text-muted-foreground">Enable debug logging</span>
+                </label>
+              </>
+            )}
           </div>
-
-          {/* Custom field values option - only show when syncing all services or persons */}
-          {(historicalService === 'all' || historicalService === 'persons') && (
-            <div className="mt-4 space-y-2">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={includeHistoricalCustomValues}
-                  onChange={(e) => setIncludeHistoricalCustomValues(e.target.checked)}
-                  className="rounded border-gray-300"
-                  disabled={runHistoricalSync.isPending}
-                />
-                <span className="text-sm">Include custom field values</span>
-              </label>
-
-              {includeHistoricalCustomValues && (
-                <>
-                  <div className="flex items-center gap-2 rounded-md bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
-                    <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-                    <span>
-                      Custom values sync requires ~1 API call per person/household.
-                    </span>
-                  </div>
-                  <label className="flex items-center gap-2 ml-6">
-                    <input
-                      type="checkbox"
-                      checked={historicalDebug}
-                      onChange={(e) => setHistoricalDebug(e.target.checked)}
-                      className="rounded border-gray-300"
-                      disabled={runHistoricalSync.isPending}
-                    />
-                    <span className="text-sm text-muted-foreground">Enable debug logging</span>
-                  </label>
-                </>
-              )}
-            </div>
-          )}
-
-          <p className="text-sm text-muted-foreground mt-4">Import historical bunking data for enrolled campers.</p>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Current Year Sync Types Section */}
       <div className="space-y-3">
