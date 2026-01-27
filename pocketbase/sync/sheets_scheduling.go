@@ -141,6 +141,9 @@ func (g *GoogleSheetsExport) SyncForYears(ctx context.Context, years []int, incl
 
 // syncYearData exports year-specific tables for a given year
 func (g *GoogleSheetsExport) syncYearData(ctx context.Context, year int) error {
+	// Update struct year so lookup methods (loadPersons, loadSessions) use correct year
+	g.year = year
+
 	slog.Info("Exporting year-specific data",
 		"spreadsheet_id", g.spreadsheetID,
 		"year", year,
