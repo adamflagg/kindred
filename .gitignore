@@ -287,11 +287,11 @@ pb_data_local/
 # =============================================================================
 config/branding.local.json
 config/staff_list.json
-local/
+local
 CLAUDE.local.md
 scripts/vault.config
 frontend/vite.config.local.ts
-docs/camp/
+docs/camp
 
 # Worktree-specific files
 start.sh
