@@ -60,6 +60,46 @@ class NewVsReturning(BaseModel):
     returning_percentage: float = Field(description="Percentage of returning campers")
 
 
+class SchoolBreakdown(BaseModel):
+    """Breakdown of metrics by school (raw value from CampMinder)."""
+
+    school: str = Field(description="School name (raw, may need normalization)")
+    count: int = Field(description="Number of campers")
+    percentage: float = Field(description="Percentage of total")
+
+
+class CityBreakdown(BaseModel):
+    """Breakdown of metrics by city."""
+
+    city: str = Field(description="City name")
+    count: int = Field(description="Number of campers")
+    percentage: float = Field(description="Percentage of total")
+
+
+class SynagogueBreakdown(BaseModel):
+    """Breakdown of metrics by synagogue."""
+
+    synagogue: str = Field(description="Synagogue name")
+    count: int = Field(description="Number of campers")
+    percentage: float = Field(description="Percentage of total")
+
+
+class FirstYearBreakdown(BaseModel):
+    """Breakdown of metrics by first year attended."""
+
+    first_year: int = Field(description="Year camper first attended camp")
+    count: int = Field(description="Number of campers")
+    percentage: float = Field(description="Percentage of total")
+
+
+class SessionBunkBreakdown(BaseModel):
+    """Breakdown of metrics by session+bunk combination."""
+
+    session: str = Field(description="Session name")
+    bunk: str = Field(description="Bunk name")
+    count: int = Field(description="Number of campers")
+
+
 # ============================================================================
 # Retention Metrics
 # ============================================================================
@@ -137,6 +177,16 @@ class RegistrationMetricsResponse(BaseModel):
     by_session_length: list[SessionLengthBreakdown] = Field(description="Enrollment by session length")
     by_years_at_camp: list[YearsAtCampBreakdown] = Field(description="Enrollment by years at camp")
     new_vs_returning: NewVsReturning = Field(description="New vs returning breakdown")
+    # New breakdowns (from camper_history)
+    by_school: list[SchoolBreakdown] = Field(default_factory=list, description="Enrollment by school")
+    by_city: list[CityBreakdown] = Field(default_factory=list, description="Enrollment by city")
+    by_synagogue: list[SynagogueBreakdown] = Field(default_factory=list, description="Enrollment by synagogue")
+    by_first_year: list[FirstYearBreakdown] = Field(
+        default_factory=list, description="Enrollment by first year attended"
+    )
+    by_session_bunk: list[SessionBunkBreakdown] = Field(
+        default_factory=list, description="Top session+bunk combinations"
+    )
 
 
 # ============================================================================
@@ -166,3 +216,26 @@ class ComparisonMetricsResponse(BaseModel):
     year_a: YearSummary = Field(description="First year summary")
     year_b: YearSummary = Field(description="Second year summary")
     delta: ComparisonDelta = Field(description="Change between years")
+
+
+# ============================================================================
+# Historical Trends Metrics
+# ============================================================================
+
+
+class YearMetrics(BaseModel):
+    """Summary metrics for a single year in historical trends."""
+
+    year: int = Field(description="Year")
+    total_enrolled: int = Field(description="Total enrolled campers")
+    by_gender: list[GenderBreakdown] = Field(description="Enrollment by gender")
+    new_vs_returning: NewVsReturning = Field(description="New vs returning breakdown")
+    by_first_year: list[FirstYearBreakdown] = Field(
+        default_factory=list, description="Enrollment by first year attended"
+    )
+
+
+class HistoricalTrendsResponse(BaseModel):
+    """Response model for historical trends endpoint."""
+
+    years: list[YearMetrics] = Field(description="Metrics for each year")
