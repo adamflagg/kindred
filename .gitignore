@@ -202,8 +202,6 @@ tmp/
 !config/staff_list.example.json
 !config/sheets_export.example.json
 !config/branding.json
-!config/branding.local.json
-!config/staff_list.json
 !**/example_*.json
 !campminder/**/*.json
 !docs/api/external/campminder/examples/*.json
@@ -283,15 +281,17 @@ claude-exports/
 pb_data_local/
 
 # =============================================================================
-# git-crypt encrypted files (DO NOT add to .gitignore)
-# These are committed but encrypted. See .gitattributes for the list.
-# - config/staff_list.json
-# - config/branding.local.json
-# - local/
-# - CLAUDE.local.md
-# - scripts/vault.config
-# - frontend/vite.config.local.ts
+# Private local files (not tracked)
+# These files contain camp-specific branding, credentials, or private config.
+# They exist locally but are never committed to the repository.
 # =============================================================================
+config/branding.local.json
+config/staff_list.json
+local/
+CLAUDE.local.md
+scripts/vault.config
+frontend/vite.config.local.ts
+docs/camp/
 
 # Worktree-specific files
 start.sh
