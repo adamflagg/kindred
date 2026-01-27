@@ -9,6 +9,7 @@ import type {
   RetentionMetrics,
   RegistrationMetrics,
   ComparisonMetrics,
+  HistoricalTrendsResponse,
 } from '../types/metrics';
 
 /**
@@ -94,6 +95,39 @@ export function useComparisonMetrics(yearA: number, yearB: number) {
       return response.json();
     },
     enabled: yearA > 0 && yearB > 0,
+    ...syncDataOptions,
+  });
+}
+
+/**
+ * Fetch historical trends across multiple years.
+ * Default: last 5 years (2021-2025).
+ */
+export function useHistoricalTrends(years?: string, sessionTypes?: string) {
+  const { fetchWithAuth } = useApiWithAuth();
+
+  return useQuery({
+    queryKey: queryKeys.historical(years, sessionTypes),
+    queryFn: async (): Promise<HistoricalTrendsResponse> => {
+      const params = new URLSearchParams();
+      if (years) {
+        params.set('years', years);
+      }
+      if (sessionTypes) {
+        params.set('session_types', sessionTypes);
+      }
+
+      const url = params.toString()
+        ? `/api/metrics/historical?${params}`
+        : '/api/metrics/historical';
+
+      const response = await fetchWithAuth(url);
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.detail || 'Failed to fetch historical trends');
+      }
+      return response.json();
+    },
     ...syncDataOptions,
   });
 }

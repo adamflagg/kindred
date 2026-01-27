@@ -89,6 +89,10 @@ export const queryKeys = {
       : (['metrics', 'registration', year] as const),
   comparison: (yearA: number, yearB: number) =>
     ['metrics', 'comparison', yearA, yearB] as const,
+  historical: (years?: string, sessionTypes?: string) =>
+    years || sessionTypes
+      ? (['metrics', 'historical', years, sessionTypes] as const)
+      : (['metrics', 'historical'] as const),
 };
 
 /**
