@@ -34,8 +34,8 @@ from ..schemas.metrics import (
     SessionBunkBreakdown,
     SessionLengthBreakdown,
     SynagogueBreakdown,
-    YearsAtCampBreakdown,
     YearMetrics,
+    YearsAtCampBreakdown,
     YearSummary,
 )
 
@@ -49,31 +49,48 @@ router = APIRouter(prefix="/api/metrics", tags=["metrics"])
 # ============================================================================
 
 
-def get_session_length_category(session_name: str, session_type: str) -> str:
-    """Categorize session by length based on name and type.
+def get_session_length_category(start_date: str, end_date: str) -> str:
+    """Calculate session length category from actual dates.
 
     Categories:
-    - 1-week: Taste of Camp sessions
-    - 2-week: Embedded sessions (2a, 3a, etc.) and Session 4
-    - 3-week: Main sessions 2 and 3
+    - 1-week: 1-7 days
+    - 2-week: 8-14 days
+    - 3-week: 15-21 days
+    - 4-week+: 22+ days
+    - unknown: missing or invalid dates
+
+    Args:
+        start_date: Session start date (YYYY-MM-DD or with time/timezone)
+        end_date: Session end date (YYYY-MM-DD or with time/timezone)
+
+    Returns:
+        Session length category string.
     """
-    # Taste of Camp = 1-week
-    if "Taste of Camp" in session_name:
-        return "1-week"
+    from datetime import datetime
 
-    # Embedded sessions = 2-week
-    if session_type == "embedded":
-        return "2-week"
+    if not start_date or not end_date:
+        return "unknown"
 
-    # Session 4 = 2-week
-    if session_name == "Session 4":
-        return "2-week"
+    try:
+        # Parse dates - handle various formats
+        # Strip time component if present (keep just YYYY-MM-DD)
+        start_str = start_date.split(" ")[0].split("T")[0]
+        end_str = end_date.split(" ")[0].split("T")[0]
 
-    # Session 2, 3 (main) = 3-week
-    if session_name in ("Session 2", "Session 3") and session_type == "main":
-        return "3-week"
+        start = datetime.strptime(start_str, "%Y-%m-%d")
+        end = datetime.strptime(end_str, "%Y-%m-%d")
+        days = (end - start).days + 1  # Inclusive of both start and end
 
-    return "other"
+        if days <= 7:
+            return "1-week"
+        elif days <= 14:
+            return "2-week"
+        elif days <= 21:
+            return "3-week"
+        else:
+            return "4-week+"
+    except (ValueError, AttributeError):
+        return "unknown"
 
 
 async def fetch_attendees_for_year(year: int, status_filter: str | None = None) -> list[Any]:
@@ -352,7 +369,8 @@ async def get_retention_metrics(
 async def get_registration_metrics(
     year: int = Query(..., description="Year to get registration metrics for"),
     session_types: str | None = Query(
-        None, description="Comma-separated session types to filter (e.g., 'main,embedded')"
+        "main,embedded,ag",
+        description="Comma-separated session types to filter (default: summer camp sessions)",
     ),
 ) -> RegistrationMetricsResponse:
     """Get registration breakdown metrics for a specific year.
@@ -468,9 +486,9 @@ async def get_registration_metrics(
             expand = getattr(a, "expand", {}) or {}
             session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
             if session:
-                session_name = getattr(session, "name", "")
-                session_type = getattr(session, "session_type", "")
-                length = get_session_length_category(session_name, session_type)
+                start_date = getattr(session, "start_date", "") or ""
+                end_date = getattr(session, "end_date", "") or ""
+                length = get_session_length_category(start_date, end_date)
                 length_counts[length] = length_counts.get(length, 0) + 1
 
         by_session_length = [
@@ -481,7 +499,7 @@ async def get_registration_metrics(
             )
             for length, c in sorted(
                 length_counts.items(),
-                key=lambda x: {"1-week": 0, "2-week": 1, "3-week": 2, "other": 3}.get(x[0], 4),
+                key=lambda x: {"1-week": 0, "2-week": 1, "3-week": 2, "4-week+": 3, "unknown": 4}.get(x[0], 5),
             )
         ]
 

@@ -61,7 +61,7 @@ export function RegistrationMetricsPage() {
                   : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
               }`}
             >
-              Registration
+              Summer Registration
             </button>
             <button
               onClick={() => setActiveTab('retention')}
