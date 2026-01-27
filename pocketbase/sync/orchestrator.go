@@ -947,6 +947,24 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		}
 	}
 
+	// After current year sync completes, trigger Google Sheets export (globals + current year)
+	if opts.Year == 0 && google.IsEnabled() && google.GetSpreadsheetID() != "" {
+		o.mu.RLock()
+		sheetsService := o.services["google_sheets_export"]
+		o.mu.RUnlock()
+
+		if sheetsService != nil {
+			if exporter, ok := sheetsService.(*GoogleSheetsExport); ok {
+				slog.Info("Sync with options: Exporting to Google Sheets")
+				if err := exporter.Sync(ctx); err != nil {
+					slog.Error("Sync with options: Google Sheets export failed", "error", err)
+				} else {
+					slog.Info("Sync with options: Google Sheets export completed")
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -1030,7 +1048,7 @@ func (o *Orchestrator) InitializeSyncServices() error {
 			spreadsheetID := google.GetSpreadsheetID()
 			if spreadsheetID != "" {
 				o.RegisterService("google_sheets_export", NewGoogleSheetsExport(o.app, sheetsClient, spreadsheetID))
-				slog.Info("Google Sheets export service registered", "spreadsheet_id", spreadsheetID)
+				slog.Info("Google Sheets export service registered", "spreadsheet_id", "configured")
 			} else {
 				slog.Warn("Google Sheets enabled but no spreadsheet ID configured")
 			}
