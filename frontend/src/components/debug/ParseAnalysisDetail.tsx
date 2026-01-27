@@ -246,8 +246,9 @@ export function ParseAnalysisDetail({
   );
 
   // Reset view modes when camper changes (fields change)
+  // This pattern is intentional - we need to clear overrides when the camper changes
   useEffect(() => {
-    setViewModes({});
+    setViewModes({}); // eslint-disable-line
   }, [fieldsKey]);
 
   // Get effective view mode for a field (uses override if set, else default)
