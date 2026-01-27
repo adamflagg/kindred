@@ -41,6 +41,37 @@ export interface NewVsReturning {
   returning_percentage: number;
 }
 
+// New demographic breakdowns (from camper_history)
+export interface SchoolBreakdown {
+  school: string;
+  count: number;
+  percentage: number;
+}
+
+export interface CityBreakdown {
+  city: string;
+  count: number;
+  percentage: number;
+}
+
+export interface SynagogueBreakdown {
+  synagogue: string;
+  count: number;
+  percentage: number;
+}
+
+export interface FirstYearBreakdown {
+  first_year: number;
+  count: number;
+  percentage: number;
+}
+
+export interface SessionBunkBreakdown {
+  session: string;
+  bunk: string;
+  count: number;
+}
+
 // Retention-specific types
 export interface RetentionByGender {
   gender: string;
@@ -95,6 +126,12 @@ export interface RegistrationMetrics {
   by_session_length: SessionLengthBreakdown[];
   by_years_at_camp: YearsAtCampBreakdown[];
   new_vs_returning: NewVsReturning;
+  // New demographic breakdowns (from camper_history)
+  by_school?: SchoolBreakdown[];
+  by_city?: CityBreakdown[];
+  by_synagogue?: SynagogueBreakdown[];
+  by_first_year?: FirstYearBreakdown[];
+  by_session_bunk?: SessionBunkBreakdown[];
 }
 
 export interface YearSummary {
@@ -113,4 +150,17 @@ export interface ComparisonMetrics {
   year_a: YearSummary;
   year_b: YearSummary;
   delta: ComparisonDelta;
+}
+
+// Historical trends types
+export interface YearMetrics {
+  year: number;
+  total_enrolled: number;
+  by_gender: GenderBreakdown[];
+  new_vs_returning: NewVsReturning;
+  by_first_year?: FirstYearBreakdown[];
+}
+
+export interface HistoricalTrendsResponse {
+  years: YearMetrics[];
 }
