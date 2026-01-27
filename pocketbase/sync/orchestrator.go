@@ -673,6 +673,16 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		o.mu.Unlock()
 	}()
 
+	// Check if global tables are empty - if so, run weekly sync first
+	// This ensures fresh DB setups have required global definitions before any sync
+	// The check is quick (1 DB query) so we do it regardless of year
+	if o.checkGlobalTablesEmpty() {
+		slog.Info("Global tables empty - running weekly sync first")
+		if err := o.RunWeeklySync(ctx); err != nil {
+			slog.Error("Weekly sync failed, continuing with sync", "error", err)
+		}
+	}
+
 	// Determine which services to run
 	servicesToRun := opts.Services
 	if len(servicesToRun) == 0 {
