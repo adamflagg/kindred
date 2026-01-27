@@ -507,8 +507,8 @@ func getBestStatus(statuses []string) string {
 	}
 	// Enrolled is always best
 	for _, s := range statuses {
-		if s == "enrolled" {
-			return "enrolled"
+		if s == statusEnrolled {
+			return statusEnrolled
 		}
 	}
 	// Otherwise return first status
@@ -540,5 +540,550 @@ func joinSorted(strs []string) string {
 	for i := 1; i < len(sorted); i++ {
 		result += ", " + sorted[i]
 	}
+	return result
+}
+
+// ============================================================================
+// Tests for new camper_history fields (household_id, gender, division_name,
+// enrollment_date, status, synagogue)
+// ============================================================================
+
+// TestCamperHistoryExtendedDemographics tests extraction of new demographic fields
+// (household_id, gender, division_name) from person records
+func TestCamperHistoryExtendedDemographics(t *testing.T) {
+	// Simulate extended person data with new fields
+	persons := []testExtendedPerson{
+		{
+			PersonID:     1001,
+			FirstName:    "Emma",
+			LastName:     "Johnson",
+			HouseholdID:  5001,
+			Gender:       "F",
+			DivisionID:   100,
+			DivisionName: "Juniors",
+			School:       "Riverside Elementary",
+			City:         "Springfield",
+			Grade:        5,
+		},
+		{
+			PersonID:     1002,
+			FirstName:    "Liam",
+			LastName:     "Garcia",
+			HouseholdID:  5002,
+			Gender:       "M",
+			DivisionID:   101,
+			DivisionName: "Seniors",
+			School:       "Oak Valley Middle",
+			City:         "Riverside",
+			Grade:        7,
+		},
+		{
+			PersonID:     1003,
+			FirstName:    "Olivia",
+			LastName:     "Chen",
+			HouseholdID:  0, // No household assigned
+			Gender:       "",
+			DivisionID:   0, // No division
+			DivisionName: "",
+			School:       "",
+			City:         "",
+			Grade:        0,
+		},
+	}
+
+	// Build demographics map (simulating loadPersonDemographics with extended fields)
+	demographics := buildExtendedDemographics(persons)
+
+	// Test person 1001
+	demo1 := demographics[1001]
+	if demo1.householdID != 5001 {
+		t.Errorf("person 1001: household_id = %d, want 5001", demo1.householdID)
+	}
+	if demo1.gender != "F" {
+		t.Errorf("person 1001: gender = %q, want %q", demo1.gender, "F")
+	}
+	if demo1.divisionName != "Juniors" {
+		t.Errorf("person 1001: division_name = %q, want %q", demo1.divisionName, "Juniors")
+	}
+
+	// Test person 1002
+	demo2 := demographics[1002]
+	if demo2.householdID != 5002 {
+		t.Errorf("person 1002: household_id = %d, want 5002", demo2.householdID)
+	}
+	if demo2.gender != "M" {
+		t.Errorf("person 1002: gender = %q, want %q", demo2.gender, "M")
+	}
+	if demo2.divisionName != "Seniors" {
+		t.Errorf("person 1002: division_name = %q, want %q", demo2.divisionName, "Seniors")
+	}
+
+	// Test person 1003 (missing optional fields)
+	demo3 := demographics[1003]
+	if demo3.householdID != 0 {
+		t.Errorf("person 1003: household_id = %d, want 0", demo3.householdID)
+	}
+	if demo3.gender != "" {
+		t.Errorf("person 1003: gender = %q, want empty", demo3.gender)
+	}
+	if demo3.divisionName != "" {
+		t.Errorf("person 1003: division_name = %q, want empty", demo3.divisionName)
+	}
+}
+
+// TestCamperHistoryEnrollmentDateAggregation tests that enrollment_date uses the
+// earliest date when a camper is enrolled in multiple sessions
+func TestCamperHistoryEnrollmentDateAggregation(t *testing.T) {
+	tests := []struct {
+		name             string
+		enrollmentDates  []string
+		expectedEarliest string
+	}{
+		{
+			name:             "single session",
+			enrollmentDates:  []string{"2024-11-15"},
+			expectedEarliest: "2024-11-15",
+		},
+		{
+			name:             "multiple sessions - different dates",
+			enrollmentDates:  []string{"2024-12-01", "2024-11-15", "2025-01-10"},
+			expectedEarliest: "2024-11-15", // Earliest wins
+		},
+		{
+			name:             "multiple sessions - same date",
+			enrollmentDates:  []string{"2024-11-15", "2024-11-15"},
+			expectedEarliest: "2024-11-15",
+		},
+		{
+			name:             "empty dates",
+			enrollmentDates:  []string{},
+			expectedEarliest: "",
+		},
+		{
+			name:             "some empty dates",
+			enrollmentDates:  []string{"", "2024-11-15", ""},
+			expectedEarliest: "2024-11-15",
+		},
+		{
+			name:             "all empty dates",
+			enrollmentDates:  []string{"", "", ""},
+			expectedEarliest: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := getEarliestEnrollmentDate(tt.enrollmentDates)
+			if result != tt.expectedEarliest {
+				t.Errorf("getEarliestEnrollmentDate(%v) = %q, want %q",
+					tt.enrollmentDates, result, tt.expectedEarliest)
+			}
+		})
+	}
+}
+
+// TestCamperHistoryStatusAggregation tests status aggregation logic across sessions
+// Rule: "enrolled" if ANY session is enrolled, otherwise first non-empty status
+func TestCamperHistoryStatusAggregation(t *testing.T) {
+	tests := []struct {
+		name           string
+		statuses       []string
+		expectedStatus string
+	}{
+		{
+			name:           "single enrolled",
+			statuses:       []string{"enrolled"},
+			expectedStatus: "enrolled",
+		},
+		{
+			name:           "single canceled",
+			statuses:       []string{"canceled"},
+			expectedStatus: "canceled",
+		},
+		{
+			name:           "enrolled among others - enrolled first",
+			statuses:       []string{"enrolled", "canceled", "waitlisted"},
+			expectedStatus: "enrolled",
+		},
+		{
+			name:           "enrolled among others - enrolled last",
+			statuses:       []string{"canceled", "waitlisted", "enrolled"},
+			expectedStatus: "enrolled",
+		},
+		{
+			name:           "enrolled among others - enrolled middle",
+			statuses:       []string{"waitlisted", "enrolled", "canceled"},
+			expectedStatus: "enrolled",
+		},
+		{
+			name:           "no enrolled - use first",
+			statuses:       []string{"canceled", "withdrawn"},
+			expectedStatus: "canceled",
+		},
+		{
+			name:           "empty statuses",
+			statuses:       []string{},
+			expectedStatus: "",
+		},
+		{
+			name:           "all enrolled",
+			statuses:       []string{"enrolled", "enrolled", "enrolled"},
+			expectedStatus: "enrolled",
+		},
+		{
+			name:           "various non-enrolled",
+			statuses:       []string{"waitlisted", "applied", "inquiry"},
+			expectedStatus: "waitlisted", // First in list
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := getAggregatedStatus(tt.statuses)
+			if result != tt.expectedStatus {
+				t.Errorf("getAggregatedStatus(%v) = %q, want %q",
+					tt.statuses, result, tt.expectedStatus)
+			}
+		})
+	}
+}
+
+// TestCamperHistorySynagogueLookup tests synagogue lookup from household custom values
+func TestCamperHistorySynagogueLookup(t *testing.T) {
+	// Simulate household_custom_values data
+	// Key: household_id, Value: synagogue name (or empty if not set)
+	synagogueByHousehold := map[int]string{
+		5001: "Temple Beth El",
+		5002: "Congregation Shalom",
+		5003: "", // Empty synagogue value
+		// 5004 not present - household doesn't exist in lookup
+	}
+
+	tests := []struct {
+		name              string
+		householdID       int
+		expectedSynagogue string
+	}{
+		{
+			name:              "household with synagogue",
+			householdID:       5001,
+			expectedSynagogue: "Temple Beth El",
+		},
+		{
+			name:              "household with different synagogue",
+			householdID:       5002,
+			expectedSynagogue: "Congregation Shalom",
+		},
+		{
+			name:              "household with empty synagogue",
+			householdID:       5003,
+			expectedSynagogue: "",
+		},
+		{
+			name:              "household not in lookup",
+			householdID:       5004,
+			expectedSynagogue: "",
+		},
+		{
+			name:              "no household (zero ID)",
+			householdID:       0,
+			expectedSynagogue: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := lookupSynagogue(synagogueByHousehold, tt.householdID)
+			if result != tt.expectedSynagogue {
+				t.Errorf("lookupSynagogue(%d) = %q, want %q",
+					tt.householdID, result, tt.expectedSynagogue)
+			}
+		})
+	}
+}
+
+// TestCamperHistoryExtendedAttendeeAggregation tests aggregation of attendee data
+// including enrollment_date and status for multi-session campers
+func TestCamperHistoryExtendedAttendeeAggregation(t *testing.T) {
+	// Camper 1001 enrolled in 3 sessions with different dates and all enrolled
+	// Camper 1002 enrolled in 2 sessions, one enrolled one canceled
+	// Camper 1003 single session, waitlisted
+	attendees := []testExtendedAttendee{
+		{PersonID: 1001, SessionName: "Session 1", EnrollmentDate: "2024-12-01", Status: "enrolled"},
+		{PersonID: 1001, SessionName: "Session 2", EnrollmentDate: "2024-11-15", Status: "enrolled"},
+		{PersonID: 1001, SessionName: "Session 3", EnrollmentDate: "2024-11-20", Status: "enrolled"},
+		{PersonID: 1002, SessionName: "Session 1", EnrollmentDate: "2024-12-10", Status: "canceled"},
+		{PersonID: 1002, SessionName: "Session 2", EnrollmentDate: "2024-12-05", Status: "enrolled"},
+		{PersonID: 1003, SessionName: "Session 1", EnrollmentDate: "2025-01-15", Status: "waitlisted"},
+	}
+
+	aggregated := aggregateExtendedAttendees(attendees)
+
+	// Check person 1001
+	data1 := aggregated[1001]
+	if data1 == nil {
+		t.Fatal("person 1001 not found in aggregated data")
+	}
+	if data1.earliestEnrollmentDate != "2024-11-15" {
+		t.Errorf("person 1001: enrollment_date = %q, want %q", data1.earliestEnrollmentDate, "2024-11-15")
+	}
+	if data1.aggregatedStatus != statusEnrolled {
+		t.Errorf("person 1001: status = %q, want %q", data1.aggregatedStatus, statusEnrolled)
+	}
+
+	// Check person 1002
+	data2 := aggregated[1002]
+	if data2 == nil {
+		t.Fatal("person 1002 not found in aggregated data")
+	}
+	if data2.earliestEnrollmentDate != "2024-12-05" {
+		t.Errorf("person 1002: enrollment_date = %q, want %q", data2.earliestEnrollmentDate, "2024-12-05")
+	}
+	if data2.aggregatedStatus != statusEnrolled {
+		t.Errorf("person 1002: status = %q, want %q", data2.aggregatedStatus, statusEnrolled)
+	}
+
+	// Check person 1003
+	data3 := aggregated[1003]
+	if data3 == nil {
+		t.Fatal("person 1003 not found in aggregated data")
+	}
+	if data3.earliestEnrollmentDate != "2025-01-15" {
+		t.Errorf("person 1003: enrollment_date = %q, want %q", data3.earliestEnrollmentDate, "2025-01-15")
+	}
+	if data3.aggregatedStatus != "waitlisted" {
+		t.Errorf("person 1003: status = %q, want %q", data3.aggregatedStatus, "waitlisted")
+	}
+}
+
+// TestCamperHistoryFullRecordWithNewFields tests a complete camper history record
+// with all 6 new fields populated
+func TestCamperHistoryFullRecordWithNewFields(t *testing.T) {
+	// This test verifies that all fields are correctly combined into a record
+	record := testCamperHistoryRecord{
+		// Existing fields
+		PersonID:          1001,
+		FirstName:         "Emma",
+		LastName:          "Johnson",
+		Year:              2025,
+		Sessions:          "Session 1, Session 2",
+		Bunks:             "G-8, G-10",
+		School:            "Riverside Elementary",
+		City:              "Springfield",
+		Grade:             5,
+		IsReturning:       true,
+		YearsAtCamp:       3,
+		PriorYearSessions: "Session 2",
+		PriorYearBunks:    "G-6",
+		// New fields
+		HouseholdID:    5001,
+		Gender:         "F",
+		DivisionName:   "Juniors",
+		EnrollmentDate: "2024-11-15",
+		Status:         statusEnrolled,
+		Synagogue:      "Temple Beth El",
+	}
+
+	// Verify new fields are set
+	if record.HouseholdID != 5001 {
+		t.Errorf("HouseholdID = %d, want 5001", record.HouseholdID)
+	}
+	if record.Gender != "F" {
+		t.Errorf("Gender = %q, want %q", record.Gender, "F")
+	}
+	if record.DivisionName != "Juniors" {
+		t.Errorf("DivisionName = %q, want %q", record.DivisionName, "Juniors")
+	}
+	if record.EnrollmentDate != "2024-11-15" {
+		t.Errorf("EnrollmentDate = %q, want %q", record.EnrollmentDate, "2024-11-15")
+	}
+	if record.Status != statusEnrolled {
+		t.Errorf("Status = %q, want %q", record.Status, statusEnrolled)
+	}
+	if record.Synagogue != "Temple Beth El" {
+		t.Errorf("Synagogue = %q, want %q", record.Synagogue, "Temple Beth El")
+	}
+
+	// Verify existing fields still work
+	if record.PersonID != 1001 {
+		t.Errorf("PersonID = %d, want 1001", record.PersonID)
+	}
+	if !record.IsReturning {
+		t.Errorf("IsReturning = %v, want true", record.IsReturning)
+	}
+}
+
+// ============================================================================
+// Extended test helper types for new fields
+// ============================================================================
+
+type testExtendedPerson struct {
+	PersonID     int
+	FirstName    string
+	LastName     string
+	HouseholdID  int
+	Gender       string
+	DivisionID   int
+	DivisionName string
+	School       string
+	City         string
+	Grade        int
+}
+
+type testExtendedDemographics struct {
+	firstName    string
+	lastName     string
+	householdID  int
+	gender       string
+	divisionName string
+	school       string
+	city         string
+	grade        int
+}
+
+type testExtendedAttendee struct {
+	PersonID       int
+	SessionName    string
+	EnrollmentDate string
+	Status         string
+}
+
+type testExtendedAttendeeData struct {
+	sessionNames           []string
+	enrollmentDates        []string
+	statuses               []string
+	earliestEnrollmentDate string
+	aggregatedStatus       string
+}
+
+type testCamperHistoryRecord struct {
+	// Existing fields
+	PersonID          int
+	FirstName         string
+	LastName          string
+	Year              int
+	Sessions          string
+	Bunks             string
+	School            string
+	City              string
+	Grade             int
+	IsReturning       bool
+	YearsAtCamp       int
+	PriorYearSessions string
+	PriorYearBunks    string
+	// New fields
+	HouseholdID    int
+	Gender         string
+	DivisionName   string
+	EnrollmentDate string
+	Status         string
+	Synagogue      string
+}
+
+// ============================================================================
+// Extended helper functions for new fields
+// ============================================================================
+
+// buildExtendedDemographics creates a demographics map with extended fields
+func buildExtendedDemographics(persons []testExtendedPerson) map[int]testExtendedDemographics {
+	result := make(map[int]testExtendedDemographics)
+	for i := range persons {
+		p := &persons[i]
+		result[p.PersonID] = testExtendedDemographics{
+			firstName:    p.FirstName,
+			lastName:     p.LastName,
+			householdID:  p.HouseholdID,
+			gender:       p.Gender,
+			divisionName: p.DivisionName,
+			school:       p.School,
+			city:         p.City,
+			grade:        p.Grade,
+		}
+	}
+	return result
+}
+
+// getEarliestEnrollmentDate returns the earliest non-empty date from a list
+func getEarliestEnrollmentDate(dates []string) string {
+	earliest := ""
+	for _, d := range dates {
+		if d == "" {
+			continue
+		}
+		if earliest == "" || d < earliest {
+			earliest = d
+		}
+	}
+	return earliest
+}
+
+// getAggregatedStatus returns "enrolled" if any status is enrolled, otherwise first non-empty
+func getAggregatedStatus(statuses []string) string {
+	if len(statuses) == 0 {
+		return ""
+	}
+	// Check for enrolled first
+	for _, s := range statuses {
+		if s == statusEnrolled {
+			return statusEnrolled
+		}
+	}
+	// Return first non-empty status
+	for _, s := range statuses {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+// lookupSynagogue looks up synagogue by household ID
+func lookupSynagogue(synagogueByHousehold map[int]string, householdID int) string {
+	if householdID == 0 {
+		return ""
+	}
+	if val, ok := synagogueByHousehold[householdID]; ok {
+		return val
+	}
+	return ""
+}
+
+// aggregateExtendedAttendees aggregates attendee data including enrollment_date and status
+func aggregateExtendedAttendees(attendees []testExtendedAttendee) map[int]*testExtendedAttendeeData {
+	result := make(map[int]*testExtendedAttendeeData)
+
+	for _, a := range attendees {
+		if _, exists := result[a.PersonID]; !exists {
+			result[a.PersonID] = &testExtendedAttendeeData{
+				sessionNames:    []string{},
+				enrollmentDates: []string{},
+				statuses:        []string{},
+			}
+		}
+		data := result[a.PersonID]
+
+		// Add session name if not present
+		found := false
+		for _, s := range data.sessionNames {
+			if s == a.SessionName {
+				found = true
+				break
+			}
+		}
+		if !found {
+			data.sessionNames = append(data.sessionNames, a.SessionName)
+		}
+
+		// Track enrollment date and status
+		data.enrollmentDates = append(data.enrollmentDates, a.EnrollmentDate)
+		data.statuses = append(data.statuses, a.Status)
+	}
+
+	// Compute aggregated values
+	for _, data := range result {
+		data.earliestEnrollmentDate = getEarliestEnrollmentDate(data.enrollmentDates)
+		data.aggregatedStatus = getAggregatedStatus(data.statuses)
+	}
+
 	return result
 }

@@ -18,6 +18,9 @@ const personBatchSize = 100
 // serviceNameCamperHistory is the canonical name for this sync service
 const serviceNameCamperHistory = "camper_history"
 
+// statusEnrolled is the enrolled status string used in comparisons
+const statusEnrolled = "enrolled"
+
 // CamperHistorySync computes camper history records with retention metrics.
 // This is a pure Go implementation that reads from PocketBase collections
 // (attendees, persons, bunk_assignments, camp_sessions) and writes to camper_history.
@@ -53,19 +56,24 @@ func (c *CamperHistorySync) GetStats() Stats {
 
 // personData aggregates data for a single person
 type personData struct {
-	personCMID   int
-	sessionNames []string
-	bunkNames    []string
-	statuses     []string
+	personCMID      int
+	sessionNames    []string
+	bunkNames       []string
+	statuses        []string
+	enrollmentDates []string // Track enrollment dates for earliest calculation
 }
 
 // personDemographics holds person record data
 type personDemographics struct {
-	firstName string
-	lastName  string
-	school    string
-	city      string
-	grade     int
+	firstName    string
+	lastName     string
+	school       string
+	city         string
+	grade        int
+	householdID  int    // CampMinder household ID
+	gender       string // M, F, etc.
+	divisionID   string // PocketBase ID for division relation
+	divisionName string // Resolved division name
 }
 
 // historicalData holds enrollment history for a person
@@ -140,7 +148,14 @@ func (c *CamperHistorySync) Sync(ctx context.Context) error {
 	}
 	slog.Info("Loaded historical enrollment data")
 
-	// Step 5: Compute and write records
+	// Step 5: Load synagogue data from household custom values
+	synagogueByHousehold, err := c.loadSynagogueByHousehold(ctx, year)
+	if err != nil {
+		slog.Warn("Error loading synagogue data, continuing without", "error", err)
+		synagogueByHousehold = make(map[int]string) // Use empty map
+	}
+
+	// Step 6: Compute and write records
 	if c.DryRun {
 		slog.Info("Dry run mode - computing but not writing", "records", len(personsData))
 		c.Stats.Created = len(personsData)
@@ -196,6 +211,16 @@ func (c *CamperHistorySync) Sync(ctx context.Context) error {
 		priorYearSessions := joinStrings(hist.priorYearSessions)
 		priorYearBunks := joinStrings(hist.priorYearBunks)
 
+		// Compute new aggregated fields
+		aggregatedStatus := c.computeAggregatedStatus(pd.statuses)
+		earliestEnrollmentDate := c.computeEarliestEnrollmentDate(pd.enrollmentDates)
+
+		// Lookup synagogue by household
+		synagogue := ""
+		if demo.householdID > 0 {
+			synagogue = synagogueByHousehold[demo.householdID]
+		}
+
 		// Build record
 		record := core.NewRecord(col)
 		record.Set("person_id", personCMID)
@@ -216,6 +241,26 @@ func (c *CamperHistorySync) Sync(ctx context.Context) error {
 		}
 		if priorYearBunks != "" {
 			record.Set("prior_year_bunks", priorYearBunks)
+		}
+
+		// New fields (v2)
+		if demo.householdID > 0 {
+			record.Set("household_id", demo.householdID)
+		}
+		if demo.gender != "" {
+			record.Set("gender", demo.gender)
+		}
+		if demo.divisionName != "" {
+			record.Set("division_name", demo.divisionName)
+		}
+		if earliestEnrollmentDate != "" {
+			record.Set("enrollment_date", earliestEnrollmentDate)
+		}
+		if aggregatedStatus != "" {
+			record.Set("status", aggregatedStatus)
+		}
+		if synagogue != "" {
+			record.Set("synagogue", synagogue)
 		}
 
 		if err := c.App.Save(record); err != nil {
@@ -300,13 +345,17 @@ func (c *CamperHistorySync) loadAttendeesForYear(ctx context.Context, year int) 
 				}
 			}
 
+			// Get enrollment date
+			enrollmentDate := record.GetString("enrollment_date")
+
 			// Add or update person data
 			if _, exists := result[personCMID]; !exists {
 				result[personCMID] = &personData{
-					personCMID:   personCMID,
-					sessionNames: []string{},
-					bunkNames:    []string{},
-					statuses:     []string{},
+					personCMID:      personCMID,
+					sessionNames:    []string{},
+					bunkNames:       []string{},
+					statuses:        []string{},
+					enrollmentDates: []string{},
 				}
 			}
 			pd := result[personCMID]
@@ -325,8 +374,9 @@ func (c *CamperHistorySync) loadAttendeesForYear(ctx context.Context, year int) 
 				}
 			}
 
-			// Track status
+			// Track status and enrollment date
 			pd.statuses = append(pd.statuses, status)
+			pd.enrollmentDates = append(pd.enrollmentDates, enrollmentDate)
 		}
 
 		if len(records) < perPage {
@@ -381,12 +431,37 @@ func (c *CamperHistorySync) loadPersonDemographics(
 				grade = int(g)
 			}
 
+			householdID := 0
+			if hid, ok := record.Get("household_id").(float64); ok {
+				householdID = int(hid)
+			}
+
 			result[cmID] = personDemographics{
-				firstName: record.GetString("first_name"),
-				lastName:  record.GetString("last_name"),
-				school:    record.GetString("school"),
-				city:      record.GetString("city"),
-				grade:     grade,
+				firstName:   record.GetString("first_name"),
+				lastName:    record.GetString("last_name"),
+				school:      record.GetString("school"),
+				city:        record.GetString("city"),
+				grade:       grade,
+				householdID: householdID,
+				gender:      record.GetString("gender"),
+				divisionID:  record.GetString("division"), // PocketBase relation ID
+			}
+		}
+	}
+
+	// Resolve division names for persons with division relations
+	divisionNames, err := c.loadDivisionNames(ctx)
+	if err != nil {
+		slog.Warn("Error loading division names", "error", err)
+		// Continue without division names
+	} else {
+		for cmID := range result {
+			demo := result[cmID]
+			if demo.divisionID != "" {
+				if name, ok := divisionNames[demo.divisionID]; ok {
+					demo.divisionName = name
+					result[cmID] = demo
+				}
 			}
 		}
 	}
@@ -624,6 +699,134 @@ func (c *CamperHistorySync) loadHistoricalEnrollments(
 	}
 
 	return result, nil
+}
+
+// loadDivisionNames loads all divisions and returns a map of PB ID -> name
+func (c *CamperHistorySync) loadDivisionNames(_ context.Context) (map[string]string, error) {
+	result := make(map[string]string)
+
+	records, err := c.App.FindRecordsByFilter("divisions", "", "", 0, 0)
+	if err != nil {
+		return nil, fmt.Errorf("querying divisions: %w", err)
+	}
+
+	for _, record := range records {
+		result[record.Id] = record.GetString("name")
+	}
+
+	return result, nil
+}
+
+// loadSynagogueByHousehold loads synagogue values from household_custom_values
+// Returns a map of household CM ID -> synagogue name
+func (c *CamperHistorySync) loadSynagogueByHousehold(ctx context.Context, year int) (map[int]string, error) {
+	result := make(map[int]string)
+
+	// First, find the custom field definition for "Synagogue"
+	fieldFilter := `name = "Synagogue"`
+	fieldDefs, err := c.App.FindRecordsByFilter("custom_field_defs", fieldFilter, "", 1, 0)
+	if err != nil || len(fieldDefs) == 0 {
+		slog.Debug("Synagogue custom field not found", "error", err)
+		return result, nil // Return empty map if field doesn't exist
+	}
+	synagogueFieldID := fieldDefs[0].Id
+
+	// Query household_custom_values for synagogue field
+	filter := fmt.Sprintf("field_definition = '%s' && year = %d", synagogueFieldID, year)
+
+	page := 1
+	perPage := 500
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
+		records, err := c.App.FindRecordsByFilter(
+			"household_custom_values",
+			filter,
+			"",
+			perPage,
+			(page-1)*perPage,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("querying household_custom_values page %d: %w", page, err)
+		}
+
+		for _, record := range records {
+			value := record.GetString("value")
+			if value == "" {
+				continue
+			}
+
+			// Get household CM ID via relation
+			householdID := record.GetString("household")
+			if householdID == "" {
+				continue
+			}
+
+			// Look up household CM ID
+			householdFilter := fmt.Sprintf("id = '%s'", householdID)
+			households, err := c.App.FindRecordsByFilter("households", householdFilter, "", 1, 0)
+			if err != nil || len(households) == 0 {
+				continue
+			}
+
+			householdCMID := 0
+			if hcmid, ok := households[0].Get("cm_id").(float64); ok {
+				householdCMID = int(hcmid)
+			}
+			if householdCMID == 0 {
+				continue
+			}
+
+			result[householdCMID] = value
+		}
+
+		if len(records) < perPage {
+			break
+		}
+		page++
+	}
+
+	slog.Info("Loaded synagogue data", "householdsWithSynagogue", len(result))
+	return result, nil
+}
+
+// computeAggregatedStatus returns "enrolled" if any status is enrolled, otherwise first non-empty
+func (c *CamperHistorySync) computeAggregatedStatus(statuses []string) string {
+	if len(statuses) == 0 {
+		return ""
+	}
+	// Check for enrolled first (highest priority)
+	for _, s := range statuses {
+		if s == statusEnrolled {
+			return statusEnrolled
+		}
+	}
+	// Return first non-empty status
+	for _, s := range statuses {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+// computeEarliestEnrollmentDate returns the earliest non-empty date from a list
+func (c *CamperHistorySync) computeEarliestEnrollmentDate(dates []string) string {
+	earliest := ""
+	for _, d := range dates {
+		if d == "" {
+			continue
+		}
+		if earliest == "" || d < earliest {
+			earliest = d
+		}
+	}
+	return earliest
 }
 
 // clearExistingRecords deletes all camper_history records for a year
