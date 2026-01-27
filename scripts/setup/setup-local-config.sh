@@ -21,7 +21,8 @@ ln -sf "$LOCAL_REPO/config/staff_list.json" "$REPO_ROOT/config/staff_list.json"
 ln -sf "$LOCAL_REPO/frontend/vite.config.local.ts" "$REPO_ROOT/frontend/vite.config.local.ts"
 ln -sf "$LOCAL_REPO/scripts/vault.config" "$REPO_ROOT/scripts/vault.config"
 
-# Directories (use -n to prevent following existing symlinks)
+# Directories - remove existing dirs first to properly symlink
+rm -rf "$REPO_ROOT/docs/camp" "$REPO_ROOT/local"
 ln -sfn "$LOCAL_REPO/docs/camp" "$REPO_ROOT/docs/camp"
 ln -sfn "$LOCAL_REPO/local" "$REPO_ROOT/local"
 
