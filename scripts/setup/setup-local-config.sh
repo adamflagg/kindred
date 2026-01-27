@@ -14,16 +14,16 @@ fi
 
 echo "Linking local config from $LOCAL_REPO..."
 
-# Single files
-ln -sf "$LOCAL_REPO/CLAUDE.local.md" "$REPO_ROOT/CLAUDE.local.md"
-ln -sf "$LOCAL_REPO/config/branding.local.json" "$REPO_ROOT/config/branding.local.json"
-ln -sf "$LOCAL_REPO/config/staff_list.json" "$REPO_ROOT/config/staff_list.json"
-ln -sf "$LOCAL_REPO/frontend/vite.config.local.ts" "$REPO_ROOT/frontend/vite.config.local.ts"
-ln -sf "$LOCAL_REPO/scripts/vault.config" "$REPO_ROOT/scripts/vault.config"
+# Single files (use -r for relative symlinks, works in any directory layout)
+ln -sfr "$LOCAL_REPO/CLAUDE.local.md" "$REPO_ROOT/CLAUDE.local.md"
+ln -sfr "$LOCAL_REPO/config/branding.local.json" "$REPO_ROOT/config/branding.local.json"
+ln -sfr "$LOCAL_REPO/config/staff_list.json" "$REPO_ROOT/config/staff_list.json"
+ln -sfr "$LOCAL_REPO/frontend/vite.config.local.ts" "$REPO_ROOT/frontend/vite.config.local.ts"
+ln -sfr "$LOCAL_REPO/scripts/vault.config" "$REPO_ROOT/scripts/vault.config"
 
 # Directories - remove existing dirs first to properly symlink
 rm -rf "$REPO_ROOT/docs/camp" "$REPO_ROOT/local"
-ln -sfn "$LOCAL_REPO/docs/camp" "$REPO_ROOT/docs/camp"
-ln -sfn "$LOCAL_REPO/local" "$REPO_ROOT/local"
+ln -sfrn "$LOCAL_REPO/docs/camp" "$REPO_ROOT/docs/camp"
+ln -sfrn "$LOCAL_REPO/local" "$REPO_ROOT/local"
 
 echo "Linked local config files"
