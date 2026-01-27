@@ -26,6 +26,9 @@ import (
 // DefaultSession is the default value for session parameter meaning "all sessions"
 const DefaultSession = "all"
 
+// DefaultService is the default value for service parameter meaning "all services"
+const DefaultService = "all"
+
 // requireAuth wraps a handler function to require authentication
 func requireAuth(handler func(*core.RequestEvent) error) func(*core.RequestEvent) error {
 	return func(e *core.RequestEvent) error {
@@ -95,7 +98,7 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 		// Parse optional session parameter (now accepts string: all, 1, 2, 2a, etc.)
 		session := e.Request.URL.Query().Get("session")
 		if session == "" {
-			session = "all" // Default: all sessions
+			session = DefaultSession
 		}
 
 		// Parse optional source_field parameter (comma-separated)
@@ -709,7 +712,7 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Parse service parameter (default: all)
 	service := e.Request.URL.Query().Get("service")
 	if service == "" {
-		service = "all"
+		service = DefaultService
 	}
 
 	// Get current year from environment
@@ -758,7 +761,7 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	}
 
 	// Set services to sync
-	if service != "all" {
+	if service != DefaultService {
 		opts.Services = []string{service}
 	}
 
