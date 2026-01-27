@@ -151,13 +151,18 @@ async def fetch_camper_history_for_year(year: int, status_filter: str = "enrolle
 
     Returns:
         List of camper_history records (already denormalized).
+        Returns empty list if collection doesn't exist or query fails.
     """
-    filter_str = f'year = {year} && status = "{status_filter}"'
+    try:
+        filter_str = f'year = {year} && status = "{status_filter}"'
 
-    return await asyncio.to_thread(
-        pb.collection("camper_history").get_full_list,
-        query_params={"filter": filter_str},
-    )
+        return await asyncio.to_thread(
+            pb.collection("camper_history").get_full_list,
+            query_params={"filter": filter_str},
+        )
+    except Exception as e:
+        logger.warning(f"Could not fetch camper_history for year {year}: {e}")
+        return []  # Return empty list - new breakdowns will just be empty
 
 
 # ============================================================================
