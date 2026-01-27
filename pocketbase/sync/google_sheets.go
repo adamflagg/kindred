@@ -330,6 +330,13 @@ func (g *GoogleSheetsExport) Name() string {
 // Sync implements the Service interface - exports data to Google Sheets
 // This is the main entry point for full exports (both globals and year-specific data)
 func (g *GoogleSheetsExport) Sync(ctx context.Context) error {
+	// Reset year to configured value (may have been changed by SyncForYears)
+	if yearStr := os.Getenv("CAMPMINDER_SEASON_ID"); yearStr != "" {
+		if parsed, err := strconv.Atoi(yearStr); err == nil {
+			g.year = parsed
+		}
+	}
+
 	startTime := time.Now()
 	slog.Info("Starting Google Sheets full export",
 		"spreadsheet_id", "configured",

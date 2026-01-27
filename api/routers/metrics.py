@@ -611,7 +611,7 @@ async def get_registration_metrics(
             bunk_list = [b.strip() for b in bunks_str.split(",") if b.strip()]
             # Create combinations (if lengths match, pair them; otherwise cross-product)
             if len(session_list) == len(bunk_list):
-                for sess, bunk in zip(session_list, bunk_list):
+                for sess, bunk in zip(session_list, bunk_list, strict=True):
                     key = (sess, bunk)
                     session_bunk_counts[key] = session_bunk_counts.get(key, 0) + 1
             elif session_list and bunk_list:
@@ -824,7 +824,7 @@ async def get_historical_trends(
 
         year_metrics_list: list[YearMetrics] = []
 
-        for year, history in zip(year_list, all_history):
+        for year, history in zip(year_list, all_history, strict=True):
             total_enrolled = len(history)
 
             # Gender breakdown
