@@ -804,6 +804,13 @@ func GetYearSpecificExports() []ExportConfig {
 				{Field: "years_at_camp", Header: "Years at Camp", Type: FieldTypeNumber},
 				{Field: "prior_year_sessions", Header: "Prior Year Sessions", Type: FieldTypeText},
 				{Field: "prior_year_bunks", Header: "Prior Year Bunks", Type: FieldTypeText},
+				// New fields (v2) for enhanced retention/registration analysis
+				{Field: "household_id", Header: "Household ID", Type: FieldTypeNumber},
+				{Field: "gender", Header: "Gender", Type: FieldTypeText},
+				{Field: "division_name", Header: "Division", Type: FieldTypeText},
+				{Field: "enrollment_date", Header: "Enrollment Date", Type: FieldTypeDate},
+				{Field: "status", Header: "Status", Type: FieldTypeText},
+				{Field: "synagogue", Header: "Synagogue", Type: FieldTypeText},
 			},
 		},
 	}
