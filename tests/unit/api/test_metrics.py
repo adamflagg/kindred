@@ -487,39 +487,51 @@ class TestRegistrationMetrics:
         assert by_years[3] == 1
         assert by_years[4] == 1
 
-    def test_session_length_categorization(self, sample_sessions_2026: list[Mock]) -> None:
-        """Test session length categorization.
+    def test_session_length_categorization_from_dates(self) -> None:
+        """Test session length categorization using actual dates.
 
-        Taste of Camp = 1-week
-        Session 2a (embedded) = 2-week
-        Session 2, 3 = 3-week
-        Session 4 = 2-week
+        Categories are now dynamically calculated from session dates:
+        - Taste of Camp (4 days) = 1-week
+        - Session 2a embedded (14 days) = 2-week
+        - Session 2, 3 main (21 days) = 3-week
+        - Session 4 (14 days) = 2-week
         """
+        from api.routers.metrics import get_session_length_category
 
-        def get_session_length_category(session: Mock) -> str:
-            """Categorize session by length."""
-            name = session.name
-            session_type = session.session_type
+        # Create sessions with realistic dates
+        sessions_with_dates = [
+            # Taste of Camp: 4 days (Jun 15-18)
+            create_mock_session(
+                2004, "Taste of Camp 1", 2026, "main",
+                start_date="2026-06-15", end_date="2026-06-18"
+            ),
+            # Session 2a embedded: 14 days (Jun 15-28)
+            create_mock_session(
+                2005, "Session 2a", 2026, "embedded",
+                start_date="2026-06-15", end_date="2026-06-28"
+            ),
+            # Session 2 main: 21 days (Jun 15 - Jul 5)
+            create_mock_session(
+                2001, "Session 2", 2026, "main",
+                start_date="2026-06-15", end_date="2026-07-05"
+            ),
+            # Session 3 main: 21 days (Jul 6 - Jul 26)
+            create_mock_session(
+                2002, "Session 3", 2026, "main",
+                start_date="2026-07-06", end_date="2026-07-26"
+            ),
+            # Session 4: 14 days (Jul 27 - Aug 9)
+            create_mock_session(
+                2003, "Session 4", 2026, "main",
+                start_date="2026-07-27", end_date="2026-08-09"
+            ),
+        ]
 
-            # Taste of Camp = 1-week
-            if "Taste of Camp" in name:
-                return "1-week"
-
-            # Embedded sessions = 2-week
-            if session_type == "embedded":
-                return "2-week"
-
-            # Session 4 = 2-week
-            if name == "Session 4":
-                return "2-week"
-
-            # Session 2, 3 (main) = 3-week
-            if name in ("Session 2", "Session 3") and session_type == "main":
-                return "3-week"
-
-            return "other"
-
-        categories = {s.name: get_session_length_category(s) for s in sample_sessions_2026}
+        # Calculate categories from dates
+        categories = {
+            s.name: get_session_length_category(s.start_date, s.end_date)
+            for s in sessions_with_dates
+        }
 
         assert categories["Taste of Camp 1"] == "1-week"
         assert categories["Session 2a"] == "2-week"
@@ -696,6 +708,185 @@ class TestEdgeCases:
 # ============================================================================
 # API Integration Tests (with mocked PocketBase)
 # ============================================================================
+
+
+# ============================================================================
+# Session Length Calculation Tests (Dynamic from dates)
+# ============================================================================
+
+
+class TestDynamicSessionLengthCalculation:
+    """Tests for dynamic session length calculation from actual dates.
+
+    Session length categories are now calculated from start_date and end_date
+    rather than hardcoded based on session name.
+    """
+
+    def test_one_to_four_days_is_one_week(self) -> None:
+        """Test 1-4 day sessions are categorized as 1-week (Taste of Camp)."""
+        from api.routers.metrics import get_session_length_category
+
+        # 4 days (e.g., Taste of Camp: May 25-28)
+        assert get_session_length_category("2025-05-25", "2025-05-28") == "1-week"
+        # 1 day
+        assert get_session_length_category("2025-06-01", "2025-06-01") == "1-week"
+        # 3 days
+        assert get_session_length_category("2025-06-01", "2025-06-03") == "1-week"
+
+    def test_five_to_seven_days_is_one_week(self) -> None:
+        """Test 5-7 day sessions are categorized as 1-week."""
+        from api.routers.metrics import get_session_length_category
+
+        # 5 days
+        assert get_session_length_category("2025-06-01", "2025-06-05") == "1-week"
+        # 7 days
+        assert get_session_length_category("2025-06-01", "2025-06-07") == "1-week"
+
+    def test_eight_to_fourteen_days_is_two_week(self) -> None:
+        """Test 8-14 day sessions are categorized as 2-week."""
+        from api.routers.metrics import get_session_length_category
+
+        # 8 days
+        assert get_session_length_category("2025-06-01", "2025-06-08") == "2-week"
+        # 12 days
+        assert get_session_length_category("2025-06-01", "2025-06-12") == "2-week"
+        # 14 days (exactly 2 weeks)
+        assert get_session_length_category("2025-06-01", "2025-06-14") == "2-week"
+
+    def test_fifteen_to_twenty_one_days_is_three_week(self) -> None:
+        """Test 15-21 day sessions are categorized as 3-week."""
+        from api.routers.metrics import get_session_length_category
+
+        # 15 days
+        assert get_session_length_category("2025-06-01", "2025-06-15") == "3-week"
+        # 18 days
+        assert get_session_length_category("2025-06-01", "2025-06-18") == "3-week"
+        # 21 days (exactly 3 weeks)
+        assert get_session_length_category("2025-06-01", "2025-06-21") == "3-week"
+
+    def test_twenty_two_plus_days_is_four_week_plus(self) -> None:
+        """Test 22+ day sessions are categorized as 4-week+."""
+        from api.routers.metrics import get_session_length_category
+
+        # 22 days
+        assert get_session_length_category("2025-06-01", "2025-06-22") == "4-week+"
+        # 28 days (4 weeks)
+        assert get_session_length_category("2025-06-01", "2025-06-28") == "4-week+"
+        # 35 days (5 weeks)
+        assert get_session_length_category("2025-06-01", "2025-07-05") == "4-week+"
+
+    def test_missing_or_invalid_dates_return_unknown(self) -> None:
+        """Test missing or invalid dates return 'unknown'."""
+        from api.routers.metrics import get_session_length_category
+
+        # Empty strings
+        assert get_session_length_category("", "") == "unknown"
+        # One empty
+        assert get_session_length_category("2025-06-01", "") == "unknown"
+        assert get_session_length_category("", "2025-06-15") == "unknown"
+        # Invalid format
+        assert get_session_length_category("not-a-date", "2025-06-15") == "unknown"
+        assert get_session_length_category("2025-06-01", "invalid") == "unknown"
+
+    def test_handles_datetime_with_time_and_timezone(self) -> None:
+        """Test parsing dates with time and timezone components."""
+        from api.routers.metrics import get_session_length_category
+
+        # Full ISO format with time and Z suffix (common from APIs)
+        assert get_session_length_category(
+            "2025-06-01 00:00:00Z",
+            "2025-06-14 23:59:59Z"
+        ) == "2-week"
+
+        # Just date portion should work
+        assert get_session_length_category(
+            "2025-06-01",
+            "2025-06-14"
+        ) == "2-week"
+
+
+# ============================================================================
+# Session Type Filtering Tests
+# ============================================================================
+
+
+class TestSessionTypeFiltering:
+    """Tests for session type filtering in registration metrics.
+
+    By default, registration metrics should only include summer camp sessions
+    (main, embedded, ag) and exclude family camp, training, etc.
+    """
+
+    @pytest.fixture
+    def sample_sessions_mixed_types(self) -> list[Mock]:
+        """Sessions with various types including non-summer."""
+        return [
+            # Summer camp sessions
+            create_mock_session(
+                1001, "Session 2", 2026, "main",
+                start_date="2026-06-15", end_date="2026-07-05"
+            ),
+            create_mock_session(
+                1002, "Session 3", 2026, "main",
+                start_date="2026-07-06", end_date="2026-07-26"
+            ),
+            create_mock_session(
+                1003, "Session 2a", 2026, "embedded",
+                start_date="2026-06-15", end_date="2026-06-28"
+            ),
+            create_mock_session(
+                1004, "All-Gender Cabin-Session 2", 2026, "ag",
+                start_date="2026-06-15", end_date="2026-07-05"
+            ),
+            # Non-summer sessions (should be excluded by default)
+            create_mock_session(
+                2001, "Family Camp Weekend 1", 2026, "family",
+                start_date="2026-08-15", end_date="2026-08-17"
+            ),
+            create_mock_session(
+                2002, "Staff Training", 2026, "training",
+                start_date="2026-05-20", end_date="2026-05-25"
+            ),
+        ]
+
+    def test_default_filter_includes_summer_types_only(
+        self, sample_sessions_mixed_types: list[Mock]
+    ) -> None:
+        """Test that default filter includes only main, embedded, ag sessions."""
+        # Simulate what the API does with default filter
+        default_types = ["main", "embedded", "ag"]
+        filtered = [
+            s for s in sample_sessions_mixed_types
+            if s.session_type in default_types
+        ]
+
+        # Should include summer camp sessions
+        assert len(filtered) == 4
+        session_names = {s.name for s in filtered}
+        assert "Session 2" in session_names
+        assert "Session 3" in session_names
+        assert "Session 2a" in session_names
+        assert "All-Gender Cabin-Session 2" in session_names
+
+        # Should exclude non-summer sessions
+        assert "Family Camp Weekend 1" not in session_names
+        assert "Staff Training" not in session_names
+
+    def test_explicit_filter_can_include_family_camp(
+        self, sample_sessions_mixed_types: list[Mock]
+    ) -> None:
+        """Test that explicit filter can include family camp if requested."""
+        explicit_types = ["main", "family"]
+        filtered = [
+            s for s in sample_sessions_mixed_types
+            if s.session_type in explicit_types
+        ]
+
+        assert len(filtered) == 3
+        session_names = {s.name for s in filtered}
+        assert "Session 2" in session_names
+        assert "Session 3" in session_names
+        assert "Family Camp Weekend 1" in session_names
 
 
 class TestMetricsAPIEndpoints:
