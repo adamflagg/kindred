@@ -1119,6 +1119,80 @@ func TestCamperHistoryUsesCMYearsAtCamp(t *testing.T) {
 	}
 }
 
+// TestCamperHistoryComputeFirstYearAttended tests first_year_attended calculation
+// This field stores the first year a camper ever attended summer camp (for onramp analysis)
+func TestCamperHistoryComputeFirstYearAttended(t *testing.T) {
+	tests := []struct {
+		name                     string
+		currentYear              int
+		enrolledYears            []int
+		expectedFirstYearAttended int
+	}{
+		{
+			name:                     "new camper - no history",
+			currentYear:              2025,
+			enrolledYears:            []int{}, // No prior years
+			expectedFirstYearAttended: 2025,    // Current year is their first
+		},
+		{
+			name:                     "returning camper - single prior year",
+			currentYear:              2025,
+			enrolledYears:            []int{2024},
+			expectedFirstYearAttended: 2024, // Min of enrolled years
+		},
+		{
+			name:                     "veteran camper - multiple years",
+			currentYear:              2025,
+			enrolledYears:            []int{2020, 2021, 2022, 2023, 2024},
+			expectedFirstYearAttended: 2020, // Earliest year
+		},
+		{
+			name:                     "gap years - still returns earliest",
+			currentYear:              2025,
+			enrolledYears:            []int{2019, 2023}, // Skipped 2020-2022
+			expectedFirstYearAttended: 2019,              // Earliest year, gaps don't matter
+		},
+		{
+			name:                     "unsorted years - finds minimum",
+			currentYear:              2025,
+			enrolledYears:            []int{2022, 2019, 2024, 2021}, // Not in order
+			expectedFirstYearAttended: 2019,                         // Should find min
+		},
+		{
+			name:                     "single gap year before current",
+			currentYear:              2025,
+			enrolledYears:            []int{2023}, // Skipped 2024
+			expectedFirstYearAttended: 2023,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			firstYear := computeFirstYearAttended(tt.currentYear, tt.enrolledYears)
+			if firstYear != tt.expectedFirstYearAttended {
+				t.Errorf("computeFirstYearAttended(%d, %v) = %d, want %d",
+					tt.currentYear, tt.enrolledYears, firstYear, tt.expectedFirstYearAttended)
+			}
+		})
+	}
+}
+
+// computeFirstYearAttended computes the first year a camper attended camp
+// For new campers (no history), returns current year
+// For returning campers, returns the minimum of enrolled years
+func computeFirstYearAttended(currentYear int, enrolledYears []int) int {
+	if len(enrolledYears) == 0 {
+		return currentYear // New camper, this is their first year
+	}
+	minYear := enrolledYears[0]
+	for _, y := range enrolledYears[1:] {
+		if y < minYear {
+			minYear = y
+		}
+	}
+	return minYear
+}
+
 // aggregateExtendedAttendees aggregates attendee data including enrollment_date and status
 func aggregateExtendedAttendees(attendees []testExtendedAttendee) map[int]*testExtendedAttendeeData {
 	result := make(map[int]*testExtendedAttendeeData)
