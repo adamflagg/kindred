@@ -15,10 +15,13 @@ from fastapi import APIRouter, HTTPException, Query
 
 from ..dependencies import pb
 from ..schemas.metrics import (
+    CityBreakdown,
     ComparisonDelta,
     ComparisonMetricsResponse,
+    FirstYearBreakdown,
     GenderBreakdown,
     GradeBreakdown,
+    HistoricalTrendsResponse,
     NewVsReturning,
     RegistrationMetricsResponse,
     RetentionByGender,
@@ -26,9 +29,13 @@ from ..schemas.metrics import (
     RetentionBySession,
     RetentionByYearsAtCamp,
     RetentionMetricsResponse,
+    SchoolBreakdown,
     SessionBreakdown,
+    SessionBunkBreakdown,
     SessionLengthBreakdown,
+    SynagogueBreakdown,
     YearsAtCampBreakdown,
+    YearMetrics,
     YearSummary,
 )
 
@@ -133,6 +140,24 @@ def calculate_percentage(count: int, total: int) -> float:
 def safe_rate(numerator: int, denominator: int) -> float:
     """Calculate rate, handling division by zero."""
     return numerator / denominator if denominator > 0 else 0.0
+
+
+async def fetch_camper_history_for_year(year: int, status_filter: str = "enrolled") -> list[Any]:
+    """Fetch camper_history records for a given year.
+
+    Args:
+        year: The year to fetch records for.
+        status_filter: Status to filter by (default: 'enrolled').
+
+    Returns:
+        List of camper_history records (already denormalized).
+    """
+    filter_str = f'year = {year} && status = "{status_filter}"'
+
+    return await asyncio.to_thread(
+        pb.collection("camper_history").get_full_list,
+        query_params={"filter": filter_str},
+    )
 
 
 # ============================================================================
@@ -341,12 +366,14 @@ async def get_registration_metrics(
             cancelled_attendees,
             persons,
             sessions,
+            camper_history,
         ) = await asyncio.gather(
             fetch_attendees_for_year(year),
             fetch_attendees_for_year(year, "waitlisted"),
             fetch_attendees_for_year(year, "cancelled"),
             fetch_persons_for_year(year),
             fetch_sessions_for_year(year, type_filter),
+            fetch_camper_history_for_year(year),  # For new demographic breakdowns
         )
 
         # Filter attendees by session type if needed
@@ -484,6 +511,102 @@ async def get_registration_metrics(
             returning_percentage=calculate_percentage(returning_count, total_enrolled),
         )
 
+        # New breakdowns from camper_history
+        total_history = len(camper_history)
+
+        # School breakdown (raw values - normalization can be added later)
+        school_counts: dict[str, int] = {}
+        for record in camper_history:
+            school = getattr(record, "school", "") or ""
+            if school:  # Only count non-empty schools
+                school_counts[school] = school_counts.get(school, 0) + 1
+
+        by_school = [
+            SchoolBreakdown(
+                school=s,
+                count=c,
+                percentage=calculate_percentage(c, total_history),
+            )
+            for s, c in sorted(school_counts.items(), key=lambda x: -x[1])[:20]  # Top 20
+        ]
+
+        # City breakdown
+        city_counts: dict[str, int] = {}
+        for record in camper_history:
+            city = getattr(record, "city", "") or ""
+            if city:  # Only count non-empty cities
+                city_counts[city] = city_counts.get(city, 0) + 1
+
+        by_city = [
+            CityBreakdown(
+                city=c,
+                count=cnt,
+                percentage=calculate_percentage(cnt, total_history),
+            )
+            for c, cnt in sorted(city_counts.items(), key=lambda x: -x[1])[:20]  # Top 20
+        ]
+
+        # Synagogue breakdown
+        synagogue_counts: dict[str, int] = {}
+        for record in camper_history:
+            synagogue = getattr(record, "synagogue", "") or ""
+            if synagogue:  # Only count non-empty synagogues
+                synagogue_counts[synagogue] = synagogue_counts.get(synagogue, 0) + 1
+
+        by_synagogue = [
+            SynagogueBreakdown(
+                synagogue=s,
+                count=c,
+                percentage=calculate_percentage(c, total_history),
+            )
+            for s, c in sorted(synagogue_counts.items(), key=lambda x: -x[1])[:20]  # Top 20
+        ]
+
+        # First year attended breakdown (for onramp analysis)
+        first_year_counts: dict[int, int] = {}
+        for record in camper_history:
+            first_year = getattr(record, "first_year_attended", None)
+            if first_year:
+                first_year_counts[first_year] = first_year_counts.get(first_year, 0) + 1
+
+        by_first_year = [
+            FirstYearBreakdown(
+                first_year=fy,
+                count=c,
+                percentage=calculate_percentage(c, total_history),
+            )
+            for fy, c in sorted(first_year_counts.items())
+        ]
+
+        # Session+Bunk breakdown (parse CSV fields from camper_history)
+        session_bunk_counts: dict[tuple[str, str], int] = {}
+        for record in camper_history:
+            sessions_str = getattr(record, "sessions", "") or ""
+            bunks_str = getattr(record, "bunks", "") or ""
+            # Parse comma-separated values
+            session_list = [s.strip() for s in sessions_str.split(",") if s.strip()]
+            bunk_list = [b.strip() for b in bunks_str.split(",") if b.strip()]
+            # Create combinations (if lengths match, pair them; otherwise cross-product)
+            if len(session_list) == len(bunk_list):
+                for sess, bunk in zip(session_list, bunk_list):
+                    key = (sess, bunk)
+                    session_bunk_counts[key] = session_bunk_counts.get(key, 0) + 1
+            elif session_list and bunk_list:
+                # Cross-product when lengths don't match
+                for sess in session_list:
+                    for bunk in bunk_list:
+                        key = (sess, bunk)
+                        session_bunk_counts[key] = session_bunk_counts.get(key, 0) + 1
+
+        by_session_bunk = [
+            SessionBunkBreakdown(
+                session=sess,
+                bunk=bunk,
+                count=c,
+            )
+            for (sess, bunk), c in sorted(session_bunk_counts.items(), key=lambda x: -x[1])[:10]  # Top 10
+        ]
+
         return RegistrationMetricsResponse(
             year=year,
             total_enrolled=total_enrolled,
@@ -495,6 +618,12 @@ async def get_registration_metrics(
             by_session_length=by_session_length,
             by_years_at_camp=by_years_at_camp,
             new_vs_returning=new_vs_returning,
+            # New breakdowns from camper_history
+            by_school=by_school,
+            by_city=by_city,
+            by_synagogue=by_synagogue,
+            by_first_year=by_first_year,
+            by_session_bunk=by_session_bunk,
         )
 
     except Exception as e:
@@ -636,3 +765,101 @@ async def get_comparison_metrics(
     except Exception as e:
         logger.error(f"Error calculating comparison metrics: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error calculating comparison metrics: {str(e)}")
+
+
+# ============================================================================
+# Historical Trends Endpoint
+# ============================================================================
+
+
+@router.get("/historical", response_model=HistoricalTrendsResponse)
+async def get_historical_trends(
+    years: str | None = Query(
+        None, description="Comma-separated years (default: last 5 years from current year)"
+    ),
+    session_types: str | None = Query(
+        "main,ag,embedded", description="Comma-separated session types to filter"
+    ),
+) -> HistoricalTrendsResponse:
+    """Get historical trends across multiple years.
+
+    Returns aggregated metrics for each year to enable line chart visualization.
+    Default: last 5 years (2021-2025).
+    """
+    try:
+        # Parse years
+        if years:
+            year_list = [int(y.strip()) for y in years.split(",")]
+        else:
+            # Default: last 5 years from 2025
+            current_year = 2025
+            year_list = list(range(current_year - 4, current_year + 1))
+
+        # Fetch camper_history for all years in parallel
+        history_futures = [fetch_camper_history_for_year(y) for y in year_list]
+        all_history = await asyncio.gather(*history_futures)
+
+        year_metrics_list: list[YearMetrics] = []
+
+        for year, history in zip(year_list, all_history):
+            total_enrolled = len(history)
+
+            # Gender breakdown
+            gender_counts: dict[str, int] = {}
+            for record in history:
+                gender = getattr(record, "gender", "Unknown") or "Unknown"
+                gender_counts[gender] = gender_counts.get(gender, 0) + 1
+
+            by_gender = [
+                GenderBreakdown(
+                    gender=g,
+                    count=c,
+                    percentage=calculate_percentage(c, total_enrolled),
+                )
+                for g, c in sorted(gender_counts.items())
+            ]
+
+            # New vs returning
+            new_count = sum(
+                1 for record in history if getattr(record, "years_at_camp", 0) == 1
+            )
+            returning_count = total_enrolled - new_count
+
+            new_vs_returning = NewVsReturning(
+                new_count=new_count,
+                returning_count=returning_count,
+                new_percentage=calculate_percentage(new_count, total_enrolled),
+                returning_percentage=calculate_percentage(returning_count, total_enrolled),
+            )
+
+            # First year breakdown
+            first_year_counts: dict[int, int] = {}
+            for record in history:
+                first_year = getattr(record, "first_year_attended", None)
+                if first_year:
+                    first_year_counts[first_year] = first_year_counts.get(first_year, 0) + 1
+
+            by_first_year = [
+                FirstYearBreakdown(
+                    first_year=fy,
+                    count=c,
+                    percentage=calculate_percentage(c, total_enrolled),
+                )
+                for fy, c in sorted(first_year_counts.items())
+            ]
+
+            year_metrics_list.append(
+                YearMetrics(
+                    year=year,
+                    total_enrolled=total_enrolled,
+                    by_gender=by_gender,
+                    new_vs_returning=new_vs_returning,
+                    by_first_year=by_first_year,
+                )
+            )
+
+        return HistoricalTrendsResponse(years=year_metrics_list)
+
+    except Exception as e:
+        logger.error(f"Error calculating historical trends: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error calculating historical trends: {str(e)}")
