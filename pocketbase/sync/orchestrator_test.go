@@ -1124,6 +1124,140 @@ func TestRunSyncWithOptionsChecksGlobalTables(t *testing.T) {
 	})
 }
 
+// TestGetStatusWeeklySyncPending tests that queued weekly sync jobs show pending status
+func TestGetStatusWeeklySyncPending(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	// Set up weekly sync as running with jobs queued
+	o.mu.Lock()
+	o.weeklySyncRunning = true
+	o.weeklySyncQueue = []string{"person_tag_defs", "custom_field_defs", "staff_lookups"}
+	o.mu.Unlock()
+
+	// Queued jobs should show as pending
+	status := o.GetStatus("custom_field_defs")
+	if status == nil {
+		t.Fatal("expected non-nil status for queued weekly sync job")
+	}
+	if status.Status != "pending" {
+		t.Errorf("expected status 'pending', got %q", status.Status)
+	}
+	if status.Year != 0 {
+		t.Errorf("expected year 0 (global sync), got %d", status.Year)
+	}
+
+	// Non-queued job should still return nil
+	status = o.GetStatus("sessions")
+	if status != nil {
+		t.Error("expected nil status for non-queued job")
+	}
+}
+
+// TestGetStatusWeeklySyncCompleted tests that completed weekly sync jobs show completed status
+func TestGetStatusWeeklySyncCompleted(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	// Set up weekly sync as running with jobs queued
+	now := time.Now()
+	o.mu.Lock()
+	o.weeklySyncRunning = true
+	o.weeklySyncQueue = []string{"person_tag_defs", "custom_field_defs", "staff_lookups"}
+	// Mark one as completed
+	o.lastCompletedStatus["person_tag_defs"] = &Status{
+		Type:    "person_tag_defs",
+		Status:  "completed",
+		EndTime: &now,
+		Year:    0,
+	}
+	o.mu.Unlock()
+
+	// Completed job should show completed, not pending
+	status := o.GetStatus("person_tag_defs")
+	if status == nil {
+		t.Fatal("expected non-nil status for completed weekly sync job")
+	}
+	if status.Status != "completed" {
+		t.Errorf("expected status 'completed', got %q", status.Status)
+	}
+
+	// Other queued job should still show pending
+	status = o.GetStatus("custom_field_defs")
+	if status == nil {
+		t.Fatal("expected non-nil status for queued weekly sync job")
+	}
+	if status.Status != "pending" {
+		t.Errorf("expected status 'pending', got %q", status.Status)
+	}
+}
+
+// TestGetStatusCustomValuesSyncPending tests that queued custom values sync jobs show pending status
+func TestGetStatusCustomValuesSyncPending(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	// Set up custom values sync as running with jobs queued
+	o.mu.Lock()
+	o.customValuesSyncRunning = true
+	o.customValuesSyncQueue = []string{"person_custom_values", "household_custom_values"}
+	o.currentSyncYear = 2025
+	o.mu.Unlock()
+
+	// Queued jobs should show as pending
+	status := o.GetStatus("household_custom_values")
+	if status == nil {
+		t.Fatal("expected non-nil status for queued custom values sync job")
+	}
+	if status.Status != "pending" {
+		t.Errorf("expected status 'pending', got %q", status.Status)
+	}
+	if status.Year != 2025 {
+		t.Errorf("expected year 2025, got %d", status.Year)
+	}
+
+	// Non-queued job should still return nil
+	status = o.GetStatus("sessions")
+	if status != nil {
+		t.Error("expected nil status for non-queued job")
+	}
+}
+
+// TestGetStatusCustomValuesSyncCompleted tests that completed custom values sync jobs show completed status
+func TestGetStatusCustomValuesSyncCompleted(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	// Set up custom values sync as running with jobs queued
+	now := time.Now()
+	o.mu.Lock()
+	o.customValuesSyncRunning = true
+	o.customValuesSyncQueue = []string{"person_custom_values", "household_custom_values"}
+	o.currentSyncYear = 2025
+	// Mark one as completed
+	o.lastCompletedStatus["person_custom_values"] = &Status{
+		Type:    "person_custom_values",
+		Status:  "completed",
+		EndTime: &now,
+		Year:    2025,
+	}
+	o.mu.Unlock()
+
+	// Completed job should show completed, not pending
+	status := o.GetStatus("person_custom_values")
+	if status == nil {
+		t.Fatal("expected non-nil status for completed custom values sync job")
+	}
+	if status.Status != "completed" {
+		t.Errorf("expected status 'completed', got %q", status.Status)
+	}
+
+	// Other queued job should still show pending
+	status = o.GetStatus("household_custom_values")
+	if status == nil {
+		t.Fatal("expected non-nil status for queued custom values sync job")
+	}
+	if status.Status != "pending" {
+		t.Errorf("expected status 'pending', got %q", status.Status)
+	}
+}
+
 // TestGlobalTablesCheckBehavior documents the expected behavior of checkGlobalTablesEmpty
 func TestGlobalTablesCheckBehavior(t *testing.T) {
 	// The checkGlobalTablesEmpty method:
