@@ -720,20 +720,33 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		}
 	}
 
-	// If this is a historical sync, set up tracking
+	// Set up sync tracking based on year mode
 	if opts.Year > 0 {
+		// Historical sync tracking
 		o.mu.Lock()
 		o.historicalSyncRunning = true
 		o.historicalSyncQueue = servicesToRun
 		o.historicalSyncYear = opts.Year
 		o.mu.Unlock()
 
-		// Clear historical sync tracking when done
 		defer func() {
 			o.mu.Lock()
 			o.historicalSyncRunning = false
 			o.historicalSyncQueue = nil
 			o.historicalSyncYear = 0
+			o.mu.Unlock()
+		}()
+	} else {
+		// Current year sync - use daily sync tracking so UI shows progress
+		o.mu.Lock()
+		o.dailySyncRunning = true
+		o.dailySyncQueue = servicesToRun
+		o.mu.Unlock()
+
+		defer func() {
+			o.mu.Lock()
+			o.dailySyncRunning = false
+			o.dailySyncQueue = nil
 			o.mu.Unlock()
 		}()
 	}
