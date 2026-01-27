@@ -507,8 +507,8 @@ func getBestStatus(statuses []string) string {
 	}
 	// Enrolled is always best
 	for _, s := range statuses {
-		if s == "enrolled" {
-			return "enrolled"
+		if s == statusEnrolled {
+			return statusEnrolled
 		}
 	}
 	// Otherwise return first status
@@ -827,8 +827,8 @@ func TestCamperHistoryExtendedAttendeeAggregation(t *testing.T) {
 	if data1.earliestEnrollmentDate != "2024-11-15" {
 		t.Errorf("person 1001: enrollment_date = %q, want %q", data1.earliestEnrollmentDate, "2024-11-15")
 	}
-	if data1.aggregatedStatus != "enrolled" {
-		t.Errorf("person 1001: status = %q, want %q", data1.aggregatedStatus, "enrolled")
+	if data1.aggregatedStatus != statusEnrolled {
+		t.Errorf("person 1001: status = %q, want %q", data1.aggregatedStatus, statusEnrolled)
 	}
 
 	// Check person 1002
@@ -839,8 +839,8 @@ func TestCamperHistoryExtendedAttendeeAggregation(t *testing.T) {
 	if data2.earliestEnrollmentDate != "2024-12-05" {
 		t.Errorf("person 1002: enrollment_date = %q, want %q", data2.earliestEnrollmentDate, "2024-12-05")
 	}
-	if data2.aggregatedStatus != "enrolled" {
-		t.Errorf("person 1002: status = %q, want %q", data2.aggregatedStatus, "enrolled")
+	if data2.aggregatedStatus != statusEnrolled {
+		t.Errorf("person 1002: status = %q, want %q", data2.aggregatedStatus, statusEnrolled)
 	}
 
 	// Check person 1003
@@ -880,7 +880,7 @@ func TestCamperHistoryFullRecordWithNewFields(t *testing.T) {
 		Gender:         "F",
 		DivisionName:   "Juniors",
 		EnrollmentDate: "2024-11-15",
-		Status:         "enrolled",
+		Status:         statusEnrolled,
 		Synagogue:      "Temple Beth El",
 	}
 
@@ -897,8 +897,8 @@ func TestCamperHistoryFullRecordWithNewFields(t *testing.T) {
 	if record.EnrollmentDate != "2024-11-15" {
 		t.Errorf("EnrollmentDate = %q, want %q", record.EnrollmentDate, "2024-11-15")
 	}
-	if record.Status != "enrolled" {
-		t.Errorf("Status = %q, want %q", record.Status, "enrolled")
+	if record.Status != statusEnrolled {
+		t.Errorf("Status = %q, want %q", record.Status, statusEnrolled)
 	}
 	if record.Synagogue != "Temple Beth El" {
 		t.Errorf("Synagogue = %q, want %q", record.Synagogue, "Temple Beth El")
@@ -987,7 +987,8 @@ type testCamperHistoryRecord struct {
 // buildExtendedDemographics creates a demographics map with extended fields
 func buildExtendedDemographics(persons []testExtendedPerson) map[int]testExtendedDemographics {
 	result := make(map[int]testExtendedDemographics)
-	for _, p := range persons {
+	for i := range persons {
+		p := &persons[i]
 		result[p.PersonID] = testExtendedDemographics{
 			firstName:    p.FirstName,
 			lastName:     p.LastName,
@@ -1023,8 +1024,8 @@ func getAggregatedStatus(statuses []string) string {
 	}
 	// Check for enrolled first
 	for _, s := range statuses {
-		if s == "enrolled" {
-			return "enrolled"
+		if s == statusEnrolled {
+			return statusEnrolled
 		}
 	}
 	// Return first non-empty status

@@ -18,6 +18,9 @@ const personBatchSize = 100
 // serviceNameCamperHistory is the canonical name for this sync service
 const serviceNameCamperHistory = "camper_history"
 
+// statusEnrolled is the enrolled status string used in comparisons
+const statusEnrolled = "enrolled"
+
 // CamperHistorySync computes camper history records with retention metrics.
 // This is a pure Go implementation that reads from PocketBase collections
 // (attendees, persons, bunk_assignments, camp_sessions) and writes to camper_history.
@@ -452,7 +455,8 @@ func (c *CamperHistorySync) loadPersonDemographics(
 		slog.Warn("Error loading division names", "error", err)
 		// Continue without division names
 	} else {
-		for cmID, demo := range result {
+		for cmID := range result {
+			demo := result[cmID]
 			if demo.divisionID != "" {
 				if name, ok := divisionNames[demo.divisionID]; ok {
 					demo.divisionName = name
@@ -798,8 +802,8 @@ func (c *CamperHistorySync) computeAggregatedStatus(statuses []string) string {
 	}
 	// Check for enrolled first (highest priority)
 	for _, s := range statuses {
-		if s == "enrolled" {
-			return "enrolled"
+		if s == statusEnrolled {
+			return statusEnrolled
 		}
 	}
 	// Return first non-empty status
