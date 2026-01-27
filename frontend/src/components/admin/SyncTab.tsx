@@ -7,7 +7,6 @@ import {
   RefreshCw,
   Settings2,
   Calendar,
-  AlertTriangle,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useYear } from '../../hooks/useCurrentYear';
@@ -82,115 +81,118 @@ export function SyncTab() {
   return (
     <div className="space-y-4 sm:space-y-6">
       {/* Unified Sync Panel */}
-      <div className="bg-muted/50 dark:bg-muted/30 rounded-xl p-4 sm:p-5 border border-border">
-        <div className="flex flex-col sm:flex-row flex-wrap gap-4 items-stretch sm:items-end">
-          <div className="flex-1 sm:flex-none">
-            <label className="block text-sm font-medium text-muted-foreground mb-1.5">Year</label>
-            <select
-              value={syncYear}
-              onChange={(e) => handleYearChange(parseInt(e.target.value))}
-              className="w-full sm:w-auto px-4 py-2.5 border border-border rounded-lg text-base bg-background text-foreground"
-              disabled={unifiedSync.isPending}
-            >
-              <option value={currentYear}>{currentYear} (Current)</option>
-              {Array.from({ length: currentYear - 2017 }, (_, i) => currentYear - 1 - i).map(year => (
-                <option key={year} value={year}>{year}</option>
-              ))}
-            </select>
-          </div>
+      <div className="space-y-2">
+        {/* Main Toolbar */}
+        <div className="bg-card rounded-xl border border-border shadow-lodge-sm overflow-hidden">
+          {/* Controls Row */}
+          <div className="p-3 sm:p-4 flex flex-col lg:flex-row gap-4 lg:items-center">
 
-          <div className="flex-1 sm:flex-none">
-            <label className="block text-sm font-medium text-muted-foreground mb-1.5">Service</label>
-            <select
-              value={syncService}
-              onChange={(e) => {
-                setSyncService(e.target.value);
-                // Reset custom values checkbox when switching away from all/persons
-                if (e.target.value !== 'all' && e.target.value !== 'persons') {
-                  setIncludeCustomValues(false);
-                }
-              }}
-              className="w-full sm:w-auto px-4 py-2.5 border border-border rounded-lg text-base bg-background text-foreground"
-              disabled={unifiedSync.isPending}
-            >
-              <option value="all">All Services</option>
-              {availableSyncTypes.map(type => (
-                <option key={type.id} value={type.id}>{type.name}</option>
-              ))}
-            </select>
-          </div>
+            {/* Selection Group */}
+            <div className="flex items-center gap-2 bg-muted/50 dark:bg-muted/30 rounded-xl p-1.5 border border-border/50">
+              <select
+                value={syncYear}
+                onChange={(e) => handleYearChange(parseInt(e.target.value))}
+                aria-label="Sync year"
+                className="px-3 py-2 bg-background border-none rounded-lg text-sm font-medium min-w-[100px] focus:ring-2 focus:ring-primary/20 focus:outline-none cursor-pointer"
+                disabled={unifiedSync.isPending}
+              >
+                <option value={currentYear}>{currentYear}</option>
+                {Array.from({ length: currentYear - 2017 }, (_, i) => currentYear - 1 - i).map(year => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
 
-          <button
-            onClick={() => {
-              // Include custom values in the sync sequence when checkbox is enabled
-              const shouldIncludeCustomValues = includeCustomValues &&
-                (syncService === 'all' || syncService === 'persons');
-              unifiedSync.mutate({
-                year: syncYear,
-                service: syncService,
-                includeCustomValues: shouldIncludeCustomValues,
-                debug: shouldIncludeCustomValues && syncDebug,
-              });
-            }}
-            disabled={unifiedSync.isPending || hasRunningSyncs}
-            className="btn-primary text-base"
-          >
-            {unifiedSync.isPending ? (
-              <><Loader2 className="w-5 h-5 animate-spin" /> Starting...</>
-            ) : (
-              <><Zap className="w-5 h-5" /> Run Sync</>
+              <div className="w-px h-6 bg-border/50" />
+
+              <select
+                value={syncService}
+                onChange={(e) => {
+                  setSyncService(e.target.value);
+                  if (e.target.value !== 'all' && e.target.value !== 'persons') {
+                    setIncludeCustomValues(false);
+                  }
+                }}
+                aria-label="Sync service"
+                className="px-3 py-2 bg-background border-none rounded-lg text-sm font-medium min-w-[140px] focus:ring-2 focus:ring-primary/20 focus:outline-none cursor-pointer"
+                disabled={unifiedSync.isPending}
+              >
+                <option value="all">All Services</option>
+                {availableSyncTypes.map(type => (
+                  <option key={type.id} value={type.id}>{type.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Options Group (conditional) */}
+            {(syncService === 'all' || syncService === 'persons') && (
+              <div className="flex items-center gap-4 lg:border-l lg:border-border/50 lg:pl-4">
+                <label className="flex items-center gap-2 text-sm cursor-pointer hover:text-foreground transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={includeCustomValues}
+                    onChange={(e) => setIncludeCustomValues(e.target.checked)}
+                    className="rounded border-gray-300"
+                    disabled={unifiedSync.isPending}
+                  />
+                  <span className="text-muted-foreground">Include custom values</span>
+                </label>
+
+                {includeCustomValues && (
+                  <label className="flex items-center gap-2 text-sm cursor-pointer hover:text-foreground transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={syncDebug}
+                      onChange={(e) => setSyncDebug(e.target.checked)}
+                      className="rounded border-gray-300"
+                      disabled={unifiedSync.isPending}
+                    />
+                    <span className="text-muted-foreground">Debug</span>
+                  </label>
+                )}
+              </div>
             )}
-          </button>
 
+            {/* Action Group */}
+            <div className="lg:ml-auto">
+              <button
+                onClick={() => {
+                  const shouldIncludeCustomValues = includeCustomValues &&
+                    (syncService === 'all' || syncService === 'persons');
+                  unifiedSync.mutate({
+                    year: syncYear,
+                    service: syncService,
+                    includeCustomValues: shouldIncludeCustomValues,
+                    debug: shouldIncludeCustomValues && syncDebug,
+                  });
+                }}
+                disabled={unifiedSync.isPending || hasRunningSyncs}
+                className="btn-primary w-full lg:w-auto min-w-[130px]"
+              >
+                {unifiedSync.isPending ? (
+                  <><Loader2 className="w-5 h-5 animate-spin" /> Starting...</>
+                ) : (
+                  <><Zap className="w-5 h-5" /> Run Sync</>
+                )}
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Secondary Action */}
+        <div className="flex justify-end">
           <button
             onClick={() => {
               clearCache();
               toast.success('Cache cleared - data will refresh', { duration: 3000 });
             }}
-            className="text-base text-muted-foreground hover:text-foreground flex items-center justify-center sm:justify-start gap-2 font-medium"
+            className="btn-ghost text-sm"
             title="Clear cached data and force refresh from server"
           >
-            <RefreshCw className="w-5 h-5" />
-            Refresh
+            <RefreshCw className="w-4 h-4" />
+            Refresh Cache
           </button>
         </div>
-
-        {/* Custom field values option - only show when syncing all services or persons */}
-        {(syncService === 'all' || syncService === 'persons') && (
-          <div className="mt-4 space-y-2">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={includeCustomValues}
-                onChange={(e) => setIncludeCustomValues(e.target.checked)}
-                className="rounded border-gray-300"
-                disabled={unifiedSync.isPending}
-              />
-              <span className="text-sm">Include custom field values</span>
-            </label>
-
-            {includeCustomValues && (
-              <>
-                <div className="flex items-center gap-2 rounded-md bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
-                  <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-                  <span>
-                    Custom values sync requires ~1 API call per person/household.
-                  </span>
-                </div>
-                <label className="flex items-center gap-2 ml-6">
-                  <input
-                    type="checkbox"
-                    checked={syncDebug}
-                    onChange={(e) => setSyncDebug(e.target.checked)}
-                    className="rounded border-gray-300"
-                    disabled={unifiedSync.isPending}
-                  />
-                  <span className="text-sm text-muted-foreground">Enable debug logging</span>
-                </label>
-              </>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Current Year Sync Types Section */}
