@@ -211,6 +211,7 @@ func (c *CamperHistorySync) Sync(ctx context.Context) error {
 		if yearsAtCamp == 0 {
 			yearsAtCamp = c.computeYearsAtCamp(hist.enrolledYears)
 		}
+		firstYearAttended := c.computeFirstYearAttended(year, hist.enrolledYears)
 
 		// Prior year data
 		priorYearSessions := joinStrings(hist.priorYearSessions)
@@ -267,6 +268,7 @@ func (c *CamperHistorySync) Sync(ctx context.Context) error {
 		if synagogue != "" {
 			record.Set("synagogue", synagogue)
 		}
+		record.Set("first_year_attended", firstYearAttended)
 
 		if err := c.App.Save(record); err != nil {
 			slog.Error("Error creating camper history record", "personCMID", personCMID, "error", err)
@@ -887,6 +889,22 @@ func (c *CamperHistorySync) computeYearsAtCamp(enrolledYears []int) int {
 	}
 	// +1 for current year
 	return len(yearSet) + 1
+}
+
+// computeFirstYearAttended returns the first year a camper attended camp
+// For new campers (no history), returns current year
+// For returning campers, returns the minimum of enrolled years
+func (c *CamperHistorySync) computeFirstYearAttended(currentYear int, enrolledYears []int) int {
+	if len(enrolledYears) == 0 {
+		return currentYear // New camper, this is their first year
+	}
+	minYear := enrolledYears[0]
+	for _, y := range enrolledYears[1:] {
+		if y < minYear {
+			minYear = y
+		}
+	}
+	return minYear
 }
 
 // splitIntoBatches splits a slice into batches
