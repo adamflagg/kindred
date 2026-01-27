@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -405,7 +407,8 @@ func (s *PersonsSync) processPerson(
 	}
 
 	// Extract tags and populate multi-select relation field
-	if tagIDs := s.extractTagIDs(personData, tagDefsByName); tagIDs != nil {
+	// Use year-filtered extraction to exclude future-year tags (e.g., "2026 Early Registration" on 2025 records)
+	if tagIDs := s.extractTagIDsWithYearFilter(personData, tagDefsByName, year); tagIDs != nil {
 		pbData["tags"] = tagIDs
 	}
 
@@ -441,6 +444,7 @@ func (s *PersonsSync) processPerson(
 		"gender_pronoun_id", "gender_pronoun_name", "gender_pronoun_write_in", "phone_numbers",
 		"email_addresses", "address", "household_id", "is_camper", "year", "parent_names",
 		"division", "partition_id", "lead_date", "tshirt_size",
+		"cm_years_at_camp", "cm_last_year_attended", "cm_lead_date",
 		"tags"}
 
 	if existing != nil {
@@ -599,6 +603,12 @@ func (s *PersonsSync) transformPersonToPB(cmPerson map[string]interface{}, year 
 	pbData["partition_id"] = s.getInt(camperDetails, "PartitionID", 0)
 	pbData["lead_date"] = s.getString(camperDetails, "LeadDate", "")
 	pbData["tshirt_size"] = s.getString(camperDetails, "TShirtSize", "")
+
+	// Extract cm_* fields - CampMinder's authoritative values
+	// These are stored separately from computed values for comparison/flexibility
+	pbData["cm_years_at_camp"] = s.getInt(camperDetails, "YearsAtCamp", 0)
+	pbData["cm_last_year_attended"] = s.getInt(camperDetails, "LastYearAttended", 0)
+	pbData["cm_lead_date"] = s.getString(camperDetails, "LeadDate", "")
 
 	// Cap last_year_attended at current year (since we only sync enrolled attendees)
 	lastYear := s.getInt(camperDetails, "LastYearAttended", 0)
@@ -956,6 +966,77 @@ func (s *PersonsSync) extractHouseholdIDsFromPerson(personData map[string]interf
 	return result
 }
 
+// shouldExcludeTag checks if a tag should be excluded based on future year references
+// Tags with years greater than syncYear are excluded to prevent data leakage across years
+// Example: "2026 Early Registration" should not appear on 2025 records
+func (s *PersonsSync) shouldExcludeTag(tagName string, syncYear int) bool {
+	// Regex to find 4-digit years (2000-2099)
+	re := regexp.MustCompile(`\b(20\d{2})\b`)
+	matches := re.FindAllString(tagName, -1)
+
+	for _, match := range matches {
+		year, err := strconv.Atoi(match)
+		if err != nil {
+			continue
+		}
+		if year > syncYear {
+			return true // Exclude tags with future years
+		}
+	}
+	return false
+}
+
+// extractTagIDsWithYearFilter extracts PocketBase tag definition IDs from person data,
+// filtering out tags that reference future years relative to syncYear
+// Returns nil if no tags, empty slice if Tags array is empty
+// tagDefsByName maps tag name -> PocketBase ID
+func (s *PersonsSync) extractTagIDsWithYearFilter(
+	personData map[string]any,
+	tagDefsByName map[string]string,
+	syncYear int,
+) []string {
+	tagsRaw, ok := personData["Tags"]
+	if !ok || tagsRaw == nil {
+		return nil
+	}
+
+	tagsArray, ok := tagsRaw.([]interface{})
+	if !ok {
+		return nil
+	}
+
+	if len(tagsArray) == 0 {
+		return []string{}
+	}
+
+	// Use map to deduplicate - CampMinder sometimes returns duplicate tags
+	seen := make(map[string]bool)
+	var tagIDs []string
+	for _, tagRaw := range tagsArray {
+		if tag, ok := tagRaw.(map[string]interface{}); ok {
+			name, nameOK := tag["Name"].(string)
+			if !nameOK || name == "" {
+				continue
+			}
+
+			// Filter out future-year tags
+			if s.shouldExcludeTag(name, syncYear) {
+				slog.Debug("Filtering out future-year tag", "tagName", name, "syncYear", syncYear)
+				continue
+			}
+
+			if tagID, exists := tagDefsByName[name]; exists {
+				if !seen[tagID] {
+					seen[tagID] = true
+					tagIDs = append(tagIDs, tagID)
+				}
+			}
+		}
+	}
+
+	return tagIDs
+}
+
 // extractTagIDs extracts PocketBase tag definition IDs from person data
 // Returns nil if no tags, empty slice if Tags array is empty
 // tagDefsByName maps tag name -> PocketBase ID
@@ -1102,6 +1183,7 @@ func (s *PersonsSync) processHouseholdRecord(
 
 // updatePersonHouseholdRelations updates person records to populate all three household relation fields
 // Uses the personHouseholdIDMap collected during sync to know which households to link
+// Also falls back to household_id (from FamilyPersons) when Households object is not available
 func (s *PersonsSync) updatePersonHouseholdRelations(
 	year int,
 	householdsByID map[int]*core.Record,
@@ -1109,12 +1191,8 @@ func (s *PersonsSync) updatePersonHouseholdRelations(
 ) error {
 	slog.Info("Updating person household relations", "personsWithHouseholds", len(personHouseholdIDMap))
 
-	if len(personHouseholdIDMap) == 0 {
-		slog.Info("No person household relations to update")
-		return nil
-	}
-
 	// Query all persons for this year that might need household relations updated
+	// Include persons with household_id but no household relation (the bug we're fixing)
 	filter := fmt.Sprintf(`year = %d && (
 		household = '' ||
 		primary_childhood_household = '' ||
@@ -1140,19 +1218,28 @@ func (s *PersonsSync) updatePersonHouseholdRelations(
 			continue
 		}
 
-		// Look up the household IDs we extracted during sync
-		hhIDs, exists := personHouseholdIDMap[int(personCMID)]
-		if !exists {
-			continue
-		}
+		// Look up the household IDs we extracted during sync (from Households object)
+		hhIDs := personHouseholdIDMap[int(personCMID)]
 
 		needsSave := false
 
 		// Principal household (stored in 'household' relation field)
-		if hhIDs.PrincipalID > 0 && person.GetString("household") == "" {
-			if householdRecord, exists := householdsByID[hhIDs.PrincipalID]; exists {
-				person.Set("household", householdRecord.Id)
-				needsSave = true
+		if person.GetString("household") == "" {
+			householdCMID := hhIDs.PrincipalID
+
+			// Fallback: If no PrincipalID from Households object, use household_id from FamilyPersons
+			// This fixes the bug where persons have household_id but no household relation
+			if householdCMID == 0 {
+				if legacyHouseholdID, ok := person.Get("household_id").(float64); ok && legacyHouseholdID > 0 {
+					householdCMID = int(legacyHouseholdID)
+				}
+			}
+
+			if householdCMID > 0 {
+				if householdRecord, exists := householdsByID[householdCMID]; exists {
+					person.Set("household", householdRecord.Id)
+					needsSave = true
+				}
 			}
 		}
 

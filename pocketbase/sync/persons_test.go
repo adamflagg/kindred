@@ -837,3 +837,254 @@ func TestMergePersonIDs_EmptyInputs(t *testing.T) {
 		t.Errorf("expected 0 IDs for empty slices, got %d", len(merged))
 	}
 }
+
+// =============================================================================
+// Tests for shouldExcludeTag - Future year tag filtering
+// =============================================================================
+
+// TestShouldExcludeTag_FutureYear tests that tags with future years are excluded
+func TestShouldExcludeTag_FutureYear(t *testing.T) {
+	s := &PersonsSync{}
+	syncYear := 2025
+
+	tests := []struct {
+		tagName  string
+		expected bool
+		reason   string
+	}{
+		// Future year tags should be excluded
+		{"2026 Early Registration", true, "2026 is future for 2025 sync"},
+		{"2027 Registration", true, "2027 is future for 2025 sync"},
+		{"Summer 2026", true, "2026 in tag name"},
+		{"Returning 2026", true, "2026 in tag name"},
+
+		// Current/past year tags should NOT be excluded
+		{"2025 Registration", false, "2025 is current year"},
+		{"2024 Alumni", false, "2024 is past year"},
+		{"2020 First Year", false, "2020 is past year"},
+
+		// Tags without years should NOT be excluded
+		{"Alumni", false, "no year in name"},
+		{"Leadership", false, "no year in name"},
+		{"Sibling", false, "no year in name"},
+		{"First Year Camper", false, "no year in name"},
+		{"VIP", false, "no year in name"},
+
+		// Edge cases
+		{"", false, "empty string"},
+		{"2025", false, "just year, current"},
+		{"2026", true, "just year, future"},
+		{"Camp 2025-2026", true, "contains future year"},
+	}
+
+	for _, tt := range tests {
+		got := s.shouldExcludeTag(tt.tagName, syncYear)
+		if got != tt.expected {
+			t.Errorf("shouldExcludeTag(%q, %d) = %v, want %v (%s)",
+				tt.tagName, syncYear, got, tt.expected, tt.reason)
+		}
+	}
+}
+
+// TestShouldExcludeTag_DifferentSyncYears tests tag filtering with different sync years
+func TestShouldExcludeTag_DifferentSyncYears(t *testing.T) {
+	s := &PersonsSync{}
+
+	// When syncing 2024, 2025 tags should be excluded
+	if !s.shouldExcludeTag("2025 Registration", 2024) {
+		t.Error("expected 2025 tag to be excluded when syncing 2024")
+	}
+	if s.shouldExcludeTag("2024 Registration", 2024) {
+		t.Error("expected 2024 tag to NOT be excluded when syncing 2024")
+	}
+
+	// When syncing 2026, 2025 tags should NOT be excluded
+	if s.shouldExcludeTag("2025 Registration", 2026) {
+		t.Error("expected 2025 tag to NOT be excluded when syncing 2026")
+	}
+}
+
+// TestExtractTagIDs_FiltersFutureTags tests that extractTagIDs filters out future-year tags
+func TestExtractTagIDs_FiltersFutureTags(t *testing.T) {
+	s := &PersonsSync{}
+
+	// Tag definitions - pretend these are in the database
+	tagDefsByName := map[string]string{
+		"Alumni":                  testAlumniTagID,
+		"2025 Registration":       "rec_2025_reg",
+		"2026 Early Registration": "rec_2026_early",
+		"Leadership":              "rec_leadership_002",
+	}
+
+	personData := map[string]interface{}{
+		"ID": float64(12345),
+		"Tags": []interface{}{
+			map[string]interface{}{"Name": "Alumni"},
+			map[string]interface{}{"Name": "2025 Registration"},
+			map[string]interface{}{"Name": "2026 Early Registration"}, // Should be filtered
+			map[string]interface{}{"Name": "Leadership"},
+		},
+	}
+
+	syncYear := 2025
+	tagIDs := s.extractTagIDsWithYearFilter(personData, tagDefsByName, syncYear)
+
+	// Should have 3 tags (2026 filtered out)
+	if len(tagIDs) != 3 {
+		t.Fatalf("expected 3 tag IDs (2026 tag filtered), got %d: %v", len(tagIDs), tagIDs)
+	}
+
+	// Verify 2026 tag is NOT in result
+	for _, id := range tagIDs {
+		if id == "rec_2026_early" {
+			t.Error("expected 2026 Early Registration tag to be filtered out")
+		}
+	}
+
+	// Verify other tags ARE in result
+	idSet := make(map[string]bool)
+	for _, id := range tagIDs {
+		idSet[id] = true
+	}
+	if !idSet[testAlumniTagID] {
+		t.Error("expected Alumni tag in result")
+	}
+	if !idSet["rec_2025_reg"] {
+		t.Error("expected 2025 Registration tag in result")
+	}
+	if !idSet["rec_leadership_002"] {
+		t.Error("expected Leadership tag in result")
+	}
+}
+
+// =============================================================================
+// Tests for cm_* fields from CamperDetails
+// =============================================================================
+
+// TestTransformPersonToPB_CMFieldsExtracted tests that cm_years_at_camp, cm_last_year_attended,
+// and cm_lead_date are extracted from CamperDetails
+func TestTransformPersonToPB_CMFieldsExtracted(t *testing.T) {
+	s := &PersonsSync{
+		missingDataStats: make(map[string]int),
+	}
+
+	personData := map[string]interface{}{
+		"ID":          float64(12345),
+		"DateOfBirth": "2010-03-15",
+		"GenderID":    float64(0),
+		"Name": map[string]interface{}{
+			"First": testFirstName,
+			"Last":  "Johnson",
+		},
+		"CamperDetails": map[string]interface{}{
+			"YearsAtCamp":      float64(5),
+			"LastYearAttended": float64(2024),
+			"LeadDate":         "2019-02-15",
+			"CampGradeID":      float64(8),
+		},
+	}
+
+	year := 2025
+
+	pbData, err := s.transformPersonToPB(personData, year)
+	if err != nil {
+		t.Fatalf("transformPersonToPB returned error: %v", err)
+	}
+
+	// Verify cm_years_at_camp is extracted
+	if got, ok := pbData["cm_years_at_camp"].(int); !ok || got != 5 {
+		t.Errorf("cm_years_at_camp = %v, want 5", pbData["cm_years_at_camp"])
+	}
+
+	// Verify cm_last_year_attended is extracted
+	if got, ok := pbData["cm_last_year_attended"].(int); !ok || got != 2024 {
+		t.Errorf("cm_last_year_attended = %v, want 2024", pbData["cm_last_year_attended"])
+	}
+
+	// Verify cm_lead_date is extracted
+	if got, ok := pbData["cm_lead_date"].(string); !ok || got != "2019-02-15" {
+		t.Errorf("cm_lead_date = %v, want '2019-02-15'", pbData["cm_lead_date"])
+	}
+}
+
+// TestTransformPersonToPB_CMFieldsMissing tests graceful handling of missing cm_* fields
+func TestTransformPersonToPB_CMFieldsMissing(t *testing.T) {
+	s := &PersonsSync{
+		missingDataStats: make(map[string]int),
+	}
+
+	personData := map[string]interface{}{
+		"ID":          float64(12345),
+		"DateOfBirth": "2010-03-15",
+		"GenderID":    float64(1),
+		"Name": map[string]interface{}{
+			"First": "Liam",
+			"Last":  "Garcia",
+		},
+		"CamperDetails": map[string]interface{}{
+			"CampGradeID": float64(6), // Only grade, no cm_* fields
+		},
+	}
+
+	year := 2025
+
+	pbData, err := s.transformPersonToPB(personData, year)
+	if err != nil {
+		t.Fatalf("transformPersonToPB returned error: %v", err)
+	}
+
+	// cm_years_at_camp should default to 0
+	if got := pbData["cm_years_at_camp"]; got != 0 {
+		t.Errorf("cm_years_at_camp = %v, want 0 for missing field", got)
+	}
+
+	// cm_last_year_attended should default to 0
+	if got := pbData["cm_last_year_attended"]; got != 0 {
+		t.Errorf("cm_last_year_attended = %v, want 0 for missing field", got)
+	}
+
+	// cm_lead_date should default to empty string
+	if got := pbData["cm_lead_date"]; got != "" {
+		t.Errorf("cm_lead_date = %v, want '' for missing field", got)
+	}
+}
+
+// =============================================================================
+// Tests for household relation population
+// =============================================================================
+
+// TestUpdatePersonHouseholdRelations_PopulatesFromHouseholdID tests that the household
+// relation is populated from household_id when principal household is not available
+// This tests the fix for the bug where persons have household_id but empty household relation
+func TestUpdatePersonHouseholdRelations_UsesHouseholdID(t *testing.T) {
+	// This test verifies the expected behavior:
+	// When a person has household_id (CM ID) but no principal household in Households object,
+	// the household relation should still be populated by looking up the household by CM ID
+
+	// Note: This is a behavior specification test - the actual implementation
+	// requires a running PocketBase instance, so this documents the expected contract
+
+	s := &PersonsSync{}
+
+	// Person with only FamilyPersons household_id, no Households object
+	personData := map[string]interface{}{
+		"ID": float64(12345),
+		"FamilyPersons": []interface{}{
+			map[string]interface{}{
+				"FamilyID": float64(99999), // This becomes household_id
+			},
+		},
+		// No "Households" object - common for older CampMinder data
+	}
+
+	ids := s.extractHouseholdIDsFromPerson(personData)
+
+	// Principal ID should be 0 (no Households object)
+	if ids.PrincipalID != 0 {
+		t.Errorf("PrincipalID = %d, want 0 (no Households object)", ids.PrincipalID)
+	}
+
+	// The fix needs to ensure that when PrincipalID is 0 but household_id exists,
+	// we still populate the household relation from household_id
+	// This is a design specification that the implementation must satisfy
+}

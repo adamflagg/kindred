@@ -134,6 +134,34 @@ migrate((app) => {
         max: null,
         onlyInt: true
       },
+      // CampMinder authoritative values (stored separately for comparison/flexibility)
+      {
+        name: "cm_years_at_camp",
+        type: "number",
+        required: false,
+        presentable: false,
+        min: 0,
+        max: 100,
+        onlyInt: true
+      },
+      {
+        name: "cm_last_year_attended",
+        type: "number",
+        required: false,
+        presentable: false,
+        min: 0,
+        max: 2100,
+        onlyInt: true
+      },
+      {
+        name: "cm_lead_date",
+        type: "text",
+        required: false,
+        presentable: false,
+        min: 0,
+        max: 50,
+        pattern: ""
+      },
       {
         name: "gender_identity_id",
         type: "number",
