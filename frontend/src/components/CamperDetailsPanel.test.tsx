@@ -218,28 +218,32 @@ describe('CamperDetailsPanel', () => {
         expandedCards.has(request.id) && request.parse_notes !== null;
 
       // req1 has parse_notes
-      expect(shouldShowAiNotes(mockBunkRequests[0]!)).toBe(true);
-      expect(mockBunkRequests[0]?.parse_notes).toBe('Matched via exact name lookup');
+      const req1 = mockBunkRequests[0];
+      const req2 = mockBunkRequests[1];
+      if (!req1 || !req2) throw new Error('Test setup error');
+      expect(shouldShowAiNotes(req1)).toBe(true);
+      expect(req1.parse_notes).toBe('Matched via exact name lookup');
 
       // req2 does not have parse_notes
-      expect(shouldShowAiNotes(mockBunkRequests[1]!)).toBe(false);
+      expect(shouldShowAiNotes(req2)).toBe(false);
     });
 
     it('shows technical details grid with IDs, confidence, source, timestamps', () => {
       const expandedCards: ExpandedCardsState = new Set(['req1']);
       const request = mockBunkRequests[0];
+      if (!request) throw new Error('Test setup error');
 
       // Technical details should include these fields
       const technicalDetails = {
-        recordId: request?.id,
-        requesterId: request?.requester_id,
-        requesteeId: request?.requestee_id,
-        sessionId: request?.session_id,
-        year: request?.year,
-        confidence: request?.confidence_score,
-        source: request?.source,
-        created: request?.created,
-        updated: request?.updated,
+        recordId: request.id,
+        requesterId: request.requester_id,
+        requesteeId: request.requestee_id,
+        sessionId: request.session_id,
+        year: request.year,
+        confidence: request.confidence_score,
+        source: request.source,
+        created: request.created,
+        updated: request.updated,
       };
 
       expect(technicalDetails.recordId).toBe('req1');
@@ -253,7 +257,7 @@ describe('CamperDetailsPanel', () => {
       expect(technicalDetails.updated).toBeDefined();
 
       // Only show when card is expanded
-      const shouldShowDetails = expandedCards.has(request!.id);
+      const shouldShowDetails = expandedCards.has(request.id);
       expect(shouldShowDetails).toBe(true);
     });
 
@@ -261,21 +265,25 @@ describe('CamperDetailsPanel', () => {
       // Flags are shown when request card is expanded
       const expandedCards: ExpandedCardsState = new Set(['req1', 'req2']);
 
+      const req1 = mockBunkRequests[0];
+      const req2 = mockBunkRequests[1];
+      if (!req1 || !req2) throw new Error('Test setup error');
+
       // Get flags for each request
-      const getFlags = (request: typeof mockBunkRequests[0]) => ({
+      const getFlags = (request: typeof req1) => ({
         isReciprocal: request.is_reciprocal,
         isPriorityLocked: request.request_locked,
         isExpanded: expandedCards.has(request.id),
       });
 
       // req1: reciprocal=true, locked=false
-      const req1Flags = getFlags(mockBunkRequests[0]!);
+      const req1Flags = getFlags(req1);
       expect(req1Flags.isReciprocal).toBe(true);
       expect(req1Flags.isPriorityLocked).toBe(false);
       expect(req1Flags.isExpanded).toBe(true);
 
       // req2: reciprocal=false, locked=true
-      const req2Flags = getFlags(mockBunkRequests[1]!);
+      const req2Flags = getFlags(req2);
       expect(req2Flags.isReciprocal).toBe(false);
       expect(req2Flags.isPriorityLocked).toBe(true);
       expect(req2Flags.isExpanded).toBe(true);

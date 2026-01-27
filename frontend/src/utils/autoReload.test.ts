@@ -68,9 +68,9 @@ describe('autoReload utility', () => {
       const afterCall = Date.now();
 
       const storedTimestamp = sessionStorage.getItem(AUTO_RELOAD_KEY);
-      expect(storedTimestamp).toBeTruthy();
+      if (!storedTimestamp) throw new Error('Test setup error');
 
-      const timestamp = parseInt(storedTimestamp!, 10);
+      const timestamp = parseInt(storedTimestamp, 10);
       expect(timestamp).toBeGreaterThanOrEqual(beforeCall);
       expect(timestamp).toBeLessThanOrEqual(afterCall);
     });

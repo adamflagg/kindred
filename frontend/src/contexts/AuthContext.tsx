@@ -15,6 +15,8 @@ interface AuthContextType {
   checkAuth: () => Promise<boolean>;
 }
 
+// Context and Provider are intentionally co-located for simplicity
+// eslint-disable-next-line react-refresh/only-export-components
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Mock user for bypass mode

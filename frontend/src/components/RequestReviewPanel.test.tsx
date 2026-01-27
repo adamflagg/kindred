@@ -565,8 +565,8 @@ describe('RequestReviewPanel', () => {
 
       // req5 has multiple source_fields and merged_from metadata
       const mergedRequest = mockRequestsForMerge.find(r => r.id === 'req5');
-      expect(mergedRequest).toBeDefined();
-      expect(hasMultipleSources(mergedRequest!)).toBe(true);
+      if (!mergedRequest) throw new Error('Test setup error');
+      expect(hasMultipleSources(mergedRequest)).toBe(true);
     });
 
     it('hides split button on requests with single source_field', () => {
@@ -583,8 +583,8 @@ describe('RequestReviewPanel', () => {
 
       // req1 has single source_field
       const singleSourceRequest = mockRequestsForMerge.find(r => r.id === 'req1');
-      expect(singleSourceRequest).toBeDefined();
-      expect(hasMultipleSources(singleSourceRequest!)).toBe(false);
+      if (!singleSourceRequest) throw new Error('Test setup error');
+      expect(hasMultipleSources(singleSourceRequest)).toBe(false);
     });
 
     it('opens SplitRequestModal when split button is clicked', () => {
@@ -599,7 +599,8 @@ describe('RequestReviewPanel', () => {
       };
 
       const mergedRequest = mockRequestsForMerge.find(r => r.id === 'req5');
-      handleSplitClick(mergedRequest!);
+      if (!mergedRequest) throw new Error('Test setup error');
+      handleSplitClick(mergedRequest);
 
       expect(showSplitModal).toBe(true);
       expect(requestToSplit).toBe(mergedRequest);

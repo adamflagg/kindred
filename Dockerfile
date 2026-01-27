@@ -21,8 +21,10 @@ COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ ./
 # Copy branding config so Vite can inject it (vite.config.local.ts loads from ../config/)
-# Uses wildcards to gracefully handle missing files (git-crypt locked or not present)
-COPY config/branding*.json ../config/
+# Note: branding.local.json is NOT copied here - it's a symlink to kindred-local repo
+# For local builds: run scripts/build/docker-build.sh (handles symlinks)
+# For CI: workflow copies files from kindred-local before build
+COPY config/branding.json ../config/
 RUN npm run build
 
 # =============================================================================
@@ -111,17 +113,10 @@ RUN chmod +x /usr/local/bin/pocketbase
 
 # 6. FRONTEND
 COPY --chown=kindred:kindred --from=frontend-builder /app/dist /pb_public
-# Copy local assets (logos) - CI ensures local/ exists (empty if not unlocked)
-# See: .github/workflows/cd.yml "Prepare local assets" step
+# Copy local assets (logos) if present
+# For local builds: run scripts/build/docker-build.sh (resolves symlinks)
+# For CI: workflow copies files from kindred-local and creates local/assets/
 COPY --chown=kindred:kindred local/ /pb_public/local/
-
-# Verify local assets aren't git-crypt encrypted (would start with "GITCRYPT" header)
-# This catches builds where git-crypt wasn't unlocked before building
-# hadolint ignore=DL4006
-RUN for f in /pb_public/local/assets/*; do \
-      [ -f "$f" ] && head -c 8 "$f" 2>/dev/null | grep -q "^.GITCRYPT" && \
-        echo "ERROR: $f is git-crypt encrypted. Run 'git-crypt unlock' first." && exit 1; \
-    done; true
 
 # Create Caddy config/data directories and set ownership for writable directories
 # (skip .venv - it's read-only)

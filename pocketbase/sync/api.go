@@ -26,6 +26,9 @@ import (
 // DefaultSession is the default value for session parameter meaning "all sessions"
 const DefaultSession = "all"
 
+// DefaultService is the default value for service parameter meaning "all services"
+const DefaultService = "all"
+
 // requireAuth wraps a handler function to require authentication
 func requireAuth(handler func(*core.RequestEvent) error) func(*core.RequestEvent) error {
 	return func(e *core.RequestEvent) error {
@@ -59,9 +62,10 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 		return handleSyncStatus(e, scheduler)
 	}))
 
-	// Daily sync endpoint
-	e.Router.POST("/api/custom/sync/daily", requireAuth(func(e *core.RequestEvent) error {
-		return handleDailySync(e, scheduler)
+	// Unified sync endpoint (replaces daily + historical endpoints)
+	// Accepts query params: year, service, includeCustomValues, debug
+	e.Router.POST("/api/custom/sync/run", requireAuth(func(e *core.RequestEvent) error {
+		return handleUnifiedSync(e, scheduler)
 	}))
 
 	// Hourly sync endpoint
@@ -94,7 +98,7 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 		// Parse optional session parameter (now accepts string: all, 1, 2, 2a, etc.)
 		session := e.Request.URL.Query().Get("session")
 		if session == "" {
-			session = "all" // Default: all sessions
+			session = DefaultSession
 		}
 
 		// Parse optional source_field parameter (comma-separated)
@@ -186,12 +190,6 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 			"debug":         debug,
 			"trace":         trace,
 		})
-	}))
-
-	// Historical sync endpoints
-	// Sync specific year and service
-	e.Router.POST("/api/custom/sync/historical/{year}/{service}", requireAuth(func(e *core.RequestEvent) error {
-		return handleHistoricalSync(e, scheduler)
 	}))
 
 	// Get available years from database
@@ -691,20 +689,105 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 	return e.JSON(http.StatusOK, statuses)
 }
 
-// handleDailySync triggers the daily sync sequence
-func handleDailySync(e *core.RequestEvent, scheduler *Scheduler) error {
-	// Check if daily sync is already running
-	if scheduler.IsDailySyncRunning() {
-		return e.JSON(http.StatusConflict, map[string]interface{}{
-			"error": "Daily sync already in progress",
+// handleUnifiedSync handles both current year and historical syncs via a single endpoint
+// Replaces the separate handleDailySync and handleHistoricalSync handlers
+// Query params: year (required), service (default: all), includeCustomValues, debug
+func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
+	// Parse required year parameter
+	yearStr := e.Request.URL.Query().Get("year")
+	if yearStr == "" {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Missing required year parameter",
 		})
 	}
 
-	// Trigger daily sync
-	scheduler.TriggerDailySync()
+	year, err := strconv.Atoi(yearStr)
+	if err != nil || year < 2017 {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Invalid year parameter. Must be 2017 or later.",
+		})
+	}
+
+	// Parse service parameter (default: all)
+	service := e.Request.URL.Query().Get("service")
+	if service == "" {
+		service = DefaultService
+	}
+
+	// Get current year from environment
+	currentYear := time.Now().Year()
+	if yearStr := os.Getenv("CAMPMINDER_SEASON_ID"); yearStr != "" {
+		if cy, err := strconv.Atoi(yearStr); err == nil {
+			currentYear = cy
+		}
+	}
+
+	// Validate: bunk_requests and process_requests only for current year
+	if year != currentYear && (service == "bunk_requests" || service == "process_requests") {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": fmt.Sprintf("%s is only available for current year syncs", service),
+		})
+	}
+
+	// Get orchestrator and check if any sync is already running
+	orchestrator := scheduler.GetOrchestrator()
+	if orchestrator.IsDailySyncRunning() || orchestrator.IsHistoricalSyncRunning() {
+		return e.JSON(http.StatusConflict, map[string]interface{}{
+			"error": "Another sync is already in progress",
+		})
+	}
+
+	// Parse optional query parameters
+	includeCustomValuesParam := e.Request.URL.Query().Get("includeCustomValues")
+	includeCustomValues := includeCustomValuesParam == boolTrueStr || includeCustomValuesParam == "1"
+
+	debugParam := e.Request.URL.Query().Get("debug")
+	debug := debugParam == boolTrueStr || debugParam == "1"
+
+	// IMPORTANT: Orchestrator uses Year=0 to indicate current year mode
+	// This enables bunk_requests and process_requests inclusion
+	// Year > 0 triggers historical mode (re-registers services with year-specific client)
+	optsYear := year
+	if year == currentYear {
+		optsYear = 0 // Current year mode
+	}
+
+	// Create sync options
+	opts := Options{
+		Year:                optsYear,
+		IncludeCustomValues: includeCustomValues,
+		Debug:               debug,
+	}
+
+	// Set services to sync
+	if service != DefaultService {
+		opts.Services = []string{service}
+	}
+
+	// Run in background
+	go func() {
+		slog.Info("Unified sync: Job started",
+			"year", year,
+			"service", service,
+			"includeCustomValues", includeCustomValues,
+			"debug", debug,
+			"isCurrentYear", year == currentYear,
+		)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
+		defer cancel()
+
+		if err := orchestrator.RunSyncWithOptions(ctx, opts); err != nil {
+			slog.Error("Unified sync failed", "year", year, "service", service, "error", err)
+		}
+	}()
 
 	return e.JSON(http.StatusOK, map[string]interface{}{
-		"message": "Daily sync triggered",
+		"message":             "Sync started",
+		"year":                year,
+		"service":             service,
+		"includeCustomValues": includeCustomValues,
+		"debug":               debug,
 	})
 }
 
@@ -760,89 +843,6 @@ func handleCustomValuesSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	return e.JSON(http.StatusOK, map[string]interface{}{
 		"message":  "Custom values sync triggered",
 		"services": GetCustomValuesSyncJobs(),
-	})
-}
-
-// handleHistoricalSync handles syncing a specific year and service
-func handleHistoricalSync(e *core.RequestEvent, scheduler *Scheduler) error {
-	// Get parameters
-	yearStr := e.Request.PathValue("year")
-	service := e.Request.PathValue("service")
-
-	// Parse year
-	year, err := strconv.Atoi(yearStr)
-	if err != nil {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
-			"error": "Invalid year parameter",
-		})
-	}
-
-	// Validate year range (2017-present)
-	currentYear := time.Now().Year()
-	if year < 2017 || year > currentYear {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
-			"error": "Year must be between 2017 and current year",
-		})
-	}
-
-	// Get orchestrator
-	orchestrator := scheduler.GetOrchestrator()
-
-	// Check if any sync is already running
-	runningJobs := orchestrator.GetRunningJobs()
-	if len(runningJobs) > 0 {
-		return e.JSON(http.StatusConflict, map[string]interface{}{
-			"error":       "Other sync jobs are running",
-			"runningJobs": runningJobs,
-		})
-	}
-
-	// Parse optional query parameters
-	includeCustomValuesParam := e.Request.URL.Query().Get("includeCustomValues")
-	includeCustomValues := includeCustomValuesParam == boolTrueStr || includeCustomValuesParam == "1"
-
-	debugParam := e.Request.URL.Query().Get("debug")
-	debug := debugParam == boolTrueStr || debugParam == "1"
-
-	// Create sync options
-	opts := Options{
-		Year:                year,
-		IncludeCustomValues: includeCustomValues,
-		Debug:               debug,
-	}
-
-	// Set services to sync
-	if service == "all" {
-		opts.Services = []string{} // Empty means all services in orchestrator
-	} else {
-		opts.Services = []string{service}
-	}
-
-	// Run in background
-	go func() {
-		slog.Info("Historical sync: Job started",
-			"year", year,
-			"service", service,
-			"includeCustomValues", includeCustomValues,
-			"debug", debug,
-		)
-
-		// Create context inside goroutine so it doesn't get canceled immediately
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-		defer cancel()
-
-		if err := orchestrator.RunSyncWithOptions(ctx, opts); err != nil {
-			// Store error in app logger for monitoring
-			e.App.Logger().Error("Historical sync failed", "year", year, "service", service, "error", err)
-		}
-	}()
-
-	return e.JSON(http.StatusOK, map[string]interface{}{
-		"message":             "Historical sync started",
-		"year":                year,
-		"service":             service,
-		"includeCustomValues": includeCustomValues,
-		"debug":               debug,
 	})
 }
 

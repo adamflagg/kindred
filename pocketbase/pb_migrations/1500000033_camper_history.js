@@ -38,22 +38,18 @@ migrate((app) => {
         name: "first_name",
         required: false,
         presentable: true,
-        options: {
-          min: null,
-          max: 100,
-          pattern: ""
-        }
+        min: 0,
+        max: 100,
+        pattern: ""
       },
       {
         type: "text",
         name: "last_name",
         required: false,
         presentable: true,
-        options: {
-          min: null,
-          max: 100,
-          pattern: ""
-        }
+        min: 0,
+        max: 100,
+        pattern: ""
       },
 
       // Year scope
@@ -73,22 +69,18 @@ migrate((app) => {
         name: "sessions",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: 500,
-          pattern: ""
-        }
+        min: 0,
+        max: 500,
+        pattern: ""
       },
       {
         type: "text",
         name: "bunks",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: 500,
-          pattern: ""
-        }
+        min: 0,
+        max: 500,
+        pattern: ""
       },
 
       // Demographics (from persons table)
@@ -97,22 +89,18 @@ migrate((app) => {
         name: "school",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: 200,
-          pattern: ""
-        }
+        min: 0,
+        max: 200,
+        pattern: ""
       },
       {
         type: "text",
         name: "city",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: 100,
-          pattern: ""
-        }
+        min: 0,
+        max: 100,
+        pattern: ""
       },
       {
         type: "number",
@@ -147,22 +135,74 @@ migrate((app) => {
         name: "prior_year_sessions",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: 500,
-          pattern: ""
-        }
+        min: 0,
+        max: 500,
+        pattern: ""
       },
       {
         type: "text",
         name: "prior_year_bunks",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: 500,
-          pattern: ""
-        }
+        min: 0,
+        max: 500,
+        pattern: ""
+      },
+
+      // Household and demographic fields (for retention analysis)
+      {
+        type: "number",
+        name: "household_id",
+        required: false,
+        presentable: false,
+        min: 0,
+        max: null,  // null = unlimited for number fields
+        onlyInt: true
+      },
+      {
+        type: "text",
+        name: "gender",
+        required: false,
+        presentable: false,
+        min: 0,
+        max: 20,
+        pattern: ""
+      },
+      {
+        type: "text",
+        name: "division_name",
+        required: false,
+        presentable: false,
+        min: 0,
+        max: 100,
+        pattern: ""
+      },
+      {
+        type: "text",
+        name: "enrollment_date",
+        required: false,
+        presentable: false,
+        min: 0,
+        max: 30,
+        pattern: ""
+      },
+      {
+        type: "text",
+        name: "status",
+        required: false,
+        presentable: false,
+        min: 0,
+        max: 50,
+        pattern: ""
+      },
+      {
+        type: "text",
+        name: "synagogue",
+        required: false,
+        presentable: false,
+        min: 0,
+        max: 200,
+        pattern: ""
       },
 
       // Auto timestamps
@@ -186,7 +226,9 @@ migrate((app) => {
     indexes: [
       "CREATE UNIQUE INDEX `idx_camper_history_person_year` ON `camper_history` (`person_id`, `year`)",
       "CREATE INDEX `idx_camper_history_year` ON `camper_history` (`year`)",
-      "CREATE INDEX `idx_camper_history_is_returning` ON `camper_history` (`is_returning`)"
+      "CREATE INDEX `idx_camper_history_is_returning` ON `camper_history` (`is_returning`)",
+      "CREATE INDEX `idx_camper_history_household` ON `camper_history` (`household_id`)",
+      "CREATE INDEX `idx_camper_history_status` ON `camper_history` (`status`)"
     ]
   });
 

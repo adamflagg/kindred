@@ -405,10 +405,10 @@ jobs:
         # Ensure local/ directory exists for Docker COPY (even if empty)
         mkdir -p local/assets
         if [ -f local/assets/camp-logo.png ]; then
-          echo "✅ Local assets found and decrypted"
+          echo "✅ Local assets found (from kindred-local)"
           ls -la local/assets/
         else
-          echo "ℹ️  No local assets (git-crypt not unlocked or files not committed)"
+          echo "ℹ️  No local assets (kindred-local not available)"
           echo "   Using default branding"
         fi
 
