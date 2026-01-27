@@ -255,10 +255,10 @@ const baseConfig: UserConfig = {
 }
 
 // =============================================================================
-// Local Configuration Override (git-crypt encrypted)
+// Local Configuration Override (gitignored)
 // =============================================================================
 // Contains private FQDNs, HMR settings, CORS origins
-// Falls back gracefully if not available (CI without git-crypt key)
+// Falls back gracefully if not available (gitignored, doesn't exist in CI)
 
 const localConfigPath = resolve(__dirname, 'vite.config.local.ts')
 let localConfig: UserConfig = {}
@@ -266,12 +266,13 @@ let localConfig: UserConfig = {}
 if (existsSync(localConfigPath)) {
   try {
     // Dynamic import is async, but Vite supports top-level await in config
+    // @ts-expect-error - File is gitignored; runtime handles missing file gracefully
     const { localConfig: imported } = await import('./vite.config.local')
     localConfig = imported
     console.log('✓ Loaded local Vite configuration from vite.config.local.ts')
   } catch {
-    // Expected in CI when file is git-crypt encrypted
-    console.log('ℹ️  vite.config.local.ts not loaded (encrypted or invalid) - using defaults')
+    // Expected in CI where file doesn't exist (gitignored)
+    console.log('ℹ️  vite.config.local.ts not loaded (missing or invalid) - using defaults')
   }
 }
 
