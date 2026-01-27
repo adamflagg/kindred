@@ -192,7 +192,6 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 		})
 	}))
 
-
 	// Get available years from database
 	e.Router.GET("/api/custom/sync/years", requireAuth(func(e *core.RequestEvent) error {
 		return handleGetAvailableYears(e, app)
@@ -846,7 +845,6 @@ func handleCustomValuesSync(e *core.RequestEvent, scheduler *Scheduler) error {
 		"services": GetCustomValuesSyncJobs(),
 	})
 }
-
 
 // handleGetAvailableYears returns available years from the database
 func handleGetAvailableYears(e *core.RequestEvent, app *pocketbase.PocketBase) error {
