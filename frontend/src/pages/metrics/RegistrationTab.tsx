@@ -5,6 +5,7 @@
 import { useRegistrationMetrics } from '../../hooks/useMetrics';
 import { MetricCard } from '../../components/metrics/MetricCard';
 import { BreakdownChart } from '../../components/metrics/BreakdownChart';
+import { DemographicBreakdowns } from '../../components/metrics/DemographicBreakdowns';
 import { Loader2, AlertCircle } from 'lucide-react';
 
 interface RegistrationTabProps {
@@ -195,6 +196,18 @@ export function RegistrationTab({ year, compareYear }: RegistrationTabProps) {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Demographic Breakdowns (from camper_history) */}
+      <div className="mt-8">
+        <h2 className="text-lg font-semibold text-foreground mb-4">Demographic Analysis</h2>
+        <DemographicBreakdowns
+          bySchool={data.by_school}
+          byCity={data.by_city}
+          bySynagogue={data.by_synagogue}
+          byFirstYear={data.by_first_year}
+          bySessionBunk={data.by_session_bunk}
+        />
       </div>
     </div>
   );

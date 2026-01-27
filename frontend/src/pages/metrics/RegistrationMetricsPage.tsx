@@ -10,8 +10,9 @@ import { useCurrentYear } from '../../hooks/useCurrentYear';
 import { CompareYearSelector } from '../../components/metrics/CompareYearSelector';
 import { RetentionTab } from './RetentionTab';
 import { RegistrationTab } from './RegistrationTab';
+import { TrendsTab } from './TrendsTab';
 
-type TabType = 'retention' | 'registration';
+type TabType = 'registration' | 'retention' | 'trends';
 
 export function RegistrationMetricsPage() {
   const { currentYear, availableYears } = useCurrentYear();
@@ -72,6 +73,16 @@ export function RegistrationMetricsPage() {
             >
               Retention
             </button>
+            <button
+              onClick={() => setActiveTab('trends')}
+              className={`py-3 px-1 border-b-2 text-sm font-medium transition-colors ${
+                activeTab === 'trends'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+              }`}
+            >
+              Historical Trends
+            </button>
           </nav>
         </div>
 
@@ -86,6 +97,7 @@ export function RegistrationMetricsPage() {
               compareYear={currentYear}
             />
           )}
+          {activeTab === 'trends' && <TrendsTab />}
         </div>
       </div>
     </div>
