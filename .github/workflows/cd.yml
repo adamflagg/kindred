@@ -395,7 +395,7 @@ jobs:
       run: |
         # Ensure local/ directory exists for Docker COPY (even if empty)
         mkdir -p local/assets
-        if [ -f local/assets/camp-tawonga-logo.png ]; then
+        if [ -f local/assets/camp-logo.png ]; then
           echo "✅ Local assets found and decrypted"
           ls -la local/assets/
         else

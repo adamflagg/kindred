@@ -74,13 +74,13 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
 
 
 def get_camp_name() -> str:
-    """Get full camp name (e.g., 'Summer Camp' or 'Camp Tawonga')."""
+    """Get full camp name (e.g., 'Summer Camp' or local override)."""
     result: str = get_branding().get("camp_name", "Summer Camp")
     return result
 
 
 def get_camp_name_short() -> str:
-    """Get short camp name (e.g., 'Camp' or 'Tawonga')."""
+    """Get short camp name (e.g., 'Camp' or local override)."""
     result: str = get_branding().get("camp_name_short", "Camp")
     return result
 

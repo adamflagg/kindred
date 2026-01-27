@@ -44,6 +44,3 @@ export const BrandedLogo = ({ size = 'small', className = '', forDarkBg = false 
     </div>
   );
 };
-
-// Re-export as TawongaLogo for backwards compatibility during migration
-export { BrandedLogo as TawongaLogo };
