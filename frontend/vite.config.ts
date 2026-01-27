@@ -266,7 +266,8 @@ let localConfig: UserConfig = {}
 if (existsSync(localConfigPath)) {
   try {
     // Dynamic import is async, but Vite supports top-level await in config
-    // @ts-expect-error - File is gitignored; runtime handles missing file gracefully
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore - File is gitignored; may not exist at compile time
     const { localConfig: imported } = await import('./vite.config.local')
     localConfig = imported
     console.log('✓ Loaded local Vite configuration from vite.config.local.ts')
