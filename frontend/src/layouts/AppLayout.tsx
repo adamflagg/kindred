@@ -657,27 +657,7 @@ export const AppLayout = () => {
                   </button>
                 </>
               )}
-              {activeProgram === 'metrics' && (
-                <button
-                  onClick={() => {
-                    toast('Exporting to Google Sheets...', {
-                      icon: '📊',
-                      duration: 2000,
-                    });
-                    sheetsExportMutation.mutate();
-                  }}
-                  disabled={sheetsExportMutation.isPending}
-                  className="btn-primary py-2 px-4"
-                  title="Export attendee data to Google Sheets"
-                >
-                  {sheetsExportMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
-                  ) : (
-                    <FileSpreadsheet className="h-4 w-4 flex-shrink-0" />
-                  )}
-                  <span>Export to Sheets</span>
-                </button>
-              )}
+{/* Export button removed from metrics nav - export functionality will move inside metrics page if needed */}
             </div>
           </div>
         </div>

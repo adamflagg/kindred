@@ -9,9 +9,12 @@ import { Loader2, AlertCircle } from 'lucide-react';
 
 interface RegistrationTabProps {
   year: number;
+  compareYear?: number;
 }
 
-export function RegistrationTab({ year }: RegistrationTabProps) {
+export function RegistrationTab({ year, compareYear }: RegistrationTabProps) {
+  // compareYear will be used for YoY comparison visualization in Phase 4
+  void compareYear;
   const { data, isLoading, error } = useRegistrationMetrics(year);
 
   if (isLoading) {

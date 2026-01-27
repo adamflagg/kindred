@@ -1,11 +1,13 @@
 /**
  * RegistrationMetricsPage - Main page for viewing registration metrics.
- * Supports both single-year and year-over-year comparison modes.
+ * Always shows year-over-year comparison mode with "Compare to" dropdown.
  */
 
 import { useState } from 'react';
+import { Link } from 'react-router';
+import { Settings } from 'lucide-react';
 import { useCurrentYear } from '../../hooks/useCurrentYear';
-import { YearModeToggle } from '../../components/metrics/YearModeToggle';
+import { CompareYearSelector } from '../../components/metrics/CompareYearSelector';
 import { RetentionTab } from './RetentionTab';
 import { RegistrationTab } from './RegistrationTab';
 
@@ -13,32 +15,36 @@ type TabType = 'retention' | 'registration';
 
 export function RegistrationMetricsPage() {
   const { currentYear, availableYears } = useCurrentYear();
-  const [mode, setMode] = useState<'single' | 'comparison'>('single');
-  // Default to currentYear (from context), comparison defaults to previous year
-  const [yearA, setYearA] = useState(currentYear);
-  const [yearB, setYearB] = useState(currentYear - 1);
+  // Always comparison mode: primary year from app context, comparison defaults to year-1
+  const [compareYear, setCompareYear] = useState(currentYear - 1);
   const [activeTab, setActiveTab] = useState<TabType>('registration');
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-foreground">Registration Metrics</h1>
-          <p className="mt-1 text-muted-foreground">
-            Analyze registration data and retention trends
-          </p>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-8">
+        {/* Header with Admin Shortcut */}
+        <div className="mb-6 flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Registration Metrics</h1>
+            <p className="mt-1 text-muted-foreground">
+              Analyze registration data and retention trends
+            </p>
+          </div>
+          <Link
+            to="/summer/admin"
+            className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            title="Admin Settings"
+          >
+            <Settings className="h-5 w-5" />
+          </Link>
         </div>
 
-        {/* Year Mode Toggle */}
+        {/* Compare Year Selector */}
         <div className="mb-6">
-          <YearModeToggle
-            mode={mode}
-            onModeChange={setMode}
-            yearA={yearA}
-            yearB={yearB}
-            onYearAChange={setYearA}
-            onYearBChange={setYearB}
+          <CompareYearSelector
+            primaryYear={currentYear}
+            compareYear={compareYear}
+            onCompareYearChange={setCompareYear}
             availableYears={availableYears}
           />
         </div>
@@ -72,12 +78,12 @@ export function RegistrationMetricsPage() {
         {/* Tab Content */}
         <div>
           {activeTab === 'registration' && (
-            <RegistrationTab year={yearA} />
+            <RegistrationTab year={currentYear} compareYear={compareYear} />
           )}
           {activeTab === 'retention' && (
             <RetentionTab
-              baseYear={mode === 'comparison' ? yearB : yearA - 1}
-              compareYear={yearA}
+              baseYear={compareYear}
+              compareYear={currentYear}
             />
           )}
         </div>
