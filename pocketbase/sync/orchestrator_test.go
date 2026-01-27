@@ -145,7 +145,7 @@ func TestGetStatus(t *testing.T) {
 	o.mu.Lock()
 	o.lastCompletedStatus["sessions"] = &Status{
 		Type:      "sessions",
-		Status:    "completed",
+		Status:    statusCompleted,
 		StartTime: now.Add(-time.Minute),
 		EndTime:   &now,
 		Summary: Stats{
@@ -160,7 +160,7 @@ func TestGetStatus(t *testing.T) {
 		t.Fatal("expected non-nil status")
 	}
 
-	if status.Status != "completed" {
+	if status.Status != statusCompleted {
 		t.Errorf("expected status 'completed', got %q", status.Status)
 	}
 
@@ -183,7 +183,7 @@ func TestGetRunningJobs(t *testing.T) {
 	o.mu.Lock()
 	o.runningJobs["sessions"] = &Status{Type: "sessions", Status: "running"}
 	o.runningJobs["attendees"] = &Status{Type: "attendees", Status: "running"}
-	o.runningJobs["bunks"] = &Status{Type: "bunks", Status: "completed"} // Not running
+	o.runningJobs["bunks"] = &Status{Type: "bunks", Status: statusCompleted} // Not running
 	o.mu.Unlock()
 
 	jobs = o.GetRunningJobs()
@@ -246,7 +246,7 @@ func TestStatusStruct(t *testing.T) {
 
 	status := Status{
 		Type:      serviceNameSessions,
-		Status:    "completed",
+		Status:    statusCompleted,
 		StartTime: now,
 		EndTime:   &endTime,
 		Summary: Stats{
@@ -1139,7 +1139,7 @@ func TestGetStatusWeeklySyncPending(t *testing.T) {
 	if status == nil {
 		t.Fatal("expected non-nil status for queued weekly sync job")
 	}
-	if status.Status != "pending" {
+	if status.Status != statusPending {
 		t.Errorf("expected status 'pending', got %q", status.Status)
 	}
 	if status.Year != 0 {
@@ -1165,7 +1165,7 @@ func TestGetStatusWeeklySyncCompleted(t *testing.T) {
 	// Mark one as completed
 	o.lastCompletedStatus["person_tag_defs"] = &Status{
 		Type:    "person_tag_defs",
-		Status:  "completed",
+		Status:  statusCompleted,
 		EndTime: &now,
 		Year:    0,
 	}
@@ -1176,7 +1176,7 @@ func TestGetStatusWeeklySyncCompleted(t *testing.T) {
 	if status == nil {
 		t.Fatal("expected non-nil status for completed weekly sync job")
 	}
-	if status.Status != "completed" {
+	if status.Status != statusCompleted {
 		t.Errorf("expected status 'completed', got %q", status.Status)
 	}
 
@@ -1185,7 +1185,7 @@ func TestGetStatusWeeklySyncCompleted(t *testing.T) {
 	if status == nil {
 		t.Fatal("expected non-nil status for queued weekly sync job")
 	}
-	if status.Status != "pending" {
+	if status.Status != statusPending {
 		t.Errorf("expected status 'pending', got %q", status.Status)
 	}
 }
@@ -1206,7 +1206,7 @@ func TestGetStatusCustomValuesSyncPending(t *testing.T) {
 	if status == nil {
 		t.Fatal("expected non-nil status for queued custom values sync job")
 	}
-	if status.Status != "pending" {
+	if status.Status != statusPending {
 		t.Errorf("expected status 'pending', got %q", status.Status)
 	}
 	if status.Year != 2025 {
@@ -1233,7 +1233,7 @@ func TestGetStatusCustomValuesSyncCompleted(t *testing.T) {
 	// Mark one as completed
 	o.lastCompletedStatus["person_custom_values"] = &Status{
 		Type:    "person_custom_values",
-		Status:  "completed",
+		Status:  statusCompleted,
 		EndTime: &now,
 		Year:    2025,
 	}
@@ -1244,7 +1244,7 @@ func TestGetStatusCustomValuesSyncCompleted(t *testing.T) {
 	if status == nil {
 		t.Fatal("expected non-nil status for completed custom values sync job")
 	}
-	if status.Status != "completed" {
+	if status.Status != statusCompleted {
 		t.Errorf("expected status 'completed', got %q", status.Status)
 	}
 
@@ -1253,7 +1253,7 @@ func TestGetStatusCustomValuesSyncCompleted(t *testing.T) {
 	if status == nil {
 		t.Fatal("expected non-nil status for queued custom values sync job")
 	}
-	if status.Status != "pending" {
+	if status.Status != statusPending {
 		t.Errorf("expected status 'pending', got %q", status.Status)
 	}
 }

@@ -21,6 +21,10 @@ const (
 	statusFailed = "failed"
 	// statusRunning indicates a sync job is currently running
 	statusRunning = "running"
+	// statusPending indicates a sync job is queued
+	statusPending = "pending"
+	// statusCompleted indicates a sync job has completed successfully
+	statusCompleted = "completed"
 )
 
 // Service defines the interface for sync services
@@ -612,7 +616,7 @@ func (o *Orchestrator) GetStatus(syncType string) *Status {
 				// Otherwise, it's pending
 				return &Status{
 					Type:   syncType,
-					Status: "pending",
+					Status: statusPending,
 					Year:   0, // Current year
 				}
 			}
@@ -635,7 +639,7 @@ func (o *Orchestrator) GetStatus(syncType string) *Status {
 				// Otherwise, it's pending
 				return &Status{
 					Type:   syncType,
-					Status: "pending",
+					Status: statusPending,
 					Year:   o.historicalSyncYear,
 				}
 			}
@@ -657,7 +661,7 @@ func (o *Orchestrator) GetStatus(syncType string) *Status {
 				// Otherwise, it's pending
 				return &Status{
 					Type:   syncType,
-					Status: "pending",
+					Status: statusPending,
 					Year:   0, // Global sync (no year)
 				}
 			}
@@ -679,7 +683,7 @@ func (o *Orchestrator) GetStatus(syncType string) *Status {
 				// Otherwise, it's pending
 				return &Status{
 					Type:   syncType,
-					Status: "pending",
+					Status: statusPending,
 					Year:   o.currentSyncYear, // Custom values sync uses current sync year
 				}
 			}
