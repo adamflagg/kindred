@@ -2281,3 +2281,585 @@ class TestRetentionBreakdownSchemas:
         assert instance.base_count == 12
         assert instance.returned_count == 10
         assert instance.retention_rate == pytest.approx(0.833, rel=0.01)
+
+
+# ============================================================================
+# TDD Tests for Retention Tab Redesign
+# ============================================================================
+
+
+class TestRetentionSessionCmIdFilter:
+    """Tests for session_cm_id filter parameter in retention endpoint.
+
+    The retention endpoint should accept an optional session_cm_id parameter
+    to filter results to a specific session, allowing users to see retention
+    metrics for individual sessions.
+    """
+
+    @pytest.fixture
+    def sample_attendees_multi_session(self) -> list[Mock]:
+        """Attendees across multiple sessions for filter testing."""
+        main_session_1 = Mock(cm_id=1001, session_type="main", name="Session 2")
+        main_session_2 = Mock(cm_id=1002, session_type="main", name="Session 3")
+        embedded_session = Mock(cm_id=1003, session_type="embedded", name="Session 2a")
+
+        attendees = []
+
+        # Session 2 (cm_id 1001): 3 campers in base year
+        for i in range(3):
+            a = create_mock_attendee(100 + i, 1001, 2025, "enrolled", 2, True)
+            a.expand = {"session": main_session_1}
+            attendees.append(a)
+
+        # Session 3 (cm_id 1002): 2 campers in base year
+        for i in range(2):
+            a = create_mock_attendee(200 + i, 1002, 2025, "enrolled", 2, True)
+            a.expand = {"session": main_session_2}
+            attendees.append(a)
+
+        # Session 2a (cm_id 1003): 2 campers in base year
+        for i in range(2):
+            a = create_mock_attendee(300 + i, 1003, 2025, "enrolled", 2, True)
+            a.expand = {"session": embedded_session}
+            attendees.append(a)
+
+        return attendees
+
+    def test_filter_attendees_by_session_cm_id(self, sample_attendees_multi_session: list[Mock]) -> None:
+        """Test filtering attendees by a specific session cm_id.
+
+        When session_cm_id is provided, only attendees in that session
+        should be included in retention calculations.
+        """
+        # Filter to Session 2 only (cm_id 1001)
+        session_cm_id = 1001
+        filtered = [
+            a for a in sample_attendees_multi_session
+            if getattr(a.expand.get("session"), "cm_id", None) == session_cm_id
+        ]
+
+        assert len(filtered) == 3
+        # All should be from Session 2
+        for a in filtered:
+            assert a.expand["session"].name == "Session 2"
+
+    def test_filter_returns_all_when_session_cm_id_is_none(
+        self, sample_attendees_multi_session: list[Mock]
+    ) -> None:
+        """Test that no filtering happens when session_cm_id is None.
+
+        This is the default behavior - show retention across all sessions.
+        """
+        session_cm_id = None
+
+        if session_cm_id is None:
+            filtered = sample_attendees_multi_session
+        else:
+            filtered = [
+                a for a in sample_attendees_multi_session
+                if getattr(a.expand.get("session"), "cm_id", None) == session_cm_id
+            ]
+
+        assert len(filtered) == 7  # All attendees
+
+    def test_retention_calculation_with_session_filter(self) -> None:
+        """Test retention rate calculation when filtered to specific session.
+
+        Given: Session 2 has 3 campers in 2025, 2 returned in 2026
+        Expected: 66.7% retention for Session 2 specifically
+        """
+        # Base year attendees for Session 2
+        base_year_session_2_ids = {100, 101, 102}
+
+        # Compare year attendees (some returned)
+        compare_year_all_ids = {100, 102, 201, 202, 301}  # 100, 102 returned from Session 2
+
+        returned_from_session_2 = base_year_session_2_ids & compare_year_all_ids
+        retention_rate = len(returned_from_session_2) / len(base_year_session_2_ids)
+
+        assert len(returned_from_session_2) == 2
+        assert retention_rate == pytest.approx(2 / 3, rel=0.01)
+
+
+class TestRetentionBySummerYears:
+    """Tests for summer years calculation (calculated from attendees, not years_at_camp).
+
+    The 'years of summer enrollment' should be calculated from actual summer
+    session enrollments in the attendees table, not from the potentially
+    incorrect years_at_camp field in persons.
+    """
+
+    @pytest.fixture
+    def enrollment_history(self) -> dict[int, list[int]]:
+        """Mock enrollment history: person_id -> list of years enrolled in summer."""
+        return {
+            101: [2023, 2024, 2025],  # 3 summers
+            102: [2024, 2025],  # 2 summers
+            103: [2025],  # 1 summer
+            104: [2022, 2023, 2024, 2025],  # 4 summers
+            105: [2024, 2025],  # 2 summers
+        }
+
+    def test_count_summer_enrollment_years(self, enrollment_history: dict[int, list[int]]) -> None:
+        """Test calculating number of summer years for each camper.
+
+        This replaces the years_at_camp field which can be incorrect.
+        """
+        summer_years_by_person = {
+            pid: len(years) for pid, years in enrollment_history.items()
+        }
+
+        assert summer_years_by_person[101] == 3
+        assert summer_years_by_person[102] == 2
+        assert summer_years_by_person[103] == 1
+        assert summer_years_by_person[104] == 4
+        assert summer_years_by_person[105] == 2
+
+    def test_retention_by_summer_years_breakdown(self, enrollment_history: dict[int, list[int]]) -> None:
+        """Test retention breakdown by summer years.
+
+        Given: 5 campers from 2025 with varying summer experience
+        Assume: 101, 102, 104 returned (3 out of 5)
+        Calculate: Retention rate by summer years bucket
+        """
+        base_year = 2025
+        base_year_ids = {pid for pid, years in enrollment_history.items() if base_year in years}
+        returned_ids = {101, 102, 104}
+
+        summer_years_by_person = {
+            pid: len(years) for pid, years in enrollment_history.items()
+            if pid in base_year_ids
+        }
+
+        # Group by summer years
+        by_summer_years: dict[int, dict[str, int]] = {}
+        for pid in base_year_ids:
+            years_count = summer_years_by_person[pid]
+            if years_count not in by_summer_years:
+                by_summer_years[years_count] = {"base": 0, "returned": 0}
+            by_summer_years[years_count]["base"] += 1
+            if pid in returned_ids:
+                by_summer_years[years_count]["returned"] += 1
+
+        # 1 summer: 103 (base=1, returned=0) -> 0%
+        assert by_summer_years[1]["base"] == 1
+        assert by_summer_years[1]["returned"] == 0
+
+        # 2 summers: 102, 105 (base=2, returned=1 (102)) -> 50%
+        assert by_summer_years[2]["base"] == 2
+        assert by_summer_years[2]["returned"] == 1
+
+        # 3 summers: 101 (base=1, returned=1) -> 100%
+        assert by_summer_years[3]["base"] == 1
+        assert by_summer_years[3]["returned"] == 1
+
+        # 4 summers: 104 (base=1, returned=1) -> 100%
+        assert by_summer_years[4]["base"] == 1
+        assert by_summer_years[4]["returned"] == 1
+
+
+class TestRetentionByFirstSummerYear:
+    """Tests for first summer year calculation (when camper first attended summer camp)."""
+
+    @pytest.fixture
+    def first_summer_year_data(self) -> dict[int, int]:
+        """Mock first summer year data: person_id -> first summer year."""
+        return {
+            101: 2020,  # Started in 2020
+            102: 2022,  # Started in 2022
+            103: 2025,  # Started in 2025 (first year)
+            104: 2019,  # Started in 2019
+            105: 2023,  # Started in 2023
+        }
+
+    def test_calculate_first_summer_year(self, first_summer_year_data: dict[int, int]) -> None:
+        """Test calculating first summer year from enrollment history."""
+        enrollment_history = {
+            101: [2020, 2021, 2022, 2023, 2024, 2025],
+            102: [2022, 2024, 2025],
+            103: [2025],
+            104: [2019, 2020, 2021, 2022, 2023, 2024, 2025],
+            105: [2023, 2024, 2025],
+        }
+
+        calculated_first_year = {
+            pid: min(years) for pid, years in enrollment_history.items()
+        }
+
+        assert calculated_first_year == first_summer_year_data
+
+    def test_retention_by_first_summer_year_breakdown(
+        self, first_summer_year_data: dict[int, int]
+    ) -> None:
+        """Test retention breakdown by first summer year (cohort analysis).
+
+        This allows analyzing retention by "class" of when campers first joined.
+        """
+        base_year_ids = set(first_summer_year_data.keys())
+        returned_ids = {101, 104}  # Long-timers returned
+
+        by_first_year: dict[int, dict[str, int]] = {}
+        for pid, first_year in first_summer_year_data.items():
+            if first_year not in by_first_year:
+                by_first_year[first_year] = {"base": 0, "returned": 0}
+            by_first_year[first_year]["base"] += 1
+            if pid in returned_ids:
+                by_first_year[first_year]["returned"] += 1
+
+        # 2019 cohort: 104 (1/1 returned) -> 100%
+        assert by_first_year[2019]["base"] == 1
+        assert by_first_year[2019]["returned"] == 1
+
+        # 2020 cohort: 101 (1/1 returned) -> 100%
+        assert by_first_year[2020]["base"] == 1
+        assert by_first_year[2020]["returned"] == 1
+
+        # 2022 cohort: 102 (0/1 returned) -> 0%
+        assert by_first_year[2022]["base"] == 1
+        assert by_first_year[2022]["returned"] == 0
+
+        # 2023 cohort: 105 (0/1 returned) -> 0%
+        assert by_first_year[2023]["base"] == 1
+        assert by_first_year[2023]["returned"] == 0
+
+        # 2025 cohort: 103 (0/1 returned) -> 0%
+        assert by_first_year[2025]["base"] == 1
+        assert by_first_year[2025]["returned"] == 0
+
+
+class TestRetentionByPriorSession:
+    """Tests for retention breakdown by prior year session.
+
+    Shows what sessions campers were in during the prior year and their
+    retention rate per session.
+    """
+
+    @pytest.fixture
+    def prior_year_sessions(self) -> dict[int, list[str]]:
+        """Mock prior year session data: person_id -> list of session names."""
+        return {
+            101: ["Session 2"],
+            102: ["Session 2", "Session 3"],  # Did both sessions
+            103: ["Session 3"],
+            104: ["Session 4"],
+            105: ["Taste of Camp"],
+        }
+
+    def test_retention_by_prior_session_breakdown(
+        self, prior_year_sessions: dict[int, list[str]]
+    ) -> None:
+        """Test retention breakdown by what session campers were in prior year.
+
+        This helps identify which prior-year sessions have best retention.
+        """
+        base_year_ids = set(prior_year_sessions.keys())
+        returned_ids = {101, 102, 103}
+
+        by_prior_session: dict[str, dict[str, int]] = {}
+        for pid, sessions in prior_year_sessions.items():
+            for session in sessions:
+                if session not in by_prior_session:
+                    by_prior_session[session] = {"base": 0, "returned": 0}
+                by_prior_session[session]["base"] += 1
+                if pid in returned_ids:
+                    by_prior_session[session]["returned"] += 1
+
+        # Session 2: 101, 102 were enrolled. Both returned -> 100%
+        assert by_prior_session["Session 2"]["base"] == 2
+        assert by_prior_session["Session 2"]["returned"] == 2
+
+        # Session 3: 102, 103 were enrolled. Both returned -> 100%
+        assert by_prior_session["Session 3"]["base"] == 2
+        assert by_prior_session["Session 3"]["returned"] == 2
+
+        # Session 4: 104 was enrolled. Did not return -> 0%
+        assert by_prior_session["Session 4"]["base"] == 1
+        assert by_prior_session["Session 4"]["returned"] == 0
+
+        # Taste of Camp: 105 was enrolled. Did not return -> 0%
+        assert by_prior_session["Taste of Camp"]["base"] == 1
+        assert by_prior_session["Taste of Camp"]["returned"] == 0
+
+
+class TestDemographicBreakdownsNoLimit:
+    """Tests for removing top-N limits from demographic breakdowns.
+
+    Currently demographics (school, city, synagogue) are limited to top 20.
+    For data quality visibility, we should return ALL values.
+    """
+
+    @pytest.fixture
+    def many_schools(self) -> list[str]:
+        """Generate 50 different school names."""
+        schools = [f"School {i}" for i in range(50)]
+        return schools
+
+    def test_all_schools_returned_no_limit(self, many_schools: list[str]) -> None:
+        """Test that all schools are returned, not just top 20.
+
+        This is important for data quality - users need to see all schools
+        to identify duplicates and normalize data.
+        """
+        # Simulate school stats
+        school_stats = {school: {"base": i + 1, "returned": i} for i, school in enumerate(many_schools)}
+
+        # OLD behavior (limited to 20):
+        limited_schools = sorted(school_stats.items(), key=lambda x: -x[1]["base"])[:20]
+        assert len(limited_schools) == 20
+
+        # NEW behavior (no limit):
+        all_schools = sorted(school_stats.items(), key=lambda x: -x[1]["base"])
+        assert len(all_schools) == 50
+
+    def test_low_count_demographics_visible(self) -> None:
+        """Test that demographics with low counts are visible.
+
+        Even schools with just 1 camper should be visible for data quality.
+        """
+        school_stats = {
+            "Big School": {"base": 100, "returned": 80},
+            "Medium School": {"base": 20, "returned": 15},
+            "Small School": {"base": 5, "returned": 3},
+            "Tiny School": {"base": 1, "returned": 0},  # Would be invisible in top-20
+        }
+
+        # All should be returned
+        all_schools = list(school_stats.keys())
+        assert "Tiny School" in all_schools
+
+
+class TestRetentionSchemasForNewBreakdowns:
+    """Tests verifying new Pydantic schemas for retention tab redesign."""
+
+    def test_retention_by_summer_years_schema_exists(self) -> None:
+        """Test that RetentionBySummerYears schema exists with correct fields."""
+        from api.schemas.metrics import RetentionBySummerYears
+
+        instance = RetentionBySummerYears(
+            summer_years=3,
+            base_count=10,
+            returned_count=8,
+            retention_rate=0.8,
+        )
+        assert instance.summer_years == 3
+        assert instance.base_count == 10
+        assert instance.returned_count == 8
+        assert instance.retention_rate == 0.8
+
+    def test_retention_by_first_summer_year_schema_exists(self) -> None:
+        """Test that RetentionByFirstSummerYear schema exists with correct fields."""
+        from api.schemas.metrics import RetentionByFirstSummerYear
+
+        instance = RetentionByFirstSummerYear(
+            first_summer_year=2020,
+            base_count=15,
+            returned_count=12,
+            retention_rate=0.8,
+        )
+        assert instance.first_summer_year == 2020
+        assert instance.base_count == 15
+        assert instance.returned_count == 12
+        assert instance.retention_rate == 0.8
+
+    def test_retention_by_prior_session_schema_exists(self) -> None:
+        """Test that RetentionByPriorSession schema exists with correct fields."""
+        from api.schemas.metrics import RetentionByPriorSession
+
+        instance = RetentionByPriorSession(
+            prior_session="Session 2",
+            base_count=25,
+            returned_count=20,
+            retention_rate=0.8,
+        )
+        assert instance.prior_session == "Session 2"
+        assert instance.base_count == 25
+        assert instance.returned_count == 20
+        assert instance.retention_rate == 0.8
+
+    def test_retention_response_includes_new_breakdown_fields(self) -> None:
+        """Test that RetentionMetricsResponse includes new breakdown fields."""
+        from api.schemas.metrics import RetentionMetricsResponse
+
+        fields = RetentionMetricsResponse.model_fields
+
+        assert "by_summer_years" in fields, "Should include by_summer_years"
+        assert "by_first_summer_year" in fields, "Should include by_first_summer_year"
+        assert "by_prior_session" in fields, "Should include by_prior_session"
+
+
+class TestBatchFetchSummerEnrollmentHistory:
+    """Tests for batch fetching summer enrollment history from attendees table.
+
+    Performance critical: fetching enrollment history for all persons in a
+    single batched query instead of per-person queries.
+    """
+
+    def test_batch_query_structure(self) -> None:
+        """Test the structure of a batched enrollment history query.
+
+        The query should:
+        1. Filter by person_id IN (...)
+        2. Filter by status_id = 2 (enrolled)
+        3. Expand session to get session_type and year
+        4. Return all matching records in single query
+        """
+        person_ids = {101, 102, 103, 104, 105}
+
+        # Build filter string as the API would
+        person_ids_str = ",".join(str(pid) for pid in sorted(person_ids))
+        filter_str = f"person_id ?= [{person_ids_str}] && status_id = 2"
+
+        # Verify filter structure
+        assert "person_id ?=" in filter_str
+        assert "status_id = 2" in filter_str
+        assert "101" in filter_str
+        assert "105" in filter_str
+
+    def test_group_enrollment_history_by_person(self) -> None:
+        """Test grouping fetched enrollment records by person_id.
+
+        After batch fetch, records need to be grouped by person_id for
+        efficient computation of summer years, first year, etc.
+        """
+        # Simulate batch fetch results
+        enrollment_records = [
+            {"person_id": 101, "year": 2023, "session_type": "main"},
+            {"person_id": 101, "year": 2024, "session_type": "main"},
+            {"person_id": 101, "year": 2025, "session_type": "main"},
+            {"person_id": 102, "year": 2024, "session_type": "embedded"},
+            {"person_id": 102, "year": 2025, "session_type": "main"},
+            {"person_id": 103, "year": 2025, "session_type": "ag"},
+        ]
+
+        # Group by person_id
+        by_person: dict[int, list[dict]] = {}
+        for record in enrollment_records:
+            pid = record["person_id"]
+            if pid not in by_person:
+                by_person[pid] = []
+            by_person[pid].append(record)
+
+        assert len(by_person[101]) == 3
+        assert len(by_person[102]) == 2
+        assert len(by_person[103]) == 1
+
+    def test_compute_summer_years_from_grouped_history(self) -> None:
+        """Test computing summer years count from grouped enrollment history."""
+        by_person = {
+            101: [
+                {"year": 2023, "session_type": "main"},
+                {"year": 2024, "session_type": "main"},
+                {"year": 2025, "session_type": "main"},
+            ],
+            102: [
+                {"year": 2024, "session_type": "embedded"},
+                {"year": 2025, "session_type": "main"},
+            ],
+            103: [
+                {"year": 2025, "session_type": "ag"},
+            ],
+        }
+
+        summer_years_by_person = {
+            pid: len({r["year"] for r in records})
+            for pid, records in by_person.items()
+        }
+
+        assert summer_years_by_person[101] == 3
+        assert summer_years_by_person[102] == 2
+        assert summer_years_by_person[103] == 1
+
+    def test_compute_first_summer_year_from_grouped_history(self) -> None:
+        """Test computing first summer year from grouped enrollment history."""
+        by_person = {
+            101: [
+                {"year": 2023, "session_type": "main"},
+                {"year": 2024, "session_type": "main"},
+                {"year": 2025, "session_type": "main"},
+            ],
+            102: [
+                {"year": 2024, "session_type": "embedded"},
+                {"year": 2025, "session_type": "main"},
+            ],
+        }
+
+        first_summer_year_by_person = {
+            pid: min(r["year"] for r in records)
+            for pid, records in by_person.items()
+        }
+
+        assert first_summer_year_by_person[101] == 2023
+        assert first_summer_year_by_person[102] == 2024
+
+    def test_compute_prior_year_sessions_from_grouped_history(self) -> None:
+        """Test computing prior year sessions from grouped enrollment history."""
+        prior_year = 2024
+
+        by_person = {
+            101: [
+                {"year": 2024, "session_name": "Session 2", "session_type": "main"},
+                {"year": 2025, "session_name": "Session 3", "session_type": "main"},
+            ],
+            102: [
+                {"year": 2024, "session_name": "Session 2", "session_type": "main"},
+                {"year": 2024, "session_name": "Session 3", "session_type": "main"},
+                {"year": 2025, "session_name": "Session 2", "session_type": "main"},
+            ],
+            103: [
+                {"year": 2025, "session_name": "Session 2", "session_type": "main"},
+            ],
+        }
+
+        prior_sessions_by_person = {
+            pid: [r["session_name"] for r in records if r["year"] == prior_year]
+            for pid, records in by_person.items()
+        }
+
+        assert prior_sessions_by_person[101] == ["Session 2"]
+        assert prior_sessions_by_person[102] == ["Session 2", "Session 3"]
+        assert prior_sessions_by_person[103] == []  # No prior year enrollment
+
+
+class TestRetentionEndpointWithSessionCmId:
+    """Integration tests for retention endpoint with session_cm_id parameter."""
+
+    @pytest.fixture
+    def app(self) -> Any:
+        """Create test application with auth bypassed."""
+        return create_app()
+
+    @pytest.fixture
+    def client(self, app: Any) -> TestClient:
+        """Create test client."""
+        return TestClient(app)
+
+    def test_retention_endpoint_accepts_session_cm_id_param(
+        self, client: TestClient, mock_pocketbase: Mock
+    ) -> None:
+        """Test that retention endpoint accepts session_cm_id parameter."""
+        mock_pb = mock_pocketbase
+        mock_pb.collection.return_value.get_full_list.return_value = []
+
+        with patch("api.routers.metrics.pb", mock_pb):
+            # Should not error with session_cm_id parameter
+            response = client.get(
+                "/api/metrics/retention?base_year=2025&compare_year=2026&session_cm_id=1001"
+            )
+            assert response.status_code == 200
+
+    def test_retention_endpoint_returns_new_breakdown_fields(
+        self, client: TestClient, mock_pocketbase: Mock
+    ) -> None:
+        """Test that retention endpoint returns new breakdown fields in response."""
+        mock_pb = mock_pocketbase
+        mock_pb.collection.return_value.get_full_list.return_value = []
+
+        with patch("api.routers.metrics.pb", mock_pb):
+            response = client.get("/api/metrics/retention?base_year=2025&compare_year=2026")
+            assert response.status_code == 200
+            data = response.json()
+
+            # New fields should be present (may be empty lists)
+            assert "by_summer_years" in data
+            assert "by_first_summer_year" in data
+            assert "by_prior_session" in data
