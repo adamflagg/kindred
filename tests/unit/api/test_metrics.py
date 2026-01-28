@@ -2561,7 +2561,6 @@ class TestRetentionByPriorSession:
 
         This helps identify which prior-year sessions have best retention.
         """
-        base_year_ids = set(prior_year_sessions.keys())
         returned_ids = {101, 102, 103}
 
         by_prior_session: dict[str, dict[str, int]] = {}
