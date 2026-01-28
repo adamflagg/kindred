@@ -63,12 +63,16 @@ export function RegistrationMetricsPage() {
             onCompareYearChange={setCompareYear}
             availableYears={availableYears}
           />
-          <FilterBar
-            selectedStatuses={selectedStatuses}
-            onStatusChange={setSelectedStatuses}
-            selectedSessionTypes={selectedSessionTypes}
-            onSessionTypeChange={setSelectedSessionTypes}
-          />
+          {/* FilterBar only shown for Registration and Trends tabs */}
+          {/* RetentionTab has its own session selector dropdown */}
+          {activeTab !== 'retention' && (
+            <FilterBar
+              selectedStatuses={selectedStatuses}
+              onStatusChange={setSelectedStatuses}
+              selectedSessionTypes={selectedSessionTypes}
+              onSessionTypeChange={setSelectedSessionTypes}
+            />
+          )}
         </div>
 
         {/* Tab Navigation */}

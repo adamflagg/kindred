@@ -1,11 +1,21 @@
 /**
  * RetentionTab - Display retention metrics comparing two years.
+ *
+ * Redesigned to:
+ * - Add session-specific filter dropdown
+ * - Show summer years calculated from attendees (not years_at_camp)
+ * - Show first summer year cohort analysis
+ * - Show prior year session breakdown
+ * - Replace top-20 demographics with searchable tables
  */
 
+import { useState } from 'react';
 import { useRetentionMetrics } from '../../hooks/useMetrics';
+import { useMetricsSessions } from '../../hooks/useMetricsSessions';
 import { MetricCard } from '../../components/metrics/MetricCard';
 import { BreakdownChart } from '../../components/metrics/BreakdownChart';
-import { RetentionDemographicBreakdowns } from '../../components/metrics/RetentionDemographicBreakdowns';
+import { RetentionSessionSelector } from '../../components/metrics/RetentionSessionSelector';
+import { DemographicTable } from '../../components/metrics/DemographicTable';
 import { getSessionChartLabel } from '../../utils/sessionDisplay';
 import { Loader2, AlertCircle } from 'lucide-react';
 
@@ -17,8 +27,19 @@ interface RetentionTabProps {
 }
 
 export function RetentionTab({ baseYear, compareYear, sessionTypes }: RetentionTabProps) {
+  const [selectedSessionCmId, setSelectedSessionCmId] = useState<number | null>(null);
   const sessionTypesParam = sessionTypes || 'main,embedded,ag';
-  const { data, isLoading, error } = useRetentionMetrics(baseYear, compareYear, sessionTypesParam);
+
+  // Fetch sessions for dropdown
+  const { data: sessions = [], isLoading: sessionsLoading } = useMetricsSessions(baseYear);
+
+  // Fetch retention data with optional session filter
+  const { data, isLoading, error } = useRetentionMetrics(
+    baseYear,
+    compareYear,
+    sessionTypesParam,
+    selectedSessionCmId ?? undefined
+  );
 
   if (isLoading) {
     return (
@@ -65,20 +86,67 @@ export function RetentionTab({ baseYear, compareYear, sessionTypes }: RetentionT
     percentage: s.retention_rate,
   }));
 
-  const yearsChartData = data.by_years_at_camp.map((y) => ({
-    name: y.years === 1 ? '1 year' : `${y.years} years`,
+  // New: Summer years breakdown (calculated from attendees, not years_at_camp)
+  const summerYearsChartData = (data.by_summer_years ?? []).map((y) => ({
+    name: y.summer_years === 1 ? '1 summer' : `${y.summer_years} summers`,
     value: y.returned_count,
     percentage: y.retention_rate,
   }));
 
+  // First summer year cohort analysis
+  const firstSummerYearChartData = (data.by_first_summer_year ?? []).map((y) => ({
+    name: y.first_summer_year.toString(),
+    value: y.returned_count,
+    percentage: y.retention_rate,
+  }));
+
+  // Prior year session breakdown
+  const priorSessionChartData = (data.by_prior_session ?? []).map((s) => ({
+    name: getSessionChartLabel(s.prior_session),
+    value: s.returned_count,
+    percentage: s.retention_rate,
+  }));
+
+  // Transform demographics for tables
+  const schoolTableData = (data.by_school ?? []).map((s) => ({
+    name: s.school,
+    base_count: s.base_count,
+    returned_count: s.returned_count,
+    retention_rate: s.retention_rate,
+  }));
+
+  const cityTableData = (data.by_city ?? []).map((c) => ({
+    name: c.city,
+    base_count: c.base_count,
+    returned_count: c.returned_count,
+    retention_rate: c.retention_rate,
+  }));
+
+  const synagogueTableData = (data.by_synagogue ?? []).map((s) => ({
+    name: s.synagogue,
+    base_count: s.base_count,
+    returned_count: s.returned_count,
+    retention_rate: s.retention_rate,
+  }));
+
   return (
     <div className="space-y-6">
+      {/* Session Selector */}
+      <div className="flex items-center justify-between">
+        <RetentionSessionSelector
+          sessions={sessions}
+          selectedSessionCmId={selectedSessionCmId}
+          onSessionChange={setSelectedSessionCmId}
+          isLoading={sessionsLoading}
+        />
+      </div>
+
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
           title={`${baseYear} Total Campers`}
           value={data.base_year_total}
-          subtitle="Enrolled campers in base year"
+          subtitle={selectedSessionCmId ? 'In selected session' : 'Enrolled campers in base year'}
         />
         <MetricCard
           title={`${compareYear} Total Campers`}
@@ -99,7 +167,7 @@ export function RetentionTab({ baseYear, compareYear, sessionTypes }: RetentionT
         />
       </div>
 
-      {/* Charts */}
+      {/* Core Breakdown Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <BreakdownChart
           title="Retention by Gender"
@@ -120,12 +188,32 @@ export function RetentionTab({ baseYear, compareYear, sessionTypes }: RetentionT
           type="bar"
           height={300}
         />
+        {/* Summer years calculated from actual enrollment history */}
         <BreakdownChart
-          title="Retention by Years at Camp"
-          data={yearsChartData}
+          title="Retention by Summers Enrolled"
+          data={summerYearsChartData}
           type="bar"
           height={250}
         />
+      </div>
+
+      {/* New: Cohort Analysis Charts */}
+      <div className="mt-8">
+        <h2 className="text-lg font-semibold text-foreground mb-4">Cohort Analysis</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <BreakdownChart
+            title="Retention by First Summer Year"
+            data={firstSummerYearChartData}
+            type="bar"
+            height={250}
+          />
+          <BreakdownChart
+            title={`Retention by ${baseYear - 1} Session`}
+            data={priorSessionChartData}
+            type="bar"
+            height={250}
+          />
+        </div>
       </div>
 
       {/* Detailed Table */}
@@ -161,17 +249,17 @@ export function RetentionTab({ baseYear, compareYear, sessionTypes }: RetentionT
         </div>
       </div>
 
-      {/* Demographic Retention Breakdowns */}
+      {/* Demographic Tables - Full lists, searchable */}
       <div className="mt-8">
-        <h2 className="text-lg font-semibold text-foreground mb-4">Retention by Demographics</h2>
-        <RetentionDemographicBreakdowns
-          bySchool={data.by_school}
-          byCity={data.by_city}
-          bySynagogue={data.by_synagogue}
-          byFirstYear={data.by_first_year}
-          bySessionBunk={data.by_session_bunk}
-          baseYear={baseYear}
-        />
+        <h2 className="text-lg font-semibold text-foreground mb-4">Demographics</h2>
+        <p className="text-sm text-muted-foreground mb-4">
+          Full demographic data for data quality review. Search and sort to find patterns.
+        </p>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <DemographicTable title="School" data={schoolTableData} />
+          <DemographicTable title="City" data={cityTableData} />
+          <DemographicTable title="Synagogue" data={synagogueTableData} />
+        </div>
       </div>
     </div>
   );
