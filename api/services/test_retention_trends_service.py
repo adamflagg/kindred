@@ -57,10 +57,10 @@ class TestRetentionTrendsServiceBasic:
     def mock_repository(self) -> MagicMock:
         """Create a mock MetricsRepository."""
         repo = MagicMock(spec=MetricsRepository)
-        # Default empty responses
+        # Default empty responses - all methods are async
         repo.fetch_attendees = AsyncMock(return_value=[])
-        repo.fetch_persons = MagicMock(return_value={})
-        repo.fetch_sessions = MagicMock(return_value={})
+        repo.fetch_persons = AsyncMock(return_value={})
+        repo.fetch_sessions = AsyncMock(return_value={})
         return repo
 
     @pytest.mark.asyncio
@@ -68,10 +68,10 @@ class TestRetentionTrendsServiceBasic:
         """Test that response has correct shape for 3-year analysis."""
         from api.services.retention_trends_service import RetentionTrendsService
 
-        # Set up 3 years of data
+        # Set up 3 years of data - all methods are async
         mock_repository.fetch_attendees = AsyncMock(return_value=[])
-        mock_repository.fetch_persons = MagicMock(return_value={})
-        mock_repository.fetch_sessions = MagicMock(return_value={})
+        mock_repository.fetch_persons = AsyncMock(return_value={})
+        mock_repository.fetch_sessions = AsyncMock(return_value={})
 
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(
@@ -99,8 +99,8 @@ class TestRetentionTrendsServiceBasic:
         from api.services.retention_trends_service import RetentionTrendsService
 
         mock_repository.fetch_attendees = AsyncMock(return_value=[])
-        mock_repository.fetch_persons = MagicMock(return_value={})
-        mock_repository.fetch_sessions = MagicMock(return_value={})
+        mock_repository.fetch_persons = AsyncMock(return_value={})
+        mock_repository.fetch_sessions = AsyncMock(return_value={})
 
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(
@@ -134,8 +134,8 @@ class TestRetentionTrendsServiceBasic:
             return persons_2024 if year == 2024 else persons_2025
 
         mock_repository.fetch_attendees = AsyncMock(side_effect=mock_fetch_attendees)
-        mock_repository.fetch_persons = MagicMock(side_effect=mock_fetch_persons)
-        mock_repository.fetch_sessions = MagicMock(return_value={100: make_mock_session(100)})
+        mock_repository.fetch_persons = AsyncMock(side_effect=mock_fetch_persons)
+        mock_repository.fetch_sessions = AsyncMock(return_value={100: make_mock_session(100)})
 
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(
@@ -190,8 +190,8 @@ class TestRetentionTrendsServiceBreakdowns:
             return persons_2024 if year == 2024 else persons_2025
 
         mock_repository.fetch_attendees = AsyncMock(side_effect=mock_fetch_attendees)
-        mock_repository.fetch_persons = MagicMock(side_effect=mock_fetch_persons)
-        mock_repository.fetch_sessions = MagicMock(return_value={100: make_mock_session(100)})
+        mock_repository.fetch_persons = AsyncMock(side_effect=mock_fetch_persons)
+        mock_repository.fetch_sessions = AsyncMock(return_value={100: make_mock_session(100)})
 
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(
@@ -238,8 +238,8 @@ class TestRetentionTrendsServiceBreakdowns:
             return persons_2024 if year == 2024 else persons_2025
 
         mock_repository.fetch_attendees = AsyncMock(side_effect=mock_fetch_attendees)
-        mock_repository.fetch_persons = MagicMock(side_effect=mock_fetch_persons)
-        mock_repository.fetch_sessions = MagicMock(return_value={100: make_mock_session(100)})
+        mock_repository.fetch_persons = AsyncMock(side_effect=mock_fetch_persons)
+        mock_repository.fetch_sessions = AsyncMock(return_value={100: make_mock_session(100)})
 
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(
@@ -298,8 +298,8 @@ class TestRetentionTrendsServiceTrend:
             return {2024: persons_2024, 2025: persons_2025, 2026: persons_2026}[year]
 
         mock_repository.fetch_attendees = AsyncMock(side_effect=mock_fetch_attendees)
-        mock_repository.fetch_persons = MagicMock(side_effect=mock_fetch_persons)
-        mock_repository.fetch_sessions = MagicMock(return_value={100: make_mock_session(100)})
+        mock_repository.fetch_persons = AsyncMock(side_effect=mock_fetch_persons)
+        mock_repository.fetch_sessions = AsyncMock(return_value={100: make_mock_session(100)})
 
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(
@@ -333,8 +333,8 @@ class TestRetentionTrendsServiceTrend:
             return {2024: persons_2024, 2025: persons_2025, 2026: persons_2026}[year]
 
         mock_repository.fetch_attendees = AsyncMock(side_effect=mock_fetch_attendees)
-        mock_repository.fetch_persons = MagicMock(side_effect=mock_fetch_persons)
-        mock_repository.fetch_sessions = MagicMock(return_value={100: make_mock_session(100)})
+        mock_repository.fetch_persons = AsyncMock(side_effect=mock_fetch_persons)
+        mock_repository.fetch_sessions = AsyncMock(return_value={100: make_mock_session(100)})
 
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(
@@ -369,8 +369,8 @@ class TestRetentionTrendsServiceTrend:
             return {2024: persons_2024, 2025: persons_2025, 2026: persons_2026}[year]
 
         mock_repository.fetch_attendees = AsyncMock(side_effect=mock_fetch_attendees)
-        mock_repository.fetch_persons = MagicMock(side_effect=mock_fetch_persons)
-        mock_repository.fetch_sessions = MagicMock(return_value={100: make_mock_session(100)})
+        mock_repository.fetch_persons = AsyncMock(side_effect=mock_fetch_persons)
+        mock_repository.fetch_sessions = AsyncMock(return_value={100: make_mock_session(100)})
 
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(
@@ -423,8 +423,8 @@ class TestRetentionTrendsServiceFiltering:
             return persons_2024 if year == 2024 else persons_2025
 
         mock_repository.fetch_attendees = AsyncMock(side_effect=mock_fetch_attendees)
-        mock_repository.fetch_persons = MagicMock(side_effect=mock_fetch_persons)
-        mock_repository.fetch_sessions = MagicMock(
+        mock_repository.fetch_persons = AsyncMock(side_effect=mock_fetch_persons)
+        mock_repository.fetch_sessions = AsyncMock(
             return_value={
                 100: make_mock_session(100, "main"),
                 200: make_mock_session(200, "ag"),
@@ -469,8 +469,8 @@ class TestRetentionTrendsServiceFiltering:
             return persons_2024 if year == 2024 else persons_2025
 
         mock_repository.fetch_attendees = AsyncMock(side_effect=mock_fetch_attendees)
-        mock_repository.fetch_persons = MagicMock(side_effect=mock_fetch_persons)
-        mock_repository.fetch_sessions = MagicMock(
+        mock_repository.fetch_persons = AsyncMock(side_effect=mock_fetch_persons)
+        mock_repository.fetch_sessions = AsyncMock(
             return_value={
                 100: make_mock_session(100),
                 200: make_mock_session(200),
@@ -526,8 +526,8 @@ class TestRetentionTrendsServiceEnrollment:
             return {2024: persons_2024, 2025: persons_2025, 2026: persons_2026}[year]
 
         mock_repository.fetch_attendees = AsyncMock(side_effect=mock_fetch_attendees)
-        mock_repository.fetch_persons = MagicMock(side_effect=mock_fetch_persons)
-        mock_repository.fetch_sessions = MagicMock(return_value={100: make_mock_session(100)})
+        mock_repository.fetch_persons = AsyncMock(side_effect=mock_fetch_persons)
+        mock_repository.fetch_sessions = AsyncMock(return_value={100: make_mock_session(100)})
 
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(
@@ -564,8 +564,8 @@ class TestRetentionTrendsServiceEnrollment:
             return persons_2024 if year == 2024 else persons_2025
 
         mock_repository.fetch_attendees = AsyncMock(side_effect=mock_fetch_attendees)
-        mock_repository.fetch_persons = MagicMock(side_effect=mock_fetch_persons)
-        mock_repository.fetch_sessions = MagicMock(return_value={100: make_mock_session(100)})
+        mock_repository.fetch_persons = AsyncMock(side_effect=mock_fetch_persons)
+        mock_repository.fetch_sessions = AsyncMock(return_value={100: make_mock_session(100)})
 
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(
@@ -600,8 +600,8 @@ class TestRetentionTrendsServiceEnrollment:
             return persons_2024 if year == 2024 else persons_2025
 
         mock_repository.fetch_attendees = AsyncMock(side_effect=mock_fetch_attendees)
-        mock_repository.fetch_persons = MagicMock(side_effect=mock_fetch_persons)
-        mock_repository.fetch_sessions = MagicMock(return_value={100: make_mock_session(100)})
+        mock_repository.fetch_persons = AsyncMock(side_effect=mock_fetch_persons)
+        mock_repository.fetch_sessions = AsyncMock(return_value={100: make_mock_session(100)})
 
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(
@@ -647,8 +647,8 @@ class TestRetentionTrendsServiceEdgeCases:
             return persons_2024 if year == 2024 else persons_2025
 
         mock_repository.fetch_attendees = AsyncMock(side_effect=mock_fetch_attendees)
-        mock_repository.fetch_persons = MagicMock(side_effect=mock_fetch_persons)
-        mock_repository.fetch_sessions = MagicMock(return_value={100: make_mock_session(100)})
+        mock_repository.fetch_persons = AsyncMock(side_effect=mock_fetch_persons)
+        mock_repository.fetch_sessions = AsyncMock(return_value={100: make_mock_session(100)})
 
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(
@@ -685,8 +685,8 @@ class TestRetentionTrendsServiceEdgeCases:
             return {2024: persons_2024, 2025: persons_2025, 2026: persons_2026}[year]
 
         mock_repository.fetch_attendees = AsyncMock(side_effect=mock_fetch_attendees)
-        mock_repository.fetch_persons = MagicMock(side_effect=mock_fetch_persons)
-        mock_repository.fetch_sessions = MagicMock(return_value={100: make_mock_session(100)})
+        mock_repository.fetch_persons = AsyncMock(side_effect=mock_fetch_persons)
+        mock_repository.fetch_sessions = AsyncMock(return_value={100: make_mock_session(100)})
 
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(
@@ -715,8 +715,8 @@ class TestRetentionTrendsServiceEdgeCases:
             return persons_2024 if year == 2024 else persons_2025
 
         mock_repository.fetch_attendees = AsyncMock(side_effect=mock_fetch_attendees)
-        mock_repository.fetch_persons = MagicMock(side_effect=mock_fetch_persons)
-        mock_repository.fetch_sessions = MagicMock(return_value={100: make_mock_session(100)})
+        mock_repository.fetch_persons = AsyncMock(side_effect=mock_fetch_persons)
+        mock_repository.fetch_sessions = AsyncMock(return_value={100: make_mock_session(100)})
 
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(
