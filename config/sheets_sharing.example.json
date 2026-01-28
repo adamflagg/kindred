@@ -1,0 +1,7 @@
+{
+  "emails": [
+    "user@example.com"
+  ],
+  "role": "commenter",
+  "description": "Emails to auto-share new Google Sheets workbooks with. Role can be 'reader', 'commenter', or 'writer'."
+}

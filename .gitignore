@@ -202,6 +202,7 @@ tmp/
 !**/sample_*.csv
 !config/staff_list.example.json
 !config/sheets_export.example.json
+!config/sheets_sharing.example.json
 !config/branding.json
 !**/example_*.json
 !campminder/**/*.json
@@ -288,6 +289,7 @@ pb_data_local/
 # =============================================================================
 config/branding.local.json
 config/staff_list.json
+config/sheets_sharing.local.json
 local
 CLAUDE.local.md
 scripts/vault.config

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"sort"
 	"time"
 
@@ -194,9 +196,44 @@ func (m *WorkbookManager) ListAllWorkbooks(ctx context.Context) ([]WorkbookRecor
 	return workbooks, nil
 }
 
-// GetShareEmails returns the list of email addresses to share workbooks with.
-// Reads from config table: category="google_sheets", config_key="sharing_emails".
-func (m *WorkbookManager) GetShareEmails(ctx context.Context) []string {
+// sharingConfig represents the structure of sheets_sharing.local.json
+type sharingConfig struct {
+	Emails []string `json:"emails"`
+	Role   string   `json:"role"`
+}
+
+// loadShareEmailsFromFile attempts to load sharing emails from config/sheets_sharing.local.json.
+// Returns nil if the file doesn't exist or can't be parsed.
+func (m *WorkbookManager) loadShareEmailsFromFile() []string {
+	// Try to find the config file relative to the executable or working directory
+	configPaths := []string{
+		"config/sheets_sharing.local.json",
+		filepath.Join(os.Getenv("HOME"), "kindred/config/sheets_sharing.local.json"),
+	}
+
+	for _, path := range configPaths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue // File doesn't exist at this path, try next
+		}
+
+		var config sharingConfig
+		if err := json.Unmarshal(data, &config); err != nil {
+			slog.Warn("Failed to parse sheets_sharing.local.json", "path", path, "error", err)
+			continue
+		}
+
+		if len(config.Emails) > 0 {
+			slog.Debug("Loaded sharing emails from config file", "path", path, "count", len(config.Emails))
+			return config.Emails
+		}
+	}
+
+	return nil
+}
+
+// loadShareEmailsFromDB reads sharing emails from PocketBase config table.
+func (m *WorkbookManager) loadShareEmailsFromDB(ctx context.Context) []string {
 	filter := `category = "google_sheets" && config_key = "sharing_emails"`
 	records, err := m.app.FindRecordsByFilter(configCollection, filter, "", 1, 0)
 	if err != nil || len(records) == 0 {
@@ -214,7 +251,7 @@ func (m *WorkbookManager) GetShareEmails(ctx context.Context) []string {
 	case string:
 		// Try to parse as JSON
 		if err := json.Unmarshal([]byte(v), &emails); err != nil {
-			slog.Warn("Failed to parse sharing_emails config", "error", err)
+			slog.Warn("Failed to parse sharing_emails config from DB", "error", err)
 			return nil
 		}
 	case []interface{}:
@@ -226,6 +263,20 @@ func (m *WorkbookManager) GetShareEmails(ctx context.Context) []string {
 	}
 
 	return emails
+}
+
+// GetShareEmails returns the list of email addresses to share workbooks with.
+// Priority order:
+// 1. Config file (config/sheets_sharing.local.json) - preferred for deployment
+// 2. PocketBase config table - fallback/override for runtime changes
+func (m *WorkbookManager) GetShareEmails(ctx context.Context) []string {
+	// Try config file first
+	if emails := m.loadShareEmailsFromFile(); len(emails) > 0 {
+		return emails
+	}
+
+	// Fall back to database config
+	return m.loadShareEmailsFromDB(ctx)
 }
 
 // GetOrCreateGlobalsWorkbook returns the globals workbook ID, creating if needed.

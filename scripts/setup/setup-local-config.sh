@@ -18,6 +18,7 @@ echo "Linking local config from $LOCAL_REPO..."
 ln -sfr "$LOCAL_REPO/CLAUDE.local.md" "$REPO_ROOT/CLAUDE.local.md"
 ln -sfr "$LOCAL_REPO/config/branding.local.json" "$REPO_ROOT/config/branding.local.json"
 ln -sfr "$LOCAL_REPO/config/staff_list.json" "$REPO_ROOT/config/staff_list.json"
+ln -sfr "$LOCAL_REPO/config/sheets_sharing.local.json" "$REPO_ROOT/config/sheets_sharing.local.json"
 ln -sfr "$LOCAL_REPO/frontend/vite.config.local.ts" "$REPO_ROOT/frontend/vite.config.local.ts"
 ln -sfr "$LOCAL_REPO/scripts/vault.config" "$REPO_ROOT/scripts/vault.config"
 
