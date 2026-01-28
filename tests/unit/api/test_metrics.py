@@ -1124,3 +1124,338 @@ class TestMetricsAPIEndpoints:
             assert data["year_a"]["year"] == 2025
             assert data["year_b"]["year"] == 2026
             assert "delta" in data
+
+
+# ============================================================================
+# TDD Tests for Metrics Dashboard Redesign (Phase 1)
+# ============================================================================
+
+
+class TestWaitlistCancelledSessionTypeFiltering:
+    """Tests for filtering waitlist/cancelled counts by session_type.
+
+    Issue: Waitlist/Cancelled counts are inflated because they include
+    family camp and other non-summer sessions. They should be filtered
+    by session_type just like enrolled counts are.
+    """
+
+    @pytest.fixture
+    def attendees_with_mixed_session_types(self) -> list[Mock]:
+        """Create attendees with various statuses and session types."""
+        attendees = []
+
+        # Summer camp sessions (should be included in filtered counts)
+        main_session = Mock(cm_id=1001, session_type="main", name="Session 2")
+        ag_session = Mock(cm_id=1002, session_type="ag", name="AG Session 2")
+        embedded_session = Mock(cm_id=1003, session_type="embedded", name="Session 2a")
+
+        # Non-summer sessions (should be excluded)
+        family_session = Mock(cm_id=2001, session_type="family", name="Family Camp Weekend")
+
+        # Enrolled in summer (should count)
+        attendees.append(create_mock_attendee(101, 1001, 2026, "enrolled", 2, True))
+        attendees[-1].expand = {"session": main_session}
+
+        # Waitlisted in summer (should count in filtered waitlist)
+        attendees.append(create_mock_attendee(102, 1001, 2026, "waitlisted", 4, True))
+        attendees[-1].expand = {"session": main_session}
+
+        # Waitlisted in AG session (should count)
+        attendees.append(create_mock_attendee(103, 1002, 2026, "waitlisted", 4, True))
+        attendees[-1].expand = {"session": ag_session}
+
+        # Cancelled in summer (should count)
+        attendees.append(create_mock_attendee(104, 1003, 2026, "cancelled", 5, False))
+        attendees[-1].expand = {"session": embedded_session}
+
+        # Waitlisted in family camp (should NOT count in summer metrics)
+        attendees.append(create_mock_attendee(105, 2001, 2026, "waitlisted", 4, True))
+        attendees[-1].expand = {"session": family_session}
+
+        # Cancelled in family camp (should NOT count in summer metrics)
+        attendees.append(create_mock_attendee(106, 2001, 2026, "cancelled", 5, False))
+        attendees[-1].expand = {"session": family_session}
+
+        return attendees
+
+    def test_waitlist_filtered_by_session_type(self, attendees_with_mixed_session_types: list[Mock]) -> None:
+        """Test that waitlist count only includes summer session types.
+
+        Given attendees with waitlisted status in both summer and family camp,
+        when filtered to summer session types (main, embedded, ag),
+        then only summer waitlisted attendees should be counted.
+        """
+        # Filter to only waitlisted
+        waitlisted = [a for a in attendees_with_mixed_session_types if a.status == "waitlisted"]
+
+        # Without session type filtering: 3 waitlisted (2 summer + 1 family)
+        assert len(waitlisted) == 3
+
+        # With session type filtering: should only be 2 (summer only)
+        summer_types = ["main", "embedded", "ag"]
+
+        def filter_by_session_type(attendees: list[Mock]) -> list[Mock]:
+            filtered = []
+            for a in attendees:
+                expand = getattr(a, "expand", {}) or {}
+                session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+                session_type = getattr(session, "session_type", None) if session else None
+                if session_type in summer_types:
+                    filtered.append(a)
+            return filtered
+
+        filtered_waitlisted = filter_by_session_type(waitlisted)
+        assert len(filtered_waitlisted) == 2
+
+    def test_cancelled_filtered_by_session_type(self, attendees_with_mixed_session_types: list[Mock]) -> None:
+        """Test that cancelled count only includes summer session types.
+
+        Given attendees with cancelled status in both summer and family camp,
+        when filtered to summer session types (main, embedded, ag),
+        then only summer cancelled attendees should be counted.
+        """
+        # Filter to only cancelled
+        cancelled = [a for a in attendees_with_mixed_session_types if a.status == "cancelled"]
+
+        # Without session type filtering: 2 cancelled (1 summer + 1 family)
+        assert len(cancelled) == 2
+
+        # With session type filtering: should only be 1 (summer only)
+        summer_types = ["main", "embedded", "ag"]
+
+        def filter_by_session_type(attendees: list[Mock]) -> list[Mock]:
+            filtered = []
+            for a in attendees:
+                expand = getattr(a, "expand", {}) or {}
+                session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+                session_type = getattr(session, "session_type", None) if session else None
+                if session_type in summer_types:
+                    filtered.append(a)
+            return filtered
+
+        filtered_cancelled = filter_by_session_type(cancelled)
+        assert len(filtered_cancelled) == 1
+
+
+class TestDemographicsNoStatusFilter:
+    """Tests for demographics queries not filtering by status.
+
+    Issue: Demographics are empty because camper_history is filtered by
+    status='enrolled', but status in camper_history doesn't map cleanly
+    to per-session status. Demographics should include everyone associated
+    with summer sessions, regardless of status.
+    """
+
+    @pytest.fixture
+    def camper_history_mixed_status(self) -> list[Mock]:
+        """Create camper_history records with various statuses."""
+        records = []
+
+        # Enrolled camper
+        record = Mock()
+        record.person_id = 101
+        record.year = 2026
+        record.session_types = "main"
+        record.status = "enrolled"
+        record.school = "Riverside Elementary"
+        record.city = "Springfield"
+        record.synagogue = "Temple Beth El"
+        records.append(record)
+
+        # Waitlisted camper (should still be in demographics)
+        record = Mock()
+        record.person_id = 102
+        record.year = 2026
+        record.session_types = "main"
+        record.status = "waitlisted"
+        record.school = "Oak Valley Middle"
+        record.city = "Riverside"
+        record.synagogue = "Congregation Shalom"
+        records.append(record)
+
+        # Cancelled camper (should still be in demographics)
+        record = Mock()
+        record.person_id = 103
+        record.year = 2026
+        record.session_types = "main,embedded"
+        record.status = "cancelled"
+        record.school = "Hillcrest High"
+        record.city = "Lakewood"
+        record.synagogue = ""
+        records.append(record)
+
+        # Empty status (should still be in demographics)
+        record = Mock()
+        record.person_id = 104
+        record.year = 2026
+        record.session_types = "ag"
+        record.status = ""
+        record.school = "Riverside Elementary"
+        record.city = "Springfield"
+        record.synagogue = "Temple Beth El"
+        records.append(record)
+
+        return records
+
+    def test_demographics_include_all_statuses(self, camper_history_mixed_status: list[Mock]) -> None:
+        """Test that demographics include records regardless of status.
+
+        When fetching camper_history for demographics (school, city, synagogue),
+        all records with matching session_types should be included,
+        regardless of their status field.
+        """
+        records = camper_history_mixed_status
+        summer_types = ["main", "embedded", "ag"]
+
+        # Filter only by session_types (not status)
+        def matches_session_types(record: Mock, type_filter: list[str]) -> bool:
+            session_types_str = getattr(record, "session_types", "") or ""
+            if not session_types_str:
+                return False
+            record_types = [t.strip() for t in session_types_str.split(",")]
+            return any(t in type_filter for t in record_types)
+
+        filtered = [r for r in records if matches_session_types(r, summer_types)]
+
+        # All 4 records should be included (regardless of status)
+        assert len(filtered) == 4
+
+        # Verify school breakdown includes all
+        school_counts: dict[str, int] = {}
+        for record in filtered:
+            school = getattr(record, "school", "") or ""
+            if school:
+                school_counts[school] = school_counts.get(school, 0) + 1
+
+        assert "Riverside Elementary" in school_counts
+        assert school_counts["Riverside Elementary"] == 2
+        assert "Oak Valley Middle" in school_counts
+        assert "Hillcrest High" in school_counts
+
+
+class TestStatusesParameter:
+    """Tests for the statuses parameter in registration endpoint.
+
+    Feature: Allow filtering by multiple status values (enrolled, waitlisted,
+    cancelled, etc.) to enable flexible dashboard views.
+    """
+
+    @pytest.fixture
+    def app(self) -> Any:
+        """Create test application."""
+        return create_app()
+
+    @pytest.fixture
+    def client(self, app: Any) -> TestClient:
+        """Create test client."""
+        return TestClient(app)
+
+    def test_registration_accepts_statuses_parameter(self, client: TestClient, mock_pocketbase: Mock) -> None:
+        """Test that registration endpoint accepts statuses parameter.
+
+        The endpoint should accept a comma-separated list of statuses
+        and return counts filtered to those statuses.
+        """
+        mock_pb = mock_pocketbase
+        mock_pb.collection.return_value.get_full_list.return_value = []
+
+        with patch("api.routers.metrics.pb", mock_pb):
+            # Should accept statuses parameter without error
+            response = client.get("/api/metrics/registration?year=2026&statuses=enrolled,waitlisted")
+            assert response.status_code == 200
+
+    def test_registration_statuses_parameter_is_passed_to_query(self) -> None:
+        """Test that statuses parameter is actually used in the query.
+
+        This is a spec test - when statuses parameter is provided,
+        the endpoint should use it to filter attendees by the given statuses.
+
+        Currently the endpoint ignores statuses parameter - this test should
+        fail until the feature is implemented.
+        """
+        import inspect
+
+        from api.routers.metrics import get_registration_metrics
+
+        # Check the signature includes statuses parameter
+        sig = inspect.signature(get_registration_metrics)
+        param_names = list(sig.parameters.keys())
+
+        # This test will FAIL until we add statuses parameter to the endpoint
+        assert "statuses" in param_names, "statuses parameter should be added to get_registration_metrics"
+
+
+class TestComparisonEndpointSessionTypes:
+    """Tests for session_types parameter in comparison endpoint.
+
+    Issue: Compare dropdown does nothing because comparison endpoint
+    doesn't support session_types filtering.
+    """
+
+    @pytest.fixture
+    def app(self) -> Any:
+        """Create test application."""
+        return create_app()
+
+    @pytest.fixture
+    def client(self, app: Any) -> TestClient:
+        """Create test client."""
+        return TestClient(app)
+
+    def test_comparison_accepts_session_types_parameter(self, client: TestClient, mock_pocketbase: Mock) -> None:
+        """Test that comparison endpoint accepts session_types parameter.
+
+        The endpoint should accept session_types to filter both years
+        to summer sessions only.
+        """
+        mock_pb = mock_pocketbase
+        mock_pb.collection.return_value.get_full_list.return_value = []
+
+        with patch("api.routers.metrics.pb", mock_pb):
+            # Should accept session_types parameter without error
+            response = client.get("/api/metrics/comparison?year_a=2025&year_b=2026&session_types=main,embedded,ag")
+            assert response.status_code == 200
+
+    def test_comparison_endpoint_has_session_types_parameter(self) -> None:
+        """Test that comparison endpoint declares session_types parameter.
+
+        The endpoint function signature should include session_types parameter
+        for filtering both years to summer sessions only.
+        """
+        import inspect
+
+        from api.routers.metrics import get_comparison_metrics
+
+        sig = inspect.signature(get_comparison_metrics)
+        param_names = list(sig.parameters.keys())
+
+        # This test will FAIL until we add session_types parameter to comparison endpoint
+        assert "session_types" in param_names, "session_types parameter should be added to get_comparison_metrics"
+
+
+class TestFetchCamperHistoryNoStatusFilter:
+    """Tests for fetch_camper_history_for_year function.
+
+    The function should NOT filter by status - status filtering happens
+    at the attendees level, not at the demographics level.
+    """
+
+    def test_fetch_camper_history_has_no_status_parameter(self) -> None:
+        """Verify fetch_camper_history_for_year signature has no status_filter.
+
+        The function should only accept year and session_types parameters.
+        Status filtering is wrong at this level because demographics
+        should include everyone associated with summer sessions.
+        """
+        import inspect
+
+        from api.routers.metrics import fetch_camper_history_for_year
+
+        sig = inspect.signature(fetch_camper_history_for_year)
+        param_names = list(sig.parameters.keys())
+
+        # Should have year and session_types, but NOT status_filter
+        assert "year" in param_names
+        assert "session_types" in param_names
+        # This test will FAIL until we remove status_filter parameter
+        assert "status_filter" not in param_names, "status_filter parameter should be removed from fetch_camper_history_for_year"
