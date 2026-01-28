@@ -1716,3 +1716,568 @@ class TestFetchAttendeesForYearDynamicStatuses:
 
         # For now, this is a specification test - the actual integration test
         # would need more complex mocking to verify the PB query
+
+
+# ============================================================================
+# TDD Tests for New Retention Breakdowns (Metrics Dashboard Enhancement)
+# ============================================================================
+
+
+class TestRetentionBySchool:
+    """Tests for retention breakdown by school.
+
+    Track retention rates for each school - which schools have the highest
+    retention rates and which might need more engagement.
+    """
+
+    @pytest.fixture
+    def camper_history_with_schools(self) -> list[Mock]:
+        """Create camper_history records with school data for two years."""
+        records = []
+
+        # Base year (2025) campers - 5 campers from 3 schools
+        for i, (person_id, school) in enumerate(
+            [
+                (101, "Riverside Elementary"),
+                (102, "Riverside Elementary"),  # 2 from Riverside
+                (103, "Oak Valley Middle"),
+                (104, "Oak Valley Middle"),  # 2 from Oak Valley
+                (105, "Hillcrest High"),  # 1 from Hillcrest
+            ]
+        ):
+            record = Mock()
+            record.person_id = person_id
+            record.year = 2025
+            record.school = school
+            record.city = "Springfield"
+            record.synagogue = "Temple Beth El"
+            record.first_year_attended = 2024
+            record.session_types = "main"
+            record.sessions = "Session 2"
+            record.bunks = "B-1"
+            records.append(record)
+
+        # Compare year (2026) campers - 3 returned + 2 new
+        for person_id, school in [
+            (101, "Riverside Elementary"),  # Returned from 2025
+            (103, "Oak Valley Middle"),  # Returned from 2025
+            (105, "Hillcrest High"),  # Returned from 2025
+            (201, "Riverside Elementary"),  # New
+            (202, "Lakeside Academy"),  # New
+        ]:
+            record = Mock()
+            record.person_id = person_id
+            record.year = 2026
+            record.school = school
+            record.city = "Springfield"
+            record.synagogue = "Temple Beth El"
+            record.first_year_attended = 2026 if person_id >= 200 else 2024
+            record.session_types = "main"
+            record.sessions = "Session 2"
+            record.bunks = "B-1"
+            records.append(record)
+
+        return records
+
+    def test_retention_by_school_structure(self, camper_history_with_schools: list[Mock]) -> None:
+        """Test that retention by school breakdown has correct structure.
+
+        Expected output format:
+        {
+            school: str,
+            base_count: int,      # Campers from this school in base year
+            returned_count: int,  # How many from that school returned
+            retention_rate: float # returned_count / base_count
+        }
+        """
+        # Separate by year
+        base_year_records = [r for r in camper_history_with_schools if r.year == 2025]
+        compare_year_records = [r for r in camper_history_with_schools if r.year == 2026]
+
+        # Get person IDs who returned
+        base_person_ids = {r.person_id for r in base_year_records}
+        compare_person_ids = {r.person_id for r in compare_year_records}
+        returned_ids = base_person_ids & compare_person_ids
+
+        # Build school -> stats map
+        school_stats: dict[str, dict[str, int]] = {}
+        for record in base_year_records:
+            school = record.school
+            if school not in school_stats:
+                school_stats[school] = {"base_count": 0, "returned_count": 0}
+            school_stats[school]["base_count"] += 1
+            if record.person_id in returned_ids:
+                school_stats[school]["returned_count"] += 1
+
+        # Verify expected data
+        assert "Riverside Elementary" in school_stats
+        assert school_stats["Riverside Elementary"]["base_count"] == 2
+        assert school_stats["Riverside Elementary"]["returned_count"] == 1
+        # Retention rate: 1/2 = 50%
+
+        assert "Oak Valley Middle" in school_stats
+        assert school_stats["Oak Valley Middle"]["base_count"] == 2
+        assert school_stats["Oak Valley Middle"]["returned_count"] == 1
+        # Retention rate: 1/2 = 50%
+
+        assert "Hillcrest High" in school_stats
+        assert school_stats["Hillcrest High"]["base_count"] == 1
+        assert school_stats["Hillcrest High"]["returned_count"] == 1
+        # Retention rate: 1/1 = 100%
+
+    def test_retention_endpoint_includes_by_school(self) -> None:
+        """Test that retention endpoint response includes by_school field.
+
+        This test will FAIL until we add by_school to RetentionMetricsResponse.
+        """
+        import inspect
+
+        from api.schemas.metrics import RetentionMetricsResponse
+
+        # Check the model fields
+        fields = RetentionMetricsResponse.model_fields
+        assert "by_school" in fields, "RetentionMetricsResponse should include by_school field"
+
+
+class TestRetentionByCity:
+    """Tests for retention breakdown by city."""
+
+    @pytest.fixture
+    def camper_history_with_cities(self) -> list[Mock]:
+        """Create camper_history records with city data."""
+        records = []
+
+        # Base year - campers from 3 cities
+        for person_id, city in [
+            (101, "Springfield"),
+            (102, "Springfield"),
+            (103, "Riverside"),
+            (104, "Lakewood"),
+        ]:
+            record = Mock()
+            record.person_id = person_id
+            record.year = 2025
+            record.city = city
+            record.school = "Test School"
+            record.synagogue = ""
+            record.first_year_attended = 2024
+            record.session_types = "main"
+            record.sessions = "Session 2"
+            record.bunks = "B-1"
+            records.append(record)
+
+        # Compare year - 2 returned
+        for person_id, city in [
+            (101, "Springfield"),  # Returned
+            (104, "Lakewood"),  # Returned
+        ]:
+            record = Mock()
+            record.person_id = person_id
+            record.year = 2026
+            record.city = city
+            record.school = "Test School"
+            record.synagogue = ""
+            record.first_year_attended = 2024
+            record.session_types = "main"
+            record.sessions = "Session 2"
+            record.bunks = "B-1"
+            records.append(record)
+
+        return records
+
+    def test_retention_by_city_calculation(self, camper_history_with_cities: list[Mock]) -> None:
+        """Test retention calculation by city.
+
+        Springfield: 2 base, 1 returned = 50%
+        Riverside: 1 base, 0 returned = 0%
+        Lakewood: 1 base, 1 returned = 100%
+        """
+        base_records = [r for r in camper_history_with_cities if r.year == 2025]
+        compare_records = [r for r in camper_history_with_cities if r.year == 2026]
+
+        returned_ids = {r.person_id for r in base_records} & {r.person_id for r in compare_records}
+
+        city_stats: dict[str, dict[str, int]] = {}
+        for record in base_records:
+            city = record.city
+            if city not in city_stats:
+                city_stats[city] = {"base_count": 0, "returned_count": 0}
+            city_stats[city]["base_count"] += 1
+            if record.person_id in returned_ids:
+                city_stats[city]["returned_count"] += 1
+
+        assert city_stats["Springfield"]["base_count"] == 2
+        assert city_stats["Springfield"]["returned_count"] == 1
+
+        assert city_stats["Riverside"]["base_count"] == 1
+        assert city_stats["Riverside"]["returned_count"] == 0
+
+        assert city_stats["Lakewood"]["base_count"] == 1
+        assert city_stats["Lakewood"]["returned_count"] == 1
+
+    def test_retention_endpoint_includes_by_city(self) -> None:
+        """Test that retention endpoint response includes by_city field."""
+        from api.schemas.metrics import RetentionMetricsResponse
+
+        fields = RetentionMetricsResponse.model_fields
+        assert "by_city" in fields, "RetentionMetricsResponse should include by_city field"
+
+
+class TestRetentionBySynagogue:
+    """Tests for retention breakdown by synagogue."""
+
+    @pytest.fixture
+    def camper_history_with_synagogues(self) -> list[Mock]:
+        """Create camper_history records with synagogue data."""
+        records = []
+
+        # Base year
+        for person_id, synagogue in [
+            (101, "Temple Beth El"),
+            (102, "Temple Beth El"),
+            (103, "Congregation Shalom"),
+            (104, ""),  # No synagogue
+        ]:
+            record = Mock()
+            record.person_id = person_id
+            record.year = 2025
+            record.synagogue = synagogue
+            record.school = "Test School"
+            record.city = "Springfield"
+            record.first_year_attended = 2024
+            record.session_types = "main"
+            record.sessions = "Session 2"
+            record.bunks = "B-1"
+            records.append(record)
+
+        # Compare year - some returned
+        for person_id, synagogue in [
+            (101, "Temple Beth El"),  # Returned
+            (103, "Congregation Shalom"),  # Returned
+        ]:
+            record = Mock()
+            record.person_id = person_id
+            record.year = 2026
+            record.synagogue = synagogue
+            record.school = "Test School"
+            record.city = "Springfield"
+            record.first_year_attended = 2024
+            record.session_types = "main"
+            record.sessions = "Session 2"
+            record.bunks = "B-1"
+            records.append(record)
+
+        return records
+
+    def test_retention_by_synagogue_calculation(self, camper_history_with_synagogues: list[Mock]) -> None:
+        """Test retention by synagogue.
+
+        Temple Beth El: 2 base, 1 returned = 50%
+        Congregation Shalom: 1 base, 1 returned = 100%
+        (empty synagogue excluded from breakdown)
+        """
+        base_records = [r for r in camper_history_with_synagogues if r.year == 2025]
+        compare_records = [r for r in camper_history_with_synagogues if r.year == 2026]
+
+        returned_ids = {r.person_id for r in base_records} & {r.person_id for r in compare_records}
+
+        synagogue_stats: dict[str, dict[str, int]] = {}
+        for record in base_records:
+            synagogue = record.synagogue
+            if not synagogue:  # Skip empty
+                continue
+            if synagogue not in synagogue_stats:
+                synagogue_stats[synagogue] = {"base_count": 0, "returned_count": 0}
+            synagogue_stats[synagogue]["base_count"] += 1
+            if record.person_id in returned_ids:
+                synagogue_stats[synagogue]["returned_count"] += 1
+
+        # Only non-empty synagogues
+        assert len(synagogue_stats) == 2
+
+        assert synagogue_stats["Temple Beth El"]["base_count"] == 2
+        assert synagogue_stats["Temple Beth El"]["returned_count"] == 1
+
+        assert synagogue_stats["Congregation Shalom"]["base_count"] == 1
+        assert synagogue_stats["Congregation Shalom"]["returned_count"] == 1
+
+    def test_retention_endpoint_includes_by_synagogue(self) -> None:
+        """Test that retention endpoint response includes by_synagogue field."""
+        from api.schemas.metrics import RetentionMetricsResponse
+
+        fields = RetentionMetricsResponse.model_fields
+        assert "by_synagogue" in fields, "RetentionMetricsResponse should include by_synagogue field"
+
+
+class TestRetentionByFirstYear:
+    """Tests for retention breakdown by first_year_attended.
+
+    This helps analyze retention patterns based on how long campers have been
+    attending - do long-time campers have better retention?
+    """
+
+    @pytest.fixture
+    def camper_history_with_first_years(self) -> list[Mock]:
+        """Create camper_history records with first_year_attended data."""
+        records = []
+
+        # Base year (2025) campers
+        for person_id, first_year in [
+            (101, 2022),  # 4-year veteran
+            (102, 2023),  # 3-year veteran
+            (103, 2024),  # 2-year veteran
+            (104, 2025),  # First year
+            (105, 2025),  # First year
+        ]:
+            record = Mock()
+            record.person_id = person_id
+            record.year = 2025
+            record.first_year_attended = first_year
+            record.school = "Test School"
+            record.city = "Springfield"
+            record.synagogue = ""
+            record.session_types = "main"
+            record.sessions = "Session 2"
+            record.bunks = "B-1"
+            records.append(record)
+
+        # Compare year (2026) - veterans more likely to return
+        for person_id, first_year in [
+            (101, 2022),  # Returned (veteran)
+            (102, 2023),  # Returned (veteran)
+            (103, 2024),  # Returned
+            (105, 2025),  # Returned (1 of 2 first-years)
+        ]:
+            record = Mock()
+            record.person_id = person_id
+            record.year = 2026
+            record.first_year_attended = first_year
+            record.school = "Test School"
+            record.city = "Springfield"
+            record.synagogue = ""
+            record.session_types = "main"
+            record.sessions = "Session 2"
+            record.bunks = "B-1"
+            records.append(record)
+
+        return records
+
+    def test_retention_by_first_year_calculation(self, camper_history_with_first_years: list[Mock]) -> None:
+        """Test retention calculation by first_year_attended.
+
+        2022: 1 base, 1 returned = 100%
+        2023: 1 base, 1 returned = 100%
+        2024: 1 base, 1 returned = 100%
+        2025: 2 base, 1 returned = 50%
+        """
+        base_records = [r for r in camper_history_with_first_years if r.year == 2025]
+        compare_records = [r for r in camper_history_with_first_years if r.year == 2026]
+
+        returned_ids = {r.person_id for r in base_records} & {r.person_id for r in compare_records}
+
+        first_year_stats: dict[int, dict[str, int]] = {}
+        for record in base_records:
+            first_year = record.first_year_attended
+            if first_year not in first_year_stats:
+                first_year_stats[first_year] = {"base_count": 0, "returned_count": 0}
+            first_year_stats[first_year]["base_count"] += 1
+            if record.person_id in returned_ids:
+                first_year_stats[first_year]["returned_count"] += 1
+
+        # Veterans (started before 2025) all returned
+        assert first_year_stats[2022]["base_count"] == 1
+        assert first_year_stats[2022]["returned_count"] == 1
+
+        assert first_year_stats[2023]["base_count"] == 1
+        assert first_year_stats[2023]["returned_count"] == 1
+
+        assert first_year_stats[2024]["base_count"] == 1
+        assert first_year_stats[2024]["returned_count"] == 1
+
+        # First-years (started 2025) had lower retention
+        assert first_year_stats[2025]["base_count"] == 2
+        assert first_year_stats[2025]["returned_count"] == 1
+
+    def test_retention_endpoint_includes_by_first_year(self) -> None:
+        """Test that retention endpoint response includes by_first_year field."""
+        from api.schemas.metrics import RetentionMetricsResponse
+
+        fields = RetentionMetricsResponse.model_fields
+        assert "by_first_year" in fields, "RetentionMetricsResponse should include by_first_year field"
+
+
+class TestRetentionBySessionBunk:
+    """Tests for retention breakdown by session+bunk combination.
+
+    This helps identify which cabin groups had best retention - useful for
+    evaluating cabin counselor effectiveness and group dynamics.
+    """
+
+    @pytest.fixture
+    def camper_history_with_session_bunks(self) -> list[Mock]:
+        """Create camper_history records with session and bunk data."""
+        records = []
+
+        # Base year (2025) - campers in different session/bunk combos
+        for person_id, session, bunk in [
+            (101, "Session 2", "B-1"),
+            (102, "Session 2", "B-1"),
+            (103, "Session 2", "B-2"),
+            (104, "Session 3", "G-1"),
+            (105, "Session 3", "G-1"),
+            (106, "Session 3", "G-1"),
+        ]:
+            record = Mock()
+            record.person_id = person_id
+            record.year = 2025
+            record.sessions = session
+            record.bunks = bunk
+            record.school = "Test School"
+            record.city = "Springfield"
+            record.synagogue = ""
+            record.first_year_attended = 2024
+            record.session_types = "main"
+            records.append(record)
+
+        # Compare year (2026) - some bunks had better retention
+        for person_id, session, bunk in [
+            (101, "Session 2", "B-1"),  # Returned from B-1
+            (104, "Session 3", "G-1"),  # Returned from G-1
+            (105, "Session 3", "G-1"),  # Returned from G-1
+            (106, "Session 3", "G-1"),  # Returned from G-1
+        ]:
+            record = Mock()
+            record.person_id = person_id
+            record.year = 2026
+            record.sessions = session
+            record.bunks = bunk
+            record.school = "Test School"
+            record.city = "Springfield"
+            record.synagogue = ""
+            record.first_year_attended = 2024
+            record.session_types = "main"
+            records.append(record)
+
+        return records
+
+    def test_retention_by_session_bunk_calculation(self, camper_history_with_session_bunks: list[Mock]) -> None:
+        """Test retention calculation by session+bunk combination.
+
+        Session 2 + B-1: 2 base, 1 returned = 50%
+        Session 2 + B-2: 1 base, 0 returned = 0%
+        Session 3 + G-1: 3 base, 3 returned = 100% (great cabin!)
+        """
+        base_records = [r for r in camper_history_with_session_bunks if r.year == 2025]
+        compare_records = [r for r in camper_history_with_session_bunks if r.year == 2026]
+
+        returned_ids = {r.person_id for r in base_records} & {r.person_id for r in compare_records}
+
+        session_bunk_stats: dict[tuple[str, str], dict[str, int]] = {}
+        for record in base_records:
+            key = (record.sessions, record.bunks)
+            if key not in session_bunk_stats:
+                session_bunk_stats[key] = {"base_count": 0, "returned_count": 0}
+            session_bunk_stats[key]["base_count"] += 1
+            if record.person_id in returned_ids:
+                session_bunk_stats[key]["returned_count"] += 1
+
+        # Session 2, B-1: 50% retention
+        assert session_bunk_stats[("Session 2", "B-1")]["base_count"] == 2
+        assert session_bunk_stats[("Session 2", "B-1")]["returned_count"] == 1
+
+        # Session 2, B-2: 0% retention
+        assert session_bunk_stats[("Session 2", "B-2")]["base_count"] == 1
+        assert session_bunk_stats[("Session 2", "B-2")]["returned_count"] == 0
+
+        # Session 3, G-1: 100% retention
+        assert session_bunk_stats[("Session 3", "G-1")]["base_count"] == 3
+        assert session_bunk_stats[("Session 3", "G-1")]["returned_count"] == 3
+
+    def test_retention_endpoint_includes_by_session_bunk(self) -> None:
+        """Test that retention endpoint response includes by_session_bunk field."""
+        from api.schemas.metrics import RetentionMetricsResponse
+
+        fields = RetentionMetricsResponse.model_fields
+        assert "by_session_bunk" in fields, "RetentionMetricsResponse should include by_session_bunk field"
+
+
+class TestRetentionBreakdownSchemas:
+    """Tests verifying the Pydantic schemas exist for retention breakdowns."""
+
+    def test_retention_by_school_schema_exists(self) -> None:
+        """Test that RetentionBySchool schema exists with correct fields."""
+        from api.schemas.metrics import RetentionBySchool
+
+        # Create an instance to verify fields
+        instance = RetentionBySchool(
+            school="Riverside Elementary",
+            base_count=10,
+            returned_count=7,
+            retention_rate=0.7,
+        )
+        assert instance.school == "Riverside Elementary"
+        assert instance.base_count == 10
+        assert instance.returned_count == 7
+        assert instance.retention_rate == 0.7
+
+    def test_retention_by_city_schema_exists(self) -> None:
+        """Test that RetentionByCity schema exists with correct fields."""
+        from api.schemas.metrics import RetentionByCity
+
+        instance = RetentionByCity(
+            city="Springfield",
+            base_count=15,
+            returned_count=12,
+            retention_rate=0.8,
+        )
+        assert instance.city == "Springfield"
+        assert instance.base_count == 15
+        assert instance.returned_count == 12
+        assert instance.retention_rate == 0.8
+
+    def test_retention_by_synagogue_schema_exists(self) -> None:
+        """Test that RetentionBySynagogue schema exists with correct fields."""
+        from api.schemas.metrics import RetentionBySynagogue
+
+        instance = RetentionBySynagogue(
+            synagogue="Temple Beth El",
+            base_count=8,
+            returned_count=6,
+            retention_rate=0.75,
+        )
+        assert instance.synagogue == "Temple Beth El"
+        assert instance.base_count == 8
+        assert instance.returned_count == 6
+        assert instance.retention_rate == 0.75
+
+    def test_retention_by_first_year_schema_exists(self) -> None:
+        """Test that RetentionByFirstYear schema exists with correct fields."""
+        from api.schemas.metrics import RetentionByFirstYear
+
+        instance = RetentionByFirstYear(
+            first_year=2022,
+            base_count=5,
+            returned_count=4,
+            retention_rate=0.8,
+        )
+        assert instance.first_year == 2022
+        assert instance.base_count == 5
+        assert instance.returned_count == 4
+        assert instance.retention_rate == 0.8
+
+    def test_retention_by_session_bunk_schema_exists(self) -> None:
+        """Test that RetentionBySessionBunk schema exists with correct fields."""
+        from api.schemas.metrics import RetentionBySessionBunk
+
+        instance = RetentionBySessionBunk(
+            session="Session 2",
+            bunk="B-1",
+            base_count=12,
+            returned_count=10,
+            retention_rate=0.833,
+        )
+        assert instance.session == "Session 2"
+        assert instance.bunk == "B-1"
+        assert instance.base_count == 12
+        assert instance.returned_count == 10
+        assert instance.retention_rate == pytest.approx(0.833, rel=0.01)
