@@ -21,15 +21,15 @@ var validShareRoles = map[string]bool{
 // Returns nil, nil if Google Sheets sync is disabled (graceful degradation).
 // Uses the same credentials as the Sheets client.
 func NewDriveClient(ctx context.Context) (*drive.Service, error) {
-	opt, err := getAuthenticatedHTTPClient(ctx, drive.DriveScope)
+	opt, enabled, err := getAuthenticatedHTTPClient(ctx, drive.DriveScope)
 	if err != nil {
 		return nil, err
 	}
-	if opt == nil {
+	if !enabled {
 		return nil, nil
 	}
 
-	srv, err := drive.NewService(ctx, *opt)
+	srv, err := drive.NewService(ctx, opt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create drive service: %w", err)
 	}

@@ -4,6 +4,9 @@ import (
 	"testing"
 )
 
+// Test constants for tab names (goconst compliance)
+const testTabNameAttendees = "Attendees"
+
 // =============================================================================
 // Multi-Workbook Tab Ordering Tests
 // For the new architecture where each workbook has only one type of data
@@ -83,7 +86,7 @@ func TestSortYearWorkbookTabs_Alphabetized(t *testing.T) {
 	// Year workbook tabs should be alphabetized
 	tabs := []string{
 		"Staff",
-		"Attendees",
+		testTabNameAttendees,
 		"Persons",
 		"Bunk Assignments",
 	}
@@ -91,7 +94,7 @@ func TestSortYearWorkbookTabs_Alphabetized(t *testing.T) {
 	sorted := SortYearWorkbookTabs(tabs)
 
 	expected := []string{
-		"Attendees",
+		testTabNameAttendees,
 		"Bunk Assignments",
 		"Persons",
 		"Staff",
@@ -120,7 +123,7 @@ func TestGetMultiWorkbookTabColor_Index(t *testing.T) {
 
 func TestGetMultiWorkbookTabColor_CoreTables(t *testing.T) {
 	// Core tables (Persons, Attendees) should be blue
-	coreTabs := []string{"Attendees", "Persons", "Households"}
+	coreTabs := []string{testTabNameAttendees, "Persons", "Households"}
 
 	for _, tab := range coreTabs {
 		t.Run(tab, func(t *testing.T) {
@@ -230,7 +233,7 @@ func TestReorderYearWorkbookTabs_AppliesColorsAndOrder(t *testing.T) {
 
 	tabs := []string{
 		"Staff",
-		"Attendees",
+		testTabNameAttendees,
 		"Persons",
 	}
 	for _, tab := range tabs {
@@ -239,7 +242,7 @@ func TestReorderYearWorkbookTabs_AppliesColorsAndOrder(t *testing.T) {
 	}
 
 	sorted := SortYearWorkbookTabs(tabs)
-	if sorted[0] != "Attendees" {
+	if sorted[0] != testTabNameAttendees {
 		t.Errorf("Attendees should be first alphabetically, got %q", sorted[0])
 	}
 }

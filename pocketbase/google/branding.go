@@ -93,8 +93,8 @@ func FormatWorkbookTitle(workbookType string, year int) string {
 	}
 
 	if workbookType == "globals" {
-		return fmt.Sprintf("%s%s Data - Globals", prefix, campName)
+		return fmt.Sprintf("%s%s CM Data - Globals", prefix, campName)
 	}
 
-	return fmt.Sprintf("%s%s Data - %d", prefix, campName, year)
+	return fmt.Sprintf("%s%s CM Data - %d", prefix, campName, year)
 }

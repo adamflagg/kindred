@@ -4,18 +4,16 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
-	"strconv"
-	"time"
 
-	"github.com/pocketbase/pocketbase/core"
 	"google.golang.org/api/sheets/v4"
 )
 
-const (
-	// serviceNameGoogleSheets is the name of this sync service
-	serviceNameGoogleSheets = "google_sheets_export"
-)
+// SheetInfo contains metadata about a sheet tab
+type SheetInfo struct {
+	Title   string
+	SheetID int64
+	Index   int
+}
 
 // TabPropertyUpdate holds updates for a single tab in a batch operation
 type TabPropertyUpdate struct {
@@ -292,149 +290,12 @@ type SessionRecord struct {
 	Year      int
 }
 
-// GoogleSheetsExport handles exporting data to Google Sheets
-type GoogleSheetsExport struct {
-	BaseSyncService
-	sheetsWriter  SheetsWriter
-	spreadsheetID string
-	year          int
-}
-
-// NewGoogleSheetsExport creates a new Google Sheets export service
-func NewGoogleSheetsExport(app core.App, sheetsService *sheets.Service, spreadsheetID string) *GoogleSheetsExport {
-	// Get year from environment (same as other sync services)
-	year := 2025 // Default
-	if yearStr := os.Getenv("CAMPMINDER_SEASON_ID"); yearStr != "" {
-		if parsed, err := strconv.Atoi(yearStr); err == nil {
-			year = parsed
-		}
-	}
-
-	return &GoogleSheetsExport{
-		BaseSyncService: BaseSyncService{
-			App:           app,
-			Stats:         Stats{},
-			ProcessedKeys: make(map[string]bool),
-		},
-		sheetsWriter:  NewRealSheetsWriter(sheetsService),
-		spreadsheetID: spreadsheetID,
-		year:          year,
-	}
-}
-
-// Name returns the name of this sync service
-func (g *GoogleSheetsExport) Name() string {
-	return serviceNameGoogleSheets
-}
-
-// Sync implements the Service interface - exports data to Google Sheets
-// This is the main entry point for full exports (both globals and year-specific data)
-func (g *GoogleSheetsExport) Sync(ctx context.Context) error {
-	// Reset year to configured value (may have been changed by SyncForYears)
-	if yearStr := os.Getenv("CAMPMINDER_SEASON_ID"); yearStr != "" {
-		if parsed, err := strconv.Atoi(yearStr); err == nil {
-			g.year = parsed
-		}
-	}
-
-	startTime := time.Now()
-	slog.Info("Starting Google Sheets full export",
-		"spreadsheet_id", "configured",
-		"year", g.year,
-		"expected_tabs", len(GetAllExportSheetNames(g.year)),
-	)
-
-	g.Stats = Stats{}
-	g.SyncSuccessful = false
-
-	// Export global tables (4 tabs: tag definitions, custom fields, etc.)
-	if err := g.SyncGlobalsOnly(ctx); err != nil {
-		slog.Error("Failed to export global tables", "error", err)
-		// Continue with year-specific data even if globals fail
-	}
-
-	// Export year-specific tables (6 tabs: attendees, persons, sessions, etc.)
-	if err := g.SyncDailyOnly(ctx); err != nil {
-		return fmt.Errorf("exporting year-specific data: %w", err)
-	}
-
-	// Apply tab colors and reorder tabs (globals first, then years descending)
-	exportedTabs := GetAllExportSheetNames(g.year)
-	if err := ReorderAllTabs(ctx, g.sheetsWriter, g.spreadsheetID, exportedTabs); err != nil {
-		slog.Warn("Failed to reorder tabs", "error", err)
-		// Don't fail the sync if reordering fails
-	}
-
-	g.SyncSuccessful = true
-	g.Stats.Duration = int(time.Since(startTime).Seconds())
-
-	slog.Info("Google Sheets full export complete",
-		"duration_seconds", g.Stats.Duration,
-		"records_exported", g.Stats.Created,
-	)
-
-	return nil
-}
-
 // PersonInfo holds person data for lookup
 type PersonInfo struct {
 	FirstName string
 	LastName  string
 	Gender    string
 	Grade     int
-}
-
-// loadPersons loads all persons into a map keyed by PB ID
-func (g *GoogleSheetsExport) loadPersons() (map[string]PersonInfo, error) {
-	filter := fmt.Sprintf("year = %d", g.year)
-	records, err := g.App.FindRecordsByFilter("persons", filter, "", 0, 0)
-	if err != nil {
-		return nil, err
-	}
-
-	personMap := make(map[string]PersonInfo)
-	for _, r := range records {
-		grade := 0
-		if gradeVal := r.Get("grade"); gradeVal != nil {
-			if gradeFloat, ok := gradeVal.(float64); ok {
-				grade = int(gradeFloat)
-			}
-		}
-		personMap[r.Id] = PersonInfo{
-			FirstName: safeString(r.Get("first_name")),
-			LastName:  safeString(r.Get("last_name")),
-			Gender:    safeString(r.Get("gender")),
-			Grade:     grade,
-		}
-	}
-	return personMap, nil
-}
-
-// loadSessions loads all sessions into a map keyed by PB ID
-func (g *GoogleSheetsExport) loadSessions() (map[string]SessionRecord, error) {
-	filter := fmt.Sprintf("year = %d", g.year)
-	records, err := g.App.FindRecordsByFilter("camp_sessions", filter, "", 0, 0)
-	if err != nil {
-		return nil, err
-	}
-
-	sessionMap := make(map[string]SessionRecord)
-	for _, r := range records {
-		year := 0
-		if yearVal := r.Get("year"); yearVal != nil {
-			if yearFloat, ok := yearVal.(float64); ok {
-				year = int(yearFloat)
-			}
-		}
-		sessionMap[r.Id] = SessionRecord{
-			Name:      safeString(r.Get("name")),
-			Type:      safeString(r.Get("session_type")),
-			StartDate: safeString(r.Get("start_date")),
-			EndDate:   safeString(r.Get("end_date")),
-			Year:      year,
-		}
-	}
-	return sessionMap, nil
 }
 
 // safeString safely converts an interface{} to string

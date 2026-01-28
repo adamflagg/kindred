@@ -6,6 +6,9 @@ import (
 	"testing"
 )
 
+// Test constants for collection names (goconst compliance)
+const testCollectionAttendees = "attendees"
+
 // =============================================================================
 // Phase 3-5: Generic Table Exporter Tests
 // =============================================================================
@@ -59,7 +62,7 @@ func TestColumnConfig_BasicFields(t *testing.T) {
 func TestExportConfig_YearPlaceholder(t *testing.T) {
 	// Test that sheet name supports {year} placeholder
 	config := ExportConfig{
-		Collection: "attendees",
+		Collection: testCollectionAttendees,
 		SheetName:  "{year}-attendee",
 		IsGlobal:   false,
 		Columns:    []ColumnConfig{},
@@ -312,9 +315,9 @@ func TestBuildDataMatrix_DataRows(t *testing.T) {
 	}
 }
 
-func TestGetYearSpecificExports(t *testing.T) {
-	// Test that year-specific export configs are defined
-	configs := GetYearSpecificExports()
+func TestGetReadableYearExports(t *testing.T) {
+	// Test that readable year export configs are defined
+	configs := GetReadableYearExports()
 
 	if len(configs) == 0 {
 		t.Fatal("Expected at least one year-specific export config")
@@ -323,7 +326,7 @@ func TestGetYearSpecificExports(t *testing.T) {
 	// Check attendees config exists
 	var attendeesConfig *ExportConfig
 	for i := range configs {
-		if configs[i].Collection == "attendees" {
+		if configs[i].Collection == testCollectionAttendees {
 			attendeesConfig = &configs[i]
 			break
 		}
@@ -342,9 +345,9 @@ func TestGetYearSpecificExports(t *testing.T) {
 	}
 }
 
-func TestGetGlobalExports(t *testing.T) {
-	// Test that global export configs are defined
-	configs := GetGlobalExports()
+func TestGetReadableGlobalExports(t *testing.T) {
+	// Test that readable global export configs are defined
+	configs := GetReadableGlobalExports()
 
 	if len(configs) == 0 {
 		t.Fatal("Expected at least one global export config")
@@ -677,10 +680,10 @@ func TestColumnConfig_NewFields(t *testing.T) {
 	}
 }
 
-func TestGetGlobalExports_DivisionsIncluded(t *testing.T) {
+func TestGetReadableGlobalExports_DivisionsIncluded(t *testing.T) {
 	// Test that globals include divisions and NOT staff_positions
 	// staff_positions data is already inlined in staff export
-	configs := GetGlobalExports()
+	configs := GetReadableGlobalExports()
 
 	var hasDivisions, hasStaffPositions bool
 	for _, config := range configs {
@@ -700,9 +703,9 @@ func TestGetGlobalExports_DivisionsIncluded(t *testing.T) {
 	}
 }
 
-func TestGetGlobalExports_Count(t *testing.T) {
+func TestGetReadableGlobalExports_Count(t *testing.T) {
 	// Test that we have exactly 4 global exports (staff_positions removed)
-	configs := GetGlobalExports()
+	configs := GetReadableGlobalExports()
 
 	if len(configs) != 4 {
 		t.Errorf("Expected 4 global exports, got %d", len(configs))
@@ -808,7 +811,7 @@ func TestGetReadableYearExports_AttendeesHasReadableName(t *testing.T) {
 
 	var attendeesConfig *ExportConfig
 	for i := range configs {
-		if configs[i].Collection == "attendees" {
+		if configs[i].Collection == testCollectionAttendees {
 			attendeesConfig = &configs[i]
 			break
 		}

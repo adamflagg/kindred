@@ -379,61 +379,30 @@ func TestMultiWorkbookExport_DifferentYearsGoToDifferentWorkbooks(t *testing.T) 
 	}
 }
 
-// =============================================================================
-// Test: Legacy vs Readable Export Separation
-// =============================================================================
-
-func TestLegacyExportsStillWork(t *testing.T) {
-	// Verify legacy exports (year-prefixed) still exist for backward compatibility
-	yearConfigs := GetYearSpecificExports()
-	globalConfigs := GetGlobalExports()
-
-	// Legacy year exports should have year placeholders
-	if len(yearConfigs) == 0 {
-		t.Error("Legacy GetYearSpecificExports() should return configs")
-	}
-
-	// Legacy global exports should have g- prefix
-	for _, cfg := range globalConfigs {
-		if len(cfg.SheetName) < 2 || cfg.SheetName[:2] != "g-" {
-			t.Errorf("Legacy global export %q should have 'g-' prefix", cfg.SheetName)
-		}
-	}
-}
-
-func TestReadableExportsAreSeparate(t *testing.T) {
-	// Readable and legacy exports should be separate
+func TestReadableExportsExist(t *testing.T) {
+	// Verify readable exports exist and are non-empty
 	readableYear := GetReadableYearExports()
 	readableGlobal := GetReadableGlobalExports()
-	legacyYear := GetYearSpecificExports()
-	legacyGlobal := GetGlobalExports()
 
-	// They should have different sheet names
-	readableYearNames := make(map[string]bool)
-	for _, cfg := range readableYear {
-		readableYearNames[cfg.SheetName] = true
-	}
-
-	for _, cfg := range legacyYear {
-		resolvedName := cfg.GetResolvedSheetName(2025)
-		if readableYearNames[resolvedName] {
-			// This is OK - some sheets might have the same resolved name
-			// The point is they come from different functions
-		}
-	}
-
-	// Just verify both exist and are non-empty
 	if len(readableYear) == 0 {
 		t.Error("GetReadableYearExports() should return configs")
 	}
 	if len(readableGlobal) == 0 {
 		t.Error("GetReadableGlobalExports() should return configs")
 	}
-	if len(legacyYear) == 0 {
-		t.Error("GetYearSpecificExports() should return configs")
+
+	// Verify readable names don't have legacy prefixes
+	for _, cfg := range readableYear {
+		if len(cfg.SheetName) > 4 && cfg.SheetName[4] == '-' {
+			if cfg.SheetName[0] >= '2' && cfg.SheetName[0] <= '2' {
+				t.Errorf("Readable year export %q should not have year prefix", cfg.SheetName)
+			}
+		}
 	}
-	if len(legacyGlobal) == 0 {
-		t.Error("GetGlobalExports() should return configs")
+	for _, cfg := range readableGlobal {
+		if len(cfg.SheetName) >= 2 && cfg.SheetName[:2] == "g-" {
+			t.Errorf("Readable global export %q should not have 'g-' prefix", cfg.SheetName)
+		}
 	}
 }
 

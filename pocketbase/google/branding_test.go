@@ -145,7 +145,7 @@ func TestFormatWorkbookTitle_Globals(t *testing.T) {
 
 	title := FormatWorkbookTitle("globals", 0)
 	// With default camp name
-	expected := DefaultCampName + " Data - Globals"
+	expected := DefaultCampName + " CM Data - Globals"
 	if title != expected {
 		t.Errorf("FormatWorkbookTitle(globals, 0) = %q, want %q", title, expected)
 	}
@@ -159,7 +159,7 @@ func TestFormatWorkbookTitle_Year(t *testing.T) {
 	t.Setenv("IS_DOCKER", "true")
 
 	title := FormatWorkbookTitle("year", 2025)
-	expected := DefaultCampName + " Data - 2025"
+	expected := DefaultCampName + " CM Data - 2025"
 	if title != expected {
 		t.Errorf("FormatWorkbookTitle(year, 2025) = %q, want %q", title, expected)
 	}
@@ -189,13 +189,13 @@ func TestFormatWorkbookTitle_WithCampName(t *testing.T) {
 	t.Setenv("IS_DOCKER", "true")
 
 	globalsTitle := FormatWorkbookTitle("globals", 0)
-	if globalsTitle != "Camp Tawonga Data - Globals" {
-		t.Errorf("FormatWorkbookTitle(globals) = %q, want %q", globalsTitle, "Camp Tawonga Data - Globals")
+	if globalsTitle != "Camp Tawonga CM Data - Globals" {
+		t.Errorf("FormatWorkbookTitle(globals) = %q, want %q", globalsTitle, "Camp Tawonga CM Data - Globals")
 	}
 
 	yearTitle := FormatWorkbookTitle("year", 2025)
-	if yearTitle != "Camp Tawonga Data - 2025" {
-		t.Errorf("FormatWorkbookTitle(year, 2025) = %q, want %q", yearTitle, "Camp Tawonga Data - 2025")
+	if yearTitle != "Camp Tawonga CM Data - 2025" {
+		t.Errorf("FormatWorkbookTitle(year, 2025) = %q, want %q", yearTitle, "Camp Tawonga CM Data - 2025")
 	}
 }
 
@@ -208,13 +208,13 @@ func TestFormatWorkbookTitle_DevPrefix(t *testing.T) {
 	t.Setenv("IS_DOCKER", "")
 
 	title := FormatWorkbookTitle("year", 2025)
-	expected := "(DEV) " + DefaultCampName + " Data - 2025"
+	expected := "(DEV) " + DefaultCampName + " CM Data - 2025"
 	if title != expected {
 		t.Errorf("FormatWorkbookTitle(year, 2025) in dev = %q, want %q", title, expected)
 	}
 
 	globalsTitle := FormatWorkbookTitle("globals", 0)
-	expectedGlobals := "(DEV) " + DefaultCampName + " Data - Globals"
+	expectedGlobals := "(DEV) " + DefaultCampName + " CM Data - Globals"
 	if globalsTitle != expectedGlobals {
 		t.Errorf("FormatWorkbookTitle(globals, 0) in dev = %q, want %q", globalsTitle, expectedGlobals)
 	}
@@ -244,13 +244,13 @@ func TestFormatWorkbookTitle_DevPrefixWithCampName(t *testing.T) {
 	t.Setenv("IS_DOCKER", "")
 
 	yearTitle := FormatWorkbookTitle("year", 2025)
-	if yearTitle != "(DEV) Camp Tawonga Data - 2025" {
-		t.Errorf("FormatWorkbookTitle(year, 2025) in dev = %q, want %q", yearTitle, "(DEV) Camp Tawonga Data - 2025")
+	if yearTitle != "(DEV) Camp Tawonga CM Data - 2025" {
+		t.Errorf("FormatWorkbookTitle(year, 2025) in dev = %q, want %q", yearTitle, "(DEV) Camp Tawonga CM Data - 2025")
 	}
 
 	globalsTitle := FormatWorkbookTitle("globals", 0)
-	if globalsTitle != "(DEV) Camp Tawonga Data - Globals" {
-		t.Errorf("FormatWorkbookTitle(globals, 0) in dev = %q, want %q", globalsTitle, "(DEV) Camp Tawonga Data - Globals")
+	if globalsTitle != "(DEV) Camp Tawonga CM Data - Globals" {
+		t.Errorf("FormatWorkbookTitle(globals, 0) in dev = %q, want %q", globalsTitle, "(DEV) Camp Tawonga CM Data - Globals")
 	}
 }
 
@@ -262,7 +262,7 @@ func TestFormatWorkbookTitle_ProductionNoPrefix(t *testing.T) {
 	t.Setenv("IS_DOCKER", "true")
 
 	title := FormatWorkbookTitle("year", 2025)
-	expected := DefaultCampName + " Data - 2025"
+	expected := DefaultCampName + " CM Data - 2025"
 	if title != expected {
 		t.Errorf("FormatWorkbookTitle(year, 2025) in prod = %q, want %q", title, expected)
 	}

@@ -26,9 +26,6 @@ const (
 
 	// workbookTypeGlobals is the type identifier for the globals workbook
 	workbookTypeGlobals = "globals"
-
-	// workbookTypeYear is the type identifier for year workbooks
-	workbookTypeYear = "year"
 )
 
 // WorkbookRecord represents a workbook stored in the database.
@@ -67,7 +64,7 @@ func NewWorkbookManager(app core.App, sheetsWriter SheetsWriter) *WorkbookManage
 // GetWorkbookByType retrieves a workbook record by type and year.
 // For globals workbook, pass year=0.
 // Returns nil if no workbook exists.
-func (m *WorkbookManager) GetWorkbookByType(ctx context.Context, workbookType string, year int) (*WorkbookRecord, error) {
+func (m *WorkbookManager) GetWorkbookByType(_ context.Context, workbookType string, year int) (*WorkbookRecord, error) {
 	var filter string
 	if workbookType == workbookTypeGlobals {
 		filter = fmt.Sprintf("workbook_type = '%s'", workbookType)
@@ -103,7 +100,7 @@ func (m *WorkbookManager) GetWorkbookByType(ctx context.Context, workbookType st
 }
 
 // SaveWorkbookRecord creates or updates a workbook record.
-func (m *WorkbookManager) SaveWorkbookRecord(ctx context.Context, wb WorkbookRecord) (*WorkbookRecord, error) {
+func (m *WorkbookManager) SaveWorkbookRecord(ctx context.Context, wb *WorkbookRecord) (*WorkbookRecord, error) {
 	collection, err := m.app.FindCollectionByNameOrId(sheetsWorkbooksCollection)
 	if err != nil {
 		return nil, fmt.Errorf("collection %s not found: %w", sheetsWorkbooksCollection, err)
@@ -147,11 +144,13 @@ func (m *WorkbookManager) SaveWorkbookRecord(ctx context.Context, wb WorkbookRec
 	}
 
 	wb.ID = record.Id
-	return &wb, nil
+	return wb, nil
 }
 
 // UpdateWorkbookStats updates the statistics for a workbook.
-func (m *WorkbookManager) UpdateWorkbookStats(ctx context.Context, recordID string, tabCount, totalRecords int, status, errorMessage string) error {
+func (m *WorkbookManager) UpdateWorkbookStats(
+	_ context.Context, recordID string, tabCount, totalRecords int, status, errorMessage string,
+) error {
 	record, err := m.app.FindRecordById(sheetsWorkbooksCollection, recordID)
 	if err != nil {
 		return fmt.Errorf("finding record %s: %w", recordID, err)
@@ -174,7 +173,7 @@ func (m *WorkbookManager) UpdateWorkbookStats(ctx context.Context, recordID stri
 }
 
 // ListAllWorkbooks returns all workbook records.
-func (m *WorkbookManager) ListAllWorkbooks(ctx context.Context) ([]WorkbookRecord, error) {
+func (m *WorkbookManager) ListAllWorkbooks(_ context.Context) ([]WorkbookRecord, error) {
 	records, err := m.app.FindRecordsByFilter(sheetsWorkbooksCollection, "", "-year", 0, 0)
 	if err != nil {
 		// Collection might not exist yet
@@ -221,7 +220,7 @@ func (m *WorkbookManager) loadShareConfigFromFile() *sharingConfig {
 	// Try to find the config file relative to the executable or working directory
 	configPaths := []string{
 		"config/sheets_sharing.local.json",
-		filepath.Join(os.Getenv("HOME"), "kindred/config/sheets_sharing.local.json"),
+		filepath.Join(os.Getenv("HOME"), "kindred", "config", "sheets_sharing.local.json"),
 	}
 
 	for _, path := range configPaths {
@@ -253,7 +252,7 @@ func (m *WorkbookManager) loadShareConfigFromFile() *sharingConfig {
 }
 
 // loadShareEmailsFromDB reads sharing emails from PocketBase config table.
-func (m *WorkbookManager) loadShareEmailsFromDB(ctx context.Context) []string {
+func (m *WorkbookManager) loadShareEmailsFromDB(_ context.Context) []string {
 	filter := `category = "google_sheets" && config_key = "sharing_emails"`
 	records, err := m.app.FindRecordsByFilter(configCollection, filter, "", 1, 0)
 	if err != nil || len(records) == 0 {
@@ -295,7 +294,7 @@ func (m *WorkbookManager) GetShareEmails(ctx context.Context) []string {
 	// Try config file first
 	if config := m.loadShareConfigFromFile(); config != nil {
 		// Combine all email lists (for backward compatibility / status display)
-		var allEmails []string
+		allEmails := make([]string, 0, len(config.Editors)+len(config.Commenters)+len(config.Readers)+len(config.Emails))
 		allEmails = append(allEmails, config.Editors...)
 		allEmails = append(allEmails, config.Commenters...)
 		allEmails = append(allEmails, config.Readers...)
@@ -333,7 +332,7 @@ func (m *WorkbookManager) GetOrCreateGlobalsWorkbook(ctx context.Context) (strin
 	url := google.FormatSpreadsheetURL(spreadsheetID)
 
 	// Save to database
-	_, err = m.SaveWorkbookRecord(ctx, WorkbookRecord{
+	_, err = m.SaveWorkbookRecord(ctx, &WorkbookRecord{
 		SpreadsheetID: spreadsheetID,
 		WorkbookType:  workbookTypeGlobals,
 		Year:          0,
@@ -378,7 +377,7 @@ func (m *WorkbookManager) GetOrCreateYearWorkbook(ctx context.Context, year int)
 	url := google.FormatSpreadsheetURL(spreadsheetID)
 
 	// Save to database
-	_, err = m.SaveWorkbookRecord(ctx, WorkbookRecord{
+	_, err = m.SaveWorkbookRecord(ctx, &WorkbookRecord{
 		SpreadsheetID: spreadsheetID,
 		WorkbookType:  "year",
 		Year:          year,
@@ -504,11 +503,6 @@ func (m *WorkbookManager) UpdateMasterIndex(ctx context.Context) error {
 // BuildIndexSheetData builds the data matrix for the master index sheet.
 // Rows are sorted: globals first, then years in descending order.
 func BuildIndexSheetData(workbooks []WorkbookRecord) [][]interface{} {
-	// Header row
-	data := [][]interface{}{
-		{"Year", "Workbook", "Link", "Last Sync", "Tabs", "Records", "Status"},
-	}
-
 	// Sort workbooks: globals first, then years descending
 	sorted := make([]WorkbookRecord, len(workbooks))
 	copy(sorted, workbooks)
@@ -524,8 +518,13 @@ func BuildIndexSheetData(workbooks []WorkbookRecord) [][]interface{} {
 		return sorted[i].Year > sorted[j].Year
 	})
 
+	// Preallocate data with header row + one row per workbook
+	data := make([][]interface{}, 0, 1+len(sorted))
+	data = append(data, []interface{}{"Year", "Workbook", "Link", "Last Sync", "Tabs", "Records", "Status"})
+
 	// Add data rows
-	for _, wb := range sorted {
+	for i := range sorted {
+		wb := &sorted[i]
 		var yearDisplay interface{}
 		if wb.WorkbookType == workbookTypeGlobals {
 			yearDisplay = "Globals"
@@ -540,7 +539,7 @@ func BuildIndexSheetData(workbooks []WorkbookRecord) [][]interface{} {
 		}
 
 		// Create hyperlink formula for the link column
-		link := fmt.Sprintf(`=HYPERLINK("%s","Open")`, wb.URL)
+		link := fmt.Sprintf(`=HYPERLINK(%q,"Open")`, wb.URL)
 
 		data = append(data, []interface{}{
 			yearDisplay,
