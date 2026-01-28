@@ -18,8 +18,10 @@ from ..schemas.metrics import (
     CityBreakdown,
     ComparisonDelta,
     ComparisonMetricsResponse,
+    FirstSummerYearBreakdown,
     FirstYearBreakdown,
     GenderBreakdown,
+    GenderByGradeBreakdown,
     GradeBreakdown,
     HistoricalTrendsResponse,
     NewVsReturning,
@@ -37,10 +39,13 @@ from ..schemas.metrics import (
     RetentionBySynagogue,
     RetentionByYearsAtCamp,
     RetentionMetricsResponse,
+    RetentionTrendsResponse,
+    RetentionTrendYear,
     SchoolBreakdown,
     SessionBreakdown,
     SessionBunkBreakdown,
     SessionLengthBreakdown,
+    SummerYearsBreakdown,
     SynagogueBreakdown,
     YearMetrics,
     YearsAtCampBreakdown,
@@ -766,6 +771,10 @@ async def get_registration_metrics(
         "enrolled",
         description="Comma-separated statuses to include (default: enrolled). Options: enrolled, applied, waitlisted, left_early, cancelled, dismissed, inquiry, withdrawn, incomplete, unknown",
     ),
+    session_cm_id: int | None = Query(
+        None,
+        description="Filter to specific session by CampMinder ID. AG sessions with matching parent_id are included.",
+    ),
 ) -> RegistrationMetricsResponse:
     """Get registration breakdown metrics for a specific year.
 
@@ -783,17 +792,44 @@ async def get_registration_metrics(
         # Parse statuses filter
         status_filter = [s.strip() for s in (statuses or "enrolled").split(",")]
 
-        # Filter attendees by session type if needed
-        def filter_by_session_type(attendees: list[Any]) -> list[Any]:
-            if not type_filter:
-                return attendees
+        # Build session_cm_id filter including AG sessions with matching parent
+        # AG sessions have parent_id pointing to their main session
+        ag_session_ids: set[int] = set()
+        if session_cm_id is not None:
+            # Fetch all sessions to find AG sessions with matching parent
+            all_sessions_list = await asyncio.to_thread(
+                pb.collection("camp_sessions").get_full_list,
+                query_params={"filter": f"year = {year}"},
+            )
+            for s in all_sessions_list:
+                if getattr(s, "session_type", None) == "ag":
+                    parent_id = getattr(s, "parent_id", None)
+                    if parent_id == session_cm_id:
+                        ag_session_ids.add(getattr(s, "cm_id", 0))
+
+        # Filter attendees by session type and optionally by session_cm_id
+        def filter_by_session(attendees: list[Any]) -> list[Any]:
             filtered = []
             for a in attendees:
                 expand = getattr(a, "expand", {}) or {}
                 session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
-                session_type = getattr(session, "session_type", None) if session else None
-                if session_type in type_filter:
-                    filtered.append(a)
+                if not session:
+                    continue
+
+                session_type = getattr(session, "session_type", None)
+                attendee_session_cm_id = getattr(session, "cm_id", None)
+
+                # Apply session type filter
+                if type_filter and session_type not in type_filter:
+                    continue
+
+                # Apply session_cm_id filter if specified
+                if session_cm_id is not None:
+                    # Include if matches directly or is an AG session with matching parent
+                    if attendee_session_cm_id != session_cm_id and attendee_session_cm_id not in ag_session_ids:
+                        continue
+
+                filtered.append(a)
             return filtered
 
         # Fetch data in parallel - fetch all requested statuses dynamically
@@ -820,11 +856,11 @@ async def get_registration_metrics(
         sessions = cast(dict[int, Any], results[5])
         camper_history = cast(list[Any], results[6])
 
-        # Apply session type filter to all attendee lists
-        combined_attendees = filter_by_session_type(requested_attendees)
-        enrolled_attendees = filter_by_session_type(enrolled_attendees)
-        waitlisted_attendees = filter_by_session_type(waitlisted_attendees)
-        cancelled_attendees = filter_by_session_type(cancelled_attendees)
+        # Apply session filter to all attendee lists
+        combined_attendees = filter_by_session(requested_attendees)
+        enrolled_attendees = filter_by_session(enrolled_attendees)
+        waitlisted_attendees = filter_by_session(waitlisted_attendees)
+        cancelled_attendees = filter_by_session(cancelled_attendees)
 
         # Get person IDs from combined attendees (deduplicated)
         # Filter ensures no None values, cast for type checker
@@ -1043,6 +1079,81 @@ async def get_registration_metrics(
             for (sess, bunk), c in sorted(session_bunk_counts.items(), key=lambda x: -x[1])[:10]  # Top 10
         ]
 
+        # ====================================================================
+        # New breakdowns for registration tab redesign
+        # ====================================================================
+
+        # Gender by grade breakdown (for stacked bar chart)
+        gender_grade_stats: dict[int | None, dict[str, int]] = {}
+        for pid in enrolled_person_ids:
+            person = persons.get(pid)
+            if not person:
+                continue
+            grade = getattr(person, "grade", None)
+            gender = getattr(person, "gender", "") or ""
+
+            if grade not in gender_grade_stats:
+                gender_grade_stats[grade] = {"M": 0, "F": 0, "other": 0}
+
+            if gender == "M":
+                gender_grade_stats[grade]["M"] += 1
+            elif gender == "F":
+                gender_grade_stats[grade]["F"] += 1
+            else:
+                gender_grade_stats[grade]["other"] += 1
+
+        by_gender_grade = [
+            GenderByGradeBreakdown(
+                grade=g,
+                male_count=stats["M"],
+                female_count=stats["F"],
+                other_count=stats["other"],
+                total=stats["M"] + stats["F"] + stats["other"],
+            )
+            for g, stats in sorted(gender_grade_stats.items(), key=lambda x: (x[0] is None, x[0]))
+        ]
+
+        # Fetch summer enrollment history for all enrolled persons
+        enrollment_history = await fetch_summer_enrollment_history(
+            enrolled_person_ids, year
+        )
+
+        # Compute summer metrics from history
+        summer_years_by_person, first_year_by_person, _ = compute_summer_metrics(
+            enrollment_history, enrolled_person_ids, year - 1
+        )
+
+        # Summer years breakdown (calculated from actual enrollment history)
+        summer_years_stats: dict[int, int] = {}
+        for pid in enrolled_person_ids:
+            years_count = summer_years_by_person.get(pid, 0)
+            summer_years_stats[years_count] = summer_years_stats.get(years_count, 0) + 1
+
+        by_summer_years = [
+            SummerYearsBreakdown(
+                summer_years=y,
+                count=c,
+                percentage=calculate_percentage(c, total_enrolled),
+            )
+            for y, c in sorted(summer_years_stats.items())
+        ]
+
+        # First summer year breakdown (cohort analysis)
+        first_summer_year_stats: dict[int, int] = {}
+        for pid in enrolled_person_ids:
+            first_year = first_year_by_person.get(pid)
+            if first_year is not None:
+                first_summer_year_stats[first_year] = first_summer_year_stats.get(first_year, 0) + 1
+
+        by_first_summer_year = [
+            FirstSummerYearBreakdown(
+                first_summer_year=fy,
+                count=c,
+                percentage=calculate_percentage(c, total_enrolled),
+            )
+            for fy, c in sorted(first_summer_year_stats.items())
+        ]
+
         return RegistrationMetricsResponse(
             year=year,
             total_enrolled=total_enrolled,
@@ -1060,6 +1171,10 @@ async def get_registration_metrics(
             by_synagogue=by_synagogue,
             by_first_year=by_first_year,
             by_session_bunk=by_session_bunk,
+            # New breakdowns for registration tab redesign
+            by_gender_grade=by_gender_grade,
+            by_summer_years=by_summer_years,
+            by_first_summer_year=by_first_summer_year,
         )
 
     except Exception as e:
@@ -1319,3 +1434,189 @@ async def get_historical_trends(
     except Exception as e:
         logger.error(f"Error calculating historical trends: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error calculating historical trends: {str(e)}")
+
+
+# ============================================================================
+# Retention Trends Endpoint (3-Year View)
+# ============================================================================
+
+
+@router.get("/retention-trends", response_model=RetentionTrendsResponse)
+async def get_retention_trends(
+    current_year: int = Query(..., description="Current year (e.g., 2026)"),
+    num_years: int = Query(3, description="Number of years to include (default: 3)"),
+    session_types: str | None = Query(
+        "main,embedded,ag",
+        description="Comma-separated session types to filter (default: summer camp sessions)",
+    ),
+    session_cm_id: int | None = Query(
+        None,
+        description="Filter to specific session by CampMinder ID",
+    ),
+) -> RetentionTrendsResponse:
+    """Get retention trends across multiple year transitions.
+
+    Returns retention data for num_years-1 year transitions. For example,
+    with num_years=3 and current_year=2026:
+    - 2024→2025 transition
+    - 2025→2026 transition
+
+    This enables line charts for overall retention and grouped bar charts
+    for breakdown categories.
+    """
+    try:
+        # Build list of years to analyze
+        years = list(range(current_year - num_years + 1, current_year + 1))
+
+        # Parse session types filter
+        type_filter = session_types.split(",") if session_types else None
+
+        # Fetch attendees and persons for all years in parallel
+        fetch_tasks = []
+        for year in years:
+            fetch_tasks.append(fetch_attendees_for_year(year))
+            fetch_tasks.append(fetch_persons_for_year(year))
+            fetch_tasks.append(fetch_sessions_for_year(year, type_filter))
+
+        results = await asyncio.gather(*fetch_tasks)
+
+        # Unpack results: each year has (attendees, persons, sessions)
+        data_by_year: dict[int, dict[str, Any]] = {}
+        for i, year in enumerate(years):
+            attendees = cast(list[Any], results[i * 3])
+            persons = cast(dict[int, Any], results[i * 3 + 1])
+            sessions = cast(dict[int, Any], results[i * 3 + 2])
+
+            # Filter attendees by session type
+            if type_filter:
+                filtered = []
+                for a in attendees:
+                    expand = getattr(a, "expand", {}) or {}
+                    session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+                    if session and getattr(session, "session_type", None) in type_filter:
+                        filtered.append(a)
+                attendees = filtered
+
+            # Filter by specific session if provided
+            if session_cm_id is not None:
+                filtered = []
+                for a in attendees:
+                    expand = getattr(a, "expand", {}) or {}
+                    session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+                    if session and getattr(session, "cm_id", None) == session_cm_id:
+                        filtered.append(a)
+                attendees = filtered
+
+            data_by_year[year] = {
+                "attendees": attendees,
+                "persons": persons,
+                "sessions": sessions,
+                "person_ids": {getattr(a, "person_id", None) for a in attendees if getattr(a, "person_id", None)},
+            }
+
+        # Calculate retention for each year transition
+        retention_years: list[RetentionTrendYear] = []
+
+        for i in range(len(years) - 1):
+            base_year = years[i]
+            compare_year = years[i + 1]
+
+            base_data = data_by_year[base_year]
+            compare_data = data_by_year[compare_year]
+
+            base_person_ids = base_data["person_ids"]
+            compare_person_ids = compare_data["person_ids"]
+            persons_base = base_data["persons"]
+
+            returned_ids = base_person_ids & compare_person_ids
+            base_count = len(base_person_ids)
+            returned_count = len(returned_ids)
+            retention_rate = safe_rate(returned_count, base_count)
+
+            # Gender breakdown
+            gender_stats: dict[str, dict[str, int]] = {}
+            for pid in base_person_ids:
+                person = persons_base.get(pid)
+                if not person:
+                    continue
+                gender = getattr(person, "gender", "Unknown") or "Unknown"
+                if gender not in gender_stats:
+                    gender_stats[gender] = {"base": 0, "returned": 0}
+                gender_stats[gender]["base"] += 1
+                if pid in returned_ids:
+                    gender_stats[gender]["returned"] += 1
+
+            by_gender = [
+                RetentionByGender(
+                    gender=g,
+                    base_count=stats["base"],
+                    returned_count=stats["returned"],
+                    retention_rate=safe_rate(stats["returned"], stats["base"]),
+                )
+                for g, stats in sorted(gender_stats.items())
+            ]
+
+            # Grade breakdown
+            grade_stats: dict[int | None, dict[str, int]] = {}
+            for pid in base_person_ids:
+                person = persons_base.get(pid)
+                if not person:
+                    continue
+                grade = getattr(person, "grade", None)
+                if grade not in grade_stats:
+                    grade_stats[grade] = {"base": 0, "returned": 0}
+                grade_stats[grade]["base"] += 1
+                if pid in returned_ids:
+                    grade_stats[grade]["returned"] += 1
+
+            by_grade = [
+                RetentionByGrade(
+                    grade=g,
+                    base_count=stats["base"],
+                    returned_count=stats["returned"],
+                    retention_rate=safe_rate(stats["returned"], stats["base"]),
+                )
+                for g, stats in sorted(grade_stats.items(), key=lambda x: (x[0] is None, x[0]))
+            ]
+
+            retention_years.append(
+                RetentionTrendYear(
+                    from_year=base_year,
+                    to_year=compare_year,
+                    retention_rate=retention_rate,
+                    base_count=base_count,
+                    returned_count=returned_count,
+                    by_gender=by_gender,
+                    by_grade=by_grade,
+                )
+            )
+
+        # Calculate average retention rate
+        rates = [y.retention_rate for y in retention_years]
+        avg_rate = sum(rates) / len(rates) if rates else 0.0
+
+        # Determine trend direction
+        if len(rates) >= 2:
+            # Compare most recent rate to average of prior rates
+            current = rates[-1]
+            prior_avg = sum(rates[:-1]) / len(rates[:-1]) if len(rates) > 1 else current
+            threshold = 0.02  # 2% threshold for "stable"
+
+            if current > prior_avg + threshold:
+                trend_direction = "improving"
+            elif current < prior_avg - threshold:
+                trend_direction = "declining"
+            else:
+                trend_direction = "stable"
+        else:
+            trend_direction = "stable"
+
+        return RetentionTrendsResponse(
+            years=retention_years,
+            avg_retention_rate=avg_rate,
+            trend_direction=trend_direction,
+        )
+
+    except Exception as e:
+        logger.error(f"Error calculating retention trends: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error calculating retention trends: {str(e)}")

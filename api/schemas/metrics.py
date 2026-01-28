@@ -100,6 +100,42 @@ class SessionBunkBreakdown(BaseModel):
     count: int = Field(description="Number of campers")
 
 
+class GenderByGradeBreakdown(BaseModel):
+    """Gender breakdown for a specific grade.
+
+    Shows male/female/other counts per grade for stacked bar chart visualization.
+    """
+
+    grade: int | None = Field(description="Grade level (None if unknown)")
+    male_count: int = Field(description="Number of male campers")
+    female_count: int = Field(description="Number of female campers")
+    other_count: int = Field(description="Number of other/unknown gender campers")
+    total: int = Field(description="Total campers in this grade")
+
+
+class SummerYearsBreakdown(BaseModel):
+    """Breakdown by actual summer enrollment years.
+
+    Calculated from attendees table enrollment history, not the potentially
+    incorrect years_at_camp field in persons.
+    """
+
+    summer_years: int = Field(description="Number of summer years enrolled")
+    count: int = Field(description="Number of campers")
+    percentage: float = Field(description="Percentage of total")
+
+
+class FirstSummerYearBreakdown(BaseModel):
+    """Breakdown by first summer year (cohort analysis).
+
+    Shows how many current campers started in each year.
+    """
+
+    first_summer_year: int = Field(description="Year camper first attended summer camp")
+    count: int = Field(description="Number of campers")
+    percentage: float = Field(description="Percentage of total")
+
+
 # ============================================================================
 # Retention Metrics
 # ============================================================================
@@ -292,6 +328,16 @@ class RegistrationMetricsResponse(BaseModel):
     by_session_bunk: list[SessionBunkBreakdown] = Field(
         default_factory=list, description="Top session+bunk combinations"
     )
+    # New breakdowns for registration tab redesign
+    by_gender_grade: list[GenderByGradeBreakdown] = Field(
+        default_factory=list, description="Gender breakdown by grade (for stacked bar chart)"
+    )
+    by_summer_years: list[SummerYearsBreakdown] = Field(
+        default_factory=list, description="Enrollment by summer years (calculated from attendees)"
+    )
+    by_first_summer_year: list[FirstSummerYearBreakdown] = Field(
+        default_factory=list, description="Enrollment by first summer year (cohort analysis)"
+    )
 
 
 # ============================================================================
@@ -344,3 +390,59 @@ class HistoricalTrendsResponse(BaseModel):
     """Response model for historical trends endpoint."""
 
     years: list[YearMetrics] = Field(description="Metrics for each year")
+
+
+# ============================================================================
+# Retention Trends (3-Year View)
+# ============================================================================
+
+
+class RetentionTrendValue(BaseModel):
+    """A single retention rate value for a year transition."""
+
+    from_year: int = Field(description="Base year")
+    to_year: int = Field(description="Compare year")
+    retention_rate: float = Field(description="Retention rate (0-1)")
+
+
+class RetentionTrendGenderBreakdown(BaseModel):
+    """Gender retention across multiple year transitions."""
+
+    gender: str = Field(description="Gender (M, F, or other)")
+    values: list[RetentionTrendValue] = Field(description="Retention for each year transition")
+
+
+class RetentionTrendGradeBreakdown(BaseModel):
+    """Grade retention across multiple year transitions."""
+
+    grade: int | None = Field(description="Grade level")
+    values: list[RetentionTrendValue] = Field(description="Retention for each year transition")
+
+
+class RetentionTrendYear(BaseModel):
+    """Retention metrics for a single year transition."""
+
+    from_year: int = Field(description="Base year")
+    to_year: int = Field(description="Compare year")
+    retention_rate: float = Field(description="Overall retention rate (0-1)")
+    base_count: int = Field(description="Total campers in base year")
+    returned_count: int = Field(description="Campers who returned")
+    by_gender: list[RetentionByGender] = Field(default_factory=list, description="Retention by gender")
+    by_grade: list[RetentionByGrade] = Field(default_factory=list, description="Retention by grade")
+
+
+class RetentionTrendsResponse(BaseModel):
+    """Response model for retention trends endpoint (3-year view)."""
+
+    years: list[RetentionTrendYear] = Field(description="Retention data for each year transition")
+    avg_retention_rate: float = Field(description="Average retention rate across all transitions")
+    trend_direction: str = Field(
+        description="Trend direction: 'improving', 'declining', or 'stable'"
+    )
+    # Optional: grouped breakdowns for charts
+    by_gender_grouped: list[RetentionTrendGenderBreakdown] = Field(
+        default_factory=list, description="Gender retention grouped across years"
+    )
+    by_grade_grouped: list[RetentionTrendGradeBreakdown] = Field(
+        default_factory=list, description="Grade retention grouped across years"
+    )

@@ -1830,7 +1830,6 @@ class TestRetentionBySchool:
 
         This test will FAIL until we add by_school to RetentionMetricsResponse.
         """
-        import inspect
 
         from api.schemas.metrics import RetentionMetricsResponse
 
@@ -2506,7 +2505,6 @@ class TestRetentionByFirstSummerYear:
 
         This allows analyzing retention by "class" of when campers first joined.
         """
-        base_year_ids = set(first_summer_year_data.keys())
         returned_ids = {101, 104}  # Long-timers returned
 
         by_first_year: dict[int, dict[str, int]] = {}
