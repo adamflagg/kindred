@@ -1038,20 +1038,25 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	// Financial transactions: year-scoped transaction data (depends on financial_lookups running in weekly sync)
 	o.RegisterService("financial_transactions", NewFinancialTransactionsSync(o.app, client))
 
-	// Register Google Sheets export service (optional, requires configuration)
+	// Register Google Sheets export services (optional, requires configuration)
 	if google.IsEnabled() {
 		ctx := context.Background()
 		sheetsClient, err := google.NewSheetsClient(ctx)
 		if err != nil {
 			slog.Warn("Google Sheets disabled due to client error", "error", err)
 		} else if sheetsClient != nil {
+			// Legacy single-workbook export (requires spreadsheet ID)
 			spreadsheetID := google.GetSpreadsheetID()
 			if spreadsheetID != "" {
 				o.RegisterService("google_sheets_export", NewGoogleSheetsExport(o.app, sheetsClient, spreadsheetID))
 				slog.Info("Google Sheets export service registered", "spreadsheet_id", "configured")
-			} else {
-				slog.Warn("Google Sheets enabled but no spreadsheet ID configured")
 			}
+
+			// New multi-workbook export (creates workbooks dynamically)
+			sheetsWriter := NewRealSheetsWriter(sheetsClient)
+			workbookManager := NewWorkbookManager(o.app, sheetsWriter)
+			o.RegisterService("multi_workbook_export", NewMultiWorkbookExport(o.app, sheetsWriter, workbookManager, 0))
+			slog.Info("Multi-workbook export service registered")
 		}
 	}
 

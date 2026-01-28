@@ -243,7 +243,7 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 		return handleIndividualSync(e, scheduler, "session_groups")
 	}))
 
-	// Google Sheets export endpoint
+	// Google Sheets export endpoint (legacy single-workbook)
 	e.Router.POST("/api/custom/sync/google-sheets-export", func(e *core.RequestEvent) error {
 		// Check authentication
 		if e.Auth == nil {
@@ -251,6 +251,16 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 		}
 
 		return handleGoogleSheetsExport(e, scheduler)
+	})
+
+	// Multi-workbook export endpoint (new multi-workbook architecture)
+	e.Router.POST("/api/custom/sync/multi-workbook-export", func(e *core.RequestEvent) error {
+		// Check authentication
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("Authentication required", nil)
+		}
+
+		return handleMultiWorkbookExport(e, scheduler)
 	})
 
 	// Person tag definitions sync
@@ -1007,6 +1017,105 @@ func handleGoogleSheetsExport(e *core.RequestEvent, scheduler *Scheduler) error 
 		"status":         "started",
 		"syncType":       "google_sheets_export",
 		"spreadsheet_id": spreadsheetID,
+	}
+	if len(years) > 0 {
+		response["years"] = years
+		response["includeGlobals"] = includeGlobals
+	}
+
+	return e.JSON(http.StatusOK, response)
+}
+
+// handleMultiWorkbookExport handles the multi-workbook export
+// Exports globals to a dedicated workbook and year data to per-year workbooks.
+// Query parameters:
+//   - years: comma-separated list of years to export (empty = current year)
+//   - includeGlobals: "true" to include globals export (default: true for current year, false for historical)
+func handleMultiWorkbookExport(e *core.RequestEvent, scheduler *Scheduler) error {
+	// Check if Google Sheets is configured
+	if !google.IsEnabled() {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Google Sheets export is not enabled",
+			"hint":  "Set GOOGLE_SHEETS_ENABLED=true and configure credentials",
+		})
+	}
+
+	// Parse optional years parameter
+	yearsParam := e.Request.URL.Query().Get("years")
+	years, err := ParseExportYearsParam(yearsParam)
+	if err != nil {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": fmt.Sprintf("Invalid years parameter: %v", err),
+		})
+	}
+
+	// Parse optional includeGlobals parameter
+	// Default: true for current year sync, false for historical
+	includeGlobalsParam := e.Request.URL.Query().Get("includeGlobals")
+	includeGlobals := len(years) == 0 // Default to true for current year
+	if includeGlobalsParam != "" {
+		includeGlobals = includeGlobalsParam == boolTrueStr || includeGlobalsParam == "1"
+	}
+
+	// Validate years if provided
+	if len(years) > 0 {
+		currentYear := time.Now().Year()
+		if err := ValidateExportYears(years, currentYear); err != nil {
+			return e.JSON(http.StatusBadRequest, map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
+	}
+
+	orchestrator := scheduler.GetOrchestrator()
+
+	// Check if already running
+	if orchestrator.IsRunning("multi_workbook_export") {
+		return e.JSON(http.StatusConflict, map[string]interface{}{
+			"error":    "Multi-workbook export already in progress",
+			"status":   "running",
+			"syncType": "multi_workbook_export",
+		})
+	}
+
+	// Get the service
+	service := orchestrator.GetService("multi_workbook_export")
+	multiExport, ok := service.(*MultiWorkbookExport)
+	if !ok || multiExport == nil {
+		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+			"error": "Multi-workbook export service not available",
+			"hint":  "Ensure GOOGLE_SHEETS_ENABLED=true and credentials are configured",
+		})
+	}
+
+	// Run in background
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+
+		if len(years) > 0 {
+			// Export specific years
+			slog.Info("Starting multi-workbook export for specific years",
+				"years", years,
+				"includeGlobals", includeGlobals,
+			)
+			if err := multiExport.SyncForYears(ctx, years, includeGlobals); err != nil {
+				slog.Error("Multi-workbook export failed", "error", err, "years", years)
+			}
+		} else {
+			// Default: full export (globals + current year)
+			slog.Info("Starting multi-workbook export for current year")
+			if err := multiExport.Sync(ctx); err != nil {
+				slog.Error("Multi-workbook export failed", "error", err)
+			}
+		}
+	}()
+
+	// Build response
+	response := map[string]interface{}{
+		"message":  "Multi-workbook export started",
+		"status":   "started",
+		"syncType": "multi_workbook_export",
 	}
 	if len(years) > 0 {
 		response["years"] = years
