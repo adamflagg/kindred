@@ -81,4 +81,3 @@ func TestFormatSpreadsheetURL(t *testing.T) {
 		})
 	}
 }
-
