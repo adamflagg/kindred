@@ -16,6 +16,7 @@ import {
   Pie,
   Cell,
   Legend,
+  LabelList,
 } from 'recharts';
 import type { PieLabelRenderProps } from 'recharts';
 
@@ -148,15 +149,18 @@ export function ComparisonBreakdownChart({
               cy="50%"
               outerRadius={80}
               label={(props: PieLabelRenderProps) => {
-                const pct = (props.payload as ChartDataItem).percentage;
+                const item = props.payload as ChartDataItem;
+                const pct = item.percentage;
+                const count = item.value;
                 const labelName = props.name ?? '';
                 const comparePct = activeComparisonYear && comparisonData?.[activeComparisonYear]
                   ? comparisonData[activeComparisonYear].find(c => c.name === labelName)?.percentage
                   : undefined;
 
-                let label = labelName;
+                // Show count always, percentage conditionally
+                let label = `${labelName}: ${count}`;
                 if (showPercentage && pct !== undefined) {
-                  label = `${labelName} (${pct.toFixed(0)}%)`;
+                  label = `${labelName}: ${count} (${pct.toFixed(0)}%)`;
                   if (comparePct !== undefined) {
                     const delta = pct - comparePct;
                     const sign = delta >= 0 ? '+' : '';
@@ -187,7 +191,14 @@ export function ComparisonBreakdownChart({
               tickFormatter={(value: string) => value.length > 14 ? `${value.slice(0, 12)}...` : value}
             />
             <Tooltip content={<CustomTooltip />} />
-            <Bar dataKey="value" name={String(currentYear)} fill={COLORS[0]} radius={[0, 4, 4, 0]} />
+            <Bar dataKey="value" name={String(currentYear)} fill={COLORS[0]} radius={[0, 4, 4, 0]}>
+              <LabelList
+                dataKey="value"
+                position="right"
+                className="text-xs"
+                fill="hsl(var(--muted-foreground))"
+              />
+            </Bar>
             {activeComparisonYear && (
               <Bar
                 dataKey={`value_${activeComparisonYear}`}

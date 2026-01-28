@@ -11,6 +11,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
+  LabelList,
 } from 'recharts';
 import type { YearMetrics } from '../../types/metrics';
 
@@ -129,7 +130,15 @@ export function TrendLineChart({
               strokeWidth={2}
               dot={{ fill: COLORS.total, strokeWidth: 2 }}
               activeDot={{ r: 6 }}
-            />
+            >
+              <LabelList
+                dataKey="total"
+                position="top"
+                className="text-xs"
+                fill="hsl(var(--muted-foreground))"
+                formatter={(value) => typeof value === 'number' ? value.toLocaleString() : String(value ?? '')}
+              />
+            </Line>
           )}
 
           {metric === 'new_vs_returning' && (
@@ -142,7 +151,15 @@ export function TrendLineChart({
                 strokeWidth={2}
                 dot={{ fill: COLORS.new, strokeWidth: 2 }}
                 activeDot={{ r: 6 }}
-              />
+              >
+                <LabelList
+                  dataKey="new"
+                  position="top"
+                  className="text-xs"
+                  fill="hsl(var(--muted-foreground))"
+                  formatter={(value) => typeof value === 'number' ? value.toLocaleString() : String(value ?? '')}
+                />
+              </Line>
               <Line
                 type="monotone"
                 dataKey="returning"
@@ -151,7 +168,15 @@ export function TrendLineChart({
                 strokeWidth={2}
                 dot={{ fill: COLORS.returning, strokeWidth: 2 }}
                 activeDot={{ r: 6 }}
-              />
+              >
+                <LabelList
+                  dataKey="returning"
+                  position="bottom"
+                  className="text-xs"
+                  fill="hsl(var(--muted-foreground))"
+                  formatter={(value) => typeof value === 'number' ? value.toLocaleString() : String(value ?? '')}
+                />
+              </Line>
             </>
           )}
 
@@ -165,7 +190,15 @@ export function TrendLineChart({
                 strokeWidth={2}
                 dot={{ fill: COLORS.male, strokeWidth: 2 }}
                 activeDot={{ r: 6 }}
-              />
+              >
+                <LabelList
+                  dataKey="male"
+                  position="top"
+                  className="text-xs"
+                  fill="hsl(var(--muted-foreground))"
+                  formatter={(value) => typeof value === 'number' ? value.toLocaleString() : String(value ?? '')}
+                />
+              </Line>
               <Line
                 type="monotone"
                 dataKey="female"
@@ -174,7 +207,15 @@ export function TrendLineChart({
                 strokeWidth={2}
                 dot={{ fill: COLORS.female, strokeWidth: 2 }}
                 activeDot={{ r: 6 }}
-              />
+              >
+                <LabelList
+                  dataKey="female"
+                  position="bottom"
+                  className="text-xs"
+                  fill="hsl(var(--muted-foreground))"
+                  formatter={(value) => typeof value === 'number' ? value.toLocaleString() : String(value ?? '')}
+                />
+              </Line>
             </>
           )}
         </LineChart>

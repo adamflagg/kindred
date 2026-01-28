@@ -14,6 +14,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
+  LabelList,
 } from 'recharts';
 import type { GenderByGradeBreakdown } from '../../types/metrics';
 
@@ -135,7 +136,14 @@ export function GenderByGradeChart({
             stackId="gender"
             fill={COLORS.other}
             radius={[4, 4, 0, 0]}
-          />
+          >
+            <LabelList
+              dataKey="total"
+              position="top"
+              className="text-xs"
+              fill="hsl(var(--muted-foreground))"
+            />
+          </Bar>
         </BarChart>
       </ResponsiveContainer>
     </div>

@@ -14,6 +14,7 @@ import {
   Pie,
   Cell,
   Legend,
+  LabelList,
 } from 'recharts';
 import type { PieLabelRenderProps } from 'recharts';
 
@@ -97,11 +98,15 @@ export function BreakdownChart({
               cy="50%"
               outerRadius={80}
               label={(props: PieLabelRenderProps) => {
-                const pct = (props.payload as ChartData).percentage;
+                const item = props.payload as ChartData;
+                const pct = item.percentage;
+                const count = item.value;
                 const labelName = props.name ?? '';
-                return showPercentage && pct !== undefined
-                  ? `${labelName} (${pct.toFixed(0)}%)`
-                  : labelName;
+                // Show count always, percentage conditionally
+                if (showPercentage && pct !== undefined) {
+                  return `${labelName}: ${count} (${pct.toFixed(0)}%)`;
+                }
+                return `${labelName}: ${count}`;
               }}
               labelLine={false}
             >
@@ -125,7 +130,14 @@ export function BreakdownChart({
               tickFormatter={(value: string) => value.length > 14 ? `${value.slice(0, 12)}…` : value}
             />
             <Tooltip content={<CustomTooltip />} />
-            <Bar dataKey="value" fill={COLORS[0]} radius={[0, 4, 4, 0]} />
+            <Bar dataKey="value" fill={COLORS[0]} radius={[0, 4, 4, 0]}>
+              <LabelList
+                dataKey="value"
+                position="right"
+                className="text-xs"
+                fill="hsl(var(--muted-foreground))"
+              />
+            </Bar>
           </BarChart>
         )}
       </ResponsiveContainer>
