@@ -214,15 +214,7 @@ func TestReadableGlobalExportSheetNames(t *testing.T) {
 // Test: Multi-Workbook Manager Interface
 // =============================================================================
 
-// WorkbookManagerInterface defines the interface for workbook management
-// This allows mocking in tests
-type WorkbookManagerInterface interface {
-	GetOrCreateGlobalsWorkbook(ctx context.Context) (string, error)
-	GetOrCreateYearWorkbook(ctx context.Context, year int) (string, error)
-	UpdateMasterIndex(ctx context.Context) error
-}
-
-// Verify MockWorkbookManager implements the interface
+// Verify MockWorkbookManager implements the interface defined in multi_workbook_export.go
 var _ WorkbookManagerInterface = (*MockWorkbookManager)(nil)
 
 func TestMockWorkbookManager_GetOrCreateGlobalsWorkbook(t *testing.T) {
