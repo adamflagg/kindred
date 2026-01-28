@@ -31,6 +31,7 @@ const FamilyCampDashboard = lazy(() => import('./pages/FamilyCampDashboard'));
 const ScenarioComparisonPage = lazy(() => import('./pages/ScenarioComparisonPage'));
 const DebugPage = lazy(() => import('./pages/summer/DebugPage'));
 const RegistrationMetricsPage = lazy(() => import('./pages/metrics/RegistrationMetricsPage').then(m => ({ default: m.RegistrationMetricsPage })));
+const SheetsPage = lazy(() => import('./pages/admin/SheetsPage'));
 
 // Loading skeleton component for route transitions
 function PageSkeleton() {
@@ -140,6 +141,13 @@ function App() {
                             <Suspense fallback={<PageSkeleton />}>
                               <AdminConfig />
                             </Suspense>
+                          } />
+                          <Route path="sheets" element={
+                            <AdminRoute>
+                              <Suspense fallback={<PageSkeleton />}>
+                                <SheetsPage />
+                              </Suspense>
+                            </AdminRoute>
                           } />
                           <Route path="debug" element={
                             <AdminRoute>

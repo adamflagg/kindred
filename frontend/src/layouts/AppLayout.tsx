@@ -259,6 +259,14 @@ export const AppLayout = () => {
                 )}
                 {activeProgram === 'summer' && isAdmin && (
                   <Link
+                    to="/summer/sheets"
+                    className={`nav-link-lodge ${isActiveRoute('/sheets') ? 'active' : ''}`}
+                  >
+                    Sheets
+                  </Link>
+                )}
+                {activeProgram === 'summer' && isAdmin && (
+                  <Link
                     to="/summer/debug"
                     className={`nav-link-lodge ${isActiveRoute('/debug') ? 'active' : ''}`}
                   >
@@ -492,6 +500,19 @@ export const AppLayout = () => {
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
                     Admin
+                  </Link>
+                )}
+                {activeProgram === 'summer' && isAdmin && (
+                  <Link
+                    to="/summer/sheets"
+                    className={`block px-4 py-3 text-base font-semibold rounded-xl transition-all ${
+                      isActiveRoute('/sheets')
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-foreground hover:bg-muted/50'
+                    }`}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    Sheets
                   </Link>
                 )}
                 {activeProgram === 'summer' && isAdmin && (
