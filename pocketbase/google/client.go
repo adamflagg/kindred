@@ -30,32 +30,40 @@ func GetSpreadsheetID() string {
 	return strings.TrimSpace(os.Getenv(envSpreadsheet))
 }
 
+// getAuthenticatedHTTPClient creates an authenticated HTTP client for the given scope.
+// Returns the zero value and nil error if Google Sheets sync is disabled.
+func getAuthenticatedHTTPClient(ctx context.Context, scope string) (option.ClientOption, bool, error) {
+	if !IsEnabled() {
+		return nil, false, nil
+	}
+
+	credJSON, err := getCredentialsJSON()
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to get credentials: %w", err)
+	}
+
+	config, err := google.JWTConfigFromJSON(credJSON, scope)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to parse credentials: %w", err)
+	}
+
+	client := config.Client(ctx)
+	return option.WithHTTPClient(client), true, nil
+}
+
 // NewSheetsClient creates a new Google Sheets API client using service account credentials.
 // Returns nil, nil if Google Sheets sync is disabled (graceful degradation).
-// Credentials are provided via GOOGLE_SERVICE_ACCOUNT_KEY_JSON environment variable.
+// Credentials are provided via GOOGLE_SERVICE_ACCOUNT_KEY_FILE environment variable.
 func NewSheetsClient(ctx context.Context) (*sheets.Service, error) {
-	// Check if enabled
-	if !IsEnabled() {
+	opt, enabled, err := getAuthenticatedHTTPClient(ctx, sheets.SpreadsheetsScope)
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
-	// Get credentials
-	credJSON, err := getCredentialsJSON()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get credentials: %w", err)
-	}
-
-	// Parse credentials and create JWT config
-	config, err := google.JWTConfigFromJSON(credJSON, sheets.SpreadsheetsScope)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse credentials: %w", err)
-	}
-
-	// Create HTTP client with credentials
-	client := config.Client(ctx)
-
-	// Create Sheets service
-	srv, err := sheets.NewService(ctx, option.WithHTTPClient(client))
+	srv, err := sheets.NewService(ctx, opt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create sheets service: %w", err)
 	}

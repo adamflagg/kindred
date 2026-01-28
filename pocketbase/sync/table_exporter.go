@@ -432,13 +432,22 @@ func (e *TableExporter) Export(ctx context.Context, config *ExportConfig, record
 	return nil
 }
 
-// GetYearSpecificExports returns export configurations for year-scoped tables
-func GetYearSpecificExports() []ExportConfig {
+// =============================================================================
+// Multi-Workbook Export Configs (Per-Year Workbooks Feature)
+// =============================================================================
+// These functions return export configs with human-readable tab names for the
+// multi-workbook architecture where each year has its own workbook.
+// The year is identified by the workbook itself, not by tab name prefixes.
+
+// GetReadableYearExports returns export configurations for year-scoped tables
+// with human-readable tab names (no year prefix).
+// Includes person_custom_values and household_custom_values (now exported per-year).
+func GetReadableYearExports() []ExportConfig {
 	return []ExportConfig{
 		// Attendees - links persons to sessions with enrollment status
 		{
 			Collection: "attendees",
-			SheetName:  "{year}-attendee",
+			SheetName:  "Attendees",
 			IsGlobal:   false,
 			Columns: []ColumnConfig{
 				{Field: "person_id", Header: "Person ID", Type: FieldTypeNumber},
@@ -465,7 +474,7 @@ func GetYearSpecificExports() []ExportConfig {
 		// Persons - demographic info, contact details, tags
 		{
 			Collection: "persons",
-			SheetName:  "{year}-person",
+			SheetName:  "Persons",
 			IsGlobal:   false,
 			Columns: []ColumnConfig{
 				{Field: "cm_id", Header: "Person ID", Type: FieldTypeNumber},
@@ -499,7 +508,7 @@ func GetYearSpecificExports() []ExportConfig {
 		// Sessions - session definitions
 		{
 			Collection: "camp_sessions",
-			SheetName:  "{year}-session",
+			SheetName:  "Sessions",
 			IsGlobal:   false,
 			Columns: []ColumnConfig{
 				{Field: "cm_id", Header: "Session ID", Type: FieldTypeNumber},
@@ -530,7 +539,7 @@ func GetYearSpecificExports() []ExportConfig {
 		// Staff - staff records with positions, assignments, dates
 		{
 			Collection: "staff",
-			SheetName:  "{year}-staff",
+			SheetName:  "Staff",
 			IsGlobal:   false,
 			Columns: []ColumnConfig{
 				{
@@ -586,7 +595,7 @@ func GetYearSpecificExports() []ExportConfig {
 		// Bunk Assignments - camper to bunk assignments
 		{
 			Collection: "bunk_assignments",
-			SheetName:  "{year}-bunk-assign",
+			SheetName:  "Bunk Assignments",
 			IsGlobal:   false,
 			Columns: []ColumnConfig{
 				{Field: "cm_id", Header: "Assignment ID", Type: FieldTypeNumber},
@@ -602,21 +611,17 @@ func GetYearSpecificExports() []ExportConfig {
 		// Financial Transactions - comprehensive export
 		{
 			Collection: "financial_transactions",
-			SheetName:  "{year}-transactions",
+			SheetName:  "Financial Transactions",
 			IsGlobal:   false,
 			Columns: []ColumnConfig{
-				// Identity
 				{Field: "cm_id", Header: "Transaction ID", Type: FieldTypeNumber},
 				{Field: "transaction_number", Header: "Transaction Number", Type: FieldTypeNumber},
-				// Dates
 				{Field: "post_date", Header: "Post Date", Type: FieldTypeDate},
 				{Field: "effective_date", Header: "Effective Date", Type: FieldTypeDate},
 				{Field: "service_start_date", Header: "Service Start", Type: FieldTypeDate},
 				{Field: "service_end_date", Header: "Service End", Type: FieldTypeDate},
-				// Reversal
 				{Field: "is_reversed", Header: "Is Reversed", Type: FieldTypeBool},
 				{Field: "reversal_date", Header: "Reversal Date", Type: FieldTypeDate},
-				// Category (FK ID + name)
 				{
 					Field: "financial_category", Header: "Category ID",
 					Type: FieldTypeForeignKeyID, RelatedCol: "financial_categories",
@@ -625,18 +630,14 @@ func GetYearSpecificExports() []ExportConfig {
 					Field: "financial_category", Header: "Category", Type: FieldTypeRelation,
 					RelatedCol: "financial_categories", RelatedField: "name",
 				},
-				// Description & notes
 				{Field: "description", Header: "Description", Type: FieldTypeText},
 				{Field: "transaction_note", Header: "Transaction Note", Type: FieldTypeText},
 				{Field: "gl_account_note", Header: "GL Account Note", Type: FieldTypeText},
-				// Amounts
 				{Field: "quantity", Header: "Quantity", Type: FieldTypeNumber},
 				{Field: "unit_amount", Header: "Unit Amount", Type: FieldTypeNumber},
 				{Field: "amount", Header: "Amount", Type: FieldTypeNumber},
-				// GL accounts
 				{Field: "recognition_gl_account_id", Header: "Recognition GL Account", Type: FieldTypeText},
 				{Field: "deferral_gl_account_id", Header: "Deferral GL Account", Type: FieldTypeText},
-				// Payment method (FK ID + name)
 				{
 					Field: "payment_method", Header: "Payment Method ID",
 					Type: FieldTypeForeignKeyID, RelatedCol: "payment_methods",
@@ -645,7 +646,6 @@ func GetYearSpecificExports() []ExportConfig {
 					Field: "payment_method", Header: "Payment Method", Type: FieldTypeRelation,
 					RelatedCol: "payment_methods", RelatedField: "name",
 				},
-				// Session (FK ID + name)
 				{
 					Field: "session", Header: "Session ID",
 					Type: FieldTypeForeignKeyID, RelatedCol: "camp_sessions",
@@ -654,7 +654,6 @@ func GetYearSpecificExports() []ExportConfig {
 					Field: "session", Header: "Session", Type: FieldTypeRelation,
 					RelatedCol: "camp_sessions", RelatedField: "name",
 				},
-				// Session group (FK ID + name)
 				{
 					Field: "session_group", Header: "Session Group ID",
 					Type: FieldTypeForeignKeyID, RelatedCol: "session_groups",
@@ -663,7 +662,6 @@ func GetYearSpecificExports() []ExportConfig {
 					Field: "session_group", Header: "Session Group", Type: FieldTypeRelation,
 					RelatedCol: "session_groups", RelatedField: "name",
 				},
-				// Division (FK ID + name)
 				{
 					Field: "division", Header: "Division ID",
 					Type: FieldTypeForeignKeyID, RelatedCol: "divisions",
@@ -672,7 +670,6 @@ func GetYearSpecificExports() []ExportConfig {
 					Field: "division", Header: "Division", Type: FieldTypeRelation,
 					RelatedCol: "divisions", RelatedField: "name",
 				},
-				// Person (FK ID + name)
 				{
 					Field: "person", Header: "Person ID",
 					Type: FieldTypeForeignKeyID, RelatedCol: "persons",
@@ -685,7 +682,6 @@ func GetYearSpecificExports() []ExportConfig {
 					Field: "person", Header: "Person Last Name", Type: FieldTypeNestedField,
 					RelatedCol: "persons", NestedField: "last_name",
 				},
-				// Household (FK ID + name)
 				{
 					Field: "household", Header: "Household ID",
 					Type: FieldTypeForeignKeyID, RelatedCol: "households",
@@ -699,7 +695,7 @@ func GetYearSpecificExports() []ExportConfig {
 		// Bunks - cabin definitions
 		{
 			Collection: "bunks",
-			SheetName:  "{year}-bunk",
+			SheetName:  "Bunks",
 			IsGlobal:   false,
 			Columns: []ColumnConfig{
 				{Field: "cm_id", Header: "Bunk ID", Type: FieldTypeNumber},
@@ -712,7 +708,7 @@ func GetYearSpecificExports() []ExportConfig {
 		// Households - family/household info
 		{
 			Collection: "households",
-			SheetName:  "{year}-household",
+			SheetName:  "Households",
 			IsGlobal:   false,
 			Columns: []ColumnConfig{
 				{Field: "cm_id", Header: "Household ID", Type: FieldTypeNumber},
@@ -722,7 +718,7 @@ func GetYearSpecificExports() []ExportConfig {
 		// Session Groups - session groupings
 		{
 			Collection: "session_groups",
-			SheetName:  "{year}-sess-group",
+			SheetName:  "Session Groups",
 			IsGlobal:   false,
 			Columns: []ColumnConfig{
 				{Field: "cm_id", Header: "Session Group ID", Type: FieldTypeNumber},
@@ -731,15 +727,10 @@ func GetYearSpecificExports() []ExportConfig {
 				{Field: "is_active", Header: "Is Active", Type: FieldTypeBool},
 			},
 		},
-		// NOTE: person_custom_values and household_custom_values are NOT exported
-		// to Google Sheets due to cell limit issues (10M cells). These tables are
-		// very wide and used primarily to build derived tables (camper_history,
-		// family_camp_derived). Query them directly in PocketBase if needed.
-		//
 		// Camper History - denormalized camper data with retention metrics
 		{
 			Collection: "camper_history",
-			SheetName:  "{year}-camper-history",
+			SheetName:  "Camper History",
 			IsGlobal:   false,
 			Columns: []ColumnConfig{
 				{Field: "person_id", Header: "Person ID", Type: FieldTypeNumber},
@@ -756,7 +747,6 @@ func GetYearSpecificExports() []ExportConfig {
 				{Field: "first_year_attended", Header: "First Year Attended", Type: FieldTypeNumber},
 				{Field: "prior_year_sessions", Header: "Prior Year Sessions", Type: FieldTypeText},
 				{Field: "prior_year_bunks", Header: "Prior Year Bunks", Type: FieldTypeText},
-				// New fields (v2) for enhanced retention/registration analysis
 				{Field: "household_id", Header: "Household ID", Type: FieldTypeNumber},
 				{Field: "gender", Header: "Gender", Type: FieldTypeText},
 				{Field: "division_name", Header: "Division", Type: FieldTypeText},
@@ -765,36 +755,56 @@ func GetYearSpecificExports() []ExportConfig {
 				{Field: "synagogue", Header: "Synagogue", Type: FieldTypeText},
 			},
 		},
+		// Person Custom Values - custom field values for persons (now exported with per-year workbooks)
+		{
+			Collection: "person_custom_values",
+			SheetName:  "Person Custom Values",
+			IsGlobal:   false,
+			Columns: []ColumnConfig{
+				{Field: "person_id", Header: "Person ID", Type: FieldTypeNumber},
+				{
+					Field: "person", Header: "First Name", Type: FieldTypeNestedField,
+					RelatedCol: "persons", NestedField: "first_name",
+				},
+				{
+					Field: "person", Header: "Last Name", Type: FieldTypeNestedField,
+					RelatedCol: "persons", NestedField: "last_name",
+				},
+				{
+					Field: "field_definition", Header: "Field Name", Type: FieldTypeRelation,
+					RelatedCol: "custom_field_defs", RelatedField: "name",
+				},
+				{Field: "value", Header: "Value", Type: FieldTypeText},
+			},
+		},
+		// Household Custom Values - custom field values for households (now exported with per-year workbooks)
+		{
+			Collection: "household_custom_values",
+			SheetName:  "Household Custom Values",
+			IsGlobal:   false,
+			Columns: []ColumnConfig{
+				{Field: "household_id", Header: "Household ID", Type: FieldTypeNumber},
+				{
+					Field: "household", Header: "Household", Type: FieldTypeRelation,
+					RelatedCol: "households", RelatedField: "mailing_title",
+				},
+				{
+					Field: "field_definition", Header: "Field Name", Type: FieldTypeRelation,
+					RelatedCol: "custom_field_defs", RelatedField: "name",
+				},
+				{Field: "value", Header: "Value", Type: FieldTypeText},
+			},
+		},
 	}
 }
 
-// GetAllExportSheetNames returns all sheet tab names that will be created for a full export
-// This includes both year-specific and global tables
-func GetAllExportSheetNames(year int) []string {
-	yearSpecific := GetYearSpecificExports()
-	globals := GetGlobalExports()
-	names := make([]string, 0, len(yearSpecific)+len(globals))
-
-	// Add year-specific sheet names
-	for _, config := range yearSpecific {
-		names = append(names, config.GetResolvedSheetName(year))
-	}
-
-	// Add global sheet names (year parameter ignored for globals)
-	for _, config := range globals {
-		names = append(names, config.SheetName)
-	}
-
-	return names
-}
-
-// GetGlobalExports returns export configurations for global (non-year-scoped) tables
-// Global tables use "g-" prefix for shorter, more readable tab names
-func GetGlobalExports() []ExportConfig {
+// GetReadableGlobalExports returns export configurations for global tables
+// with human-readable tab names (no g- prefix).
+func GetReadableGlobalExports() []ExportConfig {
 	return []ExportConfig{
 		{
 			Collection: "person_tag_defs",
-			SheetName:  "g-tag-def",
+			SheetName:  "Tag Definitions",
 			IsGlobal:   true,
 			Columns: []ColumnConfig{
 				{Field: "name", Header: "Tag Name", Type: FieldTypeText},
@@ -804,7 +814,7 @@ func GetGlobalExports() []ExportConfig {
 		},
 		{
 			Collection: "custom_field_defs",
-			SheetName:  "g-cust-field-def",
+			SheetName:  "Custom Field Definitions",
 			IsGlobal:   true,
 			Columns: []ColumnConfig{
 				{Field: "cm_id", Header: "Field ID", Type: FieldTypeNumber},
@@ -818,7 +828,7 @@ func GetGlobalExports() []ExportConfig {
 		},
 		{
 			Collection: "financial_categories",
-			SheetName:  "g-fin-cat",
+			SheetName:  "Financial Categories",
 			IsGlobal:   true,
 			Columns: []ColumnConfig{
 				{Field: "cm_id", Header: "Category ID", Type: FieldTypeNumber},
@@ -828,7 +838,7 @@ func GetGlobalExports() []ExportConfig {
 		},
 		{
 			Collection: "divisions",
-			SheetName:  "g-division",
+			SheetName:  "Divisions",
 			IsGlobal:   true,
 			Columns: []ColumnConfig{
 				{Field: "cm_id", Header: "Division ID", Type: FieldTypeNumber},
@@ -844,4 +854,25 @@ func GetGlobalExports() []ExportConfig {
 			},
 		},
 	}
+}
+
+// GetReadableYearExportSheetNames returns all sheet tab names for year exports
+// (no year placeholder resolution needed - names are static)
+func GetReadableYearExportSheetNames() []string {
+	configs := GetReadableYearExports()
+	names := make([]string, len(configs))
+	for i, config := range configs {
+		names[i] = config.SheetName
+	}
+	return names
+}
+
+// GetReadableGlobalExportSheetNames returns all sheet tab names for global exports
+func GetReadableGlobalExportSheetNames() []string {
+	configs := GetReadableGlobalExports()
+	names := make([]string, len(configs))
+	for i, config := range configs {
+		names[i] = config.SheetName
+	}
+	return names
 }

@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useApiWithAuth } from '../hooks/useApiWithAuth';
 import { syncService } from '../services/sync';
 import { useMutation } from '@tanstack/react-query';
-import { RefreshCw, Loader2, User, Home, ChevronDown, Menu, X, Sun, Moon, TreePine, Clock, LogOut, Settings, BarChart3, FileSpreadsheet } from 'lucide-react';
+import { RefreshCw, Loader2, User, Home, ChevronDown, Menu, X, Sun, Moon, TreePine, Clock, LogOut, Settings, BarChart3 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import YearSelector from '../components/YearSelector';
 import CacheStatus from '../components/CacheStatus';
@@ -92,18 +92,6 @@ export const AppLayout = () => {
     mutationFn: () => syncService.refreshBunking(fetchWithAuth),
     onError: (error: Error) => {
       toast.error(`Failed to refresh cabin assignments: ${error.message}`);
-    },
-  });
-
-  // Google Sheets export mutation - uses env var year (not dropdown)
-  // Backend handles current year + globals when no params are passed
-  const sheetsExportMutation = useMutation({
-    mutationFn: () => syncService.exportToGoogleSheets(fetchWithAuth),
-    onSuccess: () => {
-      toast.success('Google Sheets export started');
-    },
-    onError: (error: Error) => {
-      toast.error(`Failed to export: ${error.message}`);
     },
   });
 
@@ -557,29 +545,6 @@ export const AppLayout = () => {
                       <span>Refresh Bunking</span>
                     </button>
                   </>
-                )}
-
-                {/* Metrics-only: Sheets export */}
-                {activeProgram === 'metrics' && (
-                  <button
-                    onClick={() => {
-                      toast('Exporting to Google Sheets...', {
-                        icon: '📊',
-                        duration: 2000,
-                      });
-                      sheetsExportMutation.mutate();
-                      setIsMobileMenuOpen(false);
-                    }}
-                    disabled={sheetsExportMutation.isPending}
-                    className="btn-primary w-full"
-                  >
-                    {sheetsExportMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <FileSpreadsheet className="h-4 w-4" />
-                    )}
-                    <span>Export to Sheets</span>
-                  </button>
                 )}
 
                 {/* Sign Out - Mobile */}

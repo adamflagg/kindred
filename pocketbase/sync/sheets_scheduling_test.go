@@ -5,56 +5,8 @@ import (
 )
 
 // =============================================================================
-// Phase 6-7: Scheduled and Historical Export Tests
+// Export Options and Year Parameter Tests
 // =============================================================================
-
-func TestGoogleSheetsExport_SyncGlobalsOnly_MethodExists(_ *testing.T) {
-	// Test that SyncGlobalsOnly method exists and is callable
-	// Actual DB interaction is tested in integration tests
-	mock := NewMockSheetsWriter()
-	export := &GoogleSheetsExport{
-		sheetsWriter:  mock,
-		spreadsheetID: "test-spreadsheet-id",
-		year:          2025,
-		// Note: App is nil, so DB queries will fail
-	}
-
-	// Method should exist and be callable (will error due to nil App)
-	_ = export.SyncGlobalsOnly
-
-	// The method signature test - we just verify it compiles
-	// Integration tests will verify actual behavior with DB
-}
-
-func TestGoogleSheetsExport_SyncDailyOnly_MethodExists(_ *testing.T) {
-	// Test that SyncDailyOnly method exists and is callable
-	mock := NewMockSheetsWriter()
-	export := &GoogleSheetsExport{
-		sheetsWriter:  mock,
-		spreadsheetID: "test-spreadsheet-id",
-		year:          2025,
-	}
-
-	// Method should exist and be callable
-	_ = export.SyncDailyOnly
-
-	// Integration tests will verify actual behavior with DB
-}
-
-func TestGoogleSheetsExport_SyncForYears_MethodExists(_ *testing.T) {
-	// Test that SyncForYears method exists and is callable
-	mock := NewMockSheetsWriter()
-	export := &GoogleSheetsExport{
-		sheetsWriter:  mock,
-		spreadsheetID: "test-spreadsheet-id",
-		year:          2025,
-	}
-
-	// Method should exist and be callable
-	_ = export.SyncForYears
-
-	// Integration tests will verify actual behavior with DB
-}
 
 func TestGoogleSheetsExportOptions_DefaultValues(t *testing.T) {
 	// Test default export options
@@ -112,37 +64,6 @@ func TestGoogleSheetsExportOptions_DailyOnlyMode(t *testing.T) {
 	}
 }
 
-func TestSheetsExportServiceNames(t *testing.T) {
-	// Test that service names for scheduling are defined
-	names := GetSheetsExportServiceNames()
-
-	// Should have at least the main service
-	hasMain := false
-	hasGlobals := false
-	hasDaily := false
-
-	for _, name := range names {
-		switch name {
-		case "google_sheets_export":
-			hasMain = true
-		case "google_sheets_export_globals":
-			hasGlobals = true
-		case "google_sheets_export_daily":
-			hasDaily = true
-		}
-	}
-
-	if !hasMain {
-		t.Error("Expected google_sheets_export service name")
-	}
-	if !hasGlobals {
-		t.Error("Expected google_sheets_export_globals service name")
-	}
-	if !hasDaily {
-		t.Error("Expected google_sheets_export_daily service name")
-	}
-}
-
 func TestParseExportYearsParam(t *testing.T) {
 	// Test parsing years parameter from API request
 	tests := []struct {
@@ -197,41 +118,5 @@ func TestValidateExportYears(t *testing.T) {
 					tt.years, tt.maxYear, err, tt.wantErr)
 			}
 		})
-	}
-}
-
-func TestGoogleSheetsExport_SyncYearData_UpdatesYear(t *testing.T) {
-	// Test that syncYearData updates g.year to the target year
-	// This is critical for historical exports where loadPersons/loadSessions
-	// use g.year to filter records by the correct year
-	mock := NewMockSheetsWriter()
-	export := &GoogleSheetsExport{
-		sheetsWriter:  mock,
-		spreadsheetID: "test-spreadsheet-id",
-		year:          2025, // Initial year (from env)
-	}
-
-	// Verify initial state
-	if export.year != 2025 {
-		t.Errorf("Expected initial year to be 2025, got %d", export.year)
-	}
-
-	// Note: syncYearData would fail without App/DB, but the year assignment
-	// happens at the very start of the method, so we can verify the fix
-	// by checking that the struct field is accessible and the method signature
-	// accepts a year parameter that should update the struct field.
-	//
-	// Full integration test would verify loadPersons/loadSessions use correct year.
-	//
-	// The fix (g.year = year at start of syncYearData) ensures that when
-	// SyncForYears(ctx, []int{2017, 2024}, true) is called:
-	// - syncYearData(ctx, 2017) sets g.year = 2017
-	// - loadPersons() then queries "year = 2017" instead of "year = 2025"
-	// - loadSessions() then queries "year = 2017" instead of "year = 2025"
-
-	// Verify year field is writable (the fix modifies it)
-	export.year = 2017
-	if export.year != 2017 {
-		t.Errorf("Expected year to be updatable to 2017, got %d", export.year)
 	}
 }

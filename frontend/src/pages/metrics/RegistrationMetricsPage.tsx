@@ -4,8 +4,6 @@
  */
 
 import { useState } from 'react';
-import { Link } from 'react-router';
-import { Settings } from 'lucide-react';
 import { useCurrentYear } from '../../hooks/useCurrentYear';
 import { CompareYearSelector } from '../../components/metrics/CompareYearSelector';
 import { FilterBar } from '../../components/metrics/FilterBar';
@@ -33,21 +31,12 @@ export function RegistrationMetricsPage() {
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-8">
-        {/* Header with Admin Shortcut */}
-        <div className="mb-6 flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Registration Metrics</h1>
-            <p className="mt-1 text-muted-foreground">
-              Analyze registration data and retention trends
-            </p>
-          </div>
-          <Link
-            to="/summer/admin"
-            className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-            title="Admin Settings"
-          >
-            <Settings className="h-5 w-5" />
-          </Link>
+        {/* Header */}
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-foreground">Registration Metrics</h1>
+          <p className="mt-1 text-muted-foreground">
+            Analyze registration data and retention trends
+          </p>
         </div>
 
         {/* Compare Year Selector + Filters */}

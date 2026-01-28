@@ -13,7 +13,7 @@ func TestHouseholdCustomFieldValuesSync_Name(t *testing.T) {
 	s := &HouseholdCustomFieldValuesSync{}
 
 	got := s.Name()
-	want := "household_custom_values"
+	want := serviceNameHouseholdCustomValues
 
 	if got != want {
 		t.Errorf("HouseholdCustomFieldValuesSync.Name() = %q, want %q", got, want)

@@ -243,14 +243,14 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 		return handleIndividualSync(e, scheduler, "session_groups")
 	}))
 
-	// Google Sheets export endpoint
-	e.Router.POST("/api/custom/sync/google-sheets-export", func(e *core.RequestEvent) error {
+	// Multi-workbook export endpoint (per-year workbooks)
+	e.Router.POST("/api/custom/sync/multi-workbook-export", func(e *core.RequestEvent) error {
 		// Check authentication
 		if e.Auth == nil {
 			return apis.NewUnauthorizedError("Authentication required", nil)
 		}
 
-		return handleGoogleSheetsExport(e, scheduler)
+		return handleMultiWorkbookExport(e, scheduler)
 	})
 
 	// Person tag definitions sync
@@ -648,7 +648,7 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 		"family_camp_derived",    // Computed from custom values (depends on person_custom_values, household_custom_values)
 		"bunk_requests",
 		"process_requests",
-		"google_sheets_export",
+		"multi_workbook_export",
 		// On-demand syncs (not part of daily sync)
 		"person_custom_values",
 		"household_custom_values",
@@ -917,22 +917,17 @@ func handleTestConnection(e *core.RequestEvent, scheduler *Scheduler) error {
 	})
 }
 
-// handleGoogleSheetsExport handles manual triggering of Google Sheets export
-// Accepts optional query parameter: years (comma-separated list of years to export)
-func handleGoogleSheetsExport(e *core.RequestEvent, scheduler *Scheduler) error {
+// handleMultiWorkbookExport handles the multi-workbook export
+// Exports globals to a dedicated workbook and year data to per-year workbooks.
+// Query parameters:
+//   - years: comma-separated list of years to export (empty = current year)
+//   - includeGlobals: "true" to include globals export (default: true for current year, false for historical)
+func handleMultiWorkbookExport(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Check if Google Sheets is configured
 	if !google.IsEnabled() {
 		return e.JSON(http.StatusBadRequest, map[string]interface{}{
 			"error": "Google Sheets export is not enabled",
 			"hint":  "Set GOOGLE_SHEETS_ENABLED=true and configure credentials",
-		})
-	}
-
-	spreadsheetID := google.GetSpreadsheetID()
-	if spreadsheetID == "" {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
-			"error": "Google Sheets spreadsheet ID not configured",
-			"hint":  "Set GOOGLE_SHEETS_SPREADSHEET_ID environment variable",
 		})
 	}
 
@@ -945,9 +940,13 @@ func handleGoogleSheetsExport(e *core.RequestEvent, scheduler *Scheduler) error 
 		})
 	}
 
-	// Parse optional includeGlobals parameter (defaults to false)
+	// Parse optional includeGlobals parameter
+	// Default: true for current year sync, false for historical
 	includeGlobalsParam := e.Request.URL.Query().Get("includeGlobals")
-	includeGlobals := includeGlobalsParam == boolTrueStr || includeGlobalsParam == "1"
+	includeGlobals := len(years) == 0 // Default to true for current year
+	if includeGlobalsParam != "" {
+		includeGlobals = includeGlobalsParam == boolTrueStr || includeGlobalsParam == "1"
+	}
 
 	// Validate years if provided
 	if len(years) > 0 {
@@ -962,20 +961,21 @@ func handleGoogleSheetsExport(e *core.RequestEvent, scheduler *Scheduler) error 
 	orchestrator := scheduler.GetOrchestrator()
 
 	// Check if already running
-	if orchestrator.IsRunning("google_sheets_export") {
+	if orchestrator.IsRunning("multi_workbook_export") {
 		return e.JSON(http.StatusConflict, map[string]interface{}{
-			"error":    "Google Sheets export already in progress",
+			"error":    "Multi-workbook export already in progress",
 			"status":   "running",
-			"syncType": "google_sheets_export",
+			"syncType": "multi_workbook_export",
 		})
 	}
 
-	// Get the service to call directly for year-specific exports
-	service := orchestrator.GetService("google_sheets_export")
-	sheetsExport, ok := service.(*GoogleSheetsExport)
-	if !ok || sheetsExport == nil {
+	// Get the service
+	service := orchestrator.GetService("multi_workbook_export")
+	multiExport, ok := service.(*MultiWorkbookExport)
+	if !ok || multiExport == nil {
 		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
-			"error": "Google Sheets export service not available",
+			"error": "Multi-workbook export service not available",
+			"hint":  "Ensure GOOGLE_SHEETS_ENABLED=true and credentials are configured",
 		})
 	}
 
@@ -985,28 +985,28 @@ func handleGoogleSheetsExport(e *core.RequestEvent, scheduler *Scheduler) error 
 		defer cancel()
 
 		if len(years) > 0 {
-			// Export specific years (optionally with globals)
-			slog.Info("Starting Google Sheets export for specific years",
+			// Export specific years
+			slog.Info("Starting multi-workbook export for specific years",
 				"years", years,
 				"includeGlobals", includeGlobals,
 			)
-			if err := sheetsExport.SyncForYears(ctx, years, includeGlobals); err != nil {
-				slog.Error("Google Sheets export failed", "error", err, "years", years)
+			if err := multiExport.SyncForYears(ctx, years, includeGlobals); err != nil {
+				slog.Error("Multi-workbook export failed", "error", err, "years", years)
 			}
 		} else {
 			// Default: full export (globals + current year)
-			if err := orchestrator.RunSingleSync(ctx, "google_sheets_export"); err != nil {
-				slog.Error("Google Sheets export failed", "error", err)
+			slog.Info("Starting multi-workbook export for current year")
+			if err := multiExport.Sync(ctx); err != nil {
+				slog.Error("Multi-workbook export failed", "error", err)
 			}
 		}
 	}()
 
 	// Build response
 	response := map[string]interface{}{
-		"message":        "Google Sheets export started",
-		"status":         "started",
-		"syncType":       "google_sheets_export",
-		"spreadsheet_id": spreadsheetID,
+		"message":  "Multi-workbook export started",
+		"status":   "started",
+		"syncType": "multi_workbook_export",
 	}
 	if len(years) > 0 {
 		response["years"] = years
