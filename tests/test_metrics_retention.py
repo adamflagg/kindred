@@ -11,7 +11,6 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-
 # ============================================================================
 # Test fixtures
 # ============================================================================

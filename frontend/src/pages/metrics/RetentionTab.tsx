@@ -17,7 +17,8 @@ import { MetricCard } from '../../components/metrics/MetricCard';
 import { BreakdownChart } from '../../components/metrics/BreakdownChart';
 import { RetentionSessionSelector } from '../../components/metrics/RetentionSessionSelector';
 import { RetentionRateLine } from '../../components/metrics/RetentionRateLine';
-import { RetentionTrendChart } from '../../components/metrics/RetentionTrendChart';
+import { GenderStackedChart } from '../../components/metrics/GenderStackedChart';
+import { GradeEnrollmentChart } from '../../components/metrics/GradeEnrollmentChart';
 import { DemographicTable } from '../../components/metrics/DemographicTable';
 import { getSessionChartLabel } from '../../utils/sessionDisplay';
 import { Loader2, AlertCircle, TrendingUp, TrendingDown, Minus } from 'lucide-react';
@@ -213,24 +214,26 @@ export function RetentionTab({ currentYear, sessionTypes }: RetentionTabProps) {
           title="Overall Retention Rate Trend"
           height={250}
         />
-        {/* Grouped bar chart for gender breakdown across years */}
-        <RetentionTrendChart
-          data={trendsData.years}
-          breakdownType="gender"
-          title="Retention by Gender (3-Year Trend)"
-          height={250}
-        />
+        {/* 100% stacked bar chart for gender composition by year */}
+        {trendsData.enrollment_by_year && trendsData.enrollment_by_year.length > 0 && (
+          <GenderStackedChart
+            data={trendsData.enrollment_by_year}
+            title="Gender Composition (3-Year Comparison)"
+            height={250}
+          />
+        )}
       </div>
 
       {/* Trend Charts Row 2 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Grouped bar chart for grade breakdown across years */}
-        <RetentionTrendChart
-          data={trendsData.years}
-          breakdownType="grade"
-          title="Retention by Grade (3-Year Trend)"
-          height={300}
-        />
+        {/* Grouped bar chart for enrollment by grade across years */}
+        {trendsData.enrollment_by_year && trendsData.enrollment_by_year.length > 0 && (
+          <GradeEnrollmentChart
+            data={trendsData.enrollment_by_year}
+            title="Enrollment by Grade (3-Year Comparison)"
+            height={300}
+          />
+        )}
         {/* Session breakdown for current year */}
         <BreakdownChart
           title={`Retention by Session (${baseYear}→${currentYear})`}
