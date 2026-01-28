@@ -395,3 +395,133 @@ class TestUserInfoCaching:
 
         # Should return claims unchanged (no userinfo fetch for PB tokens)
         assert result == claims
+
+
+class TestTokenLoggingSecurity:
+    """Tests for secure token logging (no token content in logs)."""
+
+    @pytest.mark.asyncio
+    async def test_token_logging_does_not_include_token_content(self):
+        """Test that token logging only logs length, not token content."""
+        app = MagicMock()
+
+        with patch("bunking.auth_middleware._is_docker_environment", return_value=False):
+            with patch.dict("os.environ", {"OIDC_ISSUER": "https://auth.example.com"}):
+                with patch("bunking.auth_middleware.JWTValidator") as mock_jwt:
+                    with patch("bunking.auth_middleware.PocketBaseTokenValidator") as mock_pb:
+                        mock_jwt.return_value.issuer = "https://auth.example.com"
+                        mock_jwt.return_value.validate_token.return_value = None
+                        mock_pb.return_value.validate_token.return_value = None
+                        middleware = AuthMiddleware(app, "production", "admin")
+
+        request = MagicMock()
+        request.headers = {"Authorization": "Bearer secret-token-12345678901234567890"}
+
+        # Capture log messages
+        with patch("bunking.auth_middleware.logger") as mock_logger:
+            await middleware._extract_user_from_jwt(request)
+
+            # Check all debug calls to ensure none contain token preview
+            for call in mock_logger.debug.call_args_list:
+                log_message = str(call)
+                # Token content should NOT appear in logs
+                assert "secret-token" not in log_message
+                assert "12345678901234567890" not in log_message
+                # But length logging is OK
+                if "Token found" in log_message:
+                    assert "length" in log_message.lower()
+
+
+class TestPocketBaseUrlValidation:
+    """Tests for POCKETBASE_URL validation in production mode."""
+
+    def test_init_production_rejects_untrusted_pocketbase_url(self):
+        """Test that production mode rejects POCKETBASE_URL not on trusted network."""
+        app = MagicMock()
+
+        with patch("bunking.auth_middleware._is_docker_environment", return_value=False):
+            with patch.dict(
+                "os.environ",
+                {
+                    "OIDC_ISSUER": "https://auth.example.com",
+                    "POCKETBASE_URL": "https://evil.example.com:8090",
+                },
+            ):
+                with patch("bunking.auth_middleware.JWTValidator"):
+                    with pytest.raises(ValueError, match="POCKETBASE_URL must be on trusted network"):
+                        AuthMiddleware(app, "production", "admin")
+
+    def test_init_production_accepts_localhost_pocketbase_url(self):
+        """Test that production mode accepts localhost POCKETBASE_URL."""
+        app = MagicMock()
+
+        with patch("bunking.auth_middleware._is_docker_environment", return_value=False):
+            with patch.dict(
+                "os.environ",
+                {
+                    "OIDC_ISSUER": "https://auth.example.com",
+                    "POCKETBASE_URL": "http://localhost:8090",
+                },
+            ):
+                with patch("bunking.auth_middleware.JWTValidator"):
+                    with patch("bunking.auth_middleware.PocketBaseTokenValidator"):
+                        middleware = AuthMiddleware(app, "production", "admin")
+                        assert middleware.pb_token_validator is not None
+
+    def test_init_production_accepts_127_0_0_1_pocketbase_url(self):
+        """Test that production mode accepts 127.0.0.1 POCKETBASE_URL."""
+        app = MagicMock()
+
+        with patch("bunking.auth_middleware._is_docker_environment", return_value=False):
+            with patch.dict(
+                "os.environ",
+                {
+                    "OIDC_ISSUER": "https://auth.example.com",
+                    "POCKETBASE_URL": "http://127.0.0.1:8090",
+                },
+            ):
+                with patch("bunking.auth_middleware.JWTValidator"):
+                    with patch("bunking.auth_middleware.PocketBaseTokenValidator"):
+                        middleware = AuthMiddleware(app, "production", "admin")
+                        assert middleware.pb_token_validator is not None
+
+    def test_init_production_accepts_pocketbase_hostname(self):
+        """Test that production mode accepts 'pocketbase' hostname (Docker internal)."""
+        app = MagicMock()
+
+        with patch("bunking.auth_middleware._is_docker_environment", return_value=False):
+            with patch.dict(
+                "os.environ",
+                {
+                    "OIDC_ISSUER": "https://auth.example.com",
+                    "POCKETBASE_URL": "http://pocketbase:8090",
+                },
+            ):
+                with patch("bunking.auth_middleware.JWTValidator"):
+                    with patch("bunking.auth_middleware.PocketBaseTokenValidator"):
+                        middleware = AuthMiddleware(app, "production", "admin")
+                        assert middleware.pb_token_validator is not None
+
+    def test_init_production_default_pocketbase_url_is_trusted(self):
+        """Test that the default POCKETBASE_URL (127.0.0.1) is trusted."""
+        app = MagicMock()
+
+        with patch("bunking.auth_middleware._is_docker_environment", return_value=False):
+            with patch.dict(
+                "os.environ",
+                {"OIDC_ISSUER": "https://auth.example.com"},
+                clear=False,
+            ):
+                # Remove POCKETBASE_URL to use default
+                import os
+
+                env_backup = os.environ.pop("POCKETBASE_URL", None)
+                try:
+                    with patch("bunking.auth_middleware.JWTValidator"):
+                        with patch("bunking.auth_middleware.PocketBaseTokenValidator"):
+                            # Should not raise - default is trusted
+                            middleware = AuthMiddleware(app, "production", "admin")
+                            assert middleware.pb_token_validator is not None
+                finally:
+                    if env_backup:
+                        os.environ["POCKETBASE_URL"] = env_backup

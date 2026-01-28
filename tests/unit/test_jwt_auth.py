@@ -562,6 +562,63 @@ class TestJWTValidatorValidateToken:
 # =============================================================================
 
 
+class TestJWTValidatorLogLevels:
+    """Tests for appropriate log levels in JWT validation."""
+
+    def test_missing_kid_logs_at_debug_level(self, mock_oidc_discovery: dict[str, Any]) -> None:
+        """Test that missing kid in token header logs at DEBUG, not WARNING."""
+        with patch("httpx.get") as mock_get:
+            discovery_response = MagicMock()
+            discovery_response.json.return_value = mock_oidc_discovery
+            discovery_response.raise_for_status = MagicMock()
+
+            mock_get.return_value = discovery_response
+
+            validator = JWTValidator("https://auth.example.com")
+
+            payload = {"sub": "user-123"}
+            # Token without kid in header
+            token = create_mock_token(payload, {"alg": "RS256", "typ": "JWT"})
+
+            with patch("bunking.jwt_auth.logger") as mock_logger:
+                validator._get_signing_key(token)
+
+                # Should log at DEBUG, not WARNING
+                mock_logger.debug.assert_any_call("No kid in token header")
+                # Ensure WARNING was NOT called with this message
+                for call in mock_logger.warning.call_args_list:
+                    assert "No kid in token header" not in str(call)
+
+    def test_no_signing_key_logs_at_debug_level(
+        self, mock_oidc_discovery: dict[str, Any], mock_jwks: dict[str, Any]
+    ) -> None:
+        """Test that 'No signing key found' logs at DEBUG, not ERROR."""
+        with patch("httpx.get") as mock_get:
+            discovery_response = MagicMock()
+            discovery_response.json.return_value = mock_oidc_discovery
+            discovery_response.raise_for_status = MagicMock()
+
+            jwks_response = MagicMock()
+            jwks_response.json.return_value = {"keys": []}  # Empty JWKS
+            jwks_response.raise_for_status = MagicMock()
+
+            mock_get.side_effect = [discovery_response, jwks_response]
+
+            validator = JWTValidator("https://auth.example.com")
+
+            payload = {"sub": "user-123"}
+            token = create_mock_token(payload)
+
+            with patch("bunking.jwt_auth.logger") as mock_logger:
+                validator.validate_token(token)
+
+                # Should log at DEBUG, not ERROR
+                mock_logger.debug.assert_any_call("No signing key found")
+                # Ensure ERROR was NOT called with this message
+                for call in mock_logger.error.call_args_list:
+                    assert "No signing key found" not in str(call)
+
+
 class TestPocketBaseTokenValidator:
     """Tests for PocketBaseTokenValidator class."""
 
