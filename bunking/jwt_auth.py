@@ -182,7 +182,7 @@ class JWTValidator:
             kid = unverified_header.get("kid")
 
             if not kid:
-                logger.warning("No kid in token header")
+                logger.debug("No kid in token header")
                 return None
 
             # Fetch JWKS
@@ -214,7 +214,7 @@ class JWTValidator:
             # Get signing key
             signing_key = self._get_signing_key(token)
             if not signing_key:
-                logger.error("No signing key found")
+                logger.debug("No signing key found")
                 return None
 
             # Validate token

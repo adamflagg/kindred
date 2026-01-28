@@ -108,6 +108,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # Initialize PocketBase token validator as fallback
             # This handles tokens issued by PocketBase (not OIDC directly)
             pocketbase_url = os.getenv("POCKETBASE_URL", "http://127.0.0.1:8090")
+
+            # Security: Validate POCKETBASE_URL is on trusted network
+            allowed_prefixes = ("http://127.0.0.1", "http://localhost", "http://pocketbase")
+            if not pocketbase_url.startswith(allowed_prefixes):
+                raise ValueError(f"POCKETBASE_URL must be on trusted network, got: {pocketbase_url}")
+
             self.pb_token_validator = PocketBaseTokenValidator(pocketbase_url)
             logger.info(f"PocketBase token validator initialized for {pocketbase_url}")
 
@@ -122,7 +128,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             logger.debug("No bearer token found in Authorization header")
             return None
 
-        logger.debug(f"Token found, length: {len(token)}, first 20 chars: {token[:20]}...")
+        logger.debug(f"Token found, length: {len(token)}")
 
         # Try OIDC validation first
         claims: dict[str, Any] | None = None
