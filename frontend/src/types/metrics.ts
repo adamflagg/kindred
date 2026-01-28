@@ -139,6 +139,28 @@ export interface RetentionBySessionBunk {
   retention_rate: number;
 }
 
+// New retention breakdown types for retention tab redesign
+export interface RetentionBySummerYears {
+  summer_years: number;
+  base_count: number;
+  returned_count: number;
+  retention_rate: number;
+}
+
+export interface RetentionByFirstSummerYear {
+  first_summer_year: number;
+  base_count: number;
+  returned_count: number;
+  retention_rate: number;
+}
+
+export interface RetentionByPriorSession {
+  prior_session: string;
+  base_count: number;
+  returned_count: number;
+  retention_rate: number;
+}
+
 export interface RetentionMetrics {
   base_year: number;
   compare_year: number;
@@ -150,12 +172,16 @@ export interface RetentionMetrics {
   by_grade: RetentionByGrade[];
   by_session: RetentionBySession[];
   by_years_at_camp: RetentionByYearsAtCamp[];
-  // New demographic breakdowns (from camper_history)
+  // Demographic breakdowns (from camper_history)
   by_school?: RetentionBySchool[];
   by_city?: RetentionByCity[];
   by_synagogue?: RetentionBySynagogue[];
   by_first_year?: RetentionByFirstYear[];
   by_session_bunk?: RetentionBySessionBunk[];
+  // New breakdowns for retention tab redesign (calculated from attendees)
+  by_summer_years?: RetentionBySummerYears[];
+  by_first_summer_year?: RetentionByFirstSummerYear[];
+  by_prior_session?: RetentionByPriorSession[];
 }
 
 export interface RegistrationMetrics {

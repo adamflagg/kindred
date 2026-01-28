@@ -18,12 +18,13 @@ import type {
 export function useRetentionMetrics(
   baseYear: number,
   compareYear: number,
-  sessionTypes?: string
+  sessionTypes?: string,
+  sessionCmId?: number
 ) {
   const { fetchWithAuth } = useApiWithAuth();
 
   return useQuery({
-    queryKey: queryKeys.retention(baseYear, compareYear, sessionTypes),
+    queryKey: queryKeys.retention(baseYear, compareYear, sessionTypes, sessionCmId),
     queryFn: async (): Promise<RetentionMetrics> => {
       const params = new URLSearchParams({
         base_year: baseYear.toString(),
@@ -31,6 +32,9 @@ export function useRetentionMetrics(
       });
       if (sessionTypes) {
         params.set('session_types', sessionTypes);
+      }
+      if (sessionCmId !== undefined) {
+        params.set('session_cm_id', sessionCmId.toString());
       }
 
       const response = await fetchWithAuth(`/api/metrics/retention?${params}`);

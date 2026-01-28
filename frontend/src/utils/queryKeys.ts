@@ -79,10 +79,13 @@ export const queryKeys = {
   prompt: (name: string) => ['prompts', name] as const,
 
   // Metrics (Tier 1 - sync data, historical analysis)
-  retention: (baseYear: number, compareYear: number, sessionTypes?: string) =>
-    sessionTypes
-      ? (['metrics', 'retention', baseYear, compareYear, sessionTypes] as const)
-      : (['metrics', 'retention', baseYear, compareYear] as const),
+  retention: (baseYear: number, compareYear: number, sessionTypes?: string, sessionCmId?: number) =>
+    sessionCmId
+      ? (['metrics', 'retention', baseYear, compareYear, sessionTypes, sessionCmId] as const)
+      : sessionTypes
+        ? (['metrics', 'retention', baseYear, compareYear, sessionTypes] as const)
+        : (['metrics', 'retention', baseYear, compareYear] as const),
+  metricsSessions: (year: number) => ['metrics', 'sessions', year] as const,
   registration: (year: number, sessionTypes?: string, statuses?: string) =>
     sessionTypes || statuses
       ? (['metrics', 'registration', year, sessionTypes, statuses] as const)

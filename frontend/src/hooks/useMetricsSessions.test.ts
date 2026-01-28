@@ -63,12 +63,12 @@ describe('useMetricsSessions', () => {
 describe('RetentionMetrics types', () => {
   it('should include new breakdown types in RetentionMetrics interface', async () => {
     // Import the types to verify they exist
-    const types = await import('../types/metrics');
+    const typesModule = await import('../types/metrics');
 
     // New types should be exported
-    type RetentionBySummerYears = (typeof types)['RetentionBySummerYears'];
-    type RetentionByFirstSummerYear = (typeof types)['RetentionByFirstSummerYear'];
-    type RetentionByPriorSession = (typeof types)['RetentionByPriorSession'];
+    type RetentionBySummerYears = (typeof typesModule)['RetentionBySummerYears'];
+    type RetentionByFirstSummerYear = (typeof typesModule)['RetentionByFirstSummerYear'];
+    type RetentionByPriorSession = (typeof typesModule)['RetentionByPriorSession'];
 
     // If these type aliases work, the types exist
     // TypeScript will error at compile time if they don't exist
@@ -76,7 +76,8 @@ describe('RetentionMetrics types', () => {
     const _firstSummerYearCheck: RetentionByFirstSummerYear | undefined = undefined;
     const _priorSessionCheck: RetentionByPriorSession | undefined = undefined;
 
-    // These shouldn't throw
+    // Verify the module loaded and has expected keys
+    expect(typesModule).toBeDefined();
     expect(_summerYearsCheck).toBeUndefined();
     expect(_firstSummerYearCheck).toBeUndefined();
     expect(_priorSessionCheck).toBeUndefined();
