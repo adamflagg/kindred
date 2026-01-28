@@ -67,7 +67,9 @@ class TestRegistrationServiceCalculate:
         mock_repo = AsyncMock()
         # Setup minimal mock data
         mock_repo.fetch_attendees.return_value = [
-            MockAttendee(person_id=1, expand={"session": MockSession(cm_id=1000, name="Session 1", session_type="main")}),
+            MockAttendee(
+                person_id=1, expand={"session": MockSession(cm_id=1000, name="Session 1", session_type="main")}
+            ),
         ]
         mock_repo.fetch_persons.return_value = {
             1: MockPerson(person_id=1, gender="M", grade=5, years_at_camp=1),
@@ -161,7 +163,9 @@ class TestRegistrationServiceCalculate:
         mock_repo.fetch_attendees.return_value = [
             MockAttendee(person_id=1, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
             MockAttendee(person_id=2, expand={"session": MockSession(cm_id=2000, name="S2", session_type="embedded")}),
-            MockAttendee(person_id=3, expand={"session": MockSession(cm_id=3000, name="Family", session_type="family")}),
+            MockAttendee(
+                person_id=3, expand={"session": MockSession(cm_id=3000, name="Family", session_type="family")}
+            ),
         ]
         mock_repo.fetch_persons.return_value = {
             1: MockPerson(person_id=1, gender="M"),
@@ -216,7 +220,10 @@ class TestRegistrationServiceCalculate:
         mock_repo = AsyncMock()
         mock_repo.fetch_attendees.return_value = [
             MockAttendee(person_id=1, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
-            MockAttendee(person_id=2, expand={"session": MockSession(cm_id=1001, name="AG-S1", session_type="ag", parent_id=1000)}),
+            MockAttendee(
+                person_id=2,
+                expand={"session": MockSession(cm_id=1001, name="AG-S1", session_type="ag", parent_id=1000)},
+            ),
         ]
         mock_repo.fetch_persons.return_value = {
             1: MockPerson(person_id=1, gender="M"),
@@ -274,7 +281,10 @@ class TestRegistrationServiceCalculate:
         mock_repo.fetch_attendees.return_value = [
             MockAttendee(person_id=1, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
             MockAttendee(person_id=2, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
-            MockAttendee(person_id=3, expand={"session": MockSession(cm_id=1001, name="AG-S1", session_type="ag", parent_id=1000)}),
+            MockAttendee(
+                person_id=3,
+                expand={"session": MockSession(cm_id=1001, name="AG-S1", session_type="ag", parent_id=1000)},
+            ),
         ]
         mock_repo.fetch_persons.return_value = {
             1: MockPerson(person_id=1),
@@ -342,25 +352,35 @@ class TestRegistrationServiceStatusCategories:
         async def mock_fetch_attendees(year: int, status_filter: str | list[str] | None = None) -> list[Any]:
             if status_filter == ["enrolled"] or status_filter == "enrolled" or status_filter is None:
                 return [
-                    MockAttendee(person_id=1, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
-                    MockAttendee(person_id=2, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
+                    MockAttendee(
+                        person_id=1, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}
+                    ),
+                    MockAttendee(
+                        person_id=2, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}
+                    ),
                 ]
             elif status_filter == "waitlisted":
                 return [
-                    MockAttendee(person_id=3, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
+                    MockAttendee(
+                        person_id=3, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}
+                    ),
                 ]
             elif status_filter == "cancelled":
                 return [
-                    MockAttendee(person_id=4, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
-                    MockAttendee(person_id=5, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
-                    MockAttendee(person_id=6, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
+                    MockAttendee(
+                        person_id=4, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}
+                    ),
+                    MockAttendee(
+                        person_id=5, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}
+                    ),
+                    MockAttendee(
+                        person_id=6, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}
+                    ),
                 ]
             return []
 
         mock_repo.fetch_attendees.side_effect = mock_fetch_attendees
-        mock_repo.fetch_persons.return_value = {
-            i: MockPerson(person_id=i, gender="M") for i in range(1, 7)
-        }
+        mock_repo.fetch_persons.return_value = {i: MockPerson(person_id=i, gender="M") for i in range(1, 7)}
         mock_repo.fetch_sessions.return_value = {
             1000: MockSession(cm_id=1000, name="S1", session_type="main"),
         }
