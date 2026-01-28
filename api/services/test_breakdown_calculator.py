@@ -43,7 +43,7 @@ class TestBreakdownCalculator:
 
     def test_basic_gender_breakdown(self) -> None:
         """compute_breakdown computes correct stats for gender."""
-        from api.services.breakdown_calculator import BreakdownStats, compute_breakdown
+        from api.services.breakdown_calculator import compute_breakdown
         from api.services.extractors import extract_gender
 
         persons = {
@@ -319,7 +319,6 @@ class TestComputeRegistrationBreakdown:
     def test_basic_registration_breakdown(self) -> None:
         """compute_registration_breakdown counts correctly."""
         from api.services.breakdown_calculator import (
-            RegistrationBreakdownStats,
             compute_registration_breakdown,
         )
         from api.services.extractors import extract_gender

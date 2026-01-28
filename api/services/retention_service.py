@@ -86,14 +86,10 @@ class RetentionService:
         )
 
         # Get unique person IDs for base year, filtered by session
-        person_ids_base, attendee_sessions = self._filter_base_attendees(
-            attendees_base, session_types, session_cm_id
-        )
+        person_ids_base, attendee_sessions = self._filter_base_attendees(attendees_base, session_types, session_cm_id)
 
         # Get person IDs for compare year (no session filter needed)
-        person_ids_compare = {
-            getattr(a, "person_id", None) for a in attendees_compare if getattr(a, "person_id", None)
-        }
+        person_ids_compare = {getattr(a, "person_id", None) for a in attendees_compare if getattr(a, "person_id", None)}
 
         # Calculate returned campers
         returned_ids = person_ids_base & person_ids_compare
@@ -120,9 +116,7 @@ class RetentionService:
         )
 
         # Session breakdown with AG merging
-        by_session = self._build_session_breakdown(
-            person_ids_base, returned_ids, attendee_sessions, sessions_base
-        )
+        by_session = self._build_session_breakdown(person_ids_base, returned_ids, attendee_sessions, sessions_base)
 
         by_years_at_camp = self._build_retention_breakdown(
             person_ids_base, returned_ids, persons_base, extract_years_at_camp, RetentionByYearsAtCamp, "years"
@@ -174,9 +168,7 @@ class RetentionService:
             filter_none=True,
         )
 
-        by_session_bunk = self._build_session_bunk_breakdown(
-            person_ids_base, returned_ids, history_by_person
-        )
+        by_session_bunk = self._build_session_bunk_breakdown(person_ids_base, returned_ids, history_by_person)
 
         # Summer enrollment breakdowns (calculated from attendees history)
         enrollment_history = await self.repo.fetch_summer_enrollment_history(person_ids_base, base_year)
@@ -186,17 +178,13 @@ class RetentionService:
             enrollment_history, person_ids_base, prior_year
         )
 
-        by_summer_years = self._build_summer_years_breakdown(
-            person_ids_base, returned_ids, summer_years_by_person
-        )
+        by_summer_years = self._build_summer_years_breakdown(person_ids_base, returned_ids, summer_years_by_person)
 
         by_first_summer_year = self._build_first_summer_year_breakdown(
             person_ids_base, returned_ids, first_year_by_person
         )
 
-        by_prior_session = self._build_prior_session_breakdown(
-            person_ids_base, returned_ids, prior_sessions_by_person
-        )
+        by_prior_session = self._build_prior_session_breakdown(person_ids_base, returned_ids, prior_sessions_by_person)
 
         return RetentionMetricsResponse(
             base_year=base_year,
@@ -502,9 +490,7 @@ class RetentionService:
             for r in records:
                 if getattr(r, "year", 0) == prior_year:
                     expand = getattr(r, "expand", {}) or {}
-                    session = (
-                        expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
-                    )
+                    session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
                     if session:
                         session_name = getattr(session, "name", "")
                         if session_name:

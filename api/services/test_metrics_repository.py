@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -159,7 +159,7 @@ class TestMetricsRepositoryFetchPersons:
         result = await repo.fetch_persons(2025)
 
         # Keys should be int
-        for key in result.keys():
+        for key in result:
             assert isinstance(key, int)
 
     @pytest.mark.asyncio

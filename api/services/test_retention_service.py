@@ -72,11 +72,31 @@ class TestRetentionServiceCalculateRetention:
         mock_repo.fetch_attendees.side_effect = [
             # Base year attendees
             [
-                MockAttendee(person_id=1, year=2025, expand={"session": MockSession(cm_id=1000, name="Session 1", session_type="main")}),
-                MockAttendee(person_id=2, year=2025, expand={"session": MockSession(cm_id=1000, name="Session 1", session_type="main")}),
-                MockAttendee(person_id=3, year=2025, expand={"session": MockSession(cm_id=1000, name="Session 1", session_type="main")}),
-                MockAttendee(person_id=4, year=2025, expand={"session": MockSession(cm_id=1001, name="Session 2", session_type="main")}),
-                MockAttendee(person_id=5, year=2025, expand={"session": MockSession(cm_id=1001, name="Session 2", session_type="main")}),
+                MockAttendee(
+                    person_id=1,
+                    year=2025,
+                    expand={"session": MockSession(cm_id=1000, name="Session 1", session_type="main")},
+                ),
+                MockAttendee(
+                    person_id=2,
+                    year=2025,
+                    expand={"session": MockSession(cm_id=1000, name="Session 1", session_type="main")},
+                ),
+                MockAttendee(
+                    person_id=3,
+                    year=2025,
+                    expand={"session": MockSession(cm_id=1000, name="Session 1", session_type="main")},
+                ),
+                MockAttendee(
+                    person_id=4,
+                    year=2025,
+                    expand={"session": MockSession(cm_id=1001, name="Session 2", session_type="main")},
+                ),
+                MockAttendee(
+                    person_id=5,
+                    year=2025,
+                    expand={"session": MockSession(cm_id=1001, name="Session 2", session_type="main")},
+                ),
             ],
             # Compare year attendees (persons 1, 2, 4 returned)
             [
@@ -135,11 +155,21 @@ class TestRetentionServiceCalculateRetention:
         # 2 males (1 returned), 3 females (2 returned)
         mock_repo.fetch_attendees.side_effect = [
             [
-                MockAttendee(person_id=1, year=2025, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
-                MockAttendee(person_id=2, year=2025, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
-                MockAttendee(person_id=3, year=2025, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
-                MockAttendee(person_id=4, year=2025, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
-                MockAttendee(person_id=5, year=2025, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
+                MockAttendee(
+                    person_id=1, year=2025, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}
+                ),
+                MockAttendee(
+                    person_id=2, year=2025, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}
+                ),
+                MockAttendee(
+                    person_id=3, year=2025, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}
+                ),
+                MockAttendee(
+                    person_id=4, year=2025, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}
+                ),
+                MockAttendee(
+                    person_id=5, year=2025, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}
+                ),
             ],
             [
                 MockAttendee(person_id=1, year=2026, expand={}),
@@ -190,9 +220,17 @@ class TestRetentionServiceCalculateRetention:
         # Base year has main and ag sessions
         mock_repo.fetch_attendees.side_effect = [
             [
-                MockAttendee(person_id=1, year=2025, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
-                MockAttendee(person_id=2, year=2025, expand={"session": MockSession(cm_id=1001, name="AG", session_type="ag")}),
-                MockAttendee(person_id=3, year=2025, expand={"session": MockSession(cm_id=1002, name="Family", session_type="family")}),
+                MockAttendee(
+                    person_id=1, year=2025, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}
+                ),
+                MockAttendee(
+                    person_id=2, year=2025, expand={"session": MockSession(cm_id=1001, name="AG", session_type="ag")}
+                ),
+                MockAttendee(
+                    person_id=3,
+                    year=2025,
+                    expand={"session": MockSession(cm_id=1002, name="Family", session_type="family")},
+                ),
             ],
             [
                 MockAttendee(person_id=1, year=2026, expand={}),
@@ -233,9 +271,15 @@ class TestRetentionServiceCalculateRetention:
 
         mock_repo.fetch_attendees.side_effect = [
             [
-                MockAttendee(person_id=1, year=2025, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
-                MockAttendee(person_id=2, year=2025, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
-                MockAttendee(person_id=3, year=2025, expand={"session": MockSession(cm_id=1001, name="S2", session_type="main")}),
+                MockAttendee(
+                    person_id=1, year=2025, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}
+                ),
+                MockAttendee(
+                    person_id=2, year=2025, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}
+                ),
+                MockAttendee(
+                    person_id=3, year=2025, expand={"session": MockSession(cm_id=1001, name="S2", session_type="main")}
+                ),
             ],
             [
                 MockAttendee(person_id=1, year=2026, expand={}),
@@ -300,8 +344,16 @@ class TestRetentionServiceCalculateRetention:
         # Person 1 in main, person 2 in AG (parent is main)
         mock_repo.fetch_attendees.side_effect = [
             [
-                MockAttendee(person_id=1, year=2025, expand={"session": MockSession(cm_id=1000, name="Session 1", session_type="main")}),
-                MockAttendee(person_id=2, year=2025, expand={"session": MockSession(cm_id=1001, name="AG Session", session_type="ag", parent_id=1000)}),
+                MockAttendee(
+                    person_id=1,
+                    year=2025,
+                    expand={"session": MockSession(cm_id=1000, name="Session 1", session_type="main")},
+                ),
+                MockAttendee(
+                    person_id=2,
+                    year=2025,
+                    expand={"session": MockSession(cm_id=1001, name="AG Session", session_type="ag", parent_id=1000)},
+                ),
             ],
             [
                 MockAttendee(person_id=1, year=2026, expand={}),
@@ -346,8 +398,12 @@ class TestRetentionServiceComputeSummerMetrics:
         mock_repo.fetch_attendees.side_effect = [
             # Base year
             [
-                MockAttendee(person_id=1, year=2025, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
-                MockAttendee(person_id=2, year=2025, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
+                MockAttendee(
+                    person_id=1, year=2025, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}
+                ),
+                MockAttendee(
+                    person_id=2, year=2025, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}
+                ),
             ],
             # Compare year
             [MockAttendee(person_id=1, year=2026, expand={})],
@@ -365,10 +421,18 @@ class TestRetentionServiceComputeSummerMetrics:
 
         # Summer enrollment history
         mock_repo.fetch_summer_enrollment_history.return_value = [
-            MockAttendee(person_id=1, year=2023, expand={"session": MockSession(cm_id=900, name="S1-2023", session_type="main")}),
-            MockAttendee(person_id=1, year=2024, expand={"session": MockSession(cm_id=950, name="S1-2024", session_type="main")}),
-            MockAttendee(person_id=1, year=2025, expand={"session": MockSession(cm_id=1000, name="S1-2025", session_type="main")}),
-            MockAttendee(person_id=2, year=2025, expand={"session": MockSession(cm_id=1000, name="S1-2025", session_type="main")}),
+            MockAttendee(
+                person_id=1, year=2023, expand={"session": MockSession(cm_id=900, name="S1-2023", session_type="main")}
+            ),
+            MockAttendee(
+                person_id=1, year=2024, expand={"session": MockSession(cm_id=950, name="S1-2024", session_type="main")}
+            ),
+            MockAttendee(
+                person_id=1, year=2025, expand={"session": MockSession(cm_id=1000, name="S1-2025", session_type="main")}
+            ),
+            MockAttendee(
+                person_id=2, year=2025, expand={"session": MockSession(cm_id=1000, name="S1-2025", session_type="main")}
+            ),
         ]
         mock_repo.build_history_by_person = MagicMock(return_value={})
 
