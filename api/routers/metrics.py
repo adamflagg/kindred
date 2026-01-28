@@ -25,12 +25,15 @@ from ..schemas.metrics import (
     NewVsReturning,
     RegistrationMetricsResponse,
     RetentionByCity,
+    RetentionByFirstSummerYear,
     RetentionByFirstYear,
     RetentionByGender,
     RetentionByGrade,
+    RetentionByPriorSession,
     RetentionBySchool,
     RetentionBySession,
     RetentionBySessionBunk,
+    RetentionBySummerYears,
     RetentionBySynagogue,
     RetentionByYearsAtCamp,
     RetentionMetricsResponse,
@@ -219,6 +222,111 @@ async def fetch_camper_history_for_year(year: int, session_types: list[str] | No
 
 
 # ============================================================================
+# Summer Enrollment History Helpers
+# ============================================================================
+
+
+async def fetch_summer_enrollment_history(
+    person_ids: set[int],
+    max_year: int,
+) -> list[Any]:
+    """Fetch ALL summer enrollments for given persons in a SINGLE batched query.
+
+    This enables calculating:
+    - Years of summer enrollment (count distinct years)
+    - First summer year (min year)
+    - Prior year sessions (filter to prior_year)
+
+    Args:
+        person_ids: Set of person_ids to fetch history for.
+        max_year: Maximum year to include (typically the base year).
+
+    Returns:
+        List of attendee records with session expansion.
+    """
+    if not person_ids:
+        return []
+
+    # PocketBase filter syntax for IN clause uses ?=
+    # Build comma-separated list for filter
+    person_ids_str = ",".join(str(pid) for pid in sorted(person_ids))
+    filter_str = f"person_id ?= [{person_ids_str}] && status_id = 2 && year <= {max_year}"
+
+    return await asyncio.to_thread(
+        pb.collection("attendees").get_full_list,
+        query_params={"filter": filter_str, "expand": "session"},
+    )
+
+
+def compute_summer_metrics(
+    enrollment_history: list[Any],
+    person_ids: set[int],
+    prior_year: int,
+) -> tuple[dict[int, int], dict[int, int], dict[int, list[str]]]:
+    """Compute summer enrollment metrics from batch-fetched history.
+
+    Args:
+        enrollment_history: List of attendee records with session expansion.
+        person_ids: Set of person_ids in the base year.
+        prior_year: Year before base year (for prior session analysis).
+
+    Returns:
+        Tuple of:
+        - summer_years_by_person: person_id -> count of distinct summer years
+        - first_year_by_person: person_id -> first summer enrollment year
+        - prior_sessions_by_person: person_id -> list of prior year session names
+    """
+    # Group records by person_id
+    by_person: dict[int, list[Any]] = {}
+    for record in enrollment_history:
+        pid = getattr(record, "person_id", None)
+        if pid is None or pid not in person_ids:
+            continue
+
+        # Filter to summer session types (main, embedded, ag)
+        expand = getattr(record, "expand", {}) or {}
+        session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+        if not session:
+            continue
+
+        session_type = getattr(session, "session_type", None)
+        if session_type not in ("main", "embedded", "ag"):
+            continue
+
+        if pid not in by_person:
+            by_person[pid] = []
+        by_person[pid].append(record)
+
+    # Compute aggregations
+    summer_years_by_person: dict[int, int] = {}
+    first_year_by_person: dict[int, int] = {}
+    prior_sessions_by_person: dict[int, list[str]] = {}
+
+    for pid, records in by_person.items():
+        # Summer years: count distinct years
+        years = {getattr(r, "year", 0) for r in records}
+        summer_years_by_person[pid] = len(years)
+
+        # First summer year: min year
+        if years:
+            first_year_by_person[pid] = min(years)
+
+        # Prior year sessions
+        prior_sessions = []
+        for r in records:
+            if getattr(r, "year", 0) == prior_year:
+                expand = getattr(r, "expand", {}) or {}
+                session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+                if session:
+                    session_name = getattr(session, "name", "")
+                    if session_name:
+                        prior_sessions.append(session_name)
+        prior_sessions_by_person[pid] = prior_sessions
+
+    return summer_years_by_person, first_year_by_person, prior_sessions_by_person
+
+
+# ============================================================================
 # Retention Endpoint
 # ============================================================================
 
@@ -229,6 +337,9 @@ async def get_retention_metrics(
     compare_year: int = Query(..., description="Comparison year (e.g., 2026)"),
     session_types: str | None = Query(
         None, description="Comma-separated session types to filter (e.g., 'main,embedded')"
+    ),
+    session_cm_id: int | None = Query(
+        None, description="Filter to specific session by CampMinder ID"
     ),
 ) -> RetentionMetricsResponse:
     """Get retention metrics comparing two years.
@@ -265,18 +376,22 @@ async def get_retention_metrics(
             # If filtering by session type, check the session
             expand = getattr(a, "expand", {}) or {}
             session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
-            session_cm_id = getattr(session, "cm_id", None) if session else None
+            attendee_session_cm_id = getattr(session, "cm_id", None) if session else None
 
-            if type_filter and session_cm_id:
+            if type_filter and attendee_session_cm_id:
                 session_type = getattr(session, "session_type", None)
                 if session_type not in type_filter:
                     continue
 
+            # If filtering by specific session, check the session cm_id
+            if session_cm_id is not None and attendee_session_cm_id != session_cm_id:
+                continue
+
             person_ids_base.add(person_id)
             if person_id not in attendee_sessions:
                 attendee_sessions[person_id] = []
-            if session_cm_id:
-                attendee_sessions[person_id].append(session_cm_id)
+            if attendee_session_cm_id:
+                attendee_sessions[person_id].append(attendee_session_cm_id)
 
         person_ids_compare = {getattr(a, "person_id", None) for a in attendees_compare if getattr(a, "person_id", None)}
 
@@ -409,7 +524,7 @@ async def get_retention_metrics(
                 returned_count=stats["returned"],
                 retention_rate=safe_rate(stats["returned"], stats["base"]),
             )
-            for s, stats in sorted(school_stats.items(), key=lambda x: -x[1]["base"])[:20]
+            for s, stats in sorted(school_stats.items(), key=lambda x: -x[1]["base"])
         ]
 
         # Breakdowns by city (using camper_history)
@@ -434,7 +549,7 @@ async def get_retention_metrics(
                 returned_count=stats["returned"],
                 retention_rate=safe_rate(stats["returned"], stats["base"]),
             )
-            for c, stats in sorted(city_stats.items(), key=lambda x: -x[1]["base"])[:20]
+            for c, stats in sorted(city_stats.items(), key=lambda x: -x[1]["base"])
         ]
 
         # Breakdowns by synagogue (using camper_history)
@@ -459,7 +574,7 @@ async def get_retention_metrics(
                 returned_count=stats["returned"],
                 retention_rate=safe_rate(stats["returned"], stats["base"]),
             )
-            for s, stats in sorted(synagogue_stats.items(), key=lambda x: -x[1]["base"])[:20]
+            for s, stats in sorted(synagogue_stats.items(), key=lambda x: -x[1]["base"])
         ]
 
         # Breakdowns by first year attended (using camper_history)
@@ -529,6 +644,84 @@ async def get_retention_metrics(
             for (sess, bunk), stats in sorted(session_bunk_stats.items(), key=lambda x: -x[1]["base"])[:10]
         ]
 
+        # ====================================================================
+        # New breakdowns for retention tab redesign
+        # ====================================================================
+
+        # Fetch summer enrollment history for all base year persons
+        enrollment_history = await fetch_summer_enrollment_history(
+            person_ids_base, base_year
+        )
+
+        # Compute summer metrics from history
+        prior_year = base_year - 1
+        summer_years_by_person, first_year_by_person, prior_sessions_by_person = compute_summer_metrics(
+            enrollment_history, person_ids_base, prior_year
+        )
+
+        # Breakdowns by summer years (calculated from attendees, not years_at_camp)
+        summer_years_stats: dict[int, dict[str, int]] = {}
+        for pid in person_ids_base:
+            years_count = summer_years_by_person.get(pid, 0)
+            if years_count not in summer_years_stats:
+                summer_years_stats[years_count] = {"base": 0, "returned": 0}
+            summer_years_stats[years_count]["base"] += 1
+            if pid in returned_ids:
+                summer_years_stats[years_count]["returned"] += 1
+
+        by_summer_years = [
+            RetentionBySummerYears(
+                summer_years=y,
+                base_count=stats["base"],
+                returned_count=stats["returned"],
+                retention_rate=safe_rate(stats["returned"], stats["base"]),
+            )
+            for y, stats in sorted(summer_years_stats.items())
+        ]
+
+        # Breakdowns by first summer year (cohort analysis)
+        first_summer_year_stats: dict[int, dict[str, int]] = {}
+        for pid in person_ids_base:
+            first_year = first_year_by_person.get(pid)
+            if first_year is None:
+                continue
+            if first_year not in first_summer_year_stats:
+                first_summer_year_stats[first_year] = {"base": 0, "returned": 0}
+            first_summer_year_stats[first_year]["base"] += 1
+            if pid in returned_ids:
+                first_summer_year_stats[first_year]["returned"] += 1
+
+        by_first_summer_year = [
+            RetentionByFirstSummerYear(
+                first_summer_year=fy,
+                base_count=stats["base"],
+                returned_count=stats["returned"],
+                retention_rate=safe_rate(stats["returned"], stats["base"]),
+            )
+            for fy, stats in sorted(first_summer_year_stats.items())
+        ]
+
+        # Breakdowns by prior year session
+        prior_session_stats: dict[str, dict[str, int]] = {}
+        for pid in person_ids_base:
+            prior_sessions = prior_sessions_by_person.get(pid, [])
+            for session_name in prior_sessions:
+                if session_name not in prior_session_stats:
+                    prior_session_stats[session_name] = {"base": 0, "returned": 0}
+                prior_session_stats[session_name]["base"] += 1
+                if pid in returned_ids:
+                    prior_session_stats[session_name]["returned"] += 1
+
+        by_prior_session = [
+            RetentionByPriorSession(
+                prior_session=sess,
+                base_count=stats["base"],
+                returned_count=stats["returned"],
+                retention_rate=safe_rate(stats["returned"], stats["base"]),
+            )
+            for sess, stats in sorted(prior_session_stats.items(), key=lambda x: -x[1]["base"])
+        ]
+
         return RetentionMetricsResponse(
             base_year=base_year,
             compare_year=compare_year,
@@ -540,12 +733,16 @@ async def get_retention_metrics(
             by_grade=by_grade,
             by_session=by_session,
             by_years_at_camp=by_years_at_camp,
-            # New demographic breakdowns
+            # Demographic breakdowns (from camper_history)
             by_school=by_school,
             by_city=by_city,
             by_synagogue=by_synagogue,
             by_first_year=by_first_year,
             by_session_bunk=by_session_bunk,
+            # New breakdowns for retention tab redesign
+            by_summer_years=by_summer_years,
+            by_first_summer_year=by_first_summer_year,
+            by_prior_session=by_prior_session,
         )
 
     except Exception as e:

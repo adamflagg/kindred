@@ -2299,9 +2299,20 @@ class TestRetentionSessionCmIdFilter:
     @pytest.fixture
     def sample_attendees_multi_session(self) -> list[Mock]:
         """Attendees across multiple sessions for filter testing."""
-        main_session_1 = Mock(cm_id=1001, session_type="main", name="Session 2")
-        main_session_2 = Mock(cm_id=1002, session_type="main", name="Session 3")
-        embedded_session = Mock(cm_id=1003, session_type="embedded", name="Session 2a")
+        main_session_1 = Mock()
+        main_session_1.cm_id = 1001
+        main_session_1.session_type = "main"
+        main_session_1.name = "Session 2"
+
+        main_session_2 = Mock()
+        main_session_2.cm_id = 1002
+        main_session_2.session_type = "main"
+        main_session_2.name = "Session 3"
+
+        embedded_session = Mock()
+        embedded_session.cm_id = 1003
+        embedded_session.session_type = "embedded"
+        embedded_session.name = "Session 2a"
 
         attendees = []
 

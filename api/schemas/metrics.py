@@ -188,6 +188,45 @@ class RetentionBySessionBunk(BaseModel):
     retention_rate: float = Field(description="Retention rate (0-1)")
 
 
+class RetentionBySummerYears(BaseModel):
+    """Retention metrics by number of summer enrollment years.
+
+    Calculated from actual attendees table enrollment history,
+    not the potentially incorrect years_at_camp field in persons.
+    """
+
+    summer_years: int = Field(description="Number of summer years enrolled")
+    base_count: int = Field(description="Count in base year")
+    returned_count: int = Field(description="Count that returned in compare year")
+    retention_rate: float = Field(description="Retention rate (0-1)")
+
+
+class RetentionByFirstSummerYear(BaseModel):
+    """Retention metrics by first summer year (cohort analysis).
+
+    Shows retention by when campers first joined summer camp,
+    enabling cohort-based retention analysis.
+    """
+
+    first_summer_year: int = Field(description="Year camper first attended summer camp")
+    base_count: int = Field(description="Count in base year")
+    returned_count: int = Field(description="Count that returned in compare year")
+    retention_rate: float = Field(description="Retention rate (0-1)")
+
+
+class RetentionByPriorSession(BaseModel):
+    """Retention metrics by prior year session.
+
+    Shows retention rate broken down by what session campers
+    were enrolled in during the prior year.
+    """
+
+    prior_session: str = Field(description="Session name from prior year")
+    base_count: int = Field(description="Count in base year")
+    returned_count: int = Field(description="Count that returned in compare year")
+    retention_rate: float = Field(description="Retention rate (0-1)")
+
+
 class RetentionMetricsResponse(BaseModel):
     """Response model for retention metrics endpoint."""
 
@@ -211,6 +250,16 @@ class RetentionMetricsResponse(BaseModel):
     )
     by_session_bunk: list[RetentionBySessionBunk] = Field(
         default_factory=list, description="Retention by session+bunk combination"
+    )
+    # New breakdowns for retention tab redesign (calculated from attendees history)
+    by_summer_years: list[RetentionBySummerYears] = Field(
+        default_factory=list, description="Retention by summer enrollment years (calculated from attendees)"
+    )
+    by_first_summer_year: list[RetentionByFirstSummerYear] = Field(
+        default_factory=list, description="Retention by first summer year (cohort analysis)"
+    )
+    by_prior_session: list[RetentionByPriorSession] = Field(
+        default_factory=list, description="Retention by prior year session"
     )
 
 
