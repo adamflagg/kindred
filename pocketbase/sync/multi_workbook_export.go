@@ -166,6 +166,16 @@ func (m *MultiWorkbookExport) SyncGlobalsOnly(ctx context.Context) error {
 		m.Stats.Created += len(records)
 	}
 
+	// Delete default "Sheet1" that Google creates when spreadsheet is made
+	if err := m.sheetsWriter.DeleteSheet(ctx, globalsID, "Sheet1"); err != nil {
+		slog.Warn("Failed to delete Sheet1 from globals workbook", "error", err)
+	}
+
+	// Reorder tabs alphabetically with colors (Index first)
+	if err := ReorderGlobalsWorkbookTabs(ctx, m.sheetsWriter, globalsID); err != nil {
+		slog.Warn("Failed to reorder globals workbook tabs", "error", err)
+	}
+
 	slog.Info("Globals-only export complete",
 		"tables_exported", len(configs),
 	)
@@ -232,6 +242,16 @@ func (m *MultiWorkbookExport) SyncYearData(ctx context.Context, year int) error 
 		}
 
 		m.Stats.Created += len(records)
+	}
+
+	// Delete default "Sheet1" that Google creates when spreadsheet is made
+	if err := m.sheetsWriter.DeleteSheet(ctx, yearID, "Sheet1"); err != nil {
+		slog.Warn("Failed to delete Sheet1 from year workbook", "error", err, "year", year)
+	}
+
+	// Reorder tabs alphabetically with colors
+	if err := ReorderYearWorkbookTabs(ctx, m.sheetsWriter, yearID); err != nil {
+		slog.Warn("Failed to reorder year workbook tabs", "error", err, "year", year)
 	}
 
 	slog.Info("Year data export complete", "year", year)

@@ -274,28 +274,6 @@ func TestWorkbookManager_ListAllWorkbooks(t *testing.T) {
 	}
 }
 
-func TestWorkbookManager_GetShareEmails(t *testing.T) {
-	// Test retrieving sharing email list from config
-
-	app, err := tests.NewTestApp()
-	if err != nil {
-		t.Fatalf("Failed to create test app: %v", err)
-	}
-	defer app.Cleanup()
-
-	mockWriter := &MockSheetsWriter{}
-	manager := NewWorkbookManager(app, mockWriter)
-
-	// GetShareEmails returns emails from config file or database
-	// In CI (no config file), this should return empty
-	// Locally (with private config), this may return emails
-	emails := manager.GetShareEmails(context.Background())
-
-	// Just verify the function doesn't error - actual content depends on environment
-	// This is a smoke test that the function works
-	_ = emails
-}
-
 func TestBuildIndexSheetData(t *testing.T) {
 	// Test building the index sheet data matrix
 

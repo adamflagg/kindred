@@ -34,6 +34,9 @@ type SheetsWriter interface {
 	// BatchUpdateTabProperties updates multiple tabs' colors and indices in a single API call.
 	// This significantly reduces API calls compared to individual SetTabColor/SetTabIndex calls.
 	BatchUpdateTabProperties(ctx context.Context, spreadsheetID string, updates []TabPropertyUpdate) error
+	// DeleteSheet deletes a sheet tab from the spreadsheet (idempotent - no error if sheet doesn't exist).
+	// This is useful for removing the default "Sheet1" created by Google when a new spreadsheet is made.
+	DeleteSheet(ctx context.Context, spreadsheetID, sheetTab string) error
 }
 
 // RealSheetsWriter implements SheetsWriter using the Google Sheets API
@@ -279,6 +282,32 @@ func (w *RealSheetsWriter) getSheetID(ctx context.Context, spreadsheetID, sheetT
 	}
 
 	return 0, fmt.Errorf("sheet tab %q not found", sheetTab)
+}
+
+// DeleteSheet deletes a sheet tab from the spreadsheet (idempotent).
+// Returns nil if the sheet doesn't exist (no error - idempotent behavior).
+func (w *RealSheetsWriter) DeleteSheet(ctx context.Context, spreadsheetID, sheetTab string) error {
+	sheetID, err := w.getSheetID(ctx, spreadsheetID, sheetTab)
+	if err != nil {
+		// Sheet not found - idempotent success
+		return nil
+	}
+
+	req := &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: []*sheets.Request{{
+			DeleteSheet: &sheets.DeleteSheetRequest{
+				SheetId: sheetID,
+			},
+		}},
+	}
+
+	_, err = w.service.Spreadsheets.BatchUpdate(spreadsheetID, req).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("deleting sheet %s: %w", sheetTab, err)
+	}
+
+	slog.Info("Deleted sheet tab", "tab", sheetTab)
+	return nil
 }
 
 // SessionRecord represents a session for export (used by loadSessions for lookups)

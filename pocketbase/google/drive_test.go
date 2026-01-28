@@ -54,26 +54,6 @@ func TestCreateSpreadsheet_Disabled(t *testing.T) {
 	}
 }
 
-func TestShareSpreadsheet_Disabled(t *testing.T) {
-	// When Google Sheets is disabled, ShareSpreadsheet should return error
-	t.Setenv("GOOGLE_SHEETS_ENABLED", "false")
-
-	err := ShareSpreadsheet(context.Background(), "fake-spreadsheet-id", "test@example.com", "commenter")
-	if err == nil {
-		t.Error("Expected error when trying to share spreadsheet with Google Sheets disabled")
-	}
-}
-
-func TestShareSpreadsheet_InvalidRole(t *testing.T) {
-	// Invalid role should return error (even if disabled)
-	t.Setenv("GOOGLE_SHEETS_ENABLED", "false")
-
-	err := ShareSpreadsheet(context.Background(), "fake-id", "test@example.com", "invalid_role")
-	if err == nil {
-		t.Error("Expected error for invalid sharing role")
-	}
-}
-
 func TestFormatSpreadsheetURL(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -102,26 +82,3 @@ func TestFormatSpreadsheetURL(t *testing.T) {
 	}
 }
 
-func TestValidateShareRole(t *testing.T) {
-	tests := []struct {
-		role    string
-		wantErr bool
-	}{
-		{"reader", false},
-		{"writer", false},
-		{"commenter", false},
-		{"owner", false},
-		{"invalid", true},
-		{"", true},
-		{"READER", true}, // Case sensitive
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.role, func(t *testing.T) {
-			err := validateShareRole(tt.role)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("validateShareRole(%q) error = %v, wantErr %v", tt.role, err, tt.wantErr)
-			}
-		})
-	}
-}

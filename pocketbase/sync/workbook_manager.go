@@ -2,11 +2,8 @@ package sync
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"sort"
 	"time"
 
@@ -17,9 +14,6 @@ import (
 const (
 	// sheetsWorkbooksCollection is the PocketBase collection for workbook metadata
 	sheetsWorkbooksCollection = "sheets_workbooks"
-
-	// configCollection is the PocketBase collection for app configuration
-	configCollection = "config"
 
 	// indexSheetName is the name of the master index sheet
 	indexSheetName = "Index"
@@ -201,114 +195,6 @@ func (m *WorkbookManager) ListAllWorkbooks(_ context.Context) ([]WorkbookRecord,
 	return workbooks, nil
 }
 
-// sharingConfig represents the structure of sheets_sharing.local.json
-// Supports both legacy format (emails + role) and new multi-permission format (editors/commenters/readers)
-type sharingConfig struct {
-	// New multi-permission format
-	Editors    []string `json:"editors"`
-	Commenters []string `json:"commenters"`
-	Readers    []string `json:"readers"`
-
-	// Legacy format (for backward compatibility)
-	Emails []string `json:"emails"`
-	Role   string   `json:"role"`
-}
-
-// loadShareConfigFromFile attempts to load sharing config from config/sheets_sharing.local.json.
-// Returns nil if the file doesn't exist or can't be parsed.
-func (m *WorkbookManager) loadShareConfigFromFile() *sharingConfig {
-	// Try to find the config file relative to the executable or working directory
-	configPaths := []string{
-		"config/sheets_sharing.local.json",
-		filepath.Join(os.Getenv("HOME"), "kindred", "config", "sheets_sharing.local.json"),
-	}
-
-	for _, path := range configPaths {
-		data, err := os.ReadFile(path) //nolint:gosec // G304: path from trusted config locations
-		if err != nil {
-			continue // File doesn't exist at this path, try next
-		}
-
-		var config sharingConfig
-		if err := json.Unmarshal(data, &config); err != nil {
-			slog.Warn("Failed to parse sheets_sharing.local.json", "path", path, "error", err)
-			continue
-		}
-
-		// Check if we have any emails configured (new or legacy format)
-		hasEmails := len(config.Editors) > 0 || len(config.Commenters) > 0 ||
-			len(config.Readers) > 0 || len(config.Emails) > 0
-		if hasEmails {
-			slog.Debug("Loaded sharing config from file", "path", path,
-				"editors", len(config.Editors),
-				"commenters", len(config.Commenters),
-				"readers", len(config.Readers),
-				"legacy_emails", len(config.Emails))
-			return &config
-		}
-	}
-
-	return nil
-}
-
-// loadShareEmailsFromDB reads sharing emails from PocketBase config table.
-func (m *WorkbookManager) loadShareEmailsFromDB(_ context.Context) []string {
-	filter := `category = "google_sheets" && config_key = "sharing_emails"`
-	records, err := m.app.FindRecordsByFilter(configCollection, filter, "", 1, 0)
-	if err != nil || len(records) == 0 {
-		return nil
-	}
-
-	value := records[0].Get("value")
-	if value == nil {
-		return nil
-	}
-
-	// Value should be a JSON array of strings
-	var emails []string
-	switch v := value.(type) {
-	case string:
-		// Try to parse as JSON
-		if err := json.Unmarshal([]byte(v), &emails); err != nil {
-			slog.Warn("Failed to parse sharing_emails config from DB", "error", err)
-			return nil
-		}
-	case []interface{}:
-		for _, e := range v {
-			if s, ok := e.(string); ok {
-				emails = append(emails, s)
-			}
-		}
-	}
-
-	return emails
-}
-
-// GetShareEmails returns all email addresses to share workbooks with (combined from all permission levels).
-// This is a convenience method that returns a flat list for backward compatibility.
-// The actual sharing with proper permissions is done in shareWorkbook().
-// Priority order:
-// 1. Config file (config/sheets_sharing.local.json) - preferred for deployment
-// 2. PocketBase config table - fallback/override for runtime changes
-func (m *WorkbookManager) GetShareEmails(ctx context.Context) []string {
-	// Try config file first
-	if config := m.loadShareConfigFromFile(); config != nil {
-		// Combine all email lists (for backward compatibility / status display)
-		allEmails := make([]string, 0, len(config.Editors)+len(config.Commenters)+len(config.Readers)+len(config.Emails))
-		allEmails = append(allEmails, config.Editors...)
-		allEmails = append(allEmails, config.Commenters...)
-		allEmails = append(allEmails, config.Readers...)
-		// Also include legacy format emails
-		allEmails = append(allEmails, config.Emails...)
-		if len(allEmails) > 0 {
-			return allEmails
-		}
-	}
-
-	// Fall back to database config
-	return m.loadShareEmailsFromDB(ctx)
-}
-
 // GetOrCreateGlobalsWorkbook returns the globals workbook ID, creating if needed.
 func (m *WorkbookManager) GetOrCreateGlobalsWorkbook(ctx context.Context) (string, error) {
 	// Check if we already have a globals workbook
@@ -342,12 +228,6 @@ func (m *WorkbookManager) GetOrCreateGlobalsWorkbook(ctx context.Context) (strin
 	})
 	if err != nil {
 		return "", fmt.Errorf("saving globals workbook record: %w", err)
-	}
-
-	// Share with configured emails
-	if err := m.shareWorkbook(ctx, spreadsheetID); err != nil {
-		slog.Warn("Failed to share globals workbook", "error", err)
-		// Don't fail - sharing is optional
 	}
 
 	slog.Info("Created globals workbook", "spreadsheet_id", spreadsheetID, "url", url)
@@ -389,80 +269,8 @@ func (m *WorkbookManager) GetOrCreateYearWorkbook(ctx context.Context, year int)
 		return "", fmt.Errorf("saving year workbook record: %w", err)
 	}
 
-	// Share with configured emails
-	if err := m.shareWorkbook(ctx, spreadsheetID); err != nil {
-		slog.Warn("Failed to share year workbook", "error", err, "year", year)
-		// Don't fail - sharing is optional
-	}
-
 	slog.Info("Created year workbook", "year", year, "spreadsheet_id", spreadsheetID, "url", url)
 	return spreadsheetID, nil
-}
-
-// shareWorkbook shares a workbook with all configured email addresses at their respective permission levels.
-func (m *WorkbookManager) shareWorkbook(ctx context.Context, spreadsheetID string) error {
-	config := m.loadShareConfigFromFile()
-	if config == nil {
-		// Fall back to database config (legacy behavior)
-		emails := m.loadShareEmailsFromDB(ctx)
-		if len(emails) == 0 {
-			return nil
-		}
-		// DB config uses commenter role by default
-		for _, email := range emails {
-			if err := google.ShareSpreadsheet(ctx, spreadsheetID, email, "commenter"); err != nil {
-				slog.Warn("Failed to share workbook with email", "email", email, "role", "commenter", "error", err)
-			} else {
-				slog.Info("Shared workbook", "email", email, "role", "commenter", "spreadsheet_id", spreadsheetID)
-			}
-		}
-		return nil
-	}
-
-	// Handle legacy format (emails + role)
-	if len(config.Emails) > 0 {
-		role := config.Role
-		if role == "" {
-			role = "commenter" // Default to commenter if role not specified
-		}
-		for _, email := range config.Emails {
-			if err := google.ShareSpreadsheet(ctx, spreadsheetID, email, role); err != nil {
-				slog.Warn("Failed to share workbook with email", "email", email, "role", role, "error", err)
-			} else {
-				slog.Info("Shared workbook", "email", email, "role", role, "spreadsheet_id", spreadsheetID)
-			}
-		}
-	}
-
-	// Handle new multi-permission format
-	// Share with editors (writer role in Google's terminology)
-	for _, email := range config.Editors {
-		if err := google.ShareSpreadsheet(ctx, spreadsheetID, email, "writer"); err != nil {
-			slog.Warn("Failed to share workbook with editor", "email", email, "error", err)
-		} else {
-			slog.Info("Shared workbook", "email", email, "role", "writer", "spreadsheet_id", spreadsheetID)
-		}
-	}
-
-	// Share with commenters
-	for _, email := range config.Commenters {
-		if err := google.ShareSpreadsheet(ctx, spreadsheetID, email, "commenter"); err != nil {
-			slog.Warn("Failed to share workbook with commenter", "email", email, "error", err)
-		} else {
-			slog.Info("Shared workbook", "email", email, "role", "commenter", "spreadsheet_id", spreadsheetID)
-		}
-	}
-
-	// Share with readers
-	for _, email := range config.Readers {
-		if err := google.ShareSpreadsheet(ctx, spreadsheetID, email, "reader"); err != nil {
-			slog.Warn("Failed to share workbook with reader", "email", email, "error", err)
-		} else {
-			slog.Info("Shared workbook", "email", email, "role", "reader", "spreadsheet_id", spreadsheetID)
-		}
-	}
-
-	return nil
 }
 
 // UpdateMasterIndex updates the Index sheet in the globals workbook.

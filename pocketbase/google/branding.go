@@ -51,28 +51,35 @@ func GetCampName() string {
 }
 
 // loadCampName reads the camp name from the branding config file.
+// Tries multiple paths for different runtime contexts:
+// 1. Production Docker: PocketBase runs from /, config at /app/config/
+// 2. Dev from project root: ./config/
+// 3. Dev from pocketbase/: ../config/
 // Returns DefaultCampName if the file doesn't exist or is invalid.
 func loadCampName() string {
-	configPath := filepath.Join(configBasePath, "config", brandingFileName)
-
-	data, err := os.ReadFile(configPath) //nolint:gosec // G304: path is from trusted config
-	if err != nil {
-		// File doesn't exist or can't be read - use default
-		return DefaultCampName
+	configPaths := []string{
+		"/app/config/" + brandingFileName,                               // Docker production
+		filepath.Join(configBasePath, "config", brandingFileName),       // Running from project root
+		filepath.Join(configBasePath, "..", "config", brandingFileName), // Running from pocketbase/
 	}
 
-	var config brandingConfig
-	if err := json.Unmarshal(data, &config); err != nil {
-		// Invalid JSON - use default
-		return DefaultCampName
+	for _, configPath := range configPaths {
+		data, err := os.ReadFile(configPath) //nolint:gosec // G304: path is from trusted config
+		if err != nil {
+			continue // Try next path
+		}
+
+		var config brandingConfig
+		if err := json.Unmarshal(data, &config); err != nil {
+			continue // Try next path
+		}
+
+		if config.CampName != "" {
+			return config.CampName
+		}
 	}
 
-	if config.CampName == "" {
-		// Empty camp name - use default
-		return DefaultCampName
-	}
-
-	return config.CampName
+	return DefaultCampName
 }
 
 // isDevEnvironment returns true if running in local dev (not Docker production)

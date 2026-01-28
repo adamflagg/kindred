@@ -1,6 +1,0 @@
-{
-  "editors": [],
-  "commenters": ["user@example.com"],
-  "readers": [],
-  "description": "Emails to auto-share new Google Sheets workbooks with by permission level. Editors can edit, commenters can view and comment, readers can only view."
-}
