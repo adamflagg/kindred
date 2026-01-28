@@ -255,15 +255,24 @@ async def fetch_summer_enrollment_history(
     if not person_ids:
         return []
 
-    # PocketBase filter syntax for IN clause uses ?=
-    # Build comma-separated list for filter
-    person_ids_str = ",".join(str(pid) for pid in sorted(person_ids))
-    filter_str = f"person_id ?= [{person_ids_str}] && status_id = 2 && year <= {max_year}"
+    # PocketBase doesn't support IN clauses - use OR chain for person_id matching
+    # Batch queries to avoid overly long filter strings (max ~100 IDs per batch)
+    BATCH_SIZE = 100
+    sorted_ids = sorted(person_ids)
+    all_results: list[Any] = []
 
-    return await asyncio.to_thread(
-        pb.collection("attendees").get_full_list,
-        query_params={"filter": filter_str, "expand": "session"},
-    )
+    for i in range(0, len(sorted_ids), BATCH_SIZE):
+        batch_ids = sorted_ids[i : i + BATCH_SIZE]
+        person_filter = " || ".join(f"person_id = {pid}" for pid in batch_ids)
+        filter_str = f"({person_filter}) && status_id = 2 && year <= {max_year}"
+
+        batch_results = await asyncio.to_thread(
+            pb.collection("attendees").get_full_list,
+            query_params={"filter": filter_str, "expand": "session"},
+        )
+        all_results.extend(batch_results)
+
+    return all_results
 
 
 def compute_summer_metrics(
@@ -1623,6 +1632,21 @@ async def get_retention_trends(
             person_ids = year_data["person_ids"]
             persons = year_data["persons"]
             total = len(person_ids)
+
+            # Diagnostic logging for person lookup
+            lookup_failures = sum(1 for pid in person_ids if persons.get(pid) is None)
+            if lookup_failures > 0:
+                # Sample some failed lookups to help diagnose
+                failed_pids = [pid for pid in list(person_ids)[:10] if persons.get(pid) is None]
+                persons_keys = list(persons.keys())[:10] if persons else []
+                # Log types to detect int vs string mismatch
+                failed_types = [type(pid).__name__ for pid in failed_pids[:3]]
+                key_types = [type(k).__name__ for k in persons_keys[:3]]
+                logger.warning(
+                    f"Year {year}: {lookup_failures}/{total} person lookups failed. "
+                    f"Failed person_ids (sample): {failed_pids}, types: {failed_types}. "
+                    f"Persons dict keys (sample): {persons_keys}, types: {key_types}"
+                )
 
             # Gender breakdown
             gender_counts: dict[str, int] = {}
