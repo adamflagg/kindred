@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Coroutine
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -20,18 +19,12 @@ from ..schemas.metrics import (
     ComparisonMetricsResponse,
     FirstYearBreakdown,
     GenderBreakdown,
-    GenderEnrollment,
     GradeBreakdown,
-    GradeEnrollment,
     HistoricalTrendsResponse,
     NewVsReturning,
     RegistrationMetricsResponse,
-    RetentionByGender,
-    RetentionByGrade,
     RetentionMetricsResponse,
     RetentionTrendsResponse,
-    RetentionTrendYear,
-    YearEnrollment,
     YearMetrics,
     YearSummary,
 )
@@ -795,218 +788,19 @@ async def get_retention_trends(
     This enables line charts for overall retention and grouped bar charts
     for breakdown categories.
     """
-    try:
-        # Build list of years to analyze
-        years = list(range(current_year - num_years + 1, current_year + 1))
+    from api.services.metrics_repository import MetricsRepository
+    from api.services.retention_trends_service import RetentionTrendsService
 
-        # Parse session types filter
+    try:
         type_filter = session_types.split(",") if session_types else None
 
-        # Fetch attendees and persons for all years in parallel
-        fetch_tasks: list[Coroutine[Any, Any, Any]] = []
-        for year in years:
-            fetch_tasks.append(fetch_attendees_for_year(year))
-            fetch_tasks.append(fetch_persons_for_year(year))
-            fetch_tasks.append(fetch_sessions_for_year(year, type_filter))
-
-        results = await asyncio.gather(*fetch_tasks)
-
-        # Unpack results: each year has (attendees, persons, sessions)
-        data_by_year: dict[int, dict[str, Any]] = {}
-        for i, year in enumerate(years):
-            attendees: list[Any] = results[i * 3]
-            persons: dict[int, Any] = results[i * 3 + 1]
-            sessions: dict[int, Any] = results[i * 3 + 2]
-
-            # Filter attendees by session type
-            if type_filter:
-                filtered = []
-                for a in attendees:
-                    expand = getattr(a, "expand", {}) or {}
-                    session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
-                    if session and getattr(session, "session_type", None) in type_filter:
-                        filtered.append(a)
-                attendees = filtered
-
-            # Filter by specific session if provided
-            if session_cm_id is not None:
-                filtered = []
-                for a in attendees:
-                    expand = getattr(a, "expand", {}) or {}
-                    session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
-                    if session and getattr(session, "cm_id", None) == session_cm_id:
-                        filtered.append(a)
-                attendees = filtered
-
-            data_by_year[year] = {
-                "attendees": attendees,
-                "persons": persons,
-                "sessions": sessions,
-                # Ensure int type for person_ids to match persons dict keys
-                "person_ids": {int(getattr(a, "person_id", 0)) for a in attendees if getattr(a, "person_id", None)},
-            }
-
-        # Calculate retention for each year transition
-        retention_years: list[RetentionTrendYear] = []
-
-        for i in range(len(years) - 1):
-            base_year = years[i]
-            compare_year = years[i + 1]
-
-            base_data = data_by_year[base_year]
-            compare_data = data_by_year[compare_year]
-
-            base_person_ids = base_data["person_ids"]
-            compare_person_ids = compare_data["person_ids"]
-            persons_base = base_data["persons"]
-
-            returned_ids = base_person_ids & compare_person_ids
-            base_count = len(base_person_ids)
-            returned_count = len(returned_ids)
-            retention_rate = safe_rate(returned_count, base_count)
-
-            # Gender breakdown
-            gender_stats: dict[str, dict[str, int]] = {}
-            for pid in base_person_ids:
-                person = persons_base.get(pid)
-                if not person:
-                    continue
-                gender = getattr(person, "gender", "Unknown") or "Unknown"
-                if gender not in gender_stats:
-                    gender_stats[gender] = {"base": 0, "returned": 0}
-                gender_stats[gender]["base"] += 1
-                if pid in returned_ids:
-                    gender_stats[gender]["returned"] += 1
-
-            by_gender = [
-                RetentionByGender(
-                    gender=g,
-                    base_count=stats["base"],
-                    returned_count=stats["returned"],
-                    retention_rate=safe_rate(stats["returned"], stats["base"]),
-                )
-                for g, stats in sorted(gender_stats.items())
-            ]
-
-            # Grade breakdown
-            grade_stats: dict[int | None, dict[str, int]] = {}
-            for pid in base_person_ids:
-                person = persons_base.get(pid)
-                if not person:
-                    continue
-                grade = getattr(person, "grade", None)
-                if grade not in grade_stats:
-                    grade_stats[grade] = {"base": 0, "returned": 0}
-                grade_stats[grade]["base"] += 1
-                if pid in returned_ids:
-                    grade_stats[grade]["returned"] += 1
-
-            by_grade = [
-                RetentionByGrade(
-                    grade=g,
-                    base_count=stats["base"],
-                    returned_count=stats["returned"],
-                    retention_rate=safe_rate(stats["returned"], stats["base"]),
-                )
-                for g, stats in sorted(grade_stats.items(), key=lambda x: (x[0] is None, x[0]))
-            ]
-
-            retention_years.append(
-                RetentionTrendYear(
-                    from_year=base_year,
-                    to_year=compare_year,
-                    retention_rate=retention_rate,
-                    base_count=base_count,
-                    returned_count=returned_count,
-                    by_gender=by_gender,
-                    by_grade=by_grade,
-                )
-            )
-
-        # Calculate average retention rate
-        rates = [y.retention_rate for y in retention_years]
-        avg_rate = sum(rates) / len(rates) if rates else 0.0
-
-        # Determine trend direction
-        if len(rates) >= 2:
-            # Compare most recent rate to average of prior rates
-            current = rates[-1]
-            prior_avg = sum(rates[:-1]) / len(rates[:-1]) if len(rates) > 1 else current
-            threshold = 0.02  # 2% threshold for "stable"
-
-            if current > prior_avg + threshold:
-                trend_direction = "improving"
-            elif current < prior_avg - threshold:
-                trend_direction = "declining"
-            else:
-                trend_direction = "stable"
-        else:
-            trend_direction = "stable"
-
-        # ====================================================================
-        # Compute enrollment_by_year for 3-year comparison charts
-        # ====================================================================
-        enrollment_by_year: list[YearEnrollment] = []
-        for year in years:
-            year_data = data_by_year[year]
-            person_ids = year_data["person_ids"]
-            persons = year_data["persons"]
-            total = len(person_ids)
-
-            # Diagnostic logging for person lookup
-            lookup_failures = sum(1 for pid in person_ids if persons.get(pid) is None)
-            if lookup_failures > 0:
-                # Sample some failed lookups to help diagnose
-                failed_pids = [pid for pid in list(person_ids)[:10] if persons.get(pid) is None]
-                persons_keys = list(persons.keys())[:10] if persons else []
-                # Log types to detect int vs string mismatch
-                failed_types = [type(pid).__name__ for pid in failed_pids[:3]]
-                key_types = [type(k).__name__ for k in persons_keys[:3]]
-                logger.warning(
-                    f"Year {year}: {lookup_failures}/{total} person lookups failed. "
-                    f"Failed person_ids (sample): {failed_pids}, types: {failed_types}. "
-                    f"Persons dict keys (sample): {persons_keys}, types: {key_types}"
-                )
-
-            # Gender breakdown
-            gender_counts: dict[str, int] = {}
-            for pid in person_ids:
-                person = persons.get(pid)
-                if not person:
-                    continue
-                gender = getattr(person, "gender", "Unknown") or "Unknown"
-                gender_counts[gender] = gender_counts.get(gender, 0) + 1
-
-            gender_breakdown = [GenderEnrollment(gender=g, count=c) for g, c in sorted(gender_counts.items())]
-
-            # Grade breakdown
-            grade_counts: dict[int | None, int] = {}
-            for pid in person_ids:
-                person = persons.get(pid)
-                if not person:
-                    continue
-                grade = getattr(person, "grade", None)
-                grade_counts[grade] = grade_counts.get(grade, 0) + 1
-
-            grade_breakdown = [
-                GradeEnrollment(grade=g, count=c)
-                for g, c in sorted(grade_counts.items(), key=lambda x: (x[0] is None, x[0]))
-            ]
-
-            enrollment_by_year.append(
-                YearEnrollment(
-                    year=year,
-                    total=total,
-                    by_gender=gender_breakdown,
-                    by_grade=grade_breakdown,
-                )
-            )
-
-        return RetentionTrendsResponse(
-            years=retention_years,
-            avg_retention_rate=avg_rate,
-            trend_direction=trend_direction,
-            enrollment_by_year=enrollment_by_year,
+        repository = MetricsRepository(pb)
+        service = RetentionTrendsService(repository)
+        return await service.calculate_retention_trends(
+            current_year=current_year,
+            num_years=num_years,
+            session_types=type_filter,
+            session_cm_id=session_cm_id,
         )
 
     except Exception as e:
