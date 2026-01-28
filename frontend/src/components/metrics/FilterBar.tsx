@@ -18,12 +18,18 @@ interface FilterBarProps {
   onSessionTypeChange: (types: string[]) => void;
 }
 
-/** Available enrollment statuses */
+/** Available enrollment statuses (matches attendees.status PB field) */
 const STATUS_OPTIONS = [
   { id: 'enrolled', label: 'Enrolled' },
+  { id: 'applied', label: 'Applied' },
   { id: 'waitlisted', label: 'Waitlisted' },
+  { id: 'left_early', label: 'Left Early' },
   { id: 'cancelled', label: 'Cancelled' },
+  { id: 'dismissed', label: 'Dismissed' },
+  { id: 'inquiry', label: 'Inquiry' },
   { id: 'withdrawn', label: 'Withdrawn' },
+  { id: 'incomplete', label: 'Incomplete' },
+  { id: 'unknown', label: 'Unknown' },
 ] as const;
 
 /** Available session types */

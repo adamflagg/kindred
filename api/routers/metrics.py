@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -93,24 +93,35 @@ def get_session_length_category(start_date: str, end_date: str) -> str:
         return "unknown"
 
 
-async def fetch_attendees_for_year(year: int, status_filter: str | None = None) -> list[Any]:
+async def fetch_attendees_for_year(year: int, status_filter: str | list[str] | None = None) -> list[Any]:
     """Fetch attendees for a given year with optional status filter.
 
     Args:
         year: The year to fetch attendees for.
-        status_filter: Optional status filter (e.g., 'enrolled', 'waitlisted').
-                      If None, fetches active enrolled (is_active=1 AND status_id=2).
+        status_filter: Optional status filter. Can be:
+                      - None: fetches active enrolled (is_active=1 AND status_id=2)
+                      - str: single status (e.g., 'waitlisted', 'applied', 'cancelled')
+                      - list[str]: multiple statuses (e.g., ['enrolled', 'waitlisted'])
+                      Supports all 10 PB statuses: enrolled, applied, waitlisted,
+                      left_early, cancelled, dismissed, inquiry, withdrawn,
+                      incomplete, unknown.
 
     Returns:
         List of attendee records with session expansion.
     """
-    if status_filter == "waitlisted":
-        filter_str = f'year = {year} && status = "waitlisted"'
-    elif status_filter == "cancelled":
-        filter_str = f'year = {year} && status = "cancelled"'
-    else:
+    if status_filter is None:
         # Default: active enrolled
         filter_str = f"year = {year} && is_active = 1 && status_id = 2"
+    elif isinstance(status_filter, list):
+        # Multiple statuses - build OR filter
+        status_conditions = " || ".join(f'status = "{s}"' for s in status_filter)
+        filter_str = f"year = {year} && ({status_conditions})"
+    elif status_filter == "enrolled":
+        # Enrolled uses the strict is_active + status_id filter
+        filter_str = f"year = {year} && is_active = 1 && status_id = 2"
+    else:
+        # Single non-enrolled status - build status filter dynamically
+        filter_str = f'year = {year} && status = "{status_filter}"'
 
     return await asyncio.to_thread(
         pb.collection("attendees").get_full_list,
@@ -159,9 +170,7 @@ def safe_rate(numerator: int, denominator: int) -> float:
     return numerator / denominator if denominator > 0 else 0.0
 
 
-async def fetch_camper_history_for_year(
-    year: int, session_types: list[str] | None = None
-) -> list[Any]:
+async def fetch_camper_history_for_year(year: int, session_types: list[str] | None = None) -> list[Any]:
     """Fetch camper_history records for a given year.
 
     Note: This function does NOT filter by status. Status filtering happens at
@@ -396,7 +405,7 @@ async def get_registration_metrics(
     ),
     statuses: str | None = Query(
         "enrolled",
-        description="Comma-separated statuses to include (default: enrolled). Options: enrolled, waitlisted, cancelled, withdrawn, incomplete, unknown",
+        description="Comma-separated statuses to include (default: enrolled). Options: enrolled, applied, waitlisted, left_early, cancelled, dismissed, inquiry, withdrawn, incomplete, unknown",
     ),
 ) -> RegistrationMetricsResponse:
     """Get registration breakdown metrics for a specific year.
@@ -415,23 +424,6 @@ async def get_registration_metrics(
         # Parse statuses filter
         status_filter = [s.strip() for s in (statuses or "enrolled").split(",")]
 
-        # Fetch data in parallel
-        (
-            enrolled_attendees,
-            waitlisted_attendees,
-            cancelled_attendees,
-            persons,
-            sessions,
-            camper_history,
-        ) = await asyncio.gather(
-            fetch_attendees_for_year(year),
-            fetch_attendees_for_year(year, "waitlisted"),
-            fetch_attendees_for_year(year, "cancelled"),
-            fetch_persons_for_year(year),
-            fetch_sessions_for_year(year, type_filter),
-            fetch_camper_history_for_year(year, session_types=type_filter),  # For new demographic breakdowns
-        )
-
         # Filter attendees by session type if needed
         def filter_by_session_type(attendees: list[Any]) -> list[Any]:
             if not type_filter:
@@ -445,24 +437,40 @@ async def get_registration_metrics(
                     filtered.append(a)
             return filtered
 
+        # Fetch data in parallel - fetch all requested statuses dynamically
+        # Also always fetch enrolled, waitlisted, cancelled for the sidebar totals
+        # Build parallel fetch tasks
+        results = await asyncio.gather(
+            # Fetch all requested statuses in a single query
+            fetch_attendees_for_year(year, status_filter),
+            # Fetch enrolled/waitlisted/cancelled separately for totals
+            fetch_attendees_for_year(year),  # enrolled (default)
+            fetch_attendees_for_year(year, "waitlisted"),
+            fetch_attendees_for_year(year, "cancelled"),
+            fetch_persons_for_year(year),
+            fetch_sessions_for_year(year, type_filter),
+            fetch_camper_history_for_year(year, session_types=type_filter),  # For demographics
+        )
+
+        # Unpack results with explicit casts for mypy
+        requested_attendees = cast(list[Any], results[0])
+        enrolled_attendees = cast(list[Any], results[1])
+        waitlisted_attendees = cast(list[Any], results[2])
+        cancelled_attendees = cast(list[Any], results[3])
+        persons = cast(dict[int, Any], results[4])
+        sessions = cast(dict[int, Any], results[5])
+        camper_history = cast(list[Any], results[6])
+
         # Apply session type filter to all attendee lists
+        combined_attendees = filter_by_session_type(requested_attendees)
         enrolled_attendees = filter_by_session_type(enrolled_attendees)
         waitlisted_attendees = filter_by_session_type(waitlisted_attendees)
         cancelled_attendees = filter_by_session_type(cancelled_attendees)
 
-        # Combine attendees based on statuses parameter
-        # This enables flexible filtering: enrolled only, waitlisted only, or combined views
-        combined_attendees: list[Any] = []
-        if "enrolled" in status_filter:
-            combined_attendees.extend(enrolled_attendees)
-        if "waitlisted" in status_filter:
-            combined_attendees.extend(waitlisted_attendees)
-        if "cancelled" in status_filter:
-            combined_attendees.extend(cancelled_attendees)
-
         # Get person IDs from combined attendees (deduplicated)
-        enrolled_person_ids = {
-            getattr(a, "person_id", None) for a in combined_attendees if getattr(a, "person_id", None)
+        # Filter ensures no None values, cast for type checker
+        enrolled_person_ids: set[int] = {
+            pid for a in combined_attendees if (pid := getattr(a, "person_id", None)) is not None
         }
 
         total_enrolled = len(enrolled_person_ids)

@@ -6,6 +6,7 @@ import { useRegistrationMetrics } from '../../hooks/useMetrics';
 import { MetricCard } from '../../components/metrics/MetricCard';
 import { BreakdownChart } from '../../components/metrics/BreakdownChart';
 import { DemographicBreakdowns } from '../../components/metrics/DemographicBreakdowns';
+import { getSessionChartLabel } from '../../utils/sessionDisplay';
 import { Loader2, AlertCircle } from 'lucide-react';
 
 interface RegistrationTabProps {
@@ -71,7 +72,7 @@ export function RegistrationTab({ year, compareYear, statuses, sessionTypes }: R
   }));
 
   const sessionChartData = data.by_session.map((s) => ({
-    name: s.session_name,
+    name: getSessionChartLabel(s.session_name),
     value: s.count,
     percentage: s.utilization ?? 0,
   }));
@@ -202,7 +203,7 @@ export function RegistrationTab({ year, compareYear, statuses, sessionTypes }: R
             <tbody>
               {data.by_session.map((session, index) => (
                 <tr key={index} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
-                  <td className="px-4 py-3 font-medium text-foreground">{session.session_name}</td>
+                  <td className="px-4 py-3 font-medium text-foreground">{getSessionChartLabel(session.session_name)}</td>
                   <td className="px-4 py-3 text-right text-foreground">{session.count}</td>
                   <td className="px-4 py-3 text-right text-foreground">{session.capacity ?? '—'}</td>
                   <td className="px-4 py-3 text-right">

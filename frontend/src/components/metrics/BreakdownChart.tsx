@@ -113,15 +113,16 @@ export function BreakdownChart({
             <Legend />
           </PieChart>
         ) : (
-          <BarChart data={data} layout="vertical" margin={{ top: 5, right: 30, left: 100, bottom: 5 }}>
+          <BarChart data={data} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
             <XAxis type="number" className="text-xs" />
             <YAxis
               type="category"
               dataKey="name"
               className="text-xs"
-              width={90}
-              tick={{ fill: 'hsl(var(--muted-foreground))' }}
+              width={120}
+              tick={{ fill: 'hsl(var(--muted-foreground))', style: { whiteSpace: 'nowrap' } }}
+              tickFormatter={(value: string) => value.length > 14 ? `${value.slice(0, 12)}…` : value}
             />
             <Tooltip content={<CustomTooltip />} />
             <Bar dataKey="value" fill={COLORS[0]} radius={[0, 4, 4, 0]} />

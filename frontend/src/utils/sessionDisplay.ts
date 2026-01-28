@@ -116,6 +116,65 @@ export function getSessionDisplayNameFromString(sessionName: string, sessionType
 }
 
 /**
+ * Get a concise session label for charts and metrics displays
+ * @param sessionName The full session name from the API
+ * @param sessionType Optional session type for better accuracy
+ * @returns Abbreviated session name suitable for charts, preserving grade ranges
+ *          (e.g. "All-Gender 2 (6-8)", "Session 2", "Session 2a")
+ */
+export function getSessionChartLabel(sessionName: string, sessionType?: string): string {
+  if (!sessionName) return 'Unknown';
+
+  // Extract grade range if present (e.g., "(Grades 6-8)" or "(6-8)")
+  const gradeMatch = sessionName.match(/\((?:Grades?\s*)?(\d+)[-–](\d+)\)/i);
+  const gradeRange = gradeMatch ? ` (${gradeMatch[1]}-${gradeMatch[2]})` : '';
+
+  // Handle Taste of Camp
+  if (sessionType === 'taste' || sessionName.toLowerCase().includes('taste')) {
+    return 'Taste of Camp';
+  }
+
+  // Handle AG sessions - abbreviate "All-Gender Cabin-Session 2 (Grades 6-8)" to "All-Gender 2 (6-8)"
+  if (sessionType === 'ag' || sessionName.toLowerCase().includes('all-gender') || sessionName.toLowerCase().includes('ag session')) {
+    const patterns = [
+      /ag\s*session\s*(\d+)/i,
+      /all-gender.*session\s*(\d+)/i,
+      /session\s*(\d+).*all-gender/i,
+      /all-gender.*?(\d+)/i,
+    ];
+
+    for (const pattern of patterns) {
+      const match = sessionName.match(pattern);
+      if (match && match[1]) {
+        return `All-Gender ${match[1]}${gradeRange}`;
+      }
+    }
+    // If no number found, just return "All-Gender" with grade range if present
+    return `All-Gender${gradeRange}`;
+  }
+
+  // Handle embedded sessions - show "Session 2a", "Session 3a", etc.
+  if (sessionType === 'embedded') {
+    const embeddedMatch = sessionName.match(/session\s*(\d+[a-z])/i);
+    if (embeddedMatch && embeddedMatch[1]) {
+      return `Session ${embeddedMatch[1]}${gradeRange}`;
+    }
+  }
+
+  // Handle main sessions - show "Session 2", "Session 3", etc.
+  const sessionMatch = sessionName.match(/session\s*(\d+[a-z]?)/i);
+  if (sessionMatch && sessionMatch[1]) {
+    return `Session ${sessionMatch[1]}${gradeRange}`;
+  }
+
+  // Fallback - return original name (truncated if too long)
+  if (sessionName.length > 25) {
+    return sessionName.slice(0, 22) + '...';
+  }
+  return sessionName;
+}
+
+/**
  * Get a short abbreviated version of session name for compact display
  * @param sessionName The full session name
  * @param sessionType Optional session type for better accuracy

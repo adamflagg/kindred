@@ -5,6 +5,7 @@
 import { useRetentionMetrics } from '../../hooks/useMetrics';
 import { MetricCard } from '../../components/metrics/MetricCard';
 import { BreakdownChart } from '../../components/metrics/BreakdownChart';
+import { getSessionChartLabel } from '../../utils/sessionDisplay';
 import { Loader2, AlertCircle } from 'lucide-react';
 
 interface RetentionTabProps {
@@ -58,7 +59,7 @@ export function RetentionTab({ baseYear, compareYear, sessionTypes }: RetentionT
   }));
 
   const sessionChartData = data.by_session.map((s) => ({
-    name: s.session_name,
+    name: getSessionChartLabel(s.session_name),
     value: s.returned_count,
     percentage: s.retention_rate,
   }));
@@ -144,7 +145,7 @@ export function RetentionTab({ baseYear, compareYear, sessionTypes }: RetentionT
             <tbody>
               {data.by_session.map((session, index) => (
                 <tr key={index} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
-                  <td className="px-4 py-3 font-medium text-foreground">{session.session_name}</td>
+                  <td className="px-4 py-3 font-medium text-foreground">{getSessionChartLabel(session.session_name)}</td>
                   <td className="px-4 py-3 text-right text-foreground">{session.base_count}</td>
                   <td className="px-4 py-3 text-right text-foreground">{session.returned_count}</td>
                   <td className="px-4 py-3 text-right">

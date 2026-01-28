@@ -2,7 +2,7 @@
  * React Query hooks for metrics API endpoints.
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { useApiWithAuth } from './useApiWithAuth';
 import { queryKeys, syncDataOptions } from '../utils/queryKeys';
 import type {
@@ -41,6 +41,7 @@ export function useRetentionMetrics(
       return response.json();
     },
     enabled: baseYear > 0 && compareYear > 0,
+    placeholderData: keepPreviousData, // Keep showing old data during filter changes
     ...syncDataOptions,
   });
 }
@@ -76,6 +77,7 @@ export function useRegistrationMetrics(
       return response.json();
     },
     enabled: year > 0,
+    placeholderData: keepPreviousData, // Keep showing old data during filter changes
     ...syncDataOptions,
   });
 }
@@ -102,6 +104,7 @@ export function useComparisonMetrics(yearA: number, yearB: number) {
       return response.json();
     },
     enabled: yearA > 0 && yearB > 0,
+    placeholderData: keepPreviousData, // Keep showing old data during filter changes
     ...syncDataOptions,
   });
 }
@@ -135,6 +138,7 @@ export function useHistoricalTrends(years?: string, sessionTypes?: string) {
       }
       return response.json();
     },
+    placeholderData: keepPreviousData, // Keep showing old data during filter changes
     ...syncDataOptions,
   });
 }

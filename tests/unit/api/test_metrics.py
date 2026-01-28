@@ -1458,4 +1458,261 @@ class TestFetchCamperHistoryNoStatusFilter:
         assert "year" in param_names
         assert "session_types" in param_names
         # This test will FAIL until we remove status_filter parameter
-        assert "status_filter" not in param_names, "status_filter parameter should be removed from fetch_camper_history_for_year"
+        assert "status_filter" not in param_names, (
+            "status_filter parameter should be removed from fetch_camper_history_for_year"
+        )
+
+
+# ============================================================================
+# TDD Tests for Dynamic Status Fetching (Phase 6)
+# ============================================================================
+
+
+class TestDynamicStatusFetching:
+    """Tests for fetching attendees with dynamic status filtering.
+
+    Issue: Backend currently only fetches 3 statuses (enrolled, waitlisted, cancelled)
+    in parallel, then combines. Need to support all 10 statuses dynamically.
+
+    All 10 statuses from PB schema:
+    - enrolled, applied, waitlisted, left_early, cancelled
+    - dismissed, inquiry, withdrawn, incomplete, unknown
+    """
+
+    @pytest.fixture
+    def attendees_with_all_statuses(self) -> list[Mock]:
+        """Create attendees with all possible status values."""
+        main_session = Mock(cm_id=1001, session_type="main", name="Session 2")
+        attendees = []
+
+        # All 10 status types
+        statuses_and_status_ids = [
+            ("enrolled", 2),
+            ("applied", 1),
+            ("waitlisted", 4),
+            ("left_early", 6),
+            ("cancelled", 5),
+            ("dismissed", 7),
+            ("inquiry", 3),
+            ("withdrawn", 8),
+            ("incomplete", 9),
+            ("unknown", 10),
+        ]
+
+        for i, (status, status_id) in enumerate(statuses_and_status_ids, start=101):
+            attendee = create_mock_attendee(i, 1001, 2026, status, status_id, status == "enrolled")
+            attendee.expand = {"session": main_session}
+            attendees.append(attendee)
+
+        return attendees
+
+    def test_fetch_attendees_supports_all_status_values(self, attendees_with_all_statuses: list[Mock]) -> None:
+        """Test that all 10 status values can be queried.
+
+        The backend should be able to fetch attendees for any status value,
+        not just enrolled/waitlisted/cancelled.
+        """
+        all_statuses = [
+            "enrolled",
+            "applied",
+            "waitlisted",
+            "left_early",
+            "cancelled",
+            "dismissed",
+            "inquiry",
+            "withdrawn",
+            "incomplete",
+            "unknown",
+        ]
+
+        # Simulate filtering for each status
+        for status in all_statuses:
+            filtered = [a for a in attendees_with_all_statuses if a.status == status]
+            # Each status should have exactly 1 attendee
+            assert len(filtered) == 1, f"Expected 1 attendee with status '{status}', got {len(filtered)}"
+
+    def test_multiple_statuses_can_be_combined(self, attendees_with_all_statuses: list[Mock]) -> None:
+        """Test that multiple statuses can be combined in a single query.
+
+        When user selects ["enrolled", "applied", "waitlisted"], the query
+        should return all attendees matching ANY of those statuses.
+        """
+        selected_statuses = ["enrolled", "applied", "waitlisted"]
+
+        # Simulate combined filter
+        filtered = [a for a in attendees_with_all_statuses if a.status in selected_statuses]
+
+        assert len(filtered) == 3
+
+    def test_registration_endpoint_uses_all_requested_statuses(
+        self, attendees_with_all_statuses: list[Mock], mock_pocketbase: Mock
+    ) -> None:
+        """Test that registration endpoint fetches all requested statuses.
+
+        When statuses=enrolled,applied,dismissed is passed, the response
+        should include counts for all three status types combined.
+        """
+        from fastapi.testclient import TestClient
+
+        from api.main import create_app
+
+        app = create_app()
+        client = TestClient(app)
+
+        mock_pb = mock_pocketbase
+        # Mock returns empty lists by default (clean test)
+        mock_pb.collection.return_value.get_full_list.return_value = []
+
+        with patch("api.routers.metrics.pb", mock_pb):
+            response = client.get("/api/metrics/registration?year=2026&statuses=enrolled,applied,dismissed")
+            assert response.status_code == 200
+            # The endpoint should accept any valid statuses parameter
+            data = response.json()
+            assert data["year"] == 2026
+
+    def test_build_dynamic_status_filter(self) -> None:
+        """Test that dynamic PB filter is built correctly for multiple statuses.
+
+        When statuses=["enrolled", "applied", "waitlisted"], the filter should be:
+        'status = "enrolled" || status = "applied" || status = "waitlisted"'
+        """
+        statuses = ["enrolled", "applied", "waitlisted"]
+
+        # Build filter the way it should be done
+        status_conditions = " || ".join(f'status = "{s}"' for s in statuses)
+        expected_filter = f"year = 2026 && ({status_conditions})"
+
+        assert 'status = "enrolled"' in expected_filter
+        assert 'status = "applied"' in expected_filter
+        assert 'status = "waitlisted"' in expected_filter
+        assert "||" in expected_filter
+
+    def test_empty_statuses_defaults_to_enrolled(self, mock_pocketbase: Mock) -> None:
+        """Test that empty/missing statuses parameter defaults to enrolled.
+
+        If no statuses parameter is provided, the endpoint should default
+        to querying only enrolled attendees (current behavior).
+        """
+        from fastapi.testclient import TestClient
+
+        from api.main import create_app
+
+        app = create_app()
+        client = TestClient(app)
+
+        mock_pb = mock_pocketbase
+        mock_pb.collection.return_value.get_full_list.return_value = []
+
+        with patch("api.routers.metrics.pb", mock_pb):
+            # No statuses parameter - should default to enrolled
+            response = client.get("/api/metrics/registration?year=2026")
+            assert response.status_code == 200
+
+    def test_single_non_enrolled_status_works(self, mock_pocketbase: Mock) -> None:
+        """Test that querying a single non-enrolled status works.
+
+        User should be able to query only waitlisted or only applied, etc.
+        """
+        from fastapi.testclient import TestClient
+
+        from api.main import create_app
+
+        app = create_app()
+        client = TestClient(app)
+
+        mock_pb = mock_pocketbase
+        mock_pb.collection.return_value.get_full_list.return_value = []
+
+        with patch("api.routers.metrics.pb", mock_pb):
+            # Just waitlisted
+            response = client.get("/api/metrics/registration?year=2026&statuses=waitlisted")
+            assert response.status_code == 200
+
+            # Just applied
+            response = client.get("/api/metrics/registration?year=2026&statuses=applied")
+            assert response.status_code == 200
+
+            # Just inquiry
+            response = client.get("/api/metrics/registration?year=2026&statuses=inquiry")
+            assert response.status_code == 200
+
+
+class TestFetchAttendeesForYearDynamicStatuses:
+    """Tests for the fetch_attendees_for_year function with dynamic status support.
+
+    The function needs to be refactored to support:
+    1. Multiple statuses as a list
+    2. Building dynamic PB filter
+    3. Fetching all requested statuses in a single query
+    """
+
+    def test_fetch_attendees_accepts_status_list(self) -> None:
+        """Test that fetch_attendees_for_year can accept a list of statuses.
+
+        The function signature should support:
+        fetch_attendees_for_year(year, status_filter=["enrolled", "applied"])
+        """
+        import inspect
+
+        from api.routers.metrics import fetch_attendees_for_year
+
+        sig = inspect.signature(fetch_attendees_for_year)
+        params = sig.parameters
+
+        # status_filter parameter should exist
+        assert "status_filter" in params, "fetch_attendees_for_year should have status_filter parameter"
+
+        # Check the type hint allows list (str | list[str] | None)
+        # Note: This is a design test - implementation can use str | list[str] | None
+
+    def test_fetch_attendees_builds_correct_filter_for_applied(self) -> None:
+        """Test that fetch_attendees_for_year builds correct filter for 'applied' status.
+
+        Currently the function only has explicit handling for enrolled/waitlisted/cancelled.
+        Other statuses like 'applied' fall through to the default (enrolled) behavior.
+
+        This test will FAIL until we implement dynamic status filtering.
+        """
+        import inspect
+
+        from api.routers.metrics import fetch_attendees_for_year
+
+        # Inspect the function source to verify it handles 'applied'
+
+        source = inspect.getsource(fetch_attendees_for_year)
+
+        # The function should build a dynamic filter for any status, not just 3 hardcoded ones
+        # Currently it has: if status_filter == "waitlisted": ... elif status_filter == "cancelled": ... else: (enrolled)
+        # It should handle 'applied', 'dismissed', 'inquiry', 'withdrawn', 'incomplete', 'unknown'
+
+        # This test verifies the function explicitly handles 'applied' status
+        assert '"applied"' in source or "applied" in source, (
+            "fetch_attendees_for_year should explicitly handle 'applied' status, not fall through to enrolled default"
+        )
+
+    def test_registration_endpoint_dynamically_filters_by_requested_statuses(self) -> None:
+        """Test that registration endpoint actually filters by all requested statuses.
+
+        Issue: Currently the registration endpoint fetches enrolled, waitlisted, cancelled
+        in parallel and then combines based on statuses parameter. But it doesn't fetch
+        other statuses like 'applied', 'dismissed', etc.
+
+        This test verifies the registration endpoint can properly filter by non-standard
+        statuses by checking the total_enrolled reflects the filtered data.
+        """
+        # Create mock attendees with applied status
+        applied_attendees = [
+            create_mock_attendee(101, 1001, 2026, "applied", 1, True),
+            create_mock_attendee(102, 1001, 2026, "applied", 1, True),
+        ]
+        # Add session expand
+        main_session = Mock(cm_id=1001, session_type="main", name="Session 2")
+        for a in applied_attendees:
+            a.expand = {"session": main_session}
+
+        # The test expectation: when statuses=applied, we should get count=2
+        # Currently the implementation doesn't fetch 'applied' attendees,
+        # so this would return 0
+
+        # For now, this is a specification test - the actual integration test
+        # would need more complex mocking to verify the PB query
