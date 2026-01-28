@@ -173,3 +173,181 @@ describe('VALID_TABS', () => {
     expect(VALID_TABS).toContain('logs');
   });
 });
+
+// Import sorting functions for testing
+import {
+  parseSessionName,
+  sortSessionsLogically,
+  sortSessionDataByName,
+  sortPriorSessionData,
+} from './sessionUtils';
+
+describe('parseSessionName', () => {
+  it('should parse main session names correctly', () => {
+    expect(parseSessionName('Session 1')).toEqual([1, '']);
+    expect(parseSessionName('Session 2')).toEqual([2, '']);
+    expect(parseSessionName('Session 3')).toEqual([3, '']);
+    expect(parseSessionName('Session 4')).toEqual([4, '']);
+  });
+
+  it('should parse embedded session names with suffixes', () => {
+    expect(parseSessionName('Session 2a')).toEqual([2, 'a']);
+    expect(parseSessionName('Session 2b')).toEqual([2, 'b']);
+    expect(parseSessionName('Session 3a')).toEqual([3, 'a']);
+  });
+
+  it('should handle "Taste of Camp" as session 0', () => {
+    expect(parseSessionName('Taste of Camp')).toEqual([0, 'taste of camp']);
+  });
+
+  it('should handle case insensitivity', () => {
+    expect(parseSessionName('SESSION 2')).toEqual([2, '']);
+    expect(parseSessionName('session 3A')).toEqual([3, 'a']);
+  });
+
+  it('should handle unknown session names', () => {
+    expect(parseSessionName('Unknown Session')).toEqual([0, 'unknown session']);
+    expect(parseSessionName('')).toEqual([0, '']);
+  });
+});
+
+describe('sortSessionsLogically', () => {
+  it('should sort sessions in logical order', () => {
+    const sessions = [
+      { name: 'Session 4' },
+      { name: 'Session 2' },
+      { name: 'Session 3a' },
+      { name: 'Taste of Camp' },
+      { name: 'Session 2b' },
+      { name: 'Session 3' },
+      { name: 'Session 2a' },
+    ];
+
+    const sorted = sortSessionsLogically(sessions);
+
+    expect(sorted.map((s) => s.name)).toEqual([
+      'Taste of Camp',
+      'Session 2',
+      'Session 2a',
+      'Session 2b',
+      'Session 3',
+      'Session 3a',
+      'Session 4',
+    ]);
+  });
+
+  it('should handle empty array', () => {
+    expect(sortSessionsLogically([])).toEqual([]);
+  });
+
+  it('should not mutate original array', () => {
+    const sessions = [{ name: 'Session 4' }, { name: 'Session 2' }];
+    const original = [...sessions];
+    sortSessionsLogically(sessions);
+    expect(sessions).toEqual(original);
+  });
+});
+
+describe('sortSessionDataByName', () => {
+  it('should sort session data objects by session_name field', () => {
+    const data = [
+      { session_name: 'Session 4', count: 100 },
+      { session_name: 'Session 2', count: 150 },
+      { session_name: 'Session 3a', count: 50 },
+      { session_name: 'Taste of Camp', count: 30 },
+      { session_name: 'Session 2b', count: 40 },
+      { session_name: 'Session 3', count: 120 },
+      { session_name: 'Session 2a', count: 45 },
+    ];
+
+    const sorted = sortSessionDataByName(data);
+
+    expect(sorted.map((s) => s.session_name)).toEqual([
+      'Taste of Camp',
+      'Session 2',
+      'Session 2a',
+      'Session 2b',
+      'Session 3',
+      'Session 3a',
+      'Session 4',
+    ]);
+  });
+
+  it('should preserve other fields', () => {
+    const data = [
+      { session_name: 'Session 4', count: 100, capacity: 120 },
+      { session_name: 'Session 2', count: 150, capacity: 160 },
+    ];
+
+    const sorted = sortSessionDataByName(data);
+
+    expect(sorted[0]).toEqual({ session_name: 'Session 2', count: 150, capacity: 160 });
+    expect(sorted[1]).toEqual({ session_name: 'Session 4', count: 100, capacity: 120 });
+  });
+
+  it('should handle empty array', () => {
+    expect(sortSessionDataByName([])).toEqual([]);
+  });
+
+  it('should not mutate original array', () => {
+    const data = [
+      { session_name: 'Session 4', count: 100 },
+      { session_name: 'Session 2', count: 150 },
+    ];
+    const original = [...data];
+    sortSessionDataByName(data);
+    expect(data).toEqual(original);
+  });
+});
+
+describe('sortPriorSessionData', () => {
+  it('should sort data objects by prior_session field', () => {
+    const data = [
+      { prior_session: 'Session 4', returned_count: 80 },
+      { prior_session: 'Session 2', returned_count: 120 },
+      { prior_session: 'Session 3a', returned_count: 40 },
+      { prior_session: 'Taste of Camp', returned_count: 25 },
+      { prior_session: 'Session 2b', returned_count: 35 },
+      { prior_session: 'Session 3', returned_count: 100 },
+      { prior_session: 'Session 2a', returned_count: 38 },
+    ];
+
+    const sorted = sortPriorSessionData(data);
+
+    expect(sorted.map((s) => s.prior_session)).toEqual([
+      'Taste of Camp',
+      'Session 2',
+      'Session 2a',
+      'Session 2b',
+      'Session 3',
+      'Session 3a',
+      'Session 4',
+    ]);
+  });
+
+  it('should preserve other fields', () => {
+    const data = [
+      { prior_session: 'Session 4', returned_count: 80, retention_rate: 0.8 },
+      { prior_session: 'Session 2', returned_count: 120, retention_rate: 0.75 },
+    ];
+
+    const sorted = sortPriorSessionData(data);
+
+    expect(sorted[0]).toEqual({ prior_session: 'Session 2', returned_count: 120, retention_rate: 0.75 });
+    expect(sorted[1]).toEqual({ prior_session: 'Session 4', returned_count: 80, retention_rate: 0.8 });
+  });
+
+  it('should handle empty array', () => {
+    expect(sortPriorSessionData([])).toEqual([]);
+  });
+
+  it('should not mutate original array', () => {
+    const data = [
+      { prior_session: 'Session 4', returned_count: 80 },
+      { prior_session: 'Session 2', returned_count: 120 },
+    ];
+    const original = [...data];
+    sortPriorSessionData(data);
+    expect(data).toEqual(original);
+  });
+});

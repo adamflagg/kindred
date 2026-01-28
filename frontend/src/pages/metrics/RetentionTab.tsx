@@ -21,6 +21,7 @@ import { GenderStackedChart } from '../../components/metrics/GenderStackedChart'
 import { GradeEnrollmentChart } from '../../components/metrics/GradeEnrollmentChart';
 import { DemographicTable } from '../../components/metrics/DemographicTable';
 import { getSessionChartLabel } from '../../utils/sessionDisplay';
+import { sortSessionDataByName, sortPriorSessionData } from '../../utils/sessionUtils';
 import { Loader2, AlertCircle, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 interface RetentionTabProps {
@@ -112,8 +113,9 @@ export function RetentionTab({ currentYear, sessionTypes }: RetentionTabProps) {
     }
   };
 
-  // Transform detailed session data for charts (from the detailed retention response)
-  const sessionChartData = (detailedData?.by_session ?? []).map((s) => ({
+  // Sort and transform detailed session data for charts (from the detailed retention response)
+  const sortedBySession = sortSessionDataByName(detailedData?.by_session ?? []);
+  const sessionChartData = sortedBySession.map((s) => ({
     name: getSessionChartLabel(s.session_name),
     value: s.returned_count,
     percentage: s.retention_rate * 100,
@@ -133,8 +135,9 @@ export function RetentionTab({ currentYear, sessionTypes }: RetentionTabProps) {
     percentage: y.retention_rate * 100,
   }));
 
-  // Prior year session breakdown
-  const priorSessionChartData = (detailedData?.by_prior_session ?? []).map((s) => ({
+  // Prior year session breakdown (sorted)
+  const sortedByPriorSession = sortPriorSessionData(detailedData?.by_prior_session ?? []);
+  const priorSessionChartData = sortedByPriorSession.map((s) => ({
     name: getSessionChartLabel(s.prior_session),
     value: s.returned_count,
     percentage: s.retention_rate * 100,
@@ -294,7 +297,7 @@ export function RetentionTab({ currentYear, sessionTypes }: RetentionTabProps) {
               </tr>
             </thead>
             <tbody>
-              {(detailedData?.by_session ?? []).map((session, index) => (
+              {sortedBySession.map((session, index) => (
                 <tr key={index} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
                   <td className="px-4 py-3 font-medium text-foreground">{getSessionChartLabel(session.session_name)}</td>
                   <td className="px-4 py-3 text-right text-foreground">{session.base_count}</td>
