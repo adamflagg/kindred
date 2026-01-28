@@ -18,6 +18,15 @@ import { RegistrationSessionSelector } from '../../components/metrics/Registrati
 import { GenderByGradeChart } from '../../components/metrics/GenderByGradeChart';
 import { getSessionChartLabel } from '../../utils/sessionDisplay';
 import { sortSessionDataByName } from '../../utils/sessionUtils';
+import {
+  transformGenderData,
+  transformGradeData,
+  transformSessionData,
+  transformSessionLengthData,
+  transformSummerYearsData,
+  transformFirstSummerYearData,
+  transformNewVsReturningData,
+} from '../../utils/metricsTransforms';
 import { Loader2, AlertCircle } from 'lucide-react';
 
 interface RegistrationTabProps {
@@ -72,61 +81,27 @@ export function RegistrationTab({ year, sessionTypes }: RegistrationTabProps) {
     );
   }
 
-  // Transform data for charts
-  const genderChartData = data.by_gender.map((g) => ({
-    name: g.gender || 'Unknown',
-    value: g.count,
-    percentage: g.percentage,
-  }));
-
-  const gradeChartData = data.by_grade.map((g) => ({
-    name: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
-    value: g.count,
-    percentage: g.percentage,
-  }));
-
-  // Sort sessions in logical order (Taste, 2, 2a, 2b, 3, 3a, 4)
-  const sortedBySession = sortSessionDataByName(data.by_session);
-
-  const sessionChartData = sortedBySession.map((s) => ({
-    name: getSessionChartLabel(s.session_name),
-    value: s.count,
-    percentage: s.utilization ?? 0,
-  }));
-
-  const sessionLengthData = data.by_session_length.map((s) => ({
-    name: s.length_category,
-    value: s.count,
-    percentage: s.percentage,
-  }));
-
-  // Use summer years (from enrollment history) instead of years_at_camp
-  const summerYearsData = (data.by_summer_years ?? []).map((y) => ({
-    name: y.summer_years === 1 ? '1 summer' : `${y.summer_years} summers`,
-    value: y.count,
-    percentage: y.percentage,
-  }));
+  // Transform data for charts using utility functions
+  const genderChartData = transformGenderData(data.by_gender);
+  const gradeChartData = transformGradeData(data.by_grade);
+  const sessionChartData = transformSessionData(data.by_session);
+  const sessionLengthData = transformSessionLengthData(data.by_session_length);
+  const summerYearsData = transformSummerYearsData(data.by_summer_years);
+  const firstSummerYearData = transformFirstSummerYearData(data.by_first_summer_year);
+  const newVsReturningData = transformNewVsReturningData(data.new_vs_returning);
 
   // Fallback to years_at_camp if summer years not available
-  const yearsChartData = summerYearsData.length > 0
-    ? summerYearsData
-    : data.by_years_at_camp.map((y) => ({
-        name: y.years === 1 ? '1 year' : `${y.years} years`,
-        value: y.count,
-        percentage: y.percentage,
-      }));
+  const yearsChartData =
+    summerYearsData.length > 0
+      ? summerYearsData
+      : data.by_years_at_camp.map((y) => ({
+          name: y.years === 1 ? '1 year' : `${y.years} years`,
+          value: y.count,
+          percentage: y.percentage,
+        }));
 
-  // First summer year cohort data
-  const firstSummerYearData = (data.by_first_summer_year ?? []).map((y) => ({
-    name: y.first_summer_year.toString(),
-    value: y.count,
-    percentage: y.percentage,
-  }));
-
-  const newVsReturningData = [
-    { name: 'New Campers', value: data.new_vs_returning.new_count, percentage: data.new_vs_returning.new_percentage },
-    { name: 'Returning', value: data.new_vs_returning.returning_count, percentage: data.new_vs_returning.returning_percentage },
-  ];
+  // Sort sessions for table (chart uses sorted version from transformSessionData)
+  const sortedBySession = sortSessionDataByName(data.by_session);
 
   return (
     <div className="space-y-6">

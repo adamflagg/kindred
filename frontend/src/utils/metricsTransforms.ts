@@ -16,6 +16,7 @@ export interface ChartDataPoint {
   name: string;
   value: number;
   percentage: number;
+  [key: string]: string | number | undefined;
 }
 
 export interface DemographicTableRow {

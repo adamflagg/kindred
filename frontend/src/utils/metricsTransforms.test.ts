@@ -46,7 +46,7 @@ describe('transformGenderData', () => {
 
     const result = transformGenderData(input as any);
 
-    expect(result[0].name).toBe('Unknown');
+    expect(result[0]!.name).toBe('Unknown');
   });
 
   it('returns empty array for undefined input', () => {
@@ -78,7 +78,7 @@ describe('transformGradeData', () => {
 
     const result = transformGradeData(input);
 
-    expect(result[0].name).toBe('Unknown');
+    expect(result[0]!.name).toBe('Unknown');
   });
 
   it('returns empty array for undefined input', () => {
@@ -106,7 +106,7 @@ describe('transformSessionData', () => {
 
     const result = transformSessionData(input as any);
 
-    expect(result[0].percentage).toBe(0);
+    expect(result[0]!.percentage).toBe(0);
   });
 
   it('returns empty array for undefined input', () => {
@@ -294,7 +294,7 @@ describe('transformDemographicTableData', () => {
 
     const result = transformDemographicTableData(input, 'city');
 
-    expect(result[0].name).toBe('San Francisco');
+    expect(result[0]!.name).toBe('San Francisco');
   });
 
   it('works with synagogue field', () => {
@@ -302,7 +302,7 @@ describe('transformDemographicTableData', () => {
 
     const result = transformDemographicTableData(input, 'synagogue');
 
-    expect(result[0].name).toBe('Beth Israel');
+    expect(result[0]!.name).toBe('Beth Israel');
   });
 
   it('returns empty array for undefined input', () => {
