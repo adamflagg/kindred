@@ -975,15 +975,21 @@ async def get_registration_metrics(
         waitlisted_attendees = filter_by_session(waitlisted_attendees)
         cancelled_attendees = filter_by_session(cancelled_attendees)
 
-        # Get person IDs from combined attendees (deduplicated)
-        # Filter ensures no None values, cast for type checker
+        # Get person IDs from each status category (deduplicated by person_id)
+        # Each person is counted once per status, even if in multiple sessions
         enrolled_person_ids: set[int] = {
             pid for a in combined_attendees if (pid := getattr(a, "person_id", None)) is not None
         }
+        waitlisted_person_ids: set[int] = {
+            pid for a in waitlisted_attendees if (pid := getattr(a, "person_id", None)) is not None
+        }
+        cancelled_person_ids: set[int] = {
+            pid for a in cancelled_attendees if (pid := getattr(a, "person_id", None)) is not None
+        }
 
         total_enrolled = len(enrolled_person_ids)
-        total_waitlisted = len(waitlisted_attendees)
-        total_cancelled = len(cancelled_attendees)
+        total_waitlisted = len(waitlisted_person_ids)
+        total_cancelled = len(cancelled_person_ids)
 
         # Gender breakdown
         gender_counts: dict[str, int] = {}

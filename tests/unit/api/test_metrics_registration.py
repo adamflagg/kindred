@@ -710,9 +710,7 @@ class TestWaitlistedCancelledDeduplication:
 
         # CORRECT: counting unique person_ids = 1
         waitlisted_person_ids: set[int] = {
-            pid
-            for a in waitlisted_attendees
-            if (pid := getattr(a, "person_id", None)) is not None
+            pid for a in waitlisted_attendees if (pid := getattr(a, "person_id", None)) is not None
         }
         correct_count = len(waitlisted_person_ids)
         assert correct_count == 1  # Expected behavior
@@ -741,9 +739,7 @@ class TestWaitlistedCancelledDeduplication:
 
         # CORRECT: counting unique person_ids = 1
         cancelled_person_ids: set[int] = {
-            pid
-            for a in cancelled_attendees
-            if (pid := getattr(a, "person_id", None)) is not None
+            pid for a in cancelled_attendees if (pid := getattr(a, "person_id", None)) is not None
         }
         correct_count = len(cancelled_person_ids)
         assert correct_count == 1  # Expected behavior
@@ -766,9 +762,7 @@ class TestWaitlistedCancelledDeduplication:
 
         # Enrolled uses set deduplication (correct existing behavior)
         enrolled_person_ids: set[int] = {
-            pid
-            for a in enrolled_attendees
-            if (pid := getattr(a, "person_id", None)) is not None
+            pid for a in enrolled_attendees if (pid := getattr(a, "person_id", None)) is not None
         }
         correct_count = len(enrolled_person_ids)
         assert correct_count == 1  # Should be 1, not 2
@@ -793,28 +787,20 @@ class TestWaitlistedCancelledDeduplication:
         ]
 
         # Person 105: waitlisted in session 2, cancelled in session 3
-        waitlisted_attendees.append(
-            create_mock_attendee(105, session_2, 2026, status="waitlisted", status_id=3)
-        )
+        waitlisted_attendees.append(create_mock_attendee(105, session_2, 2026, status="waitlisted", status_id=3))
         cancelled_attendees = [
             create_mock_attendee(105, session_3, 2026, status="cancelled", status_id=4),
         ]
 
         # Deduplicate each status category
         enrolled_person_ids: set[int] = {
-            pid
-            for a in enrolled_attendees
-            if (pid := getattr(a, "person_id", None)) is not None
+            pid for a in enrolled_attendees if (pid := getattr(a, "person_id", None)) is not None
         }
         waitlisted_person_ids: set[int] = {
-            pid
-            for a in waitlisted_attendees
-            if (pid := getattr(a, "person_id", None)) is not None
+            pid for a in waitlisted_attendees if (pid := getattr(a, "person_id", None)) is not None
         }
         cancelled_person_ids: set[int] = {
-            pid
-            for a in cancelled_attendees
-            if (pid := getattr(a, "person_id", None)) is not None
+            pid for a in cancelled_attendees if (pid := getattr(a, "person_id", None)) is not None
         }
 
         # Person 104 enrolled, persons 104 and 105 waitlisted, person 105 cancelled
@@ -856,8 +842,6 @@ class TestWaitlistedCancelledDeduplication:
         assert len(waitlisted_attendees) == 6
 
         waitlisted_person_ids: set[int] = {
-            pid
-            for a in waitlisted_attendees
-            if (pid := getattr(a, "person_id", None)) is not None
+            pid for a in waitlisted_attendees if (pid := getattr(a, "person_id", None)) is not None
         }
         assert len(waitlisted_person_ids) == 3  # Persons 101, 102, 103
