@@ -722,13 +722,6 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 		}
 	}
 
-	// Validate: bunk_requests and process_requests only for current year
-	if year != currentYear && (service == "bunk_requests" || service == "process_requests") {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
-			"error": fmt.Sprintf("%s is only available for current year syncs", service),
-		})
-	}
-
 	// Get orchestrator and check if any sync is already running
 	orchestrator := scheduler.GetOrchestrator()
 	if orchestrator.IsDailySyncRunning() || orchestrator.IsHistoricalSyncRunning() {
