@@ -389,7 +389,7 @@ class TestGenderByGradeBreakdown:
         persons = [
             create_mock_person(201, "Alex", "Smith", "NB", 6, 1, 2026),  # Non-binary
             create_mock_person(202, "Jordan", "Lee", "", 6, 1, 2026),  # Empty
-            create_mock_person(203, "Casey", "Brown", None, 6, 1, 2026),  # None  # type: ignore[arg-type]
+            create_mock_person(203, "Casey", "Brown", None, 6, 1, 2026),  # type: ignore[arg-type]
         ]
 
         by_grade: dict[int, dict[str, int]] = {}

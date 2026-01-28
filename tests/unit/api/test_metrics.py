@@ -2719,7 +2719,7 @@ class TestBatchFetchSummerEnrollmentHistory:
         efficient computation of summer years, first year, etc.
         """
         # Simulate batch fetch results
-        enrollment_records = [
+        enrollment_records: list[dict[str, Any]] = [
             {"person_id": 101, "year": 2023, "session_type": "main"},
             {"person_id": 101, "year": 2024, "session_type": "main"},
             {"person_id": 101, "year": 2025, "session_type": "main"},
@@ -2729,9 +2729,9 @@ class TestBatchFetchSummerEnrollmentHistory:
         ]
 
         # Group by person_id
-        by_person: dict[int, list[dict]] = {}
+        by_person: dict[int, list[dict[str, Any]]] = {}
         for record in enrollment_records:
-            pid = record["person_id"]
+            pid = int(record["person_id"])
             if pid not in by_person:
                 by_person[pid] = []
             by_person[pid].append(record)
@@ -2765,7 +2765,7 @@ class TestBatchFetchSummerEnrollmentHistory:
 
     def test_compute_first_summer_year_from_grouped_history(self) -> None:
         """Test computing first summer year from grouped enrollment history."""
-        by_person = {
+        by_person: dict[int, list[dict[str, Any]]] = {
             101: [
                 {"year": 2023, "session_type": "main"},
                 {"year": 2024, "session_type": "main"},
@@ -2777,7 +2777,7 @@ class TestBatchFetchSummerEnrollmentHistory:
             ],
         }
 
-        first_summer_year_by_person = {pid: min(r["year"] for r in records) for pid, records in by_person.items()}
+        first_summer_year_by_person = {pid: min(int(r["year"]) for r in records) for pid, records in by_person.items()}
 
         assert first_summer_year_by_person[101] == 2023
         assert first_summer_year_by_person[102] == 2024

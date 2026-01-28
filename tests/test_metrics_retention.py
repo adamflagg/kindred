@@ -6,6 +6,8 @@ for the 3-year enrollment comparison feature.
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -44,12 +46,14 @@ class TestRetentionTrendsEnrollmentByYear:
     """Tests for the enrollment_by_year field in RetentionTrendsResponse."""
 
     @pytest.fixture
-    def mock_attendees_by_year(self):
+    def mock_attendees_by_year(
+        self,
+    ) -> Callable[[int, list[dict[str, Any]]], list[MagicMock]]:
         """Create mock attendees for multiple years with gender/grade data."""
 
-        def create_attendees(year: int, person_data: list[dict]):
+        def create_attendees(year: int, person_data: list[dict[str, Any]]) -> list[MagicMock]:
             """Create mock attendee objects with person expansion."""
-            attendees = []
+            attendees: list[MagicMock] = []
             for _i, data in enumerate(person_data):
                 attendee = MagicMock()
                 attendee.person_id = data["person_id"]
@@ -66,12 +70,14 @@ class TestRetentionTrendsEnrollmentByYear:
         return create_attendees
 
     @pytest.fixture
-    def mock_persons_by_year(self):
+    def mock_persons_by_year(
+        self,
+    ) -> Callable[[int, list[dict[str, Any]]], dict[int, MagicMock]]:
         """Create mock persons for multiple years."""
 
-        def create_persons(_year: int, person_data: list[dict]):
+        def create_persons(_year: int, person_data: list[dict[str, Any]]) -> dict[int, MagicMock]:
             """Create mock person objects with gender/grade."""
-            persons = {}
+            persons: dict[int, MagicMock] = {}
             for data in person_data:
                 person = MagicMock()
                 person.cm_id = data["person_id"]
@@ -83,7 +89,7 @@ class TestRetentionTrendsEnrollmentByYear:
 
         return create_persons
 
-    def test_enrollment_by_year_field_exists(self, test_client: TestClient):
+    def test_enrollment_by_year_field_exists(self, test_client: TestClient) -> None:
         """Test that enrollment_by_year is present in the response."""
         response = test_client.get(
             "/api/metrics/retention-trends",
@@ -97,7 +103,7 @@ class TestRetentionTrendsEnrollmentByYear:
         # Field should exist in response
         assert "enrollment_by_year" in data, "enrollment_by_year field is missing from response"
 
-    def test_enrollment_by_year_has_correct_structure(self, test_client: TestClient):
+    def test_enrollment_by_year_has_correct_structure(self, test_client: TestClient) -> None:
         """Test that enrollment_by_year entries have the correct structure."""
         response = test_client.get(
             "/api/metrics/retention-trends",
@@ -126,7 +132,7 @@ class TestRetentionTrendsEnrollmentByYear:
                 assert "grade" in grade_entry or grade_entry.get("grade") is None, "grade field check failed"
                 assert "count" in grade_entry, "count field missing in by_grade"
 
-    def test_enrollment_by_year_has_three_entries_for_three_years(self, test_client: TestClient):
+    def test_enrollment_by_year_has_three_entries_for_three_years(self, test_client: TestClient) -> None:
         """Test that num_years=3 returns 3 enrollment entries."""
         response = test_client.get(
             "/api/metrics/retention-trends",
@@ -145,7 +151,7 @@ class TestRetentionTrendsEnrollmentByYear:
         years = [entry["year"] for entry in enrollment_by_year]
         assert years == [2024, 2025, 2026], f"Expected years [2024, 2025, 2026], got {years}"
 
-    def test_enrollment_by_year_gender_totals_match_year_total(self, test_client: TestClient):
+    def test_enrollment_by_year_gender_totals_match_year_total(self, test_client: TestClient) -> None:
         """Test that sum of gender counts equals year total."""
         response = test_client.get(
             "/api/metrics/retention-trends",
@@ -162,7 +168,7 @@ class TestRetentionTrendsEnrollmentByYear:
                 f"Year {entry['year']}: gender total {gender_total} != year total {entry['total']}"
             )
 
-    def test_enrollment_by_year_grade_totals_match_year_total(self, test_client: TestClient):
+    def test_enrollment_by_year_grade_totals_match_year_total(self, test_client: TestClient) -> None:
         """Test that sum of grade counts equals year total."""
         response = test_client.get(
             "/api/metrics/retention-trends",
@@ -257,7 +263,7 @@ class TestRetentionTrendsEnrollmentIntegration:
     """Integration tests for enrollment_by_year calculation."""
 
     @pytest.fixture
-    def mock_pb_data(self):
+    def mock_pb_data(self) -> dict[int, dict[int, MagicMock]]:
         """Create realistic mock data for 3 years."""
         # Year 2024: 100 campers (52 M, 48 F)
         year_2024_persons = []
@@ -316,7 +322,9 @@ class TestRetentionTrendsEnrollmentIntegration:
             2026: dict(year_2026_persons),
         }
 
-    def test_enrollment_totals_calculated_correctly(self, test_client: TestClient, mock_pb_data):
+    def test_enrollment_totals_calculated_correctly(
+        self, test_client: TestClient, mock_pb_data: dict[int, dict[int, MagicMock]]
+    ) -> None:
         """Test that enrollment totals are calculated correctly per year."""
         # This test will initially fail until implementation is complete
         response = test_client.get(
@@ -340,7 +348,7 @@ class TestEnrollmentByYearAllSessions:
     when a specific session is selected.
     """
 
-    def test_all_sessions_has_gender_data(self, test_client: TestClient):
+    def test_all_sessions_has_gender_data(self, test_client: TestClient) -> None:
         """Test that by_gender is populated when no session_cm_id filter is applied.
 
         This catches the bug where person lookup fails for 'All Sessions' view.
@@ -386,7 +394,7 @@ class TestEnrollmentByYearAllSessions:
                 f"persons dict keys."
             )
 
-    def test_all_sessions_has_grade_data(self, test_client: TestClient):
+    def test_all_sessions_has_grade_data(self, test_client: TestClient) -> None:
         """Test that by_grade is populated when no session_cm_id filter is applied."""
         response = test_client.get(
             "/api/metrics/retention-trends",
@@ -417,7 +425,7 @@ class TestEnrollmentByYearAllSessions:
                 f"Person lookup failed for 'All Sessions': years with total>0 but empty by_grade: {failed_years}."
             )
 
-    def test_all_sessions_vs_specific_session_consistency(self, test_client: TestClient):
+    def test_all_sessions_vs_specific_session_consistency(self, test_client: TestClient) -> None:
         """Test that data is consistent between 'All Sessions' and specific session queries.
 
         If specific session works but 'All Sessions' doesn't, this indicates a lookup bug.
