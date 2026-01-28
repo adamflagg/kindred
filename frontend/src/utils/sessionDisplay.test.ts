@@ -4,6 +4,7 @@ import {
   getSessionDisplayName,
   getParentSessionId,
   getSessionDisplayNameFromString,
+  getSessionChartLabel,
   getSessionShorthand,
 } from './sessionDisplay';
 import type { Session } from '../types/app-types';
@@ -316,6 +317,38 @@ describe('sessionDisplay utilities', () => {
         updated: '',
       };
       expect(getFormattedSessionName(mainSession)).toBe('Session 2');
+    });
+  });
+
+  describe('getSessionChartLabel', () => {
+    it('should return "Unknown" for empty session name', () => {
+      expect(getSessionChartLabel('')).toBe('Unknown');
+    });
+
+    it('should return "Taste of Camp" for taste sessions', () => {
+      expect(getSessionChartLabel('Taste of Camp')).toBe('Taste of Camp');
+      expect(getSessionChartLabel('Taste of Camp 2025', 'taste')).toBe('Taste of Camp');
+    });
+
+    it('should abbreviate AG sessions and preserve grade ranges', () => {
+      expect(getSessionChartLabel('All-Gender Cabin-Session 2', 'ag')).toBe('All-Gender 2');
+      expect(getSessionChartLabel('All-Gender Cabin-Session 2 (Grades 6-8)', 'ag')).toBe('All-Gender 2 (6-8)');
+      expect(getSessionChartLabel('All-Gender Cabin-Session 3 (Grades 3-5) 2025')).toBe('All-Gender 3 (3-5)');
+      expect(getSessionChartLabel('AG Session 4', 'ag')).toBe('All-Gender 4');
+    });
+
+    it('should preserve main session format', () => {
+      expect(getSessionChartLabel('Session 2')).toBe('Session 2');
+      expect(getSessionChartLabel('Session 3', 'main')).toBe('Session 3');
+    });
+
+    it('should preserve embedded session format', () => {
+      expect(getSessionChartLabel('Session 2a', 'embedded')).toBe('Session 2a');
+      expect(getSessionChartLabel('Session 3b')).toBe('Session 3b');
+    });
+
+    it('should truncate very long names without grade ranges', () => {
+      expect(getSessionChartLabel('Some Very Long Session Name That Goes On Forever')).toBe('Some Very Long Session...');
     });
   });
 

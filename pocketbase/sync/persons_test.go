@@ -961,9 +961,9 @@ func TestExtractTagIDs_FiltersFutureTags(t *testing.T) {
 // Tests for cm_* fields from CamperDetails
 // =============================================================================
 
-// TestTransformPersonToPB_CMFieldsExtracted tests that cm_years_at_camp, cm_last_year_attended,
-// and cm_lead_date are extracted from CamperDetails
-func TestTransformPersonToPB_CMFieldsExtracted(t *testing.T) {
+// TestTransformPersonToPB_CMLeadDateExtracted tests that cm_lead_date is extracted from CamperDetails
+// Note: cm_years_at_camp and cm_last_year_attended were removed (they duplicated years_at_camp/last_year_attended)
+func TestTransformPersonToPB_CMLeadDateExtracted(t *testing.T) {
 	s := &PersonsSync{
 		missingDataStats: make(map[string]int),
 	}
@@ -991,24 +991,25 @@ func TestTransformPersonToPB_CMFieldsExtracted(t *testing.T) {
 		t.Fatalf("transformPersonToPB returned error: %v", err)
 	}
 
-	// Verify cm_years_at_camp is extracted
-	if got, ok := pbData["cm_years_at_camp"].(int); !ok || got != 5 {
-		t.Errorf("cm_years_at_camp = %v, want 5", pbData["cm_years_at_camp"])
-	}
-
-	// Verify cm_last_year_attended is extracted
-	if got, ok := pbData["cm_last_year_attended"].(int); !ok || got != 2024 {
-		t.Errorf("cm_last_year_attended = %v, want 2024", pbData["cm_last_year_attended"])
-	}
-
 	// Verify cm_lead_date is extracted
 	if got, ok := pbData["cm_lead_date"].(string); !ok || got != "2019-02-15" {
 		t.Errorf("cm_lead_date = %v, want '2019-02-15'", pbData["cm_lead_date"])
 	}
+
+	// Verify years_at_camp is extracted (canonical field, not cm_ prefix)
+	if got, ok := pbData["years_at_camp"].(int); !ok || got != 5 {
+		t.Errorf("years_at_camp = %v, want 5", pbData["years_at_camp"])
+	}
+
+	// Verify last_year_attended is extracted (capped at current year - 1 = 2024 in this case)
+	if got, ok := pbData["last_year_attended"].(int); !ok || got != 2024 {
+		t.Errorf("last_year_attended = %v, want 2024", pbData["last_year_attended"])
+	}
 }
 
-// TestTransformPersonToPB_CMFieldsMissing tests graceful handling of missing cm_* fields
-func TestTransformPersonToPB_CMFieldsMissing(t *testing.T) {
+// TestTransformPersonToPB_CMLeadDateMissing tests graceful handling of missing cm_lead_date
+// Note: cm_years_at_camp and cm_last_year_attended were removed (they duplicated years_at_camp/last_year_attended)
+func TestTransformPersonToPB_CMLeadDateMissing(t *testing.T) {
 	s := &PersonsSync{
 		missingDataStats: make(map[string]int),
 	}
@@ -1022,7 +1023,7 @@ func TestTransformPersonToPB_CMFieldsMissing(t *testing.T) {
 			"Last":  "Garcia",
 		},
 		"CamperDetails": map[string]interface{}{
-			"CampGradeID": float64(6), // Only grade, no cm_* fields
+			"CampGradeID": float64(6), // Only grade, no cm_lead_date
 		},
 	}
 
@@ -1033,19 +1034,19 @@ func TestTransformPersonToPB_CMFieldsMissing(t *testing.T) {
 		t.Fatalf("transformPersonToPB returned error: %v", err)
 	}
 
-	// cm_years_at_camp should default to 0
-	if got := pbData["cm_years_at_camp"]; got != 0 {
-		t.Errorf("cm_years_at_camp = %v, want 0 for missing field", got)
-	}
-
-	// cm_last_year_attended should default to 0
-	if got := pbData["cm_last_year_attended"]; got != 0 {
-		t.Errorf("cm_last_year_attended = %v, want 0 for missing field", got)
-	}
-
 	// cm_lead_date should default to empty string
 	if got := pbData["cm_lead_date"]; got != "" {
 		t.Errorf("cm_lead_date = %v, want '' for missing field", got)
+	}
+
+	// years_at_camp should default to 0
+	if got := pbData["years_at_camp"]; got != 0 {
+		t.Errorf("years_at_camp = %v, want 0 for missing field", got)
+	}
+
+	// last_year_attended should default to 0
+	if got := pbData["last_year_attended"]; got != 0 {
+		t.Errorf("last_year_attended = %v, want 0 for missing field", got)
 	}
 }
 

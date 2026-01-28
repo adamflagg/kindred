@@ -294,9 +294,9 @@ export function SyncTab() {
                     </button>
                   </div>
                 ) : syncType.id === 'camper_history' ? (
-                  // Camper history requires year parameter - use custom hook with current year
+                  // Camper history requires year parameter - use selected year from dropdown
                   <button
-                    onClick={() => camperHistorySync.mutate(currentYear)}
+                    onClick={() => camperHistorySync.mutate(syncYear)}
                     disabled={isRunning || camperHistorySync.isPending}
                     className="w-full py-2 mt-3 text-xs sm:text-sm font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
                   >
@@ -307,9 +307,9 @@ export function SyncTab() {
                     )}
                   </button>
                 ) : syncType.id === 'family_camp_derived' ? (
-                  // Family camp derived requires year parameter - use custom hook with current year
+                  // Family camp derived requires year parameter - use selected year from dropdown
                   <button
-                    onClick={() => familyCampDerivedSync.mutate(currentYear)}
+                    onClick={() => familyCampDerivedSync.mutate(syncYear)}
                     disabled={isRunning || familyCampDerivedSync.isPending}
                     className="w-full py-2 mt-3 text-xs sm:text-sm font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
                   >

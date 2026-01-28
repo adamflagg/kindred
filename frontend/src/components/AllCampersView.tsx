@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
-import { Search, Home, X, ChevronDown } from 'lucide-react';
+import { Search, Home, X, ChevronDown, Settings } from 'lucide-react';
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react';
 import { CampMinderIcon } from './icons';
 import { pb } from '../lib/pocketbase';
@@ -349,6 +349,14 @@ export default function AllCampersView() {
                 <X className="h-4 w-4" />
               </button>
             )}
+
+            <Link
+              to="/summer/admin"
+              className="p-2 rounded-lg text-forest-200 hover:text-white hover:bg-white/10 transition-colors"
+              title="Admin Settings"
+            >
+              <Settings className="h-4 w-4" />
+            </Link>
           </div>
         </div>
       </div>

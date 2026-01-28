@@ -754,13 +754,15 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 			// based on sync type to ensure they run AFTER their dependencies
 		}
 
-		// Only include bunk_requests for current year syncs (not historical)
+		// Derived tables always run (they compute from local PocketBase data, no API calls)
+		servicesToRun = append(servicesToRun, "camper_history", "family_camp_derived")
+
+		// Only include bunk_requests and process_requests for current year syncs (not historical)
 		// Bunk requests are populated during the current year's processing
 		// and there's no need to re-process them for historical years
 		// opts.Year > 0 means this is a historical sync with a specific year
 		if opts.Year == 0 {
-			// Current year: derived tables can run immediately (use existing custom values data)
-			servicesToRun = append(servicesToRun, "camper_history", "family_camp_derived", "bunk_requests")
+			servicesToRun = append(servicesToRun, "bunk_requests")
 			// Only include process_requests in production (Docker) mode
 			// In development, skip AI processing to avoid unnecessary API costs
 			if os.Getenv("IS_DOCKER") == boolTrueStr {
@@ -768,13 +770,11 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 			}
 		}
 
-		// Include custom field values if requested (for historical syncs)
+		// Include custom field values if requested (expensive API calls - 1 call per entity)
 		// These run after persons/households since they depend on those records existing
-		// Derived tables (camper_history, family_camp_derived) run AFTER custom values
 		if opts.IncludeCustomValues {
 			servicesToRun = append(servicesToRun,
-				"person_custom_values", "household_custom_values",
-				"camper_history", "family_camp_derived")
+				"person_custom_values", "household_custom_values")
 		}
 	}
 

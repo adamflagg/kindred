@@ -443,8 +443,7 @@ func (s *PersonsSync) processPerson(
 		"last_year_attended", "gender_identity_id", "gender_identity_name", "gender_identity_write_in",
 		"gender_pronoun_id", "gender_pronoun_name", "gender_pronoun_write_in", "phone_numbers",
 		"email_addresses", "address", "household_id", "is_camper", "year", "parent_names",
-		"division", "partition_id", "lead_date", "tshirt_size",
-		"cm_years_at_camp", "cm_last_year_attended", "cm_lead_date",
+		"division", "partition_id", "lead_date", "tshirt_size", "cm_lead_date",
 		"tags"}
 
 	if existing != nil {
@@ -603,11 +602,6 @@ func (s *PersonsSync) transformPersonToPB(cmPerson map[string]interface{}, year 
 	pbData["partition_id"] = s.getInt(camperDetails, "PartitionID", 0)
 	pbData["lead_date"] = s.getString(camperDetails, "LeadDate", "")
 	pbData["tshirt_size"] = s.getString(camperDetails, "TShirtSize", "")
-
-	// Extract cm_* fields - CampMinder's authoritative values
-	// These are stored separately from computed values for comparison/flexibility
-	pbData["cm_years_at_camp"] = s.getInt(camperDetails, "YearsAtCamp", 0)
-	pbData["cm_last_year_attended"] = s.getInt(camperDetails, "LastYearAttended", 0)
 	pbData["cm_lead_date"] = s.getString(camperDetails, "LeadDate", "")
 
 	// Cap last_year_attended at current year (since we only sync enrolled attendees)

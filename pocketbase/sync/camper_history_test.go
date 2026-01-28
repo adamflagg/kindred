@@ -2,6 +2,7 @@ package sync
 
 import (
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -1117,6 +1118,325 @@ func TestCamperHistoryUsesCMYearsAtCamp(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestCamperHistoryComputeFirstYearAttended tests first_year_attended calculation
+// This field stores the first year a camper ever attended summer camp (for onramp analysis)
+func TestCamperHistoryComputeFirstYearAttended(t *testing.T) {
+	tests := []struct {
+		name                      string
+		currentYear               int
+		enrolledYears             []int
+		expectedFirstYearAttended int
+	}{
+		{
+			name:                      "new camper - no history",
+			currentYear:               2025,
+			enrolledYears:             []int{}, // No prior years
+			expectedFirstYearAttended: 2025,    // Current year is their first
+		},
+		{
+			name:                      "returning camper - single prior year",
+			currentYear:               2025,
+			enrolledYears:             []int{2024},
+			expectedFirstYearAttended: 2024, // Min of enrolled years
+		},
+		{
+			name:                      "veteran camper - multiple years",
+			currentYear:               2025,
+			enrolledYears:             []int{2020, 2021, 2022, 2023, 2024},
+			expectedFirstYearAttended: 2020, // Earliest year
+		},
+		{
+			name:                      "gap years - still returns earliest",
+			currentYear:               2025,
+			enrolledYears:             []int{2019, 2023}, // Skipped 2020-2022
+			expectedFirstYearAttended: 2019,              // Earliest year, gaps don't matter
+		},
+		{
+			name:                      "unsorted years - finds minimum",
+			currentYear:               2025,
+			enrolledYears:             []int{2022, 2019, 2024, 2021}, // Not in order
+			expectedFirstYearAttended: 2019,                          // Should find min
+		},
+		{
+			name:                      "single gap year before current",
+			currentYear:               2025,
+			enrolledYears:             []int{2023}, // Skipped 2024
+			expectedFirstYearAttended: 2023,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			firstYear := computeFirstYearAttended(tt.currentYear, tt.enrolledYears)
+			if firstYear != tt.expectedFirstYearAttended {
+				t.Errorf("computeFirstYearAttended(%d, %v) = %d, want %d",
+					tt.currentYear, tt.enrolledYears, firstYear, tt.expectedFirstYearAttended)
+			}
+		})
+	}
+}
+
+// computeFirstYearAttended computes the first year a camper attended camp
+// For new campers (no history), returns current year
+// For returning campers, returns the minimum of enrolled years
+func computeFirstYearAttended(currentYear int, enrolledYears []int) int {
+	if len(enrolledYears) == 0 {
+		return currentYear // New camper, this is their first year
+	}
+	minYear := enrolledYears[0]
+	for _, y := range enrolledYears[1:] {
+		if y < minYear {
+			minYear = y
+		}
+	}
+	return minYear
+}
+
+// ============================================================================
+// Session Types field tests - filtering summer vs family camp
+// ============================================================================
+
+// TestCamperHistorySessionTypesField tests that session_types field is populated
+// correctly from attendee sessions
+func TestCamperHistorySessionTypesField(t *testing.T) {
+	tests := []struct {
+		name                 string
+		sessionTypes         []string // Session types from camp_sessions
+		expectedSessionTypes string   // Comma-separated, sorted result
+	}{
+		{
+			name:                 "single main session",
+			sessionTypes:         []string{"main"},
+			expectedSessionTypes: "main",
+		},
+		{
+			name:                 "main and ag sessions",
+			sessionTypes:         []string{"main", "ag"},
+			expectedSessionTypes: "ag, main", // Sorted alphabetically
+		},
+		{
+			name:                 "embedded only",
+			sessionTypes:         []string{"embedded"},
+			expectedSessionTypes: "embedded",
+		},
+		{
+			name:                 "all summer types",
+			sessionTypes:         []string{"main", "embedded", "ag"},
+			expectedSessionTypes: "ag, embedded, main",
+		},
+		{
+			name:                 "family camp only",
+			sessionTypes:         []string{"family"},
+			expectedSessionTypes: "family",
+		},
+		{
+			name:                 "multi-session same type",
+			sessionTypes:         []string{"main", "main", "main"},
+			expectedSessionTypes: "main", // Deduplicated
+		},
+		{
+			name:                 "empty sessions",
+			sessionTypes:         []string{},
+			expectedSessionTypes: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := aggregateSessionTypes(tt.sessionTypes)
+			if result != tt.expectedSessionTypes {
+				t.Errorf("aggregateSessionTypes(%v) = %q, want %q",
+					tt.sessionTypes, result, tt.expectedSessionTypes)
+			}
+		})
+	}
+}
+
+// TestCamperHistoryMultiSessionWithDifferentTypes tests that multi-session campers
+// correctly aggregate all their session types
+func TestCamperHistoryMultiSessionWithDifferentTypes(t *testing.T) {
+	// Simulate attendee records for a camper in main and AG sessions
+	attendees := []testAttendeeWithSessionType{
+		{PersonID: 1001, SessionID: 100, SessionName: "Session 2", SessionType: "main"},
+		{PersonID: 1001, SessionID: 101, SessionName: "Session 2 AG", SessionType: "ag"},
+		{PersonID: 1001, SessionID: 102, SessionName: "Session 3", SessionType: "main"},
+	}
+
+	// Group by person and aggregate session types
+	personData := aggregateAttendeesWithSessionTypes(attendees)
+
+	pd, exists := personData[1001]
+	if !exists {
+		t.Fatal("person 1001 not found in aggregated data")
+	}
+
+	// Should have both session types
+	expectedTypes := "ag, main" // Deduplicated and sorted
+	if pd.SessionTypes != expectedTypes {
+		t.Errorf("SessionTypes = %q, want %q", pd.SessionTypes, expectedTypes)
+	}
+}
+
+// TestCamperHistorySessionTypesFilteringSummerOnly tests the filter logic
+// that excludes non-summer sessions from metrics
+func TestCamperHistorySessionTypesFilteringSummerOnly(t *testing.T) {
+	// Sample camper history records with various session types
+	records := []testCamperHistoryWithSessionTypes{
+		{PersonID: 1001, SessionTypes: "main", Grade: 6},           // Summer - include
+		{PersonID: 1002, SessionTypes: "embedded", Grade: 7},       // Summer - include
+		{PersonID: 1003, SessionTypes: "ag, main", Grade: 8},       // Summer - include
+		{PersonID: 1004, SessionTypes: "family", Grade: 0},         // Family - exclude
+		{PersonID: 1005, SessionTypes: "main, embedded", Grade: 5}, // Summer - include
+	}
+
+	summerTypes := []string{"main", "embedded", "ag"}
+
+	// Filter to summer only
+	filtered := filterBySessionTypes(records, summerTypes)
+
+	if len(filtered) != 4 {
+		t.Errorf("filtered count = %d, want 4", len(filtered))
+	}
+
+	// Verify family camp is excluded
+	for _, r := range filtered {
+		if r.SessionTypes == "family" {
+			t.Error("family session type should be excluded")
+		}
+	}
+
+	// Verify grade 0 is not in filtered results
+	for _, r := range filtered {
+		if r.Grade == 0 {
+			t.Errorf("grade 0 should not be in filtered results (family camp adult)")
+		}
+	}
+}
+
+// Test helper types for session_types tests
+type testAttendeeWithSessionType struct {
+	PersonID    int
+	SessionID   int
+	SessionName string
+	SessionType string
+}
+
+type testPersonDataWithSessionTypes struct {
+	PersonID     int
+	SessionNames []string
+	SessionTypes string // Comma-separated, deduplicated, sorted
+}
+
+type testCamperHistoryWithSessionTypes struct {
+	PersonID     int
+	SessionTypes string
+	Grade        int
+}
+
+// aggregateSessionTypes deduplicates and sorts session types
+func aggregateSessionTypes(types []string) string {
+	if len(types) == 0 {
+		return ""
+	}
+	// Deduplicate
+	seen := make(map[string]bool)
+	unique := make([]string, 0, len(types))
+	for _, t := range types {
+		if t != "" && !seen[t] {
+			seen[t] = true
+			unique = append(unique, t)
+		}
+	}
+	return joinSorted(unique)
+}
+
+// aggregateAttendeesWithSessionTypes groups attendees and aggregates session types
+func aggregateAttendeesWithSessionTypes(
+	attendees []testAttendeeWithSessionType,
+) map[int]*testPersonDataWithSessionTypes {
+	result := make(map[int]*testPersonDataWithSessionTypes)
+
+	for _, a := range attendees {
+		if _, exists := result[a.PersonID]; !exists {
+			result[a.PersonID] = &testPersonDataWithSessionTypes{
+				PersonID:     a.PersonID,
+				SessionNames: []string{},
+			}
+		}
+		pd := result[a.PersonID]
+
+		// Add session name if not present
+		found := false
+		for _, s := range pd.SessionNames {
+			if s == a.SessionName {
+				found = true
+				break
+			}
+		}
+		if !found {
+			pd.SessionNames = append(pd.SessionNames, a.SessionName)
+		}
+	}
+
+	// Now aggregate session types for each person
+	for personID, pd := range result {
+		// Collect session types for this person
+		var types []string
+		for _, a := range attendees {
+			if a.PersonID == personID {
+				types = append(types, a.SessionType)
+			}
+		}
+		pd.SessionTypes = aggregateSessionTypes(types)
+	}
+
+	return result
+}
+
+// filterBySessionTypes filters records to only those matching given session types
+func filterBySessionTypes(
+	records []testCamperHistoryWithSessionTypes,
+	allowedTypes []string,
+) []testCamperHistoryWithSessionTypes {
+	var filtered []testCamperHistoryWithSessionTypes
+
+	for _, r := range records {
+		// Parse the comma-separated session_types
+		var recordTypes []string
+		if r.SessionTypes != "" {
+			recordTypes = append(recordTypes, splitAndTrim(r.SessionTypes, ",")...)
+		}
+
+		// Check if any record type matches allowed types
+		for _, rt := range recordTypes {
+			for _, at := range allowedTypes {
+				if rt == at {
+					filtered = append(filtered, r)
+					goto nextRecord
+				}
+			}
+		}
+	nextRecord:
+	}
+
+	return filtered
+}
+
+// splitAndTrim splits a string and trims each part
+func splitAndTrim(s, sep string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := make([]string, 0)
+	for _, p := range strings.Split(s, sep) {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" {
+			parts = append(parts, trimmed)
+		}
+	}
+	return parts
 }
 
 // aggregateExtendedAttendees aggregates attendee data including enrollment_date and status

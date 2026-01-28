@@ -32,7 +32,6 @@ export interface Camper {
   preferred_name?: string;
   birthdate?: string;
   years_at_camp?: number;
-  years_at_camp_api?: number;
   last_year_attended?: number;
   school?: string;
   pronouns?: string;

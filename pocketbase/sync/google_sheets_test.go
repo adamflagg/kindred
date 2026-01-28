@@ -191,9 +191,10 @@ func TestGetAllExportSheetNames(t *testing.T) {
 	year := 2025
 	names := GetAllExportSheetNames(year)
 
-	// Expected: 12 year-specific + 4 global = 16 total tabs
+	// Expected: 10 year-specific + 4 global = 14 total tabs
+	// Note: person-cv and household-cv are not exported (too large/not needed)
 	expectedTabs := []string{
-		// Year-specific tables (12) - shortened names
+		// Year-specific tables (10) - shortened names
 		"2025-attendee",
 		"2025-person",
 		"2025-session",
@@ -203,8 +204,6 @@ func TestGetAllExportSheetNames(t *testing.T) {
 		"2025-bunk",
 		"2025-household",
 		"2025-sess-group",
-		"2025-person-cv",
-		"2025-household-cv",
 		"2025-camper-history",
 		// Global tables (4) - shortened names with "g-" prefix
 		"g-tag-def",

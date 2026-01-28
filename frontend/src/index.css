@@ -170,9 +170,10 @@
    BASE STYLES - The Foundation
    ============================================ */
 @layer base {
-  /* Prevent overscroll bounce */
+  /* Prevent overscroll bounce and layout shift from scrollbar */
   html {
     overscroll-behavior: none;
+    scrollbar-gutter: stable;
   }
 
   body {

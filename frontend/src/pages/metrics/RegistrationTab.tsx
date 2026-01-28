@@ -1,18 +1,49 @@
 /**
  * RegistrationTab - Display registration breakdown for a single year.
+ *
+ * Enhanced with:
+ * - Session selector dropdown for filtering to specific sessions
+ * - Gender by grade stacked bar chart
+ * - Summer years breakdown (calculated from enrollment history)
+ * - First summer year cohort analysis
  */
 
+import { useState } from 'react';
 import { useRegistrationMetrics } from '../../hooks/useMetrics';
+import { useMetricsSessions } from '../../hooks/useMetricsSessions';
 import { MetricCard } from '../../components/metrics/MetricCard';
 import { BreakdownChart } from '../../components/metrics/BreakdownChart';
+import { DemographicBreakdowns } from '../../components/metrics/DemographicBreakdowns';
+import { RegistrationSessionSelector } from '../../components/metrics/RegistrationSessionSelector';
+import { GenderByGradeChart } from '../../components/metrics/GenderByGradeChart';
+import { getSessionChartLabel } from '../../utils/sessionDisplay';
 import { Loader2, AlertCircle } from 'lucide-react';
 
 interface RegistrationTabProps {
   year: number;
+  /** Comma-separated session types (default: main,embedded,ag) */
+  sessionTypes?: string;
 }
 
-export function RegistrationTab({ year }: RegistrationTabProps) {
-  const { data, isLoading, error } = useRegistrationMetrics(year);
+export function RegistrationTab({ year, sessionTypes }: RegistrationTabProps) {
+  // Local state for session filter
+  const [selectedSessionCmId, setSelectedSessionCmId] = useState<number | null>(null);
+
+  // Build session types param string
+  const sessionTypesParam = sessionTypes || 'main,embedded,ag';
+  // Always use enrolled status only
+  const statusesParam = 'enrolled';
+
+  // Fetch sessions for dropdown
+  const { data: sessions = [], isLoading: sessionsLoading } = useMetricsSessions(year);
+
+  // Fetch registration data with optional session filter
+  const { data, isLoading, error } = useRegistrationMetrics(
+    year,
+    sessionTypesParam,
+    statusesParam,
+    selectedSessionCmId ?? undefined
+  );
 
   if (isLoading) {
     return (
@@ -54,7 +85,7 @@ export function RegistrationTab({ year }: RegistrationTabProps) {
   }));
 
   const sessionChartData = data.by_session.map((s) => ({
-    name: s.session_name,
+    name: getSessionChartLabel(s.session_name),
     value: s.count,
     percentage: s.utilization ?? 0,
   }));
@@ -65,8 +96,25 @@ export function RegistrationTab({ year }: RegistrationTabProps) {
     percentage: s.percentage,
   }));
 
-  const yearsChartData = data.by_years_at_camp.map((y) => ({
-    name: y.years === 1 ? '1 year' : `${y.years} years`,
+  // Use summer years (from enrollment history) instead of years_at_camp
+  const summerYearsData = (data.by_summer_years ?? []).map((y) => ({
+    name: y.summer_years === 1 ? '1 summer' : `${y.summer_years} summers`,
+    value: y.count,
+    percentage: y.percentage,
+  }));
+
+  // Fallback to years_at_camp if summer years not available
+  const yearsChartData = summerYearsData.length > 0
+    ? summerYearsData
+    : data.by_years_at_camp.map((y) => ({
+        name: y.years === 1 ? '1 year' : `${y.years} years`,
+        value: y.count,
+        percentage: y.percentage,
+      }));
+
+  // First summer year cohort data
+  const firstSummerYearData = (data.by_first_summer_year ?? []).map((y) => ({
+    name: y.first_summer_year.toString(),
     value: y.count,
     percentage: y.percentage,
   }));
@@ -78,12 +126,27 @@ export function RegistrationTab({ year }: RegistrationTabProps) {
 
   return (
     <div className="space-y-6">
+      {/* Session Selector */}
+      <div className="flex items-center justify-between">
+        <RegistrationSessionSelector
+          sessions={sessions}
+          selectedSessionCmId={selectedSessionCmId}
+          onSessionChange={setSelectedSessionCmId}
+          isLoading={sessionsLoading}
+        />
+        {selectedSessionCmId && (
+          <span className="text-sm text-muted-foreground">
+            Showing data for selected session only
+          </span>
+        )}
+      </div>
+
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <MetricCard
           title="Total Enrolled"
           value={data.total_enrolled}
-          subtitle={`Active enrollments for ${year}`}
+          subtitle={selectedSessionCmId ? 'In selected session' : `Active enrollments for ${year}`}
         />
         <MetricCard
           title="Total Waitlisted"
@@ -107,7 +170,7 @@ export function RegistrationTab({ year }: RegistrationTabProps) {
         />
       </div>
 
-      {/* Charts Row 1 */}
+      {/* Charts Row 1: Gender */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <BreakdownChart
           title="Enrollment by Gender"
@@ -116,6 +179,16 @@ export function RegistrationTab({ year }: RegistrationTabProps) {
           showPercentage
           height={250}
         />
+        {/* Gender by Grade stacked bar chart */}
+        <GenderByGradeChart
+          data={data.by_gender_grade ?? []}
+          title="Gender by Grade"
+          height={250}
+        />
+      </div>
+
+      {/* Charts Row 2: New vs Returning, Grade */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <BreakdownChart
           title="New vs Returning Campers"
           data={newVsReturningData}
@@ -123,15 +196,21 @@ export function RegistrationTab({ year }: RegistrationTabProps) {
           showPercentage
           height={250}
         />
-      </div>
-
-      {/* Charts Row 2 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <BreakdownChart
           title="Enrollment by Grade"
           data={gradeChartData}
           type="bar"
           height={300}
+        />
+      </div>
+
+      {/* Charts Row 3: Session, Session Length */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <BreakdownChart
+          title="Enrollment by Session"
+          data={sessionChartData}
+          type="bar"
+          height={350}
         />
         <BreakdownChart
           title="Enrollment by Session Length"
@@ -141,20 +220,22 @@ export function RegistrationTab({ year }: RegistrationTabProps) {
         />
       </div>
 
-      {/* Charts Row 3 */}
+      {/* Charts Row 4: Years at Camp, First Summer Year */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <BreakdownChart
-          title="Enrollment by Session"
-          data={sessionChartData}
-          type="bar"
-          height={350}
-        />
-        <BreakdownChart
-          title="Enrollment by Years at Camp"
+          title={summerYearsData.length > 0 ? 'Enrollment by Summers at Camp' : 'Enrollment by Years at Camp'}
           data={yearsChartData}
           type="bar"
           height={300}
         />
+        {firstSummerYearData.length > 0 && (
+          <BreakdownChart
+            title="Enrollment by First Summer Year"
+            data={firstSummerYearData}
+            type="bar"
+            height={300}
+          />
+        )}
       </div>
 
       {/* Session Details Table */}
@@ -175,7 +256,7 @@ export function RegistrationTab({ year }: RegistrationTabProps) {
             <tbody>
               {data.by_session.map((session, index) => (
                 <tr key={index} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
-                  <td className="px-4 py-3 font-medium text-foreground">{session.session_name}</td>
+                  <td className="px-4 py-3 font-medium text-foreground">{getSessionChartLabel(session.session_name)}</td>
                   <td className="px-4 py-3 text-right text-foreground">{session.count}</td>
                   <td className="px-4 py-3 text-right text-foreground">{session.capacity ?? '—'}</td>
                   <td className="px-4 py-3 text-right">
@@ -192,6 +273,18 @@ export function RegistrationTab({ year }: RegistrationTabProps) {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Demographic Breakdowns (from camper_history) */}
+      <div className="mt-8">
+        <h2 className="text-lg font-semibold text-foreground mb-4">Demographic Analysis</h2>
+        <DemographicBreakdowns
+          bySchool={data.by_school}
+          byCity={data.by_city}
+          bySynagogue={data.by_synagogue}
+          byFirstYear={data.by_first_year}
+          bySessionBunk={data.by_session_bunk}
+        />
       </div>
     </div>
   );

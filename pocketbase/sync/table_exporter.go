@@ -731,60 +731,11 @@ func GetYearSpecificExports() []ExportConfig {
 				{Field: "is_active", Header: "Is Active", Type: FieldTypeBool},
 			},
 		},
-		// Person Custom Values - custom field values for persons
-		{
-			Collection: "person_custom_values",
-			SheetName:  "{year}-person-cv",
-			IsGlobal:   false,
-			Columns: []ColumnConfig{
-				{
-					Field: "person", Header: "Person First Name", Type: FieldTypeNestedField,
-					RelatedCol: "persons", NestedField: "first_name",
-				},
-				{
-					Field: "person", Header: "Person Last Name", Type: FieldTypeNestedField,
-					RelatedCol: "persons", NestedField: "last_name",
-				},
-				{
-					Field: "person", Header: "Person ID",
-					Type: FieldTypeForeignKeyID, RelatedCol: "persons",
-				},
-				{
-					Field: "field_definition", Header: "Field Name", Type: FieldTypeRelation,
-					RelatedCol: "custom_field_defs", RelatedField: "name",
-				},
-				{
-					Field: "field_definition", Header: "Field ID",
-					Type: FieldTypeForeignKeyID, RelatedCol: "custom_field_defs",
-				},
-				{Field: "value", Header: "Value", Type: FieldTypeText},
-			},
-		},
-		// Household Custom Values - custom field values for households
-		{
-			Collection: "household_custom_values",
-			SheetName:  "{year}-household-cv",
-			IsGlobal:   false,
-			Columns: []ColumnConfig{
-				{
-					Field: "household", Header: "Household", Type: FieldTypeRelation,
-					RelatedCol: "households", RelatedField: "mailing_title",
-				},
-				{
-					Field: "household", Header: "Household ID",
-					Type: FieldTypeForeignKeyID, RelatedCol: "households",
-				},
-				{
-					Field: "field_definition", Header: "Field Name", Type: FieldTypeRelation,
-					RelatedCol: "custom_field_defs", RelatedField: "name",
-				},
-				{
-					Field: "field_definition", Header: "Field ID",
-					Type: FieldTypeForeignKeyID, RelatedCol: "custom_field_defs",
-				},
-				{Field: "value", Header: "Value", Type: FieldTypeText},
-			},
-		},
+		// NOTE: person_custom_values and household_custom_values are NOT exported
+		// to Google Sheets due to cell limit issues (10M cells). These tables are
+		// very wide and used primarily to build derived tables (camper_history,
+		// family_camp_derived). Query them directly in PocketBase if needed.
+		//
 		// Camper History - denormalized camper data with retention metrics
 		{
 			Collection: "camper_history",
@@ -802,6 +753,7 @@ func GetYearSpecificExports() []ExportConfig {
 				{Field: "grade", Header: "Grade", Type: FieldTypeNumber},
 				{Field: "is_returning", Header: "Is Returning", Type: FieldTypeBool},
 				{Field: "years_at_camp", Header: "Years at Camp", Type: FieldTypeNumber},
+				{Field: "first_year_attended", Header: "First Year Attended", Type: FieldTypeNumber},
 				{Field: "prior_year_sessions", Header: "Prior Year Sessions", Type: FieldTypeText},
 				{Field: "prior_year_bunks", Header: "Prior Year Bunks", Type: FieldTypeText},
 				// New fields (v2) for enhanced retention/registration analysis

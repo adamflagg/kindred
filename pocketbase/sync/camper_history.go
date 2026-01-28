@@ -58,6 +58,7 @@ func (c *CamperHistorySync) GetStats() Stats {
 type personData struct {
 	personCMID      int
 	sessionNames    []string
+	sessionTypes    []string // Session types (main, ag, embedded, family, etc.)
 	bunkNames       []string
 	statuses        []string
 	enrollmentDates []string // Track enrollment dates for earliest calculation
@@ -65,16 +66,16 @@ type personData struct {
 
 // personDemographics holds person record data
 type personDemographics struct {
-	firstName     string
-	lastName      string
-	school        string
-	city          string
-	grade         int
-	householdID   int    // CampMinder household ID
-	gender        string // M, F, etc.
-	divisionID    string // PocketBase ID for division relation
-	divisionName  string // Resolved division name
-	cmYearsAtCamp int    // CampMinder's authoritative YearsAtCamp value
+	firstName    string
+	lastName     string
+	school       string
+	city         string
+	grade        int
+	householdID  int    // CampMinder household ID
+	gender       string // M, F, etc.
+	divisionID   string // PocketBase ID for division relation
+	divisionName string // Resolved division name
+	yearsAtCamp  int    // CampMinder's YearsAtCamp value
 }
 
 // historicalData holds enrollment history for a person
@@ -207,10 +208,11 @@ func (c *CamperHistorySync) Sync(ctx context.Context) error {
 		// Compute retention metrics
 		isReturning := c.computeIsReturning(year, hist.enrolledYears)
 		// Use CampMinder's authoritative years_at_camp, fall back to computed if not available
-		yearsAtCamp := demo.cmYearsAtCamp
+		yearsAtCamp := demo.yearsAtCamp
 		if yearsAtCamp == 0 {
 			yearsAtCamp = c.computeYearsAtCamp(hist.enrolledYears)
 		}
+		firstYearAttended := c.computeFirstYearAttended(year, hist.enrolledYears)
 
 		// Prior year data
 		priorYearSessions := joinStrings(hist.priorYearSessions)
@@ -266,6 +268,13 @@ func (c *CamperHistorySync) Sync(ctx context.Context) error {
 		}
 		if synagogue != "" {
 			record.Set("synagogue", synagogue)
+		}
+		record.Set("first_year_attended", firstYearAttended)
+
+		// Session types for filtering (e.g., exclude family camp from summer metrics)
+		sessionTypes := joinStrings(pd.sessionTypes)
+		if sessionTypes != "" {
+			record.Set("session_types", sessionTypes)
 		}
 
 		if err := c.App.Save(record); err != nil {
@@ -340,13 +349,15 @@ func (c *CamperHistorySync) loadAttendeesForYear(ctx context.Context, year int) 
 
 			status := record.GetString("status")
 
-			// Get session name via relation
+			// Get session name and type via relation
 			sessionName := ""
+			sessionType := ""
 			if sessionID := record.GetString("session"); sessionID != "" {
 				sessionFilter := fmt.Sprintf("id = '%s'", sessionID)
 				sessions, err := c.App.FindRecordsByFilter("camp_sessions", sessionFilter, "", 1, 0)
 				if err == nil && len(sessions) > 0 {
 					sessionName = sessions[0].GetString("name")
+					sessionType = sessions[0].GetString("session_type")
 				}
 			}
 
@@ -358,6 +369,7 @@ func (c *CamperHistorySync) loadAttendeesForYear(ctx context.Context, year int) 
 				result[personCMID] = &personData{
 					personCMID:      personCMID,
 					sessionNames:    []string{},
+					sessionTypes:    []string{},
 					bunkNames:       []string{},
 					statuses:        []string{},
 					enrollmentDates: []string{},
@@ -376,6 +388,20 @@ func (c *CamperHistorySync) loadAttendeesForYear(ctx context.Context, year int) 
 				}
 				if !found {
 					pd.sessionNames = append(pd.sessionNames, sessionName)
+				}
+			}
+
+			// Add session type if not already present
+			if sessionType != "" {
+				found := false
+				for _, t := range pd.sessionTypes {
+					if t == sessionType {
+						found = true
+						break
+					}
+				}
+				if !found {
+					pd.sessionTypes = append(pd.sessionTypes, sessionType)
 				}
 			}
 
@@ -441,21 +467,21 @@ func (c *CamperHistorySync) loadPersonDemographics(
 				householdID = int(hid)
 			}
 
-			cmYearsAtCamp := 0
-			if yac, ok := record.Get("cm_years_at_camp").(float64); ok {
-				cmYearsAtCamp = int(yac)
+			yearsAtCamp := 0
+			if yac, ok := record.Get("years_at_camp").(float64); ok {
+				yearsAtCamp = int(yac)
 			}
 
 			result[cmID] = personDemographics{
-				firstName:     record.GetString("first_name"),
-				lastName:      record.GetString("last_name"),
-				school:        record.GetString("school"),
-				city:          record.GetString("city"),
-				grade:         grade,
-				householdID:   householdID,
-				gender:        record.GetString("gender"),
-				divisionID:    record.GetString("division"), // PocketBase relation ID
-				cmYearsAtCamp: cmYearsAtCamp,
+				firstName:   record.GetString("first_name"),
+				lastName:    record.GetString("last_name"),
+				school:      record.GetString("school"),
+				city:        record.GetString("city"),
+				grade:       grade,
+				householdID: householdID,
+				gender:      record.GetString("gender"),
+				divisionID:  record.GetString("division"), // PocketBase relation ID
+				yearsAtCamp: yearsAtCamp,
 			}
 		}
 	}
@@ -887,6 +913,22 @@ func (c *CamperHistorySync) computeYearsAtCamp(enrolledYears []int) int {
 	}
 	// +1 for current year
 	return len(yearSet) + 1
+}
+
+// computeFirstYearAttended returns the first year a camper attended camp
+// For new campers (no history), returns current year
+// For returning campers, returns the minimum of enrolled years
+func (c *CamperHistorySync) computeFirstYearAttended(currentYear int, enrolledYears []int) int {
+	if len(enrolledYears) == 0 {
+		return currentYear // New camper, this is their first year
+	}
+	minYear := enrolledYears[0]
+	for _, y := range enrolledYears[1:] {
+		if y < minYear {
+			minYear = y
+		}
+	}
+	return minYear
 }
 
 // splitIntoBatches splits a slice into batches

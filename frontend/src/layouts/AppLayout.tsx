@@ -228,20 +228,20 @@ export const AppLayout = () => {
               {/* Desktop navigation */}
               <div className="hidden sm:flex sm:gap-1">
                 {activeProgram === 'summer' && (
-                  <>
-                    <Link
-                      to="/summer/sessions"
-                      className={`nav-link-lodge ${isActiveRoute('/session') ? 'active' : ''}`}
-                    >
-                      Sessions
-                    </Link>
-                    <Link
-                      to="/summer/campers"
-                      className={`nav-link-lodge ${isActiveRoute('/camper') ? 'active' : ''}`}
-                    >
-                      Campers
-                    </Link>
-                  </>
+                  <Link
+                    to="/summer/sessions"
+                    className={`nav-link-lodge ${isActiveRoute('/session') ? 'active' : ''}`}
+                  >
+                    Sessions
+                  </Link>
+                )}
+                {(activeProgram === 'summer' || activeProgram === 'metrics') && (
+                  <Link
+                    to="/summer/campers"
+                    className={`nav-link-lodge ${activeProgram === 'summer' && isActiveRoute('/camper') ? 'active' : ''}`}
+                  >
+                    Campers
+                  </Link>
                 )}
                 <Link
                   to={`/${activeProgram}/users`}
@@ -249,23 +249,21 @@ export const AppLayout = () => {
                 >
                   Users
                 </Link>
-                {activeProgram === 'summer' && (
-                  <>
-                    <Link
-                      to="/summer/admin"
-                      className={`nav-link-lodge ${isActiveRoute('/admin') ? 'active' : ''}`}
-                    >
-                      Admin
-                    </Link>
-                    {isAdmin && (
-                      <Link
-                        to="/summer/debug"
-                        className={`nav-link-lodge ${isActiveRoute('/debug') ? 'active' : ''}`}
-                      >
-                        Debug
-                      </Link>
-                    )}
-                  </>
+                {(activeProgram === 'summer' || activeProgram === 'metrics') && (
+                  <Link
+                    to="/summer/admin"
+                    className={`nav-link-lodge ${activeProgram === 'summer' && isActiveRoute('/admin') ? 'active' : ''}`}
+                  >
+                    Admin
+                  </Link>
+                )}
+                {activeProgram === 'summer' && isAdmin && (
+                  <Link
+                    to="/summer/debug"
+                    className={`nav-link-lodge ${isActiveRoute('/debug') ? 'active' : ''}`}
+                  >
+                    Debug
+                  </Link>
                 )}
               </div>
             </div>
@@ -447,30 +445,30 @@ export const AppLayout = () => {
               {/* Navigation Items */}
               <div className="space-y-1">
                 {activeProgram === 'summer' && (
-                  <>
-                    <Link
-                      to="/summer/sessions"
-                      className={`block px-4 py-3 text-base font-semibold rounded-xl transition-all ${
-                        isActiveRoute('/session')
-                          ? 'bg-primary text-primary-foreground'
-                          : 'text-foreground hover:bg-muted/50'
-                      }`}
-                      onClick={() => setIsMobileMenuOpen(false)}
-                    >
-                      Sessions
-                    </Link>
-                    <Link
-                      to="/summer/campers"
-                      className={`block px-4 py-3 text-base font-semibold rounded-xl transition-all ${
-                        isActiveRoute('/camper')
-                          ? 'bg-primary text-primary-foreground'
-                          : 'text-foreground hover:bg-muted/50'
-                      }`}
-                      onClick={() => setIsMobileMenuOpen(false)}
-                    >
-                      Campers
-                    </Link>
-                  </>
+                  <Link
+                    to="/summer/sessions"
+                    className={`block px-4 py-3 text-base font-semibold rounded-xl transition-all ${
+                      isActiveRoute('/session')
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-foreground hover:bg-muted/50'
+                    }`}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    Sessions
+                  </Link>
+                )}
+                {(activeProgram === 'summer' || activeProgram === 'metrics') && (
+                  <Link
+                    to="/summer/campers"
+                    className={`block px-4 py-3 text-base font-semibold rounded-xl transition-all ${
+                      activeProgram === 'summer' && isActiveRoute('/camper')
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-foreground hover:bg-muted/50'
+                    }`}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    Campers
+                  </Link>
                 )}
                 <Link
                   to={`/${activeProgram}/users`}
@@ -483,33 +481,31 @@ export const AppLayout = () => {
                 >
                   Users
                 </Link>
-                {activeProgram === 'summer' && (
-                  <>
-                    <Link
-                      to="/summer/admin"
-                      className={`block px-4 py-3 text-base font-semibold rounded-xl transition-all ${
-                        isActiveRoute('/admin')
-                          ? 'bg-primary text-primary-foreground'
-                          : 'text-foreground hover:bg-muted/50'
-                      }`}
-                      onClick={() => setIsMobileMenuOpen(false)}
-                    >
-                      Admin
-                    </Link>
-                    {isAdmin && (
-                      <Link
-                        to="/summer/debug"
-                        className={`block px-4 py-3 text-base font-semibold rounded-xl transition-all ${
-                          isActiveRoute('/debug')
-                            ? 'bg-primary text-primary-foreground'
-                            : 'text-foreground hover:bg-muted/50'
-                        }`}
-                        onClick={() => setIsMobileMenuOpen(false)}
-                      >
-                        Debug
-                      </Link>
-                    )}
-                  </>
+                {(activeProgram === 'summer' || activeProgram === 'metrics') && (
+                  <Link
+                    to="/summer/admin"
+                    className={`block px-4 py-3 text-base font-semibold rounded-xl transition-all ${
+                      activeProgram === 'summer' && isActiveRoute('/admin')
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-foreground hover:bg-muted/50'
+                    }`}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    Admin
+                  </Link>
+                )}
+                {activeProgram === 'summer' && isAdmin && (
+                  <Link
+                    to="/summer/debug"
+                    className={`block px-4 py-3 text-base font-semibold rounded-xl transition-all ${
+                      isActiveRoute('/debug')
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-foreground hover:bg-muted/50'
+                    }`}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    Debug
+                  </Link>
                 )}
               </div>
 
@@ -657,27 +653,7 @@ export const AppLayout = () => {
                   </button>
                 </>
               )}
-              {activeProgram === 'metrics' && (
-                <button
-                  onClick={() => {
-                    toast('Exporting to Google Sheets...', {
-                      icon: '📊',
-                      duration: 2000,
-                    });
-                    sheetsExportMutation.mutate();
-                  }}
-                  disabled={sheetsExportMutation.isPending}
-                  className="btn-primary py-2 px-4"
-                  title="Export attendee data to Google Sheets"
-                >
-                  {sheetsExportMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
-                  ) : (
-                    <FileSpreadsheet className="h-4 w-4 flex-shrink-0" />
-                  )}
-                  <span>Export to Sheets</span>
-                </button>
-              )}
+{/* Export button removed from metrics nav - export functionality will move inside metrics page if needed */}
             </div>
           </div>
         </div>
