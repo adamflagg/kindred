@@ -845,3 +845,448 @@ func GetGlobalExports() []ExportConfig {
 		},
 	}
 }
+
+// =============================================================================
+// Multi-Workbook Export Configs (Per-Year Workbooks Feature)
+// =============================================================================
+// These functions return export configs with human-readable tab names for the
+// multi-workbook architecture where each year has its own workbook.
+// The year is identified by the workbook itself, not by tab name prefixes.
+
+// GetReadableYearExports returns export configurations for year-scoped tables
+// with human-readable tab names (no year prefix).
+// Includes person_custom_values and household_custom_values (now exported per-year).
+func GetReadableYearExports() []ExportConfig {
+	return []ExportConfig{
+		// Attendees - links persons to sessions with enrollment status
+		{
+			Collection: "attendees",
+			SheetName:  "Attendees",
+			IsGlobal:   false,
+			Columns: []ColumnConfig{
+				{Field: "person_id", Header: "Person ID", Type: FieldTypeNumber},
+				{
+					Field: "person", Header: "First Name", Type: FieldTypeNestedField,
+					RelatedCol: "persons", NestedField: "first_name",
+				},
+				{
+					Field: "person", Header: "Last Name", Type: FieldTypeNestedField,
+					RelatedCol: "persons", NestedField: "last_name",
+				},
+				{
+					Field: "session", Header: "Session ID", Type: FieldTypeForeignKeyID,
+					RelatedCol: "camp_sessions",
+				},
+				{
+					Field: "session", Header: "Session", Type: FieldTypeRelation,
+					RelatedCol: "camp_sessions", RelatedField: "name",
+				},
+				{Field: "enrollment_date", Header: "Enrollment Date", Type: FieldTypeDate},
+				{Field: "status", Header: "Status", Type: FieldTypeText},
+			},
+		},
+		// Persons - demographic info, contact details, tags
+		{
+			Collection: "persons",
+			SheetName:  "Persons",
+			IsGlobal:   false,
+			Columns: []ColumnConfig{
+				{Field: "cm_id", Header: "Person ID", Type: FieldTypeNumber},
+				{Field: "first_name", Header: "First Name", Type: FieldTypeText},
+				{Field: "last_name", Header: "Last Name", Type: FieldTypeText},
+				{Field: "preferred_name", Header: "Preferred Name", Type: FieldTypeText},
+				{Field: "birthdate", Header: "Birthdate", Type: FieldTypeText},
+				{Field: "age", Header: "Age", Type: FieldTypeNumber},
+				{Field: "grade", Header: "Grade", Type: FieldTypeNumber},
+				{Field: "gender", Header: "Gender", Type: FieldTypeText},
+				{
+					Field: "gender_identity_name", Header: "Gender Identity",
+					Type: FieldTypeWriteInOverride, WriteInField: "gender_identity_write_in",
+				},
+				{
+					Field: "gender_pronoun_name", Header: "Gender Pronoun",
+					Type: FieldTypeWriteInOverride, WriteInField: "gender_pronoun_write_in",
+				},
+				{Field: "school", Header: "School", Type: FieldTypeText},
+				{Field: "years_at_camp", Header: "Years at Camp", Type: FieldTypeNumber},
+				{Field: "last_year_attended", Header: "Last Year Attended", Type: FieldTypeNumber},
+				{Field: "division", Header: "Division ID", Type: FieldTypeForeignKeyID, RelatedCol: "divisions"},
+				{Field: "division", Header: "Division", Type: FieldTypeRelation, RelatedCol: "divisions", RelatedField: "name"},
+				{Field: "household_id", Header: "Household ID", Type: FieldTypeNumber},
+				{Field: "lead_date", Header: "Lead Date", Type: FieldTypeText},
+				{Field: "is_camper", Header: "Is Camper", Type: FieldTypeBool},
+				{Field: "tshirt_size", Header: "T-Shirt Size", Type: FieldTypeText},
+				{Field: "tags", Header: "Tags", Type: FieldTypeMultiRelation, RelatedCol: "person_tag_defs", RelatedField: "name"},
+			},
+		},
+		// Sessions - session definitions
+		{
+			Collection: "camp_sessions",
+			SheetName:  "Sessions",
+			IsGlobal:   false,
+			Columns: []ColumnConfig{
+				{Field: "cm_id", Header: "Session ID", Type: FieldTypeNumber},
+				{Field: "name", Header: "Name", Type: FieldTypeText},
+				{Field: "description", Header: "Description", Type: FieldTypeText},
+				{Field: "session_type", Header: "Type", Type: FieldTypeText},
+				{Field: "start_date", Header: "Start Date", Type: FieldTypeDate},
+				{Field: "end_date", Header: "End Date", Type: FieldTypeDate},
+				{Field: "is_active", Header: "Is Active", Type: FieldTypeBool},
+				{Field: "parent_id", Header: "Parent ID", Type: FieldTypeNumber},
+				{Field: "parent_id", Header: "Parent Session", Type: FieldTypeCMIDLookup, RelatedCol: "camp_sessions"},
+				{Field: "is_day", Header: "Is Day", Type: FieldTypeBool},
+				{Field: "is_residential", Header: "Is Residential", Type: FieldTypeBool},
+				{Field: "is_for_children", Header: "Is For Children", Type: FieldTypeBool},
+				{Field: "is_for_adults", Header: "Is For Adults", Type: FieldTypeBool},
+				{Field: "start_grade_id", Header: "Start Grade", Type: FieldTypeNumber},
+				{Field: "end_grade_id", Header: "End Grade", Type: FieldTypeNumber},
+				{
+					Field: "session_group", Header: "Session Group ID",
+					Type: FieldTypeForeignKeyID, RelatedCol: "session_groups",
+				},
+				{
+					Field: "session_group", Header: "Session Group", Type: FieldTypeRelation,
+					RelatedCol: "session_groups", RelatedField: "name",
+				},
+			},
+		},
+		// Staff - staff records with positions, assignments, dates
+		{
+			Collection: "staff",
+			SheetName:  "Staff",
+			IsGlobal:   false,
+			Columns: []ColumnConfig{
+				{
+					Field: "person", Header: "Person ID",
+					Type: FieldTypeForeignKeyID, RelatedCol: "persons",
+				},
+				{
+					Field: "person", Header: "First Name", Type: FieldTypeNestedField,
+					RelatedCol: "persons", NestedField: "first_name",
+				},
+				{
+					Field: "person", Header: "Last Name", Type: FieldTypeNestedField,
+					RelatedCol: "persons", NestedField: "last_name",
+				},
+				{Field: "status", Header: "Status", Type: FieldTypeText},
+				{
+					Field: "position1", Header: "Position 1", Type: FieldTypeRelation,
+					RelatedCol: "staff_positions", RelatedField: "name",
+				},
+				{
+					Field: "position1", Header: "Position 1 Program Area",
+					Type: FieldTypeDoubleFKResolve, RelatedCol: "staff_positions",
+					IntermediateCol: "staff_program_areas", IntermediateLink: "program_area",
+				},
+				{
+					Field: "position2", Header: "Position 2", Type: FieldTypeRelation,
+					RelatedCol: "staff_positions", RelatedField: "name",
+				},
+				{
+					Field: "position2", Header: "Position 2 Program Area",
+					Type: FieldTypeDoubleFKResolve, RelatedCol: "staff_positions",
+					IntermediateCol: "staff_program_areas", IntermediateLink: "program_area",
+				},
+				{
+					Field: "organizational_category", Header: "Org Category",
+					Type: FieldTypeRelation, RelatedCol: "staff_org_categories", RelatedField: "name",
+				},
+				{Field: "division", Header: "Division ID", Type: FieldTypeForeignKeyID, RelatedCol: "divisions"},
+				{Field: "division", Header: "Division", Type: FieldTypeRelation, RelatedCol: "divisions", RelatedField: "name"},
+				{Field: "bunks", Header: "Bunks", Type: FieldTypeMultiRelation, RelatedCol: "bunks", RelatedField: "name"},
+				{Field: "bunk_staff", Header: "Bunk Staff", Type: FieldTypeBool},
+				{Field: "years", Header: "Years", Type: FieldTypeNumber},
+				{Field: "international", Header: "International", Type: FieldTypeText},
+				{Field: "salary", Header: "Salary", Type: FieldTypeNumber},
+				{Field: "hire_date", Header: "Hire Date", Type: FieldTypeDate},
+				{Field: "employment_start_date", Header: "Employment Start", Type: FieldTypeDate},
+				{Field: "employment_end_date", Header: "Employment End", Type: FieldTypeDate},
+				{Field: "contract_in_date", Header: "Contract In", Type: FieldTypeDate},
+				{Field: "contract_out_date", Header: "Contract Out", Type: FieldTypeDate},
+				{Field: "contract_due_date", Header: "Contract Due", Type: FieldTypeDate},
+			},
+		},
+		// Bunk Assignments - camper to bunk assignments
+		{
+			Collection: "bunk_assignments",
+			SheetName:  "Bunk Assignments",
+			IsGlobal:   false,
+			Columns: []ColumnConfig{
+				{Field: "cm_id", Header: "Assignment ID", Type: FieldTypeNumber},
+				{Field: "person", Header: "Person ID", Type: FieldTypeForeignKeyID, RelatedCol: "persons"},
+				{Field: "person", Header: "Person", Type: FieldTypeRelation, RelatedCol: "persons", RelatedField: "name"},
+				{Field: "session", Header: "Session ID", Type: FieldTypeForeignKeyID, RelatedCol: "camp_sessions"},
+				{Field: "session", Header: "Session", Type: FieldTypeRelation, RelatedCol: "camp_sessions", RelatedField: "name"},
+				{Field: "bunk", Header: "Bunk ID", Type: FieldTypeForeignKeyID, RelatedCol: "bunks"},
+				{Field: "bunk", Header: "Bunk", Type: FieldTypeRelation, RelatedCol: "bunks", RelatedField: "name"},
+				{Field: "is_deleted", Header: "Is Deleted", Type: FieldTypeBool},
+			},
+		},
+		// Financial Transactions - comprehensive export
+		{
+			Collection: "financial_transactions",
+			SheetName:  "Financial Transactions",
+			IsGlobal:   false,
+			Columns: []ColumnConfig{
+				{Field: "cm_id", Header: "Transaction ID", Type: FieldTypeNumber},
+				{Field: "transaction_number", Header: "Transaction Number", Type: FieldTypeNumber},
+				{Field: "post_date", Header: "Post Date", Type: FieldTypeDate},
+				{Field: "effective_date", Header: "Effective Date", Type: FieldTypeDate},
+				{Field: "service_start_date", Header: "Service Start", Type: FieldTypeDate},
+				{Field: "service_end_date", Header: "Service End", Type: FieldTypeDate},
+				{Field: "is_reversed", Header: "Is Reversed", Type: FieldTypeBool},
+				{Field: "reversal_date", Header: "Reversal Date", Type: FieldTypeDate},
+				{
+					Field: "financial_category", Header: "Category ID",
+					Type: FieldTypeForeignKeyID, RelatedCol: "financial_categories",
+				},
+				{
+					Field: "financial_category", Header: "Category", Type: FieldTypeRelation,
+					RelatedCol: "financial_categories", RelatedField: "name",
+				},
+				{Field: "description", Header: "Description", Type: FieldTypeText},
+				{Field: "transaction_note", Header: "Transaction Note", Type: FieldTypeText},
+				{Field: "gl_account_note", Header: "GL Account Note", Type: FieldTypeText},
+				{Field: "quantity", Header: "Quantity", Type: FieldTypeNumber},
+				{Field: "unit_amount", Header: "Unit Amount", Type: FieldTypeNumber},
+				{Field: "amount", Header: "Amount", Type: FieldTypeNumber},
+				{Field: "recognition_gl_account_id", Header: "Recognition GL Account", Type: FieldTypeText},
+				{Field: "deferral_gl_account_id", Header: "Deferral GL Account", Type: FieldTypeText},
+				{
+					Field: "payment_method", Header: "Payment Method ID",
+					Type: FieldTypeForeignKeyID, RelatedCol: "payment_methods",
+				},
+				{
+					Field: "payment_method", Header: "Payment Method", Type: FieldTypeRelation,
+					RelatedCol: "payment_methods", RelatedField: "name",
+				},
+				{
+					Field: "session", Header: "Session ID",
+					Type: FieldTypeForeignKeyID, RelatedCol: "camp_sessions",
+				},
+				{
+					Field: "session", Header: "Session", Type: FieldTypeRelation,
+					RelatedCol: "camp_sessions", RelatedField: "name",
+				},
+				{
+					Field: "session_group", Header: "Session Group ID",
+					Type: FieldTypeForeignKeyID, RelatedCol: "session_groups",
+				},
+				{
+					Field: "session_group", Header: "Session Group", Type: FieldTypeRelation,
+					RelatedCol: "session_groups", RelatedField: "name",
+				},
+				{
+					Field: "division", Header: "Division ID",
+					Type: FieldTypeForeignKeyID, RelatedCol: "divisions",
+				},
+				{
+					Field: "division", Header: "Division", Type: FieldTypeRelation,
+					RelatedCol: "divisions", RelatedField: "name",
+				},
+				{
+					Field: "person", Header: "Person ID",
+					Type: FieldTypeForeignKeyID, RelatedCol: "persons",
+				},
+				{
+					Field: "person", Header: "Person First Name", Type: FieldTypeNestedField,
+					RelatedCol: "persons", NestedField: "first_name",
+				},
+				{
+					Field: "person", Header: "Person Last Name", Type: FieldTypeNestedField,
+					RelatedCol: "persons", NestedField: "last_name",
+				},
+				{
+					Field: "household", Header: "Household ID",
+					Type: FieldTypeForeignKeyID, RelatedCol: "households",
+				},
+				{
+					Field: "household", Header: "Household", Type: FieldTypeRelation,
+					RelatedCol: "households", RelatedField: "mailing_title",
+				},
+			},
+		},
+		// Bunks - cabin definitions
+		{
+			Collection: "bunks",
+			SheetName:  "Bunks",
+			IsGlobal:   false,
+			Columns: []ColumnConfig{
+				{Field: "cm_id", Header: "Bunk ID", Type: FieldTypeNumber},
+				{Field: "name", Header: "Name", Type: FieldTypeText},
+				{Field: "gender", Header: "Gender", Type: FieldTypeText},
+				{Field: "is_active", Header: "Is Active", Type: FieldTypeBool},
+				{Field: "area_id", Header: "Area ID", Type: FieldTypeNumber},
+			},
+		},
+		// Households - family/household info
+		{
+			Collection: "households",
+			SheetName:  "Households",
+			IsGlobal:   false,
+			Columns: []ColumnConfig{
+				{Field: "cm_id", Header: "Household ID", Type: FieldTypeNumber},
+				{Field: "mailing_title", Header: "Mailing Title", Type: FieldTypeText},
+			},
+		},
+		// Session Groups - session groupings
+		{
+			Collection: "session_groups",
+			SheetName:  "Session Groups",
+			IsGlobal:   false,
+			Columns: []ColumnConfig{
+				{Field: "cm_id", Header: "Session Group ID", Type: FieldTypeNumber},
+				{Field: "name", Header: "Name", Type: FieldTypeText},
+				{Field: "description", Header: "Description", Type: FieldTypeText},
+				{Field: "is_active", Header: "Is Active", Type: FieldTypeBool},
+			},
+		},
+		// Camper History - denormalized camper data with retention metrics
+		{
+			Collection: "camper_history",
+			SheetName:  "Camper History",
+			IsGlobal:   false,
+			Columns: []ColumnConfig{
+				{Field: "person_id", Header: "Person ID", Type: FieldTypeNumber},
+				{Field: "first_name", Header: "First Name", Type: FieldTypeText},
+				{Field: "last_name", Header: "Last Name", Type: FieldTypeText},
+				{Field: "year", Header: "Year", Type: FieldTypeNumber},
+				{Field: "sessions", Header: "Sessions", Type: FieldTypeText},
+				{Field: "bunks", Header: "Bunks", Type: FieldTypeText},
+				{Field: "school", Header: "School", Type: FieldTypeText},
+				{Field: "city", Header: "City", Type: FieldTypeText},
+				{Field: "grade", Header: "Grade", Type: FieldTypeNumber},
+				{Field: "is_returning", Header: "Is Returning", Type: FieldTypeBool},
+				{Field: "years_at_camp", Header: "Years at Camp", Type: FieldTypeNumber},
+				{Field: "first_year_attended", Header: "First Year Attended", Type: FieldTypeNumber},
+				{Field: "prior_year_sessions", Header: "Prior Year Sessions", Type: FieldTypeText},
+				{Field: "prior_year_bunks", Header: "Prior Year Bunks", Type: FieldTypeText},
+				{Field: "household_id", Header: "Household ID", Type: FieldTypeNumber},
+				{Field: "gender", Header: "Gender", Type: FieldTypeText},
+				{Field: "division_name", Header: "Division", Type: FieldTypeText},
+				{Field: "enrollment_date", Header: "Enrollment Date", Type: FieldTypeDate},
+				{Field: "status", Header: "Status", Type: FieldTypeText},
+				{Field: "synagogue", Header: "Synagogue", Type: FieldTypeText},
+			},
+		},
+		// Person Custom Values - custom field values for persons (now exported with per-year workbooks)
+		{
+			Collection: "person_custom_values",
+			SheetName:  "Person Custom Values",
+			IsGlobal:   false,
+			Columns: []ColumnConfig{
+				{Field: "person_id", Header: "Person ID", Type: FieldTypeNumber},
+				{
+					Field: "person", Header: "First Name", Type: FieldTypeNestedField,
+					RelatedCol: "persons", NestedField: "first_name",
+				},
+				{
+					Field: "person", Header: "Last Name", Type: FieldTypeNestedField,
+					RelatedCol: "persons", NestedField: "last_name",
+				},
+				{
+					Field: "field_definition", Header: "Field Name", Type: FieldTypeRelation,
+					RelatedCol: "custom_field_defs", RelatedField: "name",
+				},
+				{Field: "value", Header: "Value", Type: FieldTypeText},
+			},
+		},
+		// Household Custom Values - custom field values for households (now exported with per-year workbooks)
+		{
+			Collection: "household_custom_values",
+			SheetName:  "Household Custom Values",
+			IsGlobal:   false,
+			Columns: []ColumnConfig{
+				{Field: "household_id", Header: "Household ID", Type: FieldTypeNumber},
+				{
+					Field: "household", Header: "Household", Type: FieldTypeRelation,
+					RelatedCol: "households", RelatedField: "mailing_title",
+				},
+				{
+					Field: "field_definition", Header: "Field Name", Type: FieldTypeRelation,
+					RelatedCol: "custom_field_defs", RelatedField: "name",
+				},
+				{Field: "value", Header: "Value", Type: FieldTypeText},
+			},
+		},
+	}
+}
+
+// GetReadableGlobalExports returns export configurations for global tables
+// with human-readable tab names (no g- prefix).
+func GetReadableGlobalExports() []ExportConfig {
+	return []ExportConfig{
+		{
+			Collection: "person_tag_defs",
+			SheetName:  "Tag Definitions",
+			IsGlobal:   true,
+			Columns: []ColumnConfig{
+				{Field: "name", Header: "Tag Name", Type: FieldTypeText},
+				{Field: "is_seasonal", Header: "Seasonal", Type: FieldTypeBool},
+				{Field: "is_hidden", Header: "Hidden", Type: FieldTypeBool},
+			},
+		},
+		{
+			Collection: "custom_field_defs",
+			SheetName:  "Custom Field Definitions",
+			IsGlobal:   true,
+			Columns: []ColumnConfig{
+				{Field: "cm_id", Header: "Field ID", Type: FieldTypeNumber},
+				{Field: "name", Header: "Name", Type: FieldTypeText},
+				{Field: "data_type", Header: "Data Type", Type: FieldTypeText},
+				{Field: "partition", Header: "Entity Types", Type: FieldTypeMultiSelect},
+				{Field: "is_seasonal", Header: "Seasonal", Type: FieldTypeBool},
+				{Field: "is_array", Header: "Is Array", Type: FieldTypeBool},
+				{Field: "is_active", Header: "Active", Type: FieldTypeBool},
+			},
+		},
+		{
+			Collection: "financial_categories",
+			SheetName:  "Financial Categories",
+			IsGlobal:   true,
+			Columns: []ColumnConfig{
+				{Field: "cm_id", Header: "Category ID", Type: FieldTypeNumber},
+				{Field: "name", Header: "Name", Type: FieldTypeText},
+				{Field: "is_archived", Header: "Archived", Type: FieldTypeBool},
+			},
+		},
+		{
+			Collection: "divisions",
+			SheetName:  "Divisions",
+			IsGlobal:   true,
+			Columns: []ColumnConfig{
+				{Field: "cm_id", Header: "Division ID", Type: FieldTypeNumber},
+				{Field: "name", Header: "Name", Type: FieldTypeText},
+				{
+					Field: "parent_division", Header: "Parent Division ID",
+					Type: FieldTypeForeignKeyID, RelatedCol: "divisions",
+				},
+				{
+					Field: "parent_division", Header: "Parent Division", Type: FieldTypeRelation,
+					RelatedCol: "divisions", RelatedField: "name",
+				},
+			},
+		},
+	}
+}
+
+// GetReadableYearExportSheetNames returns all sheet tab names for year exports
+// (no year placeholder resolution needed - names are static)
+func GetReadableYearExportSheetNames() []string {
+	configs := GetReadableYearExports()
+	names := make([]string, len(configs))
+	for i, config := range configs {
+		names[i] = config.SheetName
+	}
+	return names
+}
+
+// GetReadableGlobalExportSheetNames returns all sheet tab names for global exports
+func GetReadableGlobalExportSheetNames() []string {
+	configs := GetReadableGlobalExports()
+	names := make([]string, len(configs))
+	for i, config := range configs {
+		names[i] = config.SheetName
+	}
+	return names
+}
