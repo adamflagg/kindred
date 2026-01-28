@@ -17,6 +17,7 @@ import { DemographicBreakdowns } from '../../components/metrics/DemographicBreak
 import { RegistrationSessionSelector } from '../../components/metrics/RegistrationSessionSelector';
 import { GenderByGradeChart } from '../../components/metrics/GenderByGradeChart';
 import { getSessionChartLabel } from '../../utils/sessionDisplay';
+import { sortSessionDataByName } from '../../utils/sessionUtils';
 import { Loader2, AlertCircle } from 'lucide-react';
 
 interface RegistrationTabProps {
@@ -84,7 +85,10 @@ export function RegistrationTab({ year, sessionTypes }: RegistrationTabProps) {
     percentage: g.percentage,
   }));
 
-  const sessionChartData = data.by_session.map((s) => ({
+  // Sort sessions in logical order (Taste, 2, 2a, 2b, 3, 3a, 4)
+  const sortedBySession = sortSessionDataByName(data.by_session);
+
+  const sessionChartData = sortedBySession.map((s) => ({
     name: getSessionChartLabel(s.session_name),
     value: s.count,
     percentage: s.utilization ?? 0,
@@ -254,7 +258,7 @@ export function RegistrationTab({ year, sessionTypes }: RegistrationTabProps) {
               </tr>
             </thead>
             <tbody>
-              {data.by_session.map((session, index) => (
+              {sortedBySession.map((session, index) => (
                 <tr key={index} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
                   <td className="px-4 py-3 font-medium text-foreground">{getSessionChartLabel(session.session_name)}</td>
                   <td className="px-4 py-3 text-right text-foreground">{session.count}</td>

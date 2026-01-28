@@ -115,3 +115,29 @@ export function filterSelectableSessions<
     (s) => s.session_type === 'main' || s.session_type === 'embedded'
   );
 }
+
+/**
+ * Sort session data (from API) in logical order by session_name field.
+ * Works with API response types that have session_name field.
+ */
+export function sortSessionDataByName<T extends { session_name: string }>(data: T[]): T[] {
+  return [...data].sort((a, b) => {
+    const [numA, suffixA] = parseSessionName(a.session_name);
+    const [numB, suffixB] = parseSessionName(b.session_name);
+    if (numA !== numB) return numA - numB;
+    return suffixA.localeCompare(suffixB);
+  });
+}
+
+/**
+ * Sort prior session data in logical order by prior_session field.
+ * Works with retention API response that has prior_session field.
+ */
+export function sortPriorSessionData<T extends { prior_session: string }>(data: T[]): T[] {
+  return [...data].sort((a, b) => {
+    const [numA, suffixA] = parseSessionName(a.prior_session);
+    const [numB, suffixB] = parseSessionName(b.prior_session);
+    if (numA !== numB) return numA - numB;
+    return suffixA.localeCompare(suffixB);
+  });
+}
