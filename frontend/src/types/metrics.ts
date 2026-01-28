@@ -259,6 +259,24 @@ export interface HistoricalTrendsResponse {
   years: YearMetrics[];
 }
 
+// Enrollment by year (3-year comparison)
+export interface GenderEnrollment {
+  gender: string;
+  count: number;
+}
+
+export interface GradeEnrollment {
+  grade: number | null;
+  count: number;
+}
+
+export interface YearEnrollment {
+  year: number;
+  total: number;
+  by_gender: GenderEnrollment[];
+  by_grade: GradeEnrollment[];
+}
+
 // Retention trends types (3-year view)
 export interface RetentionTrendValue {
   from_year: number;
@@ -292,4 +310,5 @@ export interface RetentionTrendsResponse {
   trend_direction: 'improving' | 'declining' | 'stable';
   by_gender_grouped?: RetentionTrendGenderBreakdown[];
   by_grade_grouped?: RetentionTrendGradeBreakdown[];
+  enrollment_by_year?: YearEnrollment[];
 }
