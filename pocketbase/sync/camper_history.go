@@ -65,15 +65,16 @@ type personData struct {
 
 // personDemographics holds person record data
 type personDemographics struct {
-	firstName    string
-	lastName     string
-	school       string
-	city         string
-	grade        int
-	householdID  int    // CampMinder household ID
-	gender       string // M, F, etc.
-	divisionID   string // PocketBase ID for division relation
-	divisionName string // Resolved division name
+	firstName     string
+	lastName      string
+	school        string
+	city          string
+	grade         int
+	householdID   int    // CampMinder household ID
+	gender        string // M, F, etc.
+	divisionID    string // PocketBase ID for division relation
+	divisionName  string // Resolved division name
+	cmYearsAtCamp int    // CampMinder's authoritative YearsAtCamp value
 }
 
 // historicalData holds enrollment history for a person
@@ -205,7 +206,11 @@ func (c *CamperHistorySync) Sync(ctx context.Context) error {
 
 		// Compute retention metrics
 		isReturning := c.computeIsReturning(year, hist.enrolledYears)
-		yearsAtCamp := c.computeYearsAtCamp(hist.enrolledYears)
+		// Use CampMinder's authoritative years_at_camp, fall back to computed if not available
+		yearsAtCamp := demo.cmYearsAtCamp
+		if yearsAtCamp == 0 {
+			yearsAtCamp = c.computeYearsAtCamp(hist.enrolledYears)
+		}
 
 		// Prior year data
 		priorYearSessions := joinStrings(hist.priorYearSessions)
@@ -436,15 +441,21 @@ func (c *CamperHistorySync) loadPersonDemographics(
 				householdID = int(hid)
 			}
 
+			cmYearsAtCamp := 0
+			if yac, ok := record.Get("cm_years_at_camp").(float64); ok {
+				cmYearsAtCamp = int(yac)
+			}
+
 			result[cmID] = personDemographics{
-				firstName:   record.GetString("first_name"),
-				lastName:    record.GetString("last_name"),
-				school:      record.GetString("school"),
-				city:        record.GetString("city"),
-				grade:       grade,
-				householdID: householdID,
-				gender:      record.GetString("gender"),
-				divisionID:  record.GetString("division"), // PocketBase relation ID
+				firstName:     record.GetString("first_name"),
+				lastName:      record.GetString("last_name"),
+				school:        record.GetString("school"),
+				city:          record.GetString("city"),
+				grade:         grade,
+				householdID:   householdID,
+				gender:        record.GetString("gender"),
+				divisionID:    record.GetString("division"), // PocketBase relation ID
+				cmYearsAtCamp: cmYearsAtCamp,
 			}
 		}
 	}

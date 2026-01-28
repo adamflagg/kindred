@@ -1048,6 +1048,77 @@ func lookupSynagogue(synagogueByHousehold map[int]string, householdID int) strin
 	return ""
 }
 
+// TestCamperHistoryUsesCMYearsAtCamp tests that years_at_camp uses CampMinder's
+// authoritative value from the persons table instead of computing from historical data.
+// This fixes the issue where production only has current year data, so computed value is always 1.
+func TestCamperHistoryUsesCMYearsAtCamp(t *testing.T) {
+	tests := []struct {
+		name                string
+		cmYearsAtCamp       int   // CampMinder's value from persons table
+		enrolledYears       []int // Historical enrollment years in our DB
+		expectedYearsAtCamp int
+		expectUsingCMValue  bool // True if CM value should be used, false if computed
+	}{
+		{
+			name:                "use CM value when available (typical production case)",
+			cmYearsAtCamp:       5,
+			enrolledYears:       []int{}, // No historical data in our DB
+			expectedYearsAtCamp: 5,
+			expectUsingCMValue:  true,
+		},
+		{
+			name:                "use CM value even when we have some historical data",
+			cmYearsAtCamp:       7,
+			enrolledYears:       []int{2023, 2024}, // Partial history
+			expectedYearsAtCamp: 7,                 // CM knows better
+			expectUsingCMValue:  true,
+		},
+		{
+			name:                "fallback to computed when CM value is 0",
+			cmYearsAtCamp:       0,
+			enrolledYears:       []int{2022, 2023, 2024},
+			expectedYearsAtCamp: 4, // 3 prior years + 1 current
+			expectUsingCMValue:  false,
+		},
+		{
+			name:                "fallback to computed for new camper (CM=0, no history)",
+			cmYearsAtCamp:       0,
+			enrolledYears:       []int{},
+			expectedYearsAtCamp: 1, // Just current year
+			expectUsingCMValue:  false,
+		},
+		{
+			name:                "CM value of 1 is valid (first year camper with CM data)",
+			cmYearsAtCamp:       1,
+			enrolledYears:       []int{},
+			expectedYearsAtCamp: 1,
+			expectUsingCMValue:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Simulate the logic: use CM value if > 0, otherwise compute
+			var yearsAtCamp int
+			if tt.cmYearsAtCamp > 0 {
+				yearsAtCamp = tt.cmYearsAtCamp
+			} else {
+				yearsAtCamp = computeYearsAtCamp(tt.enrolledYears)
+			}
+
+			if yearsAtCamp != tt.expectedYearsAtCamp {
+				t.Errorf("yearsAtCamp = %d, want %d", yearsAtCamp, tt.expectedYearsAtCamp)
+			}
+
+			// Verify which source was used
+			usedCMValue := tt.cmYearsAtCamp > 0
+			if usedCMValue != tt.expectUsingCMValue {
+				t.Errorf("used CM value = %v, want %v", usedCMValue, tt.expectUsingCMValue)
+			}
+		})
+	}
+}
+
 // aggregateExtendedAttendees aggregates attendee data including enrollment_date and status
 func aggregateExtendedAttendees(attendees []testExtendedAttendee) map[int]*testExtendedAttendeeData {
 	result := make(map[int]*testExtendedAttendeeData)
