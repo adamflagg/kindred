@@ -21,7 +21,15 @@ import { GenderStackedChart } from '../../components/metrics/GenderStackedChart'
 import { GradeEnrollmentChart } from '../../components/metrics/GradeEnrollmentChart';
 import { DemographicTable } from '../../components/metrics/DemographicTable';
 import { getSessionChartLabel } from '../../utils/sessionDisplay';
-import { sortSessionDataByName, sortPriorSessionData } from '../../utils/sessionUtils';
+import { sortSessionDataByName } from '../../utils/sessionUtils';
+import {
+  transformRetentionSessionData,
+  transformRetentionSummerYearsData,
+  transformRetentionFirstSummerYearData,
+  transformPriorSessionData,
+  transformDemographicTableData,
+  getTrendDirection,
+} from '../../utils/metricsTransforms';
 import { Loader2, AlertCircle, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 interface RetentionTabProps {
@@ -90,80 +98,34 @@ export function RetentionTab({ currentYear, sessionTypes }: RetentionTabProps) {
   // Get the most recent year transition for detailed stats
   const latestTransition = trendsData.years[trendsData.years.length - 1];
 
-  // Get trend icon and color
-  const getTrendIcon = () => {
+  // Get trend display info using utility
+  const trendInfo = getTrendDirection(trendsData.trend_direction);
+  const renderTrendIcon = () => {
     switch (trendsData.trend_direction) {
       case 'improving':
-        return <TrendingUp className="w-5 h-5 text-emerald-500" />;
+        return <TrendingUp className={`w-5 h-5 ${trendInfo.colorClass}`} />;
       case 'declining':
-        return <TrendingDown className="w-5 h-5 text-red-500" />;
+        return <TrendingDown className={`w-5 h-5 ${trendInfo.colorClass}`} />;
       default:
-        return <Minus className="w-5 h-5 text-muted-foreground" />;
+        return <Minus className={`w-5 h-5 ${trendInfo.colorClass}`} />;
     }
   };
 
-  const getTrendLabel = () => {
-    switch (trendsData.trend_direction) {
-      case 'improving':
-        return 'Improving';
-      case 'declining':
-        return 'Declining';
-      default:
-        return 'Stable';
-    }
-  };
+  // Transform data for charts using utility functions
+  const sessionChartData = transformRetentionSessionData(detailedData?.by_session);
+  const summerYearsChartData = transformRetentionSummerYearsData(detailedData?.by_summer_years);
+  const firstSummerYearChartData = transformRetentionFirstSummerYearData(
+    detailedData?.by_first_summer_year
+  );
+  const priorSessionChartData = transformPriorSessionData(detailedData?.by_prior_session);
 
-  // Sort and transform detailed session data for charts (from the detailed retention response)
+  // Demographics for tables using utility functions
+  const schoolTableData = transformDemographicTableData(detailedData?.by_school, 'school');
+  const cityTableData = transformDemographicTableData(detailedData?.by_city, 'city');
+  const synagogueTableData = transformDemographicTableData(detailedData?.by_synagogue, 'synagogue');
+
+  // Sorted sessions for table (needed separately from chart)
   const sortedBySession = sortSessionDataByName(detailedData?.by_session ?? []);
-  const sessionChartData = sortedBySession.map((s) => ({
-    name: getSessionChartLabel(s.session_name),
-    value: s.returned_count,
-    percentage: s.retention_rate * 100,
-  }));
-
-  // Summer years breakdown (from detailed data)
-  const summerYearsChartData = (detailedData?.by_summer_years ?? []).map((y) => ({
-    name: y.summer_years === 1 ? '1 summer' : `${y.summer_years} summers`,
-    value: y.returned_count,
-    percentage: y.retention_rate * 100,
-  }));
-
-  // First summer year cohort data
-  const firstSummerYearChartData = (detailedData?.by_first_summer_year ?? []).map((y) => ({
-    name: y.first_summer_year.toString(),
-    value: y.returned_count,
-    percentage: y.retention_rate * 100,
-  }));
-
-  // Prior year session breakdown (sorted)
-  const sortedByPriorSession = sortPriorSessionData(detailedData?.by_prior_session ?? []);
-  const priorSessionChartData = sortedByPriorSession.map((s) => ({
-    name: getSessionChartLabel(s.prior_session),
-    value: s.returned_count,
-    percentage: s.retention_rate * 100,
-  }));
-
-  // Demographics for tables
-  const schoolTableData = (detailedData?.by_school ?? []).map((s) => ({
-    name: s.school,
-    base_count: s.base_count,
-    returned_count: s.returned_count,
-    retention_rate: s.retention_rate,
-  }));
-
-  const cityTableData = (detailedData?.by_city ?? []).map((c) => ({
-    name: c.city,
-    base_count: c.base_count,
-    returned_count: c.returned_count,
-    retention_rate: c.retention_rate,
-  }));
-
-  const synagogueTableData = (detailedData?.by_synagogue ?? []).map((s) => ({
-    name: s.synagogue,
-    base_count: s.base_count,
-    returned_count: s.returned_count,
-    retention_rate: s.retention_rate,
-  }));
 
   return (
     <div className="space-y-6">
@@ -176,9 +138,9 @@ export function RetentionTab({ currentYear, sessionTypes }: RetentionTabProps) {
           isLoading={sessionsLoading}
         />
         <div className="flex items-center gap-2 text-sm">
-          {getTrendIcon()}
+          {renderTrendIcon()}
           <span className="text-muted-foreground">
-            3-Year Trend: <span className="font-medium text-foreground">{getTrendLabel()}</span>
+            3-Year Trend: <span className="font-medium text-foreground">{trendInfo.label}</span>
           </span>
         </div>
       </div>
