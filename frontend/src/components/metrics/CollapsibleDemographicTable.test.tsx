@@ -143,7 +143,7 @@ describe('CollapsibleDemographicTable - registration variant', () => {
 describe('CollapsibleDemographicTable - retention variant', () => {
   const mockRetentionData: RetentionTableData[] = [
     { name: 'Oak Valley Elementary', base_count: 30, returned_count: 24, retention_rate: 0.8 },
-    { name: 'Riverside Middle', base_count: 50, returned_count: 35, retention_rate: 0.7 },
+    { name: 'Riverside Middle', base_count: 50, returned_count: 25, retention_rate: 0.5 },
   ];
 
   it('renders retention columns: Name, BaseYear, Returned, Retention', () => {
@@ -201,8 +201,8 @@ describe('CollapsibleDemographicTable - retention variant', () => {
     const highRate = screen.getByText('80.0%');
     expect(highRate.className).toContain('emerald');
 
-    // 70% should be amber (between 40-60 threshold)
-    const midRate = screen.getByText('70.0%');
+    // 50% should be amber (between 40-60 threshold)
+    const midRate = screen.getByText('50.0%');
     expect(midRate.className).toContain('amber');
   });
 
