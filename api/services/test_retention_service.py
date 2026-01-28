@@ -102,6 +102,8 @@ class TestRetentionServiceCalculateRetention:
 
         mock_repo.fetch_camper_history.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
+        # build_history_by_person is a sync method, use MagicMock return
+        mock_repo.build_history_by_person = MagicMock(return_value={})
 
         service = RetentionService(mock_repo)
         result = await service.calculate_retention(
@@ -159,6 +161,7 @@ class TestRetentionServiceCalculateRetention:
         }
         mock_repo.fetch_camper_history.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
+        mock_repo.build_history_by_person = MagicMock(return_value={})
 
         service = RetentionService(mock_repo)
         result = await service.calculate_retention(base_year=2025, compare_year=2026)
@@ -208,6 +211,7 @@ class TestRetentionServiceCalculateRetention:
         }
         mock_repo.fetch_camper_history.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
+        mock_repo.build_history_by_person = MagicMock(return_value={})
 
         service = RetentionService(mock_repo)
         result = await service.calculate_retention(
@@ -251,6 +255,7 @@ class TestRetentionServiceCalculateRetention:
         }
         mock_repo.fetch_camper_history.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
+        mock_repo.build_history_by_person = MagicMock(return_value={})
 
         service = RetentionService(mock_repo)
         result = await service.calculate_retention(
@@ -274,6 +279,7 @@ class TestRetentionServiceCalculateRetention:
         mock_repo.fetch_sessions.return_value = {}
         mock_repo.fetch_camper_history.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
+        mock_repo.build_history_by_person = MagicMock(return_value={})
 
         service = RetentionService(mock_repo)
         result = await service.calculate_retention(base_year=2025, compare_year=2026)
@@ -313,6 +319,7 @@ class TestRetentionServiceCalculateRetention:
         }
         mock_repo.fetch_camper_history.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
+        mock_repo.build_history_by_person = MagicMock(return_value={})
 
         service = RetentionService(mock_repo)
         result = await service.calculate_retention(base_year=2025, compare_year=2026)
@@ -363,6 +370,7 @@ class TestRetentionServiceComputeSummerMetrics:
             MockAttendee(person_id=1, year=2025, expand={"session": MockSession(cm_id=1000, name="S1-2025", session_type="main")}),
             MockAttendee(person_id=2, year=2025, expand={"session": MockSession(cm_id=1000, name="S1-2025", session_type="main")}),
         ]
+        mock_repo.build_history_by_person = MagicMock(return_value={})
 
         service = RetentionService(mock_repo)
         result = await service.calculate_retention(base_year=2025, compare_year=2026)
