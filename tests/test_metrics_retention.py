@@ -331,3 +331,131 @@ class TestRetentionTrendsEnrollmentIntegration:
 
         # Verify we have entries for all 3 years
         assert len(enrollment_by_year) == 3, f"Expected 3 entries, got {len(enrollment_by_year)}"
+
+
+class TestEnrollmentByYearAllSessions:
+    """Tests for enrollment_by_year when 'All Sessions' is selected (no session_cm_id filter).
+
+    This tests the specific bug where person lookup fails for "All Sessions" but works
+    when a specific session is selected.
+    """
+
+    def test_all_sessions_has_gender_data(self, test_client: TestClient):
+        """Test that by_gender is populated when no session_cm_id filter is applied.
+
+        This catches the bug where person lookup fails for 'All Sessions' view.
+        The retention breakdown (lines 1550-1559) uses the same lookup pattern but
+        works correctly, while enrollment_by_year (lines 1638-1643) fails.
+        """
+        response = test_client.get(
+            "/api/metrics/retention-trends",
+            params={"current_year": 2026, "num_years": 3},
+            # Note: no session_cm_id - this is the "All Sessions" case
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        enrollment_by_year = data.get("enrollment_by_year", [])
+        assert len(enrollment_by_year) == 3, f"Expected 3 years, got {len(enrollment_by_year)}"
+
+        # Track which years have gender data
+        years_with_gender_data = []
+        years_with_empty_gender = []
+
+        for entry in enrollment_by_year:
+            year = entry["year"]
+            total = entry["total"]
+            by_gender = entry.get("by_gender", [])
+
+            if by_gender:
+                years_with_gender_data.append(year)
+                # Verify gender counts sum to total
+                gender_sum = sum(g["count"] for g in by_gender)
+                assert gender_sum == total, (
+                    f"Year {year}: gender sum {gender_sum} != total {total}"
+                )
+            elif total > 0:
+                # If total > 0 but no gender data, person lookup failed
+                years_with_empty_gender.append((year, total))
+
+        # If any year has total > 0 but empty gender data, the lookup failed
+        if years_with_empty_gender:
+            failed_years = ", ".join(
+                f"{year} (total={total})" for year, total in years_with_empty_gender
+            )
+            pytest.fail(
+                f"Person lookup failed for 'All Sessions': years with total>0 but empty "
+                f"by_gender: {failed_years}. This indicates person_ids don't match "
+                f"persons dict keys."
+            )
+
+    def test_all_sessions_has_grade_data(self, test_client: TestClient):
+        """Test that by_grade is populated when no session_cm_id filter is applied."""
+        response = test_client.get(
+            "/api/metrics/retention-trends",
+            params={"current_year": 2026, "num_years": 3},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        enrollment_by_year = data.get("enrollment_by_year", [])
+
+        years_with_empty_grade = []
+
+        for entry in enrollment_by_year:
+            year = entry["year"]
+            total = entry["total"]
+            by_grade = entry.get("by_grade", [])
+
+            if not by_grade and total > 0:
+                years_with_empty_grade.append((year, total))
+            elif by_grade:
+                grade_sum = sum(g["count"] for g in by_grade)
+                assert grade_sum == total, (
+                    f"Year {year}: grade sum {grade_sum} != total {total}"
+                )
+
+        if years_with_empty_grade:
+            failed_years = ", ".join(
+                f"{year} (total={total})" for year, total in years_with_empty_grade
+            )
+            pytest.fail(
+                f"Person lookup failed for 'All Sessions': years with total>0 but empty "
+                f"by_grade: {failed_years}."
+            )
+
+    def test_all_sessions_vs_specific_session_consistency(self, test_client: TestClient):
+        """Test that data is consistent between 'All Sessions' and specific session queries.
+
+        If specific session works but 'All Sessions' doesn't, this indicates a lookup bug.
+        """
+        # Get "All Sessions" data
+        all_response = test_client.get(
+            "/api/metrics/retention-trends",
+            params={"current_year": 2026, "num_years": 3},
+        )
+        assert all_response.status_code == 200
+        all_data = all_response.json()
+
+        # Check if we have any data at all
+        all_enrollment = all_data.get("enrollment_by_year", [])
+        current_year_entry = next(
+            (e for e in all_enrollment if e["year"] == 2026), None
+        )
+
+        if current_year_entry and current_year_entry["total"] > 0:
+            # We have data - verify gender/grade lookups worked
+            by_gender = current_year_entry.get("by_gender", [])
+            by_grade = current_year_entry.get("by_grade", [])
+
+            # This is the key assertion: if total > 0, we must have breakdown data
+            assert by_gender, (
+                f"Year 2026 has total={current_year_entry['total']} but empty by_gender. "
+                f"Person lookup is failing for 'All Sessions' view."
+            )
+            assert by_grade, (
+                f"Year 2026 has total={current_year_entry['total']} but empty by_grade. "
+                f"Person lookup is failing for 'All Sessions' view."
+            )
