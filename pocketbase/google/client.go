@@ -30,32 +30,41 @@ func GetSpreadsheetID() string {
 	return strings.TrimSpace(os.Getenv(envSpreadsheet))
 }
 
-// NewSheetsClient creates a new Google Sheets API client using service account credentials.
-// Returns nil, nil if Google Sheets sync is disabled (graceful degradation).
-// Credentials are provided via GOOGLE_SERVICE_ACCOUNT_KEY_JSON environment variable.
-func NewSheetsClient(ctx context.Context) (*sheets.Service, error) {
-	// Check if enabled
+// getAuthenticatedHTTPClient creates an authenticated HTTP client for the given scope.
+// Returns nil, nil if Google Sheets sync is disabled.
+func getAuthenticatedHTTPClient(ctx context.Context, scope string) (*option.ClientOption, error) {
 	if !IsEnabled() {
 		return nil, nil
 	}
 
-	// Get credentials
 	credJSON, err := getCredentialsJSON()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get credentials: %w", err)
 	}
 
-	// Parse credentials and create JWT config
-	config, err := google.JWTConfigFromJSON(credJSON, sheets.SpreadsheetsScope)
+	config, err := google.JWTConfigFromJSON(credJSON, scope)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse credentials: %w", err)
 	}
 
-	// Create HTTP client with credentials
 	client := config.Client(ctx)
+	opt := option.WithHTTPClient(client)
+	return &opt, nil
+}
 
-	// Create Sheets service
-	srv, err := sheets.NewService(ctx, option.WithHTTPClient(client))
+// NewSheetsClient creates a new Google Sheets API client using service account credentials.
+// Returns nil, nil if Google Sheets sync is disabled (graceful degradation).
+// Credentials are provided via GOOGLE_SERVICE_ACCOUNT_KEY_FILE environment variable.
+func NewSheetsClient(ctx context.Context) (*sheets.Service, error) {
+	opt, err := getAuthenticatedHTTPClient(ctx, sheets.SpreadsheetsScope)
+	if err != nil {
+		return nil, err
+	}
+	if opt == nil {
+		return nil, nil
+	}
+
+	srv, err := sheets.NewService(ctx, *opt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create sheets service: %w", err)
 	}

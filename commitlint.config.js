@@ -18,6 +18,7 @@ module.exports = {
       'docker',    // Dockerfiles, compose, container configs
       'ci',        // GitHub Actions workflows
       'auth',      // Authentication, OAuth, permissions
+      'google',    // Google Sheets/Drive API integration
       'security',  // Security hardening, CVE fixes, vulnerability remediation
       'logging',   // Logging configuration
       'release',   // Release scripts, versioning

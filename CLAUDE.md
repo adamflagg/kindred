@@ -49,6 +49,7 @@ Format: `type(scope): description` — Breaking changes: `feat(api)!: descriptio
 | `solver` | OR-Tools solver |
 | `docker` | Dockerfiles, compose |
 | `ci` | GitHub Actions |
+| `google` | Google Sheets/Drive API |
 | `scripts` | Dev/utility scripts |
 | `deps` | Dependencies |
 | `docs` | Documentation |

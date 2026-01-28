@@ -5,9 +5,7 @@ import (
 	"context"
 	"fmt"
 
-	"golang.org/x/oauth2/google"
 	"google.golang.org/api/drive/v3"
-	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
 )
 
@@ -23,28 +21,15 @@ var validShareRoles = map[string]bool{
 // Returns nil, nil if Google Sheets sync is disabled (graceful degradation).
 // Uses the same credentials as the Sheets client.
 func NewDriveClient(ctx context.Context) (*drive.Service, error) {
-	// Check if enabled (using same env var as Sheets)
-	if !IsEnabled() {
+	opt, err := getAuthenticatedHTTPClient(ctx, drive.DriveScope)
+	if err != nil {
+		return nil, err
+	}
+	if opt == nil {
 		return nil, nil
 	}
 
-	// Get credentials
-	credJSON, err := getCredentialsJSON()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get credentials: %w", err)
-	}
-
-	// Parse credentials and create JWT config with Drive scope
-	config, err := google.JWTConfigFromJSON(credJSON, drive.DriveScope)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse credentials: %w", err)
-	}
-
-	// Create HTTP client with credentials
-	client := config.Client(ctx)
-
-	// Create Drive service
-	srv, err := drive.NewService(ctx, option.WithHTTPClient(client))
+	srv, err := drive.NewService(ctx, *opt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create drive service: %w", err)
 	}
