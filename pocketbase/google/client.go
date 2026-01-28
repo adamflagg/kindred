@@ -15,7 +15,7 @@ import (
 const (
 	envEnabled     = "GOOGLE_SHEETS_ENABLED"
 	envKeyFile     = "GOOGLE_SERVICE_ACCOUNT_KEY_FILE"
-	envSpreadsheet = "GOOGLE_SHEETS_SPREADSHEET_ID"
+	envFolderID    = "GOOGLE_DRIVE_FOLDER_ID"
 	defaultKeyFile = "/config/google_sheets.json" // Docker: /config volume, Dev: set via env
 )
 
@@ -25,9 +25,9 @@ func IsEnabled() bool {
 	return val == "true" || val == "1"
 }
 
-// GetSpreadsheetID returns the configured Google Sheets spreadsheet ID
-func GetSpreadsheetID() string {
-	return strings.TrimSpace(os.Getenv(envSpreadsheet))
+// GetFolderID returns the configured Google Drive folder ID for creating spreadsheets
+func GetFolderID() string {
+	return strings.TrimSpace(os.Getenv(envFolderID))
 }
 
 // getAuthenticatedHTTPClient creates an authenticated HTTP client for the given scope.

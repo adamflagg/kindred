@@ -78,24 +78,24 @@ func TestNewSheetsClient_ValidInlineJSON(t *testing.T) {
 	}
 }
 
-func TestGetSpreadsheetID(t *testing.T) {
+func TestGetFolderID(t *testing.T) {
 	tests := []struct {
 		name     string
 		envValue string
 		want     string
 	}{
 		{"Empty", "", ""},
-		{"Simple ID", "abc123def456", "abc123def456"},
-		{"With spaces trimmed", "  abc123  ", "abc123"},
+		{"Simple ID", "1ABC-xyz_123", "1ABC-xyz_123"},
+		{"With spaces trimmed", "  1ABC-xyz  ", "1ABC-xyz"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("GOOGLE_SHEETS_SPREADSHEET_ID", tt.envValue)
+			t.Setenv("GOOGLE_DRIVE_FOLDER_ID", tt.envValue)
 
-			got := GetSpreadsheetID()
+			got := GetFolderID()
 			if got != tt.want {
-				t.Errorf("GetSpreadsheetID() = %q, want %q", got, tt.want)
+				t.Errorf("GetFolderID() = %q, want %q", got, tt.want)
 			}
 		})
 	}
