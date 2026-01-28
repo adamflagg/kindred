@@ -1,9 +1,13 @@
 /**
  * DemographicBreakdowns - Collapsible tables for school, city, synagogue breakdowns.
+ *
+ * Refactored to use CollapsibleDemographicTable for standard 3-column tables.
+ * Session+Bunk table kept as custom due to unique 2-name-column structure.
  */
 
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Building2, MapPin, Heart, Calendar } from 'lucide-react';
+import { CollapsibleDemographicTable, type RegistrationTableData } from './CollapsibleDemographicTable';
 import type {
   SchoolBreakdown,
   CityBreakdown,
@@ -20,6 +24,40 @@ interface DemographicBreakdownsProps {
   bySessionBunk: SessionBunkBreakdown[] | undefined;
 }
 
+// Transform functions to convert API types to table data
+function transformSchoolData(data: SchoolBreakdown[]): RegistrationTableData[] {
+  return data.map((item) => ({
+    name: item.school,
+    count: item.count,
+    percentage: item.percentage,
+  }));
+}
+
+function transformCityData(data: CityBreakdown[]): RegistrationTableData[] {
+  return data.map((item) => ({
+    name: item.city,
+    count: item.count,
+    percentage: item.percentage,
+  }));
+}
+
+function transformSynagogueData(data: SynagogueBreakdown[]): RegistrationTableData[] {
+  return data.map((item) => ({
+    name: item.synagogue,
+    count: item.count,
+    percentage: item.percentage,
+  }));
+}
+
+function transformFirstYearData(data: FirstYearBreakdown[]): RegistrationTableData[] {
+  return data.map((item) => ({
+    name: String(item.first_year),
+    count: item.count,
+    percentage: item.percentage,
+  }));
+}
+
+// Custom CollapsibleTable for Session+Bunk (has 2 name columns)
 interface CollapsibleTableProps {
   title: string;
   icon: React.ReactNode;
@@ -28,7 +66,13 @@ interface CollapsibleTableProps {
   count?: number;
 }
 
-function CollapsibleTable({ title, icon, defaultOpen = false, children, count }: CollapsibleTableProps) {
+function CollapsibleTable({
+  title,
+  icon,
+  defaultOpen = false,
+  children,
+  count,
+}: CollapsibleTableProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
@@ -55,14 +99,6 @@ function CollapsibleTable({ title, icon, defaultOpen = false, children, count }:
   );
 }
 
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="px-4 py-8 text-center text-muted-foreground text-sm">
-      {message}
-    </div>
-  );
-}
-
 export function DemographicBreakdowns({
   bySchool = [],
   byCity = [],
@@ -72,142 +108,44 @@ export function DemographicBreakdowns({
 }: DemographicBreakdownsProps) {
   return (
     <div className="space-y-4">
-      {/* School Breakdown */}
-      <CollapsibleTable
+      <CollapsibleDemographicTable
         title="By School"
         icon={<Building2 className="w-4 h-4 text-muted-foreground" />}
-        count={bySchool.length}
-      >
-        {bySchool.length === 0 ? (
-          <EmptyState message="No school data available. Run camper-history sync to populate." />
-        ) : (
-          <div className="max-h-64 overflow-y-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 sticky top-0">
-                <tr>
-                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">School</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Count</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">%</th>
-                </tr>
-              </thead>
-              <tbody>
-                {bySchool.map((item, idx) => (
-                  <tr key={idx} className="border-t border-border hover:bg-muted/30">
-                    <td className="px-4 py-2 text-foreground truncate max-w-[200px]" title={item.school}>
-                      {item.school}
-                    </td>
-                    <td className="px-4 py-2 text-right text-foreground">{item.count}</td>
-                    <td className="px-4 py-2 text-right text-muted-foreground">{item.percentage.toFixed(1)}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CollapsibleTable>
+        data={transformSchoolData(bySchool)}
+        variant="registration"
+        nameColumn="School"
+        emptyMessage="No school data available. Run camper-history sync to populate."
+      />
 
-      {/* City Breakdown */}
-      <CollapsibleTable
+      <CollapsibleDemographicTable
         title="By City"
         icon={<MapPin className="w-4 h-4 text-muted-foreground" />}
-        count={byCity.length}
-      >
-        {byCity.length === 0 ? (
-          <EmptyState message="No city data available. Run camper-history sync to populate." />
-        ) : (
-          <div className="max-h-64 overflow-y-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 sticky top-0">
-                <tr>
-                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">City</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Count</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">%</th>
-                </tr>
-              </thead>
-              <tbody>
-                {byCity.map((item, idx) => (
-                  <tr key={idx} className="border-t border-border hover:bg-muted/30">
-                    <td className="px-4 py-2 text-foreground truncate max-w-[200px]" title={item.city}>
-                      {item.city}
-                    </td>
-                    <td className="px-4 py-2 text-right text-foreground">{item.count}</td>
-                    <td className="px-4 py-2 text-right text-muted-foreground">{item.percentage.toFixed(1)}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CollapsibleTable>
+        data={transformCityData(byCity)}
+        variant="registration"
+        nameColumn="City"
+        emptyMessage="No city data available. Run camper-history sync to populate."
+      />
 
-      {/* Synagogue Breakdown */}
-      <CollapsibleTable
+      <CollapsibleDemographicTable
         title="By Synagogue"
         icon={<Heart className="w-4 h-4 text-muted-foreground" />}
-        count={bySynagogue.length}
-      >
-        {bySynagogue.length === 0 ? (
-          <EmptyState message="No synagogue data available. Run camper-history sync to populate." />
-        ) : (
-          <div className="max-h-64 overflow-y-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 sticky top-0">
-                <tr>
-                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">Synagogue</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Count</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">%</th>
-                </tr>
-              </thead>
-              <tbody>
-                {bySynagogue.map((item, idx) => (
-                  <tr key={idx} className="border-t border-border hover:bg-muted/30">
-                    <td className="px-4 py-2 text-foreground truncate max-w-[200px]" title={item.synagogue}>
-                      {item.synagogue}
-                    </td>
-                    <td className="px-4 py-2 text-right text-foreground">{item.count}</td>
-                    <td className="px-4 py-2 text-right text-muted-foreground">{item.percentage.toFixed(1)}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CollapsibleTable>
+        data={transformSynagogueData(bySynagogue)}
+        variant="registration"
+        nameColumn="Synagogue"
+        emptyMessage="No synagogue data available. Run camper-history sync to populate."
+      />
 
-      {/* First Year Attended Breakdown */}
-      <CollapsibleTable
+      <CollapsibleDemographicTable
         title="By First Year Attended"
         icon={<Calendar className="w-4 h-4 text-muted-foreground" />}
-        count={byFirstYear.length}
-        defaultOpen={true}
-      >
-        {byFirstYear.length === 0 ? (
-          <EmptyState message="No first year data available. Run camper-history sync to populate." />
-        ) : (
-          <div className="max-h-64 overflow-y-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 sticky top-0">
-                <tr>
-                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">First Year</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Count</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">%</th>
-                </tr>
-              </thead>
-              <tbody>
-                {byFirstYear.map((item, idx) => (
-                  <tr key={idx} className="border-t border-border hover:bg-muted/30">
-                    <td className="px-4 py-2 text-foreground">{item.first_year}</td>
-                    <td className="px-4 py-2 text-right text-foreground">{item.count}</td>
-                    <td className="px-4 py-2 text-right text-muted-foreground">{item.percentage.toFixed(1)}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CollapsibleTable>
+        data={transformFirstYearData(byFirstYear)}
+        variant="registration"
+        nameColumn="First Year"
+        defaultOpen
+        emptyMessage="No first year data available. Run camper-history sync to populate."
+      />
 
-      {/* Session+Bunk Breakdown */}
+      {/* Session+Bunk has 2 name columns, keeping custom table */}
       {bySessionBunk.length > 0 && (
         <CollapsibleTable
           title="Top Session + Bunk Combinations"
@@ -218,7 +156,9 @@ export function DemographicBreakdowns({
             <table className="w-full text-sm">
               <thead className="bg-muted/50 sticky top-0">
                 <tr>
-                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">Session</th>
+                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">
+                    Session
+                  </th>
                   <th className="px-4 py-2 text-left font-medium text-muted-foreground">Bunk</th>
                   <th className="px-4 py-2 text-right font-medium text-muted-foreground">Count</th>
                 </tr>

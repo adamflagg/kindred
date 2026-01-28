@@ -1,10 +1,16 @@
 /**
  * RetentionDemographicBreakdowns - Collapsible tables for retention by demographics.
- * Shows base count, returned count, and retention rate for each demographic.
+ *
+ * Refactored to use CollapsibleDemographicTable for standard 4-column retention tables.
+ * Session+Bunk table kept as custom due to unique 2-name-column structure.
  */
 
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Building2, MapPin, Heart, Calendar, Home } from 'lucide-react';
+import {
+  CollapsibleDemographicTable,
+  type RetentionTableData,
+} from './CollapsibleDemographicTable';
 import type {
   RetentionBySchool,
   RetentionByCity,
@@ -22,6 +28,57 @@ interface RetentionDemographicBreakdownsProps {
   baseYear: number;
 }
 
+// Transform functions to convert API types to table data
+function transformSchoolData(data: RetentionBySchool[]): RetentionTableData[] {
+  return data.map((item) => ({
+    name: item.school,
+    base_count: item.base_count,
+    returned_count: item.returned_count,
+    retention_rate: item.retention_rate,
+  }));
+}
+
+function transformCityData(data: RetentionByCity[]): RetentionTableData[] {
+  return data.map((item) => ({
+    name: item.city,
+    base_count: item.base_count,
+    returned_count: item.returned_count,
+    retention_rate: item.retention_rate,
+  }));
+}
+
+function transformSynagogueData(data: RetentionBySynagogue[]): RetentionTableData[] {
+  return data.map((item) => ({
+    name: item.synagogue,
+    base_count: item.base_count,
+    returned_count: item.returned_count,
+    retention_rate: item.retention_rate,
+  }));
+}
+
+function transformFirstYearData(data: RetentionByFirstYear[]): RetentionTableData[] {
+  return data.map((item) => ({
+    name: String(item.first_year),
+    base_count: item.base_count,
+    returned_count: item.returned_count,
+    retention_rate: item.retention_rate,
+  }));
+}
+
+// Helper component for retention rate display in Session+Bunk table
+function RetentionRateCell({ rate }: { rate: number }) {
+  const percentage = rate * 100;
+  const colorClass =
+    percentage >= 60
+      ? 'text-emerald-600 dark:text-emerald-400'
+      : percentage >= 40
+        ? 'text-amber-600 dark:text-amber-400'
+        : 'text-red-600 dark:text-red-400';
+
+  return <span className={colorClass}>{percentage.toFixed(1)}%</span>;
+}
+
+// Custom CollapsibleTable for Session+Bunk (has 2 name columns)
 interface CollapsibleTableProps {
   title: string;
   icon: React.ReactNode;
@@ -30,7 +87,13 @@ interface CollapsibleTableProps {
   count?: number;
 }
 
-function CollapsibleTable({ title, icon, defaultOpen = false, children, count }: CollapsibleTableProps) {
+function CollapsibleTable({
+  title,
+  icon,
+  defaultOpen = false,
+  children,
+  count,
+}: CollapsibleTableProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
@@ -57,27 +120,6 @@ function CollapsibleTable({ title, icon, defaultOpen = false, children, count }:
   );
 }
 
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="px-4 py-8 text-center text-muted-foreground text-sm">
-      {message}
-    </div>
-  );
-}
-
-function RetentionRateCell({ rate }: { rate: number }) {
-  const percentage = rate * 100;
-  const colorClass = percentage >= 60 ? 'text-emerald-600 dark:text-emerald-400'
-    : percentage >= 40 ? 'text-amber-600 dark:text-amber-400'
-    : 'text-red-600 dark:text-red-400';
-
-  return (
-    <span className={colorClass}>
-      {percentage.toFixed(1)}%
-    </span>
-  );
-}
-
 export function RetentionDemographicBreakdowns({
   bySchool = [],
   byCity = [],
@@ -88,158 +130,48 @@ export function RetentionDemographicBreakdowns({
 }: RetentionDemographicBreakdownsProps) {
   return (
     <div className="space-y-4">
-      {/* School Retention Breakdown */}
-      <CollapsibleTable
+      <CollapsibleDemographicTable
         title="Retention by School"
         icon={<Building2 className="w-4 h-4 text-muted-foreground" />}
-        count={bySchool.length}
-      >
-        {bySchool.length === 0 ? (
-          <EmptyState message="No school data available. Run camper-history sync to populate." />
-        ) : (
-          <div className="max-h-64 overflow-y-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 sticky top-0">
-                <tr>
-                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">School</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">{baseYear}</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Returned</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Retention</th>
-                </tr>
-              </thead>
-              <tbody>
-                {bySchool.map((item, idx) => (
-                  <tr key={idx} className="border-t border-border hover:bg-muted/30">
-                    <td className="px-4 py-2 text-foreground truncate max-w-[200px]" title={item.school}>
-                      {item.school}
-                    </td>
-                    <td className="px-4 py-2 text-right text-foreground">{item.base_count}</td>
-                    <td className="px-4 py-2 text-right text-foreground">{item.returned_count}</td>
-                    <td className="px-4 py-2 text-right">
-                      <RetentionRateCell rate={item.retention_rate} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CollapsibleTable>
+        data={transformSchoolData(bySchool)}
+        variant="retention"
+        nameColumn="School"
+        baseYear={baseYear}
+        emptyMessage="No school data available. Run camper-history sync to populate."
+      />
 
-      {/* City Retention Breakdown */}
-      <CollapsibleTable
+      <CollapsibleDemographicTable
         title="Retention by City"
         icon={<MapPin className="w-4 h-4 text-muted-foreground" />}
-        count={byCity.length}
-      >
-        {byCity.length === 0 ? (
-          <EmptyState message="No city data available. Run camper-history sync to populate." />
-        ) : (
-          <div className="max-h-64 overflow-y-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 sticky top-0">
-                <tr>
-                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">City</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">{baseYear}</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Returned</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Retention</th>
-                </tr>
-              </thead>
-              <tbody>
-                {byCity.map((item, idx) => (
-                  <tr key={idx} className="border-t border-border hover:bg-muted/30">
-                    <td className="px-4 py-2 text-foreground truncate max-w-[200px]" title={item.city}>
-                      {item.city}
-                    </td>
-                    <td className="px-4 py-2 text-right text-foreground">{item.base_count}</td>
-                    <td className="px-4 py-2 text-right text-foreground">{item.returned_count}</td>
-                    <td className="px-4 py-2 text-right">
-                      <RetentionRateCell rate={item.retention_rate} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CollapsibleTable>
+        data={transformCityData(byCity)}
+        variant="retention"
+        nameColumn="City"
+        baseYear={baseYear}
+        emptyMessage="No city data available. Run camper-history sync to populate."
+      />
 
-      {/* Synagogue Retention Breakdown */}
-      <CollapsibleTable
+      <CollapsibleDemographicTable
         title="Retention by Synagogue"
         icon={<Heart className="w-4 h-4 text-muted-foreground" />}
-        count={bySynagogue.length}
-      >
-        {bySynagogue.length === 0 ? (
-          <EmptyState message="No synagogue data available. Run camper-history sync to populate." />
-        ) : (
-          <div className="max-h-64 overflow-y-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 sticky top-0">
-                <tr>
-                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">Synagogue</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">{baseYear}</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Returned</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Retention</th>
-                </tr>
-              </thead>
-              <tbody>
-                {bySynagogue.map((item, idx) => (
-                  <tr key={idx} className="border-t border-border hover:bg-muted/30">
-                    <td className="px-4 py-2 text-foreground truncate max-w-[200px]" title={item.synagogue}>
-                      {item.synagogue}
-                    </td>
-                    <td className="px-4 py-2 text-right text-foreground">{item.base_count}</td>
-                    <td className="px-4 py-2 text-right text-foreground">{item.returned_count}</td>
-                    <td className="px-4 py-2 text-right">
-                      <RetentionRateCell rate={item.retention_rate} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CollapsibleTable>
+        data={transformSynagogueData(bySynagogue)}
+        variant="retention"
+        nameColumn="Synagogue"
+        baseYear={baseYear}
+        emptyMessage="No synagogue data available. Run camper-history sync to populate."
+      />
 
-      {/* First Year Retention Breakdown */}
-      <CollapsibleTable
+      <CollapsibleDemographicTable
         title="Retention by First Year Attended"
         icon={<Calendar className="w-4 h-4 text-muted-foreground" />}
-        count={byFirstYear.length}
-        defaultOpen={true}
-      >
-        {byFirstYear.length === 0 ? (
-          <EmptyState message="No first year data available. Run camper-history sync to populate." />
-        ) : (
-          <div className="max-h-64 overflow-y-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 sticky top-0">
-                <tr>
-                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">First Year</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">{baseYear}</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Returned</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Retention</th>
-                </tr>
-              </thead>
-              <tbody>
-                {byFirstYear.map((item, idx) => (
-                  <tr key={idx} className="border-t border-border hover:bg-muted/30">
-                    <td className="px-4 py-2 text-foreground">{item.first_year}</td>
-                    <td className="px-4 py-2 text-right text-foreground">{item.base_count}</td>
-                    <td className="px-4 py-2 text-right text-foreground">{item.returned_count}</td>
-                    <td className="px-4 py-2 text-right">
-                      <RetentionRateCell rate={item.retention_rate} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CollapsibleTable>
+        data={transformFirstYearData(byFirstYear)}
+        variant="retention"
+        nameColumn="First Year"
+        baseYear={baseYear}
+        defaultOpen
+        emptyMessage="No first year data available. Run camper-history sync to populate."
+      />
 
-      {/* Session+Bunk Retention Breakdown */}
+      {/* Session+Bunk has 2 name columns, keeping custom table */}
       {bySessionBunk.length > 0 && (
         <CollapsibleTable
           title="Retention by Session + Bunk"
@@ -250,11 +182,19 @@ export function RetentionDemographicBreakdowns({
             <table className="w-full text-sm">
               <thead className="bg-muted/50 sticky top-0">
                 <tr>
-                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">Session</th>
+                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">
+                    Session
+                  </th>
                   <th className="px-4 py-2 text-left font-medium text-muted-foreground">Bunk</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">{baseYear}</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Returned</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Retention</th>
+                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">
+                    {baseYear}
+                  </th>
+                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">
+                    Returned
+                  </th>
+                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">
+                    Retention
+                  </th>
                 </tr>
               </thead>
               <tbody>
