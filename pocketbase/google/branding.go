@@ -75,15 +75,26 @@ func loadCampName() string {
 	return config.CampName
 }
 
+// isDevEnvironment returns true if running in local dev (not Docker production)
+func isDevEnvironment() bool {
+	// IS_DOCKER is set in production Docker containers
+	return os.Getenv("IS_DOCKER") == ""
+}
+
 // FormatWorkbookTitle generates a Google Sheets workbook title.
 // For globals: "{Camp Name} Data - Globals"
 // For year: "{Camp Name} Data - {Year}"
+// In dev environments, adds "(DEV) " prefix to distinguish from production.
 func FormatWorkbookTitle(workbookType string, year int) string {
 	campName := GetCampName()
-
-	if workbookType == "globals" {
-		return fmt.Sprintf("%s Data - Globals", campName)
+	prefix := ""
+	if isDevEnvironment() {
+		prefix = "(DEV) "
 	}
 
-	return fmt.Sprintf("%s Data - %d", campName, year)
+	if workbookType == "globals" {
+		return fmt.Sprintf("%s%s Data - Globals", prefix, campName)
+	}
+
+	return fmt.Sprintf("%s%s Data - %d", prefix, campName, year)
 }

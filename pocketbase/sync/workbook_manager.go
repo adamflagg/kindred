@@ -225,7 +225,7 @@ func (m *WorkbookManager) loadShareConfigFromFile() *sharingConfig {
 	}
 
 	for _, path := range configPaths {
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(path) //nolint:gosec // G304: path from trusted config locations
 		if err != nil {
 			continue // File doesn't exist at this path, try next
 		}
@@ -237,7 +237,8 @@ func (m *WorkbookManager) loadShareConfigFromFile() *sharingConfig {
 		}
 
 		// Check if we have any emails configured (new or legacy format)
-		hasEmails := len(config.Editors) > 0 || len(config.Commenters) > 0 || len(config.Readers) > 0 || len(config.Emails) > 0
+		hasEmails := len(config.Editors) > 0 || len(config.Commenters) > 0 ||
+			len(config.Readers) > 0 || len(config.Emails) > 0
 		if hasEmails {
 			slog.Debug("Loaded sharing config from file", "path", path,
 				"editors", len(config.Editors),

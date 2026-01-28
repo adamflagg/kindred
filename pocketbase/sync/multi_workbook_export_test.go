@@ -91,7 +91,7 @@ func TestGetReadableGlobalExports_HasIndexSheet(t *testing.T) {
 	// Find the Index config
 	hasIndex := false
 	for _, cfg := range configs {
-		if cfg.SheetName == "Index" {
+		if cfg.SheetName == indexSheetName {
 			hasIndex = true
 			break
 		}
