@@ -1124,45 +1124,45 @@ func TestCamperHistoryUsesCMYearsAtCamp(t *testing.T) {
 // This field stores the first year a camper ever attended summer camp (for onramp analysis)
 func TestCamperHistoryComputeFirstYearAttended(t *testing.T) {
 	tests := []struct {
-		name                     string
-		currentYear              int
-		enrolledYears            []int
+		name                      string
+		currentYear               int
+		enrolledYears             []int
 		expectedFirstYearAttended int
 	}{
 		{
-			name:                     "new camper - no history",
-			currentYear:              2025,
-			enrolledYears:            []int{}, // No prior years
+			name:                      "new camper - no history",
+			currentYear:               2025,
+			enrolledYears:             []int{}, // No prior years
 			expectedFirstYearAttended: 2025,    // Current year is their first
 		},
 		{
-			name:                     "returning camper - single prior year",
-			currentYear:              2025,
-			enrolledYears:            []int{2024},
+			name:                      "returning camper - single prior year",
+			currentYear:               2025,
+			enrolledYears:             []int{2024},
 			expectedFirstYearAttended: 2024, // Min of enrolled years
 		},
 		{
-			name:                     "veteran camper - multiple years",
-			currentYear:              2025,
-			enrolledYears:            []int{2020, 2021, 2022, 2023, 2024},
+			name:                      "veteran camper - multiple years",
+			currentYear:               2025,
+			enrolledYears:             []int{2020, 2021, 2022, 2023, 2024},
 			expectedFirstYearAttended: 2020, // Earliest year
 		},
 		{
-			name:                     "gap years - still returns earliest",
-			currentYear:              2025,
-			enrolledYears:            []int{2019, 2023}, // Skipped 2020-2022
+			name:                      "gap years - still returns earliest",
+			currentYear:               2025,
+			enrolledYears:             []int{2019, 2023}, // Skipped 2020-2022
 			expectedFirstYearAttended: 2019,              // Earliest year, gaps don't matter
 		},
 		{
-			name:                     "unsorted years - finds minimum",
-			currentYear:              2025,
-			enrolledYears:            []int{2022, 2019, 2024, 2021}, // Not in order
-			expectedFirstYearAttended: 2019,                         // Should find min
+			name:                      "unsorted years - finds minimum",
+			currentYear:               2025,
+			enrolledYears:             []int{2022, 2019, 2024, 2021}, // Not in order
+			expectedFirstYearAttended: 2019,                          // Should find min
 		},
 		{
-			name:                     "single gap year before current",
-			currentYear:              2025,
-			enrolledYears:            []int{2023}, // Skipped 2024
+			name:                      "single gap year before current",
+			currentYear:               2025,
+			enrolledYears:             []int{2023}, // Skipped 2024
 			expectedFirstYearAttended: 2023,
 		},
 	}
@@ -1284,10 +1284,10 @@ func TestCamperHistoryMultiSessionWithDifferentTypes(t *testing.T) {
 func TestCamperHistorySessionTypesFilteringSummerOnly(t *testing.T) {
 	// Sample camper history records with various session types
 	records := []testCamperHistoryWithSessionTypes{
-		{PersonID: 1001, SessionTypes: "main", Grade: 6},         // Summer - include
-		{PersonID: 1002, SessionTypes: "embedded", Grade: 7},     // Summer - include
-		{PersonID: 1003, SessionTypes: "ag, main", Grade: 8},     // Summer - include
-		{PersonID: 1004, SessionTypes: "family", Grade: 0},       // Family - exclude
+		{PersonID: 1001, SessionTypes: "main", Grade: 6},           // Summer - include
+		{PersonID: 1002, SessionTypes: "embedded", Grade: 7},       // Summer - include
+		{PersonID: 1003, SessionTypes: "ag, main", Grade: 8},       // Summer - include
+		{PersonID: 1004, SessionTypes: "family", Grade: 0},         // Family - exclude
 		{PersonID: 1005, SessionTypes: "main, embedded", Grade: 5}, // Summer - include
 	}
 
@@ -1353,7 +1353,9 @@ func aggregateSessionTypes(types []string) string {
 }
 
 // aggregateAttendeesWithSessionTypes groups attendees and aggregates session types
-func aggregateAttendeesWithSessionTypes(attendees []testAttendeeWithSessionType) map[int]*testPersonDataWithSessionTypes {
+func aggregateAttendeesWithSessionTypes(
+	attendees []testAttendeeWithSessionType,
+) map[int]*testPersonDataWithSessionTypes {
 	result := make(map[int]*testPersonDataWithSessionTypes)
 
 	for _, a := range attendees {
@@ -1394,16 +1396,17 @@ func aggregateAttendeesWithSessionTypes(attendees []testAttendeeWithSessionType)
 }
 
 // filterBySessionTypes filters records to only those matching given session types
-func filterBySessionTypes(records []testCamperHistoryWithSessionTypes, allowedTypes []string) []testCamperHistoryWithSessionTypes {
+func filterBySessionTypes(
+	records []testCamperHistoryWithSessionTypes,
+	allowedTypes []string,
+) []testCamperHistoryWithSessionTypes {
 	var filtered []testCamperHistoryWithSessionTypes
 
 	for _, r := range records {
 		// Parse the comma-separated session_types
-		recordTypes := make([]string, 0)
+		var recordTypes []string
 		if r.SessionTypes != "" {
-			for _, t := range splitAndTrim(r.SessionTypes, ",") {
-				recordTypes = append(recordTypes, t)
-			}
+			recordTypes = append(recordTypes, splitAndTrim(r.SessionTypes, ",")...)
 		}
 
 		// Check if any record type matches allowed types
