@@ -32,12 +32,19 @@ globalThis.IntersectionObserver = class IntersectionObserver {
   readonly root: Element | Document | null = null;
   readonly rootMargin: string = '';
   readonly thresholds: readonly number[] = [];
-  
+
   disconnect() {}
   observe() {}
   unobserve() {}
   takeRecords() { return []; }
 } as unknown as typeof IntersectionObserver
+
+// Mock ResizeObserver (required for Headless UI components)
+globalThis.ResizeObserver = class ResizeObserver {
+  disconnect() {}
+  observe() {}
+  unobserve() {}
+} as unknown as typeof ResizeObserver
 
 // Mock fetch globally
 globalThis.fetch = vi.fn(() =>

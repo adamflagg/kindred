@@ -66,7 +66,8 @@ describe('RegistrationSessionSelector', () => {
       fireEvent.click(button);
 
       // All sessions should be visible as options
-      expect(screen.getByText('All Sessions')).toBeInTheDocument();
+      // "All Sessions" appears twice: once in button and once in dropdown
+      expect(screen.getAllByText('All Sessions').length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText('Session 2')).toBeInTheDocument();
       expect(screen.getByText('Session 3')).toBeInTheDocument();
       expect(screen.getByText('Session 4')).toBeInTheDocument();
