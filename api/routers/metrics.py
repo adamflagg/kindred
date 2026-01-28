@@ -146,12 +146,17 @@ async def fetch_attendees_for_year(year: int, status_filter: str | list[str] | N
 
 
 async def fetch_persons_for_year(year: int) -> dict[int, Any]:
-    """Fetch all persons for a given year and return as dict by cm_id."""
+    """Fetch all persons for a given year and return as dict by cm_id.
+
+    Returns a dict keyed by cm_id (CampMinder ID) with int keys for consistent
+    lookup against attendees.person_id values.
+    """
     persons = await asyncio.to_thread(
         pb.collection("persons").get_full_list,
         query_params={"filter": f"year = {year}"},
     )
-    return {getattr(p, "cm_id", 0): p for p in persons}
+    # Ensure int keys for consistent lookup (PocketBase may return float)
+    return {int(getattr(p, "cm_id", 0)): p for p in persons}
 
 
 async def fetch_sessions_for_year(year: int, session_types: list[str] | None = None) -> dict[int, Any]:
@@ -1523,7 +1528,12 @@ async def get_retention_trends(
                 "attendees": attendees,
                 "persons": persons,
                 "sessions": sessions,
-                "person_ids": {getattr(a, "person_id", None) for a in attendees if getattr(a, "person_id", None)},
+                # Ensure int type for person_ids to match persons dict keys
+                "person_ids": {
+                    int(getattr(a, "person_id", 0))
+                    for a in attendees
+                    if getattr(a, "person_id", None)
+                },
             }
 
         # Calculate retention for each year transition
