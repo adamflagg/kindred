@@ -160,13 +160,17 @@ def safe_rate(numerator: int, denominator: int) -> float:
 
 
 async def fetch_camper_history_for_year(
-    year: int, status_filter: str = "enrolled", session_types: list[str] | None = None
+    year: int, session_types: list[str] | None = None
 ) -> list[Any]:
     """Fetch camper_history records for a given year.
 
+    Note: This function does NOT filter by status. Status filtering happens at
+    the attendees level (for enrollment counts), not at the demographics level.
+    Demographics should include everyone associated with summer sessions,
+    regardless of their enrollment status.
+
     Args:
         year: The year to fetch records for.
-        status_filter: Status to filter by (default: 'enrolled').
         session_types: Optional list of session types to filter (e.g., ['main', 'embedded', 'ag']).
                       If provided, only records with matching session_types will be returned.
 
@@ -175,7 +179,7 @@ async def fetch_camper_history_for_year(
         Returns empty list if collection doesn't exist or query fails.
     """
     try:
-        filter_str = f'year = {year} && status = "{status_filter}"'
+        filter_str = f"year = {year}"
 
         records = await asyncio.to_thread(
             pb.collection("camper_history").get_full_list,
@@ -390,15 +394,26 @@ async def get_registration_metrics(
         "main,embedded,ag",
         description="Comma-separated session types to filter (default: summer camp sessions)",
     ),
+    statuses: str | None = Query(
+        "enrolled",
+        description="Comma-separated statuses to include (default: enrolled). Options: enrolled, waitlisted, cancelled, withdrawn, incomplete, unknown",
+    ),
 ) -> RegistrationMetricsResponse:
     """Get registration breakdown metrics for a specific year.
 
     Returns enrollment counts broken down by gender, grade, session,
     session length, years at camp, and new vs returning status.
+
+    The statuses parameter controls which registration statuses are included
+    in the enrollment counts and breakdowns. Multiple statuses can be combined
+    for flexible dashboard views.
     """
     try:
         # Parse session types filter
         type_filter = session_types.split(",") if session_types else None
+
+        # Parse statuses filter
+        status_filter = [s.strip() for s in (statuses or "enrolled").split(",")]
 
         # Fetch data in parallel
         (
@@ -430,11 +445,24 @@ async def get_registration_metrics(
                     filtered.append(a)
             return filtered
 
+        # Apply session type filter to all attendee lists
         enrolled_attendees = filter_by_session_type(enrolled_attendees)
+        waitlisted_attendees = filter_by_session_type(waitlisted_attendees)
+        cancelled_attendees = filter_by_session_type(cancelled_attendees)
 
-        # Get enrolled person IDs
+        # Combine attendees based on statuses parameter
+        # This enables flexible filtering: enrolled only, waitlisted only, or combined views
+        combined_attendees: list[Any] = []
+        if "enrolled" in status_filter:
+            combined_attendees.extend(enrolled_attendees)
+        if "waitlisted" in status_filter:
+            combined_attendees.extend(waitlisted_attendees)
+        if "cancelled" in status_filter:
+            combined_attendees.extend(cancelled_attendees)
+
+        # Get person IDs from combined attendees (deduplicated)
         enrolled_person_ids = {
-            getattr(a, "person_id", None) for a in enrolled_attendees if getattr(a, "person_id", None)
+            getattr(a, "person_id", None) for a in combined_attendees if getattr(a, "person_id", None)
         }
 
         total_enrolled = len(enrolled_person_ids)
@@ -479,7 +507,7 @@ async def get_registration_metrics(
 
         # Session breakdown
         session_counts: dict[int, int] = {}
-        for a in enrolled_attendees:
+        for a in combined_attendees:
             expand = getattr(a, "expand", {}) or {}
             session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
             session_cm_id = getattr(session, "cm_id", None) if session else None
@@ -500,7 +528,7 @@ async def get_registration_metrics(
 
         # Session length breakdown
         length_counts: dict[str, int] = {}
-        for a in enrolled_attendees:
+        for a in combined_attendees:
             expand = getattr(a, "expand", {}) or {}
             session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
             if session:
@@ -681,13 +709,20 @@ async def get_registration_metrics(
 async def get_comparison_metrics(
     year_a: int = Query(..., description="First year to compare"),
     year_b: int = Query(..., description="Second year to compare"),
+    session_types: str | None = Query(
+        "main,embedded,ag",
+        description="Comma-separated session types to filter (default: summer camp sessions)",
+    ),
 ) -> ComparisonMetricsResponse:
     """Get year-over-year comparison metrics.
 
     Compares total enrollment, gender distribution, and grade distribution
-    between two years.
+    between two years. Filters to summer camp sessions by default.
     """
     try:
+        # Parse session types filter
+        type_filter = session_types.split(",") if session_types else None
+
         # Fetch data in parallel
         (
             attendees_a,
@@ -700,6 +735,22 @@ async def get_comparison_metrics(
             fetch_persons_for_year(year_a),
             fetch_persons_for_year(year_b),
         )
+
+        # Filter attendees by session type if needed
+        def filter_by_session_type(attendees: list[Any]) -> list[Any]:
+            if not type_filter:
+                return attendees
+            filtered = []
+            for a in attendees:
+                expand = getattr(a, "expand", {}) or {}
+                session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+                session_type = getattr(session, "session_type", None) if session else None
+                if session_type in type_filter:
+                    filtered.append(a)
+            return filtered
+
+        attendees_a = filter_by_session_type(attendees_a)
+        attendees_b = filter_by_session_type(attendees_b)
 
         # Get unique person IDs
         person_ids_a = {getattr(a, "person_id", None) for a in attendees_a if getattr(a, "person_id", None)}
