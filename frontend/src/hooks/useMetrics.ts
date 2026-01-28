@@ -48,17 +48,24 @@ export function useRetentionMetrics(
 /**
  * Fetch registration metrics for a single year.
  */
-export function useRegistrationMetrics(year: number, sessionTypes?: string) {
+export function useRegistrationMetrics(
+  year: number,
+  sessionTypes?: string,
+  statuses?: string
+) {
   const { fetchWithAuth } = useApiWithAuth();
 
   return useQuery({
-    queryKey: queryKeys.registration(year, sessionTypes),
+    queryKey: queryKeys.registration(year, sessionTypes, statuses),
     queryFn: async (): Promise<RegistrationMetrics> => {
       const params = new URLSearchParams({
         year: year.toString(),
       });
       if (sessionTypes) {
         params.set('session_types', sessionTypes);
+      }
+      if (statuses) {
+        params.set('statuses', statuses);
       }
 
       const response = await fetchWithAuth(`/api/metrics/registration?${params}`);

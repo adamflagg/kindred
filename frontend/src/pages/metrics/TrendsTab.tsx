@@ -7,8 +7,14 @@ import { TrendLineChart } from '../../components/metrics/TrendLineChart';
 import { MetricCard } from '../../components/metrics/MetricCard';
 import { Loader2, AlertCircle } from 'lucide-react';
 
-export function TrendsTab() {
-  const { data, isLoading, error } = useHistoricalTrends();
+interface TrendsTabProps {
+  /** Comma-separated session types (default: main,embedded,ag) */
+  sessionTypes?: string;
+}
+
+export function TrendsTab({ sessionTypes }: TrendsTabProps) {
+  const sessionTypesParam = sessionTypes || 'main,embedded,ag';
+  const { data, isLoading, error } = useHistoricalTrends(undefined, sessionTypesParam);
 
   if (isLoading) {
     return (

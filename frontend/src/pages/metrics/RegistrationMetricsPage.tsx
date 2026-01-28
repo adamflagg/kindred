@@ -8,17 +8,32 @@ import { Link } from 'react-router';
 import { Settings } from 'lucide-react';
 import { useCurrentYear } from '../../hooks/useCurrentYear';
 import { CompareYearSelector } from '../../components/metrics/CompareYearSelector';
+import { FilterBar } from '../../components/metrics/FilterBar';
 import { RetentionTab } from './RetentionTab';
 import { RegistrationTab } from './RegistrationTab';
 import { TrendsTab } from './TrendsTab';
 
 type TabType = 'registration' | 'retention' | 'trends';
 
+/** Default session types for summer camp metrics */
+const DEFAULT_SESSION_TYPES = ['main', 'embedded', 'ag'];
+
+/** Default statuses for enrollment counts */
+const DEFAULT_STATUSES = ['enrolled'];
+
 export function RegistrationMetricsPage() {
   const { currentYear, availableYears } = useCurrentYear();
   // Always comparison mode: primary year from app context, comparison defaults to year-1
   const [compareYear, setCompareYear] = useState(currentYear - 1);
   const [activeTab, setActiveTab] = useState<TabType>('registration');
+
+  // Filter state
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>(DEFAULT_STATUSES);
+  const [selectedSessionTypes, setSelectedSessionTypes] = useState<string[]>(DEFAULT_SESSION_TYPES);
+
+  // Convert arrays to comma-separated strings for API
+  const statusesParam = selectedStatuses.join(',');
+  const sessionTypesParam = selectedSessionTypes.join(',');
 
   return (
     <div className="min-h-screen bg-background">
@@ -40,13 +55,19 @@ export function RegistrationMetricsPage() {
           </Link>
         </div>
 
-        {/* Compare Year Selector */}
-        <div className="mb-6">
+        {/* Compare Year Selector + Filters */}
+        <div className="space-y-4 mb-6">
           <CompareYearSelector
             primaryYear={currentYear}
             compareYear={compareYear}
             onCompareYearChange={setCompareYear}
             availableYears={availableYears}
+          />
+          <FilterBar
+            selectedStatuses={selectedStatuses}
+            onStatusChange={setSelectedStatuses}
+            selectedSessionTypes={selectedSessionTypes}
+            onSessionTypeChange={setSelectedSessionTypes}
           />
         </div>
 
@@ -89,15 +110,23 @@ export function RegistrationMetricsPage() {
         {/* Tab Content */}
         <div>
           {activeTab === 'registration' && (
-            <RegistrationTab year={currentYear} compareYear={compareYear} />
+            <RegistrationTab
+              year={currentYear}
+              compareYear={compareYear}
+              statuses={statusesParam}
+              sessionTypes={sessionTypesParam}
+            />
           )}
           {activeTab === 'retention' && (
             <RetentionTab
               baseYear={compareYear}
               compareYear={currentYear}
+              sessionTypes={sessionTypesParam}
             />
           )}
-          {activeTab === 'trends' && <TrendsTab />}
+          {activeTab === 'trends' && (
+            <TrendsTab sessionTypes={sessionTypesParam} />
+          )}
         </div>
       </div>
     </div>

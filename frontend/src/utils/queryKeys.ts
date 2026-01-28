@@ -83,9 +83,9 @@ export const queryKeys = {
     sessionTypes
       ? (['metrics', 'retention', baseYear, compareYear, sessionTypes] as const)
       : (['metrics', 'retention', baseYear, compareYear] as const),
-  registration: (year: number, sessionTypes?: string) =>
-    sessionTypes
-      ? (['metrics', 'registration', year, sessionTypes] as const)
+  registration: (year: number, sessionTypes?: string, statuses?: string) =>
+    sessionTypes || statuses
+      ? (['metrics', 'registration', year, sessionTypes, statuses] as const)
       : (['metrics', 'registration', year] as const),
   comparison: (yearA: number, yearB: number) =>
     ['metrics', 'comparison', yearA, yearB] as const,

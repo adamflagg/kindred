@@ -11,12 +11,25 @@ import { Loader2, AlertCircle } from 'lucide-react';
 interface RegistrationTabProps {
   year: number;
   compareYear?: number;
+  /** Comma-separated status values (default: enrolled) */
+  statuses?: string;
+  /** Comma-separated session types (default: main,embedded,ag) */
+  sessionTypes?: string;
 }
 
-export function RegistrationTab({ year, compareYear }: RegistrationTabProps) {
-  // compareYear will be used for YoY comparison visualization in Phase 4
-  void compareYear;
-  const { data, isLoading, error } = useRegistrationMetrics(year);
+export function RegistrationTab({ year, compareYear, statuses, sessionTypes }: RegistrationTabProps) {
+  // Build session types param string
+  const sessionTypesParam = sessionTypes || 'main,embedded,ag';
+  const statusesParam = statuses || 'enrolled';
+
+  const { data, isLoading, error } = useRegistrationMetrics(year, sessionTypesParam, statusesParam);
+
+  // Fetch comparison data for delta badges
+  const { data: compareData } = useRegistrationMetrics(
+    compareYear ?? 0,
+    sessionTypesParam,
+    statusesParam
+  );
 
   if (isLoading) {
     return (
@@ -88,26 +101,36 @@ export function RegistrationTab({ year, compareYear }: RegistrationTabProps) {
           title="Total Enrolled"
           value={data.total_enrolled}
           subtitle={`Active enrollments for ${year}`}
+          compareValue={compareData?.total_enrolled}
+          compareYear={compareYear}
         />
         <MetricCard
           title="Total Waitlisted"
           value={data.total_waitlisted}
           subtitle="On waitlist"
+          compareValue={compareData?.total_waitlisted}
+          compareYear={compareYear}
         />
         <MetricCard
           title="Total Cancelled"
           value={data.total_cancelled}
           subtitle="Cancellations"
+          compareValue={compareData?.total_cancelled}
+          compareYear={compareYear}
         />
         <MetricCard
           title="New Campers"
           value={data.new_vs_returning.new_count}
           subtitle={`${data.new_vs_returning.new_percentage.toFixed(1)}% of enrolled`}
+          compareValue={compareData?.new_vs_returning.new_count}
+          compareYear={compareYear}
         />
         <MetricCard
           title="Returning Campers"
           value={data.new_vs_returning.returning_count}
           subtitle={`${data.new_vs_returning.returning_percentage.toFixed(1)}% of enrolled`}
+          compareValue={compareData?.new_vs_returning.returning_count}
+          compareYear={compareYear}
         />
       </div>
 

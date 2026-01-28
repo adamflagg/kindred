@@ -10,10 +10,13 @@ import { Loader2, AlertCircle } from 'lucide-react';
 interface RetentionTabProps {
   baseYear: number;
   compareYear: number;
+  /** Comma-separated session types (default: main,embedded,ag) */
+  sessionTypes?: string;
 }
 
-export function RetentionTab({ baseYear, compareYear }: RetentionTabProps) {
-  const { data, isLoading, error } = useRetentionMetrics(baseYear, compareYear);
+export function RetentionTab({ baseYear, compareYear, sessionTypes }: RetentionTabProps) {
+  const sessionTypesParam = sessionTypes || 'main,embedded,ag';
+  const { data, isLoading, error } = useRetentionMetrics(baseYear, compareYear, sessionTypesParam);
 
   if (isLoading) {
     return (
