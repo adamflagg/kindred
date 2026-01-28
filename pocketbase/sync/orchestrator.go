@@ -387,9 +387,9 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 		slog.Info("Skipping process_requests in development mode (set IS_DOCKER=true to enable)")
 	}
 
-	// Add Google Sheets export if enabled (runs after all data syncs complete)
-	if google.IsEnabled() && google.GetSpreadsheetID() != "" {
-		orderedJobs = append(orderedJobs, "google_sheets_export")
+	// Add Google Sheets multi-workbook export if enabled (runs after all data syncs complete)
+	if google.IsEnabled() {
+		orderedJobs = append(orderedJobs, "multi_workbook_export")
 	}
 
 	// Set daily sync flag and queue
@@ -930,13 +930,13 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 	}
 
 	// After historical sync completes, trigger Google Sheets export for that year only (no globals)
-	if opts.Year > 0 && google.IsEnabled() && google.GetSpreadsheetID() != "" {
+	if opts.Year > 0 && google.IsEnabled() {
 		o.mu.RLock()
-		sheetsService := o.services["google_sheets_export"]
+		sheetsService := o.services["multi_workbook_export"]
 		o.mu.RUnlock()
 
 		if sheetsService != nil {
-			if exporter, ok := sheetsService.(*GoogleSheetsExport); ok {
+			if exporter, ok := sheetsService.(*MultiWorkbookExport); ok {
 				slog.Info("Historical sync: Exporting to Google Sheets", "year", opts.Year)
 				if err := exporter.SyncForYears(ctx, []int{opts.Year}, false); err != nil {
 					slog.Error("Historical sync: Google Sheets export failed", "year", opts.Year, "error", err)
@@ -948,13 +948,13 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 	}
 
 	// After current year sync completes, trigger Google Sheets export (globals + current year)
-	if opts.Year == 0 && google.IsEnabled() && google.GetSpreadsheetID() != "" {
+	if opts.Year == 0 && google.IsEnabled() {
 		o.mu.RLock()
-		sheetsService := o.services["google_sheets_export"]
+		sheetsService := o.services["multi_workbook_export"]
 		o.mu.RUnlock()
 
 		if sheetsService != nil {
-			if exporter, ok := sheetsService.(*GoogleSheetsExport); ok {
+			if exporter, ok := sheetsService.(*MultiWorkbookExport); ok {
 				slog.Info("Sync with options: Exporting to Google Sheets")
 				if err := exporter.Sync(ctx); err != nil {
 					slog.Error("Sync with options: Google Sheets export failed", "error", err)

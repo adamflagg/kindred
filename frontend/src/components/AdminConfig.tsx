@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { Settings, RefreshCw, AlertCircle, Sliders } from 'lucide-react';
+import { Settings, RefreshCw, AlertCircle, Sliders, FileSpreadsheet } from 'lucide-react';
 import { ErrorBoundary } from './ErrorBoundary';
 import { SyncTab } from './admin/SyncTab';
 import { ConfigTab } from './admin/ConfigTab';
+import { SheetsTab } from './admin/SheetsTab';
+import { useIsAdmin } from '../hooks/useIsAdmin';
 
 /**
  * AdminConfig - Main admin control center container
@@ -16,7 +18,8 @@ import { ConfigTab } from './admin/ConfigTab';
  * - ConfigTab: Categorized settings with search, scale context UI
  */
 function AdminConfigInner() {
-  const [activeTab, setActiveTab] = useState<'sync' | 'config'>('sync');
+  const [activeTab, setActiveTab] = useState<'sync' | 'config' | 'sheets'>('sync');
+  const isAdmin = useIsAdmin();
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -61,10 +64,25 @@ function AdminConfigInner() {
           <Sliders className="w-4 h-4 sm:w-5 sm:h-5" />
           Configuration
         </button>
+        {isAdmin && (
+          <button
+            onClick={() => setActiveTab('sheets')}
+            className={`flex-1 sm:flex-none px-4 sm:px-5 py-2.5 text-sm sm:text-base font-semibold rounded-md transition-colors flex items-center justify-center gap-2 ${
+              activeTab === 'sheets'
+                ? 'bg-card text-forest-800 dark:text-forest-200 shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <FileSpreadsheet className="w-4 h-4 sm:w-5 sm:h-5" />
+            Sheets
+          </button>
+        )}
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'sync' ? <SyncTab /> : <ConfigTab />}
+      {activeTab === 'sync' && <SyncTab />}
+      {activeTab === 'config' && <ConfigTab />}
+      {activeTab === 'sheets' && isAdmin && <SheetsTab />}
     </div>
   );
 }

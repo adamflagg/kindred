@@ -1,10 +1,9 @@
 import { ExternalLink, FileSpreadsheet, RefreshCw, AlertCircle, CheckCircle, Clock, AlertTriangle } from 'lucide-react';
-import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { useSheetsWorkbooks, useMultiWorkbookExport, type SheetsWorkbook } from '../../hooks/useSheetsWorkbooks';
 import { useYear } from '../../hooks/useCurrentYear';
 
 /**
- * SheetsPage - Google Sheets Workbooks Management
+ * SheetsTab - Google Sheets Workbooks Management Tab
  *
  * Displays all Google Sheets workbooks with links, status, and export controls.
  * Uses the multi-workbook architecture where:
@@ -126,7 +125,7 @@ function WorkbookCard({ workbook }: { workbook: SheetsWorkbook }) {
   );
 }
 
-function SheetsPageInner() {
+export function SheetsTab() {
   const currentYear = useYear();
   const { data: workbooks, isLoading, error } = useSheetsWorkbooks();
   const multiExport = useMultiWorkbookExport();
@@ -161,31 +160,24 @@ function SheetsPageInner() {
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-forest-700 to-forest-800 rounded-xl px-4 sm:px-6 py-4 sm:py-5">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="flex items-center gap-2.5 sm:gap-3">
-            <div className="p-1.5 sm:p-2 bg-white/10 rounded-lg">
-              <FileSpreadsheet className="h-5 w-5 sm:h-6 sm:w-6 text-amber-400" />
-            </div>
-            <div>
-              <h1 className="text-lg sm:text-xl font-display font-bold text-white">
-                Google Sheets Workbooks
-              </h1>
-              <p className="text-forest-200 text-xs sm:text-sm">
-                Export data to multiple Google Sheets workbooks
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={handleFullExport}
-            disabled={multiExport.isPending}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 disabled:opacity-50 text-white rounded-lg font-medium text-sm transition-colors"
-          >
-            <RefreshCw className={`w-4 h-4 ${multiExport.isPending ? 'animate-spin' : ''}`} />
-            <span>{multiExport.isPending ? 'Exporting...' : 'Full Export'}</span>
-          </button>
+      {/* Header with Export Button */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-display font-bold text-foreground">
+            Google Sheets Workbooks
+          </h2>
+          <p className="text-muted-foreground text-sm">
+            Export data to multiple Google Sheets workbooks
+          </p>
         </div>
+        <button
+          onClick={handleFullExport}
+          disabled={multiExport.isPending}
+          className="flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-lg font-medium text-sm transition-colors"
+        >
+          <RefreshCw className={`w-4 h-4 ${multiExport.isPending ? 'animate-spin' : ''}`} />
+          <span>{multiExport.isPending ? 'Exporting...' : 'Full Export'}</span>
+        </button>
       </div>
 
       {/* Loading State */}
@@ -216,9 +208,9 @@ function SheetsPageInner() {
       {/* Globals Workbook */}
       {globalsWorkbook && (
         <section>
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
             Master Index & Global Data
-          </h2>
+          </h3>
           <div className="max-w-md">
             <WorkbookCard workbook={globalsWorkbook} />
           </div>
@@ -229,9 +221,9 @@ function SheetsPageInner() {
       {yearWorkbooks.length > 0 && (
         <section>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
               Year Workbooks
-            </h2>
+            </h3>
             {currentYear && (
               <button
                 onClick={() => handleYearExport(currentYear)}
@@ -263,35 +255,3 @@ function SheetsPageInner() {
     </div>
   );
 }
-
-export function SheetsPage() {
-  return (
-    <ErrorBoundary
-      fallback={(error, reset) => (
-        <div className="max-w-7xl mx-auto p-4 sm:p-6">
-          <div className="bg-red-50 dark:bg-red-950/30 rounded-xl border border-red-200 dark:border-red-800 p-4 sm:p-6">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <h3 className="font-display font-bold text-red-800 dark:text-red-200 text-sm sm:text-base">
-                  Failed to load Sheets Page
-                </h3>
-                <p className="text-red-600 dark:text-red-400 mt-1 text-sm">{error.message}</p>
-                <button
-                  onClick={reset}
-                  className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 text-sm"
-                >
-                  Try Again
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    >
-      <SheetsPageInner />
-    </ErrorBoundary>
-  );
-}
-
-export default SheetsPage;

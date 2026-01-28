@@ -197,14 +197,21 @@ func (m *WorkbookManager) ListAllWorkbooks(ctx context.Context) ([]WorkbookRecor
 }
 
 // sharingConfig represents the structure of sheets_sharing.local.json
+// Supports both legacy format (emails + role) and new multi-permission format (editors/commenters/readers)
 type sharingConfig struct {
+	// New multi-permission format
+	Editors    []string `json:"editors"`
+	Commenters []string `json:"commenters"`
+	Readers    []string `json:"readers"`
+
+	// Legacy format (for backward compatibility)
 	Emails []string `json:"emails"`
 	Role   string   `json:"role"`
 }
 
-// loadShareEmailsFromFile attempts to load sharing emails from config/sheets_sharing.local.json.
+// loadShareConfigFromFile attempts to load sharing config from config/sheets_sharing.local.json.
 // Returns nil if the file doesn't exist or can't be parsed.
-func (m *WorkbookManager) loadShareEmailsFromFile() []string {
+func (m *WorkbookManager) loadShareConfigFromFile() *sharingConfig {
 	// Try to find the config file relative to the executable or working directory
 	configPaths := []string{
 		"config/sheets_sharing.local.json",
@@ -223,9 +230,15 @@ func (m *WorkbookManager) loadShareEmailsFromFile() []string {
 			continue
 		}
 
-		if len(config.Emails) > 0 {
-			slog.Debug("Loaded sharing emails from config file", "path", path, "count", len(config.Emails))
-			return config.Emails
+		// Check if we have any emails configured (new or legacy format)
+		hasEmails := len(config.Editors) > 0 || len(config.Commenters) > 0 || len(config.Readers) > 0 || len(config.Emails) > 0
+		if hasEmails {
+			slog.Debug("Loaded sharing config from file", "path", path,
+				"editors", len(config.Editors),
+				"commenters", len(config.Commenters),
+				"readers", len(config.Readers),
+				"legacy_emails", len(config.Emails))
+			return &config
 		}
 	}
 
@@ -265,14 +278,25 @@ func (m *WorkbookManager) loadShareEmailsFromDB(ctx context.Context) []string {
 	return emails
 }
 
-// GetShareEmails returns the list of email addresses to share workbooks with.
+// GetShareEmails returns all email addresses to share workbooks with (combined from all permission levels).
+// This is a convenience method that returns a flat list for backward compatibility.
+// The actual sharing with proper permissions is done in shareWorkbook().
 // Priority order:
 // 1. Config file (config/sheets_sharing.local.json) - preferred for deployment
 // 2. PocketBase config table - fallback/override for runtime changes
 func (m *WorkbookManager) GetShareEmails(ctx context.Context) []string {
 	// Try config file first
-	if emails := m.loadShareEmailsFromFile(); len(emails) > 0 {
-		return emails
+	if config := m.loadShareConfigFromFile(); config != nil {
+		// Combine all email lists (for backward compatibility / status display)
+		var allEmails []string
+		allEmails = append(allEmails, config.Editors...)
+		allEmails = append(allEmails, config.Commenters...)
+		allEmails = append(allEmails, config.Readers...)
+		// Also include legacy format emails
+		allEmails = append(allEmails, config.Emails...)
+		if len(allEmails) > 0 {
+			return allEmails
+		}
 	}
 
 	// Fall back to database config
@@ -369,19 +393,66 @@ func (m *WorkbookManager) GetOrCreateYearWorkbook(ctx context.Context, year int)
 	return spreadsheetID, nil
 }
 
-// shareWorkbook shares a workbook with all configured email addresses.
+// shareWorkbook shares a workbook with all configured email addresses at their respective permission levels.
 func (m *WorkbookManager) shareWorkbook(ctx context.Context, spreadsheetID string) error {
-	emails := m.GetShareEmails(ctx)
-	if len(emails) == 0 {
+	config := m.loadShareConfigFromFile()
+	if config == nil {
+		// Fall back to database config (legacy behavior)
+		emails := m.loadShareEmailsFromDB(ctx)
+		if len(emails) == 0 {
+			return nil
+		}
+		// DB config uses commenter role by default
+		for _, email := range emails {
+			if err := google.ShareSpreadsheet(ctx, spreadsheetID, email, "commenter"); err != nil {
+				slog.Warn("Failed to share workbook with email", "email", email, "role", "commenter", "error", err)
+			} else {
+				slog.Info("Shared workbook", "email", email, "role", "commenter", "spreadsheet_id", spreadsheetID)
+			}
+		}
 		return nil
 	}
 
-	for _, email := range emails {
-		if err := google.ShareSpreadsheet(ctx, spreadsheetID, email, "commenter"); err != nil {
-			slog.Warn("Failed to share workbook with email", "email", email, "error", err)
-			// Continue with other emails
+	// Handle legacy format (emails + role)
+	if len(config.Emails) > 0 {
+		role := config.Role
+		if role == "" {
+			role = "commenter" // Default to commenter if role not specified
+		}
+		for _, email := range config.Emails {
+			if err := google.ShareSpreadsheet(ctx, spreadsheetID, email, role); err != nil {
+				slog.Warn("Failed to share workbook with email", "email", email, "role", role, "error", err)
+			} else {
+				slog.Info("Shared workbook", "email", email, "role", role, "spreadsheet_id", spreadsheetID)
+			}
+		}
+	}
+
+	// Handle new multi-permission format
+	// Share with editors (writer role in Google's terminology)
+	for _, email := range config.Editors {
+		if err := google.ShareSpreadsheet(ctx, spreadsheetID, email, "writer"); err != nil {
+			slog.Warn("Failed to share workbook with editor", "email", email, "error", err)
 		} else {
-			slog.Info("Shared workbook", "email", email, "spreadsheet_id", spreadsheetID)
+			slog.Info("Shared workbook", "email", email, "role", "writer", "spreadsheet_id", spreadsheetID)
+		}
+	}
+
+	// Share with commenters
+	for _, email := range config.Commenters {
+		if err := google.ShareSpreadsheet(ctx, spreadsheetID, email, "commenter"); err != nil {
+			slog.Warn("Failed to share workbook with commenter", "email", email, "error", err)
+		} else {
+			slog.Info("Shared workbook", "email", email, "role", "commenter", "spreadsheet_id", spreadsheetID)
+		}
+	}
+
+	// Share with readers
+	for _, email := range config.Readers {
+		if err := google.ShareSpreadsheet(ctx, spreadsheetID, email, "reader"); err != nil {
+			slog.Warn("Failed to share workbook with reader", "email", email, "error", err)
+		} else {
+			slog.Info("Shared workbook", "email", email, "role", "reader", "spreadsheet_id", spreadsheetID)
 		}
 	}
 
