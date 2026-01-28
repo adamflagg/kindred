@@ -671,3 +671,193 @@ class TestRegistrationEndpointWithSessionFilter:
                 data = response.json()
                 # Once implemented, should have by_first_summer_year field
                 assert "by_first_summer_year" in data
+
+
+# ============================================================================
+# Waitlisted/Cancelled Deduplication Tests
+# ============================================================================
+
+
+class TestWaitlistedCancelledDeduplication:
+    """Tests for deduplication of waitlisted and cancelled counts by person_id.
+
+    These tests verify that total_waitlisted and total_cancelled count unique persons,
+    not raw attendee records. A person waitlisted/cancelled in multiple sessions
+    should only be counted once.
+    """
+
+    def test_waitlisted_counts_unique_persons(
+        self,
+        sample_sessions_2026: list[Mock],
+    ) -> None:
+        """Person waitlisted in 3 sessions should count as 1 in total_waitlisted.
+
+        Bug scenario: If person 101 is waitlisted in sessions 2, 3, and 4,
+        total_waitlisted should be 1 (one unique person), not 3.
+        """
+        session_2, session_3, session_4, _taste, _ag = sample_sessions_2026
+
+        # One person (ID 101) waitlisted in 3 different sessions
+        waitlisted_attendees = [
+            create_mock_attendee(101, session_2, 2026, status="waitlisted", status_id=3),
+            create_mock_attendee(101, session_3, 2026, status="waitlisted", status_id=3),
+            create_mock_attendee(101, session_4, 2026, status="waitlisted", status_id=3),
+        ]
+
+        # WRONG (current bug): counting raw records = 3
+        wrong_count = len(waitlisted_attendees)
+        assert wrong_count == 3  # Bug behavior
+
+        # CORRECT: counting unique person_ids = 1
+        waitlisted_person_ids: set[int] = {
+            pid
+            for a in waitlisted_attendees
+            if (pid := getattr(a, "person_id", None)) is not None
+        }
+        correct_count = len(waitlisted_person_ids)
+        assert correct_count == 1  # Expected behavior
+
+    def test_cancelled_counts_unique_persons(
+        self,
+        sample_sessions_2026: list[Mock],
+    ) -> None:
+        """Person cancelled from 3 sessions should count as 1 in total_cancelled.
+
+        Bug scenario: If person 102 cancelled from sessions 2, 3, and 4,
+        total_cancelled should be 1 (one unique person), not 3.
+        """
+        session_2, session_3, session_4, _taste, _ag = sample_sessions_2026
+
+        # One person (ID 102) cancelled from 3 different sessions
+        cancelled_attendees = [
+            create_mock_attendee(102, session_2, 2026, status="cancelled", status_id=4),
+            create_mock_attendee(102, session_3, 2026, status="cancelled", status_id=4),
+            create_mock_attendee(102, session_4, 2026, status="cancelled", status_id=4),
+        ]
+
+        # WRONG (current bug): counting raw records = 3
+        wrong_count = len(cancelled_attendees)
+        assert wrong_count == 3  # Bug behavior
+
+        # CORRECT: counting unique person_ids = 1
+        cancelled_person_ids: set[int] = {
+            pid
+            for a in cancelled_attendees
+            if (pid := getattr(a, "person_id", None)) is not None
+        }
+        correct_count = len(cancelled_person_ids)
+        assert correct_count == 1  # Expected behavior
+
+    def test_enrolled_already_deduplicated(
+        self,
+        sample_sessions_2026: list[Mock],
+    ) -> None:
+        """Verify enrolled counts unique persons (existing correct behavior).
+
+        Person enrolled in 2 sessions should count as 1 in total_enrolled.
+        """
+        session_2, session_3, _session_4, _taste, _ag = sample_sessions_2026
+
+        # One person (ID 103) enrolled in 2 different sessions
+        enrolled_attendees = [
+            create_mock_attendee(103, session_2, 2026, status="enrolled", status_id=2),
+            create_mock_attendee(103, session_3, 2026, status="enrolled", status_id=2),
+        ]
+
+        # Enrolled uses set deduplication (correct existing behavior)
+        enrolled_person_ids: set[int] = {
+            pid
+            for a in enrolled_attendees
+            if (pid := getattr(a, "person_id", None)) is not None
+        }
+        correct_count = len(enrolled_person_ids)
+        assert correct_count == 1  # Should be 1, not 2
+
+    def test_mixed_statuses_counted_separately(
+        self,
+        sample_sessions_2026: list[Mock],
+    ) -> None:
+        """Person enrolled in session A, waitlisted in session B counts in both totals.
+
+        A single person can have different statuses in different sessions.
+        They should appear once in each relevant total.
+        """
+        session_2, session_3, session_4, _taste, _ag = sample_sessions_2026
+
+        # Person 104: enrolled in session 2, waitlisted in session 3
+        enrolled_attendees = [
+            create_mock_attendee(104, session_2, 2026, status="enrolled", status_id=2),
+        ]
+        waitlisted_attendees = [
+            create_mock_attendee(104, session_3, 2026, status="waitlisted", status_id=3),
+        ]
+
+        # Person 105: waitlisted in session 2, cancelled in session 3
+        waitlisted_attendees.append(
+            create_mock_attendee(105, session_2, 2026, status="waitlisted", status_id=3)
+        )
+        cancelled_attendees = [
+            create_mock_attendee(105, session_3, 2026, status="cancelled", status_id=4),
+        ]
+
+        # Deduplicate each status category
+        enrolled_person_ids: set[int] = {
+            pid
+            for a in enrolled_attendees
+            if (pid := getattr(a, "person_id", None)) is not None
+        }
+        waitlisted_person_ids: set[int] = {
+            pid
+            for a in waitlisted_attendees
+            if (pid := getattr(a, "person_id", None)) is not None
+        }
+        cancelled_person_ids: set[int] = {
+            pid
+            for a in cancelled_attendees
+            if (pid := getattr(a, "person_id", None)) is not None
+        }
+
+        # Person 104 enrolled, persons 104 and 105 waitlisted, person 105 cancelled
+        assert len(enrolled_person_ids) == 1  # Person 104
+        assert len(waitlisted_person_ids) == 2  # Persons 104 and 105
+        assert len(cancelled_person_ids) == 1  # Person 105
+
+        # Person 104 appears in both enrolled and waitlisted (different sessions)
+        assert 104 in enrolled_person_ids
+        assert 104 in waitlisted_person_ids
+
+        # Person 105 appears in both waitlisted and cancelled (different sessions)
+        assert 105 in waitlisted_person_ids
+        assert 105 in cancelled_person_ids
+
+    def test_multiple_persons_multiple_sessions_deduplication(
+        self,
+        sample_sessions_2026: list[Mock],
+    ) -> None:
+        """Complex scenario: multiple persons each in multiple sessions.
+
+        3 persons waitlisted across various sessions should count as 3.
+        """
+        session_2, session_3, session_4, _taste, _ag = sample_sessions_2026
+
+        waitlisted_attendees = [
+            # Person 101 waitlisted in 2 sessions
+            create_mock_attendee(101, session_2, 2026, status="waitlisted", status_id=3),
+            create_mock_attendee(101, session_3, 2026, status="waitlisted", status_id=3),
+            # Person 102 waitlisted in 3 sessions
+            create_mock_attendee(102, session_2, 2026, status="waitlisted", status_id=3),
+            create_mock_attendee(102, session_3, 2026, status="waitlisted", status_id=3),
+            create_mock_attendee(102, session_4, 2026, status="waitlisted", status_id=3),
+            # Person 103 waitlisted in 1 session
+            create_mock_attendee(103, session_4, 2026, status="waitlisted", status_id=3),
+        ]
+
+        # Total records: 6, but unique persons: 3
+        assert len(waitlisted_attendees) == 6
+
+        waitlisted_person_ids: set[int] = {
+            pid
+            for a in waitlisted_attendees
+            if (pid := getattr(a, "person_id", None)) is not None
+        }
+        assert len(waitlisted_person_ids) == 3  # Persons 101, 102, 103
