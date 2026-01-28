@@ -5,6 +5,7 @@
 import { useRetentionMetrics } from '../../hooks/useMetrics';
 import { MetricCard } from '../../components/metrics/MetricCard';
 import { BreakdownChart } from '../../components/metrics/BreakdownChart';
+import { RetentionDemographicBreakdowns } from '../../components/metrics/RetentionDemographicBreakdowns';
 import { getSessionChartLabel } from '../../utils/sessionDisplay';
 import { Loader2, AlertCircle } from 'lucide-react';
 
@@ -158,6 +159,19 @@ export function RetentionTab({ baseYear, compareYear, sessionTypes }: RetentionT
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Demographic Retention Breakdowns */}
+      <div className="mt-8">
+        <h2 className="text-lg font-semibold text-foreground mb-4">Retention by Demographics</h2>
+        <RetentionDemographicBreakdowns
+          bySchool={data.by_school}
+          byCity={data.by_city}
+          bySynagogue={data.by_synagogue}
+          byFirstYear={data.by_first_year}
+          bySessionBunk={data.by_session_bunk}
+          baseYear={baseYear}
+        />
       </div>
     </div>
   );
