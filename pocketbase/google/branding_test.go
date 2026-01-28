@@ -272,3 +272,70 @@ func TestFormatWorkbookTitle_ProductionNoPrefix(t *testing.T) {
 		t.Errorf("Production title should NOT have (DEV) prefix, got %q", title)
 	}
 }
+
+func TestLoadCampName_MultiPathLookup(t *testing.T) {
+	// Test that loadCampName tries multiple paths
+	// This verifies the fix for production vs dev environment config lookup
+
+	// Create a nested temp directory structure to simulate different scenarios
+	tempDir := t.TempDir()
+
+	// Scenario 1: Config in parent directory (running from pocketbase/)
+	parentConfig := filepath.Join(tempDir, "config")
+	if err := os.MkdirAll(parentConfig, 0755); err != nil {
+		t.Fatalf("Failed to create parent config dir: %v", err)
+	}
+
+	brandingFile := filepath.Join(parentConfig, "branding.local.json")
+	content := `{"camp_name": "Camp Test"}`
+	if err := os.WriteFile(brandingFile, []byte(content), 0644); err != nil {
+		t.Fatalf("Failed to write branding file: %v", err)
+	}
+
+	// Reset cache and set config path to a subdirectory (simulating running from pocketbase/)
+	resetBrandingCache()
+	subDir := filepath.Join(tempDir, "pocketbase")
+	if err := os.MkdirAll(subDir, 0755); err != nil {
+		t.Fatalf("Failed to create subdir: %v", err)
+	}
+
+	oldConfigPath := configBasePath
+	configBasePath = subDir // Running from pocketbase/ subdirectory
+	defer func() { configBasePath = oldConfigPath }()
+
+	// Should find config at ../config/branding.local.json
+	got := GetCampName()
+	if got != "Camp Test" {
+		t.Errorf("GetCampName() from subdirectory = %q, want %q", got, "Camp Test")
+	}
+}
+
+func TestLoadCampName_PrefersDockePath(t *testing.T) {
+	// Test that Docker path (/app/config/) is checked first
+	// Note: We can't actually test /app/config in unit tests, but we can verify
+	// that when running from different directories, the config is found
+
+	tempDir := t.TempDir()
+
+	// Create config in current dir path
+	configDir := filepath.Join(tempDir, "config")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("Failed to create config dir: %v", err)
+	}
+
+	brandingFile := filepath.Join(configDir, "branding.local.json")
+	content := `{"camp_name": "Local Config Camp"}`
+	if err := os.WriteFile(brandingFile, []byte(content), 0644); err != nil {
+		t.Fatalf("Failed to write branding file: %v", err)
+	}
+
+	resetBrandingCache()
+	oldConfigPath := configBasePath
+	configBasePath = tempDir
+	defer func() { configBasePath = oldConfigPath }()
+
+	got := GetCampName()
+	if got != "Local Config Camp" {
+		t.Errorf("GetCampName() = %q, want %q", got, "Local Config Camp")
+	}
+}

@@ -13,11 +13,13 @@ type MockSheetsWriter struct {
 	ExistingTabs  map[string]bool     // Simulates which tabs already exist
 	TabColors     map[string]TabColor // sheetTab -> color (for SetTabColor)
 	TabIndices    map[string]int      // sheetTab -> index (for SetTabIndex)
+	DeletedSheets []string            // Tracks sheets that were deleted
 	WriteError    error
 	ClearError    error
 	EnsureError   error
 	SetColorError error
 	SetIndexError error
+	DeleteError   error
 
 	// API call tracking for rate limit testing
 	SetColorCalls    int                   // Number of SetTabColor calls
@@ -38,6 +40,7 @@ func NewMockSheetsWriter() *MockSheetsWriter {
 		ExistingTabs:    make(map[string]bool),
 		TabColors:       make(map[string]TabColor),
 		TabIndices:      make(map[string]int),
+		DeletedSheets:   []string{},
 		AllBatchUpdates: [][]TabPropertyUpdate{},
 		SheetIDsByName:  make(map[string]int64),
 	}
@@ -128,6 +131,17 @@ func (m *MockSheetsWriter) BatchUpdateTabProperties(_ context.Context, _ string,
 			m.TabIndices[update.TabName] = *update.Index
 		}
 	}
+	return nil
+}
+
+// DeleteSheet deletes a sheet tab (idempotent - no error if doesn't exist)
+func (m *MockSheetsWriter) DeleteSheet(_ context.Context, _, sheetTab string) error {
+	if m.DeleteError != nil {
+		return m.DeleteError
+	}
+	m.DeletedSheets = append(m.DeletedSheets, sheetTab)
+	// Remove from existing tabs
+	delete(m.ExistingTabs, sheetTab)
 	return nil
 }
 
@@ -449,5 +463,86 @@ func TestBatchUpdateTabProperties_LargeBatch(t *testing.T) {
 	}
 	if mock.TabIndices["2025-camper-history"] != 15 {
 		t.Errorf("2025-camper-history index = %d, want 15", mock.TabIndices["2025-camper-history"])
+	}
+}
+
+// =============================================================================
+// DeleteSheet Tests
+// =============================================================================
+
+func TestDeleteSheet_TracksDeletedSheets(t *testing.T) {
+	// Test that DeleteSheet tracks which sheets were deleted
+	mock := NewMockSheetsWriter()
+	ctx := context.Background()
+
+	// Add some existing tabs
+	mock.ExistingTabs["Sheet1"] = true
+	mock.ExistingTabs["Attendees"] = true
+
+	err := mock.DeleteSheet(ctx, "test-spreadsheet", "Sheet1")
+	if err != nil {
+		t.Fatalf("DeleteSheet() error = %v", err)
+	}
+
+	// Verify the sheet was tracked
+	if len(mock.DeletedSheets) != 1 {
+		t.Errorf("DeletedSheets has %d entries, want 1", len(mock.DeletedSheets))
+	}
+	if mock.DeletedSheets[0] != "Sheet1" {
+		t.Errorf("DeletedSheets[0] = %q, want %q", mock.DeletedSheets[0], "Sheet1")
+	}
+
+	// Verify the sheet was removed from existing tabs
+	if mock.ExistingTabs["Sheet1"] {
+		t.Error("Sheet1 should be removed from ExistingTabs after delete")
+	}
+	if !mock.ExistingTabs["Attendees"] {
+		t.Error("Attendees should still exist")
+	}
+}
+
+func TestDeleteSheet_Idempotent(t *testing.T) {
+	// Test that DeleteSheet is idempotent - can be called for non-existent sheets
+	mock := NewMockSheetsWriter()
+	ctx := context.Background()
+
+	// Delete a sheet that doesn't exist (should not error)
+	err := mock.DeleteSheet(ctx, "test-spreadsheet", "NonExistent")
+	if err != nil {
+		t.Fatalf("DeleteSheet() for non-existent sheet should not error, got %v", err)
+	}
+
+	// Should still be tracked
+	if len(mock.DeletedSheets) != 1 {
+		t.Errorf("DeletedSheets has %d entries, want 1", len(mock.DeletedSheets))
+	}
+}
+
+func TestDeleteSheet_MultipleDeletes(t *testing.T) {
+	// Test deleting multiple sheets
+	mock := NewMockSheetsWriter()
+	ctx := context.Background()
+
+	mock.ExistingTabs["Sheet1"] = true
+	mock.ExistingTabs["Sheet2"] = true
+
+	_ = mock.DeleteSheet(ctx, "spreadsheet1", "Sheet1")
+	_ = mock.DeleteSheet(ctx, "spreadsheet2", "Sheet1")
+
+	// Both deletes should be tracked
+	if len(mock.DeletedSheets) != 2 {
+		t.Errorf("DeletedSheets has %d entries, want 2", len(mock.DeletedSheets))
+	}
+}
+
+func TestDeleteSheet_ErrorHandling(t *testing.T) {
+	// Test that errors are properly propagated
+	mock := NewMockSheetsWriter()
+	mock.DeleteError = context.DeadlineExceeded
+	ctx := context.Background()
+
+	err := mock.DeleteSheet(ctx, "test-spreadsheet", "Sheet1")
+	if err != context.DeadlineExceeded {
+		t.Errorf("DeleteSheet() error = %v, want context.DeadlineExceeded", err)
 	}
 }
