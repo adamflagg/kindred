@@ -372,18 +372,14 @@ class TestEnrollmentByYearAllSessions:
                 years_with_gender_data.append(year)
                 # Verify gender counts sum to total
                 gender_sum = sum(g["count"] for g in by_gender)
-                assert gender_sum == total, (
-                    f"Year {year}: gender sum {gender_sum} != total {total}"
-                )
+                assert gender_sum == total, f"Year {year}: gender sum {gender_sum} != total {total}"
             elif total > 0:
                 # If total > 0 but no gender data, person lookup failed
                 years_with_empty_gender.append((year, total))
 
         # If any year has total > 0 but empty gender data, the lookup failed
         if years_with_empty_gender:
-            failed_years = ", ".join(
-                f"{year} (total={total})" for year, total in years_with_empty_gender
-            )
+            failed_years = ", ".join(f"{year} (total={total})" for year, total in years_with_empty_gender)
             pytest.fail(
                 f"Person lookup failed for 'All Sessions': years with total>0 but empty "
                 f"by_gender: {failed_years}. This indicates person_ids don't match "
@@ -413,17 +409,12 @@ class TestEnrollmentByYearAllSessions:
                 years_with_empty_grade.append((year, total))
             elif by_grade:
                 grade_sum = sum(g["count"] for g in by_grade)
-                assert grade_sum == total, (
-                    f"Year {year}: grade sum {grade_sum} != total {total}"
-                )
+                assert grade_sum == total, f"Year {year}: grade sum {grade_sum} != total {total}"
 
         if years_with_empty_grade:
-            failed_years = ", ".join(
-                f"{year} (total={total})" for year, total in years_with_empty_grade
-            )
+            failed_years = ", ".join(f"{year} (total={total})" for year, total in years_with_empty_grade)
             pytest.fail(
-                f"Person lookup failed for 'All Sessions': years with total>0 but empty "
-                f"by_grade: {failed_years}."
+                f"Person lookup failed for 'All Sessions': years with total>0 but empty by_grade: {failed_years}."
             )
 
     def test_all_sessions_vs_specific_session_consistency(self, test_client: TestClient):
@@ -441,9 +432,7 @@ class TestEnrollmentByYearAllSessions:
 
         # Check if we have any data at all
         all_enrollment = all_data.get("enrollment_by_year", [])
-        current_year_entry = next(
-            (e for e in all_enrollment if e["year"] == 2026), None
-        )
+        current_year_entry = next((e for e in all_enrollment if e["year"] == 2026), None)
 
         if current_year_entry and current_year_entry["total"] > 0:
             # We have data - verify gender/grade lookups worked

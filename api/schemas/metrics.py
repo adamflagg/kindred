@@ -464,9 +464,7 @@ class RetentionTrendsResponse(BaseModel):
 
     years: list[RetentionTrendYear] = Field(description="Retention data for each year transition")
     avg_retention_rate: float = Field(description="Average retention rate across all transitions")
-    trend_direction: str = Field(
-        description="Trend direction: 'improving', 'declining', or 'stable'"
-    )
+    trend_direction: str = Field(description="Trend direction: 'improving', 'declining', or 'stable'")
     # Optional: grouped breakdowns for charts
     by_gender_grouped: list[RetentionTrendGenderBreakdown] = Field(
         default_factory=list, description="Gender retention grouped across years"

@@ -247,6 +247,7 @@ class TestRetentionTrendCalculation:
 
         This enables grouped bar charts showing gender retention over time.
         """
+
         # For each year transition, calculate retention by gender
         def calc_retention_by_gender(
             base_year: int,
@@ -271,22 +272,15 @@ class TestRetentionTrendCalculation:
                 if pid in returned:
                     by_gender[gender]["returned"] += 1
 
-            return {
-                g: stats["returned"] / stats["base"] if stats["base"] > 0 else 0
-                for g, stats in by_gender.items()
-            }
+            return {g: stats["returned"] / stats["base"] if stats["base"] > 0 else 0 for g, stats in by_gender.items()}
 
         # 2024→2025 by gender
-        retention_2024_2025 = calc_retention_by_gender(
-            2024, 2025, multi_year_persons, multi_year_attendees
-        )
+        retention_2024_2025 = calc_retention_by_gender(2024, 2025, multi_year_persons, multi_year_attendees)
         assert "F" in retention_2024_2025
         assert "M" in retention_2024_2025
 
         # 2025→2026 by gender
-        retention_2025_2026 = calc_retention_by_gender(
-            2025, 2026, multi_year_persons, multi_year_attendees
-        )
+        retention_2025_2026 = calc_retention_by_gender(2025, 2026, multi_year_persons, multi_year_attendees)
         assert "F" in retention_2025_2026
         assert "M" in retention_2025_2026
 

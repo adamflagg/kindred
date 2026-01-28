@@ -488,10 +488,7 @@ class TestSummerYearsBreakdown:
 
         # Filter to summer session types
         summer_types = ("main", "embedded", "ag")
-        summer_attendees = [
-            a for a in attendees
-            if a.expand["session"].session_type in summer_types
-        ]
+        summer_attendees = [a for a in attendees if a.expand["session"].session_type in summer_types]
 
         assert len(summer_attendees) == 1
         assert summer_attendees[0].year == 2026

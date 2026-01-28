@@ -2344,7 +2344,8 @@ class TestRetentionSessionCmIdFilter:
         # Filter to Session 2 only (cm_id 1001)
         session_cm_id = 1001
         filtered = [
-            a for a in sample_attendees_multi_session
+            a
+            for a in sample_attendees_multi_session
             if getattr(a.expand.get("session"), "cm_id", None) == session_cm_id
         ]
 
@@ -2353,9 +2354,7 @@ class TestRetentionSessionCmIdFilter:
         for a in filtered:
             assert a.expand["session"].name == "Session 2"
 
-    def test_filter_returns_all_when_session_cm_id_is_none(
-        self, sample_attendees_multi_session: list[Mock]
-    ) -> None:
+    def test_filter_returns_all_when_session_cm_id_is_none(self, sample_attendees_multi_session: list[Mock]) -> None:
         """Test that no filtering happens when session_cm_id is None.
 
         This is the default behavior - show retention across all sessions.
@@ -2366,7 +2365,8 @@ class TestRetentionSessionCmIdFilter:
             filtered = sample_attendees_multi_session
         else:
             filtered = [
-                a for a in sample_attendees_multi_session
+                a
+                for a in sample_attendees_multi_session
                 if getattr(a.expand.get("session"), "cm_id", None) == session_cm_id
             ]
 
@@ -2415,9 +2415,7 @@ class TestRetentionBySummerYears:
 
         This replaces the years_at_camp field which can be incorrect.
         """
-        summer_years_by_person = {
-            pid: len(years) for pid, years in enrollment_history.items()
-        }
+        summer_years_by_person = {pid: len(years) for pid, years in enrollment_history.items()}
 
         assert summer_years_by_person[101] == 3
         assert summer_years_by_person[102] == 2
@@ -2436,10 +2434,7 @@ class TestRetentionBySummerYears:
         base_year_ids = {pid for pid, years in enrollment_history.items() if base_year in years}
         returned_ids = {101, 102, 104}
 
-        summer_years_by_person = {
-            pid: len(years) for pid, years in enrollment_history.items()
-            if pid in base_year_ids
-        }
+        summer_years_by_person = {pid: len(years) for pid, years in enrollment_history.items() if pid in base_year_ids}
 
         # Group by summer years
         by_summer_years: dict[int, dict[str, int]] = {}
@@ -2492,15 +2487,11 @@ class TestRetentionByFirstSummerYear:
             105: [2023, 2024, 2025],
         }
 
-        calculated_first_year = {
-            pid: min(years) for pid, years in enrollment_history.items()
-        }
+        calculated_first_year = {pid: min(years) for pid, years in enrollment_history.items()}
 
         assert calculated_first_year == first_summer_year_data
 
-    def test_retention_by_first_summer_year_breakdown(
-        self, first_summer_year_data: dict[int, int]
-    ) -> None:
+    def test_retention_by_first_summer_year_breakdown(self, first_summer_year_data: dict[int, int]) -> None:
         """Test retention breakdown by first summer year (cohort analysis).
 
         This allows analyzing retention by "class" of when campers first joined.
@@ -2554,9 +2545,7 @@ class TestRetentionByPriorSession:
             105: ["Taste of Camp"],
         }
 
-    def test_retention_by_prior_session_breakdown(
-        self, prior_year_sessions: dict[int, list[str]]
-    ) -> None:
+    def test_retention_by_prior_session_breakdown(self, prior_year_sessions: dict[int, list[str]]) -> None:
         """Test retention breakdown by what session campers were in prior year.
 
         This helps identify which prior-year sessions have best retention.
@@ -2768,10 +2757,7 @@ class TestBatchFetchSummerEnrollmentHistory:
             ],
         }
 
-        summer_years_by_person = {
-            pid: len({r["year"] for r in records})
-            for pid, records in by_person.items()
-        }
+        summer_years_by_person = {pid: len({r["year"] for r in records}) for pid, records in by_person.items()}
 
         assert summer_years_by_person[101] == 3
         assert summer_years_by_person[102] == 2
@@ -2791,10 +2777,7 @@ class TestBatchFetchSummerEnrollmentHistory:
             ],
         }
 
-        first_summer_year_by_person = {
-            pid: min(r["year"] for r in records)
-            for pid, records in by_person.items()
-        }
+        first_summer_year_by_person = {pid: min(r["year"] for r in records) for pid, records in by_person.items()}
 
         assert first_summer_year_by_person[101] == 2023
         assert first_summer_year_by_person[102] == 2024
@@ -2819,8 +2802,7 @@ class TestBatchFetchSummerEnrollmentHistory:
         }
 
         prior_sessions_by_person = {
-            pid: [r["session_name"] for r in records if r["year"] == prior_year]
-            for pid, records in by_person.items()
+            pid: [r["session_name"] for r in records if r["year"] == prior_year] for pid, records in by_person.items()
         }
 
         assert prior_sessions_by_person[101] == ["Session 2"]
@@ -2841,23 +2823,17 @@ class TestRetentionEndpointWithSessionCmId:
         """Create test client."""
         return TestClient(app)
 
-    def test_retention_endpoint_accepts_session_cm_id_param(
-        self, client: TestClient, mock_pocketbase: Mock
-    ) -> None:
+    def test_retention_endpoint_accepts_session_cm_id_param(self, client: TestClient, mock_pocketbase: Mock) -> None:
         """Test that retention endpoint accepts session_cm_id parameter."""
         mock_pb = mock_pocketbase
         mock_pb.collection.return_value.get_full_list.return_value = []
 
         with patch("api.routers.metrics.pb", mock_pb):
             # Should not error with session_cm_id parameter
-            response = client.get(
-                "/api/metrics/retention?base_year=2025&compare_year=2026&session_cm_id=1001"
-            )
+            response = client.get("/api/metrics/retention?base_year=2025&compare_year=2026&session_cm_id=1001")
             assert response.status_code == 200
 
-    def test_retention_endpoint_returns_new_breakdown_fields(
-        self, client: TestClient, mock_pocketbase: Mock
-    ) -> None:
+    def test_retention_endpoint_returns_new_breakdown_fields(self, client: TestClient, mock_pocketbase: Mock) -> None:
         """Test that retention endpoint returns new breakdown fields in response."""
         mock_pb = mock_pocketbase
         mock_pb.collection.return_value.get_full_list.return_value = []

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Coroutine
 from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, Query
@@ -178,7 +179,8 @@ async def fetch_sessions_for_year(year: int, session_types: list[str] | None = N
         pb.collection("camp_sessions").get_full_list,
         query_params={"filter": filter_str},
     )
-    return {getattr(s, "cm_id", 0): s for s in sessions}
+    # Ensure int keys for consistent lookup (PocketBase may return float)
+    return {int(getattr(s, "cm_id", 0)): s for s in sessions}
 
 
 def calculate_percentage(count: int, total: int) -> float:
@@ -209,13 +211,13 @@ def merge_ag_into_parent_sessions(
         Dictionary with AG session counts merged into parent sessions.
         Only main and embedded sessions are included.
     """
-    # Build AG -> parent mapping
+    # Build AG -> parent mapping (ensure int keys for consistent lookup)
     ag_parent_map: dict[int, int] = {}
     for sid, session in sessions.items():
         if getattr(session, "session_type", None) == "ag":
             parent_id = getattr(session, "parent_id", None)
             if parent_id:
-                ag_parent_map[sid] = parent_id
+                ag_parent_map[int(sid)] = int(parent_id)
 
     # Merge AG counts into parent sessions
     merged_counts: dict[int, int] = {}
@@ -253,13 +255,13 @@ def merge_ag_into_parent_retention_stats(
         Dictionary with AG session stats merged into parent sessions.
         Only main and embedded sessions are included.
     """
-    # Build AG -> parent mapping
+    # Build AG -> parent mapping (ensure int keys for consistent lookup)
     ag_parent_map: dict[int, int] = {}
     for sid, session in sessions.items():
         if getattr(session, "session_type", None) == "ag":
             parent_id = getattr(session, "parent_id", None)
             if parent_id:
-                ag_parent_map[sid] = parent_id
+                ag_parent_map[int(sid)] = int(parent_id)
 
     # Merge AG stats into parent sessions
     merged_stats: dict[int, dict[str, int]] = {}
@@ -455,9 +457,7 @@ async def get_retention_metrics(
     session_types: str | None = Query(
         None, description="Comma-separated session types to filter (e.g., 'main,embedded')"
     ),
-    session_cm_id: int | None = Query(
-        None, description="Filter to specific session by CampMinder ID"
-    ),
+    session_cm_id: int | None = Query(None, description="Filter to specific session by CampMinder ID"),
 ) -> RetentionMetricsResponse:
     """Get retention metrics comparing two years.
 
@@ -769,9 +769,7 @@ async def get_retention_metrics(
         # ====================================================================
 
         # Fetch summer enrollment history for all base year persons
-        enrollment_history = await fetch_summer_enrollment_history(
-            person_ids_base, base_year
-        )
+        enrollment_history = await fetch_summer_enrollment_history(person_ids_base, base_year)
 
         # Compute summer metrics from history
         prior_year = base_year - 1
@@ -1023,14 +1021,15 @@ async def get_registration_metrics(
             for g, c in sorted(grade_counts.items(), key=lambda x: (x[0] is None, x[0]))
         ]
 
-        # Session breakdown
+        # Session breakdown (ensure int keys for consistent lookup)
         session_counts: dict[int, int] = {}
         for a in combined_attendees:
             expand = getattr(a, "expand", {}) or {}
             session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
             attendee_session_cm_id = getattr(session, "cm_id", None) if session else None
             if attendee_session_cm_id:
-                session_counts[attendee_session_cm_id] = session_counts.get(attendee_session_cm_id, 0) + 1
+                sid_int = int(attendee_session_cm_id)
+                session_counts[sid_int] = session_counts.get(sid_int, 0) + 1
 
         # Merge AG session counts into parent main sessions
         merged_session_counts = merge_ag_into_parent_sessions(session_counts, sessions)
@@ -1232,9 +1231,7 @@ async def get_registration_metrics(
         ]
 
         # Fetch summer enrollment history for all enrolled persons
-        enrollment_history = await fetch_summer_enrollment_history(
-            enrolled_person_ids, year
-        )
+        enrollment_history = await fetch_summer_enrollment_history(enrolled_person_ids, year)
 
         # Compute summer metrics from history
         summer_years_by_person, first_year_by_person, _ = compute_summer_metrics(
@@ -1590,7 +1587,7 @@ async def get_retention_trends(
         type_filter = session_types.split(",") if session_types else None
 
         # Fetch attendees and persons for all years in parallel
-        fetch_tasks = []
+        fetch_tasks: list[Coroutine[Any, Any, Any]] = []
         for year in years:
             fetch_tasks.append(fetch_attendees_for_year(year))
             fetch_tasks.append(fetch_persons_for_year(year))
@@ -1601,9 +1598,9 @@ async def get_retention_trends(
         # Unpack results: each year has (attendees, persons, sessions)
         data_by_year: dict[int, dict[str, Any]] = {}
         for i, year in enumerate(years):
-            attendees = cast(list[Any], results[i * 3])
-            persons = cast(dict[int, Any], results[i * 3 + 1])
-            sessions = cast(dict[int, Any], results[i * 3 + 2])
+            attendees: list[Any] = results[i * 3]
+            persons: dict[int, Any] = results[i * 3 + 1]
+            sessions: dict[int, Any] = results[i * 3 + 2]
 
             # Filter attendees by session type
             if type_filter:
@@ -1630,11 +1627,7 @@ async def get_retention_trends(
                 "persons": persons,
                 "sessions": sessions,
                 # Ensure int type for person_ids to match persons dict keys
-                "person_ids": {
-                    int(getattr(a, "person_id", 0))
-                    for a in attendees
-                    if getattr(a, "person_id", None)
-                },
+                "person_ids": {int(getattr(a, "person_id", 0)) for a in attendees if getattr(a, "person_id", None)},
             }
 
         # Calculate retention for each year transition
@@ -1768,10 +1761,7 @@ async def get_retention_trends(
                 gender = getattr(person, "gender", "Unknown") or "Unknown"
                 gender_counts[gender] = gender_counts.get(gender, 0) + 1
 
-            by_gender = [
-                GenderEnrollment(gender=g, count=c)
-                for g, c in sorted(gender_counts.items())
-            ]
+            gender_breakdown = [GenderEnrollment(gender=g, count=c) for g, c in sorted(gender_counts.items())]
 
             # Grade breakdown
             grade_counts: dict[int | None, int] = {}
@@ -1782,7 +1772,7 @@ async def get_retention_trends(
                 grade = getattr(person, "grade", None)
                 grade_counts[grade] = grade_counts.get(grade, 0) + 1
 
-            by_grade = [
+            grade_breakdown = [
                 GradeEnrollment(grade=g, count=c)
                 for g, c in sorted(grade_counts.items(), key=lambda x: (x[0] is None, x[0]))
             ]
@@ -1791,8 +1781,8 @@ async def get_retention_trends(
                 YearEnrollment(
                     year=year,
                     total=total,
-                    by_gender=by_gender,
-                    by_grade=by_grade,
+                    by_gender=gender_breakdown,
+                    by_grade=grade_breakdown,
                 )
             )
 
