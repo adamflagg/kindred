@@ -47,7 +47,7 @@ interface ChartDataItem {
 
 interface ComparisonBreakdownChartProps {
   data: ChartDataItem[];
-  comparisonData?: Record<number, ChartDataItem[]>; // {2024: [...], 2023: [...]}
+  comparisonData: Record<number, ChartDataItem[]> | undefined; // {2024: [...], 2023: [...]}
   title: string;
   type?: 'bar' | 'pie';
   currentYear: number;

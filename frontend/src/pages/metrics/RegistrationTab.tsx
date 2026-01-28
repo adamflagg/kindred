@@ -5,6 +5,7 @@
 import { useRegistrationMetrics } from '../../hooks/useMetrics';
 import { MetricCard } from '../../components/metrics/MetricCard';
 import { BreakdownChart } from '../../components/metrics/BreakdownChart';
+import { ComparisonBreakdownChart } from '../../components/metrics/ComparisonBreakdownChart';
 import { DemographicBreakdowns } from '../../components/metrics/DemographicBreakdowns';
 import { getSessionChartLabel } from '../../utils/sessionDisplay';
 import { Loader2, AlertCircle } from 'lucide-react';
@@ -94,6 +95,26 @@ export function RegistrationTab({ year, compareYear, statuses, sessionTypes }: R
     { name: 'Returning', value: data.new_vs_returning.returning_count, percentage: data.new_vs_returning.returning_percentage },
   ];
 
+  // Build comparison data for charts
+  const comparisonData: Record<number, { grade: typeof gradeChartData; years: typeof yearsChartData }> = {};
+  if (compareYear && compareData) {
+    comparisonData[compareYear] = {
+      grade: compareData.by_grade.map((g) => ({
+        name: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
+        value: g.count,
+        percentage: g.percentage,
+      })),
+      years: compareData.by_years_at_camp.map((y) => ({
+        name: y.years === 1 ? '1 year' : `${y.years} years`,
+        value: y.count,
+        percentage: y.percentage,
+      })),
+    };
+  }
+
+  // Get available comparison years
+  const availableComparisonYears = compareYear ? [compareYear] : [];
+
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
@@ -155,9 +176,12 @@ export function RegistrationTab({ year, compareYear, statuses, sessionTypes }: R
 
       {/* Charts Row 2 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <BreakdownChart
+        <ComparisonBreakdownChart
           title="Enrollment by Grade"
           data={gradeChartData}
+          comparisonData={compareYear ? { [compareYear]: comparisonData[compareYear]?.grade ?? [] } : undefined}
+          currentYear={year}
+          availableComparisonYears={availableComparisonYears}
           type="bar"
           height={300}
         />
@@ -177,9 +201,12 @@ export function RegistrationTab({ year, compareYear, statuses, sessionTypes }: R
           type="bar"
           height={350}
         />
-        <BreakdownChart
+        <ComparisonBreakdownChart
           title="Enrollment by Years at Camp"
           data={yearsChartData}
+          comparisonData={compareYear ? { [compareYear]: comparisonData[compareYear]?.years ?? [] } : undefined}
+          currentYear={year}
+          availableComparisonYears={availableComparisonYears}
           type="bar"
           height={300}
         />
