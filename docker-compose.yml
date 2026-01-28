@@ -30,7 +30,7 @@ services:
       - AI_MODEL=${AI_MODEL:-}
       # Google Sheets (optional)
       - GOOGLE_SHEETS_ENABLED=${GOOGLE_SHEETS_ENABLED:-false}
-      - GOOGLE_SHEETS_SPREADSHEET_ID=${GOOGLE_SHEETS_SPREADSHEET_ID:-}
+      - GOOGLE_DRIVE_FOLDER_ID=${GOOGLE_DRIVE_FOLDER_ID:-}
       - GOOGLE_SERVICE_ACCOUNT_KEY_FILE=${GOOGLE_SERVICE_ACCOUNT_KEY_FILE:-/config/google_sheets.json}
       # System
       - TZ=${TZ:-America/Los_Angeles}

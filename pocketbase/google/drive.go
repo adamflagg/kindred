@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"google.golang.org/api/drive/v3"
-	"google.golang.org/api/sheets/v4"
 )
 
 // Valid sharing roles for Google Drive
@@ -37,33 +36,42 @@ func NewDriveClient(ctx context.Context) (*drive.Service, error) {
 	return srv, nil
 }
 
-// CreateSpreadsheet creates a new Google Sheets spreadsheet and returns its ID.
-// Requires Google Sheets to be enabled.
+// CreateSpreadsheet creates a new Google Sheets spreadsheet in the configured folder.
+// Requires Google Sheets to be enabled and GOOGLE_DRIVE_FOLDER_ID to be set.
+// The folder must be shared with the service account (Editor access).
 func CreateSpreadsheet(ctx context.Context, title string) (string, error) {
 	if !IsEnabled() {
 		return "", fmt.Errorf("google sheets is not enabled")
 	}
 
-	sheetsClient, err := NewSheetsClient(ctx)
+	folderID := GetFolderID()
+	if folderID == "" {
+		return "", fmt.Errorf("GOOGLE_DRIVE_FOLDER_ID not set - required for creating spreadsheets")
+	}
+
+	driveClient, err := NewDriveClient(ctx)
 	if err != nil {
-		return "", fmt.Errorf("failed to create sheets client: %w", err)
+		return "", fmt.Errorf("failed to create drive client: %w", err)
 	}
-	if sheetsClient == nil {
-		return "", fmt.Errorf("google sheets client is nil")
-	}
-
-	spreadsheet := &sheets.Spreadsheet{
-		Properties: &sheets.SpreadsheetProperties{
-			Title: title,
-		},
+	if driveClient == nil {
+		return "", fmt.Errorf("google drive client is nil")
 	}
 
-	created, err := sheetsClient.Spreadsheets.Create(spreadsheet).Context(ctx).Do()
+	file := &drive.File{
+		Name:     title,
+		MimeType: "application/vnd.google-apps.spreadsheet",
+		Parents:  []string{folderID},
+	}
+
+	created, err := driveClient.Files.Create(file).
+		SupportsAllDrives(true). // Required for Shared Drives
+		Context(ctx).
+		Do()
 	if err != nil {
-		return "", fmt.Errorf("failed to create spreadsheet: %w", err)
+		return "", fmt.Errorf("failed to create spreadsheet in folder: %w", err)
 	}
 
-	return created.SpreadsheetId, nil
+	return created.Id, nil
 }
 
 // ShareSpreadsheet shares a spreadsheet with the specified email address.
