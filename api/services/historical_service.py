@@ -54,10 +54,7 @@ class HistoricalService:
             years = list(range(current_year - 4, current_year + 1))
 
         # Fetch camper history for all years in parallel
-        history_futures = [
-            self.repo.fetch_camper_history(y, session_types=session_types)
-            for y in years
-        ]
+        history_futures = [self.repo.fetch_camper_history(y, session_types=session_types) for y in years]
         all_history = await asyncio.gather(*history_futures)
 
         # Compute metrics for each year
@@ -97,9 +94,7 @@ class HistoricalService:
         ]
 
         # New vs returning
-        new_count = sum(
-            1 for record in history if getattr(record, "years_at_camp", 0) == 1
-        )
+        new_count = sum(1 for record in history if getattr(record, "years_at_camp", 0) == 1)
         returning_count = total_enrolled - new_count
 
         new_vs_returning = NewVsReturning(

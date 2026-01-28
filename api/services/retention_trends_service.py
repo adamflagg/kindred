@@ -76,9 +76,7 @@ class RetentionTrendsService:
             # Update attendees and compute person_ids
             year_data["attendees"] = attendees
             year_data["person_ids"] = {
-                int(getattr(a, "person_id", 0))
-                for a in attendees
-                if getattr(a, "person_id", None)
+                int(getattr(a, "person_id", 0)) for a in attendees if getattr(a, "person_id", None)
             }
 
         # Calculate retention for each year transition
@@ -157,11 +155,7 @@ class RetentionTrendsService:
         filtered = []
         for a in attendees:
             expand = getattr(a, "expand", {}) or {}
-            session = (
-                expand.get("session")
-                if isinstance(expand, dict)
-                else getattr(expand, "session", None)
-            )
+            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
             if session and getattr(session, "session_type", None) in session_types:
                 filtered.append(a)
         return filtered
@@ -183,11 +177,7 @@ class RetentionTrendsService:
         filtered = []
         for a in attendees:
             expand = getattr(a, "expand", {}) or {}
-            session = (
-                expand.get("session")
-                if isinstance(expand, dict)
-                else getattr(expand, "session", None)
-            )
+            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
             if session and getattr(session, "cm_id", None) == session_cm_id:
                 filtered.append(a)
         return filtered
@@ -225,12 +215,8 @@ class RetentionTrendsService:
             retention_rate = safe_rate(returned_count, base_count)
 
             # Compute breakdowns
-            by_gender = self._compute_gender_breakdown(
-                base_person_ids, returned_ids, persons_base
-            )
-            by_grade = self._compute_grade_breakdown(
-                base_person_ids, returned_ids, persons_base
-            )
+            by_gender = self._compute_gender_breakdown(base_person_ids, returned_ids, persons_base)
+            by_grade = self._compute_grade_breakdown(base_person_ids, returned_ids, persons_base)
 
             retention_years.append(
                 RetentionTrendYear(
@@ -321,9 +307,7 @@ class RetentionTrendsService:
                 returned_count=stats["returned"],
                 retention_rate=safe_rate(stats["returned"], stats["base"]),
             )
-            for g, stats in sorted(
-                grade_stats.items(), key=lambda x: (x[0] is None, x[0])
-            )
+            for g, stats in sorted(grade_stats.items(), key=lambda x: (x[0] is None, x[0]))
         ]
 
     def _calculate_trend_direction(self, rates: list[float]) -> str:
@@ -381,10 +365,7 @@ class RetentionTrendsService:
                 gender = getattr(person, "gender", "Unknown") or "Unknown"
                 gender_counts[gender] = gender_counts.get(gender, 0) + 1
 
-            gender_breakdown = [
-                GenderEnrollment(gender=g, count=c)
-                for g, c in sorted(gender_counts.items())
-            ]
+            gender_breakdown = [GenderEnrollment(gender=g, count=c) for g, c in sorted(gender_counts.items())]
 
             # Grade breakdown
             grade_counts: dict[int | None, int] = {}
@@ -397,9 +378,7 @@ class RetentionTrendsService:
 
             grade_breakdown = [
                 GradeEnrollment(grade=g, count=c)
-                for g, c in sorted(
-                    grade_counts.items(), key=lambda x: (x[0] is None, x[0])
-                )
+                for g, c in sorted(grade_counts.items(), key=lambda x: (x[0] is None, x[0]))
             ]
 
             enrollment_by_year.append(

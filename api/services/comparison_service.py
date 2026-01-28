@@ -69,16 +69,8 @@ class ComparisonService:
             attendees_b = self._filter_by_session_type(attendees_b, session_types)
 
         # Get unique person IDs
-        person_ids_a = {
-            getattr(a, "person_id", None)
-            for a in attendees_a
-            if getattr(a, "person_id", None)
-        }
-        person_ids_b = {
-            getattr(a, "person_id", None)
-            for a in attendees_b
-            if getattr(a, "person_id", None)
-        }
+        person_ids_a = {getattr(a, "person_id", None) for a in attendees_a if getattr(a, "person_id", None)}
+        person_ids_b = {getattr(a, "person_id", None) for a in attendees_b if getattr(a, "person_id", None)}
 
         total_a = len(person_ids_a)
         total_b = len(person_ids_b)
@@ -117,11 +109,7 @@ class ComparisonService:
         filtered = []
         for a in attendees:
             expand = getattr(a, "expand", {}) or {}
-            session = (
-                expand.get("session")
-                if isinstance(expand, dict)
-                else getattr(expand, "session", None)
-            )
+            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
             session_type = getattr(session, "session_type", None) if session else None
             if session_type in session_types:
                 filtered.append(a)

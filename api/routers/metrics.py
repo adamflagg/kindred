@@ -15,18 +15,11 @@ from fastapi import APIRouter, HTTPException, Query
 
 from ..dependencies import pb
 from ..schemas.metrics import (
-    ComparisonDelta,
     ComparisonMetricsResponse,
-    FirstYearBreakdown,
-    GenderBreakdown,
-    GradeBreakdown,
     HistoricalTrendsResponse,
-    NewVsReturning,
     RegistrationMetricsResponse,
     RetentionMetricsResponse,
     RetentionTrendsResponse,
-    YearMetrics,
-    YearSummary,
 )
 
 logger = logging.getLogger(__name__)
@@ -525,139 +518,18 @@ async def get_comparison_metrics(
     Compares total enrollment, gender distribution, and grade distribution
     between two years. Filters to summer camp sessions by default.
     """
+    from api.services.comparison_service import ComparisonService
+    from api.services.metrics_repository import MetricsRepository
+
     try:
-        # Parse session types filter
         type_filter = session_types.split(",") if session_types else None
 
-        # Fetch data in parallel
-        (
-            attendees_a,
-            attendees_b,
-            persons_a,
-            persons_b,
-        ) = await asyncio.gather(
-            fetch_attendees_for_year(year_a),
-            fetch_attendees_for_year(year_b),
-            fetch_persons_for_year(year_a),
-            fetch_persons_for_year(year_b),
-        )
-
-        # Filter attendees by session type if needed
-        def filter_by_session_type(attendees: list[Any]) -> list[Any]:
-            if not type_filter:
-                return attendees
-            filtered = []
-            for a in attendees:
-                expand = getattr(a, "expand", {}) or {}
-                session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
-                session_type = getattr(session, "session_type", None) if session else None
-                if session_type in type_filter:
-                    filtered.append(a)
-            return filtered
-
-        attendees_a = filter_by_session_type(attendees_a)
-        attendees_b = filter_by_session_type(attendees_b)
-
-        # Get unique person IDs
-        person_ids_a = {getattr(a, "person_id", None) for a in attendees_a if getattr(a, "person_id", None)}
-        person_ids_b = {getattr(a, "person_id", None) for a in attendees_b if getattr(a, "person_id", None)}
-
-        total_a = len(person_ids_a)
-        total_b = len(person_ids_b)
-
-        # Gender breakdown for year A
-        gender_counts_a: dict[str, int] = {}
-        for pid in person_ids_a:
-            person = persons_a.get(pid)
-            if not person:
-                continue
-            gender = getattr(person, "gender", "Unknown") or "Unknown"
-            gender_counts_a[gender] = gender_counts_a.get(gender, 0) + 1
-
-        by_gender_a = [
-            GenderBreakdown(
-                gender=g,
-                count=c,
-                percentage=calculate_percentage(c, total_a),
-            )
-            for g, c in sorted(gender_counts_a.items())
-        ]
-
-        # Gender breakdown for year B
-        gender_counts_b: dict[str, int] = {}
-        for pid in person_ids_b:
-            person = persons_b.get(pid)
-            if not person:
-                continue
-            gender = getattr(person, "gender", "Unknown") or "Unknown"
-            gender_counts_b[gender] = gender_counts_b.get(gender, 0) + 1
-
-        by_gender_b = [
-            GenderBreakdown(
-                gender=g,
-                count=c,
-                percentage=calculate_percentage(c, total_b),
-            )
-            for g, c in sorted(gender_counts_b.items())
-        ]
-
-        # Grade breakdown for year A
-        grade_counts_a: dict[int | None, int] = {}
-        for pid in person_ids_a:
-            person = persons_a.get(pid)
-            if not person:
-                continue
-            grade = getattr(person, "grade", None)
-            grade_counts_a[grade] = grade_counts_a.get(grade, 0) + 1
-
-        by_grade_a = [
-            GradeBreakdown(
-                grade=g,
-                count=c,
-                percentage=calculate_percentage(c, total_a),
-            )
-            for g, c in sorted(grade_counts_a.items(), key=lambda x: (x[0] is None, x[0]))
-        ]
-
-        # Grade breakdown for year B
-        grade_counts_b: dict[int | None, int] = {}
-        for pid in person_ids_b:
-            person = persons_b.get(pid)
-            if not person:
-                continue
-            grade = getattr(person, "grade", None)
-            grade_counts_b[grade] = grade_counts_b.get(grade, 0) + 1
-
-        by_grade_b = [
-            GradeBreakdown(
-                grade=g,
-                count=c,
-                percentage=calculate_percentage(c, total_b),
-            )
-            for g, c in sorted(grade_counts_b.items(), key=lambda x: (x[0] is None, x[0]))
-        ]
-
-        # Delta calculation
-        total_change = total_b - total_a
-        percentage_change = calculate_percentage(total_change, total_a) if total_a > 0 else 0.0
-
-        return ComparisonMetricsResponse(
-            year_a=YearSummary(
-                year=year_a,
-                total=total_a,
-                by_gender=by_gender_a,
-                by_grade=by_grade_a,
-            ),
-            year_b=YearSummary(
-                year=year_b,
-                total=total_b,
-                by_gender=by_gender_b,
-                by_grade=by_grade_b,
-            ),
-            delta=ComparisonDelta(
-                total_change=total_change,
-                percentage_change=percentage_change,
-            ),
+        repository = MetricsRepository(pb)
+        service = ComparisonService(repository)
+        return await service.calculate_comparison(
+            year_a=year_a,
+            year_b=year_b,
+            session_types=type_filter,
         )
 
     except Exception as e:
@@ -680,80 +552,22 @@ async def get_historical_trends(
     Returns aggregated metrics for each year to enable line chart visualization.
     Default: last 5 years (2021-2025).
     """
+    from api.services.historical_service import HistoricalService
+    from api.services.metrics_repository import MetricsRepository
+
     try:
         # Parse years
-        if years:
-            year_list = [int(y.strip()) for y in years.split(",")]
-        else:
-            # Default: last 5 years from 2025
-            current_year = 2025
-            year_list = list(range(current_year - 4, current_year + 1))
+        year_list = [int(y.strip()) for y in years.split(",")] if years else None
 
         # Parse session types filter
         type_filter = session_types.split(",") if session_types else None
 
-        # Fetch camper_history for all years in parallel
-        history_futures = [fetch_camper_history_for_year(y, session_types=type_filter) for y in year_list]
-        all_history = await asyncio.gather(*history_futures)
-
-        year_metrics_list: list[YearMetrics] = []
-
-        for year, history in zip(year_list, all_history, strict=True):
-            total_enrolled = len(history)
-
-            # Gender breakdown
-            gender_counts: dict[str, int] = {}
-            for record in history:
-                gender = getattr(record, "gender", "Unknown") or "Unknown"
-                gender_counts[gender] = gender_counts.get(gender, 0) + 1
-
-            by_gender = [
-                GenderBreakdown(
-                    gender=g,
-                    count=c,
-                    percentage=calculate_percentage(c, total_enrolled),
-                )
-                for g, c in sorted(gender_counts.items())
-            ]
-
-            # New vs returning
-            new_count = sum(1 for record in history if getattr(record, "years_at_camp", 0) == 1)
-            returning_count = total_enrolled - new_count
-
-            new_vs_returning = NewVsReturning(
-                new_count=new_count,
-                returning_count=returning_count,
-                new_percentage=calculate_percentage(new_count, total_enrolled),
-                returning_percentage=calculate_percentage(returning_count, total_enrolled),
-            )
-
-            # First year breakdown
-            first_year_counts: dict[int, int] = {}
-            for record in history:
-                first_year = getattr(record, "first_year_attended", None)
-                if first_year:
-                    first_year_counts[first_year] = first_year_counts.get(first_year, 0) + 1
-
-            by_first_year = [
-                FirstYearBreakdown(
-                    first_year=fy,
-                    count=c,
-                    percentage=calculate_percentage(c, total_enrolled),
-                )
-                for fy, c in sorted(first_year_counts.items())
-            ]
-
-            year_metrics_list.append(
-                YearMetrics(
-                    year=year,
-                    total_enrolled=total_enrolled,
-                    by_gender=by_gender,
-                    new_vs_returning=new_vs_returning,
-                    by_first_year=by_first_year,
-                )
-            )
-
-        return HistoricalTrendsResponse(years=year_metrics_list)
+        repository = MetricsRepository(pb)
+        service = HistoricalService(repository)
+        return await service.calculate_historical_trends(
+            years=year_list,
+            session_types=type_filter,
+        )
 
     except Exception as e:
         logger.error(f"Error calculating historical trends: {e}", exc_info=True)
