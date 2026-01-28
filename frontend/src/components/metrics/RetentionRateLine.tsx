@@ -13,6 +13,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   ReferenceLine,
+  LabelList,
 } from 'recharts';
 import type { RetentionTrendYear } from '../../types/metrics';
 
@@ -114,7 +115,15 @@ export function RetentionRateLine({
             strokeWidth={3}
             dot={{ fill: 'hsl(160, 100%, 35%)', r: 6 }}
             activeDot={{ r: 8 }}
-          />
+          >
+            <LabelList
+              dataKey="retentionRate"
+              position="top"
+              className="text-xs"
+              fill="hsl(var(--muted-foreground))"
+              formatter={(value) => `${value}%`}
+            />
+          </Line>
         </LineChart>
       </ResponsiveContainer>
     </div>
