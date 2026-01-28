@@ -159,12 +159,16 @@ def safe_rate(numerator: int, denominator: int) -> float:
     return numerator / denominator if denominator > 0 else 0.0
 
 
-async def fetch_camper_history_for_year(year: int, status_filter: str = "enrolled") -> list[Any]:
+async def fetch_camper_history_for_year(
+    year: int, status_filter: str = "enrolled", session_types: list[str] | None = None
+) -> list[Any]:
     """Fetch camper_history records for a given year.
 
     Args:
         year: The year to fetch records for.
         status_filter: Status to filter by (default: 'enrolled').
+        session_types: Optional list of session types to filter (e.g., ['main', 'embedded', 'ag']).
+                      If provided, only records with matching session_types will be returned.
 
     Returns:
         List of camper_history records (already denormalized).
@@ -173,10 +177,24 @@ async def fetch_camper_history_for_year(year: int, status_filter: str = "enrolle
     try:
         filter_str = f'year = {year} && status = "{status_filter}"'
 
-        return await asyncio.to_thread(
+        records = await asyncio.to_thread(
             pb.collection("camper_history").get_full_list,
             query_params={"filter": filter_str},
         )
+
+        # Filter by session_types if provided
+        if session_types:
+            filtered = []
+            for record in records:
+                record_types = getattr(record, "session_types", "") or ""
+                # Check if any of the record's session types match the filter
+                if record_types:
+                    record_type_list = [t.strip() for t in record_types.split(",")]
+                    if any(rt in session_types for rt in record_type_list):
+                        filtered.append(record)
+            return filtered
+
+        return records
     except Exception as e:
         logger.warning(f"Could not fetch camper_history for year {year}: {e}")
         return []  # Return empty list - new breakdowns will just be empty
@@ -396,7 +414,7 @@ async def get_registration_metrics(
             fetch_attendees_for_year(year, "cancelled"),
             fetch_persons_for_year(year),
             fetch_sessions_for_year(year, type_filter),
-            fetch_camper_history_for_year(year),  # For new demographic breakdowns
+            fetch_camper_history_for_year(year, session_types=type_filter),  # For new demographic breakdowns
         )
 
         # Filter attendees by session type if needed
@@ -814,8 +832,11 @@ async def get_historical_trends(
             current_year = 2025
             year_list = list(range(current_year - 4, current_year + 1))
 
+        # Parse session types filter
+        type_filter = session_types.split(",") if session_types else None
+
         # Fetch camper_history for all years in parallel
-        history_futures = [fetch_camper_history_for_year(y) for y in year_list]
+        history_futures = [fetch_camper_history_for_year(y, session_types=type_filter) for y in year_list]
         all_history = await asyncio.gather(*history_futures)
 
         year_metrics_list: list[YearMetrics] = []

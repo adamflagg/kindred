@@ -972,9 +972,7 @@ class TestCamperHistorySessionTypesFiltering:
         grades = [getattr(r, "grade", None) for r in filtered]
         assert 0 not in grades
 
-    def test_grade_breakdown_excludes_family_camp(
-        self, mock_camper_history_with_session_types: list[Mock]
-    ) -> None:
+    def test_grade_breakdown_excludes_family_camp(self, mock_camper_history_with_session_types: list[Mock]) -> None:
         """Test that grade breakdown excludes grade 0 from family camp.
 
         This is the core issue: family camp adults with grade 0 were showing
@@ -1044,9 +1042,7 @@ class TestCamperHistorySessionTypesFiltering:
         total_with_schools = sum(school_counts.values())
         assert total_with_schools == 10
 
-    def test_historical_trends_uses_session_types(
-        self, mock_camper_history_with_session_types: list[Mock]
-    ) -> None:
+    def test_historical_trends_uses_session_types(self, mock_camper_history_with_session_types: list[Mock]) -> None:
         """Test that historical trends endpoint uses session_types filter.
 
         The historical trends endpoint declares session_types param but

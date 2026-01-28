@@ -371,20 +371,20 @@ async def get_bunk_social_graph(bunk_cm_id: int, session_cm_id: int, year: int |
                 name = f"{person.first_name} {person.last_name}"
                 grade = getattr(person, "grade", None)
 
-                # Check years_at_camp_api to determine first-year status
-                years_at_camp = getattr(person, "years_at_camp_api", None)
+                # Check years_at_camp to determine first-year status
+                years_at_camp = getattr(person, "years_at_camp", None)
                 if years_at_camp == 1:
                     first_year_campers.add(node_id)
-                    logger.info(f"Person {node_id} ({name}) is a first-year camper (years_at_camp_api={years_at_camp})")
+                    logger.info(f"Person {node_id} ({name}) is a first-year camper (years_at_camp={years_at_camp})")
 
                 # Log grade info for debugging
                 if "mila" in name.lower() and "cowles" in name.lower():
                     logger.info(
-                        f"MILA COWLES DEBUG - Person {node_id}: grade={grade}, years_at_camp_api={years_at_camp}, all fields: {vars(person)}"
+                        f"MILA COWLES DEBUG - Person {node_id}: grade={grade}, years_at_camp={years_at_camp}, all fields: {vars(person)}"
                     )
                 else:
                     logger.debug(
-                        f"Bunk graph - Person {node_id} ({name}): grade={grade}, years_at_camp_api={years_at_camp}"
+                        f"Bunk graph - Person {node_id} ({name}): grade={grade}, years_at_camp={years_at_camp}"
                     )
             except Exception as e:
                 name = f"Person {node_id}"

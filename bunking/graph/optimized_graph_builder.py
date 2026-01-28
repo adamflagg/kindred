@@ -109,7 +109,7 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
                 "division": getattr(attendee, "division", None),
                 "centrality": 0.0,  # Will be calculated later
                 "clustering": 0.0,  # Will be calculated later
-                "years_at_camp": getattr(person, "years_at_camp_api", None),
+                "years_at_camp": getattr(person, "years_at_camp", None),
             }
 
             node_data.append((person.cm_id, node_attrs))
