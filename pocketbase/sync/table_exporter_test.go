@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -778,5 +779,148 @@ func TestBuildDataMatrix_WriteInOverride(t *testing.T) {
 	// Check empty case
 	if data[3][0] != "" {
 		t.Errorf("Row 3 = %v, want empty", data[3][0])
+	}
+}
+
+// =============================================================================
+// Multi-Workbook Tab Naming Tests (Per-Year Workbooks Feature)
+// =============================================================================
+
+func TestGetReadableYearExports_HasReadableNames(t *testing.T) {
+	// Test that readable year exports use human-readable tab names (no year prefix)
+	configs := GetReadableYearExports()
+
+	if len(configs) == 0 {
+		t.Fatal("Expected at least one readable year export config")
+	}
+
+	// Check that none of the sheet names contain year placeholders
+	for _, config := range configs {
+		if strings.Contains(config.SheetName, "{year}") {
+			t.Errorf("Config %s still has {year} placeholder: %s", config.Collection, config.SheetName)
+		}
+	}
+}
+
+func TestGetReadableYearExports_AttendeesHasReadableName(t *testing.T) {
+	// Test attendees config has readable name
+	configs := GetReadableYearExports()
+
+	var attendeesConfig *ExportConfig
+	for i := range configs {
+		if configs[i].Collection == "attendees" {
+			attendeesConfig = &configs[i]
+			break
+		}
+	}
+
+	if attendeesConfig == nil {
+		t.Fatal("Expected 'attendees' export config")
+	}
+
+	if attendeesConfig.SheetName != "Attendees" {
+		t.Errorf("attendees SheetName = %q, want 'Attendees'", attendeesConfig.SheetName)
+	}
+}
+
+func TestGetReadableYearExports_IncludesCustomValues(t *testing.T) {
+	// Test that readable exports include person_custom_values and household_custom_values
+	configs := GetReadableYearExports()
+
+	var hasPersonCustomValues, hasHouseholdCustomValues bool
+	for _, config := range configs {
+		if config.Collection == "person_custom_values" {
+			hasPersonCustomValues = true
+			if config.SheetName != "Person Custom Values" {
+				t.Errorf("person_custom_values SheetName = %q, want 'Person Custom Values'", config.SheetName)
+			}
+		}
+		if config.Collection == "household_custom_values" {
+			hasHouseholdCustomValues = true
+			if config.SheetName != "Household Custom Values" {
+				t.Errorf("household_custom_values SheetName = %q, want 'Household Custom Values'", config.SheetName)
+			}
+		}
+	}
+
+	if !hasPersonCustomValues {
+		t.Error("Expected 'person_custom_values' in readable year exports")
+	}
+	if !hasHouseholdCustomValues {
+		t.Error("Expected 'household_custom_values' in readable year exports")
+	}
+}
+
+func TestGetReadableGlobalExports_HasReadableNames(t *testing.T) {
+	// Test that readable global exports use human-readable tab names (no g- prefix)
+	configs := GetReadableGlobalExports()
+
+	if len(configs) == 0 {
+		t.Fatal("Expected at least one readable global export config")
+	}
+
+	// Check that none of the sheet names start with "g-"
+	for _, config := range configs {
+		if len(config.SheetName) >= 2 && config.SheetName[:2] == "g-" {
+			t.Errorf("Config %s still has g- prefix: %s", config.Collection, config.SheetName)
+		}
+	}
+}
+
+func TestGetReadableGlobalExports_TagDefsHasReadableName(t *testing.T) {
+	// Test person_tag_defs config has readable name
+	configs := GetReadableGlobalExports()
+
+	var tagDefsConfig *ExportConfig
+	for i := range configs {
+		if configs[i].Collection == "person_tag_defs" {
+			tagDefsConfig = &configs[i]
+			break
+		}
+	}
+
+	if tagDefsConfig == nil {
+		t.Fatal("Expected 'person_tag_defs' export config")
+	}
+
+	if tagDefsConfig.SheetName != "Tag Definitions" {
+		t.Errorf("person_tag_defs SheetName = %q, want 'Tag Definitions'", tagDefsConfig.SheetName)
+	}
+}
+
+func TestGetReadableExportSheetNames(t *testing.T) {
+	// Test getting all readable sheet names (no year needed since names are static)
+	yearNames := GetReadableYearExportSheetNames()
+	globalNames := GetReadableGlobalExportSheetNames()
+
+	if len(yearNames) == 0 {
+		t.Error("Expected at least one year export sheet name")
+	}
+	if len(globalNames) == 0 {
+		t.Error("Expected at least one global export sheet name")
+	}
+
+	// Year names should include readable names
+	foundAttendees := false
+	for _, name := range yearNames {
+		if name == "Attendees" {
+			foundAttendees = true
+			break
+		}
+	}
+	if !foundAttendees {
+		t.Error("Expected 'Attendees' in year export sheet names")
+	}
+
+	// Global names should include readable names
+	foundTagDefs := false
+	for _, name := range globalNames {
+		if name == "Tag Definitions" {
+			foundTagDefs = true
+			break
+		}
+	}
+	if !foundTagDefs {
+		t.Error("Expected 'Tag Definitions' in global export sheet names")
 	}
 }
