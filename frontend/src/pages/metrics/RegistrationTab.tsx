@@ -1,32 +1,53 @@
 /**
  * RegistrationTab - Display registration breakdown for a single year.
+ *
+ * Enhanced with:
+ * - Session selector dropdown for filtering to specific sessions
+ * - Gender by grade stacked bar chart
+ * - Summer years breakdown (calculated from enrollment history)
+ * - First summer year cohort analysis
  */
 
+import { useState } from 'react';
 import { useRegistrationMetrics } from '../../hooks/useMetrics';
+import { useMetricsSessions } from '../../hooks/useMetricsSessions';
 import { MetricCard } from '../../components/metrics/MetricCard';
 import { BreakdownChart } from '../../components/metrics/BreakdownChart';
 import { ComparisonBreakdownChart } from '../../components/metrics/ComparisonBreakdownChart';
 import { DemographicBreakdowns } from '../../components/metrics/DemographicBreakdowns';
+import { RegistrationSessionSelector } from '../../components/metrics/RegistrationSessionSelector';
+import { GenderByGradeChart } from '../../components/metrics/GenderByGradeChart';
 import { getSessionChartLabel } from '../../utils/sessionDisplay';
 import { Loader2, AlertCircle } from 'lucide-react';
 
 interface RegistrationTabProps {
   year: number;
   compareYear?: number;
-  /** Comma-separated status values (default: enrolled) */
-  statuses?: string;
   /** Comma-separated session types (default: main,embedded,ag) */
   sessionTypes?: string;
 }
 
-export function RegistrationTab({ year, compareYear, statuses, sessionTypes }: RegistrationTabProps) {
+export function RegistrationTab({ year, compareYear, sessionTypes }: RegistrationTabProps) {
+  // Local state for session filter
+  const [selectedSessionCmId, setSelectedSessionCmId] = useState<number | null>(null);
+
   // Build session types param string
   const sessionTypesParam = sessionTypes || 'main,embedded,ag';
-  const statusesParam = statuses || 'enrolled';
+  // Always use enrolled status only
+  const statusesParam = 'enrolled';
 
-  const { data, isLoading, error } = useRegistrationMetrics(year, sessionTypesParam, statusesParam);
+  // Fetch sessions for dropdown
+  const { data: sessions = [], isLoading: sessionsLoading } = useMetricsSessions(year);
 
-  // Fetch comparison data for delta badges
+  // Fetch registration data with optional session filter
+  const { data, isLoading, error } = useRegistrationMetrics(
+    year,
+    sessionTypesParam,
+    statusesParam,
+    selectedSessionCmId ?? undefined
+  );
+
+  // Fetch comparison data for delta badges (without session filter for fair comparison)
   const { data: compareData } = useRegistrationMetrics(
     compareYear ?? 0,
     sessionTypesParam,
@@ -84,8 +105,25 @@ export function RegistrationTab({ year, compareYear, statuses, sessionTypes }: R
     percentage: s.percentage,
   }));
 
-  const yearsChartData = data.by_years_at_camp.map((y) => ({
-    name: y.years === 1 ? '1 year' : `${y.years} years`,
+  // Use summer years (from enrollment history) instead of years_at_camp
+  const summerYearsData = (data.by_summer_years ?? []).map((y) => ({
+    name: y.summer_years === 1 ? '1 summer' : `${y.summer_years} summers`,
+    value: y.count,
+    percentage: y.percentage,
+  }));
+
+  // Fallback to years_at_camp if summer years not available
+  const yearsChartData = summerYearsData.length > 0
+    ? summerYearsData
+    : data.by_years_at_camp.map((y) => ({
+        name: y.years === 1 ? '1 year' : `${y.years} years`,
+        value: y.count,
+        percentage: y.percentage,
+      }));
+
+  // First summer year cohort data
+  const firstSummerYearData = (data.by_first_summer_year ?? []).map((y) => ({
+    name: y.first_summer_year.toString(),
     value: y.count,
     percentage: y.percentage,
   }));
@@ -117,46 +155,61 @@ export function RegistrationTab({ year, compareYear, statuses, sessionTypes }: R
 
   return (
     <div className="space-y-6">
+      {/* Session Selector */}
+      <div className="flex items-center justify-between">
+        <RegistrationSessionSelector
+          sessions={sessions}
+          selectedSessionCmId={selectedSessionCmId}
+          onSessionChange={setSelectedSessionCmId}
+          isLoading={sessionsLoading}
+        />
+        {selectedSessionCmId && (
+          <span className="text-sm text-muted-foreground">
+            Showing data for selected session only
+          </span>
+        )}
+      </div>
+
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <MetricCard
           title="Total Enrolled"
           value={data.total_enrolled}
-          subtitle={`Active enrollments for ${year}`}
-          compareValue={compareData?.total_enrolled}
-          compareYear={compareYear}
+          subtitle={selectedSessionCmId ? 'In selected session' : `Active enrollments for ${year}`}
+          compareValue={!selectedSessionCmId ? compareData?.total_enrolled : undefined}
+          compareYear={!selectedSessionCmId ? compareYear : undefined}
         />
         <MetricCard
           title="Total Waitlisted"
           value={data.total_waitlisted}
           subtitle="On waitlist"
-          compareValue={compareData?.total_waitlisted}
-          compareYear={compareYear}
+          compareValue={!selectedSessionCmId ? compareData?.total_waitlisted : undefined}
+          compareYear={!selectedSessionCmId ? compareYear : undefined}
         />
         <MetricCard
           title="Total Cancelled"
           value={data.total_cancelled}
           subtitle="Cancellations"
-          compareValue={compareData?.total_cancelled}
-          compareYear={compareYear}
+          compareValue={!selectedSessionCmId ? compareData?.total_cancelled : undefined}
+          compareYear={!selectedSessionCmId ? compareYear : undefined}
         />
         <MetricCard
           title="New Campers"
           value={data.new_vs_returning.new_count}
           subtitle={`${data.new_vs_returning.new_percentage.toFixed(1)}% of enrolled`}
-          compareValue={compareData?.new_vs_returning.new_count}
-          compareYear={compareYear}
+          compareValue={!selectedSessionCmId ? compareData?.new_vs_returning.new_count : undefined}
+          compareYear={!selectedSessionCmId ? compareYear : undefined}
         />
         <MetricCard
           title="Returning Campers"
           value={data.new_vs_returning.returning_count}
           subtitle={`${data.new_vs_returning.returning_percentage.toFixed(1)}% of enrolled`}
-          compareValue={compareData?.new_vs_returning.returning_count}
-          compareYear={compareYear}
+          compareValue={!selectedSessionCmId ? compareData?.new_vs_returning.returning_count : undefined}
+          compareYear={!selectedSessionCmId ? compareYear : undefined}
         />
       </div>
 
-      {/* Charts Row 1 */}
+      {/* Charts Row 1: Gender */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <BreakdownChart
           title="Enrollment by Gender"
@@ -165,6 +218,16 @@ export function RegistrationTab({ year, compareYear, statuses, sessionTypes }: R
           showPercentage
           height={250}
         />
+        {/* Gender by Grade stacked bar chart */}
+        <GenderByGradeChart
+          data={data.by_gender_grade ?? []}
+          title="Gender by Grade"
+          height={250}
+        />
+      </div>
+
+      {/* Charts Row 2: New vs Returning, Grade */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <BreakdownChart
           title="New vs Returning Campers"
           data={newVsReturningData}
@@ -172,18 +235,24 @@ export function RegistrationTab({ year, compareYear, statuses, sessionTypes }: R
           showPercentage
           height={250}
         />
-      </div>
-
-      {/* Charts Row 2 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <ComparisonBreakdownChart
           title="Enrollment by Grade"
           data={gradeChartData}
-          comparisonData={compareYear ? { [compareYear]: comparisonData[compareYear]?.grade ?? [] } : undefined}
+          comparisonData={compareYear && !selectedSessionCmId ? { [compareYear]: comparisonData[compareYear]?.grade ?? [] } : undefined}
           currentYear={year}
-          availableComparisonYears={availableComparisonYears}
+          availableComparisonYears={!selectedSessionCmId ? availableComparisonYears : []}
           type="bar"
           height={300}
+        />
+      </div>
+
+      {/* Charts Row 3: Session, Session Length */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <BreakdownChart
+          title="Enrollment by Session"
+          data={sessionChartData}
+          type="bar"
+          height={350}
         />
         <BreakdownChart
           title="Enrollment by Session Length"
@@ -193,23 +262,25 @@ export function RegistrationTab({ year, compareYear, statuses, sessionTypes }: R
         />
       </div>
 
-      {/* Charts Row 3 */}
+      {/* Charts Row 4: Years at Camp, First Summer Year */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <BreakdownChart
-          title="Enrollment by Session"
-          data={sessionChartData}
-          type="bar"
-          height={350}
-        />
         <ComparisonBreakdownChart
-          title="Enrollment by Years at Camp"
+          title={summerYearsData.length > 0 ? 'Enrollment by Summers at Camp' : 'Enrollment by Years at Camp'}
           data={yearsChartData}
-          comparisonData={compareYear ? { [compareYear]: comparisonData[compareYear]?.years ?? [] } : undefined}
+          comparisonData={compareYear && !selectedSessionCmId ? { [compareYear]: comparisonData[compareYear]?.years ?? [] } : undefined}
           currentYear={year}
-          availableComparisonYears={availableComparisonYears}
+          availableComparisonYears={!selectedSessionCmId ? availableComparisonYears : []}
           type="bar"
           height={300}
         />
+        {firstSummerYearData.length > 0 && (
+          <BreakdownChart
+            title="Enrollment by First Summer Year"
+            data={firstSummerYearData}
+            type="bar"
+            height={300}
+          />
+        )}
       </div>
 
       {/* Session Details Table */}

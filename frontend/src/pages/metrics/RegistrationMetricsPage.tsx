@@ -18,21 +18,16 @@ type TabType = 'registration' | 'retention' | 'trends';
 /** Default session types for summer camp metrics */
 const DEFAULT_SESSION_TYPES = ['main', 'embedded', 'ag'];
 
-/** Default statuses for enrollment counts */
-const DEFAULT_STATUSES = ['enrolled'];
-
 export function RegistrationMetricsPage() {
   const { currentYear, availableYears } = useCurrentYear();
   // Always comparison mode: primary year from app context, comparison defaults to year-1
   const [compareYear, setCompareYear] = useState(currentYear - 1);
   const [activeTab, setActiveTab] = useState<TabType>('registration');
 
-  // Filter state
-  const [selectedStatuses, setSelectedStatuses] = useState<string[]>(DEFAULT_STATUSES);
+  // Filter state - only session types now (status is always "enrolled")
   const [selectedSessionTypes, setSelectedSessionTypes] = useState<string[]>(DEFAULT_SESSION_TYPES);
 
   // Convert arrays to comma-separated strings for API
-  const statusesParam = selectedStatuses.join(',');
   const sessionTypesParam = selectedSessionTypes.join(',');
 
   return (
@@ -57,18 +52,22 @@ export function RegistrationMetricsPage() {
 
         {/* Compare Year Selector + Filters */}
         <div className="space-y-4 mb-6">
-          <CompareYearSelector
-            primaryYear={currentYear}
-            compareYear={compareYear}
-            onCompareYearChange={setCompareYear}
-            availableYears={availableYears}
-          />
-          {/* FilterBar only shown for Registration and Trends tabs */}
-          {/* RetentionTab has its own session selector dropdown */}
+          {/* CompareYearSelector shown for Registration and Trends tabs only */}
+          {/* RetentionTab uses currentYear and calculates its own year range */}
           {activeTab !== 'retention' && (
+            <CompareYearSelector
+              primaryYear={currentYear}
+              compareYear={compareYear}
+              onCompareYearChange={setCompareYear}
+              availableYears={availableYears}
+            />
+          )}
+          {/* FilterBar only shown for Trends tab */}
+          {/* RegistrationTab and RetentionTab have their own session selectors */}
+          {activeTab === 'trends' && (
             <FilterBar
-              selectedStatuses={selectedStatuses}
-              onStatusChange={setSelectedStatuses}
+              selectedStatuses={['enrolled']}
+              onStatusChange={() => {}} // Status not changeable
               selectedSessionTypes={selectedSessionTypes}
               onSessionTypeChange={setSelectedSessionTypes}
             />
@@ -117,14 +116,12 @@ export function RegistrationMetricsPage() {
             <RegistrationTab
               year={currentYear}
               compareYear={compareYear}
-              statuses={statusesParam}
               sessionTypes={sessionTypesParam}
             />
           )}
           {activeTab === 'retention' && (
             <RetentionTab
-              baseYear={compareYear}
-              compareYear={currentYear}
+              currentYear={currentYear}
               sessionTypes={sessionTypesParam}
             />
           )}

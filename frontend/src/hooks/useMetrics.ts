@@ -56,12 +56,13 @@ export function useRetentionMetrics(
 export function useRegistrationMetrics(
   year: number,
   sessionTypes?: string,
-  statuses?: string
+  statuses?: string,
+  sessionCmId?: number
 ) {
   const { fetchWithAuth } = useApiWithAuth();
 
   return useQuery({
-    queryKey: queryKeys.registration(year, sessionTypes, statuses),
+    queryKey: queryKeys.registration(year, sessionTypes, statuses, sessionCmId),
     queryFn: async (): Promise<RegistrationMetrics> => {
       const params = new URLSearchParams({
         year: year.toString(),
@@ -71,6 +72,9 @@ export function useRegistrationMetrics(
       }
       if (statuses) {
         params.set('statuses', statuses);
+      }
+      if (sessionCmId !== undefined) {
+        params.set('session_cm_id', sessionCmId.toString());
       }
 
       const response = await fetchWithAuth(`/api/metrics/registration?${params}`);

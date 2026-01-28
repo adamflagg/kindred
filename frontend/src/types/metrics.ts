@@ -72,6 +72,27 @@ export interface SessionBunkBreakdown {
   count: number;
 }
 
+// New registration breakdown types for registration tab redesign
+export interface GenderByGradeBreakdown {
+  grade: number | null;
+  male_count: number;
+  female_count: number;
+  other_count: number;
+  total: number;
+}
+
+export interface SummerYearsBreakdown {
+  summer_years: number;
+  count: number;
+  percentage: number;
+}
+
+export interface FirstSummerYearBreakdown {
+  first_summer_year: number;
+  count: number;
+  percentage: number;
+}
+
 // Retention-specific types
 export interface RetentionByGender {
   gender: string;
@@ -201,6 +222,10 @@ export interface RegistrationMetrics {
   by_synagogue?: SynagogueBreakdown[];
   by_first_year?: FirstYearBreakdown[];
   by_session_bunk?: SessionBunkBreakdown[];
+  // New breakdowns for registration tab redesign
+  by_gender_grade?: GenderByGradeBreakdown[];
+  by_summer_years?: SummerYearsBreakdown[];
+  by_first_summer_year?: FirstSummerYearBreakdown[];
 }
 
 export interface YearSummary {
@@ -232,4 +257,39 @@ export interface YearMetrics {
 
 export interface HistoricalTrendsResponse {
   years: YearMetrics[];
+}
+
+// Retention trends types (3-year view)
+export interface RetentionTrendValue {
+  from_year: number;
+  to_year: number;
+  retention_rate: number;
+}
+
+export interface RetentionTrendGenderBreakdown {
+  gender: string;
+  values: RetentionTrendValue[];
+}
+
+export interface RetentionTrendGradeBreakdown {
+  grade: number | null;
+  values: RetentionTrendValue[];
+}
+
+export interface RetentionTrendYear {
+  from_year: number;
+  to_year: number;
+  retention_rate: number;
+  base_count: number;
+  returned_count: number;
+  by_gender: RetentionByGender[];
+  by_grade: RetentionByGrade[];
+}
+
+export interface RetentionTrendsResponse {
+  years: RetentionTrendYear[];
+  avg_retention_rate: number;
+  trend_direction: 'improving' | 'declining' | 'stable';
+  by_gender_grouped?: RetentionTrendGenderBreakdown[];
+  by_grade_grouped?: RetentionTrendGradeBreakdown[];
 }

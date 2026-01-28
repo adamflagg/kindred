@@ -86,16 +86,24 @@ export const queryKeys = {
         ? (['metrics', 'retention', baseYear, compareYear, sessionTypes] as const)
         : (['metrics', 'retention', baseYear, compareYear] as const),
   metricsSessions: (year: number) => ['metrics', 'sessions', year] as const,
-  registration: (year: number, sessionTypes?: string, statuses?: string) =>
-    sessionTypes || statuses
-      ? (['metrics', 'registration', year, sessionTypes, statuses] as const)
-      : (['metrics', 'registration', year] as const),
+  registration: (year: number, sessionTypes?: string, statuses?: string, sessionCmId?: number) =>
+    sessionCmId
+      ? (['metrics', 'registration', year, sessionTypes, statuses, sessionCmId] as const)
+      : sessionTypes || statuses
+        ? (['metrics', 'registration', year, sessionTypes, statuses] as const)
+        : (['metrics', 'registration', year] as const),
   comparison: (yearA: number, yearB: number) =>
     ['metrics', 'comparison', yearA, yearB] as const,
   historical: (years?: string, sessionTypes?: string) =>
     years || sessionTypes
       ? (['metrics', 'historical', years, sessionTypes] as const)
       : (['metrics', 'historical'] as const),
+  retentionTrends: (currentYear: number, numYears?: number, sessionTypes?: string, sessionCmId?: number) =>
+    sessionCmId
+      ? (['metrics', 'retention-trends', currentYear, numYears, sessionTypes, sessionCmId] as const)
+      : numYears || sessionTypes
+        ? (['metrics', 'retention-trends', currentYear, numYears, sessionTypes] as const)
+        : (['metrics', 'retention-trends', currentYear] as const),
 };
 
 /**
