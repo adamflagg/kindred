@@ -393,6 +393,34 @@ class HistoricalTrendsResponse(BaseModel):
 
 
 # ============================================================================
+# Enrollment By Year (3-Year Comparison)
+# ============================================================================
+
+
+class GenderEnrollment(BaseModel):
+    """Gender enrollment count for a single year."""
+
+    gender: str = Field(description="Gender (M, F, or other)")
+    count: int = Field(description="Number enrolled")
+
+
+class GradeEnrollment(BaseModel):
+    """Grade enrollment count for a single year."""
+
+    grade: int | None = Field(description="Grade level")
+    count: int = Field(description="Number enrolled")
+
+
+class YearEnrollment(BaseModel):
+    """Enrollment breakdown for a single year."""
+
+    year: int = Field(description="Year")
+    total: int = Field(description="Total enrolled")
+    by_gender: list[GenderEnrollment] = Field(description="Enrollment by gender")
+    by_grade: list[GradeEnrollment] = Field(description="Enrollment by grade")
+
+
+# ============================================================================
 # Retention Trends (3-Year View)
 # ============================================================================
 
@@ -445,4 +473,8 @@ class RetentionTrendsResponse(BaseModel):
     )
     by_grade_grouped: list[RetentionTrendGradeBreakdown] = Field(
         default_factory=list, description="Grade retention grouped across years"
+    )
+    # Enrollment counts per year for 3-year comparison charts
+    enrollment_by_year: list[YearEnrollment] = Field(
+        default_factory=list, description="Enrollment counts per year for 3-year comparison"
     )

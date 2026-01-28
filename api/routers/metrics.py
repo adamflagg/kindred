@@ -22,7 +22,9 @@ from ..schemas.metrics import (
     FirstYearBreakdown,
     GenderBreakdown,
     GenderByGradeBreakdown,
+    GenderEnrollment,
     GradeBreakdown,
+    GradeEnrollment,
     HistoricalTrendsResponse,
     NewVsReturning,
     RegistrationMetricsResponse,
@@ -47,6 +49,7 @@ from ..schemas.metrics import (
     SessionLengthBreakdown,
     SummerYearsBreakdown,
     SynagogueBreakdown,
+    YearEnrollment,
     YearMetrics,
     YearsAtCampBreakdown,
     YearSummary,
@@ -1611,10 +1614,58 @@ async def get_retention_trends(
         else:
             trend_direction = "stable"
 
+        # ====================================================================
+        # Compute enrollment_by_year for 3-year comparison charts
+        # ====================================================================
+        enrollment_by_year: list[YearEnrollment] = []
+        for year in years:
+            year_data = data_by_year[year]
+            person_ids = year_data["person_ids"]
+            persons = year_data["persons"]
+            total = len(person_ids)
+
+            # Gender breakdown
+            gender_counts: dict[str, int] = {}
+            for pid in person_ids:
+                person = persons.get(pid)
+                if not person:
+                    continue
+                gender = getattr(person, "gender", "Unknown") or "Unknown"
+                gender_counts[gender] = gender_counts.get(gender, 0) + 1
+
+            by_gender = [
+                GenderEnrollment(gender=g, count=c)
+                for g, c in sorted(gender_counts.items())
+            ]
+
+            # Grade breakdown
+            grade_counts: dict[int | None, int] = {}
+            for pid in person_ids:
+                person = persons.get(pid)
+                if not person:
+                    continue
+                grade = getattr(person, "grade", None)
+                grade_counts[grade] = grade_counts.get(grade, 0) + 1
+
+            by_grade = [
+                GradeEnrollment(grade=g, count=c)
+                for g, c in sorted(grade_counts.items(), key=lambda x: (x[0] is None, x[0]))
+            ]
+
+            enrollment_by_year.append(
+                YearEnrollment(
+                    year=year,
+                    total=total,
+                    by_gender=by_gender,
+                    by_grade=by_grade,
+                )
+            )
+
         return RetentionTrendsResponse(
             years=retention_years,
             avg_retention_rate=avg_rate,
             trend_direction=trend_direction,
+            enrollment_by_year=enrollment_by_year,
         )
 
     except Exception as e:
