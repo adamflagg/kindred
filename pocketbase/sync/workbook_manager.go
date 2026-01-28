@@ -45,6 +45,9 @@ type WorkbookManager struct {
 	sheetsWriter SheetsWriter
 }
 
+// Compile-time check that WorkbookManager implements WorkbookManagerInterface
+var _ WorkbookManagerInterface = (*WorkbookManager)(nil)
+
 // NewWorkbookManager creates a new WorkbookManager.
 func NewWorkbookManager(app core.App, sheetsWriter SheetsWriter) *WorkbookManager {
 	return &WorkbookManager{
