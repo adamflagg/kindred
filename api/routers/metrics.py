@@ -9,41 +9,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Coroutine
-from typing import Any, cast
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
 from ..dependencies import pb
 from ..schemas.metrics import (
-    CityBreakdown,
-    ComparisonDelta,
     ComparisonMetricsResponse,
-    FirstSummerYearBreakdown,
-    FirstYearBreakdown,
-    GenderBreakdown,
-    GenderByGradeBreakdown,
-    GenderEnrollment,
-    GradeBreakdown,
-    GradeEnrollment,
     HistoricalTrendsResponse,
-    NewVsReturning,
     RegistrationMetricsResponse,
-    RetentionByGender,
-    RetentionByGrade,
     RetentionMetricsResponse,
     RetentionTrendsResponse,
-    RetentionTrendYear,
-    SchoolBreakdown,
-    SessionBreakdown,
-    SessionBunkBreakdown,
-    SessionLengthBreakdown,
-    SummerYearsBreakdown,
-    SynagogueBreakdown,
-    YearEnrollment,
-    YearMetrics,
-    YearsAtCampBreakdown,
-    YearSummary,
 )
 
 logger = logging.getLogger(__name__)
@@ -507,405 +483,16 @@ async def get_registration_metrics(
     in the enrollment counts and breakdowns. Multiple statuses can be combined
     for flexible dashboard views.
     """
-    try:
-        # Parse session types filter
-        type_filter = session_types.split(",") if session_types else None
+    from api.services.metrics_repository import MetricsRepository
+    from api.services.registration_service import RegistrationService
 
-        # Parse statuses filter
+    try:
+        type_filter = session_types.split(",") if session_types else None
         status_filter = [s.strip() for s in (statuses or "enrolled").split(",")]
 
-        # Build session_cm_id filter including AG sessions with matching parent
-        # AG sessions have parent_id pointing to their main session
-        ag_session_ids: set[int] = set()
-        if session_cm_id is not None:
-            # Fetch all sessions to find AG sessions with matching parent
-            all_sessions_list = await asyncio.to_thread(
-                pb.collection("camp_sessions").get_full_list,
-                query_params={"filter": f"year = {year}"},
-            )
-            for s in all_sessions_list:
-                if getattr(s, "session_type", None) == "ag":
-                    parent_id = getattr(s, "parent_id", None)
-                    if parent_id == session_cm_id:
-                        ag_session_ids.add(getattr(s, "cm_id", 0))
-
-        # Filter attendees by session type and optionally by session_cm_id
-        def filter_by_session(attendees: list[Any]) -> list[Any]:
-            filtered = []
-            for a in attendees:
-                expand = getattr(a, "expand", {}) or {}
-                session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
-                if not session:
-                    continue
-
-                session_type = getattr(session, "session_type", None)
-                attendee_session_cm_id = getattr(session, "cm_id", None)
-
-                # Apply session type filter
-                if type_filter and session_type not in type_filter:
-                    continue
-
-                # Apply session_cm_id filter if specified
-                if session_cm_id is not None:
-                    # Include if matches directly or is an AG session with matching parent
-                    if attendee_session_cm_id != session_cm_id and attendee_session_cm_id not in ag_session_ids:
-                        continue
-
-                filtered.append(a)
-            return filtered
-
-        # Fetch data in parallel - fetch all requested statuses dynamically
-        # Also always fetch enrolled, waitlisted, cancelled for the sidebar totals
-        # Build parallel fetch tasks
-        results = await asyncio.gather(
-            # Fetch all requested statuses in a single query
-            fetch_attendees_for_year(year, status_filter),
-            # Fetch enrolled/waitlisted/cancelled separately for totals
-            fetch_attendees_for_year(year),  # enrolled (default)
-            fetch_attendees_for_year(year, "waitlisted"),
-            fetch_attendees_for_year(year, "cancelled"),
-            fetch_persons_for_year(year),
-            fetch_sessions_for_year(year, type_filter),
-            fetch_camper_history_for_year(year, session_types=type_filter),  # For demographics
-        )
-
-        # Unpack results with explicit casts for mypy
-        requested_attendees = cast(list[Any], results[0])
-        enrolled_attendees = cast(list[Any], results[1])
-        waitlisted_attendees = cast(list[Any], results[2])
-        cancelled_attendees = cast(list[Any], results[3])
-        persons = cast(dict[int, Any], results[4])
-        sessions = cast(dict[int, Any], results[5])
-        camper_history = cast(list[Any], results[6])
-
-        # Apply session filter to all attendee lists
-        combined_attendees = filter_by_session(requested_attendees)
-        enrolled_attendees = filter_by_session(enrolled_attendees)
-        waitlisted_attendees = filter_by_session(waitlisted_attendees)
-        cancelled_attendees = filter_by_session(cancelled_attendees)
-
-        # Get person IDs from each status category (deduplicated by person_id)
-        # Each person is counted once per status, even if in multiple sessions
-        enrolled_person_ids: set[int] = {
-            pid for a in combined_attendees if (pid := getattr(a, "person_id", None)) is not None
-        }
-        waitlisted_person_ids: set[int] = {
-            pid for a in waitlisted_attendees if (pid := getattr(a, "person_id", None)) is not None
-        }
-        cancelled_person_ids: set[int] = {
-            pid for a in cancelled_attendees if (pid := getattr(a, "person_id", None)) is not None
-        }
-
-        total_enrolled = len(enrolled_person_ids)
-        total_waitlisted = len(waitlisted_person_ids)
-        total_cancelled = len(cancelled_person_ids)
-
-        # Gender breakdown
-        gender_counts: dict[str, int] = {}
-        for pid in enrolled_person_ids:
-            person = persons.get(pid)
-            if not person:
-                continue
-            gender = getattr(person, "gender", "Unknown") or "Unknown"
-            gender_counts[gender] = gender_counts.get(gender, 0) + 1
-
-        by_gender = [
-            GenderBreakdown(
-                gender=g,
-                count=c,
-                percentage=calculate_percentage(c, total_enrolled),
-            )
-            for g, c in sorted(gender_counts.items())
-        ]
-
-        # Grade breakdown
-        grade_counts: dict[int | None, int] = {}
-        for pid in enrolled_person_ids:
-            person = persons.get(pid)
-            if not person:
-                continue
-            grade = getattr(person, "grade", None)
-            grade_counts[grade] = grade_counts.get(grade, 0) + 1
-
-        by_grade = [
-            GradeBreakdown(
-                grade=g,
-                count=c,
-                percentage=calculate_percentage(c, total_enrolled),
-            )
-            for g, c in sorted(grade_counts.items(), key=lambda x: (x[0] is None, x[0]))
-        ]
-
-        # Session breakdown (ensure int keys for consistent lookup)
-        session_counts: dict[int, int] = {}
-        for a in combined_attendees:
-            expand = getattr(a, "expand", {}) or {}
-            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
-            attendee_session_cm_id = getattr(session, "cm_id", None) if session else None
-            if attendee_session_cm_id:
-                sid_int = int(attendee_session_cm_id)
-                session_counts[sid_int] = session_counts.get(sid_int, 0) + 1
-
-        # Merge AG session counts into parent main sessions
-        merged_session_counts = merge_ag_into_parent_sessions(session_counts, sessions)
-
-        by_session = [
-            SessionBreakdown(
-                session_cm_id=sid,
-                session_name=getattr(sessions.get(sid), "name", f"Session {sid}"),
-                count=c,
-                capacity=None,  # Would need bunk_plans to calculate
-                utilization=None,
-            )
-            for sid, c in sorted(merged_session_counts.items())
-            if sid in sessions
-        ]
-
-        # Session length breakdown
-        length_counts: dict[str, int] = {}
-        for a in combined_attendees:
-            expand = getattr(a, "expand", {}) or {}
-            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
-            if session:
-                start_date = getattr(session, "start_date", "") or ""
-                end_date = getattr(session, "end_date", "") or ""
-                length = get_session_length_category(start_date, end_date)
-                length_counts[length] = length_counts.get(length, 0) + 1
-
-        by_session_length = [
-            SessionLengthBreakdown(
-                length_category=length,
-                count=c,
-                percentage=calculate_percentage(c, total_enrolled),
-            )
-            for length, c in sorted(
-                length_counts.items(),
-                key=lambda x: {"1-week": 0, "2-week": 1, "3-week": 2, "4-week+": 3, "unknown": 4}.get(x[0], 5),
-            )
-        ]
-
-        # Years at camp breakdown
-        years_counts: dict[int, int] = {}
-        for pid in enrolled_person_ids:
-            person = persons.get(pid)
-            if not person:
-                continue
-            years = getattr(person, "years_at_camp", 0) or 0
-            years_counts[years] = years_counts.get(years, 0) + 1
-
-        by_years_at_camp = [
-            YearsAtCampBreakdown(
-                years=y,
-                count=c,
-                percentage=calculate_percentage(c, total_enrolled),
-            )
-            for y, c in sorted(years_counts.items())
-        ]
-
-        # New vs returning
-        new_count = sum(
-            1 for pid in enrolled_person_ids if persons.get(pid) and getattr(persons[pid], "years_at_camp", 0) == 1
-        )
-        returning_count = total_enrolled - new_count
-
-        new_vs_returning = NewVsReturning(
-            new_count=new_count,
-            returning_count=returning_count,
-            new_percentage=calculate_percentage(new_count, total_enrolled),
-            returning_percentage=calculate_percentage(returning_count, total_enrolled),
-        )
-
-        # New breakdowns from camper_history
-        total_history = len(camper_history)
-
-        # School breakdown (raw values - normalization can be added later)
-        school_counts: dict[str, int] = {}
-        for record in camper_history:
-            school = getattr(record, "school", "") or ""
-            if school:  # Only count non-empty schools
-                school_counts[school] = school_counts.get(school, 0) + 1
-
-        by_school = [
-            SchoolBreakdown(
-                school=s,
-                count=c,
-                percentage=calculate_percentage(c, total_history),
-            )
-            for s, c in sorted(school_counts.items(), key=lambda x: -x[1])[:20]  # Top 20
-        ]
-
-        # City breakdown
-        city_counts: dict[str, int] = {}
-        for record in camper_history:
-            city = getattr(record, "city", "") or ""
-            if city:  # Only count non-empty cities
-                city_counts[city] = city_counts.get(city, 0) + 1
-
-        by_city = [
-            CityBreakdown(
-                city=c,
-                count=cnt,
-                percentage=calculate_percentage(cnt, total_history),
-            )
-            for c, cnt in sorted(city_counts.items(), key=lambda x: -x[1])[:20]  # Top 20
-        ]
-
-        # Synagogue breakdown
-        synagogue_counts: dict[str, int] = {}
-        for record in camper_history:
-            synagogue = getattr(record, "synagogue", "") or ""
-            if synagogue:  # Only count non-empty synagogues
-                synagogue_counts[synagogue] = synagogue_counts.get(synagogue, 0) + 1
-
-        by_synagogue = [
-            SynagogueBreakdown(
-                synagogue=s,
-                count=c,
-                percentage=calculate_percentage(c, total_history),
-            )
-            for s, c in sorted(synagogue_counts.items(), key=lambda x: -x[1])[:20]  # Top 20
-        ]
-
-        # First year attended breakdown (for onramp analysis)
-        first_year_counts: dict[int, int] = {}
-        for record in camper_history:
-            first_year = getattr(record, "first_year_attended", None)
-            if first_year:
-                first_year_counts[first_year] = first_year_counts.get(first_year, 0) + 1
-
-        by_first_year = [
-            FirstYearBreakdown(
-                first_year=fy,
-                count=c,
-                percentage=calculate_percentage(c, total_history),
-            )
-            for fy, c in sorted(first_year_counts.items())
-        ]
-
-        # Session+Bunk breakdown (parse CSV fields from camper_history)
-        session_bunk_counts: dict[tuple[str, str], int] = {}
-        for record in camper_history:
-            sessions_str = getattr(record, "sessions", "") or ""
-            bunks_str = getattr(record, "bunks", "") or ""
-            # Parse comma-separated values
-            session_list = [s.strip() for s in sessions_str.split(",") if s.strip()]
-            bunk_list = [b.strip() for b in bunks_str.split(",") if b.strip()]
-            # Create combinations (if lengths match, pair them; otherwise cross-product)
-            if len(session_list) == len(bunk_list):
-                for sess, bunk in zip(session_list, bunk_list, strict=True):
-                    key = (sess, bunk)
-                    session_bunk_counts[key] = session_bunk_counts.get(key, 0) + 1
-            elif session_list and bunk_list:
-                # Cross-product when lengths don't match
-                for sess in session_list:
-                    for bunk in bunk_list:
-                        key = (sess, bunk)
-                        session_bunk_counts[key] = session_bunk_counts.get(key, 0) + 1
-
-        by_session_bunk = [
-            SessionBunkBreakdown(
-                session=sess,
-                bunk=bunk,
-                count=c,
-            )
-            for (sess, bunk), c in sorted(session_bunk_counts.items(), key=lambda x: -x[1])[:10]  # Top 10
-        ]
-
-        # ====================================================================
-        # New breakdowns for registration tab redesign
-        # ====================================================================
-
-        # Gender by grade breakdown (for stacked bar chart)
-        gender_grade_stats: dict[int | None, dict[str, int]] = {}
-        for pid in enrolled_person_ids:
-            person = persons.get(pid)
-            if not person:
-                continue
-            grade = getattr(person, "grade", None)
-            gender = getattr(person, "gender", "") or ""
-
-            if grade not in gender_grade_stats:
-                gender_grade_stats[grade] = {"M": 0, "F": 0, "other": 0}
-
-            if gender == "M":
-                gender_grade_stats[grade]["M"] += 1
-            elif gender == "F":
-                gender_grade_stats[grade]["F"] += 1
-            else:
-                gender_grade_stats[grade]["other"] += 1
-
-        by_gender_grade = [
-            GenderByGradeBreakdown(
-                grade=g,
-                male_count=stats["M"],
-                female_count=stats["F"],
-                other_count=stats["other"],
-                total=stats["M"] + stats["F"] + stats["other"],
-            )
-            for g, stats in sorted(gender_grade_stats.items(), key=lambda x: (x[0] is None, x[0]))
-        ]
-
-        # Fetch summer enrollment history for all enrolled persons
-        enrollment_history = await fetch_summer_enrollment_history(enrolled_person_ids, year)
-
-        # Compute summer metrics from history
-        summer_years_by_person, first_year_by_person, _ = compute_summer_metrics(
-            enrollment_history, enrolled_person_ids, year - 1
-        )
-
-        # Summer years breakdown (calculated from actual enrollment history)
-        summer_years_stats: dict[int, int] = {}
-        for pid in enrolled_person_ids:
-            years_count = summer_years_by_person.get(pid, 0)
-            summer_years_stats[years_count] = summer_years_stats.get(years_count, 0) + 1
-
-        by_summer_years = [
-            SummerYearsBreakdown(
-                summer_years=y,
-                count=c,
-                percentage=calculate_percentage(c, total_enrolled),
-            )
-            for y, c in sorted(summer_years_stats.items())
-        ]
-
-        # First summer year breakdown (cohort analysis)
-        first_summer_year_stats: dict[int, int] = {}
-        for pid in enrolled_person_ids:
-            first_year = first_year_by_person.get(pid)
-            if first_year is not None:
-                first_summer_year_stats[first_year] = first_summer_year_stats.get(first_year, 0) + 1
-
-        by_first_summer_year = [
-            FirstSummerYearBreakdown(
-                first_summer_year=fy,
-                count=c,
-                percentage=calculate_percentage(c, total_enrolled),
-            )
-            for fy, c in sorted(first_summer_year_stats.items())
-        ]
-
-        return RegistrationMetricsResponse(
-            year=year,
-            total_enrolled=total_enrolled,
-            total_waitlisted=total_waitlisted,
-            total_cancelled=total_cancelled,
-            by_gender=by_gender,
-            by_grade=by_grade,
-            by_session=by_session,
-            by_session_length=by_session_length,
-            by_years_at_camp=by_years_at_camp,
-            new_vs_returning=new_vs_returning,
-            # New breakdowns from camper_history
-            by_school=by_school,
-            by_city=by_city,
-            by_synagogue=by_synagogue,
-            by_first_year=by_first_year,
-            by_session_bunk=by_session_bunk,
-            # New breakdowns for registration tab redesign
-            by_gender_grade=by_gender_grade,
-            by_summer_years=by_summer_years,
-            by_first_summer_year=by_first_summer_year,
-        )
+        repository = MetricsRepository(pb)
+        service = RegistrationService(repository)
+        return await service.calculate_registration(year, type_filter, status_filter, session_cm_id)
 
     except Exception as e:
         logger.error(f"Error calculating registration metrics: {e}", exc_info=True)
@@ -931,139 +518,18 @@ async def get_comparison_metrics(
     Compares total enrollment, gender distribution, and grade distribution
     between two years. Filters to summer camp sessions by default.
     """
+    from api.services.comparison_service import ComparisonService
+    from api.services.metrics_repository import MetricsRepository
+
     try:
-        # Parse session types filter
         type_filter = session_types.split(",") if session_types else None
 
-        # Fetch data in parallel
-        (
-            attendees_a,
-            attendees_b,
-            persons_a,
-            persons_b,
-        ) = await asyncio.gather(
-            fetch_attendees_for_year(year_a),
-            fetch_attendees_for_year(year_b),
-            fetch_persons_for_year(year_a),
-            fetch_persons_for_year(year_b),
-        )
-
-        # Filter attendees by session type if needed
-        def filter_by_session_type(attendees: list[Any]) -> list[Any]:
-            if not type_filter:
-                return attendees
-            filtered = []
-            for a in attendees:
-                expand = getattr(a, "expand", {}) or {}
-                session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
-                session_type = getattr(session, "session_type", None) if session else None
-                if session_type in type_filter:
-                    filtered.append(a)
-            return filtered
-
-        attendees_a = filter_by_session_type(attendees_a)
-        attendees_b = filter_by_session_type(attendees_b)
-
-        # Get unique person IDs
-        person_ids_a = {getattr(a, "person_id", None) for a in attendees_a if getattr(a, "person_id", None)}
-        person_ids_b = {getattr(a, "person_id", None) for a in attendees_b if getattr(a, "person_id", None)}
-
-        total_a = len(person_ids_a)
-        total_b = len(person_ids_b)
-
-        # Gender breakdown for year A
-        gender_counts_a: dict[str, int] = {}
-        for pid in person_ids_a:
-            person = persons_a.get(pid)
-            if not person:
-                continue
-            gender = getattr(person, "gender", "Unknown") or "Unknown"
-            gender_counts_a[gender] = gender_counts_a.get(gender, 0) + 1
-
-        by_gender_a = [
-            GenderBreakdown(
-                gender=g,
-                count=c,
-                percentage=calculate_percentage(c, total_a),
-            )
-            for g, c in sorted(gender_counts_a.items())
-        ]
-
-        # Gender breakdown for year B
-        gender_counts_b: dict[str, int] = {}
-        for pid in person_ids_b:
-            person = persons_b.get(pid)
-            if not person:
-                continue
-            gender = getattr(person, "gender", "Unknown") or "Unknown"
-            gender_counts_b[gender] = gender_counts_b.get(gender, 0) + 1
-
-        by_gender_b = [
-            GenderBreakdown(
-                gender=g,
-                count=c,
-                percentage=calculate_percentage(c, total_b),
-            )
-            for g, c in sorted(gender_counts_b.items())
-        ]
-
-        # Grade breakdown for year A
-        grade_counts_a: dict[int | None, int] = {}
-        for pid in person_ids_a:
-            person = persons_a.get(pid)
-            if not person:
-                continue
-            grade = getattr(person, "grade", None)
-            grade_counts_a[grade] = grade_counts_a.get(grade, 0) + 1
-
-        by_grade_a = [
-            GradeBreakdown(
-                grade=g,
-                count=c,
-                percentage=calculate_percentage(c, total_a),
-            )
-            for g, c in sorted(grade_counts_a.items(), key=lambda x: (x[0] is None, x[0]))
-        ]
-
-        # Grade breakdown for year B
-        grade_counts_b: dict[int | None, int] = {}
-        for pid in person_ids_b:
-            person = persons_b.get(pid)
-            if not person:
-                continue
-            grade = getattr(person, "grade", None)
-            grade_counts_b[grade] = grade_counts_b.get(grade, 0) + 1
-
-        by_grade_b = [
-            GradeBreakdown(
-                grade=g,
-                count=c,
-                percentage=calculate_percentage(c, total_b),
-            )
-            for g, c in sorted(grade_counts_b.items(), key=lambda x: (x[0] is None, x[0]))
-        ]
-
-        # Delta calculation
-        total_change = total_b - total_a
-        percentage_change = calculate_percentage(total_change, total_a) if total_a > 0 else 0.0
-
-        return ComparisonMetricsResponse(
-            year_a=YearSummary(
-                year=year_a,
-                total=total_a,
-                by_gender=by_gender_a,
-                by_grade=by_grade_a,
-            ),
-            year_b=YearSummary(
-                year=year_b,
-                total=total_b,
-                by_gender=by_gender_b,
-                by_grade=by_grade_b,
-            ),
-            delta=ComparisonDelta(
-                total_change=total_change,
-                percentage_change=percentage_change,
-            ),
+        repository = MetricsRepository(pb)
+        service = ComparisonService(repository)
+        return await service.calculate_comparison(
+            year_a=year_a,
+            year_b=year_b,
+            session_types=type_filter,
         )
 
     except Exception as e:
@@ -1086,80 +552,22 @@ async def get_historical_trends(
     Returns aggregated metrics for each year to enable line chart visualization.
     Default: last 5 years (2021-2025).
     """
+    from api.services.historical_service import HistoricalService
+    from api.services.metrics_repository import MetricsRepository
+
     try:
         # Parse years
-        if years:
-            year_list = [int(y.strip()) for y in years.split(",")]
-        else:
-            # Default: last 5 years from 2025
-            current_year = 2025
-            year_list = list(range(current_year - 4, current_year + 1))
+        year_list = [int(y.strip()) for y in years.split(",")] if years else None
 
         # Parse session types filter
         type_filter = session_types.split(",") if session_types else None
 
-        # Fetch camper_history for all years in parallel
-        history_futures = [fetch_camper_history_for_year(y, session_types=type_filter) for y in year_list]
-        all_history = await asyncio.gather(*history_futures)
-
-        year_metrics_list: list[YearMetrics] = []
-
-        for year, history in zip(year_list, all_history, strict=True):
-            total_enrolled = len(history)
-
-            # Gender breakdown
-            gender_counts: dict[str, int] = {}
-            for record in history:
-                gender = getattr(record, "gender", "Unknown") or "Unknown"
-                gender_counts[gender] = gender_counts.get(gender, 0) + 1
-
-            by_gender = [
-                GenderBreakdown(
-                    gender=g,
-                    count=c,
-                    percentage=calculate_percentage(c, total_enrolled),
-                )
-                for g, c in sorted(gender_counts.items())
-            ]
-
-            # New vs returning
-            new_count = sum(1 for record in history if getattr(record, "years_at_camp", 0) == 1)
-            returning_count = total_enrolled - new_count
-
-            new_vs_returning = NewVsReturning(
-                new_count=new_count,
-                returning_count=returning_count,
-                new_percentage=calculate_percentage(new_count, total_enrolled),
-                returning_percentage=calculate_percentage(returning_count, total_enrolled),
-            )
-
-            # First year breakdown
-            first_year_counts: dict[int, int] = {}
-            for record in history:
-                first_year = getattr(record, "first_year_attended", None)
-                if first_year:
-                    first_year_counts[first_year] = first_year_counts.get(first_year, 0) + 1
-
-            by_first_year = [
-                FirstYearBreakdown(
-                    first_year=fy,
-                    count=c,
-                    percentage=calculate_percentage(c, total_enrolled),
-                )
-                for fy, c in sorted(first_year_counts.items())
-            ]
-
-            year_metrics_list.append(
-                YearMetrics(
-                    year=year,
-                    total_enrolled=total_enrolled,
-                    by_gender=by_gender,
-                    new_vs_returning=new_vs_returning,
-                    by_first_year=by_first_year,
-                )
-            )
-
-        return HistoricalTrendsResponse(years=year_metrics_list)
+        repository = MetricsRepository(pb)
+        service = HistoricalService(repository)
+        return await service.calculate_historical_trends(
+            years=year_list,
+            session_types=type_filter,
+        )
 
     except Exception as e:
         logger.error(f"Error calculating historical trends: {e}", exc_info=True)
@@ -1194,218 +602,19 @@ async def get_retention_trends(
     This enables line charts for overall retention and grouped bar charts
     for breakdown categories.
     """
-    try:
-        # Build list of years to analyze
-        years = list(range(current_year - num_years + 1, current_year + 1))
+    from api.services.metrics_repository import MetricsRepository
+    from api.services.retention_trends_service import RetentionTrendsService
 
-        # Parse session types filter
+    try:
         type_filter = session_types.split(",") if session_types else None
 
-        # Fetch attendees and persons for all years in parallel
-        fetch_tasks: list[Coroutine[Any, Any, Any]] = []
-        for year in years:
-            fetch_tasks.append(fetch_attendees_for_year(year))
-            fetch_tasks.append(fetch_persons_for_year(year))
-            fetch_tasks.append(fetch_sessions_for_year(year, type_filter))
-
-        results = await asyncio.gather(*fetch_tasks)
-
-        # Unpack results: each year has (attendees, persons, sessions)
-        data_by_year: dict[int, dict[str, Any]] = {}
-        for i, year in enumerate(years):
-            attendees: list[Any] = results[i * 3]
-            persons: dict[int, Any] = results[i * 3 + 1]
-            sessions: dict[int, Any] = results[i * 3 + 2]
-
-            # Filter attendees by session type
-            if type_filter:
-                filtered = []
-                for a in attendees:
-                    expand = getattr(a, "expand", {}) or {}
-                    session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
-                    if session and getattr(session, "session_type", None) in type_filter:
-                        filtered.append(a)
-                attendees = filtered
-
-            # Filter by specific session if provided
-            if session_cm_id is not None:
-                filtered = []
-                for a in attendees:
-                    expand = getattr(a, "expand", {}) or {}
-                    session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
-                    if session and getattr(session, "cm_id", None) == session_cm_id:
-                        filtered.append(a)
-                attendees = filtered
-
-            data_by_year[year] = {
-                "attendees": attendees,
-                "persons": persons,
-                "sessions": sessions,
-                # Ensure int type for person_ids to match persons dict keys
-                "person_ids": {int(getattr(a, "person_id", 0)) for a in attendees if getattr(a, "person_id", None)},
-            }
-
-        # Calculate retention for each year transition
-        retention_years: list[RetentionTrendYear] = []
-
-        for i in range(len(years) - 1):
-            base_year = years[i]
-            compare_year = years[i + 1]
-
-            base_data = data_by_year[base_year]
-            compare_data = data_by_year[compare_year]
-
-            base_person_ids = base_data["person_ids"]
-            compare_person_ids = compare_data["person_ids"]
-            persons_base = base_data["persons"]
-
-            returned_ids = base_person_ids & compare_person_ids
-            base_count = len(base_person_ids)
-            returned_count = len(returned_ids)
-            retention_rate = safe_rate(returned_count, base_count)
-
-            # Gender breakdown
-            gender_stats: dict[str, dict[str, int]] = {}
-            for pid in base_person_ids:
-                person = persons_base.get(pid)
-                if not person:
-                    continue
-                gender = getattr(person, "gender", "Unknown") or "Unknown"
-                if gender not in gender_stats:
-                    gender_stats[gender] = {"base": 0, "returned": 0}
-                gender_stats[gender]["base"] += 1
-                if pid in returned_ids:
-                    gender_stats[gender]["returned"] += 1
-
-            by_gender = [
-                RetentionByGender(
-                    gender=g,
-                    base_count=stats["base"],
-                    returned_count=stats["returned"],
-                    retention_rate=safe_rate(stats["returned"], stats["base"]),
-                )
-                for g, stats in sorted(gender_stats.items())
-            ]
-
-            # Grade breakdown
-            grade_stats: dict[int | None, dict[str, int]] = {}
-            for pid in base_person_ids:
-                person = persons_base.get(pid)
-                if not person:
-                    continue
-                grade = getattr(person, "grade", None)
-                if grade not in grade_stats:
-                    grade_stats[grade] = {"base": 0, "returned": 0}
-                grade_stats[grade]["base"] += 1
-                if pid in returned_ids:
-                    grade_stats[grade]["returned"] += 1
-
-            by_grade = [
-                RetentionByGrade(
-                    grade=g,
-                    base_count=stats["base"],
-                    returned_count=stats["returned"],
-                    retention_rate=safe_rate(stats["returned"], stats["base"]),
-                )
-                for g, stats in sorted(grade_stats.items(), key=lambda x: (x[0] is None, x[0]))
-            ]
-
-            retention_years.append(
-                RetentionTrendYear(
-                    from_year=base_year,
-                    to_year=compare_year,
-                    retention_rate=retention_rate,
-                    base_count=base_count,
-                    returned_count=returned_count,
-                    by_gender=by_gender,
-                    by_grade=by_grade,
-                )
-            )
-
-        # Calculate average retention rate
-        rates = [y.retention_rate for y in retention_years]
-        avg_rate = sum(rates) / len(rates) if rates else 0.0
-
-        # Determine trend direction
-        if len(rates) >= 2:
-            # Compare most recent rate to average of prior rates
-            current = rates[-1]
-            prior_avg = sum(rates[:-1]) / len(rates[:-1]) if len(rates) > 1 else current
-            threshold = 0.02  # 2% threshold for "stable"
-
-            if current > prior_avg + threshold:
-                trend_direction = "improving"
-            elif current < prior_avg - threshold:
-                trend_direction = "declining"
-            else:
-                trend_direction = "stable"
-        else:
-            trend_direction = "stable"
-
-        # ====================================================================
-        # Compute enrollment_by_year for 3-year comparison charts
-        # ====================================================================
-        enrollment_by_year: list[YearEnrollment] = []
-        for year in years:
-            year_data = data_by_year[year]
-            person_ids = year_data["person_ids"]
-            persons = year_data["persons"]
-            total = len(person_ids)
-
-            # Diagnostic logging for person lookup
-            lookup_failures = sum(1 for pid in person_ids if persons.get(pid) is None)
-            if lookup_failures > 0:
-                # Sample some failed lookups to help diagnose
-                failed_pids = [pid for pid in list(person_ids)[:10] if persons.get(pid) is None]
-                persons_keys = list(persons.keys())[:10] if persons else []
-                # Log types to detect int vs string mismatch
-                failed_types = [type(pid).__name__ for pid in failed_pids[:3]]
-                key_types = [type(k).__name__ for k in persons_keys[:3]]
-                logger.warning(
-                    f"Year {year}: {lookup_failures}/{total} person lookups failed. "
-                    f"Failed person_ids (sample): {failed_pids}, types: {failed_types}. "
-                    f"Persons dict keys (sample): {persons_keys}, types: {key_types}"
-                )
-
-            # Gender breakdown
-            gender_counts: dict[str, int] = {}
-            for pid in person_ids:
-                person = persons.get(pid)
-                if not person:
-                    continue
-                gender = getattr(person, "gender", "Unknown") or "Unknown"
-                gender_counts[gender] = gender_counts.get(gender, 0) + 1
-
-            gender_breakdown = [GenderEnrollment(gender=g, count=c) for g, c in sorted(gender_counts.items())]
-
-            # Grade breakdown
-            grade_counts: dict[int | None, int] = {}
-            for pid in person_ids:
-                person = persons.get(pid)
-                if not person:
-                    continue
-                grade = getattr(person, "grade", None)
-                grade_counts[grade] = grade_counts.get(grade, 0) + 1
-
-            grade_breakdown = [
-                GradeEnrollment(grade=g, count=c)
-                for g, c in sorted(grade_counts.items(), key=lambda x: (x[0] is None, x[0]))
-            ]
-
-            enrollment_by_year.append(
-                YearEnrollment(
-                    year=year,
-                    total=total,
-                    by_gender=gender_breakdown,
-                    by_grade=grade_breakdown,
-                )
-            )
-
-        return RetentionTrendsResponse(
-            years=retention_years,
-            avg_retention_rate=avg_rate,
-            trend_direction=trend_direction,
-            enrollment_by_year=enrollment_by_year,
+        repository = MetricsRepository(pb)
+        service = RetentionTrendsService(repository)
+        return await service.calculate_retention_trends(
+            current_year=current_year,
+            num_years=num_years,
+            session_types=type_filter,
+            session_cm_id=session_cm_id,
         )
 
     except Exception as e:
