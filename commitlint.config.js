@@ -9,6 +9,7 @@ module.exports = {
 
     // Define allowed scopes (matches CLAUDE.md documentation)
     'scope-enum': [2, 'always', [
+      // Technical areas
       'frontend',  // React components, hooks, pages, styles
       'api',       // FastAPI endpoints, Python backend logic
       'sync',      // Go sync services, CampMinder integration
@@ -25,6 +26,10 @@ module.exports = {
       'tests',     // Test infrastructure (not test: type)
       'scripts',   // Development and utility scripts
       'docs',      // Documentation files in docs/
+      // Domain features (cross-cutting)
+      'metrics',   // Analytics, dashboards, statistics
+      'graph',     // Social network graph features
+      'data',      // Data models, schema changes
     ]],
 
     // Allowed types (must match cliff.toml commit_parsers)

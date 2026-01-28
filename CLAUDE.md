@@ -53,6 +53,9 @@ Format: `type(scope): description` — Breaking changes: `feat(api)!: descriptio
 | `deps` | Dependencies |
 | `docs` | Documentation |
 | `security` | Security hardening, CVE fixes |
+| `metrics` | Analytics, dashboards, statistics |
+| `graph` | Social network graph features |
+| `data` | Data models, schema changes |
 
 ## Quick Development Commands
 
