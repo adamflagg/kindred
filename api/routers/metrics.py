@@ -24,9 +24,14 @@ from ..schemas.metrics import (
     HistoricalTrendsResponse,
     NewVsReturning,
     RegistrationMetricsResponse,
+    RetentionByCity,
+    RetentionByFirstYear,
     RetentionByGender,
     RetentionByGrade,
+    RetentionBySchool,
     RetentionBySession,
+    RetentionBySessionBunk,
+    RetentionBySynagogue,
     RetentionByYearsAtCamp,
     RetentionMetricsResponse,
     SchoolBreakdown,
@@ -241,11 +246,13 @@ async def get_retention_metrics(
             attendees_compare,
             persons_base,
             sessions_base,
+            camper_history_base,
         ) = await asyncio.gather(
             fetch_attendees_for_year(base_year),
             fetch_attendees_for_year(compare_year),
             fetch_persons_for_year(base_year),
             fetch_sessions_for_year(base_year, type_filter),
+            fetch_camper_history_for_year(base_year, session_types=type_filter),
         )
 
         # Get unique person IDs for each year
@@ -373,6 +380,155 @@ async def get_retention_metrics(
             for y, stats in sorted(years_stats.items())
         ]
 
+        # Build person_id -> demographics map from camper_history
+        history_by_person: dict[int, Any] = {}
+        for record in camper_history_base:
+            person_id = getattr(record, "person_id", None)
+            if person_id is not None:
+                history_by_person[person_id] = record
+
+        # Breakdowns by school (using camper_history)
+        school_stats: dict[str, dict[str, int]] = {}
+        for pid in person_ids_base:
+            history = history_by_person.get(pid)
+            if not history:
+                continue
+            school = getattr(history, "school", "") or ""
+            if not school:
+                continue
+            if school not in school_stats:
+                school_stats[school] = {"base": 0, "returned": 0}
+            school_stats[school]["base"] += 1
+            if pid in returned_ids:
+                school_stats[school]["returned"] += 1
+
+        by_school = [
+            RetentionBySchool(
+                school=s,
+                base_count=stats["base"],
+                returned_count=stats["returned"],
+                retention_rate=safe_rate(stats["returned"], stats["base"]),
+            )
+            for s, stats in sorted(school_stats.items(), key=lambda x: -x[1]["base"])[:20]
+        ]
+
+        # Breakdowns by city (using camper_history)
+        city_stats: dict[str, dict[str, int]] = {}
+        for pid in person_ids_base:
+            history = history_by_person.get(pid)
+            if not history:
+                continue
+            city = getattr(history, "city", "") or ""
+            if not city:
+                continue
+            if city not in city_stats:
+                city_stats[city] = {"base": 0, "returned": 0}
+            city_stats[city]["base"] += 1
+            if pid in returned_ids:
+                city_stats[city]["returned"] += 1
+
+        by_city = [
+            RetentionByCity(
+                city=c,
+                base_count=stats["base"],
+                returned_count=stats["returned"],
+                retention_rate=safe_rate(stats["returned"], stats["base"]),
+            )
+            for c, stats in sorted(city_stats.items(), key=lambda x: -x[1]["base"])[:20]
+        ]
+
+        # Breakdowns by synagogue (using camper_history)
+        synagogue_stats: dict[str, dict[str, int]] = {}
+        for pid in person_ids_base:
+            history = history_by_person.get(pid)
+            if not history:
+                continue
+            synagogue = getattr(history, "synagogue", "") or ""
+            if not synagogue:
+                continue
+            if synagogue not in synagogue_stats:
+                synagogue_stats[synagogue] = {"base": 0, "returned": 0}
+            synagogue_stats[synagogue]["base"] += 1
+            if pid in returned_ids:
+                synagogue_stats[synagogue]["returned"] += 1
+
+        by_synagogue = [
+            RetentionBySynagogue(
+                synagogue=s,
+                base_count=stats["base"],
+                returned_count=stats["returned"],
+                retention_rate=safe_rate(stats["returned"], stats["base"]),
+            )
+            for s, stats in sorted(synagogue_stats.items(), key=lambda x: -x[1]["base"])[:20]
+        ]
+
+        # Breakdowns by first year attended (using camper_history)
+        first_year_stats: dict[int, dict[str, int]] = {}
+        for pid in person_ids_base:
+            history = history_by_person.get(pid)
+            if not history:
+                continue
+            first_year = getattr(history, "first_year_attended", None)
+            if first_year is None:
+                continue
+            if first_year not in first_year_stats:
+                first_year_stats[first_year] = {"base": 0, "returned": 0}
+            first_year_stats[first_year]["base"] += 1
+            if pid in returned_ids:
+                first_year_stats[first_year]["returned"] += 1
+
+        by_first_year = [
+            RetentionByFirstYear(
+                first_year=fy,
+                base_count=stats["base"],
+                returned_count=stats["returned"],
+                retention_rate=safe_rate(stats["returned"], stats["base"]),
+            )
+            for fy, stats in sorted(first_year_stats.items())
+        ]
+
+        # Breakdowns by session+bunk (using camper_history)
+        session_bunk_stats: dict[tuple[str, str], dict[str, int]] = {}
+        for pid in person_ids_base:
+            history = history_by_person.get(pid)
+            if not history:
+                continue
+            sessions_str = getattr(history, "sessions", "") or ""
+            bunks_str = getattr(history, "bunks", "") or ""
+            # Parse comma-separated values
+            session_list = [s.strip() for s in sessions_str.split(",") if s.strip()]
+            bunk_list = [b.strip() for b in bunks_str.split(",") if b.strip()]
+            # Pair sessions and bunks (if lengths match, pair them)
+            if len(session_list) == len(bunk_list):
+                for sess, bunk in zip(session_list, bunk_list, strict=True):
+                    key = (sess, bunk)
+                    if key not in session_bunk_stats:
+                        session_bunk_stats[key] = {"base": 0, "returned": 0}
+                    session_bunk_stats[key]["base"] += 1
+                    if pid in returned_ids:
+                        session_bunk_stats[key]["returned"] += 1
+            elif session_list and bunk_list:
+                # Cross-product when lengths don't match
+                for sess in session_list:
+                    for bunk in bunk_list:
+                        key = (sess, bunk)
+                        if key not in session_bunk_stats:
+                            session_bunk_stats[key] = {"base": 0, "returned": 0}
+                        session_bunk_stats[key]["base"] += 1
+                        if pid in returned_ids:
+                            session_bunk_stats[key]["returned"] += 1
+
+        by_session_bunk = [
+            RetentionBySessionBunk(
+                session=sess,
+                bunk=bunk,
+                base_count=stats["base"],
+                returned_count=stats["returned"],
+                retention_rate=safe_rate(stats["returned"], stats["base"]),
+            )
+            for (sess, bunk), stats in sorted(session_bunk_stats.items(), key=lambda x: -x[1]["base"])[:10]
+        ]
+
         return RetentionMetricsResponse(
             base_year=base_year,
             compare_year=compare_year,
@@ -384,6 +540,12 @@ async def get_retention_metrics(
             by_grade=by_grade,
             by_session=by_session,
             by_years_at_camp=by_years_at_camp,
+            # New demographic breakdowns
+            by_school=by_school,
+            by_city=by_city,
+            by_synagogue=by_synagogue,
+            by_first_year=by_first_year,
+            by_session_bunk=by_session_bunk,
         )
 
     except Exception as e:
