@@ -21,7 +21,7 @@ func SortGlobalsWorkbookTabs(tabs []string) []string {
 	var otherTabs []string
 
 	for _, tab := range tabs {
-		if tab == "Index" {
+		if tab == indexSheetName {
 			indexTab = tab
 		} else {
 			otherTabs = append(otherTabs, tab)
@@ -75,7 +75,7 @@ var (
 	// tabCategoryMap maps tab names to their color category
 	tabCategoryMap = map[string]TabColor{
 		// Index
-		"Index": TabColorIndex,
+		indexSheetName: TabColorIndex,
 
 		// Core people tables (blue)
 		"Attendees":  TabColorCore,

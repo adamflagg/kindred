@@ -5,6 +5,12 @@ import (
 	"testing"
 )
 
+// Test constants for workbook IDs to satisfy goconst
+const (
+	testYear2025SpreadsheetID = "year-2025-spreadsheet-id"
+	testYear2025WorkbookID    = "year-2025-wb-id"
+)
+
 // =============================================================================
 // Multi-Workbook Export Tests
 // Tests for the new multi-workbook architecture where:
@@ -296,7 +302,7 @@ func TestMultiWorkbookExport_YearDataToYearWorkbook(t *testing.T) {
 	// Test that year data goes to the year workbook (not globals)
 	mockWriter := NewMockSheetsWriter()
 	mockManager := NewMockWorkbookManager()
-	mockManager.YearWorkbookIDs[2025] = "year-2025-spreadsheet-id"
+	mockManager.YearWorkbookIDs[2025] = testYear2025SpreadsheetID
 
 	ctx := context.Background()
 
@@ -307,7 +313,7 @@ func TestMultiWorkbookExport_YearDataToYearWorkbook(t *testing.T) {
 	}
 
 	// Verify we got the year workbook ID
-	if yearID != "year-2025-spreadsheet-id" {
+	if yearID != testYear2025SpreadsheetID {
 		t.Errorf("Expected year 2025 workbook ID, got %q", yearID)
 	}
 
@@ -345,7 +351,7 @@ func TestMultiWorkbookExport_DifferentYearsGoToDifferentWorkbooks(t *testing.T) 
 	// Test that different years go to different workbooks
 	mockManager := NewMockWorkbookManager()
 	mockManager.YearWorkbookIDs[2024] = "year-2024-spreadsheet-id"
-	mockManager.YearWorkbookIDs[2025] = "year-2025-spreadsheet-id"
+	mockManager.YearWorkbookIDs[2025] = testYear2025SpreadsheetID
 
 	ctx := context.Background()
 
@@ -368,8 +374,8 @@ func TestMultiWorkbookExport_DifferentYearsGoToDifferentWorkbooks(t *testing.T) 
 	if id2024 != "year-2024-spreadsheet-id" {
 		t.Errorf("2024 workbook ID = %q, want %q", id2024, "year-2024-spreadsheet-id")
 	}
-	if id2025 != "year-2025-spreadsheet-id" {
-		t.Errorf("2025 workbook ID = %q, want %q", id2025, "year-2025-spreadsheet-id")
+	if id2025 != testYear2025SpreadsheetID {
+		t.Errorf("2025 workbook ID = %q, want %q", id2025, testYear2025SpreadsheetID)
 	}
 }
 
@@ -506,7 +512,7 @@ func TestMultiWorkbookExport_SyncYearDataToYearWorkbook(t *testing.T) {
 	// 3. NOT export to globals workbook
 	mockWriter := NewMockSheetsWriter()
 	mockManager := NewMockWorkbookManager()
-	mockManager.YearWorkbookIDs[2025] = "year-2025-wb-id"
+	mockManager.YearWorkbookIDs[2025] = testYear2025WorkbookID
 
 	export := NewMultiWorkbookExport(nil, mockWriter, mockManager, 2025)
 
@@ -518,8 +524,8 @@ func TestMultiWorkbookExport_SyncYearDataToYearWorkbook(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetOrCreateYearWorkbook(2025) error = %v", err)
 	}
-	if yearID != "year-2025-wb-id" {
-		t.Errorf("GetOrCreateYearWorkbook(2025) = %q, want %q", yearID, "year-2025-wb-id")
+	if yearID != testYear2025WorkbookID {
+		t.Errorf("GetOrCreateYearWorkbook(2025) = %q, want %q", yearID, testYear2025WorkbookID)
 	}
 }
 
@@ -551,7 +557,7 @@ func TestMultiWorkbookExport_SyncForYearsUsesMultipleWorkbooks(t *testing.T) {
 	mockWriter := NewMockSheetsWriter()
 	mockManager := NewMockWorkbookManager()
 	mockManager.YearWorkbookIDs[2024] = "year-2024-wb-id"
-	mockManager.YearWorkbookIDs[2025] = "year-2025-wb-id"
+	mockManager.YearWorkbookIDs[2025] = testYear2025WorkbookID
 
 	export := NewMultiWorkbookExport(nil, mockWriter, mockManager, 2025)
 	_ = export

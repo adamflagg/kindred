@@ -23,6 +23,12 @@ const (
 
 	// indexSheetName is the name of the master index sheet
 	indexSheetName = "Index"
+
+	// workbookTypeGlobals is the type identifier for the globals workbook
+	workbookTypeGlobals = "globals"
+
+	// workbookTypeYear is the type identifier for year workbooks
+	workbookTypeYear = "year"
 )
 
 // WorkbookRecord represents a workbook stored in the database.
@@ -63,7 +69,7 @@ func NewWorkbookManager(app core.App, sheetsWriter SheetsWriter) *WorkbookManage
 // Returns nil if no workbook exists.
 func (m *WorkbookManager) GetWorkbookByType(ctx context.Context, workbookType string, year int) (*WorkbookRecord, error) {
 	var filter string
-	if workbookType == "globals" {
+	if workbookType == workbookTypeGlobals {
 		filter = fmt.Sprintf("workbook_type = '%s'", workbookType)
 	} else {
 		filter = fmt.Sprintf("workbook_type = '%s' && year = %d", workbookType, year)
@@ -306,7 +312,7 @@ func (m *WorkbookManager) GetShareEmails(ctx context.Context) []string {
 // GetOrCreateGlobalsWorkbook returns the globals workbook ID, creating if needed.
 func (m *WorkbookManager) GetOrCreateGlobalsWorkbook(ctx context.Context) (string, error) {
 	// Check if we already have a globals workbook
-	existing, err := m.GetWorkbookByType(ctx, "globals", 0)
+	existing, err := m.GetWorkbookByType(ctx, workbookTypeGlobals, 0)
 	if err != nil {
 		return "", fmt.Errorf("checking existing globals workbook: %w", err)
 	}
@@ -315,7 +321,7 @@ func (m *WorkbookManager) GetOrCreateGlobalsWorkbook(ctx context.Context) (strin
 	}
 
 	// Create new workbook
-	title := google.FormatWorkbookTitle("globals", 0)
+	title := google.FormatWorkbookTitle(workbookTypeGlobals, 0)
 	slog.Info("Creating new globals workbook", "title", title)
 
 	spreadsheetID, err := google.CreateSpreadsheet(ctx, title)
@@ -328,7 +334,7 @@ func (m *WorkbookManager) GetOrCreateGlobalsWorkbook(ctx context.Context) (strin
 	// Save to database
 	_, err = m.SaveWorkbookRecord(ctx, WorkbookRecord{
 		SpreadsheetID: spreadsheetID,
-		WorkbookType:  "globals",
+		WorkbookType:  workbookTypeGlobals,
 		Year:          0,
 		Title:         title,
 		URL:           url,
@@ -462,7 +468,7 @@ func (m *WorkbookManager) shareWorkbook(ctx context.Context, spreadsheetID strin
 // UpdateMasterIndex updates the Index sheet in the globals workbook.
 func (m *WorkbookManager) UpdateMasterIndex(ctx context.Context) error {
 	// Get globals workbook
-	globals, err := m.GetWorkbookByType(ctx, "globals", 0)
+	globals, err := m.GetWorkbookByType(ctx, workbookTypeGlobals, 0)
 	if err != nil || globals == nil {
 		return fmt.Errorf("globals workbook not found")
 	}
@@ -507,10 +513,10 @@ func BuildIndexSheetData(workbooks []WorkbookRecord) [][]interface{} {
 	copy(sorted, workbooks)
 	sort.Slice(sorted, func(i, j int) bool {
 		// Globals always first
-		if sorted[i].WorkbookType == "globals" {
+		if sorted[i].WorkbookType == workbookTypeGlobals {
 			return true
 		}
-		if sorted[j].WorkbookType == "globals" {
+		if sorted[j].WorkbookType == workbookTypeGlobals {
 			return false
 		}
 		// Years in descending order
@@ -520,7 +526,7 @@ func BuildIndexSheetData(workbooks []WorkbookRecord) [][]interface{} {
 	// Add data rows
 	for _, wb := range sorted {
 		var yearDisplay interface{}
-		if wb.WorkbookType == "globals" {
+		if wb.WorkbookType == workbookTypeGlobals {
 			yearDisplay = "Globals"
 		} else {
 			yearDisplay = wb.Year

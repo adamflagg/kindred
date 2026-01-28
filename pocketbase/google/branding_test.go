@@ -140,6 +140,9 @@ func TestFormatWorkbookTitle_Globals(t *testing.T) {
 	// Reset cache for clean test
 	resetBrandingCache()
 
+	// Set IS_DOCKER=true to simulate production environment
+	t.Setenv("IS_DOCKER", "true")
+
 	title := FormatWorkbookTitle("globals", 0)
 	// With default camp name
 	expected := DefaultCampName + " Data - Globals"
@@ -151,6 +154,9 @@ func TestFormatWorkbookTitle_Globals(t *testing.T) {
 func TestFormatWorkbookTitle_Year(t *testing.T) {
 	// Reset cache for clean test
 	resetBrandingCache()
+
+	// Set IS_DOCKER=true to simulate production environment
+	t.Setenv("IS_DOCKER", "true")
 
 	title := FormatWorkbookTitle("year", 2025)
 	expected := DefaultCampName + " Data - 2025"
@@ -179,6 +185,9 @@ func TestFormatWorkbookTitle_WithCampName(t *testing.T) {
 	configBasePath = tempDir
 	defer func() { configBasePath = oldConfigPath }()
 
+	// Set IS_DOCKER=true to simulate production environment
+	t.Setenv("IS_DOCKER", "true")
+
 	globalsTitle := FormatWorkbookTitle("globals", 0)
 	if globalsTitle != "Camp Tawonga Data - Globals" {
 		t.Errorf("FormatWorkbookTitle(globals) = %q, want %q", globalsTitle, "Camp Tawonga Data - Globals")
@@ -187,5 +196,79 @@ func TestFormatWorkbookTitle_WithCampName(t *testing.T) {
 	yearTitle := FormatWorkbookTitle("year", 2025)
 	if yearTitle != "Camp Tawonga Data - 2025" {
 		t.Errorf("FormatWorkbookTitle(year, 2025) = %q, want %q", yearTitle, "Camp Tawonga Data - 2025")
+	}
+}
+
+func TestFormatWorkbookTitle_DevPrefix(t *testing.T) {
+	// Reset cache for clean test
+	resetBrandingCache()
+
+	// IS_DOCKER is NOT set - simulates local dev environment
+	// t.Setenv would set it, so we ensure it's unset
+	t.Setenv("IS_DOCKER", "")
+
+	title := FormatWorkbookTitle("year", 2025)
+	expected := "(DEV) " + DefaultCampName + " Data - 2025"
+	if title != expected {
+		t.Errorf("FormatWorkbookTitle(year, 2025) in dev = %q, want %q", title, expected)
+	}
+
+	globalsTitle := FormatWorkbookTitle("globals", 0)
+	expectedGlobals := "(DEV) " + DefaultCampName + " Data - Globals"
+	if globalsTitle != expectedGlobals {
+		t.Errorf("FormatWorkbookTitle(globals, 0) in dev = %q, want %q", globalsTitle, expectedGlobals)
+	}
+}
+
+func TestFormatWorkbookTitle_DevPrefixWithCampName(t *testing.T) {
+	// Create a temporary branding config file
+	tempDir := t.TempDir()
+	configDir := filepath.Join(tempDir, "config")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("Failed to create temp config dir: %v", err)
+	}
+
+	brandingFile := filepath.Join(configDir, "branding.local.json")
+	content := `{"camp_name": "Camp Tawonga"}`
+	if err := os.WriteFile(brandingFile, []byte(content), 0644); err != nil {
+		t.Fatalf("Failed to write temp branding file: %v", err)
+	}
+
+	// Reset cache and set config path
+	resetBrandingCache()
+	oldConfigPath := configBasePath
+	configBasePath = tempDir
+	defer func() { configBasePath = oldConfigPath }()
+
+	// IS_DOCKER is NOT set - simulates local dev environment
+	t.Setenv("IS_DOCKER", "")
+
+	yearTitle := FormatWorkbookTitle("year", 2025)
+	if yearTitle != "(DEV) Camp Tawonga Data - 2025" {
+		t.Errorf("FormatWorkbookTitle(year, 2025) in dev = %q, want %q", yearTitle, "(DEV) Camp Tawonga Data - 2025")
+	}
+
+	globalsTitle := FormatWorkbookTitle("globals", 0)
+	if globalsTitle != "(DEV) Camp Tawonga Data - Globals" {
+		t.Errorf("FormatWorkbookTitle(globals, 0) in dev = %q, want %q", globalsTitle, "(DEV) Camp Tawonga Data - Globals")
+	}
+}
+
+func TestFormatWorkbookTitle_ProductionNoPrefix(t *testing.T) {
+	// Reset cache for clean test
+	resetBrandingCache()
+
+	// Explicitly set IS_DOCKER=true to simulate production Docker environment
+	t.Setenv("IS_DOCKER", "true")
+
+	title := FormatWorkbookTitle("year", 2025)
+	expected := DefaultCampName + " Data - 2025"
+	if title != expected {
+		t.Errorf("FormatWorkbookTitle(year, 2025) in prod = %q, want %q", title, expected)
+	}
+
+	// Ensure no "(DEV)" prefix in production
+	if title != expected || title[0:6] == "(DEV) " {
+		t.Errorf("Production title should NOT have (DEV) prefix, got %q", title)
 	}
 }
