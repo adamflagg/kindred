@@ -13,7 +13,6 @@ import { useRegistrationMetrics } from '../../hooks/useMetrics';
 import { useMetricsSessions } from '../../hooks/useMetricsSessions';
 import { MetricCard } from '../../components/metrics/MetricCard';
 import { BreakdownChart } from '../../components/metrics/BreakdownChart';
-import { ComparisonBreakdownChart } from '../../components/metrics/ComparisonBreakdownChart';
 import { DemographicBreakdowns } from '../../components/metrics/DemographicBreakdowns';
 import { RegistrationSessionSelector } from '../../components/metrics/RegistrationSessionSelector';
 import { GenderByGradeChart } from '../../components/metrics/GenderByGradeChart';
@@ -22,12 +21,11 @@ import { Loader2, AlertCircle } from 'lucide-react';
 
 interface RegistrationTabProps {
   year: number;
-  compareYear?: number;
   /** Comma-separated session types (default: main,embedded,ag) */
   sessionTypes?: string;
 }
 
-export function RegistrationTab({ year, compareYear, sessionTypes }: RegistrationTabProps) {
+export function RegistrationTab({ year, sessionTypes }: RegistrationTabProps) {
   // Local state for session filter
   const [selectedSessionCmId, setSelectedSessionCmId] = useState<number | null>(null);
 
@@ -45,13 +43,6 @@ export function RegistrationTab({ year, compareYear, sessionTypes }: Registratio
     sessionTypesParam,
     statusesParam,
     selectedSessionCmId ?? undefined
-  );
-
-  // Fetch comparison data for delta badges (without session filter for fair comparison)
-  const { data: compareData } = useRegistrationMetrics(
-    compareYear ?? 0,
-    sessionTypesParam,
-    statusesParam
   );
 
   if (isLoading) {
@@ -133,26 +124,6 @@ export function RegistrationTab({ year, compareYear, sessionTypes }: Registratio
     { name: 'Returning', value: data.new_vs_returning.returning_count, percentage: data.new_vs_returning.returning_percentage },
   ];
 
-  // Build comparison data for charts
-  const comparisonData: Record<number, { grade: typeof gradeChartData; years: typeof yearsChartData }> = {};
-  if (compareYear && compareData) {
-    comparisonData[compareYear] = {
-      grade: compareData.by_grade.map((g) => ({
-        name: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
-        value: g.count,
-        percentage: g.percentage,
-      })),
-      years: compareData.by_years_at_camp.map((y) => ({
-        name: y.years === 1 ? '1 year' : `${y.years} years`,
-        value: y.count,
-        percentage: y.percentage,
-      })),
-    };
-  }
-
-  // Get available comparison years
-  const availableComparisonYears = compareYear ? [compareYear] : [];
-
   return (
     <div className="space-y-6">
       {/* Session Selector */}
@@ -176,36 +147,26 @@ export function RegistrationTab({ year, compareYear, sessionTypes }: Registratio
           title="Total Enrolled"
           value={data.total_enrolled}
           subtitle={selectedSessionCmId ? 'In selected session' : `Active enrollments for ${year}`}
-          compareValue={!selectedSessionCmId ? compareData?.total_enrolled : undefined}
-          compareYear={!selectedSessionCmId ? compareYear : undefined}
         />
         <MetricCard
           title="Total Waitlisted"
           value={data.total_waitlisted}
           subtitle="On waitlist"
-          compareValue={!selectedSessionCmId ? compareData?.total_waitlisted : undefined}
-          compareYear={!selectedSessionCmId ? compareYear : undefined}
         />
         <MetricCard
           title="Total Cancelled"
           value={data.total_cancelled}
           subtitle="Cancellations"
-          compareValue={!selectedSessionCmId ? compareData?.total_cancelled : undefined}
-          compareYear={!selectedSessionCmId ? compareYear : undefined}
         />
         <MetricCard
           title="New Campers"
           value={data.new_vs_returning.new_count}
           subtitle={`${data.new_vs_returning.new_percentage.toFixed(1)}% of enrolled`}
-          compareValue={!selectedSessionCmId ? compareData?.new_vs_returning.new_count : undefined}
-          compareYear={!selectedSessionCmId ? compareYear : undefined}
         />
         <MetricCard
           title="Returning Campers"
           value={data.new_vs_returning.returning_count}
           subtitle={`${data.new_vs_returning.returning_percentage.toFixed(1)}% of enrolled`}
-          compareValue={!selectedSessionCmId ? compareData?.new_vs_returning.returning_count : undefined}
-          compareYear={!selectedSessionCmId ? compareYear : undefined}
         />
       </div>
 
@@ -235,12 +196,9 @@ export function RegistrationTab({ year, compareYear, sessionTypes }: Registratio
           showPercentage
           height={250}
         />
-        <ComparisonBreakdownChart
+        <BreakdownChart
           title="Enrollment by Grade"
           data={gradeChartData}
-          comparisonData={compareYear && !selectedSessionCmId ? { [compareYear]: comparisonData[compareYear]?.grade ?? [] } : undefined}
-          currentYear={year}
-          availableComparisonYears={!selectedSessionCmId ? availableComparisonYears : []}
           type="bar"
           height={300}
         />
@@ -264,12 +222,9 @@ export function RegistrationTab({ year, compareYear, sessionTypes }: Registratio
 
       {/* Charts Row 4: Years at Camp, First Summer Year */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <ComparisonBreakdownChart
+        <BreakdownChart
           title={summerYearsData.length > 0 ? 'Enrollment by Summers at Camp' : 'Enrollment by Years at Camp'}
           data={yearsChartData}
-          comparisonData={compareYear && !selectedSessionCmId ? { [compareYear]: comparisonData[compareYear]?.years ?? [] } : undefined}
-          currentYear={year}
-          availableComparisonYears={!selectedSessionCmId ? availableComparisonYears : []}
           type="bar"
           height={300}
         />

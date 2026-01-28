@@ -1,6 +1,6 @@
 /**
  * RegistrationMetricsPage - Main page for viewing registration metrics.
- * Always shows year-over-year comparison mode with "Compare to" dropdown.
+ * Registration tab shows current year only. Trends tab shows year-over-year comparison.
  */
 
 import { useState } from 'react';
@@ -20,7 +20,7 @@ const DEFAULT_SESSION_TYPES = ['main', 'embedded', 'ag'];
 
 export function RegistrationMetricsPage() {
   const { currentYear, availableYears } = useCurrentYear();
-  // Always comparison mode: primary year from app context, comparison defaults to year-1
+  // Compare year is only used for Trends tab
   const [compareYear, setCompareYear] = useState(currentYear - 1);
   const [activeTab, setActiveTab] = useState<TabType>('registration');
 
@@ -52,9 +52,10 @@ export function RegistrationMetricsPage() {
 
         {/* Compare Year Selector + Filters */}
         <div className="space-y-4 mb-6">
-          {/* CompareYearSelector shown for Registration and Trends tabs only */}
+          {/* CompareYearSelector shown for Trends tab only */}
           {/* RetentionTab uses currentYear and calculates its own year range */}
-          {activeTab !== 'retention' && (
+          {/* RegistrationTab shows current year only - no comparison */}
+          {activeTab === 'trends' && (
             <CompareYearSelector
               primaryYear={currentYear}
               compareYear={compareYear}
@@ -115,7 +116,6 @@ export function RegistrationMetricsPage() {
           {activeTab === 'registration' && (
             <RegistrationTab
               year={currentYear}
-              compareYear={compareYear}
               sessionTypes={sessionTypesParam}
             />
           )}

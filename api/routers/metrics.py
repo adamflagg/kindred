@@ -191,6 +191,101 @@ def safe_rate(numerator: int, denominator: int) -> float:
     return numerator / denominator if denominator > 0 else 0.0
 
 
+def merge_ag_into_parent_sessions(
+    session_counts: dict[int, int],
+    sessions: dict[int, Any],
+) -> dict[int, int]:
+    """Merge AG session counts into their parent main sessions.
+
+    AG sessions have a parent_id field that points to their parent main session.
+    This function combines AG session counts with their parent's counts so that
+    only main and embedded session types appear in the output.
+
+    Args:
+        session_counts: Dictionary mapping session cm_id to count.
+        sessions: Dictionary mapping session cm_id to session record.
+
+    Returns:
+        Dictionary with AG session counts merged into parent sessions.
+        Only main and embedded sessions are included.
+    """
+    # Build AG -> parent mapping
+    ag_parent_map: dict[int, int] = {}
+    for sid, session in sessions.items():
+        if getattr(session, "session_type", None) == "ag":
+            parent_id = getattr(session, "parent_id", None)
+            if parent_id:
+                ag_parent_map[sid] = parent_id
+
+    # Merge AG counts into parent sessions
+    merged_counts: dict[int, int] = {}
+    for sid, count in session_counts.items():
+        if sid in ag_parent_map:
+            # This is an AG session - add to parent
+            parent_id = ag_parent_map[sid]
+            merged_counts[parent_id] = merged_counts.get(parent_id, 0) + count
+        else:
+            # Not an AG session - keep as is
+            merged_counts[sid] = merged_counts.get(sid, 0) + count
+
+    # Filter to only main and embedded sessions
+    return {
+        sid: count
+        for sid, count in merged_counts.items()
+        if sid in sessions and getattr(sessions.get(sid), "session_type", None) in ("main", "embedded")
+    }
+
+
+def merge_ag_into_parent_retention_stats(
+    session_stats: dict[int, dict[str, int]],
+    sessions: dict[int, Any],
+) -> dict[int, dict[str, int]]:
+    """Merge AG session retention stats into their parent main sessions.
+
+    Similar to merge_ag_into_parent_sessions but for retention stats which have
+    'base' and 'returned' sub-counts.
+
+    Args:
+        session_stats: Dictionary mapping session cm_id to {"base": n, "returned": m}.
+        sessions: Dictionary mapping session cm_id to session record.
+
+    Returns:
+        Dictionary with AG session stats merged into parent sessions.
+        Only main and embedded sessions are included.
+    """
+    # Build AG -> parent mapping
+    ag_parent_map: dict[int, int] = {}
+    for sid, session in sessions.items():
+        if getattr(session, "session_type", None) == "ag":
+            parent_id = getattr(session, "parent_id", None)
+            if parent_id:
+                ag_parent_map[sid] = parent_id
+
+    # Merge AG stats into parent sessions
+    merged_stats: dict[int, dict[str, int]] = {}
+    for sid, stats in session_stats.items():
+        if sid in ag_parent_map:
+            # This is an AG session - add to parent
+            parent_id = ag_parent_map[sid]
+            if parent_id not in merged_stats:
+                merged_stats[parent_id] = {"base": 0, "returned": 0}
+            merged_stats[parent_id]["base"] += stats["base"]
+            merged_stats[parent_id]["returned"] += stats["returned"]
+        else:
+            # Not an AG session - keep as is
+            if sid not in merged_stats:
+                merged_stats[sid] = {"base": 0, "returned": 0}
+            merged_stats[sid]["base"] += stats["base"]
+            merged_stats[sid]["returned"] += stats["returned"]
+
+    # Filter to only main and embedded sessions
+    return {
+        sid: stats
+        for sid, stats in merged_stats.items()
+        if sid in sessions and getattr(sessions.get(sid), "session_type", None) in ("main", "embedded")
+    }
+
+
 async def fetch_camper_history_for_year(year: int, session_types: list[str] | None = None) -> list[Any]:
     """Fetch camper_history records for a given year.
 
@@ -482,6 +577,9 @@ async def get_retention_metrics(
                 if pid in returned_ids:
                     session_stats[sid]["returned"] += 1
 
+        # Merge AG session stats into parent main sessions
+        merged_session_stats = merge_ag_into_parent_retention_stats(session_stats, sessions_base)
+
         by_session = [
             RetentionBySession(
                 session_cm_id=sid,
@@ -490,7 +588,7 @@ async def get_retention_metrics(
                 returned_count=stats["returned"],
                 retention_rate=safe_rate(stats["returned"], stats["base"]),
             )
-            for sid, stats in sorted(session_stats.items())
+            for sid, stats in sorted(merged_session_stats.items())
             if sid in sessions_base
         ]
 
@@ -930,9 +1028,12 @@ async def get_registration_metrics(
         for a in combined_attendees:
             expand = getattr(a, "expand", {}) or {}
             session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
-            session_cm_id = getattr(session, "cm_id", None) if session else None
-            if session_cm_id:
-                session_counts[session_cm_id] = session_counts.get(session_cm_id, 0) + 1
+            attendee_session_cm_id = getattr(session, "cm_id", None) if session else None
+            if attendee_session_cm_id:
+                session_counts[attendee_session_cm_id] = session_counts.get(attendee_session_cm_id, 0) + 1
+
+        # Merge AG session counts into parent main sessions
+        merged_session_counts = merge_ag_into_parent_sessions(session_counts, sessions)
 
         by_session = [
             SessionBreakdown(
@@ -942,7 +1043,7 @@ async def get_registration_metrics(
                 capacity=None,  # Would need bunk_plans to calculate
                 utilization=None,
             )
-            for sid, c in sorted(session_counts.items())
+            for sid, c in sorted(merged_session_counts.items())
             if sid in sessions
         ]
 
