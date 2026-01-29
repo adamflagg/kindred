@@ -16,9 +16,9 @@ import type { DrilldownFilter } from '../../types/metrics';
 interface DrillDownModalProps {
   year: number;
   filter: DrilldownFilter | null;
-  sessionCmId?: number;
-  sessionTypes?: string[];
-  statusFilter?: string[];
+  sessionCmId?: number | undefined;
+  sessionTypes?: string[] | undefined;
+  statusFilter?: string[] | undefined;
   onClose: () => void;
 }
 
