@@ -496,7 +496,7 @@ class DrilldownAttendee(BaseModel):
     preferred_name: str | None = Field(None, description="Preferred name if set")
     grade: int | None = Field(None, description="Grade level")
     gender: str | None = Field(None, description="Gender (M, F, or other)")
-    age: int | None = Field(None, description="Age")
+    age: float | None = Field(None, description="Age in years")
     school: str | None = Field(None, description="School name")
     city: str | None = Field(None, description="City (parsed from address)")
     years_at_camp: int | None = Field(None, description="Years at camp")
