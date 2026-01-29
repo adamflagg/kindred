@@ -472,7 +472,7 @@ export default function AllCampersView() {
                         </div>
                         <div className="flex items-center gap-2 mt-1 flex-wrap">
                           <span className="text-sm text-stone-500 dark:text-stone-400">
-                            Grade {camper.grade} · {(getDisplayAgeForYear(camper, currentYear) ?? 0).toFixed(1)} yrs
+                            Grade {camper.grade} · {(getDisplayAgeForYear(camper, currentYear) ?? 0).toFixed(2)} yrs
                           </span>
                           {genderIdentity && genderIdentity !== 'Unknown' && (
                             <span className={`text-xs px-1.5 py-0.5 rounded-full ${getGenderBadgeClasses(getGenderCategory(genderIdentity), genderIdentity)}`}>
