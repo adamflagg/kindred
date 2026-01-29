@@ -609,6 +609,121 @@ Before committing any migration:
 
 **Schema iteration**: Use index-based `for` loops, NOT `for...of` (causes "object is not iterable").
 
+## 🚨 CRITICAL: Worktree and Branch Rules
+
+**These rules are NON-NEGOTIABLE. Violating them can corrupt work from parallel agents.**
+
+### NEVER Push to Main
+- **NEVER push directly to main** - All changes go through PRs
+- **NEVER commit to main** - Always work on a feature branch
+- Main branch is protected; direct pushes will fail anyway
+
+### ALWAYS Use a Worktree for Feature Work
+**Before starting ANY feature work, you MUST create a worktree:**
+```bash
+./scripts/worktree/new.sh <descriptive-feature-name>
+cd ../kindred-worktrees/<feature-name>
+```
+
+### When Can I Work in the Main Repo Folder?
+You may ONLY work on a branch in the main repo folder if BOTH conditions are met:
+
+| Condition | How to Verify |
+|-----------|---------------|
+| **A) Frontend-only change the user wants to preview** | Ask: "This is a frontend change - do you want to preview it in the main repo before I create a worktree?" |
+| **B) User confirms solo work** | Ask: "Are we working solo without other agents, so it's safe to work in the main repo?" |
+
+If the user doesn't explicitly confirm BOTH conditions, **create a worktree**.
+
+### Why This Matters
+- Multiple agents may be working in parallel on different features
+- Working in main folder can conflict with uncommitted changes from other agents
+- Worktrees provide complete isolation (code, database, ports)
+- The seeded database in worktrees protects production data
+
+### Quick Decision Tree
+```
+Starting new work?
+├─ Is it a frontend preview AND user confirmed solo work?
+│  └─ YES to BOTH → OK to work in main folder on a branch
+│  └─ NO to either → CREATE A WORKTREE
+└─ When in doubt → CREATE A WORKTREE
+```
+
+## Git Worktrees for Parallel Development
+
+**🚨 REQUIRED: Always use a worktree for feature work.** See "CRITICAL: Worktree and Branch Rules" above.
+
+### Quick Start
+```bash
+# 1. Sync main first
+git pull --rebase origin main
+
+# 2. Create a worktree
+./scripts/worktree/new.sh <descriptive-feature-name>
+
+# 3. Move to the worktree
+cd ../kindred-worktrees/<feature-name>
+
+# 4. Start development
+./start.sh
+
+# 5. Work, commit, push, create PR as normal
+
+# 6. After PR merged, cleanup
+./scripts/worktree/cleanup.sh <feature-name>
+```
+
+### How It Works
+| Main Repo | Worktree |
+|-----------|----------|
+| `<repo>/` | `<repo>-worktrees/<feature>/` |
+| Ports: 3000, 8000, 8080, 8090 | Ports: auto-assigned (offset 10-90) |
+| Branch: main | Branch: feature/<feature> |
+| Database: production data | Database: seeded from main |
+
+### Port Assignment
+Ports are deterministically assigned from the feature name hash:
+- Worktree "fix-auth" might get: Vite 3040, API 8040, Caddy 8180, PB 8190
+- Same name always gets same ports (no conflicts between runs)
+
+### What Gets Isolated
+- `.venv/` - Python virtual environment
+- `node_modules/` - Frontend dependencies
+- `pocketbase/pb_data/` - Database (seeded from main)
+- `.env` - Environment with port overrides
+- Build artifacts and caches
+
+### Cleanup
+After `git pull`, the `post-merge` hook detects merged worktree branches and suggests cleanup commands.
+
+```bash
+# Clean up a specific worktree
+./scripts/worktree/cleanup.sh <feature-name>
+
+# Clean up ALL merged worktrees at once
+./scripts/worktree/cleanup.sh --all-merged
+```
+
+## Commit Behavior
+- **NEVER push to main** - All changes go through feature branches and PRs
+- **NEVER commit to main** - Work on feature branches only
+- Commit at logical checkpoints, not micro-commits
+- Squash related commits before pushing
+- Never push without user consent
+- Never add others' changes to your commits (check `git status` first)
+
+## Pre-Push Checklist
+The pre-push hook runs these automatically. To run manually:
+```bash
+shellcheck scripts/*.sh scripts/**/*.sh .githooks/*  # Shell linting
+uv run ruff check --fix .      # Python linting (auto-fix)
+uv run ruff format .           # Python formatting (auto-fix)
+uv run mypy bunking api        # Type checking
+cd pocketbase && go build .    # Go build
+cd frontend && npm run lint    # Frontend linting
+```
+
 ## 🚨 CRITICAL: Development Quality Standards
 
 ### CI/CD Workflow
