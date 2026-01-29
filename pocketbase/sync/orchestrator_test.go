@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -1290,5 +1291,403 @@ func TestGlobalTablesCheckBehavior(t *testing.T) {
 		if !found {
 			t.Errorf("expected global table %q to be in weekly sync jobs", table)
 		}
+	}
+}
+
+// =============================================================================
+// Sync Queue Tests
+// =============================================================================
+
+// TestQueuedSyncStruct tests the QueuedSync struct
+func TestQueuedSyncStruct(t *testing.T) {
+	now := time.Now()
+	qs := QueuedSync{
+		ID:                  "test-uuid-123",
+		Year:                2025,
+		Service:             "all",
+		IncludeCustomValues: true,
+		Debug:               false,
+		QueuedAt:            now,
+		RequestedBy:         "user@example.com",
+	}
+
+	if qs.ID != "test-uuid-123" {
+		t.Errorf("expected ID='test-uuid-123', got %q", qs.ID)
+	}
+	if qs.Year != 2025 {
+		t.Errorf("expected Year=2025, got %d", qs.Year)
+	}
+	if qs.Service != "all" {
+		t.Errorf("expected Service='all', got %q", qs.Service)
+	}
+	if !qs.IncludeCustomValues {
+		t.Error("expected IncludeCustomValues=true")
+	}
+	if qs.Debug {
+		t.Error("expected Debug=false")
+	}
+	if !qs.QueuedAt.Equal(now) {
+		t.Errorf("expected QueuedAt=%v, got %v", now, qs.QueuedAt)
+	}
+	if qs.RequestedBy != "user@example.com" {
+		t.Errorf("expected RequestedBy='user@example.com', got %q", qs.RequestedBy)
+	}
+}
+
+// TestEnqueueUnifiedSync tests basic enqueueing functionality
+func TestEnqueueUnifiedSync(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	// Enqueue first item
+	qs, err := o.EnqueueUnifiedSync(2025, "all", false, false, "user1@example.com")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if qs == nil {
+		t.Fatal("expected non-nil QueuedSync")
+	}
+	if qs.Year != 2025 {
+		t.Errorf("expected Year=2025, got %d", qs.Year)
+	}
+	if qs.Service != "all" {
+		t.Errorf("expected Service='all', got %q", qs.Service)
+	}
+	if qs.ID == "" {
+		t.Error("expected non-empty ID")
+	}
+
+	// Verify it's in the queue
+	queue := o.GetQueuedSyncs()
+	if len(queue) != 1 {
+		t.Errorf("expected 1 item in queue, got %d", len(queue))
+	}
+}
+
+// TestEnqueueUnifiedSyncPosition tests queue position assignment
+func TestEnqueueUnifiedSyncPosition(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	// Enqueue multiple items
+	qs1, _ := o.EnqueueUnifiedSync(2025, "all", false, false, "user1")
+	qs2, _ := o.EnqueueUnifiedSync(2024, "all", false, false, "user2")
+	qs3, _ := o.EnqueueUnifiedSync(2023, "all", false, false, "user3")
+
+	queue := o.GetQueuedSyncs()
+	if len(queue) != 3 {
+		t.Fatalf("expected 3 items in queue, got %d", len(queue))
+	}
+
+	// Verify FIFO order (first enqueued should be first in list)
+	if queue[0].ID != qs1.ID {
+		t.Errorf("expected first item ID=%s, got %s", qs1.ID, queue[0].ID)
+	}
+	if queue[1].ID != qs2.ID {
+		t.Errorf("expected second item ID=%s, got %s", qs2.ID, queue[1].ID)
+	}
+	if queue[2].ID != qs3.ID {
+		t.Errorf("expected third item ID=%s, got %s", qs3.ID, queue[2].ID)
+	}
+}
+
+// TestEnqueueUnifiedSyncDuplicateDetection tests that duplicate requests return existing queue item
+func TestEnqueueUnifiedSyncDuplicateDetection(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	// Enqueue first item
+	qs1, err := o.EnqueueUnifiedSync(2025, "all", false, false, "user1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Try to enqueue duplicate (same year + service)
+	qs2, err := o.EnqueueUnifiedSync(2025, "all", true, true, "user2") // Different options
+	if err != nil {
+		t.Fatalf("unexpected error for duplicate: %v", err)
+	}
+
+	// Should return the existing item, not create a new one
+	if qs2.ID != qs1.ID {
+		t.Errorf("expected duplicate to return existing ID=%s, got %s", qs1.ID, qs2.ID)
+	}
+
+	// Queue should still have only 1 item
+	queue := o.GetQueuedSyncs()
+	if len(queue) != 1 {
+		t.Errorf("expected 1 item in queue after duplicate, got %d", len(queue))
+	}
+}
+
+// TestEnqueueUnifiedSyncMaxSize tests that queue enforces max size of 5
+func TestEnqueueUnifiedSyncMaxSize(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	// Fill the queue with 5 items (different years to avoid duplicate detection)
+	for i := 0; i < 5; i++ {
+		year := 2020 + i
+		_, err := o.EnqueueUnifiedSync(year, "all", false, false, "user")
+		if err != nil {
+			t.Fatalf("unexpected error for item %d: %v", i+1, err)
+		}
+	}
+
+	queue := o.GetQueuedSyncs()
+	if len(queue) != 5 {
+		t.Fatalf("expected 5 items in queue, got %d", len(queue))
+	}
+
+	// Try to add a 6th item - should fail
+	_, err := o.EnqueueUnifiedSync(2019, "all", false, false, "user")
+	if err == nil {
+		t.Error("expected error when queue is full")
+	}
+	if err != nil && !strings.Contains(err.Error(), "full") {
+		t.Errorf("expected 'full' in error message, got: %v", err)
+	}
+
+	// Queue should still have 5 items
+	queue = o.GetQueuedSyncs()
+	if len(queue) != 5 {
+		t.Errorf("expected 5 items in queue after overflow attempt, got %d", len(queue))
+	}
+}
+
+// TestDequeueUnifiedSync tests basic dequeue functionality
+func TestDequeueUnifiedSync(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	// Enqueue items
+	qs1, _ := o.EnqueueUnifiedSync(2025, "all", false, false, "user1")
+	_, _ = o.EnqueueUnifiedSync(2024, "all", false, false, "user2")
+
+	// Dequeue should return first item (FIFO)
+	dequeued := o.DequeueUnifiedSync()
+	if dequeued == nil {
+		t.Fatal("expected non-nil dequeued item")
+	}
+	if dequeued.ID != qs1.ID {
+		t.Errorf("expected dequeued ID=%s, got %s", qs1.ID, dequeued.ID)
+	}
+
+	// Queue should now have 1 item
+	queue := o.GetQueuedSyncs()
+	if len(queue) != 1 {
+		t.Errorf("expected 1 item in queue after dequeue, got %d", len(queue))
+	}
+}
+
+// TestDequeueUnifiedSyncEmpty tests dequeue on empty queue
+func TestDequeueUnifiedSyncEmpty(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	// Dequeue from empty queue should return nil
+	dequeued := o.DequeueUnifiedSync()
+	if dequeued != nil {
+		t.Error("expected nil when dequeuing from empty queue")
+	}
+}
+
+// TestCancelQueuedSync tests canceling a queued sync
+func TestCancelQueuedSync(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	// Enqueue items
+	qs1, _ := o.EnqueueUnifiedSync(2025, "all", false, false, "user1")
+	qs2, _ := o.EnqueueUnifiedSync(2024, "all", false, false, "user2")
+	qs3, _ := o.EnqueueUnifiedSync(2023, "all", false, false, "user3")
+
+	// Cancel the middle item
+	ok := o.CancelQueuedSync(qs2.ID)
+	if !ok {
+		t.Error("expected CancelQueuedSync to return true")
+	}
+
+	// Queue should now have 2 items
+	queue := o.GetQueuedSyncs()
+	if len(queue) != 2 {
+		t.Fatalf("expected 2 items in queue after cancel, got %d", len(queue))
+	}
+
+	// Verify remaining items are correct
+	if queue[0].ID != qs1.ID {
+		t.Errorf("expected first item ID=%s, got %s", qs1.ID, queue[0].ID)
+	}
+	if queue[1].ID != qs3.ID {
+		t.Errorf("expected second item ID=%s, got %s", qs3.ID, queue[1].ID)
+	}
+}
+
+// TestCancelQueuedSyncNotFound tests canceling a non-existent sync
+func TestCancelQueuedSyncNotFound(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	// Enqueue an item
+	_, _ = o.EnqueueUnifiedSync(2025, "all", false, false, "user1")
+
+	// Try to cancel non-existent ID
+	ok := o.CancelQueuedSync("non-existent-id")
+	if ok {
+		t.Error("expected CancelQueuedSync to return false for non-existent ID")
+	}
+
+	// Queue should still have 1 item
+	queue := o.GetQueuedSyncs()
+	if len(queue) != 1 {
+		t.Errorf("expected 1 item in queue, got %d", len(queue))
+	}
+}
+
+// TestGetQueuedSyncsReturnsCopy tests that GetQueuedSyncs returns a copy
+func TestGetQueuedSyncsReturnsCopy(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	_, _ = o.EnqueueUnifiedSync(2025, "all", false, false, "user1")
+
+	// Get queue and modify it
+	queue1 := o.GetQueuedSyncs()
+	if len(queue1) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(queue1))
+	}
+
+	// Modify the returned slice
+	queue1[0].Year = 9999
+
+	// Get queue again - should not be affected by modification
+	queue2 := o.GetQueuedSyncs()
+	if queue2[0].Year == 9999 {
+		t.Error("expected GetQueuedSyncs to return a copy, not the internal slice")
+	}
+}
+
+// TestGetQueuePositionByID tests getting position of a queued item
+func TestGetQueuePositionByID(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	qs1, _ := o.EnqueueUnifiedSync(2025, "all", false, false, "user1")
+	qs2, _ := o.EnqueueUnifiedSync(2024, "all", false, false, "user2")
+	qs3, _ := o.EnqueueUnifiedSync(2023, "all", false, false, "user3")
+
+	// Position is 1-based for user display
+	pos1 := o.GetQueuePositionByID(qs1.ID)
+	if pos1 != 1 {
+		t.Errorf("expected position 1 for first item, got %d", pos1)
+	}
+
+	pos2 := o.GetQueuePositionByID(qs2.ID)
+	if pos2 != 2 {
+		t.Errorf("expected position 2 for second item, got %d", pos2)
+	}
+
+	pos3 := o.GetQueuePositionByID(qs3.ID)
+	if pos3 != 3 {
+		t.Errorf("expected position 3 for third item, got %d", pos3)
+	}
+
+	// Non-existent ID should return 0
+	pos := o.GetQueuePositionByID("non-existent")
+	if pos != 0 {
+		t.Errorf("expected position 0 for non-existent ID, got %d", pos)
+	}
+}
+
+// TestQueueConcurrentAccess tests thread safety of queue operations
+func TestQueueConcurrentAccess(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	done := make(chan bool)
+	errChan := make(chan error, 100)
+
+	// Writer goroutine - enqueue items
+	go func() {
+		for i := 0; i < 50; i++ {
+			_, err := o.EnqueueUnifiedSync(2020+i%10, "all", false, false, "writer")
+			if err != nil && !strings.Contains(err.Error(), "full") && !strings.Contains(err.Error(), "duplicate") {
+				errChan <- err
+			}
+		}
+		done <- true
+	}()
+
+	// Reader goroutine - read queue
+	go func() {
+		for i := 0; i < 50; i++ {
+			_ = o.GetQueuedSyncs()
+		}
+		done <- true
+	}()
+
+	// Cancel goroutine - try to cancel items
+	go func() {
+		for i := 0; i < 50; i++ {
+			o.CancelQueuedSync("random-id")
+		}
+		done <- true
+	}()
+
+	// Wait for all goroutines
+	<-done
+	<-done
+	<-done
+
+	close(errChan)
+	for err := range errChan {
+		t.Errorf("unexpected error during concurrent access: %v", err)
+	}
+
+	// No race conditions should have occurred
+}
+
+// TestIsUnifiedSyncQueued tests checking if a unified sync is already queued
+func TestIsUnifiedSyncQueued(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	// Nothing queued initially
+	if o.IsUnifiedSyncQueued(2025, "all") {
+		t.Error("expected no sync to be queued initially")
+	}
+
+	// Enqueue a sync
+	_, _ = o.EnqueueUnifiedSync(2025, "all", false, false, "user1")
+
+	// Now it should be queued
+	if !o.IsUnifiedSyncQueued(2025, "all") {
+		t.Error("expected sync to be queued after enqueue")
+	}
+
+	// Different year should not be queued
+	if o.IsUnifiedSyncQueued(2024, "all") {
+		t.Error("expected different year not to be queued")
+	}
+
+	// Different service should not be queued (if we ever support per-service queuing)
+	// For now, unified syncs use "all" service, but test the logic anyway
+	if o.IsUnifiedSyncQueued(2025, "sessions") {
+		t.Error("expected different service not to be queued")
+	}
+}
+
+// TestQueueLengthMethod tests the GetQueueLength method
+func TestQueueLengthMethod(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	// Empty queue
+	if o.GetQueueLength() != 0 {
+		t.Errorf("expected queue length 0, got %d", o.GetQueueLength())
+	}
+
+	// Add items
+	_, _ = o.EnqueueUnifiedSync(2025, "all", false, false, "user1")
+	if o.GetQueueLength() != 1 {
+		t.Errorf("expected queue length 1, got %d", o.GetQueueLength())
+	}
+
+	_, _ = o.EnqueueUnifiedSync(2024, "all", false, false, "user2")
+	if o.GetQueueLength() != 2 {
+		t.Errorf("expected queue length 2, got %d", o.GetQueueLength())
+	}
+
+	// Dequeue
+	o.DequeueUnifiedSync()
+	if o.GetQueueLength() != 1 {
+		t.Errorf("expected queue length 1 after dequeue, got %d", o.GetQueueLength())
 	}
 }

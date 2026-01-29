@@ -10,6 +10,15 @@ export interface SubStats {
   errors: number;
 }
 
+// Queued sync item from the sync queue
+export interface QueuedSyncItem {
+  id: string;
+  year: number;
+  service: string;
+  position: number;
+  queued_at: string;
+}
+
 export interface SyncStatus {
   status: 'idle' | 'running' | 'success' | 'failed' | 'pending';
   start_time?: string;
@@ -57,6 +66,9 @@ export interface SyncStatusResponse {
   _weekly_sync_running?: boolean;
   // Configured year from backend (CAMPMINDER_SEASON_ID)
   _configured_year?: number;
+  // Sync queue
+  _queue?: QueuedSyncItem[];
+  _queue_length?: number;
 }
 
 export function useSyncStatusAPI() {
@@ -71,17 +83,20 @@ export function useSyncStatusAPI() {
       
       return response as SyncStatusResponse;
     },
-    // Poll every 3 seconds if running, stop polling otherwise
+    // Poll every 3 seconds if running or queue has items, stop polling otherwise
     refetchInterval: (query) => {
       const data = query.state.data;
       if (!data) return false; // Don't poll if no data yet
-      
+
       // Check if daily sync is running
       const dailySyncRunning = data._daily_sync_running || false;
-      
+
       // Check if historical sync is running
       const historicalSyncRunning = data._historical_sync_running || false;
-      
+
+      // Check if queue has items
+      const hasQueuedItems = (data._queue_length || 0) > 0;
+
       // Check if any individual sync is running or pending
       const hasActiveSync = Object.entries(data).some(
         ([key, value]) => {
@@ -91,9 +106,9 @@ export function useSyncStatusAPI() {
           return status === 'running' || status === 'pending';
         }
       );
-      
-      // 3 seconds while any sync is running (individual, daily, or historical sequence)
-      return (hasActiveSync || dailySyncRunning || historicalSyncRunning) ? 3000 : false;
+
+      // 3 seconds while any sync is running, queued, or queue has items
+      return (hasActiveSync || dailySyncRunning || historicalSyncRunning || hasQueuedItems) ? 3000 : false;
     },
     // Always refetch on window focus to get latest status
     refetchOnWindowFocus: true,

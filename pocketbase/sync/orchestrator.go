@@ -45,6 +45,20 @@ type Status struct {
 	Year      int        `json:"year,omitempty"` // Year being synced (0 = current year)
 }
 
+// QueuedSync represents a unified sync request waiting in the queue
+type QueuedSync struct {
+	ID                  string    `json:"id"`
+	Year                int       `json:"year"`
+	Service             string    `json:"service"`
+	IncludeCustomValues bool      `json:"include_custom_values"`
+	Debug               bool      `json:"debug"`
+	QueuedAt            time.Time `json:"queued_at"`
+	RequestedBy         string    `json:"requested_by"`
+}
+
+// MaxQueueSize is the maximum number of unified syncs that can be queued
+const MaxQueueSize = 5
+
 // Stats holds statistics for a sync operation
 type Stats struct {
 	Created int `json:"created"`
@@ -90,6 +104,7 @@ type Orchestrator struct {
 	weeklySyncQueue         []string           // Services queued for weekly sync
 	customValuesSyncRunning bool               // Track if custom values sync sequence is in progress
 	customValuesSyncQueue   []string           // Services queued for custom values sync
+	pendingUnifiedSyncs     []QueuedSync       // Queue of pending unified sync requests (FIFO)
 }
 
 // NewOrchestrator creates a new orchestrator
@@ -966,6 +981,143 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 	}
 
 	return nil
+}
+
+// =============================================================================
+// Unified Sync Queue Methods
+// =============================================================================
+
+// generateQueueID generates a unique ID for a queued sync
+func generateQueueID() string {
+	return fmt.Sprintf("%d-%d", time.Now().UnixNano(), time.Now().Nanosecond())
+}
+
+// EnqueueUnifiedSync adds a unified sync request to the queue.
+// If a sync with the same year+service is already queued, returns the existing item.
+// Returns an error if the queue is full (max 5 items).
+func (o *Orchestrator) EnqueueUnifiedSync(
+	year int, service string, includeCustomValues, debug bool, requestedBy string,
+) (*QueuedSync, error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	// Check for duplicate (same year + service already queued)
+	for i := range o.pendingUnifiedSyncs {
+		if o.pendingUnifiedSyncs[i].Year == year && o.pendingUnifiedSyncs[i].Service == service {
+			// Return existing item instead of creating duplicate
+			return &o.pendingUnifiedSyncs[i], nil
+		}
+	}
+
+	// Check if queue is full
+	if len(o.pendingUnifiedSyncs) >= MaxQueueSize {
+		return nil, fmt.Errorf("sync queue is full (max %d items)", MaxQueueSize)
+	}
+
+	// Create new queued sync
+	qs := QueuedSync{
+		ID:                  generateQueueID(),
+		Year:                year,
+		Service:             service,
+		IncludeCustomValues: includeCustomValues,
+		Debug:               debug,
+		QueuedAt:            time.Now(),
+		RequestedBy:         requestedBy,
+	}
+
+	// Append to queue (FIFO)
+	o.pendingUnifiedSyncs = append(o.pendingUnifiedSyncs, qs)
+
+	slog.Info("Enqueued unified sync",
+		"id", qs.ID, "year", year, "service", service, "position", len(o.pendingUnifiedSyncs))
+
+	return &qs, nil
+}
+
+// DequeueUnifiedSync removes and returns the first item from the queue.
+// Returns nil if the queue is empty.
+func (o *Orchestrator) DequeueUnifiedSync() *QueuedSync {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	if len(o.pendingUnifiedSyncs) == 0 {
+		return nil
+	}
+
+	// Get first item (FIFO)
+	qs := o.pendingUnifiedSyncs[0]
+
+	// Remove from queue
+	o.pendingUnifiedSyncs = o.pendingUnifiedSyncs[1:]
+
+	slog.Info("Dequeued unified sync", "id", qs.ID, "year", qs.Year, "service", qs.Service)
+
+	return &qs
+}
+
+// CancelQueuedSync removes a queued sync by ID.
+// Returns true if the item was found and removed, false otherwise.
+func (o *Orchestrator) CancelQueuedSync(id string) bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	for i := range o.pendingUnifiedSyncs {
+		if o.pendingUnifiedSyncs[i].ID == id {
+			// Remove item
+			o.pendingUnifiedSyncs = append(o.pendingUnifiedSyncs[:i], o.pendingUnifiedSyncs[i+1:]...)
+			slog.Info("Canceled queued sync", "id", id)
+			return true
+		}
+	}
+
+	return false
+}
+
+// GetQueuedSyncs returns a copy of the pending unified syncs queue.
+func (o *Orchestrator) GetQueuedSyncs() []QueuedSync {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+
+	// Return a copy to avoid race conditions
+	result := make([]QueuedSync, len(o.pendingUnifiedSyncs))
+	copy(result, o.pendingUnifiedSyncs)
+	return result
+}
+
+// GetQueuePositionByID returns the 1-based position of a queued sync.
+// Returns 0 if the ID is not found.
+func (o *Orchestrator) GetQueuePositionByID(id string) int {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+
+	for i := range o.pendingUnifiedSyncs {
+		if o.pendingUnifiedSyncs[i].ID == id {
+			return i + 1 // 1-based position
+		}
+	}
+
+	return 0
+}
+
+// GetQueueLength returns the number of items in the queue.
+func (o *Orchestrator) GetQueueLength() int {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	return len(o.pendingUnifiedSyncs)
+}
+
+// IsUnifiedSyncQueued checks if a sync with the given year and service is already queued.
+func (o *Orchestrator) IsUnifiedSyncQueued(year int, service string) bool {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+
+	for i := range o.pendingUnifiedSyncs {
+		if o.pendingUnifiedSyncs[i].Year == year && o.pendingUnifiedSyncs[i].Service == service {
+			return true
+		}
+	}
+
+	return false
 }
 
 // InitializeSyncServices creates and registers all sync services

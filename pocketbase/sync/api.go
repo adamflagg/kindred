@@ -64,8 +64,14 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 
 	// Unified sync endpoint (replaces daily + historical endpoints)
 	// Accepts query params: year, service, includeCustomValues, debug
+	// Returns 202 Accepted if enqueued, 200 OK if started immediately
 	e.Router.POST("/api/custom/sync/run", requireAuth(func(e *core.RequestEvent) error {
 		return handleUnifiedSync(e, scheduler)
+	}))
+
+	// Cancel queued sync endpoint
+	e.Router.DELETE("/api/custom/sync/queue/{id}", requireAuth(func(e *core.RequestEvent) error {
+		return handleCancelQueuedSync(e, scheduler)
 	}))
 
 	// Hourly sync endpoint
@@ -686,12 +692,28 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 	}
 	statuses["_configured_year"] = configuredYear
 
+	// Add queue info
+	queue := orchestrator.GetQueuedSyncs()
+	queueInfo := make([]map[string]interface{}, len(queue))
+	for i, qs := range queue {
+		queueInfo[i] = map[string]interface{}{
+			"id":        qs.ID,
+			"year":      qs.Year,
+			"service":   qs.Service,
+			"position":  i + 1, // 1-based position
+			"queued_at": qs.QueuedAt.Format(time.RFC3339),
+		}
+	}
+	statuses["_queue"] = queueInfo
+	statuses["_queue_length"] = len(queue)
+
 	return e.JSON(http.StatusOK, statuses)
 }
 
 // handleUnifiedSync handles both current year and historical syncs via a single endpoint
 // Replaces the separate handleDailySync and handleHistoricalSync handlers
 // Query params: year (required), service (default: all), includeCustomValues, debug
+// Returns 202 Accepted if enqueued, 200 OK if started immediately, 409 if queue full
 func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Parse required year parameter
 	yearStr := e.Request.URL.Query().Get("year")
@@ -722,20 +744,43 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 		}
 	}
 
-	// Get orchestrator and check if any sync is already running
-	orchestrator := scheduler.GetOrchestrator()
-	if orchestrator.IsDailySyncRunning() || orchestrator.IsHistoricalSyncRunning() {
-		return e.JSON(http.StatusConflict, map[string]interface{}{
-			"error": "Another sync is already in progress",
-		})
-	}
-
 	// Parse optional query parameters
 	includeCustomValuesParam := e.Request.URL.Query().Get("includeCustomValues")
 	includeCustomValues := includeCustomValuesParam == boolTrueStr || includeCustomValuesParam == "1"
 
 	debugParam := e.Request.URL.Query().Get("debug")
 	debug := debugParam == boolTrueStr || debugParam == "1"
+
+	// Get user info for queue tracking
+	requestedBy := ""
+	if e.Auth != nil {
+		requestedBy = e.Auth.GetString("email")
+	}
+
+	// Get orchestrator and check if any sync is already running
+	orchestrator := scheduler.GetOrchestrator()
+	if orchestrator.IsDailySyncRunning() || orchestrator.IsHistoricalSyncRunning() {
+		// Sync is running - try to enqueue
+		qs, err := orchestrator.EnqueueUnifiedSync(year, service, includeCustomValues, debug, requestedBy)
+		if err != nil {
+			// Queue is full
+			return e.JSON(http.StatusConflict, map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
+
+		// Successfully queued - return 202 Accepted
+		position := orchestrator.GetQueuePositionByID(qs.ID)
+		return e.JSON(http.StatusAccepted, map[string]interface{}{
+			"status":              "queued",
+			"queue_id":            qs.ID,
+			"position":            position,
+			"year":                year,
+			"service":             service,
+			"includeCustomValues": includeCustomValues,
+			"debug":               debug,
+		})
+	}
 
 	// IMPORTANT: Orchestrator uses Year=0 to indicate current year mode
 	// This enables bunk_requests and process_requests inclusion
@@ -757,7 +802,7 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 		opts.Services = []string{service}
 	}
 
-	// Run in background
+	// Run in background with queue processing on completion
 	go func() {
 		slog.Info("Unified sync: Job started",
 			"year", year,
@@ -773,6 +818,9 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 		if err := orchestrator.RunSyncWithOptions(ctx, opts); err != nil {
 			slog.Error("Unified sync failed", "year", year, "service", service, "error", err)
 		}
+
+		// Process queue after sync completes
+		processQueuedSyncs(orchestrator)
 	}()
 
 	return e.JSON(http.StatusOK, map[string]interface{}{
@@ -781,6 +829,82 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 		"service":             service,
 		"includeCustomValues": includeCustomValues,
 		"debug":               debug,
+	})
+}
+
+// processQueuedSyncs processes the next item in the unified sync queue
+func processQueuedSyncs(orchestrator *Orchestrator) {
+	// Dequeue next item
+	qs := orchestrator.DequeueUnifiedSync()
+	if qs == nil {
+		return // Queue is empty
+	}
+
+	slog.Info("Processing queued sync", "id", qs.ID, "year", qs.Year, "service", qs.Service)
+
+	// Get current year from environment for year mode determination
+	currentYear := time.Now().Year()
+	if yearStr := os.Getenv("CAMPMINDER_SEASON_ID"); yearStr != "" {
+		if cy, err := strconv.Atoi(yearStr); err == nil {
+			currentYear = cy
+		}
+	}
+
+	// Determine year mode
+	optsYear := qs.Year
+	if qs.Year == currentYear {
+		optsYear = 0 // Current year mode
+	}
+
+	// Create sync options
+	opts := Options{
+		Year:                optsYear,
+		IncludeCustomValues: qs.IncludeCustomValues,
+		Debug:               qs.Debug,
+	}
+
+	// Set services to sync
+	if qs.Service != DefaultService {
+		opts.Services = []string{qs.Service}
+	}
+
+	// Run the queued sync
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
+	defer cancel()
+
+	if err := orchestrator.RunSyncWithOptions(ctx, opts); err != nil {
+		slog.Error("Queued sync failed", "id", qs.ID, "year", qs.Year, "service", qs.Service, "error", err)
+	} else {
+		slog.Info("Queued sync completed", "id", qs.ID, "year", qs.Year, "service", qs.Service)
+	}
+
+	// Recursively process next item in queue
+	processQueuedSyncs(orchestrator)
+}
+
+// handleCancelQueuedSync handles canceling a queued sync by ID
+func handleCancelQueuedSync(e *core.RequestEvent, scheduler *Scheduler) error {
+	// Get the queue ID from path parameter
+	id := e.Request.PathValue("id")
+	if id == "" {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Missing queue ID",
+		})
+	}
+
+	orchestrator := scheduler.GetOrchestrator()
+
+	// Try to cancel the queued sync
+	if !orchestrator.CancelQueuedSync(id) {
+		return e.JSON(http.StatusNotFound, map[string]interface{}{
+			"error": "Queued sync not found",
+			"id":    id,
+		})
+	}
+
+	return e.JSON(http.StatusOK, map[string]interface{}{
+		"message": "Queued sync canceled",
+		"id":      id,
 	})
 }
 
