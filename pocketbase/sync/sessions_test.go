@@ -732,3 +732,286 @@ func TestGetSessionTypeFromName(t *testing.T) {
 		})
 	}
 }
+
+// TestGetSessionTypeFromGroupID tests that session group cm_ids map to correct session types
+// Session groups are stable across all years, making this classification reliable for historical data
+func TestGetSessionTypeFromGroupID(t *testing.T) {
+	s := &SessionsSync{}
+
+	tests := []struct {
+		name        string
+		groupCMID   int
+		sessionName string
+		expected    string
+	}{
+		// Summer Camp group (937) - returns "summer_candidate" for further refinement
+		{
+			name:        "summer camp group returns summer_candidate",
+			groupCMID:   groupSummerCamp,
+			sessionName: "Session 2",
+			expected:    "summer_candidate",
+		},
+		// Family Camp group (940)
+		{
+			name:        "family camp group",
+			groupCMID:   groupFamilyCamp,
+			sessionName: "Family Camp 1",
+			expected:    "family",
+		},
+		// Quest group (938)
+		{
+			name:        "quest group",
+			groupCMID:   groupQuests,
+			sessionName: "Quest 2025",
+			expected:    "quest",
+		},
+		// Teen Leadership group (939) - needs name refinement
+		{
+			name:        "leadership group TLI",
+			groupCMID:   groupLeadership,
+			sessionName: "Teen Leadership Institute",
+			expected:    "tli",
+		},
+		{
+			name:        "leadership group CIT",
+			groupCMID:   groupLeadership,
+			sessionName: "Counselor In-Training",
+			expected:    "training",
+		},
+		{
+			name:        "leadership group SIT",
+			groupCMID:   groupLeadership,
+			sessionName: "Specialist In-Training",
+			expected:    "training",
+		},
+		// Teen Retreat group (4447)
+		{
+			name:        "teen retreat group",
+			groupCMID:   groupTeenRetreat,
+			sessionName: "Teen Winter Retreat",
+			expected:    "teen",
+		},
+		// B'Mitzvah/Hebrew group (4445) - needs name refinement
+		{
+			name:        "bmitzvah hebrew group - bmitzvah",
+			groupCMID:   groupBMitzvahHebrew,
+			sessionName: "B*Mitzvah Program",
+			expected:    "bmitzvah",
+		},
+		{
+			name:        "bmitzvah hebrew group - hebrew",
+			groupCMID:   groupBMitzvahHebrew,
+			sessionName: "Hebrew Lessons",
+			expected:    "hebrew",
+		},
+		// Adult group (11600)
+		{
+			name:        "adult group",
+			groupCMID:   groupAdult,
+			sessionName: "Adults Unplugged",
+			expected:    "adult",
+		},
+		// Family School group (12165)
+		{
+			name:        "family school group",
+			groupCMID:   groupFamilySchool,
+			sessionName: "Family School Weekend",
+			expected:    "school",
+		},
+		// Unknown group defaults to other
+		{
+			name:        "unknown group defaults to other",
+			groupCMID:   99999,
+			sessionName: "Unknown Session",
+			expected:    "other",
+		},
+		// Zero group ID defaults to other
+		{
+			name:        "zero group defaults to other",
+			groupCMID:   0,
+			sessionName: "No Group Session",
+			expected:    "other",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := s.getSessionTypeFromGroupID(tt.groupCMID, tt.sessionName)
+			if got != tt.expected {
+				t.Errorf("getSessionTypeFromGroupID(%d, %q) = %q, want %q",
+					tt.groupCMID, tt.sessionName, got, tt.expected)
+			}
+		})
+	}
+}
+
+// TestRefineSummerSessionType tests that summer camp sessions are correctly classified
+// as main, ag, or embedded based on name and date patterns
+func TestRefineSummerSessionType(t *testing.T) {
+	s := &SessionsSync{}
+
+	// Build a list of all sessions for AG detection (AG needs matching dates with another session)
+	allSessions := []sessionInfo{
+		{cmID: 1001, name: "Session 2", startDate: "2025-06-15", endDate: "2025-07-13"},
+		{cmID: 1002, name: "All-Gender Cabin-Session 2", startDate: "2025-06-15", endDate: "2025-07-13"},
+		{cmID: 1003, name: "Session 2a", startDate: "2025-06-15", endDate: "2025-06-25"},
+		// 2021-style naming
+		{cmID: 2001, name: "Session A", startDate: "2021-06-20", endDate: "2021-07-11"},
+		{cmID: 2002, name: "Session B (All-Gender Cabins)", startDate: "2021-07-12", endDate: "2021-08-01"},
+		{cmID: 2003, name: "Session B", startDate: "2021-07-12", endDate: "2021-08-01"},
+		// 2022-style naming with grade suffixes
+		{cmID: 3001, name: "Session 4", startDate: "2022-07-24", endDate: "2022-08-13"},
+		{cmID: 3002, name: "Session 4 (All-Gender Cabin)-6th & 7th grades", startDate: "2022-07-24", endDate: "2022-08-13"},
+		// Taste of Camp with AG
+		{cmID: 4001, name: "A Taste of Camp 2021", startDate: "2021-06-15", endDate: "2021-06-19"},
+		{cmID: 4002, name: "A Taste of Camp 2021 (All-Gender Cabin)", startDate: "2021-06-15", endDate: "2021-06-19"},
+	}
+
+	tests := []struct {
+		name     string
+		session  sessionInfo
+		expected string
+	}{
+		// Current naming patterns
+		{
+			name:     "Session 2 is main",
+			session:  sessionInfo{cmID: 1001, name: "Session 2", startDate: "2025-06-15", endDate: "2025-07-13"},
+			expected: "main",
+		},
+		{
+			name: "All-Gender Cabin-Session 2 is ag (current naming)",
+			session: sessionInfo{
+				cmID: 1002, name: "All-Gender Cabin-Session 2",
+				startDate: "2025-06-15", endDate: "2025-07-13",
+			},
+			expected: "ag",
+		},
+		{
+			name:     "Session 2a is embedded",
+			session:  sessionInfo{cmID: 1003, name: "Session 2a", startDate: "2025-06-15", endDate: "2025-06-25"},
+			expected: "embedded",
+		},
+		// 2021-style historical naming
+		{
+			name:     "Session A (2021) is main",
+			session:  sessionInfo{cmID: 2001, name: "Session A", startDate: "2021-06-20", endDate: "2021-07-11"},
+			expected: "main",
+		},
+		{
+			name:     "Session B (2021) is main",
+			session:  sessionInfo{cmID: 2003, name: "Session B", startDate: "2021-07-12", endDate: "2021-08-01"},
+			expected: "main",
+		},
+		{
+			name: "Session B (All-Gender Cabins) (2021) is ag",
+			session: sessionInfo{
+				cmID: 2002, name: "Session B (All-Gender Cabins)",
+				startDate: "2021-07-12", endDate: "2021-08-01",
+			},
+			expected: "ag",
+		},
+		// 2022-style naming with grade suffixes
+		{
+			name:     "Session 4 (2022) is main",
+			session:  sessionInfo{cmID: 3001, name: "Session 4", startDate: "2022-07-24", endDate: "2022-08-13"},
+			expected: "main",
+		},
+		{
+			name: "Session 4 (All-Gender Cabin)-6th & 7th grades is ag",
+			session: sessionInfo{
+				cmID: 3002, name: "Session 4 (All-Gender Cabin)-6th & 7th grades",
+				startDate: "2022-07-24", endDate: "2022-08-13",
+			},
+			expected: "ag",
+		},
+		// Taste of Camp variations
+		{
+			name:     "A Taste of Camp 2021 is main",
+			session:  sessionInfo{cmID: 4001, name: "A Taste of Camp 2021", startDate: "2021-06-15", endDate: "2021-06-19"},
+			expected: "main",
+		},
+		{
+			name: "A Taste of Camp 2021 (All-Gender Cabin) is ag",
+			session: sessionInfo{
+				cmID: 4002, name: "A Taste of Camp 2021 (All-Gender Cabin)",
+				startDate: "2021-06-15", endDate: "2021-06-19",
+			},
+			expected: "ag",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := s.refineSummerSessionType(tt.session, allSessions)
+			if got != tt.expected {
+				t.Errorf("refineSummerSessionType(%q) = %q, want %q",
+					tt.session.name, got, tt.expected)
+			}
+		})
+	}
+}
+
+// TestIsAGSession tests the AG session detection logic using date matching + "gender" keyword
+func TestIsAGSession(t *testing.T) {
+	s := &SessionsSync{}
+
+	// Sessions for date matching
+	allSessions := []sessionInfo{
+		{cmID: 1001, name: "Session 2", startDate: "2025-06-15", endDate: "2025-07-13"},
+		{cmID: 1002, name: "Session B", startDate: "2021-07-12", endDate: "2021-08-01"},
+		{cmID: 1003, name: "Taste of Camp", startDate: "2025-06-15", endDate: "2025-06-20"},
+	}
+
+	tests := []struct {
+		name     string
+		session  sessionInfo
+		expected bool
+	}{
+		// AG sessions - contain "gender" and have matching dates
+		{
+			name:     "All-Gender Cabin-Session 2 is AG",
+			session:  sessionInfo{name: "All-Gender Cabin-Session 2", startDate: "2025-06-15", endDate: "2025-07-13"},
+			expected: true,
+		},
+		{
+			name:     "Session B (All-Gender Cabins) is AG",
+			session:  sessionInfo{name: "Session B (All-Gender Cabins)", startDate: "2021-07-12", endDate: "2021-08-01"},
+			expected: true,
+		},
+		{
+			name: "Session 4 (All-Gender Cabin)-6th & 7th grades is AG",
+			session: sessionInfo{
+				name:      "Session 4 (All-Gender Cabin)-6th & 7th grades",
+				startDate: "2025-06-15", endDate: "2025-07-13",
+			},
+			expected: true,
+		},
+		// Not AG - no "gender" in name
+		{
+			name:     "Session 2 is not AG",
+			session:  sessionInfo{name: "Session 2", startDate: "2025-06-15", endDate: "2025-07-13"},
+			expected: false,
+		},
+		{
+			name:     "Taste of Camp is not AG",
+			session:  sessionInfo{name: "Taste of Camp", startDate: "2025-06-15", endDate: "2025-06-20"},
+			expected: false,
+		},
+		// Not AG - has "gender" but no matching dates with another session
+		{
+			name:     "All-Gender standalone (no matching dates) is not AG",
+			session:  sessionInfo{name: "All-Gender Special Session", startDate: "2025-08-01", endDate: "2025-08-10"},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := s.isAGSession(tt.session, allSessions)
+			if got != tt.expected {
+				t.Errorf("isAGSession(%q) = %v, want %v",
+					tt.session.name, got, tt.expected)
+			}
+		})
+	}
+}
