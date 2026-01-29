@@ -15,6 +15,7 @@ export interface QueuedSyncItem {
   id: string;
   year: number;
   service: string;
+  include_custom_values?: boolean;
   position: number;
   queued_at: string;
 }

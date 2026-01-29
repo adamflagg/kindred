@@ -105,6 +105,7 @@ type Orchestrator struct {
 	customValuesSyncRunning bool               // Track if custom values sync sequence is in progress
 	customValuesSyncQueue   []string           // Services queued for custom values sync
 	pendingUnifiedSyncs     []QueuedSync       // Queue of pending unified sync requests (FIFO)
+	activeSyncCancel        context.CancelFunc // Cancel function for the currently running sync
 }
 
 // NewOrchestrator creates a new orchestrator
@@ -1001,9 +1002,11 @@ func (o *Orchestrator) EnqueueUnifiedSync(
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
-	// Check for duplicate (same year + service already queued)
+	// Check for duplicate (same year + service + includeCustomValues already queued)
 	for i := range o.pendingUnifiedSyncs {
-		if o.pendingUnifiedSyncs[i].Year == year && o.pendingUnifiedSyncs[i].Service == service {
+		if o.pendingUnifiedSyncs[i].Year == year &&
+			o.pendingUnifiedSyncs[i].Service == service &&
+			o.pendingUnifiedSyncs[i].IncludeCustomValues == includeCustomValues {
 			// Return existing item instead of creating duplicate
 			return &o.pendingUnifiedSyncs[i], nil
 		}
@@ -1104,6 +1107,55 @@ func (o *Orchestrator) GetQueueLength() int {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 	return len(o.pendingUnifiedSyncs)
+}
+
+// SetActiveSyncCancel stores the cancel function for the currently running sync.
+func (o *Orchestrator) SetActiveSyncCancel(cancel context.CancelFunc) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.activeSyncCancel = cancel
+}
+
+// ClearActiveSyncCancel clears the stored cancel function.
+func (o *Orchestrator) ClearActiveSyncCancel() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.activeSyncCancel = nil
+}
+
+// CancelRunningSync cancels the currently running sync if one exists.
+// Returns true if a sync was canceled, false if no sync was running.
+func (o *Orchestrator) CancelRunningSync() bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	if o.activeSyncCancel != nil {
+		o.activeSyncCancel()
+		o.activeSyncCancel = nil
+		slog.Info("Canceled running sync")
+		return true
+	}
+	return false
+}
+
+// ClearSyncFlags resets all sync running flags.
+// Used for panic recovery to ensure stuck syncs don't block future syncs.
+func (o *Orchestrator) ClearSyncFlags() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	o.dailySyncRunning = false
+	o.dailySyncQueue = nil
+	o.historicalSyncRunning = false
+	o.historicalSyncQueue = nil
+	o.historicalSyncYear = 0
+	o.weeklySyncRunning = false
+	o.weeklySyncQueue = nil
+	o.customValuesSyncRunning = false
+	o.customValuesSyncQueue = nil
+	o.activeSyncCancel = nil
+
+	slog.Warn("Cleared all sync flags (panic recovery)")
 }
 
 // IsUnifiedSyncQueued checks if a sync with the given year and service is already queued.

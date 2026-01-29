@@ -22,6 +22,7 @@ import { useProcessRequests } from '../../hooks/useProcessRequests';
 import { useCamperHistorySync } from '../../hooks/useCamperHistorySync';
 import { useFamilyCampDerivedSync } from '../../hooks/useFamilyCampDerivedSync';
 import { useCancelQueuedSync } from '../../hooks/useCancelQueuedSync';
+import { useCancelRunningSync } from '../../hooks/useCancelRunningSync';
 import { StatusIcon, formatDuration } from './ConfigInputs';
 import { clearCache } from '../../utils/queryClient';
 import ProcessRequestOptions, { type ProcessRequestOptionsState } from './ProcessRequestOptions';
@@ -54,6 +55,7 @@ export function SyncTab() {
   const camperHistorySync = useCamperHistorySync();
   const familyCampDerivedSync = useFamilyCampDerivedSync();
   const cancelQueuedSync = useCancelQueuedSync();
+  const cancelRunningSync = useCancelRunningSync();
 
   // Get queue from status
   const queue: QueuedSyncItem[] = syncStatus?._queue || [];
@@ -158,7 +160,21 @@ export function SyncTab() {
             )}
 
             {/* Action Group */}
-            <div className="lg:ml-auto">
+            <div className="lg:ml-auto flex gap-2">
+              {(syncStatus?._daily_sync_running || syncStatus?._historical_sync_running) && (
+                <button
+                  onClick={() => cancelRunningSync.mutate()}
+                  disabled={cancelRunningSync.isPending}
+                  className="btn-secondary w-full lg:w-auto"
+                  title="Cancel the currently running sync"
+                >
+                  {cancelRunningSync.isPending ? (
+                    <><Loader2 className="w-5 h-5 animate-spin" /></>
+                  ) : (
+                    <><X className="w-5 h-5" /> Cancel</>
+                  )}
+                </button>
+              )}
               <button
                 onClick={() => {
                   const shouldIncludeCustomValues = includeCustomValues &&
@@ -206,6 +222,7 @@ export function SyncTab() {
                     <div>
                       <span className="font-medium text-sm">
                         {item.year} - {item.service === 'all' ? 'All Services' : item.service}
+                        {item.include_custom_values && ' (+CV)'}
                       </span>
                       <div className="text-xs text-muted-foreground flex items-center gap-1">
                         <Clock className="w-3 h-3" />
