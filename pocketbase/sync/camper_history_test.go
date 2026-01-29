@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 	"testing"
@@ -1477,4 +1478,631 @@ func aggregateExtendedAttendees(attendees []testExtendedAttendee) map[int]*testE
 	}
 
 	return result
+}
+
+// ============================================================================
+// V2 TESTS: Non-deduplicated, per-attendee schema
+// These tests define the new behavior: one row per (person_id, session_cm_id, year)
+// ============================================================================
+
+// Session type constants for retention context
+var (
+	summerSessionTypes = []string{"main", "embedded", "ag", "quest", "teen", "tli", "training"}
+	familySessionTypes = []string{"family", "adult"}
+)
+
+// testAttendeeV2 represents an attendee record for v2 tests
+type testAttendeeV2 struct {
+	PersonID        int
+	PersonPBID      string
+	SessionCMID     int
+	SessionPBID     string
+	SessionName     string
+	SessionType     string
+	Year            int
+	Status          string
+	EnrollmentDate  string
+}
+
+// testBunkAssignmentV2 represents a bunk assignment keyed by session
+type testBunkAssignmentV2 struct {
+	PersonPBID   string
+	SessionPBID  string
+	BunkName     string
+	BunkCMID     int
+	Year         int
+}
+
+// testCamperHistoryV2 represents the output record structure
+type testCamperHistoryV2 struct {
+	PersonID          int
+	PersonPBID        string
+	SessionCMID       int
+	SessionPBID       string
+	SessionName       string
+	SessionType       string
+	Year              int
+	FirstName         string
+	LastName          string
+	Age               float64
+	IsReturningSummer bool
+	IsReturningFamily bool
+	FirstYearSummer   int
+	FirstYearFamily   int
+	BunkName          string
+	BunkCMID          int
+	Status            string
+}
+
+// TestV2_OneRecordPerAttendee tests that v2 creates one record per attendee,
+// not one record per person (the key behavior change from v1)
+func TestV2_OneRecordPerAttendee(t *testing.T) {
+	attendees := []testAttendeeV2{
+		{PersonID: 1001, SessionCMID: 100, SessionName: "Session 1", SessionType: "main", Year: 2025},
+		{PersonID: 1001, SessionCMID: 101, SessionName: "Session 2", SessionType: "main", Year: 2025},
+		{PersonID: 1001, SessionCMID: 102, SessionName: "Session 2 AG", SessionType: "ag", Year: 2025},
+	}
+
+	// v2 should produce 3 records for the same person (one per session)
+	records := buildV2Records(attendees)
+
+	if len(records) != 3 {
+		t.Errorf("v2 should create %d records (one per attendee), got %d", len(attendees), len(records))
+	}
+
+	// Verify each record has the correct session
+	sessionCMIDs := make(map[int]bool)
+	for _, r := range records {
+		sessionCMIDs[r.SessionCMID] = true
+		if r.PersonID != 1001 {
+			t.Errorf("expected person_id 1001, got %d", r.PersonID)
+		}
+	}
+
+	if len(sessionCMIDs) != 3 {
+		t.Errorf("expected 3 unique session_cm_ids, got %d", len(sessionCMIDs))
+	}
+}
+
+// TestV2_UniqueConstraint tests the unique key is (person_id, session_cm_id, year)
+func TestV2_UniqueConstraint(t *testing.T) {
+	attendees := []testAttendeeV2{
+		{PersonID: 1001, SessionCMID: 100, Year: 2025},
+		{PersonID: 1001, SessionCMID: 100, Year: 2025}, // Duplicate - should be deduplicated
+		{PersonID: 1001, SessionCMID: 100, Year: 2024}, // Different year - unique
+		{PersonID: 1001, SessionCMID: 101, Year: 2025}, // Different session - unique
+		{PersonID: 1002, SessionCMID: 100, Year: 2025}, // Different person - unique
+	}
+
+	records := buildV2Records(attendees)
+
+	// After deduplication by (person_id, session_cm_id, year), expect 4 unique records
+	if len(records) != 4 {
+		t.Errorf("expected 4 unique records, got %d", len(records))
+	}
+
+	// Verify unique keys
+	seen := make(map[string]bool)
+	for _, r := range records {
+		key := fmt.Sprintf("%d-%d-%d", r.PersonID, r.SessionCMID, r.Year)
+		if seen[key] {
+			t.Errorf("duplicate key found: %s", key)
+		}
+		seen[key] = true
+	}
+}
+
+// TestV2_BunkLookupBySession tests that bunk assignment matches the specific session
+func TestV2_BunkLookupBySession(t *testing.T) {
+	attendees := []testAttendeeV2{
+		{PersonID: 1001, PersonPBID: "p1001", SessionCMID: 100, SessionPBID: "s100", SessionName: "Session 1", Year: 2025},
+		{PersonID: 1001, PersonPBID: "p1001", SessionCMID: 101, SessionPBID: "s101", SessionName: "Session 2", Year: 2025},
+	}
+
+	// Bunk assignments keyed by (person, session, year)
+	bunkAssignments := []testBunkAssignmentV2{
+		{PersonPBID: "p1001", SessionPBID: "s100", BunkName: "B-12", BunkCMID: 5012, Year: 2025},
+		{PersonPBID: "p1001", SessionPBID: "s101", BunkName: "B-14", BunkCMID: 5014, Year: 2025},
+	}
+
+	records := buildV2RecordsWithBunks(attendees, bunkAssignments)
+
+	// Verify Session 1 has B-12
+	s1Record := findRecordBySession(records, 100)
+	if s1Record == nil {
+		t.Fatal("session 100 record not found")
+	}
+	if s1Record.BunkName != "B-12" {
+		t.Errorf("session 100: expected bunk B-12, got %q", s1Record.BunkName)
+	}
+	if s1Record.BunkCMID != 5012 {
+		t.Errorf("session 100: expected bunk_cm_id 5012, got %d", s1Record.BunkCMID)
+	}
+
+	// Verify Session 2 has B-14
+	s2Record := findRecordBySession(records, 101)
+	if s2Record == nil {
+		t.Fatal("session 101 record not found")
+	}
+	if s2Record.BunkName != "B-14" {
+		t.Errorf("session 101: expected bunk B-14, got %q", s2Record.BunkName)
+	}
+}
+
+// TestV2_IsReturningSummerOnlyConsidersSummerTypes tests that is_returning_summer
+// only considers summer session types in the prior year
+func TestV2_IsReturningSummerOnlyConsidersSummerTypes(t *testing.T) {
+	tests := []struct {
+		name                  string
+		currentYear           int
+		currentSessionType    string
+		priorYearEnrollments  []struct{ Year int; SessionType string }
+		expectedReturningSummer bool
+	}{
+		{
+			name:               "returning - attended main session last year",
+			currentYear:        2025,
+			currentSessionType: "main",
+			priorYearEnrollments: []struct{ Year int; SessionType string }{
+				{2024, "main"},
+			},
+			expectedReturningSummer: true,
+		},
+		{
+			name:               "returning - attended ag session last year",
+			currentYear:        2025,
+			currentSessionType: "main",
+			priorYearEnrollments: []struct{ Year int; SessionType string }{
+				{2024, "ag"},
+			},
+			expectedReturningSummer: true,
+		},
+		{
+			name:               "returning - attended embedded session last year",
+			currentYear:        2025,
+			currentSessionType: "main",
+			priorYearEnrollments: []struct{ Year int; SessionType string }{
+				{2024, "embedded"},
+			},
+			expectedReturningSummer: true,
+		},
+		{
+			name:               "NOT returning - only attended family last year",
+			currentYear:        2025,
+			currentSessionType: "main",
+			priorYearEnrollments: []struct{ Year int; SessionType string }{
+				{2024, "family"},
+			},
+			expectedReturningSummer: false, // Family doesn't count as summer
+		},
+		{
+			name:               "NOT returning - only attended adult last year",
+			currentYear:        2025,
+			currentSessionType: "main",
+			priorYearEnrollments: []struct{ Year int; SessionType string }{
+				{2024, "adult"},
+			},
+			expectedReturningSummer: false, // Adult doesn't count as summer
+		},
+		{
+			name:               "NOT returning - summer attendance was 2 years ago",
+			currentYear:        2025,
+			currentSessionType: "main",
+			priorYearEnrollments: []struct{ Year int; SessionType string }{
+				{2023, "main"}, // Gap year
+			},
+			expectedReturningSummer: false,
+		},
+		{
+			name:               "returning - multiple types last year including summer",
+			currentYear:        2025,
+			currentSessionType: "main",
+			priorYearEnrollments: []struct{ Year int; SessionType string }{
+				{2024, "family"},
+				{2024, "main"}, // This counts
+			},
+			expectedReturningSummer: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := computeIsReturningSummer(tt.currentYear, tt.priorYearEnrollments)
+			if result != tt.expectedReturningSummer {
+				t.Errorf("computeIsReturningSummer = %v, want %v", result, tt.expectedReturningSummer)
+			}
+		})
+	}
+}
+
+// TestV2_IsReturningFamilyOnlyConsidersFamilyTypes tests that is_returning_family
+// only considers family/adult session types in the prior year
+func TestV2_IsReturningFamilyOnlyConsidersFamilyTypes(t *testing.T) {
+	tests := []struct {
+		name                  string
+		currentYear           int
+		priorYearEnrollments  []struct{ Year int; SessionType string }
+		expectedReturningFamily bool
+	}{
+		{
+			name:        "returning family - attended family last year",
+			currentYear: 2025,
+			priorYearEnrollments: []struct{ Year int; SessionType string }{
+				{2024, "family"},
+			},
+			expectedReturningFamily: true,
+		},
+		{
+			name:        "returning family - attended adult last year",
+			currentYear: 2025,
+			priorYearEnrollments: []struct{ Year int; SessionType string }{
+				{2024, "adult"},
+			},
+			expectedReturningFamily: true,
+		},
+		{
+			name:        "NOT returning family - only attended summer last year",
+			currentYear: 2025,
+			priorYearEnrollments: []struct{ Year int; SessionType string }{
+				{2024, "main"},
+				{2024, "ag"},
+			},
+			expectedReturningFamily: false,
+		},
+		{
+			name:        "returning family - attended both summer and family last year",
+			currentYear: 2025,
+			priorYearEnrollments: []struct{ Year int; SessionType string }{
+				{2024, "main"},
+				{2024, "family"},
+			},
+			expectedReturningFamily: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := computeIsReturningFamily(tt.currentYear, tt.priorYearEnrollments)
+			if result != tt.expectedReturningFamily {
+				t.Errorf("computeIsReturningFamily = %v, want %v", result, tt.expectedReturningFamily)
+			}
+		})
+	}
+}
+
+// TestV2_FirstYearSummer tests first_year_summer calculation
+func TestV2_FirstYearSummer(t *testing.T) {
+	tests := []struct {
+		name              string
+		currentYear       int
+		enrollments       []struct{ Year int; SessionType string }
+		expectedFirstYear int
+	}{
+		{
+			name:        "new camper - no history",
+			currentYear: 2025,
+			enrollments: []struct{ Year int; SessionType string }{},
+			expectedFirstYear: 2025, // Current year is their first
+		},
+		{
+			name:        "returning - single prior summer year",
+			currentYear: 2025,
+			enrollments: []struct{ Year int; SessionType string }{
+				{2024, "main"},
+			},
+			expectedFirstYear: 2024,
+		},
+		{
+			name:        "veteran - multiple summer years",
+			currentYear: 2025,
+			enrollments: []struct{ Year int; SessionType string }{
+				{2020, "main"},
+				{2021, "ag"},
+				{2022, "embedded"},
+				{2023, "main"},
+				{2024, "main"},
+			},
+			expectedFirstYear: 2020, // Earliest summer year
+		},
+		{
+			name:        "family only - no summer history",
+			currentYear: 2025,
+			enrollments: []struct{ Year int; SessionType string }{
+				{2020, "family"},
+				{2021, "adult"},
+			},
+			expectedFirstYear: 2025, // No summer history, use current year
+		},
+		{
+			name:        "mixed - first summer after family",
+			currentYear: 2025,
+			enrollments: []struct{ Year int; SessionType string }{
+				{2020, "family"},
+				{2022, "main"}, // First summer
+				{2023, "family"},
+				{2024, "ag"},
+			},
+			expectedFirstYear: 2022, // First summer year
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := computeFirstYearSummer(tt.currentYear, tt.enrollments)
+			if result != tt.expectedFirstYear {
+				t.Errorf("computeFirstYearSummer = %d, want %d", result, tt.expectedFirstYear)
+			}
+		})
+	}
+}
+
+// TestV2_FirstYearFamily tests first_year_family calculation
+func TestV2_FirstYearFamily(t *testing.T) {
+	tests := []struct {
+		name              string
+		currentYear       int
+		enrollments       []struct{ Year int; SessionType string }
+		expectedFirstYear int
+	}{
+		{
+			name:        "no family history",
+			currentYear: 2025,
+			enrollments: []struct{ Year int; SessionType string }{
+				{2020, "main"},
+				{2021, "main"},
+			},
+			expectedFirstYear: 0, // No family attendance
+		},
+		{
+			name:        "single family year",
+			currentYear: 2025,
+			enrollments: []struct{ Year int; SessionType string }{
+				{2023, "family"},
+			},
+			expectedFirstYear: 2023,
+		},
+		{
+			name:        "multiple family years",
+			currentYear: 2025,
+			enrollments: []struct{ Year int; SessionType string }{
+				{2020, "family"},
+				{2022, "adult"},
+				{2024, "family"},
+			},
+			expectedFirstYear: 2020, // Earliest family year
+		},
+		{
+			name:        "mixed summer and family",
+			currentYear: 2025,
+			enrollments: []struct{ Year int; SessionType string }{
+				{2019, "main"},
+				{2020, "family"}, // First family
+				{2021, "main"},
+				{2022, "adult"},
+			},
+			expectedFirstYear: 2020, // First family year
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := computeFirstYearFamily(tt.currentYear, tt.enrollments)
+			if result != tt.expectedFirstYear {
+				t.Errorf("computeFirstYearFamily = %d, want %d", result, tt.expectedFirstYear)
+			}
+		})
+	}
+}
+
+// TestV2_SessionTypeSelectValues tests that session_type field uses correct enum values
+func TestV2_SessionTypeSelectValues(t *testing.T) {
+	// These are all the valid session types from camp_sessions enum
+	validTypes := []string{
+		"main", "embedded", "ag", "family", "quest", "training",
+		"bmitzvah", "tli", "adult", "school", "hebrew", "teen", "other",
+	}
+
+	// Verify summer types are subset of valid types
+	for _, st := range summerSessionTypes {
+		found := false
+		for _, vt := range validTypes {
+			if st == vt {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("summer session type %q not in valid types", st)
+		}
+	}
+
+	// Verify family types are subset of valid types
+	for _, ft := range familySessionTypes {
+		found := false
+		for _, vt := range validTypes {
+			if ft == vt {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("family session type %q not in valid types", ft)
+		}
+	}
+
+	// Verify no overlap between summer and family
+	for _, st := range summerSessionTypes {
+		for _, ft := range familySessionTypes {
+			if st == ft {
+				t.Errorf("session type %q appears in both summer and family", st)
+			}
+		}
+	}
+}
+
+// TestV2_SessionTypeFieldPresent tests that each record has session_type
+func TestV2_SessionTypeFieldPresent(t *testing.T) {
+	attendees := []testAttendeeV2{
+		{PersonID: 1001, SessionCMID: 100, SessionName: "Session 1", SessionType: "main", Year: 2025},
+		{PersonID: 1001, SessionCMID: 101, SessionName: "Family Camp", SessionType: "family", Year: 2025},
+		{PersonID: 1001, SessionCMID: 102, SessionName: "AG Session", SessionType: "ag", Year: 2025},
+	}
+
+	records := buildV2Records(attendees)
+
+	for _, r := range records {
+		if r.SessionType == "" {
+			t.Errorf("record for session %d missing session_type", r.SessionCMID)
+		}
+	}
+
+	// Verify session types match input
+	mainRecord := findRecordBySession(records, 100)
+	if mainRecord.SessionType != "main" {
+		t.Errorf("session 100: expected type 'main', got %q", mainRecord.SessionType)
+	}
+
+	familyRecord := findRecordBySession(records, 101)
+	if familyRecord.SessionType != "family" {
+		t.Errorf("session 101: expected type 'family', got %q", familyRecord.SessionType)
+	}
+}
+
+// ============================================================================
+// V2 test helper functions
+// ============================================================================
+
+// buildV2Records creates camper_history v2 records from attendees
+func buildV2Records(attendees []testAttendeeV2) []testCamperHistoryV2 {
+	// Use map to deduplicate by (person_id, session_cm_id, year)
+	seen := make(map[string]bool)
+	var records []testCamperHistoryV2
+
+	for _, a := range attendees {
+		key := fmt.Sprintf("%d-%d-%d", a.PersonID, a.SessionCMID, a.Year)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+
+		records = append(records, testCamperHistoryV2{
+			PersonID:    a.PersonID,
+			PersonPBID:  a.PersonPBID,
+			SessionCMID: a.SessionCMID,
+			SessionPBID: a.SessionPBID,
+			SessionName: a.SessionName,
+			SessionType: a.SessionType,
+			Year:        a.Year,
+			Status:      a.Status,
+		})
+	}
+
+	return records
+}
+
+// buildV2RecordsWithBunks creates records with bunk lookup
+func buildV2RecordsWithBunks(
+	attendees []testAttendeeV2,
+	bunkAssignments []testBunkAssignmentV2,
+) []testCamperHistoryV2 {
+	// Build bunk lookup by (person, session, year)
+	bunkLookup := make(map[string]testBunkAssignmentV2)
+	for _, ba := range bunkAssignments {
+		key := fmt.Sprintf("%s-%s-%d", ba.PersonPBID, ba.SessionPBID, ba.Year)
+		bunkLookup[key] = ba
+	}
+
+	records := buildV2Records(attendees)
+
+	// Enrich with bunk data
+	for i := range records {
+		key := fmt.Sprintf("%s-%s-%d", records[i].PersonPBID, records[i].SessionPBID, records[i].Year)
+		if ba, ok := bunkLookup[key]; ok {
+			records[i].BunkName = ba.BunkName
+			records[i].BunkCMID = ba.BunkCMID
+		}
+	}
+
+	return records
+}
+
+// findRecordBySession finds a record by session CM ID
+func findRecordBySession(records []testCamperHistoryV2, sessionCMID int) *testCamperHistoryV2 {
+	for i := range records {
+		if records[i].SessionCMID == sessionCMID {
+			return &records[i]
+		}
+	}
+	return nil
+}
+
+// computeIsReturningSummer checks if person was enrolled in a summer session in prior year
+func computeIsReturningSummer(currentYear int, enrollments []struct{ Year int; SessionType string }) bool {
+	priorYear := currentYear - 1
+	for _, e := range enrollments {
+		if e.Year == priorYear && isSummerSessionType(e.SessionType) {
+			return true
+		}
+	}
+	return false
+}
+
+// computeIsReturningFamily checks if person was enrolled in a family session in prior year
+func computeIsReturningFamily(currentYear int, enrollments []struct{ Year int; SessionType string }) bool {
+	priorYear := currentYear - 1
+	for _, e := range enrollments {
+		if e.Year == priorYear && isFamilySessionType(e.SessionType) {
+			return true
+		}
+	}
+	return false
+}
+
+// computeFirstYearSummer returns the first year a person attended a summer session
+func computeFirstYearSummer(currentYear int, enrollments []struct{ Year int; SessionType string }) int {
+	minYear := 0
+	for _, e := range enrollments {
+		if isSummerSessionType(e.SessionType) {
+			if minYear == 0 || e.Year < minYear {
+				minYear = e.Year
+			}
+		}
+	}
+	if minYear == 0 {
+		return currentYear // New summer camper
+	}
+	return minYear
+}
+
+// computeFirstYearFamily returns the first year a person attended a family session
+func computeFirstYearFamily(_ int, enrollments []struct{ Year int; SessionType string }) int {
+	minYear := 0
+	for _, e := range enrollments {
+		if isFamilySessionType(e.SessionType) {
+			if minYear == 0 || e.Year < minYear {
+				minYear = e.Year
+			}
+		}
+	}
+	return minYear // 0 if never attended family
+}
+
+// isSummerSessionType checks if session type is a summer type
+func isSummerSessionType(sessionType string) bool {
+	for _, st := range summerSessionTypes {
+		if sessionType == st {
+			return true
+		}
+	}
+	return false
+}
+
+// isFamilySessionType checks if session type is a family type
+func isFamilySessionType(sessionType string) bool {
+	for _, ft := range familySessionTypes {
+		if sessionType == ft {
+			return true
+		}
+	}
+	return false
 }
