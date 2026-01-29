@@ -868,9 +868,9 @@ func TestRefineSummerSessionType(t *testing.T) {
 	}
 
 	tests := []struct {
-		name      string
-		session   sessionInfo
-		expected  string
+		name     string
+		session  sessionInfo
+		expected string
 	}{
 		// Current naming patterns
 		{
@@ -879,8 +879,11 @@ func TestRefineSummerSessionType(t *testing.T) {
 			expected: "main",
 		},
 		{
-			name:     "All-Gender Cabin-Session 2 is ag (current naming)",
-			session:  sessionInfo{cmID: 1002, name: "All-Gender Cabin-Session 2", startDate: "2025-06-15", endDate: "2025-07-13"},
+			name: "All-Gender Cabin-Session 2 is ag (current naming)",
+			session: sessionInfo{
+				cmID: 1002, name: "All-Gender Cabin-Session 2",
+				startDate: "2025-06-15", endDate: "2025-07-13",
+			},
 			expected: "ag",
 		},
 		{
@@ -900,8 +903,11 @@ func TestRefineSummerSessionType(t *testing.T) {
 			expected: "main",
 		},
 		{
-			name:     "Session B (All-Gender Cabins) (2021) is ag",
-			session:  sessionInfo{cmID: 2002, name: "Session B (All-Gender Cabins)", startDate: "2021-07-12", endDate: "2021-08-01"},
+			name: "Session B (All-Gender Cabins) (2021) is ag",
+			session: sessionInfo{
+				cmID: 2002, name: "Session B (All-Gender Cabins)",
+				startDate: "2021-07-12", endDate: "2021-08-01",
+			},
 			expected: "ag",
 		},
 		// 2022-style naming with grade suffixes
@@ -911,8 +917,11 @@ func TestRefineSummerSessionType(t *testing.T) {
 			expected: "main",
 		},
 		{
-			name:     "Session 4 (All-Gender Cabin)-6th & 7th grades is ag",
-			session:  sessionInfo{cmID: 3002, name: "Session 4 (All-Gender Cabin)-6th & 7th grades", startDate: "2022-07-24", endDate: "2022-08-13"},
+			name: "Session 4 (All-Gender Cabin)-6th & 7th grades is ag",
+			session: sessionInfo{
+				cmID: 3002, name: "Session 4 (All-Gender Cabin)-6th & 7th grades",
+				startDate: "2022-07-24", endDate: "2022-08-13",
+			},
 			expected: "ag",
 		},
 		// Taste of Camp variations
@@ -922,8 +931,11 @@ func TestRefineSummerSessionType(t *testing.T) {
 			expected: "main",
 		},
 		{
-			name:     "A Taste of Camp 2021 (All-Gender Cabin) is ag",
-			session:  sessionInfo{cmID: 4002, name: "A Taste of Camp 2021 (All-Gender Cabin)", startDate: "2021-06-15", endDate: "2021-06-19"},
+			name: "A Taste of Camp 2021 (All-Gender Cabin) is ag",
+			session: sessionInfo{
+				cmID: 4002, name: "A Taste of Camp 2021 (All-Gender Cabin)",
+				startDate: "2021-06-15", endDate: "2021-06-19",
+			},
 			expected: "ag",
 		},
 	}
@@ -951,9 +963,9 @@ func TestIsAGSession(t *testing.T) {
 	}
 
 	tests := []struct {
-		name       string
-		session    sessionInfo
-		expected   bool
+		name     string
+		session  sessionInfo
+		expected bool
 	}{
 		// AG sessions - contain "gender" and have matching dates
 		{
@@ -967,8 +979,11 @@ func TestIsAGSession(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:     "Session 4 (All-Gender Cabin)-6th & 7th grades is AG",
-			session:  sessionInfo{name: "Session 4 (All-Gender Cabin)-6th & 7th grades", startDate: "2025-06-15", endDate: "2025-07-13"},
+			name: "Session 4 (All-Gender Cabin)-6th & 7th grades is AG",
+			session: sessionInfo{
+				name:      "Session 4 (All-Gender Cabin)-6th & 7th grades",
+				startDate: "2025-06-15", endDate: "2025-07-13",
+			},
 			expected: true,
 		},
 		// Not AG - no "gender" in name
@@ -999,12 +1014,4 @@ func TestIsAGSession(t *testing.T) {
 			}
 		})
 	}
-}
-
-// sessionInfo is a helper struct for test data (mirrors the one in sessions.go)
-type sessionInfo struct {
-	cmID      int
-	name      string
-	startDate string
-	endDate   string
 }
