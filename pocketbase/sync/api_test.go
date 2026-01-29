@@ -1072,11 +1072,11 @@ func TestCancelQueuedSyncEndpoint(t *testing.T) {
 // TestUnifiedSyncEnqueueBehavior tests the expected queuing behavior
 func TestUnifiedSyncEnqueueBehavior(t *testing.T) {
 	tests := []struct {
-		name              string
-		syncRunning       bool
-		queueLength       int
-		expectedStatus    int    // HTTP status code
-		expectedBehavior  string // "start", "queue", or "reject"
+		name             string
+		syncRunning      bool
+		queueLength      int
+		expectedStatus   int    // HTTP status code
+		expectedBehavior string // "start", "queue", or "reject"
 	}{
 		{
 			name:             "no sync running - start immediately",
