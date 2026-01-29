@@ -86,7 +86,7 @@ export function useCamperEnrollment(personCmId: number | null, currentYear: numb
           first_name: expandedPerson.first_name,
           last_name: expandedPerson.last_name,
           preferred_name: expandedPerson.preferred_name,
-          age: expandedPerson.birthdate ? calculateAge(expandedPerson.birthdate) : 0,
+          age: expandedPerson.age ?? (expandedPerson.birthdate ? calculateAge(expandedPerson.birthdate) : 0),
           birthdate: expandedPerson.birthdate,
           grade: expandedPerson.grade || 0,
           gender: (expandedPerson.gender as 'M' | 'F' | 'NB') || 'NB',

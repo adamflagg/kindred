@@ -34,7 +34,6 @@ import { CampMinderIcon } from './icons';
 import CamperLink from './CamperLink';
 import { getAvatarColor, getInitial } from '../utils/avatarUtils';
 import { getLocationDisplay } from '../utils/addressUtils';
-import { calculateAge } from '../utils/ageCalculator';
 
 // Satisfaction check types
 type SatisfactionStatus = 'satisfied' | 'not_satisfied' | 'checking' | 'unknown';
@@ -788,7 +787,7 @@ export default function CamperDetailsPanel({ camperId, onClose, embedded = false
                         {sibling.preferred_name || sibling.first_name} {sibling.last_name}
                       </div>
                       <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
-                        <span>{sibling.birthdate ? formatAge(calculateAge(sibling.birthdate)) : '?'}</span>
+                        <span>{formatAge(getDisplayAgeForYear(sibling, currentYear) ?? 0)}</span>
                         <span>•</span>
                         <span>{formatGradeOrdinal(sibling.grade)}</span>
                         {sibling.bunkName && (
