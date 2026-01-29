@@ -30,7 +30,14 @@ const AdminConfig = lazy(() => import('./components/AdminConfig').then(m => ({ d
 const FamilyCampDashboard = lazy(() => import('./pages/FamilyCampDashboard'));
 const ScenarioComparisonPage = lazy(() => import('./pages/ScenarioComparisonPage'));
 const DebugPage = lazy(() => import('./pages/summer/DebugPage'));
-const RegistrationMetricsPage = lazy(() => import('./pages/metrics/RegistrationMetricsPage').then(m => ({ default: m.RegistrationMetricsPage })));
+// Metrics module - hierarchical navigation
+const MetricsLayout = lazy(() => import('./pages/metrics/MetricsLayout'));
+const RegistrationOverview = lazy(() => import('./pages/metrics/registration/RegistrationOverview'));
+const GeoAnalysis = lazy(() => import('./pages/metrics/registration/GeoAnalysis'));
+const SynagogueAnalysis = lazy(() => import('./pages/metrics/registration/SynagogueAnalysis'));
+const WaitlistAnalysis = lazy(() => import('./pages/metrics/registration/WaitlistAnalysis'));
+const RetentionOverview = lazy(() => import('./pages/metrics/retention/RetentionOverview'));
+const TrendsOverview = lazy(() => import('./pages/metrics/trends/TrendsOverview'));
 
 // Loading skeleton component for route transitions
 function PageSkeleton() {
@@ -150,13 +157,55 @@ function App() {
                           } />
                         </Route>
 
-                        {/* Metrics routes - top-level program */}
+                        {/* Metrics routes - hierarchical navigation */}
                         <Route path="/metrics" element={<AppLayout />}>
-                          <Route index element={
+                          {/* Redirect /metrics to /metrics/registration */}
+                          <Route index element={<Navigate to="/metrics/registration" replace />} />
+
+                          {/* Metrics layout with nested routes */}
+                          <Route element={
                             <Suspense fallback={<PageSkeleton />}>
-                              <RegistrationMetricsPage />
+                              <MetricsLayout />
                             </Suspense>
-                          } />
+                          }>
+                            {/* Registration section */}
+                            <Route path="registration" element={<Navigate to="/metrics/registration/overview" replace />} />
+                            <Route path="registration/overview" element={
+                              <Suspense fallback={<PageSkeleton />}>
+                                <RegistrationOverview />
+                              </Suspense>
+                            } />
+                            <Route path="registration/geo" element={
+                              <Suspense fallback={<PageSkeleton />}>
+                                <GeoAnalysis />
+                              </Suspense>
+                            } />
+                            <Route path="registration/synagogue" element={
+                              <Suspense fallback={<PageSkeleton />}>
+                                <SynagogueAnalysis />
+                              </Suspense>
+                            } />
+                            <Route path="registration/waitlist" element={
+                              <Suspense fallback={<PageSkeleton />}>
+                                <WaitlistAnalysis />
+                              </Suspense>
+                            } />
+
+                            {/* Retention section */}
+                            <Route path="retention" element={
+                              <Suspense fallback={<PageSkeleton />}>
+                                <RetentionOverview />
+                              </Suspense>
+                            } />
+
+                            {/* Trends section */}
+                            <Route path="trends" element={
+                              <Suspense fallback={<PageSkeleton />}>
+                                <TrendsOverview />
+                              </Suspense>
+                            } />
+                          </Route>
+
                           <Route path="user" element={<User />} />
                           <Route path="users" element={<Users />} />
                         </Route>
