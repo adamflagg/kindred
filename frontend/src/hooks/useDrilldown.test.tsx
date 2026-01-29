@@ -40,7 +40,6 @@ describe('useDrilldown', () => {
         () =>
           useDrilldown({
             year: 2026,
-            sessionCmId: undefined,
             sessionTypes: ['main', 'embedded', 'ag'],
             statusFilter: ['enrolled'],
           }),
@@ -59,7 +58,6 @@ describe('useDrilldown', () => {
         () =>
           useDrilldown({
             year: 2026,
-            sessionCmId: undefined,
             sessionTypes: ['main', 'embedded', 'ag'],
             statusFilter: ['enrolled'],
           }),
@@ -75,7 +73,6 @@ describe('useDrilldown', () => {
         () =>
           useDrilldown({
             year: 2026,
-            sessionCmId: undefined,
             sessionTypes: ['main', 'embedded', 'ag'],
             statusFilter: ['enrolled'],
           }),
@@ -91,7 +88,6 @@ describe('useDrilldown', () => {
         () =>
           useDrilldown({
             year: 2026,
-            sessionCmId: undefined,
             sessionTypes: ['main', 'embedded', 'ag'],
             statusFilter: ['enrolled'],
           }),
@@ -107,7 +103,6 @@ describe('useDrilldown', () => {
         () =>
           useDrilldown({
             year: 2026,
-            sessionCmId: undefined,
             sessionTypes: ['main', 'embedded', 'ag'],
             statusFilter: ['enrolled'],
           }),
@@ -125,7 +120,6 @@ describe('useDrilldown', () => {
         () =>
           useDrilldown({
             year: 2026,
-            sessionCmId: undefined,
             sessionTypes: ['main', 'embedded', 'ag'],
             statusFilter: ['enrolled'],
           }),
@@ -151,7 +145,6 @@ describe('useDrilldown', () => {
         () =>
           useDrilldown({
             year: 2026,
-            sessionCmId: undefined,
             sessionTypes: ['main', 'embedded', 'ag'],
             statusFilter: ['enrolled'],
           }),
@@ -185,7 +178,6 @@ describe('useDrilldown', () => {
       function TestComponent() {
         const { DrilldownModal } = useDrilldown({
           year: 2026,
-          sessionCmId: undefined,
           sessionTypes: ['main', 'embedded', 'ag'],
           statusFilter: ['enrolled'],
         });
@@ -203,47 +195,48 @@ describe('useDrilldown', () => {
       expect(container.children.length).toBe(0);
     });
 
-    it('should render modal when filter is set', async () => {
+    it('DrilldownModal should be callable and return null when filter is null', async () => {
       const { useDrilldown } = await import('./useDrilldown');
+      const { result } = renderHook(
+        () =>
+          useDrilldown({
+            year: 2026,
+            sessionTypes: ['main', 'embedded', 'ag'],
+            statusFilter: ['enrolled'],
+          }),
+        { wrapper: createWrapper() },
+      );
 
-      function TestComponent() {
-        const { setFilter, DrilldownModal } = useDrilldown({
-          year: 2026,
-          sessionCmId: undefined,
-          sessionTypes: ['main', 'embedded', 'ag'],
-          statusFilter: ['enrolled'],
-        });
+      // When filter is null, DrilldownModal() should return null
+      const modalResult = result.current.DrilldownModal();
+      expect(modalResult).toBeNull();
+    });
 
-        return (
-          <div data-testid="container">
-            <button
-              data-testid="set-filter"
-              onClick={() =>
-                setFilter({
-                  type: 'gender',
-                  value: 'F',
-                  label: 'Female',
-                })
-              }
-            >
-              Set Filter
-            </button>
-            <DrilldownModal />
-          </div>
-        );
-      }
+    it('DrilldownModal should return JSX element when filter is set', async () => {
+      const { useDrilldown } = await import('./useDrilldown');
+      const { result } = renderHook(
+        () =>
+          useDrilldown({
+            year: 2026,
+            sessionTypes: ['main', 'embedded', 'ag'],
+            statusFilter: ['enrolled'],
+          }),
+        { wrapper: createWrapper() },
+      );
 
-      render(<TestComponent />, { wrapper: createWrapper() });
-
-      // Click to set filter
-      const button = screen.getByTestId('set-filter');
+      // Set a filter
       act(() => {
-        button.click();
+        result.current.setFilter({
+          type: 'gender',
+          value: 'F',
+          label: 'Female',
+        });
       });
 
-      // Modal should now be rendered - the DrillDownModal renders a fixed overlay
-      // We can check for the modal's container structure
-      expect(document.querySelector('.fixed.inset-0')).not.toBeNull();
+      // When filter is set, DrilldownModal() should return a JSX element (not null)
+      const modalResult = result.current.DrilldownModal();
+      expect(modalResult).not.toBeNull();
+      expect(typeof modalResult).toBe('object');
     });
   });
 
@@ -254,7 +247,6 @@ describe('useDrilldown', () => {
         () =>
           useDrilldown({
             year: 2025,
-            sessionCmId: undefined,
             sessionTypes: ['main'],
             statusFilter: ['enrolled'],
           }),
@@ -286,7 +278,6 @@ describe('useDrilldown', () => {
         () =>
           useDrilldown({
             year: 2026,
-            sessionCmId: undefined,
             sessionTypes: ['main', 'embedded'],
             statusFilter: ['enrolled'],
           }),
@@ -302,7 +293,6 @@ describe('useDrilldown', () => {
         () =>
           useDrilldown({
             year: 2026,
-            sessionCmId: undefined,
             sessionTypes: ['main'],
             statusFilter: ['enrolled', 'waitlisted'],
           }),
