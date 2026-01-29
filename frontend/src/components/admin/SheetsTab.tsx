@@ -70,44 +70,37 @@ function WorkbookCard({ workbook }: { workbook: SheetsWorkbook }) {
   };
 
   const yearDisplay = workbook.workbook_type === 'globals' ? 'Globals' : workbook.year;
+  // Extract short name from title (e.g., "Kindred 2026" -> "2026", "Kindred Globals" -> "Globals")
+  const shortName = workbook.workbook_type === 'globals' ? 'Globals' : String(workbook.year);
 
   return (
-    <div className="bg-card rounded-xl border border-border p-4 sm:p-5 hover:border-primary/30 transition-colors">
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="p-1.5 bg-primary/10 rounded-lg flex-shrink-0">
-            <FileSpreadsheet className="h-4 w-4 text-primary" />
+    <div className="bg-card rounded-xl border border-border p-3 sm:p-4 hover:border-primary/30 transition-colors">
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="p-1 bg-primary/10 rounded-md flex-shrink-0">
+            <FileSpreadsheet className="h-3.5 w-3.5 text-primary" />
           </div>
           <div className="min-w-0">
-            <h3 className="font-semibold text-foreground truncate">{workbook.title}</h3>
-            <p className="text-sm text-muted-foreground">
-              {yearDisplay === 'Globals' ? 'Global Data + Index' : `Year ${yearDisplay}`}
+            <h3 className="text-sm font-medium text-foreground">{shortName}</h3>
+            <p className="text-xs text-muted-foreground truncate" title={workbook.title}>
+              {yearDisplay === 'Globals' ? 'Global definitions + Index' : `Year data`}
             </p>
           </div>
         </div>
         {getStatusBadge()}
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-3 gap-4 mb-4">
-        <div className="text-center">
-          <p className="text-xs text-muted-foreground uppercase tracking-wide">Tabs</p>
-          <p className="text-lg font-semibold tabular-nums">{workbook.tab_count}</p>
-        </div>
-        <div className="text-center">
-          <p className="text-xs text-muted-foreground uppercase tracking-wide">Records</p>
-          <p className="text-lg font-semibold tabular-nums">{workbook.total_records.toLocaleString()}</p>
-        </div>
-        <div className="text-center">
-          <p className="text-xs text-muted-foreground uppercase tracking-wide">Last Sync</p>
-          <p className="text-sm font-medium">{formatDate(workbook.last_sync)}</p>
-        </div>
+      {/* Stats Row */}
+      <div className="flex items-center justify-between text-xs text-muted-foreground mb-3 px-1">
+        <span>{workbook.tab_count} tabs</span>
+        <span className="tabular-nums">{workbook.total_records.toLocaleString()} records</span>
+        <span className="text-right">{formatDate(workbook.last_sync)}</span>
       </div>
 
       {/* Error Message */}
       {workbook.status === 'error' && workbook.error_message && (
-        <div className="mb-3 p-2 bg-red-50 dark:bg-red-950/30 rounded-lg border border-red-200 dark:border-red-800">
-          <p className="text-xs text-red-600 dark:text-red-400">{workbook.error_message}</p>
+        <div className="mb-2 p-1.5 bg-red-50 dark:bg-red-950/30 rounded text-xs text-red-600 dark:text-red-400 truncate" title={workbook.error_message}>
+          {workbook.error_message}
         </div>
       )}
 
@@ -116,10 +109,10 @@ function WorkbookCard({ workbook }: { workbook: SheetsWorkbook }) {
         href={workbook.url}
         target="_blank"
         rel="noopener noreferrer"
-        className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg font-medium text-sm transition-colors"
+        className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary rounded-md text-xs font-medium transition-colors"
       >
-        <span>Open in Google Sheets</span>
-        <ExternalLink className="w-4 h-4" />
+        <span>Open</span>
+        <ExternalLink className="w-3 h-3" />
       </a>
     </div>
   );
@@ -144,15 +137,12 @@ export function SheetsTab() {
 
   if (error) {
     return (
-      <div className="bg-red-50 dark:bg-red-950/30 rounded-xl border border-red-200 dark:border-red-800 p-4 sm:p-6">
-        <div className="flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
-          <div>
-            <h3 className="font-display font-bold text-red-800 dark:text-red-200">Failed to load workbooks</h3>
-            <p className="text-red-600 dark:text-red-400 mt-1 text-sm">
-              {error instanceof Error ? error.message : 'Unknown error'}
-            </p>
-          </div>
+      <div className="bg-red-50 dark:bg-red-950/30 rounded-lg border border-red-200 dark:border-red-800 p-3">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0" />
+          <p className="text-sm text-red-600 dark:text-red-400">
+            Failed to load workbooks: {error instanceof Error ? error.message : 'Unknown error'}
+          </p>
         </div>
       </div>
     );
@@ -161,21 +151,17 @@ export function SheetsTab() {
   return (
     <div className="space-y-4 sm:space-y-6">
       {/* Header with Export Button */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-display font-bold text-foreground">
-            Google Sheets Workbooks
-          </h2>
-          <p className="text-muted-foreground text-sm">
-            Export data to multiple Google Sheets workbooks
-          </p>
+          <h2 className="text-base font-semibold text-foreground">Google Sheets</h2>
+          <p className="text-xs text-muted-foreground">Export data to workbooks</p>
         </div>
         <button
           onClick={handleFullExport}
           disabled={multiExport.isPending}
-          className="flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-lg font-medium text-sm transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-md text-xs font-medium transition-colors"
         >
-          <RefreshCw className={`w-4 h-4 ${multiExport.isPending ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`w-3.5 h-3.5 ${multiExport.isPending ? 'animate-spin' : ''}`} />
           <span>{multiExport.isPending ? 'Exporting...' : 'Full Export'}</span>
         </button>
       </div>
@@ -189,16 +175,13 @@ export function SheetsTab() {
 
       {/* No Workbooks State */}
       {!isLoading && workbooks?.length === 0 && (
-        <div className="bg-card rounded-xl border border-border p-8 text-center">
-          <FileSpreadsheet className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-          <h3 className="font-display font-bold text-lg mb-2">No Workbooks Found</h3>
-          <p className="text-muted-foreground text-sm mb-4">
-            Run a full export to create workbooks for your data.
-          </p>
+        <div className="bg-card rounded-lg border border-border p-6 text-center">
+          <FileSpreadsheet className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+          <p className="text-sm text-muted-foreground mb-3">No workbooks yet</p>
           <button
             onClick={handleFullExport}
             disabled={multiExport.isPending}
-            className="btn btn-primary"
+            className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md text-xs font-medium"
           >
             {multiExport.isPending ? 'Creating...' : 'Create Workbooks'}
           </button>
@@ -208,10 +191,10 @@ export function SheetsTab() {
       {/* Globals Workbook */}
       {globalsWorkbook && (
         <section>
-          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-            Master Index & Global Data
+          <h3 className="text-xs font-medium text-muted-foreground mb-2">
+            Global Data
           </h3>
-          <div className="max-w-md">
+          <div className="max-w-xs">
             <WorkbookCard workbook={globalsWorkbook} />
           </div>
         </section>
@@ -220,8 +203,8 @@ export function SheetsTab() {
       {/* Year Workbooks */}
       {yearWorkbooks.length > 0 && (
         <section>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-xs font-medium text-muted-foreground">
               Year Workbooks
             </h3>
             {currentYear && (
@@ -234,7 +217,7 @@ export function SheetsTab() {
               </button>
             )}
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {yearWorkbooks.map((workbook) => (
               <WorkbookCard key={workbook.id} workbook={workbook} />
             ))}
@@ -243,15 +226,9 @@ export function SheetsTab() {
       )}
 
       {/* Help Text */}
-      <div className="bg-muted/50 dark:bg-muted rounded-lg p-4 text-sm text-muted-foreground">
-        <p>
-          <strong>Full Export</strong> creates/updates all workbooks: one for global data (Tag Definitions, Divisions, etc.)
-          and one for each year&apos;s data (Attendees, Persons, etc.).
-        </p>
-        <p className="mt-2">
-          The Globals workbook includes an <strong>Index</strong> sheet with links to all workbooks.
-        </p>
-      </div>
+      <p className="text-xs text-muted-foreground">
+        <span className="font-medium">Full Export</span> updates all workbooks. Global workbook includes an Index with links to all sheets.
+      </p>
     </div>
   );
 }

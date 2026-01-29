@@ -109,7 +109,7 @@ func TestSortYearWorkbookTabs_Alphabetized(t *testing.T) {
 
 // =============================================================================
 // Multi-Workbook Tab Color Tests
-// Category-based coloring for readable tab names
+// Orange for CM-sourced, grey for globals and derived
 // =============================================================================
 
 func TestGetMultiWorkbookTabColor_Index(t *testing.T) {
@@ -121,82 +121,59 @@ func TestGetMultiWorkbookTabColor_Index(t *testing.T) {
 	}
 }
 
-func TestGetMultiWorkbookTabColor_CoreTables(t *testing.T) {
-	// Core tables (Persons, Attendees) should be blue
-	coreTabs := []string{testTabNameAttendees, "Persons", "Households"}
-
-	for _, tab := range coreTabs {
-		t.Run(tab, func(t *testing.T) {
-			color := GetMultiWorkbookTabColor(tab)
-			if color != TabColorCore {
-				t.Errorf("GetMultiWorkbookTabColor(%q) = %v, want TabColorCore", tab, color)
-			}
-		})
+func TestGetMultiWorkbookTabColor_CMSourcedTables(t *testing.T) {
+	// CampMinder-sourced tables should be orange
+	cmTabs := []string{
+		testTabNameAttendees, "Persons", "Households",
+		"Bunk Assignments", "Staff", "Bunks",
+		"Financial Transactions", "Sessions", "Session Groups",
+		"Person Custom Values", "Household Custom Values",
 	}
-}
 
-func TestGetMultiWorkbookTabColor_Assignments(t *testing.T) {
-	// Assignment tables should be green
-	assignmentTabs := []string{"Bunk Assignments", "Staff", "Bunks"}
-
-	for _, tab := range assignmentTabs {
+	for _, tab := range cmTabs {
 		t.Run(tab, func(t *testing.T) {
 			color := GetMultiWorkbookTabColor(tab)
-			if color != TabColorAssignments {
-				t.Errorf("GetMultiWorkbookTabColor(%q) = %v, want TabColorAssignments", tab, color)
-			}
-		})
-	}
-}
-
-func TestGetMultiWorkbookTabColor_Financial(t *testing.T) {
-	// Financial tables should be teal
-	financialTabs := []string{"Financial Transactions", "Financial Categories"}
-
-	for _, tab := range financialTabs {
-		t.Run(tab, func(t *testing.T) {
-			color := GetMultiWorkbookTabColor(tab)
-			if color != TabColorFinancial {
-				t.Errorf("GetMultiWorkbookTabColor(%q) = %v, want TabColorFinancial", tab, color)
-			}
-		})
-	}
-}
-
-func TestGetMultiWorkbookTabColor_CustomValues(t *testing.T) {
-	// Custom values tables should be purple
-	cvTabs := []string{"Person Custom Values", "Household Custom Values"}
-
-	for _, tab := range cvTabs {
-		t.Run(tab, func(t *testing.T) {
-			color := GetMultiWorkbookTabColor(tab)
-			if color != TabColorCustomValues {
-				t.Errorf("GetMultiWorkbookTabColor(%q) = %v, want TabColorCustomValues", tab, color)
+			if color != TabColorCMSourced {
+				t.Errorf("GetMultiWorkbookTabColor(%q) = %v, want TabColorCMSourced (orange)", tab, color)
 			}
 		})
 	}
 }
 
 func TestGetMultiWorkbookTabColor_GlobalTables(t *testing.T) {
-	// Global tables should be light blue
-	globalTabs := []string{"Tag Definitions", "Custom Field Definitions", "Divisions"}
+	// Global tables should be grey
+	globalTabsList := []string{"Tag Definitions", "Custom Field Definitions", "Divisions", "Financial Categories"}
 
-	for _, tab := range globalTabs {
+	for _, tab := range globalTabsList {
 		t.Run(tab, func(t *testing.T) {
 			color := GetMultiWorkbookTabColor(tab)
-			if color != TabColorGlobal {
-				t.Errorf("GetMultiWorkbookTabColor(%q) = %v, want TabColorGlobal", tab, color)
+			if color != TabColorDerived {
+				t.Errorf("GetMultiWorkbookTabColor(%q) = %v, want TabColorDerived (grey)", tab, color)
+			}
+		})
+	}
+}
+
+func TestGetMultiWorkbookTabColor_DerivedTables(t *testing.T) {
+	// Derived/computed tables should be grey
+	derivedTabsList := []string{"Camper History"}
+
+	for _, tab := range derivedTabsList {
+		t.Run(tab, func(t *testing.T) {
+			color := GetMultiWorkbookTabColor(tab)
+			if color != TabColorDerived {
+				t.Errorf("GetMultiWorkbookTabColor(%q) = %v, want TabColorDerived (grey)", tab, color)
 			}
 		})
 	}
 }
 
 func TestGetMultiWorkbookTabColor_Unknown(t *testing.T) {
-	// Unknown tabs should get default color
-	color := GetMultiWorkbookTabColor("Unknown Tab")
+	// Unknown tabs in year workbook default to CM-sourced (orange)
+	color := GetMultiWorkbookTabColor("New CM Table")
 
-	if color != TabColorDefault {
-		t.Errorf("GetMultiWorkbookTabColor('Unknown Tab') = %v, want TabColorDefault", color)
+	if color != TabColorCMSourced {
+		t.Errorf("GetMultiWorkbookTabColor('New CM Table') = %v, want TabColorCMSourced (orange)", color)
 	}
 }
 
