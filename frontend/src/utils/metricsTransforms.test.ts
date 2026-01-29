@@ -134,9 +134,9 @@ describe('transformSessionData', () => {
 
     const result = transformSessionData(input, dateLookup);
 
-    // Should be sorted by date
-    expect(result[0]!.name).toBe('Taste of Camp (Jun 1)');
-    expect(result[1]!.name).toBe('Taste of Camp (Jun 8)');
+    // Should be sorted by date, names preserved as-is
+    expect(result[0]!.name).toBe('Taste of Camp 1');
+    expect(result[1]!.name).toBe('Taste of Camp 2');
     expect(result[2]!.name).toBe('Session 2');
   });
 });
@@ -262,9 +262,9 @@ describe('transformRetentionSessionData', () => {
 
     const result = transformRetentionSessionData(input, dateLookup);
 
-    // Should be sorted by date
-    expect(result[0]!.name).toBe('Taste of Camp (Jun 1)');
-    expect(result[1]!.name).toBe('Taste of Camp (Jun 8)');
+    // Should be sorted by date, names preserved as-is
+    expect(result[0]!.name).toBe('Taste of Camp 1');
+    expect(result[1]!.name).toBe('Taste of Camp 2');
     expect(result[2]!.name).toBe('Session 2');
   });
 });
@@ -338,9 +338,9 @@ describe('transformPriorSessionData', () => {
 
     const result = transformPriorSessionData(input, dateLookup);
 
-    // Should be sorted by date
-    expect(result[0]!.name).toBe('Taste of Camp (Jun 1)');
-    expect(result[1]!.name).toBe('Taste of Camp (Jun 8)');
+    // Should be sorted by date, names preserved as-is
+    expect(result[0]!.name).toBe('Taste of Camp 1');
+    expect(result[1]!.name).toBe('Taste of Camp 2');
     expect(result[2]!.name).toBe('Session 2');
   });
 });
