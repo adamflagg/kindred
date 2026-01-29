@@ -74,6 +74,11 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 		return handleCancelQueuedSync(e, scheduler)
 	}))
 
+	// Cancel running sync endpoint
+	e.Router.DELETE("/api/custom/sync/running", requireAuth(func(e *core.RequestEvent) error {
+		return handleCancelRunningSync(e, scheduler)
+	}))
+
 	// Hourly sync endpoint
 	e.Router.POST("/api/custom/sync/hourly", requireAuth(func(e *core.RequestEvent) error {
 		return handleHourlySync(e, scheduler)
@@ -697,11 +702,12 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 	queueInfo := make([]map[string]interface{}, len(queue))
 	for i, qs := range queue {
 		queueInfo[i] = map[string]interface{}{
-			"id":        qs.ID,
-			"year":      qs.Year,
-			"service":   qs.Service,
-			"position":  i + 1, // 1-based position
-			"queued_at": qs.QueuedAt.Format(time.RFC3339),
+			"id":                    qs.ID,
+			"year":                  qs.Year,
+			"service":               qs.Service,
+			"include_custom_values": qs.IncludeCustomValues,
+			"position":              i + 1, // 1-based position
+			"queued_at":             qs.QueuedAt.Format(time.RFC3339),
 		}
 	}
 	statuses["_queue"] = queueInfo
@@ -804,6 +810,18 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 
 	// Run in background with queue processing on completion
 	go func() {
+		// Panic recovery to ensure sync flags are cleared if something goes wrong
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("Panic during unified sync",
+					"panic", r,
+					"year", year,
+					"service", service,
+				)
+				orchestrator.ClearSyncFlags()
+			}
+		}()
+
 		slog.Info("Unified sync: Job started",
 			"year", year,
 			"service", service,
@@ -814,6 +832,10 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
 		defer cancel()
+
+		// Store cancel function so running sync can be canceled
+		orchestrator.SetActiveSyncCancel(cancel)
+		defer orchestrator.ClearActiveSyncCancel()
 
 		if err := orchestrator.RunSyncWithOptions(ctx, opts); err != nil {
 			slog.Error("Unified sync failed", "year", year, "service", service, "error", err)
@@ -834,6 +856,14 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 
 // processQueuedSyncs processes the next item in the unified sync queue
 func processQueuedSyncs(orchestrator *Orchestrator) {
+	// Panic recovery to ensure sync flags are cleared if something goes wrong
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("Panic during queued sync processing", "panic", r)
+			orchestrator.ClearSyncFlags()
+		}
+	}()
+
 	// Dequeue next item
 	qs := orchestrator.DequeueUnifiedSync()
 	if qs == nil {
@@ -868,9 +898,13 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 		opts.Services = []string{qs.Service}
 	}
 
-	// Run the queued sync
+	// Run the queued sync with cancel support
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
 	defer cancel()
+
+	// Store cancel function so running sync can be canceled
+	orchestrator.SetActiveSyncCancel(cancel)
+	defer orchestrator.ClearActiveSyncCancel()
 
 	if err := orchestrator.RunSyncWithOptions(ctx, opts); err != nil {
 		slog.Error("Queued sync failed", "id", qs.ID, "year", qs.Year, "service", qs.Service, "error", err)
@@ -905,6 +939,22 @@ func handleCancelQueuedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	return e.JSON(http.StatusOK, map[string]interface{}{
 		"message": "Queued sync canceled",
 		"id":      id,
+	})
+}
+
+// handleCancelRunningSync handles canceling the currently running sync
+func handleCancelRunningSync(e *core.RequestEvent, scheduler *Scheduler) error {
+	orchestrator := scheduler.GetOrchestrator()
+
+	// Try to cancel the running sync
+	if !orchestrator.CancelRunningSync() {
+		return e.JSON(http.StatusNotFound, map[string]interface{}{
+			"error": "No sync currently running",
+		})
+	}
+
+	return e.JSON(http.StatusOK, map[string]interface{}{
+		"message": "Running sync canceled",
 	})
 }
 

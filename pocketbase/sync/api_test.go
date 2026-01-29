@@ -1135,19 +1135,19 @@ func TestUnifiedSyncEnqueueBehavior(t *testing.T) {
 func TestDuplicateQueueRequest(t *testing.T) {
 	o := NewOrchestrator(nil)
 
-	// Enqueue a sync
+	// Enqueue a sync (without custom values)
 	qs1, err := o.EnqueueUnifiedSync(2025, "all", false, false, "user1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Try to enqueue the same year+service again
-	qs2, err := o.EnqueueUnifiedSync(2025, "all", true, true, "user2") // Different options
+	// Try to enqueue the same year+service+includeCustomValues again
+	qs2, err := o.EnqueueUnifiedSync(2025, "all", false, true, "user2") // Same includeCustomValues, different debug
 	if err != nil {
 		t.Fatalf("unexpected error for duplicate: %v", err)
 	}
 
-	// Should return the same queue item
+	// Should return the same queue item (same year+service+includeCustomValues)
 	if qs1.ID != qs2.ID {
 		t.Errorf("duplicate request should return existing item ID")
 	}
@@ -1161,5 +1161,21 @@ func TestDuplicateQueueRequest(t *testing.T) {
 	pos := o.GetQueuePositionByID(qs1.ID)
 	if pos != 1 {
 		t.Errorf("expected position 1, got %d", pos)
+	}
+
+	// Different includeCustomValues should create a new queue item
+	qs3, err := o.EnqueueUnifiedSync(2025, "all", true, false, "user3") // Different includeCustomValues
+	if err != nil {
+		t.Fatalf("unexpected error for different includeCustomValues: %v", err)
+	}
+
+	// Should create a new item
+	if qs3.ID == qs1.ID {
+		t.Error("different includeCustomValues should create new item")
+	}
+
+	// Queue should now have 2 items
+	if o.GetQueueLength() != 2 {
+		t.Errorf("expected queue length 2, got %d", o.GetQueueLength())
 	}
 }
