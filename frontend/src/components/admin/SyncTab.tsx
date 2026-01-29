@@ -55,10 +55,6 @@ export function SyncTab() {
   const familyCampDerivedSync = useFamilyCampDerivedSync();
   const cancelQueuedSync = useCancelQueuedSync();
 
-  const hasRunningSyncs = syncStatus && Object.values(syncStatus).some(
-    (status: SyncStatus) => status.status === 'running'
-  );
-
   // Get queue from status
   const queue: QueuedSyncItem[] = syncStatus?._queue || [];
   const hasQueuedItems = queue.length > 0;
@@ -174,7 +170,7 @@ export function SyncTab() {
                     debug: shouldIncludeCustomValues && syncDebug,
                   });
                 }}
-                disabled={unifiedSync.isPending || hasRunningSyncs}
+                disabled={unifiedSync.isPending}
                 className="btn-primary w-full lg:w-auto min-w-[130px]"
               >
                 {unifiedSync.isPending ? (
