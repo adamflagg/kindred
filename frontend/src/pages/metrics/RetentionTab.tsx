@@ -13,6 +13,7 @@ import { useState, useMemo } from 'react';
 import { useRetentionTrends } from '../../hooks/useRetentionTrends';
 import { useRetentionMetrics } from '../../hooks/useMetrics';
 import { useMetricsSessions } from '../../hooks/useMetricsSessions';
+import { useDrilldown } from '../../hooks/useDrilldown';
 import { MetricCard } from '../../components/metrics/MetricCard';
 import { BreakdownChart } from '../../components/metrics/BreakdownChart';
 import { RetentionSessionSelector } from '../../components/metrics/RetentionSessionSelector';
@@ -45,6 +46,14 @@ export function RetentionTab({ currentYear, sessionTypes }: RetentionTabProps) {
 
   // Calculate base year (year before current year) for the primary view
   const baseYear = currentYear - 1;
+
+  // Drilldown state management (uses baseYear since retention shows who from baseYear returned)
+  const { setFilter, DrilldownModal } = useDrilldown({
+    year: baseYear,
+    sessionCmId: selectedSessionCmId ?? undefined,
+    sessionTypes: sessionTypesParam.split(','),
+    statusFilter: ['enrolled'],
+  });
 
   // Fetch sessions for dropdown (from base year for filtering)
   const { data: sessions = [], isLoading: sessionsLoading } = useMetricsSessions(baseYear);
@@ -211,6 +220,8 @@ export function RetentionTab({ currentYear, sessionTypes }: RetentionTabProps) {
           data={sessionChartData}
           type="bar"
           height={300}
+          breakdownType="session"
+          onSegmentClick={setFilter}
         />
       </div>
 
@@ -225,6 +236,8 @@ export function RetentionTab({ currentYear, sessionTypes }: RetentionTabProps) {
                 data={summerYearsChartData}
                 type="bar"
                 height={250}
+                breakdownType="years_at_camp"
+                onSegmentClick={setFilter}
               />
             )}
             {firstSummerYearChartData.length > 0 && (
@@ -233,6 +246,8 @@ export function RetentionTab({ currentYear, sessionTypes }: RetentionTabProps) {
                 data={firstSummerYearChartData}
                 type="bar"
                 height={250}
+                breakdownType="years_at_camp"
+                onSegmentClick={setFilter}
               />
             )}
             {priorSessionChartData.length > 0 && (
@@ -241,6 +256,8 @@ export function RetentionTab({ currentYear, sessionTypes }: RetentionTabProps) {
                 data={priorSessionChartData}
                 type="bar"
                 height={250}
+                breakdownType="session"
+                onSegmentClick={setFilter}
               />
             )}
           </div>
@@ -296,6 +313,9 @@ export function RetentionTab({ currentYear, sessionTypes }: RetentionTabProps) {
           </div>
         </div>
       )}
+
+      {/* Drill-down Modal */}
+      <DrilldownModal />
     </div>
   );
 }
