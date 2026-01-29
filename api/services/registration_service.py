@@ -26,7 +26,7 @@ from api.schemas.metrics import (
     SynagogueBreakdown,
     YearsAtCampBreakdown,
 )
-from api.utils.session_metrics import SUMMER_PROGRAM_SESSION_TYPES, compute_summer_metrics
+from api.utils.session_metrics import DISPLAY_SESSION_TYPES, compute_summer_metrics
 
 from .breakdown_calculator import calculate_percentage
 
@@ -352,11 +352,12 @@ class RegistrationService:
                 # Not an AG session - keep as is
                 merged_counts[sid] = merged_counts.get(sid, 0) + count
 
-        # Filter to summer program session types (main, embedded, ag, quest)
+        # Filter to display session types (main, embedded, ag - excludes quest)
+        # Quest sessions count toward summer metrics but don't appear in session breakdowns
         return {
             sid: count
             for sid, count in merged_counts.items()
-            if sid in sessions and getattr(sessions.get(sid), "session_type", None) in SUMMER_PROGRAM_SESSION_TYPES
+            if sid in sessions and getattr(sessions.get(sid), "session_type", None) in DISPLAY_SESSION_TYPES
         }
 
     def _compute_session_length_breakdown(self, attendees: list[Any], total: int) -> list[SessionLengthBreakdown]:

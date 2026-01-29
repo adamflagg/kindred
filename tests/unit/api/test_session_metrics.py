@@ -2,10 +2,12 @@
 TDD tests for session metrics utility module.
 
 Tests for:
-- SUMMER_PROGRAM_SESSION_TYPES constant includes quest sessions
+- DISPLAY_SESSION_TYPES constant for UI display (excludes quest)
+- SUMMER_PROGRAM_SESSION_TYPES constant for calculations (includes quest)
 - compute_summer_metrics() correctly filters by session type
-- Quest sessions ARE included in summer metrics
-- Family camp, training, tli, etc. ARE excluded
+- Quest sessions ARE included in summer metrics calculations
+- Quest sessions are EXCLUDED from session breakdown charts
+- Family camp, training, tli, etc. ARE excluded from both
 
 These tests are written FIRST before implementation (TDD).
 """
@@ -66,8 +68,58 @@ def create_mock_attendee(
 # ============================================================================
 
 
+class TestDisplaySessionTypesConstant:
+    """Tests for DISPLAY_SESSION_TYPES constant (used for UI display)."""
+
+    def test_display_types_includes_main_sessions(self) -> None:
+        """Main sessions should be included in display types."""
+        from api.utils.session_metrics import DISPLAY_SESSION_TYPES
+
+        assert "main" in DISPLAY_SESSION_TYPES
+
+    def test_display_types_includes_embedded_sessions(self) -> None:
+        """Embedded sessions (2a, 2b, etc.) should be included in display."""
+        from api.utils.session_metrics import DISPLAY_SESSION_TYPES
+
+        assert "embedded" in DISPLAY_SESSION_TYPES
+
+    def test_display_types_includes_ag_sessions(self) -> None:
+        """All-gender sessions should be included in display."""
+        from api.utils.session_metrics import DISPLAY_SESSION_TYPES
+
+        assert "ag" in DISPLAY_SESSION_TYPES
+
+    def test_display_types_excludes_quest_sessions(self) -> None:
+        """Quest sessions should NOT be shown in session breakdown charts.
+
+        Quest sessions count toward summer years calculations but are not
+        shown in session dropdowns or breakdown charts.
+        """
+        from api.utils.session_metrics import DISPLAY_SESSION_TYPES
+
+        assert "quest" not in DISPLAY_SESSION_TYPES
+
+    def test_display_types_excludes_family_sessions(self) -> None:
+        """Family camp sessions should NOT be in display types."""
+        from api.utils.session_metrics import DISPLAY_SESSION_TYPES
+
+        assert "family" not in DISPLAY_SESSION_TYPES
+
+    def test_display_types_excludes_training_sessions(self) -> None:
+        """Training sessions should NOT be in display types."""
+        from api.utils.session_metrics import DISPLAY_SESSION_TYPES
+
+        assert "training" not in DISPLAY_SESSION_TYPES
+
+    def test_display_types_is_tuple(self) -> None:
+        """Display types should be a tuple for efficient 'in' checks."""
+        from api.utils.session_metrics import DISPLAY_SESSION_TYPES
+
+        assert isinstance(DISPLAY_SESSION_TYPES, tuple)
+
+
 class TestSummerProgramSessionTypesConstant:
-    """Tests for SUMMER_PROGRAM_SESSION_TYPES constant."""
+    """Tests for SUMMER_PROGRAM_SESSION_TYPES constant (used for calculations)."""
 
     def test_constant_includes_main_sessions(self) -> None:
         """Main sessions should be included in summer program types."""
@@ -90,8 +142,9 @@ class TestSummerProgramSessionTypesConstant:
     def test_constant_includes_quest_sessions(self) -> None:
         """Quest sessions should be included in summer program types.
 
-        This is the main fix - quest sessions are child-oriented summer
-        programs that CampMinder counts toward 'years at camp'.
+        Quest sessions are child-oriented summer programs that CampMinder
+        counts toward 'years at camp'. They count for calculations but
+        are not shown in session breakdown UI.
         """
         from api.utils.session_metrics import SUMMER_PROGRAM_SESSION_TYPES
 
@@ -120,6 +173,29 @@ class TestSummerProgramSessionTypesConstant:
         from api.utils.session_metrics import SUMMER_PROGRAM_SESSION_TYPES
 
         assert isinstance(SUMMER_PROGRAM_SESSION_TYPES, tuple)
+
+
+class TestConstantRelationship:
+    """Tests verifying the relationship between the two constants."""
+
+    def test_display_types_is_subset_of_summer_types(self) -> None:
+        """DISPLAY_SESSION_TYPES should be a subset of SUMMER_PROGRAM_SESSION_TYPES.
+
+        Everything displayed should also count toward summer metrics.
+        """
+        from api.utils.session_metrics import DISPLAY_SESSION_TYPES, SUMMER_PROGRAM_SESSION_TYPES
+
+        assert set(DISPLAY_SESSION_TYPES).issubset(set(SUMMER_PROGRAM_SESSION_TYPES))
+
+    def test_quest_is_the_difference(self) -> None:
+        """Quest should be the only difference between the two constants.
+
+        SUMMER_PROGRAM_SESSION_TYPES - DISPLAY_SESSION_TYPES = {'quest'}
+        """
+        from api.utils.session_metrics import DISPLAY_SESSION_TYPES, SUMMER_PROGRAM_SESSION_TYPES
+
+        difference = set(SUMMER_PROGRAM_SESSION_TYPES) - set(DISPLAY_SESSION_TYPES)
+        assert difference == {"quest"}
 
 
 # ============================================================================
@@ -348,34 +424,65 @@ class TestComputeSummerMetrics:
 
 
 # ============================================================================
-# Integration with Registration Service Tests
+# Session Breakdown Display Tests (Uses DISPLAY_SESSION_TYPES)
 # ============================================================================
 
 
-class TestRegistrationServiceUsesSharedConstant:
-    """Tests verifying registration_service uses the shared constant."""
+class TestSessionBreakdownUsesDisplayTypes:
+    """Tests verifying session breakdowns use DISPLAY_SESSION_TYPES.
 
-    def test_session_breakdown_includes_quest(self) -> None:
-        """Session breakdown filtering should include quest sessions.
+    Session breakdown charts should NOT include quest sessions - they should
+    use DISPLAY_SESSION_TYPES which excludes quest.
+    """
 
-        The _merge_ag_into_parent_sessions method filters to summer session
-        types - it should include quest.
+    def test_display_types_excludes_quest_for_session_breakdown(self) -> None:
+        """Session breakdown should use DISPLAY_SESSION_TYPES which excludes quest.
+
+        The _merge_ag_into_parent_sessions method in registration_service and
+        _build_session_breakdown in retention_service should filter to
+        DISPLAY_SESSION_TYPES, not SUMMER_PROGRAM_SESSION_TYPES.
+        """
+        from api.utils.session_metrics import DISPLAY_SESSION_TYPES
+
+        # Quest should NOT be in the constant used for session breakdown display
+        assert "quest" not in DISPLAY_SESSION_TYPES
+
+    def test_main_and_embedded_in_display_types(self) -> None:
+        """Main and embedded sessions should appear in session breakdown."""
+        from api.utils.session_metrics import DISPLAY_SESSION_TYPES
+
+        assert "main" in DISPLAY_SESSION_TYPES
+        assert "embedded" in DISPLAY_SESSION_TYPES
+
+
+# ============================================================================
+# Summer Metrics Calculation Tests (Uses SUMMER_PROGRAM_SESSION_TYPES)
+# ============================================================================
+
+
+class TestSummerMetricsUsesAllTypes:
+    """Tests verifying summer metrics calculations include quest.
+
+    'Summers at Camp' and 'First Summer Year' calculations should include
+    quest sessions using SUMMER_PROGRAM_SESSION_TYPES.
+    """
+
+    def test_summer_types_includes_quest_for_calculations(self) -> None:
+        """Summer metrics calculations should include quest sessions.
+
+        The compute_summer_metrics function and _compute_summer_metrics in
+        retention_service should use SUMMER_PROGRAM_SESSION_TYPES.
         """
         from api.utils.session_metrics import SUMMER_PROGRAM_SESSION_TYPES
 
-        # Quest should be in the constant used for filtering
+        # Quest SHOULD be in the constant used for summer calculations
         assert "quest" in SUMMER_PROGRAM_SESSION_TYPES
 
-        # This verifies the constant is correct - the service integration
-        # test would verify it's actually used
-
-
-class TestRetentionServiceUsesSharedConstant:
-    """Tests verifying retention_service uses the shared constant."""
-
-    def test_retention_session_breakdown_includes_quest(self) -> None:
-        """Retention session breakdown should include quest sessions."""
+    def test_all_summer_types_in_calculation_constant(self) -> None:
+        """All four summer types should be counted in summer metrics."""
         from api.utils.session_metrics import SUMMER_PROGRAM_SESSION_TYPES
 
-        # Same constant should be used for retention
+        assert "main" in SUMMER_PROGRAM_SESSION_TYPES
+        assert "embedded" in SUMMER_PROGRAM_SESSION_TYPES
+        assert "ag" in SUMMER_PROGRAM_SESSION_TYPES
         assert "quest" in SUMMER_PROGRAM_SESSION_TYPES

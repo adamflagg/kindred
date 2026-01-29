@@ -8,7 +8,25 @@ from __future__ import annotations
 
 from typing import Any
 
+# Session types for UI display: session dropdowns, session breakdown charts
+# These are sessions that appear in user-facing session selection.
+#
+# Includes:
+# - main: Standard sessions (Session 1, 2, 3, 4)
+# - embedded: Standalone partial sessions (2a, 2b, 3a, etc.)
+# - ag: All-Gender sessions (displayed merged into parent main session)
+#
+# Excludes:
+# - quest: Quest sessions count toward history but don't appear in breakdowns
+# - family: Family camp (adult-focused, separate program)
+# - training: Staff training sessions
+# - tli: Teen Leadership Initiative (different program)
+DISPLAY_SESSION_TYPES = ("main", "embedded", "ag")
+
 # Session types that count toward "summers at camp" / "years as camper"
+# Used for metrics calculations: "Summers at Camp", "First Summer Year".
+# Quest counts toward camper history to match CampMinder's years_at_camp.
+#
 # Includes:
 # - main: Standard sessions (Session 1, 2, 3, 4)
 # - embedded: Standalone partial sessions (2a, 2b, 3a, etc.)

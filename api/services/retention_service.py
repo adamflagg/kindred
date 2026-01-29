@@ -23,7 +23,7 @@ from api.schemas.metrics import (
     RetentionByYearsAtCamp,
     RetentionMetricsResponse,
 )
-from api.utils.session_metrics import SUMMER_PROGRAM_SESSION_TYPES
+from api.utils.session_metrics import DISPLAY_SESSION_TYPES, SUMMER_PROGRAM_SESSION_TYPES
 
 from .breakdown_calculator import compute_breakdown, safe_rate
 from .extractors import (
@@ -351,14 +351,15 @@ class RetentionService:
                 if pid in returned_ids:
                     session_stats[target_sid]["returned"] += 1
 
-        # Build response, filtering to main/embedded sessions only
+        # Build response, filtering to display session types only (excludes quest)
+        # Quest sessions count toward summer metrics but don't appear in session breakdowns
         result = []
         for sid, stats in sorted(session_stats.items()):
             session = sessions.get(sid)
             if not session:
                 continue
             session_type = getattr(session, "session_type", None)
-            if session_type not in SUMMER_PROGRAM_SESSION_TYPES:
+            if session_type not in DISPLAY_SESSION_TYPES:
                 continue
 
             result.append(
