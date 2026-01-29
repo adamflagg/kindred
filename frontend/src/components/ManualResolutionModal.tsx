@@ -88,7 +88,8 @@ export default function ManualResolutionModal({
           first_name: person.first_name,
           last_name: person.last_name,
           preferred_name: person.preferred_name,
-          age: person.birthdate ? calculateAge(person.birthdate) : 0,
+          age: person.age ?? (person.birthdate ? calculateAge(person.birthdate) : 0),
+          birthdate: person.birthdate,
           grade: person.grade || 0,
           gender: (person.gender || 'NB') as 'M' | 'F' | 'NB',
           session_cm_id: sessionId,
@@ -250,7 +251,7 @@ export default function ManualResolutionModal({
                     <div>
                       <div className="font-medium">{formatCamperName(camper)}</div>
                       <div className="text-sm text-muted-foreground mt-1">
-                        Age {(getDisplayAgeForYear(camper, year) ?? 0).toFixed(1)} • Grade {camper.grade} • {camper.gender}
+                        Age {(getDisplayAgeForYear(camper, year) ?? 0).toFixed(2)} • Grade {camper.grade} • {camper.gender}
                       </div>
                     </div>
                     {selectedCamperId === camper.person_cm_id && (

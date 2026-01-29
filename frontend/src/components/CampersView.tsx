@@ -339,7 +339,7 @@ export default function CampersView({ sessionId: _sessionId, session: _session, 
                         </div>
                         <div className="flex items-center gap-2 mt-1 flex-wrap">
                           <span className="text-sm text-stone-500 dark:text-muted-foreground">
-                            Grade {camper.grade} · {(getDisplayAgeForYear(camper, currentYear) ?? 0).toFixed(1)} yrs · {camper.gender === 'M' ? 'Boy' : camper.gender === 'F' ? 'Girl' : camper.gender}
+                            Grade {camper.grade} · {(getDisplayAgeForYear(camper, currentYear) ?? 0).toFixed(2)} yrs · {camper.gender === 'M' ? 'Boy' : camper.gender === 'F' ? 'Girl' : camper.gender}
                           </span>
                           {genderIdentity && genderIdentity !== 'Unknown' && (
                             <span className={`text-xs px-1.5 py-0.5 rounded-full ${getGenderBadgeClasses(getGenderCategory(genderIdentity), genderIdentity)}`}>
