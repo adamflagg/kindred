@@ -8,7 +8,7 @@
  * - First summer year cohort analysis
  */
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useRegistrationMetrics } from '../../hooks/useMetrics';
 import { useMetricsSessions } from '../../hooks/useMetricsSessions';
 import { MetricCard } from '../../components/metrics/MetricCard';
@@ -17,7 +17,7 @@ import { DemographicBreakdowns } from '../../components/metrics/DemographicBreak
 import { RegistrationSessionSelector } from '../../components/metrics/RegistrationSessionSelector';
 import { GenderByGradeChart } from '../../components/metrics/GenderByGradeChart';
 import { getSessionChartLabel } from '../../utils/sessionDisplay';
-import { sortSessionDataByName } from '../../utils/sessionUtils';
+import { buildSessionDateLookup, sortSessionDataByDate } from '../../utils/sessionUtils';
 import {
   transformGenderData,
   transformGradeData,
@@ -46,6 +46,12 @@ export function RegistrationTab({ year, sessionTypes }: RegistrationTabProps) {
 
   // Fetch sessions for dropdown
   const { data: sessions = [], isLoading: sessionsLoading } = useMetricsSessions(year);
+
+  // Build session date lookup for date-aware sorting
+  const sessionDateLookup = useMemo(
+    () => buildSessionDateLookup(sessions),
+    [sessions]
+  );
 
   // Fetch registration data with optional session filter
   const { data, isLoading, error } = useRegistrationMetrics(
@@ -84,7 +90,7 @@ export function RegistrationTab({ year, sessionTypes }: RegistrationTabProps) {
   // Transform data for charts using utility functions
   const genderChartData = transformGenderData(data.by_gender);
   const gradeChartData = transformGradeData(data.by_grade);
-  const sessionChartData = transformSessionData(data.by_session);
+  const sessionChartData = transformSessionData(data.by_session, sessionDateLookup);
   const sessionLengthData = transformSessionLengthData(data.by_session_length);
   const summerYearsData = transformSummerYearsData(data.by_summer_years);
   const firstSummerYearData = transformFirstSummerYearData(data.by_first_summer_year);
@@ -101,7 +107,7 @@ export function RegistrationTab({ year, sessionTypes }: RegistrationTabProps) {
         }));
 
   // Sort sessions for table (chart uses sorted version from transformSessionData)
-  const sortedBySession = sortSessionDataByName(data.by_session);
+  const sortedBySession = sortSessionDataByDate(data.by_session, sessionDateLookup);
 
   return (
     <div className="space-y-6">
@@ -235,7 +241,7 @@ export function RegistrationTab({ year, sessionTypes }: RegistrationTabProps) {
             <tbody>
               {sortedBySession.map((session, index) => (
                 <tr key={index} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
-                  <td className="px-4 py-3 font-medium text-foreground">{getSessionChartLabel(session.session_name)}</td>
+                  <td className="px-4 py-3 font-medium text-foreground">{getSessionChartLabel(session.session_name, undefined, sessionDateLookup)}</td>
                   <td className="px-4 py-3 text-right text-foreground">{session.count}</td>
                   <td className="px-4 py-3 text-right text-foreground">{session.capacity ?? '—'}</td>
                   <td className="px-4 py-3 text-right">

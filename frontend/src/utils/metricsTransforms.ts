@@ -6,7 +6,11 @@
  */
 
 import { getSessionChartLabel } from './sessionDisplay';
-import { sortSessionDataByName, sortPriorSessionData } from './sessionUtils';
+import {
+  sortSessionDataByDate,
+  sortPriorSessionDataByDate,
+  type SessionDateLookup,
+} from './sessionUtils';
 
 // ============================================================================
 // Common types
@@ -71,11 +75,14 @@ export interface SessionBreakdown {
   utilization: number | null;
 }
 
-export function transformSessionData(data: SessionBreakdown[] | undefined): ChartDataPoint[] {
+export function transformSessionData(
+  data: SessionBreakdown[] | undefined,
+  sessionDateLookup: SessionDateLookup
+): ChartDataPoint[] {
   if (!data?.length) return [];
-  const sorted = sortSessionDataByName(data);
+  const sorted = sortSessionDataByDate(data, sessionDateLookup);
   return sorted.map((s) => ({
-    name: getSessionChartLabel(s.session_name),
+    name: getSessionChartLabel(s.session_name, undefined, sessionDateLookup),
     value: s.count,
     percentage: s.utilization ?? 0,
   }));
@@ -161,12 +168,13 @@ export interface RetentionSessionBreakdown {
 }
 
 export function transformRetentionSessionData(
-  data: RetentionSessionBreakdown[] | undefined
+  data: RetentionSessionBreakdown[] | undefined,
+  sessionDateLookup: SessionDateLookup
 ): ChartDataPoint[] {
   if (!data?.length) return [];
-  const sorted = sortSessionDataByName(data);
+  const sorted = sortSessionDataByDate(data, sessionDateLookup);
   return sorted.map((s) => ({
-    name: getSessionChartLabel(s.session_name),
+    name: getSessionChartLabel(s.session_name, undefined, sessionDateLookup),
     value: s.returned_count,
     percentage: s.retention_rate * 100,
   }));
@@ -216,12 +224,13 @@ export interface PriorSessionBreakdown {
 }
 
 export function transformPriorSessionData(
-  data: PriorSessionBreakdown[] | undefined
+  data: PriorSessionBreakdown[] | undefined,
+  sessionDateLookup: SessionDateLookup
 ): ChartDataPoint[] {
   if (!data?.length) return [];
-  const sorted = sortPriorSessionData(data);
+  const sorted = sortPriorSessionDataByDate(data, sessionDateLookup);
   return sorted.map((s) => ({
-    name: getSessionChartLabel(s.prior_session),
+    name: getSessionChartLabel(s.prior_session, undefined, sessionDateLookup),
     value: s.returned_count,
     percentage: s.retention_rate * 100,
   }));

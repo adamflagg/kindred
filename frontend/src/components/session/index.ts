@@ -7,7 +7,7 @@ export { default as SessionHeader, type SessionHeaderProps } from './SessionHead
 // Re-export session utilities for backward compatibility
 export {
   parseSessionName,
-  sortSessionsLogically,
+  sortSessionsByDate,
   filterSelectableSessions,
 } from '../../utils/sessionUtils';
 

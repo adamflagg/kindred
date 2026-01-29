@@ -94,10 +94,18 @@ export function parseSessionName(name: string): [number, string] {
 }
 
 /**
- * Sort sessions in logical order: 1, 2, 2a, 2b, 3, 3a, 3b, 4, etc.
+ * Sort sessions by start_date.
+ * For sessions with the same date, falls back to name-based sorting.
  */
-export function sortSessionsLogically<T extends { name: string }>(sessions: T[]): T[] {
+export function sortSessionsByDate<T extends { name: string; start_date: string }>(
+  sessions: T[]
+): T[] {
   return [...sessions].sort((a, b) => {
+    // Primary: sort by start_date
+    const dateCompare = a.start_date.localeCompare(b.start_date);
+    if (dateCompare !== 0) return dateCompare;
+
+    // Tiebreaker: sort by name (number then suffix)
     const [numA, suffixA] = parseSessionName(a.name);
     const [numB, suffixB] = parseSessionName(b.name);
     if (numA !== numB) return numA - numB;
@@ -140,4 +148,79 @@ export function sortPriorSessionData<T extends { prior_session: string }>(data: 
     if (numA !== numB) return numA - numB;
     return suffixA.localeCompare(suffixB);
   });
+}
+
+/**
+ * Lookup map from session name to start date string (ISO format).
+ * Used for date-aware sorting in metrics charts.
+ */
+export interface SessionDateLookup {
+  [sessionName: string]: string;
+}
+
+/**
+ * Build a lookup map from session name to start_date.
+ * Used to enable date-based sorting for session data in metrics.
+ */
+export function buildSessionDateLookup(
+  sessions: { name: string; start_date: string }[]
+): SessionDateLookup {
+  const lookup: SessionDateLookup = {};
+  for (const session of sessions) {
+    lookup[session.name] = session.start_date;
+  }
+  return lookup;
+}
+
+/**
+ * Compare two session names using date lookup with name-based fallback.
+ * Returns negative if a < b, positive if a > b, 0 if equal.
+ */
+function compareByDateThenName(
+  nameA: string,
+  nameB: string,
+  dateLookup: SessionDateLookup
+): number {
+  const dateA = dateLookup[nameA];
+  const dateB = dateLookup[nameB];
+
+  // If both have dates, compare by date first
+  if (dateA && dateB) {
+    const dateCompare = dateA.localeCompare(dateB);
+    if (dateCompare !== 0) return dateCompare;
+  }
+
+  // Fall back to name-based sorting (as tiebreaker or when dates unavailable)
+  const [numA, suffixA] = parseSessionName(nameA);
+  const [numB, suffixB] = parseSessionName(nameB);
+  if (numA !== numB) return numA - numB;
+  return suffixA.localeCompare(suffixB);
+}
+
+/**
+ * Sort session data by date (primary) with name-based sorting as tiebreaker.
+ * Uses the date lookup to determine chronological order.
+ * Works with API response types that have session_name field.
+ */
+export function sortSessionDataByDate<T extends { session_name: string }>(
+  data: T[],
+  dateLookup: SessionDateLookup
+): T[] {
+  return [...data].sort((a, b) =>
+    compareByDateThenName(a.session_name, b.session_name, dateLookup)
+  );
+}
+
+/**
+ * Sort prior session data by date (primary) with name-based sorting as tiebreaker.
+ * Uses the date lookup to determine chronological order.
+ * Works with retention API response that has prior_session field.
+ */
+export function sortPriorSessionDataByDate<T extends { prior_session: string }>(
+  data: T[],
+  dateLookup: SessionDateLookup
+): T[] {
+  return [...data].sort((a, b) =>
+    compareByDateThenName(a.prior_session, b.prior_session, dateLookup)
+  );
 }
