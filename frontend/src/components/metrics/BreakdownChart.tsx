@@ -125,9 +125,9 @@ export function BreakdownChart({
               type="category"
               dataKey="name"
               className="text-xs"
-              width={120}
+              width={130}
               tick={{ fill: 'hsl(var(--muted-foreground))', style: { whiteSpace: 'nowrap' } }}
-              tickFormatter={(value: string) => value.length > 14 ? `${value.slice(0, 12)}…` : value}
+              tickFormatter={(value: string) => value.length > 18 ? `${value.slice(0, 16)}…` : value}
             />
             <Tooltip content={<CustomTooltip />} />
             <Bar dataKey="value" fill={COLORS[0]} radius={[0, 4, 4, 0]}>
