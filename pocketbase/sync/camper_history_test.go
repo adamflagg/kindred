@@ -1302,7 +1302,7 @@ func TestCamperHistorySessionTypesFilteringSummerOnly(t *testing.T) {
 
 	// Verify family camp is excluded
 	for _, r := range filtered {
-		if r.SessionTypes == "family" {
+		if r.SessionTypes == sessionTypeFamily {
 			t.Error("family session type should be excluded")
 		}
 	}
