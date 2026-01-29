@@ -15,9 +15,10 @@ import (
 
 // Session type constants
 const (
-	sessionTypeMain   = "main"
-	sessionTypeAdult  = "adult"
-	sessionTypeFamily = "family"
+	sessionTypeMain     = "main"
+	sessionTypeAdult    = "adult"
+	sessionTypeFamily   = "family"
+	sessionTypeEmbedded = "embedded"
 )
 
 // Service name constant
@@ -453,7 +454,7 @@ func (s *SessionsSync) reclassifyOverlappingSessions(
 		// AG, family, and other types are exempt
 		var candidates []*sessionOverlapInfo
 		for _, info := range sessions {
-			if info.sessionType == "main" || info.sessionType == "embedded" {
+			if info.sessionType == sessionTypeMain || info.sessionType == sessionTypeEmbedded {
 				candidates = append(candidates, info)
 			}
 		}
@@ -468,11 +469,11 @@ func (s *SessionsSync) reclassifyOverlappingSessions(
 
 		// First candidate is the primary (stays or becomes main)
 		primary := candidates[0]
-		correctedTypes[primary.cmID] = "main"
+		correctedTypes[primary.cmID] = sessionTypeMain
 
 		// All others become embedded with parent_id pointing to primary
 		for _, info := range candidates[1:] {
-			correctedTypes[info.cmID] = "embedded"
+			correctedTypes[info.cmID] = sessionTypeEmbedded
 			parentIDs[info.cmID] = primary.cmID
 		}
 	}
@@ -531,7 +532,7 @@ func (s *SessionsSync) getSessionTypeFromName(sessionName string) string {
 
 	// Embedded sessions (e.g., "Session 2a", "Session 3b")
 	if matched, _ := regexp.MatchString(`session \d[ab]`, nameLower); matched {
-		return "embedded"
+		return sessionTypeEmbedded
 	}
 
 	// All-gender sessions

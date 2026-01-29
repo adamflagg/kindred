@@ -120,7 +120,7 @@ func TestTransformSessionExtractsAllFields(t *testing.T) {
 
 	// No parent sessions for this test (empty maps)
 	mainSessions := make(map[string]int)
-	overrideTypes := map[int]string{12345: "main"} // Provide expected type
+	overrideTypes := map[int]string{12345: sessionTypeMain} // Provide expected type
 	overrideParents := make(map[int]int)
 
 	pbData, err := s.transformSessionToPBWithParent(sessionData, mainSessions, overrideTypes, overrideParents)
@@ -138,7 +138,7 @@ func TestTransformSessionExtractsAllFields(t *testing.T) {
 	if got, want := pbData["year"].(int), 2025; got != want {
 		t.Errorf("year = %d, want %d", got, want)
 	}
-	if got, want := pbData["session_type"].(string), "main"; got != want {
+	if got, want := pbData["session_type"].(string), sessionTypeMain; got != want {
 		t.Errorf("session_type = %q, want %q", got, want)
 	}
 
@@ -192,7 +192,7 @@ func TestTransformSessionHandlesMissingFields(t *testing.T) {
 	}
 
 	mainSessions := make(map[string]int)
-	overrideTypes := map[int]string{12345: "main"}
+	overrideTypes := map[int]string{12345: sessionTypeMain}
 	overrideParents := make(map[int]int)
 
 	pbData, err := s.transformSessionToPBWithParent(sessionData, mainSessions, overrideTypes, overrideParents)
@@ -252,7 +252,7 @@ func TestTransformSessionHandlesNullFields(t *testing.T) {
 	}
 
 	mainSessions := make(map[string]int)
-	overrideTypes := map[int]string{12345: "main"}
+	overrideTypes := map[int]string{12345: sessionTypeMain}
 	overrideParents := make(map[int]int)
 
 	pbData, err := s.transformSessionToPBWithParent(sessionData, mainSessions, overrideTypes, overrideParents)
@@ -295,20 +295,20 @@ func TestReclassifyOverlappingSessions_SharedStartDate(t *testing.T) {
 
 	// Initial types from name-based classification
 	initialTypes := map[int]string{
-		1001: "main", // Session 2
-		1002: "main", // Taste of Camp 2 matches "taste of camp" -> main
+		1001: sessionTypeMain, // Session 2
+		1002: sessionTypeMain, // Taste of Camp 2 matches "taste of camp" -> main
 	}
 
 	correctedTypes, parentIDs := s.reclassifyOverlappingSessions(sessions, initialTypes)
 
 	// Session 2 should stay main (longest duration)
-	if correctedTypes[1001] != "main" {
-		t.Errorf("Session 2 type = %q, want %q", correctedTypes[1001], "main")
+	if correctedTypes[1001] != sessionTypeMain {
+		t.Errorf("Session 2 type = %q, want %q", correctedTypes[1001], sessionTypeMain)
 	}
 
 	// Taste of Camp 2 should become embedded
-	if correctedTypes[1002] != "embedded" {
-		t.Errorf("Taste of Camp 2 type = %q, want %q", correctedTypes[1002], "embedded")
+	if correctedTypes[1002] != sessionTypeEmbedded {
+		t.Errorf("Taste of Camp 2 type = %q, want %q", correctedTypes[1002], sessionTypeEmbedded)
 	}
 
 	// Taste of Camp 2 should have parent_id = Session 2's cm_id
@@ -346,20 +346,20 @@ func TestReclassifyOverlappingSessions_SharedEndDate(t *testing.T) {
 
 	// Initial types - 3a is already embedded by name pattern
 	initialTypes := map[int]string{
-		2001: "main",     // Session 3
-		2002: "embedded", // Session 3a - already embedded by name pattern
+		2001: sessionTypeMain,     // Session 3
+		2002: sessionTypeEmbedded, // Session 3a - already embedded by name pattern
 	}
 
 	correctedTypes, parentIDs := s.reclassifyOverlappingSessions(sessions, initialTypes)
 
 	// Session 3 should stay main
-	if correctedTypes[2001] != "main" {
-		t.Errorf("Session 3 type = %q, want %q", correctedTypes[2001], "main")
+	if correctedTypes[2001] != sessionTypeMain {
+		t.Errorf("Session 3 type = %q, want %q", correctedTypes[2001], sessionTypeMain)
 	}
 
 	// Session 3a should stay embedded (already was)
-	if correctedTypes[2002] != "embedded" {
-		t.Errorf("Session 3a type = %q, want %q", correctedTypes[2002], "embedded")
+	if correctedTypes[2002] != sessionTypeEmbedded {
+		t.Errorf("Session 3a type = %q, want %q", correctedTypes[2002], sessionTypeEmbedded)
 	}
 
 	// Session 3a should get parent_id assigned since it shares end date with main session
@@ -389,15 +389,15 @@ func TestReclassifyOverlappingSessions_AGSessionsExempt(t *testing.T) {
 	}
 
 	initialTypes := map[int]string{
-		3001: "main",
+		3001: sessionTypeMain,
 		3002: "ag", // AG session
 	}
 
 	correctedTypes, parentIDs := s.reclassifyOverlappingSessions(sessions, initialTypes)
 
 	// Session 2 stays main
-	if correctedTypes[3001] != "main" {
-		t.Errorf("Session 2 type = %q, want %q", correctedTypes[3001], "main")
+	if correctedTypes[3001] != sessionTypeMain {
+		t.Errorf("Session 2 type = %q, want %q", correctedTypes[3001], sessionTypeMain)
 	}
 
 	// AG session stays ag (exempt from reclassification)
@@ -434,20 +434,20 @@ func TestReclassifyOverlappingSessions_EqualDurationAlphabetical(t *testing.T) {
 	}
 
 	initialTypes := map[int]string{
-		4001: "main", // Session A
-		4002: "main", // Session B
+		4001: sessionTypeMain, // Session A
+		4002: sessionTypeMain, // Session B
 	}
 
 	correctedTypes, parentIDs := s.reclassifyOverlappingSessions(sessions, initialTypes)
 
 	// Session A should stay main (alphabetically first)
-	if correctedTypes[4001] != "main" {
-		t.Errorf("Session A type = %q, want %q", correctedTypes[4001], "main")
+	if correctedTypes[4001] != sessionTypeMain {
+		t.Errorf("Session A type = %q, want %q", correctedTypes[4001], sessionTypeMain)
 	}
 
 	// Session B should become embedded
-	if correctedTypes[4002] != "embedded" {
-		t.Errorf("Session B type = %q, want %q", correctedTypes[4002], "embedded")
+	if correctedTypes[4002] != sessionTypeEmbedded {
+		t.Errorf("Session B type = %q, want %q", correctedTypes[4002], sessionTypeEmbedded)
 	}
 
 	// Session B should have parent_id = Session A's cm_id
@@ -484,26 +484,26 @@ func TestReclassifyOverlappingSessions_MultipleOverlaps(t *testing.T) {
 	}
 
 	initialTypes := map[int]string{
-		5001: "main",     // Session 2
-		5002: "main",     // Taste of Camp 2 (name pattern -> main)
-		5003: "embedded", // Session 2b (name pattern -> embedded)
+		5001: sessionTypeMain,     // Session 2
+		5002: sessionTypeMain,     // Taste of Camp 2 (name pattern -> main)
+		5003: sessionTypeEmbedded, // Session 2b (name pattern -> embedded)
 	}
 
 	correctedTypes, parentIDs := s.reclassifyOverlappingSessions(sessions, initialTypes)
 
 	// Session 2 stays main (longest)
-	if correctedTypes[5001] != "main" {
-		t.Errorf("Session 2 type = %q, want %q", correctedTypes[5001], "main")
+	if correctedTypes[5001] != sessionTypeMain {
+		t.Errorf("Session 2 type = %q, want %q", correctedTypes[5001], sessionTypeMain)
 	}
 
 	// Taste of Camp 2 becomes embedded
-	if correctedTypes[5002] != "embedded" {
-		t.Errorf("Taste of Camp 2 type = %q, want %q", correctedTypes[5002], "embedded")
+	if correctedTypes[5002] != sessionTypeEmbedded {
+		t.Errorf("Taste of Camp 2 type = %q, want %q", correctedTypes[5002], sessionTypeEmbedded)
 	}
 
 	// Session 2b stays embedded (already was)
-	if correctedTypes[5003] != "embedded" {
-		t.Errorf("Session 2b type = %q, want %q", correctedTypes[5003], "embedded")
+	if correctedTypes[5003] != sessionTypeEmbedded {
+		t.Errorf("Session 2b type = %q, want %q", correctedTypes[5003], sessionTypeEmbedded)
 	}
 
 	// Both embedded sessions should have Session 2 as parent
@@ -536,18 +536,18 @@ func TestReclassifyOverlappingSessions_NoOverlap(t *testing.T) {
 	}
 
 	initialTypes := map[int]string{
-		6001: "main",
-		6002: "main",
+		6001: sessionTypeMain,
+		6002: sessionTypeMain,
 	}
 
 	correctedTypes, parentIDs := s.reclassifyOverlappingSessions(sessions, initialTypes)
 
 	// Both should stay main (no overlap)
-	if correctedTypes[6001] != "main" {
-		t.Errorf("Session 2 type = %q, want %q", correctedTypes[6001], "main")
+	if correctedTypes[6001] != sessionTypeMain {
+		t.Errorf("Session 2 type = %q, want %q", correctedTypes[6001], sessionTypeMain)
 	}
-	if correctedTypes[6002] != "main" {
-		t.Errorf("Session 3 type = %q, want %q", correctedTypes[6002], "main")
+	if correctedTypes[6002] != sessionTypeMain {
+		t.Errorf("Session 3 type = %q, want %q", correctedTypes[6002], sessionTypeMain)
 	}
 
 	// No parent IDs should be set
@@ -578,15 +578,15 @@ func TestReclassifyOverlappingSessions_NonMainUnchanged(t *testing.T) {
 	}
 
 	initialTypes := map[int]string{
-		7001: "main",
+		7001: sessionTypeMain,
 		7002: "family",
 	}
 
 	correctedTypes, parentIDs := s.reclassifyOverlappingSessions(sessions, initialTypes)
 
 	// Session 2 stays main
-	if correctedTypes[7001] != "main" {
-		t.Errorf("Session 2 type = %q, want %q", correctedTypes[7001], "main")
+	if correctedTypes[7001] != sessionTypeMain {
+		t.Errorf("Session 2 type = %q, want %q", correctedTypes[7001], sessionTypeMain)
 	}
 
 	// Family camp stays family (non-main types are exempt)
@@ -620,20 +620,20 @@ func TestReclassifyOverlappingSessions_MissingDates(t *testing.T) {
 	}
 
 	initialTypes := map[int]string{
-		8001: "main",
-		8002: "main",
+		8001: sessionTypeMain,
+		8002: sessionTypeMain,
 	}
 
 	correctedTypes, parentIDs := s.reclassifyOverlappingSessions(sessions, initialTypes)
 
 	// Session 2 stays main
-	if correctedTypes[8001] != "main" {
-		t.Errorf("Session 2 type = %q, want %q", correctedTypes[8001], "main")
+	if correctedTypes[8001] != sessionTypeMain {
+		t.Errorf("Session 2 type = %q, want %q", correctedTypes[8001], sessionTypeMain)
 	}
 
 	// No Dates Session keeps its original type (skipped)
-	if correctedTypes[8002] != "main" {
-		t.Errorf("No Dates Session type = %q, want %q", correctedTypes[8002], "main")
+	if correctedTypes[8002] != sessionTypeMain {
+		t.Errorf("No Dates Session type = %q, want %q", correctedTypes[8002], sessionTypeMain)
 	}
 
 	// No parent IDs
@@ -673,12 +673,12 @@ func TestGetSessionTypeFromName(t *testing.T) {
 		{
 			name:     "session 2a embedded",
 			input:    "Session 2a",
-			expected: "embedded",
+			expected: sessionTypeEmbedded,
 		},
 		{
 			name:     "session 3b embedded",
 			input:    "Session 3b",
-			expected: "embedded",
+			expected: sessionTypeEmbedded,
 		},
 		// AG sessions
 		{
