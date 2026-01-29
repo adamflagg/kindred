@@ -14,9 +14,6 @@ from __future__ import annotations
 
 from unittest.mock import Mock
 
-import pytest
-
-
 # ============================================================================
 # Test Data Factories
 # ============================================================================
@@ -142,12 +139,8 @@ class TestComputeSummerMetrics:
         from api.utils.session_metrics import compute_summer_metrics
 
         # Create quest session
-        quest_session = create_mock_session(
-            1001, "Quest Adventure Week", 2025, "quest", "2025-08-01", "2025-08-07"
-        )
-        main_session = create_mock_session(
-            2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05"
-        )
+        quest_session = create_mock_session(1001, "Quest Adventure Week", 2025, "quest", "2025-08-01", "2025-08-07")
+        main_session = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
 
         # Person 101: Quest in 2025, Main in 2026 = 2 summers
         enrollment_history = [
@@ -193,12 +186,8 @@ class TestComputeSummerMetrics:
         """
         from api.utils.session_metrics import compute_summer_metrics
 
-        family_session = create_mock_session(
-            5001, "Family Camp", 2025, "family", "2025-05-15", "2025-05-18"
-        )
-        main_session = create_mock_session(
-            2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05"
-        )
+        family_session = create_mock_session(5001, "Family Camp", 2025, "family", "2025-05-15", "2025-05-18")
+        main_session = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
 
         # Person 103: Family camp in 2025 (shouldn't count), Main in 2026
         enrollment_history = [

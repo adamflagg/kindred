@@ -23,6 +23,7 @@ from api.schemas.metrics import (
     RetentionByYearsAtCamp,
     RetentionMetricsResponse,
 )
+from api.utils.session_metrics import SUMMER_PROGRAM_SESSION_TYPES
 
 from .breakdown_calculator import compute_breakdown, safe_rate
 from .extractors import (
@@ -357,7 +358,7 @@ class RetentionService:
             if not session:
                 continue
             session_type = getattr(session, "session_type", None)
-            if session_type not in ("main", "embedded"):
+            if session_type not in SUMMER_PROGRAM_SESSION_TYPES:
                 continue
 
             result.append(
@@ -464,7 +465,7 @@ class RetentionService:
                 continue
 
             session_type = getattr(session, "session_type", None)
-            if session_type not in ("main", "embedded", "ag"):
+            if session_type not in SUMMER_PROGRAM_SESSION_TYPES:
                 continue
 
             if pid not in by_person:
