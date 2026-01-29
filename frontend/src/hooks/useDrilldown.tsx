@@ -19,6 +19,7 @@
  * <DrilldownModal />
  */
 
+import type { ReactElement } from 'react';
 import { useState, useCallback, useMemo } from 'react';
 import { DrillDownModal } from '../components/metrics/DrillDownModal';
 import type { DrilldownFilter } from '../types/metrics';
@@ -27,7 +28,7 @@ interface UseDrilldownOptions {
   /** The year for drilldown data */
   year: number;
   /** Optional session filter (CampMinder session ID) */
-  sessionCmId?: number;
+  sessionCmId?: number | undefined;
   /** Session types to include (e.g., ['main', 'embedded', 'ag']) */
   sessionTypes: string[];
   /** Status filter (e.g., ['enrolled']) */
@@ -42,7 +43,7 @@ interface UseDrilldownReturn {
   /** Clear filter to close modal */
   clearFilter: () => void;
   /** Modal component to render - returns null when filter is null */
-  DrilldownModal: () => JSX.Element | null;
+  DrilldownModal: () => ReactElement | null;
 }
 
 export function useDrilldown({
@@ -63,7 +64,7 @@ export function useDrilldown({
 
   // Memoize the modal component to prevent unnecessary re-renders
   const DrilldownModalComponent = useMemo(() => {
-    return function DrilldownModalWrapper(): JSX.Element | null {
+    return function DrilldownModalWrapper(): ReactElement | null {
       if (!filter) {
         return null;
       }

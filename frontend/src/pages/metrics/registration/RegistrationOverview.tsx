@@ -14,15 +14,14 @@ import { useState, useMemo } from 'react';
 import { useCurrentYear } from '../../../hooks/useCurrentYear';
 import { useRegistrationMetrics } from '../../../hooks/useMetrics';
 import { useMetricsSessions } from '../../../hooks/useMetricsSessions';
+import { useDrilldown } from '../../../hooks/useDrilldown';
 import { MetricCard } from '../../../components/metrics/MetricCard';
 import { BreakdownChart } from '../../../components/metrics/BreakdownChart';
 import { DemographicBreakdowns } from '../../../components/metrics/DemographicBreakdowns';
 import { RegistrationSessionSelector } from '../../../components/metrics/RegistrationSessionSelector';
 import { GenderByGradeChart } from '../../../components/metrics/GenderByGradeChart';
-import { DrillDownModal } from '../../../components/metrics/DrillDownModal';
 import { getSessionChartLabel } from '../../../utils/sessionDisplay';
 import { buildSessionDateLookup, sortSessionDataByDate } from '../../../utils/sessionUtils';
-import type { DrilldownFilter } from '../../../types/metrics';
 import {
   transformGenderData,
   transformGradeData,
@@ -42,13 +41,19 @@ export default function RegistrationOverview() {
 
   // Local state for session filter
   const [selectedSessionCmId, setSelectedSessionCmId] = useState<number | null>(null);
-  // State for drill-down modal
-  const [drilldownFilter, setDrilldownFilter] = useState<DrilldownFilter | null>(null);
 
   // Build session types param string
   const sessionTypesParam = DEFAULT_SESSION_TYPES.join(',');
   // Always use enrolled status only
   const statusesParam = 'enrolled';
+
+  // Drilldown state management
+  const { setFilter, DrilldownModal } = useDrilldown({
+    year: currentYear,
+    sessionCmId: selectedSessionCmId ?? undefined,
+    sessionTypes: DEFAULT_SESSION_TYPES,
+    statusFilter: [statusesParam],
+  });
 
   // Fetch sessions for dropdown
   const { data: sessions = [], isLoading: sessionsLoading } = useMetricsSessions(currentYear);
@@ -170,14 +175,14 @@ export default function RegistrationOverview() {
           showPercentage
           height={250}
           breakdownType="gender"
-          onSegmentClick={setDrilldownFilter}
+          onSegmentClick={setFilter}
         />
         {/* Gender by Grade stacked bar chart */}
         <GenderByGradeChart
           data={data.by_gender_grade ?? []}
           title="Gender by Grade"
           height={250}
-          onBarClick={setDrilldownFilter}
+          onBarClick={setFilter}
         />
       </div>
 
@@ -196,7 +201,7 @@ export default function RegistrationOverview() {
           type="bar"
           height={300}
           breakdownType="grade"
-          onSegmentClick={setDrilldownFilter}
+          onSegmentClick={setFilter}
         />
       </div>
 
@@ -208,7 +213,7 @@ export default function RegistrationOverview() {
           type="bar"
           height={350}
           breakdownType="session"
-          onSegmentClick={setDrilldownFilter}
+          onSegmentClick={setFilter}
         />
         <BreakdownChart
           title="Enrollment by Session Length"
@@ -226,7 +231,7 @@ export default function RegistrationOverview() {
           type="bar"
           height={300}
           breakdownType="years_at_camp"
-          onSegmentClick={setDrilldownFilter}
+          onSegmentClick={setFilter}
         />
         {firstSummerYearData.length > 0 && (
           <BreakdownChart
@@ -288,16 +293,7 @@ export default function RegistrationOverview() {
       </div>
 
       {/* Drill-down Modal */}
-      {drilldownFilter && (
-        <DrillDownModal
-          year={currentYear}
-          filter={drilldownFilter}
-          sessionCmId={selectedSessionCmId ?? undefined}
-          sessionTypes={DEFAULT_SESSION_TYPES}
-          statusFilter={[statusesParam]}
-          onClose={() => setDrilldownFilter(null)}
-        />
-      )}
+      <DrilldownModal />
     </div>
   );
 }
