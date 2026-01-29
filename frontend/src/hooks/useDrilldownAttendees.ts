@@ -12,9 +12,9 @@ import { queryKeys, syncDataOptions } from '../utils/queryKeys';
 interface UseDrilldownAttendeesOptions {
   year: number;
   filter: DrilldownFilter | null;
-  sessionCmId?: number;
-  sessionTypes?: string[];
-  statusFilter?: string[];
+  sessionCmId?: number | undefined;
+  sessionTypes?: string[] | undefined;
+  statusFilter?: string[] | undefined;
 }
 
 export function useDrilldownAttendees({
