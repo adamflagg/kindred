@@ -10,6 +10,7 @@ import type {
   BunkPlansResponse
 } from '../types/pocketbase-types';
 import type { Session } from '../types/app-types';
+import { sortSessionsByDate } from './sessionUtils';
 
 // Export type alias for sessions with type information
 export type SessionWithType = Session;
@@ -65,12 +66,8 @@ export function getDropdownSessions(
     DROPDOWN_SESSION_TYPES.includes(s.session_type as typeof DROPDOWN_SESSION_TYPES[number])
   );
 
-  // Sort by start_date, then by name for same-date sessions
-  return filteredSessions.sort((a, b) => {
-    const dateCompare = a.start_date.localeCompare(b.start_date);
-    if (dateCompare !== 0) return dateCompare;
-    return a.name.localeCompare(b.name);
-  });
+  // Sort using shared utility (date primary, then session number+suffix)
+  return sortSessionsByDate(filteredSessions);
 }
 
 /**
