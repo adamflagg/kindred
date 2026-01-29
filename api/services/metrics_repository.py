@@ -122,6 +122,9 @@ class MetricsRepository:
     ) -> list[Any]:
         """Fetch camper_history records for a given year.
 
+        V2: Uses direct PocketBase filtering on session_type (select field).
+        Each record has a single session_type, no comma-separated parsing needed.
+
         Args:
             year: The year to fetch records for.
             session_types: Optional list of session types to filter.
@@ -132,21 +135,15 @@ class MetricsRepository:
         try:
             filter_str = f"year = {year}"
 
+            # V2: Direct filter on session_type select field (no string parsing)
+            if session_types:
+                type_filter = " || ".join(f'session_type = "{t}"' for t in session_types)
+                filter_str = f"({filter_str}) && ({type_filter})"
+
             records = await asyncio.to_thread(
                 self.pb.collection("camper_history").get_full_list,
                 query_params={"filter": filter_str},
             )
-
-            # Filter by session_types if provided
-            if session_types:
-                filtered = []
-                for record in records:
-                    record_types = getattr(record, "session_types", "") or ""
-                    if record_types:
-                        record_type_list = [t.strip() for t in record_types.split(",")]
-                        if any(rt in session_types for rt in record_type_list):
-                            filtered.append(record)
-                return filtered
 
             return records
         except Exception as e:
@@ -190,17 +187,28 @@ class MetricsRepository:
         return all_results
 
     def build_history_by_person(self, records: list[Any]) -> dict[int, Any]:
-        """Build a dictionary mapping person_id to camper_history record.
+        """Build a dictionary mapping person_id to ONE camper_history record.
+
+        V2 Note: With per-session records, one person may have multiple records.
+        This method returns just one record per person (the first found), which is
+        sufficient for person-level demographics (school, city, gender, etc.) that
+        are the same across all sessions for a person.
+
+        For session-specific data (session_name, bunk_name), iterate over the full
+        records list instead of using this method.
 
         Args:
             records: List of camper_history records.
 
         Returns:
-            Dictionary mapping person_id (int) to record.
+            Dictionary mapping person_id (int) to one record (first found).
         """
         result: dict[int, Any] = {}
         for record in records:
             person_id = getattr(record, "person_id", None)
             if person_id is not None:
-                result[int(person_id)] = record
+                pid = int(person_id)
+                # Keep first record found (demographics are same across sessions)
+                if pid not in result:
+                    result[pid] = record
         return result
