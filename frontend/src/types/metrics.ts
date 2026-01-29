@@ -312,3 +312,27 @@ export interface RetentionTrendsResponse {
   by_grade_grouped?: RetentionTrendGradeBreakdown[];
   enrollment_by_year?: YearEnrollment[];
 }
+
+// Drilldown types (chart click-through)
+export interface DrilldownFilter {
+  type: 'session' | 'gender' | 'grade' | 'school' | 'years_at_camp' | 'status';
+  value: string;
+  label: string; // Display label for modal title
+}
+
+export interface DrilldownAttendee {
+  person_id: number;
+  first_name: string;
+  last_name: string;
+  preferred_name?: string;
+  grade?: number;
+  gender?: string;
+  age?: number;
+  school?: string;
+  city?: string;
+  years_at_camp?: number;
+  session_name: string;
+  session_cm_id: number;
+  status: string;
+  is_returning: boolean;
+}
