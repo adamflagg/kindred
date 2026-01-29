@@ -104,6 +104,24 @@ export const queryKeys = {
       : numYears || sessionTypes
         ? (['metrics', 'retention-trends', currentYear, numYears, sessionTypes] as const)
         : (['metrics', 'retention-trends', currentYear] as const),
+  drilldown: (
+    year: number,
+    breakdownType?: string,
+    breakdownValue?: string,
+    sessionCmId?: number,
+    sessionTypes?: string,
+    statusFilter?: string,
+  ) =>
+    [
+      'metrics',
+      'drilldown',
+      year,
+      breakdownType,
+      breakdownValue,
+      sessionCmId,
+      sessionTypes,
+      statusFilter,
+    ] as const,
 };
 
 /**

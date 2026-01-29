@@ -186,9 +186,9 @@ export function ComparisonBreakdownChart({
               type="category"
               dataKey="name"
               className="text-xs"
-              width={120}
+              width={130}
               tick={{ fill: 'hsl(var(--muted-foreground))' }}
-              tickFormatter={(value: string) => value.length > 14 ? `${value.slice(0, 12)}...` : value}
+              tickFormatter={(value: string) => value.length > 18 ? `${value.slice(0, 16)}...` : value}
             />
             <Tooltip content={<CustomTooltip />} />
             <Bar dataKey="value" name={String(currentYear)} fill={COLORS[0]} radius={[0, 4, 4, 0]}>

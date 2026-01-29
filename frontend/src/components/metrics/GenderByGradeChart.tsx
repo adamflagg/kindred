@@ -3,6 +3,7 @@
  *
  * Displays male/female/other counts for each grade level,
  * enabling comparison of gender distribution across grades.
+ * Supports drill-down: click a bar to see campers in that grade.
  */
 
 import {
@@ -16,7 +17,7 @@ import {
   Legend,
   LabelList,
 } from 'recharts';
-import type { GenderByGradeBreakdown } from '../../types/metrics';
+import type { GenderByGradeBreakdown, DrilldownFilter } from '../../types/metrics';
 
 // Gender-specific colors
 const COLORS = {
@@ -30,6 +31,8 @@ interface GenderByGradeChartProps {
   title?: string;
   height?: number;
   className?: string;
+  /** Callback when a bar is clicked - drills down by grade */
+  onBarClick?: (filter: DrilldownFilter) => void;
 }
 
 interface ChartDataItem {
@@ -46,7 +49,23 @@ export function GenderByGradeChart({
   title = 'Gender by Grade',
   height = 300,
   className = '',
+  onBarClick,
 }: GenderByGradeChartProps) {
+  const isClickable = !!onBarClick;
+
+  const handleClick = (item: ChartDataItem) => {
+    if (!onBarClick) return;
+
+    // Use 'null' string for unknown grade
+    const value = item.grade !== null ? String(item.grade) : 'null';
+
+    onBarClick({
+      type: 'grade',
+      value,
+      label: item.name,
+    });
+  };
+
   if (data.length === 0) {
     return (
       <div className={`card-lodge p-4 ${className}`}>
@@ -122,6 +141,11 @@ export function GenderByGradeChart({
             stackId="gender"
             fill={COLORS.male}
             radius={[0, 0, 0, 0]}
+            onClick={(barData) => {
+              const item = barData as unknown as ChartDataItem;
+              if (item?.name) handleClick(item);
+            }}
+            style={{ cursor: isClickable ? 'pointer' : undefined }}
           />
           <Bar
             dataKey="female"
@@ -129,6 +153,11 @@ export function GenderByGradeChart({
             stackId="gender"
             fill={COLORS.female}
             radius={[0, 0, 0, 0]}
+            onClick={(barData) => {
+              const item = barData as unknown as ChartDataItem;
+              if (item?.name) handleClick(item);
+            }}
+            style={{ cursor: isClickable ? 'pointer' : undefined }}
           />
           <Bar
             dataKey="other"
@@ -136,6 +165,11 @@ export function GenderByGradeChart({
             stackId="gender"
             fill={COLORS.other}
             radius={[4, 4, 0, 0]}
+            onClick={(barData) => {
+              const item = barData as unknown as ChartDataItem;
+              if (item?.name) handleClick(item);
+            }}
+            style={{ cursor: isClickable ? 'pointer' : undefined }}
           >
             <LabelList
               dataKey="total"
