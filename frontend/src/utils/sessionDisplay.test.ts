@@ -325,9 +325,10 @@ describe('sessionDisplay utilities', () => {
       expect(getSessionChartLabel('')).toBe('Unknown');
     });
 
-    it('should return "Taste of Camp" for taste sessions', () => {
+    it('should return taste session name as-is', () => {
       expect(getSessionChartLabel('Taste of Camp')).toBe('Taste of Camp');
-      expect(getSessionChartLabel('Taste of Camp 2025', 'taste')).toBe('Taste of Camp');
+      expect(getSessionChartLabel('Taste of Camp 2', 'taste')).toBe('Taste of Camp 2');
+      expect(getSessionChartLabel('Taste of Camp 2025', 'taste')).toBe('Taste of Camp 2025');
     });
 
     it('should abbreviate AG sessions and preserve grade ranges', () => {
@@ -391,22 +392,23 @@ describe('sessionDisplay utilities', () => {
   });
 
   describe('getSessionChartLabel with date lookup', () => {
-    it('should append date to Taste of Camp when date lookup provided', () => {
+    it('should return taste session name as-is, ignoring date lookup', () => {
       const dateLookup = {
         'Taste of Camp 1': '2026-06-01',
         'Taste of Camp 2': '2026-06-08',
       };
 
-      expect(getSessionChartLabel('Taste of Camp 1', undefined, dateLookup)).toBe('Taste of Camp (Jun 1)');
-      expect(getSessionChartLabel('Taste of Camp 2', undefined, dateLookup)).toBe('Taste of Camp (Jun 8)');
+      // Date lookup is ignored for Taste sessions - just return name as-is
+      expect(getSessionChartLabel('Taste of Camp 1', undefined, dateLookup)).toBe('Taste of Camp 1');
+      expect(getSessionChartLabel('Taste of Camp 2', undefined, dateLookup)).toBe('Taste of Camp 2');
     });
 
-    it('should append date when session name contains "taste" and date available', () => {
+    it('should not transform taste session names with date lookup', () => {
       const dateLookup = {
         'Taste of Camp': '2026-06-15',
       };
 
-      expect(getSessionChartLabel('Taste of Camp', 'taste', dateLookup)).toBe('Taste of Camp (Jun 15)');
+      expect(getSessionChartLabel('Taste of Camp', 'taste', dateLookup)).toBe('Taste of Camp');
     });
 
     it('should not append date to non-Taste sessions', () => {
@@ -419,20 +421,9 @@ describe('sessionDisplay utilities', () => {
       expect(getSessionChartLabel('Session 3', 'main', dateLookup)).toBe('Session 3');
     });
 
-    it('should not append date if date lookup is empty', () => {
-      expect(getSessionChartLabel('Taste of Camp', 'taste', {})).toBe('Taste of Camp');
-    });
-
-    it('should not append date if session not in lookup', () => {
-      const dateLookup = {
-        'Other Session': '2026-06-01',
-      };
-
-      expect(getSessionChartLabel('Taste of Camp', 'taste', dateLookup)).toBe('Taste of Camp');
-    });
-
     it('should work without date lookup (backward compatibility)', () => {
       expect(getSessionChartLabel('Taste of Camp')).toBe('Taste of Camp');
+      expect(getSessionChartLabel('Taste of Camp 2')).toBe('Taste of Camp 2');
       expect(getSessionChartLabel('Session 2')).toBe('Session 2');
     });
   });
