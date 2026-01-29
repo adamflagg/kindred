@@ -157,6 +157,55 @@ describe('Modal', () => {
       const closeButton = screen.getByRole('button', { name: /close/i });
       expect(closeButton).toBeInTheDocument();
     });
+
+    it('calls onClose when Escape key is pressed', () => {
+      const onClose = vi.fn();
+      render(
+        <Modal isOpen={true} onClose={onClose}>
+          <p>Modal content</p>
+        </Modal>
+      );
+
+      fireEvent.keyDown(document, { key: 'Escape' });
+
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not call onClose for other keys', () => {
+      const onClose = vi.fn();
+      render(
+        <Modal isOpen={true} onClose={onClose}>
+          <p>Modal content</p>
+        </Modal>
+      );
+
+      fireEvent.keyDown(document, { key: 'Enter' });
+      fireEvent.keyDown(document, { key: 'Tab' });
+      fireEvent.keyDown(document, { key: 'a' });
+
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('removes event listener when modal closes', () => {
+      const onClose = vi.fn();
+      const { rerender } = render(
+        <Modal isOpen={true} onClose={onClose}>
+          <p>Modal content</p>
+        </Modal>
+      );
+
+      // Close the modal
+      rerender(
+        <Modal isOpen={false} onClose={onClose}>
+          <p>Modal content</p>
+        </Modal>
+      );
+
+      // Escape key should not trigger onClose after modal is closed
+      fireEvent.keyDown(document, { key: 'Escape' });
+
+      expect(onClose).not.toHaveBeenCalled();
+    });
   });
 
   describe('custom header slot', () => {
