@@ -903,7 +903,7 @@ func handleCancelQueuedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	}
 
 	return e.JSON(http.StatusOK, map[string]interface{}{
-		"message": "Queued sync cancelled",
+		"message": "Queued sync canceled",
 		"id":      id,
 	})
 }

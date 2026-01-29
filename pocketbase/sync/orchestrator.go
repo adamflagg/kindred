@@ -995,7 +995,9 @@ func generateQueueID() string {
 // EnqueueUnifiedSync adds a unified sync request to the queue.
 // If a sync with the same year+service is already queued, returns the existing item.
 // Returns an error if the queue is full (max 5 items).
-func (o *Orchestrator) EnqueueUnifiedSync(year int, service string, includeCustomValues, debug bool, requestedBy string) (*QueuedSync, error) {
+func (o *Orchestrator) EnqueueUnifiedSync(
+	year int, service string, includeCustomValues, debug bool, requestedBy string,
+) (*QueuedSync, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
@@ -1026,7 +1028,8 @@ func (o *Orchestrator) EnqueueUnifiedSync(year int, service string, includeCusto
 	// Append to queue (FIFO)
 	o.pendingUnifiedSyncs = append(o.pendingUnifiedSyncs, qs)
 
-	slog.Info("Enqueued unified sync", "id", qs.ID, "year", year, "service", service, "position", len(o.pendingUnifiedSyncs))
+	slog.Info("Enqueued unified sync",
+		"id", qs.ID, "year", year, "service", service, "position", len(o.pendingUnifiedSyncs))
 
 	return &qs, nil
 }
@@ -1062,7 +1065,7 @@ func (o *Orchestrator) CancelQueuedSync(id string) bool {
 		if o.pendingUnifiedSyncs[i].ID == id {
 			// Remove item
 			o.pendingUnifiedSyncs = append(o.pendingUnifiedSyncs[:i], o.pendingUnifiedSyncs[i+1:]...)
-			slog.Info("Cancelled queued sync", "id", id)
+			slog.Info("Canceled queued sync", "id", id)
 			return true
 		}
 	}

@@ -14,7 +14,7 @@ export function useCancelQueuedSync() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sync-status-api'] });
-      toast.success('Queued sync cancelled', { duration: 3000 });
+      toast.success('Queued sync canceled', { duration: 3000 });
     },
     onError: (error) => {
       // Extract error message
