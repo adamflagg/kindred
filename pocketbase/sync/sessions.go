@@ -97,11 +97,17 @@ func (s *SessionsSync) Sync(ctx context.Context) error {
 	slog.Info("Fetched sessions from CampMinder", "count", len(sessions))
 	s.SyncSuccessful = true
 
-	// First, build maps for parent relationship calculation
-	sessionsByDates := make(map[string][]map[string]interface{})
-	mainSessions := make(map[string]int) // date key -> cm_id
+	// First pass: collect initial types from name-based classification
+	initialTypes := make(map[int]string)
+	mainSessions := make(map[string]int) // date key -> cm_id (for AG parent matching)
 
 	for _, sessionData := range sessions {
+		idFloat, ok := sessionData["ID"].(float64)
+		if !ok {
+			continue
+		}
+		cmID := int(idFloat)
+
 		// Parse dates for grouping
 		startDate := ""
 		endDate := ""
@@ -112,28 +118,49 @@ func (s *SessionsSync) Sync(ctx context.Context) error {
 			endDate = s.parseDate(endStr)
 		}
 
-		// Determine session type
+		// Determine session type from name
 		sessionName, _ := sessionData["Name"].(string)
 		sessionType := s.getSessionTypeFromName(sessionName)
+		initialTypes[cmID] = sessionType
 
-		// Store main sessions for parent lookup
+		// Store main sessions for AG parent lookup (requires exact date match)
 		if sessionType == sessionTypeMain && startDate != "" && endDate != "" {
 			dateKey := fmt.Sprintf("%s|%s", startDate, endDate)
-			if idFloat, ok := sessionData["ID"].(float64); ok {
-				mainSessions[dateKey] = int(idFloat)
-			}
-		}
-
-		// Store all sessions by date for parent matching
-		if startDate != "" {
-			sessionsByDates[startDate] = append(sessionsByDates[startDate], sessionData)
-		}
-		if endDate != "" && endDate != startDate {
-			sessionsByDates[endDate] = append(sessionsByDates[endDate], sessionData)
+			mainSessions[dateKey] = cmID
 		}
 	}
 
-	// Process each session with parent relationships calculated
+	// Second pass: reclassify overlapping sessions
+	// Sessions sharing start_date or end_date are reclassified so the longest stays "main"
+	correctedTypes, overrideParentIDs := s.reclassifyOverlappingSessions(sessions, initialTypes)
+
+	// Update mainSessions map with corrected types for AG parent matching
+	// (AG sessions need to find their parent among sessions that stayed "main")
+	mainSessions = make(map[string]int)
+	for _, sessionData := range sessions {
+		idFloat, ok := sessionData["ID"].(float64)
+		if !ok {
+			continue
+		}
+		cmID := int(idFloat)
+
+		if correctedTypes[cmID] == sessionTypeMain {
+			startDate := ""
+			endDate := ""
+			if startStr, ok := sessionData["StartDate"].(string); ok && startStr != "" {
+				startDate = s.parseDate(startStr)
+			}
+			if endStr, ok := sessionData["EndDate"].(string); ok && endStr != "" {
+				endDate = s.parseDate(endStr)
+			}
+			if startDate != "" && endDate != "" {
+				dateKey := fmt.Sprintf("%s|%s", startDate, endDate)
+				mainSessions[dateKey] = cmID
+			}
+		}
+	}
+
+	// Process each session with corrected types and parent relationships
 	for _, sessionData := range sessions {
 		select {
 		case <-ctx.Done():
@@ -141,8 +168,8 @@ func (s *SessionsSync) Sync(ctx context.Context) error {
 		default:
 		}
 
-		// Transform to PocketBase format with parent relationships
-		pbData, err := s.transformSessionToPBWithParent(sessionData, mainSessions)
+		// Transform to PocketBase format with corrected types and parent relationships
+		pbData, err := s.transformSessionToPBWithParent(sessionData, mainSessions, correctedTypes, overrideParentIDs)
 		if err != nil {
 			slog.Error("Error transforming session", "error", err)
 			s.Stats.Errors++
@@ -214,9 +241,14 @@ func (s *SessionsSync) Sync(ctx context.Context) error {
 }
 
 // transformSessionToPBWithParent transforms CampMinder session data to PocketBase format
+// It uses overrideTypes for the session_type (from date overlap detection) and
+// overrideParents for the parent_id (for embedded sessions from date overlap detection).
+// AG sessions still use mainSessions for parent lookup (exact date matching).
 func (s *SessionsSync) transformSessionToPBWithParent(
 	data map[string]interface{},
 	mainSessions map[string]int,
+	overrideTypes map[int]string,
+	overrideParents map[int]int,
 ) (map[string]interface{}, error) {
 	pbData := make(map[string]interface{})
 
@@ -252,15 +284,22 @@ func (s *SessionsSync) transformSessionToPBWithParent(
 		pbData["year"] = s.Client.GetSeasonID()
 	}
 
-	// Determine session_type directly from name
-	sessionType := s.getSessionTypeFromName(sessionName)
+	// Use overrideTypes if available (from date overlap detection), otherwise use name-based
+	sessionType := overrideTypes[sessionID]
+	if sessionType == "" {
+		sessionType = s.getSessionTypeFromName(sessionName)
+	}
 	pbData["session_type"] = sessionType
 
-	// Calculate parent_id for AG sessions only
-	// Embedded sessions are fully independent and do not have parent relationships
+	// Calculate parent_id
+	// Priority: 1) overrideParents (from date overlap detection for embedded sessions)
+	//           2) mainSessions (for AG sessions - exact date match)
 	parentID := 0
 
-	if sessionType == "ag" {
+	// Check override parents first (set by reclassifyOverlappingSessions for embedded sessions)
+	if overrideParent, exists := overrideParents[sessionID]; exists && overrideParent > 0 {
+		parentID = overrideParent
+	} else if sessionType == "ag" {
 		// AG sessions match parents with exact same start AND end dates
 		if startDate != "" && endDate != "" {
 			if mainID, exists := mainSessions[fmt.Sprintf("%s|%s", startDate, endDate)]; exists {
@@ -322,6 +361,165 @@ func (s *SessionsSync) parseDate(dateStr string) string {
 
 	// If parsing fails, return empty string
 	return ""
+}
+
+// sessionOverlapInfo holds information needed for date overlap analysis
+type sessionOverlapInfo struct {
+	cmID        int
+	name        string
+	startDate   string
+	endDate     string
+	duration    int // days
+	sessionType string
+}
+
+// reclassifyOverlappingSessions detects sessions sharing start or end dates and
+// reclassifies shorter ones as "embedded" with parent_id pointing to the primary.
+// Only sessions initially classified as "main" or "embedded" are considered for reclassification.
+// AG, family, and other non-main types are exempt.
+//
+// Business rule: When multiple non-AG sessions share a start_date OR end_date:
+// 1. The session with the longest duration is the "primary" (stays main)
+// 2. If durations are equal, alphabetically first name wins
+// 3. All others become "embedded" with parent_id set to the primary's cm_id
+func (s *SessionsSync) reclassifyOverlappingSessions(
+	sessions []map[string]interface{},
+	initialTypes map[int]string,
+) (correctedTypes map[int]string, parentIDs map[int]int) {
+	// Initialize output maps with input values
+	correctedTypes = make(map[int]string)
+	parentIDs = make(map[int]int)
+
+	for cmID, sessionType := range initialTypes {
+		correctedTypes[cmID] = sessionType
+		parentIDs[cmID] = 0
+	}
+
+	// Build session info list and date indexes
+	sessionInfos := make(map[int]*sessionOverlapInfo)
+	byStartDate := make(map[string][]*sessionOverlapInfo)
+	byEndDate := make(map[string][]*sessionOverlapInfo)
+
+	for _, sessionData := range sessions {
+		idFloat, ok := sessionData["ID"].(float64)
+		if !ok {
+			continue
+		}
+		cmID := int(idFloat)
+
+		name, _ := sessionData["Name"].(string)
+		startDateStr, _ := sessionData["StartDate"].(string)
+		endDateStr, _ := sessionData["EndDate"].(string)
+
+		// Parse dates using the existing parseDate function
+		startDate := s.parseDate(startDateStr)
+		endDate := s.parseDate(endDateStr)
+
+		// Skip sessions without valid dates
+		if startDate == "" || endDate == "" {
+			continue
+		}
+
+		// Calculate duration in days
+		duration := s.calculateDurationDays(startDate, endDate)
+
+		info := &sessionOverlapInfo{
+			cmID:        cmID,
+			name:        name,
+			startDate:   startDate,
+			endDate:     endDate,
+			duration:    duration,
+			sessionType: initialTypes[cmID],
+		}
+
+		sessionInfos[cmID] = info
+
+		// Index by dates
+		byStartDate[startDate] = append(byStartDate[startDate], info)
+		byEndDate[endDate] = append(byEndDate[endDate], info)
+	}
+
+	// Process date groups with overlaps
+	processedGroups := make(map[string]bool)
+
+	// Helper to process a group of sessions sharing a date
+	processDateGroup := func(sessions []*sessionOverlapInfo, groupKey string) {
+		if processedGroups[groupKey] {
+			return
+		}
+		processedGroups[groupKey] = true
+
+		// Filter to only sessions that could be reclassified (main or embedded)
+		// AG, family, and other types are exempt
+		var candidates []*sessionOverlapInfo
+		for _, info := range sessions {
+			if info.sessionType == "main" || info.sessionType == "embedded" {
+				candidates = append(candidates, info)
+			}
+		}
+
+		// Need at least 2 candidates to have an overlap
+		if len(candidates) < 2 {
+			return
+		}
+
+		// Sort by duration (desc), then by name (asc) for tie-breaking
+		sortSessionsByPriority(candidates)
+
+		// First candidate is the primary (stays or becomes main)
+		primary := candidates[0]
+		correctedTypes[primary.cmID] = "main"
+
+		// All others become embedded with parent_id pointing to primary
+		for _, info := range candidates[1:] {
+			correctedTypes[info.cmID] = "embedded"
+			parentIDs[info.cmID] = primary.cmID
+		}
+	}
+
+	// Process all start date groups
+	for startDate, sessions := range byStartDate {
+		processDateGroup(sessions, "start:"+startDate)
+	}
+
+	// Process all end date groups
+	for endDate, sessions := range byEndDate {
+		processDateGroup(sessions, "end:"+endDate)
+	}
+
+	return correctedTypes, parentIDs
+}
+
+// calculateDurationDays calculates the number of days between two parsed dates
+func (s *SessionsSync) calculateDurationDays(startDate, endDate string) int {
+	// Parse the dates (format: "2006-01-02 15:04:05Z")
+	start, err := time.Parse("2006-01-02 15:04:05Z", startDate)
+	if err != nil {
+		return 0
+	}
+	end, err := time.Parse("2006-01-02 15:04:05Z", endDate)
+	if err != nil {
+		return 0
+	}
+
+	return int(end.Sub(start).Hours() / 24)
+}
+
+// sortSessionsByPriority sorts sessions by duration (desc), then by name (asc)
+func sortSessionsByPriority(sessions []*sessionOverlapInfo) {
+	for i := 0; i < len(sessions)-1; i++ {
+		for j := i + 1; j < len(sessions); j++ {
+			// Sort by duration descending
+			if sessions[j].duration > sessions[i].duration {
+				sessions[i], sessions[j] = sessions[j], sessions[i]
+			} else if sessions[j].duration == sessions[i].duration {
+				// Tie-break by name ascending
+				if sessions[j].name < sessions[i].name {
+					sessions[i], sessions[j] = sessions[j], sessions[i]
+				}
+			}
+		}
+	}
 }
 
 // getSessionTypeFromName returns the session type based directly on the session name

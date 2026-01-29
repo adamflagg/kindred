@@ -118,10 +118,12 @@ func TestTransformSessionExtractsAllFields(t *testing.T) {
 		"GenderID":      float64(0),
 	}
 
-	// No parent sessions for this test (empty map)
+	// No parent sessions for this test (empty maps)
 	mainSessions := make(map[string]int)
+	overrideTypes := map[int]string{12345: "main"} // Provide expected type
+	overrideParents := make(map[int]int)
 
-	pbData, err := s.transformSessionToPBWithParent(sessionData, mainSessions)
+	pbData, err := s.transformSessionToPBWithParent(sessionData, mainSessions, overrideTypes, overrideParents)
 	if err != nil {
 		t.Fatalf("transformSessionToPBWithParent returned error: %v", err)
 	}
@@ -190,8 +192,10 @@ func TestTransformSessionHandlesMissingFields(t *testing.T) {
 	}
 
 	mainSessions := make(map[string]int)
+	overrideTypes := map[int]string{12345: "main"}
+	overrideParents := make(map[int]int)
 
-	pbData, err := s.transformSessionToPBWithParent(sessionData, mainSessions)
+	pbData, err := s.transformSessionToPBWithParent(sessionData, mainSessions, overrideTypes, overrideParents)
 	if err != nil {
 		t.Fatalf("transformSessionToPBWithParent returned error: %v", err)
 	}
@@ -248,8 +252,10 @@ func TestTransformSessionHandlesNullFields(t *testing.T) {
 	}
 
 	mainSessions := make(map[string]int)
+	overrideTypes := map[int]string{12345: "main"}
+	overrideParents := make(map[int]int)
 
-	pbData, err := s.transformSessionToPBWithParent(sessionData, mainSessions)
+	pbData, err := s.transformSessionToPBWithParent(sessionData, mainSessions, overrideTypes, overrideParents)
 	if err != nil {
 		t.Fatalf("transformSessionToPBWithParent returned error: %v", err)
 	}
@@ -262,6 +268,377 @@ func TestTransformSessionHandlesNullFields(t *testing.T) {
 	// Null fields should be nil in the result
 	if pbData["description"] != nil {
 		t.Errorf("description should be nil for null input, got %v", pbData["description"])
+	}
+}
+
+// TestReclassifyOverlappingSessions_SharedStartDate tests that sessions sharing a start date
+// are reclassified so the longer session stays "main" and shorter ones become "embedded"
+func TestReclassifyOverlappingSessions_SharedStartDate(t *testing.T) {
+	s := &SessionsSync{}
+
+	// Session 2 (June 15 - July 13) and Taste of Camp 2 (June 15 - June 20)
+	// Both share start date June 15, Session 2 is longer
+	sessions := []map[string]interface{}{
+		{
+			"ID":        float64(1001),
+			"Name":      "Session 2",
+			"StartDate": "2025-06-15T00:00:00Z",
+			"EndDate":   "2025-07-13T00:00:00Z",
+		},
+		{
+			"ID":        float64(1002),
+			"Name":      "Taste of Camp 2",
+			"StartDate": "2025-06-15T00:00:00Z",
+			"EndDate":   "2025-06-20T00:00:00Z",
+		},
+	}
+
+	// Initial types from name-based classification
+	initialTypes := map[int]string{
+		1001: "main", // Session 2
+		1002: "main", // Taste of Camp 2 matches "taste of camp" -> main
+	}
+
+	correctedTypes, parentIDs := s.reclassifyOverlappingSessions(sessions, initialTypes)
+
+	// Session 2 should stay main (longest duration)
+	if correctedTypes[1001] != "main" {
+		t.Errorf("Session 2 type = %q, want %q", correctedTypes[1001], "main")
+	}
+
+	// Taste of Camp 2 should become embedded
+	if correctedTypes[1002] != "embedded" {
+		t.Errorf("Taste of Camp 2 type = %q, want %q", correctedTypes[1002], "embedded")
+	}
+
+	// Taste of Camp 2 should have parent_id = Session 2's cm_id
+	if parentIDs[1002] != 1001 {
+		t.Errorf("Taste of Camp 2 parent_id = %d, want %d", parentIDs[1002], 1001)
+	}
+
+	// Session 2 should have no parent
+	if parentIDs[1001] != 0 {
+		t.Errorf("Session 2 parent_id = %d, want %d", parentIDs[1001], 0)
+	}
+}
+
+// TestReclassifyOverlappingSessions_SharedEndDate tests that sessions sharing an end date
+// are reclassified correctly
+func TestReclassifyOverlappingSessions_SharedEndDate(t *testing.T) {
+	s := &SessionsSync{}
+
+	// Session 3 (July 14 - Aug 10) and Session 3a (Aug 1 - Aug 10)
+	// Both share end date Aug 10, Session 3 is longer
+	sessions := []map[string]interface{}{
+		{
+			"ID":        float64(2001),
+			"Name":      "Session 3",
+			"StartDate": "2025-07-14T00:00:00Z",
+			"EndDate":   "2025-08-10T00:00:00Z",
+		},
+		{
+			"ID":        float64(2002),
+			"Name":      "Session 3a",
+			"StartDate": "2025-08-01T00:00:00Z",
+			"EndDate":   "2025-08-10T00:00:00Z",
+		},
+	}
+
+	// Initial types - 3a is already embedded by name pattern
+	initialTypes := map[int]string{
+		2001: "main",     // Session 3
+		2002: "embedded", // Session 3a - already embedded by name pattern
+	}
+
+	correctedTypes, parentIDs := s.reclassifyOverlappingSessions(sessions, initialTypes)
+
+	// Session 3 should stay main
+	if correctedTypes[2001] != "main" {
+		t.Errorf("Session 3 type = %q, want %q", correctedTypes[2001], "main")
+	}
+
+	// Session 3a should stay embedded (already was)
+	if correctedTypes[2002] != "embedded" {
+		t.Errorf("Session 3a type = %q, want %q", correctedTypes[2002], "embedded")
+	}
+
+	// Session 3a should get parent_id assigned since it shares end date with main session
+	if parentIDs[2002] != 2001 {
+		t.Errorf("Session 3a parent_id = %d, want %d", parentIDs[2002], 2001)
+	}
+}
+
+// TestReclassifyOverlappingSessions_AGSessionsExempt tests that AG sessions are never reclassified
+func TestReclassifyOverlappingSessions_AGSessionsExempt(t *testing.T) {
+	s := &SessionsSync{}
+
+	// AG session with same dates as main session
+	sessions := []map[string]interface{}{
+		{
+			"ID":        float64(3001),
+			"Name":      "Session 2",
+			"StartDate": "2025-06-15T00:00:00Z",
+			"EndDate":   "2025-07-13T00:00:00Z",
+		},
+		{
+			"ID":        float64(3002),
+			"Name":      "All-Gender Cabin-Session 2",
+			"StartDate": "2025-06-15T00:00:00Z",
+			"EndDate":   "2025-07-13T00:00:00Z",
+		},
+	}
+
+	initialTypes := map[int]string{
+		3001: "main",
+		3002: "ag", // AG session
+	}
+
+	correctedTypes, parentIDs := s.reclassifyOverlappingSessions(sessions, initialTypes)
+
+	// Session 2 stays main
+	if correctedTypes[3001] != "main" {
+		t.Errorf("Session 2 type = %q, want %q", correctedTypes[3001], "main")
+	}
+
+	// AG session stays ag (exempt from reclassification)
+	if correctedTypes[3002] != "ag" {
+		t.Errorf("AG session type = %q, want %q", correctedTypes[3002], "ag")
+	}
+
+	// Neither should have parent_id set by this function
+	// (AG parent_id is set separately in transformSessionToPBWithParent)
+	if parentIDs[3001] != 0 || parentIDs[3002] != 0 {
+		t.Errorf("Neither session should have parent_id from reclassification")
+	}
+}
+
+// TestReclassifyOverlappingSessions_EqualDurationAlphabetical tests that sessions with
+// equal duration are decided by alphabetical name (first stays main)
+func TestReclassifyOverlappingSessions_EqualDurationAlphabetical(t *testing.T) {
+	s := &SessionsSync{}
+
+	// "Session A" and "Session B" with identical dates
+	sessions := []map[string]interface{}{
+		{
+			"ID":        float64(4002),
+			"Name":      "Session B",
+			"StartDate": "2025-06-15T00:00:00Z",
+			"EndDate":   "2025-06-20T00:00:00Z",
+		},
+		{
+			"ID":        float64(4001),
+			"Name":      "Session A",
+			"StartDate": "2025-06-15T00:00:00Z",
+			"EndDate":   "2025-06-20T00:00:00Z",
+		},
+	}
+
+	initialTypes := map[int]string{
+		4001: "main", // Session A
+		4002: "main", // Session B
+	}
+
+	correctedTypes, parentIDs := s.reclassifyOverlappingSessions(sessions, initialTypes)
+
+	// Session A should stay main (alphabetically first)
+	if correctedTypes[4001] != "main" {
+		t.Errorf("Session A type = %q, want %q", correctedTypes[4001], "main")
+	}
+
+	// Session B should become embedded
+	if correctedTypes[4002] != "embedded" {
+		t.Errorf("Session B type = %q, want %q", correctedTypes[4002], "embedded")
+	}
+
+	// Session B should have parent_id = Session A's cm_id
+	if parentIDs[4002] != 4001 {
+		t.Errorf("Session B parent_id = %d, want %d", parentIDs[4002], 4001)
+	}
+}
+
+// TestReclassifyOverlappingSessions_MultipleOverlaps tests that multiple sessions sharing
+// a start date are all reclassified correctly
+func TestReclassifyOverlappingSessions_MultipleOverlaps(t *testing.T) {
+	s := &SessionsSync{}
+
+	// Session 2, ToC2, and Session 2b all share June 15 start
+	sessions := []map[string]interface{}{
+		{
+			"ID":        float64(5001),
+			"Name":      "Session 2",
+			"StartDate": "2025-06-15T00:00:00Z",
+			"EndDate":   "2025-07-13T00:00:00Z", // 28 days
+		},
+		{
+			"ID":        float64(5002),
+			"Name":      "Taste of Camp 2",
+			"StartDate": "2025-06-15T00:00:00Z",
+			"EndDate":   "2025-06-20T00:00:00Z", // 5 days
+		},
+		{
+			"ID":        float64(5003),
+			"Name":      "Session 2b",
+			"StartDate": "2025-06-15T00:00:00Z",
+			"EndDate":   "2025-06-25T00:00:00Z", // 10 days
+		},
+	}
+
+	initialTypes := map[int]string{
+		5001: "main",     // Session 2
+		5002: "main",     // Taste of Camp 2 (name pattern -> main)
+		5003: "embedded", // Session 2b (name pattern -> embedded)
+	}
+
+	correctedTypes, parentIDs := s.reclassifyOverlappingSessions(sessions, initialTypes)
+
+	// Session 2 stays main (longest)
+	if correctedTypes[5001] != "main" {
+		t.Errorf("Session 2 type = %q, want %q", correctedTypes[5001], "main")
+	}
+
+	// Taste of Camp 2 becomes embedded
+	if correctedTypes[5002] != "embedded" {
+		t.Errorf("Taste of Camp 2 type = %q, want %q", correctedTypes[5002], "embedded")
+	}
+
+	// Session 2b stays embedded (already was)
+	if correctedTypes[5003] != "embedded" {
+		t.Errorf("Session 2b type = %q, want %q", correctedTypes[5003], "embedded")
+	}
+
+	// Both embedded sessions should have Session 2 as parent
+	if parentIDs[5002] != 5001 {
+		t.Errorf("Taste of Camp 2 parent_id = %d, want %d", parentIDs[5002], 5001)
+	}
+	if parentIDs[5003] != 5001 {
+		t.Errorf("Session 2b parent_id = %d, want %d", parentIDs[5003], 5001)
+	}
+}
+
+// TestReclassifyOverlappingSessions_NoOverlap tests that sessions with unique dates
+// retain their original types
+func TestReclassifyOverlappingSessions_NoOverlap(t *testing.T) {
+	s := &SessionsSync{}
+
+	sessions := []map[string]interface{}{
+		{
+			"ID":        float64(6001),
+			"Name":      "Session 2",
+			"StartDate": "2025-06-15T00:00:00Z",
+			"EndDate":   "2025-07-13T00:00:00Z",
+		},
+		{
+			"ID":        float64(6002),
+			"Name":      "Session 3",
+			"StartDate": "2025-07-14T00:00:00Z",
+			"EndDate":   "2025-08-10T00:00:00Z",
+		},
+	}
+
+	initialTypes := map[int]string{
+		6001: "main",
+		6002: "main",
+	}
+
+	correctedTypes, parentIDs := s.reclassifyOverlappingSessions(sessions, initialTypes)
+
+	// Both should stay main (no overlap)
+	if correctedTypes[6001] != "main" {
+		t.Errorf("Session 2 type = %q, want %q", correctedTypes[6001], "main")
+	}
+	if correctedTypes[6002] != "main" {
+		t.Errorf("Session 3 type = %q, want %q", correctedTypes[6002], "main")
+	}
+
+	// No parent IDs should be set
+	if parentIDs[6001] != 0 || parentIDs[6002] != 0 {
+		t.Errorf("No parent IDs should be set when no overlap")
+	}
+}
+
+// TestReclassifyOverlappingSessions_NonMainUnchanged tests that non-main types
+// (family, tli, etc.) are not reclassified even if dates overlap
+func TestReclassifyOverlappingSessions_NonMainUnchanged(t *testing.T) {
+	s := &SessionsSync{}
+
+	// Family camp with same dates as a main session
+	sessions := []map[string]interface{}{
+		{
+			"ID":        float64(7001),
+			"Name":      "Session 2",
+			"StartDate": "2025-06-15T00:00:00Z",
+			"EndDate":   "2025-07-13T00:00:00Z",
+		},
+		{
+			"ID":        float64(7002),
+			"Name":      "Family Camp 1",
+			"StartDate": "2025-06-15T00:00:00Z",
+			"EndDate":   "2025-06-20T00:00:00Z",
+		},
+	}
+
+	initialTypes := map[int]string{
+		7001: "main",
+		7002: "family",
+	}
+
+	correctedTypes, parentIDs := s.reclassifyOverlappingSessions(sessions, initialTypes)
+
+	// Session 2 stays main
+	if correctedTypes[7001] != "main" {
+		t.Errorf("Session 2 type = %q, want %q", correctedTypes[7001], "main")
+	}
+
+	// Family camp stays family (non-main types are exempt)
+	if correctedTypes[7002] != "family" {
+		t.Errorf("Family Camp type = %q, want %q", correctedTypes[7002], "family")
+	}
+
+	// No parent IDs should be set
+	if parentIDs[7001] != 0 || parentIDs[7002] != 0 {
+		t.Errorf("No parent IDs should be set for non-main types")
+	}
+}
+
+// TestReclassifyOverlappingSessions_MissingDates tests that sessions without dates
+// are skipped in reclassification
+func TestReclassifyOverlappingSessions_MissingDates(t *testing.T) {
+	s := &SessionsSync{}
+
+	sessions := []map[string]interface{}{
+		{
+			"ID":        float64(8001),
+			"Name":      "Session 2",
+			"StartDate": "2025-06-15T00:00:00Z",
+			"EndDate":   "2025-07-13T00:00:00Z",
+		},
+		{
+			"ID":   float64(8002),
+			"Name": "No Dates Session",
+			// Missing StartDate and EndDate
+		},
+	}
+
+	initialTypes := map[int]string{
+		8001: "main",
+		8002: "main",
+	}
+
+	correctedTypes, parentIDs := s.reclassifyOverlappingSessions(sessions, initialTypes)
+
+	// Session 2 stays main
+	if correctedTypes[8001] != "main" {
+		t.Errorf("Session 2 type = %q, want %q", correctedTypes[8001], "main")
+	}
+
+	// No Dates Session keeps its original type (skipped)
+	if correctedTypes[8002] != "main" {
+		t.Errorf("No Dates Session type = %q, want %q", correctedTypes[8002], "main")
+	}
+
+	// No parent IDs
+	if parentIDs[8001] != 0 || parentIDs[8002] != 0 {
+		t.Errorf("No parent IDs should be set")
 	}
 }
 
