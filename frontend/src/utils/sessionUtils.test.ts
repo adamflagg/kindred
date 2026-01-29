@@ -177,7 +177,6 @@ describe('VALID_TABS', () => {
 // Import sorting functions for testing
 import {
   parseSessionName,
-  sortSessionsLogically,
   sortSessionDataByName,
   sortPriorSessionData,
 } from './sessionUtils';
@@ -208,43 +207,6 @@ describe('parseSessionName', () => {
   it('should handle unknown session names', () => {
     expect(parseSessionName('Unknown Session')).toEqual([0, 'unknown session']);
     expect(parseSessionName('')).toEqual([0, '']);
-  });
-});
-
-describe('sortSessionsLogically', () => {
-  it('should sort sessions in logical order', () => {
-    const sessions = [
-      { name: 'Session 4' },
-      { name: 'Session 2' },
-      { name: 'Session 3a' },
-      { name: 'Taste of Camp' },
-      { name: 'Session 2b' },
-      { name: 'Session 3' },
-      { name: 'Session 2a' },
-    ];
-
-    const sorted = sortSessionsLogically(sessions);
-
-    expect(sorted.map((s) => s.name)).toEqual([
-      'Taste of Camp',
-      'Session 2',
-      'Session 2a',
-      'Session 2b',
-      'Session 3',
-      'Session 3a',
-      'Session 4',
-    ]);
-  });
-
-  it('should handle empty array', () => {
-    expect(sortSessionsLogically([])).toEqual([]);
-  });
-
-  it('should not mutate original array', () => {
-    const sessions = [{ name: 'Session 4' }, { name: 'Session 2' }];
-    const original = [...sessions];
-    sortSessionsLogically(sessions);
-    expect(sessions).toEqual(original);
   });
 });
 

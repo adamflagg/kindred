@@ -94,10 +94,18 @@ export function parseSessionName(name: string): [number, string] {
 }
 
 /**
- * Sort sessions in logical order: 1, 2, 2a, 2b, 3, 3a, 3b, 4, etc.
+ * Sort sessions by start_date.
+ * For sessions with the same date, falls back to name-based sorting.
  */
-export function sortSessionsLogically<T extends { name: string }>(sessions: T[]): T[] {
+export function sortSessionsByDate<T extends { name: string; start_date: string }>(
+  sessions: T[]
+): T[] {
   return [...sessions].sort((a, b) => {
+    // Primary: sort by start_date
+    const dateCompare = a.start_date.localeCompare(b.start_date);
+    if (dateCompare !== 0) return dateCompare;
+
+    // Tiebreaker: sort by name (number then suffix)
     const [numA, suffixA] = parseSessionName(a.name);
     const [numB, suffixB] = parseSessionName(b.name);
     if (numA !== numB) return numA - numB;

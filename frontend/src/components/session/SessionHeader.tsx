@@ -10,7 +10,7 @@ import type { Session } from '../../types/app-types';
 import { getFormattedSessionName } from '../../utils/sessionDisplay';
 import {
   sessionNameToUrl,
-  sortSessionsLogically,
+  sortSessionsByDate,
   filterSelectableSessions,
 } from '../../utils/sessionUtils';
 import PreValidateRequestsButton from '../PreValidateRequestsButton';
@@ -72,7 +72,7 @@ export default function SessionHeader({
   onShowScenarioManagement,
   onSelectScenario,
 }: SessionHeaderProps) {
-  const selectableSessions = sortSessionsLogically(filterSelectableSessions(allSessions));
+  const selectableSessions = sortSessionsByDate(filterSelectableSessions(allSessions));
   const showPulse = (isSolving || isApplyingResults) && capturedScenarioId !== null;
 
   // Handle scenario dropdown change - includes "new" option
