@@ -52,68 +52,57 @@ func SortYearWorkbookTabs(tabs []string) []string {
 
 // =============================================================================
 // Multi-Workbook Tab Colors
-// Category-based coloring for readable tab names (no year prefixes)
+// Orange for CampMinder-sourced tables, grey for globals and derived tables
 // =============================================================================
 
-// Category-based tab colors for multi-workbook architecture
+// Tab colors for multi-workbook architecture
 var (
 	// TabColorIndex is gold for the master Index sheet
 	TabColorIndex = TabColor{R: 1.0, G: 0.84, B: 0.0}
 
-	// TabColorCore is blue for core people tables (Attendees, Persons, Households)
-	TabColorCore = TabColor{R: 0.53, G: 0.81, B: 0.92}
+	// TabColorCMSourced is orange for CampMinder-sourced tables in year workbooks
+	TabColorCMSourced = TabColor{R: 1.0, G: 0.65, B: 0.0}
 
-	// TabColorAssignments is green for assignment tables (Staff, Bunks, Bunk Assignments)
-	TabColorAssignments = TabColor{R: 0.56, G: 0.93, B: 0.56}
+	// TabColorDerived is grey for derived/computed tables (not directly from CM)
+	TabColorDerived = TabColor{R: 0.85, G: 0.85, B: 0.85}
 
-	// TabColorFinancial is teal for financial tables
-	TabColorFinancial = TabColor{R: 0.0, G: 0.81, B: 0.82}
+	// derivedTables lists tables that are computed/derived, not directly from CampMinder
+	derivedTables = map[string]bool{
+		"Camper History": true,
+	}
 
-	// TabColorCustomValues is purple for custom values tables
-	TabColorCustomValues = TabColor{R: 0.73, G: 0.33, B: 0.83}
-
-	// tabCategoryMap maps tab names to their color category
-	tabCategoryMap = map[string]TabColor{
-		// Index
-		indexSheetName: TabColorIndex,
-
-		// Core people tables (blue)
-		"Attendees":  TabColorCore,
-		"Persons":    TabColorCore,
-		"Households": TabColorCore,
-
-		// Assignment tables (green)
-		"Bunk Assignments": TabColorAssignments,
-		"Staff":            TabColorAssignments,
-		"Bunks":            TabColorAssignments,
-
-		// Financial tables (teal)
-		"Financial Transactions": TabColorFinancial,
-		"Financial Categories":   TabColorFinancial,
-
-		// Custom values (purple)
-		"Person Custom Values":    TabColorCustomValues,
-		"Household Custom Values": TabColorCustomValues,
-
-		// Global tables (light blue - using existing TabColorGlobal)
-		"Tag Definitions":          TabColorGlobal,
-		"Custom Field Definitions": TabColorGlobal,
-		"Divisions":                TabColorGlobal,
-
-		// Session-related (use core color)
-		"Sessions":       TabColorCore,
-		"Session Groups": TabColorCore,
-		"Camper History": TabColorCore,
+	// globalTables lists tables in the globals workbook (all get grey)
+	globalTables = map[string]bool{
+		"Tag Definitions":          true,
+		"Custom Field Definitions": true,
+		"Financial Categories":     true,
+		"Divisions":                true,
 	}
 )
 
 // GetMultiWorkbookTabColor returns the color for a tab in multi-workbook mode.
-// Uses category-based coloring for readable tab names.
+// - Index sheet: gold
+// - Global tables: grey
+// - Derived tables (Camper History): grey
+// - CampMinder-sourced tables: orange
 func GetMultiWorkbookTabColor(tabName string) TabColor {
-	if color, ok := tabCategoryMap[tabName]; ok {
-		return color
+	// Index sheet gets gold
+	if tabName == indexSheetName {
+		return TabColorIndex
 	}
-	return TabColorDefault
+
+	// Global tables get grey
+	if globalTables[tabName] {
+		return TabColorDerived
+	}
+
+	// Derived/computed tables get grey
+	if derivedTables[tabName] {
+		return TabColorDerived
+	}
+
+	// All other year workbook tables are CM-sourced, get orange
+	return TabColorCMSourced
 }
 
 // =============================================================================
