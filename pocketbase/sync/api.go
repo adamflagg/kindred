@@ -588,8 +588,8 @@ func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error 
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 				defer cancel()
 
-				// Run bunk_requests sync first
-				syncErr := orchestrator.RunSingleSync(ctx, "bunk_requests")
+				// Run bunk_requests sync first and wait for completion
+				syncErr := orchestrator.runSyncAndWait(ctx, "bunk_requests")
 				if syncErr != nil {
 					slog.Warn("Error running bunk_requests sync", "error", syncErr)
 					return // Don't run process_requests if sync failed
