@@ -93,7 +93,12 @@ describe('transformSessionData', () => {
       { session_name: 'Session 3', count: 120, utilization: 90.0 },
     ];
 
-    const result = transformSessionData(input);
+    const dateLookup = {
+      'Session 2': '2026-06-15',
+      'Session 3': '2026-07-01',
+    };
+
+    const result = transformSessionData(input, dateLookup);
 
     expect(result).toHaveLength(2);
     expect(result[0]).toHaveProperty('name');
@@ -103,14 +108,36 @@ describe('transformSessionData', () => {
 
   it('handles null utilization as 0', () => {
     const input = [{ session_name: 'Session 1', count: 50, utilization: null }];
+    const dateLookup = { 'Session 1': '2026-06-01' };
 
-    const result = transformSessionData(input as any);
+    const result = transformSessionData(input as any, dateLookup);
 
     expect(result[0]!.percentage).toBe(0);
   });
 
   it('returns empty array for undefined input', () => {
-    expect(transformSessionData(undefined)).toEqual([]);
+    expect(transformSessionData(undefined, {})).toEqual([]);
+  });
+
+  it('sorts sessions by date and differentiates Taste of Camp sessions', () => {
+    const input = [
+      { session_name: 'Session 2', count: 100, utilization: 85 },
+      { session_name: 'Taste of Camp 2', count: 30, utilization: 80 },
+      { session_name: 'Taste of Camp 1', count: 25, utilization: 75 },
+    ];
+
+    const dateLookup = {
+      'Taste of Camp 1': '2026-06-01',
+      'Taste of Camp 2': '2026-06-08',
+      'Session 2': '2026-06-15',
+    };
+
+    const result = transformSessionData(input, dateLookup);
+
+    // Should be sorted by date
+    expect(result[0]!.name).toBe('Taste of Camp (Jun 1)');
+    expect(result[1]!.name).toBe('Taste of Camp (Jun 8)');
+    expect(result[2]!.name).toBe('Session 2');
   });
 });
 
@@ -207,8 +234,9 @@ describe('transformRetentionSessionData', () => {
     const input = [
       { session_name: 'Session 2', base_count: 100, returned_count: 70, retention_rate: 0.7 },
     ];
+    const dateLookup = { 'Session 2': '2026-06-15' };
 
-    const result = transformRetentionSessionData(input);
+    const result = transformRetentionSessionData(input, dateLookup);
 
     expect(result).toHaveLength(1);
     expect(result[0]).toHaveProperty('value', 70);
@@ -216,7 +244,28 @@ describe('transformRetentionSessionData', () => {
   });
 
   it('returns empty array for undefined input', () => {
-    expect(transformRetentionSessionData(undefined)).toEqual([]);
+    expect(transformRetentionSessionData(undefined, {})).toEqual([]);
+  });
+
+  it('sorts sessions by date and differentiates Taste of Camp sessions', () => {
+    const input = [
+      { session_name: 'Session 2', base_count: 100, returned_count: 70, retention_rate: 0.7 },
+      { session_name: 'Taste of Camp 2', base_count: 30, returned_count: 24, retention_rate: 0.8 },
+      { session_name: 'Taste of Camp 1', base_count: 25, returned_count: 20, retention_rate: 0.8 },
+    ];
+
+    const dateLookup = {
+      'Taste of Camp 1': '2026-06-01',
+      'Taste of Camp 2': '2026-06-08',
+      'Session 2': '2026-06-15',
+    };
+
+    const result = transformRetentionSessionData(input, dateLookup);
+
+    // Should be sorted by date
+    expect(result[0]!.name).toBe('Taste of Camp (Jun 1)');
+    expect(result[1]!.name).toBe('Taste of Camp (Jun 8)');
+    expect(result[2]!.name).toBe('Session 2');
   });
 });
 
@@ -261,8 +310,9 @@ describe('transformPriorSessionData', () => {
     const input = [
       { prior_session: 'Session 2', base_count: 80, returned_count: 64, retention_rate: 0.8 },
     ];
+    const dateLookup = { 'Session 2': '2026-06-15' };
 
-    const result = transformPriorSessionData(input);
+    const result = transformPriorSessionData(input, dateLookup);
 
     expect(result).toHaveLength(1);
     expect(result[0]).toHaveProperty('value', 64);
@@ -270,7 +320,28 @@ describe('transformPriorSessionData', () => {
   });
 
   it('returns empty array for undefined input', () => {
-    expect(transformPriorSessionData(undefined)).toEqual([]);
+    expect(transformPriorSessionData(undefined, {})).toEqual([]);
+  });
+
+  it('sorts sessions by date and differentiates Taste of Camp sessions', () => {
+    const input = [
+      { prior_session: 'Session 2', base_count: 80, returned_count: 64, retention_rate: 0.8 },
+      { prior_session: 'Taste of Camp 2', base_count: 30, returned_count: 24, retention_rate: 0.8 },
+      { prior_session: 'Taste of Camp 1', base_count: 25, returned_count: 20, retention_rate: 0.8 },
+    ];
+
+    const dateLookup = {
+      'Taste of Camp 1': '2026-06-01',
+      'Taste of Camp 2': '2026-06-08',
+      'Session 2': '2026-06-15',
+    };
+
+    const result = transformPriorSessionData(input, dateLookup);
+
+    // Should be sorted by date
+    expect(result[0]!.name).toBe('Taste of Camp (Jun 1)');
+    expect(result[1]!.name).toBe('Taste of Camp (Jun 8)');
+    expect(result[2]!.name).toBe('Session 2');
   });
 });
 

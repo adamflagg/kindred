@@ -351,3 +351,217 @@ describe('sortPriorSessionData', () => {
     expect(data).toEqual(original);
   });
 });
+
+// Import date-aware sorting functions for testing
+import {
+  buildSessionDateLookup,
+  sortSessionDataByDate,
+  sortPriorSessionDataByDate,
+  type SessionDateLookup,
+} from './sessionUtils';
+
+describe('buildSessionDateLookup', () => {
+  it('should build a lookup map from session name to start_date', () => {
+    const sessions = [
+      { name: 'Taste of Camp 1', start_date: '2026-06-01' },
+      { name: 'Taste of Camp 2', start_date: '2026-06-08' },
+      { name: 'Session 2', start_date: '2026-06-15' },
+    ];
+
+    const lookup = buildSessionDateLookup(sessions);
+
+    expect(lookup['Taste of Camp 1']).toBe('2026-06-01');
+    expect(lookup['Taste of Camp 2']).toBe('2026-06-08');
+    expect(lookup['Session 2']).toBe('2026-06-15');
+  });
+
+  it('should handle empty array', () => {
+    const lookup = buildSessionDateLookup([]);
+    expect(lookup).toEqual({});
+  });
+
+  it('should handle sessions with duplicate names (last one wins)', () => {
+    const sessions = [
+      { name: 'Session 2', start_date: '2026-06-01' },
+      { name: 'Session 2', start_date: '2026-06-15' },
+    ];
+
+    const lookup = buildSessionDateLookup(sessions);
+
+    expect(lookup['Session 2']).toBe('2026-06-15');
+  });
+});
+
+describe('sortSessionDataByDate', () => {
+  it('should sort sessions by date when dates are available', () => {
+    const data = [
+      { session_name: 'Session 2', count: 100 },
+      { session_name: 'Taste of Camp 2', count: 30 },
+      { session_name: 'Taste of Camp 1', count: 25 },
+      { session_name: 'Session 3', count: 120 },
+    ];
+
+    const dateLookup: SessionDateLookup = {
+      'Taste of Camp 1': '2026-06-01',
+      'Taste of Camp 2': '2026-06-08',
+      'Session 2': '2026-06-15',
+      'Session 3': '2026-07-01',
+    };
+
+    const sorted = sortSessionDataByDate(data, dateLookup);
+
+    expect(sorted.map((s) => s.session_name)).toEqual([
+      'Taste of Camp 1',
+      'Taste of Camp 2',
+      'Session 2',
+      'Session 3',
+    ]);
+  });
+
+  it('should use name-based sorting as tiebreaker for same date', () => {
+    const data = [
+      { session_name: 'Session 2b', count: 40 },
+      { session_name: 'Session 2', count: 100 },
+      { session_name: 'Session 2a', count: 50 },
+    ];
+
+    // All have the same date
+    const dateLookup: SessionDateLookup = {
+      'Session 2': '2026-06-15',
+      'Session 2a': '2026-06-15',
+      'Session 2b': '2026-06-15',
+    };
+
+    const sorted = sortSessionDataByDate(data, dateLookup);
+
+    expect(sorted.map((s) => s.session_name)).toEqual([
+      'Session 2',
+      'Session 2a',
+      'Session 2b',
+    ]);
+  });
+
+  it('should handle sessions not in date lookup by falling back to name sort', () => {
+    const data = [
+      { session_name: 'Session 2', count: 100 },
+      { session_name: 'Unknown Session', count: 10 },
+      { session_name: 'Session 3', count: 120 },
+    ];
+
+    const dateLookup: SessionDateLookup = {
+      'Session 2': '2026-06-15',
+      'Session 3': '2026-07-01',
+      // 'Unknown Session' not in lookup
+    };
+
+    const sorted = sortSessionDataByDate(data, dateLookup);
+
+    // Unknown Session should sort based on name (number 0), coming first
+    expect(sorted.map((s) => s.session_name)).toEqual([
+      'Unknown Session',
+      'Session 2',
+      'Session 3',
+    ]);
+  });
+
+  it('should handle empty array', () => {
+    expect(sortSessionDataByDate([], {})).toEqual([]);
+  });
+
+  it('should not mutate original array', () => {
+    const data = [
+      { session_name: 'Session 3', count: 120 },
+      { session_name: 'Session 2', count: 100 },
+    ];
+    const original = [...data];
+    const dateLookup: SessionDateLookup = {
+      'Session 2': '2026-06-15',
+      'Session 3': '2026-07-01',
+    };
+
+    sortSessionDataByDate(data, dateLookup);
+
+    expect(data).toEqual(original);
+  });
+
+  it('should preserve other fields', () => {
+    const data = [
+      { session_name: 'Session 3', count: 120, utilization: 90 },
+      { session_name: 'Session 2', count: 100, utilization: 85 },
+    ];
+
+    const dateLookup: SessionDateLookup = {
+      'Session 2': '2026-06-15',
+      'Session 3': '2026-07-01',
+    };
+
+    const sorted = sortSessionDataByDate(data, dateLookup);
+
+    expect(sorted[0]).toEqual({ session_name: 'Session 2', count: 100, utilization: 85 });
+    expect(sorted[1]).toEqual({ session_name: 'Session 3', count: 120, utilization: 90 });
+  });
+
+  it('should correctly differentiate multiple Taste of Camp sessions by date', () => {
+    const data = [
+      { session_name: 'Taste of Camp', count: 30 },
+      { session_name: 'Taste of Camp', count: 25 },
+      { session_name: 'Session 2', count: 100 },
+    ];
+
+    // When there are duplicate session names, the lookup won't help
+    // This tests that we handle this gracefully (stable sort behavior)
+    const dateLookup: SessionDateLookup = {
+      'Taste of Camp': '2026-06-01', // Only one date for "Taste of Camp"
+      'Session 2': '2026-06-15',
+    };
+
+    const sorted = sortSessionDataByDate(data, dateLookup);
+
+    // Taste of Camp entries should come first (earlier date), Session 2 last
+    expect(sorted[2]!.session_name).toBe('Session 2');
+  });
+});
+
+describe('sortPriorSessionDataByDate', () => {
+  it('should sort prior session data by date', () => {
+    const data = [
+      { prior_session: 'Session 3', base_count: 80, returned_count: 64, retention_rate: 0.8 },
+      { prior_session: 'Taste of Camp 1', base_count: 30, returned_count: 24, retention_rate: 0.8 },
+      { prior_session: 'Session 2', base_count: 100, returned_count: 70, retention_rate: 0.7 },
+    ];
+
+    const dateLookup: SessionDateLookup = {
+      'Taste of Camp 1': '2026-06-01',
+      'Session 2': '2026-06-15',
+      'Session 3': '2026-07-01',
+    };
+
+    const sorted = sortPriorSessionDataByDate(data, dateLookup);
+
+    expect(sorted.map((s) => s.prior_session)).toEqual([
+      'Taste of Camp 1',
+      'Session 2',
+      'Session 3',
+    ]);
+  });
+
+  it('should handle empty array', () => {
+    expect(sortPriorSessionDataByDate([], {})).toEqual([]);
+  });
+
+  it('should not mutate original array', () => {
+    const data = [
+      { prior_session: 'Session 3', base_count: 80, returned_count: 64, retention_rate: 0.8 },
+      { prior_session: 'Session 2', base_count: 100, returned_count: 70, retention_rate: 0.7 },
+    ];
+    const original = [...data];
+    const dateLookup: SessionDateLookup = {
+      'Session 2': '2026-06-15',
+      'Session 3': '2026-07-01',
+    };
+
+    sortPriorSessionDataByDate(data, dateLookup);
+
+    expect(data).toEqual(original);
+  });
+});
