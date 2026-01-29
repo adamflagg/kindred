@@ -476,3 +476,31 @@ class RetentionTrendsResponse(BaseModel):
     enrollment_by_year: list[YearEnrollment] = Field(
         default_factory=list, description="Enrollment counts per year for 3-year comparison"
     )
+
+
+# ============================================================================
+# Drilldown (Chart Click-Through)
+# ============================================================================
+
+
+class DrilldownAttendee(BaseModel):
+    """Attendee record for drill-down display.
+
+    Contains person and enrollment info for displaying in a modal when
+    clicking a chart segment.
+    """
+
+    person_id: int = Field(description="Person CampMinder ID")
+    first_name: str = Field(description="First name")
+    last_name: str = Field(description="Last name")
+    preferred_name: str | None = Field(None, description="Preferred name if set")
+    grade: int | None = Field(None, description="Grade level")
+    gender: str | None = Field(None, description="Gender (M, F, or other)")
+    age: int | None = Field(None, description="Age")
+    school: str | None = Field(None, description="School name")
+    city: str | None = Field(None, description="City (parsed from address)")
+    years_at_camp: int | None = Field(None, description="Years at camp")
+    session_name: str = Field(description="Session name")
+    session_cm_id: int = Field(description="Session CampMinder ID")
+    status: str = Field(description="Enrollment status")
+    is_returning: bool = Field(False, description="Whether camper is returning (years_at_camp > 1)")
