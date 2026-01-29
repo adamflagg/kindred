@@ -140,6 +140,7 @@ func (m *MultiWorkbookExport) SyncGlobalsOnly(ctx context.Context) error {
 
 	// Export each global table
 	exporter := NewTableExporter(m.sheetsWriter, resolver, globalsID, 0)
+	globalsRecordsExported := 0
 
 	for _, config := range configs {
 		slog.Info("Exporting global table", "collection", config.Collection, "sheet", config.SheetName)
@@ -163,6 +164,7 @@ func (m *MultiWorkbookExport) SyncGlobalsOnly(ctx context.Context) error {
 			continue
 		}
 
+		globalsRecordsExported += len(records)
 		m.Stats.Created += len(records)
 	}
 
@@ -174,6 +176,20 @@ func (m *MultiWorkbookExport) SyncGlobalsOnly(ctx context.Context) error {
 	// Reorder tabs alphabetically with colors (Index first)
 	if err := ReorderGlobalsWorkbookTabs(ctx, m.sheetsWriter, globalsID); err != nil {
 		slog.Warn("Failed to reorder globals workbook tabs", "error", err)
+	}
+
+	// Update workbook stats in database
+	if wm, ok := m.workbookManager.(*WorkbookManager); ok {
+		// Get actual tab count from Google Sheets
+		tabs, _ := m.sheetsWriter.GetSheetMetadata(ctx, globalsID)
+		tabCount := len(tabs)
+
+		globals, _ := wm.GetWorkbookByType(ctx, workbookTypeGlobals, 0)
+		if globals != nil {
+			if err := wm.UpdateWorkbookStats(ctx, globals.ID, tabCount, globalsRecordsExported, "ok", ""); err != nil {
+				slog.Warn("Failed to update globals workbook stats", "error", err)
+			}
+		}
 	}
 
 	slog.Info("Globals-only export complete",
@@ -210,6 +226,7 @@ func (m *MultiWorkbookExport) SyncYearData(ctx context.Context, year int) error 
 
 	// Export each table
 	exporter := NewTableExporter(m.sheetsWriter, resolver, yearID, year)
+	yearRecordsExported := 0
 
 	for _, config := range configs {
 		slog.Info("Exporting table", "collection", config.Collection, "sheet", config.SheetName, "year", year)
@@ -241,6 +258,7 @@ func (m *MultiWorkbookExport) SyncYearData(ctx context.Context, year int) error 
 			continue
 		}
 
+		yearRecordsExported += len(records)
 		m.Stats.Created += len(records)
 	}
 
@@ -252,6 +270,20 @@ func (m *MultiWorkbookExport) SyncYearData(ctx context.Context, year int) error 
 	// Reorder tabs alphabetically with colors
 	if err := ReorderYearWorkbookTabs(ctx, m.sheetsWriter, yearID); err != nil {
 		slog.Warn("Failed to reorder year workbook tabs", "error", err, "year", year)
+	}
+
+	// Update workbook stats in database
+	if wm, ok := m.workbookManager.(*WorkbookManager); ok {
+		// Get actual tab count from Google Sheets
+		tabs, _ := m.sheetsWriter.GetSheetMetadata(ctx, yearID)
+		tabCount := len(tabs)
+
+		yearWB, _ := wm.GetWorkbookByType(ctx, "year", year)
+		if yearWB != nil {
+			if err := wm.UpdateWorkbookStats(ctx, yearWB.ID, tabCount, yearRecordsExported, "ok", ""); err != nil {
+				slog.Warn("Failed to update year workbook stats", "error", err, "year", year)
+			}
+		}
 	}
 
 	slog.Info("Year data export complete", "year", year)
