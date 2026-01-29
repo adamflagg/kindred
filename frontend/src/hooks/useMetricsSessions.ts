@@ -7,6 +7,7 @@
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { queryKeys, syncDataOptions } from '../utils/queryKeys';
 import { pb } from '../lib/pocketbase';
+import { sortSessionsByDate } from '../utils/sessionUtils';
 
 export interface MetricsSession {
   cm_id: number;
@@ -30,12 +31,13 @@ export function useMetricsSessions(year: number) {
         sort: 'start_date',
       });
 
-      return sessions.map((s) => ({
+      const mapped = sessions.map((s) => ({
         cm_id: s.cm_id as number,
         name: s.name as string,
         session_type: s.session_type as 'main' | 'embedded',
         start_date: s.start_date as string,
       }));
+      return sortSessionsByDate(mapped);
     },
     enabled: year > 0,
     placeholderData: keepPreviousData,
