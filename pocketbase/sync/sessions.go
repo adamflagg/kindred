@@ -19,6 +19,22 @@ const (
 	sessionTypeAdult    = "adult"
 	sessionTypeFamily   = "family"
 	sessionTypeEmbedded = "embedded"
+	sessionTypeTLI      = "tli"
+	sessionTypeTraining = "training"
+	sessionTypeOther    = "other"
+)
+
+// Session group cm_ids - these are stable across all years in CampMinder
+// Using group ID for primary classification is more reliable than name pattern matching
+const (
+	groupSummerCamp     = 937   // Summer Camp → main/embedded/ag (refined further)
+	groupFamilyCamp     = 940   // Family Camp Weekends → family
+	groupQuests         = 938   // Teen Adventure Quests → quest
+	groupLeadership     = 939   // Teen Leadership Programs → tli or training
+	groupTeenRetreat    = 4447  // Teen Winter Retreat → teen
+	groupBMitzvahHebrew = 4445  // B*Mitzvah + Hebrew Lessons → bmitzvah or hebrew
+	groupAdult          = 11600 // Adult Programs → adult
+	groupFamilySchool   = 12165 // Family School → school
 )
 
 // Service name constant
@@ -98,9 +114,15 @@ func (s *SessionsSync) Sync(ctx context.Context) error {
 	slog.Info("Fetched sessions from CampMinder", "count", len(sessions))
 	s.SyncSuccessful = true
 
-	// First pass: collect initial types from name-based classification
+	// First pass: collect session info for group-based classification
+	// Using session group cm_ids is more reliable than name pattern matching
+	// because group IDs are stable across all years in CampMinder
 	initialTypes := make(map[int]string)
 	mainSessions := make(map[string]int) // date key -> cm_id (for AG parent matching)
+
+	// Build sessionInfo list for AG detection (needs to see all sessions)
+	allSessionInfos := make([]sessionInfo, 0, len(sessions))
+	sessionGroupIDs := make(map[int]int) // cm_id -> group cm_id
 
 	for _, sessionData := range sessions {
 		idFloat, ok := sessionData["ID"].(float64)
@@ -108,6 +130,8 @@ func (s *SessionsSync) Sync(ctx context.Context) error {
 			continue
 		}
 		cmID := int(idFloat)
+
+		sessionName, _ := sessionData["Name"].(string)
 
 		// Parse dates for grouping
 		startDate := ""
@@ -119,15 +143,44 @@ func (s *SessionsSync) Sync(ctx context.Context) error {
 			endDate = s.parseDate(endStr)
 		}
 
-		// Determine session type from name
-		sessionName, _ := sessionData["Name"].(string)
-		sessionType := s.getSessionTypeFromName(sessionName)
-		initialTypes[cmID] = sessionType
+		// Store session info for later refinement
+		allSessionInfos = append(allSessionInfos, sessionInfo{
+			cmID:      cmID,
+			name:      sessionName,
+			startDate: startDate,
+			endDate:   endDate,
+		})
+
+		// Store group ID for later use
+		if groupIDFloat, ok := sessionData["GroupID"].(float64); ok && groupIDFloat > 0 {
+			sessionGroupIDs[cmID] = int(groupIDFloat)
+		}
+	}
+
+	// Second pass: classify sessions using group-based classification
+	for _, info := range allSessionInfos {
+		groupID := sessionGroupIDs[info.cmID]
+		var sessionType string
+
+		if groupID > 0 {
+			// Use group-based classification (more reliable for historical data)
+			sessionType = s.getSessionTypeFromGroupID(groupID, info.name)
+
+			// Refine summer camp sessions to main/ag/embedded
+			if sessionType == "summer_candidate" {
+				sessionType = s.refineSummerSessionType(info, allSessionInfos)
+			}
+		} else {
+			// Fallback to name-based classification for sessions without groups
+			sessionType = s.getSessionTypeFromName(info.name)
+		}
+
+		initialTypes[info.cmID] = sessionType
 
 		// Store main sessions for AG parent lookup (requires exact date match)
-		if sessionType == sessionTypeMain && startDate != "" && endDate != "" {
-			dateKey := fmt.Sprintf("%s|%s", startDate, endDate)
-			mainSessions[dateKey] = cmID
+		if sessionType == sessionTypeMain && info.startDate != "" && info.endDate != "" {
+			dateKey := fmt.Sprintf("%s|%s", info.startDate, info.endDate)
+			mainSessions[dateKey] = info.cmID
 		}
 	}
 
@@ -551,10 +604,10 @@ func (s *SessionsSync) getSessionTypeFromName(sessionName string) string {
 
 	// TLI programs - check sub-programs first
 	if strings.Contains(nameLower, "tli:") {
-		return "tli"
+		return sessionTypeTLI
 	}
 	if strings.Contains(nameLower, "teen leadership institute") {
-		return "tli"
+		return sessionTypeTLI
 	}
 
 	// Family camps
@@ -578,10 +631,10 @@ func (s *SessionsSync) getSessionTypeFromName(sessionName string) string {
 
 	// Training programs
 	if strings.Contains(nameLower, "counselor in-training") || strings.Contains(nameLower, "cit") {
-		return "training"
+		return sessionTypeTraining
 	}
 	if strings.Contains(nameLower, "specialist in-training") || strings.Contains(nameLower, "sit") {
-		return "training"
+		return sessionTypeTraining
 	}
 
 	// Quest programs
@@ -610,5 +663,110 @@ func (s *SessionsSync) getSessionTypeFromName(sessionName string) string {
 	}
 
 	// Default fallback
-	return "other"
+	return sessionTypeOther
+}
+
+// sessionInfo holds session data for classification and AG detection
+type sessionInfo struct {
+	cmID      int
+	name      string
+	startDate string
+	endDate   string
+}
+
+// getSessionTypeFromGroupID returns the session type based on the session group cm_id.
+// This is more reliable than name-based classification because group IDs are stable
+// across all years in CampMinder, while session names may vary.
+func (s *SessionsSync) getSessionTypeFromGroupID(groupCMID int, sessionName string) string {
+	nameLower := strings.ToLower(sessionName)
+
+	switch groupCMID {
+	case groupSummerCamp:
+		// Summer camp sessions need further refinement to main/ag/embedded
+		// Return a marker that triggers refinement in the caller
+		return "summer_candidate"
+
+	case groupFamilyCamp:
+		return sessionTypeFamily
+
+	case groupQuests:
+		return "quest"
+
+	case groupLeadership:
+		// Distinguish between TLI and training programs
+		if strings.Contains(nameLower, "counselor") || strings.Contains(nameLower, "cit") ||
+			strings.Contains(nameLower, "specialist") || strings.Contains(nameLower, "sit") {
+			return sessionTypeTraining
+		}
+		return sessionTypeTLI
+
+	case groupTeenRetreat:
+		return "teen"
+
+	case groupBMitzvahHebrew:
+		// Distinguish between Hebrew and B'Mitzvah
+		if strings.Contains(nameLower, "hebrew") {
+			return "hebrew"
+		}
+		return "bmitzvah"
+
+	case groupAdult:
+		return "adult"
+
+	case groupFamilySchool:
+		return "school"
+
+	default:
+		return sessionTypeOther
+	}
+}
+
+// refineSummerSessionType refines a summer camp session to main, ag, or embedded
+// based on name patterns and date matching with other sessions.
+func (s *SessionsSync) refineSummerSessionType(session sessionInfo, allSessions []sessionInfo) string {
+	nameLower := strings.ToLower(session.name)
+
+	// Check for embedded sessions first (e.g., "Session 2a", "Session 3b")
+	if matched, _ := regexp.MatchString(`session \d+[a-z]`, nameLower); matched {
+		return sessionTypeEmbedded
+	}
+
+	// Check if this is an AG session (contains "gender" and has matching dates with another session)
+	if s.isAGSession(session, allSessions) {
+		return "ag"
+	}
+
+	// Default to main for all other summer camp sessions
+	// This includes Session A, Session B, Session 1, Session 2, Taste of Camp, etc.
+	return sessionTypeMain
+}
+
+// isAGSession determines if a session is an All-Gender session.
+// AG sessions are identified by:
+// 1. Name contains "gender" (case-insensitive)
+// 2. Start and end dates match another session (AG sessions run parallel to main sessions)
+func (s *SessionsSync) isAGSession(session sessionInfo, allSessions []sessionInfo) bool {
+	nameLower := strings.ToLower(session.name)
+
+	// Must contain "gender" in the name
+	if !strings.Contains(nameLower, "gender") {
+		return false
+	}
+
+	// Must have valid dates
+	if session.startDate == "" || session.endDate == "" {
+		return false
+	}
+
+	// Must have matching dates with another session (excluding self)
+	for _, other := range allSessions {
+		if other.cmID == session.cmID {
+			continue // Skip self
+		}
+		if other.startDate == session.startDate && other.endDate == session.endDate {
+			return true
+		}
+	}
+
+	return false
 }
