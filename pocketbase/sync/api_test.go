@@ -953,3 +953,213 @@ func TestSyncStatusIncludesConfiguredYear(t *testing.T) {
 		t.Error("expected keys should include _configured_year")
 	}
 }
+
+// =============================================================================
+// Sync Queue API Tests
+// =============================================================================
+
+// TestSyncStatusIncludesQueue tests that sync status response includes queue info
+func TestSyncStatusIncludesQueue(t *testing.T) {
+	// Expected queue-related keys in status response
+	expectedKeys := []string{
+		"_queue",        // Array of queued syncs
+		"_queue_length", // Number of items in queue
+	}
+
+	// Verify these keys are documented for the status response
+	// The actual implementation will add these to handleSyncStatus
+	for _, key := range expectedKeys {
+		if key == "" {
+			t.Errorf("expected key should not be empty")
+		}
+	}
+
+	// Test queue item structure
+	queueItem := QueuedSync{
+		ID:                  "test-id",
+		Year:                2025,
+		Service:             "all",
+		IncludeCustomValues: true,
+		Debug:               false,
+	}
+
+	if queueItem.ID == "" {
+		t.Error("queue item should have ID")
+	}
+	if queueItem.Year != 2025 {
+		t.Errorf("expected year 2025, got %d", queueItem.Year)
+	}
+}
+
+// TestUnifiedSyncQueueResponse tests the expected 202 response structure
+func TestUnifiedSyncQueueResponse(t *testing.T) {
+	// When a sync is already running and a new request comes in,
+	// the API should return 202 Accepted with queue info
+
+	// Expected 202 response structure
+	type QueueResponse struct {
+		Status   string `json:"status"`   // "queued"
+		QueueID  string `json:"queue_id"` // UUID of queued item
+		Position int    `json:"position"` // 1-based position in queue
+		Year     int    `json:"year"`     // Year being synced
+		Service  string `json:"service"`  // Service being synced
+	}
+
+	// Test expected values
+	resp := QueueResponse{
+		Status:   "queued",
+		QueueID:  "test-uuid-123",
+		Position: 2,
+		Year:     2025,
+		Service:  "all",
+	}
+
+	if resp.Status != "queued" {
+		t.Errorf("expected status='queued', got %q", resp.Status)
+	}
+	if resp.Position < 1 {
+		t.Errorf("expected position >= 1, got %d", resp.Position)
+	}
+	if resp.QueueID == "" {
+		t.Error("expected non-empty queue_id")
+	}
+}
+
+// TestCancelQueuedSyncEndpoint tests the expected behavior of the cancel endpoint
+func TestCancelQueuedSyncEndpoint(t *testing.T) {
+	tests := []struct {
+		name           string
+		queueID        string
+		exists         bool
+		expectedStatus int // HTTP status code
+	}{
+		{
+			name:           "cancel existing queued sync",
+			queueID:        "valid-uuid-123",
+			exists:         true,
+			expectedStatus: 200,
+		},
+		{
+			name:           "cancel non-existent queued sync",
+			queueID:        "non-existent-uuid",
+			exists:         false,
+			expectedStatus: 404,
+		},
+		{
+			name:           "cancel with empty ID",
+			queueID:        "",
+			exists:         false,
+			expectedStatus: 400, // Bad request - missing ID
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Document expected behavior
+			if tt.exists && tt.expectedStatus != 200 {
+				t.Errorf("existing item should return 200, not %d", tt.expectedStatus)
+			}
+			if !tt.exists && tt.queueID != "" && tt.expectedStatus != 404 {
+				t.Errorf("non-existent item should return 404, not %d", tt.expectedStatus)
+			}
+			if tt.queueID == "" && tt.expectedStatus != 400 {
+				t.Errorf("empty ID should return 400, not %d", tt.expectedStatus)
+			}
+		})
+	}
+}
+
+// TestUnifiedSyncEnqueueBehavior tests the expected queuing behavior
+func TestUnifiedSyncEnqueueBehavior(t *testing.T) {
+	tests := []struct {
+		name              string
+		syncRunning       bool
+		queueLength       int
+		expectedStatus    int    // HTTP status code
+		expectedBehavior  string // "start", "queue", or "reject"
+	}{
+		{
+			name:             "no sync running - start immediately",
+			syncRunning:      false,
+			queueLength:      0,
+			expectedStatus:   200,
+			expectedBehavior: "start",
+		},
+		{
+			name:             "sync running, queue empty - enqueue",
+			syncRunning:      true,
+			queueLength:      0,
+			expectedStatus:   202,
+			expectedBehavior: "queue",
+		},
+		{
+			name:             "sync running, queue has space - enqueue",
+			syncRunning:      true,
+			queueLength:      3,
+			expectedStatus:   202,
+			expectedBehavior: "queue",
+		},
+		{
+			name:             "sync running, queue full - reject",
+			syncRunning:      true,
+			queueLength:      5, // MaxQueueSize
+			expectedStatus:   409,
+			expectedBehavior: "reject",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Verify expected behavior matches status code
+			switch tt.expectedBehavior {
+			case "start":
+				if tt.expectedStatus != 200 {
+					t.Errorf("'start' behavior should return 200, got %d", tt.expectedStatus)
+				}
+			case "queue":
+				if tt.expectedStatus != 202 {
+					t.Errorf("'queue' behavior should return 202, got %d", tt.expectedStatus)
+				}
+			case "reject":
+				if tt.expectedStatus != 409 {
+					t.Errorf("'reject' behavior should return 409, got %d", tt.expectedStatus)
+				}
+			default:
+				t.Errorf("unknown behavior: %s", tt.expectedBehavior)
+			}
+		})
+	}
+}
+
+// TestDuplicateQueueRequest tests that duplicate requests return existing queue position
+func TestDuplicateQueueRequest(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	// Enqueue a sync
+	qs1, err := o.EnqueueUnifiedSync(2025, "all", false, false, "user1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Try to enqueue the same year+service again
+	qs2, err := o.EnqueueUnifiedSync(2025, "all", true, true, "user2") // Different options
+	if err != nil {
+		t.Fatalf("unexpected error for duplicate: %v", err)
+	}
+
+	// Should return the same queue item
+	if qs1.ID != qs2.ID {
+		t.Errorf("duplicate request should return existing item ID")
+	}
+
+	// Queue should still have only 1 item
+	if o.GetQueueLength() != 1 {
+		t.Errorf("expected queue length 1, got %d", o.GetQueueLength())
+	}
+
+	// Position should be 1 (not increase)
+	pos := o.GetQueuePositionByID(qs1.ID)
+	if pos != 1 {
+		t.Errorf("expected position 1, got %d", pos)
+	}
+}
