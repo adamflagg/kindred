@@ -1,4 +1,5 @@
 import type { Session } from '../types/app-types';
+import type { SessionDateLookup } from './sessionUtils';
 
 /**
  * Get the properly formatted session name for display
@@ -116,21 +117,41 @@ export function getSessionDisplayNameFromString(sessionName: string, sessionType
 }
 
 /**
+ * Format a date string as "Mon D" (e.g., "Jun 1", "Jun 15")
+ */
+function formatDateForLabel(dateStr: string): string {
+  const date = new Date(dateStr + 'T00:00:00'); // Parse as local date
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const month = months[date.getMonth()];
+  const day = date.getDate();
+  return `${month} ${day}`;
+}
+
+/**
  * Get a concise session label for charts and metrics displays
  * @param sessionName The full session name from the API
  * @param sessionType Optional session type for better accuracy
+ * @param sessionDateLookup Optional lookup map from session name to start_date for date display
  * @returns Abbreviated session name suitable for charts, preserving grade ranges
- *          (e.g. "All-Gender 2 (6-8)", "Session 2", "Session 2a")
+ *          (e.g. "All-Gender 2 (6-8)", "Session 2", "Session 2a", "Taste of Camp (Jun 1)")
  */
-export function getSessionChartLabel(sessionName: string, sessionType?: string): string {
+export function getSessionChartLabel(
+  sessionName: string,
+  sessionType?: string,
+  sessionDateLookup?: SessionDateLookup
+): string {
   if (!sessionName) return 'Unknown';
 
   // Extract grade range if present (e.g., "(Grades 6-8)" or "(6-8)")
   const gradeMatch = sessionName.match(/\((?:Grades?\s*)?(\d+)[-–](\d+)\)/i);
   const gradeRange = gradeMatch ? ` (${gradeMatch[1]}-${gradeMatch[2]})` : '';
 
-  // Handle Taste of Camp
+  // Handle Taste of Camp - include date if available to differentiate multiple Taste sessions
   if (sessionType === 'taste' || sessionName.toLowerCase().includes('taste')) {
+    const dateStr = sessionDateLookup?.[sessionName];
+    if (dateStr) {
+      return `Taste of Camp (${formatDateForLabel(dateStr)})`;
+    }
     return 'Taste of Camp';
   }
 

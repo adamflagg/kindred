@@ -9,7 +9,7 @@
  * - Keep session-specific filter dropdown
  */
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useRetentionTrends } from '../../hooks/useRetentionTrends';
 import { useRetentionMetrics } from '../../hooks/useMetrics';
 import { useMetricsSessions } from '../../hooks/useMetricsSessions';
@@ -21,7 +21,7 @@ import { GenderStackedChart } from '../../components/metrics/GenderStackedChart'
 import { GradeEnrollmentChart } from '../../components/metrics/GradeEnrollmentChart';
 import { DemographicTable } from '../../components/metrics/DemographicTable';
 import { getSessionChartLabel } from '../../utils/sessionDisplay';
-import { sortSessionDataByName } from '../../utils/sessionUtils';
+import { buildSessionDateLookup, sortSessionDataByDate } from '../../utils/sessionUtils';
 import {
   transformRetentionSessionData,
   transformRetentionSummerYearsData,
@@ -48,6 +48,12 @@ export function RetentionTab({ currentYear, sessionTypes }: RetentionTabProps) {
 
   // Fetch sessions for dropdown (from base year for filtering)
   const { data: sessions = [], isLoading: sessionsLoading } = useMetricsSessions(baseYear);
+
+  // Build session date lookup for date-aware sorting
+  const sessionDateLookup = useMemo(
+    () => buildSessionDateLookup(sessions),
+    [sessions]
+  );
 
   // Fetch 3-year retention trends
   const {
@@ -112,12 +118,12 @@ export function RetentionTab({ currentYear, sessionTypes }: RetentionTabProps) {
   };
 
   // Transform data for charts using utility functions
-  const sessionChartData = transformRetentionSessionData(detailedData?.by_session);
+  const sessionChartData = transformRetentionSessionData(detailedData?.by_session, sessionDateLookup);
   const summerYearsChartData = transformRetentionSummerYearsData(detailedData?.by_summer_years);
   const firstSummerYearChartData = transformRetentionFirstSummerYearData(
     detailedData?.by_first_summer_year
   );
-  const priorSessionChartData = transformPriorSessionData(detailedData?.by_prior_session);
+  const priorSessionChartData = transformPriorSessionData(detailedData?.by_prior_session, sessionDateLookup);
 
   // Demographics for tables using utility functions
   const schoolTableData = transformDemographicTableData(detailedData?.by_school, 'school');
@@ -125,7 +131,7 @@ export function RetentionTab({ currentYear, sessionTypes }: RetentionTabProps) {
   const synagogueTableData = transformDemographicTableData(detailedData?.by_synagogue, 'synagogue');
 
   // Sorted sessions for table (needed separately from chart)
-  const sortedBySession = sortSessionDataByName(detailedData?.by_session ?? []);
+  const sortedBySession = sortSessionDataByDate(detailedData?.by_session ?? [], sessionDateLookup);
 
   return (
     <div className="space-y-6">
@@ -261,7 +267,7 @@ export function RetentionTab({ currentYear, sessionTypes }: RetentionTabProps) {
             <tbody>
               {sortedBySession.map((session, index) => (
                 <tr key={index} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
-                  <td className="px-4 py-3 font-medium text-foreground">{getSessionChartLabel(session.session_name)}</td>
+                  <td className="px-4 py-3 font-medium text-foreground">{getSessionChartLabel(session.session_name, undefined, sessionDateLookup)}</td>
                   <td className="px-4 py-3 text-right text-foreground">{session.base_count}</td>
                   <td className="px-4 py-3 text-right text-foreground">{session.returned_count}</td>
                   <td className="px-4 py-3 text-right">

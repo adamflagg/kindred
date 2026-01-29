@@ -141,3 +141,78 @@ export function sortPriorSessionData<T extends { prior_session: string }>(data: 
     return suffixA.localeCompare(suffixB);
   });
 }
+
+/**
+ * Lookup map from session name to start date string (ISO format).
+ * Used for date-aware sorting in metrics charts.
+ */
+export interface SessionDateLookup {
+  [sessionName: string]: string;
+}
+
+/**
+ * Build a lookup map from session name to start_date.
+ * Used to enable date-based sorting for session data in metrics.
+ */
+export function buildSessionDateLookup(
+  sessions: { name: string; start_date: string }[]
+): SessionDateLookup {
+  const lookup: SessionDateLookup = {};
+  for (const session of sessions) {
+    lookup[session.name] = session.start_date;
+  }
+  return lookup;
+}
+
+/**
+ * Compare two session names using date lookup with name-based fallback.
+ * Returns negative if a < b, positive if a > b, 0 if equal.
+ */
+function compareByDateThenName(
+  nameA: string,
+  nameB: string,
+  dateLookup: SessionDateLookup
+): number {
+  const dateA = dateLookup[nameA];
+  const dateB = dateLookup[nameB];
+
+  // If both have dates, compare by date first
+  if (dateA && dateB) {
+    const dateCompare = dateA.localeCompare(dateB);
+    if (dateCompare !== 0) return dateCompare;
+  }
+
+  // Fall back to name-based sorting (as tiebreaker or when dates unavailable)
+  const [numA, suffixA] = parseSessionName(nameA);
+  const [numB, suffixB] = parseSessionName(nameB);
+  if (numA !== numB) return numA - numB;
+  return suffixA.localeCompare(suffixB);
+}
+
+/**
+ * Sort session data by date (primary) with name-based sorting as tiebreaker.
+ * Uses the date lookup to determine chronological order.
+ * Works with API response types that have session_name field.
+ */
+export function sortSessionDataByDate<T extends { session_name: string }>(
+  data: T[],
+  dateLookup: SessionDateLookup
+): T[] {
+  return [...data].sort((a, b) =>
+    compareByDateThenName(a.session_name, b.session_name, dateLookup)
+  );
+}
+
+/**
+ * Sort prior session data by date (primary) with name-based sorting as tiebreaker.
+ * Uses the date lookup to determine chronological order.
+ * Works with retention API response that has prior_session field.
+ */
+export function sortPriorSessionDataByDate<T extends { prior_session: string }>(
+  data: T[],
+  dateLookup: SessionDateLookup
+): T[] {
+  return [...data].sort((a, b) =>
+    compareByDateThenName(a.prior_session, b.prior_session, dateLookup)
+  );
+}
