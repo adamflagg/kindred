@@ -61,7 +61,7 @@ func (w *RealSheetsWriter) WriteToSheet(
 		spreadsheetID,
 		sheetTab+"!A1",
 		valueRange,
-	).ValueInputOption("RAW").Context(ctx).Do()
+	).ValueInputOption("USER_ENTERED").Context(ctx).Do()
 
 	return err
 }

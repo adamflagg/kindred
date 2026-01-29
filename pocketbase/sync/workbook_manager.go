@@ -304,6 +304,11 @@ func (m *WorkbookManager) UpdateMasterIndex(ctx context.Context) error {
 		return fmt.Errorf("writing index sheet: %w", err)
 	}
 
+	// Reorder tabs now that Index sheet exists (ensures Index is first)
+	if err := ReorderGlobalsWorkbookTabs(ctx, m.sheetsWriter, globals.SpreadsheetID); err != nil {
+		slog.Warn("Failed to reorder globals tabs after index update", "error", err)
+	}
+
 	slog.Info("Updated master index", "workbook_count", len(workbooks))
 	return nil
 }

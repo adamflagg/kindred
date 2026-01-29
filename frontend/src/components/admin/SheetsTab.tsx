@@ -89,18 +89,18 @@ function WorkbookCard({ workbook }: { workbook: SheetsWorkbook }) {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-3 gap-3 mb-4 text-sm">
-        <div>
-          <span className="text-muted-foreground">Tabs</span>
-          <p className="font-medium">{workbook.tab_count}</p>
+      <div className="grid grid-cols-3 gap-4 mb-4">
+        <div className="text-center">
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">Tabs</p>
+          <p className="text-lg font-semibold tabular-nums">{workbook.tab_count}</p>
         </div>
-        <div>
-          <span className="text-muted-foreground">Records</span>
-          <p className="font-medium">{workbook.total_records.toLocaleString()}</p>
+        <div className="text-center">
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">Records</p>
+          <p className="text-lg font-semibold tabular-nums">{workbook.total_records.toLocaleString()}</p>
         </div>
-        <div>
-          <span className="text-muted-foreground">Last Sync</span>
-          <p className="font-medium text-xs">{formatDate(workbook.last_sync)}</p>
+        <div className="text-center">
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">Last Sync</p>
+          <p className="text-sm font-medium">{formatDate(workbook.last_sync)}</p>
         </div>
       </div>
 
