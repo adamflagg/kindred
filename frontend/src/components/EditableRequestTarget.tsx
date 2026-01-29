@@ -30,6 +30,7 @@ interface Camper {
   last_name: string;
   preferred_name?: string;
   age: number;
+  birthdate?: string;
   grade: number;
   gender: string;
   session_cm_id: number;
@@ -171,7 +172,8 @@ export default function EditableRequestTarget({
           first_name: person.first_name,
           last_name: person.last_name,
           preferred_name: person.preferred_name,
-          age: person.birthdate ? calculateAge(person.birthdate) : 0,
+          age: person.age ?? (person.birthdate ? calculateAge(person.birthdate) : 0),
+          birthdate: person.birthdate,
           grade: person.grade || 0,
           gender: person.gender || '',
           session_cm_id: sessionId
