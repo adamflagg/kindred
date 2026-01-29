@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException, Query
 from ..dependencies import pb
 from ..schemas.metrics import (
     ComparisonMetricsResponse,
+    DrilldownAttendee,
     HistoricalTrendsResponse,
     RegistrationMetricsResponse,
     RetentionMetricsResponse,
@@ -620,3 +621,61 @@ async def get_retention_trends(
     except Exception as e:
         logger.error(f"Error calculating retention trends: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error calculating retention trends: {str(e)}")
+
+
+# ============================================================================
+# Drilldown Endpoint (Chart Click-Through)
+# ============================================================================
+
+
+@router.get("/drilldown", response_model=list[DrilldownAttendee])
+async def get_drilldown_attendees(
+    year: int = Query(..., description="Year to get attendees for"),
+    breakdown_type: str = Query(
+        ...,
+        description="Type of breakdown: session, gender, grade, school, years_at_camp, status",
+    ),
+    breakdown_value: str = Query(
+        ...,
+        description="The value to filter by (e.g., 'F' for gender, '5' for grade, '1000' for session cm_id)",
+    ),
+    session_cm_id: int | None = Query(
+        None,
+        description="Optional: Filter to specific session by CampMinder ID",
+    ),
+    session_types: str | None = Query(
+        None,
+        description="Comma-separated session types to filter (e.g., 'main,embedded,ag')",
+    ),
+    status_filter: str | None = Query(
+        None,
+        description="Comma-separated statuses to include (default: enrolled)",
+    ),
+) -> list[DrilldownAttendee]:
+    """Get attendee list for a specific breakdown value.
+
+    Click a chart segment (e.g., "Grade 5" bar) to see all matching campers.
+    Returns individual attendee records with person details for modal display.
+    """
+    from api.services.drilldown_service import DrilldownService
+    from api.services.metrics_repository import MetricsRepository
+
+    try:
+        session_types_list = session_types.split(",") if session_types else None
+        status_list = status_filter.split(",") if status_filter else None
+
+        repository = MetricsRepository(pb)
+        service = DrilldownService(repository)
+
+        return await service.get_attendees_for_breakdown(
+            year=year,
+            breakdown_type=breakdown_type,
+            breakdown_value=breakdown_value,
+            session_cm_id=session_cm_id,
+            session_types=session_types_list,
+            status_filter=status_list,
+        )
+
+    except Exception as e:
+        logger.error(f"Error getting drilldown attendees: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error getting drilldown attendees: {str(e)}")
