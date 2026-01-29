@@ -1,5 +1,7 @@
 /**
  * BreakdownChart - Recharts wrapper for displaying breakdown data.
+ *
+ * Supports drill-down: click a bar/segment to show matching campers.
  */
 
 import {
@@ -17,6 +19,7 @@ import {
   LabelList,
 } from 'recharts';
 import type { PieLabelRenderProps } from 'recharts';
+import type { DrilldownFilter } from '../../types/metrics';
 
 const COLORS = [
   'hsl(160, 100%, 35%)', // Primary green
@@ -33,6 +36,8 @@ interface ChartData {
   name: string;
   value: number;
   percentage?: number;
+  /** Optional ID for drill-down (e.g., session_cm_id) */
+  id?: string | number;
   [key: string]: string | number | undefined;
 }
 
@@ -43,6 +48,10 @@ interface BreakdownChartProps {
   height?: number;
   showPercentage?: boolean;
   className?: string;
+  /** Type of breakdown for drill-down (e.g., 'gender', 'grade', 'session') */
+  breakdownType?: DrilldownFilter['type'];
+  /** Callback when a bar/segment is clicked */
+  onSegmentClick?: (filter: DrilldownFilter) => void;
 }
 
 export function BreakdownChart({
@@ -52,7 +61,23 @@ export function BreakdownChart({
   height = 300,
   showPercentage = false,
   className = '',
+  breakdownType,
+  onSegmentClick,
 }: BreakdownChartProps) {
+  const isClickable = !!onSegmentClick && !!breakdownType;
+
+  const handleClick = (item: ChartData) => {
+    if (!onSegmentClick || !breakdownType) return;
+
+    // Use id if available (e.g., session_cm_id), otherwise use name
+    const value = item.id !== undefined ? String(item.id) : item.name;
+
+    onSegmentClick({
+      type: breakdownType,
+      value,
+      label: item.name,
+    });
+  };
   if (data.length === 0) {
     return (
       <div className={`card-lodge p-4 ${className}`}>
@@ -109,6 +134,11 @@ export function BreakdownChart({
                 return `${labelName}: ${count}`;
               }}
               labelLine={false}
+              onClick={(_, index) => {
+                const item = data[index];
+                if (item) handleClick(item);
+              }}
+              style={{ cursor: isClickable ? 'pointer' : undefined }}
             >
               {data.map((_, index) => (
                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length] ?? '#00b36b'} />
@@ -130,7 +160,17 @@ export function BreakdownChart({
               tickFormatter={(value: string) => value.length > 18 ? `${value.slice(0, 16)}…` : value}
             />
             <Tooltip content={<CustomTooltip />} />
-            <Bar dataKey="value" fill={COLORS[0]} radius={[0, 4, 4, 0]}>
+            <Bar
+              dataKey="value"
+              fill={COLORS[0]}
+              radius={[0, 4, 4, 0]}
+              onClick={(barData) => {
+                // barData contains the original data item properties
+                const item = barData as unknown as ChartData;
+                if (item?.name) handleClick(item);
+              }}
+              style={{ cursor: isClickable ? 'pointer' : undefined }}
+            >
               <LabelList
                 dataKey="value"
                 position="right"

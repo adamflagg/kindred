@@ -16,8 +16,10 @@ import { BreakdownChart } from '../../components/metrics/BreakdownChart';
 import { DemographicBreakdowns } from '../../components/metrics/DemographicBreakdowns';
 import { RegistrationSessionSelector } from '../../components/metrics/RegistrationSessionSelector';
 import { GenderByGradeChart } from '../../components/metrics/GenderByGradeChart';
+import { DrillDownModal } from '../../components/metrics/DrillDownModal';
 import { getSessionChartLabel } from '../../utils/sessionDisplay';
 import { buildSessionDateLookup, sortSessionDataByDate } from '../../utils/sessionUtils';
+import type { DrilldownFilter } from '../../types/metrics';
 import {
   transformGenderData,
   transformGradeData,
@@ -38,6 +40,8 @@ interface RegistrationTabProps {
 export function RegistrationTab({ year, sessionTypes }: RegistrationTabProps) {
   // Local state for session filter
   const [selectedSessionCmId, setSelectedSessionCmId] = useState<number | null>(null);
+  // State for drill-down modal
+  const [drilldownFilter, setDrilldownFilter] = useState<DrilldownFilter | null>(null);
 
   // Build session types param string
   const sessionTypesParam = sessionTypes || 'main,embedded,ag';
@@ -163,12 +167,15 @@ export function RegistrationTab({ year, sessionTypes }: RegistrationTabProps) {
           type="pie"
           showPercentage
           height={250}
+          breakdownType="gender"
+          onSegmentClick={setDrilldownFilter}
         />
         {/* Gender by Grade stacked bar chart */}
         <GenderByGradeChart
           data={data.by_gender_grade ?? []}
           title="Gender by Grade"
           height={250}
+          onBarClick={setDrilldownFilter}
         />
       </div>
 
@@ -186,6 +193,8 @@ export function RegistrationTab({ year, sessionTypes }: RegistrationTabProps) {
           data={gradeChartData}
           type="bar"
           height={300}
+          breakdownType="grade"
+          onSegmentClick={setDrilldownFilter}
         />
       </div>
 
@@ -196,6 +205,8 @@ export function RegistrationTab({ year, sessionTypes }: RegistrationTabProps) {
           data={sessionChartData}
           type="bar"
           height={350}
+          breakdownType="session"
+          onSegmentClick={setDrilldownFilter}
         />
         <BreakdownChart
           title="Enrollment by Session Length"
@@ -212,6 +223,8 @@ export function RegistrationTab({ year, sessionTypes }: RegistrationTabProps) {
           data={yearsChartData}
           type="bar"
           height={300}
+          breakdownType="years_at_camp"
+          onSegmentClick={setDrilldownFilter}
         />
         {firstSummerYearData.length > 0 && (
           <BreakdownChart
@@ -271,6 +284,18 @@ export function RegistrationTab({ year, sessionTypes }: RegistrationTabProps) {
           bySessionBunk={data.by_session_bunk}
         />
       </div>
+
+      {/* Drill-down Modal */}
+      {drilldownFilter && (
+        <DrillDownModal
+          year={year}
+          filter={drilldownFilter}
+          sessionCmId={selectedSessionCmId ?? undefined}
+          sessionTypes={sessionTypesParam.split(',')}
+          statusFilter={[statusesParam]}
+          onClose={() => setDrilldownFilter(null)}
+        />
+      )}
     </div>
   );
 }
