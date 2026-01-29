@@ -8,6 +8,7 @@
 import { useQuery } from '@tanstack/react-query';
 import type { DrilldownAttendee, DrilldownFilter } from '../types/metrics';
 import { queryKeys, syncDataOptions } from '../utils/queryKeys';
+import { useApiWithAuth } from './useApiWithAuth';
 
 interface UseDrilldownAttendeesOptions {
   year: number;
@@ -24,6 +25,7 @@ export function useDrilldownAttendees({
   sessionTypes,
   statusFilter,
 }: UseDrilldownAttendeesOptions) {
+  const { fetchWithAuth } = useApiWithAuth();
   const sessionTypesParam = sessionTypes?.join(',');
   const statusFilterParam = statusFilter?.join(',');
 
@@ -57,9 +59,10 @@ export function useDrilldownAttendees({
         params.set('status_filter', statusFilterParam);
       }
 
-      const res = await fetch(`/api/metrics/drilldown?${params}`);
+      const res = await fetchWithAuth(`/api/metrics/drilldown?${params}`);
       if (!res.ok) {
-        throw new Error(`Failed to fetch drilldown data: ${res.statusText}`);
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.detail || `Failed to fetch drilldown data: ${res.statusText}`);
       }
       return res.json();
     },
