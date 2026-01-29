@@ -1485,11 +1485,7 @@ func aggregateExtendedAttendees(attendees []testExtendedAttendee) map[int]*testE
 // These tests define the new behavior: one row per (person_id, session_cm_id, year)
 // ============================================================================
 
-// Session type constants for retention context
-var (
-	summerSessionTypes = []string{"main", "embedded", "ag", "quest", "teen", "tli", "training"}
-	familySessionTypes = []string{"family", "adult"}
-)
+// Note: summerSessionTypes and familySessionTypes are defined in camper_history.go
 
 // testAttendeeV2 represents an attendee record for v2 tests
 type testAttendeeV2 struct {
