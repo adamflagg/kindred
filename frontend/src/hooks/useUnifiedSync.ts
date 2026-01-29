@@ -9,15 +9,25 @@ interface UnifiedSyncParams {
   debug?: boolean;
 }
 
+interface SyncResponse {
+  status?: string;
+  queue_id?: string;
+  position?: number;
+  message?: string;
+  year?: number;
+  service?: string;
+}
+
 /**
  * Unified sync hook for both current year and historical syncs.
  * Replaces the separate useRunAllSyncs and useHistoricalSync hooks.
+ * Supports queuing: returns 202 Accepted when sync is enqueued.
  */
 export function useUnifiedSync() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ year, service, includeCustomValues, debug }: UnifiedSyncParams) => {
+    mutationFn: async ({ year, service, includeCustomValues, debug }: UnifiedSyncParams): Promise<SyncResponse> => {
       const params = new URLSearchParams();
       params.set('year', year.toString());
       params.set('service', service);
@@ -33,8 +43,18 @@ export function useUnifiedSync() {
         duration: 3000
       });
     },
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['sync-status-api'] });
+
+      // Check if sync was queued (202 response)
+      if (data?.status === 'queued') {
+        const serviceDisplay = variables.service === 'all' ? 'all services' : variables.service;
+        toast.success(
+          `Sync for ${variables.year} - ${serviceDisplay} queued (position ${data.position})`,
+          { duration: 5000 }
+        );
+      }
+
       // Also invalidate after delay for quick syncs
       setTimeout(() => queryClient.invalidateQueries({ queryKey: ['sync-status-api'] }), 2000);
     },
@@ -56,9 +76,9 @@ export function useUnifiedSync() {
         errorMessage = pbError.response.message;
       }
 
-      // Handle specific error cases
-      if (errorMessage.includes('already') || errorMessage.includes('in progress')) {
-        errorMessage = 'Another sync is already running. Please wait for it to complete.';
+      // Handle queue full error
+      if (errorMessage.includes('full')) {
+        errorMessage = 'Sync queue is full (max 5 items). Please wait for a sync to complete.';
       }
 
       toast.error(`Failed to start sync for ${variables.year} - ${serviceDisplay}: ${errorMessage}`, {
