@@ -258,6 +258,9 @@ def merge_ag_into_parent_retention_stats(
 async def fetch_camper_history_for_year(year: int, session_types: list[str] | None = None) -> list[Any]:
     """Fetch camper_history records for a given year.
 
+    V2: Uses direct PocketBase filtering on session_type (select field).
+    Each record has a single session_type, no comma-separated parsing needed.
+
     Note: This function does NOT filter by status. Status filtering happens at
     the attendees level (for enrollment counts), not at the demographics level.
     Demographics should include everyone associated with summer sessions,
@@ -275,22 +278,15 @@ async def fetch_camper_history_for_year(year: int, session_types: list[str] | No
     try:
         filter_str = f"year = {year}"
 
+        # V2: Direct filter on session_type select field (no string parsing)
+        if session_types:
+            type_filter = " || ".join(f'session_type = "{t}"' for t in session_types)
+            filter_str = f"({filter_str}) && ({type_filter})"
+
         records = await asyncio.to_thread(
             pb.collection("camper_history").get_full_list,
             query_params={"filter": filter_str},
         )
-
-        # Filter by session_types if provided
-        if session_types:
-            filtered = []
-            for record in records:
-                record_types = getattr(record, "session_types", "") or ""
-                # Check if any of the record's session types match the filter
-                if record_types:
-                    record_type_list = [t.strip() for t in record_types.split(",")]
-                    if any(rt in session_types for rt in record_type_list):
-                        filtered.append(record)
-            return filtered
 
         return records
     except Exception as e:
