@@ -906,7 +906,7 @@ curl --request PATCH \
 
 **Field Notes:**
 - `SessionProgramStatus`: Array of session/program enrollments for this person
-  - `StatusID`: 2=Enrolled, 4=Applied, 8=WaitList
+  - `StatusID`: 1=None, 2=Enrolled, 4=Applied, 8=WaitList, 16=LeftEarly, 32=Cancelled, 64=Dismissed, 128=Inquiry, 256=Withdrawn, 512=Incomplete
   - `Memo`: Additional notes about the enrollment
   - `PostDate`: When the status was posted
   - `EffectiveDate`: When the status becomes effective
@@ -947,7 +947,7 @@ curl --request PATCH \
 **Field Notes:**
 - Returns attendees for a specific session
 - `PersonsStatus`: Array of person enrollment statuses
-- Status codes: 0=Pending, 1=Waitlisted, 2=Enrolled, 3=Cancelled, 4=Applied, 8=WaitList
+- Status codes: 1=None, 2=Enrolled, 4=Applied, 8=WaitList, 16=LeftEarly, 32=Cancelled, 64=Dismissed, 128=Inquiry, 256=Withdrawn, 512=Incomplete
 
 ## Bunk Plans API
 
