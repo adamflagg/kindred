@@ -2290,39 +2290,39 @@ func TestCamperHistoryOrphanDetection(t *testing.T) {
 // TestCamperHistoryUpsertDecision tests the create vs update decision logic
 func TestCamperHistoryUpsertDecision(t *testing.T) {
 	tests := []struct {
-		name           string
-		existingKeys   map[string]bool
-		newKey         string
-		expectCreate   bool
-		expectUpdate   bool
+		name         string
+		existingKeys map[string]bool
+		newKey       string
+		expectCreate bool
+		expectUpdate bool
 	}{
 		{
-			name:           "new record - not in existing",
-			existingKeys:   map[string]bool{},
-			newKey:         "1001:100|2025",
-			expectCreate:   true,
-			expectUpdate:   false,
+			name:         "new record - not in existing",
+			existingKeys: map[string]bool{},
+			newKey:       "1001:100|2025",
+			expectCreate: true,
+			expectUpdate: false,
 		},
 		{
-			name:           "existing record - should update",
-			existingKeys:   map[string]bool{"1001:100|2025": true},
-			newKey:         "1001:100|2025",
-			expectCreate:   false,
-			expectUpdate:   true,
+			name:         "existing record - should update",
+			existingKeys: map[string]bool{"1001:100|2025": true},
+			newKey:       "1001:100|2025",
+			expectCreate: false,
+			expectUpdate: true,
 		},
 		{
-			name:           "different session - new record",
-			existingKeys:   map[string]bool{"1001:100|2025": true},
-			newKey:         "1001:101|2025",
-			expectCreate:   true,
-			expectUpdate:   false,
+			name:         "different session - new record",
+			existingKeys: map[string]bool{"1001:100|2025": true},
+			newKey:       "1001:101|2025",
+			expectCreate: true,
+			expectUpdate: false,
 		},
 		{
-			name:           "different year - new record",
-			existingKeys:   map[string]bool{"1001:100|2025": true},
-			newKey:         "1001:100|2026",
-			expectCreate:   true,
-			expectUpdate:   false,
+			name:         "different year - new record",
+			existingKeys: map[string]bool{"1001:100|2025": true},
+			newKey:       "1001:100|2026",
+			expectCreate: true,
+			expectUpdate: false,
 		},
 	}
 
