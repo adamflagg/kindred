@@ -1489,24 +1489,24 @@ func aggregateExtendedAttendees(attendees []testExtendedAttendee) map[int]*testE
 
 // testAttendeeV2 represents an attendee record for v2 tests
 type testAttendeeV2 struct {
-	PersonID        int
-	PersonPBID      string
-	SessionCMID     int
-	SessionPBID     string
-	SessionName     string
-	SessionType     string
-	Year            int
-	Status          string
-	EnrollmentDate  string
+	PersonID       int
+	PersonPBID     string
+	SessionCMID    int
+	SessionPBID    string
+	SessionName    string
+	SessionType    string
+	Year           int
+	Status         string
+	EnrollmentDate string
 }
 
 // testBunkAssignmentV2 represents a bunk assignment keyed by session
 type testBunkAssignmentV2 struct {
-	PersonPBID   string
-	SessionPBID  string
-	BunkName     string
-	BunkCMID     int
-	Year         int
+	PersonPBID  string
+	SessionPBID string
+	BunkName    string
+	BunkCMID    int
+	Year        int
 }
 
 // testCamperHistoryV2 represents the output record structure
@@ -1629,17 +1629,23 @@ func TestV2_BunkLookupBySession(t *testing.T) {
 // only considers summer session types in the prior year
 func TestV2_IsReturningSummerOnlyConsidersSummerTypes(t *testing.T) {
 	tests := []struct {
-		name                  string
-		currentYear           int
-		currentSessionType    string
-		priorYearEnrollments  []struct{ Year int; SessionType string }
+		name                 string
+		currentYear          int
+		currentSessionType   string
+		priorYearEnrollments []struct {
+			Year        int
+			SessionType string
+		}
 		expectedReturningSummer bool
 	}{
 		{
 			name:               "returning - attended main session last year",
 			currentYear:        2025,
 			currentSessionType: "main",
-			priorYearEnrollments: []struct{ Year int; SessionType string }{
+			priorYearEnrollments: []struct {
+				Year        int
+				SessionType string
+			}{
 				{2024, "main"},
 			},
 			expectedReturningSummer: true,
@@ -1648,7 +1654,10 @@ func TestV2_IsReturningSummerOnlyConsidersSummerTypes(t *testing.T) {
 			name:               "returning - attended ag session last year",
 			currentYear:        2025,
 			currentSessionType: "main",
-			priorYearEnrollments: []struct{ Year int; SessionType string }{
+			priorYearEnrollments: []struct {
+				Year        int
+				SessionType string
+			}{
 				{2024, "ag"},
 			},
 			expectedReturningSummer: true,
@@ -1657,7 +1666,10 @@ func TestV2_IsReturningSummerOnlyConsidersSummerTypes(t *testing.T) {
 			name:               "returning - attended embedded session last year",
 			currentYear:        2025,
 			currentSessionType: "main",
-			priorYearEnrollments: []struct{ Year int; SessionType string }{
+			priorYearEnrollments: []struct {
+				Year        int
+				SessionType string
+			}{
 				{2024, "embedded"},
 			},
 			expectedReturningSummer: true,
@@ -1666,7 +1678,10 @@ func TestV2_IsReturningSummerOnlyConsidersSummerTypes(t *testing.T) {
 			name:               "NOT returning - only attended family last year",
 			currentYear:        2025,
 			currentSessionType: "main",
-			priorYearEnrollments: []struct{ Year int; SessionType string }{
+			priorYearEnrollments: []struct {
+				Year        int
+				SessionType string
+			}{
 				{2024, "family"},
 			},
 			expectedReturningSummer: false, // Family doesn't count as summer
@@ -1675,7 +1690,10 @@ func TestV2_IsReturningSummerOnlyConsidersSummerTypes(t *testing.T) {
 			name:               "NOT returning - only attended adult last year",
 			currentYear:        2025,
 			currentSessionType: "main",
-			priorYearEnrollments: []struct{ Year int; SessionType string }{
+			priorYearEnrollments: []struct {
+				Year        int
+				SessionType string
+			}{
 				{2024, "adult"},
 			},
 			expectedReturningSummer: false, // Adult doesn't count as summer
@@ -1684,7 +1702,10 @@ func TestV2_IsReturningSummerOnlyConsidersSummerTypes(t *testing.T) {
 			name:               "NOT returning - summer attendance was 2 years ago",
 			currentYear:        2025,
 			currentSessionType: "main",
-			priorYearEnrollments: []struct{ Year int; SessionType string }{
+			priorYearEnrollments: []struct {
+				Year        int
+				SessionType string
+			}{
 				{2023, "main"}, // Gap year
 			},
 			expectedReturningSummer: false,
@@ -1693,7 +1714,10 @@ func TestV2_IsReturningSummerOnlyConsidersSummerTypes(t *testing.T) {
 			name:               "returning - multiple types last year including summer",
 			currentYear:        2025,
 			currentSessionType: "main",
-			priorYearEnrollments: []struct{ Year int; SessionType string }{
+			priorYearEnrollments: []struct {
+				Year        int
+				SessionType string
+			}{
 				{2024, "family"},
 				{2024, "main"}, // This counts
 			},
@@ -1715,15 +1739,21 @@ func TestV2_IsReturningSummerOnlyConsidersSummerTypes(t *testing.T) {
 // only considers family/adult session types in the prior year
 func TestV2_IsReturningFamilyOnlyConsidersFamilyTypes(t *testing.T) {
 	tests := []struct {
-		name                  string
-		currentYear           int
-		priorYearEnrollments  []struct{ Year int; SessionType string }
+		name                 string
+		currentYear          int
+		priorYearEnrollments []struct {
+			Year        int
+			SessionType string
+		}
 		expectedReturningFamily bool
 	}{
 		{
 			name:        "returning family - attended family last year",
 			currentYear: 2025,
-			priorYearEnrollments: []struct{ Year int; SessionType string }{
+			priorYearEnrollments: []struct {
+				Year        int
+				SessionType string
+			}{
 				{2024, "family"},
 			},
 			expectedReturningFamily: true,
@@ -1731,7 +1761,10 @@ func TestV2_IsReturningFamilyOnlyConsidersFamilyTypes(t *testing.T) {
 		{
 			name:        "returning family - attended adult last year",
 			currentYear: 2025,
-			priorYearEnrollments: []struct{ Year int; SessionType string }{
+			priorYearEnrollments: []struct {
+				Year        int
+				SessionType string
+			}{
 				{2024, "adult"},
 			},
 			expectedReturningFamily: true,
@@ -1739,7 +1772,10 @@ func TestV2_IsReturningFamilyOnlyConsidersFamilyTypes(t *testing.T) {
 		{
 			name:        "NOT returning family - only attended summer last year",
 			currentYear: 2025,
-			priorYearEnrollments: []struct{ Year int; SessionType string }{
+			priorYearEnrollments: []struct {
+				Year        int
+				SessionType string
+			}{
 				{2024, "main"},
 				{2024, "ag"},
 			},
@@ -1748,7 +1784,10 @@ func TestV2_IsReturningFamilyOnlyConsidersFamilyTypes(t *testing.T) {
 		{
 			name:        "returning family - attended both summer and family last year",
 			currentYear: 2025,
-			priorYearEnrollments: []struct{ Year int; SessionType string }{
+			priorYearEnrollments: []struct {
+				Year        int
+				SessionType string
+			}{
 				{2024, "main"},
 				{2024, "family"},
 			},
@@ -1769,21 +1808,30 @@ func TestV2_IsReturningFamilyOnlyConsidersFamilyTypes(t *testing.T) {
 // TestV2_FirstYearSummer tests first_year_summer calculation
 func TestV2_FirstYearSummer(t *testing.T) {
 	tests := []struct {
-		name              string
-		currentYear       int
-		enrollments       []struct{ Year int; SessionType string }
+		name        string
+		currentYear int
+		enrollments []struct {
+			Year        int
+			SessionType string
+		}
 		expectedFirstYear int
 	}{
 		{
 			name:        "new camper - no history",
 			currentYear: 2025,
-			enrollments: []struct{ Year int; SessionType string }{},
+			enrollments: []struct {
+				Year        int
+				SessionType string
+			}{},
 			expectedFirstYear: 2025, // Current year is their first
 		},
 		{
 			name:        "returning - single prior summer year",
 			currentYear: 2025,
-			enrollments: []struct{ Year int; SessionType string }{
+			enrollments: []struct {
+				Year        int
+				SessionType string
+			}{
 				{2024, "main"},
 			},
 			expectedFirstYear: 2024,
@@ -1791,7 +1839,10 @@ func TestV2_FirstYearSummer(t *testing.T) {
 		{
 			name:        "veteran - multiple summer years",
 			currentYear: 2025,
-			enrollments: []struct{ Year int; SessionType string }{
+			enrollments: []struct {
+				Year        int
+				SessionType string
+			}{
 				{2020, "main"},
 				{2021, "ag"},
 				{2022, "embedded"},
@@ -1803,7 +1854,10 @@ func TestV2_FirstYearSummer(t *testing.T) {
 		{
 			name:        "family only - no summer history",
 			currentYear: 2025,
-			enrollments: []struct{ Year int; SessionType string }{
+			enrollments: []struct {
+				Year        int
+				SessionType string
+			}{
 				{2020, "family"},
 				{2021, "adult"},
 			},
@@ -1812,7 +1866,10 @@ func TestV2_FirstYearSummer(t *testing.T) {
 		{
 			name:        "mixed - first summer after family",
 			currentYear: 2025,
-			enrollments: []struct{ Year int; SessionType string }{
+			enrollments: []struct {
+				Year        int
+				SessionType string
+			}{
 				{2020, "family"},
 				{2022, "main"}, // First summer
 				{2023, "family"},
@@ -1835,15 +1892,21 @@ func TestV2_FirstYearSummer(t *testing.T) {
 // TestV2_FirstYearFamily tests first_year_family calculation
 func TestV2_FirstYearFamily(t *testing.T) {
 	tests := []struct {
-		name              string
-		currentYear       int
-		enrollments       []struct{ Year int; SessionType string }
+		name        string
+		currentYear int
+		enrollments []struct {
+			Year        int
+			SessionType string
+		}
 		expectedFirstYear int
 	}{
 		{
 			name:        "no family history",
 			currentYear: 2025,
-			enrollments: []struct{ Year int; SessionType string }{
+			enrollments: []struct {
+				Year        int
+				SessionType string
+			}{
 				{2020, "main"},
 				{2021, "main"},
 			},
@@ -1852,7 +1915,10 @@ func TestV2_FirstYearFamily(t *testing.T) {
 		{
 			name:        "single family year",
 			currentYear: 2025,
-			enrollments: []struct{ Year int; SessionType string }{
+			enrollments: []struct {
+				Year        int
+				SessionType string
+			}{
 				{2023, "family"},
 			},
 			expectedFirstYear: 2023,
@@ -1860,7 +1926,10 @@ func TestV2_FirstYearFamily(t *testing.T) {
 		{
 			name:        "multiple family years",
 			currentYear: 2025,
-			enrollments: []struct{ Year int; SessionType string }{
+			enrollments: []struct {
+				Year        int
+				SessionType string
+			}{
 				{2020, "family"},
 				{2022, "adult"},
 				{2024, "family"},
@@ -1870,7 +1939,10 @@ func TestV2_FirstYearFamily(t *testing.T) {
 		{
 			name:        "mixed summer and family",
 			currentYear: 2025,
-			enrollments: []struct{ Year int; SessionType string }{
+			enrollments: []struct {
+				Year        int
+				SessionType string
+			}{
 				{2019, "main"},
 				{2020, "family"}, // First family
 				{2021, "main"},
@@ -2033,7 +2105,10 @@ func findRecordBySession(records []testCamperHistoryV2, sessionCMID int) *testCa
 }
 
 // computeIsReturningSummer checks if person was enrolled in a summer session in prior year
-func computeIsReturningSummer(currentYear int, enrollments []struct{ Year int; SessionType string }) bool {
+func computeIsReturningSummer(currentYear int, enrollments []struct {
+	Year        int
+	SessionType string
+}) bool {
 	priorYear := currentYear - 1
 	for _, e := range enrollments {
 		if e.Year == priorYear && isSummerSessionType(e.SessionType) {
@@ -2044,7 +2119,10 @@ func computeIsReturningSummer(currentYear int, enrollments []struct{ Year int; S
 }
 
 // computeIsReturningFamily checks if person was enrolled in a family session in prior year
-func computeIsReturningFamily(currentYear int, enrollments []struct{ Year int; SessionType string }) bool {
+func computeIsReturningFamily(currentYear int, enrollments []struct {
+	Year        int
+	SessionType string
+}) bool {
 	priorYear := currentYear - 1
 	for _, e := range enrollments {
 		if e.Year == priorYear && isFamilySessionType(e.SessionType) {
@@ -2055,7 +2133,10 @@ func computeIsReturningFamily(currentYear int, enrollments []struct{ Year int; S
 }
 
 // computeFirstYearSummer returns the first year a person attended a summer session
-func computeFirstYearSummer(currentYear int, enrollments []struct{ Year int; SessionType string }) int {
+func computeFirstYearSummer(currentYear int, enrollments []struct {
+	Year        int
+	SessionType string
+}) int {
 	minYear := 0
 	for _, e := range enrollments {
 		if isSummerSessionType(e.SessionType) {
@@ -2071,7 +2152,10 @@ func computeFirstYearSummer(currentYear int, enrollments []struct{ Year int; Ses
 }
 
 // computeFirstYearFamily returns the first year a person attended a family session
-func computeFirstYearFamily(_ int, enrollments []struct{ Year int; SessionType string }) int {
+func computeFirstYearFamily(_ int, enrollments []struct {
+	Year        int
+	SessionType string
+}) int {
 	minYear := 0
 	for _, e := range enrollments {
 		if isFamilySessionType(e.SessionType) {
