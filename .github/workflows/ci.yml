@@ -438,19 +438,24 @@ jobs:
           -H "Authorization: Bearer $AUTH_TOKEN" \
           > /tmp/collections.json
 
+        set +e
         python3 ../scripts/ci/validate_migrations.py /tmp/collections.json
         VALIDATION_RESULT=$?
-
-        # Cleanup
-        kill $PB_PID 2>/dev/null || true
-        rm -rf /tmp/pb_ci_test
+        set -e
 
         if [ $VALIDATION_RESULT -ne 0 ]; then
           echo "❌ Schema validation failed"
           echo "PocketBase output log:"
-          cat /tmp/pb_output.log
+          cat /tmp/pb_output.log || true
+          # Cleanup
+          kill $PB_PID 2>/dev/null || true
+          rm -rf /tmp/pb_ci_test
           exit 1
         fi
+
+        # Cleanup on success
+        kill $PB_PID 2>/dev/null || true
+        rm -rf /tmp/pb_ci_test
 
         echo "✅ Migration smoke test passed"
 
