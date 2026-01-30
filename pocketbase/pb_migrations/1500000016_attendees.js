@@ -5,6 +5,8 @@
  *
  * Links persons to camp sessions with enrollment status. Year-scoped to prevent
  * data contamination when CampMinder reuses session IDs across years.
+ *
+ * CONSOLIDATED: Includes changes from migration 1500000040 (add "none" status)
  */
 
 const COLLECTION_ID_ATTENDEES = "col_attendees";
@@ -48,6 +50,7 @@ migrate((app) => {
         required: false,
         presentable: false,
         values: [
+          "none",
           "enrolled",
           "applied",
           "waitlisted",
@@ -84,10 +87,8 @@ migrate((app) => {
         type: "date",
         required: false,
         presentable: false,
-        options: {
-          min: "",
-          max: ""
-        }
+        min: "",
+        max: ""
       },
       {
         name: "is_active",
