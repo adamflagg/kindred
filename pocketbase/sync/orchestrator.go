@@ -27,6 +27,97 @@ const (
 	statusCompleted = "completed"
 )
 
+// SyncPhase represents a category of sync jobs
+type SyncPhase string
+
+const (
+	// PhaseSource - CampMinder API → PocketBase
+	PhaseSource SyncPhase = "source"
+	// PhaseExpensive - CampMinder API (1 call/entity, rate limited)
+	PhaseExpensive SyncPhase = "expensive"
+	// PhaseTransform - PocketBase → PocketBase (no API)
+	PhaseTransform SyncPhase = "transform"
+	// PhaseProcess - CSV import + AI processing
+	PhaseProcess SyncPhase = "process"
+	// PhaseExport - PocketBase → Google Sheets
+	PhaseExport SyncPhase = "export"
+)
+
+// SyncJobMeta contains metadata about a sync job
+type SyncJobMeta struct {
+	ID          string
+	Phase       SyncPhase
+	Description string
+}
+
+// syncJobMeta defines the phase and metadata for all sync jobs
+// Jobs are listed in execution order within their phase
+var syncJobMeta = []SyncJobMeta{
+	// Source phase - CampMinder API calls
+	{"session_groups", PhaseSource, "Session groups from CampMinder"},
+	{"sessions", PhaseSource, "Sessions from CampMinder"},
+	{"attendees", PhaseSource, "Attendees from CampMinder"},
+	{"persons", PhaseSource, "Persons + households from CampMinder"},
+	{"bunks", PhaseSource, "Bunks from CampMinder"},
+	{"bunk_plans", PhaseSource, "Bunk plans from CampMinder"},
+	{"bunk_assignments", PhaseSource, "Bunk assignments from CampMinder"},
+	{"staff", PhaseSource, "Staff from CampMinder"},
+	{"financial_transactions", PhaseSource, "Financial transactions from CampMinder"},
+
+	// Expensive phase - Custom values (on-demand, rate limited)
+	{"person_custom_values", PhaseExpensive, "Person custom field values"},
+	{"household_custom_values", PhaseExpensive, "Household custom field values"},
+
+	// Transform phase - PocketBase → PocketBase
+	{"camper_history", PhaseTransform, "Compute camper history from attendees"},
+	{"family_camp_derived", PhaseTransform, "Compute family camp tables from custom values"},
+	{"household_demographics", PhaseTransform, "Compute household demographics from custom values"},
+
+	// Process phase - CSV + AI
+	{"bunk_requests", PhaseProcess, "Import bunk request CSV"},
+	{"process_requests", PhaseProcess, "AI processing of bunk requests"},
+
+	// Export phase - Google Sheets
+	{"multi_workbook_export", PhaseExport, "Export to Google Sheets"},
+}
+
+// GetSyncJobMeta returns the sync job metadata array
+func GetSyncJobMeta() []SyncJobMeta {
+	return syncJobMeta
+}
+
+// GetJobsForPhase returns job IDs for a specific phase
+func GetJobsForPhase(phase SyncPhase) []string {
+	var jobs []string
+	for _, meta := range syncJobMeta {
+		if meta.Phase == phase {
+			jobs = append(jobs, meta.ID)
+		}
+	}
+	return jobs
+}
+
+// GetAllPhases returns all phases in execution order
+func GetAllPhases() []SyncPhase {
+	return []SyncPhase{
+		PhaseSource,
+		PhaseExpensive,
+		PhaseTransform,
+		PhaseProcess,
+		PhaseExport,
+	}
+}
+
+// GetPhaseForJob returns the phase for a given job ID
+func GetPhaseForJob(jobID string) SyncPhase {
+	for _, meta := range syncJobMeta {
+		if meta.ID == jobID {
+			return meta.Phase
+		}
+	}
+	return ""
+}
+
 // Service defines the interface for sync services
 type Service interface {
 	Sync(ctx context.Context) error

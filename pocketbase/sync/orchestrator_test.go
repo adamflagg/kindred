@@ -1776,6 +1776,432 @@ func TestStats_IsNoOp(t *testing.T) {
 // Orchestrator.GetChangedCollections Tests
 // =============================================================================
 
+// =============================================================================
+// Sync Phase Architecture Tests
+// =============================================================================
+
+// TestSyncPhaseConstants tests that SyncPhase constants are properly defined
+func TestSyncPhaseConstants(t *testing.T) {
+	// All phase constants should be non-empty strings
+	phases := []SyncPhase{
+		PhaseSource,
+		PhaseExpensive,
+		PhaseTransform,
+		PhaseProcess,
+		PhaseExport,
+	}
+
+	for _, phase := range phases {
+		if phase == "" {
+			t.Error("SyncPhase constant should not be empty")
+		}
+	}
+
+	// Verify expected values
+	if PhaseSource != "source" {
+		t.Errorf("expected PhaseSource='source', got %q", PhaseSource)
+	}
+	if PhaseExpensive != "expensive" {
+		t.Errorf("expected PhaseExpensive='expensive', got %q", PhaseExpensive)
+	}
+	if PhaseTransform != "transform" {
+		t.Errorf("expected PhaseTransform='transform', got %q", PhaseTransform)
+	}
+	if PhaseProcess != "process" {
+		t.Errorf("expected PhaseProcess='process', got %q", PhaseProcess)
+	}
+	if PhaseExport != "export" {
+		t.Errorf("expected PhaseExport='export', got %q", PhaseExport)
+	}
+}
+
+// TestSyncJobMeta_AllJobsHavePhase tests that all sync jobs have a phase assigned
+func TestSyncJobMeta_AllJobsHavePhase(t *testing.T) {
+	meta := GetSyncJobMeta()
+
+	if len(meta) == 0 {
+		t.Fatal("expected syncJobMeta to contain jobs")
+	}
+
+	validPhases := map[SyncPhase]bool{
+		PhaseSource:    true,
+		PhaseExpensive: true,
+		PhaseTransform: true,
+		PhaseProcess:   true,
+		PhaseExport:    true,
+	}
+
+	for _, job := range meta {
+		if job.ID == "" {
+			t.Error("job ID should not be empty")
+		}
+		if job.Phase == "" {
+			t.Errorf("job %q has empty phase", job.ID)
+		}
+		if !validPhases[job.Phase] {
+			t.Errorf("job %q has invalid phase %q", job.ID, job.Phase)
+		}
+		if job.Description == "" {
+			t.Errorf("job %q has empty description", job.ID)
+		}
+	}
+}
+
+// TestSyncJobMeta_SourcePhaseJobs tests that expected source jobs are in source phase
+func TestSyncJobMeta_SourcePhaseJobs(t *testing.T) {
+	expectedSourceJobs := []string{
+		"session_groups",
+		"sessions",
+		"attendees",
+		"persons",
+		"bunks",
+		"bunk_plans",
+		"bunk_assignments",
+		"staff",
+		"financial_transactions",
+	}
+
+	meta := GetSyncJobMeta()
+	jobPhases := make(map[string]SyncPhase)
+	for _, job := range meta {
+		jobPhases[job.ID] = job.Phase
+	}
+
+	for _, jobID := range expectedSourceJobs {
+		phase, exists := jobPhases[jobID]
+		if !exists {
+			t.Errorf("expected job %q to be in syncJobMeta", jobID)
+			continue
+		}
+		if phase != PhaseSource {
+			t.Errorf("expected job %q to be in source phase, got %q", jobID, phase)
+		}
+	}
+}
+
+// TestSyncJobMeta_ExpensivePhaseJobs tests that custom values jobs are in expensive phase
+func TestSyncJobMeta_ExpensivePhaseJobs(t *testing.T) {
+	expectedExpensiveJobs := []string{
+		"person_custom_values",
+		"household_custom_values",
+	}
+
+	meta := GetSyncJobMeta()
+	jobPhases := make(map[string]SyncPhase)
+	for _, job := range meta {
+		jobPhases[job.ID] = job.Phase
+	}
+
+	for _, jobID := range expectedExpensiveJobs {
+		phase, exists := jobPhases[jobID]
+		if !exists {
+			t.Errorf("expected job %q to be in syncJobMeta", jobID)
+			continue
+		}
+		if phase != PhaseExpensive {
+			t.Errorf("expected job %q to be in expensive phase, got %q", jobID, phase)
+		}
+	}
+}
+
+// TestSyncJobMeta_TransformPhaseJobs tests that derived tables are in transform phase
+func TestSyncJobMeta_TransformPhaseJobs(t *testing.T) {
+	expectedTransformJobs := []string{
+		"camper_history",
+		"family_camp_derived",
+		"household_demographics",
+	}
+
+	meta := GetSyncJobMeta()
+	jobPhases := make(map[string]SyncPhase)
+	for _, job := range meta {
+		jobPhases[job.ID] = job.Phase
+	}
+
+	for _, jobID := range expectedTransformJobs {
+		phase, exists := jobPhases[jobID]
+		if !exists {
+			t.Errorf("expected job %q to be in syncJobMeta", jobID)
+			continue
+		}
+		if phase != PhaseTransform {
+			t.Errorf("expected job %q to be in transform phase, got %q", jobID, phase)
+		}
+	}
+}
+
+// TestSyncJobMeta_ProcessPhaseJobs tests that CSV/AI jobs are in process phase
+func TestSyncJobMeta_ProcessPhaseJobs(t *testing.T) {
+	expectedProcessJobs := []string{
+		"bunk_requests",
+		"process_requests",
+	}
+
+	meta := GetSyncJobMeta()
+	jobPhases := make(map[string]SyncPhase)
+	for _, job := range meta {
+		jobPhases[job.ID] = job.Phase
+	}
+
+	for _, jobID := range expectedProcessJobs {
+		phase, exists := jobPhases[jobID]
+		if !exists {
+			t.Errorf("expected job %q to be in syncJobMeta", jobID)
+			continue
+		}
+		if phase != PhaseProcess {
+			t.Errorf("expected job %q to be in process phase, got %q", jobID, phase)
+		}
+	}
+}
+
+// TestSyncJobMeta_ExportPhaseJobs tests that export jobs are in export phase
+func TestSyncJobMeta_ExportPhaseJobs(t *testing.T) {
+	expectedExportJobs := []string{
+		"multi_workbook_export",
+	}
+
+	meta := GetSyncJobMeta()
+	jobPhases := make(map[string]SyncPhase)
+	for _, job := range meta {
+		jobPhases[job.ID] = job.Phase
+	}
+
+	for _, jobID := range expectedExportJobs {
+		phase, exists := jobPhases[jobID]
+		if !exists {
+			t.Errorf("expected job %q to be in syncJobMeta", jobID)
+			continue
+		}
+		if phase != PhaseExport {
+			t.Errorf("expected job %q to be in export phase, got %q", jobID, phase)
+		}
+	}
+}
+
+// TestGetJobsForPhase_ReturnsCorrectJobs tests that GetJobsForPhase returns jobs for specified phase
+func TestGetJobsForPhase_ReturnsCorrectJobs(t *testing.T) {
+	tests := []struct {
+		phase         SyncPhase
+		expectedCount int // Minimum expected count
+		expectedJobs  []string
+	}{
+		{
+			phase:         PhaseSource,
+			expectedCount: 9, // At least 9 source jobs
+			expectedJobs:  []string{"sessions", "attendees", "persons"},
+		},
+		{
+			phase:         PhaseExpensive,
+			expectedCount: 2,
+			expectedJobs:  []string{"person_custom_values", "household_custom_values"},
+		},
+		{
+			phase:         PhaseTransform,
+			expectedCount: 3,
+			expectedJobs:  []string{"camper_history", "family_camp_derived", "household_demographics"},
+		},
+		{
+			phase:         PhaseProcess,
+			expectedCount: 2,
+			expectedJobs:  []string{"bunk_requests", "process_requests"},
+		},
+		{
+			phase:         PhaseExport,
+			expectedCount: 1,
+			expectedJobs:  []string{"multi_workbook_export"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.phase), func(t *testing.T) {
+			jobs := GetJobsForPhase(tt.phase)
+
+			if len(jobs) < tt.expectedCount {
+				t.Errorf("expected at least %d jobs for phase %q, got %d: %v",
+					tt.expectedCount, tt.phase, len(jobs), jobs)
+			}
+
+			jobSet := make(map[string]bool)
+			for _, j := range jobs {
+				jobSet[j] = true
+			}
+
+			for _, expected := range tt.expectedJobs {
+				if !jobSet[expected] {
+					t.Errorf("expected job %q in phase %q, got jobs: %v", expected, tt.phase, jobs)
+				}
+			}
+		})
+	}
+}
+
+// TestGetJobsForPhase_InvalidPhase tests that GetJobsForPhase returns empty for invalid phase
+func TestGetJobsForPhase_InvalidPhase(t *testing.T) {
+	jobs := GetJobsForPhase("invalid_phase")
+	if len(jobs) != 0 {
+		t.Errorf("expected empty slice for invalid phase, got %v", jobs)
+	}
+}
+
+// TestGetJobsForPhase_PreservesOrder tests that GetJobsForPhase returns jobs in definition order
+func TestGetJobsForPhase_PreservesOrder(t *testing.T) {
+	// Source jobs should be in a sensible order (sessions before attendees, etc.)
+	sourceJobs := GetJobsForPhase(PhaseSource)
+
+	// Build position map
+	positions := make(map[string]int)
+	for i, job := range sourceJobs {
+		positions[job] = i
+	}
+
+	// Verify sessions comes before attendees (sessions is a dependency)
+	if sessions, ok := positions["sessions"]; ok {
+		if attendees, ok := positions["attendees"]; ok {
+			if sessions > attendees {
+				t.Error("sessions should come before attendees in source phase")
+			}
+		}
+	}
+
+	// Verify attendees comes before persons
+	if attendees, ok := positions["attendees"]; ok {
+		if persons, ok := positions["persons"]; ok {
+			if attendees > persons {
+				t.Error("attendees should come before persons in source phase")
+			}
+		}
+	}
+}
+
+// TestGetAllPhases tests that GetAllPhases returns all valid phases
+func TestGetAllPhases(t *testing.T) {
+	phases := GetAllPhases()
+
+	if len(phases) != 5 {
+		t.Errorf("expected 5 phases, got %d", len(phases))
+	}
+
+	expected := map[SyncPhase]bool{
+		PhaseSource:    true,
+		PhaseExpensive: true,
+		PhaseTransform: true,
+		PhaseProcess:   true,
+		PhaseExport:    true,
+	}
+
+	for _, phase := range phases {
+		if !expected[phase] {
+			t.Errorf("unexpected phase %q in GetAllPhases", phase)
+		}
+		delete(expected, phase)
+	}
+
+	for phase := range expected {
+		t.Errorf("missing phase %q in GetAllPhases", phase)
+	}
+}
+
+// TestGetPhaseForJob tests that GetPhaseForJob returns correct phase for each job
+func TestGetPhaseForJob(t *testing.T) {
+	tests := []struct {
+		jobID    string
+		expected SyncPhase
+	}{
+		{"sessions", PhaseSource},
+		{"attendees", PhaseSource},
+		{"person_custom_values", PhaseExpensive},
+		{"household_custom_values", PhaseExpensive},
+		{"camper_history", PhaseTransform},
+		{"family_camp_derived", PhaseTransform},
+		{"household_demographics", PhaseTransform},
+		{"bunk_requests", PhaseProcess},
+		{"process_requests", PhaseProcess},
+		{"multi_workbook_export", PhaseExport},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.jobID, func(t *testing.T) {
+			phase := GetPhaseForJob(tt.jobID)
+			if phase != tt.expected {
+				t.Errorf("GetPhaseForJob(%q) = %q, want %q", tt.jobID, phase, tt.expected)
+			}
+		})
+	}
+}
+
+// TestGetPhaseForJob_UnknownJob tests that GetPhaseForJob returns empty for unknown job
+func TestGetPhaseForJob_UnknownJob(t *testing.T) {
+	phase := GetPhaseForJob("unknown_job")
+	if phase != "" {
+		t.Errorf("expected empty phase for unknown job, got %q", phase)
+	}
+}
+
+// TestPhaseExecutionOrder tests that phases follow correct execution order
+func TestPhaseExecutionOrder(t *testing.T) {
+	// Expected order: source -> expensive -> transform -> process -> export
+	phases := GetAllPhases()
+
+	expectedOrder := []SyncPhase{
+		PhaseSource,
+		PhaseExpensive,
+		PhaseTransform,
+		PhaseProcess,
+		PhaseExport,
+	}
+
+	if len(phases) != len(expectedOrder) {
+		t.Fatalf("expected %d phases, got %d", len(expectedOrder), len(phases))
+	}
+
+	for i, expected := range expectedOrder {
+		if phases[i] != expected {
+			t.Errorf("phase at position %d: expected %q, got %q", i, expected, phases[i])
+		}
+	}
+}
+
+// TestSyncJobMeta_HouseholdDemographicsIncluded tests that household_demographics is in metadata
+func TestSyncJobMeta_HouseholdDemographicsIncluded(t *testing.T) {
+	meta := GetSyncJobMeta()
+
+	found := false
+	for _, job := range meta {
+		if job.ID == "household_demographics" {
+			found = true
+			if job.Phase != PhaseTransform {
+				t.Errorf("expected household_demographics in transform phase, got %q", job.Phase)
+			}
+			if job.Description == "" {
+				t.Error("expected household_demographics to have a description")
+			}
+			break
+		}
+	}
+
+	if !found {
+		t.Error("expected household_demographics to be in syncJobMeta")
+	}
+}
+
+// TestSyncJobMeta_NoDuplicateIDs tests that all job IDs are unique
+func TestSyncJobMeta_NoDuplicateIDs(t *testing.T) {
+	meta := GetSyncJobMeta()
+
+	seen := make(map[string]bool)
+	for _, job := range meta {
+		if seen[job.ID] {
+			t.Errorf("duplicate job ID: %q", job.ID)
+		}
+		seen[job.ID] = true
+	}
+}
+
+// =============================================================================
+// GetChangedCollections Tests
+// =============================================================================
+
 // TestOrchestrator_GetChangedCollections tests the GetChangedCollections method
 func TestOrchestrator_GetChangedCollections(t *testing.T) {
 	t.Run("empty when no completed syncs", func(t *testing.T) {
