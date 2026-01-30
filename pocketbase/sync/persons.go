@@ -560,21 +560,11 @@ func (s *PersonsSync) transformPersonToPB(cmPerson map[string]interface{}, year 
 		}
 	}
 
-	// Age - preserve full float precision for CampMinder format (e.g., 12.03 = 12 years, 3 months)
-	// Adjust age for historical years (e.g., if current age is 12.03 in 2025, it should be 11.03 for 2024)
+	// Age - use CampMinder's age directly (already represents age as of that year's data)
 	if age, ok := cmPerson["Age"].(float64); ok && age > 0 {
-		// Calculate year difference and adjust age accordingly
-		currentYear := s.Client.GetSeasonID() // This is the current CampMinder year
-		yearDiff := float64(currentYear - year)
-		adjustedAge := age - yearDiff
-
-		if adjustedAge < 6 {
-			pbData["age"] = 6.0 // Clamp to minimum
-		} else {
-			pbData["age"] = adjustedAge // Store year-appropriate age
-		}
+		pbData["age"] = age // Use CampMinder's age directly
 	} else {
-		pbData["age"] = 10.0 // Default age
+		// Don't set age if missing - let it be null
 		s.missingDataStats["missing_age"]++
 	}
 
@@ -585,11 +575,12 @@ func (s *PersonsSync) transformPersonToPB(cmPerson map[string]interface{}, year 
 	}
 
 	if grade > 0 {
-		// CampMinder uses 0-indexed grade IDs where 0=K, 1=1st, 2=2nd, etc.
+		// CampMinder uses 1-indexed grade IDs where 1=K, 2=1st, 3=2nd, etc.
+		// Convert to 0-indexed where 0=K, 1=1st, 2=2nd, etc.
 		actualGrade := int(grade) - 1
-		pbData["grade"] = max(1, min(actualGrade, 12)) // Grades 1-12
+		pbData["grade"] = actualGrade // No clamp - allow 0 for kindergarten
 	} else {
-		pbData["grade"] = 0 // Default for missing grades
+		// Don't set grade if missing - let it be null
 		s.missingDataStats["missing_grade"]++
 	}
 

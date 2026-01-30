@@ -5,6 +5,8 @@
  *
  * Stores person records from CampMinder with demographic info, contact details,
  * household relationships, and tag associations. Year-scoped for data isolation.
+ *
+ * CONSOLIDATED: Includes changes from migrations 38, 41 (drop cm_fields, age decimal)
  */
 
 const COLLECTION_ID_PERSONS = "col_persons";
@@ -38,55 +40,45 @@ migrate((app) => {
         type: "text",
         required: true,
         presentable: true,
-        options: {
-          min: null,
-          max: null,
-          pattern: ""
-        }
+        min: 0,
+        max: 0,
+        pattern: ""
       },
       {
         name: "last_name",
         type: "text",
         required: true,
         presentable: true,
-        options: {
-          min: null,
-          max: null,
-          pattern: ""
-        }
+        min: 0,
+        max: 0,
+        pattern: ""
       },
       {
         name: "preferred_name",
         type: "text",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          pattern: ""
-        }
+        min: 0,
+        max: 0,
+        pattern: ""
       },
       {
         name: "birthdate",
         type: "text",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          pattern: ""
-        }
+        min: 0,
+        max: 0,
+        pattern: ""
       },
       {
         name: "gender",
         type: "text",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: 10,
-          pattern: ""
-        }
+        min: 0,
+        max: 0,  // 0 = unlimited (matches current running state)
+        pattern: ""
       },
       {
         name: "grade",
@@ -104,17 +96,16 @@ migrate((app) => {
         presentable: false,
         min: null,
         max: null,
+        onlyInt: false
       },
       {
         name: "school",
         type: "text",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          pattern: ""
-        }
+        min: 0,
+        max: 0,
+        pattern: ""
       },
       {
         name: "years_at_camp",
@@ -134,25 +125,7 @@ migrate((app) => {
         max: null,
         onlyInt: true
       },
-      // CampMinder authoritative values (stored separately for comparison/flexibility)
-      {
-        name: "cm_years_at_camp",
-        type: "number",
-        required: false,
-        presentable: false,
-        min: 0,
-        max: 100,
-        onlyInt: true
-      },
-      {
-        name: "cm_last_year_attended",
-        type: "number",
-        required: false,
-        presentable: false,
-        min: 0,
-        max: 2100,
-        onlyInt: true
-      },
+      // NOTE: cm_years_at_camp and cm_last_year_attended removed (redundant with above fields)
       {
         name: "cm_lead_date",
         type: "text",
@@ -176,22 +149,18 @@ migrate((app) => {
         type: "text",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          pattern: ""
-        }
+        min: 0,
+        max: 0,
+        pattern: ""
       },
       {
         name: "gender_identity_write_in",
         type: "text",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          pattern: ""
-        }
+        min: 0,
+        max: 0,
+        pattern: ""
       },
       {
         name: "gender_pronoun_id",
@@ -207,49 +176,39 @@ migrate((app) => {
         type: "text",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          pattern: ""
-        }
+        min: 0,
+        max: 0,
+        pattern: ""
       },
       {
         name: "gender_pronoun_write_in",
         type: "text",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          pattern: ""
-        }
+        min: 0,
+        max: 0,
+        pattern: ""
       },
       {
         name: "phone_numbers",
         type: "json",
         required: false,
         presentable: false,
-        options: {
-          maxSize: 2000000
-        }
+        maxSize: 0  // 0 = unlimited (matches current running state)
       },
       {
         name: "email_addresses",
         type: "json",
         required: false,
         presentable: false,
-        options: {
-          maxSize: 2000000
-        }
+        maxSize: 0  // 0 = unlimited (matches current running state)
       },
       {
         name: "address",
         type: "json",
         required: false,
         presentable: false,
-        options: {
-          maxSize: 2000000
-        }
+        maxSize: 0  // 0 = unlimited (matches current running state)
       },
       {
         type: "relation",
@@ -314,22 +273,18 @@ migrate((app) => {
         type: "text",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: null,
-          pattern: ""
-        }
+        min: 0,
+        max: 0,
+        pattern: ""
       },
       {
         name: "tshirt_size",
         type: "text",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: 50,
-          pattern: ""
-        }
+        min: 0,
+        max: 0,  // 0 = unlimited (matches current running state)
+        pattern: ""
       },
       {
         type: "relation",
@@ -352,18 +307,14 @@ migrate((app) => {
         type: "json",
         required: false,
         presentable: false,
-        options: {
-          maxSize: 2000000
-        }
+        maxSize: 0  // 0 = unlimited (matches current running state)
       },
       {
         name: "parent_names",
         type: "json",
         required: false,
         presentable: false,
-        options: {
-          maxSize: 2000000
-        }
+        maxSize: 0  // 0 = unlimited (matches current running state)
       },
       {
         name: "year",
