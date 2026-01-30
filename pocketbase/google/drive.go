@@ -70,3 +70,67 @@ func CreateSpreadsheet(ctx context.Context, title string) (string, error) {
 func FormatSpreadsheetURL(spreadsheetID string) string {
 	return fmt.Sprintf("https://docs.google.com/spreadsheets/d/%s/edit", spreadsheetID)
 }
+
+// FindSpreadsheetByName searches for a spreadsheet by exact name in the configured folder.
+// Returns the spreadsheet ID if found, empty string if not found.
+// Returns "", nil when Google Sheets is disabled (graceful degradation).
+// Returns error only for API failures, NOT for "not found" scenarios.
+func FindSpreadsheetByName(ctx context.Context, name string) (string, error) {
+	if !IsEnabled() {
+		return "", nil
+	}
+
+	folderID := GetFolderID()
+	if folderID == "" {
+		return "", fmt.Errorf("GOOGLE_DRIVE_FOLDER_ID not set - required for searching spreadsheets")
+	}
+
+	driveClient, err := NewDriveClient(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to create drive client: %w", err)
+	}
+	if driveClient == nil {
+		return "", fmt.Errorf("google drive client is nil")
+	}
+
+	// Build query to search for spreadsheet by exact name in the folder
+	// Escape single quotes in the name to prevent query injection
+	escapedName := escapeQueryString(name)
+	query := fmt.Sprintf(
+		"name='%s' and '%s' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false",
+		escapedName,
+		folderID,
+	)
+
+	fileList, err := driveClient.Files.List().
+		Q(query).
+		SupportsAllDrives(true).           // Required for Shared Drives
+		IncludeItemsFromAllDrives(true).   // Required for Shared Drives
+		Fields("files(id, name)").
+		Context(ctx).
+		Do()
+	if err != nil {
+		return "", fmt.Errorf("failed to search for spreadsheet: %w", err)
+	}
+
+	if len(fileList.Files) == 0 {
+		return "", nil // Not found - this is not an error
+	}
+
+	// Return the first match (there should only be one with exact name in folder)
+	return fileList.Files[0].Id, nil
+}
+
+// escapeQueryString escapes single quotes for Drive API queries
+func escapeQueryString(s string) string {
+	// In Drive API queries, single quotes are escaped by doubling them
+	result := ""
+	for _, c := range s {
+		if c == '\'' {
+			result += "''"
+		} else {
+			result += string(c)
+		}
+	}
+	return result
+}
