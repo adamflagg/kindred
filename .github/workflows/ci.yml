@@ -383,6 +383,12 @@ jobs:
         cp -r pb_hooks /tmp/pb_ci_test/ 2>/dev/null || true
         echo "Migrations directory contents:"
         ls -la /tmp/pb_ci_test/pb_migrations/ | head -10
+
+        # Run migrations explicitly
+        echo "Running migrations..."
+        ./pocketbase migrate up --dir /tmp/pb_ci_test --migrationsDir /tmp/pb_ci_test/pb_migrations 2>&1 | tee /tmp/pb_migrate.log
+
+        echo "Starting PocketBase server..."
         ./pocketbase serve --dir /tmp/pb_ci_test --migrationsDir /tmp/pb_ci_test/pb_migrations --hooksDir /tmp/pb_ci_test/pb_hooks --http 127.0.0.1:18999 > /tmp/pb_output.log 2>&1 &
         PB_PID=$!
 
@@ -445,6 +451,8 @@ jobs:
 
         if [ $VALIDATION_RESULT -ne 0 ]; then
           echo "❌ Schema validation failed"
+          echo "Migration log:"
+          cat /tmp/pb_migrate.log || true
           echo "PocketBase output log:"
           cat /tmp/pb_output.log || true
           # Cleanup
