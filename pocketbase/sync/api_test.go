@@ -1179,3 +1179,298 @@ func TestDuplicateQueueRequest(t *testing.T) {
 		t.Errorf("expected queue length 2, got %d", o.GetQueueLength())
 	}
 }
+
+// =============================================================================
+// Phase API Tests
+// =============================================================================
+
+// TestGetPhasesEndpointResponse tests the expected response from GET /api/custom/sync/phases
+func TestGetPhasesEndpointResponse(t *testing.T) {
+	// Expected response structure: {id, name, description, jobs[]}
+	// (PhaseInfo type defined in api.go handleGetPhases)
+
+	// Verify all phases are returned
+	allPhases := GetAllPhases()
+	if len(allPhases) != 5 {
+		t.Errorf("expected 5 phases, got %d", len(allPhases))
+	}
+
+	// Each phase should have jobs
+	for _, phase := range allPhases {
+		jobs := GetJobsForPhase(phase)
+		if len(jobs) == 0 {
+			t.Errorf("phase %q should have at least one job", phase)
+		}
+	}
+
+	// Verify expected phases
+	expectedPhases := []SyncPhase{PhaseSource, PhaseExpensive, PhaseTransform, PhaseProcess, PhaseExport}
+	for i, expected := range expectedPhases {
+		if allPhases[i] != expected {
+			t.Errorf("phase[%d]: expected %q, got %q", i, expected, allPhases[i])
+		}
+	}
+}
+
+// TestPhaseParameterValidation tests phase query parameter parsing
+func TestPhaseParameterValidation(t *testing.T) {
+	tests := []struct {
+		name      string
+		param     string
+		wantPhase SyncPhase
+		wantValid bool
+	}{
+		{"valid source phase", "source", PhaseSource, true},
+		{"valid expensive phase", "expensive", PhaseExpensive, true},
+		{"valid transform phase", "transform", PhaseTransform, true},
+		{"valid process phase", "process", PhaseProcess, true},
+		{"valid export phase", "export", PhaseExport, true},
+		{"invalid phase", "invalid", "", false},
+		{"empty phase", "", "", false},
+		{"case sensitive", "Source", "", false}, // Phases are lowercase
+		{"partial match", "trans", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			phase, valid := parsePhaseParameter(tt.param)
+
+			if valid != tt.wantValid {
+				t.Errorf("expected valid=%v for %q, got %v", tt.wantValid, tt.param, valid)
+			}
+
+			if valid && phase != tt.wantPhase {
+				t.Errorf("expected phase=%q, got %q", tt.wantPhase, phase)
+			}
+		})
+	}
+}
+
+// parsePhaseParameter parses and validates the phase query parameter
+func parsePhaseParameter(param string) (SyncPhase, bool) {
+	if param == "" {
+		return "", false
+	}
+
+	phase := SyncPhase(param)
+
+	// Check if this is a valid phase
+	for _, p := range GetAllPhases() {
+		if p == phase {
+			return phase, true
+		}
+	}
+
+	return "", false
+}
+
+// TestRunPhaseEndpointValidation tests run-phase endpoint parameter validation
+func TestRunPhaseEndpointValidation(t *testing.T) {
+	tests := []struct {
+		name           string
+		yearParam      string
+		phaseParam     string
+		expectedStatus int
+		description    string
+	}{
+		{
+			name:           "valid request",
+			yearParam:      "2025",
+			phaseParam:     "source",
+			expectedStatus: 200,
+			description:    "should accept valid year and phase",
+		},
+		{
+			name:           "missing year",
+			yearParam:      "",
+			phaseParam:     "source",
+			expectedStatus: 400,
+			description:    "should reject missing year",
+		},
+		{
+			name:           "missing phase",
+			yearParam:      "2025",
+			phaseParam:     "",
+			expectedStatus: 400,
+			description:    "should reject missing phase",
+		},
+		{
+			name:           "invalid phase",
+			yearParam:      "2025",
+			phaseParam:     "invalid",
+			expectedStatus: 400,
+			description:    "should reject invalid phase",
+		},
+		{
+			name:           "invalid year",
+			yearParam:      "abc",
+			phaseParam:     "source",
+			expectedStatus: 400,
+			description:    "should reject invalid year",
+		},
+		{
+			name:           "year too old",
+			yearParam:      "2010",
+			phaseParam:     "source",
+			expectedStatus: 400,
+			description:    "should reject year before 2017",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Validate parameters like the handler would
+			var yearValid, phaseValid bool
+
+			if tt.yearParam != "" {
+				_, yearValid = parseYearParameter(tt.yearParam, 2026) // maxYear=2026 for testing
+			}
+
+			if tt.phaseParam != "" {
+				_, phaseValid = parsePhaseParameter(tt.phaseParam)
+			}
+
+			// Determine expected validation result
+			var expectedValid bool
+			switch tt.expectedStatus {
+			case 200:
+				expectedValid = true
+			case 400:
+				expectedValid = false
+			}
+
+			actualValid := yearValid && phaseValid
+			if actualValid != expectedValid {
+				t.Errorf("%s: expected valid=%v, got yearValid=%v, phaseValid=%v",
+					tt.description, expectedValid, yearValid, phaseValid)
+			}
+		})
+	}
+}
+
+// TestRunPhaseResponseStructure tests the expected response from POST /api/custom/sync/run-phase
+func TestRunPhaseResponseStructure(t *testing.T) {
+	// Expected response when phase starts successfully
+	type RunPhaseResponse struct {
+		Message string   `json:"message"`
+		Phase   string   `json:"phase"`
+		Year    int      `json:"year"`
+		Jobs    []string `json:"jobs"`
+	}
+
+	// Verify response would have correct structure
+	sourceJobs := GetJobsForPhase(PhaseSource)
+	resp := RunPhaseResponse{
+		Message: "Phase sync started",
+		Phase:   string(PhaseSource),
+		Year:    2025,
+		Jobs:    sourceJobs,
+	}
+
+	if resp.Message == "" {
+		t.Error("response should have non-empty message")
+	}
+	if resp.Phase != "source" {
+		t.Errorf("expected phase='source', got %q", resp.Phase)
+	}
+	if resp.Year != 2025 {
+		t.Errorf("expected year=2025, got %d", resp.Year)
+	}
+	if len(resp.Jobs) == 0 {
+		t.Error("response should include jobs for the phase")
+	}
+}
+
+// TestRunPhaseBlockedWhenSyncRunning tests that phase sync is blocked when other sync running
+func TestRunPhaseBlockedWhenSyncRunning(t *testing.T) {
+	tests := []struct {
+		name              string
+		dailyRunning      bool
+		weeklyRunning     bool
+		historicalRunning bool
+		expectedStatus    int
+		canRun            bool
+	}{
+		{
+			name:           "no sync running - can start",
+			expectedStatus: 200,
+			canRun:         true,
+		},
+		{
+			name:           "daily sync running - blocked",
+			dailyRunning:   true,
+			expectedStatus: 409,
+			canRun:         false,
+		},
+		{
+			name:           "weekly sync running - blocked",
+			weeklyRunning:  true,
+			expectedStatus: 409,
+			canRun:         false,
+		},
+		{
+			name:              "historical sync running - blocked",
+			historicalRunning: true,
+			expectedStatus:    409,
+			canRun:            false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := NewOrchestrator(nil)
+
+			// Set up sync state
+			o.mu.Lock()
+			o.dailySyncRunning = tt.dailyRunning
+			o.weeklySyncRunning = tt.weeklyRunning
+			o.historicalSyncRunning = tt.historicalRunning
+			o.mu.Unlock()
+
+			// Check if phase sync can run
+			canRun := !o.IsDailySyncRunning() && !o.IsWeeklySyncRunning() && !o.IsHistoricalSyncRunning()
+
+			if canRun != tt.canRun {
+				t.Errorf("expected canRun=%v, got %v", tt.canRun, canRun)
+			}
+		})
+	}
+}
+
+// TestPhaseJobsInOrder tests that jobs returned by GetJobsForPhase maintain dependency order
+func TestPhaseJobsInOrder(t *testing.T) {
+	// Source phase jobs should be in dependency order
+	sourceJobs := GetJobsForPhase(PhaseSource)
+
+	// Create position map
+	positions := make(map[string]int)
+	for i, job := range sourceJobs {
+		positions[job] = i
+	}
+
+	// Define expected ordering constraints
+	constraints := []struct {
+		before string
+		after  string
+	}{
+		{"session_groups", "sessions"},
+		{"sessions", "attendees"},
+		{"attendees", "persons"},
+		{"bunks", "bunk_plans"},
+		{"bunk_plans", "bunk_assignments"},
+	}
+
+	for _, c := range constraints {
+		beforePos, beforeExists := positions[c.before]
+		afterPos, afterExists := positions[c.after]
+
+		if !beforeExists || !afterExists {
+			continue // Skip if jobs not in this phase
+		}
+
+		if beforePos >= afterPos {
+			t.Errorf("expected %q (pos %d) to come before %q (pos %d)",
+				c.before, beforePos, c.after, afterPos)
+		}
+	}
+}

@@ -27,6 +27,7 @@ export const SYNC_TYPE_NAMES: Record<string, string> = {
   family_camp_derived: 'Family Camp Derived', // Computed from custom values
   staff_skills: 'Staff Skills', // Derived from person_custom_values Skills- fields
   financial_aid_applications: 'FA Applications', // Derived from person_custom_values FA- fields
+  household_demographics: 'Household Demographics', // Computed from HH- fields
   bunk_requests: 'Intake Requests',
   process_requests: 'Process Requests',
   // On-demand syncs (not part of daily sync)

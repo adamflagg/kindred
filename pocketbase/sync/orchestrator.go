@@ -71,6 +71,8 @@ var syncJobMeta = []SyncJobMeta{
 	// Transform phase - PocketBase → PocketBase
 	{"camper_history", PhaseTransform, "Compute camper history from attendees"},
 	{"family_camp_derived", PhaseTransform, "Compute family camp tables from custom values"},
+	{"staff_skills", PhaseTransform, "Extract staff skills from person_custom_values"},
+	{"financial_aid_applications", PhaseTransform, "Extract FA applications from person_custom_values"},
 	{"household_demographics", PhaseTransform, "Compute household demographics from custom values"},
 
 	// Process phase - CSV + AI
@@ -511,6 +513,7 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 		"family_camp_derived",        // Derived: computes from custom values (uses existing data in daily)
 		"staff_skills",               // Derived: computes from person_custom_values (Skills- fields)
 		"financial_aid_applications", // Derived: computes from person_custom_values (FA- fields)
+		"household_demographics",     // Derived: computes from custom values (HH- fields + household fields)
 		"bunk_requests",              // CSV import, depends on persons
 	}
 
@@ -892,7 +895,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 
 		// Derived tables always run (they compute from local PocketBase data, no API calls)
 		servicesToRun = append(servicesToRun,
-			"camper_history", "family_camp_derived", "staff_skills", "financial_aid_applications")
+			"camper_history", "family_camp_derived", "staff_skills", "financial_aid_applications", "household_demographics")
 
 		// Only include bunk_requests and process_requests for current year syncs (not historical)
 		// Bunk requests are populated during the current year's processing
@@ -1002,6 +1005,11 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		faApplicationsSync := NewFinancialAidApplicationsSync(o.app)
 		faApplicationsSync.Year = opts.Year
 		o.RegisterService("financial_aid_applications", faApplicationsSync)
+
+		// Household demographics (computed from HH- fields + household custom values)
+		householdDemographicsSync := NewHouseholdDemographicsSync(o.app)
+		householdDemographicsSync.Year = opts.Year
+		o.RegisterService("household_demographics", householdDemographicsSync)
 
 		// Custom value services for historical sync support
 		// These use GetSeasonID() to determine the year, so they need year-specific client
@@ -1412,6 +1420,9 @@ func (o *Orchestrator) InitializeSyncServices() error {
 
 	// Financial aid applications (derived from person_custom_values FA- fields)
 	o.RegisterService("financial_aid_applications", NewFinancialAidApplicationsSync(o.app))
+
+	// Household demographics (computes from HH- fields + household custom values - on-demand)
+	o.RegisterService("household_demographics", NewHouseholdDemographicsSync(o.app))
 
 	slog.Info("All sync services registered")
 	return nil

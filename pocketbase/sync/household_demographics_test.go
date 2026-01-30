@@ -11,11 +11,11 @@ import (
 // TestHouseholdDemographicsSync_Name verifies the service name is correct
 func TestHouseholdDemographicsSync_Name(t *testing.T) {
 	// The service name must be "household_demographics" for orchestrator integration
-	expectedName := "household_demographics"
+	expectedName := serviceNameHouseholdDemographics
 
 	// Test the constant/expected name matches what the service should return
 	// (actual instance test requires PocketBase app)
-	if expectedName != "household_demographics" {
+	if expectedName != serviceNameHouseholdDemographics {
 		t.Errorf("expected service name %q", expectedName)
 	}
 }
@@ -117,8 +117,8 @@ func TestHouseholdCustomFieldMapping(t *testing.T) {
 		// Fields that should be ignored (not relevant to demographics)
 		{"Filemaker Household Acct No", ""},
 		{"Early Reg", ""},
-		{"Family Camp Cabin", ""},      // Handled by family_camp_derived
-		{"Family Camp Adult 1", ""},    // Handled by family_camp_derived
+		{"Family Camp Cabin", ""},   // Handled by family_camp_derived
+		{"Family Camp Adult 1", ""}, // Handled by family_camp_derived
 		{"Unknown Field Name", ""},
 	}
 
@@ -188,9 +188,9 @@ func TestHouseholdDemographicsAggregation(t *testing.T) {
 // TestHouseholdDemographicsFirstNonEmptyWins tests that first non-empty value is taken
 func TestHouseholdDemographicsFirstNonEmptyWins(t *testing.T) {
 	values := []testHHPersonCustomValue{
-		{HouseholdID: 5001, FieldName: "HH-Family Description", Value: ""},         // Empty
-		{HouseholdID: 5001, FieldName: "HH-Family Description", Value: ""},         // Empty
-		{HouseholdID: 5001, FieldName: "HH-Family Description", Value: "LGBTQ"},    // First non-empty
+		{HouseholdID: 5001, FieldName: "HH-Family Description", Value: ""},             // Empty
+		{HouseholdID: 5001, FieldName: "HH-Family Description", Value: ""},             // Empty
+		{HouseholdID: 5001, FieldName: "HH-Family Description", Value: "LGBTQ"},        // First non-empty
 		{HouseholdID: 5001, FieldName: "HH-Family Description", Value: "Tawonga Alum"}, // Should be ignored
 	}
 
@@ -572,30 +572,30 @@ type testHHHouseholdCustomValue struct {
 }
 
 type testDemographicRecord struct {
-	HouseholdID             int
-	Year                    int
-	FamilyDescription       string
-	FamilyDescriptionOther  string
-	JewishAffiliation       string
-	JewishAffiliationOther  string
-	JewishIdentities        string
-	CongregationSummer      string
-	CongregationFamily      string
-	JCCSummer               string
-	JCCFamily               string
-	MilitaryFamily          bool
-	ParentImmigrant         bool
-	ParentImmigrantOrigin   string
-	CustodySummer           string
-	CustodyFamily           string
+	HouseholdID              int
+	Year                     int
+	FamilyDescription        string
+	FamilyDescriptionOther   string
+	JewishAffiliation        string
+	JewishAffiliationOther   string
+	JewishIdentities         string
+	CongregationSummer       string
+	CongregationFamily       string
+	JCCSummer                string
+	JCCFamily                string
+	MilitaryFamily           bool
+	ParentImmigrant          bool
+	ParentImmigrantOrigin    string
+	CustodySummer            string
+	CustodyFamily            string
 	HasCustodyConsiderations bool
-	AwayDuringCamp          bool
-	AwayLocation            string
-	AwayPhone               string
-	AwayFromDate            string
-	AwayReturnDate          string
-	FormFiller              string
-	BoardMember             bool
+	AwayDuringCamp           bool
+	AwayLocation             string
+	AwayPhone                string
+	AwayFromDate             string
+	AwayReturnDate           string
+	FormFiller               string
+	BoardMember              bool
 }
 
 // ============================================================================
@@ -615,24 +615,24 @@ func isHHField(fieldName string) bool {
 // mapHHFieldToColumn maps HH- field names to demographic column names
 func mapHHFieldToColumn(fieldName string) string {
 	mapping := map[string]string{
-		"HH-Family Description":                "family_description",
-		"HH-Family Description Other":          "family_description_other",
-		"HH-Jewish Affiliation":                "jewish_affiliation",
-		"HH-Jewish Affiliation Other":          "jewish_affiliation_other",
-		"HH-Jewish Identities":                 "jewish_identities",
-		"HH-Name of Congregation":              "congregation_summer",
-		"HH-Name of JCC":                       "jcc_summer",
-		"HH-Military":                          "military_family",
-		"HH-parent born outside US":            "parent_immigrant",
+		"HH-Family Description":                   "family_description",
+		"HH-Family Description Other":             "family_description_other",
+		"HH-Jewish Affiliation":                   "jewish_affiliation",
+		"HH-Jewish Affiliation Other":             "jewish_affiliation_other",
+		"HH-Jewish Identities":                    "jewish_identities",
+		"HH-Name of Congregation":                 "congregation_summer",
+		"HH-Name of JCC":                          "jcc_summer",
+		"HH-Military":                             "military_family",
+		"HH-parent born outside US":               "parent_immigrant",
 		"HH-if yes parent born outside US, where": "parent_immigrant_origin",
-		"HH-special living arrangements":       "custody_summer",
-		"HH-special living arrange-yes":        "has_custody_considerations",
-		"HH-Home or Away":                      "away_during_camp",
-		"HH-Away location":                     "away_location",
-		"HH-Phone number while away":           "away_phone",
-		"HH-Away From (mm/dd/yy)":              "away_from_date",
-		"HH-Returning (mm/dd/yy)":              "away_return_date",
-		"HH-Who is filling out info":           "form_filler",
+		"HH-special living arrangements":          "custody_summer",
+		"HH-special living arrange-yes":           "has_custody_considerations",
+		"HH-Home or Away":                         "away_during_camp",
+		"HH-Away location":                        "away_location",
+		"HH-Phone number while away":              "away_phone",
+		"HH-Away From (mm/dd/yy)":                 "away_from_date",
+		"HH-Returning (mm/dd/yy)":                 "away_return_date",
+		"HH-Who is filling out info":              "form_filler",
 	}
 	return mapping[fieldName]
 }
@@ -655,10 +655,10 @@ func parseBooleanCustomValue(value string) bool {
 	}
 	// Trim whitespace
 	trimmed := value
-	for len(trimmed) > 0 && (trimmed[0] == ' ' || trimmed[0] == '\t') {
+	for trimmed != "" && (trimmed[0] == ' ' || trimmed[0] == '\t') {
 		trimmed = trimmed[1:]
 	}
-	for len(trimmed) > 0 && (trimmed[len(trimmed)-1] == ' ' || trimmed[len(trimmed)-1] == '\t') {
+	for trimmed != "" && (trimmed[len(trimmed)-1] == ' ' || trimmed[len(trimmed)-1] == '\t') {
 		trimmed = trimmed[:len(trimmed)-1]
 	}
 	if trimmed == "" {
@@ -711,25 +711,7 @@ func buildDemographicsCompositeKey(householdPBID string, year int) string {
 	return householdPBID + "|" + itoa(year)
 }
 
-// itoa converts int to string (simple implementation)
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	negative := n < 0
-	if negative {
-		n = -n
-	}
-	var digits []byte
-	for n > 0 {
-		digits = append([]byte{byte('0' + n%10)}, digits...)
-		n /= 10
-	}
-	if negative {
-		digits = append([]byte{'-'}, digits...)
-	}
-	return string(digits)
-}
+// itoa is defined in financial_aid_applications_test.go
 
 // buildDemographicRecord constructs a demographic record from custom values
 func buildDemographicRecord(

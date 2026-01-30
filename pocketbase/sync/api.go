@@ -95,6 +95,16 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 		return handleCustomValuesSync(e, scheduler)
 	}))
 
+	// Phase API endpoints
+	// GET /api/custom/sync/phases - List available sync phases
+	e.Router.GET("/api/custom/sync/phases", requireAuth(handleGetPhases))
+
+	// POST /api/custom/sync/run-phase - Run a specific phase
+	// Accepts query params: year (required), phase (required)
+	e.Router.POST("/api/custom/sync/run-phase", requireAuth(func(e *core.RequestEvent) error {
+		return handleRunPhase(e, scheduler)
+	}))
+
 	// Process requests endpoint
 	// Processes original_bunk_requests → bunk_requests via Python
 	// Accepts optional query parameters:
@@ -342,6 +352,13 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	// Accepts required ?year=YYYY parameter
 	e.Router.POST("/api/custom/sync/financial-aid-applications", requireAuth(func(e *core.RequestEvent) error {
 		return handleFinancialAidApplicationsSync(e, scheduler)
+	}))
+
+	// Household demographics sync
+	// Computes demographics from HH- custom values + household custom values
+	// Accepts required ?year=YYYY parameter
+	e.Router.POST("/api/custom/sync/household-demographics", requireAuth(func(e *core.RequestEvent) error {
+		return handleHouseholdDemographicsSync(e, scheduler)
 	}))
 
 	return nil
@@ -1751,5 +1768,224 @@ func handleFinancialAidApplicationsSync(e *core.RequestEvent, scheduler *Schedul
 		"syncType": syncType,
 		"year":     year,
 		"dry_run":  dryRun,
+	})
+}
+
+// handleHouseholdDemographicsSync handles the household demographics computation endpoint
+// Accepts required ?year=YYYY parameter to compute demographics for a specific year
+func handleHouseholdDemographicsSync(e *core.RequestEvent, scheduler *Scheduler) error {
+	orchestrator := scheduler.GetOrchestrator()
+	syncType := serviceNameHouseholdDemographics
+
+	// Check if already running
+	if orchestrator.IsRunning(syncType) {
+		return e.JSON(http.StatusConflict, map[string]interface{}{
+			"error":    "Household demographics computation already in progress",
+			"status":   "running",
+			"syncType": syncType,
+		})
+	}
+
+	// Parse required year parameter
+	yearParam := e.Request.URL.Query().Get("year")
+	if yearParam == "" {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Missing required year parameter. Use ?year=YYYY",
+		})
+	}
+
+	year, err := strconv.Atoi(yearParam)
+	if err != nil || year < 2017 || year > 2050 {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Invalid year parameter. Must be between 2017 and 2050.",
+		})
+	}
+
+	// Parse optional dry-run parameter
+	dryRunParam := e.Request.URL.Query().Get("dry_run")
+	dryRun := dryRunParam == boolTrueStr || dryRunParam == "1"
+
+	// Get the service and set options
+	service, ok := orchestrator.GetService(syncType).(*HouseholdDemographicsSync)
+	if !ok || service == nil {
+		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+			"error": "Household demographics sync service not found",
+		})
+	}
+	service.Year = year
+	service.DryRun = dryRun
+
+	// Run in background
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+
+		slog.Info("Starting household_demographics computation",
+			"year", year,
+			"dry_run", dryRun,
+		)
+		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
+			slog.Error("Household demographics computation failed", "year", year, "error", err)
+		} else {
+			stats := service.GetStats()
+			slog.Info("Household demographics computation completed",
+				"year", year,
+				"created", stats.Created,
+				"updated", stats.Updated,
+				"deleted", stats.Deleted,
+				"errors", stats.Errors,
+			)
+		}
+	}()
+
+	return e.JSON(http.StatusOK, map[string]interface{}{
+		"message":  "Household demographics computation started",
+		"status":   "started",
+		"syncType": syncType,
+		"year":     year,
+		"dry_run":  dryRun,
+	})
+}
+
+// handleGetPhases returns list of available sync phases with metadata
+func handleGetPhases(e *core.RequestEvent) error {
+	phases := GetAllPhases()
+
+	type PhaseInfo struct {
+		ID          string   `json:"id"`
+		Name        string   `json:"name"`
+		Description string   `json:"description"`
+		Jobs        []string `json:"jobs"`
+	}
+
+	// Build phase info with human-readable names and descriptions
+	phaseNames := map[SyncPhase]string{
+		PhaseSource:    "CampMinder",
+		PhaseExpensive: "Custom Values",
+		PhaseTransform: "Transform",
+		PhaseProcess:   "Process",
+		PhaseExport:    "Export",
+	}
+
+	phaseDescriptions := map[SyncPhase]string{
+		PhaseSource:    "Sync data from CampMinder API",
+		PhaseExpensive: "Sync custom field values (slow, 1 API call per entity)",
+		PhaseTransform: "Compute derived tables from synced data",
+		PhaseProcess:   "Import CSV files and process with AI",
+		PhaseExport:    "Export data to Google Sheets",
+	}
+
+	result := make([]PhaseInfo, 0, len(phases))
+	for _, phase := range phases {
+		result = append(result, PhaseInfo{
+			ID:          string(phase),
+			Name:        phaseNames[phase],
+			Description: phaseDescriptions[phase],
+			Jobs:        GetJobsForPhase(phase),
+		})
+	}
+
+	return e.JSON(http.StatusOK, map[string]interface{}{
+		"phases": result,
+	})
+}
+
+// handleRunPhase runs all jobs in a specific sync phase
+// Requires ?year=YYYY and ?phase=<phase> query parameters
+func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
+	orchestrator := scheduler.GetOrchestrator()
+
+	// Check if any sync is already running
+	if orchestrator.IsDailySyncRunning() || orchestrator.IsWeeklySyncRunning() ||
+		orchestrator.IsHistoricalSyncRunning() {
+		return e.JSON(http.StatusConflict, map[string]interface{}{
+			"error":  "Another sync is already running",
+			"status": "blocked",
+		})
+	}
+
+	// Parse required year parameter
+	yearParam := e.Request.URL.Query().Get("year")
+	if yearParam == "" {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Missing required year parameter. Use ?year=YYYY",
+		})
+	}
+
+	year, err := strconv.Atoi(yearParam)
+	if err != nil || year < 2017 || year > 2050 {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Invalid year parameter. Must be between 2017 and 2050.",
+		})
+	}
+
+	// Parse required phase parameter
+	phaseParam := e.Request.URL.Query().Get("phase")
+	if phaseParam == "" {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Missing required phase parameter. Use ?phase=<source|expensive|transform|process|export>",
+		})
+	}
+
+	// Validate phase
+	phase := SyncPhase(phaseParam)
+	validPhase := false
+	for _, p := range GetAllPhases() {
+		if p == phase {
+			validPhase = true
+			break
+		}
+	}
+	if !validPhase {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error":        "Invalid phase parameter",
+			"valid_phases": []string{"source", "expensive", "transform", "process", "export"},
+		})
+	}
+
+	// Get jobs for this phase
+	jobs := GetJobsForPhase(phase)
+	if len(jobs) == 0 {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "No jobs found for phase: " + string(phase),
+		})
+	}
+
+	// Run phase jobs in background
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
+		defer cancel()
+
+		slog.Info("Starting phase sync",
+			"phase", phase,
+			"year", year,
+			"jobs", jobs,
+		)
+
+		// Run jobs sequentially in order
+		for _, jobID := range jobs {
+			select {
+			case <-ctx.Done():
+				slog.Error("Phase sync canceled", "phase", phase, "error", ctx.Err())
+				return
+			default:
+			}
+
+			slog.Info("Running phase job", "phase", phase, "job", jobID)
+			if err := orchestrator.RunSingleSync(ctx, jobID); err != nil {
+				slog.Error("Phase job failed", "phase", phase, "job", jobID, "error", err)
+				// Continue with next job even if one fails
+			}
+		}
+
+		slog.Info("Phase sync completed", "phase", phase, "year", year)
+	}()
+
+	return e.JSON(http.StatusOK, map[string]interface{}{
+		"message": "Phase sync started",
+		"status":  "started",
+		"phase":   string(phase),
+		"year":    year,
+		"jobs":    jobs,
 	})
 }
