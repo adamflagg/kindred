@@ -228,6 +228,7 @@ func (s *AttendeesSync) processEnrollment(
 
 	// Map StatusID to our status values
 	statusMap := map[int]string{
+		1:   "none",
 		2:   "enrolled",
 		4:   "applied",
 		8:   "waitlisted",

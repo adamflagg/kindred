@@ -818,15 +818,17 @@ components:
           example: 4
           description: >-
             The status of the attendee as it relates to the sessionprogram.
-            Enrolled = 2, Applied = 4, WaitList = 8,LeftEarly = 16, Cancelled =
-            32, Dismissed = 64, Inquiry = 128, Withdrawn = 256, Incomplete = 512
+            None = 1, Enrolled = 2, Applied = 4, WaitList = 8, LeftEarly = 16,
+            Cancelled = 32, Dismissed = 64, Inquiry = 128, Withdrawn = 256,
+            Incomplete = 512
         StatusName:
           type: string
           example: Applied
           description: >-
             The status of the attendee as it relates to the sessionprogram.
-            Enrolled = 2, Applied = 4, WaitList = 8,LeftEarly = 16, Cancelled =
-            32, Dismissed = 64, Inquiry = 128, Withdrawn = 256, Incomplete = 512
+            None = 1, Enrolled = 2, Applied = 4, WaitList = 8, LeftEarly = 16,
+            Cancelled = 32, Dismissed = 64, Inquiry = 128, Withdrawn = 256,
+            Incomplete = 512
         Memo:
           type: string
           description: A field to capture a memo regarding this session assignment.
@@ -989,15 +991,17 @@ components:
           example: 2
           description: >-
             The status of the attendee as it relates to the sessionprogram.
-            Enrolled = 2, Applied = 4, WaitList = 8,LeftEarly = 16, Cancelled =
-            32, Dismissed = 64, Inquiry = 128, Withdrawn = 256, Incomplete = 512
+            None = 1, Enrolled = 2, Applied = 4, WaitList = 8, LeftEarly = 16,
+            Cancelled = 32, Dismissed = 64, Inquiry = 128, Withdrawn = 256,
+            Incomplete = 512
         StatusName:
           type: string
           example: Enrolled
           description: >-
             The status of the attendee as it relates to the sessionprogram.
-            Enrolled = 2, Applied = 4, WaitList = 8,LeftEarly = 16, Cancelled =
-            32, Dismissed = 64, Inquiry = 128, Withdrawn = 256, Incomplete = 512
+            None = 1, Enrolled = 2, Applied = 4, WaitList = 8, LeftEarly = 16,
+            Cancelled = 32, Dismissed = 64, Inquiry = 128, Withdrawn = 256,
+            Incomplete = 512
         Memo:
           type: string
           example: first session
