@@ -208,13 +208,13 @@ func TestFormatWorkbookTitle_DevPrefix(t *testing.T) {
 	t.Setenv("IS_DOCKER", "")
 
 	title := FormatWorkbookTitle("year", 2025)
-	expected := "(DEV) " + DefaultCampName + " CM Data - 2025"
+	expected := devPrefix + DefaultCampName + " CM Data - 2025"
 	if title != expected {
 		t.Errorf("FormatWorkbookTitle(year, 2025) in dev = %q, want %q", title, expected)
 	}
 
 	globalsTitle := FormatWorkbookTitle("globals", 0)
-	expectedGlobals := "(DEV) " + DefaultCampName + " CM Data - Globals"
+	expectedGlobals := devPrefix + DefaultCampName + " CM Data - Globals"
 	if globalsTitle != expectedGlobals {
 		t.Errorf("FormatWorkbookTitle(globals, 0) in dev = %q, want %q", globalsTitle, expectedGlobals)
 	}
@@ -244,13 +244,15 @@ func TestFormatWorkbookTitle_DevPrefixWithCampName(t *testing.T) {
 	t.Setenv("IS_DOCKER", "")
 
 	yearTitle := FormatWorkbookTitle("year", 2025)
-	if yearTitle != "(DEV) Camp Tawonga CM Data - 2025" {
-		t.Errorf("FormatWorkbookTitle(year, 2025) in dev = %q, want %q", yearTitle, "(DEV) Camp Tawonga CM Data - 2025")
+	expectedYear := devPrefix + "Camp Tawonga CM Data - 2025"
+	if yearTitle != expectedYear {
+		t.Errorf("FormatWorkbookTitle(year, 2025) in dev = %q, want %q", yearTitle, expectedYear)
 	}
 
 	globalsTitle := FormatWorkbookTitle("globals", 0)
-	if globalsTitle != "(DEV) Camp Tawonga CM Data - Globals" {
-		t.Errorf("FormatWorkbookTitle(globals, 0) in dev = %q, want %q", globalsTitle, "(DEV) Camp Tawonga CM Data - Globals")
+	expectedGlobals := devPrefix + "Camp Tawonga CM Data - Globals"
+	if globalsTitle != expectedGlobals {
+		t.Errorf("FormatWorkbookTitle(globals, 0) in dev = %q, want %q", globalsTitle, expectedGlobals)
 	}
 }
 
@@ -267,9 +269,9 @@ func TestFormatWorkbookTitle_ProductionNoPrefix(t *testing.T) {
 		t.Errorf("FormatWorkbookTitle(year, 2025) in prod = %q, want %q", title, expected)
 	}
 
-	// Ensure no "(DEV)" prefix in production
-	if title != expected || title[0:6] == "(DEV) " {
-		t.Errorf("Production title should NOT have (DEV) prefix, got %q", title)
+	// Ensure no dev prefix in production
+	if title != expected || title[:len(devPrefix)] == devPrefix {
+		t.Errorf("Production title should NOT have dev prefix, got %q", title)
 	}
 }
 
@@ -349,7 +351,7 @@ func TestLoadCampName_PrefersDockePath(t *testing.T) {
 func TestFormatWorkbookTitle_DevProdIsolation(t *testing.T) {
 	// This test verifies that dev and prod environments generate DIFFERENT titles,
 	// which is critical for the Drive search feature to work correctly.
-	// Dev titles have "(DEV) " prefix, prod titles don't.
+	// Dev titles have devPrefix, prod titles don't.
 
 	// Reset cache for clean test
 	resetBrandingCache()
@@ -360,12 +362,13 @@ func TestFormatWorkbookTitle_DevProdIsolation(t *testing.T) {
 	devGlobals := FormatWorkbookTitle("globals", 0)
 	devYear := FormatWorkbookTitle("year", 2025)
 
-	// Dev titles should have "(DEV) " prefix
-	if devGlobals[:6] != "(DEV) " {
-		t.Errorf("Dev globals title should start with '(DEV) ', got: %q", devGlobals)
+	// Dev titles should have devPrefix
+	prefixLen := len(devPrefix)
+	if devGlobals[:prefixLen] != devPrefix {
+		t.Errorf("Dev globals title should start with %q, got: %q", devPrefix, devGlobals)
 	}
-	if devYear[:6] != "(DEV) " {
-		t.Errorf("Dev year title should start with '(DEV) ', got: %q", devYear)
+	if devYear[:prefixLen] != devPrefix {
+		t.Errorf("Dev year title should start with %q, got: %q", devPrefix, devYear)
 	}
 
 	// Reset cache and test prod environment
@@ -375,12 +378,12 @@ func TestFormatWorkbookTitle_DevProdIsolation(t *testing.T) {
 	prodGlobals := FormatWorkbookTitle("globals", 0)
 	prodYear := FormatWorkbookTitle("year", 2025)
 
-	// Prod titles should NOT have "(DEV) " prefix
-	if len(prodGlobals) >= 6 && prodGlobals[:6] == "(DEV) " {
-		t.Errorf("Prod globals title should NOT start with '(DEV) ', got: %q", prodGlobals)
+	// Prod titles should NOT have devPrefix
+	if len(prodGlobals) >= prefixLen && prodGlobals[:prefixLen] == devPrefix {
+		t.Errorf("Prod globals title should NOT start with %q, got: %q", devPrefix, prodGlobals)
 	}
-	if len(prodYear) >= 6 && prodYear[:6] == "(DEV) " {
-		t.Errorf("Prod year title should NOT start with '(DEV) ', got: %q", prodYear)
+	if len(prodYear) >= prefixLen && prodYear[:prefixLen] == devPrefix {
+		t.Errorf("Prod year title should NOT start with %q, got: %q", devPrefix, prodYear)
 	}
 
 	// Titles should be different between environments

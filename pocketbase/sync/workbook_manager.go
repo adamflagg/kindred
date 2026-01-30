@@ -72,7 +72,11 @@ func NewWorkbookManager(app core.App, sheetsWriter SheetsWriter) *WorkbookManage
 
 // NewWorkbookManagerWithSearcher creates a WorkbookManager with Drive search capability.
 // This enables automatic recovery of existing workbooks when the database is cleared.
-func NewWorkbookManagerWithSearcher(app core.App, sheetsWriter SheetsWriter, driveSearcher DriveSearcher) *WorkbookManager {
+func NewWorkbookManagerWithSearcher(
+	app core.App,
+	sheetsWriter SheetsWriter,
+	driveSearcher DriveSearcher,
+) *WorkbookManager {
 	return &WorkbookManager{
 		app:           app,
 		sheetsWriter:  sheetsWriter,
@@ -310,7 +314,8 @@ func (m *WorkbookManager) GetOrCreateYearWorkbook(ctx context.Context, year int)
 			slog.Warn("Drive search failed, will create new workbook", "error", searchErr, "title", title, "year", year)
 		} else if foundID != "" {
 			// Found existing workbook in Drive - link it to database
-			slog.Info("Found existing workbook in Drive, linking to database", "title", title, "year", year, "spreadsheet_id", foundID)
+			slog.Info("Found existing workbook in Drive, linking to database",
+				"title", title, "year", year, "spreadsheet_id", foundID)
 			url := google.FormatSpreadsheetURL(foundID)
 			_, saveErr := m.SaveWorkbookRecord(ctx, &WorkbookRecord{
 				SpreadsheetID: foundID,
