@@ -337,6 +337,13 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 		return handleStaffSkillsSync(e, scheduler)
 	}))
 
+	// Financial aid applications sync
+	// Extracts FA- fields from person_custom_values into structured application records
+	// Accepts required ?year=YYYY parameter
+	e.Router.POST("/api/custom/sync/financial-aid-applications", requireAuth(func(e *core.RequestEvent) error {
+		return handleFinancialAidApplicationsSync(e, scheduler)
+	}))
+
 	return nil
 }
 
@@ -1665,6 +1672,81 @@ func handleStaffSkillsSync(e *core.RequestEvent, scheduler *Scheduler) error {
 
 	return e.JSON(http.StatusOK, map[string]interface{}{
 		"message":  "Staff skills extraction started",
+		"status":   "started",
+		"syncType": syncType,
+		"year":     year,
+		"dry_run":  dryRun,
+	})
+}
+
+// handleFinancialAidApplicationsSync handles the financial aid applications computation endpoint
+// Accepts required ?year=YYYY parameter to compute FA applications for a specific year
+func handleFinancialAidApplicationsSync(e *core.RequestEvent, scheduler *Scheduler) error {
+	orchestrator := scheduler.GetOrchestrator()
+	syncType := serviceNameFinancialAidApplications
+
+	// Check if already running
+	if orchestrator.IsRunning(syncType) {
+		return e.JSON(http.StatusConflict, map[string]interface{}{
+			"error":    "Financial aid applications sync already in progress",
+			"status":   "running",
+			"syncType": syncType,
+		})
+	}
+
+	// Parse required year parameter
+	yearParam := e.Request.URL.Query().Get("year")
+	if yearParam == "" {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Missing required year parameter. Use ?year=YYYY",
+		})
+	}
+
+	year, err := strconv.Atoi(yearParam)
+	if err != nil || year < 2017 || year > 2050 {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Invalid year parameter. Must be between 2017 and 2050.",
+		})
+	}
+
+	// Parse optional dry-run parameter
+	dryRunParam := e.Request.URL.Query().Get("dry_run")
+	dryRun := dryRunParam == boolTrueStr || dryRunParam == "1"
+
+	// Get the service and set options
+	service, ok := orchestrator.GetService(syncType).(*FinancialAidApplicationsSync)
+	if !ok || service == nil {
+		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+			"error": "Financial aid applications sync service not found",
+		})
+	}
+	service.Year = year
+	service.DryRun = dryRun
+
+	// Run in background
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+
+		slog.Info("Starting financial_aid_applications extraction",
+			"year", year,
+			"dry_run", dryRun,
+		)
+		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
+			slog.Error("Financial aid applications extraction failed", "year", year, "error", err)
+		} else {
+			stats := service.GetStats()
+			slog.Info("Financial aid applications extraction completed",
+				"year", year,
+				"created", stats.Created,
+				"updated", stats.Updated,
+				"errors", stats.Errors,
+			)
+		}
+	}()
+
+	return e.JSON(http.StatusOK, map[string]interface{}{
+		"message":  "Financial aid applications extraction started",
 		"status":   "started",
 		"syncType": syncType,
 		"year":     year,
