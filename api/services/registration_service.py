@@ -486,25 +486,19 @@ class RegistrationService:
         ]
 
     def _compute_session_bunk_breakdown(self, camper_history: list[Any]) -> list[SessionBunkBreakdown]:
-        """Compute session+bunk breakdown (top 10)."""
+        """Compute session+bunk breakdown (top 10).
+
+        V2: Each record has single session_name and bunk_name (no comma parsing needed).
+        """
         session_bunk_counts: dict[tuple[str, str], int] = {}
         for record in camper_history:
-            sessions_str = getattr(record, "sessions", "") or ""
-            bunks_str = getattr(record, "bunks", "") or ""
-            # Parse comma-separated values
-            session_list = [s.strip() for s in sessions_str.split(",") if s.strip()]
-            bunk_list = [b.strip() for b in bunks_str.split(",") if b.strip()]
-            # Create combinations (if lengths match, pair them; otherwise cross-product)
-            if len(session_list) == len(bunk_list):
-                for sess, bunk in zip(session_list, bunk_list, strict=True):
-                    key = (sess, bunk)
-                    session_bunk_counts[key] = session_bunk_counts.get(key, 0) + 1
-            elif session_list and bunk_list:
-                # Cross-product when lengths don't match
-                for sess in session_list:
-                    for bunk in bunk_list:
-                        key = (sess, bunk)
-                        session_bunk_counts[key] = session_bunk_counts.get(key, 0) + 1
+            # V2: Direct field access (single values per record)
+            session = getattr(record, "session_name", "") or ""
+            bunk = getattr(record, "bunk_name", "") or ""
+
+            if session and bunk:
+                key = (session, bunk)
+                session_bunk_counts[key] = session_bunk_counts.get(key, 0) + 1
 
         return [
             SessionBunkBreakdown(

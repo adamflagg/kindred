@@ -617,6 +617,10 @@ func (s *SessionsSync) getSessionTypeFromName(sessionName string) string {
 	if strings.Contains(nameLower, "winter family camp") {
 		return sessionTypeFamily
 	}
+	// Ready Set Camp is a family program (reclassified from "other")
+	if strings.Contains(nameLower, "ready, set, camp") || strings.Contains(nameLower, "ready set camp") {
+		return sessionTypeFamily
+	}
 
 	// Adult programs - specific matches
 	if strings.Contains(nameLower, "adults unplugged") {

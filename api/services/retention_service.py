@@ -169,7 +169,8 @@ class RetentionService:
             filter_none=True,
         )
 
-        by_session_bunk = self._build_session_bunk_breakdown(person_ids_base, returned_ids, history_by_person)
+        # V2: Pass raw records for session-bunk breakdown (one record per session)
+        by_session_bunk = self._build_session_bunk_breakdown(person_ids_base, returned_ids, camper_history_base)
 
         # Summer enrollment breakdowns (calculated from attendees history)
         enrollment_history = await self.repo.fetch_summer_enrollment_history(person_ids_base, base_year)
@@ -378,41 +379,35 @@ class RetentionService:
         self,
         person_ids: set[int],
         returned_ids: set[int],
-        history_by_person: dict[int, Any],
+        camper_history_records: list[Any],
     ) -> list[RetentionBySessionBunk]:
-        """Build session+bunk breakdown from camper_history.
+        """Build session+bunk breakdown from camper_history records.
+
+        V2: Each record has single session_name and bunk_name (no comma parsing).
+        Iterate over all records to count session-bunk combinations.
 
         Args:
             person_ids: Set of person IDs in base year.
             returned_ids: Set of person IDs who returned.
-            history_by_person: Dict mapping person_id to camper_history record.
+            camper_history_records: List of camper_history records.
 
         Returns:
             List of top 10 RetentionBySessionBunk models.
         """
         session_bunk_stats: dict[tuple[str, str], dict[str, int]] = {}
 
-        for pid in person_ids:
-            history = history_by_person.get(pid)
-            if not history:
+        for record in camper_history_records:
+            pid = getattr(record, "person_id", None)
+            if pid is None or int(pid) not in person_ids:
                 continue
+            pid = int(pid)
 
-            sessions_str = getattr(history, "sessions", "") or ""
-            bunks_str = getattr(history, "bunks", "") or ""
+            # V2: Direct field access (single values per record)
+            session = getattr(record, "session_name", "") or ""
+            bunk = getattr(record, "bunk_name", "") or ""
 
-            session_list = [s.strip() for s in sessions_str.split(",") if s.strip()]
-            bunk_list = [b.strip() for b in bunks_str.split(",") if b.strip()]
-
-            # Pair sessions and bunks
-            pairs: list[tuple[str, str]] = []
-            if len(session_list) == len(bunk_list):
-                pairs = list(zip(session_list, bunk_list, strict=True))
-            elif session_list and bunk_list:
-                # Cross-product when lengths don't match
-                pairs = [(s, b) for s in session_list for b in bunk_list]
-
-            for sess, bunk in pairs:
-                key = (sess, bunk)
+            if session and bunk:
+                key = (session, bunk)
                 if key not in session_bunk_stats:
                     session_bunk_stats[key] = {"base": 0, "returned": 0}
                 session_bunk_stats[key]["base"] += 1
