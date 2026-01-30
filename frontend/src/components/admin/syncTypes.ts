@@ -18,6 +18,7 @@ import {
   Receipt,
   History,
   Home,
+  Sparkles,
 } from 'lucide-react';
 
 // Global sync types - cross-year data not tied to a specific season
@@ -46,6 +47,7 @@ export const YEAR_SYNC_TYPES = [
   { id: 'financial_transactions', name: 'Financial Transactions', icon: Receipt, color: 'text-green-600' },
   { id: 'camper_history', name: 'Camper History', icon: History, color: 'text-cyan-600' },
   { id: 'family_camp_derived', name: 'Family Camp', icon: Home, color: 'text-orange-500' },
+  { id: 'staff_skills', name: 'Staff Skills', icon: Sparkles, color: 'text-purple-500' },
   // Bunk request processing - available for all years (historical CSV import)
   { id: 'bunk_requests', name: 'Intake Requests', icon: FileText, color: 'text-orange-600' },
   { id: 'process_requests', name: 'Process Requests', icon: Brain, color: 'text-teal-600' },

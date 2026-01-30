@@ -21,6 +21,7 @@ import { useUnifiedSync } from '../../hooks/useUnifiedSync';
 import { useProcessRequests } from '../../hooks/useProcessRequests';
 import { useCamperHistorySync } from '../../hooks/useCamperHistorySync';
 import { useFamilyCampDerivedSync } from '../../hooks/useFamilyCampDerivedSync';
+import { useStaffSkillsSync } from '../../hooks/useStaffSkillsSync';
 import { useCancelQueuedSync } from '../../hooks/useCancelQueuedSync';
 import { useCancelRunningSync } from '../../hooks/useCancelRunningSync';
 import { StatusIcon, formatDuration } from './ConfigInputs';
@@ -54,6 +55,7 @@ export function SyncTab() {
   const processRequests = useProcessRequests();
   const camperHistorySync = useCamperHistorySync();
   const familyCampDerivedSync = useFamilyCampDerivedSync();
+  const staffSkillsSync = useStaffSkillsSync();
   const cancelQueuedSync = useCancelQueuedSync();
   const cancelRunningSync = useCancelRunningSync();
 
@@ -376,6 +378,19 @@ export function SyncTab() {
                   <button
                     onClick={() => familyCampDerivedSync.mutate(syncYear)}
                     disabled={isRunning || familyCampDerivedSync.isPending}
+                    className="w-full py-2 mt-3 text-xs sm:text-sm font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    {isRunning ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <><Play className="w-4 h-4" /> Run</>
+                    )}
+                  </button>
+                ) : syncType.id === 'staff_skills' ? (
+                  // Staff skills requires year parameter - use selected year from dropdown
+                  <button
+                    onClick={() => staffSkillsSync.mutate(syncYear)}
+                    disabled={isRunning || staffSkillsSync.isPending}
                     className="w-full py-2 mt-3 text-xs sm:text-sm font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
                   >
                     {isRunning ? (

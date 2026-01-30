@@ -330,6 +330,13 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 		return handleFamilyCampDerivedSync(e, scheduler)
 	}))
 
+	// Staff skills sync
+	// Extracts Skills- fields from person_custom_values into normalized table
+	// Accepts required ?year=YYYY parameter
+	e.Router.POST("/api/custom/sync/staff-skills", requireAuth(func(e *core.RequestEvent) error {
+		return handleStaffSkillsSync(e, scheduler)
+	}))
+
 	return nil
 }
 
@@ -1582,6 +1589,82 @@ func handleFamilyCampDerivedSync(e *core.RequestEvent, scheduler *Scheduler) err
 
 	return e.JSON(http.StatusOK, map[string]interface{}{
 		"message":  "Family camp derived computation started",
+		"status":   "started",
+		"syncType": syncType,
+		"year":     year,
+		"dry_run":  dryRun,
+	})
+}
+
+// handleStaffSkillsSync handles the staff skills extraction endpoint
+// Accepts required ?year=YYYY parameter to extract skills for a specific year
+func handleStaffSkillsSync(e *core.RequestEvent, scheduler *Scheduler) error {
+	orchestrator := scheduler.GetOrchestrator()
+	syncType := "staff_skills"
+
+	// Check if already running
+	if orchestrator.IsRunning(syncType) {
+		return e.JSON(http.StatusConflict, map[string]interface{}{
+			"error":    "Staff skills sync already in progress",
+			"status":   "running",
+			"syncType": syncType,
+		})
+	}
+
+	// Parse required year parameter
+	yearParam := e.Request.URL.Query().Get("year")
+	if yearParam == "" {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Missing required year parameter. Use ?year=YYYY",
+		})
+	}
+
+	year, err := strconv.Atoi(yearParam)
+	if err != nil || year < 2017 || year > 2050 {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Invalid year parameter. Must be between 2017 and 2050.",
+		})
+	}
+
+	// Parse optional dry-run parameter
+	dryRunParam := e.Request.URL.Query().Get("dry_run")
+	dryRun := dryRunParam == boolTrueStr || dryRunParam == "1"
+
+	// Get the service and set options
+	service, ok := orchestrator.GetService(syncType).(*StaffSkillsSync)
+	if !ok || service == nil {
+		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+			"error": "Staff skills sync service not found",
+		})
+	}
+	service.Year = year
+	service.DryRun = dryRun
+
+	// Run in background
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+
+		slog.Info("Starting staff_skills extraction",
+			"year", year,
+			"dry_run", dryRun,
+		)
+		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
+			slog.Error("Staff skills extraction failed", "year", year, "error", err)
+		} else {
+			stats := service.GetStats()
+			slog.Info("Staff skills extraction completed",
+				"year", year,
+				"created", stats.Created,
+				"updated", stats.Updated,
+				"deleted", stats.Deleted,
+				"errors", stats.Errors,
+			)
+		}
+	}()
+
+	return e.JSON(http.StatusOK, map[string]interface{}{
+		"message":  "Staff skills extraction started",
 		"status":   "started",
 		"syncType": syncType,
 		"year":     year,

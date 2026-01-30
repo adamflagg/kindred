@@ -418,6 +418,7 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 		// Derived tables (computed from synced data) - grouped after source data
 		"camper_history",      // Derived: computes from attendees
 		"family_camp_derived", // Derived: computes from custom values (uses existing data in daily)
+		"staff_skills",        // Derived: computes from person_custom_values (Skills- fields)
 		"bunk_requests",       // CSV import, depends on persons
 	}
 
@@ -798,7 +799,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		}
 
 		// Derived tables always run (they compute from local PocketBase data, no API calls)
-		servicesToRun = append(servicesToRun, "camper_history", "family_camp_derived")
+		servicesToRun = append(servicesToRun, "camper_history", "family_camp_derived", "staff_skills")
 
 		// Only include bunk_requests and process_requests for current year syncs (not historical)
 		// Bunk requests are populated during the current year's processing
@@ -898,6 +899,11 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		familyCampDerivedSync := NewFamilyCampDerivedSync(o.app)
 		familyCampDerivedSync.Year = opts.Year
 		o.RegisterService("family_camp_derived", familyCampDerivedSync)
+
+		// Staff skills (derived from person_custom_values Skills- fields)
+		staffSkillsSync := NewStaffSkillsSync(o.app)
+		staffSkillsSync.Year = opts.Year
+		o.RegisterService("staff_skills", staffSkillsSync)
 
 		// Custom value services for historical sync support
 		// These use GetSeasonID() to determine the year, so they need year-specific client
@@ -1302,6 +1308,9 @@ func (o *Orchestrator) InitializeSyncServices() error {
 
 	// Family camp derived tables (computes from custom values - on-demand)
 	o.RegisterService("family_camp_derived", NewFamilyCampDerivedSync(o.app))
+
+	// Staff skills (derived from person_custom_values Skills- fields)
+	o.RegisterService("staff_skills", NewStaffSkillsSync(o.app))
 
 	slog.Info("All sync services registered")
 	return nil

@@ -25,6 +25,7 @@ export const SYNC_TYPE_NAMES: Record<string, string> = {
   camper_history: 'Camper History', // Computed retention metrics
   financial_transactions: 'Financial Transactions', // Year-scoped financial data
   family_camp_derived: 'Family Camp Derived', // Computed from custom values
+  staff_skills: 'Staff Skills', // Derived from person_custom_values Skills- fields
   bunk_requests: 'Intake Requests',
   process_requests: 'Process Requests',
   // On-demand syncs (not part of daily sync)
