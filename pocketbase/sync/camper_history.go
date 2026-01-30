@@ -37,14 +37,16 @@ type CamperHistorySync struct {
 	DryRun         bool // Dry run mode (compute but don't write)
 	Stats          Stats
 	SyncSuccessful bool
+	ProcessedKeys  map[string]bool // Track processed composite keys for orphan detection
 }
 
 // NewCamperHistorySync creates a new camper history sync service
 func NewCamperHistorySync(app core.App) *CamperHistorySync {
 	return &CamperHistorySync{
-		App:    app,
-		Year:   0,     // Default: current year from env
-		DryRun: false, // Default: write to database
+		App:           app,
+		Year:          0,     // Default: current year from env
+		DryRun:        false, // Default: write to database
+		ProcessedKeys: make(map[string]bool),
 	}
 }
 
@@ -111,6 +113,7 @@ type historicalEnrollment struct {
 func (c *CamperHistorySync) Sync(ctx context.Context) error {
 	c.Stats = Stats{}
 	c.SyncSuccessful = false
+	c.ProcessedKeys = make(map[string]bool)
 
 	// Determine year
 	year := c.Year
@@ -191,13 +194,11 @@ func (c *CamperHistorySync) Sync(ctx context.Context) error {
 		return nil
 	}
 
-	// Clear existing records for the year
-	deleted, err := c.clearExistingRecords(ctx, year)
+	// Preload existing records for upsert
+	existingRecords, err := c.preloadExistingRecords(year)
 	if err != nil {
-		return fmt.Errorf("clearing existing records: %w", err)
+		return fmt.Errorf("preloading existing records: %w", err)
 	}
-	c.Stats.Deleted = deleted
-	slog.Info("Cleared existing records", "deleted", deleted, "year", year)
 
 	// Get collection for writing
 	col, err := c.App.FindCollectionByNameOrId("camper_history")
@@ -205,10 +206,14 @@ func (c *CamperHistorySync) Sync(ctx context.Context) error {
 		return fmt.Errorf("finding camper_history collection: %w", err)
 	}
 
-	// Deduplicate by unique key (person_id, session_cm_id, year) in case of dupe attendee records
-	seen := make(map[string]bool)
+	// Skip fields when comparing for update detection (these are the unique key)
+	skipFields := map[string]bool{
+		"person_id":     true,
+		"session_cm_id": true,
+		"year":          true,
+	}
 
-	// Write one record per attendee
+	// Process one record per attendee using upsert pattern
 	for _, attendee := range attendees {
 		select {
 		case <-ctx.Done():
@@ -216,12 +221,14 @@ func (c *CamperHistorySync) Sync(ctx context.Context) error {
 		default:
 		}
 
-		// Deduplicate by unique key
-		key := fmt.Sprintf("%d-%d-%d", attendee.personCMID, attendee.sessionCMID, attendee.year)
-		if seen[key] {
+		// Build composite key for upsert lookup
+		key := fmt.Sprintf("%d:%d|%d", attendee.personCMID, attendee.sessionCMID, year)
+
+		// Skip if already processed (duplicate in source data)
+		if c.ProcessedKeys[key] {
 			continue
 		}
-		seen[key] = true
+		c.ProcessedKeys[key] = true
 
 		demo := demographics[attendee.personCMID]
 		hist := historicalEnrollments[attendee.personCMID]
@@ -253,101 +260,126 @@ func (c *CamperHistorySync) Sync(ctx context.Context) error {
 			synagogue = synagogueByHousehold[demo.householdID]
 		}
 
-		// Build record
-		record := core.NewRecord(col)
+		// Build record data map for upsert comparison
+		recordData := map[string]interface{}{
+			"person_id":           attendee.personCMID,
+			"session_cm_id":       attendee.sessionCMID,
+			"year":                year,
+			"session_name":        attendee.sessionName,
+			"first_name":          demo.firstName,
+			"last_name":           demo.lastName,
+			"school":              demo.school,
+			"city":                demo.city,
+			"is_returning_summer": isReturningSummer,
+			"is_returning_family": isReturningFamily,
+			"years_at_camp":       yearsAtCamp,
+		}
 
-		// Identity fields
-		record.Set("person_id", attendee.personCMID)
+		// Add optional fields
 		if demo.pbID != "" {
-			record.Set("person", demo.pbID)
+			recordData["person"] = demo.pbID
 		}
-		record.Set("session_cm_id", attendee.sessionCMID)
 		if attendee.sessionPBID != "" {
-			record.Set("session", attendee.sessionPBID)
+			recordData["session"] = attendee.sessionPBID
 		}
-		record.Set("year", year)
-
-		// Session context (denormalized)
-		record.Set("session_name", attendee.sessionName)
 		if attendee.sessionType != "" {
-			record.Set("session_type", attendee.sessionType)
+			recordData["session_type"] = attendee.sessionType
 		}
-
-		// Person demographics (denormalized)
-		record.Set("first_name", demo.firstName)
-		record.Set("last_name", demo.lastName)
 		if demo.gender != "" {
-			record.Set("gender", demo.gender)
+			recordData["gender"] = demo.gender
 		}
 		if demo.grade > 0 {
-			record.Set("grade", demo.grade)
+			recordData["grade"] = demo.grade
 		}
 		if demo.age > 0 {
-			record.Set("age", demo.age)
+			recordData["age"] = demo.age
 		}
-		record.Set("school", demo.school)
-		record.Set("city", demo.city)
 		if demo.householdID > 0 {
-			record.Set("household_id", demo.householdID)
+			recordData["household_id"] = demo.householdID
 		}
 		if demo.divisionName != "" {
-			record.Set("division_name", demo.divisionName)
+			recordData["division_name"] = demo.divisionName
 		}
-
-		// Enrollment details
 		if attendee.status != "" {
-			record.Set("status", attendee.status)
+			recordData["status"] = attendee.status
 		}
 		if attendee.enrollmentDate != "" {
-			record.Set("enrollment_date", attendee.enrollmentDate)
+			recordData["enrollment_date"] = attendee.enrollmentDate
 		}
-
-		// Bunk assignment (session-specific)
 		if bunk.bunkName != "" {
-			record.Set("bunk_name", bunk.bunkName)
+			recordData["bunk_name"] = bunk.bunkName
 		}
 		if bunk.bunkCMID > 0 {
-			record.Set("bunk_cm_id", bunk.bunkCMID)
+			recordData["bunk_cm_id"] = bunk.bunkCMID
 		}
-
-		// Retention metrics (context-aware)
-		record.Set("is_returning_summer", isReturningSummer)
-		record.Set("is_returning_family", isReturningFamily)
 		if firstYearSummer > 0 {
-			record.Set("first_year_summer", firstYearSummer)
+			recordData["first_year_summer"] = firstYearSummer
 		}
 		if firstYearFamily > 0 {
-			record.Set("first_year_family", firstYearFamily)
+			recordData["first_year_family"] = firstYearFamily
 		}
-		record.Set("years_at_camp", yearsAtCamp)
-
-		// Household extras
 		if synagogue != "" {
-			record.Set("synagogue", synagogue)
+			recordData["synagogue"] = synagogue
 		}
 
-		if err := c.App.Save(record); err != nil {
-			slog.Error("Error creating camper history record",
-				"personCMID", attendee.personCMID,
-				"sessionCMID", attendee.sessionCMID,
-				"error", err)
-			c.Stats.Errors++
-			continue
+		// Check for existing record
+		existing := existingRecords[key]
+
+		if existing != nil {
+			// Check if update is needed
+			if c.recordNeedsUpdate(existing, recordData, skipFields) {
+				// Update existing record
+				for field, value := range recordData {
+					existing.Set(field, value)
+				}
+				if err := c.App.Save(existing); err != nil {
+					slog.Error("Error updating camper history record",
+						"personCMID", attendee.personCMID,
+						"sessionCMID", attendee.sessionCMID,
+						"error", err)
+					c.Stats.Errors++
+					continue
+				}
+				c.Stats.Updated++
+			} else {
+				c.Stats.Skipped++
+			}
+		} else {
+			// Create new record
+			record := core.NewRecord(col)
+			for field, value := range recordData {
+				record.Set(field, value)
+			}
+			if err := c.App.Save(record); err != nil {
+				slog.Error("Error creating camper history record",
+					"personCMID", attendee.personCMID,
+					"sessionCMID", attendee.sessionCMID,
+					"error", err)
+				c.Stats.Errors++
+				continue
+			}
+			c.Stats.Created++
 		}
-		c.Stats.Created++
 	}
 
+	// Mark sync as successful before orphan deletion
+	c.SyncSuccessful = true
+
+	// Delete orphaned records (campers unenrolled from sessions)
+	c.deleteOrphans(existingRecords)
+
 	// WAL checkpoint
-	if c.Stats.Created > 0 || c.Stats.Deleted > 0 {
+	if c.Stats.Created > 0 || c.Stats.Updated > 0 || c.Stats.Deleted > 0 {
 		if err := c.forceWALCheckpoint(); err != nil {
 			slog.Warn("WAL checkpoint failed", "error", err)
 		}
 	}
 
-	c.SyncSuccessful = true
 	slog.Info("Camper history v2 computation completed",
 		"year", year,
 		"created", c.Stats.Created,
+		"updated", c.Stats.Updated,
+		"skipped", c.Stats.Skipped,
 		"deleted", c.Stats.Deleted,
 		"errors", c.Stats.Errors,
 	)
@@ -828,34 +860,6 @@ func (c *CamperHistorySync) loadSynagogueByHousehold(ctx context.Context, year i
 	return result, nil
 }
 
-// clearExistingRecords deletes all camper_history records for a year
-func (c *CamperHistorySync) clearExistingRecords(_ context.Context, year int) (int, error) {
-	deleted := 0
-
-	filter := fmt.Sprintf("year = %d", year)
-
-	for {
-		records, err := c.App.FindRecordsByFilter("camper_history", filter, "", 100, 0)
-		if err != nil {
-			return deleted, fmt.Errorf("querying existing records: %w", err)
-		}
-
-		if len(records) == 0 {
-			break
-		}
-
-		for _, record := range records {
-			if err := c.App.Delete(record); err != nil {
-				slog.Error("Error deleting camper history record", "id", record.Id, "error", err)
-				continue
-			}
-			deleted++
-		}
-	}
-
-	return deleted, nil
-}
-
 // ============================================================================
 // Context-aware retention metric computation functions
 // ============================================================================
@@ -882,8 +886,9 @@ func (c *CamperHistorySync) computeIsReturningFamily(currentYear int, enrollment
 	return false
 }
 
-// computeFirstYearSummer returns the first year a person attended a summer session
-func (c *CamperHistorySync) computeFirstYearSummer(currentYear int, enrollments []historicalEnrollment) int {
+// computeFirstYearSummer returns the first year a person attended a summer session.
+// Returns 0 if person has never attended a summer session.
+func (c *CamperHistorySync) computeFirstYearSummer(_ int, enrollments []historicalEnrollment) int {
 	minYear := 0
 	for _, e := range enrollments {
 		if e.status == statusEnrolled && c.isSummerSessionType(e.sessionType) {
@@ -892,10 +897,7 @@ func (c *CamperHistorySync) computeFirstYearSummer(currentYear int, enrollments 
 			}
 		}
 	}
-	if minYear == 0 {
-		return currentYear // New summer camper
-	}
-	return minYear
+	return minYear // 0 if never attended summer
 }
 
 // computeFirstYearFamily returns the first year a person attended a family session
@@ -975,4 +977,142 @@ func (c *CamperHistorySync) forceWALCheckpoint() error {
 	}
 
 	return nil
+}
+
+// ============================================================================
+// Upsert helper functions
+// ============================================================================
+
+// preloadExistingRecords loads all existing camper_history records for the year into a map
+// keyed by composite key: "person_id:session_cm_id|year"
+func (c *CamperHistorySync) preloadExistingRecords(year int) (map[string]*core.Record, error) {
+	existingRecords := make(map[string]*core.Record)
+
+	filter := fmt.Sprintf("year = %d", year)
+	page := 1
+	perPage := 500
+
+	for {
+		records, err := c.App.FindRecordsByFilter(
+			"camper_history",
+			filter,
+			"-created",
+			perPage,
+			(page-1)*perPage,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("querying existing records page %d: %w", page, err)
+		}
+
+		for _, record := range records {
+			personCMID := 0
+			if pid, ok := record.Get("person_id").(float64); ok {
+				personCMID = int(pid)
+			}
+			sessionCMID := 0
+			if sid, ok := record.Get("session_cm_id").(float64); ok {
+				sessionCMID = int(sid)
+			}
+
+			if personCMID > 0 && sessionCMID > 0 {
+				key := fmt.Sprintf("%d:%d|%d", personCMID, sessionCMID, year)
+				existingRecords[key] = record
+			}
+		}
+
+		if len(records) < perPage {
+			break
+		}
+		page++
+	}
+
+	slog.Info("Loaded existing camper_history records", "count", len(existingRecords), "year", year)
+	return existingRecords, nil
+}
+
+// fieldEquals compares two values for equality, handling type conversions
+func (c *CamperHistorySync) fieldEquals(existing, newVal interface{}) bool {
+	// Handle nil vs empty string
+	if (existing == nil && newVal == "") || (existing == "" && newVal == nil) {
+		return true
+	}
+	// Handle nil vs 0
+	if existing == nil && newVal == 0 {
+		return true
+	}
+	if existing == 0 && newVal == nil {
+		return true
+	}
+	// Handle float64 vs int
+	if existingFloat, ok := existing.(float64); ok {
+		if newInt, ok := newVal.(int); ok {
+			return int(existingFloat) == newInt
+		}
+		if newFloat, ok := newVal.(float64); ok {
+			return existingFloat == newFloat
+		}
+	}
+	if existingInt, ok := existing.(int); ok {
+		if newFloat, ok := newVal.(float64); ok {
+			return existingInt == int(newFloat)
+		}
+	}
+	// Handle bool
+	if existingBool, ok := existing.(bool); ok {
+		if newBool, ok := newVal.(bool); ok {
+			return existingBool == newBool
+		}
+	}
+	// Direct comparison
+	return existing == newVal
+}
+
+// recordNeedsUpdate checks if any field differs between existing record and new data
+func (c *CamperHistorySync) recordNeedsUpdate(
+	existing *core.Record, newData map[string]interface{}, skipFields map[string]bool,
+) bool {
+	for field, newValue := range newData {
+		if skipFields[field] {
+			continue
+		}
+		if !c.fieldEquals(existing.Get(field), newValue) {
+			return true
+		}
+	}
+	return false
+}
+
+// deleteOrphans removes records that weren't processed (campers unenrolled from sessions)
+func (c *CamperHistorySync) deleteOrphans(existingRecords map[string]*core.Record) int {
+	if !c.SyncSuccessful {
+		slog.Info("Skipping orphan deletion due to sync failure")
+		return 0
+	}
+
+	orphanCount := 0
+	for key, record := range existingRecords {
+		if c.ProcessedKeys[key] {
+			continue
+		}
+
+		personCMID := record.Get("person_id")
+		sessionCMID := record.Get("session_cm_id")
+		slog.Info("Deleting orphaned camper_history record",
+			"person_id", personCMID,
+			"session_cm_id", sessionCMID)
+
+		if err := c.App.Delete(record); err != nil {
+			slog.Error("Error deleting orphan", "id", record.Id, "error", err)
+			c.Stats.Errors++
+			continue
+		}
+		orphanCount++
+	}
+
+	if orphanCount > 0 {
+		c.Stats.Deleted = orphanCount
+		slog.Info("Deleted orphaned camper_history records", "count", orphanCount)
+	}
+
+	return orphanCount
 }
