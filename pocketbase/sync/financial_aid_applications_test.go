@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -610,13 +611,7 @@ func parseFABoolField(value string) bool {
 	if value == "" {
 		return false
 	}
-	lower := value
-	if len(value) > 0 {
-		// Convert to lowercase manually for first char check
-		if value[0] >= 'A' && value[0] <= 'Z' {
-			lower = string(value[0]+32) + value[1:]
-		}
-	}
+	lower := strings.ToLower(strings.TrimSpace(value))
 
 	switch lower {
 	case "yes", "y", "true", "1":
@@ -731,10 +726,7 @@ func hasFAInterestExpressed(value string) bool {
 		return false
 	}
 	// Any non-empty, non-negative value indicates interest
-	lower := value
-	if len(value) > 0 && value[0] >= 'A' && value[0] <= 'Z' {
-		lower = string(value[0]+32) + value[1:]
-	}
+	lower := strings.ToLower(strings.TrimSpace(value))
 	return lower != "no" && lower != "n" && lower != "0" && lower != "false"
 }
 
