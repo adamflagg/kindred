@@ -384,10 +384,10 @@ jobs:
 
         # Run migrations explicitly (use local pb_migrations dir)
         echo "Running migrations..."
-        ./pocketbase migrate up --dir /tmp/pb_ci_test 2>&1 | tee /tmp/pb_migrate.log
+        ./pocketbase migrate up --dir /tmp/pb_ci_test --migrationsDir ./pb_migrations 2>&1 | tee /tmp/pb_migrate.log
 
         echo "Starting PocketBase server..."
-        ./pocketbase serve --dir /tmp/pb_ci_test --http 127.0.0.1:18999 > /tmp/pb_output.log 2>&1 &
+        ./pocketbase serve --dir /tmp/pb_ci_test --migrationsDir ./pb_migrations --http 127.0.0.1:18999 > /tmp/pb_output.log 2>&1 &
         PB_PID=$!
 
         # Wait for startup (max 30s)
