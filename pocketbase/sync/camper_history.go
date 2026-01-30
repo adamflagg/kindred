@@ -1031,44 +1031,46 @@ func (c *CamperHistorySync) preloadExistingRecords(year int) (map[string]*core.R
 }
 
 // fieldEquals compares two values for equality, handling type conversions
-func (c *CamperHistorySync) fieldEquals(existing, new interface{}) bool {
+func (c *CamperHistorySync) fieldEquals(existing, newVal interface{}) bool {
 	// Handle nil vs empty string
-	if (existing == nil && new == "") || (existing == "" && new == nil) {
+	if (existing == nil && newVal == "") || (existing == "" && newVal == nil) {
 		return true
 	}
 	// Handle nil vs 0
-	if existing == nil && new == 0 {
+	if existing == nil && newVal == 0 {
 		return true
 	}
-	if existing == 0 && new == nil {
+	if existing == 0 && newVal == nil {
 		return true
 	}
 	// Handle float64 vs int
 	if existingFloat, ok := existing.(float64); ok {
-		if newInt, ok := new.(int); ok {
+		if newInt, ok := newVal.(int); ok {
 			return int(existingFloat) == newInt
 		}
-		if newFloat, ok := new.(float64); ok {
+		if newFloat, ok := newVal.(float64); ok {
 			return existingFloat == newFloat
 		}
 	}
 	if existingInt, ok := existing.(int); ok {
-		if newFloat, ok := new.(float64); ok {
+		if newFloat, ok := newVal.(float64); ok {
 			return existingInt == int(newFloat)
 		}
 	}
 	// Handle bool
 	if existingBool, ok := existing.(bool); ok {
-		if newBool, ok := new.(bool); ok {
+		if newBool, ok := newVal.(bool); ok {
 			return existingBool == newBool
 		}
 	}
 	// Direct comparison
-	return existing == new
+	return existing == newVal
 }
 
 // recordNeedsUpdate checks if any field differs between existing record and new data
-func (c *CamperHistorySync) recordNeedsUpdate(existing *core.Record, newData map[string]interface{}, skipFields map[string]bool) bool {
+func (c *CamperHistorySync) recordNeedsUpdate(
+	existing *core.Record, newData map[string]interface{}, skipFields map[string]bool,
+) bool {
 	for field, newValue := range newData {
 		if skipFields[field] {
 			continue
@@ -1089,20 +1091,22 @@ func (c *CamperHistorySync) deleteOrphans(existingRecords map[string]*core.Recor
 
 	orphanCount := 0
 	for key, record := range existingRecords {
-		if !c.ProcessedKeys[key] {
-			personCMID := record.Get("person_id")
-			sessionCMID := record.Get("session_cm_id")
-			slog.Info("Deleting orphaned camper_history record",
-				"person_id", personCMID,
-				"session_cm_id", sessionCMID)
-
-			if err := c.App.Delete(record); err != nil {
-				slog.Error("Error deleting orphan", "id", record.Id, "error", err)
-				c.Stats.Errors++
-				continue
-			}
-			orphanCount++
+		if c.ProcessedKeys[key] {
+			continue
 		}
+
+		personCMID := record.Get("person_id")
+		sessionCMID := record.Get("session_cm_id")
+		slog.Info("Deleting orphaned camper_history record",
+			"person_id", personCMID,
+			"session_cm_id", sessionCMID)
+
+		if err := c.App.Delete(record); err != nil {
+			slog.Error("Error deleting orphan", "id", record.Id, "error", err)
+			c.Stats.Errors++
+			continue
+		}
+		orphanCount++
 	}
 
 	if orphanCount > 0 {
