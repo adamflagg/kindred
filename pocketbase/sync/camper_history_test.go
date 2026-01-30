@@ -7,6 +7,9 @@ import (
 	"testing"
 )
 
+// Test constants for fictional data
+const testSynagogue = "Temple Beth El"
+
 // TestCamperHistorySync_Name verifies the service name is correct
 func TestCamperHistorySync_Name(t *testing.T) {
 	// The service name must be "camper_history" for orchestrator integration
@@ -755,7 +758,7 @@ func TestCamperHistorySynagogueLookup(t *testing.T) {
 	// Simulate household_custom_values data
 	// Key: household_id, Value: synagogue name (or empty if not set)
 	synagogueByHousehold := map[int]string{
-		5001: "Temple Beth El",
+		5001: testSynagogue,
 		5002: "Congregation Shalom",
 		5003: "", // Empty synagogue value
 		// 5004 not present - household doesn't exist in lookup
@@ -769,7 +772,7 @@ func TestCamperHistorySynagogueLookup(t *testing.T) {
 		{
 			name:              "household with synagogue",
 			householdID:       5001,
-			expectedSynagogue: "Temple Beth El",
+			expectedSynagogue: testSynagogue,
 		},
 		{
 			name:              "household with different synagogue",
@@ -883,7 +886,7 @@ func TestCamperHistoryFullRecordWithNewFields(t *testing.T) {
 		DivisionName:   "Juniors",
 		EnrollmentDate: "2024-11-15",
 		Status:         statusEnrolled,
-		Synagogue:      "Temple Beth El",
+		Synagogue:      testSynagogue,
 	}
 
 	// Verify new fields are set
@@ -902,8 +905,8 @@ func TestCamperHistoryFullRecordWithNewFields(t *testing.T) {
 	if record.Status != statusEnrolled {
 		t.Errorf("Status = %q, want %q", record.Status, statusEnrolled)
 	}
-	if record.Synagogue != "Temple Beth El" {
-		t.Errorf("Synagogue = %q, want %q", record.Synagogue, "Temple Beth El")
+	if record.Synagogue != testSynagogue {
+		t.Errorf("Synagogue = %q, want %q", record.Synagogue, testSynagogue)
 	}
 
 	// Verify existing fields still work

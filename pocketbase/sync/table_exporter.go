@@ -40,20 +40,23 @@ const (
 // can be skipped when their corresponding sync had no changes.
 var SyncJobToCollections = map[string][]string{
 	// Year-scoped syncs
-	"sessions":                   {"camp_sessions"},
-	"attendees":                  {"attendees"},
-	"persons":                    {"persons", "households"},
-	"bunks":                      {"bunks"},
-	"bunk_plans":                 {"bunk_plans"},
-	"bunk_assignments":           {"bunk_assignments"},
-	"staff":                      {"staff"},
-	"camper_history":             {"camper_history"},
-	"financial_transactions":     {"financial_transactions"},
+	"sessions":                {"camp_sessions"},
+	"attendees":               {"attendees"},
+	"persons":                 {"persons", "households"},
+	"bunks":                   {"bunks"},
+	"bunk_plans":              {"bunk_plans"},
+	"bunk_assignments":        {"bunk_assignments"},
+	"staff":                   {"staff"},
+	"camper_history":          {"camper_history"},
+	"financial_transactions":  {"financial_transactions"},
+	"person_custom_values":    {"person_custom_values"},
+	"household_custom_values": {"household_custom_values"},
+	"session_groups":          {"session_groups"},
+	// Derived tables
+	"family_camp_derived":        {"family_camp_adults", "family_camp_registrations", "family_camp_medical"},
 	"staff_skills":               {"staff_skills"},
 	"financial_aid_applications": {"financial_aid_applications"},
-	"person_custom_values":       {"person_custom_values"},
-	"household_custom_values":    {"household_custom_values"},
-	"session_groups":             {"session_groups"},
+	"household_demographics":     {"household_demographics"},
 	// Global syncs
 	"person_tag_defs":   {"person_tag_defs"},
 	"custom_field_defs": {"custom_field_defs"},
@@ -877,6 +880,50 @@ func GetReadableYearExports() []ExportConfig {
 					RelatedCol: "custom_field_defs", RelatedField: "name",
 				},
 				{Field: "value", Header: "Value", Type: FieldTypeText},
+			},
+		},
+		// Household Demographics - consolidated HH- fields from custom values
+		{
+			Collection: "household_demographics",
+			SheetName:  "Household Demographics",
+			IsGlobal:   false,
+			Columns: []ColumnConfig{
+				{Field: "household", Header: "Household ID", Type: FieldTypeForeignKeyID, RelatedCol: "households"},
+				{
+					Field: "household", Header: "Household", Type: FieldTypeRelation,
+					RelatedCol: "households", RelatedField: "mailing_title",
+				},
+				{Field: "year", Header: "Year", Type: FieldTypeNumber},
+				// Family description
+				{Field: "family_description", Header: "Family Description", Type: FieldTypeText},
+				{Field: "family_description_other", Header: "Family Description Other", Type: FieldTypeText},
+				// Jewish identity
+				{Field: "jewish_affiliation", Header: "Jewish Affiliation", Type: FieldTypeText},
+				{Field: "jewish_affiliation_other", Header: "Jewish Affiliation Other", Type: FieldTypeText},
+				{Field: "jewish_identities", Header: "Jewish Identities", Type: FieldTypeText},
+				// Congregation - summer vs family camp
+				{Field: "congregation_summer", Header: "Congregation (Summer)", Type: FieldTypeText},
+				{Field: "congregation_family", Header: "Congregation (Family)", Type: FieldTypeText},
+				// JCC - summer vs family camp
+				{Field: "jcc_summer", Header: "JCC (Summer)", Type: FieldTypeText},
+				{Field: "jcc_family", Header: "JCC (Family)", Type: FieldTypeText},
+				// Demographics
+				{Field: "military_family", Header: "Military Family", Type: FieldTypeBool},
+				{Field: "parent_immigrant", Header: "Parent Immigrant", Type: FieldTypeBool},
+				{Field: "parent_immigrant_origin", Header: "Parent Origin Country", Type: FieldTypeText},
+				// Custody - summer vs family camp
+				{Field: "custody_summer", Header: "Custody (Summer)", Type: FieldTypeText},
+				{Field: "custody_family", Header: "Custody (Family)", Type: FieldTypeText},
+				{Field: "has_custody_considerations", Header: "Has Custody Considerations", Type: FieldTypeBool},
+				// Away during camp
+				{Field: "away_during_camp", Header: "Away During Camp", Type: FieldTypeBool},
+				{Field: "away_location", Header: "Away Location", Type: FieldTypeText},
+				{Field: "away_phone", Header: "Away Phone", Type: FieldTypeText},
+				{Field: "away_from_date", Header: "Away From Date", Type: FieldTypeText},
+				{Field: "away_return_date", Header: "Away Return Date", Type: FieldTypeText},
+				// Metadata
+				{Field: "form_filler", Header: "Form Filler", Type: FieldTypeText},
+				{Field: "board_member", Header: "Board Member", Type: FieldTypeBool},
 			},
 		},
 	}

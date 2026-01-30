@@ -27,6 +27,99 @@ const (
 	statusCompleted = "completed"
 )
 
+// Phase represents a category of sync jobs
+type Phase string
+
+const (
+	// PhaseSource - CampMinder API → PocketBase
+	PhaseSource Phase = "source"
+	// PhaseExpensive - CampMinder API (1 call/entity, rate limited)
+	PhaseExpensive Phase = "expensive"
+	// PhaseTransform - PocketBase → PocketBase (no API)
+	PhaseTransform Phase = "transform"
+	// PhaseProcess - CSV import + AI processing
+	PhaseProcess Phase = "process"
+	// PhaseExport - PocketBase → Google Sheets
+	PhaseExport Phase = "export"
+)
+
+// JobMeta contains metadata about a sync job
+type JobMeta struct {
+	ID          string
+	Phase       Phase
+	Description string
+}
+
+// syncJobMeta defines the phase and metadata for all sync jobs
+// Jobs are listed in execution order within their phase
+var syncJobMeta = []JobMeta{
+	// Source phase - CampMinder API calls
+	{"session_groups", PhaseSource, "Session groups from CampMinder"},
+	{"sessions", PhaseSource, "Sessions from CampMinder"},
+	{"attendees", PhaseSource, "Attendees from CampMinder"},
+	{"persons", PhaseSource, "Persons + households from CampMinder"},
+	{"bunks", PhaseSource, "Bunks from CampMinder"},
+	{"bunk_plans", PhaseSource, "Bunk plans from CampMinder"},
+	{"bunk_assignments", PhaseSource, "Bunk assignments from CampMinder"},
+	{"staff", PhaseSource, "Staff from CampMinder"},
+	{"financial_transactions", PhaseSource, "Financial transactions from CampMinder"},
+
+	// Expensive phase - Custom values (on-demand, rate limited)
+	{"person_custom_values", PhaseExpensive, "Person custom field values"},
+	{"household_custom_values", PhaseExpensive, "Household custom field values"},
+
+	// Transform phase - PocketBase → PocketBase
+	{"camper_history", PhaseTransform, "Compute camper history from attendees"},
+	{"family_camp_derived", PhaseTransform, "Compute family camp tables from custom values"},
+	{"staff_skills", PhaseTransform, "Extract staff skills from person_custom_values"},
+	{"financial_aid_applications", PhaseTransform, "Extract FA applications from person_custom_values"},
+	{"household_demographics", PhaseTransform, "Compute household demographics from custom values"},
+
+	// Process phase - CSV + AI
+	{"bunk_requests", PhaseProcess, "Import bunk request CSV"},
+	{"process_requests", PhaseProcess, "AI processing of bunk requests"},
+
+	// Export phase - Google Sheets
+	{"multi_workbook_export", PhaseExport, "Export to Google Sheets"},
+}
+
+// GetJobMeta returns the sync job metadata array
+func GetJobMeta() []JobMeta {
+	return syncJobMeta
+}
+
+// GetJobsForPhase returns job IDs for a specific phase
+func GetJobsForPhase(phase Phase) []string {
+	var jobs []string
+	for _, meta := range syncJobMeta {
+		if meta.Phase == phase {
+			jobs = append(jobs, meta.ID)
+		}
+	}
+	return jobs
+}
+
+// GetAllPhases returns all phases in execution order
+func GetAllPhases() []Phase {
+	return []Phase{
+		PhaseSource,
+		PhaseExpensive,
+		PhaseTransform,
+		PhaseProcess,
+		PhaseExport,
+	}
+}
+
+// GetPhaseForJob returns the phase for a given job ID
+func GetPhaseForJob(jobID string) Phase {
+	for _, meta := range syncJobMeta {
+		if meta.ID == jobID {
+			return meta.Phase
+		}
+	}
+	return ""
+}
+
 // Service defines the interface for sync services
 type Service interface {
 	Sync(ctx context.Context) error
@@ -420,6 +513,7 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 		"family_camp_derived",        // Derived: computes from custom values (uses existing data in daily)
 		"staff_skills",               // Derived: computes from person_custom_values (Skills- fields)
 		"financial_aid_applications", // Derived: computes from person_custom_values (FA- fields)
+		"household_demographics",     // Derived: computes from custom values (HH- fields + household fields)
 		"bunk_requests",              // CSV import, depends on persons
 	}
 
@@ -801,7 +895,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 
 		// Derived tables always run (they compute from local PocketBase data, no API calls)
 		servicesToRun = append(servicesToRun,
-			"camper_history", "family_camp_derived", "staff_skills", "financial_aid_applications")
+			"camper_history", "family_camp_derived", "staff_skills", "financial_aid_applications", "household_demographics")
 
 		// Only include bunk_requests and process_requests for current year syncs (not historical)
 		// Bunk requests are populated during the current year's processing
@@ -911,6 +1005,11 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		faApplicationsSync := NewFinancialAidApplicationsSync(o.app)
 		faApplicationsSync.Year = opts.Year
 		o.RegisterService("financial_aid_applications", faApplicationsSync)
+
+		// Household demographics (computed from HH- fields + household custom values)
+		householdDemographicsSync := NewHouseholdDemographicsSync(o.app)
+		householdDemographicsSync.Year = opts.Year
+		o.RegisterService("household_demographics", householdDemographicsSync)
 
 		// Custom value services for historical sync support
 		// These use GetSeasonID() to determine the year, so they need year-specific client
@@ -1321,6 +1420,9 @@ func (o *Orchestrator) InitializeSyncServices() error {
 
 	// Financial aid applications (derived from person_custom_values FA- fields)
 	o.RegisterService("financial_aid_applications", NewFinancialAidApplicationsSync(o.app))
+
+	// Household demographics (computes from HH- fields + household custom values - on-demand)
+	o.RegisterService("household_demographics", NewHouseholdDemographicsSync(o.app))
 
 	slog.Info("All sync services registered")
 	return nil

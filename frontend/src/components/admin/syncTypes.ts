@@ -20,7 +20,19 @@ import {
   Home,
   Sparkles,
   HandCoins,
+  Heart,
 } from 'lucide-react';
+
+// Sync phase definitions
+export type SyncPhase = 'source' | 'expensive' | 'transform' | 'process' | 'export';
+
+export const SYNC_PHASES: { id: SyncPhase; name: string; description: string }[] = [
+  { id: 'source', name: 'CampMinder', description: 'Sync from CampMinder API' },
+  { id: 'expensive', name: 'Custom Values', description: 'Sync custom field values (slow)' },
+  { id: 'transform', name: 'Transform', description: 'Compute derived tables' },
+  { id: 'process', name: 'Process', description: 'Import CSV + AI processing' },
+  { id: 'export', name: 'Export', description: 'Export to Google Sheets' },
+];
 
 // Global sync types - cross-year data not tied to a specific season
 // These should NOT be included in historical year imports
@@ -37,22 +49,25 @@ export const GLOBAL_SYNC_TYPES = [
 // from a single API call (tags are stored as multi-select relation on persons)
 // Types with currentYearOnly: true are only available for current year syncs
 export const YEAR_SYNC_TYPES = [
-  { id: 'session_groups', name: 'Session Groups', icon: FolderTree, color: 'text-cyan-600' },
-  { id: 'sessions', name: 'Sessions', icon: Calendar, color: 'text-sky-600' },
-  { id: 'attendees', name: 'Attendees', icon: Users, color: 'text-emerald-600' },
-  { id: 'persons', name: 'Persons', icon: User, color: 'text-violet-600' }, // Combined: persons + households (includes division)
-  { id: 'bunks', name: 'Bunks', icon: BedDouble, color: 'text-amber-600' },
-  { id: 'bunk_plans', name: 'Bunk Plans', icon: Layout, color: 'text-rose-600' },
-  { id: 'bunk_assignments', name: 'Assignments', icon: UserCheck, color: 'text-indigo-600' },
-  { id: 'staff', name: 'Staff', icon: Tent, color: 'text-slate-600' },
-  { id: 'financial_transactions', name: 'Financial Transactions', icon: Receipt, color: 'text-green-600' },
-  { id: 'camper_history', name: 'Camper History', icon: History, color: 'text-cyan-600' },
-  { id: 'family_camp_derived', name: 'Family Camp', icon: Home, color: 'text-orange-500' },
-  { id: 'staff_skills', name: 'Staff Skills', icon: Sparkles, color: 'text-purple-500' },
-  { id: 'financial_aid_applications', name: 'FA Applications', icon: HandCoins, color: 'text-green-600' },
-  // Bunk request processing - available for all years (historical CSV import)
-  { id: 'bunk_requests', name: 'Intake Requests', icon: FileText, color: 'text-orange-600' },
-  { id: 'process_requests', name: 'Process Requests', icon: Brain, color: 'text-teal-600' },
+  // Source phase - CampMinder API calls
+  { id: 'session_groups', name: 'Session Groups', icon: FolderTree, color: 'text-cyan-600', phase: 'source' as SyncPhase },
+  { id: 'sessions', name: 'Sessions', icon: Calendar, color: 'text-sky-600', phase: 'source' as SyncPhase },
+  { id: 'attendees', name: 'Attendees', icon: Users, color: 'text-emerald-600', phase: 'source' as SyncPhase },
+  { id: 'persons', name: 'Persons', icon: User, color: 'text-violet-600', phase: 'source' as SyncPhase }, // Combined: persons + households (includes division)
+  { id: 'bunks', name: 'Bunks', icon: BedDouble, color: 'text-amber-600', phase: 'source' as SyncPhase },
+  { id: 'bunk_plans', name: 'Bunk Plans', icon: Layout, color: 'text-rose-600', phase: 'source' as SyncPhase },
+  { id: 'bunk_assignments', name: 'Assignments', icon: UserCheck, color: 'text-indigo-600', phase: 'source' as SyncPhase },
+  { id: 'staff', name: 'Staff', icon: Tent, color: 'text-slate-600', phase: 'source' as SyncPhase },
+  { id: 'financial_transactions', name: 'Financial Transactions', icon: Receipt, color: 'text-green-600', phase: 'source' as SyncPhase },
+  // Transform phase - derived tables
+  { id: 'camper_history', name: 'Camper History', icon: History, color: 'text-cyan-600', phase: 'transform' as SyncPhase },
+  { id: 'family_camp_derived', name: 'Family Camp', icon: Home, color: 'text-orange-500', phase: 'transform' as SyncPhase },
+  { id: 'staff_skills', name: 'Staff Skills', icon: Sparkles, color: 'text-purple-500', phase: 'transform' as SyncPhase },
+  { id: 'financial_aid_applications', name: 'FA Applications', icon: HandCoins, color: 'text-green-600', phase: 'transform' as SyncPhase },
+  { id: 'household_demographics', name: 'Demographics', icon: Heart, color: 'text-pink-500', phase: 'transform' as SyncPhase },
+  // Process phase - CSV + AI
+  { id: 'bunk_requests', name: 'Intake Requests', icon: FileText, color: 'text-orange-600', phase: 'process' as SyncPhase },
+  { id: 'process_requests', name: 'Process Requests', icon: Brain, color: 'text-teal-600', phase: 'process' as SyncPhase },
 ] as const;
 
 // Combined sync types for backward compatibility
