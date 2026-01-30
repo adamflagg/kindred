@@ -856,5 +856,5 @@ func extractAdultNumberFromField(fieldName string) int {
 // parseBoolFieldValue parses boolean values from custom field strings
 func parseBoolFieldValue(value string) bool {
 	lower := strings.ToLower(strings.TrimSpace(value))
-	return lower == "yes" || lower == "true" || lower == "1"
+	return lower == boolYes || lower == boolTrueStr || lower == "1"
 }

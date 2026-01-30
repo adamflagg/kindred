@@ -6,6 +6,9 @@ import (
 	"testing"
 )
 
+// Test data constants
+const testEmailJohn = "john@example.com"
+
 // TestFamilyCampDerivedSync_Name verifies the service name is correct
 func TestFamilyCampDerivedSync_Name(t *testing.T) {
 	// The service name must be "family_camp_derived" for orchestrator integration
@@ -375,7 +378,7 @@ func TestFirstNonEmptyValueSelection(t *testing.T) {
 		// Child 1 has empty email
 		{HouseholdCMID: 100, PersonCMID: 1001, FieldName: "Family Camp Adult 1 Email", Value: ""},
 		// Child 2 has the email
-		{HouseholdCMID: 100, PersonCMID: 1002, FieldName: "Family Camp Adult 1 Email", Value: "john@example.com"},
+		{HouseholdCMID: 100, PersonCMID: 1002, FieldName: "Family Camp Adult 1 Email", Value: testEmailJohn},
 	}
 
 	adultsByHousehold := deduplicateAdultsByHousehold(personValues)
@@ -385,8 +388,8 @@ func TestFirstNonEmptyValueSelection(t *testing.T) {
 	}
 
 	adult := adultsByHousehold[100][0]
-	if adult.Email != "john@example.com" {
-		t.Errorf("expected email 'john@example.com', got %q", adult.Email)
+	if adult.Email != testEmailJohn {
+		t.Errorf("expected email %q, got %q", testEmailJohn, adult.Email)
 	}
 }
 
@@ -748,7 +751,7 @@ func aggregateMedicalByHousehold(values []testPersonCustomValue) map[int]*testMe
 // parseBoolField parses boolean values from custom field strings
 func parseBoolField(value string) bool {
 	lower := strings.ToLower(strings.TrimSpace(value))
-	return lower == "yes" || lower == "true" || lower == "1"
+	return lower == boolYes || lower == boolTrueStr || lower == "1"
 }
 
 // extractRegistrationsFromHouseholds extracts registration info from household custom values
