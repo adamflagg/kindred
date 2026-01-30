@@ -378,6 +378,8 @@ jobs:
 
         echo "Testing migrations on fresh database..."
         rm -rf /tmp/pb_ci_test
+        mkdir -p /tmp/pb_ci_test
+        ln -s "$(pwd)/pb_migrations" /tmp/pb_ci_test/pb_migrations
         ./pocketbase serve --dir /tmp/pb_ci_test --http 127.0.0.1:18999 > /tmp/pb_output.log 2>&1 &
         PB_PID=$!
 
