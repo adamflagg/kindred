@@ -334,7 +334,12 @@ func (m *MultiWorkbookExport) SyncYearData(ctx context.Context, year int, change
 // SyncForYears exports year-specific tables for the specified years.
 // Each year goes to its own workbook.
 // If changedCollections is non-nil, only exports collections that had changes.
-func (m *MultiWorkbookExport) SyncForYears(ctx context.Context, years []int, includeGlobals bool, changedCollections ...map[string]bool) error {
+func (m *MultiWorkbookExport) SyncForYears(
+	ctx context.Context,
+	years []int,
+	includeGlobals bool,
+	changedCollections ...map[string]bool,
+) error {
 	slog.Info("Starting historical export",
 		"years", years,
 		"includeGlobals", includeGlobals,

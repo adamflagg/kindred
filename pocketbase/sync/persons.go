@@ -15,6 +15,9 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
+// personsCollection is the PocketBase collection name for persons.
+const personsCollection = "persons"
+
 // PersonsSync handles syncing person records from CampMinder
 type PersonsSync struct {
 	BaseSyncService
@@ -46,7 +49,7 @@ func NewPersonsSync(app core.App, client *campminder.Client) *PersonsSync {
 
 // Name returns the name of this sync service
 func (s *PersonsSync) Name() string {
-	return "persons"
+	return personsCollection
 }
 
 // GetStats returns stats for this sync, including sub-entity stats for combined sync
