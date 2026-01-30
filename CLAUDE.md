@@ -173,7 +173,20 @@ For jobs with other custom parameters (session, etc.), similar pattern applies.
 
 | File | Action |
 |------|--------|
-| `sync/table_exporter.go` | Add table to export list with sheet name pattern |
+| `sync/table_exporter.go` | Add table to `GetReadableYearExports()` or `GetReadableGlobalExports()` with column configs |
+| `sync/table_exporter.go` | Add entry to `SyncJobToCollections` map (required for export skip optimization) |
+
+**Export skip optimization**: When a sync job has no changes (Created=0, Updated=0, Deleted=0, Errors=0), its corresponding sheet export is skipped. The `SyncJobToCollections` map links sync job names to their PocketBase collections so the export system knows which sheets can be skipped.
+
+Example for a new `widgets` sync that populates the `widgets` table:
+```go
+var SyncJobToCollections = map[string][]string{
+    // ... existing entries ...
+    "widgets": {"widgets"},  // Add your sync job → collection mapping
+}
+```
+
+**Note**: Some syncs populate multiple collections (e.g., `persons` → `persons` + `households`). List all collections in the slice.
 
 #### 9. Computed/Derived Tables (if reading from other synced tables)
 
@@ -214,6 +227,7 @@ After implementation, verify ALL of these work:
 | Missing historical re-registration | Won't run in historical imports | Add `NewXxxSync()` call in `RunSyncWithOptions()` block |
 | Derived table before dependencies | Empty results, relation errors | Map dependency chain, place after deps in orderedJobs |
 | Global table in historical sync | Unnecessary re-sync of static data | Check if table has `year` field - if not, it's global |
+| Missing `SyncJobToCollections` entry | Sheet always re-exported even when no changes | Add sync job to mapping in `table_exporter.go` |
 
 ### Python Request Processor (`bunking/sync/bunk_request_processor/`)
 Unified processor for all 5 bunk request field types:
