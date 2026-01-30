@@ -9,49 +9,39 @@ migrate((app) => {
   const collection = app.findCollectionByNameOrId("attendees");
 
   // Find the status field and update its values
-  for (let i = 0; i < collection.fields.length; i++) {
-    const field = collection.fields.getByIndex(i);
-    if (field.name === "status") {
-      field.values = [
-        "none",
-        "enrolled",
-        "applied",
-        "waitlisted",
-        "left_early",
-        "cancelled",
-        "dismissed",
-        "inquiry",
-        "withdrawn",
-        "incomplete",
-        "unknown"
-      ];
-      break;
-    }
-  }
+  const statusField = collection.fields.getByName("status");
+  statusField.values = [
+    "none",
+    "enrolled",
+    "applied",
+    "waitlisted",
+    "left_early",
+    "cancelled",
+    "dismissed",
+    "inquiry",
+    "withdrawn",
+    "incomplete",
+    "unknown"
+  ];
 
   app.save(collection);
 }, (app) => {
   const collection = app.findCollectionByNameOrId("attendees");
 
   // Rollback: remove "none" from values
-  for (let i = 0; i < collection.fields.length; i++) {
-    const field = collection.fields.getByIndex(i);
-    if (field.name === "status") {
-      field.values = [
-        "enrolled",
-        "applied",
-        "waitlisted",
-        "left_early",
-        "cancelled",
-        "dismissed",
-        "inquiry",
-        "withdrawn",
-        "incomplete",
-        "unknown"
-      ];
-      break;
-    }
-  }
+  const statusField = collection.fields.getByName("status");
+  statusField.values = [
+    "enrolled",
+    "applied",
+    "waitlisted",
+    "left_early",
+    "cancelled",
+    "dismissed",
+    "inquiry",
+    "withdrawn",
+    "incomplete",
+    "unknown"
+  ];
 
   app.save(collection);
 });

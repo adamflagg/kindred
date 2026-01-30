@@ -369,7 +369,7 @@ jobs:
       working-directory: ./pocketbase
       run: go test ./... -v
 
-    # Migration smoke test - catches self-reference and dependency issues
+    # Migration smoke test - catches self-reference, dependency, and schema issues
     - name: Migration smoke test (fresh database)
       working-directory: ./pocketbase
       run: |
@@ -377,25 +377,95 @@ jobs:
         go build -o pocketbase .
 
         echo "Testing migrations on fresh database..."
-        rm -rf /tmp/pb_ci_test
-        ./pocketbase serve --dir /tmp/pb_ci_test --http 127.0.0.1:18999 &
+        # Use local test data directory so PocketBase discovers migrations via default path:
+        # ./pb_test_data/../pb_migrations = ./pb_migrations
+        rm -rf ./pb_test_data
+        mkdir -p ./pb_test_data
+        echo "Migrations directory contents:"
+        ls -la pb_migrations/ | head -10
+
+        # Run migrations (PocketBase auto-discovers ./pb_migrations from ./pb_test_data)
+        echo "Running migrations..."
+        ./pocketbase migrate up --dir ./pb_test_data 2>&1 | tee /tmp/pb_migrate.log
+
+        echo "Starting PocketBase server..."
+        ./pocketbase serve --dir ./pb_test_data --http 127.0.0.1:18999 > /tmp/pb_output.log 2>&1 &
         PB_PID=$!
 
         # Wait for startup (max 30s)
         for i in {1..30}; do
           if curl -sf http://127.0.0.1:18999/api/health >/dev/null 2>&1; then
-            echo "✅ PocketBase started successfully - migrations passed"
-            kill $PB_PID 2>/dev/null || true
-            rm -rf /tmp/pb_ci_test
-            exit 0
+            echo "✅ PocketBase started successfully - migrations applied"
+            break
+          fi
+          # Check if process died (migration error)
+          if ! kill -0 $PB_PID 2>/dev/null; then
+            echo "❌ PocketBase crashed during startup - migration error:"
+            echo "----------------------------------------"
+            cat /tmp/pb_output.log
+            echo "----------------------------------------"
+            rm -rf ./pb_test_data
+            exit 1
           fi
           sleep 1
         done
 
-        echo "❌ PocketBase failed to start - migration error likely"
+        # Check if PB is running after timeout
+        if ! curl -sf http://127.0.0.1:18999/api/health >/dev/null 2>&1; then
+          echo "❌ PocketBase failed to start within 30s:"
+          echo "----------------------------------------"
+          cat /tmp/pb_output.log
+          echo "----------------------------------------"
+          kill $PB_PID 2>/dev/null || true
+          rm -rf ./pb_test_data
+          exit 1
+        fi
+
+        # Create temporary superuser via CLI (required for fresh DB in PB v0.23+)
+        echo "Creating temporary superuser for schema validation..."
+        ./pocketbase superuser upsert ci@test.local ci_test_pass_123 --dir ./pb_test_data
+
+        # Get auth token
+        AUTH_TOKEN=$(curl -sf -X POST http://127.0.0.1:18999/api/collections/_superusers/auth-with-password \
+          -H "Content-Type: application/json" \
+          -d '{"identity":"ci@test.local","password":"ci_test_pass_123"}' \
+          | python3 -c "import sys,json; print(json.load(sys.stdin).get('token',''))")
+
+        if [ -z "$AUTH_TOKEN" ]; then
+          echo "❌ Failed to authenticate for schema validation"
+          kill $PB_PID 2>/dev/null || true
+          rm -rf ./pb_test_data
+          exit 1
+        fi
+
+        # Validate schema via API
+        echo "Validating migration schema..."
+        curl -sf http://127.0.0.1:18999/api/collections \
+          -H "Authorization: Bearer $AUTH_TOKEN" \
+          > /tmp/collections.json
+
+        set +e
+        python3 ../scripts/ci/validate_migrations.py /tmp/collections.json
+        VALIDATION_RESULT=$?
+        set -e
+
+        if [ $VALIDATION_RESULT -ne 0 ]; then
+          echo "❌ Schema validation failed"
+          echo "Migration log:"
+          cat /tmp/pb_migrate.log || true
+          echo "PocketBase output log:"
+          cat /tmp/pb_output.log || true
+          # Cleanup
+          kill $PB_PID 2>/dev/null || true
+          rm -rf ./pb_test_data
+          exit 1
+        fi
+
+        # Cleanup on success
         kill $PB_PID 2>/dev/null || true
-        rm -rf /tmp/pb_ci_test
-        exit 1
+        rm -rf ./pb_test_data
+
+        echo "✅ Migration smoke test passed"
 
     # Frontend tests - Node.js pre-installed
     - name: Install frontend dependencies

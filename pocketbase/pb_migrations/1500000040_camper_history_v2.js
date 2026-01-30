@@ -226,7 +226,21 @@ migrate((app) => {
   `).execute();
 
   // =========================================================================
-  // Step 3: Remove old fields
+  // Step 3: Drop old indexes BEFORE removing fields (SQLite requirement)
+  // =========================================================================
+  db.newQuery(`DROP INDEX IF EXISTS idx_camper_history_person_year`).execute();
+  db.newQuery(`DROP INDEX IF EXISTS idx_camper_history_is_returning`).execute();
+  db.newQuery(`DROP INDEX IF EXISTS idx_camper_history_first_year`).execute();
+  db.newQuery(`DROP INDEX IF EXISTS idx_camper_history_session_types`).execute();
+
+  // CRITICAL: Also clear the collection's indexes array. PocketBase stores
+  // index definitions in the collection schema. If we don't clear this,
+  // app.save() will try to recreate the old indexes on columns that no
+  // longer exist (like is_returning), causing migration failure.
+  collection.indexes = [];
+
+  // =========================================================================
+  // Step 4: Remove old fields (indexes must be dropped first)
   // =========================================================================
   collection.fields.removeByName("sessions");
   collection.fields.removeByName("bunks");
@@ -239,29 +253,25 @@ migrate((app) => {
   app.save(collection);
 
   // =========================================================================
-  // Step 4: Update indexes
+  // Step 5: Create new indexes and update collection schema
   // =========================================================================
 
-  // Drop old unique index on (person_id, year)
-  db.newQuery(`DROP INDEX IF EXISTS idx_camper_history_person_year`).execute();
-  db.newQuery(`DROP INDEX IF EXISTS idx_camper_history_is_returning`).execute();
-  db.newQuery(`DROP INDEX IF EXISTS idx_camper_history_first_year`).execute();
-  db.newQuery(`DROP INDEX IF EXISTS idx_camper_history_session_types`).execute();
+  // Set the new indexes in the collection schema
+  collection.indexes = [
+    "CREATE UNIQUE INDEX `idx_camper_history_unique` ON `camper_history` (`person_id`, `session_cm_id`, `year`)",
+    "CREATE INDEX `idx_camper_history_year` ON `camper_history` (`year`)",
+    "CREATE INDEX `idx_camper_history_household` ON `camper_history` (`household_id`)",
+    "CREATE INDEX `idx_camper_history_status` ON `camper_history` (`status`)",
+    "CREATE INDEX `idx_camper_history_session_type` ON `camper_history` (`session_type`)",
+    "CREATE INDEX `idx_camper_history_session_cm_id` ON `camper_history` (`session_cm_id`)",
+    "CREATE INDEX `idx_camper_history_returning_summer` ON `camper_history` (`is_returning_summer`, `year`)",
+    "CREATE INDEX `idx_camper_history_returning_family` ON `camper_history` (`is_returning_family`, `year`)",
+    "CREATE INDEX `idx_camper_history_person_rel` ON `camper_history` (`person`)",
+    "CREATE INDEX `idx_camper_history_session_rel` ON `camper_history` (`session`)",
+    "CREATE INDEX `idx_camper_history_first_year_summer` ON `camper_history` (`first_year_summer`)"
+  ];
 
-  // Create new unique index on (person_id, session_cm_id, year)
-  db.newQuery(`
-    CREATE UNIQUE INDEX idx_camper_history_unique
-    ON camper_history (person_id, session_cm_id, year)
-  `).execute();
-
-  // Additional query indexes
-  db.newQuery(`CREATE INDEX IF NOT EXISTS idx_camper_history_session_type ON camper_history (session_type)`).execute();
-  db.newQuery(`CREATE INDEX IF NOT EXISTS idx_camper_history_session_cm_id ON camper_history (session_cm_id)`).execute();
-  db.newQuery(`CREATE INDEX IF NOT EXISTS idx_camper_history_returning_summer ON camper_history (is_returning_summer, year)`).execute();
-  db.newQuery(`CREATE INDEX IF NOT EXISTS idx_camper_history_returning_family ON camper_history (is_returning_family, year)`).execute();
-  db.newQuery(`CREATE INDEX IF NOT EXISTS idx_camper_history_person_rel ON camper_history (person)`).execute();
-  db.newQuery(`CREATE INDEX IF NOT EXISTS idx_camper_history_session_rel ON camper_history (session)`).execute();
-  db.newQuery(`CREATE INDEX IF NOT EXISTS idx_camper_history_first_year_summer ON camper_history (first_year_summer)`).execute();
+  app.save(collection);
 
 }, (app) => {
   // =========================================================================
@@ -279,6 +289,9 @@ migrate((app) => {
   db.newQuery(`DROP INDEX IF EXISTS idx_camper_history_person_rel`).execute();
   db.newQuery(`DROP INDEX IF EXISTS idx_camper_history_session_rel`).execute();
   db.newQuery(`DROP INDEX IF EXISTS idx_camper_history_first_year_summer`).execute();
+
+  // Clear the indexes array to prevent PocketBase from trying to recreate new indexes
+  collection.indexes = [];
 
   // Add back old fields
   collection.fields.add(new Field({
@@ -376,14 +389,15 @@ migrate((app) => {
   collection.fields.removeByName("first_year_summer");
   collection.fields.removeByName("first_year_family");
 
-  app.save(collection);
+  // Restore the original indexes array before saving
+  collection.indexes = [
+    "CREATE UNIQUE INDEX `idx_camper_history_person_year` ON `camper_history` (`person_id`, `year`)",
+    "CREATE INDEX `idx_camper_history_year` ON `camper_history` (`year`)",
+    "CREATE INDEX `idx_camper_history_is_returning` ON `camper_history` (`is_returning`)",
+    "CREATE INDEX `idx_camper_history_household` ON `camper_history` (`household_id`)",
+    "CREATE INDEX `idx_camper_history_status` ON `camper_history` (`status`)",
+    "CREATE INDEX IF NOT EXISTS `idx_camper_history_first_year` ON `camper_history` (`first_year_attended`)"
+  ];
 
-  // Restore old indexes
-  db.newQuery(`
-    CREATE UNIQUE INDEX idx_camper_history_person_year
-    ON camper_history (person_id, year)
-  `).execute();
-  db.newQuery(`CREATE INDEX IF NOT EXISTS idx_camper_history_is_returning ON camper_history (is_returning)`).execute();
-  db.newQuery(`CREATE INDEX IF NOT EXISTS idx_camper_history_first_year ON camper_history (first_year_attended)`).execute();
-  db.newQuery(`CREATE INDEX IF NOT EXISTS idx_camper_history_session_types ON camper_history (session_types)`).execute();
+  app.save(collection);
 });
