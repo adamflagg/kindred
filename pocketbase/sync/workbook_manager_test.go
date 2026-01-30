@@ -349,3 +349,257 @@ func TestBuildIndexSheetData(t *testing.T) {
 }
 
 // WorkbookRecord is defined in workbook_manager.go
+
+// =============================================================================
+// MockDriveSearcher for testing Drive-based recovery
+// =============================================================================
+
+// MockDriveSearcher implements DriveSearcher interface for testing
+type MockDriveSearcher struct {
+	FoundID string   // Return this ID when FindSpreadsheetByName is called
+	Err     error    // Return this error when FindSpreadsheetByName is called
+	Calls   int      // Track number of calls
+	Names   []string // Track names that were searched
+}
+
+func (m *MockDriveSearcher) FindSpreadsheetByName(_ context.Context, name string) (string, error) {
+	m.Calls++
+	m.Names = append(m.Names, name)
+	return m.FoundID, m.Err
+}
+
+// =============================================================================
+// Drive Recovery Tests
+// =============================================================================
+
+func TestGetOrCreateGlobalsWorkbook_RecoverFromDrive(t *testing.T) {
+	// Test that when DB is empty but Drive has the workbook,
+	// we recover by linking the existing Drive workbook to the DB
+
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("Failed to create test app: %v", err)
+	}
+	defer app.Cleanup()
+
+	// Check if collection exists (skip if not - this is an integration test)
+	_, err = app.FindCollectionByNameOrId("sheets_workbooks")
+	if err != nil {
+		t.Skip("Skipping: sheets_workbooks collection not available (integration test)")
+	}
+
+	mockWriter := NewMockSheetsWriter()
+	mockSearcher := &MockDriveSearcher{
+		FoundID: "existing-drive-spreadsheet-id",
+	}
+
+	// Create manager with mock searcher
+	manager := NewWorkbookManagerWithSearcher(app, mockWriter, mockSearcher)
+
+	ctx := context.Background()
+
+	// Verify no workbook exists initially
+	existing, err := manager.GetWorkbookByType(ctx, "globals", 0)
+	if err != nil {
+		t.Fatalf("GetWorkbookByType failed: %v", err)
+	}
+	if existing != nil {
+		t.Fatal("Expected no workbook to exist initially")
+	}
+
+	// GetOrCreateGlobalsWorkbook should find it in Drive and link it
+	spreadsheetID, err := manager.GetOrCreateGlobalsWorkbook(ctx)
+	if err != nil {
+		t.Fatalf("GetOrCreateGlobalsWorkbook failed: %v", err)
+	}
+
+	// Should return the Drive ID
+	if spreadsheetID != "existing-drive-spreadsheet-id" {
+		t.Errorf("GetOrCreateGlobalsWorkbook() = %q, want %q", spreadsheetID, "existing-drive-spreadsheet-id")
+	}
+
+	// Should have called Drive search once
+	if mockSearcher.Calls != 1 {
+		t.Errorf("DriveSearcher.Calls = %d, want 1", mockSearcher.Calls)
+	}
+
+	// Should have saved to DB
+	saved, err := manager.GetWorkbookByType(ctx, "globals", 0)
+	if err != nil {
+		t.Fatalf("GetWorkbookByType after recovery failed: %v", err)
+	}
+	if saved == nil {
+		t.Fatal("Expected workbook to be saved after recovery")
+	}
+	if saved.SpreadsheetID != "existing-drive-spreadsheet-id" {
+		t.Errorf("Saved SpreadsheetID = %q, want %q", saved.SpreadsheetID, "existing-drive-spreadsheet-id")
+	}
+}
+
+func TestGetOrCreateGlobalsWorkbook_DriveSearchFails_ContinuesToCreate(t *testing.T) {
+	// Test that when Drive search fails, we log a warning and continue to create new
+	// This ensures resilience - Drive API failures don't block the sync
+
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("Failed to create test app: %v", err)
+	}
+	defer app.Cleanup()
+
+	// Check if collection exists (skip if not - this is an integration test)
+	_, err = app.FindCollectionByNameOrId("sheets_workbooks")
+	if err != nil {
+		t.Skip("Skipping: sheets_workbooks collection not available (integration test)")
+	}
+
+	mockWriter := NewMockSheetsWriter()
+	mockSearcher := &MockDriveSearcher{
+		Err: context.DeadlineExceeded, // Simulate API timeout
+	}
+
+	manager := NewWorkbookManagerWithSearcher(app, mockWriter, mockSearcher)
+
+	ctx := context.Background()
+
+	// This should NOT fail - it should log warning and try to create
+	// But since we don't have real Google credentials, it will fail at creation
+	// The important thing is that the Drive error doesn't propagate
+	_, err = manager.GetOrCreateGlobalsWorkbook(ctx)
+
+	// Should have called Drive search
+	if mockSearcher.Calls != 1 {
+		t.Errorf("DriveSearcher.Calls = %d, want 1", mockSearcher.Calls)
+	}
+
+	// Error should be from CreateSpreadsheet (no credentials), not from Drive search
+	if err != nil && err.Error() == context.DeadlineExceeded.Error() {
+		t.Error("Drive search error should not propagate - should continue to create")
+	}
+}
+
+func TestGetOrCreateGlobalsWorkbook_DriveSearcherNil_SkipsSearch(t *testing.T) {
+	// Test backward compatibility - when driveSearcher is nil, skip Drive search entirely
+
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("Failed to create test app: %v", err)
+	}
+	defer app.Cleanup()
+
+	// Check if collection exists (skip if not - this is an integration test)
+	_, err = app.FindCollectionByNameOrId("sheets_workbooks")
+	if err != nil {
+		t.Skip("Skipping: sheets_workbooks collection not available (integration test)")
+	}
+
+	mockWriter := NewMockSheetsWriter()
+
+	// Use original constructor which doesn't set driveSearcher
+	manager := NewWorkbookManager(app, mockWriter)
+
+	ctx := context.Background()
+
+	// This should proceed without Drive search
+	// It will fail at CreateSpreadsheet (no credentials), but that's expected
+	_, err = manager.GetOrCreateGlobalsWorkbook(ctx)
+
+	// Should fail at CreateSpreadsheet, not at Drive search
+	// (Can't fully test without mocking CreateSpreadsheet, but this validates no panic)
+	if err == nil {
+		t.Log("Unexpected success - might have Google credentials configured")
+	}
+}
+
+func TestGetOrCreateYearWorkbook_RecoverFromDrive(t *testing.T) {
+	// Same pattern for year workbook recovery
+
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("Failed to create test app: %v", err)
+	}
+	defer app.Cleanup()
+
+	// Check if collection exists (skip if not - this is an integration test)
+	_, err = app.FindCollectionByNameOrId("sheets_workbooks")
+	if err != nil {
+		t.Skip("Skipping: sheets_workbooks collection not available (integration test)")
+	}
+
+	mockWriter := NewMockSheetsWriter()
+	mockSearcher := &MockDriveSearcher{
+		FoundID: "existing-2025-spreadsheet-id",
+	}
+
+	manager := NewWorkbookManagerWithSearcher(app, mockWriter, mockSearcher)
+
+	ctx := context.Background()
+
+	// GetOrCreateYearWorkbook should find it in Drive and link it
+	spreadsheetID, err := manager.GetOrCreateYearWorkbook(ctx, 2025)
+	if err != nil {
+		t.Fatalf("GetOrCreateYearWorkbook failed: %v", err)
+	}
+
+	if spreadsheetID != "existing-2025-spreadsheet-id" {
+		t.Errorf("GetOrCreateYearWorkbook() = %q, want %q", spreadsheetID, "existing-2025-spreadsheet-id")
+	}
+
+	// Should have called Drive search once
+	if mockSearcher.Calls != 1 {
+		t.Errorf("DriveSearcher.Calls = %d, want 1", mockSearcher.Calls)
+	}
+
+	// Should have saved to DB
+	saved, err := manager.GetWorkbookByType(ctx, "year", 2025)
+	if err != nil {
+		t.Fatalf("GetWorkbookByType after recovery failed: %v", err)
+	}
+	if saved == nil {
+		t.Fatal("Expected workbook to be saved after recovery")
+	}
+	if saved.SpreadsheetID != "existing-2025-spreadsheet-id" {
+		t.Errorf("Saved SpreadsheetID = %q, want %q", saved.SpreadsheetID, "existing-2025-spreadsheet-id")
+	}
+	if saved.Year != 2025 {
+		t.Errorf("Saved Year = %d, want 2025", saved.Year)
+	}
+}
+
+func TestGetOrCreateGlobalsWorkbook_NotInDrive_CreatesNew(t *testing.T) {
+	// Test that when neither DB nor Drive has the workbook, we create new
+
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("Failed to create test app: %v", err)
+	}
+	defer app.Cleanup()
+
+	// Check if collection exists (skip if not - this is an integration test)
+	_, err = app.FindCollectionByNameOrId("sheets_workbooks")
+	if err != nil {
+		t.Skip("Skipping: sheets_workbooks collection not available (integration test)")
+	}
+
+	mockWriter := NewMockSheetsWriter()
+	mockSearcher := &MockDriveSearcher{
+		FoundID: "", // Not found in Drive
+	}
+
+	manager := NewWorkbookManagerWithSearcher(app, mockWriter, mockSearcher)
+
+	ctx := context.Background()
+
+	// This will search Drive, find nothing, then try to create
+	// Creation will fail without credentials, but Drive search should happen
+	_, err = manager.GetOrCreateGlobalsWorkbook(ctx)
+
+	// Should have called Drive search
+	if mockSearcher.Calls != 1 {
+		t.Errorf("DriveSearcher.Calls = %d, want 1", mockSearcher.Calls)
+	}
+
+	// Error should be from CreateSpreadsheet (expected without credentials)
+	if err == nil {
+		t.Log("Unexpected success - might have Google credentials configured")
+	}
+}

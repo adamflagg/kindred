@@ -37,21 +37,50 @@ type WorkbookRecord struct {
 	LastSync      string
 }
 
+// DriveSearcher allows searching Drive for existing spreadsheets (enables mocking)
+type DriveSearcher interface {
+	FindSpreadsheetByName(ctx context.Context, name string) (string, error)
+}
+
+// DefaultDriveSearcher uses the google package functions
+type DefaultDriveSearcher struct{}
+
+// FindSpreadsheetByName searches Drive for a spreadsheet by exact name
+func (d *DefaultDriveSearcher) FindSpreadsheetByName(ctx context.Context, name string) (string, error) {
+	return google.FindSpreadsheetByName(ctx, name)
+}
+
 // WorkbookManager handles the lifecycle of Google Sheets workbooks.
 // It creates, tracks, and manages multiple workbooks (globals + per-year).
 type WorkbookManager struct {
-	app          core.App
-	sheetsWriter SheetsWriter
+	app           core.App
+	sheetsWriter  SheetsWriter
+	driveSearcher DriveSearcher // optional, nil = skip Drive search
 }
 
 // Compile-time check that WorkbookManager implements WorkbookManagerInterface
 var _ WorkbookManagerInterface = (*WorkbookManager)(nil)
 
-// NewWorkbookManager creates a new WorkbookManager.
+// NewWorkbookManager creates a new WorkbookManager without Drive search capability.
+// Use NewWorkbookManagerWithSearcher to enable automatic recovery of existing workbooks.
 func NewWorkbookManager(app core.App, sheetsWriter SheetsWriter) *WorkbookManager {
 	return &WorkbookManager{
 		app:          app,
 		sheetsWriter: sheetsWriter,
+	}
+}
+
+// NewWorkbookManagerWithSearcher creates a WorkbookManager with Drive search capability.
+// This enables automatic recovery of existing workbooks when the database is cleared.
+func NewWorkbookManagerWithSearcher(
+	app core.App,
+	sheetsWriter SheetsWriter,
+	driveSearcher DriveSearcher,
+) *WorkbookManager {
+	return &WorkbookManager{
+		app:           app,
+		sheetsWriter:  sheetsWriter,
+		driveSearcher: driveSearcher,
 	}
 }
 
@@ -196,8 +225,9 @@ func (m *WorkbookManager) ListAllWorkbooks(_ context.Context) ([]WorkbookRecord,
 }
 
 // GetOrCreateGlobalsWorkbook returns the globals workbook ID, creating if needed.
+// If driveSearcher is configured, searches Drive for existing workbook before creating new.
 func (m *WorkbookManager) GetOrCreateGlobalsWorkbook(ctx context.Context) (string, error) {
-	// Check if we already have a globals workbook
+	// Check if we already have a globals workbook in the database
 	existing, err := m.GetWorkbookByType(ctx, workbookTypeGlobals, 0)
 	if err != nil {
 		return "", fmt.Errorf("checking existing globals workbook: %w", err)
@@ -206,8 +236,35 @@ func (m *WorkbookManager) GetOrCreateGlobalsWorkbook(ctx context.Context) (strin
 		return existing.SpreadsheetID, nil
 	}
 
-	// Create new workbook
+	// Generate the expected title for this workbook
 	title := google.FormatWorkbookTitle(workbookTypeGlobals, 0)
+
+	// If driveSearcher is configured, try to find existing workbook in Drive
+	if m.driveSearcher != nil {
+		foundID, searchErr := m.driveSearcher.FindSpreadsheetByName(ctx, title)
+		if searchErr != nil {
+			// Log warning but continue to create - Drive search is best-effort
+			slog.Warn("Drive search failed, will create new workbook", "error", searchErr, "title", title)
+		} else if foundID != "" {
+			// Found existing workbook in Drive - link it to database
+			slog.Info("Found existing workbook in Drive, linking to database", "title", title, "spreadsheet_id", foundID)
+			url := google.FormatSpreadsheetURL(foundID)
+			_, saveErr := m.SaveWorkbookRecord(ctx, &WorkbookRecord{
+				SpreadsheetID: foundID,
+				WorkbookType:  workbookTypeGlobals,
+				Year:          0,
+				Title:         title,
+				URL:           url,
+				Status:        "ok",
+			})
+			if saveErr != nil {
+				return "", fmt.Errorf("saving recovered globals workbook record: %w", saveErr)
+			}
+			return foundID, nil
+		}
+	}
+
+	// Create new workbook
 	slog.Info("Creating new globals workbook", "title", title)
 
 	spreadsheetID, err := google.CreateSpreadsheet(ctx, title)
@@ -235,8 +292,9 @@ func (m *WorkbookManager) GetOrCreateGlobalsWorkbook(ctx context.Context) (strin
 }
 
 // GetOrCreateYearWorkbook returns the year workbook ID, creating if needed.
+// If driveSearcher is configured, searches Drive for existing workbook before creating new.
 func (m *WorkbookManager) GetOrCreateYearWorkbook(ctx context.Context, year int) (string, error) {
-	// Check if we already have this year's workbook
+	// Check if we already have this year's workbook in the database
 	existing, err := m.GetWorkbookByType(ctx, "year", year)
 	if err != nil {
 		return "", fmt.Errorf("checking existing year workbook: %w", err)
@@ -245,8 +303,36 @@ func (m *WorkbookManager) GetOrCreateYearWorkbook(ctx context.Context, year int)
 		return existing.SpreadsheetID, nil
 	}
 
-	// Create new workbook
+	// Generate the expected title for this workbook
 	title := google.FormatWorkbookTitle("year", year)
+
+	// If driveSearcher is configured, try to find existing workbook in Drive
+	if m.driveSearcher != nil {
+		foundID, searchErr := m.driveSearcher.FindSpreadsheetByName(ctx, title)
+		if searchErr != nil {
+			// Log warning but continue to create - Drive search is best-effort
+			slog.Warn("Drive search failed, will create new workbook", "error", searchErr, "title", title, "year", year)
+		} else if foundID != "" {
+			// Found existing workbook in Drive - link it to database
+			slog.Info("Found existing workbook in Drive, linking to database",
+				"title", title, "year", year, "spreadsheet_id", foundID)
+			url := google.FormatSpreadsheetURL(foundID)
+			_, saveErr := m.SaveWorkbookRecord(ctx, &WorkbookRecord{
+				SpreadsheetID: foundID,
+				WorkbookType:  "year",
+				Year:          year,
+				Title:         title,
+				URL:           url,
+				Status:        "ok",
+			})
+			if saveErr != nil {
+				return "", fmt.Errorf("saving recovered year workbook record: %w", saveErr)
+			}
+			return foundID, nil
+		}
+	}
+
+	// Create new workbook
 	slog.Info("Creating new year workbook", "year", year, "title", title)
 
 	spreadsheetID, err := google.CreateSpreadsheet(ctx, title)

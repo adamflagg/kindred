@@ -15,6 +15,9 @@ const (
 
 	// brandingFileName is the name of the local branding config file
 	brandingFileName = "branding.local.json"
+
+	// devPrefix is added to workbook titles in dev environments to distinguish from production
+	devPrefix = "(DEV) "
 )
 
 // configBasePath is the base path for config files. Can be overridden in tests.
@@ -96,7 +99,7 @@ func FormatWorkbookTitle(workbookType string, year int) string {
 	campName := GetCampName()
 	prefix := ""
 	if isDevEnvironment() {
-		prefix = "(DEV) "
+		prefix = devPrefix
 	}
 
 	if workbookType == "globals" {
