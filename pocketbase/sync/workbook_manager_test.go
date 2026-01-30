@@ -356,9 +356,9 @@ func TestBuildIndexSheetData(t *testing.T) {
 
 // MockDriveSearcher implements DriveSearcher interface for testing
 type MockDriveSearcher struct {
-	FoundID string // Return this ID when FindSpreadsheetByName is called
-	Err     error  // Return this error when FindSpreadsheetByName is called
-	Calls   int    // Track number of calls
+	FoundID string   // Return this ID when FindSpreadsheetByName is called
+	Err     error    // Return this error when FindSpreadsheetByName is called
+	Calls   int      // Track number of calls
 	Names   []string // Track names that were searched
 }
 

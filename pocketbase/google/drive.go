@@ -104,8 +104,8 @@ func FindSpreadsheetByName(ctx context.Context, name string) (string, error) {
 
 	fileList, err := driveClient.Files.List().
 		Q(query).
-		SupportsAllDrives(true).           // Required for Shared Drives
-		IncludeItemsFromAllDrives(true).   // Required for Shared Drives
+		SupportsAllDrives(true).         // Required for Shared Drives
+		IncludeItemsFromAllDrives(true). // Required for Shared Drives
 		Fields("files(id, name)").
 		Context(ctx).
 		Do()
