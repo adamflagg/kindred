@@ -361,10 +361,18 @@ func (m *WorkbookManager) GetOrCreateYearWorkbook(ctx context.Context, year int)
 
 // UpdateMasterIndex updates the Index sheet in the globals workbook.
 func (m *WorkbookManager) UpdateMasterIndex(ctx context.Context) error {
-	// Get globals workbook
+	// Get or recover globals workbook (uses driveSearcher to find existing workbooks in Drive)
+	// This is important for historical syncs where the database might not have the record
+	// but the workbook exists in Google Drive
+	_, err := m.GetOrCreateGlobalsWorkbook(ctx)
+	if err != nil {
+		return fmt.Errorf("globals workbook not found: %w", err)
+	}
+
+	// Now get the full record for spreadsheet ID access
 	globals, err := m.GetWorkbookByType(ctx, workbookTypeGlobals, 0)
 	if err != nil || globals == nil {
-		return fmt.Errorf("globals workbook not found")
+		return fmt.Errorf("globals workbook record not found after recovery")
 	}
 
 	// Get all workbooks
