@@ -1780,10 +1780,10 @@ func TestStats_IsNoOp(t *testing.T) {
 // Sync Phase Architecture Tests
 // =============================================================================
 
-// TestSyncPhaseConstants tests that SyncPhase constants are properly defined
-func TestSyncPhaseConstants(t *testing.T) {
+// TestPhaseConstants tests that Phase constants are properly defined
+func TestPhaseConstants(t *testing.T) {
 	// All phase constants should be non-empty strings
-	phases := []SyncPhase{
+	phases := []Phase{
 		PhaseSource,
 		PhaseExpensive,
 		PhaseTransform,
@@ -1793,7 +1793,7 @@ func TestSyncPhaseConstants(t *testing.T) {
 
 	for _, phase := range phases {
 		if phase == "" {
-			t.Error("SyncPhase constant should not be empty")
+			t.Error("Phase constant should not be empty")
 		}
 	}
 
@@ -1815,15 +1815,15 @@ func TestSyncPhaseConstants(t *testing.T) {
 	}
 }
 
-// TestSyncJobMeta_AllJobsHavePhase tests that all sync jobs have a phase assigned
-func TestSyncJobMeta_AllJobsHavePhase(t *testing.T) {
-	meta := GetSyncJobMeta()
+// TestJobMeta_AllJobsHavePhase tests that all sync jobs have a phase assigned
+func TestJobMeta_AllJobsHavePhase(t *testing.T) {
+	meta := GetJobMeta()
 
 	if len(meta) == 0 {
 		t.Fatal("expected syncJobMeta to contain jobs")
 	}
 
-	validPhases := map[SyncPhase]bool{
+	validPhases := map[Phase]bool{
 		PhaseSource:    true,
 		PhaseExpensive: true,
 		PhaseTransform: true,
@@ -1847,8 +1847,8 @@ func TestSyncJobMeta_AllJobsHavePhase(t *testing.T) {
 	}
 }
 
-// TestSyncJobMeta_SourcePhaseJobs tests that expected source jobs are in source phase
-func TestSyncJobMeta_SourcePhaseJobs(t *testing.T) {
+// TestJobMeta_SourcePhaseJobs tests that expected source jobs are in source phase
+func TestJobMeta_SourcePhaseJobs(t *testing.T) {
 	expectedSourceJobs := []string{
 		"session_groups",
 		"sessions",
@@ -1861,8 +1861,8 @@ func TestSyncJobMeta_SourcePhaseJobs(t *testing.T) {
 		"financial_transactions",
 	}
 
-	meta := GetSyncJobMeta()
-	jobPhases := make(map[string]SyncPhase)
+	meta := GetJobMeta()
+	jobPhases := make(map[string]Phase)
 	for _, job := range meta {
 		jobPhases[job.ID] = job.Phase
 	}
@@ -1879,15 +1879,15 @@ func TestSyncJobMeta_SourcePhaseJobs(t *testing.T) {
 	}
 }
 
-// TestSyncJobMeta_ExpensivePhaseJobs tests that custom values jobs are in expensive phase
-func TestSyncJobMeta_ExpensivePhaseJobs(t *testing.T) {
+// TestJobMeta_ExpensivePhaseJobs tests that custom values jobs are in expensive phase
+func TestJobMeta_ExpensivePhaseJobs(t *testing.T) {
 	expectedExpensiveJobs := []string{
 		"person_custom_values",
 		"household_custom_values",
 	}
 
-	meta := GetSyncJobMeta()
-	jobPhases := make(map[string]SyncPhase)
+	meta := GetJobMeta()
+	jobPhases := make(map[string]Phase)
 	for _, job := range meta {
 		jobPhases[job.ID] = job.Phase
 	}
@@ -1904,16 +1904,16 @@ func TestSyncJobMeta_ExpensivePhaseJobs(t *testing.T) {
 	}
 }
 
-// TestSyncJobMeta_TransformPhaseJobs tests that derived tables are in transform phase
-func TestSyncJobMeta_TransformPhaseJobs(t *testing.T) {
+// TestJobMeta_TransformPhaseJobs tests that derived tables are in transform phase
+func TestJobMeta_TransformPhaseJobs(t *testing.T) {
 	expectedTransformJobs := []string{
 		"camper_history",
 		"family_camp_derived",
 		"household_demographics",
 	}
 
-	meta := GetSyncJobMeta()
-	jobPhases := make(map[string]SyncPhase)
+	meta := GetJobMeta()
+	jobPhases := make(map[string]Phase)
 	for _, job := range meta {
 		jobPhases[job.ID] = job.Phase
 	}
@@ -1930,15 +1930,15 @@ func TestSyncJobMeta_TransformPhaseJobs(t *testing.T) {
 	}
 }
 
-// TestSyncJobMeta_ProcessPhaseJobs tests that CSV/AI jobs are in process phase
-func TestSyncJobMeta_ProcessPhaseJobs(t *testing.T) {
+// TestJobMeta_ProcessPhaseJobs tests that CSV/AI jobs are in process phase
+func TestJobMeta_ProcessPhaseJobs(t *testing.T) {
 	expectedProcessJobs := []string{
 		"bunk_requests",
 		"process_requests",
 	}
 
-	meta := GetSyncJobMeta()
-	jobPhases := make(map[string]SyncPhase)
+	meta := GetJobMeta()
+	jobPhases := make(map[string]Phase)
 	for _, job := range meta {
 		jobPhases[job.ID] = job.Phase
 	}
@@ -1955,14 +1955,14 @@ func TestSyncJobMeta_ProcessPhaseJobs(t *testing.T) {
 	}
 }
 
-// TestSyncJobMeta_ExportPhaseJobs tests that export jobs are in export phase
-func TestSyncJobMeta_ExportPhaseJobs(t *testing.T) {
+// TestJobMeta_ExportPhaseJobs tests that export jobs are in export phase
+func TestJobMeta_ExportPhaseJobs(t *testing.T) {
 	expectedExportJobs := []string{
 		"multi_workbook_export",
 	}
 
-	meta := GetSyncJobMeta()
-	jobPhases := make(map[string]SyncPhase)
+	meta := GetJobMeta()
+	jobPhases := make(map[string]Phase)
 	for _, job := range meta {
 		jobPhases[job.ID] = job.Phase
 	}
@@ -1982,7 +1982,7 @@ func TestSyncJobMeta_ExportPhaseJobs(t *testing.T) {
 // TestGetJobsForPhase_ReturnsCorrectJobs tests that GetJobsForPhase returns jobs for specified phase
 func TestGetJobsForPhase_ReturnsCorrectJobs(t *testing.T) {
 	tests := []struct {
-		phase         SyncPhase
+		phase         Phase
 		expectedCount int // Minimum expected count
 		expectedJobs  []string
 	}{
@@ -2082,7 +2082,7 @@ func TestGetAllPhases(t *testing.T) {
 		t.Errorf("expected 5 phases, got %d", len(phases))
 	}
 
-	expected := map[SyncPhase]bool{
+	expected := map[Phase]bool{
 		PhaseSource:    true,
 		PhaseExpensive: true,
 		PhaseTransform: true,
@@ -2106,7 +2106,7 @@ func TestGetAllPhases(t *testing.T) {
 func TestGetPhaseForJob(t *testing.T) {
 	tests := []struct {
 		jobID    string
-		expected SyncPhase
+		expected Phase
 	}{
 		{"sessions", PhaseSource},
 		{"attendees", PhaseSource},
@@ -2143,7 +2143,7 @@ func TestPhaseExecutionOrder(t *testing.T) {
 	// Expected order: source -> expensive -> transform -> process -> export
 	phases := GetAllPhases()
 
-	expectedOrder := []SyncPhase{
+	expectedOrder := []Phase{
 		PhaseSource,
 		PhaseExpensive,
 		PhaseTransform,
@@ -2162,9 +2162,9 @@ func TestPhaseExecutionOrder(t *testing.T) {
 	}
 }
 
-// TestSyncJobMeta_HouseholdDemographicsIncluded tests that household_demographics is in metadata
-func TestSyncJobMeta_HouseholdDemographicsIncluded(t *testing.T) {
-	meta := GetSyncJobMeta()
+// TestJobMeta_HouseholdDemographicsIncluded tests that household_demographics is in metadata
+func TestJobMeta_HouseholdDemographicsIncluded(t *testing.T) {
+	meta := GetJobMeta()
 
 	found := false
 	for _, job := range meta {
@@ -2185,9 +2185,9 @@ func TestSyncJobMeta_HouseholdDemographicsIncluded(t *testing.T) {
 	}
 }
 
-// TestSyncJobMeta_NoDuplicateIDs tests that all job IDs are unique
-func TestSyncJobMeta_NoDuplicateIDs(t *testing.T) {
-	meta := GetSyncJobMeta()
+// TestJobMeta_NoDuplicateIDs tests that all job IDs are unique
+func TestJobMeta_NoDuplicateIDs(t *testing.T) {
+	meta := GetJobMeta()
 
 	seen := make(map[string]bool)
 	for _, job := range meta {

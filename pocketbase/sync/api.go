@@ -1859,7 +1859,7 @@ func handleGetPhases(e *core.RequestEvent) error {
 	}
 
 	// Build phase info with human-readable names and descriptions
-	phaseNames := map[SyncPhase]string{
+	phaseNames := map[Phase]string{
 		PhaseSource:    "CampMinder",
 		PhaseExpensive: "Custom Values",
 		PhaseTransform: "Transform",
@@ -1867,7 +1867,7 @@ func handleGetPhases(e *core.RequestEvent) error {
 		PhaseExport:    "Export",
 	}
 
-	phaseDescriptions := map[SyncPhase]string{
+	phaseDescriptions := map[Phase]string{
 		PhaseSource:    "Sync data from CampMinder API",
 		PhaseExpensive: "Sync custom field values (slow, 1 API call per entity)",
 		PhaseTransform: "Compute derived tables from synced data",
@@ -1928,7 +1928,7 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 	}
 
 	// Validate phase
-	phase := SyncPhase(phaseParam)
+	phase := Phase(phaseParam)
 	validPhase := false
 	for _, p := range GetAllPhases() {
 		if p == phase {

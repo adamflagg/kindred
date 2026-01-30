@@ -1204,7 +1204,7 @@ func TestGetPhasesEndpointResponse(t *testing.T) {
 	}
 
 	// Verify expected phases
-	expectedPhases := []SyncPhase{PhaseSource, PhaseExpensive, PhaseTransform, PhaseProcess, PhaseExport}
+	expectedPhases := []Phase{PhaseSource, PhaseExpensive, PhaseTransform, PhaseProcess, PhaseExport}
 	for i, expected := range expectedPhases {
 		if allPhases[i] != expected {
 			t.Errorf("phase[%d]: expected %q, got %q", i, expected, allPhases[i])
@@ -1217,7 +1217,7 @@ func TestPhaseParameterValidation(t *testing.T) {
 	tests := []struct {
 		name      string
 		param     string
-		wantPhase SyncPhase
+		wantPhase Phase
 		wantValid bool
 	}{
 		{"valid source phase", "source", PhaseSource, true},
@@ -1247,12 +1247,12 @@ func TestPhaseParameterValidation(t *testing.T) {
 }
 
 // parsePhaseParameter parses and validates the phase query parameter
-func parsePhaseParameter(param string) (SyncPhase, bool) {
+func parsePhaseParameter(param string) (Phase, bool) {
 	if param == "" {
 		return "", false
 	}
 
-	phase := SyncPhase(param)
+	phase := Phase(param)
 
 	// Check if this is a valid phase
 	for _, p := range GetAllPhases() {

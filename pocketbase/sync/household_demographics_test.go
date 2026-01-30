@@ -4,6 +4,9 @@ import (
 	"testing"
 )
 
+// Test constants for fictional data
+const testCongregation = "Temple Beth El"
+
 // ============================================================================
 // Service Identity Tests
 // ============================================================================
@@ -143,7 +146,7 @@ func TestHouseholdDemographicsAggregation(t *testing.T) {
 		// Person 1 in household 5001 - has most fields filled
 		{HouseholdID: 5001, FieldName: "HH-Family Description", Value: "LGBTQ"},
 		{HouseholdID: 5001, FieldName: "HH-Jewish Affiliation", Value: "Reform"},
-		{HouseholdID: 5001, FieldName: "HH-Name of Congregation", Value: "Temple Beth El"},
+		{HouseholdID: 5001, FieldName: "HH-Name of Congregation", Value: testCongregation},
 
 		// Person 2 in same household 5001 - some fields overlap, some empty
 		{HouseholdID: 5001, FieldName: "HH-Family Description", Value: "LGBTQ"}, // Same value (expected)
@@ -168,8 +171,8 @@ func TestHouseholdDemographicsAggregation(t *testing.T) {
 	if hh5001["HH-Jewish Affiliation"] != "Reform" {
 		t.Errorf("household 5001 jewish affiliation = %q, want %q", hh5001["HH-Jewish Affiliation"], "Reform")
 	}
-	if hh5001["HH-Name of Congregation"] != "Temple Beth El" {
-		t.Errorf("household 5001 congregation = %q, want %q", hh5001["HH-Name of Congregation"], "Temple Beth El")
+	if hh5001["HH-Name of Congregation"] != testCongregation {
+		t.Errorf("household 5001 congregation = %q, want %q", hh5001["HH-Name of Congregation"], testCongregation)
 	}
 
 	// Household 5002 should have its own values
@@ -210,7 +213,7 @@ func TestHouseholdDemographicsFirstNonEmptyWins(t *testing.T) {
 func TestHouseholdDemographicsSummerVsFamily(t *testing.T) {
 	// Person-level HH- fields (summer camp registration)
 	personValues := []testHHPersonCustomValue{
-		{HouseholdID: 5001, FieldName: "HH-Name of Congregation", Value: "Temple Beth El"},
+		{HouseholdID: 5001, FieldName: "HH-Name of Congregation", Value: testCongregation},
 		{HouseholdID: 5001, FieldName: "HH-Name of JCC", Value: "SF JCC"},
 		{HouseholdID: 5001, FieldName: "HH-special living arrangements", Value: "Shared custody"},
 	}
@@ -226,8 +229,8 @@ func TestHouseholdDemographicsSummerVsFamily(t *testing.T) {
 	demo := buildDemographicRecord(5001, personValues, householdValues)
 
 	// Verify summer camp fields (from person)
-	if demo.CongregationSummer != "Temple Beth El" {
-		t.Errorf("congregation_summer = %q, want %q", demo.CongregationSummer, "Temple Beth El")
+	if demo.CongregationSummer != testCongregation {
+		t.Errorf("congregation_summer = %q, want %q", demo.CongregationSummer, testCongregation)
 	}
 	if demo.JCCSummer != "SF JCC" {
 		t.Errorf("jcc_summer = %q, want %q", demo.JCCSummer, "SF JCC")
@@ -412,7 +415,7 @@ func TestHouseholdDemographicsFullRecord(t *testing.T) {
 	personValues := []testHHPersonCustomValue{
 		{HouseholdID: 5001, FieldName: "HH-Family Description", Value: "LGBTQ|Interfaith"},
 		{HouseholdID: 5001, FieldName: "HH-Jewish Affiliation", Value: "Reform"},
-		{HouseholdID: 5001, FieldName: "HH-Name of Congregation", Value: "Temple Beth El"},
+		{HouseholdID: 5001, FieldName: "HH-Name of Congregation", Value: testCongregation},
 		{HouseholdID: 5001, FieldName: "HH-Name of JCC", Value: "SF JCC"},
 		{HouseholdID: 5001, FieldName: "HH-Military", Value: "No"},
 		{HouseholdID: 5001, FieldName: "HH-parent born outside US", Value: "Yes"},
@@ -437,7 +440,7 @@ func TestHouseholdDemographicsFullRecord(t *testing.T) {
 	if demo.JewishAffiliation != "Reform" {
 		t.Errorf("jewish_affiliation = %q", demo.JewishAffiliation)
 	}
-	if demo.CongregationSummer != "Temple Beth El" {
+	if demo.CongregationSummer != testCongregation {
 		t.Errorf("congregation_summer = %q", demo.CongregationSummer)
 	}
 	if demo.CongregationFamily != "Beth Sholom" {

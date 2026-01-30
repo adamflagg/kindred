@@ -27,32 +27,32 @@ const (
 	statusCompleted = "completed"
 )
 
-// SyncPhase represents a category of sync jobs
-type SyncPhase string
+// Phase represents a category of sync jobs
+type Phase string
 
 const (
 	// PhaseSource - CampMinder API → PocketBase
-	PhaseSource SyncPhase = "source"
+	PhaseSource Phase = "source"
 	// PhaseExpensive - CampMinder API (1 call/entity, rate limited)
-	PhaseExpensive SyncPhase = "expensive"
+	PhaseExpensive Phase = "expensive"
 	// PhaseTransform - PocketBase → PocketBase (no API)
-	PhaseTransform SyncPhase = "transform"
+	PhaseTransform Phase = "transform"
 	// PhaseProcess - CSV import + AI processing
-	PhaseProcess SyncPhase = "process"
+	PhaseProcess Phase = "process"
 	// PhaseExport - PocketBase → Google Sheets
-	PhaseExport SyncPhase = "export"
+	PhaseExport Phase = "export"
 )
 
-// SyncJobMeta contains metadata about a sync job
-type SyncJobMeta struct {
+// JobMeta contains metadata about a sync job
+type JobMeta struct {
 	ID          string
-	Phase       SyncPhase
+	Phase       Phase
 	Description string
 }
 
 // syncJobMeta defines the phase and metadata for all sync jobs
 // Jobs are listed in execution order within their phase
-var syncJobMeta = []SyncJobMeta{
+var syncJobMeta = []JobMeta{
 	// Source phase - CampMinder API calls
 	{"session_groups", PhaseSource, "Session groups from CampMinder"},
 	{"sessions", PhaseSource, "Sessions from CampMinder"},
@@ -83,13 +83,13 @@ var syncJobMeta = []SyncJobMeta{
 	{"multi_workbook_export", PhaseExport, "Export to Google Sheets"},
 }
 
-// GetSyncJobMeta returns the sync job metadata array
-func GetSyncJobMeta() []SyncJobMeta {
+// GetJobMeta returns the sync job metadata array
+func GetJobMeta() []JobMeta {
 	return syncJobMeta
 }
 
 // GetJobsForPhase returns job IDs for a specific phase
-func GetJobsForPhase(phase SyncPhase) []string {
+func GetJobsForPhase(phase Phase) []string {
 	var jobs []string
 	for _, meta := range syncJobMeta {
 		if meta.Phase == phase {
@@ -100,8 +100,8 @@ func GetJobsForPhase(phase SyncPhase) []string {
 }
 
 // GetAllPhases returns all phases in execution order
-func GetAllPhases() []SyncPhase {
-	return []SyncPhase{
+func GetAllPhases() []Phase {
+	return []Phase{
 		PhaseSource,
 		PhaseExpensive,
 		PhaseTransform,
@@ -111,7 +111,7 @@ func GetAllPhases() []SyncPhase {
 }
 
 // GetPhaseForJob returns the phase for a given job ID
-func GetPhaseForJob(jobID string) SyncPhase {
+func GetPhaseForJob(jobID string) Phase {
 	for _, meta := range syncJobMeta {
 		if meta.ID == jobID {
 			return meta.Phase
