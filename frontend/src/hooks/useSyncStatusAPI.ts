@@ -14,6 +14,7 @@ export interface SubStats {
 export interface QueuedSyncItem {
   id: string;
   year: number;
+  type: 'unified' | 'phase' | 'individual'; // Type of queued sync
   service: string;
   include_custom_values?: boolean;
   position: number;

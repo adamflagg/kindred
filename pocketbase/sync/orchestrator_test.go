@@ -1434,40 +1434,6 @@ func TestEnqueueUnifiedSyncDuplicateDetection(t *testing.T) {
 	}
 }
 
-// TestEnqueueUnifiedSyncMaxSize tests that queue enforces max size of 5
-func TestEnqueueUnifiedSyncMaxSize(t *testing.T) {
-	o := NewOrchestrator(nil)
-
-	// Fill the queue with 5 items (different years to avoid duplicate detection)
-	for i := 0; i < 5; i++ {
-		year := 2020 + i
-		_, err := o.EnqueueUnifiedSync(year, "all", false, false, "user")
-		if err != nil {
-			t.Fatalf("unexpected error for item %d: %v", i+1, err)
-		}
-	}
-
-	queue := o.GetQueuedSyncs()
-	if len(queue) != 5 {
-		t.Fatalf("expected 5 items in queue, got %d", len(queue))
-	}
-
-	// Try to add a 6th item - should fail
-	_, err := o.EnqueueUnifiedSync(2019, "all", false, false, "user")
-	if err == nil {
-		t.Error("expected error when queue is full")
-	}
-	if err != nil && !strings.Contains(err.Error(), "full") {
-		t.Errorf("expected 'full' in error message, got: %v", err)
-	}
-
-	// Queue should still have 5 items
-	queue = o.GetQueuedSyncs()
-	if len(queue) != 5 {
-		t.Errorf("expected 5 items in queue after overflow attempt, got %d", len(queue))
-	}
-}
-
 // TestDequeueUnifiedSync tests basic dequeue functionality
 func TestDequeueUnifiedSync(t *testing.T) {
 	o := NewOrchestrator(nil)

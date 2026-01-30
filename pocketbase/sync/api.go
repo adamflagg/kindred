@@ -365,6 +365,7 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 }
 
 // handleIndividualSync handles running a single sync job
+// Returns 202 Accepted if enqueued, 200 OK if started immediately
 func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType string) error {
 	orchestrator := scheduler.GetOrchestrator()
 
@@ -373,6 +374,41 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 		return e.JSON(http.StatusConflict, map[string]interface{}{
 			"error":    "Sync already in progress",
 			"status":   "running",
+			"syncType": syncType,
+		})
+	}
+
+	// Get current year from environment
+	currentYear := time.Now().Year()
+	if yearStr := os.Getenv("CAMPMINDER_SEASON_ID"); yearStr != "" {
+		if cy, err := strconv.Atoi(yearStr); err == nil {
+			currentYear = cy
+		}
+	}
+
+	// Get user info for queue tracking
+	requestedBy := ""
+	if e.Auth != nil {
+		requestedBy = e.Auth.GetString("email")
+	}
+
+	// Check if any sync sequence is running - if so, queue instead of running immediately
+	if orchestrator.IsDailySyncRunning() || orchestrator.IsWeeklySyncRunning() ||
+		orchestrator.IsHistoricalSyncRunning() || orchestrator.IsCustomValuesSyncRunning() {
+		// Queue the individual sync
+		qs, err := orchestrator.EnqueueIndividualSync(currentYear, syncType, nil, requestedBy)
+		if err != nil {
+			return e.JSON(http.StatusConflict, map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
+
+		// Successfully queued - return 202 Accepted
+		position := orchestrator.GetQueuePositionByID(qs.ID)
+		return e.JSON(http.StatusAccepted, map[string]interface{}{
+			"status":   "queued",
+			"queue_id": qs.ID,
+			"position": position,
 			"syncType": syncType,
 		})
 	}
@@ -387,6 +423,9 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 			// Log error (could also store in DB)
 			e.App.Logger().Error("Individual sync failed", "syncType", syncType, "error", err)
 		}
+
+		// Process queue after individual sync completes
+		processQueuedSyncs(orchestrator)
 	}()
 
 	return e.JSON(http.StatusOK, map[string]interface{}{
@@ -735,6 +774,7 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 		queueInfo[i] = map[string]interface{}{
 			"id":                    qs.ID,
 			"year":                  qs.Year,
+			"type":                  qs.Type, // "unified", "phase", "individual"
 			"service":               qs.Service,
 			"include_custom_values": qs.IncludeCustomValues,
 			"position":              i + 1, // 1-based position
@@ -885,7 +925,8 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	})
 }
 
-// processQueuedSyncs processes the next item in the unified sync queue
+// processQueuedSyncs processes the next item in the sync queue
+// Handles all three types: unified, phase, and individual
 func processQueuedSyncs(orchestrator *Orchestrator) {
 	// Panic recovery to ensure sync flags are cleared if something goes wrong
 	defer func() {
@@ -901,7 +942,12 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 		return // Queue is empty
 	}
 
-	slog.Info("Processing queued sync", "id", qs.ID, "year", qs.Year, "service", qs.Service)
+	slog.Info("Processing queued sync",
+		"id", qs.ID,
+		"type", qs.Type,
+		"year", qs.Year,
+		"service", qs.Service,
+	)
 
 	// Get current year from environment for year mode determination
 	currentYear := time.Now().Year()
@@ -909,24 +955,6 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 		if cy, err := strconv.Atoi(yearStr); err == nil {
 			currentYear = cy
 		}
-	}
-
-	// Determine year mode
-	optsYear := qs.Year
-	if qs.Year == currentYear {
-		optsYear = 0 // Current year mode
-	}
-
-	// Create sync options
-	opts := Options{
-		Year:                optsYear,
-		IncludeCustomValues: qs.IncludeCustomValues,
-		Debug:               qs.Debug,
-	}
-
-	// Set services to sync
-	if qs.Service != DefaultService {
-		opts.Services = []string{qs.Service}
 	}
 
 	// Run the queued sync with cancel support
@@ -937,10 +965,77 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 	orchestrator.SetActiveSyncCancel(cancel)
 	defer orchestrator.ClearActiveSyncCancel()
 
-	if err := orchestrator.RunSyncWithOptions(ctx, opts); err != nil {
-		slog.Error("Queued sync failed", "id", qs.ID, "year", qs.Year, "service", qs.Service, "error", err)
-	} else {
-		slog.Info("Queued sync completed", "id", qs.ID, "year", qs.Year, "service", qs.Service)
+	// Handle based on queue item type
+	switch qs.Type {
+	case "phase":
+		// Run all jobs in the phase sequentially
+		phase := Phase(qs.Service)
+		jobs := GetJobsForPhase(phase)
+		slog.Info("Queued phase sync: Running jobs",
+			"phase", phase, "year", qs.Year, "jobs", jobs)
+
+		canceled := false
+		for _, jobID := range jobs {
+			select {
+			case <-ctx.Done():
+				slog.Error("Queued phase sync canceled", "phase", phase, "error", ctx.Err())
+				canceled = true
+			default:
+			}
+			if canceled {
+				break
+			}
+
+			slog.Info("Queued phase sync: Running job", "phase", phase, "job", jobID)
+			if err := orchestrator.runSyncAndWait(ctx, jobID); err != nil {
+				slog.Error("Queued phase sync: job failed",
+					"phase", phase, "job", jobID, "error", err)
+				// Continue with next job even if one fails
+			}
+		}
+		slog.Info("Queued phase sync completed", "id", qs.ID, "phase", phase, "year", qs.Year)
+
+	case "individual":
+		// Run single job
+		slog.Info("Queued individual sync: Running job", "job", qs.Service, "year", qs.Year)
+		if err := orchestrator.runSyncAndWait(ctx, qs.Service); err != nil {
+			slog.Error("Queued individual sync failed",
+				"id", qs.ID, "job", qs.Service, "year", qs.Year, "error", err)
+		} else {
+			slog.Info("Queued individual sync completed",
+				"id", qs.ID, "job", qs.Service, "year", qs.Year)
+		}
+
+	case "unified", "":
+		// Empty type for backward compatibility with existing queued items
+		// Determine year mode
+		optsYear := qs.Year
+		if qs.Year == currentYear {
+			optsYear = 0 // Current year mode
+		}
+
+		// Create sync options
+		opts := Options{
+			Year:                optsYear,
+			IncludeCustomValues: qs.IncludeCustomValues,
+			Debug:               qs.Debug,
+		}
+
+		// Set services to sync
+		if qs.Service != DefaultService {
+			opts.Services = []string{qs.Service}
+		}
+
+		if err := orchestrator.RunSyncWithOptions(ctx, opts); err != nil {
+			slog.Error("Queued unified sync failed",
+				"id", qs.ID, "year", qs.Year, "service", qs.Service, "error", err)
+		} else {
+			slog.Info("Queued unified sync completed",
+				"id", qs.ID, "year", qs.Year, "service", qs.Service)
+		}
+
+	default:
+		slog.Error("Unknown queued sync type", "id", qs.ID, "type", qs.Type)
 	}
 
 	// Recursively process next item in queue
@@ -1892,17 +1987,9 @@ func handleGetPhases(e *core.RequestEvent) error {
 
 // handleRunPhase runs all jobs in a specific sync phase
 // Requires ?year=YYYY and ?phase=<phase> query parameters
+// Returns 202 Accepted if enqueued, 200 OK if started immediately
 func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 	orchestrator := scheduler.GetOrchestrator()
-
-	// Check if any sync is already running
-	if orchestrator.IsDailySyncRunning() || orchestrator.IsWeeklySyncRunning() ||
-		orchestrator.IsHistoricalSyncRunning() {
-		return e.JSON(http.StatusConflict, map[string]interface{}{
-			"error":  "Another sync is already running",
-			"status": "blocked",
-		})
-	}
 
 	// Parse required year parameter
 	yearParam := e.Request.URL.Query().Get("year")
@@ -1951,6 +2038,60 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 		})
 	}
 
+	// Parse optional debug parameter
+	debugParam := e.Request.URL.Query().Get("debug")
+	debug := debugParam == boolTrueStr || debugParam == "1"
+
+	// Get current year from environment
+	currentYear := time.Now().Year()
+	if yearStr := os.Getenv("CAMPMINDER_SEASON_ID"); yearStr != "" {
+		if cy, err := strconv.Atoi(yearStr); err == nil {
+			currentYear = cy
+		}
+	}
+
+	// Get user info for queue tracking
+	requestedBy := ""
+	if e.Auth != nil {
+		requestedBy = e.Auth.GetString("email")
+	}
+
+	// Check for warning: Transform phase on historical year without custom values
+	var warning string
+	if phase == PhaseTransform && year != currentYear {
+		// Check if custom values exist for this year
+		if !checkCustomValuesExist(scheduler.app, year) {
+			warning = "Transform phase may have incomplete data: Custom Values not synced for this year"
+		}
+	}
+
+	// Check if any sync is already running
+	if orchestrator.IsDailySyncRunning() || orchestrator.IsWeeklySyncRunning() ||
+		orchestrator.IsHistoricalSyncRunning() || orchestrator.IsCustomValuesSyncRunning() {
+		// Queue the phase sync instead of returning conflict
+		qs, err := orchestrator.EnqueuePhaseSync(year, phase, requestedBy)
+		if err != nil {
+			return e.JSON(http.StatusConflict, map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
+
+		// Successfully queued - return 202 Accepted
+		position := orchestrator.GetQueuePositionByID(qs.ID)
+		response := map[string]interface{}{
+			"status":   "queued",
+			"queue_id": qs.ID,
+			"position": position,
+			"phase":    string(phase),
+			"year":     year,
+			"jobs":     jobs,
+		}
+		if warning != "" {
+			response["warning"] = warning
+		}
+		return e.JSON(http.StatusAccepted, response)
+	}
+
 	// Run phase jobs in background
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
@@ -1960,6 +2101,7 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 			"phase", phase,
 			"year", year,
 			"jobs", jobs,
+			"debug", debug,
 		)
 
 		// Run jobs sequentially in order
@@ -1972,20 +2114,41 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 			}
 
 			slog.Info("Running phase job", "phase", phase, "job", jobID)
-			if err := orchestrator.RunSingleSync(ctx, jobID); err != nil {
+			if err := orchestrator.runSyncAndWait(ctx, jobID); err != nil {
 				slog.Error("Phase job failed", "phase", phase, "job", jobID, "error", err)
 				// Continue with next job even if one fails
 			}
 		}
 
 		slog.Info("Phase sync completed", "phase", phase, "year", year)
+
+		// Process queue after phase sync completes
+		processQueuedSyncs(orchestrator)
 	}()
 
-	return e.JSON(http.StatusOK, map[string]interface{}{
+	response := map[string]interface{}{
 		"message": "Phase sync started",
 		"status":  "started",
 		"phase":   string(phase),
 		"year":    year,
 		"jobs":    jobs,
-	})
+		"debug":   debug,
+	}
+	if warning != "" {
+		response["warning"] = warning
+	}
+	return e.JSON(http.StatusOK, response)
+}
+
+// checkCustomValuesExist checks if custom values have been synced for a given year
+func checkCustomValuesExist(app core.App, year int) bool {
+	// Check for at least one person_custom_values record for this year
+	records, err := app.FindRecordsByFilter(
+		"person_custom_values",
+		fmt.Sprintf("year = %d", year),
+		"",
+		1,
+		0,
+	)
+	return err == nil && len(records) > 0
 }
