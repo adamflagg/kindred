@@ -158,6 +158,15 @@ migrate((app) => {
         pattern: ""
       },
       {
+        type: "text",
+        name: "state",
+        required: false,
+        presentable: false,
+        min: 0,
+        max: 50,
+        pattern: ""
+      },
+      {
         type: "number",
         name: "grade",
         required: false,

@@ -769,6 +769,7 @@ func GetReadableYearExports() []ExportConfig {
 				{Field: "bunk_cm_id", Header: "Bunk CM ID", Type: FieldTypeNumber},
 				{Field: "school", Header: "School", Type: FieldTypeText},
 				{Field: "city", Header: "City", Type: FieldTypeText},
+				{Field: "state", Header: "State", Type: FieldTypeText},
 				{Field: "grade", Header: "Grade", Type: FieldTypeNumber},
 				{Field: "age", Header: "Age", Type: FieldTypeNumber},
 				{Field: "is_returning_summer", Header: "Returning Summer", Type: FieldTypeBool},
