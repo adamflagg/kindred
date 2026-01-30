@@ -379,7 +379,10 @@ jobs:
         echo "Testing migrations on fresh database..."
         rm -rf /tmp/pb_ci_test
         mkdir -p /tmp/pb_ci_test
-        ln -s "$(pwd)/pb_migrations" /tmp/pb_ci_test/pb_migrations
+        cp -r pb_migrations /tmp/pb_ci_test/
+        cp -r pb_hooks /tmp/pb_ci_test/ 2>/dev/null || true
+        echo "Migrations directory contents:"
+        ls -la /tmp/pb_ci_test/pb_migrations/ | head -10
         ./pocketbase serve --dir /tmp/pb_ci_test --http 127.0.0.1:18999 > /tmp/pb_output.log 2>&1 &
         PB_PID=$!
 
@@ -444,6 +447,8 @@ jobs:
 
         if [ $VALIDATION_RESULT -ne 0 ]; then
           echo "❌ Schema validation failed"
+          echo "PocketBase output log:"
+          cat /tmp/pb_output.log
           exit 1
         fi
 
