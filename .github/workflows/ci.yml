@@ -410,12 +410,9 @@ jobs:
           exit 1
         fi
 
-        # Create temporary superuser for API access (fresh DB allows this)
+        # Create temporary superuser via CLI (required for fresh DB in PB v0.23+)
         echo "Creating temporary superuser for schema validation..."
-        curl -sf -X POST http://127.0.0.1:18999/api/collections/_superusers/records \
-          -H "Content-Type: application/json" \
-          -d '{"email":"ci@test.local","password":"ci_test_pass_123","passwordConfirm":"ci_test_pass_123"}' \
-          > /dev/null
+        ./pocketbase superuser upsert ci@test.local ci_test_pass_123 --dir /tmp/pb_ci_test
 
         # Get auth token
         AUTH_TOKEN=$(curl -sf -X POST http://127.0.0.1:18999/api/collections/_superusers/auth-with-password \
