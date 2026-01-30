@@ -49,6 +49,7 @@ var SyncJobToCollections = map[string][]string{
 	"staff":                   {"staff"},
 	"camper_history":          {"camper_history"},
 	"financial_transactions":  {"financial_transactions"},
+	"staff_skills":            {"staff_skills"},
 	"person_custom_values":    {"person_custom_values"},
 	"household_custom_values": {"household_custom_values"},
 	"session_groups":          {"session_groups"},
@@ -783,6 +784,22 @@ func GetReadableYearExports() []ExportConfig {
 				{Field: "enrollment_date", Header: "Enrollment Date", Type: FieldTypeDate},
 				{Field: "status", Header: "Status", Type: FieldTypeText},
 				{Field: "synagogue", Header: "Synagogue", Type: FieldTypeText},
+			},
+		},
+		// Staff Skills - derived table extracting Skills- fields from person_custom_values
+		{
+			Collection: "staff_skills",
+			SheetName:  "Staff Skills",
+			IsGlobal:   false,
+			Columns: []ColumnConfig{
+				{Field: "first_name", Header: "First Name", Type: FieldTypeText},
+				{Field: "last_name", Header: "Last Name", Type: FieldTypeText},
+				{Field: "skill_name", Header: "Skill", Type: FieldTypeText},
+				{Field: "is_intermediate", Header: "Int.", Type: FieldTypeBool},
+				{Field: "is_experienced", Header: "Exp.", Type: FieldTypeBool},
+				{Field: "can_teach", Header: "Teach", Type: FieldTypeBool},
+				{Field: "is_certified", Header: "Cert.", Type: FieldTypeBool},
+				{Field: "raw_value", Header: "Raw Value", Type: FieldTypeText},
 			},
 		},
 		// Person Custom Values - custom field values for persons (now exported with per-year workbooks)
