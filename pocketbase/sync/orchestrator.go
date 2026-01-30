@@ -76,6 +76,13 @@ type Stats struct {
 	SubStats map[string]Stats `json:"sub_stats,omitempty"`
 }
 
+// IsNoOp returns true if the sync made no changes to the database.
+// A sync is a no-op when Created, Updated, Deleted, and Errors are all zero.
+// Skipped records don't affect the data, so they're not considered changes.
+func (s Stats) IsNoOp() bool {
+	return s.Created == 0 && s.Updated == 0 && s.Deleted == 0 && s.Errors == 0
+}
+
 // Options configures how syncs are executed
 type Options struct {
 	Year                int      // Override year (0 = use default from env)
@@ -183,6 +190,26 @@ func (o *Orchestrator) IsWeeklySyncRunning() bool {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 	return o.weeklySyncRunning
+}
+
+// GetChangedCollections returns a set of collections that had changes in the last sync run.
+// Collections not in the returned map should skip export since their data hasn't changed.
+// The mapping uses SyncJobToCollections to translate sync job names to collection names.
+func (o *Orchestrator) GetChangedCollections() map[string]bool {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+
+	changed := make(map[string]bool)
+	for syncType, status := range o.lastCompletedStatus {
+		if !status.Summary.IsNoOp() {
+			if collections, ok := SyncJobToCollections[syncType]; ok {
+				for _, col := range collections {
+					changed[col] = true
+				}
+			}
+		}
+	}
+	return changed
 }
 
 // IsCustomValuesSyncRunning returns whether a custom values sync sequence is in progress
@@ -953,8 +980,12 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 
 		if sheetsService != nil {
 			if exporter, ok := sheetsService.(*MultiWorkbookExport); ok {
-				slog.Info("Historical sync: Exporting to Google Sheets", "year", opts.Year)
-				if err := exporter.SyncForYears(ctx, []int{opts.Year}, false); err != nil {
+				// Get collections that had changes to skip unchanged exports
+				changedCollections := o.GetChangedCollections()
+				slog.Info("Historical sync: Exporting to Google Sheets",
+					"year", opts.Year,
+					"changed_collections", len(changedCollections))
+				if err := exporter.SyncForYears(ctx, []int{opts.Year}, false, changedCollections); err != nil {
 					slog.Error("Historical sync: Google Sheets export failed", "year", opts.Year, "error", err)
 				} else {
 					slog.Info("Historical sync: Google Sheets export completed", "year", opts.Year)
@@ -971,8 +1002,13 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 
 		if sheetsService != nil {
 			if exporter, ok := sheetsService.(*MultiWorkbookExport); ok {
-				slog.Info("Sync with options: Exporting to Google Sheets")
-				if err := exporter.Sync(ctx); err != nil {
+				// Get collections that had changes to skip unchanged exports
+				changedCollections := o.GetChangedCollections()
+				slog.Info("Sync with options: Exporting to Google Sheets",
+					"changed_collections", len(changedCollections))
+				// Use SyncForYears with exporter's year to benefit from skip optimization
+				// exporter.year is already resolved from CAMPMINDER_SEASON_ID env var
+				if err := exporter.SyncForYears(ctx, []int{exporter.year}, true, changedCollections); err != nil {
 					slog.Error("Sync with options: Google Sheets export failed", "error", err)
 				} else {
 					slog.Info("Sync with options: Google Sheets export completed")

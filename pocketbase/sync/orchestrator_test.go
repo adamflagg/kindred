@@ -1708,3 +1708,216 @@ func TestQueueLengthMethod(t *testing.T) {
 		t.Errorf("expected queue length 1 after dequeue, got %d", o.GetQueueLength())
 	}
 }
+
+// =============================================================================
+// Stats.IsNoOp Tests
+// =============================================================================
+
+// TestStats_IsNoOp tests the IsNoOp method on Stats
+func TestStats_IsNoOp(t *testing.T) {
+	tests := []struct {
+		name     string
+		stats    Stats
+		expected bool
+	}{
+		{
+			name:     "all zeros is no-op",
+			stats:    Stats{Created: 0, Updated: 0, Deleted: 0, Errors: 0, Skipped: 0},
+			expected: true,
+		},
+		{
+			name:     "skipped only is still no-op",
+			stats:    Stats{Created: 0, Updated: 0, Deleted: 0, Errors: 0, Skipped: 100},
+			expected: true,
+		},
+		{
+			name:     "created makes it not a no-op",
+			stats:    Stats{Created: 1, Updated: 0, Deleted: 0, Errors: 0, Skipped: 0},
+			expected: false,
+		},
+		{
+			name:     "updated makes it not a no-op",
+			stats:    Stats{Created: 0, Updated: 1, Deleted: 0, Errors: 0, Skipped: 0},
+			expected: false,
+		},
+		{
+			name:     "deleted makes it not a no-op",
+			stats:    Stats{Created: 0, Updated: 0, Deleted: 1, Errors: 0, Skipped: 0},
+			expected: false,
+		},
+		{
+			name:     "errors make it not a no-op",
+			stats:    Stats{Created: 0, Updated: 0, Deleted: 0, Errors: 1, Skipped: 0},
+			expected: false,
+		},
+		{
+			name:     "multiple changes is not a no-op",
+			stats:    Stats{Created: 5, Updated: 10, Deleted: 2, Errors: 1, Skipped: 100},
+			expected: false,
+		},
+		{
+			name:     "duration and expanded fields don't affect no-op",
+			stats:    Stats{Created: 0, Updated: 0, Deleted: 0, Errors: 0, Duration: 60, Expanded: 50},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.stats.IsNoOp()
+			if result != tt.expected {
+				t.Errorf("Stats%+v.IsNoOp() = %v, want %v", tt.stats, result, tt.expected)
+			}
+		})
+	}
+}
+
+// =============================================================================
+// Orchestrator.GetChangedCollections Tests
+// =============================================================================
+
+// TestOrchestrator_GetChangedCollections tests the GetChangedCollections method
+func TestOrchestrator_GetChangedCollections(t *testing.T) {
+	t.Run("empty when no completed syncs", func(t *testing.T) {
+		o := NewOrchestrator(nil)
+
+		changed := o.GetChangedCollections()
+		if len(changed) != 0 {
+			t.Errorf("expected empty map, got %d entries", len(changed))
+		}
+	})
+
+	t.Run("includes collections from syncs with changes", func(t *testing.T) {
+		o := NewOrchestrator(nil)
+
+		// Simulate completed sync with changes
+		now := time.Now()
+		o.mu.Lock()
+		o.lastCompletedStatus["sessions"] = &Status{
+			Type:    "sessions",
+			Status:  statusCompleted,
+			EndTime: &now,
+			Summary: Stats{Created: 5, Updated: 2},
+		}
+		o.mu.Unlock()
+
+		changed := o.GetChangedCollections()
+
+		// sessions sync should map to camp_sessions collection
+		if !changed["camp_sessions"] {
+			t.Error("expected camp_sessions to be in changed collections")
+		}
+	})
+
+	t.Run("excludes collections from no-op syncs", func(t *testing.T) {
+		o := NewOrchestrator(nil)
+
+		// Simulate completed sync with NO changes (no-op)
+		now := time.Now()
+		o.mu.Lock()
+		o.lastCompletedStatus["sessions"] = &Status{
+			Type:    "sessions",
+			Status:  statusCompleted,
+			EndTime: &now,
+			Summary: Stats{Created: 0, Updated: 0, Deleted: 0, Errors: 0, Skipped: 100},
+		}
+		o.mu.Unlock()
+
+		changed := o.GetChangedCollections()
+
+		// sessions should NOT be in changed collections since it was a no-op
+		if changed["camp_sessions"] {
+			t.Error("expected camp_sessions NOT to be in changed collections for no-op sync")
+		}
+	})
+
+	t.Run("handles sync that maps to multiple collections", func(t *testing.T) {
+		o := NewOrchestrator(nil)
+
+		// persons sync maps to both persons and households
+		now := time.Now()
+		o.mu.Lock()
+		o.lastCompletedStatus["persons"] = &Status{
+			Type:    "persons",
+			Status:  statusCompleted,
+			EndTime: &now,
+			Summary: Stats{Created: 10, Updated: 5},
+		}
+		o.mu.Unlock()
+
+		changed := o.GetChangedCollections()
+
+		// Both persons and households should be marked as changed
+		if !changed["persons"] {
+			t.Error("expected persons to be in changed collections")
+		}
+		if !changed["households"] {
+			t.Error("expected households to be in changed collections")
+		}
+	})
+
+	t.Run("combines multiple syncs correctly", func(t *testing.T) {
+		o := NewOrchestrator(nil)
+
+		now := time.Now()
+		o.mu.Lock()
+		// sessions had changes
+		o.lastCompletedStatus["sessions"] = &Status{
+			Type:    "sessions",
+			Status:  statusCompleted,
+			EndTime: &now,
+			Summary: Stats{Created: 5},
+		}
+		// attendees had no changes
+		o.lastCompletedStatus["attendees"] = &Status{
+			Type:    "attendees",
+			Status:  statusCompleted,
+			EndTime: &now,
+			Summary: Stats{Skipped: 50},
+		}
+		// bunks had changes
+		o.lastCompletedStatus["bunks"] = &Status{
+			Type:    "bunks",
+			Status:  statusCompleted,
+			EndTime: &now,
+			Summary: Stats{Updated: 3},
+		}
+		o.mu.Unlock()
+
+		changed := o.GetChangedCollections()
+
+		// camp_sessions should be changed
+		if !changed["camp_sessions"] {
+			t.Error("expected camp_sessions to be in changed collections")
+		}
+		// attendees should NOT be changed (no-op)
+		if changed["attendees"] {
+			t.Error("expected attendees NOT to be in changed collections")
+		}
+		// bunks should be changed
+		if !changed["bunks"] {
+			t.Error("expected bunks to be in changed collections")
+		}
+	})
+
+	t.Run("handles unknown sync type gracefully", func(t *testing.T) {
+		o := NewOrchestrator(nil)
+
+		now := time.Now()
+		o.mu.Lock()
+		o.lastCompletedStatus["unknown_sync_type"] = &Status{
+			Type:    "unknown_sync_type",
+			Status:  statusCompleted,
+			EndTime: &now,
+			Summary: Stats{Created: 5},
+		}
+		o.mu.Unlock()
+
+		// Should not panic, just return empty for unknown types
+		changed := o.GetChangedCollections()
+		// unknown_sync_type has no mapping, so nothing added
+		if len(changed) != 0 {
+			t.Errorf("expected empty map for unknown sync type, got %d entries", len(changed))
+		}
+	})
+}

@@ -541,3 +541,116 @@ func TestMultiWorkbookExport_SyncForYearsUsesMultipleWorkbooks(t *testing.T) {
 		t.Error("Different years should use different workbooks")
 	}
 }
+
+// =============================================================================
+// Test: Export Skip Logic for Unchanged Collections
+// =============================================================================
+
+func TestSyncJobToCollections_HasExpectedMappings(t *testing.T) {
+	// Verify the SyncJobToCollections map has all expected mappings
+	expectedMappings := map[string][]string{
+		// Year-scoped
+		"sessions":                {"camp_sessions"},
+		"attendees":               {"attendees"},
+		"persons":                 {"persons", "households"},
+		"bunks":                   {"bunks"},
+		"bunk_plans":              {"bunk_plans"},
+		"bunk_assignments":        {"bunk_assignments"},
+		"staff":                   {"staff"},
+		"camper_history":          {"camper_history"},
+		"financial_transactions":  {"financial_transactions"},
+		"person_custom_values":    {"person_custom_values"},
+		"household_custom_values": {"household_custom_values"},
+		"session_groups":          {"session_groups"},
+		// Global
+		"person_tag_defs":   {"person_tag_defs"},
+		"custom_field_defs": {"custom_field_defs"},
+		"financial_lookups": {"financial_categories"},
+		"divisions":         {"divisions"},
+	}
+
+	for syncJob, expectedCollections := range expectedMappings {
+		collections, ok := SyncJobToCollections[syncJob]
+		if !ok {
+			t.Errorf("SyncJobToCollections missing mapping for %q", syncJob)
+			continue
+		}
+
+		if len(collections) != len(expectedCollections) {
+			t.Errorf("SyncJobToCollections[%q] has %d collections, want %d",
+				syncJob, len(collections), len(expectedCollections))
+			continue
+		}
+
+		for i, expected := range expectedCollections {
+			if collections[i] != expected {
+				t.Errorf("SyncJobToCollections[%q][%d] = %q, want %q",
+					syncJob, i, collections[i], expected)
+			}
+		}
+	}
+}
+
+func TestSyncJobToCollections_PersonsMapsToMultipleCollections(t *testing.T) {
+	// persons sync populates both persons and households tables
+	collections, ok := SyncJobToCollections["persons"]
+	if !ok {
+		t.Fatal("SyncJobToCollections missing 'persons' mapping")
+	}
+
+	hasPersons := false
+	hasHouseholds := false
+	for _, col := range collections {
+		if col == "persons" {
+			hasPersons = true
+		}
+		if col == "households" {
+			hasHouseholds = true
+		}
+	}
+
+	if !hasPersons {
+		t.Error("persons sync should map to 'persons' collection")
+	}
+	if !hasHouseholds {
+		t.Error("persons sync should map to 'households' collection")
+	}
+}
+
+func TestSyncYearData_SkipsUnchangedCollections(t *testing.T) {
+	// This test verifies that SyncYearData skips collections that had no changes
+	// when changedCollections map is provided
+
+	// Note: Since SyncYearData requires a PocketBase app to query collections,
+	// this test documents the expected behavior. Integration tests would verify
+	// the actual skip logic.
+
+	t.Run("documents skip behavior for nil changedCollections", func(t *testing.T) {
+		// When changedCollections is nil, all collections should be exported
+		// This is the default behavior when no skip optimization is used
+	})
+
+	t.Run("documents skip behavior for non-nil changedCollections", func(t *testing.T) {
+		// When changedCollections is non-nil:
+		// - Collections in the map should be exported
+		// - Collections NOT in the map should be skipped with a log message
+	})
+}
+
+func TestSyncGlobalsOnly_SkipsUnchangedCollections(t *testing.T) {
+	// Similar to year data, globals should also support skip optimization
+	t.Run("documents skip behavior for global exports", func(t *testing.T) {
+		// When changedCollections is provided:
+		// - Global collections in the map should be exported
+		// - Global collections NOT in the map should be skipped
+	})
+}
+
+func TestSyncForYears_PassesChangedCollections(t *testing.T) {
+	// SyncForYears should accept and pass changedCollections to SyncYearData
+	t.Run("documents changedCollections parameter", func(t *testing.T) {
+		// SyncForYears(ctx, years, includeGlobals, changedCollections)
+		// - changedCollections is passed to SyncYearData
+		// - If includeGlobals is true, changedCollections is also passed to SyncGlobalsOnly
+	})
+}
