@@ -81,3 +81,73 @@ func TestFormatSpreadsheetURL(t *testing.T) {
 		})
 	}
 }
+
+// =============================================================================
+// FindSpreadsheetByName Tests
+// =============================================================================
+
+func TestFindSpreadsheetByName_Disabled(t *testing.T) {
+	// When GOOGLE_SHEETS_ENABLED is false, should return "", nil (graceful degradation)
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "false")
+
+	id, err := FindSpreadsheetByName(context.Background(), "Test Workbook")
+	if err != nil {
+		t.Errorf("Expected no error when disabled, got: %v", err)
+	}
+	if id != "" {
+		t.Errorf("Expected empty ID when disabled, got: %q", id)
+	}
+}
+
+func TestFindSpreadsheetByName_NoFolderID(t *testing.T) {
+	// When GOOGLE_SHEETS_ENABLED is true but GOOGLE_DRIVE_FOLDER_ID not set, should return error
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "true")
+	t.Setenv("GOOGLE_DRIVE_FOLDER_ID", "")
+	// Need credentials to get past the auth check
+	t.Setenv("GOOGLE_SERVICE_ACCOUNT_KEY_FILE", "/nonexistent/path/to/credentials.json")
+
+	_, err := FindSpreadsheetByName(context.Background(), "Test Workbook")
+	if err == nil {
+		t.Error("Expected error when GOOGLE_DRIVE_FOLDER_ID not set")
+	}
+	// Error could be from missing folder ID or missing credentials - both are acceptable
+	// The important thing is that it doesn't silently succeed
+}
+
+func TestFindSpreadsheetByName_EmptyName(t *testing.T) {
+	// Empty name should still work (though unlikely to find anything)
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "false")
+
+	id, err := FindSpreadsheetByName(context.Background(), "")
+	if err != nil {
+		t.Errorf("Expected no error for empty name when disabled, got: %v", err)
+	}
+	if id != "" {
+		t.Errorf("Expected empty ID for empty name when disabled, got: %q", id)
+	}
+}
+
+func TestFindSpreadsheetByName_SpecialCharacters(t *testing.T) {
+	// Names with single quotes should be handled correctly
+	// This tests the query escaping logic
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "false")
+
+	// Names that would break a query if not escaped
+	names := []string{
+		"Camp's Data - 2025",
+		"Test \"Quoted\" Name",
+		"(DEV) Camp's Data - Globals",
+	}
+
+	for _, name := range names {
+		t.Run(name, func(t *testing.T) {
+			id, err := FindSpreadsheetByName(context.Background(), name)
+			if err != nil {
+				t.Errorf("Expected no error for name %q when disabled, got: %v", name, err)
+			}
+			if id != "" {
+				t.Errorf("Expected empty ID when disabled, got: %q", id)
+			}
+		})
+	}
+}

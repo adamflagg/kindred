@@ -339,3 +339,96 @@ func TestLoadCampName_PrefersDockePath(t *testing.T) {
 		t.Errorf("GetCampName() = %q, want %q", got, "Local Config Camp")
 	}
 }
+
+// =============================================================================
+// Dev/Prod Environment Isolation Tests
+// =============================================================================
+// These tests verify that dev and prod environments generate different workbook
+// titles, which ensures Drive searches find the correct sheets per environment.
+
+func TestFormatWorkbookTitle_DevProdIsolation(t *testing.T) {
+	// This test verifies that dev and prod environments generate DIFFERENT titles,
+	// which is critical for the Drive search feature to work correctly.
+	// Dev titles have "(DEV) " prefix, prod titles don't.
+
+	// Reset cache for clean test
+	resetBrandingCache()
+
+	// Test dev environment (IS_DOCKER not set or empty)
+	t.Setenv("IS_DOCKER", "")
+
+	devGlobals := FormatWorkbookTitle("globals", 0)
+	devYear := FormatWorkbookTitle("year", 2025)
+
+	// Dev titles should have "(DEV) " prefix
+	if devGlobals[:6] != "(DEV) " {
+		t.Errorf("Dev globals title should start with '(DEV) ', got: %q", devGlobals)
+	}
+	if devYear[:6] != "(DEV) " {
+		t.Errorf("Dev year title should start with '(DEV) ', got: %q", devYear)
+	}
+
+	// Reset cache and test prod environment
+	resetBrandingCache()
+	t.Setenv("IS_DOCKER", "true")
+
+	prodGlobals := FormatWorkbookTitle("globals", 0)
+	prodYear := FormatWorkbookTitle("year", 2025)
+
+	// Prod titles should NOT have "(DEV) " prefix
+	if len(prodGlobals) >= 6 && prodGlobals[:6] == "(DEV) " {
+		t.Errorf("Prod globals title should NOT start with '(DEV) ', got: %q", prodGlobals)
+	}
+	if len(prodYear) >= 6 && prodYear[:6] == "(DEV) " {
+		t.Errorf("Prod year title should NOT start with '(DEV) ', got: %q", prodYear)
+	}
+
+	// Titles should be different between environments
+	if devGlobals == prodGlobals {
+		t.Errorf("Dev and prod globals titles should be different.\nDev: %q\nProd: %q", devGlobals, prodGlobals)
+	}
+	if devYear == prodYear {
+		t.Errorf("Dev and prod year titles should be different.\nDev: %q\nProd: %q", devYear, prodYear)
+	}
+}
+
+func TestIsDevEnvironment(t *testing.T) {
+	// Test the isDevEnvironment() function directly
+
+	tests := []struct {
+		name      string
+		isDocker  string
+		wantIsDev bool
+	}{
+		{
+			name:      "Empty IS_DOCKER means dev",
+			isDocker:  "",
+			wantIsDev: true,
+		},
+		{
+			name:      "IS_DOCKER=true means prod",
+			isDocker:  "true",
+			wantIsDev: false,
+		},
+		{
+			name:      "IS_DOCKER=1 means prod",
+			isDocker:  "1",
+			wantIsDev: false,
+		},
+		{
+			name:      "IS_DOCKER=any_value means prod",
+			isDocker:  "any_value",
+			wantIsDev: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("IS_DOCKER", tt.isDocker)
+			got := isDevEnvironment()
+			if got != tt.wantIsDev {
+				t.Errorf("isDevEnvironment() with IS_DOCKER=%q = %v, want %v", tt.isDocker, got, tt.wantIsDev)
+			}
+		})
+	}
+}
