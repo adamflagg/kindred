@@ -22,7 +22,7 @@ const statusEnrolled = "enrolled"
 
 // Session type constants for retention context groupings
 var (
-	summerSessionTypes = []string{"main", "embedded", "ag", "quest", "teen", "tli", "training"}
+	summerSessionTypes = []string{"main", "embedded", "ag", "quest", "tli", "training"}
 	familySessionTypes = []string{"family", "adult"}
 )
 
