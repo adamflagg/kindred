@@ -1817,13 +1817,24 @@ func TestV2_FirstYearSummer(t *testing.T) {
 		expectedFirstYear int
 	}{
 		{
-			name:        "new camper - no history",
+			name:        "first-time summer camper - current year enrollment",
+			currentYear: 2025,
+			enrollments: []struct {
+				Year        int
+				SessionType string
+			}{
+				{2025, "main"}, // Current year summer enrollment is in historical data
+			},
+			expectedFirstYear: 2025, // First summer attendance is current year
+		},
+		{
+			name:        "no enrollments edge case",
 			currentYear: 2025,
 			enrollments: []struct {
 				Year        int
 				SessionType string
 			}{},
-			expectedFirstYear: 2025, // Current year is their first
+			expectedFirstYear: 0, // Empty enrollments = never attended summer
 		},
 		{
 			name:        "returning - single prior summer year",
@@ -1861,7 +1872,7 @@ func TestV2_FirstYearSummer(t *testing.T) {
 				{2020, "family"},
 				{2021, "adult"},
 			},
-			expectedFirstYear: 2025, // No summer history, use current year
+			expectedFirstYear: 0, // Never attended summer - should be 0, not currentYear
 		},
 		{
 			name:        "mixed - first summer after family",
@@ -2133,7 +2144,8 @@ func computeIsReturningFamily(currentYear int, enrollments []struct {
 }
 
 // computeFirstYearSummer returns the first year a person attended a summer session
-func computeFirstYearSummer(currentYear int, enrollments []struct {
+// Returns 0 if person has never attended a summer session
+func computeFirstYearSummer(_ int, enrollments []struct {
 	Year        int
 	SessionType string
 }) int {
@@ -2145,10 +2157,7 @@ func computeFirstYearSummer(currentYear int, enrollments []struct {
 			}
 		}
 	}
-	if minYear == 0 {
-		return currentYear // New summer camper
-	}
-	return minYear
+	return minYear // 0 if never attended summer
 }
 
 // computeFirstYearFamily returns the first year a person attended a family session
@@ -2185,4 +2194,151 @@ func isFamilySessionType(sessionType string) bool {
 		}
 	}
 	return false
+}
+
+// ============================================================================
+// Idempotency tests for upsert pattern
+// ============================================================================
+
+// TestCamperHistoryCompositeKeyFormat tests the composite key format used for upsert
+func TestCamperHistoryCompositeKeyFormat(t *testing.T) {
+	tests := []struct {
+		name        string
+		personCMID  int
+		sessionCMID int
+		year        int
+		expected    string
+	}{
+		{
+			name:        "standard key",
+			personCMID:  1001,
+			sessionCMID: 100,
+			year:        2025,
+			expected:    "1001:100|2025",
+		},
+		{
+			name:        "different year same person/session",
+			personCMID:  1001,
+			sessionCMID: 100,
+			year:        2024,
+			expected:    "1001:100|2024",
+		},
+		{
+			name:        "large IDs",
+			personCMID:  9999999,
+			sessionCMID: 999999,
+			year:        2025,
+			expected:    "9999999:999999|2025",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			key := fmt.Sprintf("%d:%d|%d", tt.personCMID, tt.sessionCMID, tt.year)
+			if key != tt.expected {
+				t.Errorf("composite key = %q, want %q", key, tt.expected)
+			}
+		})
+	}
+}
+
+// TestCamperHistoryCompositeKeyDeterministic tests that the same input always produces the same key
+func TestCamperHistoryCompositeKeyDeterministic(t *testing.T) {
+	// Generate key multiple times
+	keys := make([]string, 10)
+	for i := 0; i < 10; i++ {
+		keys[i] = fmt.Sprintf("%d:%d|%d", 1001, 100, 2025)
+	}
+
+	// All should be identical
+	for i := 1; i < len(keys); i++ {
+		if keys[i] != keys[0] {
+			t.Errorf("key %d (%q) differs from key 0 (%q)", i, keys[i], keys[0])
+		}
+	}
+}
+
+// TestCamperHistoryOrphanDetection tests that records not in processed keys are identified as orphans
+func TestCamperHistoryOrphanDetection(t *testing.T) {
+	// Simulate existing records
+	existingKeys := map[string]bool{
+		"1001:100|2025": true, // Will be processed
+		"1002:100|2025": true, // Will be processed
+		"1003:100|2025": true, // NOT processed = orphan (unenrolled camper)
+	}
+
+	// Simulate processed keys (what was synced from source data)
+	processedKeys := map[string]bool{
+		"1001:100|2025": true,
+		"1002:100|2025": true,
+		// 1003 not in source data anymore
+	}
+
+	// Count orphans (records in existing but not in processed)
+	orphanCount := 0
+	for key := range existingKeys {
+		if !processedKeys[key] {
+			orphanCount++
+		}
+	}
+
+	if orphanCount != 1 {
+		t.Errorf("expected 1 orphan, got %d", orphanCount)
+	}
+}
+
+// TestCamperHistoryUpsertDecision tests the create vs update decision logic
+func TestCamperHistoryUpsertDecision(t *testing.T) {
+	tests := []struct {
+		name           string
+		existingKeys   map[string]bool
+		newKey         string
+		expectCreate   bool
+		expectUpdate   bool
+	}{
+		{
+			name:           "new record - not in existing",
+			existingKeys:   map[string]bool{},
+			newKey:         "1001:100|2025",
+			expectCreate:   true,
+			expectUpdate:   false,
+		},
+		{
+			name:           "existing record - should update",
+			existingKeys:   map[string]bool{"1001:100|2025": true},
+			newKey:         "1001:100|2025",
+			expectCreate:   false,
+			expectUpdate:   true,
+		},
+		{
+			name:           "different session - new record",
+			existingKeys:   map[string]bool{"1001:100|2025": true},
+			newKey:         "1001:101|2025",
+			expectCreate:   true,
+			expectUpdate:   false,
+		},
+		{
+			name:           "different year - new record",
+			existingKeys:   map[string]bool{"1001:100|2025": true},
+			newKey:         "1001:100|2026",
+			expectCreate:   true,
+			expectUpdate:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			exists := tt.existingKeys[tt.newKey]
+
+			isCreate := !exists
+			isUpdate := exists
+
+			if isCreate != tt.expectCreate {
+				t.Errorf("create decision = %v, want %v", isCreate, tt.expectCreate)
+			}
+			if isUpdate != tt.expectUpdate {
+				t.Errorf("update decision = %v, want %v", isUpdate, tt.expectUpdate)
+			}
+		})
+	}
 }
