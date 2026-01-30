@@ -58,7 +58,7 @@ migrate((app) => {
     required: true,
     presentable: false,
     min: 1,
-    max: 0,  // 0 = unlimited
+    max: null,  // null = unlimited
     onlyInt: true
   }));
 
@@ -122,8 +122,8 @@ migrate((app) => {
     name: "bunk_cm_id",
     required: false,
     presentable: false,
-    min: 0,
-    max: 0,  // 0 = unlimited
+    min: null,
+    max: null,  // null = unlimited
     onlyInt: true
   }));
 
