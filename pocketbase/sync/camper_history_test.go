@@ -2031,8 +2031,8 @@ func TestV2_SessionTypeFieldPresent(t *testing.T) {
 	}
 
 	familyRecord := findRecordBySession(records, 101)
-	if familyRecord.SessionType != "family" {
-		t.Errorf("session 101: expected type 'family', got %q", familyRecord.SessionType)
+	if familyRecord.SessionType != sessionTypeFamily {
+		t.Errorf("session 101: expected type %q, got %q", sessionTypeFamily, familyRecord.SessionType)
 	}
 }
 
