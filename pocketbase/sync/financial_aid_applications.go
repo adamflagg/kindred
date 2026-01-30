@@ -14,6 +14,19 @@ import (
 // serviceNameFinancialAidApplications is the canonical name for this sync service
 const serviceNameFinancialAidApplications = "financial_aid_applications"
 
+// FA field name constants to avoid magic strings (goconst)
+const (
+	faFieldCAFinancialAssistanceInterest = "CA-FinancialAssistanceInterest"
+	faFieldCAFinancialAssistanceAmount   = "CA-FinancialAssistanceAmount"
+	faFieldCADonationAmount              = "CA-Donation amount"
+	faFieldCADonationOther               = "CA-Donation other"
+	faFieldSummerQuestAmtRequested       = "Summer/Quest: Amt Requested"
+	faFieldFamilyCampAmtRequested        = "Family Camp: Amt Requested"
+	faFieldBnaiMitzvahAmtRequested       = "B'nai Mitzvah: Amt Requested"
+	// Boolean string parsing constants (shared with other sync files)
+	boolYes = "yes"
+)
+
 // FinancialAidApplicationsSync computes derived financial aid applications from custom values.
 // This service reads from person_custom_values (FA- and CA- prefixed fields)
 // and populates the financial_aid_applications table.
@@ -92,10 +105,10 @@ type faApplicationData struct {
 	ownsHome             bool
 
 	// Financial - Expenses
-	totalMedicalExpenses  float64
-	totalEduExpenses      float64
-	totalHousingExpenses  float64
-	totalRent             float64
+	totalMedicalExpenses float64
+	totalEduExpenses     float64
+	totalHousingExpenses float64
+	totalRent            float64
 
 	// Family Info
 	numChildren          int
@@ -104,10 +117,10 @@ type faApplicationData struct {
 	specialCircumstances string
 
 	// Jewish Affiliations
-	affiliatedJCC             bool
-	childAffiliatedSynagogue  string
-	childrenJewishDaySchool   string
-	russianSpeaking           bool
+	affiliatedJCC            bool
+	childAffiliatedSynagogue string
+	childrenJewishDaySchool  string
+	russianSpeaking          bool
 
 	// Government/External Aid
 	govSubsidies             bool
@@ -120,29 +133,29 @@ type faApplicationData struct {
 	financialSupport         string
 
 	// Program Requests
-	summerProgram          string
-	summerAmountRequested  float64
-	fcProgram              string
-	fcAmountRequested      float64
-	tbmProgram             string
-	tbmAmountRequested     float64
-	numPrograms            int
-	numSessions            int
-	amountRequested        float64
+	summerProgram         string
+	summerAmountRequested float64
+	fcProgram             string
+	fcAmountRequested     float64
+	tbmProgram            string
+	tbmAmountRequested    float64
+	numPrograms           int
+	numSessions           int
+	amountRequested       float64
 
 	// COVID/Disaster
-	covidChildcare           bool
-	covidChildcareAmount     float64
-	covidExpenses            string
-	covidExpensesAdditional  string
-	covidExpensesAmount      float64
-	fire                     string
-	fireAffected             bool
-	fireDetail               string
+	covidChildcare          bool
+	covidChildcareAmount    float64
+	covidExpenses           string
+	covidExpensesAdditional string
+	covidExpensesAmount     float64
+	fire                    string
+	fireAffected            bool
+	fireDetail              string
 
 	// Admin/Status
-	depositPaid      float64
-	depositPaidAdult float64
+	depositPaid        float64
+	depositPaidAdult   float64
 	applicantSignature string
 	incomeConfirmed    bool
 	amountConfirmed    bool
@@ -264,19 +277,19 @@ func isFAFieldName(name string) bool {
 
 	// CA- prefix for financial assistance interest/amount only
 	if len(name) >= 3 && name[:3] == "CA-" {
-		if name == "CA-FinancialAssistanceInterest" ||
-			name == "CA-FinancialAssistanceAmount" ||
-			name == "CA-Donation amount" ||
-			name == "CA-Donation other" {
+		if name == faFieldCAFinancialAssistanceInterest ||
+			name == faFieldCAFinancialAssistanceAmount ||
+			name == faFieldCADonationAmount ||
+			name == faFieldCADonationOther {
 			return true
 		}
 		return false
 	}
 
 	// Special amount requested fields without FA- prefix
-	if name == "Summer/Quest: Amt Requested" ||
-		name == "Family Camp: Amt Requested" ||
-		name == "B'nai Mitzvah: Amt Requested" {
+	if name == faFieldSummerQuestAmtRequested ||
+		name == faFieldFamilyCampAmtRequested ||
+		name == faFieldBnaiMitzvahAmtRequested {
 		return true
 	}
 
@@ -291,7 +304,9 @@ type personInfoEntry struct {
 }
 
 // loadPersonInfo loads person info for the year
-func (s *FinancialAidApplicationsSync) loadPersonInfo(ctx context.Context, year int) (map[string]*personInfoEntry, error) {
+func (s *FinancialAidApplicationsSync) loadPersonInfo(
+	ctx context.Context, year int,
+) (map[string]*personInfoEntry, error) {
 	result := make(map[string]*personInfoEntry)
 
 	filter := fmt.Sprintf("year = %d", year)
@@ -409,8 +424,8 @@ func (s *FinancialAidApplicationsSync) processApplications(
 		s.mapFieldToApplication(app, v.fieldName, v.value)
 	}
 
-	// Convert map to slice
-	var result []*faApplicationData
+	// Convert map to slice (preallocate for efficiency)
+	result := make([]*faApplicationData, 0, len(appMap))
 	for _, app := range appMap {
 		result = append(result, app)
 	}
@@ -423,19 +438,19 @@ func (s *FinancialAidApplicationsSync) mapFieldToApplication(app *faApplicationD
 	// Only set if not already set (first non-empty wins for deduplication)
 	switch fieldName {
 	// Interest indicators (CA- prefix)
-	case "CA-FinancialAssistanceInterest":
+	case faFieldCAFinancialAssistanceInterest:
 		if !app.interestExpressed {
 			app.interestExpressed = hasInterestExpressed(value)
 		}
-	case "CA-FinancialAssistanceAmount":
+	case faFieldCAFinancialAssistanceAmount:
 		if app.amountAwarded == 0 {
 			app.amountAwarded = parseNumberValue(value)
 		}
-	case "CA-Donation amount":
+	case faFieldCADonationAmount:
 		if app.donationPreference == "" {
 			app.donationPreference = value
 		}
-	case "CA-Donation other":
+	case faFieldCADonationOther:
 		if app.donationOther == "" {
 			app.donationOther = value
 		}
@@ -637,7 +652,7 @@ func (s *FinancialAidApplicationsSync) mapFieldToApplication(app *faApplicationD
 		if app.summerProgram == "" {
 			app.summerProgram = value
 		}
-	case "Summer/Quest: Amt Requested":
+	case faFieldSummerQuestAmtRequested:
 		if app.summerAmountRequested == 0 {
 			app.summerAmountRequested = parseNumberValue(value)
 		}
@@ -645,7 +660,7 @@ func (s *FinancialAidApplicationsSync) mapFieldToApplication(app *faApplicationD
 		if app.fcProgram == "" {
 			app.fcProgram = value
 		}
-	case "Family Camp: Amt Requested":
+	case faFieldFamilyCampAmtRequested:
 		if app.fcAmountRequested == 0 {
 			app.fcAmountRequested = parseNumberValue(value)
 		}
@@ -653,7 +668,7 @@ func (s *FinancialAidApplicationsSync) mapFieldToApplication(app *faApplicationD
 		if app.tbmProgram == "" {
 			app.tbmProgram = value
 		}
-	case "B'nai Mitzvah: Amt Requested":
+	case faFieldBnaiMitzvahAmtRequested:
 		if app.tbmAmountRequested == 0 {
 			app.tbmAmountRequested = parseNumberValue(value)
 		}
@@ -730,13 +745,13 @@ func hasInterestExpressed(value string) bool {
 		return false
 	}
 	lower := strings.ToLower(strings.TrimSpace(value))
-	return lower != "no" && lower != "n" && lower != "0" && lower != "false"
+	return lower != "no" && lower != "n" && lower != "0" && lower != boolFalseStr
 }
 
 // parseBoolValue parses boolean values from custom field strings
 func parseBoolValue(value string) bool {
 	lower := strings.ToLower(strings.TrimSpace(value))
-	return lower == "yes" || lower == "y" || lower == "true" || lower == "1"
+	return lower == boolYes || lower == "y" || lower == boolTrueStr || lower == "1"
 }
 
 // parseNumberValue parses numeric values from text fields (handles currency formatting)
@@ -917,7 +932,9 @@ func (s *FinancialAidApplicationsSync) upsertApplications(
 }
 
 // loadExistingApplications loads existing application records for the year
-func (s *FinancialAidApplicationsSync) loadExistingApplications(ctx context.Context, year int) (map[string]*core.Record, error) {
+func (s *FinancialAidApplicationsSync) loadExistingApplications(
+	ctx context.Context, year int,
+) (map[string]*core.Record, error) {
 	result := make(map[string]*core.Record)
 
 	filter := fmt.Sprintf("year = %d", year)

@@ -22,6 +22,7 @@ import { useProcessRequests } from '../../hooks/useProcessRequests';
 import { useCamperHistorySync } from '../../hooks/useCamperHistorySync';
 import { useFamilyCampDerivedSync } from '../../hooks/useFamilyCampDerivedSync';
 import { useStaffSkillsSync } from '../../hooks/useStaffSkillsSync';
+import { useFinancialAidApplicationsSync } from '../../hooks/useFinancialAidApplicationsSync';
 import { useCancelQueuedSync } from '../../hooks/useCancelQueuedSync';
 import { useCancelRunningSync } from '../../hooks/useCancelRunningSync';
 import { StatusIcon, formatDuration } from './ConfigInputs';
@@ -56,6 +57,7 @@ export function SyncTab() {
   const camperHistorySync = useCamperHistorySync();
   const familyCampDerivedSync = useFamilyCampDerivedSync();
   const staffSkillsSync = useStaffSkillsSync();
+  const faApplicationsSync = useFinancialAidApplicationsSync();
   const cancelQueuedSync = useCancelQueuedSync();
   const cancelRunningSync = useCancelRunningSync();
 
@@ -391,6 +393,19 @@ export function SyncTab() {
                   <button
                     onClick={() => staffSkillsSync.mutate(syncYear)}
                     disabled={isRunning || staffSkillsSync.isPending}
+                    className="w-full py-2 mt-3 text-xs sm:text-sm font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    {isRunning ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <><Play className="w-4 h-4" /> Run</>
+                    )}
+                  </button>
+                ) : syncType.id === 'financial_aid_applications' ? (
+                  // Financial aid applications requires year parameter - use selected year from dropdown
+                  <button
+                    onClick={() => faApplicationsSync.mutate(syncYear)}
+                    disabled={isRunning || faApplicationsSync.isPending}
                     className="w-full py-2 mt-3 text-xs sm:text-sm font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
                   >
                     {isRunning ? (

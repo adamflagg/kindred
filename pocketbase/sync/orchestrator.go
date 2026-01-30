@@ -416,11 +416,11 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 		"staff",                  // Staff sync: depends on divisions, bunks, persons
 		"financial_transactions", // Source data: depends on sessions, persons, households, divisions
 		// Derived tables (computed from synced data) - grouped after source data
-		"camper_history",               // Derived: computes from attendees
-		"family_camp_derived",          // Derived: computes from custom values (uses existing data in daily)
-		"staff_skills",                 // Derived: computes from person_custom_values (Skills- fields)
-		"financial_aid_applications",   // Derived: computes from person_custom_values (FA- fields)
-		"bunk_requests",                // CSV import, depends on persons
+		"camper_history",             // Derived: computes from attendees
+		"family_camp_derived",        // Derived: computes from custom values (uses existing data in daily)
+		"staff_skills",               // Derived: computes from person_custom_values (Skills- fields)
+		"financial_aid_applications", // Derived: computes from person_custom_values (FA- fields)
+		"bunk_requests",              // CSV import, depends on persons
 	}
 
 	// Only include process_requests in production (Docker) mode
@@ -800,7 +800,8 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		}
 
 		// Derived tables always run (they compute from local PocketBase data, no API calls)
-		servicesToRun = append(servicesToRun, "camper_history", "family_camp_derived", "staff_skills", "financial_aid_applications")
+		servicesToRun = append(servicesToRun,
+			"camper_history", "family_camp_derived", "staff_skills", "financial_aid_applications")
 
 		// Only include bunk_requests and process_requests for current year syncs (not historical)
 		// Bunk requests are populated during the current year's processing

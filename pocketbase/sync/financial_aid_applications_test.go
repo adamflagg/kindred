@@ -507,17 +507,17 @@ func isFAField(name string) bool {
 func mapFAFieldToColumn(fieldName string) string {
 	mapping := map[string]string{
 		// Contact info
-		"FA-Contact Parent Name":        "contact_first_name",
-		"Fa-Contact Parent Last Name":   "contact_last_name",
-		"FA-Contact Parent Email":       "contact_email",
-		"FA-Contact Parent Phone":       "contact_phone",
-		"FA-Contact Parent Address":     "contact_address",
-		"FA-Contact parent city":        "contact_city",
-		"FA-Contact Parent State":       "contact_state",
-		"FA-Contact Parent Zip":         "contact_zip",
-		"FA-Contact Parent Country":     "contact_country",
+		"FA-Contact Parent Name":         "contact_first_name",
+		"Fa-Contact Parent Last Name":    "contact_last_name",
+		"FA-Contact Parent Email":        "contact_email",
+		"FA-Contact Parent Phone":        "contact_phone",
+		"FA-Contact Parent Address":      "contact_address",
+		"FA-Contact parent city":         "contact_city",
+		"FA-Contact Parent State":        "contact_state",
+		"FA-Contact Parent Zip":          "contact_zip",
+		"FA-Contact Parent Country":      "contact_country",
 		"FA-Contact Parent Marital Stat": "contact_marital_status",
-		"FA-Contact Parent Jewish":      "contact_jewish",
+		"FA-Contact Parent Jewish":       "contact_jewish",
 
 		// Parent 2
 		"FA-Parent 2 Name":           "parent_2_name",
@@ -533,10 +533,10 @@ func mapFAFieldToColumn(fieldName string) string {
 		"FA-still unemployed":            "still_unemployed",
 
 		// Assets
-		"FA-Non-retirement savings":    "non_retirement_savings",
+		"FA-Non-retirement savings":     "non_retirement_savings",
 		"FA-Amt in retirement accounts": "retirement_accounts",
-		"FA-StudentDebt":               "student_debt",
-		"FA-Do parents own a home?":    "owns_home",
+		"FA-StudentDebt":                "student_debt",
+		"FA-Do parents own a home?":     "owns_home",
 
 		// Expenses
 		"FA-TotaExpectedMedicalExpenses": "total_medical_expenses",
@@ -567,30 +567,30 @@ func mapFAFieldToColumn(fieldName string) string {
 		"FA-Financial Support":          "financial_support",
 
 		// Program requests
-		"FA-What Program":              "summer_program",
-		"Summer/Quest: Amt Requested":  "summer_amount_requested",
-		"FA-What Family Camp Program":  "fc_program",
-		"Family Camp: Amt Requested":   "fc_amount_requested",
-		"FA-What Bar and Bat Mitzvah":  "tbm_program",
-		"B'nai Mitzvah: Amt Requested": "tbm_amount_requested",
-		"FA-Number of Programs":        "num_programs",
-		"FA-How many sessions":         "num_sessions",
+		"FA-What Program":                "summer_program",
+		"Summer/Quest: Amt Requested":    "summer_amount_requested",
+		"FA-What Family Camp Program":    "fc_program",
+		"Family Camp: Amt Requested":     "fc_amount_requested",
+		"FA-What Bar and Bat Mitzvah":    "tbm_program",
+		"B'nai Mitzvah: Amt Requested":   "tbm_amount_requested",
+		"FA-Number of Programs":          "num_programs",
+		"FA-How many sessions":           "num_sessions",
 		"FA-Amt of Assistance Requested": "amount_requested",
 
 		// COVID/disaster
-		"FA-COVIDchild care":         "covid_childcare",
-		"FA-COVIDchidcare amount":    "covid_childcare_amount",
-		"FA-COVIDexpenses":           "covid_expenses",
+		"FA-COVIDchild care":          "covid_childcare",
+		"FA-COVIDchidcare amount":     "covid_childcare_amount",
+		"FA-COVIDexpenses":            "covid_expenses",
 		"FA-COVIDexpenses additional": "covid_expenses_additional",
-		"FA-COVIDexpenses amount":    "covid_expenses_amount",
-		"FA-Fire":                    "fire",
-		"FA-FireYes/No":              "fire_affected",
-		"FA-Fire Detail":             "fire_detail",
+		"FA-COVIDexpenses amount":     "covid_expenses_amount",
+		"FA-Fire":                     "fire",
+		"FA-FireYes/No":               "fire_affected",
+		"FA-Fire Detail":              "fire_detail",
 
 		// Admin/status
-		"FA-Deposit":                    "deposit_paid",
-		"FA-Applicant Signature":        "applicant_signature",
-		"FA-confirmpretax income":       "income_confirmed",
+		"FA-Deposit":                     "deposit_paid",
+		"FA-Applicant Signature":         "applicant_signature",
+		"FA-confirmpretax income":        "income_confirmed",
 		"FA-ComfirmationRequestedAmount": "amount_confirmed",
 
 		// CA- prefix interest indicators
@@ -629,10 +629,10 @@ func parseFANumberField(value string) float64 {
 
 	// Trim whitespace
 	clean := value
-	for len(clean) > 0 && (clean[0] == ' ' || clean[0] == '\t') {
+	for clean != "" && (clean[0] == ' ' || clean[0] == '\t') {
 		clean = clean[1:]
 	}
-	for len(clean) > 0 && (clean[len(clean)-1] == ' ' || clean[len(clean)-1] == '\t') {
+	for clean != "" && (clean[len(clean)-1] == ' ' || clean[len(clean)-1] == '\t') {
 		clean = clean[:len(clean)-1]
 	}
 
@@ -661,7 +661,7 @@ func parseFloat(s string, result *float64) (bool, error) {
 	}
 
 	negative := false
-	if len(s) > 0 && s[0] == '-' {
+	if s != "" && s[0] == '-' {
 		negative = true
 		s = s[1:]
 	}
@@ -796,30 +796,30 @@ func isFABoolColumn(column string) bool {
 // isFANumberColumn returns true if the column stores numeric values
 func isFANumberColumn(column string) bool {
 	numberColumns := map[string]bool{
-		"total_gross_income":       true,
-		"expected_gross_income":    true,
-		"total_adjusted_income":    true,
-		"total_exemptions":         true,
-		"non_retirement_savings":   true,
-		"retirement_accounts":      true,
-		"student_debt":             true,
-		"total_medical_expenses":   true,
-		"total_edu_expenses":       true,
-		"total_housing_expenses":   true,
-		"total_rent":               true,
-		"num_children":             true,
-		"summer_amount_requested":  true,
-		"fc_amount_requested":      true,
-		"tbm_amount_requested":     true,
-		"num_programs":             true,
-		"num_sessions":             true,
-		"amount_requested":         true,
-		"covid_childcare_amount":   true,
-		"covid_expenses_amount":    true,
-		"deposit_paid":             true,
-		"deposit_paid_adult":       true,
-		"amount_awarded":           true,
-		"other_support_amount":     true,
+		"total_gross_income":      true,
+		"expected_gross_income":   true,
+		"total_adjusted_income":   true,
+		"total_exemptions":        true,
+		"non_retirement_savings":  true,
+		"retirement_accounts":     true,
+		"student_debt":            true,
+		"total_medical_expenses":  true,
+		"total_edu_expenses":      true,
+		"total_housing_expenses":  true,
+		"total_rent":              true,
+		"num_children":            true,
+		"summer_amount_requested": true,
+		"fc_amount_requested":     true,
+		"tbm_amount_requested":    true,
+		"num_programs":            true,
+		"num_sessions":            true,
+		"amount_requested":        true,
+		"covid_childcare_amount":  true,
+		"covid_expenses_amount":   true,
+		"deposit_paid":            true,
+		"deposit_paid_adult":      true,
+		"amount_awarded":          true,
+		"other_support_amount":    true,
 	}
 	return numberColumns[column]
 }
