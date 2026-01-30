@@ -226,7 +226,15 @@ migrate((app) => {
   `).execute();
 
   // =========================================================================
-  // Step 3: Remove old fields
+  // Step 3: Drop old indexes BEFORE removing fields (SQLite requirement)
+  // =========================================================================
+  db.newQuery(`DROP INDEX IF EXISTS idx_camper_history_person_year`).execute();
+  db.newQuery(`DROP INDEX IF EXISTS idx_camper_history_is_returning`).execute();
+  db.newQuery(`DROP INDEX IF EXISTS idx_camper_history_first_year`).execute();
+  db.newQuery(`DROP INDEX IF EXISTS idx_camper_history_session_types`).execute();
+
+  // =========================================================================
+  // Step 4: Remove old fields (indexes must be dropped first)
   // =========================================================================
   collection.fields.removeByName("sessions");
   collection.fields.removeByName("bunks");
@@ -239,14 +247,8 @@ migrate((app) => {
   app.save(collection);
 
   // =========================================================================
-  // Step 4: Update indexes
+  // Step 5: Create new indexes
   // =========================================================================
-
-  // Drop old unique index on (person_id, year)
-  db.newQuery(`DROP INDEX IF EXISTS idx_camper_history_person_year`).execute();
-  db.newQuery(`DROP INDEX IF EXISTS idx_camper_history_is_returning`).execute();
-  db.newQuery(`DROP INDEX IF EXISTS idx_camper_history_first_year`).execute();
-  db.newQuery(`DROP INDEX IF EXISTS idx_camper_history_session_types`).execute();
 
   // Create new unique index on (person_id, session_cm_id, year)
   db.newQuery(`
