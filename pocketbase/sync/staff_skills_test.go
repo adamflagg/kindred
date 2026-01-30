@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-// serviceNameStaffSkills is the canonical name for this sync service
-const serviceNameStaffSkills = "staff_skills"
+// testLastName is a standard test last name (testFirstName is defined in persons_test.go)
+const testLastName = "Johnson"
 
 // TestStaffSkillsSync_Name verifies the service name is correct
 func TestStaffSkillsSync_Name(t *testing.T) {
@@ -50,12 +50,12 @@ func TestStaffSkillsYearValidation(t *testing.T) {
 // TestParseProficiency tests parsing of pipe-delimited proficiency values
 func TestParseProficiency(t *testing.T) {
 	tests := []struct {
-		name              string
-		rawValue          string
-		wantIntermediate  bool
-		wantExperienced   bool
-		wantCanTeach      bool
-		wantCertified     bool
+		name             string
+		rawValue         string
+		wantIntermediate bool
+		wantExperienced  bool
+		wantCanTeach     bool
+		wantCertified    bool
 	}{
 		{
 			name:             "single Int.",
@@ -78,26 +78,26 @@ func TestParseProficiency(t *testing.T) {
 			wantCertified: true,
 		},
 		{
-			name:              "Int. and Exp.",
-			rawValue:          "Int.|Exp.",
-			wantIntermediate:  true,
-			wantExperienced:   true,
+			name:             "Int. and Exp.",
+			rawValue:         "Int.|Exp.",
+			wantIntermediate: true,
+			wantExperienced:  true,
 		},
 		{
-			name:              "all four proficiencies",
-			rawValue:          "Int.|Exp.|Teach|Cert.",
-			wantIntermediate:  true,
-			wantExperienced:   true,
-			wantCanTeach:      true,
-			wantCertified:     true,
+			name:             "all four proficiencies",
+			rawValue:         "Int.|Exp.|Teach|Cert.",
+			wantIntermediate: true,
+			wantExperienced:  true,
+			wantCanTeach:     true,
+			wantCertified:    true,
 		},
 		{
-			name:              "different order",
-			rawValue:          "Cert.|Teach|Int.|Exp.",
-			wantIntermediate:  true,
-			wantExperienced:   true,
-			wantCanTeach:      true,
-			wantCertified:     true,
+			name:             "different order",
+			rawValue:         "Cert.|Teach|Int.|Exp.",
+			wantIntermediate: true,
+			wantExperienced:  true,
+			wantCanTeach:     true,
+			wantCertified:    true,
 		},
 		{
 			name:     "empty value",
@@ -108,17 +108,17 @@ func TestParseProficiency(t *testing.T) {
 			rawValue: "Would like to learn more about outdoor skills",
 		},
 		{
-			name:              "Int. with spaces",
-			rawValue:          " Int. | Exp. ",
-			wantIntermediate:  true,
-			wantExperienced:   true,
+			name:             "Int. with spaces",
+			rawValue:         " Int. | Exp. ",
+			wantIntermediate: true,
+			wantExperienced:  true,
 		},
 		{
-			name:              "three proficiencies",
-			rawValue:          "Int.|Exp.|Teach",
-			wantIntermediate:  true,
-			wantExperienced:   true,
-			wantCanTeach:      true,
+			name:             "three proficiencies",
+			rawValue:         "Int.|Exp.|Teach",
+			wantIntermediate: true,
+			wantExperienced:  true,
+			wantCanTeach:     true,
 		},
 	}
 
@@ -145,7 +145,7 @@ func TestParseProficiency(t *testing.T) {
 // TestExtractSkillName tests stripping "Skills-" prefix from field names
 func TestExtractSkillName(t *testing.T) {
 	tests := []struct {
-		fieldName    string
+		fieldName     string
 		wantSkillName string
 	}{
 		{"Skills-Archery", "Archery"},
@@ -175,7 +175,7 @@ func TestExtractSkillName(t *testing.T) {
 // TestIsSkillsField tests identification of Skills- fields
 func TestIsSkillsField(t *testing.T) {
 	tests := []struct {
-		fieldName string
+		fieldName    string
 		wantIsSkills bool
 	}{
 		{"Skills-Archery", true},
@@ -184,7 +184,7 @@ func TestIsSkillsField(t *testing.T) {
 		{"Skills-Skill Notes", true},
 		{"Family Camp Adult 1", false},
 		{"Bunk Preference", false},
-		{"Skills", false}, // No hyphen
+		{"Skills", false},         // No hyphen
 		{"skills-archery", false}, // lowercase
 		{"SKILLS-ARCHERY", false}, // uppercase
 	}
@@ -202,7 +202,7 @@ func TestIsSkillsField(t *testing.T) {
 // TestIsStaffPartition tests identification of Staff partition
 func TestIsStaffPartition(t *testing.T) {
 	tests := []struct {
-		partition string
+		partition   string
 		wantIsStaff bool
 	}{
 		{"Staff", true},
@@ -390,7 +390,7 @@ func TestStaffSkillsRecordBuilding(t *testing.T) {
 	}
 
 	personDemographics := map[int]testStaffDemographics{
-		12345: {FirstName: "Emma", LastName: "Johnson"},
+		12345: {FirstName: testFirstName, LastName: testLastName},
 		12346: {FirstName: "Liam", LastName: "Garcia"},
 	}
 
@@ -412,8 +412,8 @@ func TestStaffSkillsRecordBuilding(t *testing.T) {
 	if !r1.IsIntermediate || !r1.IsExperienced {
 		t.Errorf("expected intermediate=true, experienced=true, got %v, %v", r1.IsIntermediate, r1.IsExperienced)
 	}
-	if r1.FirstName != "Emma" || r1.LastName != "Johnson" {
-		t.Errorf("expected 'Emma Johnson', got '%s %s'", r1.FirstName, r1.LastName)
+	if r1.FirstName != testFirstName || r1.LastName != testLastName {
+		t.Errorf("expected '%s %s', got '%s %s'", testFirstName, testLastName, r1.FirstName, r1.LastName)
 	}
 
 	// Verify third record (certified only)
@@ -438,7 +438,7 @@ func TestStaffSkillsDeduplication(t *testing.T) {
 	}
 
 	personDemographics := map[int]testStaffDemographics{
-		12345: {FirstName: "Emma", LastName: "Johnson"},
+		12345: {FirstName: testFirstName, LastName: testLastName},
 	}
 
 	records := buildStaffSkillRecords(personValues, personDemographics)
@@ -464,12 +464,18 @@ func TestStaffSkillsDeduplication(t *testing.T) {
 func TestStaffSkillsNotesFieldHandling(t *testing.T) {
 	// Notes fields should have booleans set to false and raw_value containing the text
 	personValues := []testPersonSkillValue{
-		{PersonCMID: 12345, SkillCMID: 200, SkillName: "would like to acquire", Value: "I want to learn rock climbing and wilderness first aid", Year: 2025},
-		{PersonCMID: 12345, SkillCMID: 201, SkillName: "Skill Notes", Value: "Extensive outdoor education background", Year: 2025},
+		{
+			PersonCMID: 12345, SkillCMID: 200, SkillName: "would like to acquire",
+			Value: "I want to learn rock climbing and wilderness first aid", Year: 2025,
+		},
+		{
+			PersonCMID: 12345, SkillCMID: 201, SkillName: "Skill Notes",
+			Value: "Extensive outdoor education background", Year: 2025,
+		},
 	}
 
 	personDemographics := map[int]testStaffDemographics{
-		12345: {FirstName: "Emma", LastName: "Johnson"},
+		12345: {FirstName: testFirstName, LastName: testLastName},
 	}
 
 	records := buildStaffSkillRecords(personValues, personDemographics)
@@ -511,7 +517,7 @@ func TestStaffSkillsEmptyValueSkipped(t *testing.T) {
 	}
 
 	personDemographics := map[int]testStaffDemographics{
-		12345: {FirstName: "Emma", LastName: "Johnson"},
+		12345: {FirstName: testFirstName, LastName: testLastName},
 	}
 
 	records := buildStaffSkillRecords(personValues, personDemographics)

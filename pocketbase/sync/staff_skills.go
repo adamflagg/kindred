@@ -11,6 +11,8 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
+const serviceNameStaffSkills = "staff_skills"
+
 // StaffSkillsSync extracts Skills- fields from person_custom_values
 // into a normalized staff_skills table for activity assignment queries.
 //
@@ -43,7 +45,7 @@ func NewStaffSkillsSync(app core.App) *StaffSkillsSync {
 
 // Name returns the service name
 func (s *StaffSkillsSync) Name() string {
-	return "staff_skills"
+	return serviceNameStaffSkills
 }
 
 // GetStats returns the current stats
@@ -53,10 +55,10 @@ func (s *StaffSkillsSync) GetStats() Stats {
 
 // skillDefinition holds a skill field definition
 type skillDefinition struct {
-	pbID   string // PocketBase record ID
-	cmID   int    // CampMinder custom field ID
-	name   string // Field name (e.g., "Skills-Archery")
-	skill  string // Skill name without prefix (e.g., "Archery")
+	pbID  string // PocketBase record ID
+	cmID  int    // CampMinder custom field ID
+	name  string // Field name (e.g., "Skills-Archery")
+	skill string // Skill name without prefix (e.g., "Archery")
 }
 
 // staffSkillRecord holds data for one staff-skill record
@@ -70,8 +72,6 @@ type staffSkillRecord struct {
 	canTeach       bool
 	isCertified    bool
 	rawValue       string
-	firstName      string
-	lastName       string
 }
 
 // Sync executes the staff skills extraction
