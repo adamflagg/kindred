@@ -63,8 +63,18 @@ export function useRunIndividualSync() {
       // with status: "started". Actual completion comes via status polling.
       // Only show "started" confirmation here - completion toasts come from status updates.
 
-      // Check if response indicates delayed start (rate limiting)
-      if (data?.message?.includes('response delayed')) {
+      // Check if response indicates queued (sync is busy)
+      if (data?.status === 'queued') {
+        toast(`${displayName} sync queued (position ${data?.position || '?'})`, {
+          icon: '📋',
+          duration: 4000,
+          className: 'toast-lodge toast-lodge-info',
+          style: {
+            borderLeft: '4px solid hsl(42, 92%, 62%)',
+          },
+        });
+      } else if (data?.message?.includes('response delayed')) {
+        // Check if response indicates delayed start (rate limiting)
         toast(`${displayName} sync is starting - this may take a few moments due to API rate limits`, {
           icon: '⏳',
           duration: 6000,

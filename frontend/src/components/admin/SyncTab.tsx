@@ -6,10 +6,10 @@ import {
   Zap,
   RefreshCw,
   Settings2,
-  Calendar,
   X,
   Clock,
   ListOrdered,
+  ChevronDown,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useYear } from '../../hooks/useCurrentYear';
@@ -30,14 +30,8 @@ import { useRunPhaseSync } from '../../hooks/useRunPhaseSync';
 import { StatusIcon, formatDuration } from './ConfigInputs';
 import { clearCache } from '../../utils/queryClient';
 import ProcessRequestOptions, { type ProcessRequestOptionsState } from './ProcessRequestOptions';
-import EntitySyncOptions, { type EntitySyncOptionsState } from './EntitySyncOptions';
-import { GLOBAL_SYNC_TYPES, CURRENT_YEAR_SYNC_TYPES, getYearSyncTypes, Globe, SYNC_PHASES, type SyncPhase } from './syncTypes';
-
-// Entity types that support custom field values sync option
-// Note: "persons" is a combined sync that populates persons and households tables
-// from a single API call (tags are stored as multi-select relation on persons)
-const ENTITY_SYNC_TYPES = ['persons'] as const;
-type EntitySyncType = typeof ENTITY_SYNC_TYPES[number];
+import { GLOBAL_SYNC_TYPES, getYearSyncTypes, Globe, SYNC_PHASES, getSyncTypesByPhase, type SyncPhase } from './syncTypes';
+import clsx from 'clsx';
 
 export function SyncTab() {
   const currentYear = useYear();
@@ -47,10 +41,11 @@ export function SyncTab() {
   const [includeCustomValues, setIncludeCustomValues] = useState(false);
   const [syncDebug, setSyncDebug] = useState(false);
   const [showProcessOptions, setShowProcessOptions] = useState(false);
-  const [entityModalSyncType, setEntityModalSyncType] = useState<EntitySyncType | null>(null);
   // Phase-based sync mode
   const [syncMode, setSyncMode] = useState<'full' | 'phase'>('full');
   const [selectedPhase, setSelectedPhase] = useState<SyncPhase>('source');
+  // Collapsible globals section
+  const [globalsExpanded, setGlobalsExpanded] = useState(false);
 
   // Use the completion toasts hook - it wraps useSyncStatusAPI and fires toasts on completion
   const syncStatus = useSyncCompletionToasts();
@@ -88,6 +83,19 @@ export function SyncTab() {
     }
   };
 
+  // Helper to get display name for queue item
+  const getQueueItemDisplay = (item: QueuedSyncItem) => {
+    if (item.type === 'phase') {
+      const phase = SYNC_PHASES.find(p => p.id === item.service);
+      return phase ? `${phase.name} Phase` : item.service;
+    }
+    if (item.type === 'individual') {
+      return item.service.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    }
+    // unified
+    return item.service === 'all' ? 'All Services' : item.service;
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -95,6 +103,135 @@ export function SyncTab() {
       </div>
     );
   }
+
+  // Render a sync card for a given sync type
+  const renderSyncCard = (syncType: typeof availableSyncTypes[number]) => {
+    const statusValue = syncStatus?.[syncType.id as keyof typeof syncStatus];
+    const status = (statusValue && typeof statusValue === 'object' && 'status' in statusValue)
+      ? statusValue as SyncStatus
+      : { status: 'idle' } as SyncStatus;
+    const Icon = syncType.icon;
+    const isRunning = status.status === 'running';
+    const isPending = status.status === 'pending';
+
+    // Determine which hook to use based on sync type
+    const handleRun = () => {
+      switch (syncType.id) {
+        case 'process_requests':
+          runIndividualSync.mutate(syncType.id);
+          break;
+        case 'camper_history':
+          camperHistorySync.mutate(syncYear);
+          break;
+        case 'family_camp_derived':
+          familyCampDerivedSync.mutate(syncYear);
+          break;
+        case 'staff_skills':
+          staffSkillsSync.mutate(syncYear);
+          break;
+        case 'financial_aid_applications':
+          faApplicationsSync.mutate(syncYear);
+          break;
+        case 'household_demographics':
+          householdDemographicsSync.mutate(syncYear);
+          break;
+        case 'person_custom_values':
+        case 'household_custom_values':
+          runOnDemandSync.mutate({
+            syncType: syncType.id,
+            session: 'all',
+            debug: false,
+          });
+          break;
+        default:
+          runIndividualSync.mutate(syncType.id);
+      }
+    };
+
+    return (
+      <div
+        key={syncType.id}
+        className="bg-card rounded-xl border border-border p-3 sm:p-4 hover:border-primary/30 transition-colors flex flex-col"
+      >
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <Icon className={`w-4 h-4 flex-shrink-0 ${syncType.color}`} />
+            <span className="font-medium text-sm truncate">{syncType.name}</span>
+          </div>
+          <StatusIcon status={status.status} />
+        </div>
+
+        {/* Status info */}
+        <div className="flex-1 min-h-[2.5rem]">
+          {status.summary && status.status !== 'idle' ? (
+            <div className="space-y-1">
+              <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs">
+                {status.summary.created > 0 && (
+                  <span className="text-emerald-600 dark:text-emerald-400 font-medium">{status.summary.created} new</span>
+                )}
+                {status.summary.updated > 0 && (
+                  <span className="text-sky-600 dark:text-sky-400 font-medium">{status.summary.updated} upd</span>
+                )}
+                {(status.summary.already_processed || 0) > 0 && (
+                  <span className="text-muted-foreground">{status.summary.already_processed} done</span>
+                )}
+                {(status.summary.skipped || 0) > 0 && (
+                  <span className="text-muted-foreground">{status.summary.skipped} skip</span>
+                )}
+                {status.summary.errors > 0 && (
+                  <span className="text-red-600 dark:text-red-400 font-medium">{status.summary.errors} err</span>
+                )}
+              </div>
+              <div className="text-muted-foreground text-xs truncate">
+                {status.summary.duration !== undefined && formatDuration(status.summary.duration)}
+                {status.summary.duration !== undefined && status.end_time && ' · '}
+                {status.end_time && format(new Date(status.end_time), 'MMM d, h:mm a')}
+              </div>
+            </div>
+          ) : (
+            <div className="text-xs text-muted-foreground">Not run yet</div>
+          )}
+        </div>
+
+        {/* Run button - special handling for process_requests */}
+        {syncType.id === 'process_requests' ? (
+          <div className="flex gap-2 mt-2">
+            <button
+              onClick={handleRun}
+              disabled={isRunning || isPending || runIndividualSync.isPending}
+              className="flex-1 py-1.5 text-xs font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1 transition-colors"
+            >
+              {isRunning || isPending ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <><Play className="w-3.5 h-3.5" /> Run</>
+              )}
+            </button>
+            <button
+              onClick={() => setShowProcessOptions(true)}
+              disabled={isRunning || isPending}
+              className="px-2 py-1.5 text-xs font-medium rounded-lg bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 hover:bg-teal-200 dark:hover:bg-teal-900/60 disabled:opacity-50 flex items-center justify-center transition-colors"
+              title="Advanced options"
+            >
+              <Settings2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={handleRun}
+            disabled={isRunning || isPending || runIndividualSync.isPending || runOnDemandSync.isPending}
+            className="w-full py-1.5 mt-2 text-xs font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1 transition-colors"
+          >
+            {isRunning || isPending ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <><Play className="w-3.5 h-3.5" /> Run</>
+            )}
+          </button>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -183,9 +320,10 @@ export function SyncTab() {
               )}
             </div>
 
-            {/* Options Group (conditional on full mode) */}
-            {syncMode === 'full' && (syncService === 'all' || syncService === 'persons') && (
-              <div className="flex items-center gap-4 lg:border-l lg:border-border/50 lg:pl-4">
+            {/* Options Group */}
+            <div className="flex items-center gap-4 lg:border-l lg:border-border/50 lg:pl-4">
+              {/* Include custom values - only for full mode with all/persons */}
+              {syncMode === 'full' && (syncService === 'all' || syncService === 'persons') && (
                 <label className="flex items-center gap-2 text-sm cursor-pointer hover:text-foreground transition-colors">
                   <input
                     type="checkbox"
@@ -194,30 +332,29 @@ export function SyncTab() {
                     className="rounded border-gray-300"
                     disabled={unifiedSync.isPending}
                   />
-                  <span className="text-muted-foreground">Include custom values</span>
+                  <span className="text-muted-foreground">Include CV</span>
                 </label>
+              )}
 
-                {includeCustomValues && (
-                  <label className="flex items-center gap-2 text-sm cursor-pointer hover:text-foreground transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={syncDebug}
-                      onChange={(e) => setSyncDebug(e.target.checked)}
-                      className="rounded border-gray-300"
-                      disabled={unifiedSync.isPending}
-                    />
-                    <span className="text-muted-foreground">Debug</span>
-                  </label>
-                )}
-              </div>
-            )}
+              {/* Phase description - only in phase mode */}
+              {syncMode === 'phase' && (
+                <span className="text-sm text-muted-foreground">
+                  {SYNC_PHASES.find(p => p.id === selectedPhase)?.description}
+                </span>
+              )}
 
-            {/* Phase Info (shown in phase mode) */}
-            {syncMode === 'phase' && (
-              <div className="flex items-center gap-2 lg:border-l lg:border-border/50 lg:pl-4 text-sm text-muted-foreground">
-                <span>{SYNC_PHASES.find(p => p.id === selectedPhase)?.description}</span>
-              </div>
-            )}
+              {/* Debug - always available */}
+              <label className="flex items-center gap-2 text-sm cursor-pointer hover:text-foreground transition-colors">
+                <input
+                  type="checkbox"
+                  checked={syncDebug}
+                  onChange={(e) => setSyncDebug(e.target.checked)}
+                  className="rounded border-gray-300"
+                  disabled={unifiedSync.isPending || runPhaseSync.isPending}
+                />
+                <span className="text-muted-foreground">Debug</span>
+              </label>
+            </div>
 
             {/* Action Group */}
             <div className="lg:ml-auto flex gap-2">
@@ -262,6 +399,7 @@ export function SyncTab() {
                     runPhaseSync.mutate({
                       year: syncYear,
                       phase: selectedPhase,
+                      debug: syncDebug,
                     });
                   }}
                   disabled={runPhaseSync.isPending}
@@ -282,13 +420,18 @@ export function SyncTab() {
         {/* Queue Panel - shown when items are queued */}
         {hasQueuedItems && (
           <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800 p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <ListOrdered className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-              <span className="font-medium text-amber-800 dark:text-amber-200">
-                Sync Queue ({queue.length})
-              </span>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <ListOrdered className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                <span className="font-medium text-amber-800 dark:text-amber-200">
+                  Sync Queue ({queue.length})
+                </span>
+              </div>
+              {queue.length > 5 && (
+                <span className="text-xs text-amber-600 dark:text-amber-400">Scroll for more</span>
+              )}
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2 max-h-[200px] overflow-y-auto">
               {queue.map((item) => (
                 <div
                   key={item.id}
@@ -300,7 +443,7 @@ export function SyncTab() {
                     </span>
                     <div>
                       <span className="font-medium text-sm">
-                        {item.year} - {item.service === 'all' ? 'All Services' : item.service}
+                        {item.year} - {getQueueItemDisplay(item)}
                         {item.include_custom_values && ' (+CV)'}
                       </span>
                       <div className="text-xs text-muted-foreground flex items-center gap-1">
@@ -339,285 +482,134 @@ export function SyncTab() {
         </div>
       </div>
 
-      {/* Current Year Sync Types Section */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <Calendar className="w-4 h-4" />
-          <span className="text-sm font-medium">Current Year</span>
-          <span className="text-xs text-muted-foreground/70">({currentYear})</span>
-        </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          {CURRENT_YEAR_SYNC_TYPES.map((syncType) => {
-            const statusValue = syncStatus?.[syncType.id as keyof typeof syncStatus];
-            const status = (statusValue && typeof statusValue === 'object' && 'status' in statusValue)
-              ? statusValue as SyncStatus
-              : { status: 'idle' } as SyncStatus;
-            const Icon = syncType.icon;
-            const isRunning = status.status === 'running';
+      {/* Phase-based Sync Types Sections */}
+      {SYNC_PHASES.map((phase) => {
+        const types = getSyncTypesByPhase(phase.id, syncYear, currentYear);
+        if (types.length === 0) return null;
 
-            return (
-              <div
-                key={syncType.id}
-                className="bg-card rounded-xl border border-border p-4 sm:p-5 hover:border-primary/30 transition-colors flex flex-col"
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Icon className={`w-5 h-5 flex-shrink-0 ${syncType.color}`} />
-                    <span className="font-semibold text-sm sm:text-base truncate">{syncType.name}</span>
-                  </div>
-                  <StatusIcon status={status.status} />
-                </div>
+        const PhaseIcon = phase.icon;
 
-                {/* Status info - grows to fill available space */}
-                <div className="flex-1 min-h-[3rem]">
-                  {status.summary && status.status !== 'idle' ? (
-                    <div className="space-y-1.5">
-                      <div className="flex flex-wrap gap-x-2 gap-y-1 text-xs sm:text-sm">
-                        {status.summary.created > 0 && (
-                          <span className="text-emerald-600 dark:text-emerald-400 font-medium">{status.summary.created} new</span>
-                        )}
-                        {status.summary.updated > 0 && (
-                          <span className="text-sky-600 dark:text-sky-400 font-medium">{status.summary.updated} upd</span>
-                        )}
-                        {(status.summary.already_processed || 0) > 0 && (
-                          <span className="text-muted-foreground">{status.summary.already_processed} done</span>
-                        )}
-                        {(status.summary.skipped || 0) > 0 && (
-                          <span className="text-muted-foreground">{status.summary.skipped} skip</span>
-                        )}
-                        {status.summary.errors > 0 && (
-                          <span className="text-red-600 dark:text-red-400 font-medium">{status.summary.errors} err</span>
-                        )}
-                      </div>
-                      <div className="text-muted-foreground text-xs sm:text-sm truncate">
-                        {status.summary.duration !== undefined && formatDuration(status.summary.duration)}
-                        {status.summary.duration !== undefined && status.end_time && ' · '}
-                        {status.end_time && format(new Date(status.end_time), 'MMM d, h:mm a')}
-                      </div>
-                      {/* Sub-stats for combined syncs (e.g., persons + households) */}
-                      {status.summary.sub_stats && Object.keys(status.summary.sub_stats).length > 0 && (
-                        <div className="mt-1 space-y-0.5">
-                          {Object.entries(status.summary.sub_stats).map(([name, subStats]) => (
-                            <div key={name} className="flex flex-wrap gap-x-2 text-xs text-muted-foreground">
-                              <span className="capitalize font-medium">{name}:</span>
-                              {subStats.created > 0 && <span className="text-emerald-600 dark:text-emerald-400">{subStats.created} new</span>}
-                              {subStats.updated > 0 && <span className="text-sky-600 dark:text-sky-400">{subStats.updated} upd</span>}
-                              {subStats.skipped > 0 && <span>{subStats.skipped} skip</span>}
-                              {subStats.errors > 0 && <span className="text-red-600 dark:text-red-400">{subStats.errors} err</span>}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="text-xs sm:text-sm text-muted-foreground">Not run yet</div>
-                  )}
-                </div>
-
-                {/* Run button always at bottom - special handling for process_requests and entity syncs */}
-                {syncType.id === 'process_requests' ? (
-                  <div className="flex gap-2 mt-3">
-                    <button
-                      onClick={() => runIndividualSync.mutate(syncType.id)}
-                      disabled={isRunning || runIndividualSync.isPending}
-                      className="flex-1 py-2 text-xs sm:text-sm font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
-                    >
-                      {isRunning ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <><Play className="w-4 h-4" /> Run</>
-                      )}
-                    </button>
-                    <button
-                      onClick={() => setShowProcessOptions(true)}
-                      disabled={isRunning}
-                      className="px-3 py-2 text-xs sm:text-sm font-medium rounded-lg bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 hover:bg-teal-200 dark:hover:bg-teal-900/60 disabled:opacity-50 flex items-center justify-center transition-colors"
-                      title="Advanced options"
-                    >
-                      <Settings2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ) : syncType.id === 'camper_history' ? (
-                  // Camper history requires year parameter - use selected year from dropdown
-                  <button
-                    onClick={() => camperHistorySync.mutate(syncYear)}
-                    disabled={isRunning || camperHistorySync.isPending}
-                    className="w-full py-2 mt-3 text-xs sm:text-sm font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
-                  >
-                    {isRunning ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <><Play className="w-4 h-4" /> Run</>
-                    )}
-                  </button>
-                ) : syncType.id === 'family_camp_derived' ? (
-                  // Family camp derived requires year parameter - use selected year from dropdown
-                  <button
-                    onClick={() => familyCampDerivedSync.mutate(syncYear)}
-                    disabled={isRunning || familyCampDerivedSync.isPending}
-                    className="w-full py-2 mt-3 text-xs sm:text-sm font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
-                  >
-                    {isRunning ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <><Play className="w-4 h-4" /> Run</>
-                    )}
-                  </button>
-                ) : syncType.id === 'staff_skills' ? (
-                  // Staff skills requires year parameter - use selected year from dropdown
-                  <button
-                    onClick={() => staffSkillsSync.mutate(syncYear)}
-                    disabled={isRunning || staffSkillsSync.isPending}
-                    className="w-full py-2 mt-3 text-xs sm:text-sm font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
-                  >
-                    {isRunning ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <><Play className="w-4 h-4" /> Run</>
-                    )}
-                  </button>
-                ) : syncType.id === 'financial_aid_applications' ? (
-                  // Financial aid applications requires year parameter - use selected year from dropdown
-                  <button
-                    onClick={() => faApplicationsSync.mutate(syncYear)}
-                    disabled={isRunning || faApplicationsSync.isPending}
-                    className="w-full py-2 mt-3 text-xs sm:text-sm font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
-                  >
-                    {isRunning ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <><Play className="w-4 h-4" /> Run</>
-                    )}
-                  </button>
-                ) : syncType.id === 'household_demographics' ? (
-                  // Household demographics requires year parameter - use selected year from dropdown
-                  <button
-                    onClick={() => householdDemographicsSync.mutate(syncYear)}
-                    disabled={isRunning || householdDemographicsSync.isPending}
-                    className="w-full py-2 mt-3 text-xs sm:text-sm font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
-                  >
-                    {isRunning ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <><Play className="w-4 h-4" /> Run</>
-                    )}
-                  </button>
-                ) : ENTITY_SYNC_TYPES.includes(syncType.id as EntitySyncType) ? (
-                  // Persons/Households - have settings button for custom field values option
-                  <div className="flex gap-2 mt-3">
-                    <button
-                      onClick={() => runIndividualSync.mutate(syncType.id)}
-                      disabled={isRunning || runIndividualSync.isPending}
-                      className="flex-1 py-2 text-xs sm:text-sm font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
-                    >
-                      {isRunning ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <><Play className="w-4 h-4" /> Run</>
-                      )}
-                    </button>
-                    <button
-                      onClick={() => setEntityModalSyncType(syncType.id as EntitySyncType)}
-                      disabled={isRunning}
-                      className="px-3 py-2 text-xs sm:text-sm font-medium rounded-lg disabled:opacity-50 flex items-center justify-center transition-colors bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 hover:bg-violet-200 dark:hover:bg-violet-900/60"
-                      title="Sync options (include custom field values)"
-                    >
-                      <Settings2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => runIndividualSync.mutate(syncType.id)}
-                    disabled={isRunning || runIndividualSync.isPending}
-                    className="w-full py-2 mt-3 text-xs sm:text-sm font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
-                  >
-                    {isRunning ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <><Play className="w-4 h-4" /> Run</>
-                    )}
-                  </button>
-                )}
+        return (
+          <div key={phase.id} className="space-y-3">
+            {/* Phase header with "Run Phase" button */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <PhaseIcon className="w-4 h-4" />
+                <span className="text-sm font-medium">{phase.name}</span>
+                <span className="text-xs text-muted-foreground/70">({types.length} jobs)</span>
               </div>
-            );
-          })}
-        </div>
-      </div>
+              <button
+                onClick={() => runPhaseSync.mutate({ year: syncYear, phase: phase.id, debug: syncDebug })}
+                disabled={runPhaseSync.isPending}
+                className="text-xs px-3 py-1.5 rounded-lg bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
+              >
+                {runPhaseSync.isPending ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Play className="w-3.5 h-3.5" />
+                )}
+                Run Phase
+              </button>
+            </div>
 
-      {/* Global Sync Types Section */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-2 text-muted-foreground">
+            {/* Adaptive grid - more columns for source phase */}
+            <div className={clsx(
+              "grid gap-2 sm:gap-3",
+              phase.id === 'source' ? "grid-cols-2 md:grid-cols-4 xl:grid-cols-5" :
+              phase.id === 'transform' ? "grid-cols-2 md:grid-cols-4 xl:grid-cols-5" :
+              "grid-cols-2 md:grid-cols-3 xl:grid-cols-4"
+            )}>
+              {types.map(syncType => renderSyncCard(syncType))}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Global Sync Types Section - Collapsible */}
+      <div className="mt-6 pt-4 border-t border-border/50">
+        <button
+          onClick={() => setGlobalsExpanded(!globalsExpanded)}
+          className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors w-full"
+        >
           <Globe className="w-4 h-4" />
           <span className="text-sm font-medium">Global Definitions</span>
-          <span className="text-xs text-muted-foreground/70">(cross-year)</span>
-        </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          {GLOBAL_SYNC_TYPES.map((syncType) => {
-            const statusValue = syncStatus?.[syncType.id as keyof typeof syncStatus];
-            const status = (statusValue && typeof statusValue === 'object' && 'status' in statusValue)
-              ? statusValue as SyncStatus
-              : { status: 'idle' } as SyncStatus;
-            const Icon = syncType.icon;
-            const isRunning = status.status === 'running';
+          <span className="text-xs text-muted-foreground/70">(auto-synced if missing)</span>
+          <ChevronDown className={clsx(
+            "w-4 h-4 ml-auto transition-transform",
+            globalsExpanded && "rotate-180"
+          )} />
+        </button>
 
-            return (
-              <div
-                key={syncType.id}
-                className="bg-card rounded-xl border border-border p-4 sm:p-5 hover:border-primary/30 transition-colors flex flex-col"
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Icon className={`w-5 h-5 flex-shrink-0 ${syncType.color}`} />
-                    <span className="font-semibold text-sm sm:text-base truncate">{syncType.name}</span>
-                  </div>
-                  <StatusIcon status={status.status} />
-                </div>
+        {globalsExpanded && (
+          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3 mt-3">
+            {GLOBAL_SYNC_TYPES.map((syncType) => {
+              const statusValue = syncStatus?.[syncType.id as keyof typeof syncStatus];
+              const status = (statusValue && typeof statusValue === 'object' && 'status' in statusValue)
+                ? statusValue as SyncStatus
+                : { status: 'idle' } as SyncStatus;
+              const Icon = syncType.icon;
+              const isRunning = status.status === 'running';
+              const isPending = status.status === 'pending';
 
-                {/* Status info */}
-                <div className="flex-1 min-h-[3rem]">
-                  {status.summary && status.status !== 'idle' ? (
-                    <div className="space-y-1.5">
-                      <div className="flex flex-wrap gap-x-2 gap-y-1 text-xs sm:text-sm">
-                        {status.summary.created > 0 && (
-                          <span className="text-emerald-600 dark:text-emerald-400 font-medium">{status.summary.created} new</span>
-                        )}
-                        {status.summary.updated > 0 && (
-                          <span className="text-sky-600 dark:text-sky-400 font-medium">{status.summary.updated} upd</span>
-                        )}
-                        {(status.summary.skipped || 0) > 0 && (
-                          <span className="text-muted-foreground">{status.summary.skipped} skip</span>
-                        )}
-                        {status.summary.errors > 0 && (
-                          <span className="text-red-600 dark:text-red-400 font-medium">{status.summary.errors} err</span>
-                        )}
-                      </div>
-                      <div className="text-muted-foreground text-xs sm:text-sm truncate">
-                        {status.summary.duration !== undefined && formatDuration(status.summary.duration)}
-                        {status.summary.duration !== undefined && status.end_time && ' · '}
-                        {status.end_time && format(new Date(status.end_time), 'MMM d, h:mm a')}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-xs sm:text-sm text-muted-foreground">Not run yet</div>
-                  )}
-                </div>
-
-                {/* Run button */}
-                <button
-                  onClick={() => runIndividualSync.mutate(syncType.id)}
-                  disabled={isRunning || runIndividualSync.isPending}
-                  className="w-full py-2 mt-3 text-xs sm:text-sm font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
+              return (
+                <div
+                  key={syncType.id}
+                  className="bg-card rounded-xl border border-border p-3 sm:p-4 hover:border-primary/30 transition-colors flex flex-col"
                 >
-                  {isRunning ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <><Play className="w-4 h-4" /> Run</>
-                  )}
-                </button>
-              </div>
-            );
-          })}
-        </div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Icon className={`w-4 h-4 flex-shrink-0 ${syncType.color}`} />
+                      <span className="font-medium text-sm truncate">{syncType.name}</span>
+                    </div>
+                    <StatusIcon status={status.status} />
+                  </div>
+
+                  {/* Status info */}
+                  <div className="flex-1 min-h-[2.5rem]">
+                    {status.summary && status.status !== 'idle' ? (
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs">
+                          {status.summary.created > 0 && (
+                            <span className="text-emerald-600 dark:text-emerald-400 font-medium">{status.summary.created} new</span>
+                          )}
+                          {status.summary.updated > 0 && (
+                            <span className="text-sky-600 dark:text-sky-400 font-medium">{status.summary.updated} upd</span>
+                          )}
+                          {(status.summary.skipped || 0) > 0 && (
+                            <span className="text-muted-foreground">{status.summary.skipped} skip</span>
+                          )}
+                          {status.summary.errors > 0 && (
+                            <span className="text-red-600 dark:text-red-400 font-medium">{status.summary.errors} err</span>
+                          )}
+                        </div>
+                        <div className="text-muted-foreground text-xs truncate">
+                          {status.summary.duration !== undefined && formatDuration(status.summary.duration)}
+                          {status.summary.duration !== undefined && status.end_time && ' · '}
+                          {status.end_time && format(new Date(status.end_time), 'MMM d, h:mm a')}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-xs text-muted-foreground">Not run yet</div>
+                    )}
+                  </div>
+
+                  {/* Run button */}
+                  <button
+                    onClick={() => runIndividualSync.mutate(syncType.id)}
+                    disabled={isRunning || isPending || runIndividualSync.isPending}
+                    className="w-full py-1.5 mt-2 text-xs font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1 transition-colors"
+                  >
+                    {isRunning || isPending ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <><Play className="w-3.5 h-3.5" /> Run</>
+                    )}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Process Requests Options Modal */}
@@ -630,37 +622,6 @@ export function SyncTab() {
         }}
         isProcessing={processRequests.isPending}
       />
-
-      {/* Entity Sync Options Modal (Persons/Households with custom field values option) */}
-      {entityModalSyncType && (
-        <EntitySyncOptions
-          isOpen={!!entityModalSyncType}
-          onClose={() => setEntityModalSyncType(null)}
-          onSubmit={(options: EntitySyncOptionsState) => {
-            // Run the combined persons sync (populates persons + households)
-            runIndividualSync.mutate(entityModalSyncType);
-
-            // If custom field values option is enabled, also trigger custom field syncs
-            // The persons sync populates both persons and households tables,
-            // so we sync custom field values for both entity types
-            if (options.includeCustomFieldValues) {
-              runOnDemandSync.mutate({
-                syncType: 'person_custom_values',
-                session: options.session,
-                debug: options.debug,
-              });
-              runOnDemandSync.mutate({
-                syncType: 'household_custom_values',
-                session: options.session,
-                debug: options.debug,
-              });
-            }
-            setEntityModalSyncType(null);
-          }}
-          isProcessing={runIndividualSync.isPending || runOnDemandSync.isPending}
-          entityType={entityModalSyncType}
-        />
-      )}
     </div>
   );
 }

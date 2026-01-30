@@ -138,19 +138,21 @@ type Status struct {
 	Year      int        `json:"year,omitempty"` // Year being synced (0 = current year)
 }
 
-// QueuedSync represents a unified sync request waiting in the queue
+// QueuedSync represents a sync request waiting in the queue
 type QueuedSync struct {
-	ID                  string    `json:"id"`
-	Year                int       `json:"year"`
-	Service             string    `json:"service"`
-	IncludeCustomValues bool      `json:"include_custom_values"`
-	Debug               bool      `json:"debug"`
-	QueuedAt            time.Time `json:"queued_at"`
-	RequestedBy         string    `json:"requested_by"`
+	ID                  string                 `json:"id"`
+	Year                int                    `json:"year"`
+	Type                string                 `json:"type"`    // "unified", "phase", "individual"
+	Service             string                 `json:"service"` // unified: "all"; phase: phase name; individual: job name
+	IncludeCustomValues bool                   `json:"include_custom_values"`
+	Debug               bool                   `json:"debug"`
+	Options             map[string]interface{} `json:"options,omitempty"`
+	QueuedAt            time.Time              `json:"queued_at"`
+	RequestedBy         string                 `json:"requested_by"`
 }
 
-// MaxQueueSize is the maximum number of unified syncs that can be queued
-const MaxQueueSize = 5
+// MaxQueueSize is the maximum number of syncs that can be queued (0 = unlimited)
+const MaxQueueSize = 0
 
 // Stats holds statistics for a sync operation
 type Stats struct {
@@ -1142,17 +1144,17 @@ func generateQueueID() string {
 }
 
 // EnqueueUnifiedSync adds a unified sync request to the queue.
-// If a sync with the same year+service is already queued, returns the existing item.
-// Returns an error if the queue is full (max 5 items).
+// If a sync with the same year+type+service is already queued, returns the existing item.
 func (o *Orchestrator) EnqueueUnifiedSync(
 	year int, service string, includeCustomValues, debug bool, requestedBy string,
 ) (*QueuedSync, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
-	// Check for duplicate (same year + service + includeCustomValues already queued)
+	// Check for duplicate (same year + type + service + includeCustomValues already queued)
 	for i := range o.pendingUnifiedSyncs {
 		if o.pendingUnifiedSyncs[i].Year == year &&
+			o.pendingUnifiedSyncs[i].Type == "unified" &&
 			o.pendingUnifiedSyncs[i].Service == service &&
 			o.pendingUnifiedSyncs[i].IncludeCustomValues == includeCustomValues {
 			// Return existing item instead of creating duplicate
@@ -1160,15 +1162,11 @@ func (o *Orchestrator) EnqueueUnifiedSync(
 		}
 	}
 
-	// Check if queue is full
-	if len(o.pendingUnifiedSyncs) >= MaxQueueSize {
-		return nil, fmt.Errorf("sync queue is full (max %d items)", MaxQueueSize)
-	}
-
 	// Create new queued sync
 	qs := QueuedSync{
 		ID:                  generateQueueID(),
 		Year:                year,
+		Type:                "unified",
 		Service:             service,
 		IncludeCustomValues: includeCustomValues,
 		Debug:               debug,
@@ -1181,6 +1179,79 @@ func (o *Orchestrator) EnqueueUnifiedSync(
 
 	slog.Info("Enqueued unified sync",
 		"id", qs.ID, "year", year, "service", service, "position", len(o.pendingUnifiedSyncs))
+
+	return &qs, nil
+}
+
+// EnqueuePhaseSync adds a phase sync request to the queue.
+// If a sync with the same year+phase is already queued, returns the existing item.
+func (o *Orchestrator) EnqueuePhaseSync(year int, phase Phase, requestedBy string) (*QueuedSync, error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	// Check for duplicate (same year + type + service already queued)
+	for i := range o.pendingUnifiedSyncs {
+		if o.pendingUnifiedSyncs[i].Year == year &&
+			o.pendingUnifiedSyncs[i].Type == "phase" &&
+			o.pendingUnifiedSyncs[i].Service == string(phase) {
+			// Return existing item instead of creating duplicate
+			return &o.pendingUnifiedSyncs[i], nil
+		}
+	}
+
+	// Create new queued sync
+	qs := QueuedSync{
+		ID:          generateQueueID(),
+		Year:        year,
+		Type:        "phase",
+		Service:     string(phase),
+		QueuedAt:    time.Now(),
+		RequestedBy: requestedBy,
+	}
+
+	// Append to queue (FIFO)
+	o.pendingUnifiedSyncs = append(o.pendingUnifiedSyncs, qs)
+
+	slog.Info("Enqueued phase sync",
+		"id", qs.ID, "year", year, "phase", phase, "position", len(o.pendingUnifiedSyncs))
+
+	return &qs, nil
+}
+
+// EnqueueIndividualSync adds an individual job sync request to the queue.
+// If a sync with the same year+job is already queued, returns the existing item.
+func (o *Orchestrator) EnqueueIndividualSync(
+	year int, jobID string, options map[string]interface{}, requestedBy string,
+) (*QueuedSync, error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	// Check for duplicate (same year + type + service already queued)
+	for i := range o.pendingUnifiedSyncs {
+		if o.pendingUnifiedSyncs[i].Year == year &&
+			o.pendingUnifiedSyncs[i].Type == "individual" &&
+			o.pendingUnifiedSyncs[i].Service == jobID {
+			// Return existing item instead of creating duplicate
+			return &o.pendingUnifiedSyncs[i], nil
+		}
+	}
+
+	// Create new queued sync
+	qs := QueuedSync{
+		ID:          generateQueueID(),
+		Year:        year,
+		Type:        "individual",
+		Service:     jobID,
+		Options:     options,
+		QueuedAt:    time.Now(),
+		RequestedBy: requestedBy,
+	}
+
+	// Append to queue (FIFO)
+	o.pendingUnifiedSyncs = append(o.pendingUnifiedSyncs, qs)
+
+	slog.Info("Enqueued individual sync",
+		"id", qs.ID, "year", year, "job", jobID, "position", len(o.pendingUnifiedSyncs))
 
 	return &qs, nil
 }

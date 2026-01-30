@@ -6,6 +6,7 @@ import type { SyncPhase } from '../components/admin/syncTypes';
 interface PhaseSyncParams {
   year: number;
   phase: SyncPhase;
+  debug?: boolean;
 }
 
 interface PhaseSyncResponse {
@@ -15,6 +16,10 @@ interface PhaseSyncResponse {
   year?: number;
   jobs?: string[];
   error?: string;
+  // Queue fields (for 202 Accepted)
+  queue_id?: string;
+  position?: number;
+  warning?: string;
 }
 
 // Human-readable names for phases
@@ -34,10 +39,13 @@ export function useRunPhaseSync() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ year, phase }: PhaseSyncParams): Promise<PhaseSyncResponse> => {
+    mutationFn: async ({ year, phase, debug }: PhaseSyncParams): Promise<PhaseSyncResponse> => {
       const params = new URLSearchParams();
       params.set('year', year.toString());
       params.set('phase', phase);
+      if (debug) {
+        params.set('debug', 'true');
+      }
 
       return await pb.send(`/api/custom/sync/run-phase?${params}`, { method: 'POST' });
     },
@@ -53,10 +61,27 @@ export function useRunPhaseSync() {
 
       const phaseName = PHASE_NAMES[variables.phase] || variables.phase;
       const jobCount = data.jobs?.length || 0;
-      toast.success(
-        `${phaseName} phase started (${jobCount} jobs)`,
-        { duration: 4000 }
-      );
+
+      // Handle queued vs started
+      if (data.status === 'queued') {
+        toast(`${phaseName} phase queued (position ${data.position})`, {
+          icon: '📋',
+          duration: 4000
+        });
+      } else {
+        toast.success(
+          `${phaseName} phase started (${jobCount} jobs)`,
+          { duration: 4000 }
+        );
+      }
+
+      // Show warning if present (e.g., Transform without CV)
+      if (data.warning) {
+        toast(data.warning, {
+          icon: '⚠️',
+          duration: 6000
+        });
+      }
 
       // Invalidate again after a delay for quick syncs
       setTimeout(() => queryClient.invalidateQueries({ queryKey: ['sync-status-api'] }), 2000);
