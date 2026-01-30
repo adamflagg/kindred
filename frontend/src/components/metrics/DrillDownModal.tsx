@@ -8,7 +8,7 @@
  * - CSV export
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { X, Download, Search, ArrowUpDown, ArrowUp, ArrowDown, Loader2 } from 'lucide-react';
 import { useDrilldownAttendees } from '../../hooks/useDrilldownAttendees';
 import type { DrilldownFilter } from '../../types/metrics';
@@ -44,6 +44,19 @@ export function DrillDownModal({
     sessionTypes,
     statusFilter,
   });
+
+  // Handle escape key to close modal
+  useEffect(() => {
+    if (!filter) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [filter, onClose]);
 
   // Filter attendees by search term
   const filteredAttendees = useMemo(() => {
