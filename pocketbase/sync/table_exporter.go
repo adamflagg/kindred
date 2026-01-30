@@ -34,6 +34,31 @@ const (
 	boolFalseStr = "false"
 )
 
+// SyncJobToCollections maps sync job names to their PocketBase collections.
+// Some syncs populate multiple collections (e.g., persons → persons + households).
+// This mapping is used by the export skip optimization to determine which sheets
+// can be skipped when their corresponding sync had no changes.
+var SyncJobToCollections = map[string][]string{
+	// Year-scoped syncs
+	"sessions":                {"camp_sessions"},
+	"attendees":               {"attendees"},
+	"persons":                 {"persons", "households"},
+	"bunks":                   {"bunks"},
+	"bunk_plans":              {"bunk_plans"},
+	"bunk_assignments":        {"bunk_assignments"},
+	"staff":                   {"staff"},
+	"camper_history":          {"camper_history"},
+	"financial_transactions":  {"financial_transactions"},
+	"person_custom_values":    {"person_custom_values"},
+	"household_custom_values": {"household_custom_values"},
+	"session_groups":          {"session_groups"},
+	// Global syncs
+	"person_tag_defs":   {"person_tag_defs"},
+	"custom_field_defs": {"custom_field_defs"},
+	"financial_lookups": {"financial_categories"},
+	"divisions":         {"divisions"},
+}
+
 // ColumnConfig defines a single column mapping for export
 type ColumnConfig struct {
 	Field        string    // PocketBase field name

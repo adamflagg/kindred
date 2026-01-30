@@ -114,7 +114,8 @@ func (m *MultiWorkbookExport) Sync(ctx context.Context) error {
 }
 
 // SyncGlobalsOnly exports only global tables to the globals workbook.
-func (m *MultiWorkbookExport) SyncGlobalsOnly(ctx context.Context) error {
+// If changedCollections is non-nil, only exports collections in the map.
+func (m *MultiWorkbookExport) SyncGlobalsOnly(ctx context.Context, changedCollections ...map[string]bool) error {
 	slog.Info("Starting globals-only export to globals workbook")
 
 	// Get/create globals workbook
@@ -132,6 +133,12 @@ func (m *MultiWorkbookExport) SyncGlobalsOnly(ctx context.Context) error {
 		return nil
 	}
 
+	// Extract changedCollections from variadic param (nil means export all)
+	var changed map[string]bool
+	if len(changedCollections) > 0 {
+		changed = changedCollections[0]
+	}
+
 	// Create resolver with global lookups
 	resolver := NewFieldResolver()
 	if err := m.preloadGlobalLookups(resolver); err != nil {
@@ -141,8 +148,17 @@ func (m *MultiWorkbookExport) SyncGlobalsOnly(ctx context.Context) error {
 	// Export each global table
 	exporter := NewTableExporter(m.sheetsWriter, resolver, globalsID, 0)
 	globalsRecordsExported := 0
+	tablesExported := 0
 
 	for _, config := range configs {
+		// Skip if collection had no changes (when filter is provided)
+		if changed != nil && !changed[config.Collection] {
+			slog.Info("Skipping export - no sync changes",
+				"collection", config.Collection,
+				"sheet", config.SheetName)
+			continue
+		}
+
 		slog.Info("Exporting global table", "collection", config.Collection, "sheet", config.SheetName)
 
 		// Query records from PocketBase
@@ -166,6 +182,7 @@ func (m *MultiWorkbookExport) SyncGlobalsOnly(ctx context.Context) error {
 
 		globalsRecordsExported += len(records)
 		m.Stats.Created += len(records)
+		tablesExported++
 	}
 
 	// Delete default "Sheet1" that Google creates when spreadsheet is made
@@ -193,14 +210,16 @@ func (m *MultiWorkbookExport) SyncGlobalsOnly(ctx context.Context) error {
 	}
 
 	slog.Info("Globals-only export complete",
-		"tables_exported", len(configs),
+		"tables_exported", tablesExported,
+		"tables_skipped", len(configs)-tablesExported,
 	)
 
 	return nil
 }
 
 // SyncYearData exports year-specific tables to the year workbook.
-func (m *MultiWorkbookExport) SyncYearData(ctx context.Context, year int) error {
+// If changedCollections is non-nil, only exports collections in the map.
+func (m *MultiWorkbookExport) SyncYearData(ctx context.Context, year int, changedCollections ...map[string]bool) error {
 	slog.Info("Starting year data export", "year", year)
 
 	// Get/create year workbook
@@ -218,6 +237,12 @@ func (m *MultiWorkbookExport) SyncYearData(ctx context.Context, year int) error 
 		return nil
 	}
 
+	// Extract changedCollections from variadic param (nil means export all)
+	var changed map[string]bool
+	if len(changedCollections) > 0 {
+		changed = changedCollections[0]
+	}
+
 	// Create resolver with preloaded lookup data
 	resolver := NewFieldResolver()
 	if err := m.preloadLookups(resolver, year); err != nil {
@@ -227,8 +252,18 @@ func (m *MultiWorkbookExport) SyncYearData(ctx context.Context, year int) error 
 	// Export each table
 	exporter := NewTableExporter(m.sheetsWriter, resolver, yearID, year)
 	yearRecordsExported := 0
+	tablesExported := 0
 
 	for _, config := range configs {
+		// Skip if collection had no changes (when filter is provided)
+		if changed != nil && !changed[config.Collection] {
+			slog.Info("Skipping export - no sync changes",
+				"collection", config.Collection,
+				"sheet", config.SheetName,
+				"year", year)
+			continue
+		}
+
 		slog.Info("Exporting table", "collection", config.Collection, "sheet", config.SheetName, "year", year)
 
 		// Build year filter
@@ -260,6 +295,7 @@ func (m *MultiWorkbookExport) SyncYearData(ctx context.Context, year int) error 
 
 		yearRecordsExported += len(records)
 		m.Stats.Created += len(records)
+		tablesExported++
 	}
 
 	// Delete default "Sheet1" that Google creates when spreadsheet is made
@@ -286,22 +322,33 @@ func (m *MultiWorkbookExport) SyncYearData(ctx context.Context, year int) error 
 		}
 	}
 
-	slog.Info("Year data export complete", "year", year)
+	slog.Info("Year data export complete",
+		"year", year,
+		"tables_exported", tablesExported,
+		"tables_skipped", len(configs)-tablesExported,
+	)
 
 	return nil
 }
 
 // SyncForYears exports year-specific tables for the specified years.
 // Each year goes to its own workbook.
-func (m *MultiWorkbookExport) SyncForYears(ctx context.Context, years []int, includeGlobals bool) error {
+// If changedCollections is non-nil, only exports collections that had changes.
+func (m *MultiWorkbookExport) SyncForYears(ctx context.Context, years []int, includeGlobals bool, changedCollections ...map[string]bool) error {
 	slog.Info("Starting historical export",
 		"years", years,
 		"includeGlobals", includeGlobals,
 	)
 
+	// Extract changedCollections from variadic param
+	var changed map[string]bool
+	if len(changedCollections) > 0 {
+		changed = changedCollections[0]
+	}
+
 	// Export globals first if requested
 	if includeGlobals {
-		if err := m.SyncGlobalsOnly(ctx); err != nil {
+		if err := m.SyncGlobalsOnly(ctx, changed); err != nil {
 			slog.Error("Failed to export globals", "error", err)
 			// Continue with year data anyway
 		}
@@ -309,7 +356,7 @@ func (m *MultiWorkbookExport) SyncForYears(ctx context.Context, years []int, inc
 
 	// Export each year to its own workbook
 	for _, year := range years {
-		if err := m.SyncYearData(ctx, year); err != nil {
+		if err := m.SyncYearData(ctx, year, changed); err != nil {
 			slog.Error("Failed to export year data",
 				"year", year,
 				"error", err,
