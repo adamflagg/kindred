@@ -1250,7 +1250,10 @@ func (o *Orchestrator) InitializeSyncServices() error {
 			slog.Warn("Google Sheets disabled due to client error", "error", err)
 		} else if sheetsClient != nil {
 			sheetsWriter := NewRealSheetsWriter(sheetsClient)
-			workbookManager := NewWorkbookManager(o.app, sheetsWriter)
+			// Use DefaultDriveSearcher to enable automatic recovery of existing workbooks
+			// when the database is cleared but sheets still exist in Drive
+			driveSearcher := &DefaultDriveSearcher{}
+			workbookManager := NewWorkbookManagerWithSearcher(o.app, sheetsWriter, driveSearcher)
 			o.RegisterService("multi_workbook_export", NewMultiWorkbookExport(o.app, sheetsWriter, workbookManager, 0))
 			slog.Info("Multi-workbook export service registered")
 		}
