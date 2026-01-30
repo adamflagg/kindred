@@ -80,6 +80,7 @@ type personDemographics struct {
 	lastName     string
 	school       string
 	city         string
+	state        string
 	grade        int
 	age          float64 // CampMinder's age value (can be decimal)
 	householdID  int     // CampMinder household ID
@@ -270,6 +271,7 @@ func (c *CamperHistorySync) Sync(ctx context.Context) error {
 			"last_name":           demo.lastName,
 			"school":              demo.school,
 			"city":                demo.city,
+			"state":               demo.state,
 			"is_returning_summer": isReturningSummer,
 			"is_returning_family": isReturningFamily,
 			"years_at_camp":       yearsAtCamp,
@@ -558,12 +560,25 @@ func (c *CamperHistorySync) loadPersonDemographics(
 				yearsAtCamp = int(yac)
 			}
 
+			// Extract city and state from address JSON field
+			city := ""
+			state := ""
+			if address, ok := record.Get("address").(map[string]interface{}); ok && address != nil {
+				if c, ok := address["city"].(string); ok {
+					city = c
+				}
+				if s, ok := address["state"].(string); ok {
+					state = s
+				}
+			}
+
 			result[cmID] = personDemographics{
 				pbID:        record.Id,
 				firstName:   record.GetString("first_name"),
 				lastName:    record.GetString("last_name"),
 				school:      record.GetString("school"),
-				city:        record.GetString("city"),
+				city:        city,
+				state:       state,
 				grade:       grade,
 				age:         age,
 				householdID: householdID,
