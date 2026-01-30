@@ -377,17 +377,19 @@ jobs:
         go build -o pocketbase .
 
         echo "Testing migrations on fresh database..."
-        rm -rf /tmp/pb_ci_test
-        mkdir -p /tmp/pb_ci_test
+        # Use local test data directory so PocketBase discovers migrations via default path:
+        # ./pb_test_data/../pb_migrations = ./pb_migrations
+        rm -rf ./pb_test_data
+        mkdir -p ./pb_test_data
         echo "Migrations directory contents:"
         ls -la pb_migrations/ | head -10
 
-        # Run migrations explicitly (use local pb_migrations dir)
+        # Run migrations (PocketBase auto-discovers ./pb_migrations from ./pb_test_data)
         echo "Running migrations..."
-        ./pocketbase migrate up --dir /tmp/pb_ci_test --migrationsDir ./pb_migrations 2>&1 | tee /tmp/pb_migrate.log
+        ./pocketbase migrate up --dir ./pb_test_data 2>&1 | tee /tmp/pb_migrate.log
 
         echo "Starting PocketBase server..."
-        ./pocketbase serve --dir /tmp/pb_ci_test --migrationsDir ./pb_migrations --http 127.0.0.1:18999 > /tmp/pb_output.log 2>&1 &
+        ./pocketbase serve --dir ./pb_test_data --http 127.0.0.1:18999 > /tmp/pb_output.log 2>&1 &
         PB_PID=$!
 
         # Wait for startup (max 30s)
@@ -402,7 +404,7 @@ jobs:
             echo "----------------------------------------"
             cat /tmp/pb_output.log
             echo "----------------------------------------"
-            rm -rf /tmp/pb_ci_test
+            rm -rf ./pb_test_data
             exit 1
           fi
           sleep 1
@@ -415,13 +417,13 @@ jobs:
           cat /tmp/pb_output.log
           echo "----------------------------------------"
           kill $PB_PID 2>/dev/null || true
-          rm -rf /tmp/pb_ci_test
+          rm -rf ./pb_test_data
           exit 1
         fi
 
         # Create temporary superuser via CLI (required for fresh DB in PB v0.23+)
         echo "Creating temporary superuser for schema validation..."
-        ./pocketbase superuser upsert ci@test.local ci_test_pass_123 --dir /tmp/pb_ci_test
+        ./pocketbase superuser upsert ci@test.local ci_test_pass_123 --dir ./pb_test_data
 
         # Get auth token
         AUTH_TOKEN=$(curl -sf -X POST http://127.0.0.1:18999/api/collections/_superusers/auth-with-password \
@@ -432,7 +434,7 @@ jobs:
         if [ -z "$AUTH_TOKEN" ]; then
           echo "❌ Failed to authenticate for schema validation"
           kill $PB_PID 2>/dev/null || true
-          rm -rf /tmp/pb_ci_test
+          rm -rf ./pb_test_data
           exit 1
         fi
 
@@ -455,13 +457,13 @@ jobs:
           cat /tmp/pb_output.log || true
           # Cleanup
           kill $PB_PID 2>/dev/null || true
-          rm -rf /tmp/pb_ci_test
+          rm -rf ./pb_test_data
           exit 1
         fi
 
         # Cleanup on success
         kill $PB_PID 2>/dev/null || true
-        rm -rf /tmp/pb_ci_test
+        rm -rf ./pb_test_data
 
         echo "✅ Migration smoke test passed"
 
