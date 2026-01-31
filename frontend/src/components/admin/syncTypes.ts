@@ -23,6 +23,10 @@ import {
   Heart,
   Database,
   GitBranch,
+  Bus,
+  Utensils,
+  Mountain,
+  Car,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -71,6 +75,11 @@ export const YEAR_SYNC_TYPES = [
   { id: 'staff_skills', name: 'Staff Skills', icon: Sparkles, color: 'text-purple-500', phase: 'transform' as SyncPhase },
   { id: 'financial_aid_applications', name: 'FA Applications', icon: HandCoins, color: 'text-green-600', phase: 'transform' as SyncPhase },
   { id: 'household_demographics', name: 'Demographics', icon: Heart, color: 'text-pink-500', phase: 'transform' as SyncPhase },
+  { id: 'camper_transportation', name: 'Transportation', icon: Bus, color: 'text-blue-500', phase: 'transform' as SyncPhase },
+  { id: 'camper_dietary', name: 'Dietary', icon: Utensils, color: 'text-orange-500', phase: 'transform' as SyncPhase },
+  { id: 'quest_registrations', name: 'Quest Regs', icon: Mountain, color: 'text-amber-600', phase: 'transform' as SyncPhase },
+  { id: 'staff_applications', name: 'Staff Apps', icon: ClipboardList, color: 'text-indigo-500', phase: 'transform' as SyncPhase },
+  { id: 'staff_vehicle_info', name: 'Staff Vehicles', icon: Car, color: 'text-slate-500', phase: 'transform' as SyncPhase },
   // Process phase - CSV + AI (current year only)
   { id: 'bunk_requests', name: 'Intake Requests', icon: FileText, color: 'text-orange-600', phase: 'process' as SyncPhase, currentYearOnly: true },
   { id: 'process_requests', name: 'Process Requests', icon: Brain, color: 'text-teal-600', phase: 'process' as SyncPhase, currentYearOnly: true },
