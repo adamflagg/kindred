@@ -58,7 +58,7 @@ func TestTransformPersonToPB_CamperDetailsExpanded(t *testing.T) {
 
 	year := 2025
 
-	pbData, err := s.transformPersonToPB(personData, year)
+	pbData, err := s.transformPersonToPB(personData, year, true)
 	if err != nil {
 		t.Fatalf("transformPersonToPB returned error: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestTransformPersonToPB_MissingCamperDetailsFields(t *testing.T) {
 
 	year := 2025
 
-	pbData, err := s.transformPersonToPB(personData, year)
+	pbData, err := s.transformPersonToPB(personData, year, true)
 	if err != nil {
 		t.Fatalf("transformPersonToPB returned error: %v", err)
 	}
@@ -986,7 +986,7 @@ func TestTransformPersonToPB_CMLeadDateExtracted(t *testing.T) {
 
 	year := 2025
 
-	pbData, err := s.transformPersonToPB(personData, year)
+	pbData, err := s.transformPersonToPB(personData, year, true)
 	if err != nil {
 		t.Fatalf("transformPersonToPB returned error: %v", err)
 	}
@@ -1029,7 +1029,7 @@ func TestTransformPersonToPB_CMLeadDateMissing(t *testing.T) {
 
 	year := 2025
 
-	pbData, err := s.transformPersonToPB(personData, year)
+	pbData, err := s.transformPersonToPB(personData, year, true)
 	if err != nil {
 		t.Fatalf("transformPersonToPB returned error: %v", err)
 	}
@@ -1156,7 +1156,7 @@ func TestMergePersonIDs_PreservesCamperInfo(t *testing.T) {
 	// because they appear in the attendees list
 
 	attendeeIDs := []int{1001, 1002, 1003}
-	staffIDs := []int{1002, 2001, 2002} // 1002 is both camper and staff
+	_ = []int{1002, 2001, 2002} // staffIDs: 1002 is both camper and staff
 
 	// Build camper set from attendees (before merge)
 	camperIDsSet := make(map[int]bool)
