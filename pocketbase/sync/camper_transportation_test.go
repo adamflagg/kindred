@@ -133,17 +133,17 @@ func TestTransportationCompositeKeyFormat(t *testing.T) {
 // TestIsTransportationField tests identification of transportation fields
 func TestIsTransportationField(t *testing.T) {
 	tests := []struct {
-		fieldName           string
+		fieldName            string
 		wantIsTransportation bool
 	}{
 		{"BUS-to camp", true},
 		{"BUS-home from camp", true},
 		{"BUS-who is dropping off", true},
-		{"Bus to Camp", true}, // Legacy
+		{"Bus to Camp", true},   // Legacy
 		{"Bus From Camp", true}, // Legacy
 		{"Family Camp Adult 1", false},
 		{"Bunk Preference", false},
-		{"BUS", false}, // No hyphen
+		{"BUS", false},         // No hyphen
 		{"bus-to camp", false}, // lowercase
 	}
 

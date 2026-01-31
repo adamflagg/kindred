@@ -54,14 +54,14 @@ type staffVehicleInfoRecord struct {
 	year     int
 	staffID  string // PocketBase ID of staff record
 
-	drivingToCamp     bool
-	howGettingToCamp  string
-	canBringOthers    bool
-	driverName        string
-	whichFriend       string
-	vehicleMake       string
-	vehicleModel      string
-	licensePlate      string
+	drivingToCamp    bool
+	howGettingToCamp string
+	canBringOthers   bool
+	driverName       string
+	whichFriend      string
+	vehicleMake      string
+	vehicleModel     string
+	licensePlate     string
 }
 
 // Sync executes the staff vehicle info extraction
@@ -374,7 +374,6 @@ func parseSVIBoolImpl(value string) bool {
 	}
 	return false
 }
-
 
 // makeStaffVehicleKey creates the composite key for upsert logic
 func makeStaffVehicleKey(personID, year int) string {

@@ -44,9 +44,9 @@ func TestCamperDietaryYearValidation(t *testing.T) {
 // TestDietaryBooleanParsing tests parsing Yes/No values to boolean
 func TestDietaryBooleanParsing(t *testing.T) {
 	tests := []struct {
-		name      string
-		rawValue  string
-		wantBool  bool
+		name     string
+		rawValue string
+		wantBool bool
 	}{
 		{"Yes", "Yes", true},
 		{"yes lowercase", "yes", true},

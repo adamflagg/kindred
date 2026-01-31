@@ -61,15 +61,15 @@ type questRegistrationRecord struct {
 	preferredName    string
 
 	// Questionnaire responses
-	whyCome            string
-	mostLookingForward string
-	leastLookingForward string
+	whyCome               string
+	mostLookingForward    string
+	leastLookingForward   string
 	biggestAccomplishment string
 	biggestDisappointment string
-	whoseDecision      string
-	ifReturning        string
-	biggestHope        string
-	biggestConcern     string
+	whoseDecision         string
+	ifReturning           string
+	biggestHope           string
+	biggestConcern        string
 
 	// Social/emotional
 	makeFriendsEase      string
@@ -84,26 +84,26 @@ type questRegistrationRecord struct {
 	techniquesLimits     string
 
 	// Medical/physical
-	anyMedications       string
-	physicalLimitations  string
-	physicalLimitExplain string
-	fearsAnxieties       string
+	anyMedications        string
+	physicalLimitations   string
+	physicalLimitExplain  string
+	fearsAnxieties        string
 	situationsTransitions string
-	badCampExperiences   string
+	badCampExperiences    string
 
 	// Development/maturity
-	childMatured       string
+	childMatured        string
 	changeSinceLastYear string
-	extracurricular    string
-	cookChores         string
-	cookChoresExplain  string
-	decisionAttend     string
-	howCanHelp         string
-	howMuchChild       string
-	hasQuesterBefore   string
-	specialNeeds       string
-	concernsForChild   string
-	anythingElse       string
+	extracurricular     string
+	cookChores          string
+	cookChoresExplain   string
+	decisionAttend      string
+	howCanHelp          string
+	howMuchChild        string
+	hasQuesterBefore    string
+	specialNeeds        string
+	concernsForChild    string
+	anythingElse        string
 
 	// Bar/Bat Mitzvah
 	barMitzvahYear  bool

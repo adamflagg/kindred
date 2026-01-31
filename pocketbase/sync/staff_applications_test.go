@@ -228,9 +228,9 @@ func getAppCMFieldForColumn(column string) string {
 		"work_dates_driver":     "App- Work Camp Dates Driver?",
 
 		// Qualifications
-		"work_expectations":      "App-Work Expectations",
-		"qualifications":         "App-Qualifications",
-		"qualification_changes":  "App-Qualification changes",
+		"work_expectations":     "App-Work Expectations",
+		"qualifications":        "App-Qualifications",
+		"qualification_changes": "App-Qualification changes",
 
 		// Position preferences
 		"position_pref_1": "Position Preference 1",
@@ -238,19 +238,19 @@ func getAppCMFieldForColumn(column string) string {
 		"position_pref_3": "Position Preference 3",
 
 		// Essays
-		"why_tawonga":                 "App-Why Tawonga?",
-		"why_work_again":              "App-Why work at camp again?",
-		"jewish_community":            "App-Jewish Community",
-		"three_rules":                 "App-Three Rules...",
-		"autobiography":               "App-Autobiography...",
-		"community_means":             "App-Community Means...",
+		"why_tawonga":                "App-Why Tawonga?",
+		"why_work_again":             "App-Why work at camp again?",
+		"jewish_community":           "App-Jewish Community",
+		"three_rules":                "App-Three Rules...",
+		"autobiography":              "App-Autobiography...",
+		"community_means":            "App-Community Means...",
 		"working_across_differences": "App- Working Across Differences",
 
 		// Personal info
-		"languages":          "App-languages",
-		"dietary_needs":      "App-Dietary Needs",
+		"languages":           "App-languages",
+		"dietary_needs":       "App-Dietary Needs",
 		"dietary_needs_other": "App-Dietary Needs (Other)",
-		"over_21":            "App-Over 21",
+		"over_21":             "App-Over 21",
 
 		// Reference
 		"ref_1_name":         "App-Ref 1 Name",
@@ -260,19 +260,19 @@ func getAppCMFieldForColumn(column string) string {
 		"ref_1_years":        "App-Ref 1 Yrs of Acquaintance",
 
 		// Reflection prompts
-		"stress_situation":        "App-I got stressed when",
-		"stress_response":         "App-I responded to my stress",
-		"spiritual_moment":        "App-I had a spiritual moment",
-		"activity_program":        "App-An activity or program",
-		"someone_admire":          "App-Someone whose work I",
-		"since_camp":              "App-Since camp I've been",
-		"wish_knew":               "App-I wish I had gotten toknow",
-		"last_summer_learned":     "App-Last summer I learned",
-		"favorite_camper_moment":  "App-My favorite camper moment",
-		"closest_friend":          "App-My closest friend at camp",
-		"tawonga_makes_think":     "App-Tawonga makes me think of",
-		"advice_would_give":       "App-what advice would you",
-		"how_look_at_camp":        "App-How do you look at camp",
+		"stress_situation":       "App-I got stressed when",
+		"stress_response":        "App-I responded to my stress",
+		"spiritual_moment":       "App-I had a spiritual moment",
+		"activity_program":       "App-An activity or program",
+		"someone_admire":         "App-Someone whose work I",
+		"since_camp":             "App-Since camp I've been",
+		"wish_knew":              "App-I wish I had gotten toknow",
+		"last_summer_learned":    "App-Last summer I learned",
+		"favorite_camper_moment": "App-My favorite camper moment",
+		"closest_friend":         "App-My closest friend at camp",
+		"tawonga_makes_think":    "App-Tawonga makes me think of",
+		"advice_would_give":      "App-what advice would you",
+		"how_look_at_camp":       "App-How do you look at camp",
 	}
 
 	return mapping[column]

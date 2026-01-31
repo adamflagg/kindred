@@ -73,19 +73,19 @@ type staffApplicationRecord struct {
 	positionPref3 string
 
 	// Essays
-	whyTawonga                string
-	whyWorkAgain              string
-	jewishCommunity           string
-	threeRules                string
-	autobiography             string
-	communityMeans            string
-	workingAcrossDifferences  string
+	whyTawonga               string
+	whyWorkAgain             string
+	jewishCommunity          string
+	threeRules               string
+	autobiography            string
+	communityMeans           string
+	workingAcrossDifferences string
 
 	// Personal info
-	languages       string
-	dietaryNeeds    string
-	dietaryOther    string
-	over21          bool
+	languages    string
+	dietaryNeeds string
+	dietaryOther string
+	over21       bool
 
 	// Reference
 	ref1Name         string
