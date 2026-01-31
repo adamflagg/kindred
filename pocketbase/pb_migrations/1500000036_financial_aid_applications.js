@@ -94,7 +94,7 @@ migrate((app) => {
         required: false,
         presentable: false,
         min: 0,
-        max: 1000,
+        max: 2000,
         pattern: ""
       },
       {
@@ -440,7 +440,7 @@ migrate((app) => {
         required: false,
         presentable: false,
         min: 0,
-        max: 1000,
+        max: 2000,
         pattern: ""
       },
       {
@@ -467,7 +467,7 @@ migrate((app) => {
         required: false,
         presentable: false,
         min: 0,
-        max: 1000,
+        max: 2000,
         pattern: ""
       },
       {
