@@ -223,6 +223,7 @@ After implementation, verify ALL of these work:
 | Mistake | Consequence | Prevention |
 |---------|-------------|------------|
 | Service registered but not in `orderedJobs` | Won't run in daily sync | Always add to both places |
+| Missing from `handleSyncStatus()` syncTypes | GUI never shows stats (always "idle") | Add to syncTypes array in api.go:711 |
 | Year-param endpoint without custom hook | Frontend errors on "Run" button | Check if API handler has `year` query param |
 | Missing historical re-registration | Won't run in historical imports | Add `NewXxxSync()` call in `RunSyncWithOptions()` block |
 | Derived table before dependencies | Empty results, relation errors | Map dependency chain, place after deps in orderedJobs |
