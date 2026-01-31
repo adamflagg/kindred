@@ -89,9 +89,9 @@ func TestTransportationFieldMapping(t *testing.T) {
 		{"BUS-alternate person relation to camper", "alt_pickup_1_relationship"},
 		{"BUS-alternate person 2", "alt_pickup_2_name"},
 		{"BUS-alternate person 2 phone", "alt_pickup_2_phone"},
-		// Legacy fields
-		{"Bus to Camp", "to_camp_method_legacy"},
-		{"Bus From Camp", "from_camp_method_legacy"},
+		// Legacy fields (map to same columns as modern fields)
+		{"Bus to Camp", "to_camp_method"},
+		{"Bus From Camp", "from_camp_method"},
 		// Unknown field
 		{"Unknown-Field", ""},
 	}
@@ -270,44 +270,7 @@ func normalizeTransportMethod(rawValue string) string {
 	return strings.TrimSpace(rawValue)
 }
 
-// MapTransportationFieldToColumn maps field names to database column names
-func MapTransportationFieldToColumn(fieldName string) string {
-	switch fieldName {
-	// Modern BUS- fields
-	case "BUS-to camp":
-		return "to_camp_method"
-	case "BUS-home from camp":
-		return "from_camp_method"
-	case "BUS-who is dropping off":
-		return "dropoff_name"
-	case "BUS-Phone number of person dropping off-correct":
-		return "dropoff_phone"
-	case "BUS-relation to camper drop off":
-		return "dropoff_relationship"
-	case "BUS-person picking up":
-		return "pickup_name"
-	case "BUS-phone number of person picking up":
-		return "pickup_phone"
-	case "BUS-relationship to camper pick up person":
-		return "pickup_relationship"
-	case "BUS-alternate person 1 picking up":
-		return "alt_pickup_1_name"
-	case "BUS-alternate 1 phone":
-		return "alt_pickup_1_phone"
-	case "BUS-alternate person relation to camper":
-		return "alt_pickup_1_relationship"
-	case "BUS-alternate person 2":
-		return "alt_pickup_2_name"
-	case "BUS-alternate person 2 phone":
-		return "alt_pickup_2_phone"
-	// Legacy fields
-	case "Bus to Camp":
-		return "to_camp_method_legacy"
-	case "Bus From Camp":
-		return "from_camp_method_legacy"
-	}
-	return ""
-}
+// Note: MapTransportationFieldToColumn is defined in the implementation file
 
 // isTransportationField checks if a field is a transportation field
 func isTransportationField(fieldName string) bool {

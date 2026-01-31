@@ -262,24 +262,7 @@ func parseDietaryBool(rawValue string) bool {
 	return false
 }
 
-// MapDietaryFieldToColumn maps field names to database column names
-func MapDietaryFieldToColumn(fieldName string) string {
-	switch fieldName {
-	case "Family Medical-Dietary Needs":
-		return "has_dietary_needs"
-	case "Family Medical-Dietary Explain":
-		return "dietary_explanation"
-	case "Family Medical-Allergies":
-		return "has_allergies"
-	case "Family Medical-Allergy Info":
-		return "allergy_info"
-	case "Family Medical-Additional":
-		return "additional_medical"
-	}
-	return ""
-}
-
-// isDietaryField checks if a field is a dietary field
+// isDietaryField checks if a field is a dietary field (uses implementation function)
 func isDietaryField(fieldName string) bool {
 	return MapDietaryFieldToColumn(fieldName) != ""
 }

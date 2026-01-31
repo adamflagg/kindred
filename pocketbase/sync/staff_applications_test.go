@@ -1,7 +1,6 @@
 package sync
 
 import (
-	"fmt"
 	"testing"
 )
 
@@ -213,67 +212,9 @@ func TestStaffApplicationsFieldMapping(t *testing.T) {
 	}
 }
 
-// Helper functions that define expected behavior - implementation must match these
-
-// MapAppFieldToColumn maps CampMinder custom field names to database column names
+// Note: MapAppFieldToColumn wrapper calls implementation function MapStaffAppFieldToColumn
 func MapAppFieldToColumn(cmField string) string {
-	mapping := map[string]string{
-		// Work availability fields
-		"App-Work Camp Dates?":           "can_work_dates",
-		"App-Can't Work Camp Dates Expl": "cant_work_explain",
-		"App- Work Camp Dates Supervisor?": "work_dates_supervisor",
-		"App-Work Camp Dates WILD?":        "work_dates_wild",
-		"App- Work Camp Dates Driver?":     "work_dates_driver",
-
-		// Qualifications and expectations
-		"App-Work Expectations":    "work_expectations",
-		"App-Qualifications":       "qualifications",
-		"App-Qualification changes": "qualification_changes",
-
-		// Position preferences (note: no App- prefix in CampMinder)
-		"Position Preference 1": "position_pref_1",
-		"Position Preference 2": "position_pref_2",
-		"Position Preference 3": "position_pref_3",
-
-		// Essays and reflections
-		"App-Why Tawonga?":                "why_tawonga",
-		"App-Why work at camp again?":     "why_work_again",
-		"App-Jewish Community":            "jewish_community",
-		"App-Three Rules...":              "three_rules",
-		"App-Autobiography...":            "autobiography",
-		"App-Community Means...":          "community_means",
-		"App- Working Across Differences": "working_across_differences",
-
-		// Personal info
-		"App-languages":            "languages",
-		"App-Dietary Needs":        "dietary_needs",
-		"App-Dietary Needs (Other)": "dietary_needs_other",
-		"App-Over 21":              "over_21",
-
-		// Reference fields
-		"App-Ref 1 Name":              "ref_1_name",
-		"App-Ref 1 Phone Number":      "ref_1_phone",
-		"App-Ref 1 Email":             "ref_1_email",
-		"App-Ref 1 Relationship":      "ref_1_relationship",
-		"App-Ref 1 Yrs of Acquaintance": "ref_1_years",
-
-		// Reflection prompts (returning staff)
-		"App-I got stressed when":       "stress_situation",
-		"App-I responded to my stress":  "stress_response",
-		"App-I had a spiritual moment":  "spiritual_moment",
-		"App-An activity or program":    "activity_program",
-		"App-Someone whose work I":      "someone_admire",
-		"App-Since camp I've been":      "since_camp",
-		"App-I wish I had gotten toknow": "wish_knew",
-		"App-Last summer I learned":     "last_summer_learned",
-		"App-My favorite camper moment": "favorite_camper_moment",
-		"App-My closest friend at camp": "closest_friend",
-		"App-Tawonga makes me think of": "tawonga_makes_think",
-		"App-what advice would you":     "advice_would_give",
-		"App-How do you look at camp":   "how_look_at_camp",
-	}
-
-	return mapping[cmField]
+	return MapStaffAppFieldToColumn(cmField)
 }
 
 // getAppCMFieldForColumn is the reverse mapping
@@ -337,17 +278,12 @@ func getAppCMFieldForColumn(column string) string {
 	return mapping[column]
 }
 
-// parseAppBool parses Yes/No values to boolean
+// Note: parseAppBool calls implementation function parseStaffAppBool
 func parseAppBool(value string) bool {
-	switch value {
-	case "Yes", "yes", "YES":
-		return true
-	default:
-		return false
-	}
+	return parseStaffAppBool(value)
 }
 
-// makeStaffApplicationsKey creates the composite key for upsert logic
+// Note: makeStaffApplicationsKey calls implementation function makeStaffAppKey
 func makeStaffApplicationsKey(personID, year int) string {
-	return fmt.Sprintf("%d|%d", personID, year)
+	return makeStaffAppKey(personID, year)
 }
