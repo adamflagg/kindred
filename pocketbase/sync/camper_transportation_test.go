@@ -54,7 +54,7 @@ func TestTransportationMethodParsing(t *testing.T) {
 		{"Flying", "Flying", "Flying"},
 		{"Parent Dropoff", "Parent Dropoff", "Parent Dropoff"},
 		{"Other", "Other", "Other"},
-		{"Legacy cmFieldBusToCamp", "cmFieldBusToCamp", "cmFieldBusToCamp"},
+		{"Legacy Bus to Camp", "Bus to Camp", "Bus to Camp"},
 		{"empty value", "", ""},
 		{"whitespace value", "  Bus-SF  ", "Bus-SF"},
 	}
@@ -90,7 +90,7 @@ func TestTransportationFieldMapping(t *testing.T) {
 		{"BUS-alternate person 2", "alt_pickup_2_name"},
 		{"BUS-alternate person 2 phone", "alt_pickup_2_phone"},
 		// Legacy fields (map to same columns as modern fields)
-		{"cmFieldBusToCamp", "to_camp_method"},
+		{"Bus to Camp", "to_camp_method"},
 		{"Bus From Camp", "from_camp_method"},
 		// Unknown field
 		{"Unknown-Field", ""},
@@ -139,7 +139,7 @@ func TestIsTransportationField(t *testing.T) {
 		{"BUS-to camp", true},
 		{"BUS-home from camp", true},
 		{"BUS-who is dropping off", true},
-		{"cmFieldBusToCamp", true}, // Legacy
+		{"Bus to Camp", true}, // Legacy
 		{"Bus From Camp", true},    // Legacy
 		{"Family Camp Adult 1", false},
 		{"Bunk Preference", false},
@@ -166,10 +166,10 @@ func TestLegacyFieldFallback(t *testing.T) {
 		expectedValue  string
 		expectedLegacy bool
 	}{
-		{"modern value present", "Bus-SF", "cmFieldBusToCamp", "Bus-SF", false},
-		{"only legacy value", "", "cmFieldBusToCamp", "cmFieldBusToCamp", true},
+		{"modern value present", "Bus-SF", "Bus to Camp", "Bus-SF", false},
+		{"only legacy value", "", "Bus to Camp", "Bus to Camp", true},
 		{"both empty", "", "", "", false},
-		{"modern whitespace only", "   ", "cmFieldBusToCamp", "cmFieldBusToCamp", true},
+		{"modern whitespace only", "   ", "Bus to Camp", "Bus to Camp", true},
 	}
 
 	for _, tt := range tests {
@@ -279,7 +279,7 @@ func isTransportationField(fieldName string) bool {
 		return true
 	}
 	// Legacy fields
-	if fieldName == "cmFieldBusToCamp" || fieldName == "Bus From Camp" {
+	if fieldName == "Bus to Camp" || fieldName == "Bus From Camp" {
 		return true
 	}
 	return false
