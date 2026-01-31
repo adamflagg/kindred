@@ -32,7 +32,7 @@ func TestMapSVIFieldToColumn(t *testing.T) {
 		// Vehicle info
 		{"SVI-make of vehicle", "vehicle_make"},
 		{"SVI-model vehicle", "vehicle_model"},
-		{"SVI-licence plate number", "license_plate"},
+		{"SVI-license plate number", "license_plate"},
 
 		// Unknown field should return empty
 		{"Unknown-Field", ""},
@@ -175,7 +175,7 @@ func MapSVIFieldToColumn(cmField string) string {
 		"SVI-which friend":                "which_friend",
 		"SVI-make of vehicle":             "vehicle_make",
 		"SVI-model vehicle":               "vehicle_model",
-		"SVI-licence plate number":        "license_plate",
+		"SVI-license plate number":        "license_plate",
 	}
 
 	return mapping[cmField]
@@ -191,7 +191,7 @@ func getSVICMFieldForColumn(column string) string {
 		"which_friend":        "SVI-which friend",
 		"vehicle_make":        "SVI-make of vehicle",
 		"vehicle_model":       "SVI-model vehicle",
-		"license_plate":       "SVI-licence plate number",
+		"license_plate":       "SVI-license plate number",
 	}
 
 	return mapping[column]

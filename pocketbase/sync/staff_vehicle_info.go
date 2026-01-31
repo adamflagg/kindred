@@ -359,7 +359,7 @@ func MapSVIFieldToColumnImpl(fieldName string) string {
 		return "vehicle_make"
 	case "SVI-model vehicle":
 		return "vehicle_model"
-	case "SVI-licence plate number":
+	case "SVI-license plate number":
 		return "license_plate"
 	}
 	return ""
@@ -375,14 +375,6 @@ func parseSVIBoolImpl(value string) bool {
 	return false
 }
 
-// isSVIBoolFieldImpl returns true if the column should be parsed as boolean
-func isSVIBoolFieldImpl(column string) bool {
-	switch column {
-	case "driving_to_camp", "can_bring_others":
-		return true
-	}
-	return false
-}
 
 // makeStaffVehicleKey creates the composite key for upsert logic
 func makeStaffVehicleKey(personID, year int) string {

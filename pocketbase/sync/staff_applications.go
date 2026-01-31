@@ -643,11 +643,7 @@ func MapStaffAppFieldToColumn(fieldName string) string {
 // Note: Only "Yes" variants return true (per TDD spec)
 func parseStaffAppBool(value string) bool {
 	lower := strings.ToLower(strings.TrimSpace(value))
-	switch lower {
-	case "yes":
-		return true
-	}
-	return false
+	return lower == "yes"
 }
 
 // makeStaffAppKey creates the composite key for upsert logic
