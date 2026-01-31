@@ -14,6 +14,15 @@ import (
 // serviceNameCamperDietary is the canonical name for this sync service
 const serviceNameCamperDietary = "camper_dietary"
 
+// Column name constants for camper_dietary table
+const (
+	colHasDietaryNeeds    = "has_dietary_needs"
+	colDietaryExplanation = "dietary_explanation"
+	colHasAllergies       = "has_allergies"
+	colAllergyInfo        = "allergy_info"
+	colAdditionalMedical  = "additional_medical"
+)
+
 // CamperDietarySync extracts Family Medical-* custom fields for campers.
 // This service reads from person_custom_values and populates the camper_dietary table.
 //
@@ -326,19 +335,19 @@ func mapDietaryFieldToRecord(rec *camperDietaryRecord, fieldName, value string) 
 	}
 
 	switch column {
-	case "has_dietary_needs":
+	case colHasDietaryNeeds:
 		rec.hasDietaryNeeds = parseDietaryBoolValue(value)
-	case "dietary_explanation":
+	case colDietaryExplanation:
 		if rec.dietaryExplanation == "" {
 			rec.dietaryExplanation = value
 		}
-	case "has_allergies":
+	case colHasAllergies:
 		rec.hasAllergies = parseDietaryBoolValue(value)
-	case "allergy_info":
+	case colAllergyInfo:
 		if rec.allergyInfo == "" {
 			rec.allergyInfo = value
 		}
-	case "additional_medical":
+	case colAdditionalMedical:
 		if rec.additionalMedical == "" {
 			rec.additionalMedical = value
 		}
@@ -349,15 +358,15 @@ func mapDietaryFieldToRecord(rec *camperDietaryRecord, fieldName, value string) 
 func MapDietaryFieldToColumn(fieldName string) string {
 	switch fieldName {
 	case "Family Medical-Dietary Needs":
-		return "has_dietary_needs"
+		return colHasDietaryNeeds
 	case "Family Medical-Dietary Explain":
-		return "dietary_explanation"
+		return colDietaryExplanation
 	case "Family Medical-Allergies":
-		return "has_allergies"
+		return colHasAllergies
 	case "Family Medical-Allergy Info":
-		return "allergy_info"
+		return colAllergyInfo
 	case "Family Medical-Additional":
-		return "additional_medical"
+		return colAdditionalMedical
 	}
 	return ""
 }
@@ -366,7 +375,7 @@ func MapDietaryFieldToColumn(fieldName string) string {
 func parseDietaryBoolValue(value string) bool {
 	lower := strings.ToLower(strings.TrimSpace(value))
 	switch lower {
-	case "yes", "true", "1", "y":
+	case boolYes, boolTrue, "1", "y":
 		return true
 	}
 	return false

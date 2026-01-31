@@ -14,6 +14,21 @@ import (
 // serviceNameQuestRegistrations is the canonical name for this sync service
 const serviceNameQuestRegistrations = "quest_registrations"
 
+// Column name constants for quest_registrations table
+const (
+	colParentSignature      = "parent_signature"
+	colQuesterSignature     = "quester_signature"
+	colPreferredName        = "preferred_name"
+	colWhyCome              = "why_come"
+	colMostLookingForward   = "most_looking_forward"
+	colLeastLookingForward  = "least_looking_forward"
+	colBiggestHope          = "biggest_hope"
+	colBiggestConcern       = "biggest_concern"
+	colBarMitzvahYear       = "bar_mitzvah_year"
+	colBarMitzvahWhere      = "bar_mitzvah_where"
+	colBarMitzvahMonth      = "bar_mitzvah_month"
+)
+
 // QuestRegistrationsSync extracts Quest-* and Q-* custom fields for Quest program participants.
 // This service reads from person_custom_values and populates the quest_registrations table.
 //
@@ -370,29 +385,29 @@ func mapQuestFieldToRecord(rec *questRegistrationRecord, fieldName, value string
 
 	switch column {
 	// Signatures
-	case "parent_signature":
+	case colParentSignature:
 		if rec.parentSignature == "" {
 			rec.parentSignature = value
 		}
-	case "quester_signature":
+	case colQuesterSignature:
 		if rec.questerSignature == "" {
 			rec.questerSignature = value
 		}
-	case "preferred_name":
+	case colPreferredName:
 		if rec.preferredName == "" {
 			rec.preferredName = value
 		}
 
 	// Questionnaire
-	case "why_come":
+	case colWhyCome:
 		if rec.whyCome == "" {
 			rec.whyCome = value
 		}
-	case "most_looking_forward":
+	case colMostLookingForward:
 		if rec.mostLookingForward == "" {
 			rec.mostLookingForward = value
 		}
-	case "least_looking_forward":
+	case colLeastLookingForward:
 		if rec.leastLookingForward == "" {
 			rec.leastLookingForward = value
 		}
@@ -412,11 +427,11 @@ func mapQuestFieldToRecord(rec *questRegistrationRecord, fieldName, value string
 		if rec.ifReturning == "" {
 			rec.ifReturning = value
 		}
-	case "biggest_hope":
+	case colBiggestHope:
 		if rec.biggestHope == "" {
 			rec.biggestHope = value
 		}
-	case "biggest_concern":
+	case colBiggestConcern:
 		if rec.biggestConcern == "" {
 			rec.biggestConcern = value
 		}
@@ -540,13 +555,13 @@ func mapQuestFieldToRecord(rec *questRegistrationRecord, fieldName, value string
 		}
 
 	// Bar/Bat Mitzvah
-	case "bar_mitzvah_year":
+	case colBarMitzvahYear:
 		rec.barMitzvahYear = parseQuestBool(value)
-	case "bar_mitzvah_where":
+	case colBarMitzvahWhere:
 		if rec.barMitzvahWhere == "" {
 			rec.barMitzvahWhere = value
 		}
-	case "bar_mitzvah_month":
+	case colBarMitzvahMonth:
 		if rec.barMitzvahMonth == "" {
 			rec.barMitzvahMonth = value
 		}
@@ -586,19 +601,19 @@ func MapQuestFieldToColumn(fieldName string) string {
 	switch fieldName {
 	// Signatures
 	case "Quest-Parent Signature":
-		return "parent_signature"
+		return colParentSignature
 	case "Quest-Signature of Quester":
-		return "quester_signature"
+		return colQuesterSignature
 	case "Quest-prefer to be called":
-		return "preferred_name"
+		return colPreferredName
 
 	// Questionnaire
 	case "Q-Why come?":
-		return "why_come"
+		return colWhyCome
 	case "Q-Most looking forward to":
-		return "most_looking_forward"
+		return colMostLookingForward
 	case "Q-least looking forward to":
-		return "least_looking_forward"
+		return colLeastLookingForward
 	case "Q-biggest accomplishment":
 		return "biggest_accomplishment"
 	case "Q-biggest disappointment":
@@ -608,9 +623,9 @@ func MapQuestFieldToColumn(fieldName string) string {
 	case "Q-If returning":
 		return "if_returning"
 	case "Quest-biggest hope":
-		return "biggest_hope"
+		return colBiggestHope
 	case "Quest-biggest concern":
-		return "biggest_concern"
+		return colBiggestConcern
 
 	// Social/emotional
 	case "Quest-How easily make friends":
@@ -676,11 +691,11 @@ func MapQuestFieldToColumn(fieldName string) string {
 
 	// Bar/Bat Mitzvah
 	case "Quest-Bar/BatMitzvah this year":
-		return "bar_mitzvah_year"
+		return colBarMitzvahYear
 	case "Quest-Bar/BatMitzvah where":
-		return "bar_mitzvah_where"
+		return colBarMitzvahWhere
 	case "Quest-Bar mitzvah month":
-		return "bar_mitzvah_month"
+		return colBarMitzvahMonth
 
 	// Other
 	case "Quest-Backpack":
@@ -705,7 +720,7 @@ func MapQuestFieldToColumn(fieldName string) string {
 func parseQuestBool(value string) bool {
 	lower := strings.ToLower(strings.TrimSpace(value))
 	switch lower {
-	case "yes", "true", "1", "y", "this year":
+	case boolYes, boolTrue, "1", "y", "this year":
 		return true
 	}
 	return false

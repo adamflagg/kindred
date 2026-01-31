@@ -14,6 +14,12 @@ import (
 // serviceNameStaffVehicleInfo is the canonical name for this sync service
 const serviceNameStaffVehicleInfo = "staff_vehicle_info"
 
+// Column name constants for staff_vehicle_info table
+const (
+	colDrivingToCamp  = "driving_to_camp"
+	colCanBringOthers = "can_bring_others"
+)
+
 // StaffVehicleInfoSync extracts SVI-* custom fields for staff vehicle information.
 // This service reads from person_custom_values and populates the staff_vehicle_info table.
 //
@@ -311,13 +317,13 @@ func mapSVIFieldToRecord(rec *staffVehicleInfoRecord, fieldName, value string) {
 	}
 
 	switch column {
-	case "driving_to_camp":
+	case colDrivingToCamp:
 		rec.drivingToCamp = parseSVIBoolImpl(value)
 	case "how_getting_to_camp":
 		if rec.howGettingToCamp == "" {
 			rec.howGettingToCamp = value
 		}
-	case "can_bring_others":
+	case colCanBringOthers:
 		rec.canBringOthers = parseSVIBoolImpl(value)
 	case "driver_name":
 		if rec.driverName == "" {
@@ -346,11 +352,11 @@ func mapSVIFieldToRecord(rec *staffVehicleInfoRecord, fieldName, value string) {
 func MapSVIFieldToColumnImpl(fieldName string) string {
 	switch fieldName {
 	case "SVI-are you driving to camp":
-		return "driving_to_camp"
+		return colDrivingToCamp
 	case "SVI-how are you get to camp":
 		return "how_getting_to_camp"
 	case "SVI - bring others":
-		return "can_bring_others"
+		return colCanBringOthers
 	case "SVI- Who is driving you to camp":
 		return "driver_name"
 	case "SVI-which friend":
@@ -369,7 +375,7 @@ func MapSVIFieldToColumnImpl(fieldName string) string {
 func parseSVIBoolImpl(value string) bool {
 	lower := strings.ToLower(strings.TrimSpace(value))
 	switch lower {
-	case "yes", "true", "1", "y":
+	case boolYes, boolTrue, "1", "y":
 		return true
 	}
 	return false

@@ -14,6 +14,30 @@ import (
 // serviceNameCamperTransportation is the canonical name for this sync service
 const serviceNameCamperTransportation = "camper_transportation"
 
+// CampMinder field name constants
+const (
+	cmFieldBusToCamp   = "Bus to Camp"
+	cmFieldBusFromCamp = "Bus From Camp"
+)
+
+// Column name constants for camper_transportation table
+const (
+	colToCampMethod           = "to_camp_method"
+	colFromCampMethod         = "from_camp_method"
+	colDropoffName            = "dropoff_name"
+	colDropoffPhone           = "dropoff_phone"
+	colDropoffRelationship    = "dropoff_relationship"
+	colPickupName             = "pickup_name"
+	colPickupPhone            = "pickup_phone"
+	colPickupRelationship     = "pickup_relationship"
+	colAltPickup1Name         = "alt_pickup_1_name"
+	colAltPickup1Phone        = "alt_pickup_1_phone"
+	colAltPickup1Relationship = "alt_pickup_1_relationship"
+	colAltPickup2Name         = "alt_pickup_2_name"
+	colAltPickup2Phone        = "alt_pickup_2_phone"
+	colAltPickup2Relationship = "alt_pickup_2_relationship"
+)
+
 // CamperTransportationSync extracts BUS-* custom fields for camper transportation.
 // This service reads from person_custom_values and populates the camper_transportation table.
 //
@@ -194,7 +218,7 @@ func isCamperTransportationField(name string) bool {
 		return true
 	}
 	// Legacy fields
-	if name == "Bus to Camp" || name == "Bus From Camp" {
+	if name == cmFieldBusToCamp || name == cmFieldBusFromCamp {
 		return true
 	}
 	return false
@@ -350,63 +374,63 @@ func mapTransportFieldToRecord(rec *camperTransportationRecord, fieldName, value
 	}
 
 	switch column {
-	case "to_camp_method":
+	case colToCampMethod:
 		// New fields take priority
 		if rec.toCampMethod == "" || !strings.HasPrefix(fieldName, "Bus ") {
 			rec.toCampMethod = value
 		}
 		// Track if using legacy field
-		if fieldName == "Bus to Camp" {
+		if fieldName == cmFieldBusToCamp {
 			rec.usedLegacyFields = true
 		}
-	case "from_camp_method":
+	case colFromCampMethod:
 		if rec.fromCampMethod == "" || !strings.HasPrefix(fieldName, "Bus ") {
 			rec.fromCampMethod = value
 		}
-		if fieldName == "Bus From Camp" {
+		if fieldName == cmFieldBusFromCamp {
 			rec.usedLegacyFields = true
 		}
-	case "dropoff_name":
+	case colDropoffName:
 		if rec.dropoffName == "" {
 			rec.dropoffName = value
 		}
-	case "dropoff_phone":
+	case colDropoffPhone:
 		if rec.dropoffPhone == "" {
 			rec.dropoffPhone = value
 		}
-	case "dropoff_relationship":
+	case colDropoffRelationship:
 		if rec.dropoffRelation == "" {
 			rec.dropoffRelation = value
 		}
-	case "pickup_name":
+	case colPickupName:
 		if rec.pickupName == "" {
 			rec.pickupName = value
 		}
-	case "pickup_phone":
+	case colPickupPhone:
 		if rec.pickupPhone == "" {
 			rec.pickupPhone = value
 		}
-	case "pickup_relationship":
+	case colPickupRelationship:
 		if rec.pickupRelation == "" {
 			rec.pickupRelation = value
 		}
-	case "alt_pickup_1_name":
+	case colAltPickup1Name:
 		if rec.altPickup1Name == "" {
 			rec.altPickup1Name = value
 		}
-	case "alt_pickup_1_phone":
+	case colAltPickup1Phone:
 		if rec.altPickup1Phone == "" {
 			rec.altPickup1Phone = value
 		}
-	case "alt_pickup_1_relationship":
+	case colAltPickup1Relationship:
 		if rec.altPickup1Rel == "" {
 			rec.altPickup1Rel = value
 		}
-	case "alt_pickup_2_name":
+	case colAltPickup2Name:
 		if rec.altPickup2Name == "" {
 			rec.altPickup2Name = value
 		}
-	case "alt_pickup_2_phone":
+	case colAltPickup2Phone:
 		if rec.altPickup2Phone == "" {
 			rec.altPickup2Phone = value
 		}
@@ -417,40 +441,40 @@ func mapTransportFieldToRecord(rec *camperTransportationRecord, fieldName, value
 func MapTransportationFieldToColumn(fieldName string) string {
 	switch fieldName {
 	// To/From camp method
-	case "BUS-to camp", "Bus to Camp":
-		return "to_camp_method"
-	case "BUS-home from camp", "Bus From Camp":
-		return "from_camp_method"
+	case "BUS-to camp", cmFieldBusToCamp:
+		return colToCampMethod
+	case "BUS-home from camp", cmFieldBusFromCamp:
+		return colFromCampMethod
 
 	// Dropoff info
 	case "BUS-who is dropping off":
-		return "dropoff_name"
+		return colDropoffName
 	case "BUS-Phone number of person dropping off-correct":
-		return "dropoff_phone"
+		return colDropoffPhone
 	case "BUS-relation to camper drop off":
-		return "dropoff_relationship"
+		return colDropoffRelationship
 
 	// Pickup info
 	case "BUS-person picking up":
-		return "pickup_name"
+		return colPickupName
 	case "BUS-phone number of person picking up":
-		return "pickup_phone"
+		return colPickupPhone
 	case "BUS-relationship to camper pick up person":
-		return "pickup_relationship"
+		return colPickupRelationship
 
 	// Alternate pickup 1
 	case "BUS-alternate person 1 picking up":
-		return "alt_pickup_1_name"
+		return colAltPickup1Name
 	case "BUS-alternate 1 phone":
-		return "alt_pickup_1_phone"
+		return colAltPickup1Phone
 	case "BUS-alternate person relation to camper":
-		return "alt_pickup_1_relationship"
+		return colAltPickup1Relationship
 
 	// Alternate pickup 2
 	case "BUS-alternate person 2":
-		return "alt_pickup_2_name"
+		return colAltPickup2Name
 	case "BUS-alternate person 2 phone":
-		return "alt_pickup_2_phone"
+		return colAltPickup2Phone
 	}
 	return ""
 }

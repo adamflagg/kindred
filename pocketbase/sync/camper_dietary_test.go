@@ -256,7 +256,7 @@ func isValidDietaryYear(year int) bool {
 func parseDietaryBool(rawValue string) bool {
 	lower := strings.ToLower(strings.TrimSpace(rawValue))
 	switch lower {
-	case "yes", "true", "1", "y":
+	case boolYes, boolTrue, "1", "y":
 		return true
 	}
 	return false
