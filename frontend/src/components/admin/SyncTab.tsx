@@ -24,6 +24,11 @@ import { useFamilyCampDerivedSync } from '../../hooks/useFamilyCampDerivedSync';
 import { useStaffSkillsSync } from '../../hooks/useStaffSkillsSync';
 import { useFinancialAidApplicationsSync } from '../../hooks/useFinancialAidApplicationsSync';
 import { useHouseholdDemographicsSync } from '../../hooks/useHouseholdDemographicsSync';
+import { useCamperDietarySync } from '../../hooks/useCamperDietarySync';
+import { useCamperTransportationSync } from '../../hooks/useCamperTransportationSync';
+import { useQuestRegistrationsSync } from '../../hooks/useQuestRegistrationsSync';
+import { useStaffApplicationsSync } from '../../hooks/useStaffApplicationsSync';
+import { useStaffVehicleInfoSync } from '../../hooks/useStaffVehicleInfoSync';
 import { useCancelQueuedSync } from '../../hooks/useCancelQueuedSync';
 import { useCancelRunningSync } from '../../hooks/useCancelRunningSync';
 import { useRunPhaseSync } from '../../hooks/useRunPhaseSync';
@@ -59,6 +64,11 @@ export function SyncTab() {
   const staffSkillsSync = useStaffSkillsSync();
   const faApplicationsSync = useFinancialAidApplicationsSync();
   const householdDemographicsSync = useHouseholdDemographicsSync();
+  const camperDietarySync = useCamperDietarySync();
+  const camperTransportationSync = useCamperTransportationSync();
+  const questRegistrationsSync = useQuestRegistrationsSync();
+  const staffApplicationsSync = useStaffApplicationsSync();
+  const staffVehicleInfoSync = useStaffVehicleInfoSync();
   const cancelQueuedSync = useCancelQueuedSync();
   const cancelRunningSync = useCancelRunningSync();
   const runPhaseSync = useRunPhaseSync();
@@ -134,6 +144,21 @@ export function SyncTab() {
           break;
         case 'household_demographics':
           householdDemographicsSync.mutate(syncYear);
+          break;
+        case 'camper_dietary':
+          camperDietarySync.mutate(syncYear);
+          break;
+        case 'camper_transportation':
+          camperTransportationSync.mutate(syncYear);
+          break;
+        case 'quest_registrations':
+          questRegistrationsSync.mutate(syncYear);
+          break;
+        case 'staff_applications':
+          staffApplicationsSync.mutate(syncYear);
+          break;
+        case 'staff_vehicle_info':
+          staffVehicleInfoSync.mutate(syncYear);
           break;
         case 'person_custom_values':
         case 'household_custom_values':

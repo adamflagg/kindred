@@ -614,7 +614,7 @@ func parseFABoolField(value string) bool {
 	lower := strings.ToLower(strings.TrimSpace(value))
 
 	switch lower {
-	case "yes", "y", "true", "1":
+	case boolYes, "y", boolTrue, "1":
 		return true
 	default:
 		return false

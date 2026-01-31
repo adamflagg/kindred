@@ -361,6 +361,41 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 		return handleHouseholdDemographicsSync(e, scheduler)
 	}))
 
+	// Camper dietary sync
+	// Extracts Family Medical-* fields from person_custom_values
+	// Accepts required ?year=YYYY parameter
+	e.Router.POST("/api/custom/sync/camper-dietary", requireAuth(func(e *core.RequestEvent) error {
+		return handleCamperDietarySync(e, scheduler)
+	}))
+
+	// Camper transportation sync
+	// Extracts BUS-* fields from person_custom_values
+	// Accepts required ?year=YYYY parameter
+	e.Router.POST("/api/custom/sync/camper-transportation", requireAuth(func(e *core.RequestEvent) error {
+		return handleCamperTransportationSync(e, scheduler)
+	}))
+
+	// Quest registrations sync
+	// Extracts Quest-*/Q-* fields from person_custom_values
+	// Accepts required ?year=YYYY parameter
+	e.Router.POST("/api/custom/sync/quest-registrations", requireAuth(func(e *core.RequestEvent) error {
+		return handleQuestRegistrationsSync(e, scheduler)
+	}))
+
+	// Staff applications sync
+	// Extracts App-* fields from person_custom_values
+	// Accepts required ?year=YYYY parameter
+	e.Router.POST("/api/custom/sync/staff-applications", requireAuth(func(e *core.RequestEvent) error {
+		return handleStaffApplicationsSync(e, scheduler)
+	}))
+
+	// Staff vehicle info sync
+	// Extracts SVI-* fields from person_custom_values
+	// Accepts required ?year=YYYY parameter
+	e.Router.POST("/api/custom/sync/staff-vehicle-info", requireAuth(func(e *core.RequestEvent) error {
+		return handleStaffVehicleInfoSync(e, scheduler)
+	}))
+
 	return nil
 }
 
@@ -2147,4 +2182,339 @@ func checkCustomValuesExist(app core.App, year int) bool {
 		0,
 	)
 	return err == nil && len(records) > 0
+}
+
+// handleCamperDietarySync handles the camper dietary extraction endpoint
+// Accepts required ?year=YYYY parameter to extract dietary info for a specific year
+func handleCamperDietarySync(e *core.RequestEvent, scheduler *Scheduler) error {
+	orchestrator := scheduler.GetOrchestrator()
+	syncType := "camper_dietary"
+
+	// Check if already running
+	if orchestrator.IsRunning(syncType) {
+		return e.JSON(http.StatusConflict, map[string]interface{}{
+			"error":    "Camper dietary sync already in progress",
+			"status":   "running",
+			"syncType": syncType,
+		})
+	}
+
+	// Parse required year parameter
+	yearParam := e.Request.URL.Query().Get("year")
+	if yearParam == "" {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Missing required year parameter. Use ?year=YYYY",
+		})
+	}
+
+	year, err := strconv.Atoi(yearParam)
+	if err != nil || year < 2017 || year > 2050 {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Invalid year parameter. Must be between 2017 and 2050.",
+		})
+	}
+
+	// Get the service and set options
+	service, ok := orchestrator.GetService(syncType).(*CamperDietarySync)
+	if !ok || service == nil {
+		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+			"error": "Camper dietary sync service not found",
+		})
+	}
+	service.Year = year
+
+	// Run in background
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+
+		slog.Info("Starting camper_dietary extraction", "year", year)
+		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
+			slog.Error("Camper dietary extraction failed", "year", year, "error", err)
+		} else {
+			stats := service.GetStats()
+			slog.Info("Camper dietary extraction completed",
+				"year", year,
+				"created", stats.Created,
+				"updated", stats.Updated,
+				"deleted", stats.Deleted,
+				"errors", stats.Errors,
+			)
+		}
+	}()
+
+	return e.JSON(http.StatusOK, map[string]interface{}{
+		"message":  "Camper dietary extraction started",
+		"status":   "started",
+		"syncType": syncType,
+		"year":     year,
+	})
+}
+
+// handleCamperTransportationSync handles the camper transportation extraction endpoint
+// Accepts required ?year=YYYY parameter to extract transportation info for a specific year
+func handleCamperTransportationSync(e *core.RequestEvent, scheduler *Scheduler) error {
+	orchestrator := scheduler.GetOrchestrator()
+	syncType := "camper_transportation"
+
+	// Check if already running
+	if orchestrator.IsRunning(syncType) {
+		return e.JSON(http.StatusConflict, map[string]interface{}{
+			"error":    "Camper transportation sync already in progress",
+			"status":   "running",
+			"syncType": syncType,
+		})
+	}
+
+	// Parse required year parameter
+	yearParam := e.Request.URL.Query().Get("year")
+	if yearParam == "" {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Missing required year parameter. Use ?year=YYYY",
+		})
+	}
+
+	year, err := strconv.Atoi(yearParam)
+	if err != nil || year < 2017 || year > 2050 {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Invalid year parameter. Must be between 2017 and 2050.",
+		})
+	}
+
+	// Get the service and set options
+	service, ok := orchestrator.GetService(syncType).(*CamperTransportationSync)
+	if !ok || service == nil {
+		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+			"error": "Camper transportation sync service not found",
+		})
+	}
+	service.Year = year
+
+	// Run in background
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+
+		slog.Info("Starting camper_transportation extraction", "year", year)
+		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
+			slog.Error("Camper transportation extraction failed", "year", year, "error", err)
+		} else {
+			stats := service.GetStats()
+			slog.Info("Camper transportation extraction completed",
+				"year", year,
+				"created", stats.Created,
+				"updated", stats.Updated,
+				"deleted", stats.Deleted,
+				"errors", stats.Errors,
+			)
+		}
+	}()
+
+	return e.JSON(http.StatusOK, map[string]interface{}{
+		"message":  "Camper transportation extraction started",
+		"status":   "started",
+		"syncType": syncType,
+		"year":     year,
+	})
+}
+
+// handleQuestRegistrationsSync handles the Quest registrations extraction endpoint
+// Accepts required ?year=YYYY parameter to extract Quest info for a specific year
+func handleQuestRegistrationsSync(e *core.RequestEvent, scheduler *Scheduler) error {
+	orchestrator := scheduler.GetOrchestrator()
+	syncType := "quest_registrations"
+
+	// Check if already running
+	if orchestrator.IsRunning(syncType) {
+		return e.JSON(http.StatusConflict, map[string]interface{}{
+			"error":    "Quest registrations sync already in progress",
+			"status":   "running",
+			"syncType": syncType,
+		})
+	}
+
+	// Parse required year parameter
+	yearParam := e.Request.URL.Query().Get("year")
+	if yearParam == "" {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Missing required year parameter. Use ?year=YYYY",
+		})
+	}
+
+	year, err := strconv.Atoi(yearParam)
+	if err != nil || year < 2017 || year > 2050 {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Invalid year parameter. Must be between 2017 and 2050.",
+		})
+	}
+
+	// Get the service and set options
+	service, ok := orchestrator.GetService(syncType).(*QuestRegistrationsSync)
+	if !ok || service == nil {
+		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+			"error": "Quest registrations sync service not found",
+		})
+	}
+	service.Year = year
+
+	// Run in background
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+
+		slog.Info("Starting quest_registrations extraction", "year", year)
+		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
+			slog.Error("Quest registrations extraction failed", "year", year, "error", err)
+		} else {
+			stats := service.GetStats()
+			slog.Info("Quest registrations extraction completed",
+				"year", year,
+				"created", stats.Created,
+				"updated", stats.Updated,
+				"deleted", stats.Deleted,
+				"errors", stats.Errors,
+			)
+		}
+	}()
+
+	return e.JSON(http.StatusOK, map[string]interface{}{
+		"message":  "Quest registrations extraction started",
+		"status":   "started",
+		"syncType": syncType,
+		"year":     year,
+	})
+}
+
+// handleStaffApplicationsSync handles the staff applications extraction endpoint
+// Accepts required ?year=YYYY parameter to extract staff application info for a specific year
+func handleStaffApplicationsSync(e *core.RequestEvent, scheduler *Scheduler) error {
+	orchestrator := scheduler.GetOrchestrator()
+	syncType := "staff_applications"
+
+	// Check if already running
+	if orchestrator.IsRunning(syncType) {
+		return e.JSON(http.StatusConflict, map[string]interface{}{
+			"error":    "Staff applications sync already in progress",
+			"status":   "running",
+			"syncType": syncType,
+		})
+	}
+
+	// Parse required year parameter
+	yearParam := e.Request.URL.Query().Get("year")
+	if yearParam == "" {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Missing required year parameter. Use ?year=YYYY",
+		})
+	}
+
+	year, err := strconv.Atoi(yearParam)
+	if err != nil || year < 2017 || year > 2050 {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Invalid year parameter. Must be between 2017 and 2050.",
+		})
+	}
+
+	// Get the service and set options
+	service, ok := orchestrator.GetService(syncType).(*StaffApplicationsSync)
+	if !ok || service == nil {
+		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+			"error": "Staff applications sync service not found",
+		})
+	}
+	service.Year = year
+
+	// Run in background
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+
+		slog.Info("Starting staff_applications extraction", "year", year)
+		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
+			slog.Error("Staff applications extraction failed", "year", year, "error", err)
+		} else {
+			stats := service.GetStats()
+			slog.Info("Staff applications extraction completed",
+				"year", year,
+				"created", stats.Created,
+				"updated", stats.Updated,
+				"deleted", stats.Deleted,
+				"errors", stats.Errors,
+			)
+		}
+	}()
+
+	return e.JSON(http.StatusOK, map[string]interface{}{
+		"message":  "Staff applications extraction started",
+		"status":   "started",
+		"syncType": syncType,
+		"year":     year,
+	})
+}
+
+// handleStaffVehicleInfoSync handles the staff vehicle info extraction endpoint
+// Accepts required ?year=YYYY parameter to extract staff vehicle info for a specific year
+func handleStaffVehicleInfoSync(e *core.RequestEvent, scheduler *Scheduler) error {
+	orchestrator := scheduler.GetOrchestrator()
+	syncType := "staff_vehicle_info"
+
+	// Check if already running
+	if orchestrator.IsRunning(syncType) {
+		return e.JSON(http.StatusConflict, map[string]interface{}{
+			"error":    "Staff vehicle info sync already in progress",
+			"status":   "running",
+			"syncType": syncType,
+		})
+	}
+
+	// Parse required year parameter
+	yearParam := e.Request.URL.Query().Get("year")
+	if yearParam == "" {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Missing required year parameter. Use ?year=YYYY",
+		})
+	}
+
+	year, err := strconv.Atoi(yearParam)
+	if err != nil || year < 2017 || year > 2050 {
+		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Invalid year parameter. Must be between 2017 and 2050.",
+		})
+	}
+
+	// Get the service and set options
+	service, ok := orchestrator.GetService(syncType).(*StaffVehicleInfoSync)
+	if !ok || service == nil {
+		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+			"error": "Staff vehicle info sync service not found",
+		})
+	}
+	service.Year = year
+
+	// Run in background
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+
+		slog.Info("Starting staff_vehicle_info extraction", "year", year)
+		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
+			slog.Error("Staff vehicle info extraction failed", "year", year, "error", err)
+		} else {
+			stats := service.GetStats()
+			slog.Info("Staff vehicle info extraction completed",
+				"year", year,
+				"created", stats.Created,
+				"updated", stats.Updated,
+				"deleted", stats.Deleted,
+				"errors", stats.Errors,
+			)
+		}
+	}()
+
+	return e.JSON(http.StatusOK, map[string]interface{}{
+		"message":  "Staff vehicle info extraction started",
+		"status":   "started",
+		"syncType": syncType,
+		"year":     year,
+	})
 }

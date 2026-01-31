@@ -28,6 +28,11 @@ export const SYNC_TYPE_NAMES: Record<string, string> = {
   staff_skills: 'Staff Skills', // Derived from person_custom_values Skills- fields
   financial_aid_applications: 'FA Applications', // Derived from person_custom_values FA- fields
   household_demographics: 'Household Demographics', // Computed from HH- fields
+  camper_transportation: 'Camper Transportation', // Extracted from BUS- custom fields
+  camper_dietary: 'Camper Dietary', // Extracted from Family Medical- custom fields
+  quest_registrations: 'Quest Registrations', // Extracted from Quest-/Q- custom fields
+  staff_applications: 'Staff Applications', // Extracted from App- custom fields
+  staff_vehicle_info: 'Staff Vehicle Info', // Extracted from SVI- custom fields
   bunk_requests: 'Intake Requests',
   process_requests: 'Process Requests',
   // On-demand syncs (not part of daily sync)

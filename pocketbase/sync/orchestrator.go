@@ -74,6 +74,11 @@ var syncJobMeta = []JobMeta{
 	{"staff_skills", PhaseTransform, "Extract staff skills from person_custom_values"},
 	{"financial_aid_applications", PhaseTransform, "Extract FA applications from person_custom_values"},
 	{"household_demographics", PhaseTransform, "Compute household demographics from custom values"},
+	{"camper_dietary", PhaseTransform, "Extract camper dietary/allergy info from custom values"},
+	{"camper_transportation", PhaseTransform, "Extract camper transportation info from custom values"},
+	{"quest_registrations", PhaseTransform, "Extract Quest program registration info from custom values"},
+	{"staff_applications", PhaseTransform, "Extract staff application info from custom values"},
+	{"staff_vehicle_info", PhaseTransform, "Extract staff vehicle info from custom values"},
 
 	// Process phase - CSV + AI
 	{"bunk_requests", PhaseProcess, "Import bunk request CSV"},
@@ -897,16 +902,23 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		// These must run BEFORE transform phase since 4 of 5 transform jobs depend on custom values
 		if opts.IncludeCustomValues {
 			// Transform phase: Only run when custom values phase runs
-			// 4 of 5 transform jobs depend on custom values data:
+			// Most transform jobs depend on custom values data:
 			// - family_camp_derived: requires person_custom_values + household_custom_values
 			// - staff_skills: requires person_custom_values (Skills- fields)
 			// - financial_aid_applications: requires person_custom_values (FA- fields)
 			// - household_demographics: requires household_custom_values (HH- fields)
+			// - camper_dietary: requires person_custom_values (Family Medical-* fields)
+			// - camper_transportation: requires person_custom_values (BUS-* fields)
+			// - quest_registrations: requires person_custom_values (Quest-*/Q-* fields)
+			// - staff_applications: requires person_custom_values (App-* fields)
+			// - staff_vehicle_info: requires person_custom_values (SVI-* fields)
 			// Only camper_history is CV-independent, but we run entire phase as a unit
 			servicesToRun = append(servicesToRun,
 				"person_custom_values", "household_custom_values",
 				"camper_history", "family_camp_derived", "staff_skills",
-				"financial_aid_applications", "household_demographics")
+				"financial_aid_applications", "household_demographics",
+				"camper_dietary", "camper_transportation", "quest_registrations",
+				"staff_applications", "staff_vehicle_info")
 		}
 
 		// Only include bunk_requests and process_requests for current year syncs (not historical)
@@ -1015,6 +1027,31 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		householdDemographicsSync := NewHouseholdDemographicsSync(o.app)
 		householdDemographicsSync.Year = opts.Year
 		o.RegisterService("household_demographics", householdDemographicsSync)
+
+		// Camper dietary (derived from Family Medical-* fields)
+		camperDietarySync := NewCamperDietarySync(o.app)
+		camperDietarySync.Year = opts.Year
+		o.RegisterService("camper_dietary", camperDietarySync)
+
+		// Camper transportation (derived from BUS-* fields)
+		camperTransportationSync := NewCamperTransportationSync(o.app)
+		camperTransportationSync.Year = opts.Year
+		o.RegisterService("camper_transportation", camperTransportationSync)
+
+		// Quest registrations (derived from Quest-*/Q-* fields)
+		questRegistrationsSync := NewQuestRegistrationsSync(o.app)
+		questRegistrationsSync.Year = opts.Year
+		o.RegisterService("quest_registrations", questRegistrationsSync)
+
+		// Staff applications (derived from App-* fields)
+		staffApplicationsSync := NewStaffApplicationsSync(o.app)
+		staffApplicationsSync.Year = opts.Year
+		o.RegisterService("staff_applications", staffApplicationsSync)
+
+		// Staff vehicle info (derived from SVI-* fields)
+		staffVehicleInfoSync := NewStaffVehicleInfoSync(o.app)
+		staffVehicleInfoSync.Year = opts.Year
+		o.RegisterService("staff_vehicle_info", staffVehicleInfoSync)
 
 		// Custom value services for historical sync support
 		// These use GetSeasonID() to determine the year, so they need year-specific client
@@ -1497,6 +1534,21 @@ func (o *Orchestrator) InitializeSyncServices() error {
 
 	// Household demographics (computes from HH- fields + household custom values - on-demand)
 	o.RegisterService("household_demographics", NewHouseholdDemographicsSync(o.app))
+
+	// Camper dietary (computes from Family Medical-* fields)
+	o.RegisterService("camper_dietary", NewCamperDietarySync(o.app))
+
+	// Camper transportation (computes from BUS-* fields)
+	o.RegisterService("camper_transportation", NewCamperTransportationSync(o.app))
+
+	// Quest registrations (computes from Quest-*/Q-* fields)
+	o.RegisterService("quest_registrations", NewQuestRegistrationsSync(o.app))
+
+	// Staff applications (computes from App-* fields)
+	o.RegisterService("staff_applications", NewStaffApplicationsSync(o.app))
+
+	// Staff vehicle info (computes from SVI-* fields)
+	o.RegisterService("staff_vehicle_info", NewStaffVehicleInfoSync(o.app))
 
 	slog.Info("All sync services registered")
 	return nil
