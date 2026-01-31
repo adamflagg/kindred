@@ -2042,26 +2042,19 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 	debugParam := e.Request.URL.Query().Get("debug")
 	debug := debugParam == boolTrueStr || debugParam == "1"
 
-	// Get current year from environment
-	currentYear := time.Now().Year()
-	if yearStr := os.Getenv("CAMPMINDER_SEASON_ID"); yearStr != "" {
-		if cy, err := strconv.Atoi(yearStr); err == nil {
-			currentYear = cy
-		}
-	}
-
 	// Get user info for queue tracking
 	requestedBy := ""
 	if e.Auth != nil {
 		requestedBy = e.Auth.GetString("email")
 	}
 
-	// Check for warning: Transform phase on historical year without custom values
+	// Check for warning: Transform phase without custom values
 	var warning string
-	if phase == PhaseTransform && year != currentYear {
+	if phase == PhaseTransform {
 		// Check if custom values exist for this year
 		if !checkCustomValuesExist(scheduler.app, year) {
-			warning = "Transform phase may have incomplete data: Custom Values not synced for this year"
+			warning = "Transform phase requires Custom Values phase to have run first. " +
+				"4 of 5 transform jobs depend on custom values data and will produce incomplete results without it."
 		}
 	}
 
