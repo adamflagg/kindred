@@ -139,8 +139,8 @@ func TestIsTransportationField(t *testing.T) {
 		{"BUS-to camp", true},
 		{"BUS-home from camp", true},
 		{"BUS-who is dropping off", true},
-		{"cmFieldBusToCamp", true},   // Legacy
-		{"Bus From Camp", true}, // Legacy
+		{"cmFieldBusToCamp", true}, // Legacy
+		{"Bus From Camp", true},    // Legacy
 		{"Family Camp Adult 1", false},
 		{"Bunk Preference", false},
 		{"BUS", false},         // No hyphen

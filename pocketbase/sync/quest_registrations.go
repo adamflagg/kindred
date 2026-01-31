@@ -16,17 +16,17 @@ const serviceNameQuestRegistrations = "quest_registrations"
 
 // Column name constants for quest_registrations table
 const (
-	colParentSignature      = "parent_signature"
-	colQuesterSignature     = "quester_signature"
-	colPreferredName        = "preferred_name"
-	colWhyCome              = "why_come"
-	colMostLookingForward   = "most_looking_forward"
-	colLeastLookingForward  = "least_looking_forward"
-	colBiggestHope          = "biggest_hope"
-	colBiggestConcern       = "biggest_concern"
-	colBarMitzvahYear       = "bar_mitzvah_year"
-	colBarMitzvahWhere      = "bar_mitzvah_where"
-	colBarMitzvahMonth      = "bar_mitzvah_month"
+	colParentSignature     = "parent_signature"
+	colQuesterSignature    = "quester_signature"
+	colPreferredName       = "preferred_name"
+	colWhyCome             = "why_come"
+	colMostLookingForward  = "most_looking_forward"
+	colLeastLookingForward = "least_looking_forward"
+	colBiggestHope         = "biggest_hope"
+	colBiggestConcern      = "biggest_concern"
+	colBarMitzvahYear      = "bar_mitzvah_year"
+	colBarMitzvahWhere     = "bar_mitzvah_where"
+	colBarMitzvahMonth     = "bar_mitzvah_month"
 )
 
 // QuestRegistrationsSync extracts Quest-* and Q-* custom fields for Quest program participants.
