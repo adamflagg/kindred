@@ -765,6 +765,11 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 		"staff_skills",               // Derived: staff skills extraction
 		"financial_aid_applications", // Derived: FA applications computation
 		"household_demographics",     // Derived: household demographics computation
+		"camper_dietary",             // Derived: camper dietary extraction
+		"camper_transportation",      // Derived: camper transportation extraction
+		"quest_registrations",        // Derived: Quest program registration extraction
+		"staff_applications",         // Derived: staff applications extraction
+		"staff_vehicle_info",         // Derived: staff vehicle info extraction
 		"bunk_requests",
 		"process_requests",
 		"multi_workbook_export",
