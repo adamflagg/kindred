@@ -39,6 +39,12 @@ type personHouseholdIDs struct {
 	AlternateChildhoodID int
 }
 
+// gatherPersonIDsResult holds person IDs and their camper status from gatherPersonIDs
+type gatherPersonIDsResult struct {
+	personIDs    []int        // All unique person IDs (from attendees + staff)
+	camperIDsSet map[int]bool // IDs from attendees (true campers)
+}
+
 // NewPersonsSync creates a new persons sync service
 func NewPersonsSync(app core.App, client *campminder.Client) *PersonsSync {
 	return &PersonsSync{
@@ -101,11 +107,11 @@ func (s *PersonsSync) Sync(ctx context.Context) error {
 	year := s.Client.GetSeasonID()
 
 	// Gather person IDs from attendees and staff
-	personIDs, err := s.gatherPersonIDs(year)
+	gatherResult, err := s.gatherPersonIDs(year)
 	if err != nil {
 		return err
 	}
-	if len(personIDs) == 0 {
+	if len(gatherResult.personIDs) == 0 {
 		slog.Info("No attendees or staff found, skipping persons sync", "year", year)
 		s.SyncSuccessful = true
 		return nil
@@ -121,7 +127,7 @@ func (s *PersonsSync) Sync(ctx context.Context) error {
 
 	// Process persons and collect household data
 	processResult, err := s.processPersonBatches(
-		ctx, personIDs, existingPersons, tagDefsByName, divisionsByID, year)
+		ctx, gatherResult.personIDs, gatherResult.camperIDsSet, existingPersons, tagDefsByName, divisionsByID, year)
 	if err != nil {
 		return err
 	}
@@ -150,10 +156,17 @@ func (s *PersonsSync) Sync(ctx context.Context) error {
 }
 
 // gatherPersonIDs collects person IDs from both attendees and staff.
-func (s *PersonsSync) gatherPersonIDs(year int) ([]int, error) {
+// Returns a result containing both the merged IDs and a set indicating which are campers (from attendees).
+func (s *PersonsSync) gatherPersonIDs(year int) (*gatherPersonIDsResult, error) {
 	attendeePersonIDs, err := s.getPersonIDsFromAttendees(year)
 	if err != nil {
 		return nil, fmt.Errorf("getting person IDs from attendees: %w", err)
+	}
+
+	// Build camper set from attendee IDs (before merging with staff)
+	camperIDsSet := make(map[int]bool, len(attendeePersonIDs))
+	for _, id := range attendeePersonIDs {
+		camperIDsSet[id] = true
 	}
 
 	staffPersonIDs, err := s.getPersonIDsFromStaff()
@@ -169,7 +182,10 @@ func (s *PersonsSync) gatherPersonIDs(year int) ([]int, error) {
 		"total", len(personIDs),
 		"year", year)
 
-	return personIDs, nil
+	return &gatherPersonIDsResult{
+		personIDs:    personIDs,
+		camperIDsSet: camperIDsSet,
+	}, nil
 }
 
 // preloadExistingPersons loads existing person records indexed by cm_id.
@@ -251,6 +267,7 @@ type personBatchResult struct {
 func (s *PersonsSync) processPersonBatches(
 	ctx context.Context,
 	personIDs []int,
+	camperIDsSet map[int]bool,
 	existingPersons map[int]*core.Record,
 	tagDefsByName map[string]string,
 	divisionsByID map[int]string,
@@ -284,7 +301,7 @@ func (s *PersonsSync) processPersonBatches(
 			s.SyncSuccessful = true
 		}
 
-		s.processBatchPersons(persons, existingPersons, tagDefsByName, divisionsByID, year, result)
+		s.processBatchPersons(persons, camperIDsSet, existingPersons, tagDefsByName, divisionsByID, year, result)
 	}
 
 	slog.Info("Extracted unique households from persons", "count", len(result.extractedHouseholds))
@@ -294,6 +311,7 @@ func (s *PersonsSync) processPersonBatches(
 // processBatchPersons processes a batch of person records.
 func (s *PersonsSync) processBatchPersons(
 	persons []map[string]any,
+	camperIDsSet map[int]bool,
 	existingPersons map[int]*core.Record,
 	tagDefsByName map[string]string,
 	divisionsByID map[int]string,
@@ -301,7 +319,11 @@ func (s *PersonsSync) processBatchPersons(
 	result *personBatchResult,
 ) {
 	for _, personData := range persons {
-		if err := s.processPerson(personData, existingPersons, tagDefsByName, divisionsByID, year); err != nil {
+		// Determine if this person is a camper (from attendees) or staff-only
+		personID, hasID := personData["ID"].(float64)
+		isCamper := hasID && camperIDsSet[int(personID)]
+
+		if err := s.processPerson(personData, isCamper, existingPersons, tagDefsByName, divisionsByID, year); err != nil {
 			slog.Error("Error processing person", "error", err)
 			s.Stats.Errors++
 		}
@@ -314,8 +336,7 @@ func (s *PersonsSync) processBatchPersons(
 			}
 		}
 
-		personID, ok := personData["ID"].(float64)
-		if ok {
+		if hasID {
 			result.personHouseholdMap[int(personID)] = s.extractHouseholdIDsFromPerson(personData)
 		}
 	}
@@ -391,13 +412,14 @@ func (s *PersonsSync) logSyncResults(householdStats Stats) {
 // processPerson processes a single person using pre-loaded existing persons
 func (s *PersonsSync) processPerson(
 	personData map[string]interface{},
+	isCamper bool,
 	existingPersons map[int]*core.Record,
 	tagDefsByName map[string]string,
 	divisionsByID map[int]string,
 	year int,
 ) error {
 	// Transform to PocketBase format
-	pbData, err := s.transformPersonToPB(personData, year)
+	pbData, err := s.transformPersonToPB(personData, year, isCamper)
 	if err != nil {
 		return err
 	}
@@ -502,9 +524,14 @@ func (s *PersonsSync) processPerson(
 }
 
 // transformPersonToPB transforms CampMinder person data to PocketBase format
+// isCamper indicates whether this person came from attendees (true) or staff-only (false)
 //
 //nolint:gocyclo // data transform function with many field mappings
-func (s *PersonsSync) transformPersonToPB(cmPerson map[string]interface{}, year int) (map[string]interface{}, error) {
+func (s *PersonsSync) transformPersonToPB(
+	cmPerson map[string]interface{},
+	year int,
+	isCamper bool,
+) (map[string]interface{}, error) {
 	// Skip if no CamperDetails (means they're not a camper)
 	camperDetails, ok := cmPerson["CamperDetails"].(map[string]interface{})
 	if !ok || camperDetails == nil {
@@ -707,8 +734,8 @@ func (s *PersonsSync) transformPersonToPB(cmPerson map[string]interface{}, year 
 		}
 	}
 
-	// Mark as camper (since we filtered out staff already)
-	pbData["is_camper"] = true
+	// Set camper status based on whether this person came from attendees
+	pbData["is_camper"] = isCamper
 
 	// Add year to make persons year-scoped
 	pbData["year"] = year

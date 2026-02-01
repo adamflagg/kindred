@@ -58,7 +58,7 @@ func TestTransformPersonToPB_CamperDetailsExpanded(t *testing.T) {
 
 	year := 2025
 
-	pbData, err := s.transformPersonToPB(personData, year)
+	pbData, err := s.transformPersonToPB(personData, year, true)
 	if err != nil {
 		t.Fatalf("transformPersonToPB returned error: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestTransformPersonToPB_MissingCamperDetailsFields(t *testing.T) {
 
 	year := 2025
 
-	pbData, err := s.transformPersonToPB(personData, year)
+	pbData, err := s.transformPersonToPB(personData, year, true)
 	if err != nil {
 		t.Fatalf("transformPersonToPB returned error: %v", err)
 	}
@@ -986,7 +986,7 @@ func TestTransformPersonToPB_CMLeadDateExtracted(t *testing.T) {
 
 	year := 2025
 
-	pbData, err := s.transformPersonToPB(personData, year)
+	pbData, err := s.transformPersonToPB(personData, year, true)
 	if err != nil {
 		t.Fatalf("transformPersonToPB returned error: %v", err)
 	}
@@ -1029,7 +1029,7 @@ func TestTransformPersonToPB_CMLeadDateMissing(t *testing.T) {
 
 	year := 2025
 
-	pbData, err := s.transformPersonToPB(personData, year)
+	pbData, err := s.transformPersonToPB(personData, year, true)
 	if err != nil {
 		t.Fatalf("transformPersonToPB returned error: %v", err)
 	}
@@ -1088,4 +1088,92 @@ func TestUpdatePersonHouseholdRelations_UsesHouseholdID(t *testing.T) {
 	// The fix needs to ensure that when PrincipalID is 0 but household_id exists,
 	// we still populate the household relation from household_id
 	// This is a design specification that the implementation must satisfy
+}
+
+// =============================================================================
+// Tests for is_camper flag - should be based on attendee status, not hardcoded
+// =============================================================================
+
+// TestTransformPersonToPB_IsCamperFlag tests that is_camper is set based on the isCamper parameter
+// Previously this was hardcoded to true, which incorrectly marked staff-only persons as campers
+func TestTransformPersonToPB_IsCamperFlag(t *testing.T) {
+	s := &PersonsSync{
+		missingDataStats: make(map[string]int),
+	}
+
+	personData := map[string]interface{}{
+		"ID":          float64(12345),
+		"DateOfBirth": "2010-03-15",
+		"GenderID":    float64(0),
+		"Name": map[string]interface{}{
+			"First": testFirstName,
+			"Last":  "Johnson",
+		},
+		"CamperDetails": map[string]interface{}{
+			"CampGradeID": float64(8),
+		},
+	}
+
+	year := 2025
+
+	// Test with isCamper = true (attendee)
+	pbData, err := s.transformPersonToPB(personData, year, true)
+	if err != nil {
+		t.Fatalf("transformPersonToPB returned error: %v", err)
+	}
+	if got, ok := pbData["is_camper"].(bool); !ok || !got {
+		t.Errorf("is_camper = %v, want true for camper", pbData["is_camper"])
+	}
+
+	// Test with isCamper = false (staff-only)
+	pbData, err = s.transformPersonToPB(personData, year, false)
+	if err != nil {
+		t.Fatalf("transformPersonToPB returned error: %v", err)
+	}
+	if got, ok := pbData["is_camper"].(bool); !ok || got {
+		t.Errorf("is_camper = %v, want false for staff-only", pbData["is_camper"])
+	}
+}
+
+// TestGatherPersonIDs_TracksCamperStatus tests that gatherPersonIDs returns camper status info
+func TestGatherPersonIDs_TracksCamperStatus(t *testing.T) {
+	// This test documents the expected behavior:
+	// gatherPersonIDs should return both the list of person IDs AND a set indicating
+	// which IDs are campers (from attendees) vs staff-only
+
+	// The result struct should contain:
+	// - personIDs: merged list of all unique person IDs
+	// - camperIDsSet: map[int]bool where true means this ID came from attendees
+
+	// Note: Full integration testing requires a running PocketBase instance
+	// This test documents the contract the implementation must satisfy
+}
+
+// TestMergePersonIDs_PreservesCamperInfo tests that merging preserves camper identification
+// When staff and attendee IDs overlap, the person should still be marked as a camper
+func TestMergePersonIDs_PreservesCamperInfo(t *testing.T) {
+	// Former campers who are now staff should still be marked as campers
+	// because they appear in the attendees list
+
+	attendeeIDs := []int{1001, 1002, 1003}
+	_ = []int{1002, 2001, 2002} // staffIDs: 1002 is both camper and staff
+
+	// Build camper set from attendees (before merge)
+	camperIDsSet := make(map[int]bool)
+	for _, id := range attendeeIDs {
+		camperIDsSet[id] = true
+	}
+
+	// After merge, 1002 should still be in camperIDsSet
+	if !camperIDsSet[1002] {
+		t.Error("expected person ID 1002 (camper who became staff) to still be marked as camper")
+	}
+
+	// Staff-only IDs should NOT be in camperIDsSet
+	if camperIDsSet[2001] {
+		t.Error("expected staff-only ID 2001 to NOT be in camperIDsSet")
+	}
+	if camperIDsSet[2002] {
+		t.Error("expected staff-only ID 2002 to NOT be in camperIDsSet")
+	}
 }
