@@ -176,6 +176,7 @@ func (s *AttendeesSync) processAttendee(
 	sessionStatuses, ok := attendeeData["SessionProgramStatus"].([]interface{})
 	if !ok || len(sessionStatuses) == 0 {
 		// No enrollments for this person
+		s.DebugLog("Skipping attendee: no session enrollments", "person_cm_id", personCMID)
 		s.Stats.Skipped++
 		return nil
 	}
@@ -212,6 +213,9 @@ func (s *AttendeesSync) processEnrollment(
 	// Check if session exists
 	if !s.sessionCMIDs[strconv.Itoa(sessionCMID)] {
 		// Session doesn't exist in PocketBase, skip
+		s.DebugLog("Skipping enrollment: session not in PocketBase",
+			"person_cm_id", personCMID,
+			"session_cm_id", sessionCMID)
 		s.Stats.Skipped++
 		return nil
 	}

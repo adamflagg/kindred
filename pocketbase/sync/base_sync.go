@@ -44,6 +44,7 @@ type BaseSyncService struct {
 	SyncSuccessful bool            // Track if the main sync operation succeeded
 	ProcessedKeys  map[string]bool // Track processed composite keys for orphan detection
 	FieldDiffStats map[string]int  // Track which fields cause updates (for debugging)
+	Debug          bool            // Enable verbose debug logging
 }
 
 // NewBaseSyncService creates a new base sync service
@@ -102,6 +103,18 @@ func (b *BaseSyncService) LogSyncCompleteWithExpansion(
 // GetStats returns the current stats for the sync service
 func (b *BaseSyncService) GetStats() Stats {
 	return b.Stats
+}
+
+// SetDebug enables or disables debug logging
+func (b *BaseSyncService) SetDebug(debug bool) {
+	b.Debug = debug
+}
+
+// DebugLog logs a message at INFO level only when Debug is enabled
+func (b *BaseSyncService) DebugLog(msg string, args ...any) {
+	if b.Debug {
+		slog.Info(msg, args...)
+	}
 }
 
 // ClearProcessedKeys resets the processed keys tracker

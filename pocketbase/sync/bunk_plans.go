@@ -282,6 +282,11 @@ func (s *BunkPlansSync) processBunkPlan(planData map[string]interface{}) (int, e
 	assignmentsCreated := 0
 
 	if len(bunkIDs) == 0 || len(sessionIDs) == 0 {
+		s.DebugLog("Skipping bunk plan template: empty bunkIDs or sessionIDs",
+			"plan_id", int(planID),
+			"name", name,
+			"bunk_count", len(bunkIDs),
+			"session_count", len(sessionIDs))
 		s.Stats.Skipped++
 		return 0, nil
 	}
@@ -300,6 +305,9 @@ func (s *BunkPlansSync) processBunkPlan(planData map[string]interface{}) (int, e
 
 		// Validate bunk exists
 		if !s.validBunkCMIDs[bunkCMID] {
+			s.DebugLog("Skipping bunk plan: bunk not in PocketBase",
+				"plan_id", int(planID),
+				"bunk_cm_id", bunkCMID)
 			s.Stats.Skipped++
 			continue
 		}
@@ -323,6 +331,10 @@ func (s *BunkPlansSync) processBunkPlan(planData map[string]interface{}) (int, e
 
 			// Validate session exists
 			if !s.validSessionCMIDs[sessionCMID] {
+				s.DebugLog("Skipping bunk plan: session not in PocketBase",
+					"plan_id", int(planID),
+					"bunk_cm_id", bunkCMID,
+					"session_cm_id", sessionCMID)
 				s.Stats.Skipped++
 				continue
 			}

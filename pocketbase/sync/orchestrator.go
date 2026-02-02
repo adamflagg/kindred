@@ -132,6 +132,11 @@ type Service interface {
 	GetStats() Stats
 }
 
+// Debuggable is an optional interface for services that support debug logging
+type Debuggable interface {
+	SetDebug(debug bool)
+}
+
 // Status represents the status of a sync operation
 type Status struct {
 	Type      string     `json:"type"`

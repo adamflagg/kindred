@@ -413,6 +413,20 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 		})
 	}
 
+	// Parse debug parameter
+	debugParam := e.Request.URL.Query().Get("debug")
+	debug := debugParam == boolTrueStr || debugParam == "1"
+
+	// If debug is enabled, set it on the service (if it supports Debuggable interface)
+	if debug {
+		if service := orchestrator.GetService(syncType); service != nil {
+			if debuggable, ok := service.(Debuggable); ok {
+				debuggable.SetDebug(true)
+				slog.Info("Debug logging enabled for sync", "syncType", syncType)
+			}
+		}
+	}
+
 	// Get current year from environment
 	currentYear := time.Now().Year()
 	if yearStr := os.Getenv("CAMPMINDER_SEASON_ID"); yearStr != "" {
@@ -449,6 +463,7 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 			"queue_id": qs.ID,
 			"position": position,
 			"syncType": syncType,
+			"debug":    debug,
 		})
 	}
 
@@ -463,6 +478,15 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 			e.App.Logger().Error("Individual sync failed", "syncType", syncType, "error", err)
 		}
 
+		// Reset debug flag after sync completes
+		if debug {
+			if service := orchestrator.GetService(syncType); service != nil {
+				if debuggable, ok := service.(Debuggable); ok {
+					debuggable.SetDebug(false)
+				}
+			}
+		}
+
 		// Process queue after individual sync completes
 		processQueuedSyncs(orchestrator)
 	}()
@@ -471,6 +495,7 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 		"message":  fmt.Sprintf("%s sync started", syncType),
 		"status":   "started",
 		"syncType": syncType,
+		"debug":    debug,
 	})
 }
 
