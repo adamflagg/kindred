@@ -113,7 +113,7 @@ func (b *BaseSyncService) SetDebug(debug bool) {
 // DebugLog logs a message at INFO level only when Debug is enabled
 func (b *BaseSyncService) DebugLog(msg string, args ...any) {
 	if b.Debug {
-		slog.Info(msg, args...)
+		slog.Info("[DEBUG] "+msg, args...)
 	}
 }
 

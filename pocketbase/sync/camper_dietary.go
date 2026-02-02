@@ -425,7 +425,8 @@ func makeCamperDietaryKey(personID, year int) string {
 	return fmt.Sprintf("%d|%d", personID, year)
 }
 
-// fieldEquals compares two field values for equality, handling type conversions
+// fieldEquals compares two field values for equality, handling type conversions.
+// This mirrors the centralized BaseSyncService.FieldEquals logic.
 func (s *CamperDietarySync) fieldEquals(existing, newVal any) bool {
 	// Handle nil vs empty string
 	if (existing == nil && newVal == "") || (existing == "" && newVal == nil) {
@@ -445,8 +446,25 @@ func (s *CamperDietarySync) fieldEquals(existing, newVal any) bool {
 	if existing == 0 && newVal == nil {
 		return true
 	}
+	// Handle float64 vs int (JSON unmarshals numbers as float64)
+	if existFloat, ok := existing.(float64); ok {
+		if newInt, ok := newVal.(int); ok {
+			return int(existFloat) == newInt
+		}
+	}
+	if existInt, ok := existing.(int); ok {
+		if newFloat, ok := newVal.(float64); ok {
+			return existInt == int(newFloat)
+		}
+	}
+	// Handle bool comparison (PocketBase may return bool, we may pass bool)
+	if existBool, ok := existing.(bool); ok {
+		if newBool, ok := newVal.(bool); ok {
+			return existBool == newBool
+		}
+	}
 
-	// Direct comparison
+	// String comparison as fallback
 	return fmt.Sprintf("%v", existing) == fmt.Sprintf("%v", newVal)
 }
 
