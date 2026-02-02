@@ -427,9 +427,10 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 		requestedBy = e.Auth.GetString("email")
 	}
 
-	// Check if any sync sequence is running - if so, queue instead of running immediately
+	// Check if any sync sequence OR any individual job is running - if so, queue instead of running immediately
 	if orchestrator.IsDailySyncRunning() || orchestrator.IsWeeklySyncRunning() ||
-		orchestrator.IsHistoricalSyncRunning() || orchestrator.IsCustomValuesSyncRunning() {
+		orchestrator.IsHistoricalSyncRunning() || orchestrator.IsCustomValuesSyncRunning() ||
+		orchestrator.IsAnyJobRunning() {
 		// Queue the individual sync
 		qs, err := orchestrator.EnqueueIndividualSync(currentYear, syncType, nil, requestedBy)
 		if err != nil {

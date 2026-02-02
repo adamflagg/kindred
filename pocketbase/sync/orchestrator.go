@@ -319,6 +319,19 @@ func (o *Orchestrator) IsCustomValuesSyncRunning() bool {
 	return o.customValuesSyncRunning
 }
 
+// IsAnyJobRunning returns true if any sync job is currently running.
+// This is used to queue individual sync requests when another job is already active.
+func (o *Orchestrator) IsAnyJobRunning() bool {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	for _, status := range o.runningJobs {
+		if status.Status == statusRunning {
+			return true
+		}
+	}
+	return false
+}
+
 // GetWeeklySyncJobs returns the list of services that run in the weekly sync.
 // These are global definition tables that rarely change and don't need daily updates.
 func GetWeeklySyncJobs() []string {
