@@ -290,6 +290,9 @@ func (s *StaffApplicationsSync) loadPersonCustomValues(
 ) (map[string]*staffApplicationRecord, error) {
 	var entries []appValueEntry
 
+	// Cache for person PB ID -> CM ID lookups
+	personCache := make(map[string]int)
+
 	filter := fmt.Sprintf("year = %d", year)
 	page := 1
 	perPage := 500
@@ -313,7 +316,27 @@ func (s *StaffApplicationsSync) loadPersonCustomValues(
 				continue
 			}
 
-			personID := record.GetInt("person_id")
+			// person_custom_values has "person" relation field (PB ID), not "person_id"
+			personPBID := record.GetString("person")
+			if personPBID == "" {
+				continue
+			}
+
+			// Look up CM ID from cache or persons table
+			personID := 0
+			if cached, ok := personCache[personPBID]; ok {
+				personID = cached
+			} else {
+				personFilter := fmt.Sprintf("id = '%s'", personPBID)
+				persons, err := s.App.FindRecordsByFilter("persons", personFilter, "", 1, 0)
+				if err == nil && len(persons) > 0 {
+					if cmID, ok := persons[0].Get("cm_id").(float64); ok {
+						personID = int(cmID)
+						personCache[personPBID] = personID
+					}
+				}
+			}
+
 			value := record.GetString("value")
 
 			if personID > 0 && value != "" {
