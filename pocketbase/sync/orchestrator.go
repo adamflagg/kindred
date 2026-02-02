@@ -1104,6 +1104,27 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		slog.Info("Concurrent sync not yet implemented, running sequentially")
 	}
 
+	// Apply debug flag to all services if enabled
+	if opts.Debug {
+		for _, serviceName := range servicesToRun {
+			if svc := o.GetService(serviceName); svc != nil {
+				if debuggable, ok := svc.(Debuggable); ok {
+					debuggable.SetDebug(true)
+				}
+			}
+		}
+		// Reset debug flag after sync completes
+		defer func() {
+			for _, serviceName := range servicesToRun {
+				if svc := o.GetService(serviceName); svc != nil {
+					if debuggable, ok := svc.(Debuggable); ok {
+						debuggable.SetDebug(false)
+					}
+				}
+			}
+		}()
+	}
+
 	// Run sequentially - custom values syncs run in order to prevent context deadline issues
 	// from concurrent API rate limiting during historical syncs
 	for i, serviceName := range servicesToRun {
