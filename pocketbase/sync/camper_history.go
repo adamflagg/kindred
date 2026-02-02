@@ -35,6 +35,7 @@ type CamperHistorySync struct {
 	App            core.App
 	Year           int  // Year to compute history for (0 = current year from env)
 	DryRun         bool // Dry run mode (compute but don't write)
+	Debug          bool // Enable verbose debug logging
 	Stats          Stats
 	SyncSuccessful bool
 	ProcessedKeys  map[string]bool // Track processed composite keys for orphan detection
@@ -58,6 +59,18 @@ func (c *CamperHistorySync) Name() string {
 // GetStats returns the current stats
 func (c *CamperHistorySync) GetStats() Stats {
 	return c.Stats
+}
+
+// SetDebug enables or disables debug logging
+func (c *CamperHistorySync) SetDebug(debug bool) {
+	c.Debug = debug
+}
+
+// DebugLog logs a message at INFO level only when Debug is enabled
+func (c *CamperHistorySync) DebugLog(msg string, args ...any) {
+	if c.Debug {
+		slog.Info(msg, args...)
+	}
 }
 
 // attendeeRecord holds raw attendee data from the database

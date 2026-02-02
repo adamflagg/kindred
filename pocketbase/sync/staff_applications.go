@@ -26,6 +26,7 @@ type StaffApplicationsSync struct {
 	App            core.App
 	Year           int
 	DryRun         bool
+	Debug          bool
 	Stats          Stats
 	SyncSuccessful bool
 }
@@ -47,6 +48,18 @@ func (s *StaffApplicationsSync) Name() string {
 // GetStats returns the current stats
 func (s *StaffApplicationsSync) GetStats() Stats {
 	return s.Stats
+}
+
+// SetDebug enables or disables debug logging
+func (s *StaffApplicationsSync) SetDebug(debug bool) {
+	s.Debug = debug
+}
+
+// DebugLog logs a message at INFO level only when Debug is enabled
+func (s *StaffApplicationsSync) DebugLog(msg string, args ...any) {
+	if s.Debug {
+		slog.Info(msg, args...)
+	}
 }
 
 // staffApplicationRecord holds the extracted application info for a staff member

@@ -39,6 +39,7 @@ type CamperDietarySync struct {
 	App            core.App
 	Year           int
 	DryRun         bool
+	Debug          bool
 	Stats          Stats
 	SyncSuccessful bool
 }
@@ -60,6 +61,18 @@ func (s *CamperDietarySync) Name() string {
 // GetStats returns the current stats
 func (s *CamperDietarySync) GetStats() Stats {
 	return s.Stats
+}
+
+// SetDebug enables or disables debug logging
+func (s *CamperDietarySync) SetDebug(debug bool) {
+	s.Debug = debug
+}
+
+// DebugLog logs a message at INFO level only when Debug is enabled
+func (s *CamperDietarySync) DebugLog(msg string, args ...any) {
+	if s.Debug {
+		slog.Info(msg, args...)
+	}
 }
 
 // camperDietaryRecord holds the extracted dietary info for a camper
@@ -102,6 +115,7 @@ func (s *CamperDietarySync) Sync(ctx context.Context) error {
 	slog.Info("Starting camper dietary extraction",
 		"year", year,
 		"dry_run", s.DryRun,
+		"debug", s.Debug,
 	)
 
 	// Step 1: Build field name mapping (field_definition PB ID -> field name)
@@ -531,9 +545,11 @@ func (s *CamperDietarySync) upsertRecords(
 
 			// Check if update is actually needed
 			if !s.recordNeedsUpdate(record, data) {
+				s.DebugLog("Skipping unchanged dietary record", "person_id", rec.personID, "year", year)
 				skipped++
 				continue
 			}
+			s.DebugLog("Updating dietary record", "person_id", rec.personID, "year", year)
 		} else {
 			record = core.NewRecord(col)
 		}

@@ -50,6 +50,7 @@ type CamperTransportationSync struct {
 	App            core.App
 	Year           int
 	DryRun         bool
+	Debug          bool
 	Stats          Stats
 	SyncSuccessful bool
 }
@@ -71,6 +72,18 @@ func (s *CamperTransportationSync) Name() string {
 // GetStats returns the current stats
 func (s *CamperTransportationSync) GetStats() Stats {
 	return s.Stats
+}
+
+// SetDebug enables or disables debug logging
+func (s *CamperTransportationSync) SetDebug(debug bool) {
+	s.Debug = debug
+}
+
+// DebugLog logs a message at INFO level only when Debug is enabled
+func (s *CamperTransportationSync) DebugLog(msg string, args ...any) {
+	if s.Debug {
+		slog.Info(msg, args...)
+	}
 }
 
 // camperTransportationRecord holds the extracted transportation info for a camper-session
@@ -123,6 +136,7 @@ func (s *CamperTransportationSync) Sync(ctx context.Context) error {
 	slog.Info("Starting camper transportation extraction",
 		"year", year,
 		"dry_run", s.DryRun,
+		"debug", s.Debug,
 	)
 
 	// Step 1: Build field name mapping (field_definition PB ID -> field name)
@@ -205,6 +219,7 @@ func (s *CamperTransportationSync) loadFieldDefinitions(_ context.Context) (map[
 		name := record.GetString("name")
 		if isCamperTransportationField(name) {
 			result[record.Id] = name
+			s.DebugLog("Found transportation field definition", "name", name, "pb_id", record.Id)
 		}
 	}
 

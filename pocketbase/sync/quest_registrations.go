@@ -41,6 +41,7 @@ type QuestRegistrationsSync struct {
 	App            core.App
 	Year           int
 	DryRun         bool
+	Debug          bool
 	Stats          Stats
 	SyncSuccessful bool
 }
@@ -62,6 +63,18 @@ func (s *QuestRegistrationsSync) Name() string {
 // GetStats returns the current stats
 func (s *QuestRegistrationsSync) GetStats() Stats {
 	return s.Stats
+}
+
+// SetDebug enables or disables debug logging
+func (s *QuestRegistrationsSync) SetDebug(debug bool) {
+	s.Debug = debug
+}
+
+// DebugLog logs a message at INFO level only when Debug is enabled
+func (s *QuestRegistrationsSync) DebugLog(msg string, args ...any) {
+	if s.Debug {
+		slog.Info(msg, args...)
+	}
 }
 
 // questRegistrationRecord holds the extracted Quest info for a participant

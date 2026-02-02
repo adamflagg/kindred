@@ -37,6 +37,7 @@ type FinancialAidApplicationsSync struct {
 	App            core.App
 	Year           int  // Year to compute for (0 = current year from env)
 	DryRun         bool // Dry run mode (compute but don't write)
+	Debug          bool // Enable verbose debug logging
 	Stats          Stats
 	SyncSuccessful bool
 }
@@ -58,6 +59,18 @@ func (s *FinancialAidApplicationsSync) Name() string {
 // GetStats returns the current stats
 func (s *FinancialAidApplicationsSync) GetStats() Stats {
 	return s.Stats
+}
+
+// SetDebug enables or disables debug logging
+func (s *FinancialAidApplicationsSync) SetDebug(debug bool) {
+	s.Debug = debug
+}
+
+// DebugLog logs a message at INFO level only when Debug is enabled
+func (s *FinancialAidApplicationsSync) DebugLog(msg string, args ...any) {
+	if s.Debug {
+		slog.Info(msg, args...)
+	}
 }
 
 // faApplicationData holds extracted financial aid application information

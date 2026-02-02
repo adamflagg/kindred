@@ -28,6 +28,7 @@ type StaffSkillsSync struct {
 	App            core.App
 	Year           int
 	DryRun         bool
+	Debug          bool
 	Stats          Stats
 	SyncSuccessful bool
 	ProcessedKeys  map[string]bool
@@ -51,6 +52,18 @@ func (s *StaffSkillsSync) Name() string {
 // GetStats returns the current stats
 func (s *StaffSkillsSync) GetStats() Stats {
 	return s.Stats
+}
+
+// SetDebug enables or disables debug logging
+func (s *StaffSkillsSync) SetDebug(debug bool) {
+	s.Debug = debug
+}
+
+// DebugLog logs a message at INFO level only when Debug is enabled
+func (s *StaffSkillsSync) DebugLog(msg string, args ...any) {
+	if s.Debug {
+		slog.Info(msg, args...)
+	}
 }
 
 // skillDefinition holds a skill field definition
@@ -97,6 +110,7 @@ func (s *StaffSkillsSync) Sync(ctx context.Context) error {
 	slog.Info("Starting staff skills extraction",
 		"year", year,
 		"dry_run", s.DryRun,
+		"debug", s.Debug,
 	)
 
 	// Step 1: Load Skills- field definitions with Staff partition
@@ -319,6 +333,7 @@ func (s *StaffSkillsSync) loadSkillDefinitions(_ context.Context) ([]skillDefini
 			name:  name,
 			skill: skillName,
 		})
+		s.DebugLog("Found staff skill definition", "name", name, "skill", skillName, "cm_id", cmID)
 	}
 
 	return result, nil
