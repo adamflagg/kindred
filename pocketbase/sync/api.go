@@ -427,7 +427,10 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 		requestedBy = e.Auth.GetString("email")
 	}
 
-	// Check if any sync sequence OR any individual job is running - if so, queue instead of running immediately
+	// Check if any sync should cause queueing:
+	// 1. Sequence flags (daily/weekly/historical/custom-values) - cover the window between
+	//    sequence start and first job execution (before runningJobs is populated)
+	// 2. IsAnyJobRunning() - covers individual jobs that were started outside a sequence
 	if orchestrator.IsDailySyncRunning() || orchestrator.IsWeeklySyncRunning() ||
 		orchestrator.IsHistoricalSyncRunning() || orchestrator.IsCustomValuesSyncRunning() ||
 		orchestrator.IsAnyJobRunning() {
