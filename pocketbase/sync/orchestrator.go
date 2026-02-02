@@ -390,22 +390,24 @@ func (o *Orchestrator) RunSingleSync(parentCtx context.Context, syncType string)
 			}
 		}()
 
-		// Create sync context with appropriate timeout based on parent context deadline.
-		// This fixes the "rate limiter wait: context deadline exceeded" issue by:
-		// 1. Respecting generous parent deadlines (e.g., scheduler's 60-minute timeout)
-		// 2. Extending short deadlines to give syncs adequate time
-		// 3. Creating reasonable timeouts when parent has none
+		// Create sync context with independent timeout (NOT derived from parent).
+		// This fixes the "context canceled" race condition where:
+		// 1. API handler spawns goroutine with ctx + defer cancel()
+		// 2. RunSingleSync spawns THIS goroutine and returns immediately
+		// 3. Handler goroutine exits -> defer cancel() fires -> cascades to derived ctx
+		// Solution: Always use context.Background() to avoid parent cancellation cascade.
+		// Use the longer of parent's remaining time or 2 hours for adequate timeout.
 		var syncCtx context.Context
 		var cancel context.CancelFunc
 
-		if parentDeadline, hasDeadline := parentCtx.Deadline(); hasDeadline && time.Until(parentDeadline) >= 30*time.Minute {
-			// Parent has generous deadline - derive from it to respect caller's timeout
-			syncCtx, cancel = context.WithCancel(parentCtx)
-		} else {
-			// No deadline or too short - create our own generous timeout
-			// Use 2 hours to handle large custom values syncs safely
-			syncCtx, cancel = context.WithTimeout(context.Background(), 2*time.Hour)
+		timeout := 2 * time.Hour
+		if parentDeadline, hasDeadline := parentCtx.Deadline(); hasDeadline {
+			remaining := time.Until(parentDeadline)
+			if remaining > timeout {
+				timeout = remaining
+			}
 		}
+		syncCtx, cancel = context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 
 		// Execute sync with the appropriately-configured context
