@@ -27,14 +27,22 @@ type FamilyCampDerivedSync struct {
 	DryRun         bool // Dry run mode (compute but don't write)
 	Stats          Stats
 	SyncSuccessful bool
+
+	// Track processed keys for orphan detection
+	ProcessedAdultKeys   map[string]bool
+	ProcessedRegKeys     map[string]bool
+	ProcessedMedicalKeys map[string]bool
 }
 
 // NewFamilyCampDerivedSync creates a new family camp derived sync service
 func NewFamilyCampDerivedSync(app core.App) *FamilyCampDerivedSync {
 	return &FamilyCampDerivedSync{
-		App:    app,
-		Year:   0,
-		DryRun: false,
+		App:                  app,
+		Year:                 0,
+		DryRun:               false,
+		ProcessedAdultKeys:   make(map[string]bool),
+		ProcessedRegKeys:     make(map[string]bool),
+		ProcessedMedicalKeys: make(map[string]bool),
 	}
 }
 
@@ -91,6 +99,9 @@ type medicalData struct {
 func (s *FamilyCampDerivedSync) Sync(ctx context.Context) error {
 	s.Stats = Stats{}
 	s.SyncSuccessful = false
+	s.ProcessedAdultKeys = make(map[string]bool)
+	s.ProcessedRegKeys = make(map[string]bool)
+	s.ProcessedMedicalKeys = make(map[string]bool)
 
 	// Determine year
 	year := s.Year
@@ -167,40 +178,66 @@ func (s *FamilyCampDerivedSync) Sync(ctx context.Context) error {
 		return nil
 	}
 
-	// Step 8: Clear existing records
-	deleted, err := s.clearExistingRecords(ctx, year)
+	// Step 8: Preload existing records for upsert
+	existingAdults, err := s.preloadExistingAdults(year)
 	if err != nil {
-		return fmt.Errorf("clearing existing records: %w", err)
+		return fmt.Errorf("preloading existing adults: %w", err)
 	}
-	s.Stats.Deleted = deleted
-	slog.Info("Cleared existing records", "deleted", deleted)
+	existingRegs, err := s.preloadExistingRegistrations(year)
+	if err != nil {
+		return fmt.Errorf("preloading existing registrations: %w", err)
+	}
+	existingMedical, err := s.preloadExistingMedical(year)
+	if err != nil {
+		return fmt.Errorf("preloading existing medical: %w", err)
+	}
+	slog.Info("Preloaded existing records",
+		"adults", len(existingAdults),
+		"registrations", len(existingRegs),
+		"medical", len(existingMedical),
+	)
 
-	// Step 9: Write adults
-	created, errors := s.writeAdults(ctx, adults, year)
+	// Step 9: Upsert adults
+	created, updated, skipped, errors := s.upsertAdults(ctx, adults, year, existingAdults)
 	s.Stats.Created += created
+	s.Stats.Updated += updated
+	s.Stats.Skipped += skipped
 	s.Stats.Errors += errors
 
-	// Step 10: Write registrations
-	created, errors = s.writeRegistrations(ctx, registrations, year)
+	// Step 10: Upsert registrations
+	created, updated, skipped, errors = s.upsertRegistrations(ctx, registrations, year, existingRegs)
 	s.Stats.Created += created
+	s.Stats.Updated += updated
+	s.Stats.Skipped += skipped
 	s.Stats.Errors += errors
 
-	// Step 11: Write medical
-	created, errors = s.writeMedical(ctx, medical, year)
+	// Step 11: Upsert medical
+	created, updated, skipped, errors = s.upsertMedical(ctx, medical, year, existingMedical)
 	s.Stats.Created += created
+	s.Stats.Updated += updated
+	s.Stats.Skipped += skipped
 	s.Stats.Errors += errors
+
+	// Mark sync as successful before orphan deletion
+	s.SyncSuccessful = true
+
+	// Step 12: Delete orphaned records (no longer in source data)
+	s.Stats.Deleted += s.deleteOrphanedAdults(existingAdults)
+	s.Stats.Deleted += s.deleteOrphanedRegistrations(existingRegs)
+	s.Stats.Deleted += s.deleteOrphanedMedical(existingMedical)
 
 	// WAL checkpoint
-	if s.Stats.Created > 0 || s.Stats.Deleted > 0 {
+	if s.Stats.Created > 0 || s.Stats.Updated > 0 || s.Stats.Deleted > 0 {
 		if err := s.forceWALCheckpoint(); err != nil {
 			slog.Warn("WAL checkpoint failed", "error", err)
 		}
 	}
 
-	s.SyncSuccessful = true
 	slog.Info("Family camp derived computation completed",
 		"year", year,
 		"created", s.Stats.Created,
+		"updated", s.Stats.Updated,
+		"skipped", s.Stats.Skipped,
 		"deleted", s.Stats.Deleted,
 		"errors", s.Stats.Errors,
 	)
@@ -637,170 +674,6 @@ func (s *FamilyCampDerivedSync) processMedical(personValues []customValueEntry) 
 	return result
 }
 
-// clearExistingRecords deletes all family camp derived records for a year
-func (s *FamilyCampDerivedSync) clearExistingRecords(ctx context.Context, year int) (int, error) {
-	deleted := 0
-
-	tables := []string{"family_camp_adults", "family_camp_registrations", "family_camp_medical"}
-	filter := fmt.Sprintf("year = %d", year)
-
-	for _, table := range tables {
-		for {
-			select {
-			case <-ctx.Done():
-				return deleted, ctx.Err()
-			default:
-			}
-
-			records, err := s.App.FindRecordsByFilter(table, filter, "", 100, 0)
-			if err != nil {
-				return deleted, fmt.Errorf("querying %s: %w", table, err)
-			}
-
-			if len(records) == 0 {
-				break
-			}
-
-			for _, record := range records {
-				if err := s.App.Delete(record); err != nil {
-					slog.Error("Error deleting record", "table", table, "id", record.Id, "error", err)
-					continue
-				}
-				deleted++
-			}
-		}
-	}
-
-	return deleted, nil
-}
-
-// writeAdults writes adult records to the database
-func (s *FamilyCampDerivedSync) writeAdults(ctx context.Context, adults []*adultData, year int) (created, errors int) {
-	created = 0
-	errors = 0
-
-	col, err := s.App.FindCollectionByNameOrId("family_camp_adults")
-	if err != nil {
-		slog.Error("Error finding family_camp_adults collection", "error", err)
-		return 0, len(adults)
-	}
-
-	for _, adult := range adults {
-		select {
-		case <-ctx.Done():
-			return created, errors
-		default:
-		}
-
-		record := core.NewRecord(col)
-		record.Set("household", adult.householdPBID)
-		record.Set("year", year)
-		record.Set("adult_number", adult.adultNumber)
-		record.Set("name", adult.name)
-		record.Set("first_name", adult.firstName)
-		record.Set("last_name", adult.lastName)
-		record.Set("email", adult.email)
-		record.Set("pronouns", adult.pronouns)
-		record.Set("gender", adult.gender)
-		record.Set("date_of_birth", adult.dateOfBirth)
-		record.Set("relationship_to_camper", adult.relationship)
-
-		if err := s.App.Save(record); err != nil {
-			slog.Error("Error creating adult record", "household", adult.householdPBID, "error", err)
-			errors++
-			continue
-		}
-		created++
-	}
-
-	return created, errors
-}
-
-// writeRegistrations writes registration records to the database
-func (s *FamilyCampDerivedSync) writeRegistrations(
-	ctx context.Context, registrations []*registrationData, year int,
-) (created, errors int) {
-	created = 0
-	errors = 0
-
-	col, err := s.App.FindCollectionByNameOrId("family_camp_registrations")
-	if err != nil {
-		slog.Error("Error finding family_camp_registrations collection", "error", err)
-		return 0, len(registrations)
-	}
-
-	for _, reg := range registrations {
-		select {
-		case <-ctx.Done():
-			return created, errors
-		default:
-		}
-
-		record := core.NewRecord(col)
-		record.Set("household", reg.householdPBID)
-		record.Set("year", year)
-		record.Set("cabin_assignment", reg.cabinAssignment)
-		record.Set("share_cabin_preference", reg.shareCabinPreference)
-		record.Set("shared_cabin_with", reg.sharedCabinWith)
-		record.Set("arrival_eta", reg.arrivalETA)
-		record.Set("special_occasions", reg.specialOccasions)
-		record.Set("goals", reg.goals)
-		record.Set("notes", reg.notes)
-		record.Set("needs_accommodation", reg.needsAccommodation)
-		record.Set("opt_out_vip", reg.optOutVIP)
-
-		if err := s.App.Save(record); err != nil {
-			slog.Error("Error creating registration record", "household", reg.householdPBID, "error", err)
-			errors++
-			continue
-		}
-		created++
-	}
-
-	return created, errors
-}
-
-// writeMedical writes medical records to the database
-func (s *FamilyCampDerivedSync) writeMedical(
-	ctx context.Context, medical []*medicalData, year int,
-) (created, errors int) {
-	created = 0
-	errors = 0
-
-	col, err := s.App.FindCollectionByNameOrId("family_camp_medical")
-	if err != nil {
-		slog.Error("Error finding family_camp_medical collection", "error", err)
-		return 0, len(medical)
-	}
-
-	for _, med := range medical {
-		select {
-		case <-ctx.Done():
-			return created, errors
-		default:
-		}
-
-		record := core.NewRecord(col)
-		record.Set("household", med.householdPBID)
-		record.Set("year", year)
-		record.Set("cpap_info", med.cpapInfo)
-		record.Set("physician_info", med.physicianInfo)
-		record.Set("special_needs_info", med.specialNeedsInfo)
-		record.Set("allergy_info", med.allergyInfo)
-		record.Set("dietary_info", med.dietaryInfo)
-		record.Set("additional_info", med.additionalInfo)
-
-		if err := s.App.Save(record); err != nil {
-			slog.Error("Error creating medical record", "household", med.householdPBID, "error", err)
-			errors++
-			continue
-		}
-		created++
-	}
-
-	return created, errors
-}
-
 // forceWALCheckpoint forces a SQLite WAL checkpoint
 func (s *FamilyCampDerivedSync) forceWALCheckpoint() error {
 	db := s.App.DB()
@@ -857,4 +730,450 @@ func extractAdultNumberFromField(fieldName string) int {
 func parseBoolFieldValue(value string) bool {
 	lower := strings.ToLower(strings.TrimSpace(value))
 	return lower == boolYes || lower == boolTrueStr || lower == "1"
+}
+
+// ============================================================================
+// Upsert helpers: preload existing records
+// ============================================================================
+
+// preloadExistingAdults loads all existing family_camp_adults records for the year
+// Returns a map keyed by "householdPBID:year:adultNumber"
+func (s *FamilyCampDerivedSync) preloadExistingAdults(year int) (map[string]*core.Record, error) {
+	result := make(map[string]*core.Record)
+	filter := fmt.Sprintf("year = %d", year)
+	page := 1
+	perPage := 500
+
+	for {
+		records, err := s.App.FindRecordsByFilter("family_camp_adults", filter, "", perPage, (page-1)*perPage)
+		if err != nil {
+			return nil, fmt.Errorf("querying family_camp_adults page %d: %w", page, err)
+		}
+
+		for _, record := range records {
+			householdID := record.GetString("household")
+			adultNum := 0
+			if num, ok := record.Get("adult_number").(float64); ok {
+				adultNum = int(num)
+			}
+			if householdID != "" && adultNum > 0 {
+				key := fmt.Sprintf("%s:%d:%d", householdID, year, adultNum)
+				result[key] = record
+			}
+		}
+
+		if len(records) < perPage {
+			break
+		}
+		page++
+	}
+
+	return result, nil
+}
+
+// preloadExistingRegistrations loads all existing family_camp_registrations records for the year
+// Returns a map keyed by "householdPBID:year"
+func (s *FamilyCampDerivedSync) preloadExistingRegistrations(year int) (map[string]*core.Record, error) {
+	result := make(map[string]*core.Record)
+	filter := fmt.Sprintf("year = %d", year)
+	page := 1
+	perPage := 500
+
+	for {
+		records, err := s.App.FindRecordsByFilter("family_camp_registrations", filter, "", perPage, (page-1)*perPage)
+		if err != nil {
+			return nil, fmt.Errorf("querying family_camp_registrations page %d: %w", page, err)
+		}
+
+		for _, record := range records {
+			householdID := record.GetString("household")
+			if householdID != "" {
+				key := fmt.Sprintf("%s:%d", householdID, year)
+				result[key] = record
+			}
+		}
+
+		if len(records) < perPage {
+			break
+		}
+		page++
+	}
+
+	return result, nil
+}
+
+// preloadExistingMedical loads all existing family_camp_medical records for the year
+// Returns a map keyed by "householdPBID:year"
+func (s *FamilyCampDerivedSync) preloadExistingMedical(year int) (map[string]*core.Record, error) {
+	result := make(map[string]*core.Record)
+	filter := fmt.Sprintf("year = %d", year)
+	page := 1
+	perPage := 500
+
+	for {
+		records, err := s.App.FindRecordsByFilter("family_camp_medical", filter, "", perPage, (page-1)*perPage)
+		if err != nil {
+			return nil, fmt.Errorf("querying family_camp_medical page %d: %w", page, err)
+		}
+
+		for _, record := range records {
+			householdID := record.GetString("household")
+			if householdID != "" {
+				key := fmt.Sprintf("%s:%d", householdID, year)
+				result[key] = record
+			}
+		}
+
+		if len(records) < perPage {
+			break
+		}
+		page++
+	}
+
+	return result, nil
+}
+
+// ============================================================================
+// Upsert helpers: comparison functions
+// ============================================================================
+
+// adultNeedsUpdate checks if an adult record needs updating
+func (s *FamilyCampDerivedSync) adultNeedsUpdate(existing *core.Record, adult *adultData) bool {
+	return existing.GetString("name") != adult.name ||
+		existing.GetString("first_name") != adult.firstName ||
+		existing.GetString("last_name") != adult.lastName ||
+		existing.GetString("email") != adult.email ||
+		existing.GetString("pronouns") != adult.pronouns ||
+		existing.GetString("gender") != adult.gender ||
+		existing.GetString("date_of_birth") != adult.dateOfBirth ||
+		existing.GetString("relationship_to_camper") != adult.relationship
+}
+
+// registrationNeedsUpdate checks if a registration record needs updating
+func (s *FamilyCampDerivedSync) registrationNeedsUpdate(existing *core.Record, reg *registrationData) bool {
+	return existing.GetString("cabin_assignment") != reg.cabinAssignment ||
+		existing.GetString("share_cabin_preference") != reg.shareCabinPreference ||
+		existing.GetString("shared_cabin_with") != reg.sharedCabinWith ||
+		existing.GetString("arrival_eta") != reg.arrivalETA ||
+		existing.GetString("special_occasions") != reg.specialOccasions ||
+		existing.GetString("goals") != reg.goals ||
+		existing.GetString("notes") != reg.notes ||
+		existing.GetBool("needs_accommodation") != reg.needsAccommodation ||
+		existing.GetBool("opt_out_vip") != reg.optOutVIP
+}
+
+// medicalNeedsUpdate checks if a medical record needs updating
+func (s *FamilyCampDerivedSync) medicalNeedsUpdate(existing *core.Record, med *medicalData) bool {
+	return existing.GetString("cpap_info") != med.cpapInfo ||
+		existing.GetString("physician_info") != med.physicianInfo ||
+		existing.GetString("special_needs_info") != med.specialNeedsInfo ||
+		existing.GetString("allergy_info") != med.allergyInfo ||
+		existing.GetString("dietary_info") != med.dietaryInfo ||
+		existing.GetString("additional_info") != med.additionalInfo
+}
+
+// ============================================================================
+// Upsert functions
+// ============================================================================
+
+// upsertAdults performs upsert for adult records
+func (s *FamilyCampDerivedSync) upsertAdults(
+	ctx context.Context, adults []*adultData, year int, existing map[string]*core.Record,
+) (created, updated, skipped, errors int) {
+	col, err := s.App.FindCollectionByNameOrId("family_camp_adults")
+	if err != nil {
+		slog.Error("Error finding family_camp_adults collection", "error", err)
+		return 0, 0, 0, len(adults)
+	}
+
+	for _, adult := range adults {
+		select {
+		case <-ctx.Done():
+			return created, updated, skipped, errors
+		default:
+		}
+
+		key := fmt.Sprintf("%s:%d:%d", adult.householdPBID, year, adult.adultNumber)
+		s.ProcessedAdultKeys[key] = true
+
+		if existingRecord, ok := existing[key]; ok {
+			// Record exists - check if update needed
+			if s.adultNeedsUpdate(existingRecord, adult) {
+				existingRecord.Set("name", adult.name)
+				existingRecord.Set("first_name", adult.firstName)
+				existingRecord.Set("last_name", adult.lastName)
+				existingRecord.Set("email", adult.email)
+				existingRecord.Set("pronouns", adult.pronouns)
+				existingRecord.Set("gender", adult.gender)
+				existingRecord.Set("date_of_birth", adult.dateOfBirth)
+				existingRecord.Set("relationship_to_camper", adult.relationship)
+
+				if err := s.App.Save(existingRecord); err != nil {
+					slog.Error("Error updating adult record", "household", adult.householdPBID, "error", err)
+					errors++
+					continue
+				}
+				updated++
+			} else {
+				skipped++
+			}
+		} else {
+			// New record - create
+			record := core.NewRecord(col)
+			record.Set("household", adult.householdPBID)
+			record.Set("year", year)
+			record.Set("adult_number", adult.adultNumber)
+			record.Set("name", adult.name)
+			record.Set("first_name", adult.firstName)
+			record.Set("last_name", adult.lastName)
+			record.Set("email", adult.email)
+			record.Set("pronouns", adult.pronouns)
+			record.Set("gender", adult.gender)
+			record.Set("date_of_birth", adult.dateOfBirth)
+			record.Set("relationship_to_camper", adult.relationship)
+
+			if err := s.App.Save(record); err != nil {
+				slog.Error("Error creating adult record", "household", adult.householdPBID, "error", err)
+				errors++
+				continue
+			}
+			created++
+		}
+	}
+
+	return created, updated, skipped, errors
+}
+
+// upsertRegistrations performs upsert for registration records
+func (s *FamilyCampDerivedSync) upsertRegistrations(
+	ctx context.Context, registrations []*registrationData, year int, existing map[string]*core.Record,
+) (created, updated, skipped, errors int) {
+	col, err := s.App.FindCollectionByNameOrId("family_camp_registrations")
+	if err != nil {
+		slog.Error("Error finding family_camp_registrations collection", "error", err)
+		return 0, 0, 0, len(registrations)
+	}
+
+	for _, reg := range registrations {
+		select {
+		case <-ctx.Done():
+			return created, updated, skipped, errors
+		default:
+		}
+
+		key := fmt.Sprintf("%s:%d", reg.householdPBID, year)
+		s.ProcessedRegKeys[key] = true
+
+		if existingRecord, ok := existing[key]; ok {
+			// Record exists - check if update needed
+			if s.registrationNeedsUpdate(existingRecord, reg) {
+				existingRecord.Set("cabin_assignment", reg.cabinAssignment)
+				existingRecord.Set("share_cabin_preference", reg.shareCabinPreference)
+				existingRecord.Set("shared_cabin_with", reg.sharedCabinWith)
+				existingRecord.Set("arrival_eta", reg.arrivalETA)
+				existingRecord.Set("special_occasions", reg.specialOccasions)
+				existingRecord.Set("goals", reg.goals)
+				existingRecord.Set("notes", reg.notes)
+				existingRecord.Set("needs_accommodation", reg.needsAccommodation)
+				existingRecord.Set("opt_out_vip", reg.optOutVIP)
+
+				if err := s.App.Save(existingRecord); err != nil {
+					slog.Error("Error updating registration record", "household", reg.householdPBID, "error", err)
+					errors++
+					continue
+				}
+				updated++
+			} else {
+				skipped++
+			}
+		} else {
+			// New record - create
+			record := core.NewRecord(col)
+			record.Set("household", reg.householdPBID)
+			record.Set("year", year)
+			record.Set("cabin_assignment", reg.cabinAssignment)
+			record.Set("share_cabin_preference", reg.shareCabinPreference)
+			record.Set("shared_cabin_with", reg.sharedCabinWith)
+			record.Set("arrival_eta", reg.arrivalETA)
+			record.Set("special_occasions", reg.specialOccasions)
+			record.Set("goals", reg.goals)
+			record.Set("notes", reg.notes)
+			record.Set("needs_accommodation", reg.needsAccommodation)
+			record.Set("opt_out_vip", reg.optOutVIP)
+
+			if err := s.App.Save(record); err != nil {
+				slog.Error("Error creating registration record", "household", reg.householdPBID, "error", err)
+				errors++
+				continue
+			}
+			created++
+		}
+	}
+
+	return created, updated, skipped, errors
+}
+
+// upsertMedical performs upsert for medical records
+func (s *FamilyCampDerivedSync) upsertMedical(
+	ctx context.Context, medical []*medicalData, year int, existing map[string]*core.Record,
+) (created, updated, skipped, errors int) {
+	col, err := s.App.FindCollectionByNameOrId("family_camp_medical")
+	if err != nil {
+		slog.Error("Error finding family_camp_medical collection", "error", err)
+		return 0, 0, 0, len(medical)
+	}
+
+	for _, med := range medical {
+		select {
+		case <-ctx.Done():
+			return created, updated, skipped, errors
+		default:
+		}
+
+		key := fmt.Sprintf("%s:%d", med.householdPBID, year)
+		s.ProcessedMedicalKeys[key] = true
+
+		if existingRecord, ok := existing[key]; ok {
+			// Record exists - check if update needed
+			if s.medicalNeedsUpdate(existingRecord, med) {
+				existingRecord.Set("cpap_info", med.cpapInfo)
+				existingRecord.Set("physician_info", med.physicianInfo)
+				existingRecord.Set("special_needs_info", med.specialNeedsInfo)
+				existingRecord.Set("allergy_info", med.allergyInfo)
+				existingRecord.Set("dietary_info", med.dietaryInfo)
+				existingRecord.Set("additional_info", med.additionalInfo)
+
+				if err := s.App.Save(existingRecord); err != nil {
+					slog.Error("Error updating medical record", "household", med.householdPBID, "error", err)
+					errors++
+					continue
+				}
+				updated++
+			} else {
+				skipped++
+			}
+		} else {
+			// New record - create
+			record := core.NewRecord(col)
+			record.Set("household", med.householdPBID)
+			record.Set("year", year)
+			record.Set("cpap_info", med.cpapInfo)
+			record.Set("physician_info", med.physicianInfo)
+			record.Set("special_needs_info", med.specialNeedsInfo)
+			record.Set("allergy_info", med.allergyInfo)
+			record.Set("dietary_info", med.dietaryInfo)
+			record.Set("additional_info", med.additionalInfo)
+
+			if err := s.App.Save(record); err != nil {
+				slog.Error("Error creating medical record", "household", med.householdPBID, "error", err)
+				errors++
+				continue
+			}
+			created++
+		}
+	}
+
+	return created, updated, skipped, errors
+}
+
+// ============================================================================
+// Orphan deletion functions
+// ============================================================================
+
+// deleteOrphanedAdults removes adult records that weren't processed
+func (s *FamilyCampDerivedSync) deleteOrphanedAdults(existing map[string]*core.Record) int {
+	if !s.SyncSuccessful {
+		slog.Info("Skipping orphan deletion for adults due to sync failure")
+		return 0
+	}
+
+	orphanCount := 0
+	for key, record := range existing {
+		if s.ProcessedAdultKeys[key] {
+			continue
+		}
+
+		householdID := record.GetString("household")
+		adultNum := record.Get("adult_number")
+		slog.Info("Deleting orphaned family_camp_adults record",
+			"household", householdID,
+			"adult_number", adultNum)
+
+		if err := s.App.Delete(record); err != nil {
+			slog.Error("Error deleting orphan adult", "id", record.Id, "error", err)
+			s.Stats.Errors++
+			continue
+		}
+		orphanCount++
+	}
+
+	if orphanCount > 0 {
+		slog.Info("Deleted orphaned family_camp_adults records", "count", orphanCount)
+	}
+
+	return orphanCount
+}
+
+// deleteOrphanedRegistrations removes registration records that weren't processed
+func (s *FamilyCampDerivedSync) deleteOrphanedRegistrations(existing map[string]*core.Record) int {
+	if !s.SyncSuccessful {
+		slog.Info("Skipping orphan deletion for registrations due to sync failure")
+		return 0
+	}
+
+	orphanCount := 0
+	for key, record := range existing {
+		if s.ProcessedRegKeys[key] {
+			continue
+		}
+
+		householdID := record.GetString("household")
+		slog.Info("Deleting orphaned family_camp_registrations record",
+			"household", householdID)
+
+		if err := s.App.Delete(record); err != nil {
+			slog.Error("Error deleting orphan registration", "id", record.Id, "error", err)
+			s.Stats.Errors++
+			continue
+		}
+		orphanCount++
+	}
+
+	if orphanCount > 0 {
+		slog.Info("Deleted orphaned family_camp_registrations records", "count", orphanCount)
+	}
+
+	return orphanCount
+}
+
+// deleteOrphanedMedical removes medical records that weren't processed
+func (s *FamilyCampDerivedSync) deleteOrphanedMedical(existing map[string]*core.Record) int {
+	if !s.SyncSuccessful {
+		slog.Info("Skipping orphan deletion for medical due to sync failure")
+		return 0
+	}
+
+	orphanCount := 0
+	for key, record := range existing {
+		if s.ProcessedMedicalKeys[key] {
+			continue
+		}
+
+		householdID := record.GetString("household")
+		slog.Info("Deleting orphaned family_camp_medical record",
+			"household", householdID)
+
+		if err := s.App.Delete(record); err != nil {
+			slog.Error("Error deleting orphan medical", "id", record.Id, "error", err)
+			s.Stats.Errors++
+			continue
+		}
+		orphanCount++
+	}
+
+	if orphanCount > 0 {
+		slog.Info("Deleted orphaned family_camp_medical records", "count", orphanCount)
+	}
+
+	return orphanCount
 }
