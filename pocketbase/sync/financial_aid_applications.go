@@ -793,6 +793,9 @@ func (s *FinancialAidApplicationsSync) upsertApplications(
 	}
 	slog.Info("Loaded existing applications", "count", len(existingMap))
 
+	// Fields to skip during idempotency comparison (always update these)
+	skipFields := map[string]bool{"year": true}
+
 	for _, app := range applications {
 		select {
 		case <-ctx.Done():
@@ -800,135 +803,158 @@ func (s *FinancialAidApplicationsSync) upsertApplications(
 		default:
 		}
 
+		// Convert application data to map
+		recordData := app.toRecordData(year)
+
 		// Check if record exists (keyed by person PB ID)
 		existingRecord := existingMap[app.personPBID]
 
-		var record *core.Record
-		isUpdate := false
 		if existingRecord != nil {
-			record = existingRecord
-			isUpdate = true
+			// Convert existing record to map for comparison
+			existingData := s.recordToMap(existingRecord)
+
+			// Check if update is needed
+			if s.recordNeedsUpdate(existingData, recordData, skipFields) {
+				// Update existing record
+				for field, value := range recordData {
+					existingRecord.Set(field, value)
+				}
+				if err := s.App.Save(existingRecord); err != nil {
+					slog.Error("Error updating application record",
+						"person", app.personPBID,
+						"error", err,
+					)
+					errors++
+					continue
+				}
+				updated++
+			} else {
+				s.Stats.Skipped++
+			}
 		} else {
-			record = core.NewRecord(col)
-		}
-
-		// Set all fields
-		record.Set("person", app.personPBID)
-		record.Set("household", app.householdPBID)
-		record.Set("person_id", app.personCMID)
-		record.Set("year", year)
-
-		// Interest indicators
-		record.Set("interest_expressed", app.interestExpressed)
-		record.Set("donation_preference", app.donationPreference)
-		record.Set("donation_other", app.donationOther)
-		record.Set("amount_awarded", app.amountAwarded)
-
-		// Contact Parent 1
-		record.Set("contact_first_name", app.contactFirstName)
-		record.Set("contact_last_name", app.contactLastName)
-		record.Set("contact_email", app.contactEmail)
-		record.Set("contact_phone", app.contactPhone)
-		record.Set("contact_address", app.contactAddress)
-		record.Set("contact_city", app.contactCity)
-		record.Set("contact_state", app.contactState)
-		record.Set("contact_zip", app.contactZip)
-		record.Set("contact_country", app.contactCountry)
-		record.Set("contact_marital_status", app.contactMaritalStatus)
-		record.Set("contact_jewish", app.contactJewish)
-
-		// Parent 2
-		record.Set("parent_2_name", app.parent2Name)
-		record.Set("parent_2_marital_status", app.parent2MaritalStatus)
-		record.Set("parent_2_jewish", app.parent2Jewish)
-
-		// Financial - Income
-		record.Set("total_gross_income", app.totalGrossIncome)
-		record.Set("expected_gross_income", app.expectedGrossIncome)
-		record.Set("total_adjusted_income", app.totalAdjustedIncome)
-		record.Set("total_exemptions", app.totalExemptions)
-		record.Set("unemployment", app.unemployment)
-		record.Set("still_unemployed", app.stillUnemployed)
-
-		// Financial - Assets
-		record.Set("non_retirement_savings", app.nonRetirementSavings)
-		record.Set("retirement_accounts", app.retirementAccounts)
-		record.Set("student_debt", app.studentDebt)
-		record.Set("owns_home", app.ownsHome)
-
-		// Financial - Expenses
-		record.Set("total_medical_expenses", app.totalMedicalExpenses)
-		record.Set("total_edu_expenses", app.totalEduExpenses)
-		record.Set("total_housing_expenses", app.totalHousingExpenses)
-		record.Set("total_rent", app.totalRent)
-
-		// Family Info
-		record.Set("num_children", app.numChildren)
-		record.Set("single_parent", app.singleParent)
-		record.Set("camper_name", app.camperName)
-		record.Set("special_circumstances", app.specialCircumstances)
-
-		// Jewish Affiliations
-		record.Set("affiliated_jcc", app.affiliatedJCC)
-		record.Set("child_affiliated_synagogue", app.childAffiliatedSynagogue)
-		record.Set("children_jewish_day_school", app.childrenJewishDaySchool)
-		record.Set("russian_speaking", app.russianSpeaking)
-
-		// Government/External Aid
-		record.Set("gov_subsidies", app.govSubsidies)
-		record.Set("gov_subsidies_detail", app.govSubsidiesDetail)
-		record.Set("synagogue_grant", app.synagogueGrant)
-		record.Set("one_happy_camper", app.oneHappyCamper)
-		record.Set("other_financial_support", app.otherFinancialSupport)
-		record.Set("other_support_amount", app.otherSupportAmount)
-		record.Set("other_support_expectations", app.otherSupportExpectations)
-		record.Set("financial_support", app.financialSupport)
-
-		// Program Requests
-		record.Set("summer_program", app.summerProgram)
-		record.Set("summer_amount_requested", app.summerAmountRequested)
-		record.Set("fc_program", app.fcProgram)
-		record.Set("fc_amount_requested", app.fcAmountRequested)
-		record.Set("tbm_program", app.tbmProgram)
-		record.Set("tbm_amount_requested", app.tbmAmountRequested)
-		record.Set("num_programs", app.numPrograms)
-		record.Set("num_sessions", app.numSessions)
-		record.Set("amount_requested", app.amountRequested)
-
-		// COVID/Disaster
-		record.Set("covid_childcare", app.covidChildcare)
-		record.Set("covid_childcare_amount", app.covidChildcareAmount)
-		record.Set("covid_expenses", app.covidExpenses)
-		record.Set("covid_expenses_additional", app.covidExpensesAdditional)
-		record.Set("covid_expenses_amount", app.covidExpensesAmount)
-		record.Set("fire", app.fire)
-		record.Set("fire_affected", app.fireAffected)
-		record.Set("fire_detail", app.fireDetail)
-
-		// Admin/Status
-		record.Set("deposit_paid", app.depositPaid)
-		record.Set("deposit_paid_adult", app.depositPaidAdult)
-		record.Set("applicant_signature", app.applicantSignature)
-		record.Set("income_confirmed", app.incomeConfirmed)
-		record.Set("amount_confirmed", app.amountConfirmed)
-
-		if err := s.App.Save(record); err != nil {
-			slog.Error("Error saving application record",
-				"person", app.personPBID,
-				"error", err,
-			)
-			errors++
-			continue
-		}
-
-		if isUpdate {
-			updated++
-		} else {
+			// Create new record
+			record := core.NewRecord(col)
+			for field, value := range recordData {
+				record.Set(field, value)
+			}
+			if err := s.App.Save(record); err != nil {
+				slog.Error("Error creating application record",
+					"person", app.personPBID,
+					"error", err,
+				)
+				errors++
+				continue
+			}
 			created++
 		}
 	}
 
 	return created, updated, errors
+}
+
+// recordToMap converts a PocketBase record to a map for comparison
+func (s *FinancialAidApplicationsSync) recordToMap(record *core.Record) map[string]interface{} {
+	return map[string]interface{}{
+		// Core identifiers
+		"person":    record.GetString("person"),
+		"household": record.GetString("household"),
+		"person_id": record.Get("person_id"),
+		"year":      record.Get("year"),
+
+		// Interest indicators
+		"interest_expressed":  record.GetBool("interest_expressed"),
+		"donation_preference": record.GetString("donation_preference"),
+		"donation_other":      record.GetString("donation_other"),
+		"amount_awarded":      record.Get("amount_awarded"),
+
+		// Contact Parent 1
+		"contact_first_name":     record.GetString("contact_first_name"),
+		"contact_last_name":      record.GetString("contact_last_name"),
+		"contact_email":          record.GetString("contact_email"),
+		"contact_phone":          record.GetString("contact_phone"),
+		"contact_address":        record.GetString("contact_address"),
+		"contact_city":           record.GetString("contact_city"),
+		"contact_state":          record.GetString("contact_state"),
+		"contact_zip":            record.GetString("contact_zip"),
+		"contact_country":        record.GetString("contact_country"),
+		"contact_marital_status": record.GetString("contact_marital_status"),
+		"contact_jewish":         record.GetString("contact_jewish"),
+
+		// Parent 2
+		"parent_2_name":           record.GetString("parent_2_name"),
+		"parent_2_marital_status": record.GetString("parent_2_marital_status"),
+		"parent_2_jewish":         record.GetString("parent_2_jewish"),
+
+		// Financial - Income
+		"total_gross_income":    record.Get("total_gross_income"),
+		"expected_gross_income": record.Get("expected_gross_income"),
+		"total_adjusted_income": record.Get("total_adjusted_income"),
+		"total_exemptions":      record.Get("total_exemptions"),
+		"unemployment":          record.GetBool("unemployment"),
+		"still_unemployed":      record.GetBool("still_unemployed"),
+
+		// Financial - Assets
+		"non_retirement_savings": record.Get("non_retirement_savings"),
+		"retirement_accounts":    record.Get("retirement_accounts"),
+		"student_debt":           record.Get("student_debt"),
+		"owns_home":              record.GetBool("owns_home"),
+
+		// Financial - Expenses
+		"total_medical_expenses": record.Get("total_medical_expenses"),
+		"total_edu_expenses":     record.Get("total_edu_expenses"),
+		"total_housing_expenses": record.Get("total_housing_expenses"),
+		"total_rent":             record.Get("total_rent"),
+
+		// Family Info
+		"num_children":          record.Get("num_children"),
+		"single_parent":         record.GetBool("single_parent"),
+		"camper_name":           record.GetString("camper_name"),
+		"special_circumstances": record.GetString("special_circumstances"),
+
+		// Jewish Affiliations
+		"affiliated_jcc":             record.GetBool("affiliated_jcc"),
+		"child_affiliated_synagogue": record.GetString("child_affiliated_synagogue"),
+		"children_jewish_day_school": record.GetString("children_jewish_day_school"),
+		"russian_speaking":           record.GetBool("russian_speaking"),
+
+		// Government/External Aid
+		"gov_subsidies":              record.GetBool("gov_subsidies"),
+		"gov_subsidies_detail":       record.GetString("gov_subsidies_detail"),
+		"synagogue_grant":            record.GetString("synagogue_grant"),
+		"one_happy_camper":           record.GetString("one_happy_camper"),
+		"other_financial_support":    record.GetString("other_financial_support"),
+		"other_support_amount":       record.Get("other_support_amount"),
+		"other_support_expectations": record.GetString("other_support_expectations"),
+		"financial_support":          record.GetString("financial_support"),
+
+		// Program Requests
+		"summer_program":          record.GetString("summer_program"),
+		"summer_amount_requested": record.Get("summer_amount_requested"),
+		"fc_program":              record.GetString("fc_program"),
+		"fc_amount_requested":     record.Get("fc_amount_requested"),
+		"tbm_program":             record.GetString("tbm_program"),
+		"tbm_amount_requested":    record.Get("tbm_amount_requested"),
+		"num_programs":            record.Get("num_programs"),
+		"num_sessions":            record.Get("num_sessions"),
+		"amount_requested":        record.Get("amount_requested"),
+
+		// COVID/Disaster
+		"covid_childcare":           record.GetBool("covid_childcare"),
+		"covid_childcare_amount":    record.Get("covid_childcare_amount"),
+		"covid_expenses":            record.GetString("covid_expenses"),
+		"covid_expenses_additional": record.GetString("covid_expenses_additional"),
+		"covid_expenses_amount":     record.Get("covid_expenses_amount"),
+		"fire":                      record.GetString("fire"),
+		"fire_affected":             record.GetBool("fire_affected"),
+		"fire_detail":               record.GetString("fire_detail"),
+
+		// Admin/Status
+		"deposit_paid":        record.Get("deposit_paid"),
+		"deposit_paid_adult":  record.Get("deposit_paid_adult"),
+		"applicant_signature": record.GetString("applicant_signature"),
+		"income_confirmed":    record.GetBool("income_confirmed"),
+		"amount_confirmed":    record.GetBool("amount_confirmed"),
+	}
 }
 
 // loadExistingApplications loads existing application records for the year
@@ -982,4 +1008,169 @@ func (s *FinancialAidApplicationsSync) forceWALCheckpoint() error {
 	}
 
 	return nil
+}
+
+// toRecordData converts faApplicationData to a map for database operations
+func (app *faApplicationData) toRecordData(year int) map[string]interface{} {
+	return map[string]interface{}{
+		// Core identifiers
+		"person":    app.personPBID,
+		"household": app.householdPBID,
+		"person_id": app.personCMID,
+		"year":      year,
+
+		// Interest indicators
+		"interest_expressed":  app.interestExpressed,
+		"donation_preference": app.donationPreference,
+		"donation_other":      app.donationOther,
+		"amount_awarded":      app.amountAwarded,
+
+		// Contact Parent 1
+		"contact_first_name":    app.contactFirstName,
+		"contact_last_name":     app.contactLastName,
+		"contact_email":         app.contactEmail,
+		"contact_phone":         app.contactPhone,
+		"contact_address":       app.contactAddress,
+		"contact_city":          app.contactCity,
+		"contact_state":         app.contactState,
+		"contact_zip":           app.contactZip,
+		"contact_country":       app.contactCountry,
+		"contact_marital_status": app.contactMaritalStatus,
+		"contact_jewish":        app.contactJewish,
+
+		// Parent 2
+		"parent_2_name":           app.parent2Name,
+		"parent_2_marital_status": app.parent2MaritalStatus,
+		"parent_2_jewish":         app.parent2Jewish,
+
+		// Financial - Income
+		"total_gross_income":    app.totalGrossIncome,
+		"expected_gross_income": app.expectedGrossIncome,
+		"total_adjusted_income": app.totalAdjustedIncome,
+		"total_exemptions":      app.totalExemptions,
+		"unemployment":          app.unemployment,
+		"still_unemployed":      app.stillUnemployed,
+
+		// Financial - Assets
+		"non_retirement_savings": app.nonRetirementSavings,
+		"retirement_accounts":    app.retirementAccounts,
+		"student_debt":           app.studentDebt,
+		"owns_home":              app.ownsHome,
+
+		// Financial - Expenses
+		"total_medical_expenses":  app.totalMedicalExpenses,
+		"total_edu_expenses":      app.totalEduExpenses,
+		"total_housing_expenses":  app.totalHousingExpenses,
+		"total_rent":              app.totalRent,
+
+		// Family Info
+		"num_children":          float64(app.numChildren),
+		"single_parent":         app.singleParent,
+		"camper_name":           app.camperName,
+		"special_circumstances": app.specialCircumstances,
+
+		// Jewish Affiliations
+		"affiliated_jcc":            app.affiliatedJCC,
+		"child_affiliated_synagogue": app.childAffiliatedSynagogue,
+		"children_jewish_day_school": app.childrenJewishDaySchool,
+		"russian_speaking":          app.russianSpeaking,
+
+		// Government/External Aid
+		"gov_subsidies":              app.govSubsidies,
+		"gov_subsidies_detail":       app.govSubsidiesDetail,
+		"synagogue_grant":            app.synagogueGrant,
+		"one_happy_camper":           app.oneHappyCamper,
+		"other_financial_support":    app.otherFinancialSupport,
+		"other_support_amount":       app.otherSupportAmount,
+		"other_support_expectations": app.otherSupportExpectations,
+		"financial_support":          app.financialSupport,
+
+		// Program Requests
+		"summer_program":          app.summerProgram,
+		"summer_amount_requested": app.summerAmountRequested,
+		"fc_program":              app.fcProgram,
+		"fc_amount_requested":     app.fcAmountRequested,
+		"tbm_program":             app.tbmProgram,
+		"tbm_amount_requested":    app.tbmAmountRequested,
+		"num_programs":            float64(app.numPrograms),
+		"num_sessions":            float64(app.numSessions),
+		"amount_requested":        app.amountRequested,
+
+		// COVID/Disaster
+		"covid_childcare":           app.covidChildcare,
+		"covid_childcare_amount":    app.covidChildcareAmount,
+		"covid_expenses":            app.covidExpenses,
+		"covid_expenses_additional": app.covidExpensesAdditional,
+		"covid_expenses_amount":     app.covidExpensesAmount,
+		"fire":                      app.fire,
+		"fire_affected":             app.fireAffected,
+		"fire_detail":               app.fireDetail,
+
+		// Admin/Status
+		"deposit_paid":        app.depositPaid,
+		"deposit_paid_adult":  app.depositPaidAdult,
+		"applicant_signature": app.applicantSignature,
+		"income_confirmed":    app.incomeConfirmed,
+		"amount_confirmed":    app.amountConfirmed,
+	}
+}
+
+// fieldEquals compares two field values for equality, handling type conversions
+func (s *FinancialAidApplicationsSync) fieldEquals(existing, newVal interface{}) bool {
+	// Handle nil vs empty string
+	if (existing == nil && newVal == "") || (existing == "" && newVal == nil) {
+		return true
+	}
+	// Handle nil vs 0
+	if existing == nil && newVal == 0 {
+		return true
+	}
+	if existing == nil && newVal == 0.0 {
+		return true
+	}
+	if existing == 0 && newVal == nil {
+		return true
+	}
+	if existing == 0.0 && newVal == nil {
+		return true
+	}
+	// Handle float64 vs int (PocketBase stores numbers as float64)
+	if existingFloat, ok := existing.(float64); ok {
+		if newInt, ok := newVal.(int); ok {
+			// Only equal if the float is exactly representable as the int
+			return existingFloat == float64(newInt)
+		}
+		if newFloat, ok := newVal.(float64); ok {
+			return existingFloat == newFloat
+		}
+	}
+	if existingInt, ok := existing.(int); ok {
+		if newFloat, ok := newVal.(float64); ok {
+			// Only equal if the float is exactly representable as the int
+			return float64(existingInt) == newFloat
+		}
+	}
+	// Handle bool
+	if existingBool, ok := existing.(bool); ok {
+		if newBool, ok := newVal.(bool); ok {
+			return existingBool == newBool
+		}
+	}
+	// Direct comparison
+	return existing == newVal
+}
+
+// recordNeedsUpdate checks if any field differs between existing record and new data
+func (s *FinancialAidApplicationsSync) recordNeedsUpdate(
+	existing map[string]interface{}, newData map[string]interface{}, skipFields map[string]bool,
+) bool {
+	for field, newValue := range newData {
+		if skipFields != nil && skipFields[field] {
+			continue
+		}
+		if !s.fieldEquals(existing[field], newValue) {
+			return true
+		}
+	}
+	return false
 }
