@@ -1266,7 +1266,7 @@ func (o *Orchestrator) EnqueueUnifiedSync(
 
 // EnqueuePhaseSync adds a phase sync request to the queue.
 // If a sync with the same year+phase is already queued, returns the existing item.
-func (o *Orchestrator) EnqueuePhaseSync(year int, phase Phase, requestedBy string) (*QueuedSync, error) {
+func (o *Orchestrator) EnqueuePhaseSync(year int, phase Phase, debug bool, requestedBy string) (*QueuedSync, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
@@ -1286,6 +1286,7 @@ func (o *Orchestrator) EnqueuePhaseSync(year int, phase Phase, requestedBy strin
 		Year:        year,
 		Type:        "phase",
 		Service:     string(phase),
+		Debug:       debug,
 		QueuedAt:    time.Now(),
 		RequestedBy: requestedBy,
 	}
@@ -1294,7 +1295,7 @@ func (o *Orchestrator) EnqueuePhaseSync(year int, phase Phase, requestedBy strin
 	o.pendingUnifiedSyncs = append(o.pendingUnifiedSyncs, qs)
 
 	slog.Info("Enqueued phase sync",
-		"id", qs.ID, "year", year, "phase", phase, "position", len(o.pendingUnifiedSyncs))
+		"id", qs.ID, "year", year, "phase", phase, "debug", debug, "position", len(o.pendingUnifiedSyncs))
 
 	return &qs, nil
 }
@@ -1302,7 +1303,7 @@ func (o *Orchestrator) EnqueuePhaseSync(year int, phase Phase, requestedBy strin
 // EnqueueIndividualSync adds an individual job sync request to the queue.
 // If a sync with the same year+job is already queued, returns the existing item.
 func (o *Orchestrator) EnqueueIndividualSync(
-	year int, jobID string, options map[string]interface{}, requestedBy string,
+	year int, jobID string, options map[string]interface{}, debug bool, requestedBy string,
 ) (*QueuedSync, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -1324,6 +1325,7 @@ func (o *Orchestrator) EnqueueIndividualSync(
 		Type:        "individual",
 		Service:     jobID,
 		Options:     options,
+		Debug:       debug,
 		QueuedAt:    time.Now(),
 		RequestedBy: requestedBy,
 	}
@@ -1332,7 +1334,7 @@ func (o *Orchestrator) EnqueueIndividualSync(
 	o.pendingUnifiedSyncs = append(o.pendingUnifiedSyncs, qs)
 
 	slog.Info("Enqueued individual sync",
-		"id", qs.ID, "year", year, "job", jobID, "position", len(o.pendingUnifiedSyncs))
+		"id", qs.ID, "year", year, "job", jobID, "debug", debug, "position", len(o.pendingUnifiedSyncs))
 
 	return &qs, nil
 }

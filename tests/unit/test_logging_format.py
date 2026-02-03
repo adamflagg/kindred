@@ -261,9 +261,7 @@ class TestDebugPrefixFormatting:
         # Should contain [DEBUG] prefix in the message portion
         assert "[DEBUG]" in output, f"DEBUG level output should contain [DEBUG] prefix: {output}"
         # The [DEBUG] should appear after the level name
-        assert "] DEBUG [DEBUG]" in output, (
-            f"[DEBUG] should appear after level name: {output}"
-        )
+        assert "] DEBUG [DEBUG]" in output, f"[DEBUG] should appear after level name: {output}"
 
     def test_info_level_message_no_debug_prefix(self):
         """INFO level messages should NOT have [DEBUG] prefix."""
@@ -303,9 +301,7 @@ class TestDebugPrefixFormatting:
         output = formatter.format(record)
 
         # Should NOT contain [DEBUG] prefix
-        assert "[DEBUG]" not in output, (
-            f"WARNING level output should NOT contain [DEBUG] prefix: {output}"
-        )
+        assert "[DEBUG]" not in output, f"WARNING level output should NOT contain [DEBUG] prefix: {output}"
 
     def test_error_level_message_no_debug_prefix(self):
         """ERROR level messages should NOT have [DEBUG] prefix."""
@@ -346,9 +342,7 @@ class TestDebugPrefixFormatting:
 
         # Go style: slog.Info("[DEBUG] " + msg) produces "[DEBUG] Processing batch"
         # Python should match: "... DEBUG [DEBUG] Processing batch"
-        assert "[DEBUG] Processing batch" in output, (
-            f"Debug message should be prefixed with [DEBUG]: {output}"
-        )
+        assert "[DEBUG] Processing batch" in output, f"Debug message should be prefixed with [DEBUG]: {output}"
 
 
 class TestIntegration:

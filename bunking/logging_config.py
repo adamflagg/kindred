@@ -66,6 +66,11 @@ class ISO8601Formatter(logging.Formatter):
         # Format the message with any arguments
         message = record.getMessage()
 
+        # Add [DEBUG] prefix for DEBUG level to match Go output style
+        # Go uses: slog.Info("[DEBUG] " + msg) for debug logging
+        if record.levelno == logging.DEBUG:
+            message = f"[DEBUG] {message}"
+
         # Handle exceptions
         if record.exc_info:
             exception_text = self.formatException(record.exc_info)
