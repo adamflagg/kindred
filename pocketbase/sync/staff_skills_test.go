@@ -226,6 +226,101 @@ func TestIsStaffPartition(t *testing.T) {
 	}
 }
 
+// TestContainsStaffPartitionWithJSONArray tests partition check with JSON array values.
+// PocketBase stores select fields as JSON arrays, but GetString returns ""
+// or a stringified JSON like ["Staff"]. The fix should handle this correctly.
+func TestContainsStaffPartitionWithJSONArray(t *testing.T) {
+	tests := []struct {
+		name        string
+		rawValue    interface{}
+		wantIsStaff bool
+	}{
+		// JSON array with Staff
+		{
+			name:        "JSON array with Staff only",
+			rawValue:    []interface{}{"Staff"},
+			wantIsStaff: true,
+		},
+		{
+			name:        "JSON array with Staff and others",
+			rawValue:    []interface{}{"Camper", "Staff", "Alumnus"},
+			wantIsStaff: true,
+		},
+		{
+			name:        "JSON array without Staff",
+			rawValue:    []interface{}{"Camper", "Parent"},
+			wantIsStaff: false,
+		},
+		{
+			name:        "empty JSON array",
+			rawValue:    []interface{}{},
+			wantIsStaff: false,
+		},
+		// String array variant
+		{
+			name:        "string array with Staff",
+			rawValue:    []string{"Staff"},
+			wantIsStaff: true,
+		},
+		{
+			name:        "string array without Staff",
+			rawValue:    []string{"Camper"},
+			wantIsStaff: false,
+		},
+		// Nil/empty cases
+		{
+			name:        "nil value",
+			rawValue:    nil,
+			wantIsStaff: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := containsStaffPartitionFromRaw(tt.rawValue)
+			if result != tt.wantIsStaff {
+				t.Errorf("containsStaffPartitionFromRaw(%v) = %v, want %v",
+					tt.rawValue, result, tt.wantIsStaff)
+			}
+		})
+	}
+}
+
+// containsStaffPartitionFromRaw handles both JSON array (from Get) and string (from GetString)
+// This is what the fix should implement in staff_skills.go
+func containsStaffPartitionFromRaw(rawValue interface{}) bool {
+	if rawValue == nil {
+		return false
+	}
+
+	// Handle as []interface{} (JSON array from record.Get())
+	if arr, ok := rawValue.([]interface{}); ok {
+		for _, v := range arr {
+			if str, ok := v.(string); ok && str == partitionStaff {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Handle as []string (alternative array type)
+	if arr, ok := rawValue.([]string); ok {
+		for _, v := range arr {
+			if v == partitionStaff {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Fallback to string handling (comma-separated)
+	if str, ok := rawValue.(string); ok {
+		return containsStaffPartition(str)
+	}
+
+	return false
+}
+
 // TestStaffSkillsCompositeKeyFormat tests the composite key format used for upsert
 func TestStaffSkillsCompositeKeyFormat(t *testing.T) {
 	tests := []struct {

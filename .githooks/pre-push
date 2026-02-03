@@ -55,6 +55,17 @@ echo -e "${CYAN}  go build...${NC}"
     exit 1
 }
 
+# Go linting (matches CI)
+echo -e "${CYAN}  golangci-lint...${NC}"
+if command -v golangci-lint &> /dev/null; then
+    (cd pocketbase && golangci-lint run --config ../.golangci.yml) || {
+        echo -e "${RED}❌ golangci-lint failed${NC}"
+        exit 1
+    }
+else
+    echo -e "${YELLOW}  ⚠️  golangci-lint not installed, skipping (install: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)${NC}"
+fi
+
 # Frontend linting
 echo -e "${CYAN}  eslint...${NC}"
 (cd frontend && npm run lint) || {

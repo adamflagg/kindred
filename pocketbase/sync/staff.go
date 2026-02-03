@@ -252,6 +252,10 @@ func (s *StaffSync) transformStaffToPB(
 		pbData["person"] = pbID
 	}
 
+	// Always set person_id (CampMinder ID) for downstream sync lookups
+	// Critical: staff_applications and staff_vehicle_info depend on this field
+	pbData["person_id"] = personID
+
 	pbData["year"] = year
 
 	// Status
