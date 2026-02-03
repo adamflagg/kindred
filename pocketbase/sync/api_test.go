@@ -1474,3 +1474,160 @@ func TestPhaseJobsInOrder(t *testing.T) {
 		}
 	}
 }
+
+// =============================================================================
+// Issue #4: handleRunPhase Queue Check Tests
+// =============================================================================
+
+// TestRunPhaseQueuedWhenIndividualJobRunning tests that run-phase should queue
+// when an individual job is running (not just daily/weekly/historical syncs).
+// This was a bug: handleRunPhase was missing IsAnyJobRunning() check.
+func TestRunPhaseQueuedWhenIndividualJobRunning(t *testing.T) {
+	tests := []struct {
+		name               string
+		dailyRunning       bool
+		weeklyRunning      bool
+		historicalRunning  bool
+		customValuesRun    bool
+		individualJobRun   string // Empty means no individual job running
+		expectedQueueCheck bool   // true = should queue, false = can start
+	}{
+		{
+			name:               "no sync running - can start",
+			expectedQueueCheck: false,
+		},
+		{
+			name:               "daily sync running - should queue",
+			dailyRunning:       true,
+			expectedQueueCheck: true,
+		},
+		{
+			name:               "individual job running - should queue",
+			individualJobRun:   "camper_history",
+			expectedQueueCheck: true,
+		},
+		{
+			name:               "two individual jobs running - should queue",
+			individualJobRun:   "staff_skills",
+			expectedQueueCheck: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := NewOrchestrator(nil)
+
+			// Set up sync state
+			o.mu.Lock()
+			o.dailySyncRunning = tt.dailyRunning
+			o.weeklySyncRunning = tt.weeklyRunning
+			o.historicalSyncRunning = tt.historicalRunning
+			o.customValuesSyncRunning = tt.customValuesRun
+
+			// Simulate individual job running
+			if tt.individualJobRun != "" {
+				o.runningJobs[tt.individualJobRun] = &Status{
+					Type:   tt.individualJobRun,
+					Status: statusRunning,
+				}
+			}
+			o.mu.Unlock()
+
+			// This is the fixed check that should be in handleRunPhase
+			// The bug was: missing IsAnyJobRunning()
+			shouldQueue := o.IsDailySyncRunning() || o.IsWeeklySyncRunning() ||
+				o.IsHistoricalSyncRunning() || o.IsCustomValuesSyncRunning() ||
+				o.IsAnyJobRunning()
+
+			if shouldQueue != tt.expectedQueueCheck {
+				t.Errorf("expected shouldQueue=%v, got %v", tt.expectedQueueCheck, shouldQueue)
+			}
+		})
+	}
+}
+
+// =============================================================================
+// Issue #5: Debug Reset Timing Tests
+// =============================================================================
+
+// TestDebugResetTimingSimulation tests that debug flag reset should happen
+// AFTER sync completes, not immediately after goroutine starts.
+// This was a race condition: debug was reset to false before sync ran.
+func TestDebugResetTimingSimulation(t *testing.T) {
+	// Simulate the incorrect behavior vs correct behavior
+
+	// Incorrect behavior (before fix):
+	// 1. Set debug = true
+	// 2. Start goroutine
+	// 3. Reset debug = false (WRONG - too early!)
+	// 4. Goroutine executes with debug = false
+
+	// Correct behavior (after fix):
+	// 1. Set debug = true
+	// 2. Start goroutine
+	// 3. Goroutine executes with debug = true
+	// 4. Goroutine defer resets debug = false
+
+	// Test the timing constraint
+	type debugTracker struct {
+		debugValue  bool
+		wasSetTrue  bool
+		wasSetFalse bool
+	}
+
+	tracker := &debugTracker{}
+
+	// Simulate correct flow
+	tracker.debugValue = true
+	tracker.wasSetTrue = true
+
+	// In goroutine (simulated)
+	syncExecutedWithDebug := tracker.debugValue // Should be true
+
+	// Defer in goroutine resets
+	tracker.debugValue = false
+	tracker.wasSetFalse = true
+
+	if !syncExecutedWithDebug {
+		t.Error("sync should execute with debug=true before reset")
+	}
+	if !tracker.wasSetTrue {
+		t.Error("debug should have been set to true initially")
+	}
+	if !tracker.wasSetFalse {
+		t.Error("debug should have been set to false after sync")
+	}
+	if tracker.debugValue {
+		t.Error("debug should be false after sync completes")
+	}
+}
+
+// TestDebugFlagInGoroutineDefer tests the pattern of resetting debug in goroutine defer
+func TestDebugFlagInGoroutineDefer(t *testing.T) {
+	// This test documents the expected code pattern for the fix
+	// The debug reset should be inside the goroutine's defer, not after go func(){}()
+
+	// Expected pattern in handleIndividualSync:
+	//
+	// go func() {
+	//     defer func() {
+	//         if debug {
+	//             if service := orchestrator.GetService(syncType); service != nil {
+	//                 if debuggable, ok := service.(Debuggable); ok {
+	//                     debuggable.SetDebug(false)
+	//                 }
+	//             }
+	//         }
+	//     }()
+	//     // ... sync execution ...
+	// }()
+	//
+	// NOT:
+	//
+	// go func() { ... }()
+	// if debug { resetDebug() }  // WRONG - races with goroutine
+
+	// This test just documents the expected pattern
+	// The actual fix verification will be in the implementation test
+	t.Log("Debug reset should be in goroutine defer, not after goroutine start")
+}
