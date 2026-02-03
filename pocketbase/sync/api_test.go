@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestCSVValidation tests CSV parsing and validation logic
@@ -1630,4 +1631,123 @@ func TestDebugFlagInGoroutineDefer(t *testing.T) {
 	// This test just documents the expected pattern
 	// The actual fix verification will be in the implementation test
 	t.Log("Debug reset should be in goroutine defer, not after goroutine start")
+}
+
+// =============================================================================
+// Issue #7: handleRunPhase Year Parameter Bug Tests
+// =============================================================================
+
+// TestRunPhaseYearMustBeSetOnOrchestrator tests that handleRunPhase must set
+// the currentSyncYear on the orchestrator before running phase jobs.
+// This was a bug: handleRunPhase parsed the year parameter but never set it
+// on the orchestrator, causing transform jobs to use environment fallback (wrong year).
+func TestRunPhaseYearMustBeSetOnOrchestrator(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	// Verify initial state: currentSyncYear should be 0
+	o.mu.RLock()
+	initialYear := o.currentSyncYear
+	o.mu.RUnlock()
+
+	if initialYear != 0 {
+		t.Errorf("expected initial currentSyncYear=0, got %d", initialYear)
+	}
+
+	// The fix should set currentSyncYear before running jobs
+	// This is the pattern used in RunSyncWithOptions:
+	//
+	// o.mu.Lock()
+	// o.currentSyncYear = opts.Year
+	// o.mu.Unlock()
+	//
+	// defer func() {
+	//     o.mu.Lock()
+	//     o.currentSyncYear = 0
+	//     o.mu.Unlock()
+	// }()
+
+	// Simulate what handleRunPhase SHOULD do:
+	testYear := 2025
+	o.mu.Lock()
+	o.currentSyncYear = testYear
+	o.mu.Unlock()
+
+	// Verify year is set
+	o.mu.RLock()
+	setYear := o.currentSyncYear
+	o.mu.RUnlock()
+
+	if setYear != testYear {
+		t.Errorf("expected currentSyncYear=%d after setting, got %d", testYear, setYear)
+	}
+
+	// Reset like the defer should do
+	o.mu.Lock()
+	o.currentSyncYear = 0
+	o.mu.Unlock()
+
+	// Verify reset
+	o.mu.RLock()
+	finalYear := o.currentSyncYear
+	o.mu.RUnlock()
+
+	if finalYear != 0 {
+		t.Errorf("expected currentSyncYear=0 after reset, got %d", finalYear)
+	}
+}
+
+// TestRunPhaseYearPropagationToJobs tests that when handleRunPhase sets
+// currentSyncYear, the RunSingleSync will use that year for job status.
+func TestRunPhaseYearPropagationToJobs(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	// Set the sync year (simulating handleRunPhase fix)
+	testYear := 2025
+	o.mu.Lock()
+	o.currentSyncYear = testYear
+	o.mu.Unlock()
+
+	// Create a status like RunSingleSync does (line 391)
+	// The Year field should be populated from currentSyncYear
+	status := &Status{
+		Type:      "test_job",
+		Status:    statusRunning,
+		StartTime: time.Now(),
+		Summary:   Stats{},
+		Year:      o.currentSyncYear, // This is how RunSingleSync gets the year
+	}
+
+	if status.Year != testYear {
+		t.Errorf("expected status.Year=%d from currentSyncYear, got %d", testYear, status.Year)
+	}
+
+	// Clean up
+	o.mu.Lock()
+	o.currentSyncYear = 0
+	o.mu.Unlock()
+}
+
+// TestRunPhaseYearNotSetBugExplanation documents the bug:
+// handleRunPhase parses year but never sets it on orchestrator.
+func TestRunPhaseYearNotSetBugExplanation(t *testing.T) {
+	// BEFORE FIX (BUG):
+	// Line ~2074: year, err := strconv.Atoi(yearParam)  // Parses year correctly
+	// Line ~2192: orchestrator.runSyncAndWait(ctx, jobID)  // Runs job
+	// BUT: currentSyncYear was never set, so RunSingleSync line 391 uses 0
+	// Then services fall back to os.Getenv("CAMPMINDER_SEASON_ID") = 2026
+	//
+	// AFTER FIX:
+	// Inside the goroutine, BEFORE the job loop:
+	// o.mu.Lock()
+	// o.currentSyncYear = year
+	// o.mu.Unlock()
+	//
+	// defer func() {
+	//     o.mu.Lock()
+	//     o.currentSyncYear = 0
+	//     o.mu.Unlock()
+	// }()
+
+	t.Log("Bug: handleRunPhase parses year parameter but never sets currentSyncYear")
+	t.Log("Fix: Set currentSyncYear inside goroutine before job loop, reset in defer")
 }

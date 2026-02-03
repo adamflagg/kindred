@@ -42,6 +42,16 @@ migrate((app) => {
         minSelect: null,
         maxSelect: 1
       },
+      // CampMinder person ID for transform job lookups
+      {
+        type: "number",
+        name: "person_id",
+        required: false,
+        presentable: false,
+        min: 1,
+        max: 999999999,
+        onlyInt: true
+      },
       {
         type: "number",
         name: "year",
@@ -245,7 +255,8 @@ migrate((app) => {
       "CREATE UNIQUE INDEX `idx_staff_person_year` ON `staff` (`year`, `person`)",
       "CREATE INDEX `idx_staff_year` ON `staff` (`year`)",
       "CREATE INDEX `idx_staff_status_id` ON `staff` (`status_id`)",
-      "CREATE INDEX `idx_staff_person` ON `staff` (`person`)"
+      "CREATE INDEX `idx_staff_person` ON `staff` (`person`)",
+      "CREATE INDEX `idx_staff_person_id` ON `staff` (`person_id`)"
     ]
   });
 
