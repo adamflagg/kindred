@@ -170,6 +170,60 @@ func TestGetStatus(t *testing.T) {
 	}
 }
 
+// TestIsAnyJobRunning tests checking if any sync job is currently running
+func TestIsAnyJobRunning(t *testing.T) {
+	t.Run("returns false when no jobs", func(t *testing.T) {
+		o := NewOrchestrator(nil)
+		if o.IsAnyJobRunning() {
+			t.Error("expected false when runningJobs is empty")
+		}
+	})
+
+	t.Run("returns true when job is running", func(t *testing.T) {
+		o := NewOrchestrator(nil)
+		o.mu.Lock()
+		o.runningJobs["test_job"] = &Status{Status: statusRunning}
+		o.mu.Unlock()
+		if !o.IsAnyJobRunning() {
+			t.Error("expected true when a job has statusRunning")
+		}
+	})
+
+	t.Run("returns false when job is completed", func(t *testing.T) {
+		o := NewOrchestrator(nil)
+		o.mu.Lock()
+		o.runningJobs["test_job"] = &Status{Status: statusCompleted}
+		o.mu.Unlock()
+		if o.IsAnyJobRunning() {
+			t.Error("expected false when job is completed, not running")
+		}
+	})
+
+	t.Run("returns true if any one of multiple jobs is running", func(t *testing.T) {
+		o := NewOrchestrator(nil)
+		o.mu.Lock()
+		o.runningJobs["job1"] = &Status{Status: statusCompleted}
+		o.runningJobs["job2"] = &Status{Status: statusRunning}
+		o.runningJobs["job3"] = &Status{Status: statusFailed}
+		o.mu.Unlock()
+		if !o.IsAnyJobRunning() {
+			t.Error("expected true when at least one job is running")
+		}
+	})
+
+	t.Run("returns false when all jobs are completed or failed", func(t *testing.T) {
+		o := NewOrchestrator(nil)
+		o.mu.Lock()
+		o.runningJobs["job1"] = &Status{Status: statusCompleted}
+		o.runningJobs["job2"] = &Status{Status: statusFailed}
+		o.runningJobs["job3"] = &Status{Status: statusCompleted}
+		o.mu.Unlock()
+		if o.IsAnyJobRunning() {
+			t.Error("expected false when no job has statusRunning")
+		}
+	})
+}
+
 // TestGetRunningJobs tests getting list of running jobs
 func TestGetRunningJobs(t *testing.T) {
 	o := NewOrchestrator(nil)

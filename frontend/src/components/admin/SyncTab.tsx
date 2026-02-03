@@ -406,7 +406,7 @@ export function SyncTab() {
                       year: syncYear,
                       service: syncService,
                       includeCustomValues: shouldIncludeCustomValues,
-                      debug: shouldIncludeCustomValues && syncDebug,
+                      debug: syncDebug,
                     });
                   }}
                   disabled={unifiedSync.isPending}

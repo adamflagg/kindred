@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 	"testing"
@@ -753,6 +754,510 @@ func parseBoolField(value string) bool {
 	lower := strings.ToLower(strings.TrimSpace(value))
 	return lower == boolYes || lower == boolTrueStr || lower == "1"
 }
+
+// ============================================================================
+// Idempotency Tests - Define expected upsert behavior
+// ============================================================================
+
+// TestUpsertAdultsIdempotency verifies that running the sync twice with unchanged data
+// results in all records being skipped (not created) on the second run.
+func TestUpsertAdultsIdempotency(t *testing.T) {
+	// Simulate computed adults from source data
+	adults := []*testAdult{
+		{HouseholdCMID: 100, AdultNumber: 1, FirstName: "John", LastName: "Smith", Email: "john@example.com"},
+		{HouseholdCMID: 100, AdultNumber: 2, FirstName: "Jane", LastName: "Smith", Email: "jane@example.com"},
+		{HouseholdCMID: 200, AdultNumber: 1, FirstName: "Bob", LastName: "Jones", Email: "bob@example.com"},
+	}
+
+	// Simulate first run: no existing records
+	existing1 := make(map[string]*testAdultRecord)
+	stats1 := simulateUpsertAdults(adults, existing1, 2025)
+
+	// First run should create all records
+	if stats1.Created != 3 {
+		t.Errorf("first run: expected Created=3, got %d", stats1.Created)
+	}
+	if stats1.Skipped != 0 {
+		t.Errorf("first run: expected Skipped=0, got %d", stats1.Skipped)
+	}
+	if stats1.Updated != 0 {
+		t.Errorf("first run: expected Updated=0, got %d", stats1.Updated)
+	}
+
+	// Simulate second run: existing records match computed data (from first run)
+	existing2 := buildExistingAdultsMap(adults, 2025)
+	stats2 := simulateUpsertAdults(adults, existing2, 2025)
+
+	// Second run should skip all records (no changes)
+	if stats2.Created != 0 {
+		t.Errorf("second run: expected Created=0, got %d", stats2.Created)
+	}
+	if stats2.Skipped != 3 {
+		t.Errorf("second run: expected Skipped=3, got %d", stats2.Skipped)
+	}
+	if stats2.Updated != 0 {
+		t.Errorf("second run: expected Updated=0, got %d", stats2.Updated)
+	}
+}
+
+// TestUpsertAdultsUpdateDetection verifies that modified source data results in
+// the Updated stat being incremented, not Created.
+func TestUpsertAdultsUpdateDetection(t *testing.T) {
+	// Existing records in database (from previous sync)
+	existingAdults := []*testAdult{
+		{HouseholdCMID: 100, AdultNumber: 1, FirstName: "John", LastName: "Smith", Email: "john@example.com"},
+		{HouseholdCMID: 100, AdultNumber: 2, FirstName: "Jane", LastName: "Smith", Email: "jane@example.com"},
+	}
+	existing := buildExistingAdultsMap(existingAdults, 2025)
+
+	// New computed data with one change: John's email updated
+	newAdults := []*testAdult{
+		// Changed email
+		{HouseholdCMID: 100, AdultNumber: 1, FirstName: "John", LastName: "Smith", Email: "john.smith@newdomain.com"},
+		// Unchanged
+		{HouseholdCMID: 100, AdultNumber: 2, FirstName: "Jane", LastName: "Smith", Email: "jane@example.com"},
+	}
+
+	stats := simulateUpsertAdults(newAdults, existing, 2025)
+
+	// Should update 1 record (John's email changed) and skip 1 (Jane unchanged)
+	if stats.Updated != 1 {
+		t.Errorf("expected Updated=1, got %d", stats.Updated)
+	}
+	if stats.Skipped != 1 {
+		t.Errorf("expected Skipped=1, got %d", stats.Skipped)
+	}
+	if stats.Created != 0 {
+		t.Errorf("expected Created=0, got %d", stats.Created)
+	}
+}
+
+// TestUpsertAdultsOrphanDeletion verifies that records removed from source data
+// are deleted (orphan cleanup).
+func TestUpsertAdultsOrphanDeletion(t *testing.T) {
+	// Existing records in database (from previous sync)
+	existingAdults := []*testAdult{
+		{HouseholdCMID: 100, AdultNumber: 1, FirstName: "John", LastName: "Smith", Email: "john@example.com"},
+		{HouseholdCMID: 100, AdultNumber: 2, FirstName: "Jane", LastName: "Smith", Email: "jane@example.com"},
+		// Will be orphaned
+		{HouseholdCMID: 200, AdultNumber: 1, FirstName: "Bob", LastName: "Jones", Email: "bob@example.com"},
+	}
+	existing := buildExistingAdultsMap(existingAdults, 2025)
+
+	// New computed data: household 200 is no longer in source (unenrolled from family camp)
+	newAdults := []*testAdult{
+		{HouseholdCMID: 100, AdultNumber: 1, FirstName: "John", LastName: "Smith", Email: "john@example.com"},
+		{HouseholdCMID: 100, AdultNumber: 2, FirstName: "Jane", LastName: "Smith", Email: "jane@example.com"},
+	}
+
+	// Track processed keys
+	processedKeys := make(map[string]bool)
+	stats := simulateUpsertAdultsWithTracking(newAdults, existing, 2025, processedKeys)
+
+	// Should skip 2 records (unchanged)
+	if stats.Skipped != 2 {
+		t.Errorf("expected Skipped=2, got %d", stats.Skipped)
+	}
+
+	// Simulate orphan deletion
+	orphanCount := countOrphans(existing, processedKeys)
+	if orphanCount != 1 {
+		t.Errorf("expected 1 orphan (Bob Jones), got %d", orphanCount)
+	}
+}
+
+// TestUpsertRegistrationsIdempotency verifies registration upsert idempotency
+func TestUpsertRegistrationsIdempotency(t *testing.T) {
+	registrations := []*testRegistration{
+		{HouseholdCMID: 100, CabinAssignment: "Cabin 12", ShareCabinPreference: "Yes"},
+		{HouseholdCMID: 200, CabinAssignment: "Cabin 14", Goals: "Family bonding"},
+	}
+
+	// First run
+	existing1 := make(map[string]*testRegRecord)
+	stats1 := simulateUpsertRegistrations(registrations, existing1, 2025)
+
+	if stats1.Created != 2 {
+		t.Errorf("first run: expected Created=2, got %d", stats1.Created)
+	}
+
+	// Second run (unchanged)
+	existing2 := buildExistingRegistrationsMap(registrations, 2025)
+	stats2 := simulateUpsertRegistrations(registrations, existing2, 2025)
+
+	if stats2.Skipped != 2 {
+		t.Errorf("second run: expected Skipped=2, got %d", stats2.Skipped)
+	}
+	if stats2.Created != 0 {
+		t.Errorf("second run: expected Created=0, got %d", stats2.Created)
+	}
+}
+
+// TestUpsertMedicalIdempotency verifies medical upsert idempotency
+func TestUpsertMedicalIdempotency(t *testing.T) {
+	medical := []*testMedical{
+		{HouseholdCMID: 100, AllergyInfo: "Peanuts", DietaryInfo: "Vegetarian"},
+		{HouseholdCMID: 200, CPAPInfo: "Yes; needs outlet"},
+	}
+
+	// First run
+	existing1 := make(map[string]*testMedRecord)
+	stats1 := simulateUpsertMedical(medical, existing1, 2025)
+
+	if stats1.Created != 2 {
+		t.Errorf("first run: expected Created=2, got %d", stats1.Created)
+	}
+
+	// Second run (unchanged)
+	existing2 := buildExistingMedicalMap(medical, 2025)
+	stats2 := simulateUpsertMedical(medical, existing2, 2025)
+
+	if stats2.Skipped != 2 {
+		t.Errorf("second run: expected Skipped=2, got %d", stats2.Skipped)
+	}
+	if stats2.Created != 0 {
+		t.Errorf("second run: expected Created=0, got %d", stats2.Created)
+	}
+}
+
+// TestCompositeKeyFormats verifies the composite key format for each table
+func TestCompositeKeyFormats(t *testing.T) {
+	tests := []struct {
+		name        string
+		tableName   string
+		householdID string
+		year        int
+		adultNumber int // Only for adults table
+		expectedKey string
+	}{
+		{
+			name:        "adults key format",
+			tableName:   "family_camp_adults",
+			householdID: "pb_household_123",
+			year:        2025,
+			adultNumber: 1,
+			expectedKey: "pb_household_123:2025:1",
+		},
+		{
+			name:        "adults key with different adult number",
+			tableName:   "family_camp_adults",
+			householdID: "pb_household_456",
+			year:        2025,
+			adultNumber: 3,
+			expectedKey: "pb_household_456:2025:3",
+		},
+		{
+			name:        "registrations key format",
+			tableName:   "family_camp_registrations",
+			householdID: "pb_household_123",
+			year:        2025,
+			expectedKey: "pb_household_123:2025",
+		},
+		{
+			name:        "medical key format",
+			tableName:   "family_camp_medical",
+			householdID: "pb_household_789",
+			year:        2024,
+			expectedKey: "pb_household_789:2024",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var key string
+			if tt.tableName == "family_camp_adults" {
+				key = buildAdultCompositeKey(tt.householdID, tt.year, tt.adultNumber)
+			} else {
+				key = buildHouseholdCompositeKey(tt.householdID, tt.year)
+			}
+
+			if key != tt.expectedKey {
+				t.Errorf("expected key %q, got %q", tt.expectedKey, key)
+			}
+		})
+	}
+}
+
+// ============================================================================
+// Test helper types for upsert simulation
+// ============================================================================
+
+// testUpsertStats mirrors the Stats struct for test verification
+type testUpsertStats struct {
+	Created int
+	Updated int
+	Skipped int
+	Deleted int
+	Errors  int
+}
+
+// testAdultRecord simulates a PocketBase record for adults
+type testAdultRecord struct {
+	HouseholdPBID string
+	Year          int
+	AdultNumber   int
+	FirstName     string
+	LastName      string
+	Email         string
+	Pronouns      string
+	Gender        string
+	DateOfBirth   string
+	Relationship  string
+}
+
+// testRegRecord simulates a PocketBase record for registrations
+type testRegRecord struct {
+	HouseholdPBID        string
+	Year                 int
+	CabinAssignment      string
+	ShareCabinPreference string
+	SharedCabinWith      string
+	ArrivalETA           string
+	SpecialOccasions     string
+	Goals                string
+	Notes                string
+	NeedsAccommodation   bool
+	OptOutVIP            bool
+}
+
+// testMedRecord simulates a PocketBase record for medical
+type testMedRecord struct {
+	HouseholdPBID    string
+	Year             int
+	CPAPInfo         string
+	PhysicianInfo    string
+	SpecialNeedsInfo string
+	AllergyInfo      string
+	DietaryInfo      string
+	AdditionalInfo   string
+}
+
+// ============================================================================
+// Test helper functions for upsert simulation
+// ============================================================================
+
+// buildAdultCompositeKey builds the composite key for family_camp_adults
+func buildAdultCompositeKey(householdPBID string, year, adultNumber int) string {
+	return fmt.Sprintf("%s:%d:%d", householdPBID, year, adultNumber)
+}
+
+// buildHouseholdCompositeKey builds the composite key for registrations/medical
+func buildHouseholdCompositeKey(householdPBID string, year int) string {
+	return fmt.Sprintf("%s:%d", householdPBID, year)
+}
+
+// buildExistingAdultsMap creates a map of existing adult records (simulates preload)
+func buildExistingAdultsMap(adults []*testAdult, year int) map[string]*testAdultRecord {
+	result := make(map[string]*testAdultRecord)
+	for _, a := range adults {
+		// Use household CM ID as PB ID for test purposes
+		pbID := fmt.Sprintf("pb_household_%d", a.HouseholdCMID)
+		key := buildAdultCompositeKey(pbID, year, a.AdultNumber)
+		result[key] = &testAdultRecord{
+			HouseholdPBID: pbID,
+			Year:          year,
+			AdultNumber:   a.AdultNumber,
+			FirstName:     a.FirstName,
+			LastName:      a.LastName,
+			Email:         a.Email,
+			Pronouns:      a.Pronouns,
+			Gender:        a.Gender,
+			DateOfBirth:   a.DateOfBirth,
+			Relationship:  a.Relationship,
+		}
+	}
+	return result
+}
+
+// adultNeedsUpdate checks if an adult record needs updating
+func adultNeedsUpdate(existing *testAdultRecord, newAdult *testAdult) bool {
+	return existing.FirstName != newAdult.FirstName ||
+		existing.LastName != newAdult.LastName ||
+		existing.Email != newAdult.Email ||
+		existing.Pronouns != newAdult.Pronouns ||
+		existing.Gender != newAdult.Gender ||
+		existing.DateOfBirth != newAdult.DateOfBirth ||
+		existing.Relationship != newAdult.Relationship
+}
+
+// simulateUpsertAdults simulates the upsert logic for adults
+func simulateUpsertAdults(adults []*testAdult, existing map[string]*testAdultRecord, year int) testUpsertStats {
+	stats := testUpsertStats{}
+
+	for _, a := range adults {
+		pbID := fmt.Sprintf("pb_household_%d", a.HouseholdCMID)
+		key := buildAdultCompositeKey(pbID, year, a.AdultNumber)
+
+		if existingRecord, ok := existing[key]; ok {
+			if adultNeedsUpdate(existingRecord, a) {
+				stats.Updated++
+			} else {
+				stats.Skipped++
+			}
+		} else {
+			stats.Created++
+		}
+	}
+
+	return stats
+}
+
+// simulateUpsertAdultsWithTracking simulates upsert with key tracking for orphan detection
+func simulateUpsertAdultsWithTracking(
+	adults []*testAdult,
+	existing map[string]*testAdultRecord,
+	year int,
+	processedKeys map[string]bool,
+) testUpsertStats {
+	stats := testUpsertStats{}
+
+	for _, a := range adults {
+		pbID := fmt.Sprintf("pb_household_%d", a.HouseholdCMID)
+		key := buildAdultCompositeKey(pbID, year, a.AdultNumber)
+		processedKeys[key] = true
+
+		if existingRecord, ok := existing[key]; ok {
+			if adultNeedsUpdate(existingRecord, a) {
+				stats.Updated++
+			} else {
+				stats.Skipped++
+			}
+		} else {
+			stats.Created++
+		}
+	}
+
+	return stats
+}
+
+// countOrphans counts records in existing that weren't processed
+func countOrphans(existing map[string]*testAdultRecord, processedKeys map[string]bool) int {
+	count := 0
+	for key := range existing {
+		if !processedKeys[key] {
+			count++
+		}
+	}
+	return count
+}
+
+// buildExistingRegistrationsMap creates a map of existing registration records
+func buildExistingRegistrationsMap(regs []*testRegistration, year int) map[string]*testRegRecord {
+	result := make(map[string]*testRegRecord)
+	for _, r := range regs {
+		pbID := fmt.Sprintf("pb_household_%d", r.HouseholdCMID)
+		key := buildHouseholdCompositeKey(pbID, year)
+		result[key] = &testRegRecord{
+			HouseholdPBID:        pbID,
+			Year:                 year,
+			CabinAssignment:      r.CabinAssignment,
+			ShareCabinPreference: r.ShareCabinPreference,
+			SharedCabinWith:      r.SharedCabinWith,
+			ArrivalETA:           r.ArrivalETA,
+			SpecialOccasions:     r.SpecialOccasions,
+			Goals:                r.Goals,
+			Notes:                r.Notes,
+			NeedsAccommodation:   r.NeedsAccommodation,
+			OptOutVIP:            r.OptOutVIP,
+		}
+	}
+	return result
+}
+
+// regNeedsUpdate checks if a registration record needs updating
+func regNeedsUpdate(existing *testRegRecord, newReg *testRegistration) bool {
+	return existing.CabinAssignment != newReg.CabinAssignment ||
+		existing.ShareCabinPreference != newReg.ShareCabinPreference ||
+		existing.SharedCabinWith != newReg.SharedCabinWith ||
+		existing.ArrivalETA != newReg.ArrivalETA ||
+		existing.SpecialOccasions != newReg.SpecialOccasions ||
+		existing.Goals != newReg.Goals ||
+		existing.Notes != newReg.Notes ||
+		existing.NeedsAccommodation != newReg.NeedsAccommodation ||
+		existing.OptOutVIP != newReg.OptOutVIP
+}
+
+// simulateUpsertRegistrations simulates the upsert logic for registrations
+func simulateUpsertRegistrations(
+	regs []*testRegistration,
+	existing map[string]*testRegRecord,
+	year int,
+) testUpsertStats {
+	stats := testUpsertStats{}
+
+	for _, r := range regs {
+		pbID := fmt.Sprintf("pb_household_%d", r.HouseholdCMID)
+		key := buildHouseholdCompositeKey(pbID, year)
+
+		if existingRecord, ok := existing[key]; ok {
+			if regNeedsUpdate(existingRecord, r) {
+				stats.Updated++
+			} else {
+				stats.Skipped++
+			}
+		} else {
+			stats.Created++
+		}
+	}
+
+	return stats
+}
+
+// buildExistingMedicalMap creates a map of existing medical records
+func buildExistingMedicalMap(medical []*testMedical, year int) map[string]*testMedRecord {
+	result := make(map[string]*testMedRecord)
+	for _, m := range medical {
+		pbID := fmt.Sprintf("pb_household_%d", m.HouseholdCMID)
+		key := buildHouseholdCompositeKey(pbID, year)
+		result[key] = &testMedRecord{
+			HouseholdPBID:    pbID,
+			Year:             year,
+			CPAPInfo:         m.CPAPInfo,
+			PhysicianInfo:    m.PhysicianInfo,
+			SpecialNeedsInfo: m.SpecialNeedsInfo,
+			AllergyInfo:      m.AllergyInfo,
+			DietaryInfo:      m.DietaryInfo,
+			AdditionalInfo:   m.AdditionalInfo,
+		}
+	}
+	return result
+}
+
+// medNeedsUpdate checks if a medical record needs updating
+func medNeedsUpdate(existing *testMedRecord, newMed *testMedical) bool {
+	return existing.CPAPInfo != newMed.CPAPInfo ||
+		existing.PhysicianInfo != newMed.PhysicianInfo ||
+		existing.SpecialNeedsInfo != newMed.SpecialNeedsInfo ||
+		existing.AllergyInfo != newMed.AllergyInfo ||
+		existing.DietaryInfo != newMed.DietaryInfo ||
+		existing.AdditionalInfo != newMed.AdditionalInfo
+}
+
+// simulateUpsertMedical simulates the upsert logic for medical
+func simulateUpsertMedical(medical []*testMedical, existing map[string]*testMedRecord, year int) testUpsertStats {
+	stats := testUpsertStats{}
+
+	for _, m := range medical {
+		pbID := fmt.Sprintf("pb_household_%d", m.HouseholdCMID)
+		key := buildHouseholdCompositeKey(pbID, year)
+
+		if existingRecord, ok := existing[key]; ok {
+			if medNeedsUpdate(existingRecord, m) {
+				stats.Updated++
+			} else {
+				stats.Skipped++
+			}
+		} else {
+			stats.Created++
+		}
+	}
+
+	return stats
+}
+
+// ============================================================================
+// Original test helpers (unchanged)
+// ============================================================================
 
 // extractRegistrationsFromHouseholds extracts registration info from household custom values
 func extractRegistrationsFromHouseholds(values []testHouseholdCustomValue) map[int]*testRegistration {

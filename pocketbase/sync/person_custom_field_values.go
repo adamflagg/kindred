@@ -21,7 +21,6 @@ const serviceNamePersonCustomValues = "person_custom_values"
 type PersonCustomFieldValuesSync struct {
 	BaseSyncService
 	Session     string                 // Session filter: "all", "1", "2", "2a", "3", "4", etc.
-	Debug       bool                   // Enable debug logging
 	rateLimiter *ratelimit.RateLimiter // Rate limiter for API calls
 }
 
@@ -30,7 +29,6 @@ func NewPersonCustomFieldValuesSync(app core.App, client *campminder.Client) *Pe
 	return &PersonCustomFieldValuesSync{
 		BaseSyncService: NewBaseSyncService(app, client),
 		Session:         DefaultSession, // Default to all sessions
-		Debug:           false,
 		rateLimiter: ratelimit.NewRateLimiter(&ratelimit.Config{
 			APIDelay:          300 * time.Millisecond, // ~3 req/sec
 			BackoffMultiplier: 2.0,
@@ -48,11 +46,6 @@ func (s *PersonCustomFieldValuesSync) Name() string {
 // SetSession sets the session filter for this sync (e.g., "1", "2", "2a", "all")
 func (s *PersonCustomFieldValuesSync) SetSession(session string) {
 	s.Session = session
-}
-
-// SetDebug enables or disables debug logging
-func (s *PersonCustomFieldValuesSync) SetDebug(debug bool) {
-	s.Debug = debug
 }
 
 // Sync performs the person custom field values sync
@@ -201,9 +194,7 @@ func (s *PersonCustomFieldValuesSync) preloadPersonMapping(year int) (map[int]st
 		}
 	}
 
-	if s.Debug {
-		slog.Debug("Preloaded person mapping", "count", len(mapping))
-	}
+	s.DebugLog("Preloaded person mapping", "count", len(mapping))
 
 	return mapping, nil
 }
@@ -223,9 +214,7 @@ func (s *PersonCustomFieldValuesSync) preloadFieldDefMapping() (map[int]string, 
 		}
 	}
 
-	if s.Debug {
-		slog.Debug("Preloaded field definition mapping", "count", len(mapping))
-	}
+	s.DebugLog("Preloaded field definition mapping", "count", len(mapping))
 
 	return mapping, nil
 }
@@ -240,12 +229,10 @@ func (s *PersonCustomFieldValuesSync) getPersonIDsToSync(year int) ([]int, error
 			return nil, err
 		}
 
-		if s.Debug {
-			slog.Debug("Resolved session to person IDs",
-				"session", s.Session,
-				"count", len(personIDs),
-				"year", year)
-		}
+		s.DebugLog("Resolved session to person IDs",
+			"session", s.Session,
+			"count", len(personIDs),
+			"year", year)
 
 		return personIDs, nil
 	}
@@ -264,11 +251,9 @@ func (s *PersonCustomFieldValuesSync) getPersonIDsToSync(year int) ([]int, error
 		}
 	}
 
-	if s.Debug {
-		slog.Debug("Getting all persons for year",
-			"count", len(personIDs),
-			"year", year)
-	}
+	s.DebugLog("Getting all persons for year",
+		"count", len(personIDs),
+		"year", year)
 
 	return personIDs, nil
 }
@@ -321,11 +306,9 @@ func (s *PersonCustomFieldValuesSync) syncPersonCustomFieldValues(
 			fieldDefPBId, found := fieldDefMapping[fieldCMID]
 			if !found {
 				// Field definition not synced, skip
-				if s.Debug {
-					slog.Debug("Field definition not found, skipping",
-						"field_cm_id", fieldCMID,
-						"person_cm_id", personCMID)
-				}
+				s.DebugLog("Field definition not found, skipping",
+					"field_cm_id", fieldCMID,
+					"person_cm_id", personCMID)
 				continue
 			}
 

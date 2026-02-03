@@ -21,7 +21,6 @@ const serviceNameHouseholdCustomValues = "household_custom_values"
 type HouseholdCustomFieldValuesSync struct {
 	BaseSyncService
 	Session     string                 // Session filter: "all", "1", "2", "2a", "3", "4", etc.
-	Debug       bool                   // Enable debug logging
 	rateLimiter *ratelimit.RateLimiter // Rate limiter for API calls
 }
 
@@ -30,7 +29,6 @@ func NewHouseholdCustomFieldValuesSync(app core.App, client *campminder.Client) 
 	return &HouseholdCustomFieldValuesSync{
 		BaseSyncService: NewBaseSyncService(app, client),
 		Session:         DefaultSession, // Default to all sessions
-		Debug:           false,
 		rateLimiter: ratelimit.NewRateLimiter(&ratelimit.Config{
 			APIDelay:          300 * time.Millisecond, // ~3 req/sec
 			BackoffMultiplier: 2.0,
@@ -48,11 +46,6 @@ func (s *HouseholdCustomFieldValuesSync) Name() string {
 // SetSession sets the session filter for this sync (e.g., "1", "2", "2a", "all")
 func (s *HouseholdCustomFieldValuesSync) SetSession(session string) {
 	s.Session = session
-}
-
-// SetDebug enables or disables debug logging
-func (s *HouseholdCustomFieldValuesSync) SetDebug(debug bool) {
-	s.Debug = debug
 }
 
 // Sync performs the household custom field values sync
@@ -201,9 +194,7 @@ func (s *HouseholdCustomFieldValuesSync) preloadHouseholdMapping(year int) (map[
 		}
 	}
 
-	if s.Debug {
-		slog.Debug("Preloaded household mapping", "count", len(mapping))
-	}
+	s.DebugLog("Preloaded household mapping", "count", len(mapping))
 
 	return mapping, nil
 }
@@ -223,9 +214,7 @@ func (s *HouseholdCustomFieldValuesSync) preloadFieldDefMapping() (map[int]strin
 		}
 	}
 
-	if s.Debug {
-		slog.Debug("Preloaded field definition mapping", "count", len(mapping))
-	}
+	s.DebugLog("Preloaded field definition mapping", "count", len(mapping))
 
 	return mapping, nil
 }
@@ -240,12 +229,10 @@ func (s *HouseholdCustomFieldValuesSync) getHouseholdIDsToSync(year int) ([]int,
 			return nil, err
 		}
 
-		if s.Debug {
-			slog.Debug("Resolved session to household IDs",
-				"session", s.Session,
-				"count", len(householdIDs),
-				"year", year)
-		}
+		s.DebugLog("Resolved session to household IDs",
+			"session", s.Session,
+			"count", len(householdIDs),
+			"year", year)
 
 		return householdIDs, nil
 	}
@@ -264,11 +251,9 @@ func (s *HouseholdCustomFieldValuesSync) getHouseholdIDsToSync(year int) ([]int,
 		}
 	}
 
-	if s.Debug {
-		slog.Debug("Getting all households for year",
-			"count", len(householdIDs),
-			"year", year)
-	}
+	s.DebugLog("Getting all households for year",
+		"count", len(householdIDs),
+		"year", year)
 
 	return householdIDs, nil
 }
@@ -320,11 +305,9 @@ func (s *HouseholdCustomFieldValuesSync) syncHouseholdCustomFieldValues(
 			fieldDefPBId, found := fieldDefMapping[fieldCMID]
 			if !found {
 				// Field definition not synced, skip
-				if s.Debug {
-					slog.Debug("Field definition not found, skipping",
-						"field_cm_id", fieldCMID,
-						"household_cm_id", householdCMID)
-				}
+				s.DebugLog("Field definition not found, skipping",
+					"field_cm_id", fieldCMID,
+					"household_cm_id", householdCMID)
 				continue
 			}
 

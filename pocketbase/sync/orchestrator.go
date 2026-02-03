@@ -132,6 +132,11 @@ type Service interface {
 	GetStats() Stats
 }
 
+// Debuggable is an optional interface for services that support debug logging
+type Debuggable interface {
+	SetDebug(debug bool)
+}
+
 // Status represents the status of a sync operation
 type Status struct {
 	Type      string     `json:"type"`
@@ -317,6 +322,19 @@ func (o *Orchestrator) IsCustomValuesSyncRunning() bool {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 	return o.customValuesSyncRunning
+}
+
+// IsAnyJobRunning returns true if any sync job is currently running.
+// This is used to queue individual sync requests when another job is already active.
+func (o *Orchestrator) IsAnyJobRunning() bool {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	for _, status := range o.runningJobs {
+		if status.Status == statusRunning {
+			return true
+		}
+	}
+	return false
 }
 
 // GetWeeklySyncJobs returns the list of services that run in the weekly sync.
@@ -1084,6 +1102,27 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		// Run concurrently (for future implementation)
 		// For now, fall back to sequential
 		slog.Info("Concurrent sync not yet implemented, running sequentially")
+	}
+
+	// Apply debug flag to all services if enabled
+	if opts.Debug {
+		for _, serviceName := range servicesToRun {
+			if svc := o.GetService(serviceName); svc != nil {
+				if debuggable, ok := svc.(Debuggable); ok {
+					debuggable.SetDebug(true)
+				}
+			}
+		}
+		// Reset debug flag after sync completes
+		defer func() {
+			for _, serviceName := range servicesToRun {
+				if svc := o.GetService(serviceName); svc != nil {
+					if debuggable, ok := svc.(Debuggable); ok {
+						debuggable.SetDebug(false)
+					}
+				}
+			}
+		}()
 	}
 
 	// Run sequentially - custom values syncs run in order to prevent context deadline issues
