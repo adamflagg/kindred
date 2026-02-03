@@ -2130,9 +2130,10 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 		}
 	}
 
-	// Check if any sync is already running
+	// Check if any sync is already running (must match handleIndividualSync check)
 	if orchestrator.IsDailySyncRunning() || orchestrator.IsWeeklySyncRunning() ||
-		orchestrator.IsHistoricalSyncRunning() || orchestrator.IsCustomValuesSyncRunning() {
+		orchestrator.IsHistoricalSyncRunning() || orchestrator.IsCustomValuesSyncRunning() ||
+		orchestrator.IsAnyJobRunning() {
 		// Queue the phase sync instead of returning conflict
 		qs, err := orchestrator.EnqueuePhaseSync(year, phase, requestedBy)
 		if err != nil {

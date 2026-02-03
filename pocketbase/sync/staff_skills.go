@@ -306,13 +306,13 @@ func (s *StaffSkillsSync) loadSkillDefinitions(_ context.Context) ([]skillDefini
 
 	for _, record := range records {
 		name := record.GetString("name")
-		partition := record.GetString("partition")
 
 		// Filter: must be Skills- field with Staff partition
 		if !strings.HasPrefix(name, "Skills-") {
 			continue
 		}
-		if !s.containsStaffPartition(partition) {
+		// Use Get() for partition - PocketBase stores select fields as JSON arrays
+		if !s.containsStaffPartitionFromRaw(record.Get("partition")) {
 			continue
 		}
 
@@ -339,17 +339,47 @@ func (s *StaffSkillsSync) loadSkillDefinitions(_ context.Context) ([]skillDefini
 	return result, nil
 }
 
-// containsStaffPartition checks if partition string contains "Staff"
-func (s *StaffSkillsSync) containsStaffPartition(partition string) bool {
-	if partition == "" {
+// containsStaffPartitionFromRaw checks if partition contains "Staff".
+// PocketBase stores select fields as JSON arrays, so record.Get() returns
+// []interface{} or []string, not a comma-separated string.
+func (s *StaffSkillsSync) containsStaffPartitionFromRaw(rawValue any) bool {
+	if rawValue == nil {
 		return false
 	}
-	parts := strings.Split(partition, ",")
-	for _, p := range parts {
-		if strings.TrimSpace(p) == "Staff" {
-			return true
+
+	// Handle as []interface{} (JSON array from record.Get())
+	if arr, ok := rawValue.([]interface{}); ok {
+		for _, v := range arr {
+			if str, ok := v.(string); ok && str == "Staff" {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Handle as []string (alternative array type)
+	if arr, ok := rawValue.([]string); ok {
+		for _, v := range arr {
+			if v == "Staff" {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Fallback to string handling (comma-separated, legacy)
+	if str, ok := rawValue.(string); ok {
+		if str == "" {
+			return false
+		}
+		parts := strings.Split(str, ",")
+		for _, p := range parts {
+			if strings.TrimSpace(p) == "Staff" {
+				return true
+			}
 		}
 	}
+
 	return false
 }
 
