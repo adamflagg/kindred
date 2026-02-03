@@ -823,3 +823,254 @@ func isFANumberColumn(column string) bool {
 	}
 	return numberColumns[column]
 }
+
+// ============================================================================
+// Idempotency Tests
+// ============================================================================
+
+// TestFAFieldEquals tests field equality comparisons for idempotency checking
+func TestFAFieldEquals(t *testing.T) {
+	s := &FinancialAidApplicationsSync{}
+
+	tests := []struct {
+		name     string
+		existing interface{}
+		newVal   interface{}
+		expected bool
+	}{
+		// nil vs empty string equivalence
+		{"nil vs empty string", nil, "", true},
+		{"empty string vs nil", "", nil, true},
+
+		// nil vs zero equivalence
+		{"nil vs 0 int", nil, 0, true},
+		{"nil vs 0.0 float", nil, 0.0, true},
+
+		// float64 vs int comparison (PocketBase stores numbers as float64)
+		{"float64 100 vs int 100", float64(100), 100, true},
+		{"float64 100.5 vs int 100", float64(100.5), 100, false},
+		{"float64 vs float64 equal", float64(50000.50), float64(50000.50), true},
+		{"float64 vs float64 different", float64(50000.50), float64(50000.51), false},
+
+		// int vs float64 comparison
+		{"int 100 vs float64 100.0", 100, float64(100.0), true},
+		{"int 100 vs float64 100.5", 100, float64(100.5), false},
+
+		// bool comparisons
+		{"bool true vs true", true, true, true},
+		{"bool false vs false", false, false, true},
+		{"bool true vs false", true, false, false},
+
+		// string comparisons
+		{"equal strings", "test", "test", true},
+		{"different strings", "test", "other", false},
+		{"empty strings", "", "", true},
+
+		// Same type different values
+		{"different ints", 100, 200, false},
+		{"same ints", 100, 100, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := s.fieldEquals(tt.existing, tt.newVal)
+			if result != tt.expected {
+				t.Errorf("fieldEquals(%v, %v) = %v, want %v",
+					tt.existing, tt.newVal, result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestFARecordNeedsUpdate tests the record comparison logic for idempotency
+func TestFARecordNeedsUpdate(t *testing.T) {
+	s := &FinancialAidApplicationsSync{}
+
+	tests := []struct {
+		name       string
+		existing   map[string]interface{}
+		newData    map[string]interface{}
+		skipFields map[string]bool
+		expected   bool
+	}{
+		{
+			name: "no changes - should not need update",
+			existing: map[string]interface{}{
+				"contact_first_name": "John",
+				"contact_email":      "john@example.com",
+				"total_gross_income": float64(100000),
+				"interest_expressed": true,
+				"year":               float64(2025),
+			},
+			newData: map[string]interface{}{
+				"contact_first_name": "John",
+				"contact_email":      "john@example.com",
+				"total_gross_income": float64(100000),
+				"interest_expressed": true,
+				"year":               2025,
+			},
+			skipFields: map[string]bool{"year": true},
+			expected:   false,
+		},
+		{
+			name: "string field changed - should need update",
+			existing: map[string]interface{}{
+				"contact_first_name": "John",
+				"contact_email":      "john@example.com",
+			},
+			newData: map[string]interface{}{
+				"contact_first_name": "John",
+				"contact_email":      "john.new@example.com",
+			},
+			skipFields: nil,
+			expected:   true,
+		},
+		{
+			name: "number field changed - should need update",
+			existing: map[string]interface{}{
+				"total_gross_income": float64(100000),
+			},
+			newData: map[string]interface{}{
+				"total_gross_income": float64(120000),
+			},
+			skipFields: nil,
+			expected:   true,
+		},
+		{
+			name: "bool field changed - should need update",
+			existing: map[string]interface{}{
+				"interest_expressed": false,
+			},
+			newData: map[string]interface{}{
+				"interest_expressed": true,
+			},
+			skipFields: nil,
+			expected:   true,
+		},
+		{
+			name: "only skipped field changed - should not need update",
+			existing: map[string]interface{}{
+				"contact_first_name": "John",
+				"year":               float64(2024),
+			},
+			newData: map[string]interface{}{
+				"contact_first_name": "John",
+				"year":               2025,
+			},
+			skipFields: map[string]bool{"year": true},
+			expected:   false,
+		},
+		{
+			name: "nil vs empty string - should not need update",
+			existing: map[string]interface{}{
+				"contact_first_name": nil,
+			},
+			newData: map[string]interface{}{
+				"contact_first_name": "",
+			},
+			skipFields: nil,
+			expected:   false,
+		},
+		{
+			name: "float64 vs int same value - should not need update",
+			existing: map[string]interface{}{
+				"num_children": float64(3),
+			},
+			newData: map[string]interface{}{
+				"num_children": 3,
+			},
+			skipFields: nil,
+			expected:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := s.recordNeedsUpdate(tt.existing, tt.newData, tt.skipFields)
+			if result != tt.expected {
+				t.Errorf("recordNeedsUpdate() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestFAApplicationToRecordData tests conversion of faApplicationData to map
+func TestFAApplicationToRecordData(t *testing.T) {
+	app := &faApplicationData{
+		personPBID:        "person123",
+		householdPBID:     "household456",
+		personCMID:        12345,
+		interestExpressed: true,
+		contactFirstName:  "John",
+		contactLastName:   "Doe",
+		contactEmail:      "john@example.com",
+		totalGrossIncome:  100000.50,
+		numChildren:       3,
+	}
+
+	data := app.toRecordData(2025)
+
+	// Verify key fields are present and correct
+	tests := []struct {
+		field    string
+		expected interface{}
+	}{
+		{"person", "person123"},
+		{"household", "household456"},
+		{"person_id", 12345},
+		{"year", 2025},
+		{"interest_expressed", true},
+		{"contact_first_name", "John"},
+		{"contact_last_name", "Doe"},
+		{"contact_email", "john@example.com"},
+		{"total_gross_income", 100000.50},
+		{"num_children", float64(3)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.field, func(t *testing.T) {
+			if data[tt.field] != tt.expected {
+				t.Errorf("toRecordData()[%q] = %v, want %v", tt.field, data[tt.field], tt.expected)
+			}
+		})
+	}
+}
+
+// TestFAUpsertIdempotencyBehavior tests that unchanged records are skipped
+// This documents the expected behavior for the idempotency fix
+func TestFAUpsertIdempotencyBehavior(t *testing.T) {
+	// Document the expected behavior:
+	// 1. New records → Stats.Created++
+	// 2. Existing records with no changes → Stats.Skipped++
+	// 3. Existing records with changes → Stats.Updated++
+
+	// Test the helper methods that enable this behavior
+	s := &FinancialAidApplicationsSync{}
+
+	// Scenario 1: Record data matches existing - should skip
+	existingData := map[string]interface{}{
+		"contact_first_name": "John",
+		"contact_email":      "john@example.com",
+		"total_gross_income": float64(100000),
+	}
+	newDataSame := map[string]interface{}{
+		"contact_first_name": "John",
+		"contact_email":      "john@example.com",
+		"total_gross_income": float64(100000),
+	}
+
+	if s.recordNeedsUpdate(existingData, newDataSame, nil) {
+		t.Error("Expected no update needed for identical data")
+	}
+
+	// Scenario 2: Record data differs - should update
+	newDataDifferent := map[string]interface{}{
+		"contact_first_name": "John",
+		"contact_email":      "john.updated@example.com", // Changed
+		"total_gross_income": float64(100000),
+	}
+
+	if !s.recordNeedsUpdate(existingData, newDataDifferent, nil) {
+		t.Error("Expected update needed for different data")
+	}
+}

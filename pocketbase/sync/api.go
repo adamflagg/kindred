@@ -413,6 +413,20 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 		})
 	}
 
+	// Parse debug parameter
+	debugParam := e.Request.URL.Query().Get("debug")
+	debug := debugParam == boolTrueStr || debugParam == "1"
+
+	// If debug is enabled, set it on the service (if it supports Debuggable interface)
+	if debug {
+		if service := orchestrator.GetService(syncType); service != nil {
+			if debuggable, ok := service.(Debuggable); ok {
+				debuggable.SetDebug(true)
+				slog.Info("Debug logging enabled for sync", "syncType", syncType)
+			}
+		}
+	}
+
 	// Get current year from environment
 	currentYear := time.Now().Year()
 	if yearStr := os.Getenv("CAMPMINDER_SEASON_ID"); yearStr != "" {
@@ -427,9 +441,13 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 		requestedBy = e.Auth.GetString("email")
 	}
 
-	// Check if any sync sequence is running - if so, queue instead of running immediately
+	// Check if any sync should cause queueing:
+	// 1. Sequence flags (daily/weekly/historical/custom-values) - cover the window between
+	//    sequence start and first job execution (before runningJobs is populated)
+	// 2. IsAnyJobRunning() - covers individual jobs that were started outside a sequence
 	if orchestrator.IsDailySyncRunning() || orchestrator.IsWeeklySyncRunning() ||
-		orchestrator.IsHistoricalSyncRunning() || orchestrator.IsCustomValuesSyncRunning() {
+		orchestrator.IsHistoricalSyncRunning() || orchestrator.IsCustomValuesSyncRunning() ||
+		orchestrator.IsAnyJobRunning() {
 		// Queue the individual sync
 		qs, err := orchestrator.EnqueueIndividualSync(currentYear, syncType, nil, requestedBy)
 		if err != nil {
@@ -445,6 +463,7 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 			"queue_id": qs.ID,
 			"position": position,
 			"syncType": syncType,
+			"debug":    debug,
 		})
 	}
 
@@ -459,6 +478,15 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 			e.App.Logger().Error("Individual sync failed", "syncType", syncType, "error", err)
 		}
 
+		// Reset debug flag after sync completes
+		if debug {
+			if service := orchestrator.GetService(syncType); service != nil {
+				if debuggable, ok := service.(Debuggable); ok {
+					debuggable.SetDebug(false)
+				}
+			}
+		}
+
 		// Process queue after individual sync completes
 		processQueuedSyncs(orchestrator)
 	}()
@@ -467,6 +495,7 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 		"message":  fmt.Sprintf("%s sync started", syncType),
 		"status":   "started",
 		"syncType": syncType,
+		"debug":    debug,
 	})
 }
 
@@ -2149,10 +2178,28 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 			default:
 			}
 
+			// Set debug on the service if requested
+			if debug {
+				if svc := orchestrator.GetService(jobID); svc != nil {
+					if debuggable, ok := svc.(Debuggable); ok {
+						debuggable.SetDebug(true)
+					}
+				}
+			}
+
 			slog.Info("Running phase job", "phase", phase, "job", jobID)
 			if err := orchestrator.runSyncAndWait(ctx, jobID); err != nil {
 				slog.Error("Phase job failed", "phase", phase, "job", jobID, "error", err)
 				// Continue with next job even if one fails
+			}
+
+			// Clear debug after job completes
+			if debug {
+				if svc := orchestrator.GetService(jobID); svc != nil {
+					if debuggable, ok := svc.(Debuggable); ok {
+						debuggable.SetDebug(false)
+					}
+				}
 			}
 		}
 

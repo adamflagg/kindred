@@ -39,6 +39,7 @@ type CamperDietarySync struct {
 	App            core.App
 	Year           int
 	DryRun         bool
+	Debug          bool
 	Stats          Stats
 	SyncSuccessful bool
 }
@@ -60,6 +61,18 @@ func (s *CamperDietarySync) Name() string {
 // GetStats returns the current stats
 func (s *CamperDietarySync) GetStats() Stats {
 	return s.Stats
+}
+
+// SetDebug enables or disables debug logging
+func (s *CamperDietarySync) SetDebug(debug bool) {
+	s.Debug = debug
+}
+
+// DebugLog logs a message at INFO level only when Debug is enabled
+func (s *CamperDietarySync) DebugLog(msg string, args ...any) {
+	if s.Debug {
+		slog.Info(msg, args...)
+	}
 }
 
 // camperDietaryRecord holds the extracted dietary info for a camper
@@ -102,6 +115,7 @@ func (s *CamperDietarySync) Sync(ctx context.Context) error {
 	slog.Info("Starting camper dietary extraction",
 		"year", year,
 		"dry_run", s.DryRun,
+		"debug", s.Debug,
 	)
 
 	// Step 1: Build field name mapping (field_definition PB ID -> field name)
@@ -142,9 +156,10 @@ func (s *CamperDietarySync) Sync(ctx context.Context) error {
 	slog.Info("Loaded existing records", "count", len(existingRecords))
 
 	// Step 5: Upsert records
-	created, updated, errors := s.upsertRecords(ctx, records, existingRecords, year)
+	created, updated, skipped, errors := s.upsertRecords(ctx, records, existingRecords, year)
 	s.Stats.Created = created
 	s.Stats.Updated = updated
+	s.Stats.Skipped = skipped
 	s.Stats.Errors = errors
 
 	// Step 6: Delete orphans
@@ -163,6 +178,7 @@ func (s *CamperDietarySync) Sync(ctx context.Context) error {
 		"year", year,
 		"created", s.Stats.Created,
 		"updated", s.Stats.Updated,
+		"skipped", s.Stats.Skipped,
 		"deleted", s.Stats.Deleted,
 		"errors", s.Stats.Errors,
 	)
@@ -259,6 +275,9 @@ func (s *CamperDietarySync) loadPersonCustomValues(
 	// Collect all values first
 	var entries []dietaryValueEntry
 
+	// Cache for person PB ID -> CM ID lookups
+	personCache := make(map[string]int)
+
 	filter := fmt.Sprintf("year = %d", year)
 	page := 1
 	perPage := 500
@@ -282,7 +301,27 @@ func (s *CamperDietarySync) loadPersonCustomValues(
 				continue // Not a dietary field
 			}
 
-			personID := record.GetInt("person_id")
+			// person_custom_values has "person" relation field (PB ID), not "person_id"
+			personPBID := record.GetString("person")
+			if personPBID == "" {
+				continue
+			}
+
+			// Look up CM ID from cache or persons table
+			personID := 0
+			if cached, ok := personCache[personPBID]; ok {
+				personID = cached
+			} else {
+				personFilter := fmt.Sprintf("id = '%s'", personPBID)
+				persons, err := s.App.FindRecordsByFilter("persons", personFilter, "", 1, 0)
+				if err == nil && len(persons) > 0 {
+					if cmID, ok := persons[0].Get("cm_id").(float64); ok {
+						personID = int(cmID)
+						personCache[personPBID] = personID
+					}
+				}
+			}
+
 			value := record.GetString("value")
 
 			if personID > 0 && value != "" {
@@ -386,6 +425,63 @@ func makeCamperDietaryKey(personID, year int) string {
 	return fmt.Sprintf("%d|%d", personID, year)
 }
 
+// fieldEquals compares two field values for equality, handling type conversions.
+// This mirrors the centralized BaseSyncService.FieldEquals logic.
+func (s *CamperDietarySync) fieldEquals(existing, newVal any) bool {
+	// Handle nil vs empty string
+	if (existing == nil && newVal == "") || (existing == "" && newVal == nil) {
+		return true
+	}
+	// Handle nil vs false (for boolean fields)
+	if existing == nil && newVal == false {
+		return true
+	}
+	if existing == false && newVal == nil {
+		return true
+	}
+	// Handle nil vs 0
+	if existing == nil && newVal == 0 {
+		return true
+	}
+	if existing == 0 && newVal == nil {
+		return true
+	}
+	// Handle float64 vs int (JSON unmarshals numbers as float64)
+	if existFloat, ok := existing.(float64); ok {
+		if newInt, ok := newVal.(int); ok {
+			return int(existFloat) == newInt
+		}
+	}
+	if existInt, ok := existing.(int); ok {
+		if newFloat, ok := newVal.(float64); ok {
+			return existInt == int(newFloat)
+		}
+	}
+	// Handle bool comparison (PocketBase may return bool, we may pass bool)
+	if existBool, ok := existing.(bool); ok {
+		if newBool, ok := newVal.(bool); ok {
+			return existBool == newBool
+		}
+	}
+
+	// String comparison as fallback
+	return fmt.Sprintf("%v", existing) == fmt.Sprintf("%v", newVal)
+}
+
+// recordNeedsUpdate checks if any field differs between existing record and new data
+func (s *CamperDietarySync) recordNeedsUpdate(record *core.Record, data map[string]any) bool {
+	skipFields := map[string]bool{"id": true, "created": true, "updated": true}
+	for field, newValue := range data {
+		if skipFields[field] {
+			continue
+		}
+		if !s.fieldEquals(record.Get(field), newValue) {
+			return true
+		}
+	}
+	return false
+}
+
 // loadExistingRecords loads existing camper_dietary records for a year
 func (s *CamperDietarySync) loadExistingRecords(ctx context.Context, year int) (map[string]string, error) {
 	result := make(map[string]string) // compositeKey -> PB ID
@@ -427,22 +523,34 @@ func (s *CamperDietarySync) upsertRecords(
 	records map[string]*camperDietaryRecord,
 	existingRecords map[string]string,
 	year int,
-) (created, updated, errors int) {
+) (created, updated, skipped, errors int) {
 	col, err := s.App.FindCollectionByNameOrId("camper_dietary")
 	if err != nil {
 		slog.Error("Error finding camper_dietary collection", "error", err)
-		return 0, 0, len(records)
+		return 0, 0, 0, len(records)
 	}
 
 	for _, rec := range records {
 		select {
 		case <-ctx.Done():
-			return created, updated, errors
+			return created, updated, skipped, errors
 		default:
 		}
 
 		key := makeCamperDietaryKey(rec.personID, year)
 		existingID, exists := existingRecords[key]
+
+		// Build data map for comparison
+		data := map[string]any{
+			"attendee":            rec.attendeeID,
+			"person_id":           rec.personID,
+			"year":                rec.year,
+			"has_dietary_needs":   rec.hasDietaryNeeds,
+			"dietary_explanation": rec.dietaryExplanation,
+			"has_allergies":       rec.hasAllergies,
+			"allergy_info":        rec.allergyInfo,
+			"additional_medical":  rec.additionalMedical,
+		}
 
 		var record *core.Record
 		if exists {
@@ -452,19 +560,22 @@ func (s *CamperDietarySync) upsertRecords(
 				errors++
 				continue
 			}
+
+			// Check if update is actually needed
+			if !s.recordNeedsUpdate(record, data) {
+				s.DebugLog("Skipping unchanged dietary record", "person_id", rec.personID, "year", year)
+				skipped++
+				continue
+			}
+			s.DebugLog("Updating dietary record", "person_id", rec.personID, "year", year)
 		} else {
 			record = core.NewRecord(col)
 		}
 
 		// Set all fields
-		record.Set("attendee", rec.attendeeID)
-		record.Set("person_id", rec.personID)
-		record.Set("year", rec.year)
-		record.Set("has_dietary_needs", rec.hasDietaryNeeds)
-		record.Set("dietary_explanation", rec.dietaryExplanation)
-		record.Set("has_allergies", rec.hasAllergies)
-		record.Set("allergy_info", rec.allergyInfo)
-		record.Set("additional_medical", rec.additionalMedical)
+		for field, value := range data {
+			record.Set(field, value)
+		}
 
 		if err := s.App.Save(record); err != nil {
 			slog.Error("Error saving camper_dietary record",
@@ -483,7 +594,7 @@ func (s *CamperDietarySync) upsertRecords(
 		}
 	}
 
-	return created, updated, errors
+	return created, updated, skipped, errors
 }
 
 // deleteOrphans removes records that exist in DB but not in computed set

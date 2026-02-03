@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import React, { Component } from 'react';
+import type { ReactNode, ErrorInfo } from 'react';
+import { Component } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { isChunkLoadError } from '../utils/chunkLoadError';
 import { shouldAutoReload, autoReload } from '../utils/autoReload';
@@ -25,7 +25,7 @@ export class ErrorBoundary extends Component<Props, State> {
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     // Auto-reload for chunk load errors (stale deployment)
     if (isChunkLoadError(error)) {
       if (shouldAutoReload()) {
@@ -120,17 +120,4 @@ export class ErrorBoundary extends Component<Props, State> {
 
     return this.props.children;
   }
-}
-
-// Hook for using error boundary programmatically
-export function useErrorHandler() {
-  const [error, setError] = React.useState<Error | null>(null);
-
-  React.useEffect(() => {
-    if (error) {
-      throw error;
-    }
-  }, [error]);
-
-  return setError;
 }

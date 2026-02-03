@@ -1,7 +1,7 @@
 import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
-import reactRefresh from 'eslint-plugin-react-refresh';
+import { reactRefresh } from 'eslint-plugin-react-refresh';
 
 export default tseslint.config(
   // Base ESLint recommended rules
@@ -11,7 +11,10 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   // Add strict rules for TypeScript 5.8
   ...tseslint.configs.strict,
-  
+
+  // React Refresh Vite preset
+  reactRefresh.configs.vite({ allowConstantExport: true }),
+
   // Ignore patterns
   {
     ignores: ['dist/**', 'node_modules/**', '*.cjs']
@@ -50,7 +53,6 @@ export default tseslint.config(
     },
     plugins: {
       'react-hooks': reactHooks,
-      'react-refresh': reactRefresh,
     },
     rules: {
       // React Hooks rules - core rules as errors, compiler rules as warnings
@@ -64,12 +66,6 @@ export default tseslint.config(
       'react-hooks/refs': 'warn',
       'react-hooks/purity': 'warn',
 
-      // React Refresh rules
-      'react-refresh/only-export-components': [
-        'warn',
-        { allowConstantExport: true }
-      ],
-      
       // TypeScript rules
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': [

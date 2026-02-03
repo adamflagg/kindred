@@ -50,6 +50,7 @@ type CamperTransportationSync struct {
 	App            core.App
 	Year           int
 	DryRun         bool
+	Debug          bool
 	Stats          Stats
 	SyncSuccessful bool
 }
@@ -71,6 +72,18 @@ func (s *CamperTransportationSync) Name() string {
 // GetStats returns the current stats
 func (s *CamperTransportationSync) GetStats() Stats {
 	return s.Stats
+}
+
+// SetDebug enables or disables debug logging
+func (s *CamperTransportationSync) SetDebug(debug bool) {
+	s.Debug = debug
+}
+
+// DebugLog logs a message at INFO level only when Debug is enabled
+func (s *CamperTransportationSync) DebugLog(msg string, args ...any) {
+	if s.Debug {
+		slog.Info(msg, args...)
+	}
 }
 
 // camperTransportationRecord holds the extracted transportation info for a camper-session
@@ -123,6 +136,7 @@ func (s *CamperTransportationSync) Sync(ctx context.Context) error {
 	slog.Info("Starting camper transportation extraction",
 		"year", year,
 		"dry_run", s.DryRun,
+		"debug", s.Debug,
 	)
 
 	// Step 1: Build field name mapping (field_definition PB ID -> field name)
@@ -205,6 +219,7 @@ func (s *CamperTransportationSync) loadFieldDefinitions(_ context.Context) (map[
 		name := record.GetString("name")
 		if isCamperTransportationField(name) {
 			result[record.Id] = name
+			s.DebugLog("Found transportation field definition", "name", name, "pb_id", record.Id)
 		}
 	}
 
@@ -291,6 +306,9 @@ func (s *CamperTransportationSync) loadPersonCustomValues(
 	// Collect all values first
 	var entries []transportValueEntry
 
+	// Cache for person PB ID -> CM ID lookups
+	personCache := make(map[string]int)
+
 	filter := fmt.Sprintf("year = %d", year)
 	page := 1
 	perPage := 500
@@ -314,7 +332,27 @@ func (s *CamperTransportationSync) loadPersonCustomValues(
 				continue // Not a transportation field
 			}
 
-			personID := record.GetInt("person_id")
+			// person_custom_values has "person" relation field (PB ID), not "person_id"
+			personPBID := record.GetString("person")
+			if personPBID == "" {
+				continue
+			}
+
+			// Look up CM ID from cache or persons table
+			personID := 0
+			if cached, ok := personCache[personPBID]; ok {
+				personID = cached
+			} else {
+				personFilter := fmt.Sprintf("id = '%s'", personPBID)
+				persons, err := s.App.FindRecordsByFilter("persons", personFilter, "", 1, 0)
+				if err == nil && len(persons) > 0 {
+					if cmID, ok := persons[0].Get("cm_id").(float64); ok {
+						personID = int(cmID)
+						personCache[personPBID] = personID
+					}
+				}
+			}
+
 			value := record.GetString("value")
 
 			if personID > 0 && value != "" {

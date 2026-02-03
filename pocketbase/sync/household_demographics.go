@@ -29,6 +29,7 @@ type HouseholdDemographicsSync struct {
 	App            core.App
 	Year           int  // Year to compute for (0 = current year from env)
 	DryRun         bool // Dry run mode (compute but don't write)
+	Debug          bool // Enable verbose debug logging
 	Stats          Stats
 	SyncSuccessful bool
 }
@@ -50,6 +51,61 @@ func (s *HouseholdDemographicsSync) Name() string {
 // GetStats returns the current stats
 func (s *HouseholdDemographicsSync) GetStats() Stats {
 	return s.Stats
+}
+
+// SetDebug enables or disables debug logging
+func (s *HouseholdDemographicsSync) SetDebug(debug bool) {
+	s.Debug = debug
+}
+
+// DebugLog logs a message at INFO level only when Debug is enabled
+func (s *HouseholdDemographicsSync) DebugLog(msg string, args ...any) {
+	if s.Debug {
+		slog.Info("[DEBUG] "+msg, args...)
+	}
+}
+
+// fieldEquals compares two field values for equality, handling type conversions.
+// This mirrors the centralized BaseSyncService.FieldEquals logic.
+func (s *HouseholdDemographicsSync) fieldEquals(existing, newVal any) bool {
+	// Handle nil vs empty string
+	if (existing == nil && newVal == "") || (existing == "" && newVal == nil) {
+		return true
+	}
+	// Handle nil vs false (for boolean fields)
+	if existing == nil && newVal == false {
+		return true
+	}
+	if existing == false && newVal == nil {
+		return true
+	}
+	// Handle nil vs 0
+	if existing == nil && newVal == 0 {
+		return true
+	}
+	if existing == 0 && newVal == nil {
+		return true
+	}
+	// Handle float64 vs int (JSON unmarshals numbers as float64)
+	if existFloat, ok := existing.(float64); ok {
+		if newInt, ok := newVal.(int); ok {
+			return int(existFloat) == newInt
+		}
+	}
+	if existInt, ok := existing.(int); ok {
+		if newFloat, ok := newVal.(float64); ok {
+			return existInt == int(newFloat)
+		}
+	}
+	// Handle bool comparison
+	if existBool, ok := existing.(bool); ok {
+		if newBool, ok := newVal.(bool); ok {
+			return existBool == newBool
+		}
+	}
+
+	// String comparison as fallback
+	return fmt.Sprintf("%v", existing) == fmt.Sprintf("%v", newVal)
 }
 
 // householdDemographicsRecord holds the computed demographics for a household
@@ -174,9 +230,10 @@ func (s *HouseholdDemographicsSync) Sync(ctx context.Context) error {
 	slog.Info("Loaded existing records", "count", len(existingRecords))
 
 	// Step 7: Upsert records
-	created, updated, errors := s.upsertRecords(ctx, records, existingRecords, year)
+	created, updated, skipped, errors := s.upsertRecords(ctx, records, existingRecords, year)
 	s.Stats.Created = created
 	s.Stats.Updated = updated
+	s.Stats.Skipped = skipped
 	s.Stats.Errors = errors
 
 	// Step 8: Delete orphans (records in DB but not in computed set)
@@ -666,22 +723,50 @@ func (s *HouseholdDemographicsSync) upsertRecords(
 	records map[string]*householdDemographicsRecord,
 	existingRecords map[string]string,
 	year int,
-) (created, updated, errors int) {
+) (created, updated, skipped, errors int) {
 	col, err := s.App.FindCollectionByNameOrId("household_demographics")
 	if err != nil {
 		slog.Error("Error finding household_demographics collection", "error", err)
-		return 0, 0, len(records)
+		return 0, 0, 0, len(records)
 	}
 
 	for _, rec := range records {
 		select {
 		case <-ctx.Done():
-			return created, updated, errors
+			return created, updated, skipped, errors
 		default:
 		}
 
 		key := MakeCompositeKey(rec.householdPBID, year)
 		existingID, exists := existingRecords[key]
+
+		// Build data map for comparison and setting
+		data := map[string]any{
+			"household":                  rec.householdPBID,
+			"year":                       rec.year,
+			"family_description":         rec.familyDescription,
+			"family_description_other":   rec.familyDescriptionOther,
+			"jewish_affiliation":         rec.jewishAffiliation,
+			"jewish_affiliation_other":   rec.jewishAffiliationOther,
+			"jewish_identities":          rec.jewishIdentities,
+			"congregation_summer":        rec.congregationSummer,
+			"congregation_family":        rec.congregationFamily,
+			"jcc_summer":                 rec.jccSummer,
+			"jcc_family":                 rec.jccFamily,
+			"military_family":            rec.militaryFamily,
+			"parent_immigrant":           rec.parentImmigrant,
+			"parent_immigrant_origin":    rec.parentImmigrantOrigin,
+			"custody_summer":             rec.custodySummer,
+			"custody_family":             rec.custodyFamily,
+			"has_custody_considerations": rec.hasCustodyConsiderations,
+			"away_during_camp":           rec.awayDuringCamp,
+			"away_location":              rec.awayLocation,
+			"away_phone":                 rec.awayPhone,
+			"away_from_date":             rec.awayFromDate,
+			"away_return_date":           rec.awayReturnDate,
+			"form_filler":                rec.formFiller,
+			"board_member":               rec.boardMember,
+		}
 
 		var record *core.Record
 		if exists {
@@ -692,36 +777,33 @@ func (s *HouseholdDemographicsSync) upsertRecords(
 				errors++
 				continue
 			}
+
+			// Check if update is needed
+			needsUpdate := false
+			skipFields := map[string]bool{"id": true, "created": true, "updated": true, "household": true, "year": true}
+			for field, newValue := range data {
+				if skipFields[field] {
+					continue
+				}
+				if !s.fieldEquals(record.Get(field), newValue) {
+					needsUpdate = true
+					break
+				}
+			}
+
+			if !needsUpdate {
+				skipped++
+				continue
+			}
 		} else {
 			// Create new record
 			record = core.NewRecord(col)
 		}
 
 		// Set all fields
-		record.Set("household", rec.householdPBID)
-		record.Set("year", rec.year)
-		record.Set("family_description", rec.familyDescription)
-		record.Set("family_description_other", rec.familyDescriptionOther)
-		record.Set("jewish_affiliation", rec.jewishAffiliation)
-		record.Set("jewish_affiliation_other", rec.jewishAffiliationOther)
-		record.Set("jewish_identities", rec.jewishIdentities)
-		record.Set("congregation_summer", rec.congregationSummer)
-		record.Set("congregation_family", rec.congregationFamily)
-		record.Set("jcc_summer", rec.jccSummer)
-		record.Set("jcc_family", rec.jccFamily)
-		record.Set("military_family", rec.militaryFamily)
-		record.Set("parent_immigrant", rec.parentImmigrant)
-		record.Set("parent_immigrant_origin", rec.parentImmigrantOrigin)
-		record.Set("custody_summer", rec.custodySummer)
-		record.Set("custody_family", rec.custodyFamily)
-		record.Set("has_custody_considerations", rec.hasCustodyConsiderations)
-		record.Set("away_during_camp", rec.awayDuringCamp)
-		record.Set("away_location", rec.awayLocation)
-		record.Set("away_phone", rec.awayPhone)
-		record.Set("away_from_date", rec.awayFromDate)
-		record.Set("away_return_date", rec.awayReturnDate)
-		record.Set("form_filler", rec.formFiller)
-		record.Set("board_member", rec.boardMember)
+		for field, value := range data {
+			record.Set(field, value)
+		}
 
 		if err := s.App.Save(record); err != nil {
 			slog.Error("Error saving household_demographics record",
@@ -740,7 +822,7 @@ func (s *HouseholdDemographicsSync) upsertRecords(
 		}
 	}
 
-	return created, updated, errors
+	return created, updated, skipped, errors
 }
 
 // deleteOrphans removes records that exist in DB but not in computed set
