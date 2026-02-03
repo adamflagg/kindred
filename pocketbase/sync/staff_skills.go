@@ -13,6 +13,9 @@ import (
 
 const serviceNameStaffSkills = "staff_skills"
 
+// partitionStaff is the partition value for staff-related custom fields
+const partitionStaff = "Staff"
+
 // StaffSkillsSync extracts Skills- fields from person_custom_values
 // into a normalized staff_skills table for activity assignment queries.
 //
@@ -350,7 +353,7 @@ func (s *StaffSkillsSync) containsStaffPartitionFromRaw(rawValue any) bool {
 	// Handle as []interface{} (JSON array from record.Get())
 	if arr, ok := rawValue.([]interface{}); ok {
 		for _, v := range arr {
-			if str, ok := v.(string); ok && str == "Staff" {
+			if str, ok := v.(string); ok && str == partitionStaff {
 				return true
 			}
 		}
@@ -360,7 +363,7 @@ func (s *StaffSkillsSync) containsStaffPartitionFromRaw(rawValue any) bool {
 	// Handle as []string (alternative array type)
 	if arr, ok := rawValue.([]string); ok {
 		for _, v := range arr {
-			if v == "Staff" {
+			if v == partitionStaff {
 				return true
 			}
 		}
@@ -374,7 +377,7 @@ func (s *StaffSkillsSync) containsStaffPartitionFromRaw(rawValue any) bool {
 		}
 		parts := strings.Split(str, ",")
 		for _, p := range parts {
-			if strings.TrimSpace(p) == "Staff" {
+			if strings.TrimSpace(p) == partitionStaff {
 				return true
 			}
 		}

@@ -296,7 +296,7 @@ func containsStaffPartitionFromRaw(rawValue interface{}) bool {
 	// Handle as []interface{} (JSON array from record.Get())
 	if arr, ok := rawValue.([]interface{}); ok {
 		for _, v := range arr {
-			if str, ok := v.(string); ok && str == "Staff" {
+			if str, ok := v.(string); ok && str == partitionStaff {
 				return true
 			}
 		}
@@ -306,7 +306,7 @@ func containsStaffPartitionFromRaw(rawValue interface{}) bool {
 	// Handle as []string (alternative array type)
 	if arr, ok := rawValue.([]string); ok {
 		for _, v := range arr {
-			if v == "Staff" {
+			if v == partitionStaff {
 				return true
 			}
 		}
