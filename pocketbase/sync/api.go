@@ -2163,6 +2163,18 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
 		defer cancel()
 
+		// Set the current sync year so services use correct year
+		// (same pattern as RunSyncWithOptions)
+		orchestrator.mu.Lock()
+		orchestrator.currentSyncYear = year
+		orchestrator.mu.Unlock()
+
+		defer func() {
+			orchestrator.mu.Lock()
+			orchestrator.currentSyncYear = 0
+			orchestrator.mu.Unlock()
+		}()
+
 		slog.Info("Starting phase sync",
 			"phase", phase,
 			"year", year,
