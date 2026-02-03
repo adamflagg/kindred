@@ -433,10 +433,10 @@ func extractSessionCMID(cmID int) int {
 // This ensures the fixed loadAttendeeMapping won't add entries with session_id=0.
 func TestAttendeeKeyRequiresValidSessionID(t *testing.T) {
 	tests := []struct {
-		name       string
-		personID   int
-		sessionID  int
-		shouldAdd  bool
+		name      string
+		personID  int
+		sessionID int
+		shouldAdd bool
 	}{
 		{"both valid", 12345, 1000001, true},
 		{"zero session ID", 12345, 0, false},
