@@ -2233,16 +2233,21 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 			default:
 			}
 
-			// Set debug on the service if requested
-			if debug {
-				if svc := orchestrator.GetService(jobID); svc != nil {
+			// Set year and debug on the service before running
+			if svc := orchestrator.GetService(jobID); svc != nil {
+				// Set year so service queries correct year's data
+				if yearSetter, ok := svc.(YearSetter); ok {
+					yearSetter.SetYear(year)
+				}
+				// Set debug if requested
+				if debug {
 					if debuggable, ok := svc.(Debuggable); ok {
 						debuggable.SetDebug(true)
 					}
 				}
 			}
 
-			slog.Info("Running phase job", "phase", phase, "job", jobID)
+			slog.Info("Running phase job", "phase", phase, "job", jobID, "year", year)
 			if err := orchestrator.runSyncAndWait(ctx, jobID); err != nil {
 				slog.Error("Phase job failed", "phase", phase, "job", jobID, "error", err)
 				// Continue with next job even if one fails
