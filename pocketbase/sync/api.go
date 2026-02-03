@@ -907,8 +907,11 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	}
 
 	// Get orchestrator and check if any sync is already running
+	// Check all sync flags to prevent race conditions (e.g., when global sync triggers first)
 	orchestrator := scheduler.GetOrchestrator()
-	if orchestrator.IsDailySyncRunning() || orchestrator.IsHistoricalSyncRunning() {
+	if orchestrator.IsDailySyncRunning() || orchestrator.IsWeeklySyncRunning() ||
+		orchestrator.IsHistoricalSyncRunning() || orchestrator.IsCustomValuesSyncRunning() ||
+		orchestrator.IsAnyJobRunning() {
 		// Sync is running - try to enqueue
 		qs, err := orchestrator.EnqueueUnifiedSync(year, service, includeCustomValues, debug, requestedBy)
 		if err != nil {
