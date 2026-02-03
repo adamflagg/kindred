@@ -238,6 +238,119 @@ class TestConfigureLogging:
         assert logger.name == "test.module"
 
 
+class TestDebugPrefixFormatting:
+    """Test that DEBUG level logs get [DEBUG] prefix for consistency with Go output."""
+
+    def test_debug_level_message_has_debug_prefix(self):
+        """DEBUG level messages should have [DEBUG] prefix in the message."""
+        from bunking.logging_config import ISO8601Formatter
+
+        formatter = ISO8601Formatter(source="test")
+        record = logging.LogRecord(
+            name="test",
+            level=logging.DEBUG,
+            pathname="",
+            lineno=0,
+            msg="Some debug info",
+            args=(),
+            exc_info=None,
+        )
+
+        output = formatter.format(record)
+
+        # Should contain [DEBUG] prefix in the message portion
+        assert "[DEBUG]" in output, f"DEBUG level output should contain [DEBUG] prefix: {output}"
+        # The [DEBUG] should appear after the level name
+        assert "] DEBUG [DEBUG]" in output, (
+            f"[DEBUG] should appear after level name: {output}"
+        )
+
+    def test_info_level_message_no_debug_prefix(self):
+        """INFO level messages should NOT have [DEBUG] prefix."""
+        from bunking.logging_config import ISO8601Formatter
+
+        formatter = ISO8601Formatter(source="test")
+        record = logging.LogRecord(
+            name="test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="Some info message",
+            args=(),
+            exc_info=None,
+        )
+
+        output = formatter.format(record)
+
+        # Should NOT contain [DEBUG] prefix
+        assert "[DEBUG]" not in output, f"INFO level output should NOT contain [DEBUG] prefix: {output}"
+
+    def test_warning_level_message_no_debug_prefix(self):
+        """WARNING level messages should NOT have [DEBUG] prefix."""
+        from bunking.logging_config import ISO8601Formatter
+
+        formatter = ISO8601Formatter(source="test")
+        record = logging.LogRecord(
+            name="test",
+            level=logging.WARNING,
+            pathname="",
+            lineno=0,
+            msg="Some warning message",
+            args=(),
+            exc_info=None,
+        )
+
+        output = formatter.format(record)
+
+        # Should NOT contain [DEBUG] prefix
+        assert "[DEBUG]" not in output, (
+            f"WARNING level output should NOT contain [DEBUG] prefix: {output}"
+        )
+
+    def test_error_level_message_no_debug_prefix(self):
+        """ERROR level messages should NOT have [DEBUG] prefix."""
+        from bunking.logging_config import ISO8601Formatter
+
+        formatter = ISO8601Formatter(source="test")
+        record = logging.LogRecord(
+            name="test",
+            level=logging.ERROR,
+            pathname="",
+            lineno=0,
+            msg="Some error message",
+            args=(),
+            exc_info=None,
+        )
+
+        output = formatter.format(record)
+
+        # Should NOT contain [DEBUG] prefix
+        assert "[DEBUG]" not in output, f"ERROR level output should NOT contain [DEBUG] prefix: {output}"
+
+    def test_debug_prefix_format_matches_go_style(self):
+        """The [DEBUG] prefix should match Go's style: '[DEBUG] message'."""
+        from bunking.logging_config import ISO8601Formatter
+
+        formatter = ISO8601Formatter(source="sync")
+        record = logging.LogRecord(
+            name="test",
+            level=logging.DEBUG,
+            pathname="",
+            lineno=0,
+            msg="Processing batch",
+            args=(),
+            exc_info=None,
+        )
+
+        output = formatter.format(record)
+
+        # Go style: slog.Info("[DEBUG] " + msg) produces "[DEBUG] Processing batch"
+        # Python should match: "... DEBUG [DEBUG] Processing batch"
+        assert "[DEBUG] Processing batch" in output, (
+            f"Debug message should be prefixed with [DEBUG]: {output}"
+        )
+
+
 class TestIntegration:
     """Integration tests for the logging system."""
 
