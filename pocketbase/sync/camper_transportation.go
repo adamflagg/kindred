@@ -79,6 +79,11 @@ func (s *CamperTransportationSync) SetDebug(debug bool) {
 	s.Debug = debug
 }
 
+// SetYear sets the year for this sync service
+func (s *CamperTransportationSync) SetYear(year int) {
+	s.Year = year
+}
+
 // DebugLog logs a message at INFO level only when Debug is enabled
 func (s *CamperTransportationSync) DebugLog(msg string, args ...any) {
 	if s.Debug {
@@ -246,6 +251,8 @@ type attendeeKey struct {
 }
 
 // loadAttendeeMapping builds a map of (person_id, session_id) -> attendee PB ID
+// Note: The attendees table has "session" (PB relation ID) but no "session_id" (CM ID).
+// We use ExpandRecords() to expand the session relation and get cm_id from the expanded record.
 func (s *CamperTransportationSync) loadAttendeeMapping(
 	ctx context.Context, year int,
 ) (map[attendeeKey]string, error) {
@@ -267,9 +274,21 @@ func (s *CamperTransportationSync) loadAttendeeMapping(
 			return nil, fmt.Errorf("querying attendees page %d: %w", page, err)
 		}
 
+		// Expand the session relation to get cm_id
+		if errs := s.App.ExpandRecords(records, []string{"session"}, nil); len(errs) > 0 {
+			s.DebugLog("Some session expansions failed", "errors", errs)
+		}
+
 		for _, record := range records {
 			personID := record.GetInt("person_id")
-			sessionID := record.GetInt("session_id")
+
+			// Get session CM ID from expanded relation
+			// Attendees has "session" (PB ID), not "session_id" (CM ID)
+			sessionID := 0
+			if expandedSession := record.ExpandedOne("session"); expandedSession != nil {
+				sessionID = expandedSession.GetInt("cm_id")
+			}
+
 			if personID > 0 && sessionID > 0 {
 				key := attendeeKey{personID: personID, sessionID: sessionID}
 				result[key] = record.Id

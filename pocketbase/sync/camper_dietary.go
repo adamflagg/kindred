@@ -68,6 +68,11 @@ func (s *CamperDietarySync) SetDebug(debug bool) {
 	s.Debug = debug
 }
 
+// SetYear sets the year for this sync service
+func (s *CamperDietarySync) SetYear(year int) {
+	s.Year = year
+}
+
 // DebugLog logs a message at INFO level only when Debug is enabled
 func (s *CamperDietarySync) DebugLog(msg string, args ...any) {
 	if s.Debug {

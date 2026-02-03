@@ -137,6 +137,13 @@ type Debuggable interface {
 	SetDebug(debug bool)
 }
 
+// YearSetter is an optional interface for services that need year configuration.
+// Services that query year-scoped data should implement this to receive the
+// correct year from handleRunPhase before execution.
+type YearSetter interface {
+	SetYear(year int)
+}
+
 // Status represents the status of a sync operation
 type Status struct {
 	Type      string     `json:"type"`

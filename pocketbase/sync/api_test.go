@@ -1751,3 +1751,33 @@ func TestRunPhaseYearNotSetBugExplanation(t *testing.T) {
 	t.Log("Bug: handleRunPhase parses year parameter but never sets currentSyncYear")
 	t.Log("Fix: Set currentSyncYear inside goroutine before job loop, reset in defer")
 }
+
+// TestRunPhaseYearMustPropagateToServices tests that handleRunPhase must set
+// the year on each service instance, not just on orchestrator.currentSyncYear.
+// BUG: currentSyncYear only affects status.Year, NOT what year the services query.
+// Services read their own .Year field which defaults to env var CAMPMINDER_SEASON_ID.
+func TestRunPhaseYearMustPropagateToServices(t *testing.T) {
+	// This test demonstrates that YearSetter interface is needed.
+	// Services have .Year field that controls which year's data they query.
+	// Setting orchestrator.currentSyncYear does NOT set service.Year.
+
+	// Example service pattern (from staff_applications.go):
+	//   year := s.Year
+	//   if year == 0 {
+	//       yearStr := os.Getenv("CAMPMINDER_SEASON_ID")  // Falls back to env var!
+	//       ...
+	//   }
+
+	// The fix requires:
+	// 1. YearSetter interface: type YearSetter interface { SetYear(year int) }
+	// 2. Services implement SetYear() to set their internal .Year field
+	// 3. handleRunPhase calls SetYear(year) on each service before running
+
+	// Verify that YearSetter interface exists (compilation will fail if not)
+	var _ YearSetter = (*CamperHistorySync)(nil)
+	var _ YearSetter = (*StaffApplicationsSync)(nil)
+	var _ YearSetter = (*StaffVehicleInfoSync)(nil)
+	var _ YearSetter = (*QuestRegistrationsSync)(nil)
+
+	t.Log("YearSetter interface is implemented by year-aware services")
+}

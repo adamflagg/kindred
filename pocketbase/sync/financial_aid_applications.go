@@ -66,6 +66,11 @@ func (s *FinancialAidApplicationsSync) SetDebug(debug bool) {
 	s.Debug = debug
 }
 
+// SetYear sets the year for this sync service
+func (s *FinancialAidApplicationsSync) SetYear(year int) {
+	s.Year = year
+}
+
 // DebugLog logs a message at INFO level only when Debug is enabled
 func (s *FinancialAidApplicationsSync) DebugLog(msg string, args ...any) {
 	if s.Debug {

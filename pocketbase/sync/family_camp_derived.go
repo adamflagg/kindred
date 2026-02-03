@@ -62,6 +62,11 @@ func (s *FamilyCampDerivedSync) SetDebug(debug bool) {
 	s.Debug = debug
 }
 
+// SetYear sets the year for this sync service
+func (s *FamilyCampDerivedSync) SetYear(year int) {
+	s.Year = year
+}
+
 // DebugLog logs a message at INFO level only when Debug is enabled
 func (s *FamilyCampDerivedSync) DebugLog(msg string, args ...any) {
 	if s.Debug {

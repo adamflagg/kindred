@@ -66,6 +66,11 @@ func (c *CamperHistorySync) SetDebug(debug bool) {
 	c.Debug = debug
 }
 
+// SetYear sets the year for this sync service
+func (c *CamperHistorySync) SetYear(year int) {
+	c.Year = year
+}
+
 // DebugLog logs a message at INFO level only when Debug is enabled
 func (c *CamperHistorySync) DebugLog(msg string, args ...any) {
 	if c.Debug {
