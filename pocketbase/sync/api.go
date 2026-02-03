@@ -448,8 +448,8 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 	if orchestrator.IsDailySyncRunning() || orchestrator.IsWeeklySyncRunning() ||
 		orchestrator.IsHistoricalSyncRunning() || orchestrator.IsCustomValuesSyncRunning() ||
 		orchestrator.IsAnyJobRunning() {
-		// Queue the individual sync
-		qs, err := orchestrator.EnqueueIndividualSync(currentYear, syncType, nil, requestedBy)
+		// Queue the individual sync with debug flag
+		qs, err := orchestrator.EnqueueIndividualSync(currentYear, syncType, nil, debug, requestedBy)
 		if err != nil {
 			return e.JSON(http.StatusConflict, map[string]interface{}{
 				"error": err.Error(),
@@ -1047,7 +1047,7 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 		phase := Phase(qs.Service)
 		jobs := GetJobsForPhase(phase)
 		slog.Info("Queued phase sync: Running jobs",
-			"phase", phase, "year", qs.Year, "jobs", jobs)
+			"phase", phase, "year", qs.Year, "jobs", jobs, "debug", qs.Debug)
 
 		canceled := false
 		for _, jobID := range jobs {
@@ -1061,24 +1061,63 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 				break
 			}
 
+			// Set debug flag on service if requested
+			if qs.Debug {
+				if svc := orchestrator.GetService(jobID); svc != nil {
+					if debuggable, ok := svc.(Debuggable); ok {
+						debuggable.SetDebug(true)
+						slog.Info("Queued phase sync: debug enabled for job", "job", jobID)
+					}
+				}
+			}
+
 			slog.Info("Queued phase sync: Running job", "phase", phase, "job", jobID)
 			if err := orchestrator.runSyncAndWait(ctx, jobID); err != nil {
 				slog.Error("Queued phase sync: job failed",
 					"phase", phase, "job", jobID, "error", err)
 				// Continue with next job even if one fails
 			}
+
+			// Clear debug flag after job completes
+			if qs.Debug {
+				if svc := orchestrator.GetService(jobID); svc != nil {
+					if debuggable, ok := svc.(Debuggable); ok {
+						debuggable.SetDebug(false)
+					}
+				}
+			}
 		}
 		slog.Info("Queued phase sync completed", "id", qs.ID, "phase", phase, "year", qs.Year)
 
 	case "individual":
 		// Run single job
-		slog.Info("Queued individual sync: Running job", "job", qs.Service, "year", qs.Year)
+		slog.Info("Queued individual sync: Running job", "job", qs.Service, "year", qs.Year, "debug", qs.Debug)
+
+		// Set debug flag on service if requested
+		if qs.Debug {
+			if svc := orchestrator.GetService(qs.Service); svc != nil {
+				if debuggable, ok := svc.(Debuggable); ok {
+					debuggable.SetDebug(true)
+					slog.Info("Queued individual sync: debug enabled", "job", qs.Service)
+				}
+			}
+		}
+
 		if err := orchestrator.runSyncAndWait(ctx, qs.Service); err != nil {
 			slog.Error("Queued individual sync failed",
 				"id", qs.ID, "job", qs.Service, "year", qs.Year, "error", err)
 		} else {
 			slog.Info("Queued individual sync completed",
 				"id", qs.ID, "job", qs.Service, "year", qs.Year)
+		}
+
+		// Clear debug flag after job completes
+		if qs.Debug {
+			if svc := orchestrator.GetService(qs.Service); svc != nil {
+				if debuggable, ok := svc.(Debuggable); ok {
+					debuggable.SetDebug(false)
+				}
+			}
 		}
 
 	case "unified", "":
@@ -2137,8 +2176,8 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 	if orchestrator.IsDailySyncRunning() || orchestrator.IsWeeklySyncRunning() ||
 		orchestrator.IsHistoricalSyncRunning() || orchestrator.IsCustomValuesSyncRunning() ||
 		orchestrator.IsAnyJobRunning() {
-		// Queue the phase sync instead of returning conflict
-		qs, err := orchestrator.EnqueuePhaseSync(year, phase, requestedBy)
+		// Queue the phase sync instead of returning conflict (pass debug flag)
+		qs, err := orchestrator.EnqueuePhaseSync(year, phase, debug, requestedBy)
 		if err != nil {
 			return e.JSON(http.StatusConflict, map[string]interface{}{
 				"error": err.Error(),
