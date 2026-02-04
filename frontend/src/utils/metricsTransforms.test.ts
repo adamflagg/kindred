@@ -59,7 +59,7 @@ describe('transformGenderData', () => {
 });
 
 describe('transformGradeData', () => {
-  it('transforms grade breakdown to chart data with grade prefix', () => {
+  it('transforms grade breakdown to chart data with grade prefix and id for drilldown', () => {
     const input = [
       { grade: 5, count: 30, percentage: 30 },
       { grade: 6, count: 70, percentage: 70 },
@@ -68,17 +68,18 @@ describe('transformGradeData', () => {
     const result = transformGradeData(input);
 
     expect(result).toEqual([
-      { name: 'Grade 5', value: 30, percentage: 30 },
-      { name: 'Grade 6', value: 70, percentage: 70 },
+      { name: 'Grade 5', value: 30, percentage: 30, id: 5 },
+      { name: 'Grade 6', value: 70, percentage: 70, id: 6 },
     ]);
   });
 
-  it('handles null grade as Unknown', () => {
+  it('handles null grade as Unknown with null string id for drilldown', () => {
     const input = [{ grade: null, count: 10, percentage: 100 }];
 
     const result = transformGradeData(input);
 
     expect(result[0]!.name).toBe('Unknown');
+    expect(result[0]!.id).toBe('null');
   });
 
   it('returns empty array for undefined input', () => {
@@ -162,7 +163,7 @@ describe('transformSessionLengthData', () => {
 });
 
 describe('transformSummerYearsData', () => {
-  it('transforms summer years with singular/plural labels', () => {
+  it('transforms summer years with singular/plural labels and id for drilldown', () => {
     const input = [
       { summer_years: 1, count: 50, percentage: 50 },
       { summer_years: 2, count: 30, percentage: 30 },
@@ -172,9 +173,9 @@ describe('transformSummerYearsData', () => {
     const result = transformSummerYearsData(input);
 
     expect(result).toEqual([
-      { name: '1 summer', value: 50, percentage: 50 },
-      { name: '2 summers', value: 30, percentage: 30 },
-      { name: '5 summers', value: 20, percentage: 20 },
+      { name: '1 summer', value: 50, percentage: 50, id: 1 },
+      { name: '2 summers', value: 30, percentage: 30, id: 2 },
+      { name: '5 summers', value: 20, percentage: 20, id: 5 },
     ]);
   });
 
