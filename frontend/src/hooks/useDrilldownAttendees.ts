@@ -27,7 +27,9 @@ export function useDrilldownAttendees({
 }: UseDrilldownAttendeesOptions) {
   const { fetchWithAuth } = useApiWithAuth();
   const sessionTypesParam = sessionTypes?.join(',');
-  const statusFilterParam = statusFilter?.join(',');
+  // Use statusOverride from filter if present, otherwise use default statusFilter
+  const effectiveStatusFilter = filter?.statusOverride ?? statusFilter;
+  const statusFilterParam = effectiveStatusFilter?.join(',');
 
   return useQuery({
     queryKey: queryKeys.drilldown(
