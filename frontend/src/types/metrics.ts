@@ -34,6 +34,18 @@ export interface SessionLengthBreakdown {
   percentage: number;
 }
 
+export interface SessionInLengthCategory {
+  session_name: string;
+  session_cm_id: number;
+  count: number;
+}
+
+export interface SessionLengthBySessionBreakdown {
+  length_category: string;
+  sessions: SessionInLengthCategory[];
+  total: number;
+}
+
 export interface NewVsReturning {
   new_count: number;
   returning_count: number;
@@ -77,7 +89,6 @@ export interface GenderByGradeBreakdown {
   grade: number | null;
   male_count: number;
   female_count: number;
-  other_count: number;
   total: number;
 }
 
@@ -224,6 +235,7 @@ export interface RegistrationMetrics {
   by_session_bunk?: SessionBunkBreakdown[];
   // New breakdowns for registration tab redesign
   by_gender_grade?: GenderByGradeBreakdown[];
+  by_session_length_by_session?: SessionLengthBySessionBreakdown[];
   by_summer_years?: SummerYearsBreakdown[];
   by_first_summer_year?: FirstSummerYearBreakdown[];
 }
@@ -315,9 +327,11 @@ export interface RetentionTrendsResponse {
 
 // Drilldown types (chart click-through)
 export interface DrilldownFilter {
-  type: 'session' | 'gender' | 'grade' | 'school' | 'years_at_camp' | 'status';
+  type: 'session' | 'gender' | 'grade' | 'school' | 'years_at_camp' | 'status' | 'returning_status' | 'session_length' | 'first_summer_year';
   value: string;
   label: string; // Display label for modal title
+  /** Override status filter (for status cards like Waitlisted, Cancelled) */
+  statusOverride?: string[];
 }
 
 export interface DrilldownAttendee {
