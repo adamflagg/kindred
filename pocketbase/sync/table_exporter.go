@@ -785,8 +785,6 @@ func GetReadableYearExports() []ExportConfig {
 				{Field: "is_returning_summer", Header: "Returning Summer", Type: FieldTypeBool},
 				{Field: "is_returning_family", Header: "Returning Family", Type: FieldTypeBool},
 				{Field: "years_at_camp", Header: "Years at Camp", Type: FieldTypeNumber},
-				{Field: "first_year_summer", Header: "First Year Summer", Type: FieldTypeNumber},
-				{Field: "first_year_family", Header: "First Year Family", Type: FieldTypeNumber},
 				{Field: "household_id", Header: "Household ID", Type: FieldTypeNumber},
 				{Field: "gender", Header: "Gender", Type: FieldTypeText},
 				{Field: "division_name", Header: "Division", Type: FieldTypeText},
