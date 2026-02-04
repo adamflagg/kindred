@@ -21,6 +21,8 @@ interface MetricCardProps {
   /** Year for comparison label (e.g., "vs 2024") */
   compareYear?: number | undefined;
   className?: string | undefined;
+  /** Click handler for drilldown functionality */
+  onClick?: (() => void) | undefined;
 }
 
 export function MetricCard({
@@ -32,6 +34,7 @@ export function MetricCard({
   compareValue,
   compareYear,
   className = '',
+  onClick,
 }: MetricCardProps) {
   const trendColors = {
     up: 'text-emerald-600 dark:text-emerald-400',
@@ -70,8 +73,29 @@ export function MetricCard({
   const displayTrend = trend ?? autoTrend;
   const displayTrendValue = trendValue ?? autoTrendValue;
 
+  // Handle keyboard events for accessibility
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (onClick && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      onClick();
+    }
+  };
+
+  // Build className with optional interactive styles
+  const cardClassName = [
+    'card-lodge p-4',
+    onClick ? 'cursor-pointer hover:bg-muted/30 transition-colors' : '',
+    className,
+  ].filter(Boolean).join(' ');
+
   return (
-    <div className={`card-lodge p-4 ${className}`}>
+    <div
+      className={cardClassName}
+      onClick={onClick}
+      onKeyDown={handleKeyDown}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+    >
       <p className="text-sm font-medium text-muted-foreground">{title}</p>
       <div className="mt-2 flex items-baseline gap-2">
         <p className="text-2xl font-bold text-foreground">{value}</p>
