@@ -20,13 +20,13 @@ import { BreakdownChart } from '../../../components/metrics/BreakdownChart';
 import { DemographicBreakdowns } from '../../../components/metrics/DemographicBreakdowns';
 import { RegistrationSessionSelector } from '../../../components/metrics/RegistrationSessionSelector';
 import { GenderByGradeChart } from '../../../components/metrics/GenderByGradeChart';
+import { SessionLengthBySessionChart } from '../../../components/metrics/SessionLengthBySessionChart';
 import { getSessionChartLabel } from '../../../utils/sessionDisplay';
 import { buildSessionDateLookup, sortSessionDataByDate } from '../../../utils/sessionUtils';
 import {
   transformGenderData,
   transformGradeData,
   transformSessionData,
-  transformSessionLengthData,
   transformSummerYearsData,
   transformFirstSummerYearData,
   transformNewVsReturningData,
@@ -102,7 +102,6 @@ export default function RegistrationOverview() {
   const genderChartData = transformGenderData(data.by_gender);
   const gradeChartData = transformGradeData(data.by_grade);
   const sessionChartData = transformSessionData(data.by_session, sessionDateLookup);
-  const sessionLengthData = transformSessionLengthData(data.by_session_length);
   const summerYearsData = transformSummerYearsData(data.by_summer_years);
   const firstSummerYearData = transformFirstSummerYearData(data.by_first_summer_year);
   const newVsReturningData = transformNewVsReturningData(data.new_vs_returning);
@@ -143,26 +142,41 @@ export default function RegistrationOverview() {
           title="Total Enrolled"
           value={data.total_enrolled}
           subtitle={selectedSessionCmId ? 'In selected session' : `Active enrollments for ${currentYear}`}
+          onClick={() => setFilter({ type: 'status', value: 'enrolled', label: 'Enrolled Campers' })}
         />
         <MetricCard
           title="Total Waitlisted"
           value={data.total_waitlisted}
           subtitle="On waitlist"
+          onClick={() => setFilter({
+            type: 'status',
+            value: 'waitlisted',
+            label: 'Waitlisted Campers',
+            statusOverride: ['waitlisted'],
+          })}
         />
         <MetricCard
           title="Total Cancelled"
           value={data.total_cancelled}
           subtitle="Cancellations"
+          onClick={() => setFilter({
+            type: 'status',
+            value: 'cancelled',
+            label: 'Cancelled Campers',
+            statusOverride: ['cancelled'],
+          })}
         />
         <MetricCard
           title="New Campers"
           value={data.new_vs_returning.new_count}
           subtitle={`${data.new_vs_returning.new_percentage.toFixed(1)}% of enrolled`}
+          onClick={() => setFilter({ type: 'returning_status', value: 'new', label: 'New Campers' })}
         />
         <MetricCard
           title="Returning Campers"
           value={data.new_vs_returning.returning_count}
           subtitle={`${data.new_vs_returning.returning_percentage.toFixed(1)}% of enrolled`}
+          onClick={() => setFilter({ type: 'returning_status', value: 'returning', label: 'Returning Campers' })}
         />
       </div>
 
@@ -194,6 +208,12 @@ export default function RegistrationOverview() {
           type="pie"
           showPercentage
           height={250}
+          breakdownType="returning_status"
+          onSegmentClick={(filter) => {
+            // Map display labels to breakdown values
+            const value = filter.label === 'New Campers' ? 'new' : 'returning';
+            setFilter({ ...filter, type: 'returning_status', value });
+          }}
         />
         <BreakdownChart
           title="Enrollment by Grade"
@@ -215,11 +235,17 @@ export default function RegistrationOverview() {
           breakdownType="session"
           onSegmentClick={setFilter}
         />
-        <BreakdownChart
+        <SessionLengthBySessionChart
+          data={data.by_session_length_by_session ?? []}
           title="Enrollment by Session Length"
-          data={sessionLengthData}
-          type="bar"
           height={250}
+          onCategoryClick={(lengthCategory) =>
+            setFilter({
+              type: 'session_length',
+              value: lengthCategory,
+              label: `${lengthCategory} Sessions`,
+            })
+          }
         />
       </div>
 
@@ -239,6 +265,15 @@ export default function RegistrationOverview() {
             data={firstSummerYearData}
             type="bar"
             height={300}
+            breakdownType="first_summer_year"
+            onSegmentClick={(filter) => {
+              // Extract year from the label (e.g., "2024" from "2024")
+              setFilter({
+                type: 'first_summer_year',
+                value: filter.value,
+                label: `First Summer ${filter.value}`,
+              });
+            }}
           />
         )}
       </div>
