@@ -263,8 +263,6 @@ func (c *CamperHistorySync) Sync(ctx context.Context) error {
 		// Compute context-aware retention metrics
 		isReturningSummer := c.computeIsReturningSummer(year, hist)
 		isReturningFamily := c.computeIsReturningFamily(year, hist)
-		firstYearSummer := c.computeFirstYearSummer(year, hist)
-		firstYearFamily := c.computeFirstYearFamily(hist)
 
 		// Use CampMinder's authoritative years_at_camp
 		yearsAtCamp := demo.yearsAtCamp
@@ -331,12 +329,6 @@ func (c *CamperHistorySync) Sync(ctx context.Context) error {
 		}
 		if bunk.bunkCMID > 0 {
 			recordData["bunk_cm_id"] = bunk.bunkCMID
-		}
-		if firstYearSummer > 0 {
-			recordData["first_year_summer"] = firstYearSummer
-		}
-		if firstYearFamily > 0 {
-			recordData["first_year_family"] = firstYearFamily
 		}
 		if synagogue != "" {
 			recordData["synagogue"] = synagogue
@@ -917,33 +909,6 @@ func (c *CamperHistorySync) computeIsReturningFamily(currentYear int, enrollment
 		}
 	}
 	return false
-}
-
-// computeFirstYearSummer returns the first year a person attended a summer session.
-// Returns 0 if person has never attended a summer session.
-func (c *CamperHistorySync) computeFirstYearSummer(_ int, enrollments []historicalEnrollment) int {
-	minYear := 0
-	for _, e := range enrollments {
-		if e.status == statusEnrolled && c.isSummerSessionType(e.sessionType) {
-			if minYear == 0 || e.year < minYear {
-				minYear = e.year
-			}
-		}
-	}
-	return minYear // 0 if never attended summer
-}
-
-// computeFirstYearFamily returns the first year a person attended a family session
-func (c *CamperHistorySync) computeFirstYearFamily(enrollments []historicalEnrollment) int {
-	minYear := 0
-	for _, e := range enrollments {
-		if e.status == statusEnrolled && c.isFamilySessionType(e.sessionType) {
-			if minYear == 0 || e.year < minYear {
-				minYear = e.year
-			}
-		}
-	}
-	return minYear // 0 if never attended family
 }
 
 // computeYearsAtCamp counts distinct enrollment years

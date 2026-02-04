@@ -9,7 +9,8 @@
  * Computed by Go: pocketbase/sync/camper_history.go
  * Exported to Google Sheets: {year}-camper-history
  *
- * CONSOLIDATED: Includes changes from migrations 36, 37, 40 (first_year, session_types, v2 rework)
+ * CONSOLIDATED: Includes changes from migrations 36, 37, 40 (session_types, v2 rework)
+ * Note: first_year_summer and first_year_family fields removed - is_returning_* booleans suffice
  */
 
 const COLLECTION_ID_CAMPER_HISTORY = "col_camper_history";
@@ -207,24 +208,6 @@ migrate((app) => {
         max: 50,
         onlyInt: true
       },
-      {
-        type: "number",
-        name: "first_year_summer",
-        required: false,
-        presentable: false,
-        min: 2010,
-        max: 2100,
-        onlyInt: true
-      },
-      {
-        type: "number",
-        name: "first_year_family",
-        required: false,
-        presentable: false,
-        min: 0,
-        max: 2100,
-        onlyInt: true
-      },
 
       // Household and demographic fields (for retention analysis)
       {
@@ -310,8 +293,7 @@ migrate((app) => {
       "CREATE INDEX `idx_camper_history_returning_summer` ON `camper_history` (`is_returning_summer`, `year`)",
       "CREATE INDEX `idx_camper_history_returning_family` ON `camper_history` (`is_returning_family`, `year`)",
       "CREATE INDEX `idx_camper_history_person_rel` ON `camper_history` (`person`)",
-      "CREATE INDEX `idx_camper_history_session_rel` ON `camper_history` (`session`)",
-      "CREATE INDEX `idx_camper_history_first_year_summer` ON `camper_history` (`first_year_summer`)"
+      "CREATE INDEX `idx_camper_history_session_rel` ON `camper_history` (`session`)"
     ]
   });
 
