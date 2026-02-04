@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 import {
   Play,
   Loader2,
@@ -7,9 +7,9 @@ import {
   RefreshCw,
   Settings2,
   X,
-  Clock,
   ChevronRight,
   ChevronDown,
+  Cog,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useYear } from '../../hooks/useCurrentYear';
@@ -35,7 +35,7 @@ import { useRunPhaseSync } from '../../hooks/useRunPhaseSync';
 import { StatusIcon, formatDuration } from './ConfigInputs';
 import { clearCache } from '../../utils/queryClient';
 import ProcessRequestOptions, { type ProcessRequestOptionsState } from './ProcessRequestOptions';
-import { GLOBAL_SYNC_TYPES, getYearSyncTypes, Globe, SYNC_PHASES, getSyncTypesByPhase, type SyncPhase } from './syncTypes';
+import { GLOBAL_SYNC_TYPES, CURRENT_YEAR_SYNC_TYPES, getYearSyncTypes, Globe, SYNC_PHASES, getSyncTypesByPhase, type SyncPhase } from './syncTypes';
 import clsx from 'clsx';
 
 export function SyncTab() {
@@ -78,6 +78,24 @@ export function SyncTab() {
   const queue: QueuedSyncItem[] = syncStatus?._queue || [];
   const hasQueuedItems = queue.length > 0;
 
+  // Find the currently running job(s) with their status (includes year)
+  const runningJobs = useMemo(() => {
+    if (!syncStatus) return [];
+    const allSyncTypes = [...CURRENT_YEAR_SYNC_TYPES, ...GLOBAL_SYNC_TYPES];
+    return allSyncTypes
+      .map(syncType => {
+        const statusValue = syncStatus[syncType.id as keyof typeof syncStatus];
+        if (statusValue && typeof statusValue === 'object' && 'status' in statusValue) {
+          const status = statusValue as SyncStatus;
+          if (status.status === 'running') {
+            return { ...syncType, year: status.year || currentYear };
+          }
+        }
+        return null;
+      })
+      .filter((job): job is (typeof allSyncTypes[number] & { year: number }) => job !== null);
+  }, [syncStatus, currentYear]);
+
   // Compute available sync types based on year (excludes currentYearOnly types for historical years)
   const availableSyncTypes = useMemo(() =>
     getYearSyncTypes(syncYear, currentYear),
@@ -100,11 +118,13 @@ export function SyncTab() {
       const phase = SYNC_PHASES.find(p => p.id === item.service);
       return phase ? `${phase.name} Phase` : item.service;
     }
-    if (item.type === 'individual') {
-      return item.service.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    // Look up friendly name from sync types
+    if (item.service === 'all') {
+      return 'All Services';
     }
-    // unified
-    return item.service === 'all' ? 'All Services' : item.service;
+    const allSyncTypes = [...CURRENT_YEAR_SYNC_TYPES, ...GLOBAL_SYNC_TYPES];
+    const syncType = allSyncTypes.find(t => t.id === item.service);
+    return syncType?.name || item.service.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   };
 
   if (isLoading) {
@@ -443,69 +463,102 @@ export function SyncTab() {
 
         </div>
 
-        {/* Queue Pipeline + Refresh Cache Row */}
-        <div className="flex items-center gap-4">
-          {/* Assembly Line Queue - horizontal pipeline visualization */}
-          {hasQueuedItems && (
-            <div className="flex items-center gap-1 overflow-x-auto py-1 max-w-[calc(100%-140px)]">
-              {/* Pipeline start indicator */}
-              <div className="flex items-center gap-1 text-amber-600 dark:text-amber-400 flex-shrink-0">
-                <div className="w-2 h-2 rounded-full bg-amber-400 dark:bg-amber-500 animate-pulse" />
-                <span className="text-xs font-medium tracking-wide uppercase">Queue</span>
-                <ChevronRight className="w-4 h-4 opacity-60" />
-              </div>
-
-              {/* Queue items as pipeline stages */}
-              {queue.map((item, index) => (
-                <div key={item.id} className="flex items-center gap-1 flex-shrink-0">
-                  <div
-                    className={clsx(
-                      "group relative flex items-center gap-2 px-3 py-2 rounded-lg border transition-all",
-                      "bg-gradient-to-r from-amber-50 to-amber-100/50 dark:from-amber-900/30 dark:to-amber-900/10",
-                      "border-amber-200 dark:border-amber-800 hover:border-amber-300 dark:hover:border-amber-700",
-                      "shadow-sm hover:shadow-md"
-                    )}
-                  >
-                    {/* Position badge */}
-                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200 text-xs font-bold tabular-nums">
-                      {item.position}
+        {/* Unified Sync Pipeline - combines queue + currently processing */}
+        <div className="flex items-center gap-3">
+          {(hasQueuedItems || runningJobs.length > 0) && (
+            <div className="flex items-center gap-1.5 overflow-x-auto py-1 flex-1 min-w-0">
+              {/* Currently Processing - forest green theme */}
+              {runningJobs.length > 0 && (
+                <>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <Cog className="w-4 h-4 text-forest-600 dark:text-forest-400 animate-[spin_3s_linear_infinite]" />
+                    <span className="text-xs font-semibold tracking-wide uppercase text-forest-600 dark:text-forest-400">
+                      Running
                     </span>
-
-                    {/* Item details */}
-                    <div className="flex flex-col min-w-0">
-                      <span className="font-medium text-sm text-amber-900 dark:text-amber-100 whitespace-nowrap">
-                        {item.year} · {getQueueItemDisplay(item)}
-                        {item.include_custom_values && <span className="text-amber-600 dark:text-amber-400 ml-1">+CV</span>}
-                      </span>
-                      <span className="text-xs text-amber-600/70 dark:text-amber-400/70 flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {formatDistanceToNow(new Date(item.queued_at), { addSuffix: true })}
-                      </span>
-                    </div>
-
-                    {/* Cancel button - appears on hover */}
-                    <button
-                      onClick={() => cancelQueuedSync.mutate(item.id)}
-                      disabled={cancelQueuedSync.isPending}
-                      className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-amber-600 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-800 transition-all"
-                      title="Cancel queued sync"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
                   </div>
 
-                  {/* Connector arrow between items */}
-                  {index < queue.length - 1 && (
-                    <ChevronRight className="w-4 h-4 text-amber-400 dark:text-amber-600 flex-shrink-0" />
-                  )}
-                </div>
-              ))}
+                  {/* Running job chips */}
+                  {runningJobs.map((job) => {
+                    const Icon = job.icon;
+                    return (
+                      <div
+                        key={job.id}
+                        className={clsx(
+                          "flex items-center gap-2 px-3 py-1.5 rounded-lg border flex-shrink-0",
+                          "bg-gradient-to-r from-forest-100 to-forest-50 dark:from-forest-800/50 dark:to-forest-900/30",
+                          "border-forest-300 dark:border-forest-700",
+                          "shadow-sm"
+                        )}
+                      >
+                        <Loader2 className="w-3.5 h-3.5 text-forest-600 dark:text-forest-400 animate-spin" />
+                        <span className="font-medium text-sm text-forest-800 dark:text-forest-200 whitespace-nowrap">
+                          <span className="text-forest-600 dark:text-forest-400">{job.year}</span>
+                          <span className="mx-1.5 text-forest-400 dark:text-forest-600">·</span>
+                          {job.name}
+                        </span>
+                        <Icon className={`w-3.5 h-3.5 ${job.color}`} />
+                      </div>
+                    );
+                  })}
 
-              {/* Pipeline end - processing indicator */}
-              <div className="flex items-center gap-1 text-amber-600 dark:text-amber-400 flex-shrink-0 pl-1">
-                <ChevronRight className="w-4 h-4 opacity-60" />
-                <Loader2 className="w-4 h-4 animate-spin" />
-              </div>
+                  {/* Connector to queue if there are queued items */}
+                  {hasQueuedItems && (
+                    <div className="flex items-center gap-1 text-bark-400 dark:text-bark-600 flex-shrink-0 px-1">
+                      <div className="w-6 h-px bg-gradient-to-r from-forest-300 to-amber-300 dark:from-forest-700 dark:to-amber-700" />
+                      <ChevronRight className="w-3 h-3" />
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Queued Items - amber theme */}
+              {hasQueuedItems && (
+                <>
+                  {/* Queue label - only show if nothing running */}
+                  {runningJobs.length === 0 && (
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <div className="w-2 h-2 rounded-full bg-amber-400 dark:bg-amber-500 animate-pulse" />
+                      <span className="text-xs font-semibold tracking-wide uppercase text-amber-600 dark:text-amber-400">
+                        Queued
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Queue items */}
+                  {queue.map((item, index) => (
+                    <div key={item.id} className="flex items-center gap-1 flex-shrink-0">
+                      <div
+                        className={clsx(
+                          "group flex items-center gap-2 px-2.5 py-1.5 rounded-lg border transition-all",
+                          "bg-gradient-to-r from-amber-50 to-amber-100/50 dark:from-amber-900/30 dark:to-amber-900/10",
+                          "border-amber-200 dark:border-amber-800 hover:border-amber-300 dark:hover:border-amber-700"
+                        )}
+                      >
+                        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200 text-xs font-bold tabular-nums">
+                          {item.position}
+                        </span>
+                        <span className="font-medium text-sm text-amber-900 dark:text-amber-100 whitespace-nowrap">
+                          <span className="text-amber-600 dark:text-amber-400">{item.year}</span>
+                          <span className="mx-1 text-amber-400 dark:text-amber-600">·</span>
+                          {getQueueItemDisplay(item)}
+                          {item.include_custom_values && <span className="text-amber-500 dark:text-amber-500 ml-1 text-xs">+CV</span>}
+                        </span>
+                        <button
+                          onClick={() => cancelQueuedSync.mutate(item.id)}
+                          disabled={cancelQueuedSync.isPending}
+                          className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-amber-600 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-800 transition-all"
+                          title="Cancel"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                      {index < queue.length - 1 && (
+                        <ChevronRight className="w-3 h-3 text-amber-400 dark:text-amber-600 flex-shrink-0" />
+                      )}
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
           )}
 

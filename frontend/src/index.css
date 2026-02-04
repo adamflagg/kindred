@@ -849,6 +849,11 @@
     }
   }
 
+  @keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(400%); }
+  }
+
   /* Synchronized pending lock group glow - all elements pulse together */
   .pending-lock-glow {
     animation: pulse-glow 2s ease-in-out infinite;
