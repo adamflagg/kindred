@@ -66,6 +66,7 @@ export function transformGradeData(data: GradeBreakdown[] | undefined): ChartDat
     name: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
     value: g.count,
     percentage: g.percentage,
+    id: g.grade !== null ? g.grade : 'null',
   }));
 }
 
@@ -119,6 +120,7 @@ export function transformSummerYearsData(
     name: y.summer_years === 1 ? '1 summer' : `${y.summer_years} summers`,
     value: y.count,
     percentage: y.percentage,
+    id: y.summer_years,
   }));
 }
 
