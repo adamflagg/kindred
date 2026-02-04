@@ -8,7 +8,7 @@ import {
   Settings2,
   X,
   Clock,
-  ListOrdered,
+  ChevronRight,
   ChevronDown,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -49,8 +49,9 @@ export function SyncTab() {
   // Phase-based sync mode
   const [syncMode, setSyncMode] = useState<'full' | 'phase'>('full');
   const [selectedPhase, setSelectedPhase] = useState<SyncPhase>('source');
-  // Collapsible globals section
+  // Collapsible sections
   const [globalsExpanded, setGlobalsExpanded] = useState(false);
+  const [collapsedPhases, setCollapsedPhases] = useState<Set<SyncPhase>>(new Set());
 
   // Use the completion toasts hook - it wraps useSyncStatusAPI and fires toasts on completion
   const syncStatus = useSyncCompletionToasts();
@@ -176,21 +177,21 @@ export function SyncTab() {
     return (
       <div
         key={syncType.id}
-        className="bg-card rounded-xl border border-border p-3 sm:p-4 hover:border-primary/30 transition-colors flex flex-col"
+        className="bg-card rounded-xl border border-border p-4 sm:p-5 hover:border-primary/30 transition-colors flex flex-col"
       >
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2 min-w-0">
-            <Icon className={`w-4 h-4 flex-shrink-0 ${syncType.color}`} />
-            <span className="font-medium text-sm truncate">{syncType.name}</span>
+            <Icon className={`w-5 h-5 flex-shrink-0 ${syncType.color}`} />
+            <span className="font-semibold text-sm sm:text-base truncate">{syncType.name}</span>
           </div>
           <StatusIcon status={status.status} />
         </div>
 
         {/* Status info */}
-        <div className="flex-1 min-h-[2.5rem]">
+        <div className="flex-1 min-h-[3rem]">
           {status.summary && status.status !== 'idle' ? (
             <div className="space-y-1">
-              <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs">
+              <div className="flex flex-wrap gap-x-2 gap-y-1 text-xs sm:text-sm">
                 {status.summary.created > 0 && (
                   <span className="text-emerald-600 dark:text-emerald-400 font-medium">{status.summary.created} new</span>
                 )}
@@ -207,50 +208,50 @@ export function SyncTab() {
                   <span className="text-red-600 dark:text-red-400 font-medium">{status.summary.errors} err</span>
                 )}
               </div>
-              <div className="text-muted-foreground text-xs truncate">
+              <div className="text-muted-foreground text-xs sm:text-sm truncate">
                 {status.summary.duration !== undefined && formatDuration(status.summary.duration)}
                 {status.summary.duration !== undefined && status.end_time && ' · '}
                 {status.end_time && format(new Date(status.end_time), 'MMM d, h:mm a')}
               </div>
             </div>
           ) : (
-            <div className="text-xs text-muted-foreground">Not run yet</div>
+            <div className="text-xs sm:text-sm text-muted-foreground">Not run yet</div>
           )}
         </div>
 
         {/* Run button - special handling for process_requests */}
         {syncType.id === 'process_requests' ? (
-          <div className="flex gap-2 mt-2">
+          <div className="flex gap-2 mt-3">
             <button
               onClick={handleRun}
               disabled={isRunning || isPending || runIndividualSync.isPending}
-              className="flex-1 py-1.5 text-xs font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1 transition-colors"
+              className="flex-1 py-2 text-xs sm:text-sm font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
             >
               {isRunning || isPending ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
-                <><Play className="w-3.5 h-3.5" /> Run</>
+                <><Play className="w-4 h-4" /> Run</>
               )}
             </button>
             <button
               onClick={() => setShowProcessOptions(true)}
               disabled={isRunning || isPending}
-              className="px-2 py-1.5 text-xs font-medium rounded-lg bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 hover:bg-teal-200 dark:hover:bg-teal-900/60 disabled:opacity-50 flex items-center justify-center transition-colors"
+              className="px-3 py-2 text-xs sm:text-sm font-medium rounded-lg bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 hover:bg-teal-200 dark:hover:bg-teal-900/60 disabled:opacity-50 flex items-center justify-center transition-colors"
               title="Advanced options"
             >
-              <Settings2 className="w-3.5 h-3.5" />
+              <Settings2 className="w-4 h-4" />
             </button>
           </div>
         ) : (
           <button
             onClick={handleRun}
             disabled={isRunning || isPending || runIndividualSync.isPending || runOnDemandSync.isPending}
-            className="w-full py-1.5 mt-2 text-xs font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1 transition-colors"
+            className="w-full py-2 mt-3 text-xs sm:text-sm font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
           >
             {isRunning || isPending ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
-              <><Play className="w-3.5 h-3.5" /> Run</>
+              <><Play className="w-4 h-4" /> Run</>
             )}
           </button>
         )}
@@ -442,68 +443,86 @@ export function SyncTab() {
 
         </div>
 
-        {/* Queue Panel - shown when items are queued */}
-        {hasQueuedItems && (
-          <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <ListOrdered className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-                <span className="font-medium text-amber-800 dark:text-amber-200">
-                  Sync Queue ({queue.length})
-                </span>
+        {/* Queue Pipeline + Refresh Cache Row */}
+        <div className="flex items-center gap-4">
+          {/* Assembly Line Queue - horizontal pipeline visualization */}
+          {hasQueuedItems && (
+            <div className="flex items-center gap-1 overflow-x-auto py-1 max-w-[calc(100%-140px)]">
+              {/* Pipeline start indicator */}
+              <div className="flex items-center gap-1 text-amber-600 dark:text-amber-400 flex-shrink-0">
+                <div className="w-2 h-2 rounded-full bg-amber-400 dark:bg-amber-500 animate-pulse" />
+                <span className="text-xs font-medium tracking-wide uppercase">Queue</span>
+                <ChevronRight className="w-4 h-4 opacity-60" />
               </div>
-              {queue.length > 5 && (
-                <span className="text-xs text-amber-600 dark:text-amber-400">Scroll for more</span>
-              )}
-            </div>
-            <div className="space-y-2 max-h-[200px] overflow-y-auto">
-              {queue.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between bg-white dark:bg-gray-800 rounded-lg px-3 py-2 border border-amber-100 dark:border-amber-900"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200 text-xs font-medium">
+
+              {/* Queue items as pipeline stages */}
+              {queue.map((item, index) => (
+                <div key={item.id} className="flex items-center gap-1 flex-shrink-0">
+                  <div
+                    className={clsx(
+                      "group relative flex items-center gap-2 px-3 py-2 rounded-lg border transition-all",
+                      "bg-gradient-to-r from-amber-50 to-amber-100/50 dark:from-amber-900/30 dark:to-amber-900/10",
+                      "border-amber-200 dark:border-amber-800 hover:border-amber-300 dark:hover:border-amber-700",
+                      "shadow-sm hover:shadow-md"
+                    )}
+                  >
+                    {/* Position badge */}
+                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200 text-xs font-bold tabular-nums">
                       {item.position}
                     </span>
-                    <div>
-                      <span className="font-medium text-sm">
-                        {item.year} - {getQueueItemDisplay(item)}
-                        {item.include_custom_values && ' (+CV)'}
+
+                    {/* Item details */}
+                    <div className="flex flex-col min-w-0">
+                      <span className="font-medium text-sm text-amber-900 dark:text-amber-100 whitespace-nowrap">
+                        {item.year} · {getQueueItemDisplay(item)}
+                        {item.include_custom_values && <span className="text-amber-600 dark:text-amber-400 ml-1">+CV</span>}
                       </span>
-                      <div className="text-xs text-muted-foreground flex items-center gap-1">
+                      <span className="text-xs text-amber-600/70 dark:text-amber-400/70 flex items-center gap-1">
                         <Clock className="w-3 h-3" />
                         {formatDistanceToNow(new Date(item.queued_at), { addSuffix: true })}
-                      </div>
+                      </span>
                     </div>
+
+                    {/* Cancel button - appears on hover */}
+                    <button
+                      onClick={() => cancelQueuedSync.mutate(item.id)}
+                      disabled={cancelQueuedSync.isPending}
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-amber-600 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-800 transition-all"
+                      title="Cancel queued sync"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-                  <button
-                    onClick={() => cancelQueuedSync.mutate(item.id)}
-                    disabled={cancelQueuedSync.isPending}
-                    className="p-1.5 rounded-lg text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
-                    title="Cancel queued sync"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
+
+                  {/* Connector arrow between items */}
+                  {index < queue.length - 1 && (
+                    <ChevronRight className="w-4 h-4 text-amber-400 dark:text-amber-600 flex-shrink-0" />
+                  )}
                 </div>
               ))}
-            </div>
-          </div>
-        )}
 
-        {/* Secondary Action */}
-        <div className="flex justify-end">
-          <button
-            onClick={() => {
-              clearCache();
-              toast.success('Cache cleared - data will refresh', { duration: 3000 });
-            }}
-            className="btn-ghost text-sm"
-            title="Clear cached data and force refresh from server"
-          >
-            <RefreshCw className="w-4 h-4" />
-            Refresh Cache
-          </button>
+              {/* Pipeline end - processing indicator */}
+              <div className="flex items-center gap-1 text-amber-600 dark:text-amber-400 flex-shrink-0 pl-1">
+                <ChevronRight className="w-4 h-4 opacity-60" />
+                <Loader2 className="w-4 h-4 animate-spin" />
+              </div>
+            </div>
+          )}
+
+          {/* Refresh Cache - right-aligned */}
+          <div className="ml-auto flex-shrink-0">
+            <button
+              onClick={() => {
+                clearCache();
+                toast.success('Cache cleared - data will refresh', { duration: 3000 });
+              }}
+              className="btn-ghost text-sm"
+              title="Clear cached data and force refresh from server"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Refresh Cache
+            </button>
+          </div>
         </div>
       </div>
 
@@ -513,39 +532,56 @@ export function SyncTab() {
         if (types.length === 0) return null;
 
         const PhaseIcon = phase.icon;
+        const isCollapsed = collapsedPhases.has(phase.id);
+
+        const togglePhase = () => {
+          setCollapsedPhases(prev => {
+            const next = new Set(prev);
+            if (next.has(phase.id)) {
+              next.delete(phase.id);
+            } else {
+              next.add(phase.id);
+            }
+            return next;
+          });
+        };
 
         return (
           <div key={phase.id} className="space-y-3">
-            {/* Phase header with "Run Phase" button */}
+            {/* Phase header with collapse toggle and "Run Phase" button */}
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-muted-foreground">
+              <button
+                onClick={togglePhase}
+                className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <ChevronDown className={clsx(
+                  "w-4 h-4 transition-transform",
+                  isCollapsed && "-rotate-90"
+                )} />
                 <PhaseIcon className="w-4 h-4" />
                 <span className="text-sm font-medium">{phase.name}</span>
                 <span className="text-xs text-muted-foreground/70">({types.length} jobs)</span>
-              </div>
+              </button>
               <button
                 onClick={() => runPhaseSync.mutate({ year: syncYear, phase: phase.id, debug: syncDebug })}
                 disabled={runPhaseSync.isPending}
-                className="text-xs px-3 py-1.5 rounded-lg bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
+                className="text-sm px-4 py-2 rounded-lg bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
               >
                 {runPhaseSync.isPending ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
-                  <Play className="w-3.5 h-3.5" />
+                  <Play className="w-4 h-4" />
                 )}
                 Run Phase
               </button>
             </div>
 
-            {/* Adaptive grid - more columns for source phase */}
-            <div className={clsx(
-              "grid gap-2 sm:gap-3",
-              phase.id === 'source' ? "grid-cols-2 md:grid-cols-4 xl:grid-cols-5" :
-              phase.id === 'transform' ? "grid-cols-2 md:grid-cols-4 xl:grid-cols-5" :
-              "grid-cols-2 md:grid-cols-3 xl:grid-cols-4"
-            )}>
-              {types.map(syncType => renderSyncCard(syncType))}
-            </div>
+            {/* Consistent grid across all phases - collapsible */}
+            {!isCollapsed && (
+              <div className="grid gap-3 sm:gap-4 grid-cols-2 md:grid-cols-4 xl:grid-cols-5">
+                {types.map(syncType => renderSyncCard(syncType))}
+              </div>
+            )}
           </div>
         );
       })}
@@ -566,7 +602,7 @@ export function SyncTab() {
         </button>
 
         {globalsExpanded && (
-          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3 mt-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4 mt-3">
             {GLOBAL_SYNC_TYPES.map((syncType) => {
               const statusValue = syncStatus?.[syncType.id as keyof typeof syncStatus];
               const status = (statusValue && typeof statusValue === 'object' && 'status' in statusValue)
@@ -579,21 +615,21 @@ export function SyncTab() {
               return (
                 <div
                   key={syncType.id}
-                  className="bg-card rounded-xl border border-border p-3 sm:p-4 hover:border-primary/30 transition-colors flex flex-col"
+                  className="bg-card rounded-xl border border-border p-4 sm:p-5 hover:border-primary/30 transition-colors flex flex-col"
                 >
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2 min-w-0">
-                      <Icon className={`w-4 h-4 flex-shrink-0 ${syncType.color}`} />
-                      <span className="font-medium text-sm truncate">{syncType.name}</span>
+                      <Icon className={`w-5 h-5 flex-shrink-0 ${syncType.color}`} />
+                      <span className="font-semibold text-sm sm:text-base truncate">{syncType.name}</span>
                     </div>
                     <StatusIcon status={status.status} />
                   </div>
 
                   {/* Status info */}
-                  <div className="flex-1 min-h-[2.5rem]">
+                  <div className="flex-1 min-h-[3rem]">
                     {status.summary && status.status !== 'idle' ? (
                       <div className="space-y-1">
-                        <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs">
+                        <div className="flex flex-wrap gap-x-2 gap-y-1 text-xs sm:text-sm">
                           {status.summary.created > 0 && (
                             <span className="text-emerald-600 dark:text-emerald-400 font-medium">{status.summary.created} new</span>
                           )}
@@ -607,14 +643,14 @@ export function SyncTab() {
                             <span className="text-red-600 dark:text-red-400 font-medium">{status.summary.errors} err</span>
                           )}
                         </div>
-                        <div className="text-muted-foreground text-xs truncate">
+                        <div className="text-muted-foreground text-xs sm:text-sm truncate">
                           {status.summary.duration !== undefined && formatDuration(status.summary.duration)}
                           {status.summary.duration !== undefined && status.end_time && ' · '}
                           {status.end_time && format(new Date(status.end_time), 'MMM d, h:mm a')}
                         </div>
                       </div>
                     ) : (
-                      <div className="text-xs text-muted-foreground">Not run yet</div>
+                      <div className="text-xs sm:text-sm text-muted-foreground">Not run yet</div>
                     )}
                   </div>
 
@@ -622,12 +658,12 @@ export function SyncTab() {
                   <button
                     onClick={() => runIndividualSync.mutate(syncType.id)}
                     disabled={isRunning || isPending || runIndividualSync.isPending}
-                    className="w-full py-1.5 mt-2 text-xs font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1 transition-colors"
+                    className="w-full py-2 mt-3 text-xs sm:text-sm font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
                   >
                     {isRunning || isPending ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
-                      <><Play className="w-3.5 h-3.5" /> Run</>
+                      <><Play className="w-4 h-4" /> Run</>
                     )}
                   </button>
                 </div>
