@@ -10,9 +10,6 @@ Tests verify normalization of city, school, and congregation names including:
 
 from __future__ import annotations
 
-import pytest
-
-
 # ============================================================================
 # Tests for preprocess()
 # ============================================================================
@@ -31,7 +28,7 @@ class TestPreprocess:
         """None values return empty string."""
         from api.utils.normalizers import preprocess
 
-        assert preprocess(None) == ""  # type: ignore[arg-type]
+        assert preprocess(None) == ""
 
     def test_preprocess_whitespace_only(self) -> None:
         """Whitespace-only strings return empty string."""
@@ -45,11 +42,23 @@ class TestPreprocess:
         from api.utils.normalizers import preprocess
 
         na_variants = [
-            "n/a", "N/A", "NA", "na", "N/a",
-            "none", "None", "NONE",
-            "null", "NULL", "Null",
-            "-", "--", "---",
-            ".", "..", "...",
+            "n/a",
+            "N/A",
+            "NA",
+            "na",
+            "N/a",
+            "none",
+            "None",
+            "NONE",
+            "null",
+            "NULL",
+            "Null",
+            "-",
+            "--",
+            "---",
+            ".",
+            "..",
+            "...",
         ]
         for na in na_variants:
             assert preprocess(na) == "", f"Expected empty string for '{na}'"
@@ -83,7 +92,7 @@ class TestNormalizeCity:
         from api.utils.normalizers import normalize_city
 
         assert normalize_city("") == ""
-        assert normalize_city(None) == ""  # type: ignore[arg-type]
+        assert normalize_city(None) == ""
 
     def test_normalize_city_strips_state_suffix(self) -> None:
         """State abbreviation suffixes are removed."""
@@ -146,7 +155,7 @@ class TestNormalizeCongregation:
         from api.utils.normalizers import normalize_congregation
 
         assert normalize_congregation("") == ""
-        assert normalize_congregation(None) == ""  # type: ignore[arg-type]
+        assert normalize_congregation(None) == ""
 
     def test_normalize_congregation_whitespace(self) -> None:
         """Whitespace normalized."""

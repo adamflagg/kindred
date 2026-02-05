@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/pocketbase/pocketbase/core"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 // serviceNameNormalizeGeographic is the canonical name for this sync service
@@ -248,7 +250,9 @@ func (n *NormalizeGeographicSync) loadUniqueValues(ctx context.Context, year int
 }
 
 // computeNormalizedMappings applies normalization and clustering to unique values
-func (n *NormalizeGeographicSync) computeNormalizedMappings(uniqueValues map[string]map[string]int) map[string][]*normalizedMapping {
+func (n *NormalizeGeographicSync) computeNormalizedMappings(
+	uniqueValues map[string]map[string]int,
+) map[string][]*normalizedMapping {
 	result := map[string][]*normalizedMapping{
 		categoryCity:         {},
 		categorySchool:       {},
@@ -637,7 +641,8 @@ func normalizeCityGo(city string) string {
 
 	// Standardize to title case
 	city = strings.TrimSpace(city)
-	city = strings.Title(strings.ToLower(city))
+	caser := cases.Title(language.English)
+	city = caser.String(strings.ToLower(city))
 
 	return city
 }

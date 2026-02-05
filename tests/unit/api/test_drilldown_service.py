@@ -477,26 +477,11 @@ class TestCityBreakdown:
     def persons_with_cities(self) -> dict[int, Mock]:
         """Sample persons with various cities."""
         return {
-            101: create_mock_person(
-                101, "Emma", "Johnson", "F", 5,
-                address={"city": "San Francisco", "state": "CA"}
-            ),
-            102: create_mock_person(
-                102, "Liam", "Garcia", "M", 6,
-                address={"city": "San Francisco", "state": "CA"}
-            ),
-            103: create_mock_person(
-                103, "Olivia", "Chen", "F", 6,
-                address={"city": "Oakland", "state": "CA"}
-            ),
-            104: create_mock_person(
-                104, "Noah", "Williams", "M", 7,
-                address={"city": "Berkeley", "state": "CA"}
-            ),
-            105: create_mock_person(
-                105, "Ava", "Brown", "F", 8,
-                address={"city": "Oakland", "state": "CA"}
-            ),
+            101: create_mock_person(101, "Emma", "Johnson", "F", 5, address={"city": "San Francisco", "state": "CA"}),
+            102: create_mock_person(102, "Liam", "Garcia", "M", 6, address={"city": "San Francisco", "state": "CA"}),
+            103: create_mock_person(103, "Olivia", "Chen", "F", 6, address={"city": "Oakland", "state": "CA"}),
+            104: create_mock_person(104, "Noah", "Williams", "M", 7, address={"city": "Berkeley", "state": "CA"}),
+            105: create_mock_person(105, "Ava", "Brown", "F", 8, address={"city": "Oakland", "state": "CA"}),
         }
 
     @pytest.mark.asyncio
@@ -640,13 +625,15 @@ class TestSynagogueBreakdown:
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = persons_with_households
         mock_repository.fetch_attendees.return_value = attendees
-        mock_repository.fetch_congregation_by_person = AsyncMock(return_value={
-            101: "Congregation Beth Israel",
-            102: "Congregation Beth Israel",
-            103: "Temple Sinai",
-            104: "Congregation Beth Israel",
-            105: "Temple Sinai",
-        })
+        mock_repository.fetch_congregation_by_person = AsyncMock(
+            return_value={
+                101: "Congregation Beth Israel",
+                102: "Congregation Beth Israel",
+                103: "Temple Sinai",
+                104: "Congregation Beth Israel",
+                105: "Temple Sinai",
+            }
+        )
 
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2026,
@@ -678,10 +665,12 @@ class TestSynagogueBreakdown:
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = persons_with_households
         mock_repository.fetch_attendees.return_value = attendees
-        mock_repository.fetch_congregation_by_person = AsyncMock(return_value={
-            103: "Temple Sinai",
-            105: "Temple Sinai",
-        })
+        mock_repository.fetch_congregation_by_person = AsyncMock(
+            return_value={
+                103: "Temple Sinai",
+                105: "Temple Sinai",
+            }
+        )
 
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2026,
