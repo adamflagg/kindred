@@ -12,8 +12,10 @@ import {
   getCityCoords,
   BAY_AREA_CENTER,
   BAY_AREA_ZOOM,
+  REGION_COLORS,
   type LatLng,
 } from '../../../data/californiaGeo'
+import { RegionOverlays } from './RegionOverlays'
 
 export interface GeoDataItem {
   name: string
@@ -32,6 +34,8 @@ export interface GeoMapProps {
   selectedItem?: string | null
   /** Map height in pixels or CSS value */
   height?: number | string
+  /** Whether to show region overlay polygons */
+  showRegions?: boolean
 }
 
 /** Color palette matching Sierra Lodge theme */
@@ -70,7 +74,14 @@ function MapController({ center, zoom }: { center: LatLng; zoom: number }) {
   return null
 }
 
-export function GeoMap({ data, category, onMarkerClick, selectedItem, height = 400 }: GeoMapProps) {
+export function GeoMap({
+  data,
+  category,
+  onMarkerClick,
+  selectedItem,
+  height = 575,
+  showRegions = true,
+}: GeoMapProps) {
   const mapRef = useRef<L.Map | null>(null)
   const colors = CATEGORY_COLORS[category]
 
@@ -111,6 +122,9 @@ export function GeoMap({ data, category, onMarkerClick, selectedItem, height = 4
 
           <MapController center={BAY_AREA_CENTER} zoom={BAY_AREA_ZOOM} />
 
+          {/* Region overlays */}
+          <RegionOverlays show={showRegions} />
+
           {/* Circle markers for each location */}
           {mappableData.map((item) => {
             const isSelected = selectedItem === item.name
@@ -144,8 +158,8 @@ export function GeoMap({ data, category, onMarkerClick, selectedItem, height = 4
       </div>
 
       {/* Legend */}
-      <div className="text-muted-foreground flex items-center justify-between text-sm">
-        <div className="flex items-center gap-4">
+      <div className="text-muted-foreground flex flex-wrap items-center justify-between gap-2 text-sm">
+        <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-1.5">
             <div
               className="h-3 w-3 rounded-full"
@@ -161,6 +175,20 @@ export function GeoMap({ data, category, onMarkerClick, selectedItem, height = 4
               {mappableData.length} location
               {mappableData.length !== 1 ? 's' : ''} shown
             </span>
+          )}
+          {showRegions && (
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground/70">|</span>
+              {Object.entries(REGION_COLORS).map(([key, rc]) => (
+                <div key={key} className="flex items-center gap-1">
+                  <div
+                    className="h-2.5 w-2.5 rounded-sm"
+                    style={{ backgroundColor: rc.fill, opacity: 0.6 }}
+                  />
+                </div>
+              ))}
+              <span className="text-xs">Regions</span>
+            </div>
           )}
         </div>
         {unmappableData.length > 0 && (

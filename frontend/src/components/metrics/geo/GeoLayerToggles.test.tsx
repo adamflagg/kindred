@@ -20,12 +20,15 @@ const defaultProps = {
   onToggleSources: vi.fn(),
 }
 
+/** Get all checkboxes as typed inputs */
+function getCheckboxes(): HTMLInputElement[] {
+  return screen.getAllByRole('checkbox') as HTMLInputElement[]
+}
+
 describe('GeoLayerToggles', () => {
   it('renders 3 layer checkboxes plus 2 secondary toggles', () => {
     render(<GeoLayerToggles {...defaultProps} />)
-
-    const checkboxes = screen.getAllByRole('checkbox')
-    expect(checkboxes).toHaveLength(5)
+    expect(getCheckboxes()).toHaveLength(5)
   })
 
   it('renders layer labels with counts', () => {
@@ -50,10 +53,9 @@ describe('GeoLayerToggles', () => {
     const onToggleLayer = vi.fn()
     render(<GeoLayerToggles {...defaultProps} onToggleLayer={onToggleLayer} />)
 
-    // Click the Schools checkbox
-    const checkboxes = screen.getAllByRole('checkbox')
     // Order: city, school, synagogue, regions, sources
-    fireEvent.click(checkboxes[1])
+    const boxes = getCheckboxes()
+    fireEvent.click(boxes[1] as HTMLElement)
     expect(onToggleLayer).toHaveBeenCalledWith('school')
   })
 
@@ -61,8 +63,8 @@ describe('GeoLayerToggles', () => {
     const onToggleRegions = vi.fn()
     render(<GeoLayerToggles {...defaultProps} onToggleRegions={onToggleRegions} />)
 
-    const checkboxes = screen.getAllByRole('checkbox')
-    fireEvent.click(checkboxes[3])
+    const boxes = getCheckboxes()
+    fireEvent.click(boxes[3] as HTMLElement)
     expect(onToggleRegions).toHaveBeenCalledOnce()
   })
 
@@ -70,8 +72,8 @@ describe('GeoLayerToggles', () => {
     const onToggleSources = vi.fn()
     render(<GeoLayerToggles {...defaultProps} onToggleSources={onToggleSources} />)
 
-    const checkboxes = screen.getAllByRole('checkbox')
-    fireEvent.click(checkboxes[4])
+    const boxes = getCheckboxes()
+    fireEvent.click(boxes[4] as HTMLElement)
     expect(onToggleSources).toHaveBeenCalledOnce()
   })
 
@@ -79,17 +81,17 @@ describe('GeoLayerToggles', () => {
     const partialLayers = new Set<GeoCategory>(['city'])
     render(<GeoLayerToggles {...defaultProps} activeLayers={partialLayers} />)
 
-    const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
-    expect(checkboxes[0].checked).toBe(true) // city
-    expect(checkboxes[1].checked).toBe(false) // school
-    expect(checkboxes[2].checked).toBe(false) // synagogue
+    const boxes = getCheckboxes()
+    expect(boxes[0]?.checked).toBe(true) // city
+    expect(boxes[1]?.checked).toBe(false) // school
+    expect(boxes[2]?.checked).toBe(false) // synagogue
   })
 
   it('reflects showRegions and showSources state', () => {
     render(<GeoLayerToggles {...defaultProps} showRegions={false} showSources={true} />)
 
-    const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
-    expect(checkboxes[3].checked).toBe(false) // regions
-    expect(checkboxes[4].checked).toBe(true) // sources
+    const boxes = getCheckboxes()
+    expect(boxes[3]?.checked).toBe(false) // regions
+    expect(boxes[4]?.checked).toBe(true) // sources
   })
 })

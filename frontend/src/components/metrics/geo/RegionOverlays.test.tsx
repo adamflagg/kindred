@@ -12,15 +12,15 @@ import { RegionOverlays } from './RegionOverlays'
 // Mock react-leaflet components
 vi.mock('react-leaflet', () => ({
   Polygon: ({ children, ...props }: { children?: React.ReactNode; [key: string]: unknown }) => (
-    <div data-testid="polygon" data-positions={JSON.stringify(props.positions)}>
+    <div data-testid="polygon" data-positions={JSON.stringify(props['positions'])}>
       {children}
     </div>
   ),
   Tooltip: ({ children, ...props }: { children?: React.ReactNode; [key: string]: unknown }) => (
     <div
       data-testid="tooltip"
-      data-permanent={props.permanent ? 'true' : 'false'}
-      data-direction={props.direction}
+      data-permanent={props['permanent'] ? 'true' : 'false'}
+      data-direction={String(props['direction'])}
     >
       {children}
     </div>
@@ -44,8 +44,8 @@ describe('RegionOverlays', () => {
     const tooltips = getAllByTestId('tooltip')
     expect(tooltips).toHaveLength(6)
     for (const tooltip of tooltips) {
-      expect(tooltip.dataset.permanent).toBe('true')
-      expect(tooltip.dataset.direction).toBe('center')
+      expect(tooltip.getAttribute('data-permanent')).toBe('true')
+      expect(tooltip.getAttribute('data-direction')).toBe('center')
     }
   })
 

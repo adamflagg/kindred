@@ -276,7 +276,136 @@ export const BAY_AREA_REGIONS = {
       'Castro Valley',
     ],
   },
+  napaSonoma: {
+    name: 'Napa / Sonoma',
+    center: [38.35, -122.45] as LatLng,
+    cities: [
+      'Napa',
+      'St. Helena',
+      'Yountville',
+      'Calistoga',
+      'Sonoma',
+      'Petaluma',
+      'Santa Rosa',
+      'Sebastopol',
+      'Healdsburg',
+      'Rohnert Park',
+      'Windsor',
+      'Cotati',
+    ],
+  },
 } as const
+
+export interface RegionPolygon {
+  name: string
+  polygon: LatLng[]
+  labelCenter: LatLng
+}
+
+/** Distinct muted colors for region overlays (won't compete with blue city markers) */
+export const REGION_COLORS: Record<
+  keyof typeof BAY_AREA_REGIONS,
+  { fill: string; stroke: string }
+> = {
+  marin: { fill: '#6d9e6d', stroke: '#4a7c4a' },
+  sf: { fill: '#c47a5a', stroke: '#a05838' },
+  peninsula: { fill: '#7a8fbf', stroke: '#5a6f9f' },
+  southBay: { fill: '#bf9a5a', stroke: '#9f7a3a' },
+  eastBay: { fill: '#9a6dbf', stroke: '#7a4d9f' },
+  napaSonoma: { fill: '#5abfb0', stroke: '#3a9f90' },
+}
+
+/** Approximate geographic polygon boundaries for Bay Area regions */
+export const BAY_AREA_REGION_POLYGONS: Record<keyof typeof BAY_AREA_REGIONS, RegionPolygon> = {
+  marin: {
+    name: 'Marin County',
+    polygon: [
+      [37.83, -122.53],
+      [37.83, -122.42],
+      [37.89, -122.42],
+      [37.93, -122.47],
+      [38.02, -122.44],
+      [38.12, -122.5],
+      [38.15, -122.62],
+      [38.05, -122.7],
+      [37.9, -122.65],
+      [37.85, -122.58],
+    ],
+    labelCenter: [37.97, -122.55],
+  },
+  sf: {
+    name: 'San Francisco',
+    polygon: [
+      [37.71, -122.36],
+      [37.71, -122.51],
+      [37.78, -122.51],
+      [37.81, -122.48],
+      [37.81, -122.36],
+      [37.79, -122.35],
+      [37.73, -122.35],
+    ],
+    labelCenter: [37.76, -122.44],
+  },
+  peninsula: {
+    name: 'Peninsula',
+    polygon: [
+      [37.42, -122.1],
+      [37.42, -122.3],
+      [37.45, -122.45],
+      [37.55, -122.48],
+      [37.65, -122.49],
+      [37.7, -122.47],
+      [37.7, -122.36],
+      [37.58, -122.22],
+      [37.5, -122.15],
+    ],
+    labelCenter: [37.55, -122.3],
+  },
+  southBay: {
+    name: 'South Bay',
+    polygon: [
+      [37.12, -121.85],
+      [37.12, -122.08],
+      [37.25, -122.1],
+      [37.35, -122.1],
+      [37.42, -122.06],
+      [37.42, -121.83],
+      [37.35, -121.8],
+      [37.22, -121.8],
+    ],
+    labelCenter: [37.3, -121.95],
+  },
+  eastBay: {
+    name: 'East Bay',
+    polygon: [
+      [37.52, -122.1],
+      [37.52, -121.7],
+      [37.7, -121.68],
+      [37.85, -121.8],
+      [37.95, -121.9],
+      [37.97, -122.1],
+      [37.95, -122.35],
+      [37.82, -122.35],
+      [37.73, -122.25],
+      [37.6, -122.15],
+    ],
+    labelCenter: [37.8, -122.05],
+  },
+  napaSonoma: {
+    name: 'Napa / Sonoma',
+    polygon: [
+      [38.15, -122.3],
+      [38.15, -122.85],
+      [38.3, -122.9],
+      [38.5, -122.92],
+      [38.65, -122.85],
+      [38.65, -122.3],
+      [38.5, -122.25],
+      [38.3, -122.25],
+    ],
+    labelCenter: [38.4, -122.55],
+  },
+}
 
 /**
  * Look up coordinates for a city name.

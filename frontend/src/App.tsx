@@ -36,7 +36,6 @@ const DebugPage = lazy(() => import('./pages/summer/DebugPage'))
 const MetricsLayout = lazy(() => import('./pages/metrics/MetricsLayout'))
 const RegistrationOverview = lazy(() => import('./pages/metrics/registration/RegistrationOverview'))
 const GeoAnalysis = lazy(() => import('./pages/metrics/registration/GeoAnalysis'))
-const SynagogueAnalysis = lazy(() => import('./pages/metrics/registration/SynagogueAnalysis'))
 const WaitlistAnalysis = lazy(() => import('./pages/metrics/registration/WaitlistAnalysis'))
 const RetentionOverview = lazy(() => import('./pages/metrics/retention/RetentionOverview'))
 const TrendsOverview = lazy(() => import('./pages/metrics/trends/TrendsOverview'))
@@ -214,14 +213,6 @@ function App() {
                                 element={
                                   <Suspense fallback={<PageSkeleton />}>
                                     <GeoAnalysis />
-                                  </Suspense>
-                                }
-                              />
-                              <Route
-                                path="registration/synagogue"
-                                element={
-                                  <Suspense fallback={<PageSkeleton />}>
-                                    <SynagogueAnalysis />
                                   </Suspense>
                                 }
                               />

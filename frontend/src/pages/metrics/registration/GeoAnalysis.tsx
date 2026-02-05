@@ -1,12 +1,12 @@
 /**
  * GeoAnalysis - Geographic breakdown of registration data.
  *
- * Shows city, school, and synagogue distribution on an interactive map
- * with detailed lists below. Uses attendees/persons data directly for
- * live updates without requiring camper_history sync.
+ * Shows city, school, and synagogue distribution simultaneously with
+ * layer toggle checkboxes. Cities display on the map; all three categories
+ * show in stacked collapsible detail lists below.
  */
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { Globe, Loader2, AlertCircle } from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useRegistrationMetrics } from '../../../hooks/useMetrics'
@@ -18,9 +18,9 @@ import {
 } from '../../../hooks/useNormalizedMappings'
 import {
   GeoMap,
-  GeoCategoryTabs,
   GeoSummaryCards,
   GeoDetailList,
+  GeoLayerToggles,
   type GeoCategory,
   type GeoDataItem,
 } from '../../../components/metrics/geo'
@@ -40,9 +40,12 @@ const categoryToDbCategory: Record<GeoCategory, NormalizedCategory> = {
 
 export default function GeoAnalysis() {
   const { currentYear } = useCurrentYear()
-  const [activeCategory, setActiveCategory] = useState<GeoCategory>('city')
-  const [selectedItem, setSelectedItem] = useState<string | null>(null)
+  const [activeLayers, setActiveLayers] = useState<Set<GeoCategory>>(
+    new Set(['city', 'school', 'synagogue'])
+  )
+  const [showRegions, setShowRegions] = useState(true)
   const [showSources, setShowSources] = useState(false)
+  const [selectedItem, setSelectedItem] = useState<string | null>(null)
 
   // Get session filter from context (unified selector is in MetricsTypeTabs)
   const { selectedSessionCmId } = useMetricsSession()
@@ -55,11 +58,23 @@ export default function GeoAnalysis() {
     statusFilter: DEFAULT_STATUS_FILTER,
   })
 
-  // Fetch normalized mappings for source display (filtered by session if selected)
-  const { data: sourceMappings } = useNormalizedMappings(
+  // Fetch normalized mappings for source display per active layer
+  const { data: citySources } = useNormalizedMappings(
     currentYear,
-    categoryToDbCategory[activeCategory],
-    showSources,
+    categoryToDbCategory.city,
+    showSources && activeLayers.has('city'),
+    selectedSessionCmId ?? undefined
+  )
+  const { data: schoolSources } = useNormalizedMappings(
+    currentYear,
+    categoryToDbCategory.school,
+    showSources && activeLayers.has('school'),
+    selectedSessionCmId ?? undefined
+  )
+  const { data: synagogueSources } = useNormalizedMappings(
+    currentYear,
+    categoryToDbCategory.synagogue,
+    showSources && activeLayers.has('synagogue'),
     selectedSessionCmId ?? undefined
   )
 
@@ -82,7 +97,6 @@ export default function GeoAnalysis() {
       }
     }
 
-    // Sort by count descending
     const sortByCount = (a: GeoDataItem, b: GeoDataItem) => b.count - a.count
 
     return {
@@ -126,9 +140,32 @@ export default function GeoAnalysis() {
     return allItems.reduce((max, item) => (item.count > max.count ? item : max))
   }, [geoData])
 
+  // Toggle a data layer on/off
+  const handleToggleLayer = useCallback((category: GeoCategory) => {
+    setActiveLayers((prev) => {
+      const next = new Set(prev)
+      if (next.has(category)) {
+        next.delete(category)
+      } else {
+        next.add(category)
+      }
+      return next
+    })
+  }, [])
+
   // Handle marker/row click
   const handleItemClick = (name: string) => {
     setSelectedItem((prev) => (prev === name ? null : name))
+  }
+
+  // Source mappings per category
+  const sourceMappingsFor: Record<
+    GeoCategory,
+    Map<string, import('../../../hooks/useNormalizedMappings').SourceMapping[]> | undefined
+  > = {
+    city: citySources,
+    school: schoolSources,
+    synagogue: synagogueSources,
   }
 
   if (isLoading) {
@@ -149,8 +186,6 @@ export default function GeoAnalysis() {
     )
   }
 
-  const currentData = geoData[activeCategory]
-  const hasData = currentData.length > 0
   const anyData =
     geoData.city.length > 0 || geoData.school.length > 0 || geoData.synagogue.length > 0
 
@@ -166,7 +201,6 @@ export default function GeoAnalysis() {
       </div>
 
       {!anyData ? (
-        /* Empty state when no data at all */
         <div className="card-lodge p-8 text-center">
           <Globe className="text-muted-foreground mx-auto mb-4 h-12 w-12" />
           <h2 className="text-foreground mb-2 text-lg font-semibold">No Geographic Data</h2>
@@ -187,62 +221,67 @@ export default function GeoAnalysis() {
             topLocation={topLocation}
           />
 
-          {/* Category Tabs and Show Sources Toggle */}
-          <div className="flex items-center justify-between">
-            <GeoCategoryTabs
-              activeCategory={activeCategory}
-              onCategoryChange={(cat) => {
-                setActiveCategory(cat)
-                setSelectedItem(null)
-              }}
-              counts={{
-                city: geoData.city.length,
-                school: geoData.school.length,
-                synagogue: geoData.synagogue.length,
-              }}
-            />
-            <label className="flex cursor-pointer items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={showSources}
-                onChange={(e) => setShowSources(e.target.checked)}
-                className="text-primary focus:ring-primary h-4 w-4 rounded border-gray-300"
-              />
-              <span className="text-muted-foreground">Show sources</span>
-            </label>
-          </div>
+          {/* Layer Toggles */}
+          <GeoLayerToggles
+            activeLayers={activeLayers}
+            onToggleLayer={handleToggleLayer}
+            counts={{
+              city: geoData.city.length,
+              school: geoData.school.length,
+              synagogue: geoData.synagogue.length,
+            }}
+            showRegions={showRegions}
+            onToggleRegions={() => setShowRegions((v) => !v)}
+            showSources={showSources}
+            onToggleSources={() => setShowSources((v) => !v)}
+          />
 
-          {/* Map and List */}
-          {hasData ? (
-            <div className="space-y-4">
-              {/* Map */}
-              <GeoMap
-                data={currentData}
-                category={activeCategory}
-                selectedItem={selectedItem}
-                onMarkerClick={handleItemClick}
-                height={400}
-              />
+          {/* Map (always shows city markers when city layer is active) */}
+          <GeoMap
+            data={activeLayers.has('city') ? geoData.city : []}
+            category="city"
+            selectedItem={selectedItem}
+            onMarkerClick={handleItemClick}
+            height={575}
+            showRegions={showRegions}
+          />
 
-              {/* Detail List */}
+          {/* Stacked Detail Lists */}
+          <div className="space-y-3">
+            {activeLayers.has('city') && geoData.city.length > 0 && (
               <GeoDetailList
-                data={currentData}
-                category={activeCategory}
+                data={geoData.city}
+                category="city"
                 selectedItem={selectedItem}
                 onItemClick={handleItemClick}
                 onDrilldown={setFilter}
                 showSources={showSources}
-                sourceMappings={sourceMappings}
+                sourceMappings={sourceMappingsFor.city}
               />
-            </div>
-          ) : (
-            /* Empty state for specific category */
-            <div className="card-lodge p-6 text-center">
-              <p className="text-muted-foreground">
-                No {activeCategory} data available for {currentYear}.
-              </p>
-            </div>
-          )}
+            )}
+            {activeLayers.has('school') && geoData.school.length > 0 && (
+              <GeoDetailList
+                data={geoData.school}
+                category="school"
+                selectedItem={selectedItem}
+                onItemClick={handleItemClick}
+                onDrilldown={setFilter}
+                showSources={showSources}
+                sourceMappings={sourceMappingsFor.school}
+              />
+            )}
+            {activeLayers.has('synagogue') && geoData.synagogue.length > 0 && (
+              <GeoDetailList
+                data={geoData.synagogue}
+                category="synagogue"
+                selectedItem={selectedItem}
+                onItemClick={handleItemClick}
+                onDrilldown={setFilter}
+                showSources={showSources}
+                sourceMappings={sourceMappingsFor.synagogue}
+              />
+            )}
+          </div>
         </>
       )}
 

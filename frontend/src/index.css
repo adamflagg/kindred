@@ -1337,3 +1337,19 @@
   pointer-events: none;
   border-radius: inherit;
 }
+
+/* Leaflet region overlay labels — strip tooltip chrome */
+.region-label {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: hsl(var(--muted-foreground));
+  opacity: 0.55;
+  pointer-events: none;
+}
+.region-label::before {
+  display: none !important;
+}
