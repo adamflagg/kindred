@@ -11,6 +11,8 @@ import json
 from typing import TYPE_CHECKING, Any
 
 from api.schemas.metrics import DrilldownAttendee
+from api.services.registration_service import get_session_length_category
+from api.utils.session_metrics import compute_summer_metrics
 
 if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository
@@ -68,9 +70,17 @@ class DrilldownService:
         # Filter by session type and/or session_cm_id
         filtered_attendees = self._filter_by_session(attendees, session_types, session_cm_id, ag_session_ids)
 
+        # For first_summer_year breakdown, pre-compute first year for each person
+        first_year_by_person: dict[int, int] = {}
+        if breakdown_type == "first_summer_year":
+            person_ids = {pid for a in filtered_attendees if (pid := getattr(a, "person_id", None)) is not None}
+            if person_ids:
+                enrollment_history = await self.repo.fetch_summer_enrollment_history(person_ids, year)
+                _, first_year_by_person = compute_summer_metrics(enrollment_history, person_ids)
+
         # Filter by breakdown criteria
         filtered_attendees = self._filter_by_breakdown(
-            filtered_attendees, persons, sessions, breakdown_type, breakdown_value
+            filtered_attendees, persons, sessions, breakdown_type, breakdown_value, first_year_by_person
         )
 
         # Build response
@@ -145,6 +155,7 @@ class DrilldownService:
         sessions: dict[int, Any],
         breakdown_type: str,
         breakdown_value: str,
+        first_year_by_person: dict[int, int] | None = None,
     ) -> list[Any]:
         """Filter attendees by the specific breakdown criteria.
 
@@ -154,10 +165,14 @@ class DrilldownService:
             sessions: Dictionary of sessions by cm_id.
             breakdown_type: Type of breakdown to filter by.
             breakdown_value: Value to match.
+            first_year_by_person: Pre-computed first summer year by person_id
+                (only populated for first_summer_year breakdown).
 
         Returns:
             Filtered list of attendees.
         """
+        if first_year_by_person is None:
+            first_year_by_person = {}
         filtered = []
         for a in attendees:
             person_id = getattr(a, "person_id", None)
@@ -212,6 +227,30 @@ class DrilldownService:
             elif breakdown_type == "status":
                 if getattr(a, "status", None) == breakdown_value:
                     filtered.append(a)
+
+            elif breakdown_type == "returning_status":
+                years = getattr(person, "years_at_camp", None) if person else None
+                if breakdown_value == "new":
+                    if years == 1:
+                        filtered.append(a)
+                elif breakdown_value == "returning":
+                    if years is not None and years > 1:
+                        filtered.append(a)
+
+            elif breakdown_type == "session_length":
+                if session:
+                    start_date = getattr(session, "start_date", "") or ""
+                    end_date = getattr(session, "end_date", "") or ""
+                    length_category = get_session_length_category(start_date, end_date)
+                    if length_category == breakdown_value:
+                        filtered.append(a)
+
+            elif breakdown_type == "first_summer_year":
+                pid = int(person_id) if person_id is not None else None
+                if pid is not None:
+                    first_year = first_year_by_person.get(pid)
+                    if first_year is not None and str(first_year) == breakdown_value:
+                        filtered.append(a)
 
         return filtered
 

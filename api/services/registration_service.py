@@ -7,7 +7,7 @@ testable service that uses the MetricsRepository for data access.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from api.schemas.metrics import (
     CityBreakdown,
@@ -21,7 +21,9 @@ from api.schemas.metrics import (
     SchoolBreakdown,
     SessionBreakdown,
     SessionBunkBreakdown,
+    SessionInLengthCategory,
     SessionLengthBreakdown,
+    SessionLengthBySessionBreakdown,
     SummerYearsBreakdown,
     SynagogueBreakdown,
     YearsAtCampBreakdown,
@@ -109,21 +111,27 @@ class RegistrationService:
         ag_session_ids = self._find_ag_sessions_for_parent(sessions, session_cm_id)
 
         # Fetch data in parallel
-        (
-            requested_attendees,
-            enrolled_attendees,
-            waitlisted_attendees,
-            cancelled_attendees,
-            persons,
-            camper_history,
-        ) = await asyncio.gather(
+        results = await asyncio.gather(
             self.repo.fetch_attendees(year, status_filter),
             self.repo.fetch_attendees(year),  # Default: enrolled
             self.repo.fetch_attendees(year, "waitlisted"),
             self.repo.fetch_attendees(year, "cancelled"),
             self.repo.fetch_persons(year),
             self.repo.fetch_camper_history(year, session_types=session_types),
+            self.repo.fetch_bunk_plans(year),
+            self.repo.fetch_capacity_config(),
+            self.repo.fetch_synagogue_by_household(year),
         )
+        # Type assertions for asyncio.gather results
+        requested_attendees = cast(list[Any], results[0])
+        enrolled_attendees = cast(list[Any], results[1])
+        waitlisted_attendees = cast(list[Any], results[2])
+        cancelled_attendees = cast(list[Any], results[3])
+        persons = cast(dict[int, Any], results[4])
+        camper_history = cast(list[Any], results[5])
+        bunk_plans = cast(list[Any], results[6])
+        default_capacity = cast(int, results[7])
+        synagogue_by_household = cast(dict[int, str], results[8])
 
         # Filter attendees by session
         combined_attendees = self._filter_by_session(requested_attendees, session_types, session_cm_id, ag_session_ids)
@@ -145,21 +153,28 @@ class RegistrationService:
         # Compute breakdowns
         by_gender = self._compute_gender_breakdown(enrolled_person_ids, persons, total_enrolled)
         by_grade = self._compute_grade_breakdown(enrolled_person_ids, persons, total_enrolled)
-        by_session = self._compute_session_breakdown(combined_attendees, sessions)
+        by_session = self._compute_session_breakdown(combined_attendees, sessions, bunk_plans, default_capacity)
         by_session_length = self._compute_session_length_breakdown(combined_attendees, total_enrolled)
         by_years_at_camp = self._compute_years_at_camp_breakdown(enrolled_person_ids, persons, total_enrolled)
         new_vs_returning = self._compute_new_vs_returning(enrolled_person_ids, persons, total_enrolled)
 
-        # Demographics from camper_history
+        # Demographics from persons data (school, city, synagogue)
+        # Note: These use enrolled_person_ids + persons dict instead of camper_history
+        by_school = self._compute_school_breakdown_from_persons(enrolled_person_ids, persons, total_enrolled)
+        by_city = self._compute_city_breakdown_from_persons(enrolled_person_ids, persons, total_enrolled)
+        by_synagogue = self._compute_synagogue_breakdown_from_persons(
+            enrolled_person_ids, persons, synagogue_by_household, total_enrolled
+        )
+        # First year and session_bunk still use camper_history (historical data)
         total_history = len(camper_history)
-        by_school = self._compute_school_breakdown(camper_history, total_history)
-        by_city = self._compute_city_breakdown(camper_history, total_history)
-        by_synagogue = self._compute_synagogue_breakdown(camper_history, total_history)
         by_first_year = self._compute_first_year_breakdown(camper_history, total_history)
         by_session_bunk = self._compute_session_bunk_breakdown(camper_history)
 
         # Gender by grade cross-tabulation
         by_gender_grade = self._compute_gender_by_grade(enrolled_person_ids, persons)
+
+        # Session length by session (stacked bar chart showing sessions per length category)
+        by_session_length_by_session = self._compute_session_length_by_session(combined_attendees, sessions)
 
         # Summer enrollment history metrics (uses shared utility)
         enrollment_history = await self.repo.fetch_summer_enrollment_history(enrolled_person_ids, year)
@@ -184,6 +199,7 @@ class RegistrationService:
             by_first_year=by_first_year,
             by_session_bunk=by_session_bunk,
             by_gender_grade=by_gender_grade,
+            by_session_length_by_session=by_session_length_by_session,
             by_summer_years=by_summer_years,
             by_first_summer_year=by_first_summer_year,
         )
@@ -303,8 +319,24 @@ class RegistrationService:
             for g, c in sorted(grade_counts.items(), key=lambda x: (x[0] is None, x[0]))
         ]
 
-    def _compute_session_breakdown(self, attendees: list[Any], sessions: dict[int, Any]) -> list[SessionBreakdown]:
-        """Compute session breakdown with AG merging."""
+    def _compute_session_breakdown(
+        self,
+        attendees: list[Any],
+        sessions: dict[int, Any],
+        bunk_plans: list[Any] | None = None,
+        default_capacity: int = 12,
+    ) -> list[SessionBreakdown]:
+        """Compute session breakdown with AG merging and capacity/utilization.
+
+        Args:
+            attendees: List of attendee records with session expand.
+            sessions: Dictionary mapping cm_id to session record.
+            bunk_plans: Optional list of bunk_plan records with bunk expand.
+            default_capacity: Default capacity per bunk (default: 12).
+
+        Returns:
+            List of SessionBreakdown with count, capacity, and utilization.
+        """
         session_counts: dict[int, int] = {}
         for a in attendees:
             expand = getattr(a, "expand", {}) or {}
@@ -317,17 +349,139 @@ class RegistrationService:
         # Merge AG session counts into parent main sessions
         merged_counts = self._merge_ag_into_parent_sessions(session_counts, sessions)
 
+        # Calculate capacity per session
+        capacity_by_session = (
+            self._calculate_session_capacity(sessions, bunk_plans, default_capacity) if bunk_plans is not None else {}
+        )
+
         return [
             SessionBreakdown(
                 session_cm_id=sid,
                 session_name=getattr(sessions.get(sid), "name", f"Session {sid}"),
                 count=c,
-                capacity=None,
-                utilization=None,
+                capacity=capacity_by_session.get(sid),
+                utilization=self._calculate_utilization(c, capacity_by_session.get(sid)),
             )
             for sid, c in sorted(merged_counts.items())
             if sid in sessions
         ]
+
+    def _calculate_session_capacity(
+        self,
+        sessions: dict[int, Any],
+        bunk_plans: list[Any],
+        default_capacity: int,
+    ) -> dict[int, int | None]:
+        """Calculate capacity for each session from bunk_plans.
+
+        Args:
+            sessions: Dictionary mapping cm_id to session record.
+            bunk_plans: List of bunk_plan records with bunk expand.
+            default_capacity: Default capacity per bunk.
+
+        Returns:
+            Dictionary mapping session cm_id to total capacity.
+        """
+        # Build mapping: session PocketBase ID -> cm_id
+        pb_to_cm: dict[str, int] = {}
+        for cm_id, session in sessions.items():
+            pb_id = getattr(session, "id", None)
+            if pb_id:
+                pb_to_cm[pb_id] = cm_id
+
+        # Build AG -> parent mapping for capacity merging
+        ag_parent_map: dict[int, int] = {}
+        for sid, session in sessions.items():
+            if getattr(session, "session_type", None) == "ag":
+                parent_id = getattr(session, "parent_id", None)
+                if parent_id:
+                    ag_parent_map[int(sid)] = int(parent_id)
+
+        # Count bunk_plans per session (respecting AG bunk filtering for main sessions)
+        bunk_counts: dict[int, int] = {}
+        for bp in bunk_plans:
+            session_pb_id = getattr(bp, "session", None)
+            if not session_pb_id or session_pb_id not in pb_to_cm:
+                continue
+
+            cm_id = pb_to_cm[session_pb_id]
+            session = sessions.get(cm_id)
+            if not session:
+                continue
+
+            # Get bunk gender from expand
+            is_ag_bunk = self._is_ag_bunk(bp)
+            session_type = getattr(session, "session_type", None)
+
+            # For main sessions, exclude AG bunks (they belong to AG session)
+            # For embedded/ag sessions, include all bunks
+            if session_type == "main" and is_ag_bunk:
+                continue
+
+            bunk_counts[cm_id] = bunk_counts.get(cm_id, 0) + 1
+
+        # Merge AG capacity into parent sessions
+        merged_capacity: dict[int, int | None] = {}
+        for cm_id in sessions:
+            session = sessions[cm_id]
+            session_type = getattr(session, "session_type", None)
+
+            # Skip AG sessions (their capacity merges into parent)
+            if session_type == "ag" and cm_id in ag_parent_map:
+                continue
+
+            # Base capacity for this session
+            bunk_count = bunk_counts.get(cm_id, 0)
+
+            # Add AG capacity if this is a main session
+            if session_type == "main":
+                # Find AG sessions with this as parent and add their capacity
+                for ag_cm_id, parent_cm_id in ag_parent_map.items():
+                    if parent_cm_id == cm_id:
+                        bunk_count += bunk_counts.get(ag_cm_id, 0)
+
+            # Only set capacity if there are bunk_plans
+            if bunk_count > 0:
+                merged_capacity[cm_id] = bunk_count * default_capacity
+            else:
+                merged_capacity[cm_id] = None
+
+        return merged_capacity
+
+    def _is_ag_bunk(self, bunk_plan: Any) -> bool:
+        """Check if a bunk_plan is for an AG bunk (gender='Mixed').
+
+        Args:
+            bunk_plan: Bunk plan record with bunk expand.
+
+        Returns:
+            True if the bunk is an AG bunk (Mixed gender).
+        """
+        expand = getattr(bunk_plan, "expand", {}) or {}
+        bunk = expand.get("bunk") if isinstance(expand, dict) else getattr(expand, "bunk", None)
+        if not bunk:
+            return False
+
+        gender = getattr(bunk, "gender", "")
+        if not gender:
+            return False
+
+        gender_lower = gender.lower()
+        return gender_lower in ("mixed", "ag", "all-gender", "nb")
+
+    def _calculate_utilization(self, count: int, capacity: int | None) -> float | None:
+        """Calculate utilization percentage.
+
+        Args:
+            count: Number of enrolled campers.
+            capacity: Session capacity.
+
+        Returns:
+            Utilization percentage, or None if capacity is None or 0.
+        """
+        if capacity is None or capacity == 0:
+            return None
+        return (count / capacity) * 100
 
     def _merge_ag_into_parent_sessions(
         self, session_counts: dict[int, int], sessions: dict[int, Any]
@@ -452,12 +606,98 @@ class RegistrationService:
         ]
 
     def _compute_synagogue_breakdown(self, camper_history: list[Any], total: int) -> list[SynagogueBreakdown]:
-        """Compute synagogue breakdown (top 20)."""
+        """Compute synagogue breakdown (top 20). DEPRECATED: Use _compute_synagogue_breakdown_from_persons."""
         synagogue_counts: dict[str, int] = {}
         for record in camper_history:
             synagogue = getattr(record, "synagogue", "") or ""
             if synagogue:
                 synagogue_counts[synagogue] = synagogue_counts.get(synagogue, 0) + 1
+
+        return [
+            SynagogueBreakdown(
+                synagogue=s,
+                count=c,
+                percentage=calculate_percentage(c, total),
+            )
+            for s, c in sorted(synagogue_counts.items(), key=lambda x: -x[1])[:20]
+        ]
+
+    def _compute_school_breakdown_from_persons(
+        self, person_ids: set[int], persons: dict[int, Any], total: int
+    ) -> list[SchoolBreakdown]:
+        """Compute school breakdown from persons table (top 20).
+
+        Uses persons.school field directly instead of camper_history.
+        """
+        school_counts: dict[str, int] = {}
+        for pid in person_ids:
+            person = persons.get(pid)
+            if not person:
+                continue
+            school = getattr(person, "school", "") or ""
+            if school:
+                school_counts[school] = school_counts.get(school, 0) + 1
+
+        return [
+            SchoolBreakdown(
+                school=s,
+                count=c,
+                percentage=calculate_percentage(c, total),
+            )
+            for s, c in sorted(school_counts.items(), key=lambda x: -x[1])[:20]
+        ]
+
+    def _compute_city_breakdown_from_persons(
+        self, person_ids: set[int], persons: dict[int, Any], total: int
+    ) -> list[CityBreakdown]:
+        """Compute city breakdown from persons table (top 20).
+
+        Uses persons.address["city"] (JSON field) instead of camper_history.
+        """
+        city_counts: dict[str, int] = {}
+        for pid in person_ids:
+            person = persons.get(pid)
+            if not person:
+                continue
+            # address is a JSON field with city as a key
+            address = getattr(person, "address", None)
+            if address and isinstance(address, dict):
+                city = address.get("city", "") or ""
+                if city:
+                    city_counts[city] = city_counts.get(city, 0) + 1
+
+        return [
+            CityBreakdown(
+                city=c,
+                count=cnt,
+                percentage=calculate_percentage(cnt, total),
+            )
+            for c, cnt in sorted(city_counts.items(), key=lambda x: -x[1])[:20]
+        ]
+
+    def _compute_synagogue_breakdown_from_persons(
+        self,
+        person_ids: set[int],
+        persons: dict[int, Any],
+        synagogue_by_household: dict[int, str],
+        total: int,
+    ) -> list[SynagogueBreakdown]:
+        """Compute synagogue breakdown from household custom values (top 20).
+
+        Uses the synagogue_by_household mapping (from household_custom_values)
+        which maps household CampMinder IDs to synagogue names.
+        """
+        synagogue_counts: dict[str, int] = {}
+        for pid in person_ids:
+            person = persons.get(pid)
+            if not person:
+                continue
+            # Get household ID from person and look up synagogue
+            household_id = getattr(person, "household_id", None)
+            if household_id is not None:
+                synagogue = synagogue_by_household.get(int(household_id), "")
+                if synagogue:
+                    synagogue_counts[synagogue] = synagogue_counts.get(synagogue, 0) + 1
 
         return [
             SynagogueBreakdown(
@@ -510,7 +750,10 @@ class RegistrationService:
         ]
 
     def _compute_gender_by_grade(self, person_ids: set[int], persons: dict[int, Any]) -> list[GenderByGradeBreakdown]:
-        """Compute gender by grade cross-tabulation."""
+        """Compute gender by grade cross-tabulation.
+
+        Note: Only M/F tracked since CampMinder sex field only has these values.
+        """
         gender_grade_stats: dict[int | None, dict[str, int]] = {}
         for pid in person_ids:
             person = persons.get(pid)
@@ -520,25 +763,91 @@ class RegistrationService:
             gender = getattr(person, "gender", "") or ""
 
             if grade not in gender_grade_stats:
-                gender_grade_stats[grade] = {"M": 0, "F": 0, "other": 0}
+                gender_grade_stats[grade] = {"M": 0, "F": 0}
 
             if gender == "M":
                 gender_grade_stats[grade]["M"] += 1
             elif gender == "F":
                 gender_grade_stats[grade]["F"] += 1
-            else:
-                gender_grade_stats[grade]["other"] += 1
+            # Non-M/F values are ignored since CampMinder sex field only has M/F
 
         return [
             GenderByGradeBreakdown(
                 grade=g,
                 male_count=stats["M"],
                 female_count=stats["F"],
-                other_count=stats["other"],
-                total=stats["M"] + stats["F"] + stats["other"],
+                total=stats["M"] + stats["F"],
             )
             for g, stats in sorted(gender_grade_stats.items(), key=lambda x: (x[0] is None, x[0]))
         ]
+
+    def _compute_session_length_by_session(
+        self, attendees: list[Any], sessions: dict[int, Any]
+    ) -> list[SessionLengthBySessionBreakdown]:
+        """Compute session breakdown grouped by length category.
+
+        AG sessions are merged into their parent main sessions.
+        """
+        # Step 1: Count attendees by session (same as _compute_session_breakdown)
+        session_counts: dict[int, int] = {}
+        for a in attendees:
+            expand = getattr(a, "expand", {}) or {}
+            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            if not session:
+                continue
+            session_cm_id = getattr(session, "cm_id", None)
+            if session_cm_id:
+                sid = int(session_cm_id)
+                session_counts[sid] = session_counts.get(sid, 0) + 1
+
+        # Step 2: Merge AG counts into parent sessions (reuse existing helper)
+        merged_counts = self._merge_ag_into_parent_sessions(session_counts, sessions)
+
+        # Step 3: Group by length category
+        length_session_counts: dict[str, dict[int, int]] = {}
+        for sid, count in merged_counts.items():
+            session_obj = sessions.get(sid)
+            if not session_obj:
+                continue
+            start_date = getattr(session_obj, "start_date", "") or ""
+            end_date = getattr(session_obj, "end_date", "") or ""
+            length = get_session_length_category(start_date, end_date)
+
+            if length not in length_session_counts:
+                length_session_counts[length] = {}
+            length_session_counts[length][sid] = count
+
+        # Step 4: Build result sorted by length category
+        length_order = {"1-week": 0, "2-week": 1, "3-week": 2, "4-week+": 3, "unknown": 4}
+
+        result = []
+        for length, session_counts_for_length in sorted(
+            length_session_counts.items(), key=lambda x: length_order.get(x[0], 5)
+        ):
+            session_list = []
+            total = 0
+            for sid, count in sorted(session_counts_for_length.items()):
+                session_obj = sessions.get(sid)
+                session_name = getattr(session_obj, "name", f"Session {sid}") if session_obj else f"Session {sid}"
+                session_list.append(
+                    SessionInLengthCategory(
+                        session_name=session_name,
+                        session_cm_id=sid,
+                        count=count,
+                    )
+                )
+                total += count
+
+            if session_list:
+                result.append(
+                    SessionLengthBySessionBreakdown(
+                        length_category=length,
+                        sessions=session_list,
+                        total=total,
+                    )
+                )
+
+        return result
 
     def _build_summer_years_breakdown(
         self, summer_years_by_person: dict[int, int], total: int

@@ -1,58 +1,55 @@
-import { useState } from 'react';
-import { X, AlertTriangle, FlaskConical, ArrowRight } from 'lucide-react';
+import { useState } from 'react'
+import { X, AlertTriangle, FlaskConical, ArrowRight } from 'lucide-react'
 
 interface ProductionSaveConfirmDialogProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onConfirm: () => void;
-  onCreateScenario: () => void;
+  isOpen: boolean
+  onClose: () => void
+  onConfirm: () => void
+  onCreateScenario: () => void
 }
 
-export default function ProductionSaveConfirmDialog({ 
-  isOpen, 
-  onClose, 
-  onConfirm, 
-  onCreateScenario 
+export default function ProductionSaveConfirmDialog({
+  isOpen,
+  onClose,
+  onConfirm,
+  onCreateScenario,
 }: ProductionSaveConfirmDialogProps) {
-  const [understanding, setUnderstanding] = useState(false);
+  const [understanding, setUnderstanding] = useState(false)
 
-  if (!isOpen) return null;
+  if (!isOpen) return null
 
   const handleCreateScenario = () => {
-    onClose();
-    onCreateScenario();
-  };
+    onClose()
+    onCreateScenario()
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      
+
       {/* Modal */}
-      <div className="relative bg-card rounded-xl shadow-xl border border-border p-6 w-full max-w-lg mx-4">
-        <div className="flex items-center justify-between mb-4">
+      <div className="bg-card border-border relative mx-4 w-full max-w-lg rounded-xl border p-6 shadow-xl">
+        <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-6 w-6 text-yellow-600" />
             <h2 className="text-xl font-bold">Production Mode Warning</h2>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-muted rounded-lg transition-colors"
-          >
+          <button onClick={onClose} className="hover:bg-muted rounded-lg p-2 transition-colors">
             <X className="h-5 w-5" />
           </button>
         </div>
-        
+
         <div className="space-y-4">
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4">
             <p className="text-sm text-yellow-800">
-              <strong>Important:</strong> You are about to save changes in production mode. 
-              These changes will be <strong>overwritten</strong> during the next sync from CampMinder.
+              <strong>Important:</strong> You are about to save changes in production mode. These
+              changes will be <strong>overwritten</strong> during the next sync from CampMinder.
             </p>
           </div>
 
           <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
+            <p className="text-muted-foreground text-sm">
               To preserve your changes permanently, you should:
             </p>
             <ul className="space-y-2 text-sm">
@@ -71,30 +68,30 @@ export default function ProductionSaveConfirmDialog({
             </ul>
           </div>
 
-          <div className="flex items-start gap-2 p-3 bg-muted rounded-lg">
+          <div className="bg-muted flex items-start gap-2 rounded-lg p-3">
             <input
               id="understanding"
               type="checkbox"
               checked={understanding}
               onChange={(e) => setUnderstanding(e.target.checked)}
-              className="h-4 w-4 rounded border-input bg-background text-primary focus:ring-2 focus:ring-primary mt-0.5"
+              className="border-input bg-background text-primary focus:ring-primary mt-0.5 h-4 w-4 rounded focus:ring-2"
             />
-            <label htmlFor="understanding" className="text-sm cursor-pointer">
+            <label htmlFor="understanding" className="cursor-pointer text-sm">
               I understand that my changes may be lost during the next sync
             </label>
           </div>
         </div>
-        
-        <div className="flex gap-3 mt-6">
+
+        <div className="mt-6 flex gap-3">
           <button
             onClick={onClose}
-            className="flex-1 px-4 py-2 bg-muted hover:bg-muted/80 rounded-lg font-medium transition-colors"
+            className="bg-muted hover:bg-muted/80 flex-1 rounded-lg px-4 py-2 font-medium transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleCreateScenario}
-            className="flex-1 px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-yellow-600 px-4 py-2 font-medium text-white transition-colors hover:bg-yellow-700"
           >
             <FlaskConical className="h-4 w-4" />
             Create Scenario
@@ -102,7 +99,7 @@ export default function ProductionSaveConfirmDialog({
           <button
             onClick={onConfirm}
             disabled={!understanding}
-            className="flex-1 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
           >
             Proceed Anyway
             <ArrowRight className="h-4 w-4" />
@@ -110,5 +107,5 @@ export default function ProductionSaveConfirmDialog({
         </div>
       </div>
     </div>
-  );
+  )
 }

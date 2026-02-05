@@ -8,49 +8,49 @@
  * with any existing requests (same requester + same requestee + same type).
  */
 
-import { useState, useCallback, useMemo } from 'react';
-import type { BunkRequestsResponse } from '../types/pocketbase-types';
-import type { BunkRequestsRequestTypeOptions } from '../types/pocketbase-types';
+import { useState, useCallback, useMemo } from 'react'
+import type { BunkRequestsResponse } from '../types/pocketbase-types'
+import type { BunkRequestsRequestTypeOptions } from '../types/pocketbase-types'
 
 export interface ValidationParams {
-  requestId: string;
-  requesterId: number;
-  newRequesteeId: number;
-  newType: BunkRequestsRequestTypeOptions;
-  sessionId: number;
+  requestId: string
+  requesterId: number
+  newRequesteeId: number
+  newType: BunkRequestsRequestTypeOptions
+  sessionId: number
 }
 
 export interface Conflict {
-  conflictingRequestId: string;
-  conflictingRequest: BunkRequestsResponse;
-  suggestedResolution: 'merge';
+  conflictingRequestId: string
+  conflictingRequest: BunkRequestsResponse
+  suggestedResolution: 'merge'
 }
 
 export interface UseOptimisticValidationResult {
-  conflicts: Conflict[];
-  hasConflicts: boolean;
-  canSubmit: boolean;
-  validateChange: (params: ValidationParams) => void;
-  clearConflicts: () => void;
+  conflicts: Conflict[]
+  hasConflicts: boolean
+  canSubmit: boolean
+  validateChange: (params: ValidationParams) => void
+  clearConflicts: () => void
 }
 
 export function useOptimisticValidation(
   existingRequests: BunkRequestsResponse[]
 ): UseOptimisticValidationResult {
-  const [conflicts, setConflicts] = useState<Conflict[]>([]);
+  const [conflicts, setConflicts] = useState<Conflict[]>([])
 
   const validateChange = useCallback(
     (params: ValidationParams) => {
-      const { requestId, requesterId, newRequesteeId, newType, sessionId } = params;
+      const { requestId, requesterId, newRequesteeId, newType, sessionId } = params
 
       // Find conflicts: requests with same requester, requestee, type, and session
       // Exclude the request being edited from conflict detection
-      const foundConflicts: Conflict[] = [];
+      const foundConflicts: Conflict[] = []
 
       for (const existing of existingRequests) {
         // Skip if this is the same request being edited
         if (existing.id === requestId) {
-          continue;
+          continue
         }
 
         // Check for conflict: same requester, requestee, type, and session
@@ -64,21 +64,21 @@ export function useOptimisticValidation(
             conflictingRequestId: existing.id,
             conflictingRequest: existing,
             suggestedResolution: 'merge',
-          });
+          })
         }
       }
 
-      setConflicts(foundConflicts);
+      setConflicts(foundConflicts)
     },
     [existingRequests]
-  );
+  )
 
   const clearConflicts = useCallback(() => {
-    setConflicts([]);
-  }, []);
+    setConflicts([])
+  }, [])
 
-  const hasConflicts = useMemo(() => conflicts.length > 0, [conflicts]);
-  const canSubmit = useMemo(() => !hasConflicts, [hasConflicts]);
+  const hasConflicts = useMemo(() => conflicts.length > 0, [conflicts])
+  const canSubmit = useMemo(() => !hasConflicts, [hasConflicts])
 
   return {
     conflicts,
@@ -86,5 +86,5 @@ export function useOptimisticValidation(
     canSubmit,
     validateChange,
     clearConflicts,
-  };
+  }
 }

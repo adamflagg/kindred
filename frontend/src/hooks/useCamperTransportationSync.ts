@@ -1,20 +1,20 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { pb } from '../lib/pocketbase';
-import toast from 'react-hot-toast';
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { pb } from '../lib/pocketbase'
+import toast from 'react-hot-toast'
 
 /**
  * Hook for running the camper transportation extraction sync.
  * The camper_transportation endpoint requires a year parameter.
  */
 export function useCamperTransportationSync() {
-  const queryClient = useQueryClient();
+  const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: async (year: number) => {
       const response = await pb.send(`/api/custom/sync/camper-transportation?year=${year}`, {
         method: 'POST',
-      });
-      return response;
+      })
+      return response
     },
     onSuccess: (data) => {
       if (data?.status === 'started') {
@@ -25,17 +25,17 @@ export function useCamperTransportationSync() {
           style: {
             borderLeft: '4px solid hsl(160, 100%, 21%)',
           },
-        });
+        })
       }
       // Invalidate sync status to show it's running
-      queryClient.invalidateQueries({ queryKey: ['sync-status-api'] });
+      queryClient.invalidateQueries({ queryKey: ['sync-status-api'] })
     },
     onError: (error) => {
-      let errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      let errorMessage = error instanceof Error ? error.message : 'Unknown error'
       if (errorMessage.includes('already in progress')) {
-        errorMessage = 'Camper Transportation sync is already running.';
+        errorMessage = 'Camper Transportation sync is already running.'
       }
-      toast.error(errorMessage);
+      toast.error(errorMessage)
     },
-  });
+  })
 }

@@ -286,6 +286,10 @@ jobs:
       working-directory: ./frontend
       run: npm run type-check
 
+    - name: Prettier formatting check
+      working-directory: ./frontend
+      run: npm run format:check
+
     - name: TypeScript linting
       working-directory: ./frontend
       run: npm run lint

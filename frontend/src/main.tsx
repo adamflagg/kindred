@@ -20,30 +20,30 @@ import { shouldAutoReload, autoReload } from './utils/autoReload'
  * the error is silently ignored (ErrorBoundary will show fallback UI).
  */
 function handleChunkLoadError(event: PromiseRejectionEvent | ErrorEvent) {
-  const error = 'reason' in event ? event.reason : event.error;
+  const error = 'reason' in event ? event.reason : event.error
 
   if (isChunkLoadError(error)) {
-    event.preventDefault();
+    event.preventDefault()
 
     // Auto-reload if not within cooldown period (prevents infinite loops)
     if (shouldAutoReload()) {
-      autoReload();
+      autoReload()
     }
     // If within cooldown, silently ignore - ErrorBoundary will show fallback UI
   }
 }
 
 // Listen for unhandled promise rejections (from dynamic imports)
-window.addEventListener('unhandledrejection', handleChunkLoadError);
+window.addEventListener('unhandledrejection', handleChunkLoadError)
 
 // Listen for regular errors (some bundlers throw these instead)
-window.addEventListener('error', handleChunkLoadError);
+window.addEventListener('error', handleChunkLoadError)
 
-const rootElement = document.getElementById('root');
-if (!rootElement) throw new Error('Root element not found');
+const rootElement = document.getElementById('root')
+if (!rootElement) throw new Error('Root element not found')
 
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
     <App />
-  </React.StrictMode>,
+  </React.StrictMode>
 )

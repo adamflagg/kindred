@@ -22,17 +22,17 @@ const defaultBranding = {
     large: null as string | null,
     nav: null as string | null,
   },
-};
+}
 
 // Try to load local branding overrides (injected at build time)
 // In development, Vite will replace this with the actual local config if present
-let localBranding: Partial<typeof defaultBranding> = {};
+let localBranding: Partial<typeof defaultBranding> = {}
 try {
   // This will be replaced by Vite's define plugin if local config exists
   // @ts-expect-error - VITE_LOCAL_BRANDING is injected at build time
   if (typeof VITE_LOCAL_BRANDING !== 'undefined') {
     // @ts-expect-error - VITE_LOCAL_BRANDING is injected at build time
-    localBranding = VITE_LOCAL_BRANDING;
+    localBranding = VITE_LOCAL_BRANDING
   }
 } catch {
   // No local branding - use defaults
@@ -46,37 +46,37 @@ export const branding = {
     ...defaultBranding.logo,
     ...(localBranding.logo || {}),
   },
-};
+}
 
 // Accessor functions for convenience
 export function getCampName(): string {
-  return branding.camp_name;
+  return branding.camp_name
 }
 
 export function getCampNameShort(): string {
-  return branding.camp_name_short;
+  return branding.camp_name_short
 }
 
 export function getCampDescription(): string {
-  return branding.camp_description;
+  return branding.camp_description
 }
 
 export function getCampTagline(): string {
-  return branding.camp_tagline;
+  return branding.camp_tagline
 }
 
 export function getSsoDisplayName(): string {
-  return branding.sso_display_name;
+  return branding.sso_display_name
 }
 
 export function getLogoPath(size: 'large' | 'nav' = 'large'): string | null {
-  return branding.logo[size];
+  return branding.logo[size]
 }
 
 export function getPageTitle(): string {
-  return branding.page_title;
+  return branding.page_title
 }
 
 export function getPageDescription(): string {
-  return branding.page_description;
+  return branding.page_description
 }

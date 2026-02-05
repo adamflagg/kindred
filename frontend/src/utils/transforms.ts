@@ -2,17 +2,17 @@
  * Transform functions to convert between PocketBase database types and application types
  */
 
-import type { 
-  PersonsResponse, 
-  AttendeesResponse, 
+import type {
+  PersonsResponse,
+  AttendeesResponse,
   BunkAssignmentsResponse,
   BunksResponse,
   CampSessionsResponse,
-  BunkRequestsResponse
-} from '../types/pocketbase-types';
-import { BunkRequestsStatusOptions } from '../types/pocketbase-types';
-import type { Camper, Session, Bunk, BunkRequest } from '../types/app-types';
-import { calculateAge } from './ageCalculator';
+  BunkRequestsResponse,
+} from '../types/pocketbase-types'
+import { BunkRequestsStatusOptions } from '../types/pocketbase-types'
+import type { Camper, Session, Bunk, BunkRequest } from '../types/app-types'
+import { calculateAge } from './ageCalculator'
 
 /**
  * Transform database responses to app-level Camper type
@@ -24,11 +24,11 @@ export function toAppCamper(
   bunk?: BunksResponse | null,
   session?: CampSessionsResponse | null
 ): Camper {
-  const displayName = `${person.first_name} ${person.last_name}`.trim() || '';
-  
+  const displayName = `${person.first_name} ${person.last_name}`.trim() || ''
+
   // Extract session CM ID - prefer from session object, fallback to hardcoded logic
-  const sessionCmId = session?.cm_id || 0; // We need the session to be passed in properly
-  
+  const sessionCmId = session?.cm_id || 0 // We need the session to be passed in properly
+
   const camper: Camper = {
     id: `${person.cm_id}:${sessionCmId}`,
     attendee_id: attendee.id,
@@ -51,20 +51,32 @@ export function toAppCamper(
     pronouns: person.gender_pronoun_name || '',
     email: '',
     tags: [],
-    ...(person.gender_identity_id && { gender_identity_id: person.gender_identity_id }),
-    ...(person.gender_identity_name && { gender_identity_name: person.gender_identity_name }),
-    ...(person.gender_identity_write_in && { gender_identity_write_in: person.gender_identity_write_in }),
-    ...(person.gender_pronoun_id && { gender_pronoun_id: person.gender_pronoun_id }),
-    ...(person.gender_pronoun_name && { gender_pronoun_name: person.gender_pronoun_name }),
-    ...(person.gender_pronoun_write_in && { gender_pronoun_write_in: person.gender_pronoun_write_in }),
+    ...(person.gender_identity_id && {
+      gender_identity_id: person.gender_identity_id,
+    }),
+    ...(person.gender_identity_name && {
+      gender_identity_name: person.gender_identity_name,
+    }),
+    ...(person.gender_identity_write_in && {
+      gender_identity_write_in: person.gender_identity_write_in,
+    }),
+    ...(person.gender_pronoun_id && {
+      gender_pronoun_id: person.gender_pronoun_id,
+    }),
+    ...(person.gender_pronoun_name && {
+      gender_pronoun_name: person.gender_pronoun_name,
+    }),
+    ...(person.gender_pronoun_write_in && {
+      gender_pronoun_write_in: person.gender_pronoun_write_in,
+    }),
     ...(person.household_id && { household_id: person.household_id }),
     expand: {
       session: session as CampSessionsResponse | null,
       assigned_bunk: bunk as BunksResponse | null,
     },
-  };
+  }
 
-  return camper;
+  return camper
 }
 
 /**
@@ -84,7 +96,7 @@ export function toAppSession(session: CampSessionsResponse): Session {
     parent_id: session.parent_id,
     created: session.created || new Date().toISOString(),
     updated: session.updated || new Date().toISOString(),
-  };
+  }
 }
 
 /**
@@ -101,7 +113,7 @@ export function toAppBunk(bunk: BunksResponse): Bunk {
     year: bunk.year,
     created: bunk.created || new Date().toISOString(),
     updated: bunk.updated || new Date().toISOString(),
-  };
+  }
 }
 
 /**
@@ -109,82 +121,98 @@ export function toAppBunk(bunk: BunksResponse): Bunk {
  * Uses Maps for O(1) lookups instead of nested loops
  */
 export function buildCampersFromData(
-  attendees: Array<AttendeesResponse<{ person?: PersonsResponse; session?: CampSessionsResponse }>>,
-  assignments: Map<number, BunkAssignmentsResponse<{ bunk?: BunksResponse; person?: PersonsResponse }>>,
+  attendees: Array<
+    AttendeesResponse<{
+      person?: PersonsResponse
+      session?: CampSessionsResponse
+    }>
+  >,
+  assignments: Map<
+    number,
+    BunkAssignmentsResponse<{ bunk?: BunksResponse; person?: PersonsResponse }>
+  >,
   bunks: Map<number, BunksResponse>
 ): Camper[] {
-  const campers: Camper[] = [];
-  
+  const campers: Camper[] = []
+
   for (const attendee of attendees) {
     // Get person from expanded relation
-    const person = attendee.expand?.person;
-    if (!person || !person.is_camper) continue;
-    
+    const person = attendee.expand?.person
+    if (!person || !person.is_camper) continue
+
     // Get session from expanded relation
-    const session = attendee.expand?.session || null;
-    
+    const session = attendee.expand?.session || null
+
     // Get assignment and bunk using person CM ID
-    const assignment = assignments.get(person.cm_id) || null;
-    let bunk: BunksResponse | null = null;
-    
+    const assignment = assignments.get(person.cm_id) || null
+    let bunk: BunksResponse | null = null
+
     if (assignment) {
       // Try to get bunk from assignment expand first
       if (assignment.expand?.bunk && typeof assignment.expand.bunk === 'object') {
-        bunk = assignment.expand.bunk as BunksResponse;
+        bunk = assignment.expand.bunk as BunksResponse
       }
       // Fallback to bunk map lookup using CM ID
       else {
-        const assignmentWithBunkCmId = assignment as BunkAssignmentsResponse & { bunk_cm_id?: number };
+        const assignmentWithBunkCmId = assignment as BunkAssignmentsResponse & {
+          bunk_cm_id?: number
+        }
         if (assignmentWithBunkCmId.bunk_cm_id) {
-          bunk = bunks.get(assignmentWithBunkCmId.bunk_cm_id) ?? null;
+          bunk = bunks.get(assignmentWithBunkCmId.bunk_cm_id) ?? null
         }
       }
     }
-    
+
     // Use existing toAppCamper function for consistent transformation
-    const camper = toAppCamper(person, attendee, assignment, bunk, session);
-    campers.push(camper);
+    const camper = toAppCamper(person, attendee, assignment, bunk, session)
+    campers.push(camper)
   }
-  
-  return campers;
+
+  return campers
 }
 
 /**
  * Helper to build Maps from arrays for efficient lookups
  */
 export function createLookupMaps(data: {
-  assignments?: Array<BunkAssignmentsResponse<{ person?: PersonsResponse; bunk?: BunksResponse }>>;
-  bunks?: BunksResponse[];
+  assignments?: Array<BunkAssignmentsResponse<{ person?: PersonsResponse; bunk?: BunksResponse }>>
+  bunks?: BunksResponse[]
 }) {
   const maps = {
-    assignments: new Map<number, BunkAssignmentsResponse<{ bunk?: BunksResponse; person?: PersonsResponse }>>(),
-    bunks: new Map<number, BunksResponse>()
-  };
-  
+    assignments: new Map<
+      number,
+      BunkAssignmentsResponse<{
+        bunk?: BunksResponse
+        person?: PersonsResponse
+      }>
+    >(),
+    bunks: new Map<number, BunksResponse>(),
+  }
+
   // Build assignment map by person CM ID
   if (data.assignments) {
-    data.assignments.forEach(assignment => {
+    data.assignments.forEach((assignment) => {
       // Get person CM ID from the expanded relation
-      const person = assignment.expand?.person;
+      const person = assignment.expand?.person
       if (person && 'cm_id' in person) {
-        const personCmId = person.cm_id;
+        const personCmId = person.cm_id
         if (personCmId) {
-          maps.assignments.set(personCmId, assignment);
+          maps.assignments.set(personCmId, assignment)
         }
       }
-    });
+    })
   }
-  
+
   // Build bunk map by CM ID
   if (data.bunks) {
-    data.bunks.forEach(bunk => {
+    data.bunks.forEach((bunk) => {
       if (bunk.cm_id) {
-        maps.bunks.set(bunk.cm_id, bunk);
+        maps.bunks.set(bunk.cm_id, bunk)
       }
-    });
+    })
   }
-  
-  return maps;
+
+  return maps
 }
 
 /**
@@ -192,23 +220,23 @@ export function createLookupMaps(data: {
  */
 export function toAppBunkRequest(request: BunkRequestsResponse): BunkRequest {
   // Map DB request_type to app type
-  let requestType: 'bunk_with' | 'not_bunk_with' | 'age_preference' = 'bunk_with';
+  let requestType: 'bunk_with' | 'not_bunk_with' | 'age_preference' = 'bunk_with'
   if (request.request_type === 'not_bunk_with') {
-    requestType = 'not_bunk_with';
+    requestType = 'not_bunk_with'
   } else if (request.request_type === 'age_preference') {
-    requestType = 'age_preference';
+    requestType = 'age_preference'
   }
-  
+
   // Map DB status to app status - DB only has resolved, pending, declined
-  let status: 'resolved' | 'pending' | 'declined' = 'pending';
+  let status: 'resolved' | 'pending' | 'declined' = 'pending'
   if (request.status === BunkRequestsStatusOptions.resolved) {
-    status = 'resolved';
+    status = 'resolved'
   } else if (request.status === BunkRequestsStatusOptions.declined) {
-    status = 'declined';
+    status = 'declined'
   } else if (request.status === BunkRequestsStatusOptions.pending) {
-    status = 'pending';
+    status = 'pending'
   }
-  
+
   return {
     id: request.id,
     request_type: requestType,
@@ -224,5 +252,5 @@ export function toAppBunkRequest(request: BunkRequestsResponse): BunkRequest {
     is_reciprocal: false, // Not in DB type
     created: new Date().toISOString(),
     updated: new Date().toISOString(),
-  };
+  }
 }

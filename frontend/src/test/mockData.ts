@@ -1,6 +1,10 @@
-import type { Session, Bunk, Camper, Constraint } from '../types/app-types';
-import type { BunkPlansResponse, AttendeesResponse, PersonsResponse } from '../types/pocketbase-types';
-import { AttendeesStatusOptions, Collections } from '../types/pocketbase-types';
+import type { Session, Bunk, Camper, Constraint } from '../types/app-types'
+import type {
+  BunkPlansResponse,
+  AttendeesResponse,
+  PersonsResponse,
+} from '../types/pocketbase-types'
+import { AttendeesStatusOptions, Collections } from '../types/pocketbase-types'
 
 export const mockSession = (overrides?: Partial<Session>): Session => ({
   id: 'session1',
@@ -118,7 +122,7 @@ export const mockBunkPlan = (overrides?: Partial<BunkPlansResponse>): BunkPlansR
   session: 'session1',
   name: 'Bunk 1 Plan',
   cm_id: 5001,
-  code: 'BP1',  // Required field
+  code: 'BP1', // Required field
   collectionId: Collections.BunkPlans,
   collectionName: Collections.BunkPlans,
   created: '2024-01-01T00:00:00Z',
@@ -132,25 +136,25 @@ export const mockBunkPlan = (overrides?: Partial<BunkPlansResponse>): BunkPlansR
 // Create arrays of mock data
 export const mockSessions = [
   mockSession(),
-  mockSession({ 
-    id: 'session2', 
+  mockSession({
+    id: 'session2',
     cm_id: 1002,
     name: 'main2',
     start_date: '2024-07-15',
-    end_date: '2024-08-12'
+    end_date: '2024-08-12',
   }),
 ]
 
 export const mockBunks = [
   mockBunk(),
-  mockBunk({ 
-    id: 'bunk2', 
+  mockBunk({
+    id: 'bunk2',
     cm_id: 202,
     name: 'Bunk 2',
-    code: 'B2'
+    code: 'B2',
   }),
-  mockBunk({ 
-    id: 'bunk3', 
+  mockBunk({
+    id: 'bunk3',
     cm_id: 203,
     name: 'Bunk 10',
     code: 'B10',

@@ -1,44 +1,44 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useEffect, useState, useCallback } from 'react'
 
-export type Theme = 'light' | 'dark' | 'system';
-export type ResolvedTheme = 'light' | 'dark';
+export type Theme = 'light' | 'dark' | 'system'
+export type ResolvedTheme = 'light' | 'dark'
 
 export interface ThemeContextType {
   /** Current theme setting (light, dark, or system) */
-  theme: Theme;
+  theme: Theme
   /** The actual resolved theme being displayed (always light or dark) */
-  resolvedTheme: ResolvedTheme;
+  resolvedTheme: ResolvedTheme
   /** Toggle between light and dark (skips system) */
-  toggleTheme: () => void;
+  toggleTheme: () => void
   /** Set a specific theme */
-  setTheme: (theme: Theme) => void;
+  setTheme: (theme: Theme) => void
   /** Whether system preference is being used */
-  isSystemTheme: boolean;
+  isSystemTheme: boolean
 }
 
-export const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+export const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 
 /**
  * Get the system's preferred color scheme
  */
 function getSystemTheme(): ResolvedTheme {
-  if (typeof window === 'undefined') return 'light';
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  if (typeof window === 'undefined') return 'light'
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
 /**
  * Get initial theme from localStorage or default to system preference
  */
 function getInitialTheme(): Theme {
-  if (typeof window === 'undefined') return 'system';
+  if (typeof window === 'undefined') return 'system'
 
-  const stored = localStorage.getItem('theme');
+  const stored = localStorage.getItem('theme')
   if (stored === 'light' || stored === 'dark' || stored === 'system') {
-    return stored;
+    return stored
   }
   // Default to system preference
-  return 'system';
+  return 'system'
 }
 
 /**
@@ -46,73 +46,73 @@ function getInitialTheme(): Theme {
  */
 function resolveTheme(theme: Theme): ResolvedTheme {
   if (theme === 'system') {
-    return getSystemTheme();
+    return getSystemTheme()
   }
-  return theme;
+  return theme
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(getInitialTheme);
+  const [theme, setThemeState] = useState<Theme>(getInitialTheme)
   const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() =>
     resolveTheme(getInitialTheme())
-  );
-  const [prevTheme, setPrevTheme] = useState<Theme>(theme);
+  )
+  const [prevTheme, setPrevTheme] = useState<Theme>(theme)
 
   // Apply theme to document
   const applyTheme = useCallback((resolved: ResolvedTheme) => {
-    const root = window.document.documentElement;
+    const root = window.document.documentElement
 
     // Add transitioning class to disable transitions temporarily
-    root.classList.add('transitioning');
+    root.classList.add('transitioning')
 
     // Use requestAnimationFrame to ensure the class is applied before theme change
     requestAnimationFrame(() => {
-      root.classList.remove('light', 'dark');
-      root.classList.add(resolved);
+      root.classList.remove('light', 'dark')
+      root.classList.add(resolved)
 
       // Remove transitioning class after a short delay to re-enable transitions
       requestAnimationFrame(() => {
-        root.classList.remove('transitioning');
-      });
-    });
-  }, []);
+        root.classList.remove('transitioning')
+      })
+    })
+  }, [])
 
   // Handle theme changes (render-time check to avoid setState in effect)
   if (theme !== prevTheme) {
-    setPrevTheme(theme);
-    const resolved = resolveTheme(theme);
-    setResolvedTheme(resolved);
-    applyTheme(resolved);
-    localStorage.setItem('theme', theme);
+    setPrevTheme(theme)
+    const resolved = resolveTheme(theme)
+    setResolvedTheme(resolved)
+    applyTheme(resolved)
+    localStorage.setItem('theme', theme)
   }
 
   // Listen for system theme changes when in system mode
   useEffect(() => {
-    if (theme !== 'system') return;
+    if (theme !== 'system') return
 
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
 
     const handleChange = (e: MediaQueryListEvent) => {
-      const newResolved = e.matches ? 'dark' : 'light';
-      setResolvedTheme(newResolved);
-      applyTheme(newResolved);
-    };
+      const newResolved = e.matches ? 'dark' : 'light'
+      setResolvedTheme(newResolved)
+      applyTheme(newResolved)
+    }
 
-    mediaQuery.addEventListener('change', handleChange);
-    return () => mediaQuery.removeEventListener('change', handleChange);
-  }, [theme, applyTheme]);
+    mediaQuery.addEventListener('change', handleChange)
+    return () => mediaQuery.removeEventListener('change', handleChange)
+  }, [theme, applyTheme])
 
   const toggleTheme = useCallback(() => {
     setThemeState((prev) => {
       // When toggling, resolve current and flip
-      const current = resolveTheme(prev);
-      return current === 'light' ? 'dark' : 'light';
-    });
-  }, []);
+      const current = resolveTheme(prev)
+      return current === 'light' ? 'dark' : 'light'
+    })
+  }, [])
 
   const setTheme = useCallback((newTheme: Theme) => {
-    setThemeState(newTheme);
-  }, []);
+    setThemeState(newTheme)
+  }, [])
 
   return (
     <ThemeContext.Provider
@@ -126,5 +126,5 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     >
       {children}
     </ThemeContext.Provider>
-  );
+  )
 }

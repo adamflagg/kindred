@@ -1,14 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react'
 
 // Hook for using error boundary programmatically
 export function useErrorHandler() {
-  const [error, setError] = useState<Error | null>(null);
+  const [error, setError] = useState<Error | null>(null)
 
   useEffect(() => {
     if (error) {
-      throw error;
+      throw error
     }
-  }, [error]);
+  }, [error])
 
-  return setError;
+  return setError
 }

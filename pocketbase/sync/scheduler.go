@@ -237,11 +237,11 @@ func (s *Scheduler) TriggerSync(ctx context.Context, syncType string) error {
 	switch syncType {
 	case "refresh-bunking":
 		return s.orchestrator.RunSingleSync(ctx, "bunk_assignments")
-	case "daily":
+	case runTypeDaily:
 		return s.orchestrator.RunDailySync(ctx)
 	case "hourly":
 		return s.orchestrator.RunSingleSync(ctx, "bunk_assignments")
-	case "weekly":
+	case runTypeWeekly:
 		return s.orchestrator.RunWeeklySync(ctx)
 	case "custom-values":
 		return s.orchestrator.RunCustomValuesSync(ctx)

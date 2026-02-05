@@ -1,32 +1,35 @@
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'react-hot-toast';
-import { Search, Loader2 } from 'lucide-react';
-import { pb } from '../lib/pocketbase';
-import type { BunkRequestsResponse, PersonsResponse, AttendeesResponse } from '../types/pocketbase-types';
-import clsx from 'clsx';
-import { Modal } from './ui/Modal';
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'react-hot-toast'
+import { Search, Loader2 } from 'lucide-react'
+import { pb } from '../lib/pocketbase'
+import type {
+  BunkRequestsResponse,
+  PersonsResponse,
+  AttendeesResponse,
+} from '../types/pocketbase-types'
+import clsx from 'clsx'
+import { Modal } from './ui/Modal'
 
 interface CreateRequestModalProps {
-  sessionId: number;
-  year: number;
-  onClose: () => void;
+  sessionId: number
+  year: number
+  onClose: () => void
 }
 
-
-type RequestType = 'bunk_with' | 'not_bunk_with' | 'age_preference';
+type RequestType = 'bunk_with' | 'not_bunk_with' | 'age_preference'
 
 export default function CreateRequestModal({ sessionId, year, onClose }: CreateRequestModalProps) {
-  const queryClient = useQueryClient();
-  const [requestType, setRequestType] = useState<RequestType>('bunk_with');
-  const [requesterSearch, setRequesterSearch] = useState('');
-  const [targetSearch, setTargetSearch] = useState('');
-  const [selectedRequester, setSelectedRequester] = useState<PersonsResponse | null>(null);
-  const [selectedTarget, setSelectedTarget] = useState<PersonsResponse | null>(null);
-  const [agePreferenceTarget, setAgePreferenceTarget] = useState<'older' | 'younger'>('older');
-  const [priority, setPriority] = useState(4);
-  const [notes, setNotes] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const queryClient = useQueryClient()
+  const [requestType, setRequestType] = useState<RequestType>('bunk_with')
+  const [requesterSearch, setRequesterSearch] = useState('')
+  const [targetSearch, setTargetSearch] = useState('')
+  const [selectedRequester, setSelectedRequester] = useState<PersonsResponse | null>(null)
+  const [selectedTarget, setSelectedTarget] = useState<PersonsResponse | null>(null)
+  const [agePreferenceTarget, setAgePreferenceTarget] = useState<'older' | 'younger'>('older')
+  const [priority, setPriority] = useState(4)
+  const [notes, setNotes] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Fetch campers for this session
   const { data: campers = [], isLoading: campersLoading } = useQuery({
@@ -34,74 +37,77 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
     queryFn: async () => {
       // Fetch attendees for this session
       const attendees = await pb.collection<AttendeesResponse>('attendees').getFullList({
-        filter: `session = ${sessionId} && year = ${year} && status = "enrolled"`
-      });
-      
+        filter: `session = ${sessionId} && year = ${year} && status = "enrolled"`,
+      })
+
       // Get person IDs
-      const personIds = attendees.map(a => a.person_id);
-      if (personIds.length === 0) return [];
-      
+      const personIds = attendees.map((a) => a.person_id)
+      if (personIds.length === 0) return []
+
       // Fetch persons in batches to avoid 414 Request Too Large errors
-      const BATCH_SIZE = 50;
-      const batches: Array<Promise<PersonsResponse[]>> = [];
-      
+      const BATCH_SIZE = 50
+      const batches: Array<Promise<PersonsResponse[]>> = []
+
       // Split personIds into batches and create promises
       for (let i = 0; i < personIds.length; i += BATCH_SIZE) {
-        const batch = personIds.slice(i, i + BATCH_SIZE);
-        const batchFilter = batch.map(id => `cm_id = ${id}`).join(' || ');
-        
-        const batchPromise = pb.collection<PersonsResponse>('persons').getFullList({
-          filter: batchFilter
-        }).catch(error => {
-          console.error(`Error fetching person batch ${Math.floor(i / BATCH_SIZE) + 1}:`, error);
-          return []; // Return empty array for failed batches
-        });
-        
-        batches.push(batchPromise);
+        const batch = personIds.slice(i, i + BATCH_SIZE)
+        const batchFilter = batch.map((id) => `cm_id = ${id}`).join(' || ')
+
+        const batchPromise = pb
+          .collection<PersonsResponse>('persons')
+          .getFullList({
+            filter: batchFilter,
+          })
+          .catch((error) => {
+            console.error(`Error fetching person batch ${Math.floor(i / BATCH_SIZE) + 1}:`, error)
+            return [] // Return empty array for failed batches
+          })
+
+        batches.push(batchPromise)
       }
-      
+
       // Fetch all batches in parallel
-      const batchResults = await Promise.all(batches);
-      const persons = batchResults.flat();
-      
+      const batchResults = await Promise.all(batches)
+      const persons = batchResults.flat()
+
       // Create a map for quick lookup
-      const personsMap = new Map<number, PersonsResponse>();
-      persons.forEach(p => {
-        personsMap.set(p.cm_id, p);
-      });
+      const personsMap = new Map<number, PersonsResponse>()
+      persons.forEach((p) => {
+        personsMap.set(p.cm_id, p)
+      })
 
       // Filter to only include persons that have attendees in this session
       return personIds
-        .map(id => personsMap.get(id))
-        .filter((p): p is PersonsResponse => p !== undefined);
-    }
-  });
+        .map((id) => personsMap.get(id))
+        .filter((p): p is PersonsResponse => p !== undefined)
+    },
+  })
 
   // Filter campers based on search
-  const filteredRequesters = campers.filter(camper => {
-    if (!requesterSearch) return true;
-    const searchLower = requesterSearch.toLowerCase();
-    const fullName = `${camper.first_name} ${camper.last_name}`.toLowerCase();
-    return fullName.includes(searchLower);
-  });
+  const filteredRequesters = campers.filter((camper) => {
+    if (!requesterSearch) return true
+    const searchLower = requesterSearch.toLowerCase()
+    const fullName = `${camper.first_name} ${camper.last_name}`.toLowerCase()
+    return fullName.includes(searchLower)
+  })
 
-  const filteredTargets = campers.filter(camper => {
-    if (!targetSearch) return true;
-    if (selectedRequester && camper.id === selectedRequester.id) return false; // Can't request with self
-    const searchLower = targetSearch.toLowerCase();
-    const fullName = `${camper.first_name} ${camper.last_name}`.toLowerCase();
-    return fullName.includes(searchLower);
-  });
+  const filteredTargets = campers.filter((camper) => {
+    if (!targetSearch) return true
+    if (selectedRequester && camper.id === selectedRequester.id) return false // Can't request with self
+    const searchLower = targetSearch.toLowerCase()
+    const fullName = `${camper.first_name} ${camper.last_name}`.toLowerCase()
+    return fullName.includes(searchLower)
+  })
 
   // Create request mutation
   const createRequestMutation = useMutation({
     mutationFn: async () => {
       if (!selectedRequester) {
-        throw new Error('Please select a requester');
+        throw new Error('Please select a requester')
       }
 
       if (requestType !== 'age_preference' && !selectedTarget) {
-        throw new Error('Please select a target person');
+        throw new Error('Please select a target person')
       }
 
       const newRequest: Partial<BunkRequestsResponse> = {
@@ -115,65 +121,67 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
         source: 'staff' as BunkRequestsResponse['source'],
         original_text: `Manually created ${requestType} request`,
         parse_notes: notes || 'Created through admin interface',
-        request_locked: true // Auto-lock manual requests
-      };
-
-      if (requestType === 'age_preference') {
-        newRequest.age_preference_target = agePreferenceTarget;
-        newRequest.metadata = { target: agePreferenceTarget };
-      } else {
-        if (!selectedTarget) {
-          throw new Error('No target selected');
-        }
-        newRequest.requestee_id = selectedTarget.cm_id;
+        request_locked: true, // Auto-lock manual requests
       }
 
-      return pb.collection<BunkRequestsResponse>('bunk_requests').create(newRequest);
+      if (requestType === 'age_preference') {
+        newRequest.age_preference_target = agePreferenceTarget
+        newRequest.metadata = { target: agePreferenceTarget }
+      } else {
+        if (!selectedTarget) {
+          throw new Error('No target selected')
+        }
+        newRequest.requestee_id = selectedTarget.cm_id
+      }
+
+      return pb.collection<BunkRequestsResponse>('bunk_requests').create(newRequest)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bunk-requests'] });
-      toast.success('Request created successfully');
-      onClose();
+      queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
+      toast.success('Request created successfully')
+      onClose()
     },
     onError: (error) => {
-      console.error('Failed to create request:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to create request');
-    }
-  });
+      console.error('Failed to create request:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to create request')
+    },
+  })
 
   const handleSubmit = async () => {
-    setIsSubmitting(true);
+    setIsSubmitting(true)
     try {
-      await createRequestMutation.mutateAsync();
+      await createRequestMutation.mutateAsync()
     } finally {
-      setIsSubmitting(false);
+      setIsSubmitting(false)
     }
-  };
+  }
 
   const headerContent = (
-    <div className="p-6 pr-14 border-b border-border">
-      <h2 className="text-xl font-display font-bold">Create Request</h2>
+    <div className="border-border border-b p-6 pr-14">
+      <h2 className="font-display text-xl font-bold">Create Request</h2>
     </div>
-  );
+  )
 
   const footerContent = (
-    <div className="flex items-center justify-end gap-3 p-6 border-t border-border">
-      <button
-        onClick={onClose}
-        className="btn-ghost"
-      >
+    <div className="border-border flex items-center justify-end gap-3 border-t p-6">
+      <button onClick={onClose} className="btn-ghost">
         Cancel
       </button>
       <button
         onClick={handleSubmit}
-        disabled={isSubmitting || campersLoading || !selectedRequester || (requestType !== 'age_preference' && !selectedTarget)}
-        className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+        disabled={
+          isSubmitting ||
+          campersLoading ||
+          !selectedRequester ||
+          (requestType !== 'age_preference' && !selectedTarget)
+        }
+        className="btn-primary disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+        {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
         Create Request
       </button>
     </div>
-  );
+  )
 
   return (
     <Modal
@@ -188,18 +196,18 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
       <div className="p-6">
         {campersLoading ? (
           <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-6 h-6 animate-spin" />
+            <Loader2 className="h-6 w-6 animate-spin" />
           </div>
         ) : (
           <div className="space-y-6">
             {/* Request Type */}
             <div>
-              <label className="block text-sm font-semibold mb-2">Request Type</label>
+              <label className="mb-2 block text-sm font-semibold">Request Type</label>
               <select
                 value={requestType}
                 onChange={(e) => {
-                  setRequestType(e.target.value as RequestType);
-                  setSelectedTarget(null);
+                  setRequestType(e.target.value as RequestType)
+                  setSelectedTarget(null)
                 }}
                 className="input-lodge"
               >
@@ -211,9 +219,9 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
 
             {/* Requester */}
             <div>
-              <label className="block text-sm font-semibold mb-2">Requester</label>
+              <label className="mb-2 block text-sm font-semibold">Requester</label>
               <div className="relative">
-                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Search className="text-muted-foreground absolute top-1/2 left-4 h-4 w-4 -translate-y-1/2 transform" />
                 <input
                   type="text"
                   placeholder="Search for requester..."
@@ -223,20 +231,20 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
                 />
               </div>
               {requesterSearch && (
-                <div className="mt-2 max-h-40 overflow-y-auto border border-border rounded-xl bg-card shadow-lodge">
+                <div className="border-border bg-card shadow-lodge mt-2 max-h-40 overflow-y-auto rounded-xl border">
                   {filteredRequesters.length === 0 ? (
-                    <div className="p-3 text-sm text-muted-foreground">No campers found</div>
+                    <div className="text-muted-foreground p-3 text-sm">No campers found</div>
                   ) : (
-                    filteredRequesters.slice(0, 10).map(camper => (
+                    filteredRequesters.slice(0, 10).map((camper) => (
                       <button
                         key={camper.id}
                         onClick={() => {
-                          setSelectedRequester(camper);
-                          setRequesterSearch(`${camper.first_name} ${camper.last_name}`);
+                          setSelectedRequester(camper)
+                          setRequesterSearch(`${camper.first_name} ${camper.last_name}`)
                         }}
                         className={clsx(
-                          "w-full px-4 py-2.5 text-left hover:bg-muted/50 transition-colors text-sm first:rounded-t-xl last:rounded-b-xl",
-                          selectedRequester?.id === camper.id && "bg-primary/10 text-primary"
+                          'hover:bg-muted/50 w-full px-4 py-2.5 text-left text-sm transition-colors first:rounded-t-xl last:rounded-b-xl',
+                          selectedRequester?.id === camper.id && 'bg-primary/10 text-primary'
                         )}
                       >
                         {camper.first_name} {camper.last_name}
@@ -246,7 +254,7 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
                 </div>
               )}
               {selectedRequester && (
-                <div className="mt-2 text-sm text-muted-foreground">
+                <div className="text-muted-foreground mt-2 text-sm">
                   Selected: {selectedRequester.first_name} {selectedRequester.last_name}
                 </div>
               )}
@@ -255,9 +263,9 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
             {/* Target (for non-age preference) */}
             {requestType !== 'age_preference' && (
               <div>
-                <label className="block text-sm font-semibold mb-2">Target Person</label>
+                <label className="mb-2 block text-sm font-semibold">Target Person</label>
                 <div className="relative">
-                  <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Search className="text-muted-foreground absolute top-1/2 left-4 h-4 w-4 -translate-y-1/2 transform" />
                   <input
                     type="text"
                     placeholder="Search for target person..."
@@ -267,20 +275,20 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
                   />
                 </div>
                 {targetSearch && (
-                  <div className="mt-2 max-h-40 overflow-y-auto border border-border rounded-xl bg-card shadow-lodge">
+                  <div className="border-border bg-card shadow-lodge mt-2 max-h-40 overflow-y-auto rounded-xl border">
                     {filteredTargets.length === 0 ? (
-                      <div className="p-3 text-sm text-muted-foreground">No campers found</div>
+                      <div className="text-muted-foreground p-3 text-sm">No campers found</div>
                     ) : (
-                      filteredTargets.slice(0, 10).map(camper => (
+                      filteredTargets.slice(0, 10).map((camper) => (
                         <button
                           key={camper.id}
                           onClick={() => {
-                            setSelectedTarget(camper);
-                            setTargetSearch(`${camper.first_name} ${camper.last_name}`);
+                            setSelectedTarget(camper)
+                            setTargetSearch(`${camper.first_name} ${camper.last_name}`)
                           }}
                           className={clsx(
-                            "w-full px-4 py-2.5 text-left hover:bg-muted/50 transition-colors text-sm first:rounded-t-xl last:rounded-b-xl",
-                            selectedTarget?.id === camper.id && "bg-primary/10 text-primary"
+                            'hover:bg-muted/50 w-full px-4 py-2.5 text-left text-sm transition-colors first:rounded-t-xl last:rounded-b-xl',
+                            selectedTarget?.id === camper.id && 'bg-primary/10 text-primary'
                           )}
                         >
                           {camper.first_name} {camper.last_name}
@@ -290,7 +298,7 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
                   </div>
                 )}
                 {selectedTarget && (
-                  <div className="mt-2 text-sm text-muted-foreground">
+                  <div className="text-muted-foreground mt-2 text-sm">
                     Selected: {selectedTarget.first_name} {selectedTarget.last_name}
                   </div>
                 )}
@@ -300,7 +308,7 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
             {/* Age Preference Target */}
             {requestType === 'age_preference' && (
               <div>
-                <label className="block text-sm font-semibold mb-2">Age Preference</label>
+                <label className="mb-2 block text-sm font-semibold">Age Preference</label>
                 <select
                   value={agePreferenceTarget}
                   onChange={(e) => setAgePreferenceTarget(e.target.value as 'older' | 'younger')}
@@ -314,21 +322,23 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
 
             {/* Priority */}
             <div>
-              <label className="block text-sm font-semibold mb-2">Priority</label>
+              <label className="mb-2 block text-sm font-semibold">Priority</label>
               <select
                 value={priority}
                 onChange={(e) => setPriority(parseInt(e.target.value))}
                 className="input-lodge"
               >
-                {[4, 3, 2, 1].map(p => (
-                  <option key={p} value={p}>{p}</option>
+                {[4, 3, 2, 1].map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
                 ))}
               </select>
             </div>
 
             {/* Notes */}
             <div>
-              <label className="block text-sm font-semibold mb-2">Notes (Optional)</label>
+              <label className="mb-2 block text-sm font-semibold">Notes (Optional)</label>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
@@ -340,5 +350,5 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
         )}
       </div>
     </Modal>
-  );
+  )
 }

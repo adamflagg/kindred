@@ -2,43 +2,43 @@
  * Cytoscape styles and graph data transformations
  * Extracted from SocialNetworkGraph.tsx
  */
-import type { NodeSingular, EdgeSingular, StylesheetStyle } from 'cytoscape';
-import { GRADE_COLORS, EDGE_COLORS, STATUS_COLORS } from './constants';
-import { formatGradeOrdinal } from '../../utils/gradeUtils';
+import type { NodeSingular, EdgeSingular, StylesheetStyle } from 'cytoscape'
+import { GRADE_COLORS, EDGE_COLORS, STATUS_COLORS } from './constants'
+import { formatGradeOrdinal } from '../../utils/gradeUtils'
 
 /** Input node data from API */
 export interface GraphNodeData {
-  id: number;
-  name: string;
-  grade: number;
-  centrality: number;
-  clustering: number;
-  satisfaction_status: string;
-  bunk_cm_id: number | undefined;
-  community: number;
+  id: number
+  name: string
+  grade: number
+  centrality: number
+  clustering: number
+  satisfaction_status: string
+  bunk_cm_id: number | undefined
+  community: number
 }
 
 /** Input edge data from API */
 export interface GraphEdgeData {
-  source: number;
-  target: number;
-  type: string;
-  priority: number;
-  confidence: number;
-  reciprocal: boolean;
+  source: number
+  target: number
+  type: string
+  priority: number
+  confidence: number
+  reciprocal: boolean
 }
 
 /** Edge visibility settings */
 export interface ShowEdgesSettings {
-  request: boolean;
-  historical: boolean;
-  sibling: boolean;
-  school: boolean;
+  request: boolean
+  historical: boolean
+  sibling: boolean
+  school: boolean
 }
 
 /** Options for getCytoscapeStyles */
 export interface CytoscapeStyleOptions {
-  showLabels: boolean;
+  showLabels: boolean
 }
 
 /**
@@ -51,21 +51,21 @@ export function getCytoscapeStyles({ showLabels }: CytoscapeStyleOptions): Style
       selector: 'node:childless',
       style: {
         'background-color': (ele: NodeSingular) => {
-          const grade = ele.data('grade');
-          return grade ? GRADE_COLORS[grade] || '#95a5a6' : '#95a5a6';
+          const grade = ele.data('grade')
+          return grade ? GRADE_COLORS[grade] || '#95a5a6' : '#95a5a6'
         },
-        'width': (ele: NodeSingular) => {
-          const centrality = ele.data('centrality') || 0;
-          return 10 + centrality * 40; // 10-50px range
+        width: (ele: NodeSingular) => {
+          const centrality = ele.data('centrality') || 0
+          return 10 + centrality * 40 // 10-50px range
         },
-        'height': (ele: NodeSingular) => {
-          const centrality = ele.data('centrality') || 0;
-          return 10 + centrality * 40; // 10-50px range
+        height: (ele: NodeSingular) => {
+          const centrality = ele.data('centrality') || 0
+          return 10 + centrality * 40 // 10-50px range
         },
-        'label': showLabels ? 'data(label)' : '',
+        label: showLabels ? 'data(label)' : '',
         // Responsive font size: larger base for mobile readability
         'font-size': '12px',
-        'color': '#f5f5f5',
+        color: '#f5f5f5',
         'text-outline-width': 2,
         'text-outline-color': '#1a1a1a',
         'text-valign': 'bottom',
@@ -74,8 +74,8 @@ export function getCytoscapeStyles({ showLabels }: CytoscapeStyleOptions): Style
         'text-wrap': 'ellipsis',
         'border-width': 3,
         'border-color': (ele: NodeSingular) => {
-          const status = ele.data('satisfaction_status');
-          return STATUS_COLORS[status] || STATUS_COLORS['default'] || '#2c3e50';
+          const status = ele.data('satisfaction_status')
+          return STATUS_COLORS[status] || STATUS_COLORS['default'] || '#2c3e50'
         },
         'overlay-padding': '6px',
       },
@@ -92,19 +92,19 @@ export function getCytoscapeStyles({ showLabels }: CytoscapeStyleOptions): Style
     {
       selector: 'edge',
       style: {
-        'width': 2,
+        width: 2,
         'line-color': (ele: EdgeSingular) => {
-          const edgeType = ele.data('edge_type');
-          return EDGE_COLORS[edgeType] || '#95a5a6';
+          const edgeType = ele.data('edge_type')
+          return EDGE_COLORS[edgeType] || '#95a5a6'
         },
         'line-opacity': (ele: EdgeSingular) => {
-          const confidence = ele.data('confidence') || 0.5;
-          return 0.3 + confidence * 0.7; // 0.3-1.0 range
+          const confidence = ele.data('confidence') || 0.5
+          return 0.3 + confidence * 0.7 // 0.3-1.0 range
         },
         'target-arrow-shape': 'triangle',
         'target-arrow-color': (ele: EdgeSingular) => {
-          const edgeType = ele.data('edge_type');
-          return EDGE_COLORS[edgeType] || '#95a5a6';
+          const edgeType = ele.data('edge_type')
+          return EDGE_COLORS[edgeType] || '#95a5a6'
         },
         'curve-style': 'bezier',
         'overlay-padding': '2px',
@@ -180,53 +180,53 @@ export function getCytoscapeStyles({ showLabels }: CytoscapeStyleOptions): Style
         events: 'no',
       },
     },
-  ];
+  ]
 }
 
 /** Cytoscape element for parent (bunk) node */
 export interface ParentNodeElement {
   data: {
-    id: string;
-    label: string;
-    isBunkParent: boolean;
-    bunk_cm_id: number;
-  };
+    id: string
+    label: string
+    isBunkParent: boolean
+    bunk_cm_id: number
+  }
 }
 
 /** Cytoscape element for camper node */
 export interface CamperNodeElement {
   data: {
-    id: string;
-    label: string;
-    name: string;
-    grade: number;
-    centrality: number;
-    clustering: number;
-    satisfaction_status: string;
-    bunk_cm_id: number | undefined;
-    community: number;
-    parent: string | undefined;
-  };
+    id: string
+    label: string
+    name: string
+    grade: number
+    centrality: number
+    clustering: number
+    satisfaction_status: string
+    bunk_cm_id: number | undefined
+    community: number
+    parent: string | undefined
+  }
 }
 
 /** Cytoscape element for edge */
 export interface EdgeElement {
   data: {
-    id: string;
-    source: string;
-    target: string;
-    edge_type: string;
-    priority: number;
-    confidence: number;
-    is_reciprocal: boolean;
-  };
+    id: string
+    source: string
+    target: string
+    edge_type: string
+    priority: number
+    confidence: number
+    is_reciprocal: boolean
+  }
 }
 
 /** Result of createGraphElements */
 export interface GraphElements {
-  parentNodes: ParentNodeElement[];
-  nodes: CamperNodeElement[];
-  edges: EdgeElement[];
+  parentNodes: ParentNodeElement[]
+  nodes: CamperNodeElement[]
+  edges: EdgeElement[]
 }
 
 /**
@@ -239,35 +239,33 @@ export function createGraphElements(
   showEdges: ShowEdgesSettings
 ): GraphElements {
   // Group nodes by bunk
-  const bunkGroups: Record<number, GraphNodeData[]> = {};
+  const bunkGroups: Record<number, GraphNodeData[]> = {}
 
   nodeData.forEach((node) => {
     if (node.bunk_cm_id) {
-      const bunkId = node.bunk_cm_id;
+      const bunkId = node.bunk_cm_id
       if (!bunkGroups[bunkId]) {
-        bunkGroups[bunkId] = [];
+        bunkGroups[bunkId] = []
       }
-      const group = bunkGroups[bunkId];
+      const group = bunkGroups[bunkId]
       if (group) {
-        group.push(node);
+        group.push(node)
       }
     }
-  });
+  })
 
   // Create parent nodes for each bunk
-  const parentNodes: ParentNodeElement[] = Object.keys(bunkGroups).map(
-    (bunkIdStr) => {
-      const bunkId = parseInt(bunkIdStr, 10);
-      return {
-        data: {
-          id: `bunk-${bunkId}`,
-          label: bunksData?.[bunkId] || `Bunk ${bunkId}`,
-          isBunkParent: true,
-          bunk_cm_id: bunkId,
-        },
-      };
+  const parentNodes: ParentNodeElement[] = Object.keys(bunkGroups).map((bunkIdStr) => {
+    const bunkId = parseInt(bunkIdStr, 10)
+    return {
+      data: {
+        id: `bunk-${bunkId}`,
+        label: bunksData?.[bunkId] || `Bunk ${bunkId}`,
+        isBunkParent: true,
+        bunk_cm_id: bunkId,
+      },
     }
-  );
+  })
 
   // Create camper nodes with parent property for compound grouping
   const nodes: CamperNodeElement[] = nodeData.map((node) => ({
@@ -283,13 +281,13 @@ export function createGraphElements(
       community: node.community,
       parent: node.bunk_cm_id ? `bunk-${node.bunk_cm_id}` : undefined,
     },
-  }));
+  }))
 
   // Filter and create edges based on visibility settings
   const edges: EdgeElement[] = edgeData
     .filter((edge) => {
-      const edgeType = edge.type as keyof ShowEdgesSettings;
-      return showEdges[edgeType] !== false;
+      const edgeType = edge.type as keyof ShowEdgesSettings
+      return showEdges[edgeType] !== false
     })
     .map((edge, index) => ({
       data: {
@@ -301,7 +299,7 @@ export function createGraphElements(
         confidence: edge.confidence,
         is_reciprocal: edge.reciprocal,
       },
-    }));
+    }))
 
-  return { parentNodes, nodes, edges };
+  return { parentNodes, nodes, edges }
 }

@@ -1,106 +1,105 @@
-import React, { useState } from 'react';
-import { ChevronDown } from 'lucide-react';
-import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react';
-import type { Constraint, Camper, ConstraintType } from '../types/app-types';
-import { formatGradeOrdinal } from '../utils/gradeUtils';
-import { getDisplayAgeForYear } from '../utils/displayAge';
-import { useYear } from '../hooks/useCurrentYear';
+import React, { useState } from 'react'
+import { ChevronDown } from 'lucide-react'
+import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
+import type { Constraint, Camper, ConstraintType } from '../types/app-types'
+import { formatGradeOrdinal } from '../utils/gradeUtils'
+import { getDisplayAgeForYear } from '../utils/displayAge'
+import { useYear } from '../hooks/useCurrentYear'
 
 interface RequestFormProps {
-  campers: Camper[];
-  constraint?: Constraint;
-  onSubmit: (data: Partial<Constraint>) => void;
-  onCancel: () => void;
+  campers: Camper[]
+  constraint?: Constraint
+  onSubmit: (data: Partial<Constraint>) => void
+  onCancel: () => void
 }
 
-export default function RequestForm({
-  campers,
-  constraint,
-  onSubmit,
-  onCancel,
-}: RequestFormProps) {
-  const viewingYear = useYear();
-  const [type, setType] = useState<ConstraintType>(
-    constraint?.type || 'pair_together'
-  );
-  const [selectedCampers, setSelectedCampers] = useState<string[]>(
-    constraint?.campers || []
-  );
-  const [metadata, setMetadata] = useState<Record<string, unknown>>(constraint?.metadata || {});
+export default function RequestForm({ campers, constraint, onSubmit, onCancel }: RequestFormProps) {
+  const viewingYear = useYear()
+  const [type, setType] = useState<ConstraintType>(constraint?.type || 'pair_together')
+  const [selectedCampers, setSelectedCampers] = useState<string[]>(constraint?.campers || [])
+  const [metadata, setMetadata] = useState<Record<string, unknown>>(constraint?.metadata || {})
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+    e.preventDefault()
 
     if (selectedCampers.length === 0) {
-      alert('Please select at least one camper');
-      return;
+      alert('Please select at least one camper')
+      return
     }
 
     if (type === 'pair_together' && selectedCampers.length !== 2) {
-      alert('Pair together request requires exactly 2 campers');
-      return;
+      alert('Pair together request requires exactly 2 campers')
+      return
     }
 
     if (type === 'keep_apart' && selectedCampers.length < 2) {
-      alert('Keep apart request requires at least 2 campers');
-      return;
+      alert('Keep apart request requires at least 2 campers')
+      return
     }
 
     onSubmit({
       type,
       campers: selectedCampers,
       metadata,
-    });
-  };
+    })
+  }
 
   const toggleCamper = (camperId: string) => {
-    setSelectedCampers(prev =>
-      prev.includes(camperId)
-        ? prev.filter(id => id !== camperId)
-        : [...prev, camperId]
-    );
-  };
+    setSelectedCampers((prev) =>
+      prev.includes(camperId) ? prev.filter((id) => id !== camperId) : [...prev, camperId]
+    )
+  }
 
   const getMaxCampers = () => {
     switch (type) {
       case 'pair_together':
-        return 2;
+        return 2
       case 'age_preference':
       case 'bunk_preference':
-        return 1;
+        return 1
       default:
-        return 10;
+        return 10
     }
-  };
+  }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {/* Constraint Type */}
       <div>
-        <label className="block text-sm font-medium text-foreground mb-1">
-          Constraint Type
-        </label>
+        <label className="text-foreground mb-1 block text-sm font-medium">Constraint Type</label>
         <Listbox
           value={type}
           onChange={(v) => {
-            setType(v as ConstraintType);
-            setSelectedCampers([]); // Reset selection on type change
+            setType(v as ConstraintType)
+            setSelectedCampers([]) // Reset selection on type change
           }}
         >
           <div className="relative">
             <ListboxButton className="listbox-button">
               <span>
-                {type === 'pair_together' ? 'Pair Together' :
-                 type === 'keep_apart' ? 'Keep Apart' :
-                 type === 'age_preference' ? 'Age Preference' : 'Bunk Preference'}
+                {type === 'pair_together'
+                  ? 'Pair Together'
+                  : type === 'keep_apart'
+                    ? 'Keep Apart'
+                    : type === 'age_preference'
+                      ? 'Age Preference'
+                      : 'Bunk Preference'}
               </span>
-              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              <ChevronDown className="text-muted-foreground h-4 w-4" />
             </ListboxButton>
             <ListboxOptions className="listbox-options w-full">
-              <ListboxOption value="pair_together" className="listbox-option">Pair Together</ListboxOption>
-              <ListboxOption value="keep_apart" className="listbox-option">Keep Apart</ListboxOption>
-              <ListboxOption value="age_preference" className="listbox-option">Age Preference</ListboxOption>
-              <ListboxOption value="bunk_preference" className="listbox-option">Bunk Preference</ListboxOption>
+              <ListboxOption value="pair_together" className="listbox-option">
+                Pair Together
+              </ListboxOption>
+              <ListboxOption value="keep_apart" className="listbox-option">
+                Keep Apart
+              </ListboxOption>
+              <ListboxOption value="age_preference" className="listbox-option">
+                Age Preference
+              </ListboxOption>
+              <ListboxOption value="bunk_preference" className="listbox-option">
+                Bunk Preference
+              </ListboxOption>
             </ListboxOptions>
           </div>
         </Listbox>
@@ -108,29 +107,29 @@ export default function RequestForm({
 
       {/* Camper Selection */}
       <div>
-        <label className="block text-sm font-medium text-foreground mb-1">
+        <label className="text-foreground mb-1 block text-sm font-medium">
           Select Campers ({selectedCampers.length}/{getMaxCampers()})
         </label>
-        <div className="border rounded-md p-2 max-h-48 overflow-y-auto bg-background">
-          {campers.map(camper => (
+        <div className="bg-background max-h-48 overflow-y-auto rounded-md border p-2">
+          {campers.map((camper) => (
             <label
               key={camper.id}
-              className="flex items-center p-2 hover:bg-muted/50 cursor-pointer transition-colors duration-75"
+              className="hover:bg-muted/50 flex cursor-pointer items-center p-2 transition-colors duration-75"
             >
               <input
                 type="checkbox"
                 checked={selectedCampers.includes(camper.id)}
                 onChange={() => toggleCamper(camper.id)}
                 disabled={
-                  !selectedCampers.includes(camper.id) &&
-                  selectedCampers.length >= getMaxCampers()
+                  !selectedCampers.includes(camper.id) && selectedCampers.length >= getMaxCampers()
                 }
-                className="mr-3 w-5 h-5 sm:w-4 sm:h-4 cursor-pointer"
+                className="mr-3 h-5 w-5 cursor-pointer sm:h-4 sm:w-4"
               />
               <div className="flex-1">
                 <span className="font-medium">{camper.name}</span>
-                <span className="text-sm text-muted-foreground ml-2">
-                  Age {(getDisplayAgeForYear(camper, viewingYear) ?? 0).toFixed(2)} • {formatGradeOrdinal(camper.grade)}
+                <span className="text-muted-foreground ml-2 text-sm">
+                  Age {(getDisplayAgeForYear(camper, viewingYear) ?? 0).toFixed(2)} •{' '}
+                  {formatGradeOrdinal(camper.grade)}
                 </span>
               </div>
             </label>
@@ -141,9 +140,7 @@ export default function RequestForm({
       {/* Type-specific fields */}
       {type === 'age_preference' && (
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">
-            Age Preference
-          </label>
+          <label className="text-foreground mb-1 block text-sm font-medium">Age Preference</label>
           <Listbox
             value={(metadata['preference'] as string) || 'similar'}
             onChange={(v) => setMetadata({ ...metadata, preference: v })}
@@ -151,15 +148,24 @@ export default function RequestForm({
             <div className="relative">
               <ListboxButton className="listbox-button">
                 <span>
-                  {(metadata['preference'] as string) === 'older' ? 'Older Campers' :
-                   (metadata['preference'] as string) === 'younger' ? 'Younger Campers' : 'Similar Age'}
+                  {(metadata['preference'] as string) === 'older'
+                    ? 'Older Campers'
+                    : (metadata['preference'] as string) === 'younger'
+                      ? 'Younger Campers'
+                      : 'Similar Age'}
                 </span>
-                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                <ChevronDown className="text-muted-foreground h-4 w-4" />
               </ListboxButton>
               <ListboxOptions className="listbox-options w-full">
-                <ListboxOption value="similar" className="listbox-option">Similar Age</ListboxOption>
-                <ListboxOption value="older" className="listbox-option">Older Campers</ListboxOption>
-                <ListboxOption value="younger" className="listbox-option">Younger Campers</ListboxOption>
+                <ListboxOption value="similar" className="listbox-option">
+                  Similar Age
+                </ListboxOption>
+                <ListboxOption value="older" className="listbox-option">
+                  Older Campers
+                </ListboxOption>
+                <ListboxOption value="younger" className="listbox-option">
+                  Younger Campers
+                </ListboxOption>
               </ListboxOptions>
             </div>
           </Listbox>
@@ -168,17 +174,15 @@ export default function RequestForm({
 
       {type === 'bunk_preference' && (
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">
+          <label className="text-foreground mb-1 block text-sm font-medium">
             Preferred Bunk Name (optional)
           </label>
           <input
             type="text"
             value={(metadata['bunkName'] as string) || ''}
-            onChange={(e) =>
-              setMetadata({ ...metadata, bunkName: e.target.value })
-            }
+            onChange={(e) => setMetadata({ ...metadata, bunkName: e.target.value })}
             placeholder="e.g., B-10 or Teen 1"
-            className="w-full px-3 py-2 border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+            className="bg-background text-foreground focus:ring-primary w-full rounded-md border px-3 py-2 focus:ring-2 focus:outline-none"
           />
         </div>
       )}
@@ -188,17 +192,17 @@ export default function RequestForm({
         <button
           type="button"
           onClick={onCancel}
-          className="px-4 py-2 border rounded-md hover:bg-muted/50 transition-colors duration-75"
+          className="hover:bg-muted/50 rounded-md border px-4 py-2 transition-colors duration-75"
         >
           Cancel
         </button>
         <button
           type="submit"
-          className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors duration-75"
+          className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-2 transition-colors duration-75"
         >
           {constraint ? 'Update' : 'Create'} Constraint
         </button>
       </div>
     </form>
-  );
+  )
 }

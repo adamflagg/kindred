@@ -371,8 +371,8 @@ class TestMetricsRepositoryBuildHistoryByPerson:
         assert len(result) == 2
         assert 100 in result
         assert 200 in result
-        # Last record for person 100 should be stored
-        assert result[100].cm_id == 3
+        # First record for person 100 should be stored (keeps first found)
+        assert result[100].cm_id == 1
 
     def test_build_history_by_person_skips_none_person_id(self) -> None:
         """build_history_by_person skips records with None person_id."""
@@ -391,3 +391,224 @@ class TestMetricsRepositoryBuildHistoryByPerson:
         assert len(result) == 1
         assert 100 in result
         assert None not in result
+
+
+class TestMetricsRepositoryFetchAttendeesWithPersons:
+    """Tests for fetch_attendees_with_persons method (geographic demographics)."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_attendees_with_persons_includes_expand(self) -> None:
+        """fetch_attendees_with_persons includes person expansion."""
+        from api.services.metrics_repository import MetricsRepository
+
+        mock_pb = MagicMock()
+        mock_collection = MagicMock()
+        mock_pb.collection.return_value = mock_collection
+        mock_collection.get_full_list.return_value = []
+
+        repo = MetricsRepository(mock_pb)
+        await repo.fetch_attendees_with_persons(2025)
+
+        mock_pb.collection.assert_called_with("attendees")
+        call_args = mock_collection.get_full_list.call_args
+        expand = call_args.kwargs["query_params"]["expand"]
+        assert "person" in expand
+
+    @pytest.mark.asyncio
+    async def test_fetch_attendees_with_persons_filters_by_year(self) -> None:
+        """fetch_attendees_with_persons filters by year."""
+        from api.services.metrics_repository import MetricsRepository
+
+        mock_pb = MagicMock()
+        mock_collection = MagicMock()
+        mock_pb.collection.return_value = mock_collection
+        mock_collection.get_full_list.return_value = []
+
+        repo = MetricsRepository(mock_pb)
+        await repo.fetch_attendees_with_persons(2025)
+
+        call_args = mock_collection.get_full_list.call_args
+        filter_str = call_args.kwargs["query_params"]["filter"]
+        assert "year = 2025" in filter_str
+
+    @pytest.mark.asyncio
+    async def test_fetch_attendees_with_persons_default_enrolled_filter(self) -> None:
+        """fetch_attendees_with_persons defaults to enrolled status."""
+        from api.services.metrics_repository import MetricsRepository
+
+        mock_pb = MagicMock()
+        mock_collection = MagicMock()
+        mock_pb.collection.return_value = mock_collection
+        mock_collection.get_full_list.return_value = []
+
+        repo = MetricsRepository(mock_pb)
+        await repo.fetch_attendees_with_persons(2025)
+
+        call_args = mock_collection.get_full_list.call_args
+        filter_str = call_args.kwargs["query_params"]["filter"]
+        assert "is_active = 1" in filter_str
+        assert "status_id = 2" in filter_str
+
+    @pytest.mark.asyncio
+    async def test_fetch_attendees_with_persons_with_session_types(self) -> None:
+        """fetch_attendees_with_persons filters by session types."""
+        from api.services.metrics_repository import MetricsRepository
+
+        mock_pb = MagicMock()
+        mock_collection = MagicMock()
+        mock_pb.collection.return_value = mock_collection
+        mock_collection.get_full_list.return_value = []
+
+        repo = MetricsRepository(mock_pb)
+        await repo.fetch_attendees_with_persons(2025, session_types=["main", "embedded"])
+
+        call_args = mock_collection.get_full_list.call_args
+        filter_str = call_args.kwargs["query_params"]["filter"]
+        # Session type filter should be applied via session expand
+        assert "year = 2025" in filter_str
+
+    @pytest.mark.asyncio
+    async def test_fetch_attendees_with_persons_returns_records(self) -> None:
+        """fetch_attendees_with_persons returns list of attendee records."""
+        from api.services.metrics_repository import MetricsRepository
+
+        mock_pb = MagicMock()
+        mock_collection = MagicMock()
+        mock_pb.collection.return_value = mock_collection
+
+        # Create mock record with expand
+        mock_record = MockRecord(id="1", cm_id=100, person_id=500)
+        mock_record.expand = {"person": MockRecord(id="p1", cm_id=500, person_id=500)}
+        mock_collection.get_full_list.return_value = [mock_record]
+
+        repo = MetricsRepository(mock_pb)
+        result = await repo.fetch_attendees_with_persons(2025)
+
+        assert isinstance(result, list)
+        assert len(result) == 1
+
+
+class TestMetricsRepositoryFetchSynagogueByHousehold:
+    """Tests for fetch_synagogue_by_household method."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_synagogue_finds_field_definition(self) -> None:
+        """fetch_synagogue_by_household finds Synagogue field definition."""
+        from api.services.metrics_repository import MetricsRepository
+
+        mock_pb = MagicMock()
+        mock_field_def_collection = MagicMock()
+        mock_hh_cv_collection = MagicMock()
+        mock_hh_collection = MagicMock()
+
+        collections = {
+            "field_definitions": mock_field_def_collection,
+            "household_custom_values": mock_hh_cv_collection,
+            "households": mock_hh_collection,
+        }
+        mock_pb.collection.side_effect = lambda name: collections.get(name, MagicMock())
+
+        # Mock field definition response
+        mock_field_def = MagicMock()
+        mock_field_def.id = "fd_123"
+        mock_field_def.name = "Synagogue"
+        mock_field_def_collection.get_first_list_item.return_value = mock_field_def
+        mock_hh_cv_collection.get_full_list.return_value = []
+
+        repo = MetricsRepository(mock_pb)
+        await repo.fetch_synagogue_by_household(2025)
+
+        # Verify field_definitions was queried for "Synagogue"
+        mock_field_def_collection.get_first_list_item.assert_called_once()
+        call_args = mock_field_def_collection.get_first_list_item.call_args
+        assert 'name = "Synagogue"' in call_args[0][0]
+
+    @pytest.mark.asyncio
+    async def test_fetch_synagogue_returns_empty_when_no_field(self) -> None:
+        """fetch_synagogue_by_household returns empty dict when field not found."""
+        from api.services.metrics_repository import MetricsRepository
+
+        mock_pb = MagicMock()
+        mock_collection = MagicMock()
+        mock_pb.collection.return_value = mock_collection
+        mock_collection.get_first_list_item.side_effect = Exception("Not found")
+
+        repo = MetricsRepository(mock_pb)
+        result = await repo.fetch_synagogue_by_household(2025)
+
+        assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_fetch_synagogue_returns_mapping_by_household_cm_id(self) -> None:
+        """fetch_synagogue_by_household returns dict mapping household_cm_id to synagogue."""
+        from api.services.metrics_repository import MetricsRepository
+
+        mock_pb = MagicMock()
+        mock_field_def_collection = MagicMock()
+        mock_hh_cv_collection = MagicMock()
+        mock_hh_collection = MagicMock()
+
+        collections = {
+            "field_definitions": mock_field_def_collection,
+            "household_custom_values": mock_hh_cv_collection,
+            "households": mock_hh_collection,
+        }
+        mock_pb.collection.side_effect = lambda name: collections.get(name, MagicMock())
+
+        # Mock field definition
+        mock_field_def = MagicMock()
+        mock_field_def.id = "fd_123"
+        mock_field_def_collection.get_first_list_item.return_value = mock_field_def
+
+        # Mock household_custom_values with expand
+        mock_hh_cv1 = MagicMock()
+        mock_hh_cv1.value = "Temple Beth Am"
+        mock_hh_cv1.expand = {"household": MagicMock(cm_id=1001)}
+        mock_hh_cv2 = MagicMock()
+        mock_hh_cv2.value = "Congregation Rodef Sholom"
+        mock_hh_cv2.expand = {"household": MagicMock(cm_id=1002)}
+        mock_hh_cv_collection.get_full_list.return_value = [mock_hh_cv1, mock_hh_cv2]
+
+        repo = MetricsRepository(mock_pb)
+        result = await repo.fetch_synagogue_by_household(2025)
+
+        assert isinstance(result, dict)
+        assert result.get(1001) == "Temple Beth Am"
+        assert result.get(1002) == "Congregation Rodef Sholom"
+
+    @pytest.mark.asyncio
+    async def test_fetch_synagogue_skips_empty_values(self) -> None:
+        """fetch_synagogue_by_household skips records with empty values."""
+        from api.services.metrics_repository import MetricsRepository
+
+        mock_pb = MagicMock()
+        mock_field_def_collection = MagicMock()
+        mock_hh_cv_collection = MagicMock()
+
+        def collection_router(name: str) -> MagicMock:
+            if name == "field_definitions":
+                return mock_field_def_collection
+            elif name == "household_custom_values":
+                return mock_hh_cv_collection
+            return MagicMock()
+
+        mock_pb.collection.side_effect = collection_router
+
+        mock_field_def = MagicMock()
+        mock_field_def.id = "fd_123"
+        mock_field_def_collection.get_first_list_item.return_value = mock_field_def
+
+        # One with value, one empty
+        mock_hh_cv1 = MagicMock()
+        mock_hh_cv1.value = "Temple Beth Am"
+        mock_hh_cv1.expand = {"household": MagicMock(cm_id=1001)}
+        mock_hh_cv2 = MagicMock()
+        mock_hh_cv2.value = ""  # Empty
+        mock_hh_cv2.expand = {"household": MagicMock(cm_id=1002)}
+        mock_hh_cv_collection.get_full_list.return_value = [mock_hh_cv1, mock_hh_cv2]
+
+        repo = MetricsRepository(mock_pb)
+        result = await repo.fetch_synagogue_by_household(2025)
+
+        assert 1001 in result
+        assert 1002 not in result  # Skipped due to empty value

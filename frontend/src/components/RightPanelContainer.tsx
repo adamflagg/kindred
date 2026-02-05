@@ -1,18 +1,18 @@
-import { useState, lazy, Suspense, Activity } from 'react';
-import { Users, User, Loader2 } from 'lucide-react';
-import type { Camper } from '../types/app-types';
-import UnassignedCampers from './UnassignedCampers';
+import { useState, lazy, Suspense, Activity } from 'react'
+import { Users, User, Loader2 } from 'lucide-react'
+import type { Camper } from '../types/app-types'
+import UnassignedCampers from './UnassignedCampers'
 
 // Lazy load CamperDetailsPanel - only needed when a camper is selected
-const CamperDetailsPanel = lazy(() => import('./CamperDetailsPanel'));
+const CamperDetailsPanel = lazy(() => import('./CamperDetailsPanel'))
 
-type RightPanelView = 'unassigned' | 'camper-details';
+type RightPanelView = 'unassigned' | 'camper-details'
 
 interface RightPanelContainerProps {
-  selectedCamperId: string | null;
-  unassignedCampers: Camper[];
-  onCamperClick: (camper: Camper) => void;
-  onCloseDetails: () => void;
+  selectedCamperId: string | null
+  unassignedCampers: Camper[]
+  onCamperClick: (camper: Camper) => void
+  onCloseDetails: () => void
 }
 
 export default function RightPanelContainer({
@@ -22,60 +22,58 @@ export default function RightPanelContainer({
   onCloseDetails,
 }: RightPanelContainerProps) {
   // Track manual tab selection (when no camper is selected)
-  const [manualView, setManualView] = useState<RightPanelView>('unassigned');
+  const [manualView, setManualView] = useState<RightPanelView>('unassigned')
   // Track the last selected camper to keep the panel mounted (preserves state)
-  const [lastCamperId, setLastCamperId] = useState<string | null>(null);
+  const [lastCamperId, setLastCamperId] = useState<string | null>(null)
 
   // Update last camper during render when selection changes (React pattern for derived state)
   // This avoids useEffect and cascading renders
   if (selectedCamperId && selectedCamperId !== lastCamperId) {
-    setLastCamperId(selectedCamperId);
+    setLastCamperId(selectedCamperId)
   }
 
   // Derive active view: auto-switch to details when camper selected, otherwise use manual choice
-  const activeView: RightPanelView = selectedCamperId ? 'camper-details' : manualView;
+  const activeView: RightPanelView = selectedCamperId ? 'camper-details' : manualView
 
   // The camper to display - current selection or last selected (for preserving state)
-  const displayCamperId = selectedCamperId ?? lastCamperId;
+  const displayCamperId = selectedCamperId ?? lastCamperId
 
   // Handle closing details - switch back to unassigned view
   const handleCloseDetails = () => {
-    setManualView('unassigned');
-    onCloseDetails();
-  };
+    setManualView('unassigned')
+    onCloseDetails()
+  }
 
   // Handle tab click
   const handleTabClick = (view: RightPanelView) => {
-    setManualView(view);
+    setManualView(view)
     // If switching to unassigned, clear the selected camper
     if (view === 'unassigned') {
-      onCloseDetails();
+      onCloseDetails()
     }
-  };
+  }
 
   return (
     <div className="lg:sticky lg:top-4">
       {/* Tab Header */}
-      <div className="flex gap-1 mb-4 p-1 bg-muted/50 rounded-xl">
+      <div className="bg-muted/50 mb-4 flex gap-1 rounded-xl p-1">
         <button
           onClick={() => handleTabClick('unassigned')}
-          className={`
-            flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all
-            ${activeView === 'unassigned'
+          className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition-all ${
+            activeView === 'unassigned'
               ? 'bg-card text-foreground shadow-sm'
               : 'text-muted-foreground hover:text-foreground hover:bg-card/50'
-            }
-          `}
+          } `}
         >
           <Users className="h-4 w-4" />
           <span>Unassigned</span>
-          <span className={`
-            px-1.5 py-0.5 text-xs rounded-full
-            ${activeView === 'unassigned'
-              ? 'bg-primary/10 text-primary'
-              : 'bg-muted text-muted-foreground'
-            }
-          `}>
+          <span
+            className={`rounded-full px-1.5 py-0.5 text-xs ${
+              activeView === 'unassigned'
+                ? 'bg-primary/10 text-primary'
+                : 'bg-muted text-muted-foreground'
+            } `}
+          >
             {unassignedCampers.length}
           </span>
         </button>
@@ -83,20 +81,18 @@ export default function RightPanelContainer({
         <button
           onClick={() => handleTabClick('camper-details')}
           disabled={!selectedCamperId}
-          className={`
-            flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all
-            ${activeView === 'camper-details'
+          className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition-all ${
+            activeView === 'camper-details'
               ? 'bg-card text-foreground shadow-sm'
               : selectedCamperId
                 ? 'text-muted-foreground hover:text-foreground hover:bg-card/50'
                 : 'text-muted-foreground/50 cursor-not-allowed'
-            }
-          `}
+          } `}
         >
           <User className="h-4 w-4" />
           <span>Details</span>
           {selectedCamperId && activeView !== 'camper-details' && (
-            <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+            <span className="bg-primary h-2 w-2 animate-pulse rounded-full" />
           )}
         </button>
       </div>
@@ -105,21 +101,20 @@ export default function RightPanelContainer({
       <div className="relative">
         {/* Unassigned Campers - preserves scroll position and filter state */}
         <Activity mode={activeView === 'unassigned' ? 'visible' : 'hidden'}>
-          <UnassignedCampers
-            campers={unassignedCampers}
-            onCamperClick={onCamperClick}
-          />
+          <UnassignedCampers campers={unassignedCampers} onCamperClick={onCamperClick} />
         </Activity>
 
         {/* Camper Details - lazy loaded, preserves expanded sections and loaded data */}
         <Activity mode={activeView === 'camper-details' && displayCamperId ? 'visible' : 'hidden'}>
           {displayCamperId ? (
-            <Suspense fallback={
-              <div className="card-lodge p-8 text-center">
-                <Loader2 className="h-8 w-8 mx-auto animate-spin text-primary mb-4" />
-                <p className="text-muted-foreground">Loading details...</p>
-              </div>
-            }>
+            <Suspense
+              fallback={
+                <div className="card-lodge p-8 text-center">
+                  <Loader2 className="text-primary mx-auto mb-4 h-8 w-8 animate-spin" />
+                  <p className="text-muted-foreground">Loading details...</p>
+                </div>
+              }
+            >
               <CamperDetailsPanel
                 camperId={displayCamperId}
                 onClose={handleCloseDetails}
@@ -132,13 +127,11 @@ export default function RightPanelContainer({
         {/* Placeholder when no camper has been selected yet */}
         {activeView === 'camper-details' && !displayCamperId && (
           <div className="card-lodge p-8 text-center">
-            <User className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
-            <p className="text-muted-foreground">
-              Click on a camper to view their details
-            </p>
+            <User className="text-muted-foreground/30 mx-auto mb-4 h-12 w-12" />
+            <p className="text-muted-foreground">Click on a camper to view their details</p>
           </div>
         )}
       </div>
     </div>
-  );
+  )
 }

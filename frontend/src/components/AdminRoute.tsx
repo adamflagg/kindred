@@ -1,9 +1,9 @@
-import { Navigate } from 'react-router';
-import { useIsAdmin } from '../hooks/useIsAdmin';
+import { Navigate } from 'react-router'
+import { useIsAdmin } from '../hooks/useIsAdmin'
 
 interface AdminRouteProps {
-  children: React.ReactNode;
-  fallback?: string;
+  children: React.ReactNode
+  fallback?: string
 }
 
 /**
@@ -11,11 +11,11 @@ interface AdminRouteProps {
  * Non-admins are silently redirected to the fallback path (default: /summer).
  */
 export const AdminRoute = ({ children, fallback = '/summer' }: AdminRouteProps) => {
-  const isAdmin = useIsAdmin();
+  const isAdmin = useIsAdmin()
 
   if (!isAdmin) {
-    return <Navigate to={fallback} replace />;
+    return <Navigate to={fallback} replace />
   }
 
-  return <>{children}</>;
-};
+  return <>{children}</>
+}

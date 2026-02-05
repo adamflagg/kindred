@@ -28,7 +28,7 @@ export {
   type Address,
   type PhoneNumber,
   type EmailAddress,
-} from './common';
+} from './common'
 
 // Camper schemas
 export {
@@ -42,7 +42,7 @@ export {
   type PersonsResponse,
   type AttendeesRecord,
   type AttendeesResponse,
-} from './camper';
+} from './camper'
 
 // Session schemas
 export {
@@ -56,7 +56,7 @@ export {
   type CampSessionsResponse,
   type BunkPlansRecord,
   type BunkPlansResponse,
-} from './session';
+} from './session'
 
 // Bunk schemas
 export {
@@ -72,7 +72,7 @@ export {
   type BunkAssignmentsResponse,
   type BunkAssignmentsDraftRecord,
   type BunkAssignmentsDraftResponse,
-} from './bunk';
+} from './bunk'
 
 // Request schemas
 export {
@@ -92,4 +92,4 @@ export {
   type OriginalBunkRequestsField,
   type OriginalBunkRequestsRecord,
   type OriginalBunkRequestsResponse,
-} from './request';
+} from './request'

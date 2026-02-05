@@ -10,42 +10,40 @@
  * - Demographic breakdowns (school, city, synagogue)
  */
 
-import { useState, useMemo } from 'react';
-import { useCurrentYear } from '../../../hooks/useCurrentYear';
-import { useRegistrationMetrics } from '../../../hooks/useMetrics';
-import { useMetricsSessions } from '../../../hooks/useMetricsSessions';
-import { useDrilldown } from '../../../hooks/useDrilldown';
-import { MetricCard } from '../../../components/metrics/MetricCard';
-import { BreakdownChart } from '../../../components/metrics/BreakdownChart';
-import { DemographicBreakdowns } from '../../../components/metrics/DemographicBreakdowns';
-import { RegistrationSessionSelector } from '../../../components/metrics/RegistrationSessionSelector';
-import { GenderByGradeChart } from '../../../components/metrics/GenderByGradeChart';
-import { getSessionChartLabel } from '../../../utils/sessionDisplay';
-import { buildSessionDateLookup, sortSessionDataByDate } from '../../../utils/sessionUtils';
+import { useMemo } from 'react'
+import { useCurrentYear } from '../../../hooks/useCurrentYear'
+import { useRegistrationMetrics } from '../../../hooks/useMetrics'
+import { useMetricsSession } from '../../../hooks/useMetricsSession'
+import { useDrilldown } from '../../../hooks/useDrilldown'
+import { MetricCard } from '../../../components/metrics/MetricCard'
+import { BreakdownChart } from '../../../components/metrics/BreakdownChart'
+import { GenderByGradeChart } from '../../../components/metrics/GenderByGradeChart'
+import { SessionLengthBySessionChart } from '../../../components/metrics/SessionLengthBySessionChart'
+import { getSessionChartLabel } from '../../../utils/sessionDisplay'
+import { buildSessionDateLookup, sortSessionDataByDate } from '../../../utils/sessionUtils'
 import {
   transformGenderData,
   transformGradeData,
   transformSessionData,
-  transformSessionLengthData,
   transformSummerYearsData,
   transformFirstSummerYearData,
   transformNewVsReturningData,
-} from '../../../utils/metricsTransforms';
-import { Loader2, AlertCircle } from 'lucide-react';
+} from '../../../utils/metricsTransforms'
+import { Loader2, AlertCircle } from 'lucide-react'
 
 /** Default session types for summer camp metrics */
-const DEFAULT_SESSION_TYPES = ['main', 'embedded', 'ag'];
+const DEFAULT_SESSION_TYPES = ['main', 'embedded', 'ag']
 
 export default function RegistrationOverview() {
-  const { currentYear } = useCurrentYear();
+  const { currentYear } = useCurrentYear()
 
-  // Local state for session filter
-  const [selectedSessionCmId, setSelectedSessionCmId] = useState<number | null>(null);
+  // Get session filter from context (unified selector is in MetricsTypeTabs)
+  const { selectedSessionCmId, sessions } = useMetricsSession()
 
   // Build session types param string
-  const sessionTypesParam = DEFAULT_SESSION_TYPES.join(',');
+  const sessionTypesParam = DEFAULT_SESSION_TYPES.join(',')
   // Always use enrolled status only
-  const statusesParam = 'enrolled';
+  const statusesParam = 'enrolled'
 
   // Drilldown state management
   const { setFilter, DrilldownModal } = useDrilldown({
@@ -53,16 +51,10 @@ export default function RegistrationOverview() {
     sessionCmId: selectedSessionCmId ?? undefined,
     sessionTypes: DEFAULT_SESSION_TYPES,
     statusFilter: [statusesParam],
-  });
-
-  // Fetch sessions for dropdown
-  const { data: sessions = [], isLoading: sessionsLoading } = useMetricsSessions(currentYear);
+  })
 
   // Build session date lookup for date-aware sorting
-  const sessionDateLookup = useMemo(
-    () => buildSessionDateLookup(sessions),
-    [sessions]
-  );
+  const sessionDateLookup = useMemo(() => buildSessionDateLookup(sessions), [sessions])
 
   // Fetch registration data with optional session filter
   const { data, isLoading, error } = useRegistrationMetrics(
@@ -70,42 +62,41 @@ export default function RegistrationOverview() {
     sessionTypesParam,
     statusesParam,
     selectedSessionCmId ?? undefined
-  );
+  )
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-        <span className="ml-2 text-muted-foreground">Loading registration data...</span>
+        <Loader2 className="text-primary h-8 w-8 animate-spin" />
+        <span className="text-muted-foreground ml-2">Loading registration data...</span>
       </div>
-    );
+    )
   }
 
   if (error) {
     return (
       <div className="flex items-center justify-center py-12 text-red-600 dark:text-red-400">
-        <AlertCircle className="w-6 h-6 mr-2" />
+        <AlertCircle className="mr-2 h-6 w-6" />
         <span>Failed to load registration data: {error.message}</span>
       </div>
-    );
+    )
   }
 
   if (!data) {
     return (
-      <div className="flex items-center justify-center py-12 text-muted-foreground">
+      <div className="text-muted-foreground flex items-center justify-center py-12">
         No data available
       </div>
-    );
+    )
   }
 
   // Transform data for charts using utility functions
-  const genderChartData = transformGenderData(data.by_gender);
-  const gradeChartData = transformGradeData(data.by_grade);
-  const sessionChartData = transformSessionData(data.by_session, sessionDateLookup);
-  const sessionLengthData = transformSessionLengthData(data.by_session_length);
-  const summerYearsData = transformSummerYearsData(data.by_summer_years);
-  const firstSummerYearData = transformFirstSummerYearData(data.by_first_summer_year);
-  const newVsReturningData = transformNewVsReturningData(data.new_vs_returning);
+  const genderChartData = transformGenderData(data.by_gender)
+  const gradeChartData = transformGradeData(data.by_grade)
+  const sessionChartData = transformSessionData(data.by_session, sessionDateLookup)
+  const summerYearsData = transformSummerYearsData(data.by_summer_years)
+  const firstSummerYearData = transformFirstSummerYearData(data.by_first_summer_year)
+  const newVsReturningData = transformNewVsReturningData(data.new_vs_returning)
 
   // Fallback to years_at_camp if summer years not available
   const yearsChartData =
@@ -115,59 +106,88 @@ export default function RegistrationOverview() {
           name: y.years === 1 ? '1 year' : `${y.years} years`,
           value: y.count,
           percentage: y.percentage,
-        }));
+        }))
 
   // Sort sessions for table (chart uses sorted version from transformSessionData)
-  const sortedBySession = sortSessionDataByDate(data.by_session, sessionDateLookup);
+  const sortedBySession = sortSessionDataByDate(data.by_session, sessionDateLookup)
 
   return (
     <div className="space-y-6">
-      {/* Session Selector */}
-      <div className="flex items-center justify-between">
-        <RegistrationSessionSelector
-          sessions={sessions}
-          selectedSessionCmId={selectedSessionCmId}
-          onSessionChange={setSelectedSessionCmId}
-          isLoading={sessionsLoading}
-        />
-        {selectedSessionCmId && (
-          <span className="text-sm text-muted-foreground">
-            Showing data for selected session only
-          </span>
-        )}
-      </div>
+      {/* Session filter indicator (selector is in MetricsTypeTabs) */}
+      {selectedSessionCmId && (
+        <div className="text-muted-foreground text-sm">Showing data for selected session only</div>
+      )}
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
         <MetricCard
           title="Total Enrolled"
           value={data.total_enrolled}
-          subtitle={selectedSessionCmId ? 'In selected session' : `Active enrollments for ${currentYear}`}
+          subtitle={
+            selectedSessionCmId ? 'In selected session' : `Active enrollments for ${currentYear}`
+          }
+          onClick={() =>
+            setFilter({
+              type: 'status',
+              value: 'enrolled',
+              label: 'Enrolled Campers',
+            })
+          }
         />
         <MetricCard
           title="Total Waitlisted"
           value={data.total_waitlisted}
           subtitle="On waitlist"
+          onClick={() =>
+            setFilter({
+              type: 'status',
+              value: 'waitlisted',
+              label: 'Waitlisted Campers',
+              statusOverride: ['waitlisted'],
+            })
+          }
         />
         <MetricCard
           title="Total Cancelled"
           value={data.total_cancelled}
           subtitle="Cancellations"
+          onClick={() =>
+            setFilter({
+              type: 'status',
+              value: 'cancelled',
+              label: 'Cancelled Campers',
+              statusOverride: ['cancelled'],
+            })
+          }
         />
         <MetricCard
           title="New Campers"
           value={data.new_vs_returning.new_count}
           subtitle={`${data.new_vs_returning.new_percentage.toFixed(1)}% of enrolled`}
+          onClick={() =>
+            setFilter({
+              type: 'returning_status',
+              value: 'new',
+              label: 'New Campers',
+            })
+          }
         />
         <MetricCard
           title="Returning Campers"
           value={data.new_vs_returning.returning_count}
           subtitle={`${data.new_vs_returning.returning_percentage.toFixed(1)}% of enrolled`}
+          onClick={() =>
+            setFilter({
+              type: 'returning_status',
+              value: 'returning',
+              label: 'Returning Campers',
+            })
+          }
         />
       </div>
 
       {/* Charts Row 1: Gender */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <BreakdownChart
           title="Enrollment by Gender"
           data={genderChartData}
@@ -187,13 +207,19 @@ export default function RegistrationOverview() {
       </div>
 
       {/* Charts Row 2: New vs Returning, Grade */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <BreakdownChart
           title="New vs Returning Campers"
           data={newVsReturningData}
           type="pie"
           showPercentage
           height={250}
+          breakdownType="returning_status"
+          onSegmentClick={(filter) => {
+            // Map display labels to breakdown values
+            const value = filter.label === 'New Campers' ? 'new' : 'returning'
+            setFilter({ ...filter, type: 'returning_status', value })
+          }}
         />
         <BreakdownChart
           title="Enrollment by Grade"
@@ -206,7 +232,7 @@ export default function RegistrationOverview() {
       </div>
 
       {/* Charts Row 3: Session, Session Length */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <BreakdownChart
           title="Enrollment by Session"
           data={sessionChartData}
@@ -215,18 +241,29 @@ export default function RegistrationOverview() {
           breakdownType="session"
           onSegmentClick={setFilter}
         />
-        <BreakdownChart
+        <SessionLengthBySessionChart
+          data={data.by_session_length_by_session ?? []}
           title="Enrollment by Session Length"
-          data={sessionLengthData}
-          type="bar"
-          height={250}
+          height={350}
+          sessionDateLookup={sessionDateLookup}
+          onCategoryClick={(lengthCategory) =>
+            setFilter({
+              type: 'session_length',
+              value: lengthCategory,
+              label: `${lengthCategory} Sessions`,
+            })
+          }
         />
       </div>
 
       {/* Charts Row 4: Years at Camp, First Summer Year */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <BreakdownChart
-          title={summerYearsData.length > 0 ? 'Enrollment by Summers at Camp' : 'Enrollment by Years at Camp'}
+          title={
+            summerYearsData.length > 0
+              ? 'Enrollment by Summers at Camp'
+              : 'Enrollment by Years at Camp'
+          }
           data={yearsChartData}
           type="bar"
           height={300}
@@ -239,34 +276,60 @@ export default function RegistrationOverview() {
             data={firstSummerYearData}
             type="bar"
             height={300}
+            breakdownType="first_summer_year"
+            onSegmentClick={(filter) => {
+              // Extract year from the label (e.g., "2024" from "2024")
+              setFilter({
+                type: 'first_summer_year',
+                value: filter.value,
+                label: `First Summer ${filter.value}`,
+              })
+            }}
           />
         )}
       </div>
 
       {/* Session Details Table */}
       <div className="card-lodge overflow-hidden">
-        <div className="px-4 py-3 border-b border-border">
-          <h3 className="text-sm font-semibold text-foreground">Session Details</h3>
+        <div className="border-border border-b px-4 py-3">
+          <h3 className="text-foreground text-sm font-semibold">Session Details</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border bg-muted/30">
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Session</th>
-                <th className="px-4 py-3 text-right font-medium text-muted-foreground">Enrolled</th>
-                <th className="px-4 py-3 text-right font-medium text-muted-foreground">Capacity</th>
-                <th className="px-4 py-3 text-right font-medium text-muted-foreground">Utilization</th>
+              <tr className="border-border bg-muted/30 border-b">
+                <th className="text-muted-foreground px-4 py-3 text-left font-medium">Session</th>
+                <th className="text-muted-foreground px-4 py-3 text-right font-medium">Enrolled</th>
+                <th className="text-muted-foreground px-4 py-3 text-right font-medium">Capacity</th>
+                <th className="text-muted-foreground px-4 py-3 text-right font-medium">
+                  Utilization
+                </th>
               </tr>
             </thead>
             <tbody>
               {sortedBySession.map((session, index) => (
-                <tr key={index} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
-                  <td className="px-4 py-3 font-medium text-foreground">{getSessionChartLabel(session.session_name, undefined, sessionDateLookup)}</td>
-                  <td className="px-4 py-3 text-right text-foreground">{session.count}</td>
-                  <td className="px-4 py-3 text-right text-foreground">{session.capacity ?? '—'}</td>
+                <tr
+                  key={index}
+                  className="border-border hover:bg-muted/20 border-b transition-colors last:border-0"
+                >
+                  <td className="text-foreground px-4 py-3 font-medium">
+                    {getSessionChartLabel(session.session_name, undefined, sessionDateLookup)}
+                  </td>
+                  <td className="text-foreground px-4 py-3 text-right">{session.count}</td>
+                  <td className="text-foreground px-4 py-3 text-right">
+                    {session.capacity ?? '—'}
+                  </td>
                   <td className="px-4 py-3 text-right">
                     {session.utilization !== null ? (
-                      <span className={session.utilization >= 90 ? 'text-emerald-600 dark:text-emerald-400' : 'text-foreground'}>
+                      <span
+                        className={
+                          session.utilization > 100
+                            ? 'text-red-600 dark:text-red-400'
+                            : session.utilization >= 90
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : 'text-foreground'
+                        }
+                      >
                         {session.utilization.toFixed(1)}%
                       </span>
                     ) : (
@@ -280,20 +343,8 @@ export default function RegistrationOverview() {
         </div>
       </div>
 
-      {/* Demographic Breakdowns (from camper_history) */}
-      <div className="mt-8">
-        <h2 className="text-lg font-semibold text-foreground mb-4">Demographic Analysis</h2>
-        <DemographicBreakdowns
-          bySchool={data.by_school}
-          byCity={data.by_city}
-          bySynagogue={data.by_synagogue}
-          byFirstYear={data.by_first_year}
-          bySessionBunk={data.by_session_bunk}
-        />
-      </div>
-
       {/* Drill-down Modal */}
       <DrilldownModal />
     </div>
-  );
+  )
 }

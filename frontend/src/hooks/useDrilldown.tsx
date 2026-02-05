@@ -19,31 +19,31 @@
  * <DrilldownModal />
  */
 
-import type { ReactElement } from 'react';
-import { useState, useCallback, useMemo } from 'react';
-import { DrillDownModal } from '../components/metrics/DrillDownModal';
-import type { DrilldownFilter } from '../types/metrics';
+import type { ReactElement } from 'react'
+import { useState, useCallback, useMemo } from 'react'
+import { DrillDownModal } from '../components/metrics/DrillDownModal'
+import type { DrilldownFilter } from '../types/metrics'
 
 interface UseDrilldownOptions {
   /** The year for drilldown data */
-  year: number;
+  year: number
   /** Optional session filter (CampMinder session ID) */
-  sessionCmId?: number | undefined;
+  sessionCmId?: number | undefined
   /** Session types to include (e.g., ['main', 'embedded', 'ag']) */
-  sessionTypes: string[];
+  sessionTypes: string[]
   /** Status filter (e.g., ['enrolled']) */
-  statusFilter: string[];
+  statusFilter: string[]
 }
 
 interface UseDrilldownReturn {
   /** Current filter state (null when modal is closed) */
-  filter: DrilldownFilter | null;
+  filter: DrilldownFilter | null
   /** Set filter to open modal with specified breakdown */
-  setFilter: (filter: DrilldownFilter) => void;
+  setFilter: (filter: DrilldownFilter) => void
   /** Clear filter to close modal */
-  clearFilter: () => void;
+  clearFilter: () => void
   /** Modal component to render - returns null when filter is null */
-  DrilldownModal: () => ReactElement | null;
+  DrilldownModal: () => ReactElement | null
 }
 
 export function useDrilldown({
@@ -52,21 +52,21 @@ export function useDrilldown({
   sessionTypes,
   statusFilter,
 }: UseDrilldownOptions): UseDrilldownReturn {
-  const [filter, setFilterState] = useState<DrilldownFilter | null>(null);
+  const [filter, setFilterState] = useState<DrilldownFilter | null>(null)
 
   const setFilter = useCallback((newFilter: DrilldownFilter) => {
-    setFilterState(newFilter);
-  }, []);
+    setFilterState(newFilter)
+  }, [])
 
   const clearFilter = useCallback(() => {
-    setFilterState(null);
-  }, []);
+    setFilterState(null)
+  }, [])
 
   // Memoize the modal component to prevent unnecessary re-renders
   const DrilldownModalComponent = useMemo(() => {
     return function DrilldownModalWrapper(): ReactElement | null {
       if (!filter) {
-        return null;
+        return null
       }
       return (
         <DrillDownModal
@@ -77,14 +77,14 @@ export function useDrilldown({
           statusFilter={statusFilter}
           onClose={clearFilter}
         />
-      );
-    };
-  }, [filter, year, sessionCmId, sessionTypes, statusFilter, clearFilter]);
+      )
+    }
+  }, [filter, year, sessionCmId, sessionTypes, statusFilter, clearFilter])
 
   return {
     filter,
     setFilter,
     clearFilter,
     DrilldownModal: DrilldownModalComponent,
-  };
+  }
 }

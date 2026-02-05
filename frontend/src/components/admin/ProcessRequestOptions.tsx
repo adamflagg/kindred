@@ -1,36 +1,36 @@
-import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Brain, Loader2, AlertTriangle, ChevronDown } from 'lucide-react';
-import { Modal } from '../ui/Modal';
-import { pb } from '../../lib/pocketbase';
-import { useYear } from '../../hooks/useCurrentYear';
-import { queryKeys, syncDataOptions } from '../../utils/queryKeys';
+import { useState, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { Brain, Loader2, AlertTriangle, ChevronDown } from 'lucide-react'
+import { Modal } from '../ui/Modal'
+import { pb } from '../../lib/pocketbase'
+import { useYear } from '../../hooks/useCurrentYear'
+import { queryKeys, syncDataOptions } from '../../utils/queryKeys'
 
 export interface ProcessRequestOptionsState {
-  session: string;
-  limit: number | undefined;
-  forceReprocess: boolean;
-  sourceFields: string[];
-  debug: boolean;
-  trace: boolean;
+  session: string
+  limit: number | undefined
+  forceReprocess: boolean
+  sourceFields: string[]
+  debug: boolean
+  trace: boolean
 }
 
 interface ProcessRequestOptionsProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSubmit: (options: ProcessRequestOptionsState) => void;
-  isProcessing: boolean;
+  isOpen: boolean
+  onClose: () => void
+  onSubmit: (options: ProcessRequestOptionsState) => void
+  isProcessing: boolean
 }
 
 // Regex patterns to extract friendly names from session names (matches Python backend)
-const SESSION_NAME_PATTERN = /Session\s+(\d+[a-z]?)/i;
-const TOC_PATTERN = /Taste\s+of\s+Camp/i;
+const SESSION_NAME_PATTERN = /Session\s+(\d+[a-z]?)/i
+const TOC_PATTERN = /Taste\s+of\s+Camp/i
 
 function extractFriendlyName(name: string): string | null {
-  if (TOC_PATTERN.test(name)) return '1';
-  const match = name.match(SESSION_NAME_PATTERN);
-  const captured = match?.[1];
-  return captured ? captured.toLowerCase() : null;
+  if (TOC_PATTERN.test(name)) return '1'
+  const match = name.match(SESSION_NAME_PATTERN)
+  const captured = match?.[1]
+  return captured ? captured.toLowerCase() : null
 }
 
 // Source field options (static - these don't change between years)
@@ -40,7 +40,7 @@ const SOURCE_FIELD_OPTIONS = [
   { value: 'bunking_notes', label: 'Bunking Notes' },
   { value: 'internal_notes', label: 'Internal Notes' },
   { value: 'socialize_with', label: 'Socialize With' },
-] as const;
+] as const
 
 export default function ProcessRequestOptions({
   isOpen,
@@ -48,27 +48,27 @@ export default function ProcessRequestOptions({
   onSubmit,
   isProcessing,
 }: ProcessRequestOptionsProps) {
-  const currentYear = useYear();
+  const currentYear = useYear()
 
-  const [session, setSession] = useState<string>('all');
-  const [limitValue, setLimitValue] = useState<string>('');
-  const [forceReprocess, setForceReprocess] = useState(false);
-  const [sourceFields, setSourceFields] = useState<string[]>([]);
-  const [debug, setDebug] = useState(false);
-  const [trace, setTrace] = useState(false);
-  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+  const [session, setSession] = useState<string>('all')
+  const [limitValue, setLimitValue] = useState<string>('')
+  const [forceReprocess, setForceReprocess] = useState(false)
+  const [sourceFields, setSourceFields] = useState<string[]>([])
+  const [debug, setDebug] = useState(false)
+  const [trace, setTrace] = useState(false)
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen)
 
   // Reset form when modal closes (render-time check to avoid setState in effect)
   if (!isOpen && prevIsOpen) {
-    setPrevIsOpen(isOpen);
-    setSession('all');
-    setLimitValue('');
-    setForceReprocess(false);
-    setSourceFields([]);
-    setDebug(false);
-    setTrace(false);
+    setPrevIsOpen(isOpen)
+    setSession('all')
+    setLimitValue('')
+    setForceReprocess(false)
+    setSourceFields([])
+    setDebug(false)
+    setTrace(false)
   } else if (isOpen !== prevIsOpen) {
-    setPrevIsOpen(isOpen);
+    setPrevIsOpen(isOpen)
   }
 
   // Fetch sessions dynamically from database (adapts to each year)
@@ -78,50 +78,51 @@ export default function ProcessRequestOptions({
       const records = await pb.collection('camp_sessions').getFullList({
         filter: `year = ${currentYear} && (session_type = "main" || session_type = "embedded")`,
         sort: 'start_date',
-      });
-      return records;
+      })
+      return records
     },
     ...syncDataOptions, // 1 hour stale - sessions don't change often
     enabled: isOpen, // Only fetch when modal is open
-  });
+  })
 
   // Build session options dynamically from database
   const sessionOptions = useMemo(() => {
-    const options: Array<{ value: string; label: string }> = [{ value: 'all', label: 'All Sessions' }];
+    const options: Array<{ value: string; label: string }> = [
+      { value: 'all', label: 'All Sessions' },
+    ]
 
     if (sessions) {
       // Sort logically: 1, 2, 2a, 2b, 3, 3a, 4
       const sorted = [...sessions].sort((a, b) => {
-        const aName = extractFriendlyName(a.name) || '';
-        const bName = extractFriendlyName(b.name) || '';
+        const aName = extractFriendlyName(a.name) || ''
+        const bName = extractFriendlyName(b.name) || ''
         // Compare numeric part first, then alpha suffix
-        const aNum = parseInt(aName) || 0;
-        const bNum = parseInt(bName) || 0;
-        if (aNum !== bNum) return aNum - bNum;
-        return aName.localeCompare(bName);
-      });
+        const aNum = parseInt(aName) || 0
+        const bNum = parseInt(bName) || 0
+        if (aNum !== bNum) return aNum - bNum
+        return aName.localeCompare(bName)
+      })
 
       for (const s of sorted) {
-        const friendly = extractFriendlyName(s.name);
+        const friendly = extractFriendlyName(s.name)
         if (friendly) {
-          options.push({ value: friendly, label: s.name });
+          options.push({ value: friendly, label: s.name })
         }
       }
     }
 
-    return options;
-  }, [sessions]);
-
+    return options
+  }, [sessions])
 
   const handleSourceFieldToggle = (field: string) => {
     setSourceFields((prev) =>
       prev.includes(field) ? prev.filter((f) => f !== field) : [...prev, field]
-    );
-  };
+    )
+  }
 
   const handleSubmit = () => {
-    const parsedLimit = parseInt(limitValue, 10);
-    const limit = !isNaN(parsedLimit) && parsedLimit > 0 ? parsedLimit : undefined;
+    const parsedLimit = parseInt(limitValue, 10)
+    const limit = !isNaN(parsedLimit) && parsedLimit > 0 ? parsedLimit : undefined
 
     onSubmit({
       session,
@@ -130,22 +131,22 @@ export default function ProcessRequestOptions({
       sourceFields,
       debug,
       trace,
-    });
-  };
+    })
+  }
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="sm">
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-teal-100 dark:bg-teal-900/40">
-            <Brain className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+          <div className="rounded-xl bg-teal-100 p-2.5 dark:bg-teal-900/40">
+            <Brain className="h-5 w-5 text-teal-600 dark:text-teal-400" />
           </div>
           <div>
-            <h2 className="text-lg font-display font-semibold" role="heading" aria-level={2}>
+            <h2 className="font-display text-lg font-semibold" role="heading" aria-level={2}>
               Process Requests
             </h2>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-muted-foreground text-sm">
               Process original bunk requests with AI parsing
             </p>
           </div>
@@ -155,7 +156,7 @@ export default function ProcessRequestOptions({
         <div className="space-y-4">
           {/* Session Selector */}
           <div>
-            <label htmlFor="session-select" className="block text-sm font-medium mb-1.5">
+            <label htmlFor="session-select" className="mb-1.5 block text-sm font-medium">
               Session
             </label>
             <div className="relative">
@@ -164,7 +165,7 @@ export default function ProcessRequestOptions({
                 value={session}
                 onChange={(e) => setSession(e.target.value)}
                 disabled={isProcessing}
-                className="w-full px-4 py-2.5 border border-border rounded-lg bg-background text-foreground appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                className="border-border bg-background text-foreground focus:ring-primary/30 focus:border-primary w-full cursor-pointer appearance-none rounded-lg border px-4 py-2.5 focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {sessionOptions.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -172,25 +173,25 @@ export default function ProcessRequestOptions({
                   </option>
                 ))}
               </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+              <ChevronDown className="text-muted-foreground pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2" />
             </div>
           </div>
 
           {/* Source Fields */}
           <div>
-            <label className="block text-sm font-medium mb-1.5">Source Fields</label>
-            <p className="text-xs text-muted-foreground mb-2">
+            <label className="mb-1.5 block text-sm font-medium">Source Fields</label>
+            <p className="text-muted-foreground mb-2 text-xs">
               Filter by field type (empty = all fields)
             </p>
             <div className="space-y-2">
               {SOURCE_FIELD_OPTIONS.map((opt) => (
-                <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                <label key={opt.value} className="flex cursor-pointer items-center gap-2">
                   <input
                     type="checkbox"
                     checked={sourceFields.includes(opt.value)}
                     onChange={() => handleSourceFieldToggle(opt.value)}
                     disabled={isProcessing}
-                    className="w-4 h-4 rounded border-border text-primary focus:ring-primary/30 focus:ring-offset-0 disabled:opacity-50"
+                    className="border-border text-primary focus:ring-primary/30 h-4 w-4 rounded focus:ring-offset-0 disabled:opacity-50"
                     aria-label={opt.label}
                   />
                   <span className="text-sm">{opt.label}</span>
@@ -201,7 +202,7 @@ export default function ProcessRequestOptions({
 
           {/* Limit Input */}
           <div>
-            <label htmlFor="limit-input" className="block text-sm font-medium mb-1.5">
+            <label htmlFor="limit-input" className="mb-1.5 block text-sm font-medium">
               Limit (optional)
             </label>
             <input
@@ -212,25 +213,25 @@ export default function ProcessRequestOptions({
               placeholder="No limit"
               min="1"
               disabled={isProcessing}
-              className="w-full px-4 py-2.5 border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              className="border-border bg-background text-foreground placeholder:text-muted-foreground focus:ring-primary/30 focus:border-primary w-full rounded-lg border px-4 py-2.5 focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
             />
-            <p className="text-xs text-muted-foreground mt-1.5">
+            <p className="text-muted-foreground mt-1.5 text-xs">
               Limit the number of requests to process (for testing)
             </p>
           </div>
 
           {/* Force Reprocess Checkbox */}
           <div className="space-y-2">
-            <label className="flex items-center gap-3 cursor-pointer group">
+            <label className="group flex cursor-pointer items-center gap-3">
               <input
                 type="checkbox"
                 checked={forceReprocess}
                 onChange={(e) => setForceReprocess(e.target.checked)}
                 disabled={isProcessing}
-                className="w-4 h-4 rounded border-border text-primary focus:ring-primary/30 focus:ring-offset-0 disabled:opacity-50"
+                className="border-border text-primary focus:ring-primary/30 h-4 w-4 rounded focus:ring-offset-0 disabled:opacity-50"
                 aria-describedby={forceReprocess ? 'force-warning' : undefined}
               />
-              <span className="text-sm font-medium group-hover:text-foreground transition-colors">
+              <span className="group-hover:text-foreground text-sm font-medium transition-colors">
                 Force reprocess
               </span>
             </label>
@@ -239,12 +240,12 @@ export default function ProcessRequestOptions({
             {forceReprocess && (
               <div
                 id="force-warning"
-                className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50"
+                className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800/50 dark:bg-amber-900/20"
               >
-                <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-400" />
                 <p className="text-xs text-amber-800 dark:text-amber-200">
-                  <strong>Warning:</strong> This will clear processed flags and delete existing parsed
-                  requests for the selected scope, then reprocess from scratch.
+                  <strong>Warning:</strong> This will clear processed flags and delete existing
+                  parsed requests for the selected scope, then reprocess from scratch.
                 </p>
               </div>
             )}
@@ -254,39 +255,36 @@ export default function ProcessRequestOptions({
           <div className="space-y-3">
             <label className="block text-sm font-medium">Logging Level</label>
             <div className="flex gap-6">
-              <label className="flex items-center gap-2 cursor-pointer group">
+              <label className="group flex cursor-pointer items-center gap-2">
                 <input
                   type="checkbox"
                   checked={debug}
                   onChange={(e) => {
-                    setDebug(e.target.checked);
-                    if (e.target.checked) setTrace(false); // Mutually exclusive
+                    setDebug(e.target.checked)
+                    if (e.target.checked) setTrace(false) // Mutually exclusive
                   }}
                   disabled={isProcessing || trace}
-                  className="w-4 h-4 rounded border-border text-primary focus:ring-primary/30 focus:ring-offset-0 disabled:opacity-50"
+                  className="border-border text-primary focus:ring-primary/30 h-4 w-4 rounded focus:ring-offset-0 disabled:opacity-50"
                 />
-                <span className="text-sm group-hover:text-foreground transition-colors">
-                  Debug
-                </span>
+                <span className="group-hover:text-foreground text-sm transition-colors">Debug</span>
               </label>
-              <label className="flex items-center gap-2 cursor-pointer group">
+              <label className="group flex cursor-pointer items-center gap-2">
                 <input
                   type="checkbox"
                   checked={trace}
                   onChange={(e) => {
-                    setTrace(e.target.checked);
-                    if (e.target.checked) setDebug(false); // Mutually exclusive
+                    setTrace(e.target.checked)
+                    if (e.target.checked) setDebug(false) // Mutually exclusive
                   }}
                   disabled={isProcessing || debug}
-                  className="w-4 h-4 rounded border-border text-primary focus:ring-primary/30 focus:ring-offset-0 disabled:opacity-50"
+                  className="border-border text-primary focus:ring-primary/30 h-4 w-4 rounded focus:ring-offset-0 disabled:opacity-50"
                 />
-                <span className="text-sm group-hover:text-foreground transition-colors">
-                  Trace
-                </span>
+                <span className="group-hover:text-foreground text-sm transition-colors">Trace</span>
               </label>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Debug: AI prompts & resolution details. Trace: Very verbose (API params, SDK internals)
+            <p className="text-muted-foreground text-xs">
+              Debug: AI prompts & resolution details. Trace: Very verbose (API params, SDK
+              internals)
             </p>
           </div>
         </div>
@@ -297,7 +295,7 @@ export default function ProcessRequestOptions({
             type="button"
             onClick={onClose}
             disabled={isProcessing}
-            className="flex-1 px-4 py-2.5 border border-border rounded-lg text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="border-border hover:bg-muted flex-1 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
           >
             Cancel
           </button>
@@ -305,11 +303,11 @@ export default function ProcessRequestOptions({
             type="button"
             onClick={handleSubmit}
             disabled={isProcessing}
-            className="flex-1 px-4 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isProcessing ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" />
                 Processing...
               </>
             ) : (
@@ -319,5 +317,5 @@ export default function ProcessRequestOptions({
         </div>
       </div>
     </Modal>
-  );
+  )
 }

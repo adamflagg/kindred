@@ -8,4 +8,4 @@ export {
   cleanupCytoscape,
   type GraphInitConfig,
   type CytoscapeRefs,
-} from './useCytoscapeGraph';
+} from './useCytoscapeGraph'

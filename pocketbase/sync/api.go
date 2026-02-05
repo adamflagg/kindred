@@ -856,6 +856,17 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 	statuses["_queue"] = queueInfo
 	statuses["_queue_length"] = len(queue)
 
+	// Add current run progress (remaining jobs in current sequence)
+	runType, remaining, total, completed := orchestrator.GetCurrentRunProgress()
+	if runType != "" {
+		statuses["_current_run"] = map[string]interface{}{
+			"type":           runType,
+			"total_jobs":     total,
+			"completed_jobs": completed,
+			"remaining_jobs": remaining,
+		}
+	}
+
 	return e.JSON(http.StatusOK, statuses)
 }
 
@@ -1049,6 +1060,17 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 		slog.Info("Queued phase sync: Running jobs",
 			"phase", phase, "year", qs.Year, "jobs", jobs, "debug", qs.Debug)
 
+		// Set the current sync year so services use correct year
+		orchestrator.mu.Lock()
+		orchestrator.currentSyncYear = qs.Year
+		orchestrator.mu.Unlock()
+
+		defer func() {
+			orchestrator.mu.Lock()
+			orchestrator.currentSyncYear = 0
+			orchestrator.mu.Unlock()
+		}()
+
 		canceled := false
 		for _, jobID := range jobs {
 			select {
@@ -1061,9 +1083,14 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 				break
 			}
 
-			// Set debug flag on service if requested
-			if qs.Debug {
-				if svc := orchestrator.GetService(jobID); svc != nil {
+			// Set year and debug on the service before running
+			if svc := orchestrator.GetService(jobID); svc != nil {
+				// Set year so service queries correct year's data
+				if yearSetter, ok := svc.(YearSetter); ok {
+					yearSetter.SetYear(qs.Year)
+				}
+				// Set debug if requested
+				if qs.Debug {
 					if debuggable, ok := svc.(Debuggable); ok {
 						debuggable.SetDebug(true)
 						slog.Info("Queued phase sync: debug enabled for job", "job", jobID)
@@ -1071,7 +1098,7 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 				}
 			}
 
-			slog.Info("Queued phase sync: Running job", "phase", phase, "job", jobID)
+			slog.Info("Queued phase sync: Running job", "phase", phase, "job", jobID, "year", qs.Year)
 			if err := orchestrator.runSyncAndWait(ctx, jobID); err != nil {
 				slog.Error("Queued phase sync: job failed",
 					"phase", phase, "job", jobID, "error", err)
@@ -1093,9 +1120,14 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 		// Run single job
 		slog.Info("Queued individual sync: Running job", "job", qs.Service, "year", qs.Year, "debug", qs.Debug)
 
-		// Set debug flag on service if requested
-		if qs.Debug {
-			if svc := orchestrator.GetService(qs.Service); svc != nil {
+		// Set year and debug on the service before running
+		if svc := orchestrator.GetService(qs.Service); svc != nil {
+			// Set year so service queries correct year's data
+			if yearSetter, ok := svc.(YearSetter); ok {
+				yearSetter.SetYear(qs.Year)
+			}
+			// Set debug if requested
+			if qs.Debug {
 				if debuggable, ok := svc.(Debuggable); ok {
 					debuggable.SetDebug(true)
 					slog.Info("Queued individual sync: debug enabled", "job", qs.Service)

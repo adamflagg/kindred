@@ -1,135 +1,153 @@
-import { useState, useEffect, useRef } from 'react';
-import { Link, useLocation, Outlet, useNavigate } from 'react-router';
-import { useTheme } from '../hooks/useTheme';
-import { useAuth } from '../contexts/AuthContext';
-import { useApiWithAuth } from '../hooks/useApiWithAuth';
-import { syncService } from '../services/sync';
-import { useMutation } from '@tanstack/react-query';
-import { RefreshCw, Loader2, User, Home, ChevronDown, Menu, X, Sun, Moon, TreePine, Clock, LogOut, Settings, BarChart3 } from 'lucide-react';
-import toast from 'react-hot-toast';
-import YearSelector from '../components/YearSelector';
-import CacheStatus from '../components/CacheStatus';
-import BunkRequestsUpload from '../components/BunkRequestsUpload';
-import { BrandedLogo } from '../components/BrandedLogo';
-import { useYear } from '../hooks/useCurrentYear';
-import { useIsAdmin } from '../hooks/useIsAdmin';
-import { useSyncStatusAPI } from '../hooks/useSyncStatusAPI';
-import { formatDistanceToNow } from 'date-fns';
-import { useProgram } from '../contexts/ProgramContext';
-import { getProgramFromPath } from '../utils/programUrls';
-import { pb } from '../lib/pocketbase';
-import { VersionInfo } from '../components/VersionInfo';
+import { useState, useEffect, useRef } from 'react'
+import { Link, useLocation, Outlet, useNavigate } from 'react-router'
+import { useTheme } from '../hooks/useTheme'
+import { useAuth } from '../contexts/AuthContext'
+import { useApiWithAuth } from '../hooks/useApiWithAuth'
+import { syncService } from '../services/sync'
+import { useMutation } from '@tanstack/react-query'
+import {
+  RefreshCw,
+  Loader2,
+  User,
+  Home,
+  ChevronDown,
+  Menu,
+  X,
+  Sun,
+  Moon,
+  TreePine,
+  Clock,
+  LogOut,
+  Settings,
+  BarChart3,
+} from 'lucide-react'
+import toast from 'react-hot-toast'
+import YearSelector from '../components/YearSelector'
+import CacheStatus from '../components/CacheStatus'
+import BunkRequestsUpload from '../components/BunkRequestsUpload'
+import { BrandedLogo } from '../components/BrandedLogo'
+import { useYear } from '../hooks/useCurrentYear'
+import { useIsAdmin } from '../hooks/useIsAdmin'
+import { useSyncStatusAPI } from '../hooks/useSyncStatusAPI'
+import { formatDistanceToNow } from 'date-fns'
+import { useProgram } from '../contexts/ProgramContext'
+import { getProgramFromPath } from '../utils/programUrls'
+import { pb } from '../lib/pocketbase'
+import { VersionInfo } from '../components/VersionInfo'
 
 export const AppLayout = () => {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const { theme, toggleTheme } = useTheme();
-  const { user, isAuthenticated, logout } = useAuth();
-  const isAdmin = useIsAdmin();
-  const { fetchWithAuth } = useApiWithAuth();
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isProgramMenuOpen, setIsProgramMenuOpen] = useState(false);
-  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const currentYear = useYear();
-  const { currentProgram, setProgram, clearProgram } = useProgram();
-  const programMenuRef = useRef<HTMLDivElement>(null);
-  const userMenuRef = useRef<HTMLDivElement>(null);
-  const { data: syncStatus } = useSyncStatusAPI();
+  const location = useLocation()
+  const navigate = useNavigate()
+  const { theme, toggleTheme } = useTheme()
+  const { user, isAuthenticated, logout } = useAuth()
+  const isAdmin = useIsAdmin()
+  const { fetchWithAuth } = useApiWithAuth()
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [isProgramMenuOpen, setIsProgramMenuOpen] = useState(false)
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
+  const currentYear = useYear()
+  const { currentProgram, setProgram, clearProgram } = useProgram()
+  const programMenuRef = useRef<HTMLDivElement>(null)
+  const userMenuRef = useRef<HTMLDivElement>(null)
+  const { data: syncStatus } = useSyncStatusAPI()
 
   // Determine current program from URL if not set
-  const urlProgram = getProgramFromPath(location.pathname);
-  const activeProgram = urlProgram || currentProgram || 'summer';
+  const urlProgram = getProgramFromPath(location.pathname)
+  const activeProgram = urlProgram || currentProgram || 'summer'
 
   // Close program menu on click outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (programMenuRef.current && !programMenuRef.current.contains(event.target as Node)) {
-        setIsProgramMenuOpen(false);
+        setIsProgramMenuOpen(false)
       }
-    };
+    }
 
     if (isProgramMenuOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
     }
-  }, [isProgramMenuOpen]);
+  }, [isProgramMenuOpen])
 
   // Close user menu on click outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
-        setIsUserMenuOpen(false);
+        setIsUserMenuOpen(false)
       }
-    };
+    }
 
     if (isUserMenuOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
     }
-  }, [isUserMenuOpen]);
+  }, [isUserMenuOpen])
 
   const handleLogout = () => {
-    setIsUserMenuOpen(false);
-    setIsMobileMenuOpen(false);
-    logout();
-    navigate('/login');
-  };
+    setIsUserMenuOpen(false)
+    setIsMobileMenuOpen(false)
+    logout()
+    navigate('/login')
+  }
 
   const handleProgramSwitch = (program: 'summer' | 'family' | 'metrics') => {
-    setProgram(program);
-    setIsProgramMenuOpen(false);
+    setProgram(program)
+    setIsProgramMenuOpen(false)
     if (program === 'summer') {
-      navigate('/summer/sessions');
+      navigate('/summer/sessions')
     } else if (program === 'family') {
-      navigate('/family/');
+      navigate('/family/')
     } else {
-      navigate('/metrics');
+      navigate('/metrics')
     }
-  };
+  }
 
   // Refresh bunking mutation
   const refreshBunkingMutation = useMutation({
     mutationFn: () => syncService.refreshBunking(fetchWithAuth),
     onError: (error: Error) => {
-      toast.error(`Failed to refresh cabin assignments: ${error.message}`);
+      toast.error(`Failed to refresh cabin assignments: ${error.message}`)
     },
-  });
+  })
 
   const isActiveRoute = (path: string) => {
     // Special case: Campers nav should NOT be active on session-level campers tab
     if (path === '/camper') {
       // Match /summer/campers (all campers) or /summer/camper/ (camper detail)
       // But NOT /summer/session/*/campers
-      return location.pathname === '/summer/campers' ||
-             location.pathname.includes('/summer/camper/');
+      return (
+        location.pathname === '/summer/campers' || location.pathname.includes('/summer/camper/')
+      )
     }
-    return location.pathname.includes(path);
-  };
+    return location.pathname.includes(path)
+  }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="bg-background min-h-screen">
       {/* Primary Navigation */}
-      <nav className="sticky top-0 z-50 backdrop-lodge border-b border-border/50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
+      <nav className="backdrop-lodge border-border/50 sticky top-0 z-50 border-b">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="flex h-16 justify-between">
             <div className="flex items-center gap-2 sm:gap-4">
               {/* Mobile menu button */}
               <button
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="sm:hidden p-2 rounded-xl text-white/70 hover:text-white hover:bg-white/10 transition-all"
+                className="rounded-xl p-2 text-white/70 transition-all hover:bg-white/10 hover:text-white sm:hidden"
                 aria-label="Toggle navigation menu"
               >
-                {isMobileMenuOpen ? (
-                  <X className="h-5 w-5" />
-                ) : (
-                  <Menu className="h-5 w-5" />
-                )}
+                {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
               </button>
 
               {/* Logo with subtle white outline for visibility on dark nav */}
               <Link
-                to={activeProgram === 'summer' ? '/summer/sessions' : activeProgram === 'family' ? '/family/' : '/'}
-                className="flex-shrink-0 flex items-center"
+                to={
+                  activeProgram === 'summer'
+                    ? '/summer/sessions'
+                    : activeProgram === 'family'
+                      ? '/family/'
+                      : '/'
+                }
+                className="flex flex-shrink-0 items-center"
               >
                 <BrandedLogo
                   size="small"
@@ -141,72 +159,74 @@ export const AppLayout = () => {
               <div className="relative" ref={programMenuRef}>
                 <button
                   onClick={() => setIsProgramMenuOpen(!isProgramMenuOpen)}
-                  className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
+                  className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/20"
                 >
                   {activeProgram === 'summer' ? (
                     <>
-                      <TreePine className="w-4 h-4 text-amber-400" />
+                      <TreePine className="h-4 w-4 text-amber-400" />
                       <span className="hidden sm:inline">Summer</span>
                     </>
                   ) : activeProgram === 'family' ? (
                     <>
-                      <Home className="w-4 h-4 text-amber-400" />
+                      <Home className="h-4 w-4 text-amber-400" />
                       <span className="hidden sm:inline">Family</span>
                     </>
                   ) : (
                     <>
-                      <BarChart3 className="w-4 h-4 text-sky-400" />
+                      <BarChart3 className="h-4 w-4 text-sky-400" />
                       <span className="hidden sm:inline">Metrics</span>
                     </>
                   )}
-                  <ChevronDown className={`w-3 h-3 transition-transform ${isProgramMenuOpen ? 'rotate-180' : ''}`} />
+                  <ChevronDown
+                    className={`h-3 w-3 transition-transform ${isProgramMenuOpen ? 'rotate-180' : ''}`}
+                  />
                 </button>
 
                 {isProgramMenuOpen && (
-                  <div className="absolute top-full left-0 mt-2 w-52 card-lodge p-2 shadow-lodge-lg animate-scale-in z-50">
+                  <div className="card-lodge shadow-lodge-lg animate-scale-in absolute top-full left-0 z-50 mt-2 w-52 p-2">
                     <button
                       onClick={() => handleProgramSwitch('summer')}
-                      className={`w-full px-3 py-2.5 text-left text-sm font-medium rounded-lg transition-colors flex items-center gap-3 ${
+                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
                         activeProgram === 'summer'
                           ? 'bg-primary/10 text-primary'
                           : 'hover:bg-muted/50 text-foreground'
                       }`}
                     >
-                      <TreePine className="w-4 h-4" />
+                      <TreePine className="h-4 w-4" />
                       Summer Camp
                     </button>
                     <button
                       onClick={() => handleProgramSwitch('family')}
-                      className={`w-full px-3 py-2.5 text-left text-sm font-medium rounded-lg transition-colors flex items-center gap-3 ${
+                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
                         activeProgram === 'family'
-                          ? 'bg-accent/10 text-amber-600 dark:text-accent'
+                          ? 'bg-accent/10 dark:text-accent text-amber-600'
                           : 'hover:bg-muted/50 text-foreground'
                       }`}
                     >
-                      <Home className="w-4 h-4" />
+                      <Home className="h-4 w-4" />
                       Family Camp
                     </button>
                     <button
                       onClick={() => handleProgramSwitch('metrics')}
-                      className={`w-full px-3 py-2.5 text-left text-sm font-medium rounded-lg transition-colors flex items-center gap-3 ${
+                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
                         activeProgram === 'metrics'
                           ? 'bg-sky-500/10 text-sky-600 dark:text-sky-400'
                           : 'hover:bg-muted/50 text-foreground'
                       }`}
                     >
-                      <BarChart3 className="w-4 h-4" />
+                      <BarChart3 className="h-4 w-4" />
                       Metrics
                     </button>
-                    <div className="h-px bg-border my-2" />
+                    <div className="bg-border my-2 h-px" />
                     <button
                       onClick={() => {
-                        clearProgram();
-                        setIsProgramMenuOpen(false);
-                        navigate('/');
+                        clearProgram()
+                        setIsProgramMenuOpen(false)
+                        navigate('/')
                       }}
-                      className="w-full px-3 py-2.5 text-left text-sm font-medium rounded-lg hover:bg-muted/50 transition-colors flex items-center gap-3 text-muted-foreground"
+                      className="hover:bg-muted/50 text-muted-foreground flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors"
                     >
-                      <ChevronDown className="w-4 h-4 rotate-90" />
+                      <ChevronDown className="h-4 w-4 rotate-90" />
                       Switch Programs
                     </button>
                   </div>
@@ -257,57 +277,59 @@ export const AppLayout = () => {
             </div>
 
             {/* Right side items */}
-            <div className="hidden sm:flex items-center gap-2">
+            <div className="hidden items-center gap-2 sm:flex">
               {/* User Menu Dropdown */}
               {isAuthenticated && user && (
                 <div className="relative" ref={userMenuRef}>
                   <button
                     onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                    className="flex items-center gap-2 px-2 py-1.5 rounded-xl hover:bg-white/10 transition-all"
+                    className="flex items-center gap-2 rounded-xl px-2 py-1.5 transition-all hover:bg-white/10"
                   >
-                    <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0 overflow-hidden border border-white/30">
+                    <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/30 bg-white/20">
                       {user['avatar'] ? (
                         <img
                           src={pb.files.getURL(user, user['avatar'])}
                           alt={user['name'] || user['email']}
-                          className="w-full h-full object-cover"
+                          className="h-full w-full object-cover"
                         />
                       ) : (
                         <User className="h-4 w-4 text-white" />
                       )}
                     </div>
-                    <div className="hidden lg:block text-left">
-                      <div className="text-sm font-semibold text-white leading-tight">
+                    <div className="hidden text-left lg:block">
+                      <div className="text-sm leading-tight font-semibold text-white">
                         {user['name'] || user['email']?.split('@')[0] || 'User'}
                       </div>
-                      <div className="text-xs text-white/70 leading-tight">
+                      <div className="text-xs leading-tight text-white/70">
                         {user['email'] || 'Profile'}
                       </div>
                     </div>
-                    <ChevronDown className={`w-3 h-3 text-white/70 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} />
+                    <ChevronDown
+                      className={`h-3 w-3 text-white/70 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`}
+                    />
                   </button>
 
                   {isUserMenuOpen && (
-                    <div className="absolute top-full right-0 mt-2 w-64 card-lodge p-2 shadow-lodge-lg animate-scale-in z-50">
+                    <div className="card-lodge shadow-lodge-lg animate-scale-in absolute top-full right-0 z-50 mt-2 w-64 p-2">
                       {/* User info header */}
-                      <div className="px-3 py-3 border-b border-border mb-2">
+                      <div className="border-border mb-2 border-b px-3 py-3">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 overflow-hidden border border-primary/20">
+                          <div className="bg-primary/10 border-primary/20 flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border">
                             {user['avatar'] ? (
                               <img
                                 src={pb.files.getURL(user, user['avatar'])}
                                 alt={user['name'] || user['email']}
-                                className="w-full h-full object-cover"
+                                className="h-full w-full object-cover"
                               />
                             ) : (
-                              <User className="h-5 w-5 text-primary" />
+                              <User className="text-primary h-5 w-5" />
                             )}
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-foreground truncate">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-foreground truncate font-semibold">
                               {user['name'] || user['email']?.split('@')[0] || 'User'}
                             </p>
-                            <p className="text-xs text-muted-foreground truncate">
+                            <p className="text-muted-foreground truncate text-xs">
                               {user['email']}
                             </p>
                           </div>
@@ -318,19 +340,19 @@ export const AppLayout = () => {
                       <Link
                         to={`${location.pathname.startsWith('/family') ? '/family' : '/summer'}/user`}
                         onClick={() => setIsUserMenuOpen(false)}
-                        className="w-full px-3 py-2.5 text-left text-sm font-medium rounded-lg hover:bg-muted/50 transition-colors flex items-center gap-3 text-foreground"
+                        className="hover:bg-muted/50 text-foreground flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors"
                       >
-                        <Settings className="w-4 h-4 text-muted-foreground" />
+                        <Settings className="text-muted-foreground h-4 w-4" />
                         My Account
                       </Link>
 
-                      <div className="h-px bg-border my-2" />
+                      <div className="bg-border my-2 h-px" />
 
                       <button
                         onClick={handleLogout}
-                        className="w-full px-3 py-2.5 text-left text-sm font-medium rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex items-center gap-3 text-red-600 dark:text-red-400"
+                        className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
                       >
-                        <LogOut className="w-4 h-4" />
+                        <LogOut className="h-4 w-4" />
                         Sign Out
                       </button>
                     </div>
@@ -341,14 +363,10 @@ export const AppLayout = () => {
               {/* Theme toggle */}
               <button
                 onClick={toggleTheme}
-                className="w-10 h-10 p-0 flex items-center justify-center rounded-xl text-white/70 hover:text-white hover:bg-white/10 transition-all"
+                className="flex h-10 w-10 items-center justify-center rounded-xl p-0 text-white/70 transition-all hover:bg-white/10 hover:text-white"
                 aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
               >
-                {theme === 'dark' ? (
-                  <Sun className="h-5 w-5" />
-                ) : (
-                  <Moon className="h-5 w-5" />
-                )}
+                {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
               </button>
             </div>
           </div>
@@ -356,43 +374,45 @@ export const AppLayout = () => {
 
         {/* Mobile menu */}
         {isMobileMenuOpen && (
-          <div className="sm:hidden border-t border-border/50 bg-card animate-slide-down">
-            <div className="px-4 py-4 space-y-4">
+          <div className="border-border/50 bg-card animate-slide-down border-t sm:hidden">
+            <div className="space-y-4 px-4 py-4">
               {/* Program Switcher for Mobile */}
               <div className="space-y-2">
-                <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider px-1">Program</p>
+                <p className="text-muted-foreground px-1 text-xs font-semibold tracking-wider uppercase">
+                  Program
+                </p>
                 <div className="flex gap-2">
                   <button
                     onClick={() => handleProgramSwitch('summer')}
-                    className={`flex-1 px-3 py-2.5 text-sm font-medium rounded-xl transition-colors flex items-center justify-center gap-2 ${
+                    className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
                       activeProgram === 'summer'
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-muted/50 text-foreground hover:bg-muted'
                     }`}
                   >
-                    <TreePine className="w-4 h-4" />
+                    <TreePine className="h-4 w-4" />
                     Summer
                   </button>
                   <button
                     onClick={() => handleProgramSwitch('family')}
-                    className={`flex-1 px-3 py-2.5 text-sm font-medium rounded-xl transition-colors flex items-center justify-center gap-2 ${
+                    className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
                       activeProgram === 'family'
                         ? 'bg-accent text-accent-foreground'
                         : 'bg-muted/50 text-foreground hover:bg-muted'
                     }`}
                   >
-                    <Home className="w-4 h-4" />
+                    <Home className="h-4 w-4" />
                     Family
                   </button>
                   <button
                     onClick={() => handleProgramSwitch('metrics')}
-                    className={`flex-1 px-3 py-2.5 text-sm font-medium rounded-xl transition-colors flex items-center justify-center gap-2 ${
+                    className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
                       activeProgram === 'metrics'
                         ? 'bg-sky-500 text-white'
                         : 'bg-muted/50 text-foreground hover:bg-muted'
                     }`}
                   >
-                    <BarChart3 className="w-4 h-4" />
+                    <BarChart3 className="h-4 w-4" />
                     Metrics
                   </button>
                 </div>
@@ -400,32 +420,30 @@ export const AppLayout = () => {
 
               {/* User Profile - Mobile */}
               {isAuthenticated && user && (
-                <div className="border-t border-border/50 pt-4">
+                <div className="border-border/50 border-t pt-4">
                   <Link
                     to={`${location.pathname.startsWith('/family') ? '/family' : '/summer'}/user`}
                     onClick={() => setIsMobileMenuOpen(false)}
-                    className="flex items-center gap-3 px-3 py-3 rounded-xl bg-muted/30 hover:bg-muted/50 transition-colors"
+                    className="bg-muted/30 hover:bg-muted/50 flex items-center gap-3 rounded-xl px-3 py-3 transition-colors"
                   >
-                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 overflow-hidden border border-primary/20">
+                    <div className="bg-primary/10 border-primary/20 flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border">
                       {user['avatar'] ? (
                         <img
                           src={pb.files.getURL(user, user['avatar'])}
                           alt={user['name'] || user['email']}
-                          className="w-full h-full object-cover"
+                          className="h-full w-full object-cover"
                         />
                       ) : (
-                        <User className="h-5 w-5 text-primary" />
+                        <User className="text-primary h-5 w-5" />
                       )}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-foreground truncate">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-foreground truncate font-semibold">
                         {user['name'] || user['email']?.split('@')[0] || 'User'}
                       </p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {user['email']}
-                      </p>
+                      <p className="text-muted-foreground truncate text-xs">{user['email']}</p>
                     </div>
-                    <Settings className="w-4 h-4 text-muted-foreground" />
+                    <Settings className="text-muted-foreground h-4 w-4" />
                   </Link>
                 </div>
               )}
@@ -435,7 +453,7 @@ export const AppLayout = () => {
                 {activeProgram === 'summer' && (
                   <Link
                     to="/summer/sessions"
-                    className={`block px-4 py-3 text-base font-semibold rounded-xl transition-all ${
+                    className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
                       isActiveRoute('/session')
                         ? 'bg-primary text-primary-foreground'
                         : 'text-foreground hover:bg-muted/50'
@@ -448,7 +466,7 @@ export const AppLayout = () => {
                 {(activeProgram === 'summer' || activeProgram === 'metrics') && (
                   <Link
                     to="/summer/campers"
-                    className={`block px-4 py-3 text-base font-semibold rounded-xl transition-all ${
+                    className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
                       activeProgram === 'summer' && isActiveRoute('/camper')
                         ? 'bg-primary text-primary-foreground'
                         : 'text-foreground hover:bg-muted/50'
@@ -460,7 +478,7 @@ export const AppLayout = () => {
                 )}
                 <Link
                   to={`/${activeProgram}/users`}
-                  className={`block px-4 py-3 text-base font-semibold rounded-xl transition-all ${
+                  className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
                     isActiveRoute('/users')
                       ? 'bg-primary text-primary-foreground'
                       : 'text-foreground hover:bg-muted/50'
@@ -472,7 +490,7 @@ export const AppLayout = () => {
                 {(activeProgram === 'summer' || activeProgram === 'metrics') && (
                   <Link
                     to="/summer/admin"
-                    className={`block px-4 py-3 text-base font-semibold rounded-xl transition-all ${
+                    className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
                       activeProgram === 'summer' && isActiveRoute('/admin')
                         ? 'bg-primary text-primary-foreground'
                         : 'text-foreground hover:bg-muted/50'
@@ -485,7 +503,7 @@ export const AppLayout = () => {
                 {activeProgram === 'summer' && isAdmin && (
                   <Link
                     to="/summer/debug"
-                    className={`block px-4 py-3 text-base font-semibold rounded-xl transition-all ${
+                    className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
                       isActiveRoute('/debug')
                         ? 'bg-primary text-primary-foreground'
                         : 'text-foreground hover:bg-muted/50'
@@ -498,12 +516,12 @@ export const AppLayout = () => {
               </div>
 
               {/* Mobile-only utilities */}
-              <div className="border-t border-border/50 pt-4 space-y-3">
+              <div className="border-border/50 space-y-3 border-t pt-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-muted-foreground">Theme</span>
+                  <span className="text-muted-foreground text-sm font-medium">Theme</span>
                   <button
                     onClick={toggleTheme}
-                    className="btn-ghost px-3 py-2 flex items-center gap-2 text-sm"
+                    className="btn-ghost flex items-center gap-2 px-3 py-2 text-sm"
                   >
                     {theme === 'dark' ? (
                       <>
@@ -530,9 +548,9 @@ export const AppLayout = () => {
                         toast(`Refreshing bunking assignments for ${currentYear}...`, {
                           icon: '🔄',
                           duration: 2000,
-                        });
-                        refreshBunkingMutation.mutate();
-                        setIsMobileMenuOpen(false);
+                        })
+                        refreshBunkingMutation.mutate()
+                        setIsMobileMenuOpen(false)
                       }}
                       disabled={refreshBunkingMutation.isPending}
                       className="btn-primary w-full"
@@ -551,7 +569,7 @@ export const AppLayout = () => {
                 {isAuthenticated && (
                   <button
                     onClick={handleLogout}
-                    className="w-full px-4 py-3 text-base font-semibold rounded-xl transition-all flex items-center justify-center gap-2 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30"
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-red-50 px-4 py-3 text-base font-semibold text-red-600 transition-all hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30"
                   >
                     <LogOut className="h-4 w-4" />
                     Sign Out
@@ -564,31 +582,43 @@ export const AppLayout = () => {
       </nav>
 
       {/* Secondary Navigation Bar - Desktop only */}
-      <div className="hidden sm:block bg-muted/20 border-b border-border/30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-14">
+      <div className="bg-muted/20 border-border/30 hidden border-b sm:block">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="flex h-14 items-center justify-between">
             {/* Left side: Year context + sync status (summer only) */}
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-3">
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Year</span>
+                <span className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
+                  Year
+                </span>
                 <YearSelector />
               </div>
-              {activeProgram === 'summer' && (syncStatus?.bunk_assignments?.end_time || syncStatus?.bunk_requests?.end_time) && (
-                <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                  {syncStatus?.bunk_assignments?.end_time && (
-                    <span className="flex items-center gap-1.5" title="Last bunk assignments sync">
-                      <Home className="w-3 h-3" />
-                      Assignments {formatDistanceToNow(new Date(syncStatus.bunk_assignments.end_time), { addSuffix: true })}
-                    </span>
-                  )}
-                  {syncStatus?.bunk_requests?.end_time && (
-                    <span className="flex items-center gap-1.5" title="Last bunk requests sync">
-                      <Clock className="w-3 h-3" />
-                      Requests {formatDistanceToNow(new Date(syncStatus.bunk_requests.end_time), { addSuffix: true })}
-                    </span>
-                  )}
-                </div>
-              )}
+              {activeProgram === 'summer' &&
+                (syncStatus?.bunk_assignments?.end_time || syncStatus?.bunk_requests?.end_time) && (
+                  <div className="text-muted-foreground flex items-center gap-3 text-xs">
+                    {syncStatus?.bunk_assignments?.end_time && (
+                      <span
+                        className="flex items-center gap-1.5"
+                        title="Last bunk assignments sync"
+                      >
+                        <Home className="h-3 w-3" />
+                        Assignments{' '}
+                        {formatDistanceToNow(new Date(syncStatus.bunk_assignments.end_time), {
+                          addSuffix: true,
+                        })}
+                      </span>
+                    )}
+                    {syncStatus?.bunk_requests?.end_time && (
+                      <span className="flex items-center gap-1.5" title="Last bunk requests sync">
+                        <Clock className="h-3 w-3" />
+                        Requests{' '}
+                        {formatDistanceToNow(new Date(syncStatus.bunk_requests.end_time), {
+                          addSuffix: true,
+                        })}
+                      </span>
+                    )}
+                  </div>
+                )}
             </div>
 
             {/* Right side: Program-specific actions */}
@@ -601,15 +631,15 @@ export const AppLayout = () => {
                       toast(`Refreshing bunking assignments for ${currentYear}...`, {
                         icon: '🔄',
                         duration: 2000,
-                      });
-                      refreshBunkingMutation.mutate();
+                      })
+                      refreshBunkingMutation.mutate()
                     }}
                     disabled={refreshBunkingMutation.isPending}
-                    className="btn-primary py-2 px-4 nav-btn-icon-only"
+                    className="btn-primary nav-btn-icon-only px-4 py-2"
                     title="Refresh bunking assignments from CampMinder"
                   >
                     {refreshBunkingMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
+                      <Loader2 className="h-4 w-4 flex-shrink-0 animate-spin" />
                     ) : (
                       <RefreshCw className="h-4 w-4 flex-shrink-0" />
                     )}
@@ -618,7 +648,7 @@ export const AppLayout = () => {
                   </button>
                 </>
               )}
-{/* Export button removed from metrics nav - export functionality will move inside metrics page if needed */}
+              {/* Export button removed from metrics nav - export functionality will move inside metrics page if needed */}
             </div>
           </div>
         </div>
@@ -628,14 +658,14 @@ export const AppLayout = () => {
       <CacheStatus />
 
       {/* Main content */}
-      <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         <Outlet />
       </main>
 
       {/* Version badge - fixed bottom right, subtle */}
-      <div className="fixed bottom-4 right-4 z-10">
-        <VersionInfo className="opacity-50 hover:opacity-100 transition-opacity" />
+      <div className="fixed right-4 bottom-4 z-10">
+        <VersionInfo className="opacity-50 transition-opacity hover:opacity-100" />
       </div>
     </div>
-  );
-};
+  )
+}

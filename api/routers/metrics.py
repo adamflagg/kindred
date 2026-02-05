@@ -543,11 +543,19 @@ async def get_comparison_metrics(
 async def get_historical_trends(
     years: str | None = Query(None, description="Comma-separated years (default: last 5 years from current year)"),
     session_types: str | None = Query("main,ag,embedded", description="Comma-separated session types to filter"),
+    session_cm_id: int | None = Query(
+        None,
+        description="Filter to specific session by CampMinder ID. Uses name-matching across years.",
+    ),
 ) -> HistoricalTrendsResponse:
     """Get historical trends across multiple years.
 
     Returns aggregated metrics for each year to enable line chart visualization.
     Default: last 5 years (2021-2025).
+
+    When session_cm_id is provided, filters to sessions with the same NAME across years.
+    This enables "Show Session 2's enrollment over 5 years" even though Session 2
+    has different cm_ids each year.
     """
     from api.services.historical_service import HistoricalService
     from api.services.metrics_repository import MetricsRepository
@@ -564,6 +572,7 @@ async def get_historical_trends(
         return await service.calculate_historical_trends(
             years=year_list,
             session_types=type_filter,
+            session_cm_id=session_cm_id,
         )
 
     except Exception as e:

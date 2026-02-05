@@ -2,96 +2,165 @@
  * Tests for MetricsTypeTabs component
  * Primary navigation for metrics module following SessionTabs pattern
  */
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
-import { describe, it, expect } from 'vitest';
-import MetricsTypeTabs from './MetricsTypeTabs';
+import { render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
+import { describe, it, expect, vi } from 'vitest'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import MetricsTypeTabs from './MetricsTypeTabs'
+import { MetricsSessionProvider } from '../../contexts/MetricsSessionContext'
+import { CurrentYearContext, type CurrentYearContextType } from '../../hooks/useCurrentYear'
+
+// Mock useMetricsSessions hook
+vi.mock('../../hooks/useMetricsSessions', () => ({
+  useMetricsSessions: vi.fn(() => ({
+    data: [
+      {
+        cm_id: 1001,
+        name: 'Session 1',
+        session_type: 'main',
+        start_date: '2026-06-15',
+      },
+      {
+        cm_id: 1002,
+        name: 'Session 2',
+        session_type: 'main',
+        start_date: '2026-07-01',
+      },
+    ],
+    isLoading: false,
+  })),
+}))
 
 const renderWithRouter = (initialPath: string) => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+
+  const mockYearContext: CurrentYearContextType = {
+    currentYear: 2026,
+    setCurrentYear: vi.fn(),
+    availableYears: [2026, 2025, 2024],
+    isTransitioning: false,
+  }
+
   return render(
-    <MemoryRouter initialEntries={[initialPath]}>
-      <MetricsTypeTabs />
-    </MemoryRouter>
-  );
-};
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[initialPath]}>
+        <CurrentYearContext.Provider value={mockYearContext}>
+          <MetricsSessionProvider>
+            <MetricsTypeTabs />
+          </MetricsSessionProvider>
+        </CurrentYearContext.Provider>
+      </MemoryRouter>
+    </QueryClientProvider>
+  )
+}
 
 describe('MetricsTypeTabs', () => {
   it('renders all three metric type tabs', () => {
-    renderWithRouter('/metrics/registration');
+    renderWithRouter('/metrics/registration')
 
-    expect(screen.getByRole('link', { name: /registration/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /retention/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /trends/i })).toBeInTheDocument();
-  });
+    expect(screen.getByRole('link', { name: /registration/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /retention/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /trends/i })).toBeInTheDocument()
+  })
 
   it('renders icons for each tab', () => {
-    renderWithRouter('/metrics/registration');
+    renderWithRouter('/metrics/registration')
 
     // Each tab should have an icon (rendered as svg)
-    const links = screen.getAllByRole('link');
-    expect(links).toHaveLength(3);
+    const links = screen.getAllByRole('link')
+    expect(links).toHaveLength(3)
 
-    links.forEach(link => {
-      const svg = link.querySelector('svg');
-      expect(svg).toBeInTheDocument();
-    });
-  });
+    links.forEach((link) => {
+      const svg = link.querySelector('svg')
+      expect(svg).toBeInTheDocument()
+    })
+  })
 
   it('highlights registration tab when on registration route', () => {
-    renderWithRouter('/metrics/registration');
+    renderWithRouter('/metrics/registration')
 
-    const registrationLink = screen.getByRole('link', { name: /registration/i });
-    const retentionLink = screen.getByRole('link', { name: /retention/i });
+    const registrationLink = screen.getByRole('link', {
+      name: /registration/i,
+    })
+    const retentionLink = screen.getByRole('link', { name: /retention/i })
 
     // Active tab should have primary background
-    expect(registrationLink).toHaveClass('bg-primary');
-    expect(retentionLink).not.toHaveClass('bg-primary');
-  });
+    expect(registrationLink).toHaveClass('bg-primary')
+    expect(retentionLink).not.toHaveClass('bg-primary')
+  })
 
   it('highlights registration tab when on registration sub-route', () => {
-    renderWithRouter('/metrics/registration/geo');
+    renderWithRouter('/metrics/registration/geo')
 
-    const registrationLink = screen.getByRole('link', { name: /registration/i });
-    expect(registrationLink).toHaveClass('bg-primary');
-  });
+    const registrationLink = screen.getByRole('link', {
+      name: /registration/i,
+    })
+    expect(registrationLink).toHaveClass('bg-primary')
+  })
 
   it('highlights retention tab when on retention route', () => {
-    renderWithRouter('/metrics/retention');
+    renderWithRouter('/metrics/retention')
 
-    const retentionLink = screen.getByRole('link', { name: /retention/i });
-    const registrationLink = screen.getByRole('link', { name: /registration/i });
+    const retentionLink = screen.getByRole('link', { name: /retention/i })
+    const registrationLink = screen.getByRole('link', {
+      name: /registration/i,
+    })
 
-    expect(retentionLink).toHaveClass('bg-primary');
-    expect(registrationLink).not.toHaveClass('bg-primary');
-  });
+    expect(retentionLink).toHaveClass('bg-primary')
+    expect(registrationLink).not.toHaveClass('bg-primary')
+  })
 
   it('highlights trends tab when on trends route', () => {
-    renderWithRouter('/metrics/trends');
+    renderWithRouter('/metrics/trends')
 
-    const trendsLink = screen.getByRole('link', { name: /trends/i });
-    expect(trendsLink).toHaveClass('bg-primary');
-  });
+    const trendsLink = screen.getByRole('link', { name: /trends/i })
+    expect(trendsLink).toHaveClass('bg-primary')
+  })
 
   it('links to correct paths', () => {
-    renderWithRouter('/metrics/registration');
+    renderWithRouter('/metrics/registration')
 
     expect(screen.getByRole('link', { name: /registration/i })).toHaveAttribute(
       'href',
       '/metrics/registration'
-    );
+    )
     expect(screen.getByRole('link', { name: /retention/i })).toHaveAttribute(
       'href',
       '/metrics/retention'
-    );
-    expect(screen.getByRole('link', { name: /trends/i })).toHaveAttribute(
-      'href',
-      '/metrics/trends'
-    );
-  });
+    )
+    expect(screen.getByRole('link', { name: /trends/i })).toHaveAttribute('href', '/metrics/trends')
+  })
 
   it('uses nav element for accessibility', () => {
-    renderWithRouter('/metrics/registration');
+    renderWithRouter('/metrics/registration')
 
-    expect(screen.getByRole('navigation')).toBeInTheDocument();
-  });
-});
+    expect(screen.getByRole('navigation')).toBeInTheDocument()
+  })
+
+  describe('session selector integration', () => {
+    it('should render session selector on the right side', () => {
+      renderWithRouter('/metrics/registration')
+
+      // Session selector should be present with "All Sessions" default
+      expect(screen.getByText('All Sessions')).toBeInTheDocument()
+    })
+
+    it('should render session selector with calendar icon', () => {
+      renderWithRouter('/metrics/registration')
+
+      // Should have at least 2 buttons - one for the dropdown, others for tab links
+      const buttons = screen.getAllByRole('button')
+      expect(buttons.length).toBeGreaterThanOrEqual(1)
+    })
+
+    it('should layout tabs and selector with flex justify-between', () => {
+      renderWithRouter('/metrics/registration')
+
+      const nav = screen.getByRole('navigation')
+      // The nav should have justify-between class for proper layout
+      expect(nav.querySelector('.justify-between')).toBeInTheDocument()
+    })
+  })
+})

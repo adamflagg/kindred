@@ -23,7 +23,7 @@ const CHUNK_ERROR_PATTERNS = [
   // Webpack-style chunk loading failures
   /loading chunk \d+ failed/i,
   /loading css chunk .* failed/i,
-];
+]
 
 /**
  * Detect if an error is a chunk load error that can be resolved by reloading.
@@ -34,16 +34,16 @@ const CHUNK_ERROR_PATTERNS = [
 export function isChunkLoadError(error: unknown): boolean {
   // Handle null/undefined
   if (error == null) {
-    return false;
+    return false
   }
 
   // Only process Error objects
   if (!(error instanceof Error)) {
-    return false;
+    return false
   }
 
-  const message = error.message;
-  return CHUNK_ERROR_PATTERNS.some((pattern) => pattern.test(message));
+  const message = error.message
+  return CHUNK_ERROR_PATTERNS.some((pattern) => pattern.test(message))
 }
 
 /**
@@ -52,5 +52,5 @@ export function isChunkLoadError(error: unknown): boolean {
  * @returns A message explaining the error and suggesting a reload
  */
 export function getChunkLoadErrorMessage(): string {
-  return 'A new version of the app has been deployed. Please reload the page to get the latest updates.';
+  return 'A new version of the app has been deployed. Please reload the page to get the latest updates.'
 }

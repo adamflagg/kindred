@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'vitest'
 import {
   getFormattedSessionName,
   getSessionDisplayName,
@@ -6,8 +6,8 @@ import {
   getSessionDisplayNameFromString,
   getSessionChartLabel,
   getSessionShorthand,
-} from './sessionDisplay';
-import type { Session } from '../types/app-types';
+} from './sessionDisplay'
+import type { Session } from '../types/app-types'
 
 describe('sessionDisplay utilities', () => {
   // Mock sessions for testing parent relationships
@@ -22,7 +22,7 @@ describe('sessionDisplay utilities', () => {
       cm_id: 200,
       year: 2025,
       created: '',
-      updated: ''
+      updated: '',
     },
     {
       id: 'main-3',
@@ -34,35 +34,35 @@ describe('sessionDisplay utilities', () => {
       cm_id: 300,
       year: 2025,
       created: '',
-      updated: ''
+      updated: '',
     },
     {
       id: 'ag-2',
       name: 'All-Gender Cabin-Session 2 (7th - 9th grades)',
       session_type: 'ag',
       persistent_id: 'ag2',
-      parent_id: 200,  // Points to Session 2
+      parent_id: 200, // Points to Session 2
       start_date: '2025-06-01',
       end_date: '2025-06-14',
       cm_id: 201,
       year: 2025,
       created: '',
-      updated: ''
-    }
-  ];
+      updated: '',
+    },
+  ]
 
   describe('getSessionDisplayName', () => {
     it('should handle undefined session', () => {
-      expect(getSessionDisplayName(undefined)).toBe('Unknown Session');
-    });
+      expect(getSessionDisplayName(undefined)).toBe('Unknown Session')
+    })
 
     it('should use parent session name for AG sessions when allSessions provided', () => {
-      const agSession = mockAllSessions[2];
-      if (!agSession) throw new Error('AG session not found');
-      
+      const agSession = mockAllSessions[2]
+      if (!agSession) throw new Error('AG session not found')
+
       // With allSessions, should return parent's display name
-      expect(getSessionDisplayName(agSession, mockAllSessions)).toBe('Session 2');
-    });
+      expect(getSessionDisplayName(agSession, mockAllSessions)).toBe('Session 2')
+    })
 
     it('should fallback to original name when allSessions not provided', () => {
       const agSession: Session = {
@@ -76,11 +76,11 @@ describe('sessionDisplay utilities', () => {
         cm_id: 123,
         year: 2025,
         created: '',
-        updated: ''
-      };
+        updated: '',
+      }
       // Without allSessions, should return original name
-      expect(getSessionDisplayName(agSession)).toBe('All-Gender Cabin-Session 2');
-    });
+      expect(getSessionDisplayName(agSession)).toBe('All-Gender Cabin-Session 2')
+    })
 
     it('should handle embedded sessions', () => {
       const embeddedSession: Session = {
@@ -94,10 +94,10 @@ describe('sessionDisplay utilities', () => {
         cm_id: 123,
         year: 2025,
         created: '',
-        updated: ''
-      };
-      expect(getSessionDisplayName(embeddedSession)).toBe('Session 2a');
-    });
+        updated: '',
+      }
+      expect(getSessionDisplayName(embeddedSession)).toBe('Session 2a')
+    })
 
     it('should handle main sessions', () => {
       const mainSession: Session = {
@@ -110,10 +110,10 @@ describe('sessionDisplay utilities', () => {
         cm_id: 123,
         year: 2025,
         created: '',
-        updated: ''
-      };
-      expect(getSessionDisplayName(mainSession)).toBe('Session 2');
-    });
+        updated: '',
+      }
+      expect(getSessionDisplayName(mainSession)).toBe('Session 2')
+    })
 
     it('should handle taste sessions', () => {
       const tasteSession: Session = {
@@ -126,10 +126,10 @@ describe('sessionDisplay utilities', () => {
         cm_id: 123,
         year: 2025,
         created: '',
-        updated: ''
-      };
-      expect(getSessionDisplayName(tasteSession)).toBe('Taste of Camp');
-    });
+        updated: '',
+      }
+      expect(getSessionDisplayName(tasteSession)).toBe('Taste of Camp')
+    })
 
     it('should fallback to original name for unknown types', () => {
       const otherSession: Session = {
@@ -142,10 +142,10 @@ describe('sessionDisplay utilities', () => {
         cm_id: 123,
         year: 2025,
         created: '',
-        updated: ''
-      };
-      expect(getSessionDisplayName(otherSession)).toBe('Family Camp 1');
-    });
+        updated: '',
+      }
+      expect(getSessionDisplayName(otherSession)).toBe('Family Camp 1')
+    })
 
     it('should handle missing persistent_id', () => {
       const session: Session = {
@@ -157,29 +157,29 @@ describe('sessionDisplay utilities', () => {
         cm_id: 123,
         year: 2025,
         created: '',
-        updated: ''
-      };
-      expect(getSessionDisplayName(session)).toBe('Some Session');
-    });
-  });
+        updated: '',
+      }
+      expect(getSessionDisplayName(session)).toBe('Some Session')
+    })
+  })
 
   describe('getParentSessionId', () => {
     it('should return parent session ID for AG session with parent_id', () => {
-      const agSession = mockAllSessions[2];
+      const agSession = mockAllSessions[2]
       if (!agSession) {
-        throw new Error('AG session not found in test data');
+        throw new Error('AG session not found in test data')
       }
       // AG session has parent_id pointing to Session 2 (cm_id: 200)
-      expect(getParentSessionId(agSession, mockAllSessions)).toBe(200);
-    });
+      expect(getParentSessionId(agSession, mockAllSessions)).toBe(200)
+    })
 
     it('should return original ID for non-AG sessions', () => {
-      const mainSession = mockAllSessions[0];
+      const mainSession = mockAllSessions[0]
       if (!mainSession) {
-        throw new Error('Main session not found in test data');
+        throw new Error('Main session not found in test data')
       }
-      expect(getParentSessionId(mainSession, mockAllSessions)).toBe(200);
-    });
+      expect(getParentSessionId(mainSession, mockAllSessions)).toBe(200)
+    })
 
     it('should return original ID if no parent found', () => {
       const agSession: Session = {
@@ -192,10 +192,10 @@ describe('sessionDisplay utilities', () => {
         cm_id: 123,
         year: 2025,
         created: '',
-        updated: ''
-      };
-      expect(getParentSessionId(agSession, mockAllSessions)).toBe(123);
-    });
+        updated: '',
+      }
+      expect(getParentSessionId(agSession, mockAllSessions)).toBe(123)
+    })
 
     it('should handle different persistent_id formats', () => {
       const agSession: Session = {
@@ -208,41 +208,41 @@ describe('sessionDisplay utilities', () => {
         cm_id: 123,
         year: 2025,
         created: '',
-        updated: ''
-      };
+        updated: '',
+      }
       // Should return parent session's cm_id (main3 has cm_id 300), not the AG session's cm_id
-      expect(getParentSessionId(agSession, mockAllSessions)).toBe(300);
-    });
-  });
+      expect(getParentSessionId(agSession, mockAllSessions)).toBe(300)
+    })
+  })
 
   describe('getSessionDisplayNameFromString', () => {
     it('should handle empty session name', () => {
-      expect(getSessionDisplayNameFromString('')).toBe('Unknown Session');
-      expect(getSessionDisplayNameFromString('', 'ag')).toBe('Unknown Session');
-    });
+      expect(getSessionDisplayNameFromString('')).toBe('Unknown Session')
+      expect(getSessionDisplayNameFromString('', 'ag')).toBe('Unknown Session')
+    })
 
     it('should transform AG sessions by type', () => {
-      expect(getSessionDisplayNameFromString('Some AG Session', 'ag')).toBe('Some AG Session');
-      expect(getSessionDisplayNameFromString('AG Session 2', 'ag')).toBe('Session 2');
-    });
+      expect(getSessionDisplayNameFromString('Some AG Session', 'ag')).toBe('Some AG Session')
+      expect(getSessionDisplayNameFromString('AG Session 2', 'ag')).toBe('Session 2')
+    })
 
     it('should transform AG sessions by name pattern', () => {
-      expect(getSessionDisplayNameFromString('All-Gender Cabin-Session 2')).toBe('Session 2');
-      expect(getSessionDisplayNameFromString('Session 3 All-Gender')).toBe('Session 3');
-      expect(getSessionDisplayNameFromString('ag session 3')).toBe('Session 3');
-    });
+      expect(getSessionDisplayNameFromString('All-Gender Cabin-Session 2')).toBe('Session 2')
+      expect(getSessionDisplayNameFromString('Session 3 All-Gender')).toBe('Session 3')
+      expect(getSessionDisplayNameFromString('ag session 3')).toBe('Session 3')
+    })
 
     it('should return original name if no transformation needed', () => {
-      expect(getSessionDisplayNameFromString('Session 2')).toBe('Session 2');
-      expect(getSessionDisplayNameFromString('Taste of Camp')).toBe('Taste of Camp');
-      expect(getSessionDisplayNameFromString('Family Camp 1')).toBe('Family Camp 1');
-    });
-  });
+      expect(getSessionDisplayNameFromString('Session 2')).toBe('Session 2')
+      expect(getSessionDisplayNameFromString('Taste of Camp')).toBe('Taste of Camp')
+      expect(getSessionDisplayNameFromString('Family Camp 1')).toBe('Family Camp 1')
+    })
+  })
 
   describe('getFormattedSessionName', () => {
     it('should return "Unknown Session" for undefined session', () => {
-      expect(getFormattedSessionName(undefined)).toBe('Unknown Session');
-    });
+      expect(getFormattedSessionName(undefined)).toBe('Unknown Session')
+    })
 
     it('should return "Unknown Session" for session without name', () => {
       const session: Session = {
@@ -255,9 +255,9 @@ describe('sessionDisplay utilities', () => {
         end_date: '',
         created: '',
         updated: '',
-      };
-      expect(getFormattedSessionName(session)).toBe('Unknown Session');
-    });
+      }
+      expect(getFormattedSessionName(session)).toBe('Unknown Session')
+    })
 
     it('should return parent name for AG session when allSessions provided', () => {
       const agSession: Session = {
@@ -271,7 +271,7 @@ describe('sessionDisplay utilities', () => {
         end_date: '',
         created: '',
         updated: '',
-      };
+      }
       const allSessions: Session[] = [
         {
           id: 'main-2',
@@ -284,9 +284,9 @@ describe('sessionDisplay utilities', () => {
           created: '',
           updated: '',
         },
-      ];
-      expect(getFormattedSessionName(agSession, allSessions)).toBe('Session 2');
-    });
+      ]
+      expect(getFormattedSessionName(agSession, allSessions)).toBe('Session 2')
+    })
 
     it('should return original name for AG session when parent not found', () => {
       const agSession: Session = {
@@ -300,9 +300,9 @@ describe('sessionDisplay utilities', () => {
         end_date: '',
         created: '',
         updated: '',
-      };
-      expect(getFormattedSessionName(agSession, [])).toBe('All-Gender Cabin-Session 99');
-    });
+      }
+      expect(getFormattedSessionName(agSession, [])).toBe('All-Gender Cabin-Session 99')
+    })
 
     it('should return original name for non-AG sessions', () => {
       const mainSession: Session = {
@@ -315,116 +315,122 @@ describe('sessionDisplay utilities', () => {
         end_date: '',
         created: '',
         updated: '',
-      };
-      expect(getFormattedSessionName(mainSession)).toBe('Session 2');
-    });
-  });
+      }
+      expect(getFormattedSessionName(mainSession)).toBe('Session 2')
+    })
+  })
 
   describe('getSessionChartLabel', () => {
     it('should return "Unknown" for empty session name', () => {
-      expect(getSessionChartLabel('')).toBe('Unknown');
-    });
+      expect(getSessionChartLabel('')).toBe('Unknown')
+    })
 
     it('should return taste session name as-is', () => {
-      expect(getSessionChartLabel('Taste of Camp')).toBe('Taste of Camp');
-      expect(getSessionChartLabel('Taste of Camp 2', 'taste')).toBe('Taste of Camp 2');
-      expect(getSessionChartLabel('Taste of Camp 2025', 'taste')).toBe('Taste of Camp 2025');
-    });
+      expect(getSessionChartLabel('Taste of Camp')).toBe('Taste of Camp')
+      expect(getSessionChartLabel('Taste of Camp 2', 'taste')).toBe('Taste of Camp 2')
+      expect(getSessionChartLabel('Taste of Camp 2025', 'taste')).toBe('Taste of Camp 2025')
+    })
 
     it('should abbreviate AG sessions and preserve grade ranges', () => {
-      expect(getSessionChartLabel('All-Gender Cabin-Session 2', 'ag')).toBe('All-Gender 2');
-      expect(getSessionChartLabel('All-Gender Cabin-Session 2 (Grades 6-8)', 'ag')).toBe('All-Gender 2 (6-8)');
-      expect(getSessionChartLabel('All-Gender Cabin-Session 3 (Grades 3-5) 2025')).toBe('All-Gender 3 (3-5)');
-      expect(getSessionChartLabel('AG Session 4', 'ag')).toBe('All-Gender 4');
-    });
+      expect(getSessionChartLabel('All-Gender Cabin-Session 2', 'ag')).toBe('All-Gender 2')
+      expect(getSessionChartLabel('All-Gender Cabin-Session 2 (Grades 6-8)', 'ag')).toBe(
+        'All-Gender 2 (6-8)'
+      )
+      expect(getSessionChartLabel('All-Gender Cabin-Session 3 (Grades 3-5) 2025')).toBe(
+        'All-Gender 3 (3-5)'
+      )
+      expect(getSessionChartLabel('AG Session 4', 'ag')).toBe('All-Gender 4')
+    })
 
     it('should preserve main session format', () => {
-      expect(getSessionChartLabel('Session 2')).toBe('Session 2');
-      expect(getSessionChartLabel('Session 3', 'main')).toBe('Session 3');
-    });
+      expect(getSessionChartLabel('Session 2')).toBe('Session 2')
+      expect(getSessionChartLabel('Session 3', 'main')).toBe('Session 3')
+    })
 
     it('should preserve embedded session format', () => {
-      expect(getSessionChartLabel('Session 2a', 'embedded')).toBe('Session 2a');
-      expect(getSessionChartLabel('Session 3b')).toBe('Session 3b');
-    });
+      expect(getSessionChartLabel('Session 2a', 'embedded')).toBe('Session 2a')
+      expect(getSessionChartLabel('Session 3b')).toBe('Session 3b')
+    })
 
     it('should truncate very long names without grade ranges', () => {
-      expect(getSessionChartLabel('Some Very Long Session Name That Goes On Forever')).toBe('Some Very Long Session...');
-    });
-  });
+      expect(getSessionChartLabel('Some Very Long Session Name That Goes On Forever')).toBe(
+        'Some Very Long Session...'
+      )
+    })
+  })
 
   describe('getSessionShorthand', () => {
     it('should return empty string for empty session name', () => {
-      expect(getSessionShorthand('')).toBe('');
-    });
+      expect(getSessionShorthand('')).toBe('')
+    })
 
     it('should return "Taste" for Taste of Camp sessions', () => {
-      expect(getSessionShorthand('Taste of Camp')).toBe('Taste');
-      expect(getSessionShorthand('Taste of Camp 2025', 'taste')).toBe('Taste');
-    });
+      expect(getSessionShorthand('Taste of Camp')).toBe('Taste')
+      expect(getSessionShorthand('Taste of Camp 2025', 'taste')).toBe('Taste')
+    })
 
     it('should extract session number from "Session N" format', () => {
-      expect(getSessionShorthand('Session 2')).toBe('2');
-      expect(getSessionShorthand('Session 3')).toBe('3');
-      expect(getSessionShorthand('Session 2a')).toBe('2a');
-      expect(getSessionShorthand('Session 3b')).toBe('3b');
-    });
+      expect(getSessionShorthand('Session 2')).toBe('2')
+      expect(getSessionShorthand('Session 3')).toBe('3')
+      expect(getSessionShorthand('Session 2a')).toBe('2a')
+      expect(getSessionShorthand('Session 3b')).toBe('3b')
+    })
 
     it('should extract number from AG sessions', () => {
-      expect(getSessionShorthand('AG Session 2', 'ag')).toBe('2');
-      expect(getSessionShorthand('All-Gender Cabin-Session 3')).toBe('3');
-      expect(getSessionShorthand('Session 2 All-Gender')).toBe('2');
-    });
+      expect(getSessionShorthand('AG Session 2', 'ag')).toBe('2')
+      expect(getSessionShorthand('All-Gender Cabin-Session 3')).toBe('3')
+      expect(getSessionShorthand('Session 2 All-Gender')).toBe('2')
+    })
 
     it('should fallback to number extraction', () => {
-      expect(getSessionShorthand('Camp Week 4')).toBe('4');
-      expect(getSessionShorthand('Week 2a Program')).toBe('2a');
-    });
+      expect(getSessionShorthand('Camp Week 4')).toBe('4')
+      expect(getSessionShorthand('Week 2a Program')).toBe('2a')
+    })
 
     it('should return first word as last resort', () => {
-      expect(getSessionShorthand('Family Camp')).toBe('Family');
-      expect(getSessionShorthand('Special Event')).toBe('Special');
-    });
+      expect(getSessionShorthand('Family Camp')).toBe('Family')
+      expect(getSessionShorthand('Special Event')).toBe('Special')
+    })
 
     it('should handle AG session type parameter', () => {
-      expect(getSessionShorthand('Some AG Session 2', 'ag')).toBe('2');
-    });
-  });
+      expect(getSessionShorthand('Some AG Session 2', 'ag')).toBe('2')
+    })
+  })
 
   describe('getSessionChartLabel with date lookup', () => {
     it('should return taste session name as-is, ignoring date lookup', () => {
       const dateLookup = {
         'Taste of Camp 1': '2026-06-01',
         'Taste of Camp 2': '2026-06-08',
-      };
+      }
 
       // Date lookup is ignored for Taste sessions - just return name as-is
-      expect(getSessionChartLabel('Taste of Camp 1', undefined, dateLookup)).toBe('Taste of Camp 1');
-      expect(getSessionChartLabel('Taste of Camp 2', undefined, dateLookup)).toBe('Taste of Camp 2');
-    });
+      expect(getSessionChartLabel('Taste of Camp 1', undefined, dateLookup)).toBe('Taste of Camp 1')
+      expect(getSessionChartLabel('Taste of Camp 2', undefined, dateLookup)).toBe('Taste of Camp 2')
+    })
 
     it('should not transform taste session names with date lookup', () => {
       const dateLookup = {
         'Taste of Camp': '2026-06-15',
-      };
+      }
 
-      expect(getSessionChartLabel('Taste of Camp', 'taste', dateLookup)).toBe('Taste of Camp');
-    });
+      expect(getSessionChartLabel('Taste of Camp', 'taste', dateLookup)).toBe('Taste of Camp')
+    })
 
     it('should not append date to non-Taste sessions', () => {
       const dateLookup = {
         'Session 2': '2026-06-15',
         'Session 3': '2026-07-01',
-      };
+      }
 
-      expect(getSessionChartLabel('Session 2', 'main', dateLookup)).toBe('Session 2');
-      expect(getSessionChartLabel('Session 3', 'main', dateLookup)).toBe('Session 3');
-    });
+      expect(getSessionChartLabel('Session 2', 'main', dateLookup)).toBe('Session 2')
+      expect(getSessionChartLabel('Session 3', 'main', dateLookup)).toBe('Session 3')
+    })
 
     it('should work without date lookup (backward compatibility)', () => {
-      expect(getSessionChartLabel('Taste of Camp')).toBe('Taste of Camp');
-      expect(getSessionChartLabel('Taste of Camp 2')).toBe('Taste of Camp 2');
-      expect(getSessionChartLabel('Session 2')).toBe('Session 2');
-    });
-  });
-});
+      expect(getSessionChartLabel('Taste of Camp')).toBe('Taste of Camp')
+      expect(getSessionChartLabel('Taste of Camp 2')).toBe('Taste of Camp 2')
+      expect(getSessionChartLabel('Session 2')).toBe('Session 2')
+    })
+  })
+})

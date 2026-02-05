@@ -119,6 +119,7 @@ class MetricsRepository:
         self,
         year: int,
         session_types: list[str] | None = None,
+        session_name: str | None = None,
     ) -> list[Any]:
         """Fetch camper_history records for a given year.
 
@@ -128,6 +129,9 @@ class MetricsRepository:
         Args:
             year: The year to fetch records for.
             session_types: Optional list of session types to filter.
+            session_name: Optional session name to filter by. Used for
+                cross-year filtering where the same session name appears
+                across multiple years with different cm_ids.
 
         Returns:
             List of camper_history records. Returns empty list on error.
@@ -139,6 +143,12 @@ class MetricsRepository:
             if session_types:
                 type_filter = " || ".join(f'session_type = "{t}"' for t in session_types)
                 filter_str = f"({filter_str}) && ({type_filter})"
+
+            # Filter by session name for cross-year filtering
+            if session_name:
+                # Escape quotes in session name for PocketBase filter
+                escaped_name = session_name.replace('"', '\\"')
+                filter_str = f'({filter_str}) && session_name = "{escaped_name}"'
 
             records = await asyncio.to_thread(
                 self.pb.collection("camper_history").get_full_list,
@@ -212,3 +222,130 @@ class MetricsRepository:
                 if pid not in result:
                     result[pid] = record
         return result
+
+    async def fetch_bunk_plans(
+        self,
+        year: int,
+        session_pb_ids: list[str] | None = None,
+    ) -> list[Any]:
+        """Fetch bunk_plans with bunk expansion for capacity calculation.
+
+        Args:
+            year: The year to fetch bunk_plans for.
+            session_pb_ids: Optional list of session PocketBase IDs to filter.
+
+        Returns:
+            List of bunk_plan records with bunk expansion.
+        """
+        filter_str = f"year = {year}"
+        if session_pb_ids:
+            session_filter = " || ".join(f'session = "{sid}"' for sid in session_pb_ids)
+            filter_str = f"({filter_str}) && ({session_filter})"
+
+        return await asyncio.to_thread(
+            self.pb.collection("bunk_plans").get_full_list,
+            query_params={"filter": filter_str, "expand": "bunk"},
+        )
+
+    async def fetch_capacity_config(self) -> int:
+        """Fetch default cabin capacity from config table.
+
+        Looks for category="constraint", subcategory="cabin_capacity", key="default".
+
+        Returns:
+            Default capacity value (12 if config not found).
+        """
+        try:
+            config = await asyncio.to_thread(
+                self.pb.collection("config").get_first_list_item,
+                'category = "constraint" && subcategory = "cabin_capacity" && config_key = "default"',
+            )
+            return int(config.value) if config and config.value else 12
+        except Exception:
+            # Config not found or error - return default
+            return 12
+
+    async def fetch_attendees_with_persons(
+        self,
+        year: int,
+        session_types: list[str] | None = None,
+        status_filter: str | list[str] | None = None,
+    ) -> list[Any]:
+        """Fetch attendees with person expansion for geographic demographics.
+
+        This enables getting school/city directly from person records without
+        requiring the camper_history sync.
+
+        Args:
+            year: The year to fetch attendees for.
+            session_types: Optional list of session types to filter.
+            status_filter: Optional status filter (defaults to enrolled).
+
+        Returns:
+            List of attendee records with person expansion.
+        """
+        # Build status filter
+        if status_filter is None or status_filter == "enrolled":
+            filter_str = f"year = {year} && is_active = 1 && status_id = 2"
+        elif isinstance(status_filter, list):
+            status_conditions = " || ".join(f'status = "{s}"' for s in status_filter)
+            filter_str = f"year = {year} && ({status_conditions})"
+        else:
+            filter_str = f'year = {year} && status = "{status_filter}"'
+
+        # Note: session_types filtering is handled at the service layer
+        # by joining with sessions data, since attendees don't have session_type directly
+
+        return await asyncio.to_thread(
+            self.pb.collection("attendees").get_full_list,
+            query_params={"filter": filter_str, "expand": "person,session"},
+        )
+
+    async def fetch_synagogue_by_household(self, year: int) -> dict[int, str]:
+        """Fetch synagogue values mapped by household CampMinder ID.
+
+        Looks up the "Synagogue" custom field from household_custom_values
+        and returns a mapping from household cm_id to synagogue name.
+
+        Args:
+            year: The year to filter custom values for.
+
+        Returns:
+            Dictionary mapping household cm_id (int) to synagogue name (str).
+            Returns empty dict if Synagogue field not found.
+        """
+        try:
+            # Find the Synagogue field definition
+            field_def = await asyncio.to_thread(
+                self.pb.collection("field_definitions").get_first_list_item,
+                'name = "Synagogue"',
+            )
+        except Exception as e:
+            logger.debug(f"Synagogue field definition not found: {e}")
+            return {}
+
+        try:
+            # Fetch household_custom_values for this field with household expansion
+            filter_str = f'field = "{field_def.id}" && year = {year}'
+            custom_values = await asyncio.to_thread(
+                self.pb.collection("household_custom_values").get_full_list,
+                query_params={"filter": filter_str, "expand": "household"},
+            )
+
+            # Build mapping from household cm_id to synagogue value
+            result: dict[int, str] = {}
+            for cv in custom_values:
+                value = getattr(cv, "value", "")
+                if not value:
+                    continue  # Skip empty values
+                expand = getattr(cv, "expand", {})
+                household = expand.get("household") if expand else None
+                if household:
+                    hh_cm_id = getattr(household, "cm_id", None)
+                    if hh_cm_id is not None:
+                        result[int(hh_cm_id)] = value
+
+            return result
+        except Exception as e:
+            logger.warning(f"Error fetching synagogue custom values: {e}")
+            return {}

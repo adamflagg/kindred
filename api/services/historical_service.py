@@ -38,12 +38,17 @@ class HistoricalService:
         self,
         years: list[int] | None = None,
         session_types: list[str] | None = None,
+        session_cm_id: int | None = None,
     ) -> HistoricalTrendsResponse:
         """Calculate historical trends across multiple years.
 
         Args:
             years: List of years to analyze. Default: last 5 years from 2025.
             session_types: Optional list of session types to filter.
+            session_cm_id: Optional session CampMinder ID to filter by.
+                When provided, filters to sessions with the same NAME across years.
+                This enables "Show Session 2's enrollment over 5 years" even though
+                Session 2 has different cm_ids each year.
 
         Returns:
             HistoricalTrendsResponse with trend data.
@@ -53,8 +58,15 @@ class HistoricalService:
             current_year = 2025
             years = list(range(current_year - 4, current_year + 1))
 
+        # If session_cm_id provided, get the session name to filter by
+        session_name: str | None = None
+        if session_cm_id is not None:
+            session_name = await self._get_session_name_for_filtering(session_cm_id, years, session_types)
+
         # Fetch camper history for all years in parallel
-        history_futures = [self.repo.fetch_camper_history(y, session_types=session_types) for y in years]
+        history_futures = [
+            self.repo.fetch_camper_history(y, session_types=session_types, session_name=session_name) for y in years
+        ]
         all_history = await asyncio.gather(*history_futures)
 
         # Compute metrics for each year
@@ -65,6 +77,37 @@ class HistoricalService:
             year_metrics_list.append(year_metric)
 
         return HistoricalTrendsResponse(years=year_metrics_list)
+
+    async def _get_session_name_for_filtering(
+        self,
+        session_cm_id: int,
+        years: list[int],
+        session_types: list[str] | None = None,
+    ) -> str | None:
+        """Look up the session name to use for filtering across years.
+
+        Searches across all years to find the session with the given cm_id,
+        returning its name for name-based matching in historical data.
+
+        Args:
+            session_cm_id: The CampMinder ID of the session to find.
+            years: List of years to search.
+            session_types: Optional session types filter.
+
+        Returns:
+            The session name if found, None otherwise.
+        """
+        # Fetch sessions from all years in parallel
+        session_futures = [self.repo.fetch_sessions(year, session_types=session_types) for year in years]
+        all_sessions = await asyncio.gather(*session_futures)
+
+        # Search for the session in all years
+        for sessions_dict in all_sessions:
+            if session_cm_id in sessions_dict:
+                session = sessions_dict[session_cm_id]
+                return getattr(session, "name", None)
+
+        return None
 
     def _compute_year_metrics(self, year: int, history: list[Any]) -> YearMetrics:
         """Compute metrics for a single year.

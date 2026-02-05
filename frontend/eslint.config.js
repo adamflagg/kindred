@@ -2,6 +2,7 @@ import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
 import { reactRefresh } from 'eslint-plugin-react-refresh';
+import eslintConfigPrettier from 'eslint-config-prettier';
 
 export default tseslint.config(
   // Base ESLint recommended rules
@@ -88,5 +89,8 @@ export default tseslint.config(
       // '@typescript-eslint/strict-boolean-expressions': 'off',
       // '@typescript-eslint/no-unnecessary-condition': 'off',
     }
-  }
+  },
+
+  // Prettier config - MUST be last to override conflicting rules
+  eslintConfigPrettier
 );

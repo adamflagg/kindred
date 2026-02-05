@@ -6,17 +6,17 @@
 
 // Session types that should appear in the dropdown for debug parser
 // (AG is excluded because it's grouped with parent main session)
-const DEBUG_DROPDOWN_SESSION_TYPES = ['main', 'embedded'] as const;
+const DEBUG_DROPDOWN_SESSION_TYPES = ['main', 'embedded'] as const
 
 /**
  * Session with type information for debug parser
  */
 export interface DebugSession {
-  id: string;
-  cm_id: number;
-  name: string;
-  session_type?: string;
-  parent_id?: number | null;
+  id: string
+  cm_id: number
+  name: string
+  session_type?: string
+  parent_id?: number | null
 }
 
 /**
@@ -31,7 +31,7 @@ export function getDebugDropdownSessions(sessions: DebugSession[]): DebugSession
       DEBUG_DROPDOWN_SESSION_TYPES.includes(
         s.session_type as (typeof DEBUG_DROPDOWN_SESSION_TYPES)[number]
       )
-  );
+  )
 }
 
 /**
@@ -43,17 +43,17 @@ export function getDebugDropdownSessions(sessions: DebugSession[]): DebugSession
  * - Value: array of AG session cm_ids that belong to this main session
  */
 export function buildAgSessionCmIdMap(sessions: DebugSession[]): Map<number, number[]> {
-  const map = new Map<number, number[]>();
+  const map = new Map<number, number[]>()
 
   sessions.forEach((session) => {
     if (session.session_type === 'ag' && session.parent_id) {
-      const existing = map.get(session.parent_id) || [];
-      existing.push(session.cm_id);
-      map.set(session.parent_id, existing);
+      const existing = map.get(session.parent_id) || []
+      existing.push(session.cm_id)
+      map.set(session.parent_id, existing)
     }
-  });
+  })
 
-  return map;
+  return map
 }
 
 /**
@@ -70,11 +70,11 @@ export function getEffectiveCmIds(
   agSessionMap: Map<number, number[]>
 ): number[] | undefined {
   if (selectedCmId === null) {
-    return undefined;
+    return undefined
   }
 
-  const agCmIds = agSessionMap.get(selectedCmId) || [];
-  return [selectedCmId, ...agCmIds];
+  const agCmIds = agSessionMap.get(selectedCmId) || []
+  return [selectedCmId, ...agCmIds]
 }
 
 /**
@@ -84,11 +84,11 @@ export function filterByRequesterName<T extends { requester_name: string | null 
   items: T[],
   searchQuery: string
 ): T[] {
-  const trimmed = searchQuery.trim();
+  const trimmed = searchQuery.trim()
   if (!trimmed) {
-    return items;
+    return items
   }
 
-  const term = trimmed.toLowerCase();
-  return items.filter((item) => item.requester_name?.toLowerCase().includes(term));
+  const term = trimmed.toLowerCase()
+  return items.filter((item) => item.requester_name?.toLowerCase().includes(term))
 }

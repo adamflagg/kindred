@@ -2,78 +2,78 @@
  * TypeScript types for debug components
  */
 
-export type SourceFieldType = 'bunk_with' | 'not_bunk_with' | 'bunking_notes' | 'internal_notes';
+export type SourceFieldType = 'bunk_with' | 'not_bunk_with' | 'bunking_notes' | 'internal_notes'
 
 export interface ParsedIntent {
-  request_type: string;
-  target_name: string | null;
-  keywords_found: string[];
-  parse_notes: string;
-  reasoning: string;
-  list_position: number;
-  needs_clarification: boolean;
+  request_type: string
+  target_name: string | null
+  keywords_found: string[]
+  parse_notes: string
+  reasoning: string
+  list_position: number
+  needs_clarification: boolean
   temporal_info: {
-    date: string | null;
-    is_superseded: boolean;
-    supersedes_reason: string | null;
-  } | null;
+    date: string | null
+    is_superseded: boolean
+    supersedes_reason: string | null
+  } | null
 }
 
 export interface ParseAnalysisItem {
-  id: string;
-  original_request_id: string;
-  requester_name: string | null;
-  requester_cm_id: number | null;
-  source_field: string | null;
-  original_text: string | null;
-  parsed_intents: ParsedIntent[];
-  is_valid: boolean;
-  error_message: string | null;
-  token_count: number | null;
-  processing_time_ms: number | null;
-  prompt_version: string | null;
-  created: string | null;
+  id: string
+  original_request_id: string
+  requester_name: string | null
+  requester_cm_id: number | null
+  source_field: string | null
+  original_text: string | null
+  parsed_intents: ParsedIntent[]
+  is_valid: boolean
+  error_message: string | null
+  token_count: number | null
+  processing_time_ms: number | null
+  prompt_version: string | null
+  created: string | null
 }
 
 export interface OriginalRequestItem {
-  id: string;
-  requester_name: string | null;
-  requester_cm_id: number | null;
-  source_field: string;
-  original_text: string;
-  year: number;
-  processed: boolean;
+  id: string
+  requester_name: string | null
+  requester_cm_id: number | null
+  source_field: string
+  original_text: string
+  year: number
+  processed: boolean
 }
 
 // New types for fallback pattern
-export type ParseResultSource = 'debug' | 'production' | 'none';
+export type ParseResultSource = 'debug' | 'production' | 'none'
 
 export interface OriginalRequestWithStatus {
-  id: string;
-  requester_name: string | null;
-  requester_cm_id: number | null;
-  source_field: string;
-  original_text: string;
-  year: number;
-  has_debug_result: boolean;
-  has_production_result: boolean;
+  id: string
+  requester_name: string | null
+  requester_cm_id: number | null
+  source_field: string
+  original_text: string
+  year: number
+  has_debug_result: boolean
+  has_production_result: boolean
 }
 
 export interface ParseResultWithSource {
-  source: ParseResultSource;
-  id: string | null;
-  original_request_id: string | null;
-  requester_name: string | null;
-  requester_cm_id: number | null;
-  source_field: string | null;
-  original_text: string | null;
-  parsed_intents: ParsedIntent[];
-  is_valid: boolean;
-  error_message: string | null;
-  token_count: number | null;
-  processing_time_ms: number | null;
-  prompt_version: string | null;
-  created: string | null;
+  source: ParseResultSource
+  id: string | null
+  original_request_id: string | null
+  requester_name: string | null
+  requester_cm_id: number | null
+  source_field: string | null
+  original_text: string | null
+  parsed_intents: ParsedIntent[]
+  is_valid: boolean
+  error_message: string | null
+  token_count: number | null
+  processing_time_ms: number | null
+  prompt_version: string | null
+  created: string | null
 }
 
 export const SOURCE_FIELD_LABELS: Record<SourceFieldType, string> = {
@@ -81,7 +81,7 @@ export const SOURCE_FIELD_LABELS: Record<SourceFieldType, string> = {
   not_bunk_with: 'Not Bunk With',
   bunking_notes: 'Bunking Notes',
   internal_notes: 'Internal Notes',
-};
+}
 
 // =============================================================================
 // Dual-Source Types (Debug/Prod Toggle)
@@ -91,54 +91,54 @@ export const SOURCE_FIELD_LABELS: Record<SourceFieldType, string> = {
  * Inner parse result data for a single source (debug or production)
  */
 export interface ParseResultData {
-  id: string | null;
-  parsed_intents: ParsedIntent[];
-  is_valid: boolean;
-  error_message: string | null;
-  token_count: number | null;
-  processing_time_ms: number | null;
-  prompt_version: string | null;
-  created: string | null;
+  id: string | null
+  parsed_intents: ParsedIntent[]
+  is_valid: boolean
+  error_message: string | null
+  token_count: number | null
+  processing_time_ms: number | null
+  prompt_version: string | null
+  created: string | null
 }
 
 /**
  * Parse result containing BOTH debug and production data for toggle UI
  */
 export interface DualSourceParseResult {
-  original_request_id: string;
-  requester_name: string | null;
-  requester_cm_id: number | null;
-  source_field: string | null;
-  original_text: string | null;
-  has_debug: boolean;
-  has_production: boolean;
-  debug_result: ParseResultData | null;
-  production_result: ParseResultData | null;
+  original_request_id: string
+  requester_name: string | null
+  requester_cm_id: number | null
+  source_field: string | null
+  original_text: string | null
+  has_debug: boolean
+  has_production: boolean
+  debug_result: ParseResultData | null
+  production_result: ParseResultData | null
 }
 
 /**
  * View mode for source toggle: 'debug' or 'production'
  */
-export type SourceViewMode = 'debug' | 'production';
+export type SourceViewMode = 'debug' | 'production'
 
 // Types for grouped-by-camper view (Phase 5)
 export interface FieldParseResult {
-  original_request_id: string;
-  source_field: string;
-  original_text: string;
-  has_debug_result: boolean;
-  has_production_result: boolean;
+  original_request_id: string
+  source_field: string
+  original_text: string
+  has_debug_result: boolean
+  has_production_result: boolean
 }
 
 export interface CamperGroupedRequests {
-  requester_cm_id: number;
-  requester_name: string;
-  fields: FieldParseResult[];
+  requester_cm_id: number
+  requester_name: string
+  fields: FieldParseResult[]
 }
 
 export interface GroupedRequestsResponse {
-  items: CamperGroupedRequests[];
-  total: number;
+  items: CamperGroupedRequests[]
+  total: number
 }
 
 export const REQUEST_TYPE_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -167,4 +167,4 @@ export const REQUEST_TYPE_COLORS: Record<string, { bg: string; text: string; bor
     text: 'text-slate-700 dark:text-slate-400',
     border: 'border-slate-200 dark:border-slate-800',
   },
-};
+}

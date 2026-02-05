@@ -3,112 +3,112 @@
  * TDD - tests written first, implementation follows
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest'
 
 describe('GraphControls', () => {
   describe('view mode selection', () => {
     it('should support all and ego view modes', () => {
-      type ViewMode = 'all' | 'ego';
-      const validModes: ViewMode[] = ['all', 'ego'];
+      type ViewMode = 'all' | 'ego'
+      const validModes: ViewMode[] = ['all', 'ego']
 
-      expect(validModes).toContain('all');
-      expect(validModes).toContain('ego');
-    });
+      expect(validModes).toContain('all')
+      expect(validModes).toContain('ego')
+    })
 
     it('should call onViewModeChange when mode changes', () => {
-      const mockOnChange = vi.fn();
-      const newMode = 'ego';
+      const mockOnChange = vi.fn()
+      const newMode = 'ego'
 
-      mockOnChange(newMode);
+      mockOnChange(newMode)
 
-      expect(mockOnChange).toHaveBeenCalledWith('ego');
-    });
-  });
+      expect(mockOnChange).toHaveBeenCalledWith('ego')
+    })
+  })
 
   describe('label toggle', () => {
     it('should toggle label visibility', () => {
-      const mockToggleLabels = vi.fn();
+      const mockToggleLabels = vi.fn()
 
-      mockToggleLabels();
+      mockToggleLabels()
 
-      expect(mockToggleLabels).toHaveBeenCalled();
-    });
+      expect(mockToggleLabels).toHaveBeenCalled()
+    })
 
     it('should show different icons for show/hide state', () => {
-      const showLabels = true;
-      const iconName = showLabels ? 'Eye' : 'EyeOff';
+      const showLabels = true
+      const iconName = showLabels ? 'Eye' : 'EyeOff'
 
-      expect(iconName).toBe('Eye');
-    });
-  });
+      expect(iconName).toBe('Eye')
+    })
+  })
 
   describe('zoom controls', () => {
     it('should have zoom in, zoom out, and fit functions', () => {
-      const handleZoomIn = vi.fn();
-      const handleZoomOut = vi.fn();
-      const handleFit = vi.fn();
+      const handleZoomIn = vi.fn()
+      const handleZoomOut = vi.fn()
+      const handleFit = vi.fn()
 
-      handleZoomIn();
-      handleZoomOut();
-      handleFit();
+      handleZoomIn()
+      handleZoomOut()
+      handleFit()
 
-      expect(handleZoomIn).toHaveBeenCalled();
-      expect(handleZoomOut).toHaveBeenCalled();
-      expect(handleFit).toHaveBeenCalled();
-    });
+      expect(handleZoomIn).toHaveBeenCalled()
+      expect(handleZoomOut).toHaveBeenCalled()
+      expect(handleFit).toHaveBeenCalled()
+    })
 
     it('should apply zoom multipliers correctly', () => {
-      const currentZoom = 1.0;
-      const zoomInMultiplier = 1.2;
-      const zoomOutMultiplier = 0.8;
+      const currentZoom = 1.0
+      const zoomInMultiplier = 1.2
+      const zoomOutMultiplier = 0.8
 
-      expect(currentZoom * zoomInMultiplier).toBe(1.2);
-      expect(currentZoom * zoomOutMultiplier).toBe(0.8);
-    });
-  });
+      expect(currentZoom * zoomInMultiplier).toBe(1.2)
+      expect(currentZoom * zoomOutMultiplier).toBe(0.8)
+    })
+  })
 
   describe('expand toggle', () => {
     it('should toggle expanded state', () => {
-      const mockToggleExpand = vi.fn();
+      const mockToggleExpand = vi.fn()
 
-      mockToggleExpand();
+      mockToggleExpand()
 
-      expect(mockToggleExpand).toHaveBeenCalled();
-    });
+      expect(mockToggleExpand).toHaveBeenCalled()
+    })
 
     it('should show different icons for expanded/collapsed', () => {
-      const isExpanded = true;
-      const iconName = isExpanded ? 'Minimize2' : 'Maximize2';
+      const isExpanded = true
+      const iconName = isExpanded ? 'Minimize2' : 'Maximize2'
 
-      expect(iconName).toBe('Minimize2');
-    });
-  });
+      expect(iconName).toBe('Minimize2')
+    })
+  })
 
   describe('help toggle', () => {
     it('should toggle help visibility', () => {
-      const mockToggleHelp = vi.fn();
+      const mockToggleHelp = vi.fn()
 
-      mockToggleHelp();
+      mockToggleHelp()
 
-      expect(mockToggleHelp).toHaveBeenCalled();
-    });
-  });
-});
+      expect(mockToggleHelp).toHaveBeenCalled()
+    })
+  })
+})
 
 describe('GraphControls props interface', () => {
   it('should define all required props', () => {
     interface GraphControlsProps {
-      viewMode: 'all' | 'ego';
-      onViewModeChange: (mode: 'all' | 'ego') => void;
-      showLabels: boolean;
-      onToggleLabels: () => void;
-      showHelp: boolean;
-      onToggleHelp: () => void;
-      isExpanded: boolean;
-      onToggleExpand: () => void;
-      onZoomIn: () => void;
-      onZoomOut: () => void;
-      onFit: () => void;
+      viewMode: 'all' | 'ego'
+      onViewModeChange: (mode: 'all' | 'ego') => void
+      showLabels: boolean
+      onToggleLabels: () => void
+      showHelp: boolean
+      onToggleHelp: () => void
+      isExpanded: boolean
+      onToggleExpand: () => void
+      onZoomIn: () => void
+      onZoomOut: () => void
+      onFit: () => void
     }
 
     const props: GraphControlsProps = {
@@ -123,9 +123,9 @@ describe('GraphControls props interface', () => {
       onZoomIn: vi.fn(),
       onZoomOut: vi.fn(),
       onFit: vi.fn(),
-    };
+    }
 
-    expect(props.viewMode).toBe('all');
-    expect(props.showLabels).toBe(true);
-  });
-});
+    expect(props.viewMode).toBe('all')
+    expect(props.showLabels).toBe(true)
+  })
+})

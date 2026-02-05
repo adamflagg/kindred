@@ -5,7 +5,7 @@
  * API contract violations at runtime, providing better error messages
  * than TypeScript alone (which only checks at compile time).
  */
-import type { z } from 'zod';
+import type { z } from 'zod'
 
 /**
  * Parse an API response with a Zod schema, throwing on validation failure.
@@ -16,7 +16,7 @@ import type { z } from 'zod';
  * const person = parseResponse(PersonsResponseSchema, apiData);
  */
 export function parseResponse<T>(schema: z.ZodSchema<T>, data: unknown): T {
-  return schema.parse(data);
+  return schema.parse(data)
 }
 
 /**
@@ -36,17 +36,17 @@ export function safeParseResponse<T>(
   data: unknown,
   context?: string
 ): T | undefined {
-  const result = schema.safeParse(data);
+  const result = schema.safeParse(data)
 
   if (!result.success) {
     console.error(
       `API response validation failed${context ? ` (${context})` : ''}:`,
       result.error.format()
-    );
-    return undefined;
+    )
+    return undefined
   }
 
-  return result.data;
+  return result.data
 }
 
 /**
@@ -63,21 +63,21 @@ export function parseArrayResponse<T>(
   data: unknown[],
   context?: string
 ): T[] {
-  const results: T[] = [];
-  let errorCount = 0;
+  const results: T[] = []
+  let errorCount = 0
 
   for (let i = 0; i < data.length; i++) {
-    const result = schema.safeParse(data[i]);
+    const result = schema.safeParse(data[i])
     if (result.success) {
-      results.push(result.data);
+      results.push(result.data)
     } else {
-      errorCount++;
+      errorCount++
       if (errorCount <= 3) {
         // Only log first 3 errors to avoid console spam
         console.error(
           `API response validation failed for item ${i}${context ? ` (${context})` : ''}:`,
           result.error.format()
-        );
+        )
       }
     }
   }
@@ -85,10 +85,10 @@ export function parseArrayResponse<T>(
   if (errorCount > 3) {
     console.error(
       `... and ${errorCount - 3} more validation errors${context ? ` (${context})` : ''}`
-    );
+    )
   }
 
-  return results;
+  return results
 }
 
 /**
@@ -108,9 +108,9 @@ export function validatedQueryFn<T>(
   queryFn: () => Promise<unknown>
 ): () => Promise<T> {
   return async () => {
-    const data = await queryFn();
-    return schema.parse(data);
-  };
+    const data = await queryFn()
+    return schema.parse(data)
+  }
 }
 
 /**
@@ -131,7 +131,7 @@ export function validatedListQueryFn<T>(
   context?: string
 ): () => Promise<T[]> {
   return async () => {
-    const data = await queryFn();
-    return parseArrayResponse(schema, data, context);
-  };
+    const data = await queryFn()
+    return parseArrayResponse(schema, data, context)
+  }
 }

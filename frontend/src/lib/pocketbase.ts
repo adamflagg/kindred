@@ -2,40 +2,40 @@ import PocketBase, { type RecordModel } from 'pocketbase'
 import type { TypedPocketBase } from '../types/pocketbase-types'
 
 // Allow disabling auth for Playwright testing (set VITE_DISABLE_AUTH=true in .env)
-const DISABLE_AUTH = import.meta.env['VITE_DISABLE_AUTH'] === 'true';
+const DISABLE_AUTH = import.meta.env['VITE_DISABLE_AUTH'] === 'true'
 
 // Admin credentials for bypass mode (testing only)
 // These are injected by Vite at build time when VITE_DISABLE_AUTH=true
 // See vite.config.ts testAuthDefines - they come from POCKETBASE_ADMIN_* env vars
-const BYPASS_ADMIN_EMAIL = import.meta.env['VITE_ADMIN_EMAIL'] || '';
-const BYPASS_ADMIN_PASSWORD = import.meta.env['VITE_ADMIN_PASSWORD'] || '';
+const BYPASS_ADMIN_EMAIL = import.meta.env['VITE_ADMIN_EMAIL'] || ''
+const BYPASS_ADMIN_PASSWORD = import.meta.env['VITE_ADMIN_PASSWORD'] || ''
 
 // Configure PocketBase URL based on access method
 // IMPORTANT: The URL here must match EXACTLY what's configured in the OAuth2 provider's redirect URLs
 const getApiUrl = () => {
   if (typeof window !== 'undefined') {
     // Use the full origin to ensure OAuth2 redirect_uri matches
-    return window.location.origin;
+    return window.location.origin
   }
   // Fallback for SSR or non-browser environments
-  return '';
-};
+  return ''
+}
 
 export const pb = new PocketBase(getApiUrl()) as TypedPocketBase
 
 // Disable auto-cancellation - React Query handles request deduplication and caching,
 // PocketBase's collection-level cancellation conflicts with refetch behavior
-pb.autoCancellation(false);
+pb.autoCancellation(false)
 
 // Function to authenticate as admin in bypass mode
 // Uses _superusers collection (PocketBase 0.23.0+ pattern, replacing deprecated pb.admins)
 export async function authenticateBypassMode(): Promise<boolean> {
   try {
-    await pb.collection('_superusers').authWithPassword(BYPASS_ADMIN_EMAIL, BYPASS_ADMIN_PASSWORD);
-    return true;
+    await pb.collection('_superusers').authWithPassword(BYPASS_ADMIN_EMAIL, BYPASS_ADMIN_PASSWORD)
+    return true
   } catch (error) {
-    console.error('Bypass mode: failed to authenticate with PocketBase admin', error);
-    return false;
+    console.error('Bypass mode: failed to authenticate with PocketBase admin', error)
+    return false
   }
 }
 
@@ -60,8 +60,8 @@ export interface AdminSetting extends RecordModel {
 export interface SavedScenario extends RecordModel {
   name: string
   created_by: string
-  session: string  // PocketBase relation ID
-  year: number  // Year for filtering (matches session year)
+  session: string // PocketBase relation ID
+  year: number // Year for filtering (matches session year)
   is_active?: boolean
   description?: string
   assignments_data?: unknown
@@ -81,7 +81,7 @@ export async function getAuthMethods() {
   try {
     // Disable auto-cancellation for auth methods to avoid StrictMode issues
     const authMethods = await pb.collection('users').listAuthMethods({
-      requestKey: null
+      requestKey: null,
     })
     return authMethods
   } catch (error) {
@@ -94,8 +94,8 @@ export async function getAuthMethods() {
 export async function loginWithOAuth2(provider: string) {
   try {
     // Let PocketBase SDK handle the popup automatically
-    const authData = await pb.collection('users').authWithOAuth2({ 
-      provider
+    const authData = await pb.collection('users').authWithOAuth2({
+      provider,
       // SDK will open popup and handle OAuth2 flow via realtime connection
     })
     return authData
@@ -104,7 +104,6 @@ export async function loginWithOAuth2(provider: string) {
     throw error
   }
 }
-
 
 // Logout
 export function logout() {
@@ -134,14 +133,14 @@ export function onAuthChange(callback: (token: string | null, model: RecordModel
 
 // Helper to handle PocketBase errors
 interface PocketBaseError {
-  status?: number;
-  response?: { code?: number };
-  data?: Record<string, { message?: string } | string>;
-  message?: string;
+  status?: number
+  response?: { code?: number }
+  data?: Record<string, { message?: string } | string>
+  message?: string
 }
 
 export function handlePocketBaseError(error: unknown): string {
-  const pbError = error as PocketBaseError | null;
+  const pbError = error as PocketBaseError | null
   // Check for authentication errors (skip redirect when auth is disabled)
   if (!DISABLE_AUTH && (pbError?.status === 401 || pbError?.response?.code === 401)) {
     // Clear auth and redirect to login
@@ -156,8 +155,9 @@ export function handlePocketBaseError(error: unknown): string {
     // Extract validation errors
     const messages = Object.entries(pbError.data)
       .map(([field, err]) => {
-        const errMessage = typeof err === 'object' && err !== null && 'message' in err ? err.message : String(err);
-        return `${field}: ${errMessage}`;
+        const errMessage =
+          typeof err === 'object' && err !== null && 'message' in err ? err.message : String(err)
+        return `${field}: ${errMessage}`
       })
       .join(', ')
     return messages || pbError.message || 'An error occurred'

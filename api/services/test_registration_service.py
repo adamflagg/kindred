@@ -21,6 +21,9 @@ class MockPerson:
     gender: str | None = None
     grade: int | None = None
     years_at_camp: int | None = None
+    school: str | None = None
+    address: dict[str, Any] | None = None
+    household_id: int | None = None
 
 
 @dataclass
@@ -79,6 +82,9 @@ class TestRegistrationServiceCalculate:
         }
         mock_repo.fetch_camper_history.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
+        mock_repo.fetch_bunk_plans.return_value = []
+        mock_repo.fetch_capacity_config.return_value = 12
+        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2025)
@@ -114,6 +120,9 @@ class TestRegistrationServiceCalculate:
         }
         mock_repo.fetch_camper_history.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
+        mock_repo.fetch_bunk_plans.return_value = []
+        mock_repo.fetch_capacity_config.return_value = 12
+        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2025)
@@ -143,6 +152,9 @@ class TestRegistrationServiceCalculate:
         }
         mock_repo.fetch_camper_history.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
+        mock_repo.fetch_bunk_plans.return_value = []
+        mock_repo.fetch_capacity_config.return_value = 12
+        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2025)
@@ -179,6 +191,9 @@ class TestRegistrationServiceCalculate:
         }
         mock_repo.fetch_camper_history.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
+        mock_repo.fetch_bunk_plans.return_value = []
+        mock_repo.fetch_capacity_config.return_value = 12
+        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         # Filter to only main sessions
@@ -206,6 +221,9 @@ class TestRegistrationServiceCalculate:
         }
         mock_repo.fetch_camper_history.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
+        mock_repo.fetch_bunk_plans.return_value = []
+        mock_repo.fetch_capacity_config.return_value = 12
+        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2025, session_cm_id=1000)
@@ -235,6 +253,9 @@ class TestRegistrationServiceCalculate:
         }
         mock_repo.fetch_camper_history.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
+        mock_repo.fetch_bunk_plans.return_value = []
+        mock_repo.fetch_capacity_config.return_value = 12
+        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         # Filter to session 1000 - should also include AG session 1001
@@ -263,6 +284,9 @@ class TestRegistrationServiceCalculate:
         }
         mock_repo.fetch_camper_history.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
+        mock_repo.fetch_bunk_plans.return_value = []
+        mock_repo.fetch_capacity_config.return_value = 12
+        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2025)
@@ -297,6 +321,9 @@ class TestRegistrationServiceCalculate:
         }
         mock_repo.fetch_camper_history.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
+        mock_repo.fetch_bunk_plans.return_value = []
+        mock_repo.fetch_capacity_config.return_value = 12
+        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2025)
@@ -330,6 +357,9 @@ class TestRegistrationServiceCalculate:
         }
         mock_repo.fetch_camper_history.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
+        mock_repo.fetch_bunk_plans.return_value = []
+        mock_repo.fetch_capacity_config.return_value = 12
+        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2025)
@@ -386,6 +416,9 @@ class TestRegistrationServiceStatusCategories:
         }
         mock_repo.fetch_camper_history.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
+        mock_repo.fetch_bunk_plans.return_value = []
+        mock_repo.fetch_capacity_config.return_value = 12
+        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2025)
@@ -396,61 +429,74 @@ class TestRegistrationServiceStatusCategories:
 
 
 class TestRegistrationServiceDemographics:
-    """Tests for demographic breakdowns from camper_history."""
+    """Tests for demographic breakdowns from persons data."""
 
     @pytest.mark.asyncio
     async def test_school_breakdown_top_20(self) -> None:
-        """School breakdown returns top 20 by count."""
+        """School breakdown returns top 20 by count from persons.school field."""
         from api.services.registration_service import RegistrationService
 
         mock_repo = AsyncMock()
-        mock_repo.fetch_attendees.return_value = [
-            MockAttendee(person_id=1, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
-        ]
-        mock_repo.fetch_persons.return_value = {
-            1: MockPerson(person_id=1),
-        }
+        # Create 25 persons, each with different schools
+        # But to test "top 20", we need multiple persons per school
+        attendees = []
+        persons = {}
+        for i in range(25):
+            # Create (25-i) persons for each school
+            # School 0: 25 persons, School 1: 24 persons, etc.
+            for k in range(25 - i):
+                pid = i * 100 + k + 1  # Unique person IDs
+                attendees.append(
+                    MockAttendee(pid, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")})
+                )
+                persons[pid] = MockPerson(person_id=pid, school=f"School {i}")
+
+        mock_repo.fetch_attendees.return_value = attendees
+        mock_repo.fetch_persons.return_value = persons
         mock_repo.fetch_sessions.return_value = {
             1000: MockSession(cm_id=1000, name="S1", session_type="main"),
         }
-        # Create 25 schools, each appearing different number of times
-        history = []
-        for i in range(25):
-            for j in range(25 - i):  # School 0 appears 25 times, School 24 appears 1 time
-                history.append(MockCamperHistory(person_id=1, school=f"School {i}"))
-        mock_repo.fetch_camper_history.return_value = history
+        mock_repo.fetch_camper_history.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
+        mock_repo.fetch_bunk_plans.return_value = []
+        mock_repo.fetch_capacity_config.return_value = 12
+        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2025)
 
         # Should only have 20 schools
         assert len(result.by_school) == 20
-        # First school should be School 0 (most common)
+        # First school should be School 0 (most common - 25 persons)
         assert result.by_school[0].school == "School 0"
+        assert result.by_school[0].count == 25
 
     @pytest.mark.asyncio
     async def test_city_breakdown_excludes_empty(self) -> None:
-        """City breakdown excludes empty/null cities."""
+        """City breakdown excludes empty/null cities from persons.address.city field."""
         from api.services.registration_service import RegistrationService
 
         mock_repo = AsyncMock()
         mock_repo.fetch_attendees.return_value = [
             MockAttendee(person_id=1, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
+            MockAttendee(person_id=2, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
+            MockAttendee(person_id=3, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
+            MockAttendee(person_id=4, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
         ]
         mock_repo.fetch_persons.return_value = {
-            1: MockPerson(person_id=1),
+            1: MockPerson(person_id=1, address={"city": "Oakland"}),
+            2: MockPerson(person_id=2, address={"city": ""}),
+            3: MockPerson(person_id=3, address=None),  # No address
+            4: MockPerson(person_id=4, address={"city": "Berkeley"}),
         }
         mock_repo.fetch_sessions.return_value = {
             1000: MockSession(cm_id=1000, name="S1", session_type="main"),
         }
-        mock_repo.fetch_camper_history.return_value = [
-            MockCamperHistory(person_id=1, city="Oakland"),
-            MockCamperHistory(person_id=2, city=""),
-            MockCamperHistory(person_id=3, city=None),
-            MockCamperHistory(person_id=4, city="Berkeley"),
-        ]
+        mock_repo.fetch_camper_history.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
+        mock_repo.fetch_bunk_plans.return_value = []
+        mock_repo.fetch_capacity_config.return_value = 12
+        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2025)
@@ -462,32 +508,40 @@ class TestRegistrationServiceDemographics:
 
     @pytest.mark.asyncio
     async def test_synagogue_breakdown(self) -> None:
-        """Synagogue breakdown works correctly."""
+        """Synagogue breakdown works correctly from household custom values."""
         from api.services.registration_service import RegistrationService
 
         mock_repo = AsyncMock()
         mock_repo.fetch_attendees.return_value = [
             MockAttendee(person_id=1, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
+            MockAttendee(person_id=2, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
+            MockAttendee(person_id=3, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
         ]
+        # Persons with household_id for synagogue lookup
         mock_repo.fetch_persons.return_value = {
-            1: MockPerson(person_id=1),
+            1: MockPerson(person_id=1, household_id=100),
+            2: MockPerson(person_id=2, household_id=100),  # Same household as person 1
+            3: MockPerson(person_id=3, household_id=200),
         }
         mock_repo.fetch_sessions.return_value = {
             1000: MockSession(cm_id=1000, name="S1", session_type="main"),
         }
-        mock_repo.fetch_camper_history.return_value = [
-            MockCamperHistory(person_id=1, synagogue="Temple Beth Sholom"),
-            MockCamperHistory(person_id=2, synagogue="Temple Beth Sholom"),
-            MockCamperHistory(person_id=3, synagogue="Congregation Shalom"),
-        ]
+        mock_repo.fetch_camper_history.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
+        mock_repo.fetch_bunk_plans.return_value = []
+        mock_repo.fetch_capacity_config.return_value = 12
+        # Synagogue by household mapping
+        mock_repo.fetch_synagogue_by_household.return_value = {
+            100: "Temple Beth Sholom",
+            200: "Congregation Shalom",
+        }
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2025)
 
         synagogue_dict = {s.synagogue: s for s in result.by_synagogue}
-        assert synagogue_dict["Temple Beth Sholom"].count == 2
-        assert synagogue_dict["Congregation Shalom"].count == 1
+        assert synagogue_dict["Temple Beth Sholom"].count == 2  # Persons 1 and 2
+        assert synagogue_dict["Congregation Shalom"].count == 1  # Person 3
 
 
 class TestRegistrationServiceSummerMetrics:
@@ -513,6 +567,9 @@ class TestRegistrationServiceSummerMetrics:
             1000: MockSession(cm_id=1000, name="S1", session_type="main"),
         }
         mock_repo.fetch_camper_history.return_value = []
+        mock_repo.fetch_bunk_plans.return_value = []
+        mock_repo.fetch_capacity_config.return_value = 12
+        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         # Return history showing different summer years
         # Person 1: 2 summers (2023, 2024), Person 2: 1 summer (2024), Person 3: 3 summers (2022, 2023, 2024)
@@ -552,6 +609,9 @@ class TestRegistrationServiceSummerMetrics:
             1000: MockSession(cm_id=1000, name="S1", session_type="main"),
         }
         mock_repo.fetch_camper_history.return_value = []
+        mock_repo.fetch_bunk_plans.return_value = []
+        mock_repo.fetch_capacity_config.return_value = 12
+        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         # Person 1 started 2022, Person 2 started 2024
         mock_repo.fetch_summer_enrollment_history.return_value = [
@@ -595,6 +655,9 @@ class TestRegistrationServiceGenderByGrade:
         }
         mock_repo.fetch_camper_history.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
+        mock_repo.fetch_bunk_plans.return_value = []
+        mock_repo.fetch_capacity_config.return_value = 12
+        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2025)

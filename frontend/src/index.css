@@ -4,7 +4,7 @@
    mountain lodge aesthetics and forest depths
    ============================================ */
 
-@import "tailwindcss";
+@import 'tailwindcss';
 
 /* Configure dark mode to use .dark class instead of prefers-color-scheme */
 @variant dark (&:where(.dark, .dark *));
@@ -14,41 +14,41 @@
    ============================================ */
 @theme {
   /* Camp Forest Palette - Deepened & Warmed */
-  --color-forest-900: oklch(18% 0.08 160);      /* #0a2e1f - Deep forest shadow */
-  --color-forest-800: oklch(23% 0.10 162);      /* #0d3d28 - Night forest */
-  --color-forest-700: oklch(28% 0.12 164);      /* #124d33 - Dense canopy */
-  --color-forest-600: oklch(35% 0.13 166);      /* #1a6644 - Forest floor */
-  --color-forest-500: oklch(42% 0.14 168);      /* #006d4a - Camp Primary */
-  --color-forest-400: oklch(55% 0.12 158);      /* #3d9970 - Sunlit leaves */
-  --color-forest-300: oklch(68% 0.10 152);      /* #84c992 - Morning dew */
-  --color-forest-200: oklch(82% 0.06 148);      /* #c5e6cd - Misty meadow */
-  --color-forest-100: oklch(94% 0.02 145);      /* #eef7f0 - Dawn light */
-  --color-forest-50: oklch(97% 0.01 145);       /* #f7fbf8 - First light */
+  --color-forest-900: oklch(18% 0.08 160); /* #0a2e1f - Deep forest shadow */
+  --color-forest-800: oklch(23% 0.1 162); /* #0d3d28 - Night forest */
+  --color-forest-700: oklch(28% 0.12 164); /* #124d33 - Dense canopy */
+  --color-forest-600: oklch(35% 0.13 166); /* #1a6644 - Forest floor */
+  --color-forest-500: oklch(42% 0.14 168); /* #006d4a - Camp Primary */
+  --color-forest-400: oklch(55% 0.12 158); /* #3d9970 - Sunlit leaves */
+  --color-forest-300: oklch(68% 0.1 152); /* #84c992 - Morning dew */
+  --color-forest-200: oklch(82% 0.06 148); /* #c5e6cd - Misty meadow */
+  --color-forest-100: oklch(94% 0.02 145); /* #eef7f0 - Dawn light */
+  --color-forest-50: oklch(97% 0.01 145); /* #f7fbf8 - First light */
 
   /* Amber/Campfire Accents */
-  --color-amber-600: oklch(62% 0.18 65);        /* #c98418 - Deep amber */
-  --color-amber-500: oklch(72% 0.17 75);        /* #fdbe59 - Camp Secondary */
-  --color-amber-400: oklch(80% 0.14 80);        /* #ffd280 - Golden hour */
-  --color-amber-300: oklch(88% 0.09 85);        /* #ffe6b3 - Candlelight */
-  --color-amber-200: oklch(94% 0.04 88);        /* #fff4dc - Morning sun */
+  --color-amber-600: oklch(62% 0.18 65); /* #c98418 - Deep amber */
+  --color-amber-500: oklch(72% 0.17 75); /* #fdbe59 - Camp Secondary */
+  --color-amber-400: oklch(80% 0.14 80); /* #ffd280 - Golden hour */
+  --color-amber-300: oklch(88% 0.09 85); /* #ffe6b3 - Candlelight */
+  --color-amber-200: oklch(94% 0.04 88); /* #fff4dc - Morning sun */
 
   /* Warm Earth Tones */
-  --color-bark-900: oklch(18% 0.04 58);         /* #1f1a15 - Charcoal bark */
-  --color-bark-800: oklch(23% 0.04 56);         /* #2a2420 - Deep bark */
-  --color-bark-700: oklch(28% 0.04 55);         /* #3d3228 - Dark bark */
-  --color-bark-600: oklch(38% 0.04 52);         /* #554840 - Redwood */
-  --color-bark-500: oklch(48% 0.035 50);        /* #6b5d52 - Cedar */
-  --color-bark-400: oklch(62% 0.025 48);        /* #8b7d72 - Weathered wood */
-  --color-bark-300: oklch(78% 0.015 46);        /* #c4b8ad - Driftwood */
-  --color-bark-200: oklch(88% 0.01 44);         /* #ddd5cc - Light driftwood */
-  --color-bark-100: oklch(94% 0.005 42);        /* #f0ebe6 - Pale bark */
-  --color-bark-50: oklch(97% 0.003 40);         /* #f8f5f2 - Bark mist */
+  --color-bark-900: oklch(18% 0.04 58); /* #1f1a15 - Charcoal bark */
+  --color-bark-800: oklch(23% 0.04 56); /* #2a2420 - Deep bark */
+  --color-bark-700: oklch(28% 0.04 55); /* #3d3228 - Dark bark */
+  --color-bark-600: oklch(38% 0.04 52); /* #554840 - Redwood */
+  --color-bark-500: oklch(48% 0.035 50); /* #6b5d52 - Cedar */
+  --color-bark-400: oklch(62% 0.025 48); /* #8b7d72 - Weathered wood */
+  --color-bark-300: oklch(78% 0.015 46); /* #c4b8ad - Driftwood */
+  --color-bark-200: oklch(88% 0.01 44); /* #ddd5cc - Light driftwood */
+  --color-bark-100: oklch(94% 0.005 42); /* #f0ebe6 - Pale bark */
+  --color-bark-50: oklch(97% 0.003 40); /* #f8f5f2 - Bark mist */
 
   /* Cream/Paper Tones */
-  --color-parchment-100: oklch(98% 0.008 85);   /* #fdfcfa - Fresh paper */
-  --color-parchment-200: oklch(96% 0.02 82);    /* #fbf1e3 - Camp Cream */
-  --color-parchment-300: oklch(92% 0.025 78);   /* #f0e4d4 - Aged parchment */
-  --color-parchment-400: oklch(86% 0.03 72);    /* #e0d2c0 - Weathered paper */
+  --color-parchment-100: oklch(98% 0.008 85); /* #fdfcfa - Fresh paper */
+  --color-parchment-200: oklch(96% 0.02 82); /* #fbf1e3 - Camp Cream */
+  --color-parchment-300: oklch(92% 0.025 78); /* #f0e4d4 - Aged parchment */
+  --color-parchment-400: oklch(86% 0.03 72); /* #e0d2c0 - Weathered paper */
 
   /* Dynamic Theme Colors (HSL-based for Tailwind compatibility) */
   --color-background: oklch(from hsl(var(--background)) l c h);
@@ -113,26 +113,26 @@
 @layer base {
   :root {
     /* Core semantic colors */
-    --background: 42 35% 97%;           /* Warm parchment */
-    --foreground: 160 60% 12%;          /* Deep forest text */
-    --card: 0 0% 100%;                  /* Pure white cards */
+    --background: 42 35% 97%; /* Warm parchment */
+    --foreground: 160 60% 12%; /* Deep forest text */
+    --card: 0 0% 100%; /* Pure white cards */
     --card-foreground: 160 60% 12%;
     --popover: 0 0% 100%;
     --popover-foreground: 160 60% 12%;
-    --primary: 160 100% 21%;            /* Camp forest green */
+    --primary: 160 100% 21%; /* Camp forest green */
     --primary-foreground: 42 35% 97%;
-    --secondary: 160 35% 88%;           /* Soft sage */
+    --secondary: 160 35% 88%; /* Soft sage */
     --secondary-foreground: 160 60% 15%;
-    --muted: 42 25% 92%;                /* Muted parchment */
+    --muted: 42 25% 92%; /* Muted parchment */
     --muted-foreground: 160 15% 40%;
-    --accent: 42 92% 62%;               /* Golden amber */
+    --accent: 42 92% 62%; /* Golden amber */
     --accent-foreground: 160 60% 12%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-    --border: 42 20% 86%;               /* Warm border */
+    --border: 42 20% 86%; /* Warm border */
     --input: 42 20% 86%;
     --ring: 160 100% 21%;
-    --radius: 1rem;                     /* Softer corners */
+    --radius: 1rem; /* Softer corners */
 
     /* Custom Lodge Tokens */
     --shadow-color: 160 40% 10%;
@@ -141,19 +141,19 @@
 
   .dark {
     /* Dark theme - Twilight in the Forest */
-    --background: 160 50% 6%;           /* Deep forest night */
-    --foreground: 42 30% 92%;           /* Warm cream text */
-    --card: 160 40% 9%;                 /* Dark lodge wood */
+    --background: 160 50% 6%; /* Deep forest night */
+    --foreground: 42 30% 92%; /* Warm cream text */
+    --card: 160 40% 9%; /* Dark lodge wood */
     --card-foreground: 42 30% 92%;
     --popover: 160 40% 9%;
     --popover-foreground: 42 30% 92%;
-    --primary: 160 50% 55%;             /* Moonlit sage */
+    --primary: 160 50% 55%; /* Moonlit sage */
     --primary-foreground: 160 50% 6%;
-    --secondary: 160 30% 18%;           /* Forest shadow */
+    --secondary: 160 30% 18%; /* Forest shadow */
     --secondary-foreground: 42 30% 88%;
-    --muted: 160 25% 14%;               /* Deep shadow */
+    --muted: 160 25% 14%; /* Deep shadow */
     --muted-foreground: 160 15% 60%;
-    --accent: 42 85% 55%;               /* Campfire glow */
+    --accent: 42 85% 55%; /* Campfire glow */
     --accent-foreground: 160 50% 6%;
     --destructive: 0 62% 50%;
     --destructive-foreground: 0 0% 100%;
@@ -188,7 +188,10 @@
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-sans);
-    font-feature-settings: "liga" 1, "calt" 1, "kern" 1;
+    font-feature-settings:
+      'liga' 1,
+      'calt' 1,
+      'kern' 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     letter-spacing: -0.011em;
@@ -233,11 +236,16 @@
   }
 
   /* Typography - Display Headings with Character */
-  h1, h2, h3, .font-display {
+  h1,
+  h2,
+  h3,
+  .font-display {
     font-family: var(--font-display);
     font-weight: 600;
     letter-spacing: -0.02em;
-    font-feature-settings: "ss01" 1, "ss02" 1;
+    font-feature-settings:
+      'ss01' 1,
+      'ss02' 1;
   }
 
   h1 {
@@ -260,7 +268,8 @@
     @apply text-xl font-semibold;
   }
 
-  h5, h6 {
+  h5,
+  h6 {
     font-family: var(--font-sans);
     @apply text-lg font-semibold;
   }
@@ -301,13 +310,23 @@
   }
 
   /* iOS Safe Area Support */
-  .safe-area-top { padding-top: env(safe-area-inset-top); }
-  .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
-  .safe-area-left { padding-left: env(safe-area-inset-left); }
-  .safe-area-right { padding-right: env(safe-area-inset-right); }
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .safe-area-left {
+    padding-left: env(safe-area-inset-left);
+  }
+  .safe-area-right {
+    padding-right: env(safe-area-inset-right);
+  }
 
   /* Touch-friendly */
-  .touch-manipulation { touch-action: manipulation; }
+  .touch-manipulation {
+    touch-action: manipulation;
+  }
 
   /* Theme transition optimization */
   html.transitioning,
@@ -336,7 +355,7 @@
   /* Primary Button - Solid Forest */
   .btn-primary {
     @apply relative inline-flex items-center justify-center gap-2;
-    @apply px-6 py-3 font-semibold text-sm;
+    @apply px-6 py-3 text-sm font-semibold;
     @apply bg-primary text-primary-foreground;
     @apply rounded-xl;
     @apply transition-all duration-300 ease-out;
@@ -365,9 +384,9 @@
   /* Secondary Button - Soft Sage */
   .btn-secondary {
     @apply relative inline-flex items-center justify-center gap-2;
-    @apply px-6 py-3 font-semibold text-sm;
+    @apply px-6 py-3 text-sm font-semibold;
     @apply bg-secondary text-secondary-foreground;
-    @apply rounded-xl border border-border/50;
+    @apply border-border/50 rounded-xl border;
     @apply transition-all duration-300 ease-out;
     box-shadow: 0 1px 3px hsl(var(--shadow-color) / 0.05);
   }
@@ -381,7 +400,7 @@
   /* Ghost Button */
   .btn-ghost {
     @apply relative inline-flex items-center justify-center gap-2;
-    @apply px-4 py-2 font-medium text-sm;
+    @apply px-4 py-2 text-sm font-medium;
     @apply text-muted-foreground hover:text-foreground;
     @apply rounded-lg;
     @apply transition-all duration-200;
@@ -394,7 +413,7 @@
   /* Accent Button - Golden Amber */
   .btn-accent {
     @apply relative inline-flex items-center justify-center gap-2;
-    @apply px-6 py-3 font-semibold text-sm;
+    @apply px-6 py-3 text-sm font-semibold;
     @apply bg-accent text-accent-foreground;
     @apply rounded-xl;
     @apply transition-all duration-300 ease-out;
@@ -415,8 +434,8 @@
 
   /* Lodge Card - The Core Container */
   .card-lodge {
-    @apply relative bg-card rounded-2xl;
-    @apply border-2 border-border;
+    @apply bg-card relative rounded-2xl;
+    @apply border-border border-2;
     @apply transition-all duration-300 ease-out;
     box-shadow:
       0 1px 2px hsl(var(--shadow-color) / 0.06),
@@ -432,7 +451,7 @@
 
   /* Card with subtle texture */
   .card-textured {
-    @apply relative bg-card rounded-2xl border-2 border-border;
+    @apply bg-card border-border relative rounded-2xl border-2;
     @apply transition-all duration-300 ease-out;
     background-image:
       linear-gradient(to bottom, hsl(var(--card)), hsl(var(--card))),
@@ -455,13 +474,13 @@
 
   /* Navigation Link - Active states */
   .nav-link-lodge {
-    @apply relative px-4 py-2 font-semibold text-sm;
-    @apply text-white/70 rounded-xl;
+    @apply relative px-4 py-2 text-sm font-semibold;
+    @apply rounded-xl text-white/70;
     @apply transition-all duration-200;
   }
 
   .nav-link-lodge:hover {
-    @apply text-white bg-white/10;
+    @apply bg-white/10 text-white;
   }
 
   .nav-link-lodge.active {
@@ -477,7 +496,7 @@
     @apply px-3 py-1.5 text-xs font-semibold;
     @apply rounded-lg;
     @apply bg-muted/80 text-muted-foreground;
-    @apply border border-border/50;
+    @apply border-border/50 border;
   }
 
   .tag-lodge.tag-primary {
@@ -494,13 +513,13 @@
 
   /* Section Title with Decorative Line */
   .section-title {
-    @apply relative font-display font-semibold text-2xl;
+    @apply font-display relative text-2xl font-semibold;
     @apply flex items-center gap-4;
   }
 
   .section-title::after {
     content: '';
-    @apply flex-1 h-px;
+    @apply h-px flex-1;
     background: linear-gradient(90deg, hsl(var(--border)), transparent);
   }
 
@@ -508,61 +527,61 @@
   .input-lodge {
     @apply w-full px-4 py-3;
     @apply bg-background text-foreground;
-    @apply border border-border rounded-xl;
+    @apply border-border rounded-xl border;
     @apply transition-all duration-200;
     @apply placeholder:text-muted-foreground/60;
   }
 
   .input-lodge:focus {
-    @apply border-primary/50 ring-2 ring-primary/10;
+    @apply border-primary/50 ring-primary/10 ring-2;
     outline: none;
   }
 
   /* Filter label styling */
   .filter-label {
-    @apply block text-xs font-semibold mb-2;
+    @apply mb-2 block text-xs font-semibold;
     @apply text-bark-600 dark:text-bark-300;
-    @apply uppercase tracking-wider;
+    @apply tracking-wider uppercase;
   }
 
   /* Lodge-styled checkbox */
   .checkbox-lodge {
-    @apply w-4 h-4 rounded;
-    @apply border-2 border-bark-300 dark:border-bark-600;
+    @apply h-4 w-4 rounded;
+    @apply border-bark-300 dark:border-bark-600 border-2;
     @apply bg-parchment-100 dark:bg-bark-900;
     @apply checked:bg-forest-600 checked:border-forest-600;
-    @apply focus:ring-2 focus:ring-forest-500/20;
+    @apply focus:ring-forest-500/20 focus:ring-2;
     @apply transition-colors duration-150;
     @apply cursor-pointer;
   }
 
   /* Listbox (Headless UI styled dropdowns) */
   .listbox-button {
-    @apply w-full flex items-center justify-between gap-2;
+    @apply flex w-full items-center justify-between gap-2;
     @apply bg-background text-foreground;
-    @apply border border-border rounded-xl;
+    @apply border-border rounded-xl border;
     @apply px-4 py-3 text-left;
     @apply cursor-pointer transition-colors;
     @apply hover:border-primary/50;
-    @apply focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10;
-    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply focus:border-primary/50 focus:ring-primary/10 focus:ring-2 focus:outline-none;
+    @apply disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .listbox-button-compact {
     @apply flex items-center gap-2;
     @apply bg-background text-foreground;
-    @apply border border-border rounded-xl;
+    @apply border-border rounded-xl border;
     @apply px-3 py-2 text-sm font-medium;
-    @apply cursor-pointer transition-colors shadow-sm;
+    @apply cursor-pointer shadow-sm transition-colors;
     @apply hover:border-primary/50;
-    @apply focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10;
+    @apply focus:border-primary/50 focus:ring-primary/10 focus:ring-2 focus:outline-none;
   }
 
   .listbox-options {
     @apply absolute z-50 mt-1;
     @apply max-h-60 overflow-auto;
     @apply bg-background text-foreground;
-    @apply border border-border rounded-xl;
+    @apply border-border rounded-xl border;
     @apply py-1 shadow-lg;
     @apply focus:outline-none;
   }
@@ -583,24 +602,24 @@
   }
 
   .listbox-option[data-disabled] {
-    @apply opacity-50 cursor-not-allowed;
+    @apply cursor-not-allowed opacity-50;
   }
 
   /* Stat Card */
   .stat-card {
-    @apply relative p-4 rounded-xl;
-    @apply bg-gradient-to-br from-muted/50 to-muted/30;
-    @apply border border-border/50;
+    @apply relative rounded-xl p-4;
+    @apply from-muted/50 to-muted/30 bg-gradient-to-br;
+    @apply border-border/50 border;
   }
 
   .stat-card-value {
-    @apply text-3xl font-display font-bold tracking-tight;
-    @apply bg-gradient-to-br from-foreground to-foreground/70;
+    @apply font-display text-3xl font-bold tracking-tight;
+    @apply from-foreground to-foreground/70 bg-gradient-to-br;
     @apply bg-clip-text text-transparent;
   }
 
   .stat-card-label {
-    @apply text-xs font-semibold uppercase tracking-wider;
+    @apply text-xs font-semibold tracking-wider uppercase;
     @apply text-muted-foreground;
   }
 
@@ -612,20 +631,20 @@
 
   .progress-lodge-fill {
     @apply h-full rounded-full;
-    @apply bg-gradient-to-r from-primary to-primary/80;
+    @apply from-primary to-primary/80 bg-gradient-to-r;
     @apply transition-all duration-500 ease-out;
   }
 
   /* Spinner */
   .spinner-lodge {
     @apply h-6 w-6 animate-spin;
-    @apply border-2 border-muted border-t-primary rounded-full;
+    @apply border-muted border-t-primary rounded-full border-2;
   }
 
   /* Satisfaction indicators - compact status icons */
   .sat-icon {
-    @apply w-4 h-4 rounded-full text-[10px] font-bold;
-    @apply flex items-center justify-center flex-shrink-0;
+    @apply h-4 w-4 rounded-full text-[10px] font-bold;
+    @apply flex flex-shrink-0 items-center justify-center;
     @apply shadow-sm transition-transform;
   }
   .sat-icon:hover {
@@ -650,8 +669,8 @@
     @apply bg-bark-600 text-bark-200;
   }
   .sat-spinner {
-    @apply w-3.5 h-3.5 animate-spin rounded-full;
-    @apply border-2 border-forest-200 border-t-forest-600;
+    @apply h-3.5 w-3.5 animate-spin rounded-full;
+    @apply border-forest-200 border-t-forest-600 border-2;
   }
   .dark .sat-spinner {
     @apply border-forest-700 border-t-forest-400;
@@ -665,7 +684,7 @@
 
   .divider-pine::before {
     content: '🌲';
-    @apply absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2;
+    @apply absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2;
     @apply bg-background px-3 text-sm opacity-30;
   }
 }
@@ -753,8 +772,12 @@
   }
 
   @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
   }
 
   @keyframes slideUp {
@@ -835,17 +858,36 @@
   }
 
   @keyframes float {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-6px); }
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-6px);
+    }
   }
 
   @keyframes pulse-glow {
-    0%, 100% {
-      box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.4), 0 0 8px rgba(245, 158, 11, 0.3);
+    0%,
+    100% {
+      box-shadow:
+        0 0 0 2px rgba(245, 158, 11, 0.4),
+        0 0 8px rgba(245, 158, 11, 0.3);
     }
     50% {
-      box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.6), 0 0 16px rgba(245, 158, 11, 0.5),
-                  0 0 24px rgba(245, 158, 11, 0.2);
+      box-shadow:
+        0 0 0 4px rgba(245, 158, 11, 0.6),
+        0 0 16px rgba(245, 158, 11, 0.5),
+        0 0 24px rgba(245, 158, 11, 0.2);
+    }
+  }
+
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(400%);
     }
   }
 
@@ -856,12 +898,24 @@
   }
 
   /* Stagger delays for lists */
-  .stagger-1 { animation-delay: 0.05s; }
-  .stagger-2 { animation-delay: 0.1s; }
-  .stagger-3 { animation-delay: 0.15s; }
-  .stagger-4 { animation-delay: 0.2s; }
-  .stagger-5 { animation-delay: 0.25s; }
-  .stagger-6 { animation-delay: 0.3s; }
+  .stagger-1 {
+    animation-delay: 0.05s;
+  }
+  .stagger-2 {
+    animation-delay: 0.1s;
+  }
+  .stagger-3 {
+    animation-delay: 0.15s;
+  }
+  .stagger-4 {
+    animation-delay: 0.2s;
+  }
+  .stagger-5 {
+    animation-delay: 0.25s;
+  }
+  .stagger-6 {
+    animation-delay: 0.3s;
+  }
 
   /* Backdrop blur with fallback - forest tinted */
   .backdrop-lodge {
@@ -871,12 +925,12 @@
 
   /* Text gradient */
   .text-gradient-forest {
-    @apply bg-gradient-to-r from-primary via-forest-400 to-primary;
+    @apply from-primary via-forest-400 to-primary bg-gradient-to-r;
     @apply bg-clip-text text-transparent;
   }
 
   .text-gradient-amber {
-    @apply bg-gradient-to-r from-amber-600 via-accent to-amber-500;
+    @apply via-accent bg-gradient-to-r from-amber-600 to-amber-500;
     @apply bg-clip-text text-transparent;
   }
 
@@ -895,8 +949,12 @@
   }
 
   @keyframes fadeOut {
-    from { opacity: 1; }
-    to { opacity: 0; }
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
   }
 
   /* ============================================
@@ -904,15 +962,16 @@
      ============================================ */
 
   /* Base toast styling - overrides react-hot-toast defaults */
-  [data-sonner-toaster], .toast-lodge {
+  [data-sonner-toaster],
+  .toast-lodge {
     font-family: var(--font-sans) !important;
   }
 
   /* Custom toast container styling */
   .toast-lodge {
-    @apply flex items-start gap-3 px-5 py-4 rounded-xl;
+    @apply flex items-start gap-3 rounded-xl px-5 py-4;
     @apply border;
-    @apply text-sm font-medium leading-relaxed;
+    @apply text-sm leading-relaxed font-medium;
     box-shadow:
       0 2px 4px hsl(var(--shadow-color) / 0.04),
       0 8px 32px hsl(var(--shadow-color) / 0.12);
@@ -922,7 +981,7 @@
 
   /* Light mode toast */
   .toast-lodge {
-    @apply bg-white border-forest-200;
+    @apply border-forest-200 bg-white;
     @apply text-forest-800;
   }
 
@@ -933,17 +992,17 @@
 
   /* Toast icon container */
   .toast-lodge-icon {
-    @apply flex-shrink-0 w-6 h-6 flex items-center justify-center;
+    @apply flex h-6 w-6 flex-shrink-0 items-center justify-center;
     @apply text-lg;
   }
 
   /* Toast content */
   .toast-lodge-content {
-    @apply flex-1 min-w-0;
+    @apply min-w-0 flex-1;
   }
 
   .toast-lodge-title {
-    @apply font-semibold text-sm mb-0.5;
+    @apply mb-0.5 text-sm font-semibold;
   }
 
   .toast-lodge-message {
@@ -952,7 +1011,7 @@
 
   /* Success toast variant */
   .toast-lodge-success {
-    @apply border-l-4 border-l-forest-500;
+    @apply border-l-forest-500 border-l-4;
   }
 
   .toast-lodge-success .toast-lodge-icon {
@@ -1003,18 +1062,18 @@
 
   /* Sync-specific toast styling */
   .toast-lodge-sync {
-    @apply border-l-4 border-l-forest-500;
-    @apply bg-gradient-to-r from-forest-50 to-white;
+    @apply border-l-forest-500 border-l-4;
+    @apply from-forest-50 bg-gradient-to-r to-white;
   }
 
   .dark .toast-lodge-sync {
     @apply border-l-forest-400;
-    @apply bg-gradient-to-r from-forest-800 to-forest-700;
+    @apply from-forest-800 to-forest-700 bg-gradient-to-r;
   }
 
   /* Toast progress bar (for timed toasts) */
   .toast-progress {
-    @apply absolute bottom-0 left-0 h-1 bg-forest-500 rounded-b-xl;
+    @apply bg-forest-500 absolute bottom-0 left-0 h-1 rounded-b-xl;
     @apply transition-all ease-linear;
   }
 
@@ -1059,9 +1118,15 @@
    ============================================ */
 @layer utilities {
   /* Navigation responsive text */
-  .nav-text-icon-only { @apply inline sm:hidden; }
-  .nav-text-short { @apply hidden sm:inline; }
-  .nav-text-full { @apply hidden; }
+  .nav-text-icon-only {
+    @apply inline sm:hidden;
+  }
+  .nav-text-short {
+    @apply hidden sm:inline;
+  }
+  .nav-text-full {
+    @apply hidden;
+  }
 
   @media (min-width: 640px) and (max-width: 900px) {
     .nav-btn-icon-only span {
@@ -1070,35 +1135,63 @@
   }
 
   @media (min-width: 1200px) {
-    .nav-text-short { display: none !important; }
-    .nav-text-full { display: inline !important; }
+    .nav-text-short {
+      display: none !important;
+    }
+    .nav-text-full {
+      display: inline !important;
+    }
   }
 
   /* Stats display */
-  .stat-label-icon { @apply inline md:hidden; }
-  .stat-label-short { @apply hidden md:inline lg:hidden; }
-  .stat-label-full { @apply hidden lg:inline; }
+  .stat-label-icon {
+    @apply inline md:hidden;
+  }
+  .stat-label-short {
+    @apply hidden md:inline lg:hidden;
+  }
+  .stat-label-full {
+    @apply hidden lg:inline;
+  }
 
   /* Spacing */
-  .nav-spacing { @apply space-x-2 md:space-x-3 lg:space-x-4; }
+  .nav-spacing {
+    @apply space-x-2 md:space-x-3 lg:space-x-4;
+  }
 
   /* Visibility */
-  .show-tablet { @apply hidden md:block; }
-  .show-desktop { @apply hidden lg:block; }
-  .hide-tablet { @apply block md:hidden; }
-  .hide-desktop { @apply block lg:hidden; }
+  .show-tablet {
+    @apply hidden md:block;
+  }
+  .show-desktop {
+    @apply hidden lg:block;
+  }
+  .hide-tablet {
+    @apply block md:hidden;
+  }
+  .hide-desktop {
+    @apply block lg:hidden;
+  }
 
   @media (max-width: 900px) {
-    .hide-nav-medium { display: none !important; }
+    .hide-nav-medium {
+      display: none !important;
+    }
   }
 
   @media (min-width: 901px) {
-    .show-nav-medium { display: block !important; }
+    .show-nav-medium {
+      display: block !important;
+    }
   }
 
   /* Touch targets */
   @media (max-width: 640px) {
-    button, a, select, input[type="button"], input[type="submit"] {
+    button,
+    a,
+    select,
+    input[type='button'],
+    input[type='submit'] {
       min-height: 44px;
       min-width: 44px;
     }
@@ -1117,8 +1210,12 @@
 
   /* Extra small breakpoint */
   @media (min-width: 480px) {
-    .xs\:block { display: block !important; }
-    .xs\:hidden { display: none !important; }
+    .xs\:block {
+      display: block !important;
+    }
+    .xs\:hidden {
+      display: none !important;
+    }
   }
 }
 

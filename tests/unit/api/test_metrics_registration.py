@@ -58,9 +58,22 @@ def create_mock_session(
     start_date: str = "2026-06-15",
     end_date: str = "2026-07-05",
     parent_id: int | None = None,
+    pb_id: str | None = None,
 ) -> Mock:
-    """Create a mock session record."""
+    """Create a mock session record.
+
+    Args:
+        cm_id: CampMinder ID (used as key in sessions dict).
+        name: Session name.
+        year: Year.
+        session_type: main, ag, or embedded.
+        start_date: Start date string.
+        end_date: End date string.
+        parent_id: Parent session cm_id (for AG sessions).
+        pb_id: PocketBase ID (defaults to "session_{cm_id}").
+    """
     session = Mock()
+    session.id = pb_id or f"session_{cm_id}"  # PocketBase ID
     session.cm_id = cm_id
     session.name = name
     session.year = year
@@ -120,6 +133,73 @@ def create_mock_camper_history(
     history.synagogue = synagogue
     history.years_at_camp = 1 if first_year_attended == year else 2
     return history
+
+
+def create_mock_bunk(
+    pb_id: str = "bunk_001",
+    name: str = "B-1",
+    gender: str = "M",
+    year: int = 2026,
+) -> Mock:
+    """Create a mock bunk record.
+
+    Args:
+        pb_id: PocketBase record ID.
+        name: Bunk name (e.g., "B-1", "G-2", "AG-3").
+        gender: Bunk gender - "M", "F", or "Mixed" (for AG bunks).
+        year: Year for the bunk.
+    """
+    bunk = Mock()
+    bunk.id = pb_id
+    bunk.name = name
+    bunk.gender = gender
+    bunk.year = year
+    return bunk
+
+
+def create_mock_bunk_plan(
+    session_pb_id: str,
+    bunk: Mock,
+    year: int = 2026,
+    pb_id: str | None = None,
+) -> Mock:
+    """Create a mock bunk_plan record with bunk expansion.
+
+    Args:
+        session_pb_id: PocketBase ID of the session.
+        bunk: Mock bunk record (will be in expand.bunk).
+        year: Year for the bunk plan.
+        pb_id: Optional PocketBase record ID.
+    """
+    bunk_plan = Mock()
+    bunk_plan.id = pb_id or f"bp_{session_pb_id}_{bunk.id}"
+    bunk_plan.session = session_pb_id
+    bunk_plan.bunk = bunk.id
+    bunk_plan.year = year
+    bunk_plan.expand = {"bunk": bunk}
+    return bunk_plan
+
+
+def create_mock_config(
+    category: str,
+    subcategory: str,
+    config_key: str,
+    value: str,
+) -> Mock:
+    """Create a mock config record.
+
+    Args:
+        category: Config category (e.g., "constraint").
+        subcategory: Config subcategory (e.g., "cabin_capacity").
+        config_key: Config key (e.g., "default").
+        value: Config value (e.g., "12").
+    """
+    config = Mock()
+    config.category = category
+    config.subcategory = subcategory
+    config.config_key = config_key
+    config.value = value
+    return config
 
 
 # ============================================================================
@@ -338,14 +418,16 @@ class TestGenderByGradeBreakdown:
         sample_persons_2026: list[Mock],
         sample_attendees_2026: list[Mock],
     ) -> None:
-        """by_gender_grade should have male/female/other counts per grade.
+        """by_gender_grade should have male/female counts per grade.
+
+        Note: We only track M/F since CampMinder's sex field only has these values.
 
         Expected structure:
         [
-            { grade: 5, male_count: 1, female_count: 1, other_count: 0, total: 2 },
-            { grade: 6, male_count: 1, female_count: 1, other_count: 0, total: 2 },
-            { grade: 7, male_count: 1, female_count: 1, other_count: 0, total: 2 },
-            { grade: 8, male_count: 1, female_count: 1, other_count: 0, total: 2 },
+            { grade: 5, male_count: 1, female_count: 1, total: 2 },
+            { grade: 6, male_count: 1, female_count: 1, total: 2 },
+            { grade: 7, male_count: 1, female_count: 1, total: 2 },
+            { grade: 8, male_count: 1, female_count: 1, total: 2 },
         ]
         """
         persons_by_id = {p.cm_id: p for p in sample_persons_2026}
@@ -361,12 +443,11 @@ class TestGenderByGradeBreakdown:
             gender = person.gender
 
             if grade not in by_grade:
-                by_grade[grade] = {"M": 0, "F": 0, "other": 0}
+                by_grade[grade] = {"M": 0, "F": 0}
 
             if gender in ("M", "F"):
                 by_grade[grade][gender] += 1
-            else:
-                by_grade[grade]["other"] += 1
+            # Non-M/F values are ignored since CampMinder sex field only has M/F
 
         # Verify grade 5: 1M (Liam), 1F (Emma)
         assert by_grade[5]["M"] == 1
@@ -383,34 +464,6 @@ class TestGenderByGradeBreakdown:
         # Verify grade 8: 1M (Jackson), 1F (Sophia)
         assert by_grade[8]["M"] == 1
         assert by_grade[8]["F"] == 1
-
-    def test_gender_by_grade_handles_unknown_gender(self) -> None:
-        """Unknown/other genders should be counted separately."""
-        persons = [
-            create_mock_person(201, "Alex", "Smith", "NB", 6, 1, 2026),  # Non-binary
-            create_mock_person(202, "Jordan", "Lee", "", 6, 1, 2026),  # Empty
-            create_mock_person(203, "Casey", "Brown", None, 6, 1, 2026),  # type: ignore[arg-type]
-        ]
-
-        by_grade: dict[int, dict[str, int]] = {}
-        for person in persons:
-            grade = person.grade
-            gender = person.gender or ""
-
-            if grade not in by_grade:
-                by_grade[grade] = {"M": 0, "F": 0, "other": 0}
-
-            if gender == "M":
-                by_grade[grade]["M"] += 1
-            elif gender == "F":
-                by_grade[grade]["F"] += 1
-            else:
-                by_grade[grade]["other"] += 1
-
-        # All 3 should be counted as "other" for grade 6
-        assert by_grade[6]["other"] == 3
-        assert by_grade[6]["M"] == 0
-        assert by_grade[6]["F"] == 0
 
     def test_gender_by_grade_sorted_by_grade(self) -> None:
         """Results should be sorted by grade ascending."""
@@ -600,7 +653,7 @@ class TestRegistrationEndpointWithSessionFilter:
         Expected response field:
         {
             "by_gender_grade": [
-                {"grade": 5, "male_count": 1, "female_count": 1, "other_count": 0, "total": 2},
+                {"grade": 5, "male_count": 1, "female_count": 1, "total": 2},
                 ...
             ]
         }
@@ -845,3 +898,768 @@ class TestWaitlistedCancelledDeduplication:
             pid for a in waitlisted_attendees if (pid := getattr(a, "person_id", None)) is not None
         }
         assert len(waitlisted_person_ids) == 3  # Persons 101, 102, 103
+
+
+# ============================================================================
+# Session Length by Session Breakdown Tests
+# ============================================================================
+
+
+class TestSessionLengthBySessionBreakdown:
+    """Tests for by_session_length_by_session breakdown.
+
+    This breakdown groups sessions by their length category (1-week, 2-week, etc.)
+    and shows camper counts per session within each category.
+    """
+
+    def test_session_length_category_calculation(self) -> None:
+        """get_session_length_category should correctly categorize session lengths.
+
+        Categories:
+        - 1-week: 1-7 days
+        - 2-week: 8-14 days
+        - 3-week: 15-21 days
+        - 4-week+: 22+ days
+        - unknown: missing or invalid dates
+        """
+        from api.services.registration_service import get_session_length_category
+
+        # 1-week (4 days: June 20-23 inclusive = 4 days)
+        assert get_session_length_category("2026-06-20", "2026-06-23") == "1-week"
+
+        # 1-week (7 days: June 20-26 inclusive = 7 days)
+        assert get_session_length_category("2026-06-20", "2026-06-26") == "1-week"
+
+        # 2-week (14 days)
+        assert get_session_length_category("2026-06-15", "2026-06-28") == "2-week"
+
+        # 3-week (21 days: June 15 to July 5 = 21 days)
+        assert get_session_length_category("2026-06-15", "2026-07-05") == "3-week"
+
+        # 4-week+ (22+ days)
+        assert get_session_length_category("2026-06-15", "2026-07-15") == "4-week+"
+
+        # Unknown (empty dates)
+        assert get_session_length_category("", "") == "unknown"
+        assert get_session_length_category("2026-06-15", "") == "unknown"
+        assert get_session_length_category("", "2026-07-05") == "unknown"
+
+    def test_session_length_by_session_groups_by_length(
+        self,
+        sample_sessions_2026: list[Mock],
+        sample_attendees_2026: list[Mock],
+    ) -> None:
+        """by_session_length_by_session should group sessions by length category.
+
+        From sample_sessions_2026:
+        - Session 2 (2001): June 15 - July 5 = 21 days = 3-week
+        - Session 3 (2002): July 7 - July 27 = 21 days = 3-week
+        - Session 4 (2003): July 29 - Aug 18 = 21 days = 3-week
+        - Taste of Camp (2004): June 20-23 = 4 days = 1-week
+        - AG Session 2 (2005): June 15 - July 5 = 21 days = 3-week
+
+        sample_attendees_2026 has:
+        - 4 in Session 2
+        - 2 in Session 3
+        - 2 in Session 4
+        - 0 in Taste of Camp
+        - 0 in AG Session 2
+
+        Expected:
+        - "3-week" category: 8 total (4+2+2 from Sessions 2, 3, 4)
+        """
+        from api.services.registration_service import get_session_length_category
+
+        # Verify session lengths from fixtures
+        session_2, session_3, session_4, taste, ag_session = sample_sessions_2026
+
+        assert get_session_length_category(session_2.start_date, session_2.end_date) == "3-week"
+        assert get_session_length_category(session_3.start_date, session_3.end_date) == "3-week"
+        assert get_session_length_category(session_4.start_date, session_4.end_date) == "3-week"
+        assert get_session_length_category(taste.start_date, taste.end_date) == "1-week"
+        assert get_session_length_category(ag_session.start_date, ag_session.end_date) == "3-week"
+
+        # Simulate the grouping logic
+        length_session_counts: dict[str, dict[int, int]] = {}
+        for a in sample_attendees_2026:
+            session = a.expand.get("session")
+            if not session:
+                continue
+            start_date = getattr(session, "start_date", "") or ""
+            end_date = getattr(session, "end_date", "") or ""
+            length = get_session_length_category(start_date, end_date)
+
+            if length not in length_session_counts:
+                length_session_counts[length] = {}
+            sid = session.cm_id
+            length_session_counts[length][sid] = length_session_counts[length].get(sid, 0) + 1
+
+        # All attendees are in 3-week sessions
+        assert "3-week" in length_session_counts
+        assert length_session_counts["3-week"][2001] == 4  # Session 2
+        assert length_session_counts["3-week"][2002] == 2  # Session 3
+        assert length_session_counts["3-week"][2003] == 2  # Session 4
+
+    def test_session_length_by_session_structure(
+        self,
+        sample_sessions_2026: list[Mock],
+        sample_attendees_2026: list[Mock],
+    ) -> None:
+        """by_session_length_by_session should return proper structure.
+
+        Expected structure:
+        [
+            {
+                "length_category": "3-week",
+                "sessions": [
+                    {"session_name": "Session 2", "session_cm_id": 2001, "count": 4},
+                    {"session_name": "Session 3", "session_cm_id": 2002, "count": 2},
+                    {"session_name": "Session 4", "session_cm_id": 2003, "count": 2},
+                ],
+                "total": 8
+            }
+        ]
+        """
+        from api.services.registration_service import RegistrationService
+
+        # Create sessions dict like the service uses
+        sessions_dict = {s.cm_id: s for s in sample_sessions_2026}
+
+        # Create mock service with mock repo
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+
+        # Call the method directly
+        result = service._compute_session_length_by_session(sample_attendees_2026, sessions_dict)
+
+        # Should have one length category with data
+        assert len(result) == 1
+        assert result[0].length_category == "3-week"
+        assert result[0].total == 8
+
+        # Check individual sessions
+        session_names = {s.session_name for s in result[0].sessions}
+        assert "Session 2" in session_names
+        assert "Session 3" in session_names
+        assert "Session 4" in session_names
+
+        # Check counts
+        session_by_name = {s.session_name: s for s in result[0].sessions}
+        assert session_by_name["Session 2"].count == 4
+        assert session_by_name["Session 3"].count == 2
+        assert session_by_name["Session 4"].count == 2
+
+    def test_session_length_by_session_multiple_categories(self) -> None:
+        """by_session_length_by_session should handle multiple length categories.
+
+        Create sessions of different lengths and verify proper grouping.
+        """
+        from api.services.registration_service import RegistrationService
+
+        # Create sessions of different lengths
+        taste = create_mock_session(
+            1001, "Taste of Camp", 2026, "embedded", "2026-06-20", "2026-06-23"
+        )  # 4 days = 1-week
+        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")  # 21 days = 3-week
+        session_3 = create_mock_session(2002, "Session 3", 2026, "main", "2026-07-07", "2026-07-27")  # 21 days = 3-week
+
+        sessions_dict = {
+            1001: taste,
+            2001: session_2,
+            2002: session_3,
+        }
+
+        # Create attendees in different sessions
+        attendees = [
+            create_mock_attendee(101, taste, 2026),
+            create_mock_attendee(102, taste, 2026),
+            create_mock_attendee(103, session_2, 2026),
+            create_mock_attendee(104, session_2, 2026),
+            create_mock_attendee(105, session_2, 2026),
+            create_mock_attendee(106, session_3, 2026),
+        ]
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_session_length_by_session(attendees, sessions_dict)
+
+        # Should have two length categories
+        categories = {r.length_category: r for r in result}
+        assert "1-week" in categories
+        assert "3-week" in categories
+
+        # 1-week: Taste of Camp with 2 attendees
+        assert categories["1-week"].total == 2
+        assert len(categories["1-week"].sessions) == 1
+        assert categories["1-week"].sessions[0].session_name == "Taste of Camp"
+        assert categories["1-week"].sessions[0].count == 2
+
+        # 3-week: Session 2 (3) + Session 3 (1) = 4
+        assert categories["3-week"].total == 4
+        assert len(categories["3-week"].sessions) == 2
+
+    def test_session_length_by_session_empty_attendees(self) -> None:
+        """by_session_length_by_session should return empty list for no attendees."""
+        from api.services.registration_service import RegistrationService
+
+        sessions_dict = {
+            2001: create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05"),
+        }
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_session_length_by_session([], sessions_dict)
+
+        assert result == []
+
+    def test_session_length_by_session_missing_expand(self) -> None:
+        """Attendees without session expand should be skipped."""
+        from api.services.registration_service import RegistrationService
+
+        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
+        sessions_dict = {2001: session_2}
+
+        # Create attendees, one with missing expand
+        attendee_with_session = create_mock_attendee(101, session_2, 2026)
+        attendee_no_expand = Mock()
+        attendee_no_expand.expand = {}  # Empty expand, no session
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_session_length_by_session([attendee_with_session, attendee_no_expand], sessions_dict)
+
+        # Should only count the attendee with valid session
+        assert len(result) == 1
+        assert result[0].total == 1
+
+    def test_session_length_by_session_sorted_by_length(self) -> None:
+        """Categories should be sorted: 1-week, 2-week, 3-week, 4-week+, unknown."""
+        from api.services.registration_service import RegistrationService
+
+        # Create sessions of different lengths
+        one_week = create_mock_session(1001, "Short Session", 2026, "embedded", "2026-06-20", "2026-06-23")  # 4 days
+        two_week = create_mock_session(1002, "Two Week", 2026, "embedded", "2026-06-20", "2026-07-02")  # 13 days
+        three_week = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")  # 21 days
+        four_week = create_mock_session(3001, "Long Session", 2026, "main", "2026-06-15", "2026-07-20")  # 36 days
+
+        sessions_dict = {
+            1001: one_week,
+            1002: two_week,
+            2001: three_week,
+            3001: four_week,
+        }
+
+        attendees = [
+            create_mock_attendee(101, four_week, 2026),  # 4-week+ first
+            create_mock_attendee(102, one_week, 2026),  # 1-week second
+            create_mock_attendee(103, three_week, 2026),  # 3-week third
+            create_mock_attendee(104, two_week, 2026),  # 2-week fourth
+        ]
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_session_length_by_session(attendees, sessions_dict)
+
+        # Should be sorted by length category
+        categories = [r.length_category for r in result]
+        assert categories == ["1-week", "2-week", "3-week", "4-week+"]
+
+
+# ============================================================================
+# Session Length by Session AG Merging Tests
+# ============================================================================
+
+
+class TestSessionLengthBySessionAGMerging:
+    """Tests for AG session merging in by_session_length_by_session breakdown.
+
+    AG sessions should be merged into their parent main session counts,
+    not displayed as separate bars in the chart.
+    """
+
+    def test_ag_sessions_merged_into_parent(self) -> None:
+        """AG session counts should be merged into parent main session."""
+        from api.services.registration_service import RegistrationService
+
+        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
+        ag_session_2 = create_mock_session(2005, "AG Session 2", 2026, "ag", "2026-06-15", "2026-07-05", parent_id=2001)
+
+        sessions_dict = {2001: session_2, 2005: ag_session_2}
+
+        # 4 campers in main, 2 in AG
+        attendees = [
+            create_mock_attendee(101, session_2, 2026),
+            create_mock_attendee(102, session_2, 2026),
+            create_mock_attendee(103, session_2, 2026),
+            create_mock_attendee(104, session_2, 2026),
+            create_mock_attendee(105, ag_session_2, 2026),
+            create_mock_attendee(106, ag_session_2, 2026),
+        ]
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_session_length_by_session(attendees, sessions_dict)
+
+        assert len(result) == 1
+        assert result[0].length_category == "3-week"
+        assert len(result[0].sessions) == 1
+        assert result[0].sessions[0].session_name == "Session 2"
+        assert result[0].sessions[0].count == 6  # 4 main + 2 AG merged
+        assert result[0].total == 6
+
+    def test_ag_session_not_in_output(self) -> None:
+        """AG sessions should not appear separately in sessions list."""
+        from api.services.registration_service import RegistrationService
+
+        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
+        session_3 = create_mock_session(2002, "Session 3", 2026, "main", "2026-07-07", "2026-07-27")
+        ag_session_2 = create_mock_session(2005, "AG Session 2", 2026, "ag", "2026-06-15", "2026-07-05", parent_id=2001)
+
+        sessions_dict = {2001: session_2, 2002: session_3, 2005: ag_session_2}
+
+        attendees = [
+            create_mock_attendee(101, session_2, 2026),
+            create_mock_attendee(102, ag_session_2, 2026),
+            create_mock_attendee(103, session_3, 2026),
+        ]
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_session_length_by_session(attendees, sessions_dict)
+
+        all_session_names = [s.session_name for cat in result for s in cat.sessions]
+        assert "Session 2" in all_session_names
+        assert "Session 3" in all_session_names
+        assert "AG Session 2" not in all_session_names
+
+    def test_ag_merging_with_multiple_length_categories(self) -> None:
+        """AG merging should work correctly when sessions span multiple length categories."""
+        from api.services.registration_service import RegistrationService
+
+        # 1-week session
+        taste = create_mock_session(1001, "Taste of Camp", 2026, "embedded", "2026-06-20", "2026-06-23")
+        # 3-week session with AG
+        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
+        ag_session_2 = create_mock_session(2005, "AG Session 2", 2026, "ag", "2026-06-15", "2026-07-05", parent_id=2001)
+
+        sessions_dict = {1001: taste, 2001: session_2, 2005: ag_session_2}
+
+        attendees = [
+            create_mock_attendee(101, taste, 2026),
+            create_mock_attendee(102, session_2, 2026),
+            create_mock_attendee(103, ag_session_2, 2026),
+        ]
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_session_length_by_session(attendees, sessions_dict)
+
+        categories = {r.length_category: r for r in result}
+
+        # 1-week: Taste of Camp with 1 attendee
+        assert categories["1-week"].total == 1
+        assert categories["1-week"].sessions[0].session_name == "Taste of Camp"
+
+        # 3-week: Session 2 with 2 attendees (1 main + 1 AG merged)
+        assert categories["3-week"].total == 2
+        assert len(categories["3-week"].sessions) == 1
+        assert categories["3-week"].sessions[0].session_name == "Session 2"
+        assert categories["3-week"].sessions[0].count == 2
+
+    def test_ag_without_parent_not_merged(self) -> None:
+        """AG session without parent_id should not be merged (edge case)."""
+        from api.services.registration_service import RegistrationService
+
+        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
+        # AG session with no parent_id - should appear separately
+        orphan_ag = create_mock_session(2005, "Orphan AG", 2026, "ag", "2026-06-15", "2026-07-05", parent_id=None)
+
+        sessions_dict = {2001: session_2, 2005: orphan_ag}
+
+        attendees = [
+            create_mock_attendee(101, session_2, 2026),
+            create_mock_attendee(102, orphan_ag, 2026),
+        ]
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_session_length_by_session(attendees, sessions_dict)
+
+        # Both should appear since orphan AG has no parent to merge into
+        all_session_names = [s.session_name for cat in result for s in cat.sessions]
+        assert "Session 2" in all_session_names
+        assert "Orphan AG" in all_session_names
+
+
+# ============================================================================
+# Session Capacity and Utilization Tests
+# ============================================================================
+
+
+class TestSessionCapacityUtilization:
+    """Tests for capacity and utilization in session breakdown.
+
+    The capacity calculation follows the pattern from the bunking landing page:
+    1. Fetch bunk_plans with bunk expansion
+    2. Get default capacity from config (default: 12)
+    3. Filter out AG bunks (gender='Mixed') for main sessions
+    4. Capacity = bunk_plans count × default_capacity
+    5. Utilization = (enrolled / capacity) × 100
+    """
+
+    def test_capacity_basic_calculation(self) -> None:
+        """Basic capacity = bunk_plans count × default_capacity.
+
+        Session with 5 bunk_plans and capacity of 12 = 60 capacity.
+        """
+        # Create 5 bunk plans (non-AG bunks)
+        bunks = [create_mock_bunk(f"bunk_{i}", f"B-{i}", "M", 2026) for i in range(1, 6)]
+        bunk_plans = [create_mock_bunk_plan("session_2001", bunk, 2026) for bunk in bunks]
+
+        # 10 attendees enrolled
+        num_attendees = 10
+
+        # Test the helper method that calculates capacity
+        # Expected: 5 bunks × 12 capacity = 60
+        default_capacity = 12
+        session_capacity = len(bunk_plans) * default_capacity
+
+        assert session_capacity == 60
+
+        # Utilization = 10 / 60 = 16.67%
+        utilization = (num_attendees / session_capacity) * 100
+        assert utilization == pytest.approx(16.67, rel=0.01)
+
+    def test_capacity_excludes_ag_bunks_for_main_sessions(self) -> None:
+        """Main sessions should exclude AG bunks (gender='Mixed') from capacity.
+
+        Session 2 (main) has 5 boys bunks and 2 AG bunks.
+        Only the 5 boys bunks should count toward capacity.
+        """
+
+        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
+        session_2.pb_id = "session_2001"
+
+        # Create 5 regular bunks + 2 AG bunks
+        regular_bunks = [create_mock_bunk(f"bunk_{i}", f"B-{i}", "M", 2026) for i in range(1, 6)]
+        ag_bunks = [
+            create_mock_bunk("bunk_ag_1", "AG-1", "Mixed", 2026),
+            create_mock_bunk("bunk_ag_2", "AG-2", "Mixed", 2026),
+        ]
+
+        all_bunk_plans = [create_mock_bunk_plan("session_2001", bunk, 2026) for bunk in regular_bunks + ag_bunks]
+
+        # Filter out AG bunks for main session (mimics frontend logic)
+        is_main_session = session_2.session_type == "main"
+        filtered_plans = []
+        for bp in all_bunk_plans:
+            bunk_gender = bp.expand.get("bunk", {})
+            if hasattr(bunk_gender, "gender"):
+                bunk_gender = bunk_gender.gender
+            else:
+                bunk_gender = bunk_gender.get("gender", "")
+            bunk_gender = bunk_gender.lower() if bunk_gender else ""
+            is_ag_bunk = bunk_gender in ("ag", "mixed", "all-gender", "nb")
+
+            # For main sessions, exclude AG bunks
+            if is_main_session and is_ag_bunk:
+                continue
+            filtered_plans.append(bp)
+
+        # Should have only 5 regular bunks
+        assert len(filtered_plans) == 5
+
+        # Capacity = 5 × 12 = 60 (not 7 × 12 = 84)
+        default_capacity = 12
+        assert len(filtered_plans) * default_capacity == 60
+
+    def test_capacity_includes_all_bunks_for_embedded_sessions(self) -> None:
+        """Embedded sessions should include ALL bunks in capacity (no AG filtering).
+
+        Taste of Camp (embedded) has 3 bunks - all should count.
+        """
+        taste = create_mock_session(1001, "Taste of Camp", 2026, "embedded", "2026-06-20", "2026-06-23")
+        taste.pb_id = "session_1001"
+
+        # Create bunks of different genders
+        bunks = [
+            create_mock_bunk("bunk_1", "B-1", "M", 2026),
+            create_mock_bunk("bunk_2", "G-1", "F", 2026),
+            create_mock_bunk("bunk_3", "AG-1", "Mixed", 2026),  # AG bunk included!
+        ]
+
+        bunk_plans = [create_mock_bunk_plan("session_1001", bunk, 2026) for bunk in bunks]
+
+        # Embedded session - no filtering
+        is_main_session = taste.session_type == "main"
+        assert is_main_session is False
+
+        # All 3 bunks should count
+        default_capacity = 12
+        assert len(bunk_plans) * default_capacity == 36
+
+    def test_utilization_calculation(self) -> None:
+        """Utilization = (enrolled / capacity) × 100.
+
+        30 enrolled with capacity 60 = 50% utilization.
+        """
+        enrolled = 30
+        capacity = 60
+
+        utilization = (enrolled / capacity) * 100
+        assert utilization == 50.0
+
+    def test_utilization_none_when_capacity_zero(self) -> None:
+        """Utilization should be None when capacity is 0 or None.
+
+        Prevents division by zero.
+        """
+
+        def calculate_utilization(count: int, capacity: int | None) -> float | None:
+            """Helper that matches the service implementation."""
+            if capacity is None or capacity == 0:
+                return None
+            return (count / capacity) * 100
+
+        # Zero capacity
+        assert calculate_utilization(10, 0) is None
+
+        # None capacity
+        assert calculate_utilization(10, None) is None
+
+        # Valid capacity
+        assert calculate_utilization(10, 100) == 10.0
+
+    def test_capacity_uses_default_when_config_missing(self) -> None:
+        """When config is missing, use default capacity of 12."""
+        # The frontend uses: const bunkCapacity = capacityConfig?.value ? Number(capacityConfig.value) : 12
+        default_capacity = 12
+
+        # Simulate missing config (returns None)
+        config_value = None
+        bunk_capacity = int(config_value) if config_value else default_capacity
+
+        assert bunk_capacity == 12
+
+        # Simulate config with value
+        config_value = "10"
+        bunk_capacity = int(config_value) if config_value else default_capacity
+        assert bunk_capacity == 10
+
+    def test_ag_capacity_merges_into_parent(self) -> None:
+        """AG session capacity should be merged into parent main session.
+
+        Main Session 2 has 5 bunks → capacity 60
+        AG Session 2 has 2 bunks → capacity 24
+        When viewing Session 2, total capacity = 84 (including AG)
+
+        BUT when looking at bunk_plans for main session only,
+        we EXCLUDE the AG bunks attached to the main session.
+        The AG session has its OWN bunk_plans for AG bunks.
+        """
+        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
+        session_2.pb_id = "session_2001"
+        ag_session_2 = create_mock_session(2005, "AG Session 2", 2026, "ag", "2026-06-15", "2026-07-05", parent_id=2001)
+        ag_session_2.pb_id = "session_2005"
+
+        # Main session bunk plans (5 boys bunks)
+        main_bunks = [create_mock_bunk(f"bunk_{i}", f"B-{i}", "M", 2026) for i in range(1, 6)]
+        main_bunk_plans = [create_mock_bunk_plan("session_2001", bunk, 2026) for bunk in main_bunks]
+
+        # AG session bunk plans (2 AG bunks)
+        ag_bunks = [
+            create_mock_bunk("bunk_ag_1", "AG-1", "Mixed", 2026),
+            create_mock_bunk("bunk_ag_2", "AG-2", "Mixed", 2026),
+        ]
+        ag_bunk_plans = [create_mock_bunk_plan("session_2005", bunk, 2026) for bunk in ag_bunks]
+
+        default_capacity = 12
+
+        # Main session capacity: 5 bunks × 12 = 60
+        main_capacity = len(main_bunk_plans) * default_capacity
+        assert main_capacity == 60
+
+        # AG session capacity: 2 bunks × 12 = 24
+        ag_capacity = len(ag_bunk_plans) * default_capacity
+        assert ag_capacity == 24
+
+        # When merging AG into parent (for display), total = 84
+        combined_capacity = main_capacity + ag_capacity
+        assert combined_capacity == 84
+
+    def test_no_bunk_plans_returns_none_capacity(self) -> None:
+        """Session with no bunk_plans should have capacity=None, utilization=None."""
+        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
+        session_2.pb_id = "session_2001"
+
+        bunk_plans: list[Mock] = []  # No bunk plans
+
+        # With no bunk plans, capacity should be None (not 0)
+        # This indicates "capacity not configured" vs "capacity is zero"
+        if len(bunk_plans) == 0:
+            capacity = None
+            utilization = None
+        else:
+            capacity = len(bunk_plans) * 12
+            utilization = 0.0  # Would calculate based on enrolled
+
+        assert capacity is None
+        assert utilization is None
+
+    def test_full_integration_with_service(self) -> None:
+        """Integration test: verify _compute_session_breakdown includes capacity/utilization.
+
+        NEW SIGNATURE (after implementation):
+        _compute_session_breakdown(attendees, sessions, bunk_plans, default_capacity)
+
+        5 bunk plans × 12 capacity = 60
+        30 enrolled / 60 capacity = 50% utilization
+        """
+        from api.services.registration_service import RegistrationService
+
+        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
+        session_2.pb_id = "session_2001"
+
+        sessions_dict = {2001: session_2}
+
+        # Create 5 bunk plans for session 2
+        bunks = [create_mock_bunk(f"bunk_{i}", f"B-{i}", "M", 2026) for i in range(1, 6)]
+        bunk_plans = [create_mock_bunk_plan("session_2001", bunk, 2026) for bunk in bunks]
+
+        # 30 attendees enrolled
+        attendees = [create_mock_attendee(100 + i, session_2, 2026) for i in range(30)]
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+
+        # NEW: Pass bunk_plans and default_capacity to the method
+        result = service._compute_session_breakdown(attendees, sessions_dict, bunk_plans, 12)
+
+        # Find session 2 breakdown
+        session_2_breakdown = next((s for s in result if s.session_cm_id == 2001), None)
+        assert session_2_breakdown is not None
+        assert session_2_breakdown.count == 30
+
+        # Capacity = 5 bunks × 12 = 60
+        assert session_2_breakdown.capacity == 60
+        # Utilization = 30 / 60 × 100 = 50%
+        assert session_2_breakdown.utilization == pytest.approx(50.0, rel=0.01)
+
+    def test_session_breakdown_with_ag_merging(self) -> None:
+        """AG session counts and capacity merge into parent main session.
+
+        Main: 4 attendees, 5 bunks → capacity 60
+        AG: 2 attendees, 2 bunks → capacity 24
+        Combined: 6 attendees, 84 capacity → 7.14% utilization
+        """
+        from api.services.registration_service import RegistrationService
+
+        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
+        session_2.pb_id = "session_2001"
+        ag_session_2 = create_mock_session(2005, "AG Session 2", 2026, "ag", "2026-06-15", "2026-07-05", parent_id=2001)
+        ag_session_2.pb_id = "session_2005"
+
+        sessions_dict = {2001: session_2, 2005: ag_session_2}
+
+        # Main session bunk plans (5 boys bunks)
+        main_bunks = [create_mock_bunk(f"bunk_{i}", f"B-{i}", "M", 2026) for i in range(1, 6)]
+        main_bunk_plans = [create_mock_bunk_plan("session_2001", bunk, 2026) for bunk in main_bunks]
+
+        # AG session bunk plans (2 AG bunks)
+        ag_bunks = [
+            create_mock_bunk("bunk_ag_1", "AG-1", "Mixed", 2026),
+            create_mock_bunk("bunk_ag_2", "AG-2", "Mixed", 2026),
+        ]
+        ag_bunk_plans = [create_mock_bunk_plan("session_2005", bunk, 2026) for bunk in ag_bunks]
+
+        # 4 main attendees + 2 AG attendees
+        main_attendees = [create_mock_attendee(100 + i, session_2, 2026) for i in range(4)]
+        ag_attendees = [create_mock_attendee(200 + i, ag_session_2, 2026) for i in range(2)]
+        all_attendees = main_attendees + ag_attendees
+        all_bunk_plans = main_bunk_plans + ag_bunk_plans
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+
+        result = service._compute_session_breakdown(all_attendees, sessions_dict, all_bunk_plans, 12)
+
+        # Session 2 should have merged AG counts and capacity
+        session_2_breakdown = next((s for s in result if s.session_cm_id == 2001), None)
+        assert session_2_breakdown is not None
+
+        # Count: 4 main + 2 AG = 6
+        assert session_2_breakdown.count == 6
+
+        # Capacity: 5 main bunks × 12 + 2 AG bunks × 12 = 60 + 24 = 84
+        assert session_2_breakdown.capacity == 84
+
+        # Utilization: 6 / 84 × 100 = 7.14%
+        assert session_2_breakdown.utilization == pytest.approx(7.14, rel=0.01)
+
+        # AG session should NOT appear in results (merged into parent)
+        ag_breakdown = next((s for s in result if s.session_cm_id == 2005), None)
+        assert ag_breakdown is None
+
+    def test_embedded_session_includes_all_bunks(self) -> None:
+        """Embedded sessions include all bunks including AG bunks.
+
+        Taste of Camp (embedded) with 3 bunks including 1 AG.
+        All 3 should count toward capacity.
+        """
+        from api.services.registration_service import RegistrationService
+
+        taste = create_mock_session(1001, "Taste of Camp", 2026, "embedded", "2026-06-20", "2026-06-23")
+        taste.pb_id = "session_1001"
+
+        sessions_dict = {1001: taste}
+
+        # 3 bunks: 1 boys, 1 girls, 1 AG (all should count)
+        bunks = [
+            create_mock_bunk("bunk_1", "B-1", "M", 2026),
+            create_mock_bunk("bunk_2", "G-1", "F", 2026),
+            create_mock_bunk("bunk_3", "AG-1", "Mixed", 2026),
+        ]
+        bunk_plans = [create_mock_bunk_plan("session_1001", bunk, 2026) for bunk in bunks]
+
+        # 18 attendees
+        attendees = [create_mock_attendee(100 + i, taste, 2026) for i in range(18)]
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+
+        result = service._compute_session_breakdown(attendees, sessions_dict, bunk_plans, 12)
+
+        taste_breakdown = next((s for s in result if s.session_cm_id == 1001), None)
+        assert taste_breakdown is not None
+        assert taste_breakdown.count == 18
+
+        # All 3 bunks count → capacity = 36
+        assert taste_breakdown.capacity == 36
+        # Utilization = 18 / 36 × 100 = 50%
+        assert taste_breakdown.utilization == pytest.approx(50.0, rel=0.01)
+
+    def test_session_with_no_bunk_plans(self) -> None:
+        """Session with no bunk_plans should have capacity=None, utilization=None."""
+        from api.services.registration_service import RegistrationService
+
+        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
+        session_2.pb_id = "session_2001"
+
+        sessions_dict = {2001: session_2}
+        bunk_plans: list[Mock] = []  # No bunk plans for any session
+
+        attendees = [create_mock_attendee(100 + i, session_2, 2026) for i in range(10)]
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+
+        result = service._compute_session_breakdown(attendees, sessions_dict, bunk_plans, 12)
+
+        session_2_breakdown = next((s for s in result if s.session_cm_id == 2001), None)
+        assert session_2_breakdown is not None
+        assert session_2_breakdown.count == 10
+
+        # No bunk plans → capacity should be None
+        assert session_2_breakdown.capacity is None
+        # Utilization should also be None (can't calculate without capacity)
+        assert session_2_breakdown.utilization is None

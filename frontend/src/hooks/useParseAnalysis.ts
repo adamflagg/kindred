@@ -2,10 +2,10 @@
  * React Query hooks for debug parse analysis
  */
 
-import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useApiWithAuth } from './useApiWithAuth';
-import { queryKeys, userDataOptions } from '../utils/queryKeys';
-import { debugService } from '../services/debug';
+import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useApiWithAuth } from './useApiWithAuth'
+import { queryKeys, userDataOptions } from '../utils/queryKeys'
+import { debugService } from '../services/debug'
 import type {
   ParseAnalysisFilters,
   OriginalRequestsFilters,
@@ -13,109 +13,121 @@ import type {
   GroupedRequestsFilters,
   ScopedClearFilters,
   Phase1OnlyRequest,
-} from '../services/debug';
+} from '../services/debug'
 
 /**
  * Hook to fetch parse analysis results with filters
  */
 export function useParseAnalysis(filters: ParseAnalysisFilters = {}) {
-  const { fetchWithAuth, isAuthenticated } = useApiWithAuth();
+  const { fetchWithAuth, isAuthenticated } = useApiWithAuth()
 
   // Build filter object only with defined values
   const filterArg =
     filters.session_cm_id !== undefined || filters.source_field !== undefined
       ? {
-          ...(filters.session_cm_id !== undefined && { sessionCmId: filters.session_cm_id }),
-          ...(filters.source_field !== undefined && { sourceField: filters.source_field }),
+          ...(filters.session_cm_id !== undefined && {
+            sessionCmId: filters.session_cm_id,
+          }),
+          ...(filters.source_field !== undefined && {
+            sourceField: filters.source_field,
+          }),
         }
-      : undefined;
+      : undefined
 
   return useQuery({
     queryKey: queryKeys.parseAnalysis(filterArg),
     queryFn: () => debugService.listParseAnalysis(filters, fetchWithAuth),
     enabled: isAuthenticated,
     ...userDataOptions,
-  });
+  })
 }
 
 /**
  * Hook to fetch a single parse analysis detail
  */
 export function useParseAnalysisDetail(id: string | null) {
-  const { fetchWithAuth, isAuthenticated } = useApiWithAuth();
+  const { fetchWithAuth, isAuthenticated } = useApiWithAuth()
 
   return useQuery({
     queryKey: queryKeys.parseAnalysisDetail(id || ''),
     queryFn: () => {
-      if (!id) throw new Error('ID is required');
-      return debugService.getParseAnalysisDetail(id, fetchWithAuth);
+      if (!id) throw new Error('ID is required')
+      return debugService.getParseAnalysisDetail(id, fetchWithAuth)
     },
     enabled: isAuthenticated && !!id,
     ...userDataOptions,
-  });
+  })
 }
 
 /**
  * Hook to fetch original requests for debug selection
  */
 export function useOriginalRequests(filters: OriginalRequestsFilters) {
-  const { fetchWithAuth, isAuthenticated } = useApiWithAuth();
+  const { fetchWithAuth, isAuthenticated } = useApiWithAuth()
 
   // Build filter object only with defined values
   const filterArg =
     filters.session_cm_id !== undefined || filters.source_field !== undefined
       ? {
-          ...(filters.session_cm_id !== undefined && { sessionCmId: filters.session_cm_id }),
-          ...(filters.source_field !== undefined && { sourceField: filters.source_field }),
+          ...(filters.session_cm_id !== undefined && {
+            sessionCmId: filters.session_cm_id,
+          }),
+          ...(filters.source_field !== undefined && {
+            sourceField: filters.source_field,
+          }),
         }
-      : undefined;
+      : undefined
 
   return useQuery({
     queryKey: queryKeys.originalRequests(filters.year, filterArg),
     queryFn: () => debugService.listOriginalRequests(filters, fetchWithAuth),
     enabled: isAuthenticated && !!filters.year,
     ...userDataOptions,
-  });
+  })
 }
 
 /**
  * Hook to fetch original requests with parse status (debug/production flags)
  */
 export function useOriginalRequestsWithStatus(filters: OriginalRequestsWithStatusFilters) {
-  const { fetchWithAuth, isAuthenticated } = useApiWithAuth();
+  const { fetchWithAuth, isAuthenticated } = useApiWithAuth()
 
   // Build filter object only with defined values
   const filterArg =
     filters.session_cm_ids !== undefined || filters.source_field !== undefined
       ? {
-          ...(filters.session_cm_ids !== undefined && { sessionCmIds: filters.session_cm_ids }),
-          ...(filters.source_field !== undefined && { sourceField: filters.source_field }),
+          ...(filters.session_cm_ids !== undefined && {
+            sessionCmIds: filters.session_cm_ids,
+          }),
+          ...(filters.source_field !== undefined && {
+            sourceField: filters.source_field,
+          }),
         }
-      : undefined;
+      : undefined
 
   return useQuery({
     queryKey: queryKeys.originalRequestsWithStatus(filters.year, filterArg),
     queryFn: () => debugService.listOriginalRequestsWithStatus(filters, fetchWithAuth),
     enabled: isAuthenticated && !!filters.year,
     ...userDataOptions,
-  });
+  })
 }
 
 /**
  * Hook to fetch parse result with fallback (debug -> production -> none)
  */
 export function useParseResultWithFallback(originalRequestId: string | null) {
-  const { fetchWithAuth, isAuthenticated } = useApiWithAuth();
+  const { fetchWithAuth, isAuthenticated } = useApiWithAuth()
 
   return useQuery({
     queryKey: queryKeys.parseResultWithFallback(originalRequestId || ''),
     queryFn: () => {
-      if (!originalRequestId) throw new Error('Original request ID is required');
-      return debugService.getParseResultWithFallback(originalRequestId, fetchWithAuth);
+      if (!originalRequestId) throw new Error('Original request ID is required')
+      return debugService.getParseResultWithFallback(originalRequestId, fetchWithAuth)
     },
     enabled: isAuthenticated && !!originalRequestId,
     ...userDataOptions,
-  });
+  })
 }
 
 /**
@@ -124,7 +136,7 @@ export function useParseResultWithFallback(originalRequestId: string | null) {
  * @deprecated Use useParseResultsBatch instead - it's much faster
  */
 export function useMultiFieldParseResults(originalRequestIds: string[]) {
-  const { fetchWithAuth, isAuthenticated } = useApiWithAuth();
+  const { fetchWithAuth, isAuthenticated } = useApiWithAuth()
 
   return useQueries({
     queries: originalRequestIds.map((id) => ({
@@ -133,7 +145,7 @@ export function useMultiFieldParseResults(originalRequestIds: string[]) {
       enabled: isAuthenticated && !!id,
       ...userDataOptions,
     })),
-  });
+  })
 }
 
 /**
@@ -142,17 +154,17 @@ export function useMultiFieldParseResults(originalRequestIds: string[]) {
  * regardless of how many fields are requested.
  */
 export function useParseResultsBatch(originalRequestIds: string[]) {
-  const { fetchWithAuth, isAuthenticated } = useApiWithAuth();
+  const { fetchWithAuth, isAuthenticated } = useApiWithAuth()
 
   // Create a stable key from sorted IDs to avoid unnecessary refetches
-  const idsKey = originalRequestIds.length > 0 ? originalRequestIds.slice().sort().join(',') : '';
+  const idsKey = originalRequestIds.length > 0 ? originalRequestIds.slice().sort().join(',') : ''
 
   return useQuery({
     queryKey: ['parse-results-batch', idsKey],
     queryFn: () => debugService.getParseResultsBatch(originalRequestIds, fetchWithAuth),
     enabled: isAuthenticated && originalRequestIds.length > 0,
     ...userDataOptions,
-  });
+  })
 }
 
 /**
@@ -160,46 +172,48 @@ export function useParseResultsBatch(originalRequestIds: string[]) {
  * Returns both sources separately for toggle UI instead of using fallback pattern.
  */
 export function useParseResultsBatchDual(originalRequestIds: string[]) {
-  const { fetchWithAuth, isAuthenticated } = useApiWithAuth();
+  const { fetchWithAuth, isAuthenticated } = useApiWithAuth()
 
   // Create a stable key from sorted IDs to avoid unnecessary refetches
-  const idsKey = originalRequestIds.length > 0 ? originalRequestIds.slice().sort().join(',') : '';
+  const idsKey = originalRequestIds.length > 0 ? originalRequestIds.slice().sort().join(',') : ''
 
   return useQuery({
     queryKey: ['parse-results-batch-dual', idsKey],
     queryFn: () => debugService.getParseResultsBatchDual(originalRequestIds, fetchWithAuth),
     enabled: isAuthenticated && originalRequestIds.length > 0,
     ...userDataOptions,
-  });
+  })
 }
 
 /**
  * Hook to run Phase 1 parsing on selected requests
  */
 export function useParsePhase1Only() {
-  const { fetchWithAuth } = useApiWithAuth();
-  const queryClient = useQueryClient();
+  const { fetchWithAuth } = useApiWithAuth()
+  const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: (request: Phase1OnlyRequest) =>
       debugService.parsePhase1Only(request, fetchWithAuth),
     onSuccess: () => {
       // Invalidate all related queries to refresh data
-      queryClient.invalidateQueries({ queryKey: ['parse-analysis'] });
-      queryClient.invalidateQueries({ queryKey: ['grouped-requests'] });
-      queryClient.invalidateQueries({ queryKey: ['parse-result-with-fallback'] });
-      queryClient.invalidateQueries({ queryKey: ['parse-results-batch'] });
-      queryClient.invalidateQueries({ queryKey: ['parse-results-batch-dual'] });
+      queryClient.invalidateQueries({ queryKey: ['parse-analysis'] })
+      queryClient.invalidateQueries({ queryKey: ['grouped-requests'] })
+      queryClient.invalidateQueries({
+        queryKey: ['parse-result-with-fallback'],
+      })
+      queryClient.invalidateQueries({ queryKey: ['parse-results-batch'] })
+      queryClient.invalidateQueries({ queryKey: ['parse-results-batch-dual'] })
     },
-  });
+  })
 }
 
 /**
  * Hook to reparse a single original request
  */
 export function useReparseSingle() {
-  const { fetchWithAuth } = useApiWithAuth();
-  const queryClient = useQueryClient();
+  const { fetchWithAuth } = useApiWithAuth()
+  const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: (originalRequestId: string) =>
@@ -208,71 +222,75 @@ export function useReparseSingle() {
         fetchWithAuth
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['parse-analysis'] });
+      queryClient.invalidateQueries({ queryKey: ['parse-analysis'] })
     },
-  });
+  })
 }
 
 /**
  * Hook to clear parse analysis results (with optional scoped filters)
  */
 export function useClearParseAnalysis() {
-  const { fetchWithAuth } = useApiWithAuth();
-  const queryClient = useQueryClient();
+  const { fetchWithAuth } = useApiWithAuth()
+  const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: (filters?: ScopedClearFilters) =>
       debugService.clearParseAnalysis(fetchWithAuth, filters),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['parse-analysis'] });
-      queryClient.invalidateQueries({ queryKey: ['original-requests'] });
-      queryClient.invalidateQueries({ queryKey: ['grouped-requests'] });
-      queryClient.invalidateQueries({ queryKey: ['parse-results-batch'] });
-      queryClient.invalidateQueries({ queryKey: ['parse-results-batch-dual'] });
+      queryClient.invalidateQueries({ queryKey: ['parse-analysis'] })
+      queryClient.invalidateQueries({ queryKey: ['original-requests'] })
+      queryClient.invalidateQueries({ queryKey: ['grouped-requests'] })
+      queryClient.invalidateQueries({ queryKey: ['parse-results-batch'] })
+      queryClient.invalidateQueries({ queryKey: ['parse-results-batch-dual'] })
     },
-  });
+  })
 }
 
 /**
  * Hook to clear a single parse analysis result
  */
 export function useClearSingleParseAnalysis() {
-  const { fetchWithAuth } = useApiWithAuth();
-  const queryClient = useQueryClient();
+  const { fetchWithAuth } = useApiWithAuth()
+  const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: (originalRequestId: string) =>
       debugService.clearSingleParseAnalysis(originalRequestId, fetchWithAuth),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['parse-analysis'] });
-      queryClient.invalidateQueries({ queryKey: ['original-requests'] });
-      queryClient.invalidateQueries({ queryKey: ['grouped-requests'] });
-      queryClient.invalidateQueries({ queryKey: ['parse-results-batch'] });
-      queryClient.invalidateQueries({ queryKey: ['parse-results-batch-dual'] });
+      queryClient.invalidateQueries({ queryKey: ['parse-analysis'] })
+      queryClient.invalidateQueries({ queryKey: ['original-requests'] })
+      queryClient.invalidateQueries({ queryKey: ['grouped-requests'] })
+      queryClient.invalidateQueries({ queryKey: ['parse-results-batch'] })
+      queryClient.invalidateQueries({ queryKey: ['parse-results-batch-dual'] })
     },
-  });
+  })
 }
 
 /**
  * Hook to fetch original requests grouped by camper
  */
 export function useGroupedRequests(filters: GroupedRequestsFilters) {
-  const { fetchWithAuth, isAuthenticated } = useApiWithAuth();
+  const { fetchWithAuth, isAuthenticated } = useApiWithAuth()
 
   const filterArg =
     filters.session_cm_ids !== undefined || filters.source_field !== undefined
       ? {
-          ...(filters.session_cm_ids !== undefined && { sessionCmIds: filters.session_cm_ids }),
-          ...(filters.source_field !== undefined && { sourceField: filters.source_field }),
+          ...(filters.session_cm_ids !== undefined && {
+            sessionCmIds: filters.session_cm_ids,
+          }),
+          ...(filters.source_field !== undefined && {
+            sourceField: filters.source_field,
+          }),
         }
-      : undefined;
+      : undefined
 
   return useQuery({
     queryKey: ['grouped-requests', filters.year, filterArg],
     queryFn: () => debugService.listGroupedRequests(filters, fetchWithAuth),
     enabled: isAuthenticated && !!filters.year,
     ...userDataOptions,
-  });
+  })
 }
 
 // ============================================================================
@@ -283,47 +301,49 @@ export function useGroupedRequests(filters: GroupedRequestsFilters) {
  * Hook to fetch the list of available prompts
  */
 export function usePromptsList() {
-  const { fetchWithAuth, isAuthenticated } = useApiWithAuth();
+  const { fetchWithAuth, isAuthenticated } = useApiWithAuth()
 
   return useQuery({
     queryKey: queryKeys.prompts(),
     queryFn: () => debugService.listPrompts(fetchWithAuth),
     enabled: isAuthenticated,
     ...userDataOptions,
-  });
+  })
 }
 
 /**
  * Hook to fetch a specific prompt's content
  */
 export function usePrompt(name: string | null) {
-  const { fetchWithAuth, isAuthenticated } = useApiWithAuth();
+  const { fetchWithAuth, isAuthenticated } = useApiWithAuth()
 
   return useQuery({
     queryKey: queryKeys.prompt(name || ''),
     queryFn: () => {
-      if (!name) throw new Error('Prompt name is required');
-      return debugService.getPrompt(name, fetchWithAuth);
+      if (!name) throw new Error('Prompt name is required')
+      return debugService.getPrompt(name, fetchWithAuth)
     },
     enabled: isAuthenticated && !!name,
     ...userDataOptions,
-  });
+  })
 }
 
 /**
  * Hook to update a prompt's content
  */
 export function useUpdatePrompt() {
-  const { fetchWithAuth } = useApiWithAuth();
-  const queryClient = useQueryClient();
+  const { fetchWithAuth } = useApiWithAuth()
+  const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: ({ name, content }: { name: string; content: string }) =>
       debugService.updatePrompt(name, content, fetchWithAuth),
     onSuccess: (_data, variables) => {
       // Invalidate both the specific prompt and the list
-      queryClient.invalidateQueries({ queryKey: queryKeys.prompt(variables.name) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.prompts() });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.prompt(variables.name),
+      })
+      queryClient.invalidateQueries({ queryKey: queryKeys.prompts() })
     },
-  });
+  })
 }

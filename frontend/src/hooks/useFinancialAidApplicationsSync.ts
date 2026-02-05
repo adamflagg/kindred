@@ -1,20 +1,20 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { pb } from '../lib/pocketbase';
-import toast from 'react-hot-toast';
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { pb } from '../lib/pocketbase'
+import toast from 'react-hot-toast'
 
 /**
  * Hook for running the financial aid applications computation sync.
  * The financial_aid_applications endpoint requires a year parameter (unlike most syncs).
  */
 export function useFinancialAidApplicationsSync() {
-  const queryClient = useQueryClient();
+  const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: async (year: number) => {
       const response = await pb.send(`/api/custom/sync/financial-aid-applications?year=${year}`, {
         method: 'POST',
-      });
-      return response;
+      })
+      return response
     },
     onSuccess: (data) => {
       if (data?.status === 'started') {
@@ -25,17 +25,17 @@ export function useFinancialAidApplicationsSync() {
           style: {
             borderLeft: '4px solid hsl(160, 100%, 21%)',
           },
-        });
+        })
       }
       // Invalidate sync status to show it's running
-      queryClient.invalidateQueries({ queryKey: ['sync-status-api'] });
+      queryClient.invalidateQueries({ queryKey: ['sync-status-api'] })
     },
     onError: (error) => {
-      let errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      let errorMessage = error instanceof Error ? error.message : 'Unknown error'
       if (errorMessage.includes('already in progress')) {
-        errorMessage = 'FA Applications sync is already running.';
+        errorMessage = 'FA Applications sync is already running.'
       }
-      toast.error(errorMessage);
+      toast.error(errorMessage)
     },
-  });
+  })
 }

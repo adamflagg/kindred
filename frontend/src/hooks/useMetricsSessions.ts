@@ -4,16 +4,16 @@
  * Returns main and embedded sessions for a given year, sorted by start_date.
  */
 
-import { useQuery, keepPreviousData } from '@tanstack/react-query';
-import { queryKeys, syncDataOptions } from '../utils/queryKeys';
-import { pb } from '../lib/pocketbase';
-import { sortSessionsByDate } from '../utils/sessionUtils';
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
+import { queryKeys, syncDataOptions } from '../utils/queryKeys'
+import { pb } from '../lib/pocketbase'
+import { sortSessionsByDate } from '../utils/sessionUtils'
 
 export interface MetricsSession {
-  cm_id: number;
-  name: string;
-  session_type: 'main' | 'embedded';
-  start_date: string;
+  cm_id: number
+  name: string
+  session_type: 'main' | 'embedded'
+  start_date: string
 }
 
 /**
@@ -29,19 +29,19 @@ export function useMetricsSessions(year: number) {
       const sessions = await pb.collection('camp_sessions').getFullList({
         filter: `year = ${year} && (session_type = "main" || session_type = "embedded")`,
         sort: 'start_date',
-      });
+      })
 
       const mapped = sessions.map((s) => ({
         cm_id: s.cm_id as number,
         name: s.name as string,
         session_type: s.session_type as 'main' | 'embedded',
         start_date: s.start_date as string,
-      }));
-      return sortSessionsByDate(mapped);
+      }))
+      return sortSessionsByDate(mapped)
     },
     enabled: year > 0,
     placeholderData: keepPreviousData,
     // Sessions rarely change - use sync data options for long cache
     ...syncDataOptions,
-  });
+  })
 }

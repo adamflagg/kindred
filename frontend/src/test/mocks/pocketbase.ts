@@ -8,7 +8,7 @@ export const mockPocketBase = {
     token: 'mock-token',
     model: { id: 'admin', email: 'admin@camp.local' },
   },
-  
+
   collection: vi.fn((name: string) => {
     const collections: Record<string, unknown> = {
       sessions: {
@@ -19,11 +19,9 @@ export const mockPocketBase = {
           totalItems: mockSessions.length,
           totalPages: 1,
         }),
-        getOne: vi.fn((id: string) => 
-          Promise.resolve(mockSessions.find(s => s.id === id))
-        ),
+        getOne: vi.fn((id: string) => Promise.resolve(mockSessions.find((s) => s.id === id))),
       },
-      
+
       bunks: {
         getList: vi.fn().mockResolvedValue({
           items: mockBunks,
@@ -33,7 +31,7 @@ export const mockPocketBase = {
           totalPages: 1,
         }),
       },
-      
+
       persons: {
         getList: vi.fn().mockResolvedValue({
           items: mockCampers,
@@ -42,11 +40,9 @@ export const mockPocketBase = {
           totalItems: mockCampers.length,
           totalPages: 1,
         }),
-        getOne: vi.fn((id: string) => 
-          Promise.resolve(mockCampers.find(c => c.id === id))
-        ),
+        getOne: vi.fn((id: string) => Promise.resolve(mockCampers.find((c) => c.id === id))),
       },
-      
+
       attendees: {
         getList: vi.fn().mockResolvedValue({
           items: [mockAttendee()],
@@ -57,7 +53,7 @@ export const mockPocketBase = {
         }),
         update: vi.fn().mockResolvedValue(mockAttendee()),
       },
-      
+
       bunk_plans: {
         getList: vi.fn().mockResolvedValue({
           items: [mockBunkPlan()],
@@ -67,7 +63,7 @@ export const mockPocketBase = {
           totalPages: 1,
         }),
       },
-      
+
       bunk_assignments: {
         getList: vi.fn().mockResolvedValue({
           items: [],
@@ -79,7 +75,7 @@ export const mockPocketBase = {
         create: vi.fn().mockResolvedValue({ id: 'new-assignment' }),
         delete: vi.fn().mockResolvedValue(true),
       },
-      
+
       constraints: {
         getList: vi.fn().mockResolvedValue({
           items: [],
@@ -93,23 +89,25 @@ export const mockPocketBase = {
         delete: vi.fn().mockResolvedValue(true),
       },
     }
-    
-    return collections[name] || {
-      getList: vi.fn().mockResolvedValue({ items: [], totalItems: 0 }),
-      getOne: vi.fn().mockResolvedValue(null),
-      create: vi.fn().mockResolvedValue({ id: 'new-item' }),
-      update: vi.fn().mockResolvedValue({ id: 'updated-item' }),
-      delete: vi.fn().mockResolvedValue(true),
-    }
+
+    return (
+      collections[name] || {
+        getList: vi.fn().mockResolvedValue({ items: [], totalItems: 0 }),
+        getOne: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue({ id: 'new-item' }),
+        update: vi.fn().mockResolvedValue({ id: 'updated-item' }),
+        delete: vi.fn().mockResolvedValue(true),
+      }
+    )
   }),
-  
+
   admins: {
     authWithPassword: vi.fn().mockResolvedValue({
       token: 'mock-admin-token',
       admin: { id: 'admin', email: 'admin@camp.local' },
     }),
   },
-  
+
   subscribe: vi.fn(),
   unsubscribe: vi.fn(),
 }
@@ -121,8 +119,8 @@ vi.mock('pocketbase', () => ({
 
 export const resetPocketBaseMocks = () => {
   // Reset all mocks in the PocketBase mock
-  const collectionMock = mockPocketBase.collection as ReturnType<typeof vi.fn>;
+  const collectionMock = mockPocketBase.collection as ReturnType<typeof vi.fn>
   if (collectionMock.mockReset) {
-    collectionMock.mockReset();
+    collectionMock.mockReset()
   }
 }

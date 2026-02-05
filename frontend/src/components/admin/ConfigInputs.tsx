@@ -1,31 +1,27 @@
-import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
-import { createPortal } from 'react-dom';
-import { Clock, CheckCircle, XCircle, Loader2, Info } from 'lucide-react';
-import { type SyncStatus } from '../../hooks/useSyncStatusAPI';
-import {
-  type ScaleType,
-  SCALE_DEFINITIONS,
-  getImpactLevel,
-} from '../../utils/scaleContext';
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
+import { Clock, CheckCircle, XCircle, Loader2, Info } from 'lucide-react'
+import { type SyncStatus } from '../../hooks/useSyncStatusAPI'
+import { type ScaleType, SCALE_DEFINITIONS, getImpactLevel } from '../../utils/scaleContext'
 
 // ============ INPUT COMPONENTS ============
 
 export interface ToggleSwitchProps {
-  value: boolean | string | number;
-  onChange: (value: string) => void;
-  disabled?: boolean;
+  value: boolean | string | number
+  onChange: (value: string) => void
+  disabled?: boolean
 }
 
 export function ToggleSwitch({ value, onChange, disabled = false }: ToggleSwitchProps) {
-  const isChecked = value === true || value === '1' || value === 'true' || value === 1;
+  const isChecked = value === true || value === '1' || value === 'true' || value === 1
 
   return (
     <button
       onClick={() => !disabled && onChange(isChecked ? '0' : '1')}
       disabled={disabled}
-      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-forest-500 focus:ring-offset-2 dark:focus:ring-offset-card ${
+      className={`focus:ring-forest-500 dark:focus:ring-offset-card relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:ring-2 focus:ring-offset-2 focus:outline-none ${
         isChecked ? 'bg-forest-600 dark:bg-forest-500' : 'bg-stone-300 dark:bg-stone-600'
-      } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+      } ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
       role="switch"
       aria-checked={isChecked}
     >
@@ -35,25 +31,31 @@ export function ToggleSwitch({ value, onChange, disabled = false }: ToggleSwitch
         }`}
       />
     </button>
-  );
+  )
 }
 
 export interface SliderProps {
-  value: string | number;
-  onChange: (value: string) => void;
-  config?: { min?: number; max?: number; step?: number; suffix?: string; precision?: number };
+  value: string | number
+  onChange: (value: string) => void
+  config?: {
+    min?: number
+    max?: number
+    step?: number
+    suffix?: string
+    precision?: number
+  }
 }
 
 export function Slider({ value, onChange, config = {} }: SliderProps) {
-  const { min = 0, max = 100, step = 1, suffix = '', precision = 0 } = config;
-  const numValue = typeof value === 'string' ? parseFloat(value) || min : value;
+  const { min = 0, max = 100, step = 1, suffix = '', precision = 0 } = config
+  const numValue = typeof value === 'string' ? parseFloat(value) || min : value
 
   // Use local state during dragging for smooth interaction
-  const [localValue, setLocalValue] = useState<number | null>(null);
-  const displayValue = localValue ?? numValue;
+  const [localValue, setLocalValue] = useState<number | null>(null)
+  const displayValue = localValue ?? numValue
 
   return (
-    <div className="flex items-center gap-3 w-36 sm:w-48">
+    <div className="flex w-36 items-center gap-3 sm:w-48">
       <input
         type="range"
         min={min}
@@ -63,33 +65,34 @@ export function Slider({ value, onChange, config = {} }: SliderProps) {
         onChange={(e) => setLocalValue(parseFloat(e.target.value))}
         onMouseUp={() => {
           if (localValue !== null) {
-            onChange(String(localValue));
-            setLocalValue(null);
+            onChange(String(localValue))
+            setLocalValue(null)
           }
         }}
         onTouchEnd={() => {
           if (localValue !== null) {
-            onChange(String(localValue));
-            setLocalValue(null);
+            onChange(String(localValue))
+            setLocalValue(null)
           }
         }}
-        className="flex-1 h-2 bg-stone-200 dark:bg-stone-700 rounded-full appearance-none cursor-pointer accent-forest-600 dark:accent-forest-400"
+        className="accent-forest-600 dark:accent-forest-400 h-2 flex-1 cursor-pointer appearance-none rounded-full bg-stone-200 dark:bg-stone-700"
       />
-      <span className="w-14 sm:w-16 text-right font-mono text-xs sm:text-sm text-muted-foreground tabular-nums">
-        {precision > 0 ? displayValue.toFixed(precision) : displayValue}{suffix}
+      <span className="text-muted-foreground w-14 text-right font-mono text-xs tabular-nums sm:w-16 sm:text-sm">
+        {precision > 0 ? displayValue.toFixed(precision) : displayValue}
+        {suffix}
       </span>
     </div>
-  );
+  )
 }
 
 export interface NumberInputProps {
-  value: string | number;
-  onChange: (value: string) => void;
-  config?: { min?: number; max?: number; step?: number; suffix?: string };
+  value: string | number
+  onChange: (value: string) => void
+  config?: { min?: number; max?: number; step?: number; suffix?: string }
 }
 
 export function NumberInput({ value, onChange, config = {} }: NumberInputProps) {
-  const { min, max, step = 1, suffix = '' } = config;
+  const { min, max, step = 1, suffix = '' } = config
 
   return (
     <div className="flex items-center gap-2">
@@ -100,44 +103,49 @@ export function NumberInput({ value, onChange, config = {} }: NumberInputProps) 
         step={step}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-20 px-2 py-1.5 text-sm border border-border rounded-lg text-center font-mono bg-background text-foreground focus:border-forest-500 focus:ring-1 focus:ring-forest-500 focus:outline-none"
+        className="border-border bg-background text-foreground focus:border-forest-500 focus:ring-forest-500 w-20 rounded-lg border px-2 py-1.5 text-center font-mono text-sm focus:ring-1 focus:outline-none"
       />
-      {suffix && <span className="text-sm text-muted-foreground">{suffix}</span>}
+      {suffix && <span className="text-muted-foreground text-sm">{suffix}</span>}
     </div>
-  );
+  )
 }
 
 export interface SelectInputProps {
-  value: string;
-  onChange: (value: string) => void;
-  config?: { placeholder?: string; options?: Array<{ value: string; label: string }> };
+  value: string
+  onChange: (value: string) => void
+  config?: {
+    placeholder?: string
+    options?: Array<{ value: string; label: string }>
+  }
 }
 
 export function SelectInput({ value, onChange, config = {} }: SelectInputProps) {
-  const { placeholder = 'Select...', options = [] } = config;
+  const { placeholder = 'Select...', options = [] } = config
 
   return (
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="px-3 py-1.5 text-sm border border-border rounded-lg bg-background text-foreground focus:border-forest-500 focus:ring-1 focus:ring-forest-500 focus:outline-none"
+      className="border-border bg-background text-foreground focus:border-forest-500 focus:ring-forest-500 rounded-lg border px-3 py-1.5 text-sm focus:ring-1 focus:outline-none"
     >
       {placeholder && <option value="">{placeholder}</option>}
       {options.map((opt) => (
-        <option key={opt.value} value={opt.value}>{opt.label}</option>
+        <option key={opt.value} value={opt.value}>
+          {opt.label}
+        </option>
       ))}
     </select>
-  );
+  )
 }
 
 export interface TextInputProps {
-  value: string;
-  onChange: (value: string) => void;
-  config?: { placeholder?: string };
+  value: string
+  onChange: (value: string) => void
+  config?: { placeholder?: string }
 }
 
 export function TextInput({ value, onChange, config = {} }: TextInputProps) {
-  const { placeholder = '' } = config;
+  const { placeholder = '' } = config
 
   return (
     <input
@@ -145,9 +153,9 @@ export function TextInput({ value, onChange, config = {} }: TextInputProps) {
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className="w-24 px-3 py-1.5 text-sm border border-border rounded-lg bg-background text-foreground focus:border-forest-500 focus:ring-1 focus:ring-forest-500 focus:outline-none font-mono"
+      className="border-border bg-background text-foreground focus:border-forest-500 focus:ring-forest-500 w-24 rounded-lg border px-3 py-1.5 font-mono text-sm focus:ring-1 focus:outline-none"
     />
-  );
+  )
 }
 
 // ============ COMPONENT MAP & INFERENCE ============
@@ -157,26 +165,33 @@ export function TextInput({ value, onChange, config = {} }: TextInputProps) {
  */
 // eslint-disable-next-line react-refresh/only-export-components -- Utility function for config type inference
 export function inferComponentType(value: unknown, configKey: string): string {
-  const strValue = String(value);
+  const strValue = String(value)
 
   // Boolean-like values
   if (strValue === 'true' || strValue === 'false' || strValue === '0' || strValue === '1') {
-    if (configKey.includes('enabled') || configKey.includes('enable') ||
-        configKey.includes('prevent') || configKey.includes('prefer') ||
-        configKey.includes('require') || configKey.includes('ignore') ||
-        configKey.includes('use_') || configKey.includes('include') ||
-        configKey.includes('flag') || configKey.includes('auto_')) {
-      return 'toggle';
+    if (
+      configKey.includes('enabled') ||
+      configKey.includes('enable') ||
+      configKey.includes('prevent') ||
+      configKey.includes('prefer') ||
+      configKey.includes('require') ||
+      configKey.includes('ignore') ||
+      configKey.includes('use_') ||
+      configKey.includes('include') ||
+      configKey.includes('flag') ||
+      configKey.includes('auto_')
+    ) {
+      return 'toggle'
     }
   }
 
   // Numeric values - use number input for precision
-  const numValue = parseFloat(strValue);
+  const numValue = parseFloat(strValue)
   if (!isNaN(numValue)) {
-    return 'number';
+    return 'number'
   }
 
-  return 'text';
+  return 'text'
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any, react-refresh/only-export-components -- Config constant for component registry
@@ -186,136 +201,138 @@ export const COMPONENT_MAP: Record<string, React.FC<any>> = {
   number: NumberInput,
   select: SelectInput,
   text: TextInput,
-};
+}
 
 // ============ STATUS & UTILITY COMPONENTS ============
 
 export function StatusIcon({ status }: { status: SyncStatus['status'] | 'pending' }) {
   switch (status) {
     case 'running':
-      return <Loader2 className="w-4 h-4 text-sky-600 animate-spin" />;
+      return <Loader2 className="h-4 w-4 animate-spin text-sky-600" />
     case 'pending':
-      return <Clock className="w-4 h-4 text-amber-600" />;
+      return <Clock className="h-4 w-4 text-amber-600" />
     case 'success':
-      return <CheckCircle className="w-4 h-4 text-emerald-600" />;
+      return <CheckCircle className="h-4 w-4 text-emerald-600" />
     case 'failed':
-      return <XCircle className="w-4 h-4 text-red-600" />;
+      return <XCircle className="h-4 w-4 text-red-600" />
     default:
-      return <div className="w-4 h-4 rounded-full bg-stone-200" />;
+      return <div className="h-4 w-4 rounded-full bg-stone-200" />
   }
 }
 
 // eslint-disable-next-line react-refresh/only-export-components -- Utility function for duration formatting
 export function formatDuration(seconds?: number): string {
-  if (seconds === null || seconds === undefined) return '';
-  if (seconds === 0) return '< 1s';
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  return `${minutes}m ${remainingSeconds}s`;
+  if (seconds === null || seconds === undefined) return ''
+  if (seconds === 0) return '< 1s'
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = seconds % 60
+  return `${minutes}m ${remainingSeconds}s`
 }
 
 // ============ SCALE CONTEXT UI COMPONENTS ============
 
 export interface ImpactBadgeProps {
-  scaleType: ScaleType;
-  value: number;
-  metadata?: Record<string, unknown>;
+  scaleType: ScaleType
+  value: number
+  metadata?: Record<string, unknown>
 }
 
 export function ImpactBadge({ scaleType, value, metadata }: ImpactBadgeProps) {
-  const level = getImpactLevel(scaleType, value, metadata);
-  if (!level) return null;
+  const level = getImpactLevel(scaleType, value, metadata)
+  if (!level) return null
 
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold tracking-wide uppercase ${level.color} ${level.bgColor}`}>
+    <span
+      className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-semibold tracking-wide uppercase ${level.color} ${level.bgColor}`}
+    >
       {level.label}
     </span>
-  );
+  )
 }
 
 export interface ScaleContextBarProps {
-  scaleType: ScaleType;
-  value: number;
-  metadata?: Record<string, unknown>;
+  scaleType: ScaleType
+  value: number
+  metadata?: Record<string, unknown>
 }
 
 export function ScaleContextBar({ scaleType, value, metadata }: ScaleContextBarProps) {
-  const scale = SCALE_DEFINITIONS[scaleType];
-  if (!scale || scaleType === 'unknown') return null;
+  const scale = SCALE_DEFINITIONS[scaleType]
+  if (!scale || scaleType === 'unknown') return null
 
-  const minValue = (metadata?.['min_value'] as number) ?? scale.min;
-  const maxValue = (metadata?.['max_value'] as number) ?? scale.max;
+  const minValue = (metadata?.['min_value'] as number) ?? scale.min
+  const maxValue = (metadata?.['max_value'] as number) ?? scale.max
 
-  const normalizedValue = (value - minValue) / (maxValue - minValue);
-  const position = Math.max(0, Math.min(100, normalizedValue * 100));
+  const normalizedValue = (value - minValue) / (maxValue - minValue)
+  const position = Math.max(0, Math.min(100, normalizedValue * 100))
 
   return (
-    <div className="w-full h-1.5 bg-stone-200 dark:bg-stone-700 rounded-full overflow-hidden relative mt-1">
-      <div className="absolute inset-0 bg-gradient-to-r from-sky-300 via-amber-300 to-red-400 dark:from-sky-600 dark:via-amber-500 dark:to-red-500 opacity-30" />
+    <div className="relative mt-1 h-1.5 w-full overflow-hidden rounded-full bg-stone-200 dark:bg-stone-700">
+      <div className="absolute inset-0 bg-gradient-to-r from-sky-300 via-amber-300 to-red-400 opacity-30 dark:from-sky-600 dark:via-amber-500 dark:to-red-500" />
       <div
-        className="absolute top-0 h-full w-1 bg-forest-600 dark:bg-forest-400 rounded-full shadow-sm transform -translate-x-1/2 transition-all duration-300"
+        className="bg-forest-600 dark:bg-forest-400 absolute top-0 h-full w-1 -translate-x-1/2 transform rounded-full shadow-sm transition-all duration-300"
         style={{ left: `${position}%` }}
       />
     </div>
-  );
+  )
 }
 
 // ============ TOOLTIP COMPONENTS ============
 
 export interface PortalTooltipProps {
-  children: React.ReactNode;
-  content: React.ReactNode;
-  className?: string;
+  children: React.ReactNode
+  content: React.ReactNode
+  className?: string
 }
 
-export function PortalTooltip({ children, content, className = "w-64" }: PortalTooltipProps) {
-  const triggerRef = useRef<HTMLDivElement>(null);
-  const [isVisible, setIsVisible] = useState(false);
-  const [position, setPosition] = useState({ top: 0, left: 0 });
+export function PortalTooltip({ children, content, className = 'w-64' }: PortalTooltipProps) {
+  const triggerRef = useRef<HTMLDivElement>(null)
+  const [isVisible, setIsVisible] = useState(false)
+  const [position, setPosition] = useState({ top: 0, left: 0 })
 
   const updatePosition = useCallback(() => {
     if (triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect();
-      const tooltipWidth = className.includes('w-72') ? 288 : 256;
-      const tooltipHeight = 100;
-      const padding = 8;
+      const rect = triggerRef.current.getBoundingClientRect()
+      const tooltipWidth = className.includes('w-72') ? 288 : 256
+      const tooltipHeight = 100
+      const padding = 8
 
-      let top = rect.top - tooltipHeight - padding;
-      let left = rect.left + rect.width / 2 - tooltipWidth / 2;
+      let top = rect.top - tooltipHeight - padding
+      let left = rect.left + rect.width / 2 - tooltipWidth / 2
 
       if (top < padding) {
-        top = rect.bottom + padding;
+        top = rect.bottom + padding
       }
 
-      if (left < padding) left = padding;
+      if (left < padding) left = padding
       if (left + tooltipWidth > window.innerWidth - padding) {
-        left = window.innerWidth - tooltipWidth - padding;
+        left = window.innerWidth - tooltipWidth - padding
       }
 
-      setPosition({ top, left });
+      setPosition({ top, left })
     }
-  }, [className]);
+  }, [className])
 
   // useLayoutEffect for synchronous DOM measurements before paint
   useLayoutEffect(() => {
     if (isVisible) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- DOM measurement requires sync state update
-      updatePosition();
+      updatePosition()
     }
-  }, [isVisible, updatePosition]);
+  }, [isVisible, updatePosition])
 
   // Regular useEffect for event listeners
   useEffect(() => {
     if (isVisible) {
-      window.addEventListener('scroll', updatePosition, true);
-      window.addEventListener('resize', updatePosition);
+      window.addEventListener('scroll', updatePosition, true)
+      window.addEventListener('resize', updatePosition)
       return () => {
-        window.removeEventListener('scroll', updatePosition, true);
-        window.removeEventListener('resize', updatePosition);
-      };
+        window.removeEventListener('scroll', updatePosition, true)
+        window.removeEventListener('resize', updatePosition)
+      }
     }
-  }, [isVisible, updatePosition]);
+  }, [isVisible, updatePosition])
 
   const tooltipContent = (
     <div
@@ -329,7 +346,7 @@ export function PortalTooltip({ children, content, className = "w-64" }: PortalT
     >
       {content}
     </div>
-  );
+  )
 
   return (
     <div className="relative inline-flex">
@@ -342,72 +359,72 @@ export function PortalTooltip({ children, content, className = "w-64" }: PortalT
       </div>
       {createPortal(tooltipContent, document.body)}
     </div>
-  );
+  )
 }
 
 export interface ScaleTooltipProps {
-  scaleType: ScaleType;
-  value: number;
-  metadata?: Record<string, unknown>;
+  scaleType: ScaleType
+  value: number
+  metadata?: Record<string, unknown>
 }
 
 export function ScaleTooltip({ scaleType, value, metadata }: ScaleTooltipProps) {
-  const scale = SCALE_DEFINITIONS[scaleType];
-  const triggerRef = useRef<HTMLDivElement>(null);
-  const [isVisible, setIsVisible] = useState(false);
-  const [position, setPosition] = useState({ top: 0, left: 0 });
+  const scale = SCALE_DEFINITIONS[scaleType]
+  const triggerRef = useRef<HTMLDivElement>(null)
+  const [isVisible, setIsVisible] = useState(false)
+  const [position, setPosition] = useState({ top: 0, left: 0 })
 
   const updatePosition = useCallback(() => {
     if (triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect();
-      const tooltipWidth = 288;
-      const tooltipHeight = 120;
-      const padding = 8;
+      const rect = triggerRef.current.getBoundingClientRect()
+      const tooltipWidth = 288
+      const tooltipHeight = 120
+      const padding = 8
 
-      let top = rect.top - tooltipHeight - padding;
-      let left = rect.left + rect.width / 2 - tooltipWidth / 2;
+      let top = rect.top - tooltipHeight - padding
+      let left = rect.left + rect.width / 2 - tooltipWidth / 2
 
       if (top < padding) {
-        top = rect.bottom + padding;
+        top = rect.bottom + padding
       }
 
-      if (left < padding) left = padding;
+      if (left < padding) left = padding
       if (left + tooltipWidth > window.innerWidth - padding) {
-        left = window.innerWidth - tooltipWidth - padding;
+        left = window.innerWidth - tooltipWidth - padding
       }
 
-      setPosition({ top, left });
+      setPosition({ top, left })
     }
-  }, []);
+  }, [])
 
   // useLayoutEffect for synchronous DOM measurements before paint
   useLayoutEffect(() => {
-    if (!scale || scaleType === 'unknown' || !isVisible) return;
+    if (!scale || scaleType === 'unknown' || !isVisible) return
     // eslint-disable-next-line react-hooks/set-state-in-effect -- DOM measurement requires sync state update
-    updatePosition();
-  }, [isVisible, scale, scaleType, updatePosition]);
+    updatePosition()
+  }, [isVisible, scale, scaleType, updatePosition])
 
   // Regular useEffect for event listeners
   useEffect(() => {
-    if (!scale || scaleType === 'unknown' || !isVisible) return;
+    if (!scale || scaleType === 'unknown' || !isVisible) return
 
-    window.addEventListener('scroll', updatePosition, true);
-    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true)
+    window.addEventListener('resize', updatePosition)
     return () => {
-      window.removeEventListener('scroll', updatePosition, true);
-      window.removeEventListener('resize', updatePosition);
-    };
-  }, [isVisible, scale, scaleType, updatePosition]);
+      window.removeEventListener('scroll', updatePosition, true)
+      window.removeEventListener('resize', updatePosition)
+    }
+  }, [isVisible, scale, scaleType, updatePosition])
 
-  if (!scale || scaleType === 'unknown') return null;
+  if (!scale || scaleType === 'unknown') return null
 
-  const minValue = (metadata?.['min_value'] as number) ?? scale.min;
-  const maxValue = (metadata?.['max_value'] as number) ?? scale.max;
-  const impactText = scale.impactExplainer(value, minValue, maxValue);
+  const minValue = (metadata?.['min_value'] as number) ?? scale.min
+  const maxValue = (metadata?.['max_value'] as number) ?? scale.max
+  const impactText = scale.impactExplainer(value, minValue, maxValue)
 
   const tooltipContent = (
     <div
-      className="fixed z-[9999] w-80 pointer-events-none transition-opacity duration-150"
+      className="pointer-events-none fixed z-[9999] w-80 transition-opacity duration-150"
       style={{
         top: position.top,
         left: position.left,
@@ -415,36 +432,34 @@ export function ScaleTooltip({ scaleType, value, metadata }: ScaleTooltipProps) 
         visibility: isVisible ? 'visible' : 'hidden',
       }}
     >
-      <div className="bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 text-sm rounded-lg p-4 shadow-xl border border-stone-700 dark:border-stone-300">
-        <div className="font-semibold mb-2 text-amber-300 dark:text-amber-600 text-base">
+      <div className="rounded-lg border border-stone-700 bg-stone-900 p-4 text-sm text-white shadow-xl dark:border-stone-300 dark:bg-stone-100 dark:text-stone-900">
+        <div className="mb-2 text-base font-semibold text-amber-300 dark:text-amber-600">
           {scale.type.charAt(0).toUpperCase() + scale.type.slice(1)} Scale
         </div>
-        <p className="text-stone-300 dark:text-stone-600 text-sm mb-3 leading-relaxed">
+        <p className="mb-3 text-sm leading-relaxed text-stone-300 dark:text-stone-600">
           {scale.description}
         </p>
-        <div className="pt-3 border-t border-stone-700 dark:border-stone-300">
-          <p className="text-white dark:text-stone-900 text-sm leading-relaxed">
-            {impactText}
-          </p>
+        <div className="border-t border-stone-700 pt-3 dark:border-stone-300">
+          <p className="text-sm leading-relaxed text-white dark:text-stone-900">{impactText}</p>
         </div>
       </div>
     </div>
-  );
+  )
 
   return (
-    <div className="relative inline-flex ml-1.5">
+    <div className="relative ml-1.5 inline-flex">
       <div
         ref={triggerRef}
         onMouseEnter={() => setIsVisible(true)}
         onMouseLeave={() => setIsVisible(false)}
-        className="w-5 h-5 rounded-full bg-stone-100 dark:bg-stone-800 flex items-center justify-center cursor-help border border-stone-200 dark:border-stone-700 hover:border-forest-400 transition-colors"
+        className="hover:border-forest-400 flex h-5 w-5 cursor-help items-center justify-center rounded-full border border-stone-200 bg-stone-100 transition-colors dark:border-stone-700 dark:bg-stone-800"
       >
         <span className="text-xs font-bold text-stone-500 dark:text-stone-400">?</span>
       </div>
       {createPortal(tooltipContent, document.body)}
     </div>
-  );
+  )
 }
 
 // Re-export Info icon for tooltip trigger usage
-export { Info };
+export { Info }

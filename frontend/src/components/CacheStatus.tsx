@@ -1,16 +1,16 @@
-import { useIsFetching } from '@tanstack/react-query';
+import { useIsFetching } from '@tanstack/react-query'
 
 export default function CacheStatus() {
-  const isFetching = useIsFetching();
+  const isFetching = useIsFetching()
 
-  if (isFetching === 0) return null;
+  if (isFetching === 0) return null
 
   return (
-    <div className="fixed bottom-24 right-6 z-50 animate-fade-in">
-      <div className="card-lodge px-4 py-2.5 flex items-center gap-3 shadow-lodge-lg">
-        <div className="spinner-lodge w-4 h-4" />
-        <span className="text-sm font-medium text-foreground">Loading...</span>
+    <div className="animate-fade-in fixed right-6 bottom-24 z-50">
+      <div className="card-lodge shadow-lodge-lg flex items-center gap-3 px-4 py-2.5">
+        <div className="spinner-lodge h-4 w-4" />
+        <span className="text-foreground text-sm font-medium">Loading...</span>
       </div>
     </div>
-  );
+  )
 }

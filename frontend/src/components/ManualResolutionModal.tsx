@@ -1,34 +1,34 @@
-import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Search, UserCheck } from 'lucide-react';
-import { pb } from '../lib/pocketbase';
-import type { BunkRequest, Camper } from '../types/app-types';
-import type { PersonsResponse, AttendeesResponse } from '../types/pocketbase-types';
-import { calculateAge } from '../utils/ageCalculator';
-import { getDisplayAgeForYear } from '../utils/displayAge';
-import { Modal } from './ui/Modal';
+import { useState, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { Search, UserCheck } from 'lucide-react'
+import { pb } from '../lib/pocketbase'
+import type { BunkRequest, Camper } from '../types/app-types'
+import type { PersonsResponse, AttendeesResponse } from '../types/pocketbase-types'
+import { calculateAge } from '../utils/ageCalculator'
+import { getDisplayAgeForYear } from '../utils/displayAge'
+import { Modal } from './ui/Modal'
 
 interface ManualResolutionModalProps {
-  request: BunkRequest;
-  requesterPerson?: PersonsResponse;
-  sessionId: number;
-  year: number;
-  isOpen: boolean;
-  onClose: () => void;
-  onResolve: (personCmId: number) => void;
+  request: BunkRequest
+  requesterPerson?: PersonsResponse
+  sessionId: number
+  year: number
+  isOpen: boolean
+  onClose: () => void
+  onResolve: (personCmId: number) => void
 }
 
 // Helper function to format camper name
 function formatCamperName(camper: Camper): string {
-  const firstName = camper.first_name || '';
-  const preferredName = camper.preferred_name?.replace(/^["']|["']$/g, '');
-  const lastName = camper.last_name || '';
-  
+  const firstName = camper.first_name || ''
+  const preferredName = camper.preferred_name?.replace(/^["']|["']$/g, '')
+  const lastName = camper.last_name || ''
+
   if (preferredName && preferredName !== firstName) {
-    return `${firstName} "${preferredName}" ${lastName}`.trim();
+    return `${firstName} "${preferredName}" ${lastName}`.trim()
   }
-  
-  return `${firstName} ${lastName}`.trim();
+
+  return `${firstName} ${lastName}`.trim()
 }
 
 export default function ManualResolutionModal({
@@ -38,47 +38,51 @@ export default function ManualResolutionModal({
   year,
   isOpen,
   onClose,
-  onResolve
+  onResolve,
 }: ManualResolutionModalProps) {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCamperId, setSelectedCamperId] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedCamperId, setSelectedCamperId] = useState<number | null>(null)
 
   // Fetch all campers for this session
   const { data: allCampers = [] } = useQuery({
     queryKey: ['session-campers', sessionId, year],
     queryFn: async () => {
       // Get attendees for this specific session
-      const attendeeFilter = `session_id = ${sessionId} && status = "enrolled" && year = ${year}`;
-      const attendees = await pb.collection('attendees').getFullList<AttendeesResponse>({ filter: attendeeFilter });
-      
-      if (attendees.length === 0) return [];
-      
+      const attendeeFilter = `session_id = ${sessionId} && status = "enrolled" && year = ${year}`
+      const attendees = await pb
+        .collection('attendees')
+        .getFullList<AttendeesResponse>({ filter: attendeeFilter })
+
+      if (attendees.length === 0) return []
+
       // Collect unique person CampMinder IDs
-      const personCmIds = [...new Set(attendees.map(a => a.person_id))];
-      
+      const personCmIds = [...new Set(attendees.map((a) => a.person_id))]
+
       // Load persons in batches
-      const persons: PersonsResponse[] = [];
-      const BATCH_SIZE = 50;
-      
+      const persons: PersonsResponse[] = []
+      const BATCH_SIZE = 50
+
       for (let i = 0; i < personCmIds.length; i += BATCH_SIZE) {
-        const batch = personCmIds.slice(i, i + BATCH_SIZE);
-        const batchFilter = batch.map(id => `person_id = ${id}`).join(' || ');
-        
+        const batch = personCmIds.slice(i, i + BATCH_SIZE)
+        const batchFilter = batch.map((id) => `person_id = ${id}`).join(' || ')
+
         try {
-          const batchPersons = await pb.collection('persons').getFullList<PersonsResponse>({ filter: batchFilter });
-          persons.push(...batchPersons);
+          const batchPersons = await pb
+            .collection('persons')
+            .getFullList<PersonsResponse>({ filter: batchFilter })
+          persons.push(...batchPersons)
         } catch (error) {
-          console.error(`Error fetching person batch ${Math.floor(i / BATCH_SIZE) + 1}:`, error);
+          console.error(`Error fetching person batch ${Math.floor(i / BATCH_SIZE) + 1}:`, error)
         }
       }
-      
+
       // Transform attendees to campers
-      const campers: Camper[] = [];
-      
+      const campers: Camper[] = []
+
       for (const attendee of attendees) {
-        const person = persons.find(p => p.id === attendee.person);
-        if (!person || !person.is_camper) continue;
-        
+        const person = persons.find((p) => p.id === attendee.person)
+        if (!person || !person.is_camper) continue
+
         // Create a minimal camper object using available data
         const camper: Camper = {
           id: `${person.cm_id}:${sessionId}`,
@@ -96,89 +100,92 @@ export default function ManualResolutionModal({
           assigned_bunk: '', // Will be set later if they have an assignment
           created: attendee.created || new Date().toISOString(),
           updated: attendee.updated || new Date().toISOString(),
-        };
-        
-        campers.push(camper);
+        }
+
+        campers.push(camper)
       }
-      
-      return campers;
+
+      return campers
     },
-    enabled: isOpen
-  });
+    enabled: isOpen,
+  })
 
   // Filter campers based on search query and exclude the requester
   const filteredCampers = useMemo(() => {
-    let filtered = allCampers.filter((camper: Camper) => 
-      camper.person_cm_id !== request.requester_id
-    );
+    let filtered = allCampers.filter(
+      (camper: Camper) => camper.person_cm_id !== request.requester_id
+    )
 
     if (searchQuery) {
-      const query = searchQuery.toLowerCase();
+      const query = searchQuery.toLowerCase()
       filtered = filtered.filter((camper: Camper) => {
-        const fullName = formatCamperName(camper).toLowerCase();
-        const firstName = camper.first_name?.toLowerCase() || '';
-        const lastName = camper.last_name?.toLowerCase() || '';
-        const preferredName = camper.preferred_name?.toLowerCase() || '';
-        
-        return fullName.includes(query) ||
-               firstName.includes(query) ||
-               lastName.includes(query) ||
-               preferredName.includes(query);
-      });
+        const fullName = formatCamperName(camper).toLowerCase()
+        const firstName = camper.first_name?.toLowerCase() || ''
+        const lastName = camper.last_name?.toLowerCase() || ''
+        const preferredName = camper.preferred_name?.toLowerCase() || ''
+
+        return (
+          fullName.includes(query) ||
+          firstName.includes(query) ||
+          lastName.includes(query) ||
+          preferredName.includes(query)
+        )
+      })
     }
 
     // Sort by name
     return filtered.sort((a: Camper, b: Camper) => {
-      const nameA = formatCamperName(a);
-      const nameB = formatCamperName(b);
-      return nameA.localeCompare(nameB);
-    });
-  }, [allCampers, searchQuery, request.requester_id]);
+      const nameA = formatCamperName(a)
+      const nameB = formatCamperName(b)
+      return nameA.localeCompare(nameB)
+    })
+  }, [allCampers, searchQuery, request.requester_id])
 
   const handleResolve = () => {
     if (selectedCamperId) {
-      onResolve(selectedCamperId);
+      onResolve(selectedCamperId)
     }
-  };
+  }
 
   const headerContent = (
-    <div className="p-6 pr-14 border-b border-border flex-shrink-0">
+    <div className="border-border flex-shrink-0 border-b p-6 pr-14">
       <div>
-        <h2 className="text-xl font-semibold flex items-center gap-2">
-          <UserCheck className="w-5 h-5 text-blue-600" />
+        <h2 className="flex items-center gap-2 text-xl font-semibold">
+          <UserCheck className="h-5 w-5 text-blue-600" />
           Manual Resolution
         </h2>
-        <p className="text-sm text-muted-foreground mt-1">
+        <p className="text-muted-foreground mt-1 text-sm">
           Select the correct camper for this bunk request
         </p>
       </div>
     </div>
-  );
+  )
 
   const footerContent = (
-    <div className="p-6 border-t border-border bg-muted/20">
+    <div className="border-border bg-muted/20 border-t p-6">
       <div className="flex items-center justify-between">
-        <div className="text-sm text-muted-foreground">
-          {filteredCampers.length} camper{filteredCampers.length !== 1 ? 's' : ''} available
+        <div className="text-muted-foreground text-sm">
+          {filteredCampers.length} camper
+          {filteredCampers.length !== 1 ? 's' : ''} available
         </div>
         <div className="flex gap-3">
           <button
             onClick={onClose}
-            className="px-6 py-2.5 border-2 border-border rounded-full font-semibold hover:bg-muted transition-colors"
+            className="border-border hover:bg-muted rounded-full border-2 px-6 py-2.5 font-semibold transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleResolve}
             disabled={!selectedCamperId}
-            className="px-6 py-2.5 bg-primary text-primary-foreground rounded-full font-semibold hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-full px-6 py-2.5 font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-50"
           >
             Resolve Request
           </button>
         </div>
       </div>
     </div>
-  );
+  )
 
   return (
     <Modal
@@ -189,12 +196,12 @@ export default function ManualResolutionModal({
       size="lg"
       noPadding
     >
-      <div className="flex flex-col max-h-[60vh]">
+      <div className="flex max-h-[60vh] flex-col">
         {/* Request Info */}
-        <div className="p-6 bg-muted/30 border-b border-border flex-shrink-0">
+        <div className="bg-muted/30 border-border flex-shrink-0 border-b p-6">
           <div className="space-y-2">
             <div className="flex gap-2">
-              <span className="text-sm font-medium text-muted-foreground">Requester:</span>
+              <span className="text-muted-foreground text-sm font-medium">Requester:</span>
               <span className="text-sm font-medium">
                 {requesterPerson
                   ? `${requesterPerson.first_name} ${requesterPerson.last_name}`
@@ -202,28 +209,28 @@ export default function ManualResolutionModal({
               </span>
             </div>
             <div className="flex gap-2">
-              <span className="text-sm font-medium text-muted-foreground">Original Request:</span>
+              <span className="text-muted-foreground text-sm font-medium">Original Request:</span>
               <span className="text-sm italic">"{request.original_text}"</span>
             </div>
             {request.parse_notes && (
               <div className="flex gap-2">
-                <span className="text-sm font-medium text-muted-foreground">Parse notes:</span>
-                <span className="text-sm font-medium text-primary">{request.parse_notes}</span>
+                <span className="text-muted-foreground text-sm font-medium">Parse notes:</span>
+                <span className="text-primary text-sm font-medium">{request.parse_notes}</span>
               </div>
             )}
           </div>
         </div>
 
         {/* Search */}
-        <div className="p-6 border-b border-border flex-shrink-0">
+        <div className="border-border flex-shrink-0 border-b p-6">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 transform" />
             <input
               type="text"
               placeholder="Search campers by name..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 border-2 rounded-xl bg-background text-foreground focus:ring-2 focus:ring-primary focus:border-primary transition-all"
+              className="bg-background text-foreground focus:ring-primary focus:border-primary w-full rounded-xl border-2 py-2.5 pr-4 pl-10 transition-all focus:ring-2"
               autoFocus
             />
           </div>
@@ -233,7 +240,7 @@ export default function ManualResolutionModal({
         <div className="flex-1 overflow-y-auto p-6">
           <div className="space-y-2">
             {filteredCampers.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
+              <div className="text-muted-foreground py-8 text-center">
                 {searchQuery ? 'No campers match your search' : 'No campers found in this session'}
               </div>
             ) : (
@@ -241,7 +248,7 @@ export default function ManualResolutionModal({
                 <button
                   key={camper.id}
                   onClick={() => setSelectedCamperId(camper.person_cm_id)}
-                  className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
+                  className={`w-full rounded-lg border-2 p-4 text-left transition-all ${
                     selectedCamperId === camper.person_cm_id
                       ? 'border-primary bg-primary/10'
                       : 'border-border hover:border-primary/50 hover:bg-muted/50'
@@ -250,13 +257,14 @@ export default function ManualResolutionModal({
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="font-medium">{formatCamperName(camper)}</div>
-                      <div className="text-sm text-muted-foreground mt-1">
-                        Age {(getDisplayAgeForYear(camper, year) ?? 0).toFixed(2)} • Grade {camper.grade} • {camper.gender}
+                      <div className="text-muted-foreground mt-1 text-sm">
+                        Age {(getDisplayAgeForYear(camper, year) ?? 0).toFixed(2)} • Grade{' '}
+                        {camper.grade} • {camper.gender}
                       </div>
                     </div>
                     {selectedCamperId === camper.person_cm_id && (
-                      <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
-                        <div className="w-2 h-2 rounded-full bg-primary-foreground" />
+                      <div className="bg-primary flex h-5 w-5 items-center justify-center rounded-full">
+                        <div className="bg-primary-foreground h-2 w-2 rounded-full" />
                       </div>
                     )}
                   </div>
@@ -267,5 +275,5 @@ export default function ManualResolutionModal({
         </div>
       </div>
     </Modal>
-  );
+  )
 }

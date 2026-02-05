@@ -42,8 +42,7 @@ export const queryKeys = {
   scenario: (id: string) => ['scenario', id] as const,
 
   // Bunk Requests (Tier 2 - user data)
-  bunkRequests: (sessionId: string, year: number) =>
-    ['bunk-requests', sessionId, year] as const,
+  bunkRequests: (sessionId: string, year: number) => ['bunk-requests', sessionId, year] as const,
 
   // Locked Groups (Tier 2 - user data)
   lockedGroups: (scenarioId: string, sessionId: string, year: number) =>
@@ -58,16 +57,31 @@ export const queryKeys = {
   solverConfig: () => ['solver-config'] as const,
 
   // Debug (Tier 2 - frequently updated during testing)
-  parseAnalysis: (filters?: { sessionCmId?: number | undefined; sourceField?: string | undefined }) =>
+  parseAnalysis: (filters?: {
+    sessionCmId?: number | undefined
+    sourceField?: string | undefined
+  }) =>
     filters
       ? (['parse-analysis', filters.sessionCmId, filters.sourceField] as const)
       : (['parse-analysis'] as const),
   parseAnalysisDetail: (id: string) => ['parse-analysis', id] as const,
-  originalRequests: (year: number, filters?: { sessionCmId?: number | undefined; sourceField?: string | undefined }) =>
+  originalRequests: (
+    year: number,
+    filters?: {
+      sessionCmId?: number | undefined
+      sourceField?: string | undefined
+    }
+  ) =>
     filters
       ? (['original-requests', year, filters.sessionCmId, filters.sourceField] as const)
       : (['original-requests', year] as const),
-  originalRequestsWithStatus: (year: number, filters?: { sessionCmId?: number | undefined; sourceField?: string | undefined }) =>
+  originalRequestsWithStatus: (
+    year: number,
+    filters?: {
+      sessionCmId?: number | undefined
+      sourceField?: string | undefined
+    }
+  ) =>
     filters
       ? (['original-requests-with-status', year, filters.sessionCmId, filters.sourceField] as const)
       : (['original-requests-with-status', year] as const),
@@ -79,7 +93,12 @@ export const queryKeys = {
   prompt: (name: string) => ['prompts', name] as const,
 
   // Metrics (Tier 1 - sync data, historical analysis)
-  retention: (baseYear: number, compareYear: number, sessionTypes?: string, sessionCmId?: number) =>
+  retention: (
+    baseYear: number,
+    compareYear: number,
+    sessionTypes?: string,
+    sessionCmId?: number
+  ) =>
     sessionCmId
       ? (['metrics', 'retention', baseYear, compareYear, sessionTypes, sessionCmId] as const)
       : sessionTypes
@@ -92,13 +111,19 @@ export const queryKeys = {
       : sessionTypes || statuses
         ? (['metrics', 'registration', year, sessionTypes, statuses] as const)
         : (['metrics', 'registration', year] as const),
-  comparison: (yearA: number, yearB: number) =>
-    ['metrics', 'comparison', yearA, yearB] as const,
-  historical: (years?: string, sessionTypes?: string) =>
-    years || sessionTypes
-      ? (['metrics', 'historical', years, sessionTypes] as const)
-      : (['metrics', 'historical'] as const),
-  retentionTrends: (currentYear: number, numYears?: number, sessionTypes?: string, sessionCmId?: number) =>
+  comparison: (yearA: number, yearB: number) => ['metrics', 'comparison', yearA, yearB] as const,
+  historical: (years?: string, sessionTypes?: string, sessionCmId?: number) =>
+    sessionCmId !== undefined
+      ? (['metrics', 'historical', years, sessionTypes, sessionCmId] as const)
+      : years || sessionTypes
+        ? (['metrics', 'historical', years, sessionTypes] as const)
+        : (['metrics', 'historical'] as const),
+  retentionTrends: (
+    currentYear: number,
+    numYears?: number,
+    sessionTypes?: string,
+    sessionCmId?: number
+  ) =>
     sessionCmId
       ? (['metrics', 'retention-trends', currentYear, numYears, sessionTypes, sessionCmId] as const)
       : numYears || sessionTypes
@@ -110,7 +135,7 @@ export const queryKeys = {
     breakdownValue?: string,
     sessionCmId?: number,
     sessionTypes?: string,
-    statusFilter?: string,
+    statusFilter?: string
   ) =>
     [
       'metrics',
@@ -122,7 +147,7 @@ export const queryKeys = {
       sessionTypes,
       statusFilter,
     ] as const,
-};
+}
 
 /**
  * 2-Tier Caching Model
@@ -148,7 +173,7 @@ export const syncDataOptions = {
   staleTime: 60 * 60 * 1000, // 1 hour
   gcTime: 24 * 60 * 60 * 1000, // 24 hours
   refetchOnWindowFocus: false,
-} as const;
+} as const
 
 /**
  * Tier 2: User data options - use for user-editable data
@@ -161,8 +186,8 @@ export const userDataOptions = {
   staleTime: 30 * 1000, // 30 seconds
   gcTime: 5 * 60 * 1000, // 5 minutes
   refetchOnWindowFocus: true,
-} as const;
+} as const
 
 // Legacy aliases for backward compatibility
-export const heavyQueryOptions = syncDataOptions;
-export const realtimeQueryOptions = userDataOptions;
+export const heavyQueryOptions = syncDataOptions
+export const realtimeQueryOptions = userDataOptions

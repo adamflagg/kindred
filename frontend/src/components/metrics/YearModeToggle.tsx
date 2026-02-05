@@ -3,13 +3,13 @@
  */
 
 interface YearModeToggleProps {
-  mode: 'single' | 'comparison';
-  onModeChange: (mode: 'single' | 'comparison') => void;
-  yearA: number;
-  yearB: number;
-  onYearAChange: (year: number) => void;
-  onYearBChange: (year: number) => void;
-  availableYears: number[];
+  mode: 'single' | 'comparison'
+  onModeChange: (mode: 'single' | 'comparison') => void
+  yearA: number
+  yearB: number
+  onYearAChange: (year: number) => void
+  onYearBChange: (year: number) => void
+  availableYears: number[]
 }
 
 export function YearModeToggle({
@@ -23,7 +23,7 @@ export function YearModeToggle({
 }: YearModeToggleProps) {
   return (
     <div className="flex flex-wrap items-center gap-4">
-      <div className="flex rounded-lg border border-border overflow-hidden">
+      <div className="border-border flex overflow-hidden rounded-lg border">
         <button
           className={`px-4 py-2 text-sm font-medium transition-colors ${
             mode === 'single'
@@ -50,7 +50,7 @@ export function YearModeToggle({
         <select
           value={yearA}
           onChange={(e) => onYearAChange(Number(e.target.value))}
-          className="px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          className="border-border bg-background text-foreground focus:ring-primary rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:outline-none"
         >
           {availableYears.map((year) => (
             <option key={year} value={year}>
@@ -65,7 +65,7 @@ export function YearModeToggle({
             <select
               value={yearB}
               onChange={(e) => onYearBChange(Number(e.target.value))}
-              className="px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              className="border-border bg-background text-foreground focus:ring-primary rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:outline-none"
             >
               {availableYears.map((year) => (
                 <option key={year} value={year}>
@@ -77,5 +77,5 @@ export function YearModeToggle({
         )}
       </div>
     </div>
-  );
+  )
 }

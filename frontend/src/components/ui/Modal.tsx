@@ -1,17 +1,17 @@
-import { X } from 'lucide-react';
-import { useEffect } from 'react';
-import type { ReactNode } from 'react';
+import { X } from 'lucide-react'
+import { useEffect } from 'react'
+import type { ReactNode } from 'react'
 
 interface ModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  title?: string;
-  header?: ReactNode;  // Custom header content (overrides title)
-  footer?: ReactNode;  // Footer content
-  children: ReactNode;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
-  noPadding?: boolean;  // Remove default padding for complex layouts
-  scrollable?: boolean;  // Make content area scrollable
+  isOpen: boolean
+  onClose: () => void
+  title?: string
+  header?: ReactNode // Custom header content (overrides title)
+  footer?: ReactNode // Footer content
+  children: ReactNode
+  size?: 'sm' | 'md' | 'lg' | 'xl'
+  noPadding?: boolean // Remove default padding for complex layouts
+  scrollable?: boolean // Make content area scrollable
 }
 
 const sizeClasses = {
@@ -19,7 +19,7 @@ const sizeClasses = {
   md: 'max-w-lg',
   lg: 'max-w-2xl',
   xl: 'max-w-4xl',
-} as const;
+} as const
 
 /**
  * Shared modal component for consistent modal styling across the app.
@@ -57,22 +57,22 @@ export function Modal({
   scrollable = false,
 }: ModalProps) {
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) return
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        onClose();
+        onClose()
       }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, onClose])
 
-  if (!isOpen) return null;
+  if (!isOpen) return null
 
   // Determine if we're using custom header or simple title mode
-  const hasCustomHeader = header !== undefined;
-  const hasSimpleTitle = !hasCustomHeader && title !== undefined;
+  const hasCustomHeader = header !== undefined
+  const hasSimpleTitle = !hasCustomHeader && title !== undefined
 
   return (
     <div
@@ -92,7 +92,7 @@ export function Modal({
       {/* Modal content */}
       <div
         data-testid="modal-content"
-        className={`relative bg-card rounded-xl shadow-xl border border-border overflow-hidden ${noPadding ? '' : 'p-6'} ${sizeClasses[size]} w-full mx-4`}
+        className={`bg-card border-border relative overflow-hidden rounded-xl border shadow-xl ${noPadding ? '' : 'p-6'} ${sizeClasses[size]} mx-4 w-full`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Custom header mode - header spans full width, close button floats on top */}
@@ -101,7 +101,7 @@ export function Modal({
             {header}
             <button
               onClick={onClose}
-              className="absolute top-1/2 right-3 -translate-y-1/2 p-2 hover:bg-black/10 rounded-lg transition-colors text-muted-foreground hover:text-foreground"
+              className="text-muted-foreground hover:text-foreground absolute top-1/2 right-3 -translate-y-1/2 rounded-lg p-2 transition-colors hover:bg-black/10"
               aria-label="Close modal"
             >
               <X className="h-5 w-5" />
@@ -111,13 +111,13 @@ export function Modal({
 
         {/* Simple title mode */}
         {hasSimpleTitle && (
-          <div className="flex items-center justify-between mb-4">
+          <div className="mb-4 flex items-center justify-between">
             <h2 id="modal-title" className="text-xl font-bold">
               {title}
             </h2>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-muted rounded-lg transition-colors text-muted-foreground hover:text-foreground"
+              className="hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg p-2 transition-colors"
               aria-label="Close modal"
             >
               <X className="h-5 w-5" />
@@ -130,7 +130,7 @@ export function Modal({
           <div className="absolute top-4 right-4">
             <button
               onClick={onClose}
-              className="p-2 hover:bg-muted rounded-lg transition-colors text-muted-foreground hover:text-foreground"
+              className="hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg p-2 transition-colors"
               aria-label="Close modal"
             >
               <X className="h-5 w-5" />
@@ -140,7 +140,7 @@ export function Modal({
 
         {/* Content area - optionally scrollable */}
         {scrollable ? (
-          <div data-testid="modal-body" className="overflow-y-auto max-h-[calc(90vh-200px)]">
+          <div data-testid="modal-body" className="max-h-[calc(90vh-200px)] overflow-y-auto">
             {children}
           </div>
         ) : (
@@ -148,14 +148,10 @@ export function Modal({
         )}
 
         {/* Footer */}
-        {footer && (
-          <div data-testid="modal-footer">
-            {footer}
-          </div>
-        )}
+        {footer && <div data-testid="modal-footer">{footer}</div>}
       </div>
     </div>
-  );
+  )
 }
 
-export default Modal;
+export default Modal

@@ -5,17 +5,17 @@
  * campers to display in a modal.
  */
 
-import { useQuery } from '@tanstack/react-query';
-import type { DrilldownAttendee, DrilldownFilter } from '../types/metrics';
-import { queryKeys, syncDataOptions } from '../utils/queryKeys';
-import { useApiWithAuth } from './useApiWithAuth';
+import { useQuery } from '@tanstack/react-query'
+import type { DrilldownAttendee, DrilldownFilter } from '../types/metrics'
+import { queryKeys, syncDataOptions } from '../utils/queryKeys'
+import { useApiWithAuth } from './useApiWithAuth'
 
 interface UseDrilldownAttendeesOptions {
-  year: number;
-  filter: DrilldownFilter | null;
-  sessionCmId?: number | undefined;
-  sessionTypes?: string[] | undefined;
-  statusFilter?: string[] | undefined;
+  year: number
+  filter: DrilldownFilter | null
+  sessionCmId?: number | undefined
+  sessionTypes?: string[] | undefined
+  statusFilter?: string[] | undefined
 }
 
 export function useDrilldownAttendees({
@@ -25,9 +25,11 @@ export function useDrilldownAttendees({
   sessionTypes,
   statusFilter,
 }: UseDrilldownAttendeesOptions) {
-  const { fetchWithAuth } = useApiWithAuth();
-  const sessionTypesParam = sessionTypes?.join(',');
-  const statusFilterParam = statusFilter?.join(',');
+  const { fetchWithAuth } = useApiWithAuth()
+  const sessionTypesParam = sessionTypes?.join(',')
+  // Use statusOverride from filter if present, otherwise use default statusFilter
+  const effectiveStatusFilter = filter?.statusOverride ?? statusFilter
+  const statusFilterParam = effectiveStatusFilter?.join(',')
 
   return useQuery({
     queryKey: queryKeys.drilldown(
@@ -36,37 +38,37 @@ export function useDrilldownAttendees({
       filter?.value,
       sessionCmId,
       sessionTypesParam,
-      statusFilterParam,
+      statusFilterParam
     ),
     queryFn: async (): Promise<DrilldownAttendee[]> => {
       if (!filter) {
-        return [];
+        return []
       }
 
       const params = new URLSearchParams({
         year: String(year),
         breakdown_type: filter.type,
         breakdown_value: filter.value,
-      });
+      })
 
       if (sessionCmId) {
-        params.set('session_cm_id', String(sessionCmId));
+        params.set('session_cm_id', String(sessionCmId))
       }
       if (sessionTypesParam) {
-        params.set('session_types', sessionTypesParam);
+        params.set('session_types', sessionTypesParam)
       }
       if (statusFilterParam) {
-        params.set('status_filter', statusFilterParam);
+        params.set('status_filter', statusFilterParam)
       }
 
-      const res = await fetchWithAuth(`/api/metrics/drilldown?${params}`);
+      const res = await fetchWithAuth(`/api/metrics/drilldown?${params}`)
       if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.detail || `Failed to fetch drilldown data: ${res.statusText}`);
+        const error = await res.json().catch(() => ({}))
+        throw new Error(error.detail || `Failed to fetch drilldown data: ${res.statusText}`)
       }
-      return res.json();
+      return res.json()
     },
     enabled: !!filter,
     ...syncDataOptions,
-  });
+  })
 }

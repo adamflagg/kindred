@@ -1,19 +1,19 @@
-import { createContext } from 'react';
-import type { BunkRequest } from '../types/app-types';
+import { createContext } from 'react'
+import type { BunkRequest } from '../types/app-types'
 
 // Bunkmate info needed for satisfaction calculation
 export interface BunkmateInfo {
-  cmId: number;
-  grade: number | null;
+  cmId: number
+  grade: number | null
 }
 
 interface BunkRequestContextValue {
   // All requests for the session
-  allRequests: BunkRequest[];
+  allRequests: BunkRequest[]
   // Lookup if a camper has any requests
-  hasRequests: (personCmId: number) => boolean;
+  hasRequests: (personCmId: number) => boolean
   // Get all requests for a specific camper
-  getRequestsForCamper: (personCmId: number) => BunkRequest[];
+  getRequestsForCamper: (personCmId: number) => BunkRequest[]
   // Get satisfied request info for a camper in a specific bunk
   getSatisfiedRequestInfo: (
     personCmId: number,
@@ -21,15 +21,15 @@ interface BunkRequestContextValue {
     campersInBunk: BunkmateInfo[],
     requesterGrade: number | null
   ) => {
-    totalRequests: number;
-    satisfiedCount: number;
-    topPrioritySatisfied: boolean;
-    priorityLevels: number[];
-    hasLockedPriority: boolean;
-  };
+    totalRequests: number
+    satisfiedCount: number
+    topPrioritySatisfied: boolean
+    priorityLevels: number[]
+    hasLockedPriority: boolean
+  }
   // Loading state
-  isLoading: boolean;
-  error: Error | null;
+  isLoading: boolean
+  error: Error | null
 }
 
-export const BunkRequestContext = createContext<BunkRequestContextValue | undefined>(undefined);
+export const BunkRequestContext = createContext<BunkRequestContextValue | undefined>(undefined)

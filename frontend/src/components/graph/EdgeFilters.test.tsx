@@ -3,7 +3,7 @@
  * TDD - tests written first, implementation follows
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest'
 
 describe('EdgeFilters', () => {
   describe('edge type visibility', () => {
@@ -13,11 +13,11 @@ describe('EdgeFilters', () => {
         historical: true,
         sibling: true,
         school: true,
-      };
+      }
 
-      expect(showEdges.request).toBe(true);
-      expect(showEdges.historical).toBe(true);
-    });
+      expect(showEdges.request).toBe(true)
+      expect(showEdges.historical).toBe(true)
+    })
 
     it('should toggle individual edge type visibility', () => {
       const showEdges = {
@@ -25,23 +25,28 @@ describe('EdgeFilters', () => {
         historical: true,
         sibling: true,
         school: true,
-      };
+      }
 
-      const updatedEdges = { ...showEdges, request: false };
+      const updatedEdges = { ...showEdges, request: false }
 
-      expect(updatedEdges.request).toBe(false);
-      expect(updatedEdges.historical).toBe(true);
-    });
+      expect(updatedEdges.request).toBe(false)
+      expect(updatedEdges.historical).toBe(true)
+    })
 
     it('should call onEdgeFilterChange when filter changes', () => {
-      const mockOnChange = vi.fn();
-      const newState = { request: false, historical: true, sibling: true, school: true };
+      const mockOnChange = vi.fn()
+      const newState = {
+        request: false,
+        historical: true,
+        sibling: true,
+        school: true,
+      }
 
-      mockOnChange(newState);
+      mockOnChange(newState)
 
-      expect(mockOnChange).toHaveBeenCalledWith(newState);
-    });
-  });
+      expect(mockOnChange).toHaveBeenCalledWith(newState)
+    })
+  })
 
   describe('edge type labels', () => {
     it('should display human-readable labels for edge types', () => {
@@ -50,32 +55,32 @@ describe('EdgeFilters', () => {
         historical: 'Historical',
         sibling: 'Siblings',
         school: 'Classmates',
-      };
+      }
 
-      expect(edgeLabels['request']).toBe('Requests');
-      expect(edgeLabels['school']).toBe('Classmates');
-    });
-  });
+      expect(edgeLabels['request']).toBe('Requests')
+      expect(edgeLabels['school']).toBe('Classmates')
+    })
+  })
 
   describe('bubble toggle', () => {
     it('should toggle bunk bubble visibility', () => {
-      const mockToggleBubbles = vi.fn();
+      const mockToggleBubbles = vi.fn()
 
-      mockToggleBubbles();
+      mockToggleBubbles()
 
-      expect(mockToggleBubbles).toHaveBeenCalled();
-    });
-  });
-});
+      expect(mockToggleBubbles).toHaveBeenCalled()
+    })
+  })
+})
 
 describe('EdgeFilters props interface', () => {
   it('should define required props', () => {
     interface EdgeFiltersProps {
-      showEdges: Record<string, boolean>;
-      onEdgeFilterChange: (filters: Record<string, boolean>) => void;
-      edgeColors: Record<string, string>;
-      showBubbles: boolean;
-      onToggleBubbles: (show: boolean) => void;
+      showEdges: Record<string, boolean>
+      onEdgeFilterChange: (filters: Record<string, boolean>) => void
+      edgeColors: Record<string, string>
+      showBubbles: boolean
+      onToggleBubbles: (show: boolean) => void
     }
 
     const props: EdgeFiltersProps = {
@@ -92,12 +97,12 @@ describe('EdgeFilters props interface', () => {
       },
       showBubbles: false,
       onToggleBubbles: vi.fn(),
-    };
+    }
 
-    expect(props.showEdges['request']).toBe(true);
-    expect(props.showBubbles).toBe(false);
-  });
-});
+    expect(props.showEdges['request']).toBe(true)
+    expect(props.showBubbles).toBe(false)
+  })
+})
 
 describe('edge type to label mapping', () => {
   it('should map all edge types to display labels', () => {
@@ -107,14 +112,14 @@ describe('edge type to label mapping', () => {
         historical: 'Historical',
         sibling: 'Siblings',
         school: 'Classmates',
-      };
-      return labels[type] || type;
+      }
+      return labels[type] || type
     }
 
-    expect(getEdgeLabel('request')).toBe('Requests');
-    expect(getEdgeLabel('historical')).toBe('Historical');
-    expect(getEdgeLabel('sibling')).toBe('Siblings');
-    expect(getEdgeLabel('school')).toBe('Classmates');
-    expect(getEdgeLabel('unknown')).toBe('unknown');
-  });
-});
+    expect(getEdgeLabel('request')).toBe('Requests')
+    expect(getEdgeLabel('historical')).toBe('Historical')
+    expect(getEdgeLabel('sibling')).toBe('Siblings')
+    expect(getEdgeLabel('school')).toBe('Classmates')
+    expect(getEdgeLabel('unknown')).toBe('unknown')
+  })
+})

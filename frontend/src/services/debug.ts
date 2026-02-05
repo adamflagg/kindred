@@ -4,163 +4,163 @@
  * Provides methods for the Phase 1 AI parse analysis debug tool.
  */
 
-const API_BASE = '/api/debug';
+const API_BASE = '/api/debug'
 
 // Types matching backend schemas
 export interface ParsedIntent {
-  request_type: string;
-  target_name: string | null;
-  keywords_found: string[];
-  parse_notes: string;
-  reasoning: string;
-  list_position: number;
-  needs_clarification: boolean;
+  request_type: string
+  target_name: string | null
+  keywords_found: string[]
+  parse_notes: string
+  reasoning: string
+  list_position: number
+  needs_clarification: boolean
   temporal_info: {
-    date: string | null;
-    is_superseded: boolean;
-    supersedes_reason: string | null;
-  } | null;
+    date: string | null
+    is_superseded: boolean
+    supersedes_reason: string | null
+  } | null
 }
 
 export interface ParseAnalysisItem {
-  id: string;
-  original_request_id: string;
-  requester_name: string | null;
-  requester_cm_id: number | null;
-  source_field: string | null;
-  original_text: string | null;
-  parsed_intents: ParsedIntent[];
-  is_valid: boolean;
-  error_message: string | null;
-  token_count: number | null;
-  processing_time_ms: number | null;
-  prompt_version: string | null;
-  created: string | null;
+  id: string
+  original_request_id: string
+  requester_name: string | null
+  requester_cm_id: number | null
+  source_field: string | null
+  original_text: string | null
+  parsed_intents: ParsedIntent[]
+  is_valid: boolean
+  error_message: string | null
+  token_count: number | null
+  processing_time_ms: number | null
+  prompt_version: string | null
+  created: string | null
 }
 
 export interface ParseAnalysisDetailItem extends ParseAnalysisItem {
-  ai_raw_response: Record<string, unknown> | null;
+  ai_raw_response: Record<string, unknown> | null
 }
 
 export interface ParseAnalysisListResponse {
-  items: ParseAnalysisItem[];
-  total: number;
+  items: ParseAnalysisItem[]
+  total: number
 }
 
 export interface OriginalRequestItem {
-  id: string;
-  requester_name: string | null;
-  requester_cm_id: number | null;
-  source_field: string;
-  original_text: string;
-  year: number;
-  processed: boolean;
+  id: string
+  requester_name: string | null
+  requester_cm_id: number | null
+  source_field: string
+  original_text: string
+  year: number
+  processed: boolean
 }
 
 export interface OriginalRequestsListResponse {
-  items: OriginalRequestItem[];
-  total: number;
+  items: OriginalRequestItem[]
+  total: number
 }
 
 export interface Phase1OnlyRequest {
-  original_request_ids: string[];
-  force_reparse: boolean;
+  original_request_ids: string[]
+  force_reparse: boolean
 }
 
 export interface Phase1OnlyResponse {
-  results: ParseAnalysisItem[];
-  total_tokens: number;
+  results: ParseAnalysisItem[]
+  total_tokens: number
 }
 
 export interface ClearAnalysisResponse {
-  deleted_count: number;
+  deleted_count: number
 }
 
-export type SourceFieldType = 'bunk_with' | 'not_bunk_with' | 'bunking_notes' | 'internal_notes';
+export type SourceFieldType = 'bunk_with' | 'not_bunk_with' | 'bunking_notes' | 'internal_notes'
 
 export interface ParseAnalysisFilters {
-  session_cm_id?: number | undefined;
-  source_field?: SourceFieldType | undefined;
-  limit?: number | undefined;
-  offset?: number | undefined;
+  session_cm_id?: number | undefined
+  source_field?: SourceFieldType | undefined
+  limit?: number | undefined
+  offset?: number | undefined
 }
 
 export interface OriginalRequestsFilters {
-  year: number;
-  session_cm_id?: number;
-  source_field?: SourceFieldType;
-  limit?: number;
+  year: number
+  session_cm_id?: number
+  source_field?: SourceFieldType
+  limit?: number
 }
 
 // New types for fallback pattern
-export type ParseResultSource = 'debug' | 'production' | 'none';
+export type ParseResultSource = 'debug' | 'production' | 'none'
 
 export interface OriginalRequestWithStatus {
-  id: string;
-  requester_name: string | null;
-  requester_cm_id: number | null;
-  source_field: string;
-  original_text: string;
-  year: number;
-  has_debug_result: boolean;
-  has_production_result: boolean;
+  id: string
+  requester_name: string | null
+  requester_cm_id: number | null
+  source_field: string
+  original_text: string
+  year: number
+  has_debug_result: boolean
+  has_production_result: boolean
 }
 
 export interface OriginalRequestsWithParseResponse {
-  items: OriginalRequestWithStatus[];
-  total: number;
+  items: OriginalRequestWithStatus[]
+  total: number
 }
 
 export interface ParseResultWithSource {
-  source: ParseResultSource;
-  id: string | null;
-  original_request_id: string | null;
-  requester_name: string | null;
-  requester_cm_id: number | null;
-  source_field: string | null;
-  original_text: string | null;
-  parsed_intents: ParsedIntent[];
-  is_valid: boolean;
-  error_message: string | null;
-  token_count: number | null;
-  processing_time_ms: number | null;
-  prompt_version: string | null;
-  created: string | null;
+  source: ParseResultSource
+  id: string | null
+  original_request_id: string | null
+  requester_name: string | null
+  requester_cm_id: number | null
+  source_field: string | null
+  original_text: string | null
+  parsed_intents: ParsedIntent[]
+  is_valid: boolean
+  error_message: string | null
+  token_count: number | null
+  processing_time_ms: number | null
+  prompt_version: string | null
+  created: string | null
 }
 
 export interface OriginalRequestsWithStatusFilters {
-  year: number;
-  session_cm_ids?: number[] | undefined;
-  source_field?: SourceFieldType | undefined;
-  limit?: number | undefined;
-  offset?: number | undefined;
+  year: number
+  session_cm_ids?: number[] | undefined
+  source_field?: SourceFieldType | undefined
+  limit?: number | undefined
+  offset?: number | undefined
 }
 
 // Types for grouped-by-camper view
 export interface FieldParseResult {
-  original_request_id: string;
-  source_field: string;
-  original_text: string;
-  has_debug_result: boolean;
-  has_production_result: boolean;
+  original_request_id: string
+  source_field: string
+  original_text: string
+  has_debug_result: boolean
+  has_production_result: boolean
 }
 
 export interface CamperGroupedRequests {
-  requester_cm_id: number;
-  requester_name: string;
-  fields: FieldParseResult[];
+  requester_cm_id: number
+  requester_name: string
+  fields: FieldParseResult[]
 }
 
 export interface GroupedRequestsResponse {
-  items: CamperGroupedRequests[];
-  total: number;
+  items: CamperGroupedRequests[]
+  total: number
 }
 
 export interface GroupedRequestsFilters {
-  year: number;
-  session_cm_ids?: number[] | undefined;
-  source_field?: SourceFieldType | undefined;
-  limit?: number | undefined;
+  year: number
+  session_cm_ids?: number[] | undefined
+  source_field?: SourceFieldType | undefined
+  limit?: number | undefined
 }
 
 // =============================================================================
@@ -168,58 +168,58 @@ export interface GroupedRequestsFilters {
 // =============================================================================
 
 export interface ParseResultData {
-  id: string | null;
-  parsed_intents: ParsedIntent[];
-  is_valid: boolean;
-  error_message: string | null;
-  token_count: number | null;
-  processing_time_ms: number | null;
-  prompt_version: string | null;
-  created: string | null;
+  id: string | null
+  parsed_intents: ParsedIntent[]
+  is_valid: boolean
+  error_message: string | null
+  token_count: number | null
+  processing_time_ms: number | null
+  prompt_version: string | null
+  created: string | null
 }
 
 export interface DualSourceParseResult {
-  original_request_id: string;
-  requester_name: string | null;
-  requester_cm_id: number | null;
-  source_field: string | null;
-  original_text: string | null;
-  has_debug: boolean;
-  has_production: boolean;
-  debug_result: ParseResultData | null;
-  production_result: ParseResultData | null;
+  original_request_id: string
+  requester_name: string | null
+  requester_cm_id: number | null
+  source_field: string | null
+  original_text: string | null
+  has_debug: boolean
+  has_production: boolean
+  debug_result: ParseResultData | null
+  production_result: ParseResultData | null
 }
 
 export interface ScopedClearFilters {
-  session_cm_ids?: number[] | undefined;
-  source_field?: SourceFieldType | undefined;
+  session_cm_ids?: number[] | undefined
+  source_field?: SourceFieldType | undefined
 }
 
 // Prompt Editor Types
 
 export interface PromptListItem {
-  name: string;
-  filename: string;
-  modified_at: string | null;
+  name: string
+  filename: string
+  modified_at: string | null
 }
 
 export interface PromptListResponse {
-  prompts: PromptListItem[];
+  prompts: PromptListItem[]
 }
 
 export interface PromptContentResponse {
-  name: string;
-  content: string;
-  modified_at: string | null;
+  name: string
+  content: string
+  modified_at: string | null
 }
 
 export interface PromptUpdateRequest {
-  content: string;
+  content: string
 }
 
 export interface PromptUpdateResponse {
-  name: string;
-  success: boolean;
+  name: string
+  success: boolean
 }
 
 export const debugService = {
@@ -230,19 +230,19 @@ export const debugService = {
     filters: ParseAnalysisFilters,
     fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
   ): Promise<ParseAnalysisListResponse> {
-    const params = new URLSearchParams();
-    if (filters.session_cm_id) params.set('session_cm_id', String(filters.session_cm_id));
-    if (filters.source_field) params.set('source_field', filters.source_field);
-    if (filters.limit) params.set('limit', String(filters.limit));
-    if (filters.offset) params.set('offset', String(filters.offset));
+    const params = new URLSearchParams()
+    if (filters.session_cm_id) params.set('session_cm_id', String(filters.session_cm_id))
+    if (filters.source_field) params.set('source_field', filters.source_field)
+    if (filters.limit) params.set('limit', String(filters.limit))
+    if (filters.offset) params.set('offset', String(filters.offset))
 
-    const url = `${API_BASE}/parse-analysis${params.toString() ? `?${params}` : ''}`;
-    const response = await fetchWithAuth(url);
+    const url = `${API_BASE}/parse-analysis${params.toString() ? `?${params}` : ''}`
+    const response = await fetchWithAuth(url)
 
     if (!response.ok) {
-      throw new Error('Failed to fetch parse analysis results');
+      throw new Error('Failed to fetch parse analysis results')
     }
-    return response.json();
+    return response.json()
   },
 
   /**
@@ -252,12 +252,12 @@ export const debugService = {
     id: string,
     fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
   ): Promise<ParseAnalysisDetailItem> {
-    const response = await fetchWithAuth(`${API_BASE}/parse-analysis/${id}`);
+    const response = await fetchWithAuth(`${API_BASE}/parse-analysis/${id}`)
 
     if (!response.ok) {
-      throw new Error('Failed to fetch parse analysis detail');
+      throw new Error('Failed to fetch parse analysis detail')
     }
-    return response.json();
+    return response.json()
   },
 
   /**
@@ -271,13 +271,13 @@ export const debugService = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
-    });
+    })
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.detail || 'Failed to run Phase 1 parsing');
+      const error = await response.json().catch(() => ({}))
+      throw new Error(error.detail || 'Failed to run Phase 1 parsing')
     }
-    return response.json();
+    return response.json()
   },
 
   /**
@@ -287,23 +287,23 @@ export const debugService = {
     fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>,
     filters?: ScopedClearFilters
   ): Promise<ClearAnalysisResponse> {
-    const params = new URLSearchParams();
+    const params = new URLSearchParams()
     if (filters?.session_cm_ids) {
       filters.session_cm_ids.forEach((cmId) => {
-        params.append('session_cm_id', String(cmId));
-      });
+        params.append('session_cm_id', String(cmId))
+      })
     }
-    if (filters?.source_field) params.set('source_field', filters.source_field);
+    if (filters?.source_field) params.set('source_field', filters.source_field)
 
-    const url = `${API_BASE}/parse-analysis${params.toString() ? `?${params}` : ''}`;
+    const url = `${API_BASE}/parse-analysis${params.toString() ? `?${params}` : ''}`
     const response = await fetchWithAuth(url, {
       method: 'DELETE',
-    });
+    })
 
     if (!response.ok) {
-      throw new Error('Failed to clear parse analysis results');
+      throw new Error('Failed to clear parse analysis results')
     }
-    return response.json();
+    return response.json()
   },
 
   /**
@@ -316,12 +316,12 @@ export const debugService = {
     const response = await fetchWithAuth(
       `${API_BASE}/parse-analysis/by-original/${encodeURIComponent(originalRequestId)}`,
       { method: 'DELETE' }
-    );
+    )
 
     if (!response.ok) {
-      throw new Error('Failed to clear parse analysis result');
+      throw new Error('Failed to clear parse analysis result')
     }
-    return response.json();
+    return response.json()
   },
 
   /**
@@ -331,18 +331,18 @@ export const debugService = {
     filters: OriginalRequestsFilters,
     fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
   ): Promise<OriginalRequestsListResponse> {
-    const params = new URLSearchParams();
-    params.set('year', String(filters.year));
-    if (filters.session_cm_id) params.set('session_cm_id', String(filters.session_cm_id));
-    if (filters.source_field) params.set('source_field', filters.source_field);
-    if (filters.limit) params.set('limit', String(filters.limit));
+    const params = new URLSearchParams()
+    params.set('year', String(filters.year))
+    if (filters.session_cm_id) params.set('session_cm_id', String(filters.session_cm_id))
+    if (filters.source_field) params.set('source_field', filters.source_field)
+    if (filters.limit) params.set('limit', String(filters.limit))
 
-    const response = await fetchWithAuth(`${API_BASE}/original-requests?${params}`);
+    const response = await fetchWithAuth(`${API_BASE}/original-requests?${params}`)
 
     if (!response.ok) {
-      throw new Error('Failed to fetch original requests');
+      throw new Error('Failed to fetch original requests')
     }
-    return response.json();
+    return response.json()
   },
 
   /**
@@ -352,24 +352,26 @@ export const debugService = {
     filters: OriginalRequestsWithStatusFilters,
     fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
   ): Promise<OriginalRequestsWithParseResponse> {
-    const params = new URLSearchParams();
-    params.set('year', String(filters.year));
+    const params = new URLSearchParams()
+    params.set('year', String(filters.year))
     // Pass multiple session_cm_id params for array (FastAPI handles repeated query params)
     if (filters.session_cm_ids) {
       filters.session_cm_ids.forEach((cmId) => {
-        params.append('session_cm_id', String(cmId));
-      });
+        params.append('session_cm_id', String(cmId))
+      })
     }
-    if (filters.source_field) params.set('source_field', filters.source_field);
-    if (filters.limit) params.set('limit', String(filters.limit));
-    if (filters.offset) params.set('offset', String(filters.offset));
+    if (filters.source_field) params.set('source_field', filters.source_field)
+    if (filters.limit) params.set('limit', String(filters.limit))
+    if (filters.offset) params.set('offset', String(filters.offset))
 
-    const response = await fetchWithAuth(`${API_BASE}/original-requests-with-parse-status?${params}`);
+    const response = await fetchWithAuth(
+      `${API_BASE}/original-requests-with-parse-status?${params}`
+    )
 
     if (!response.ok) {
-      throw new Error('Failed to fetch original requests with status');
+      throw new Error('Failed to fetch original requests with status')
     }
-    return response.json();
+    return response.json()
   },
 
   /**
@@ -379,12 +381,14 @@ export const debugService = {
     originalRequestId: string,
     fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
   ): Promise<ParseResultWithSource> {
-    const response = await fetchWithAuth(`${API_BASE}/parse-result/${encodeURIComponent(originalRequestId)}`);
+    const response = await fetchWithAuth(
+      `${API_BASE}/parse-result/${encodeURIComponent(originalRequestId)}`
+    )
 
     if (!response.ok) {
-      throw new Error('Failed to fetch parse result');
+      throw new Error('Failed to fetch parse result')
     }
-    return response.json();
+    return response.json()
   },
 
   /**
@@ -396,19 +400,19 @@ export const debugService = {
     fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
   ): Promise<ParseResultWithSource[]> {
     if (originalRequestIds.length === 0) {
-      return [];
+      return []
     }
 
     const response = await fetchWithAuth(`${API_BASE}/parse-results-batch`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(originalRequestIds),
-    });
+    })
 
     if (!response.ok) {
-      throw new Error('Failed to fetch parse results batch');
+      throw new Error('Failed to fetch parse results batch')
     }
-    return response.json();
+    return response.json()
   },
 
   /**
@@ -420,19 +424,19 @@ export const debugService = {
     fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
   ): Promise<DualSourceParseResult[]> {
     if (originalRequestIds.length === 0) {
-      return [];
+      return []
     }
 
     const response = await fetchWithAuth(`${API_BASE}/parse-results-batch-dual`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(originalRequestIds),
-    });
+    })
 
     if (!response.ok) {
-      throw new Error('Failed to fetch dual parse results batch');
+      throw new Error('Failed to fetch dual parse results batch')
     }
-    return response.json();
+    return response.json()
   },
 
   /**
@@ -442,22 +446,22 @@ export const debugService = {
     filters: GroupedRequestsFilters,
     fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
   ): Promise<GroupedRequestsResponse> {
-    const params = new URLSearchParams();
-    params.set('year', String(filters.year));
+    const params = new URLSearchParams()
+    params.set('year', String(filters.year))
     if (filters.session_cm_ids) {
       filters.session_cm_ids.forEach((cmId) => {
-        params.append('session_cm_id', String(cmId));
-      });
+        params.append('session_cm_id', String(cmId))
+      })
     }
-    if (filters.source_field) params.set('source_field', filters.source_field);
-    if (filters.limit) params.set('limit', String(filters.limit));
+    if (filters.source_field) params.set('source_field', filters.source_field)
+    if (filters.limit) params.set('limit', String(filters.limit))
 
-    const response = await fetchWithAuth(`${API_BASE}/original-requests-grouped?${params}`);
+    const response = await fetchWithAuth(`${API_BASE}/original-requests-grouped?${params}`)
 
     if (!response.ok) {
-      throw new Error('Failed to fetch grouped requests');
+      throw new Error('Failed to fetch grouped requests')
     }
-    return response.json();
+    return response.json()
   },
 
   // ============================================================================
@@ -470,12 +474,12 @@ export const debugService = {
   async listPrompts(
     fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
   ): Promise<PromptListResponse> {
-    const response = await fetchWithAuth(`${API_BASE}/prompts`);
+    const response = await fetchWithAuth(`${API_BASE}/prompts`)
 
     if (!response.ok) {
-      throw new Error('Failed to fetch prompts list');
+      throw new Error('Failed to fetch prompts list')
     }
-    return response.json();
+    return response.json()
   },
 
   /**
@@ -485,15 +489,15 @@ export const debugService = {
     name: string,
     fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
   ): Promise<PromptContentResponse> {
-    const response = await fetchWithAuth(`${API_BASE}/prompts/${encodeURIComponent(name)}`);
+    const response = await fetchWithAuth(`${API_BASE}/prompts/${encodeURIComponent(name)}`)
 
     if (!response.ok) {
       if (response.status === 404) {
-        throw new Error(`Prompt '${name}' not found`);
+        throw new Error(`Prompt '${name}' not found`)
       }
-      throw new Error('Failed to fetch prompt content');
+      throw new Error('Failed to fetch prompt content')
     }
-    return response.json();
+    return response.json()
   },
 
   /**
@@ -508,15 +512,15 @@ export const debugService = {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content } satisfies PromptUpdateRequest),
-    });
+    })
 
     if (!response.ok) {
       if (response.status === 404) {
-        throw new Error(`Prompt '${name}' not found`);
+        throw new Error(`Prompt '${name}' not found`)
       }
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.detail || 'Failed to update prompt');
+      const error = await response.json().catch(() => ({}))
+      throw new Error(error.detail || 'Failed to update prompt')
     }
-    return response.json();
+    return response.json()
   },
-};
+}

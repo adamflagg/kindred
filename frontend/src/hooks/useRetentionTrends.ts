@@ -4,18 +4,18 @@
  * Returns retention data across multiple year transitions for the retention tab.
  */
 
-import { useQuery, keepPreviousData } from '@tanstack/react-query';
-import { useApiWithAuth } from './useApiWithAuth';
-import { queryKeys, syncDataOptions } from '../utils/queryKeys';
-import type { RetentionTrendsResponse } from '../types/metrics';
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
+import { useApiWithAuth } from './useApiWithAuth'
+import { queryKeys, syncDataOptions } from '../utils/queryKeys'
+import type { RetentionTrendsResponse } from '../types/metrics'
 
 export interface UseRetentionTrendsOptions {
   /** Number of years to include (default: 3) */
-  numYears?: number | undefined;
+  numYears?: number | undefined
   /** Comma-separated session types to filter */
-  sessionTypes?: string | undefined;
+  sessionTypes?: string | undefined
   /** Filter to specific session by CampMinder ID */
-  sessionCmId?: number | undefined;
+  sessionCmId?: number | undefined
 }
 
 /**
@@ -28,41 +28,38 @@ export interface UseRetentionTrendsOptions {
  * @param currentYear - The current/target year (e.g., 2026)
  * @param options - Optional filtering parameters
  */
-export function useRetentionTrends(
-  currentYear: number,
-  options: UseRetentionTrendsOptions = {}
-) {
-  const { fetchWithAuth } = useApiWithAuth();
-  const { numYears = 3, sessionTypes, sessionCmId } = options;
+export function useRetentionTrends(currentYear: number, options: UseRetentionTrendsOptions = {}) {
+  const { fetchWithAuth } = useApiWithAuth()
+  const { numYears = 3, sessionTypes, sessionCmId } = options
 
   return useQuery({
     queryKey: queryKeys.retentionTrends(currentYear, numYears, sessionTypes, sessionCmId),
     queryFn: async (): Promise<RetentionTrendsResponse> => {
       const params = new URLSearchParams({
         current_year: currentYear.toString(),
-      });
+      })
 
       if (numYears !== 3) {
-        params.set('num_years', numYears.toString());
+        params.set('num_years', numYears.toString())
       }
 
       if (sessionTypes) {
-        params.set('session_types', sessionTypes);
+        params.set('session_types', sessionTypes)
       }
 
       if (sessionCmId !== undefined) {
-        params.set('session_cm_id', sessionCmId.toString());
+        params.set('session_cm_id', sessionCmId.toString())
       }
 
-      const response = await fetchWithAuth(`/api/metrics/retention-trends?${params}`);
+      const response = await fetchWithAuth(`/api/metrics/retention-trends?${params}`)
       if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.detail || 'Failed to fetch retention trends');
+        const error = await response.json().catch(() => ({}))
+        throw new Error(error.detail || 'Failed to fetch retention trends')
       }
-      return response.json();
+      return response.json()
     },
     enabled: currentYear > 0,
     placeholderData: keepPreviousData,
     ...syncDataOptions,
-  });
+  })
 }
