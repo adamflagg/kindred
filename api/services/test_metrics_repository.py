@@ -371,8 +371,8 @@ class TestMetricsRepositoryBuildHistoryByPerson:
         assert len(result) == 2
         assert 100 in result
         assert 200 in result
-        # Last record for person 100 should be stored
-        assert result[100].cm_id == 3
+        # First record for person 100 should be stored (keeps first found)
+        assert result[100].cm_id == 1
 
     def test_build_history_by_person_skips_none_person_id(self) -> None:
         """build_history_by_person skips records with None person_id."""

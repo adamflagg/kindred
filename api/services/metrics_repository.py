@@ -254,3 +254,88 @@ class MetricsRepository:
         except Exception:
             # Config not found or error - return default
             return 12
+
+    async def fetch_attendees_with_persons(
+        self,
+        year: int,
+        session_types: list[str] | None = None,
+        status_filter: str | list[str] | None = None,
+    ) -> list[Any]:
+        """Fetch attendees with person expansion for geographic demographics.
+
+        This enables getting school/city directly from person records without
+        requiring the camper_history sync.
+
+        Args:
+            year: The year to fetch attendees for.
+            session_types: Optional list of session types to filter.
+            status_filter: Optional status filter (defaults to enrolled).
+
+        Returns:
+            List of attendee records with person expansion.
+        """
+        # Build status filter
+        if status_filter is None or status_filter == "enrolled":
+            filter_str = f"year = {year} && is_active = 1 && status_id = 2"
+        elif isinstance(status_filter, list):
+            status_conditions = " || ".join(f'status = "{s}"' for s in status_filter)
+            filter_str = f"year = {year} && ({status_conditions})"
+        else:
+            filter_str = f'year = {year} && status = "{status_filter}"'
+
+        # Note: session_types filtering is handled at the service layer
+        # by joining with sessions data, since attendees don't have session_type directly
+
+        return await asyncio.to_thread(
+            self.pb.collection("attendees").get_full_list,
+            query_params={"filter": filter_str, "expand": "person,session"},
+        )
+
+    async def fetch_synagogue_by_household(self, year: int) -> dict[int, str]:
+        """Fetch synagogue values mapped by household CampMinder ID.
+
+        Looks up the "Synagogue" custom field from household_custom_values
+        and returns a mapping from household cm_id to synagogue name.
+
+        Args:
+            year: The year to filter custom values for.
+
+        Returns:
+            Dictionary mapping household cm_id (int) to synagogue name (str).
+            Returns empty dict if Synagogue field not found.
+        """
+        try:
+            # Find the Synagogue field definition
+            field_def = await asyncio.to_thread(
+                self.pb.collection("field_definitions").get_first_list_item,
+                'name = "Synagogue"',
+            )
+        except Exception as e:
+            logger.debug(f"Synagogue field definition not found: {e}")
+            return {}
+
+        try:
+            # Fetch household_custom_values for this field with household expansion
+            filter_str = f'field = "{field_def.id}" && year = {year}'
+            custom_values = await asyncio.to_thread(
+                self.pb.collection("household_custom_values").get_full_list,
+                query_params={"filter": filter_str, "expand": "household"},
+            )
+
+            # Build mapping from household cm_id to synagogue value
+            result: dict[int, str] = {}
+            for cv in custom_values:
+                value = getattr(cv, "value", "")
+                if not value:
+                    continue  # Skip empty values
+                expand = getattr(cv, "expand", {})
+                household = expand.get("household") if expand else None
+                if household:
+                    hh_cm_id = getattr(household, "cm_id", None)
+                    if hh_cm_id is not None:
+                        result[int(hh_cm_id)] = value
+
+            return result
+        except Exception as e:
+            logger.warning(f"Error fetching synagogue custom values: {e}")
+            return {}
