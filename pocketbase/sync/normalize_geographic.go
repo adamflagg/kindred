@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"regexp"
 	"strconv"
@@ -437,15 +438,15 @@ func (n *NormalizeGeographicSync) mappingNeedsUpdate(existing *core.Record, newD
 	if existingCount != newData["occurrence_count"].(int) {
 		return true
 	}
-	// Compare confidence
+	// Compare confidence with epsilon for float precision
+	// Direct != comparison causes non-idempotent updates due to floating point errors
+	const epsilon = 0.0001
 	existingConf := 0.0
 	if c, ok := existing.Get("confidence").(float64); ok {
 		existingConf = c
 	}
-	if existingConf != newData["confidence"].(float64) {
-		return true
-	}
-	return false
+	newConf := newData["confidence"].(float64)
+	return math.Abs(existingConf-newConf) > epsilon
 }
 
 // updateCamperHistoryNormalized updates the *_normalized columns in camper_history

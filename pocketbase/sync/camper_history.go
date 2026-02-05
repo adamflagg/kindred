@@ -21,6 +21,9 @@ const serviceNameCamperHistory = "camper_history"
 // statusEnrolled is the enrolled status string used in comparisons
 const statusEnrolled = "enrolled"
 
+// customFieldSynagogue is the custom field name for synagogue in household_custom_values
+const customFieldSynagogue = "Synagogue"
+
 // Session type constants for retention context groupings
 var (
 	summerSessionTypes = []string{"main", "embedded", "ag", "quest", "tli", "training"}
@@ -824,7 +827,7 @@ func (c *CamperHistorySync) loadSynagogueByHousehold(ctx context.Context, year i
 	result := make(map[int]string)
 
 	// First, find the custom field definition for "Synagogue"
-	fieldFilter := `name = "Synagogue"`
+	fieldFilter := fmt.Sprintf("name = %q", customFieldSynagogue)
 	fieldDefs, err := c.App.FindRecordsByFilter("custom_field_defs", fieldFilter, "", 1, 0)
 	if err != nil || len(fieldDefs) == 0 {
 		slog.Debug("Synagogue custom field not found", "error", err)

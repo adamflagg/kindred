@@ -14,6 +14,9 @@ import (
 // serviceNameHouseholdDemographics is the canonical name for this sync service
 const serviceNameHouseholdDemographics = "household_demographics"
 
+// customFieldNameSynagogue is the custom field name for synagogue data
+const customFieldNameSynagogue = "Synagogue"
+
 // HouseholdDemographicsSync computes household demographics from custom values.
 // This service reads from person_custom_values (HH- prefixed fields) and
 // household_custom_values, then populates the household_demographics table.
@@ -294,7 +297,7 @@ func isHouseholdDemographicsField(name string) bool {
 
 	// Specific household_custom_values fields
 	switch name {
-	case "Synagogue", "Center", "Custody Issues", "Board":
+	case customFieldNameSynagogue, "Center", "Custody Issues", "Board":
 		return true
 	}
 
@@ -657,7 +660,7 @@ func MapHHFieldToColumn(fieldName string) string {
 // Exported for testing
 func MapHouseholdFieldToColumn(fieldName string) string {
 	switch fieldName {
-	case "Synagogue":
+	case customFieldNameSynagogue:
 		return "congregation_family"
 	case "Center":
 		return "jcc_family"
