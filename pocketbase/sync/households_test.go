@@ -257,9 +257,9 @@ func TestTransformHouseholdToPB_BillingAddressFields_StateFieldFallback(t *testi
 	householdData := map[string]interface{}{
 		"ID": float64(123456),
 		"BillingAddress": map[string]interface{}{
-			"Address1": "456 Oak St",
-			"City":     "Austin",
-			"State":    "TX", // Using State instead of StateProvince
+			"Address1":   "456 Oak St",
+			"City":       "Austin",
+			"State":      "TX", // Using State instead of StateProvince
 			"PostalCode": "78701",
 		},
 	}

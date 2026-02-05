@@ -330,10 +330,11 @@ export interface OriginalBunkRequestsRecord {
 export interface PersonsRecord<
   Taddress = unknown,
   Temail_addresses = unknown,
-  Tphone_numbers = unknown,
   Traw_data = unknown,
 > {
   address?: null | Taddress
+  address_city?: string
+  address_state?: string
   age?: number
   birthdate?: string
   cm_id: number
@@ -353,8 +354,9 @@ export interface PersonsRecord<
   is_camper?: boolean
   last_name: string
   last_year_attended?: number
-  phone_numbers?: null | Tphone_numbers
   preferred_name?: string
+  primary_email?: string
+  secondary_email?: string
   raw_data?: null | Traw_data
   school?: string
   updated?: IsoDateString
@@ -477,11 +479,9 @@ export type OriginalBunkRequestsResponse<Texpand = unknown> = Required<OriginalB
 export type PersonsResponse<
   Taddress = unknown,
   Temail_addresses = unknown,
-  Tphone_numbers = unknown,
   Traw_data = unknown,
   Texpand = unknown,
-> = Required<PersonsRecord<Taddress, Temail_addresses, Tphone_numbers, Traw_data>> &
-  BaseSystemFields<Texpand>
+> = Required<PersonsRecord<Taddress, Temail_addresses, Traw_data>> & BaseSystemFields<Texpand>
 export type SavedScenariosResponse<Tmetadata = unknown, Texpand = unknown> = Required<
   SavedScenariosRecord<Tmetadata>
 > &

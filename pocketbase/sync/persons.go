@@ -352,6 +352,8 @@ func (s *PersonsSync) processHouseholds(
 	compareFields := []string{
 		"cm_id", "greeting", "mailing_title", "alternate_mailing_title",
 		"billing_mailing_title", "household_phone", "billing_address",
+		"billing_address1", "billing_address2", "billing_city", "billing_state",
+		"billing_postal_code", "billing_country",
 	}
 
 	for householdID, householdData := range households {
@@ -463,11 +465,13 @@ func (s *PersonsSync) processPerson(
 	// Note: Household relation fields (household, primary_childhood_household, alternate_childhood_household)
 	// are excluded because they're populated separately in updatePersonHouseholdRelations after save.
 	// Tags field IS included - FieldEquals normalizes []interface{} vs []string for proper comparison.
+	// phone_numbers removed - field dropped from schema
 	compareFields := []string{"cm_id", "first_name", "last_name", "preferred_name",
 		"birthdate", "gender", "age", "grade", "school", "years_at_camp",
 		"last_year_attended", "gender_identity_id", "gender_identity_name", "gender_identity_write_in",
-		"gender_pronoun_id", "gender_pronoun_name", "gender_pronoun_write_in", "phone_numbers",
-		"email_addresses", "address", "household_id", "is_camper", "year", "parent_names",
+		"gender_pronoun_id", "gender_pronoun_name", "gender_pronoun_write_in",
+		"email_addresses", "address", "address_city", "address_state",
+		"primary_email", "secondary_email", "household_id", "is_camper", "year", "parent_names",
 		"division", "partition_id", "lead_date", "tshirt_size", "cm_lead_date",
 		"tags"}
 
@@ -641,17 +645,22 @@ func (s *PersonsSync) transformPersonToPB(
 	pbData["gender_pronoun_name"] = s.getString(cmPerson, "GenderPronounName", "")
 	pbData["gender_pronoun_write_in"] = s.getString(cmPerson, "GenderPronounWriteIn", "")
 
-	// Contact details
+	// Contact details - extract emails to JSON and discrete fields
+	// phone_numbers field removed (unused in application)
+	pbData["primary_email"] = ""
+	pbData["secondary_email"] = ""
 	if contactDetails, ok := cmPerson["ContactDetails"].(map[string]interface{}); ok {
-		// Store phone numbers and emails as JSON
-		if phones := contactDetails["PhoneNumbers"]; phones != nil {
-			if phoneJSON, err := json.Marshal(phones); err == nil {
-				pbData["phone_numbers"] = string(phoneJSON)
-			}
-		}
+		// Extract and store emails as JSON for backward compatibility
 		if emails := contactDetails["Emails"]; emails != nil {
 			if emailJSON, err := json.Marshal(emails); err == nil {
 				pbData["email_addresses"] = string(emailJSON)
+			}
+
+			// Extract primary and secondary emails to discrete fields
+			if emailList, ok := emails.([]interface{}); ok && len(emailList) > 0 {
+				primaryEmail, secondaryEmail := s.extractPrimarySecondaryEmails(emailList)
+				pbData["primary_email"] = primaryEmail
+				pbData["secondary_email"] = secondaryEmail
 			}
 		}
 	}
@@ -659,6 +668,8 @@ func (s *PersonsSync) transformPersonToPB(
 	// Extract address from Households object
 	// Note: Household CampMinder IDs are extracted separately in extractHouseholdIDsFromPerson
 	// and used to populate relation fields after households are saved
+	pbData["address_city"] = ""
+	pbData["address_state"] = ""
 	if households, ok := cmPerson["Households"].(map[string]interface{}); ok {
 		// Extract address from primary childhood household
 		if primary, ok := households["PrimaryChildhoodHousehold"].(map[string]interface{}); ok {
@@ -668,6 +679,20 @@ func (s *PersonsSync) transformPersonToPB(
 					if addressJSON, err := json.Marshal(address); err == nil {
 						pbData["address"] = string(addressJSON)
 					}
+				}
+
+				// Extract discrete address fields for querying
+				if city := s.getString(billing, "City", ""); city != "" {
+					pbData["address_city"] = city
+				}
+
+				// Try StateProvince first, fall back to State
+				state := s.getString(billing, "StateProvince", "")
+				if state == "" {
+					state = s.getString(billing, "State", "")
+				}
+				if state != "" {
+					pbData["address_state"] = state
 				}
 			}
 		}
@@ -845,6 +870,55 @@ func (s *PersonsSync) extractAddress(billing map[string]interface{}) map[string]
 		return address
 	}
 	return nil
+}
+
+// extractPrimarySecondaryEmails extracts primary and secondary emails from CampMinder emails array.
+// Primary email is the one with IsLogin: true, or the first entry if none have IsLogin.
+// Secondary email is the first email that isn't the primary, if one exists.
+func (s *PersonsSync) extractPrimarySecondaryEmails(emailList []interface{}) (primary, secondary string) {
+	if len(emailList) == 0 {
+		return "", ""
+	}
+
+	// First pass: find the email with IsLogin: true
+	var loginEmail string
+	var otherEmails []string
+
+	for _, email := range emailList {
+		emailMap, ok := email.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		address := s.getString(emailMap, "Address", "")
+		if address == "" {
+			continue
+		}
+
+		isLogin, _ := emailMap["IsLogin"].(bool)
+		if isLogin {
+			loginEmail = address
+		} else {
+			otherEmails = append(otherEmails, address)
+		}
+	}
+
+	// Determine primary email
+	if loginEmail != "" {
+		primary = loginEmail
+		// Secondary is the first non-login email
+		if len(otherEmails) > 0 {
+			secondary = otherEmails[0]
+		}
+	} else if len(otherEmails) > 0 {
+		// No IsLogin flag, use first email as primary
+		primary = otherEmails[0]
+		if len(otherEmails) > 1 {
+			secondary = otherEmails[1]
+		}
+	}
+
+	return primary, secondary
 }
 
 func (s *PersonsSync) printDataQualitySummary() {
@@ -1132,8 +1206,61 @@ func (s *PersonsSync) transformHouseholdToPB(data map[string]interface{}, year i
 		pbData["household_phone"] = nil
 	}
 
-	// Extract billing address as JSON
+	// Extract billing address as JSON (for backward compatibility)
 	pbData["billing_address"] = data["BillingAddress"]
+
+	// Extract discrete billing address fields for querying
+	pbData["billing_address1"] = ""
+	pbData["billing_address2"] = ""
+	pbData["billing_city"] = ""
+	pbData["billing_state"] = ""
+	pbData["billing_postal_code"] = ""
+	pbData["billing_country"] = ""
+
+	if billing, ok := data["BillingAddress"].(map[string]interface{}); ok {
+		hasAddressData := false
+
+		if addr1 := s.getString(billing, "Address1", ""); addr1 != "" {
+			pbData["billing_address1"] = addr1
+			hasAddressData = true
+		}
+		if addr2 := s.getString(billing, "Address2", ""); addr2 != "" {
+			pbData["billing_address2"] = addr2
+			hasAddressData = true
+		}
+		if city := s.getString(billing, "City", ""); city != "" {
+			pbData["billing_city"] = city
+			hasAddressData = true
+		}
+
+		// Try StateProvince first, fall back to State
+		state := s.getString(billing, "StateProvince", "")
+		if state == "" {
+			state = s.getString(billing, "State", "")
+		}
+		if state != "" {
+			pbData["billing_state"] = state
+			hasAddressData = true
+		}
+
+		// Try PostalCode first, fall back to Zip
+		postalCode := s.getString(billing, "PostalCode", "")
+		if postalCode == "" {
+			postalCode = s.getString(billing, "Zip", "")
+		}
+		if postalCode != "" {
+			pbData["billing_postal_code"] = postalCode
+			hasAddressData = true
+		}
+
+		// Country field - default to "US" if address has data but no country specified
+		country := s.getString(billing, "Country", "")
+		if country != "" {
+			pbData["billing_country"] = country
+		} else if hasAddressData {
+			pbData["billing_country"] = "US"
+		}
+	}
 
 	// Set year
 	pbData["year"] = year

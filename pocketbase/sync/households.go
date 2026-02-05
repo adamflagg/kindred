@@ -144,6 +144,8 @@ func (s *HouseholdsSync) Sync(ctx context.Context) error {
 	compareFields := []string{
 		"cm_id", "greeting", "mailing_title", "alternate_mailing_title",
 		"billing_mailing_title", "household_phone", "billing_address", "last_updated_utc",
+		"billing_address1", "billing_address2", "billing_city", "billing_state",
+		"billing_postal_code", "billing_country",
 	}
 	for householdID, householdData := range allHouseholds {
 		// Transform to PocketBase format
@@ -271,8 +273,61 @@ func (s *HouseholdsSync) transformHouseholdToPB(
 		pbData["household_phone"] = nil
 	}
 
-	// Extract billing address as JSON
+	// Extract billing address as JSON (for backward compatibility)
 	pbData["billing_address"] = data["BillingAddress"]
+
+	// Extract discrete billing address fields for querying
+	pbData["billing_address1"] = ""
+	pbData["billing_address2"] = ""
+	pbData["billing_city"] = ""
+	pbData["billing_state"] = ""
+	pbData["billing_postal_code"] = ""
+	pbData["billing_country"] = ""
+
+	if billing, ok := data["BillingAddress"].(map[string]interface{}); ok {
+		hasAddressData := false
+
+		if addr1 := s.getString(billing, "Address1", ""); addr1 != "" {
+			pbData["billing_address1"] = addr1
+			hasAddressData = true
+		}
+		if addr2 := s.getString(billing, "Address2", ""); addr2 != "" {
+			pbData["billing_address2"] = addr2
+			hasAddressData = true
+		}
+		if city := s.getString(billing, "City", ""); city != "" {
+			pbData["billing_city"] = city
+			hasAddressData = true
+		}
+
+		// Try StateProvince first, fall back to State
+		state := s.getString(billing, "StateProvince", "")
+		if state == "" {
+			state = s.getString(billing, "State", "")
+		}
+		if state != "" {
+			pbData["billing_state"] = state
+			hasAddressData = true
+		}
+
+		// Try PostalCode first, fall back to Zip
+		postalCode := s.getString(billing, "PostalCode", "")
+		if postalCode == "" {
+			postalCode = s.getString(billing, "Zip", "")
+		}
+		if postalCode != "" {
+			pbData["billing_postal_code"] = postalCode
+			hasAddressData = true
+		}
+
+		// Country field - default to "US" if address has data but no country specified
+		country := s.getString(billing, "Country", "")
+		if country != "" {
+			pbData["billing_country"] = country
+		} else if hasAddressData {
+			pbData["billing_country"] = "US"
+		}
+	}
 
 	// Extract last updated
 	pbData["last_updated_utc"] = data["LastUpdatedUTC"]
@@ -281,4 +336,12 @@ func (s *HouseholdsSync) transformHouseholdToPB(
 	pbData["year"] = year
 
 	return pbData, nil
+}
+
+// getString extracts a string value from a map with a default fallback
+func (s *HouseholdsSync) getString(data map[string]interface{}, key, defaultValue string) string {
+	if val, ok := data[key].(string); ok {
+		return val
+	}
+	return defaultValue
 }
