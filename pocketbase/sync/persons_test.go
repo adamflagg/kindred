@@ -228,22 +228,25 @@ func TestPersonsSync_TransformHouseholdToPB(t *testing.T) {
 
 // TestPersonsCompareFields tests that compareFields includes new CamperDetails fields and household relations
 func TestPersonsCompareFields(t *testing.T) {
-	// This verifies that the fields used in processPerson include the new ones
+	// This verifies that the fields used in processPerson include the discrete address
+	// and email columns (added in Phase 2) and don't include removed JSON fields.
 	expectedNewFields := []string{
-		"division_id", "partition_id", "lead_date", "tshirt_size",
-		"principal_household", "primary_childhood_household", "alternate_childhood_household",
+		"address_city", "address_state", "primary_email", "secondary_email",
+		"division", "partition_id", "lead_date", "tshirt_size", "cm_lead_date", "tags",
 	}
 
-	// The compareFields list should include these fields for proper update detection
-	// We verify this by checking the list that will be used in processPerson
+	// The compareFields list must match persons.go processPerson exactly.
+	// Phase 3 removed: phone_numbers, email_addresses, address (JSON fields)
+	// Phase 2 added: address_city, address_state, primary_email, secondary_email
 	compareFields := []string{
 		"cm_id", "first_name", "last_name", "preferred_name",
 		"birthdate", "gender", "age", "grade", "school", "years_at_camp",
 		"last_year_attended", "gender_identity_id", "gender_identity_name", "gender_identity_write_in",
-		"gender_pronoun_id", "gender_pronoun_name", "gender_pronoun_write_in", "phone_numbers",
-		"email_addresses", "address", "household_id", "is_camper", "year", "parent_names",
-		"division_id", "partition_id", "lead_date", "tshirt_size",
-		"principal_household", "primary_childhood_household", "alternate_childhood_household",
+		"gender_pronoun_id", "gender_pronoun_name", "gender_pronoun_write_in",
+		"address_city", "address_state", "primary_email", "secondary_email",
+		"household_id", "is_camper", "year", "parent_names",
+		"division", "partition_id", "lead_date", "tshirt_size", "cm_lead_date",
+		"tags",
 	}
 
 	// Verify new fields are in the list

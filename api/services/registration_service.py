@@ -585,40 +585,6 @@ class RegistrationService:
             for s, c in sorted(school_counts.items(), key=lambda x: -x[1])
         ]
 
-    def _compute_city_breakdown(self, camper_history: list[Any], total: int) -> list[CityBreakdown]:
-        """Compute city breakdown from camper history."""
-        city_counts: dict[str, int] = {}
-        for record in camper_history:
-            city = getattr(record, "city", "") or ""
-            if city:
-                city_counts[city] = city_counts.get(city, 0) + 1
-
-        return [
-            CityBreakdown(
-                city=c,
-                count=cnt,
-                percentage=calculate_percentage(cnt, total),
-            )
-            for c, cnt in sorted(city_counts.items(), key=lambda x: -x[1])
-        ]
-
-    def _compute_synagogue_breakdown(self, camper_history: list[Any], total: int) -> list[SynagogueBreakdown]:
-        """Compute synagogue breakdown from camper history. DEPRECATED: Use _compute_synagogue_breakdown_from_persons."""
-        synagogue_counts: dict[str, int] = {}
-        for record in camper_history:
-            synagogue = getattr(record, "synagogue", "") or ""
-            if synagogue:
-                synagogue_counts[synagogue] = synagogue_counts.get(synagogue, 0) + 1
-
-        return [
-            SynagogueBreakdown(
-                synagogue=s,
-                count=c,
-                percentage=calculate_percentage(c, total),
-            )
-            for s, c in sorted(synagogue_counts.items(), key=lambda x: -x[1])
-        ]
-
     def _compute_school_breakdown_from_persons(
         self, person_ids: set[int], persons: dict[int, Any], total: int
     ) -> list[SchoolBreakdown]:
@@ -643,35 +609,6 @@ class RegistrationService:
                 percentage=calculate_percentage(c, total),
             )
             for s, c in sorted(school_counts.items(), key=lambda x: -x[1])
-        ]
-
-    def _compute_city_breakdown_from_persons(
-        self, person_ids: set[int], persons: dict[int, Any], total: int
-    ) -> list[CityBreakdown]:
-        """Compute city breakdown from persons table.
-
-        Uses persons.address["city"] (JSON field) instead of camper_history.
-        Returns all cities sorted by count (descending).
-        """
-        city_counts: dict[str, int] = {}
-        for pid in person_ids:
-            person = persons.get(pid)
-            if not person:
-                continue
-            # address is a JSON field with city as a key
-            address = getattr(person, "address", None)
-            if address and isinstance(address, dict):
-                city = address.get("city", "") or ""
-                if city:
-                    city_counts[city] = city_counts.get(city, 0) + 1
-
-        return [
-            CityBreakdown(
-                city=c,
-                count=cnt,
-                percentage=calculate_percentage(cnt, total),
-            )
-            for c, cnt in sorted(city_counts.items(), key=lambda x: -x[1])
         ]
 
     def _compute_synagogue_breakdown_from_persons(
