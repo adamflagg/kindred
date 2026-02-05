@@ -11,6 +11,11 @@ import { Globe, Loader2, AlertCircle } from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useRegistrationMetrics } from '../../../hooks/useMetrics'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
+import { useDrilldown } from '../../../hooks/useDrilldown'
+import {
+  useNormalizedMappings,
+  type NormalizedCategory,
+} from '../../../hooks/useNormalizedMappings'
 import {
   GeoMap,
   GeoCategoryTabs,
@@ -23,13 +28,40 @@ import {
 /** Default session types for summer camp metrics */
 const DEFAULT_SESSION_TYPES = ['main', 'embedded', 'ag']
 
+/** Default status filter for enrolled campers */
+const DEFAULT_STATUS_FILTER = ['enrolled']
+
+/** Map frontend category names to DB category names */
+const categoryToDbCategory: Record<GeoCategory, NormalizedCategory> = {
+  city: 'city',
+  school: 'school',
+  synagogue: 'congregation',
+}
+
 export default function GeoAnalysis() {
   const { currentYear } = useCurrentYear()
   const [activeCategory, setActiveCategory] = useState<GeoCategory>('city')
   const [selectedItem, setSelectedItem] = useState<string | null>(null)
+  const [showSources, setShowSources] = useState(false)
 
   // Get session filter from context (unified selector is in MetricsTypeTabs)
   const { selectedSessionCmId } = useMetricsSession()
+
+  // Drilldown hook for modal functionality
+  const { setFilter, DrilldownModal } = useDrilldown({
+    year: currentYear,
+    sessionCmId: selectedSessionCmId ?? undefined,
+    sessionTypes: DEFAULT_SESSION_TYPES,
+    statusFilter: DEFAULT_STATUS_FILTER,
+  })
+
+  // Fetch normalized mappings for source display (filtered by session if selected)
+  const { data: sourceMappings } = useNormalizedMappings(
+    currentYear,
+    categoryToDbCategory[activeCategory],
+    showSources,
+    selectedSessionCmId ?? undefined
+  )
 
   // Fetch registration data with geographic breakdowns
   const sessionTypesParam = DEFAULT_SESSION_TYPES.join(',')
@@ -155,19 +187,30 @@ export default function GeoAnalysis() {
             topLocation={topLocation}
           />
 
-          {/* Category Tabs */}
-          <GeoCategoryTabs
-            activeCategory={activeCategory}
-            onCategoryChange={(cat) => {
-              setActiveCategory(cat)
-              setSelectedItem(null)
-            }}
-            counts={{
-              city: geoData.city.length,
-              school: geoData.school.length,
-              synagogue: geoData.synagogue.length,
-            }}
-          />
+          {/* Category Tabs and Show Sources Toggle */}
+          <div className="flex items-center justify-between">
+            <GeoCategoryTabs
+              activeCategory={activeCategory}
+              onCategoryChange={(cat) => {
+                setActiveCategory(cat)
+                setSelectedItem(null)
+              }}
+              counts={{
+                city: geoData.city.length,
+                school: geoData.school.length,
+                synagogue: geoData.synagogue.length,
+              }}
+            />
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={showSources}
+                onChange={(e) => setShowSources(e.target.checked)}
+                className="text-primary focus:ring-primary h-4 w-4 rounded border-gray-300"
+              />
+              <span className="text-muted-foreground">Show sources</span>
+            </label>
+          </div>
 
           {/* Map and List */}
           {hasData ? (
@@ -187,6 +230,9 @@ export default function GeoAnalysis() {
                 category={activeCategory}
                 selectedItem={selectedItem}
                 onItemClick={handleItemClick}
+                onDrilldown={setFilter}
+                showSources={showSources}
+                sourceMappings={sourceMappings}
               />
             </div>
           ) : (
@@ -199,6 +245,9 @@ export default function GeoAnalysis() {
           )}
         </>
       )}
+
+      {/* Drilldown Modal */}
+      <DrilldownModal />
     </div>
   )
 }

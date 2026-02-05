@@ -120,7 +120,7 @@ class RegistrationService:
             self.repo.fetch_camper_history(year, session_types=session_types),
             self.repo.fetch_bunk_plans(year),
             self.repo.fetch_capacity_config(),
-            self.repo.fetch_synagogue_by_household(year),
+            self.repo.fetch_normalized_geo(year, session_cm_id, session_types),
         )
         # Type assertions for asyncio.gather results
         requested_attendees = cast(list[Any], results[0])
@@ -131,7 +131,7 @@ class RegistrationService:
         camper_history = cast(list[Any], results[5])
         bunk_plans = cast(list[Any], results[6])
         default_capacity = cast(int, results[7])
-        synagogue_by_household = cast(dict[int, str], results[8])
+        normalized_geo = cast(list[Any], results[8])
 
         # Filter attendees by session
         combined_attendees = self._filter_by_session(requested_attendees, session_types, session_cm_id, ag_session_ids)
@@ -158,13 +158,10 @@ class RegistrationService:
         by_years_at_camp = self._compute_years_at_camp_breakdown(enrolled_person_ids, persons, total_enrolled)
         new_vs_returning = self._compute_new_vs_returning(enrolled_person_ids, persons, total_enrolled)
 
-        # Demographics from persons data (school, city, synagogue)
-        # Note: These use enrolled_person_ids + persons dict instead of camper_history
-        by_school = self._compute_school_breakdown_from_persons(enrolled_person_ids, persons, total_enrolled)
-        by_city = self._compute_city_breakdown_from_persons(enrolled_person_ids, persons, total_enrolled)
-        by_synagogue = self._compute_synagogue_breakdown_from_persons(
-            enrolled_person_ids, persons, synagogue_by_household, total_enrolled
-        )
+        # Demographics from normalized_mappings (session-aware, normalized values)
+        by_school = self._compute_school_breakdown_normalized(normalized_geo, total_enrolled)
+        by_city = self._compute_city_breakdown_normalized(normalized_geo, total_enrolled)
+        by_synagogue = self._compute_synagogue_breakdown_normalized(normalized_geo, total_enrolled)
         # First year and session_bunk still use camper_history (historical data)
         total_history = len(camper_history)
         by_first_year = self._compute_first_year_breakdown(camper_history, total_history)
@@ -572,7 +569,7 @@ class RegistrationService:
         )
 
     def _compute_school_breakdown(self, camper_history: list[Any], total: int) -> list[SchoolBreakdown]:
-        """Compute school breakdown (top 20)."""
+        """Compute school breakdown from camper history."""
         school_counts: dict[str, int] = {}
         for record in camper_history:
             school = getattr(record, "school", "") or ""
@@ -585,11 +582,11 @@ class RegistrationService:
                 count=c,
                 percentage=calculate_percentage(c, total),
             )
-            for s, c in sorted(school_counts.items(), key=lambda x: -x[1])[:20]
+            for s, c in sorted(school_counts.items(), key=lambda x: -x[1])
         ]
 
     def _compute_city_breakdown(self, camper_history: list[Any], total: int) -> list[CityBreakdown]:
-        """Compute city breakdown (top 20)."""
+        """Compute city breakdown from camper history."""
         city_counts: dict[str, int] = {}
         for record in camper_history:
             city = getattr(record, "city", "") or ""
@@ -602,11 +599,11 @@ class RegistrationService:
                 count=cnt,
                 percentage=calculate_percentage(cnt, total),
             )
-            for c, cnt in sorted(city_counts.items(), key=lambda x: -x[1])[:20]
+            for c, cnt in sorted(city_counts.items(), key=lambda x: -x[1])
         ]
 
     def _compute_synagogue_breakdown(self, camper_history: list[Any], total: int) -> list[SynagogueBreakdown]:
-        """Compute synagogue breakdown (top 20). DEPRECATED: Use _compute_synagogue_breakdown_from_persons."""
+        """Compute synagogue breakdown from camper history. DEPRECATED: Use _compute_synagogue_breakdown_from_persons."""
         synagogue_counts: dict[str, int] = {}
         for record in camper_history:
             synagogue = getattr(record, "synagogue", "") or ""
@@ -619,15 +616,16 @@ class RegistrationService:
                 count=c,
                 percentage=calculate_percentage(c, total),
             )
-            for s, c in sorted(synagogue_counts.items(), key=lambda x: -x[1])[:20]
+            for s, c in sorted(synagogue_counts.items(), key=lambda x: -x[1])
         ]
 
     def _compute_school_breakdown_from_persons(
         self, person_ids: set[int], persons: dict[int, Any], total: int
     ) -> list[SchoolBreakdown]:
-        """Compute school breakdown from persons table (top 20).
+        """Compute school breakdown from persons table.
 
         Uses persons.school field directly instead of camper_history.
+        Returns all schools sorted by count (descending).
         """
         school_counts: dict[str, int] = {}
         for pid in person_ids:
@@ -644,15 +642,16 @@ class RegistrationService:
                 count=c,
                 percentage=calculate_percentage(c, total),
             )
-            for s, c in sorted(school_counts.items(), key=lambda x: -x[1])[:20]
+            for s, c in sorted(school_counts.items(), key=lambda x: -x[1])
         ]
 
     def _compute_city_breakdown_from_persons(
         self, person_ids: set[int], persons: dict[int, Any], total: int
     ) -> list[CityBreakdown]:
-        """Compute city breakdown from persons table (top 20).
+        """Compute city breakdown from persons table.
 
         Uses persons.address["city"] (JSON field) instead of camper_history.
+        Returns all cities sorted by count (descending).
         """
         city_counts: dict[str, int] = {}
         for pid in person_ids:
@@ -672,7 +671,7 @@ class RegistrationService:
                 count=cnt,
                 percentage=calculate_percentage(cnt, total),
             )
-            for c, cnt in sorted(city_counts.items(), key=lambda x: -x[1])[:20]
+            for c, cnt in sorted(city_counts.items(), key=lambda x: -x[1])
         ]
 
     def _compute_synagogue_breakdown_from_persons(
@@ -682,10 +681,11 @@ class RegistrationService:
         synagogue_by_household: dict[int, str],
         total: int,
     ) -> list[SynagogueBreakdown]:
-        """Compute synagogue breakdown from household custom values (top 20).
+        """Compute synagogue breakdown from household custom values.
 
         Uses the synagogue_by_household mapping (from household_custom_values)
         which maps household CampMinder IDs to synagogue names.
+        Returns all synagogues sorted by count (descending).
         """
         synagogue_counts: dict[str, int] = {}
         for pid in person_ids:
@@ -705,7 +705,92 @@ class RegistrationService:
                 count=c,
                 percentage=calculate_percentage(c, total),
             )
-            for s, c in sorted(synagogue_counts.items(), key=lambda x: -x[1])[:20]
+            for s, c in sorted(synagogue_counts.items(), key=lambda x: -x[1])
+        ]
+
+    def _compute_school_breakdown_normalized(
+        self,
+        normalized_geo: list[Any],
+        total: int,
+    ) -> list[SchoolBreakdown]:
+        """Compute school breakdown from normalized_mappings.
+
+        Uses normalized_mappings where category='school'.
+        Each row represents one person in one session, so we count rows.
+        Returns schools sorted by count (descending).
+        """
+        school_counts: dict[str, int] = {}
+        for record in normalized_geo:
+            if getattr(record, "category", "") != "school":
+                continue
+            normalized = getattr(record, "normalized_value", "") or ""
+            if normalized:
+                school_counts[normalized] = school_counts.get(normalized, 0) + 1
+
+        return [
+            SchoolBreakdown(
+                school=s,
+                count=c,
+                percentage=calculate_percentage(c, total),
+            )
+            for s, c in sorted(school_counts.items(), key=lambda x: -x[1])
+        ]
+
+    def _compute_city_breakdown_normalized(
+        self,
+        normalized_geo: list[Any],
+        total: int,
+    ) -> list[CityBreakdown]:
+        """Compute city breakdown from normalized_mappings.
+
+        Uses normalized_mappings where category='city'.
+        Each row represents one person in one session, so we count rows.
+        Returns cities sorted by count (descending).
+        """
+        city_counts: dict[str, int] = {}
+        for record in normalized_geo:
+            if getattr(record, "category", "") != "city":
+                continue
+            normalized = getattr(record, "normalized_value", "") or ""
+            if normalized:
+                city_counts[normalized] = city_counts.get(normalized, 0) + 1
+
+        return [
+            CityBreakdown(
+                city=c,
+                count=cnt,
+                percentage=calculate_percentage(cnt, total),
+            )
+            for c, cnt in sorted(city_counts.items(), key=lambda x: -x[1])
+        ]
+
+    def _compute_synagogue_breakdown_normalized(
+        self,
+        normalized_geo: list[Any],
+        total: int,
+    ) -> list[SynagogueBreakdown]:
+        """Compute synagogue/congregation breakdown from normalized_mappings.
+
+        Uses normalized_mappings where category='congregation'.
+        Data comes from person_custom_values "HH-Name of Congregation" field.
+        Each row represents one person in one session, so we count rows.
+        Returns synagogues sorted by count (descending).
+        """
+        synagogue_counts: dict[str, int] = {}
+        for record in normalized_geo:
+            if getattr(record, "category", "") != "congregation":
+                continue
+            normalized = getattr(record, "normalized_value", "") or ""
+            if normalized:
+                synagogue_counts[normalized] = synagogue_counts.get(normalized, 0) + 1
+
+        return [
+            SynagogueBreakdown(
+                synagogue=s,
+                count=c,
+                percentage=calculate_percentage(c, total),
+            )
+            for s, c in sorted(synagogue_counts.items(), key=lambda x: -x[1])
         ]
 
     def _compute_first_year_breakdown(self, camper_history: list[Any], total: int) -> list[FirstYearBreakdown]:

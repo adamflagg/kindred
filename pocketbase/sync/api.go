@@ -396,6 +396,12 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 		return handleStaffVehicleInfoSync(e, scheduler)
 	}))
 
+	// Normalize geographic data sync
+	// Normalizes state/country names in attendees table using normalized_mappings
+	e.Router.POST("/api/custom/sync/normalize-geographic", requireAuth(func(e *core.RequestEvent) error {
+		return handleIndividualSync(e, scheduler, "normalize_geographic")
+	}))
+
 	return nil
 }
 
@@ -799,6 +805,7 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 		"quest_registrations",        // Derived: Quest program registration extraction
 		"staff_applications",         // Derived: staff applications extraction
 		"staff_vehicle_info",         // Derived: staff vehicle info extraction
+		"normalize_geographic",       // Derived: normalize state/country names
 		"bunk_requests",
 		"process_requests",
 		"multi_workbook_export",

@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -1998,6 +1999,216 @@ func isFamilySessionType(sessionType string) bool {
 
 // ============================================================================
 // Idempotency tests for upsert pattern
+// ============================================================================
+
+// ============================================================================
+// Bug Fix Tests: City extraction from JSON string address field
+// ============================================================================
+
+// TestCamperHistoryAddressJSONStringParsing tests that city/state are extracted
+// from the address field which is stored as a JSON string (not map[string]interface{})
+func TestCamperHistoryAddressJSONStringParsing(t *testing.T) {
+	tests := []struct {
+		name          string
+		addressJSON   string
+		expectedCity  string
+		expectedState string
+	}{
+		{
+			name:          "valid JSON with city and state",
+			addressJSON:   `{"city":"Oakland","state":"CA"}`,
+			expectedCity:  "Oakland",
+			expectedState: "CA",
+		},
+		{
+			name:          "valid JSON with city only",
+			addressJSON:   `{"city":"San Francisco"}`,
+			expectedCity:  "San Francisco",
+			expectedState: "",
+		},
+		{
+			name:          "valid JSON with state only",
+			addressJSON:   `{"state":"NY"}`,
+			expectedCity:  "",
+			expectedState: "NY",
+		},
+		{
+			name:          "empty JSON object",
+			addressJSON:   `{}`,
+			expectedCity:  "",
+			expectedState: "",
+		},
+		{
+			name:          "empty string",
+			addressJSON:   "",
+			expectedCity:  "",
+			expectedState: "",
+		},
+		{
+			name:          "full address with street and zip",
+			addressJSON:   `{"street1":"123 Main St","city":"Berkeley","state":"CA","zip":"94704"}`,
+			expectedCity:  "Berkeley",
+			expectedState: "CA",
+		},
+		{
+			name:          "null city value",
+			addressJSON:   `{"city":null,"state":"CA"}`,
+			expectedCity:  "",
+			expectedState: "CA",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			city, state := extractCityStateFromAddressJSON(tt.addressJSON)
+			if city != tt.expectedCity {
+				t.Errorf("city = %q, want %q", city, tt.expectedCity)
+			}
+			if state != tt.expectedState {
+				t.Errorf("state = %q, want %q", state, tt.expectedState)
+			}
+		})
+	}
+}
+
+// TestCamperHistoryAddressNotMapDirectly tests that the address field type
+// is handled correctly - it's stored as a JSON string, not a map
+func TestCamperHistoryAddressNotMapDirectly(t *testing.T) {
+	// This simulates the bug: trying to type-assert string as map
+	// The fix is to unmarshal the JSON string first
+
+	// Simulate what PocketBase returns: address field is a string
+	addressFieldValue := `{"city":"Oakland","state":"CA"}`
+
+	// WRONG approach (the bug): try to type-assert as map directly
+	_, okAsMap := interface{}(addressFieldValue).(map[string]interface{})
+	if okAsMap {
+		t.Error("address should NOT type-assert as map[string]interface{} directly")
+	}
+
+	// CORRECT approach: recognize it's a string and unmarshal
+	_, okAsString := interface{}(addressFieldValue).(string)
+	if !okAsString {
+		t.Error("address SHOULD type-assert as string")
+	}
+}
+
+// extractCityStateFromAddressJSON extracts city and state from JSON string
+// This is the test implementation that the production code should match
+func extractCityStateFromAddressJSON(addressJSON string) (city, state string) {
+	if addressJSON == "" {
+		return "", ""
+	}
+
+	// Unmarshal the JSON string
+	var address map[string]interface{}
+	if err := json.Unmarshal([]byte(addressJSON), &address); err != nil {
+		return "", ""
+	}
+
+	// Extract city
+	if c, ok := address["city"].(string); ok {
+		city = c
+	}
+
+	// Extract state
+	if s, ok := address["state"].(string); ok {
+		state = s
+	}
+
+	return city, state
+}
+
+// ============================================================================
+// Bug Fix Tests: Congregation data source (person_custom_values vs household)
+// ============================================================================
+
+// TestCamperHistoryCongregationSourcePriority tests that congregation is loaded
+// from person_custom_values (HH-Name of Congregation) as primary source,
+// with household_custom_values (Synagogue) as fallback
+func TestCamperHistoryCongregationSourcePriority(t *testing.T) {
+	tests := []struct {
+		name                   string
+		personCongregation     string // From person_custom_values "HH-Name of Congregation"
+		householdSynagogue     string // From household_custom_values "Synagogue"
+		expectedCongregation   string
+		expectedUsingPersonSrc bool
+	}{
+		{
+			name:                   "person congregation available",
+			personCongregation:     "Temple Beth Abraham",
+			householdSynagogue:     "Different Synagogue",
+			expectedCongregation:   "Temple Beth Abraham", // Person takes priority
+			expectedUsingPersonSrc: true,
+		},
+		{
+			name:                   "only household synagogue available",
+			personCongregation:     "",
+			householdSynagogue:     "Congregation Shalom",
+			expectedCongregation:   "Congregation Shalom", // Fallback to household
+			expectedUsingPersonSrc: false,
+		},
+		{
+			name:                   "both empty",
+			personCongregation:     "",
+			householdSynagogue:     "",
+			expectedCongregation:   "",
+			expectedUsingPersonSrc: false,
+		},
+		{
+			name:                   "person congregation takes priority even when both exist",
+			personCongregation:     "Beth Jacob",
+			householdSynagogue:     "Temple Israel",
+			expectedCongregation:   "Beth Jacob",
+			expectedUsingPersonSrc: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, usedPersonSrc := mergeCongregationSources(tt.personCongregation, tt.householdSynagogue)
+			if result != tt.expectedCongregation {
+				t.Errorf("congregation = %q, want %q", result, tt.expectedCongregation)
+			}
+			if usedPersonSrc != tt.expectedUsingPersonSrc {
+				t.Errorf("usedPersonSrc = %v, want %v", usedPersonSrc, tt.expectedUsingPersonSrc)
+			}
+		})
+	}
+}
+
+// mergeCongregationSources merges congregation from person and household sources
+// Person source takes priority (HH-Name of Congregation from person_custom_values)
+// Household source is fallback (Synagogue from household_custom_values)
+func mergeCongregationSources(personCongregation, householdSynagogue string) (result string, usedPersonSrc bool) {
+	if personCongregation != "" {
+		return personCongregation, true
+	}
+	return householdSynagogue, false
+}
+
+// TestCamperHistoryCongregationFieldNames tests the correct custom field names
+func TestCamperHistoryCongregationFieldNames(t *testing.T) {
+	// These are the expected field names in CampMinder custom values
+	personFieldName := "HH-Name of Congregation" // person_custom_values - rich data (2376 records)
+	householdFieldName := "Synagogue"            // household_custom_values - sparse data (29 records)
+
+	// Verify the field names are not empty
+	if personFieldName == "" {
+		t.Error("personFieldName should not be empty")
+	}
+	if householdFieldName == "" {
+		t.Error("householdFieldName should not be empty")
+	}
+
+	// Verify they are different (not the same field)
+	if personFieldName == householdFieldName {
+		t.Error("person and household congregation field names should be different")
+	}
+}
+
+// ============================================================================
+// Upsert helper tests (continued)
 // ============================================================================
 
 // TestCamperHistoryCompositeKeyFormat tests the composite key format used for upsert

@@ -187,7 +187,7 @@ export function DrillDownModal({
   if (!filter) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/50">
       <div className="bg-card border-border flex max-h-[85vh] w-full max-w-5xl flex-col rounded-lg border shadow-xl">
         {/* Header */}
         <div className="border-border flex items-center justify-between border-b px-6 py-4">

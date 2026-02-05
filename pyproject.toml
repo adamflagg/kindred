@@ -60,6 +60,7 @@ dependencies = [
     "PyPDF2>=3.0.0",
     # System
     "psutil>=5.9.0",
+    "rapidfuzz>=3.14.3",
 ]
 
 [dependency-groups]

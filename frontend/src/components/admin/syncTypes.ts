@@ -27,6 +27,7 @@ import {
   Utensils,
   Mountain,
   Car,
+  MapPin,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -259,6 +260,13 @@ export const YEAR_SYNC_TYPES = [
     name: 'Staff Vehicles',
     icon: Car,
     color: 'text-slate-500',
+    phase: 'transform' as SyncPhase,
+  },
+  {
+    id: 'normalize_geographic',
+    name: 'Normalize Geo',
+    icon: MapPin,
+    color: 'text-emerald-500',
     phase: 'transform' as SyncPhase,
   },
   // Process phase - CSV + AI (current year only)
