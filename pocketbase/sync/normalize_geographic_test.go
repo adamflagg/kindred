@@ -4,6 +4,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 // ============================================================================
@@ -299,9 +302,18 @@ type testNormStats struct {
 func TestUpsertNormalizedMappingsIdempotency(t *testing.T) {
 	// Simulate computed mappings from source data
 	mappings := []*testNormalizedMapping{
-		{Category: "city", OriginalValue: "Oakland", NormalizedValue: "Oakland", OccurrenceCount: 10, Year: 2025},
-		{Category: "city", OriginalValue: "San Francisco", NormalizedValue: "San Francisco", OccurrenceCount: 5, Year: 2025},
-		{Category: "congregation", OriginalValue: "Temple Beth Abraham", NormalizedValue: "Temple Beth Abraham", OccurrenceCount: 3, Year: 2025},
+		{
+			Category: "city", OriginalValue: "Oakland",
+			NormalizedValue: "Oakland", OccurrenceCount: 10, Year: 2025,
+		},
+		{
+			Category: "city", OriginalValue: "San Francisco",
+			NormalizedValue: "San Francisco", OccurrenceCount: 5, Year: 2025,
+		},
+		{
+			Category: "congregation", OriginalValue: "Temple Beth Abraham",
+			NormalizedValue: "Temple Beth Abraham", OccurrenceCount: 3, Year: 2025,
+		},
 	}
 
 	// First run: no existing records
@@ -359,9 +371,19 @@ func TestUpsertNormalizedMappingsUpdateDetection(t *testing.T) {
 func TestUpsertNormalizedMappingsOrphanDeletion(t *testing.T) {
 	// Existing records in database
 	existingMappings := []*testNormalizedMapping{
-		{Category: "city", OriginalValue: "Oakland", NormalizedValue: "Oakland", OccurrenceCount: 10, Year: 2025},
-		{Category: "city", OriginalValue: "San Francisco", NormalizedValue: "San Francisco", OccurrenceCount: 5, Year: 2025},
-		{Category: "city", OriginalValue: "Los Angeles", NormalizedValue: "Los Angeles", OccurrenceCount: 2, Year: 2025}, // Will be orphaned
+		{
+			Category: "city", OriginalValue: "Oakland",
+			NormalizedValue: "Oakland", OccurrenceCount: 10, Year: 2025,
+		},
+		{
+			Category: "city", OriginalValue: "San Francisco",
+			NormalizedValue: "San Francisco", OccurrenceCount: 5, Year: 2025,
+		},
+		{
+			// This one will be orphaned (no longer in source data)
+			Category: "city", OriginalValue: "Los Angeles",
+			NormalizedValue: "Los Angeles", OccurrenceCount: 2, Year: 2025,
+		},
 	}
 	existing := buildExistingMappingsMap(existingMappings, 2025)
 
@@ -587,7 +609,8 @@ func normalizeCityValue(city string) string {
 	}
 
 	// Title case
-	return strings.Title(strings.TrimSpace(strings.ToLower(city)))
+	caser := cases.Title(language.English)
+	return caser.String(strings.TrimSpace(strings.ToLower(city)))
 }
 
 // normalizeCongregationValue normalizes congregation names
