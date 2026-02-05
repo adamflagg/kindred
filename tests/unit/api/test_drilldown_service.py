@@ -792,3 +792,82 @@ class TestSynagogueBreakdown:
         )
 
         assert len(result) == 0
+
+
+# ============================================================================
+# Tests for discrete address columns in DrilldownAttendee
+# ============================================================================
+
+
+class TestDiscreteAddressColumns:
+    """Verify city/state come from discrete person columns, not JSON address field.
+
+    The JSON address field was removed in Phase 3 (PR #208). The drilldown service
+    must read city from person.address_city and state from person.address_state.
+    """
+
+    @pytest.mark.asyncio
+    async def test_drilldown_attendee_has_city_from_discrete_column(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+    ) -> None:
+        """DrilldownAttendee.city should be populated from person.address_city."""
+        persons = {
+            101: create_mock_person(
+                101, "Emma", "Johnson", "F", 5,
+                years_at_camp=1,
+                address_city="Springfield", address_state="IL",
+            ),
+        }
+        attendees = [
+            create_mock_attendee(101, sample_sessions[1001], 2026),
+        ]
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = persons
+        mock_repository.fetch_attendees.return_value = attendees
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="returning_status",
+            breakdown_value="new",
+        )
+
+        assert len(result) == 1
+        # City and state must come from the discrete columns
+        assert result[0].city == "Springfield"
+        assert result[0].state == "IL"
+
+    @pytest.mark.asyncio
+    async def test_drilldown_attendee_empty_address_columns(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+    ) -> None:
+        """DrilldownAttendee.city/state should be None when discrete columns are empty."""
+        persons = {
+            101: create_mock_person(
+                101, "Emma", "Johnson", "F", 5,
+                years_at_camp=1,
+                address_city="", address_state="",
+            ),
+        }
+        attendees = [
+            create_mock_attendee(101, sample_sessions[1001], 2026),
+        ]
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = persons
+        mock_repository.fetch_attendees.return_value = attendees
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="returning_status",
+            breakdown_value="new",
+        )
+
+        assert len(result) == 1
+        # Empty strings should become None
+        assert result[0].city is None
+        assert result[0].state is None
