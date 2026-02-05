@@ -382,11 +382,11 @@ class DrilldownService:
 
         return result
 
-    def _parse_city_from_address(self, address: str | None) -> str | None:
-        """Parse city from address JSON string.
+    def _parse_city_from_address(self, address: str | dict[str, Any] | None) -> str | None:
+        """Parse city from address (dict or JSON string).
 
         Args:
-            address: JSON string containing address fields, or None.
+            address: Address dict or JSON string containing address fields, or None.
 
         Returns:
             City name if found, None otherwise.
@@ -395,17 +395,21 @@ class DrilldownService:
             return None
 
         try:
-            addr_data = json.loads(address)
+            # Handle dict (PocketBase JSON fields return dicts directly)
+            if isinstance(address, dict):
+                addr_data = address
+            else:
+                addr_data = json.loads(address)
             city = addr_data.get("city")
             return str(city) if city else None
         except (json.JSONDecodeError, TypeError, AttributeError):
             return None
 
-    def _parse_state_from_address(self, address: str | None) -> str | None:
-        """Parse state from address JSON string.
+    def _parse_state_from_address(self, address: str | dict[str, Any] | None) -> str | None:
+        """Parse state from address (dict or JSON string).
 
         Args:
-            address: JSON string containing address fields, or None.
+            address: Address dict or JSON string containing address fields, or None.
 
         Returns:
             State abbreviation if found, None otherwise.
@@ -414,7 +418,11 @@ class DrilldownService:
             return None
 
         try:
-            addr_data = json.loads(address)
+            # Handle dict (PocketBase JSON fields return dicts directly)
+            if isinstance(address, dict):
+                addr_data = address
+            else:
+                addr_data = json.loads(address)
             state = addr_data.get("state")
             return str(state) if state else None
         except (json.JSONDecodeError, TypeError, AttributeError):
