@@ -85,6 +85,7 @@ var syncJobMeta = []JobMeta{
 	{"quest_registrations", PhaseTransform, "Extract Quest program registration info from custom values"},
 	{"staff_applications", PhaseTransform, "Extract staff application info from custom values"},
 	{"staff_vehicle_info", PhaseTransform, "Extract staff vehicle info from custom values"},
+	{"normalize_geographic", PhaseTransform, "Normalize geographic data (cities, schools, congregations)"},
 
 	// Process phase - CSV + AI
 	{"bunk_requests", PhaseProcess, "Import bunk request CSV"},
@@ -1007,7 +1008,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 				"camper_history", "family_camp_derived", "staff_skills",
 				"financial_aid_applications", "household_demographics",
 				"camper_dietary", "camper_transportation", "quest_registrations",
-				"staff_applications", "staff_vehicle_info")
+				"staff_applications", "staff_vehicle_info", "normalize_geographic")
 		}
 
 		// Only include bunk_requests and process_requests for current year syncs (not historical)
@@ -1145,6 +1146,11 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		staffVehicleInfoSync := NewStaffVehicleInfoSync(o.app)
 		staffVehicleInfoSync.Year = opts.Year
 		o.RegisterService("staff_vehicle_info", staffVehicleInfoSync)
+
+		// Geographic normalization (depends on camper_history)
+		normalizeGeographicSync := NewNormalizeGeographicSync(o.app)
+		normalizeGeographicSync.Year = opts.Year
+		o.RegisterService("normalize_geographic", normalizeGeographicSync)
 
 		// Custom value services for historical sync support
 		// These use GetSeasonID() to determine the year, so they need year-specific client
@@ -1670,6 +1676,9 @@ func (o *Orchestrator) InitializeSyncServices() error {
 
 	// Staff vehicle info (computes from SVI-* fields)
 	o.RegisterService("staff_vehicle_info", NewStaffVehicleInfoSync(o.app))
+
+	// Geographic normalization (computes from camper_history)
+	o.RegisterService("normalize_geographic", NewNormalizeGeographicSync(o.app))
 
 	slog.Info("All sync services registered")
 	return nil
