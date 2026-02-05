@@ -332,6 +332,8 @@ export interface DrilldownFilter {
     | 'gender'
     | 'grade'
     | 'school'
+    | 'city'
+    | 'synagogue'
     | 'years_at_camp'
     | 'status'
     | 'returning_status'
