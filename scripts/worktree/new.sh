@@ -210,9 +210,8 @@ for port in $POCKETBASE_PORT $VITE_PORT $FASTAPI_PORT $CADDY_PORT; do
 done
 
 # Start PocketBase
-cd pocketbase && ./pocketbase serve --http=0.0.0.0:$POCKETBASE_PORT &
+(cd pocketbase && ./pocketbase serve --http=0.0.0.0:$POCKETBASE_PORT) &
 PB_PID=$!
-cd ..
 sleep 3
 
 # Start FastAPI
