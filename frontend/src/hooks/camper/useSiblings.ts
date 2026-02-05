@@ -3,11 +3,15 @@
  * Finds other enrolled campers in the same household
  */
 
-import { useQuery } from '@tanstack/react-query';
-import { pb } from '../../lib/pocketbase';
-import { VALID_SUMMER_SESSION_TYPES } from '../../constants/sessionTypes';
-import type { PersonsResponse, AttendeesResponse, BunkAssignmentsResponse } from '../../types/pocketbase-types';
-import type { SiblingWithEnrollment } from './types';
+import { useQuery } from "@tanstack/react-query";
+import { pb } from "../../lib/pocketbase";
+import { VALID_SUMMER_SESSION_TYPES } from "../../constants/sessionTypes";
+import type {
+  PersonsResponse,
+  AttendeesResponse,
+  BunkAssignmentsResponse,
+} from "../../types/pocketbase-types";
+import type { SiblingWithEnrollment } from "./types";
 
 export interface UseSiblingsResult {
   siblings: SiblingWithEnrollment[];
@@ -18,10 +22,14 @@ export interface UseSiblingsResult {
 export function useSiblings(
   householdId: number | undefined,
   personCmId: number | null,
-  currentYear: number
+  currentYear: number,
 ): UseSiblingsResult {
-  const { data: siblings = [], isLoading, error } = useQuery({
-    queryKey: ['camper-siblings', householdId, personCmId, currentYear],
+  const {
+    data: siblings = [],
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["camper-siblings", householdId, personCmId, currentYear],
     queryFn: async () => {
       if (!householdId || householdId === 0 || !personCmId) {
         return [];
@@ -32,12 +40,14 @@ export function useSiblings(
 
       let siblingPersons: PersonsResponse[] = [];
       try {
-        siblingPersons = await pb.collection<PersonsResponse>('persons').getFullList({
-          filter: siblingFilter,
-          sort: '-birthdate' // Oldest first
-        });
+        siblingPersons = await pb
+          .collection<PersonsResponse>("persons")
+          .getFullList({
+            filter: siblingFilter,
+            sort: "-birthdate", // Oldest first
+          });
       } catch (err) {
-        console.error('Error fetching siblings:', err);
+        console.error("Error fetching siblings:", err);
         return [];
       }
 
@@ -47,15 +57,19 @@ export function useSiblings(
       const siblingsWithEnrollment = await Promise.all(
         siblingPersons.map(async (siblingPerson) => {
           // Check if this sibling has any enrollment in valid summer sessions
-          const sessionTypeFilter = VALID_SUMMER_SESSION_TYPES.map(t => `session.session_type = "${t}"`).join(' || ');
+          const sessionTypeFilter = VALID_SUMMER_SESSION_TYPES.map(
+            (t) => `session.session_type = "${t}"`,
+          ).join(" || ");
           const enrollmentFilter = `person_id = ${siblingPerson.cm_id} && year = ${currentYear} && status = "enrolled" && (${sessionTypeFilter})`;
 
           try {
-            const attendees = await pb.collection<AttendeesResponse>('attendees').getFullList({
-              filter: enrollmentFilter,
-              expand: 'session',
-              $autoCancel: false
-            });
+            const attendees = await pb
+              .collection<AttendeesResponse>("attendees")
+              .getFullList({
+                filter: enrollmentFilter,
+                expand: "session",
+                $autoCancel: false,
+              });
 
             if (attendees.length === 0) {
               return null; // Not enrolled
@@ -63,11 +77,17 @@ export function useSiblings(
 
             // Get the first valid enrollment (prefer main session)
             const sortedAttendees = attendees.sort((a, b) => {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const aType = (a.expand as any)?.session?.session_type || 'unknown';
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const bType = (b.expand as any)?.session?.session_type || 'unknown';
-              const typeOrder: Record<string, number> = { 'main': 1, 'embedded': 2, 'ag': 3 };
+               
+              const aType =
+                (a.expand as any)?.session?.session_type || "unknown";
+               
+              const bType =
+                (b.expand as any)?.session?.session_type || "unknown";
+              const typeOrder: Record<string, number> = {
+                main: 1,
+                embedded: 2,
+                ag: 3,
+              };
               return (typeOrder[aType] || 999) - (typeOrder[bType] || 999);
             });
 
@@ -82,11 +102,13 @@ export function useSiblings(
             let bunkName: string | null = null;
             if (session) {
               try {
-                const assignments = await pb.collection<BunkAssignmentsResponse>('bunk_assignments').getFullList({
-                  filter: `person = "${siblingPerson?.id || ''}" && session = "${session?.id || ''}" && year = ${currentYear}`,
-                  expand: 'bunk',
-                  $autoCancel: false
-                });
+                const assignments = await pb
+                  .collection<BunkAssignmentsResponse>("bunk_assignments")
+                  .getFullList({
+                    filter: `person = "${siblingPerson?.id || ""}" && session = "${session?.id || ""}" && year = ${currentYear}`,
+                    expand: "bunk",
+                    $autoCancel: false,
+                  });
 
                 if (assignments.length > 0 && assignments[0]) {
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -99,25 +121,32 @@ export function useSiblings(
 
             return {
               ...siblingPerson,
-              session: session ? {
-                id: session.id,
-                cm_id: session.cm_id,
-                name: session.name,
-                session_type: session.session_type,
-                start_date: session.start_date,
-                end_date: session.end_date,
-              } : undefined,
-              bunkName
+              session: session
+                ? {
+                    id: session.id,
+                    cm_id: session.cm_id,
+                    name: session.name,
+                    session_type: session.session_type,
+                    start_date: session.start_date,
+                    end_date: session.end_date,
+                  }
+                : undefined,
+              bunkName,
             } as SiblingWithEnrollment;
           } catch (err) {
-            console.error(`Error checking enrollment for sibling ${siblingPerson.cm_id}:`, err);
+            console.error(
+              `Error checking enrollment for sibling ${siblingPerson.cm_id}:`,
+              err,
+            );
             return null;
           }
-        })
+        }),
       );
 
       // Filter out nulls (siblings not enrolled)
-      return siblingsWithEnrollment.filter((s): s is SiblingWithEnrollment => s !== null);
+      return siblingsWithEnrollment.filter(
+        (s): s is SiblingWithEnrollment => s !== null,
+      );
     },
     enabled: !!(householdId && householdId > 0),
     staleTime: 0, // Always fetch fresh data
