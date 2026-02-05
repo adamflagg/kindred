@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -1402,6 +1403,92 @@ func TestExtractCityFromAddressJSON(t *testing.T) {
 			if city != tt.expectedCity {
 				t.Errorf("extractCityFromAddress(%v) = %q, want %q",
 					tt.addressRaw, city, tt.expectedCity)
+			}
+		})
+	}
+}
+
+// ============================================================================
+// Docker-aware Python Command Tests
+// ============================================================================
+
+// TestBuildPythonNormalizerCommand verifies that the Python normalizer command
+// is constructed correctly for both Docker and development environments.
+// In Docker, uv is not available (only used at build time), so we must use
+// python3 directly. In development, we use uv run python.
+func TestBuildPythonNormalizerCommand(t *testing.T) {
+	tests := []struct {
+		name         string
+		isDocker     string
+		wantProgram  string
+		wantHasUVRun bool // whether args start with ["run", "python", ...]
+	}{
+		{
+			name:         "Docker environment uses python3 directly",
+			isDocker:     "true",
+			wantProgram:  "python3",
+			wantHasUVRun: false,
+		},
+		{
+			name:         "Development environment uses uv run",
+			isDocker:     "",
+			wantProgram:  "uv",
+			wantHasUVRun: true,
+		},
+		{
+			name:         "Explicit non-Docker uses uv run",
+			isDocker:     "false",
+			wantProgram:  "uv",
+			wantHasUVRun: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Save and restore IS_DOCKER env var
+			origVal, origSet := os.LookupEnv("IS_DOCKER")
+			if tt.isDocker != "" {
+				t.Setenv("IS_DOCKER", tt.isDocker)
+			} else if origSet {
+				t.Setenv("IS_DOCKER", "")
+			}
+			defer func() {
+				if origSet {
+					os.Setenv("IS_DOCKER", origVal)
+				} else {
+					os.Unsetenv("IS_DOCKER")
+				}
+			}()
+
+			program, args := buildPythonNormalizerCommand("city", `["Oakland","San Francisco"]`)
+
+			if program != tt.wantProgram {
+				t.Errorf("program = %q, want %q", program, tt.wantProgram)
+			}
+
+			// Check that args contain the module path and flags
+			argsStr := strings.Join(args, " ")
+			if !strings.Contains(argsStr, "-m bunking.geo_normalizer") {
+				t.Errorf("args should contain '-m bunking.geo_normalizer', got: %v", args)
+			}
+			if !strings.Contains(argsStr, "--category city") {
+				t.Errorf("args should contain '--category city', got: %v", args)
+			}
+			if !strings.Contains(argsStr, `--values ["Oakland","San Francisco"]`) {
+				t.Errorf("args should contain '--values' with JSON, got: %v", args)
+			}
+
+			// Verify uv run presence
+			if tt.wantHasUVRun {
+				if len(args) < 2 || args[0] != "run" || args[1] != "python" {
+					t.Errorf("dev mode args should start with ['run', 'python', ...], got: %v", args)
+				}
+			} else {
+				for _, arg := range args {
+					if arg == "run" {
+						t.Error("Docker mode should not have 'run' in args (no uv)")
+					}
+				}
 			}
 		})
 	}

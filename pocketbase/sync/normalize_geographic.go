@@ -449,6 +449,19 @@ type pythonNormalizedResult struct {
 	Confidence float64 `json:"confidence"`
 }
 
+// buildPythonNormalizerCommand returns the program and args for calling the Python
+// geo_normalizer. In Docker, uv is not available (only used at build time), so we
+// call python3 directly. In development, we use uv run python.
+func buildPythonNormalizerCommand(category, valuesJSON string) (program string, args []string) {
+	moduleArgs := []string{"-m", "bunking.geo_normalizer", "--category", category, "--values", valuesJSON}
+
+	if os.Getenv("IS_DOCKER") == boolTrue {
+		return "python3", moduleArgs
+	}
+
+	return "uv", append([]string{"run", "python"}, moduleArgs...)
+}
+
 // normalizeWithPython calls the Python geo_normalizer CLI for advanced fuzzy matching
 // Falls back to Go implementation if Python call fails
 func (n *NormalizeGeographicSync) normalizeWithPython(values []string, category string) (map[string]string, error) {
@@ -476,10 +489,8 @@ func (n *NormalizeGeographicSync) normalizeWithPython(values []string, category 
 	}
 
 	// Call Python normalizer
-	// #nosec G204 -- arguments are from internal sync logic, not user input
-	cmd := exec.Command("uv", "run", "python", "-m", "bunking.geo_normalizer",
-		"--category", category,
-		"--values", string(valuesJSON))
+	program, args := buildPythonNormalizerCommand(category, string(valuesJSON))
+	cmd := exec.Command(program, args...) // #nosec G204 -- arguments are from internal sync logic, not user input
 	cmd.Dir = projectRoot
 
 	output, err := cmd.Output()
