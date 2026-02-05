@@ -185,7 +185,21 @@ export function SessionLengthBySessionChart({
             tick={{ fill: 'hsl(var(--muted-foreground))' }}
           />
           <Tooltip content={<CustomTooltip />} />
-          <Legend />
+          <Legend
+            content={() => (
+              <div className="flex flex-wrap justify-center gap-4 mt-2">
+                {sessionList.map(([sessionId, sessionName], index) => (
+                  <div key={sessionId} className="flex items-center gap-1.5">
+                    <div
+                      className="w-3 h-3 rounded-sm"
+                      style={{ backgroundColor: sessionColors.get(`session_${sessionId}`) ?? COLORS[index % COLORS.length] ?? '#00b36b' }}
+                    />
+                    <span className="text-sm text-muted-foreground">{sessionName}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          />
           {sessionList.map(([sessionId, sessionName], index) => {
             const dataKey = `session_${sessionId}`;
             const isLast = index === sessionList.length - 1;
