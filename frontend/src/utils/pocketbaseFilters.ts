@@ -14,34 +14,34 @@
  * formatFilter('year=2025&&status="active"') // Returns: 'year = 2025 && status = "active"'
  */
 export function formatFilter(filter: string): string {
-  if (!filter) return filter;
+  if (!filter) return filter
 
   // Add spaces around comparison operators
   const formatted = filter
     // Handle != operator specifically
-    .replace(/!=(?=\S)/g, " != ")
-    .replace(/(?<=\S)!=/g, " != ")
+    .replace(/!=(?=\S)/g, ' != ')
+    .replace(/(?<=\S)!=/g, ' != ')
     // Handle other operators
-    .replace(/==(?=\S)/g, " == ")
-    .replace(/(?<=\S)==/g, " == ")
-    .replace(/<=(?=\S)/g, " <= ")
-    .replace(/(?<=\S)<=/g, " <= ")
-    .replace(/>=(?=\S)/g, " >= ")
-    .replace(/(?<=\S)>=/g, " >= ")
-    .replace(/<(?=\S)(?!=)/g, " < ")
-    .replace(/(?<=\S)(?<!<|>|!|=)</g, " < ")
-    .replace(/>(?=\S)(?!=)/g, " > ")
-    .replace(/(?<=\S)(?<!<|>|!|=)>/g, " > ")
-    .replace(/=(?=\S)(?!=)/g, " = ")
-    .replace(/(?<=\S)(?<![!<>=])=/g, " = ")
+    .replace(/==(?=\S)/g, ' == ')
+    .replace(/(?<=\S)==/g, ' == ')
+    .replace(/<=(?=\S)/g, ' <= ')
+    .replace(/(?<=\S)<=/g, ' <= ')
+    .replace(/>=(?=\S)/g, ' >= ')
+    .replace(/(?<=\S)>=/g, ' >= ')
+    .replace(/<(?=\S)(?!=)/g, ' < ')
+    .replace(/(?<=\S)(?<!<|>|!|=)</g, ' < ')
+    .replace(/>(?=\S)(?!=)/g, ' > ')
+    .replace(/(?<=\S)(?<!<|>|!|=)>/g, ' > ')
+    .replace(/=(?=\S)(?!=)/g, ' = ')
+    .replace(/(?<=\S)(?<![!<>=])=/g, ' = ')
     // Handle logical operators
-    .replace(/&&/g, " && ")
-    .replace(/\|\|/g, " || ")
+    .replace(/&&/g, ' && ')
+    .replace(/\|\|/g, ' || ')
     // Clean up multiple spaces
-    .replace(/\s+/g, " ")
-    .trim();
+    .replace(/\s+/g, ' ')
+    .trim()
 
-  return formatted;
+  return formatted
 }
 
 /**
@@ -56,20 +56,17 @@ export function formatFilter(filter: string): string {
  * buildFilter(['session_type = "main"', 'year = 2025'])
  * // Returns: 'session_type = "main" && year = 2025'
  */
-export function buildFilter(
-  conditions: string[],
-  operator: "&&" | "||" = "&&",
-): string {
-  if (!conditions || conditions.length === 0) return "";
+export function buildFilter(conditions: string[], operator: '&&' | '||' = '&&'): string {
+  if (!conditions || conditions.length === 0) return ''
 
   // Format each condition and join with operator
   const formatted = conditions
     .filter((c) => c && c.trim())
     .map((c) => formatFilter(c))
-    .join(` ${operator} `);
+    .join(` ${operator} `)
 
   // Wrap in parentheses if multiple conditions
-  return conditions.length > 1 ? `(${formatted})` : formatted;
+  return conditions.length > 1 ? `(${formatted})` : formatted
 }
 
 /**
@@ -84,8 +81,8 @@ export function buildFilter(
  * // Returns: '(session_type != "family" && session_type != "taste")'
  */
 export function createExclusionFilter(field: string, values: string[]): string {
-  const conditions = values.map((value) => `${field} != "${value}"`);
-  return buildFilter(conditions, "&&");
+  const conditions = values.map((value) => `${field} != "${value}"`)
+  return buildFilter(conditions, '&&')
 }
 
 /**
@@ -100,6 +97,6 @@ export function createExclusionFilter(field: string, values: string[]): string {
  * // Returns: '(session_type = "main" || session_type = "taste")'
  */
 export function createInclusionFilter(field: string, values: string[]): string {
-  const conditions = values.map((value) => `${field} = "${value}"`);
-  return buildFilter(conditions, "||");
+  const conditions = values.map((value) => `${field} = "${value}"`)
+  return buildFilter(conditions, '||')
 }

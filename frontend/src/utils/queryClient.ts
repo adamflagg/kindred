@@ -1,14 +1,14 @@
-import { QueryClient } from "@tanstack/react-query";
-import { persistQueryClient } from "@tanstack/react-query-persist-client";
-import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
-import { pb } from "../lib/pocketbase";
+import { QueryClient } from '@tanstack/react-query'
+import { persistQueryClient } from '@tanstack/react-query-persist-client'
+import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister'
+import { pb } from '../lib/pocketbase'
 
 // Create a sync storage persister
 const persister = createSyncStoragePersister({
   storage: window.localStorage,
-  key: "bunking-query-cache",
+  key: 'bunking-query-cache',
   throttleTime: 1000,
-});
+})
 
 // Create query client with simplified caching strategy
 // Most data uses 30/60 min defaults; user-editable data overrides at query level
@@ -28,11 +28,11 @@ export const queryClient = new QueryClient({
       // Retry failed requests up to 3 times
       retry: (failureCount, error) => {
         // Don't retry on 401 errors (PocketBase v0.23+ uses status at top level)
-        const httpError = error as { status?: number } | null;
+        const httpError = error as { status?: number } | null
         if (httpError?.status === 401) {
-          return false;
+          return false
         }
-        return failureCount < 3;
+        return failureCount < 3
       },
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
     },
@@ -40,38 +40,35 @@ export const queryClient = new QueryClient({
       // Global error handler for mutations
       onError: (error) => {
         // Handle 401 errors (PocketBase v0.23+ uses status at top level)
-        const httpError = error as { status?: number } | null;
+        const httpError = error as { status?: number } | null
         if (httpError?.status === 401) {
-          pb.authStore.clear();
-          if (
-            typeof window !== "undefined" &&
-            window.location.pathname !== "/login"
-          ) {
-            window.location.href = `/login?from=${encodeURIComponent(window.location.pathname)}`;
+          pb.authStore.clear()
+          if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+            window.location.href = `/login?from=${encodeURIComponent(window.location.pathname)}`
           }
         }
       },
     },
   },
-});
+})
 
 // Enable persistence to survive page refreshes
 persistQueryClient({
   queryClient,
   persister,
   maxAge: 24 * 60 * 60 * 1000, // 24 hours
-});
+})
 
 // Helper to manually invalidate cache (e.g., after sync)
 export const invalidateCache = () => {
-  queryClient.invalidateQueries();
-};
+  queryClient.invalidateQueries()
+}
 
 // Helper to clear all cache including localStorage persistence
 export const clearCache = () => {
-  queryClient.clear();
-  localStorage.removeItem("bunking-query-cache");
-};
+  queryClient.clear()
+  localStorage.removeItem('bunking-query-cache')
+}
 
 /**
  * Invalidate all sync-related data caches.
@@ -80,29 +77,29 @@ export const clearCache = () => {
  */
 export const invalidateSyncData = () => {
   // Sessions
-  queryClient.invalidateQueries({ queryKey: ["sessions"] });
-  queryClient.invalidateQueries({ queryKey: ["all-sessions"] });
-  queryClient.invalidateQueries({ queryKey: ["session"] });
-  queryClient.invalidateQueries({ queryKey: ["session-stats"] });
+  queryClient.invalidateQueries({ queryKey: ['sessions'] })
+  queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
+  queryClient.invalidateQueries({ queryKey: ['session'] })
+  queryClient.invalidateQueries({ queryKey: ['session-stats'] })
 
   // Campers and persons
-  queryClient.invalidateQueries({ queryKey: ["campers"] });
-  queryClient.invalidateQueries({ queryKey: ["all-campers"] });
-  queryClient.invalidateQueries({ queryKey: ["camper"] });
-  queryClient.invalidateQueries({ queryKey: ["camper-history"] });
+  queryClient.invalidateQueries({ queryKey: ['campers'] })
+  queryClient.invalidateQueries({ queryKey: ['all-campers'] })
+  queryClient.invalidateQueries({ queryKey: ['camper'] })
+  queryClient.invalidateQueries({ queryKey: ['camper-history'] })
 
   // Historical data
-  queryClient.invalidateQueries({ queryKey: ["historical-bunking"] });
+  queryClient.invalidateQueries({ queryKey: ['historical-bunking'] })
 
   // Bunks and assignments
-  queryClient.invalidateQueries({ queryKey: ["bunks"] });
-  queryClient.invalidateQueries({ queryKey: ["bunk-assignments"] });
+  queryClient.invalidateQueries({ queryKey: ['bunks'] })
+  queryClient.invalidateQueries({ queryKey: ['bunk-assignments'] })
 
   // Bunk requests
-  queryClient.invalidateQueries({ queryKey: ["bunk-requests"] });
-  queryClient.invalidateQueries({ queryKey: ["bunk-request-status"] });
+  queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
+  queryClient.invalidateQueries({ queryKey: ['bunk-request-status'] })
 
   // Sync status
-  queryClient.invalidateQueries({ queryKey: ["sync-status"] });
-  queryClient.invalidateQueries({ queryKey: ["sync-status-api"] });
-};
+  queryClient.invalidateQueries({ queryKey: ['sync-status'] })
+  queryClient.invalidateQueries({ queryKey: ['sync-status-api'] })
+}

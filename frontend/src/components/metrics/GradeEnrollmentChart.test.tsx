@@ -4,12 +4,12 @@
  * Tests are written FIRST before implementation (TDD).
  * This component displays a grouped bar chart showing enrollment by grade per year.
  */
-import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
-import { GradeEnrollmentChart } from "./GradeEnrollmentChart";
-import type { YearEnrollment } from "../../types/metrics";
+import { describe, it, expect } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import { GradeEnrollmentChart } from './GradeEnrollmentChart'
+import type { YearEnrollment } from '../../types/metrics'
 
-describe("GradeEnrollmentChart", () => {
+describe('GradeEnrollmentChart', () => {
   const mockData: YearEnrollment[] = [
     {
       year: 2024,
@@ -50,54 +50,52 @@ describe("GradeEnrollmentChart", () => {
         { grade: 8, count: 6 },
       ],
     },
-  ];
+  ]
 
-  describe("component export", () => {
-    it("should export GradeEnrollmentChart component", async () => {
-      const module = await import("./GradeEnrollmentChart");
-      expect(typeof module.GradeEnrollmentChart).toBe("function");
-    });
-  });
+  describe('component export', () => {
+    it('should export GradeEnrollmentChart component', async () => {
+      const module = await import('./GradeEnrollmentChart')
+      expect(typeof module.GradeEnrollmentChart).toBe('function')
+    })
+  })
 
-  describe("rendering", () => {
-    it("should render the chart with default title", () => {
-      render(<GradeEnrollmentChart data={mockData} />);
-      expect(screen.getByText("Enrollment by Grade")).toBeInTheDocument();
-    });
+  describe('rendering', () => {
+    it('should render the chart with default title', () => {
+      render(<GradeEnrollmentChart data={mockData} />)
+      expect(screen.getByText('Enrollment by Grade')).toBeInTheDocument()
+    })
 
-    it("should render with custom title", () => {
-      render(<GradeEnrollmentChart data={mockData} title="Custom Title" />);
-      expect(screen.getByText("Custom Title")).toBeInTheDocument();
-    });
+    it('should render with custom title', () => {
+      render(<GradeEnrollmentChart data={mockData} title="Custom Title" />)
+      expect(screen.getByText('Custom Title')).toBeInTheDocument()
+    })
 
     it('should render "No data available" when data is empty', () => {
-      render(<GradeEnrollmentChart data={[]} />);
-      expect(screen.getByText("No data available")).toBeInTheDocument();
-    });
+      render(<GradeEnrollmentChart data={[]} />)
+      expect(screen.getByText('No data available')).toBeInTheDocument()
+    })
 
-    it("should render the chart container with card-lodge class", () => {
-      const { container } = render(<GradeEnrollmentChart data={mockData} />);
-      expect(container.querySelector(".card-lodge")).toBeInTheDocument();
-    });
+    it('should render the chart container with card-lodge class', () => {
+      const { container } = render(<GradeEnrollmentChart data={mockData} />)
+      expect(container.querySelector('.card-lodge')).toBeInTheDocument()
+    })
 
-    it("should apply custom className", () => {
+    it('should apply custom className', () => {
       const { container } = render(
-        <GradeEnrollmentChart data={mockData} className="custom-class" />,
-      );
-      expect(container.querySelector(".custom-class")).toBeInTheDocument();
-    });
-  });
+        <GradeEnrollmentChart data={mockData} className="custom-class" />
+      )
+      expect(container.querySelector('.custom-class')).toBeInTheDocument()
+    })
+  })
 
-  describe("data transformation", () => {
-    it("should render chart container for valid data", () => {
-      const { container } = render(<GradeEnrollmentChart data={mockData} />);
+  describe('data transformation', () => {
+    it('should render chart container for valid data', () => {
+      const { container } = render(<GradeEnrollmentChart data={mockData} />)
       // The ResponsiveContainer should be present
-      expect(
-        container.querySelector(".recharts-responsive-container"),
-      ).toBeInTheDocument();
-    });
+      expect(container.querySelector('.recharts-responsive-container')).toBeInTheDocument()
+    })
 
-    it("should handle data with null grade without throwing", () => {
+    it('should handle data with null grade without throwing', () => {
       const dataWithNullGrade: YearEnrollment[] = [
         {
           year: 2024,
@@ -108,15 +106,13 @@ describe("GradeEnrollmentChart", () => {
             { grade: null, count: 10 },
           ],
         },
-      ];
+      ]
 
       // Should not throw
-      expect(() =>
-        render(<GradeEnrollmentChart data={dataWithNullGrade} />),
-      ).not.toThrow();
-    });
+      expect(() => render(<GradeEnrollmentChart data={dataWithNullGrade} />)).not.toThrow()
+    })
 
-    it("should handle data with empty grade list", () => {
+    it('should handle data with empty grade list', () => {
       const dataWithEmptyGrades: YearEnrollment[] = [
         {
           year: 2024,
@@ -124,14 +120,14 @@ describe("GradeEnrollmentChart", () => {
           by_gender: [],
           by_grade: [],
         },
-      ];
+      ]
 
       // Should render "No data available"
-      render(<GradeEnrollmentChart data={dataWithEmptyGrades} />);
-      expect(screen.getByText("No data available")).toBeInTheDocument();
-    });
+      render(<GradeEnrollmentChart data={dataWithEmptyGrades} />)
+      expect(screen.getByText('No data available')).toBeInTheDocument()
+    })
 
-    it("should sort grades numerically", () => {
+    it('should sort grades numerically', () => {
       const dataOutOfOrder: YearEnrollment[] = [
         {
           year: 2024,
@@ -143,48 +139,38 @@ describe("GradeEnrollmentChart", () => {
             { grade: 5, count: 20 },
           ],
         },
-      ];
+      ]
 
-      const { container } = render(
-        <GradeEnrollmentChart data={dataOutOfOrder} />,
-      );
+      const { container } = render(<GradeEnrollmentChart data={dataOutOfOrder} />)
 
       // Get all text elements that contain "Grade"
-      const xAxisLabels = container.querySelectorAll(
-        ".recharts-xAxis .recharts-text",
-      );
-      const labels = Array.from(xAxisLabels).map((el) => el.textContent);
+      const xAxisLabels = container.querySelectorAll('.recharts-xAxis .recharts-text')
+      const labels = Array.from(xAxisLabels).map((el) => el.textContent)
 
       // Find indices of grades in the order they appear
-      const grade3Index = labels.indexOf("Grade 3");
-      const grade5Index = labels.indexOf("Grade 5");
-      const grade7Index = labels.indexOf("Grade 7");
+      const grade3Index = labels.indexOf('Grade 3')
+      const grade5Index = labels.indexOf('Grade 5')
+      const grade7Index = labels.indexOf('Grade 7')
 
       // If indices are found, verify order (they should be ascending)
       if (grade3Index >= 0 && grade5Index >= 0 && grade7Index >= 0) {
-        expect(grade3Index).toBeLessThan(grade5Index);
-        expect(grade5Index).toBeLessThan(grade7Index);
+        expect(grade3Index).toBeLessThan(grade5Index)
+        expect(grade5Index).toBeLessThan(grade7Index)
       }
-    });
-  });
+    })
+  })
 
-  describe("chart configuration", () => {
-    it("should apply custom height", () => {
-      const { container } = render(
-        <GradeEnrollmentChart data={mockData} height={400} />,
-      );
-      const responsiveContainer = container.querySelector(
-        ".recharts-responsive-container",
-      );
-      expect(responsiveContainer).toBeInTheDocument();
-    });
+  describe('chart configuration', () => {
+    it('should apply custom height', () => {
+      const { container } = render(<GradeEnrollmentChart data={mockData} height={400} />)
+      const responsiveContainer = container.querySelector('.recharts-responsive-container')
+      expect(responsiveContainer).toBeInTheDocument()
+    })
 
-    it("should render recharts wrapper", () => {
-      const { container } = render(<GradeEnrollmentChart data={mockData} />);
+    it('should render recharts wrapper', () => {
+      const { container } = render(<GradeEnrollmentChart data={mockData} />)
       // Chart wrapper should be present (legend renders async/on resize)
-      expect(
-        container.querySelector(".recharts-responsive-container"),
-      ).toBeInTheDocument();
-    });
-  });
-});
+      expect(container.querySelector('.recharts-responsive-container')).toBeInTheDocument()
+    })
+  })
+})

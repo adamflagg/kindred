@@ -13,11 +13,11 @@
  * - Viewing 2024: 15.04 - 2 = 13.04
  */
 
-import { calculateAge } from "./ageCalculator";
+import { calculateAge } from './ageCalculator'
 
 export interface PersonWithAge {
-  age?: number | undefined;
-  birthdate?: string | undefined;
+  age?: number | undefined
+  birthdate?: string | undefined
 }
 
 /**
@@ -31,27 +31,24 @@ export interface PersonWithAge {
  * - Prefer stored age with year adjustment
  * - Fall back to birthdate calculation if stored age is missing
  */
-export function getDisplayAge(
-  person: PersonWithAge,
-  viewingYear: number,
-): number | null {
-  const currentYear = new Date().getFullYear();
-  const yearDiff = currentYear - viewingYear;
+export function getDisplayAge(person: PersonWithAge, viewingYear: number): number | null {
+  const currentYear = new Date().getFullYear()
+  const yearDiff = currentYear - viewingYear
 
   // Prefer stored age with year adjustment
   if (person.age !== undefined) {
-    const adjustedAge = person.age - yearDiff;
-    return Math.round(adjustedAge * 100) / 100;
+    const adjustedAge = person.age - yearDiff
+    return Math.round(adjustedAge * 100) / 100
   }
 
   // Fallback: calculate from birthdate if available
   if (person.birthdate) {
-    const currentAge = calculateAge(person.birthdate);
-    const adjustedAge = currentAge - yearDiff;
-    return Math.round(adjustedAge * 100) / 100;
+    const currentAge = calculateAge(person.birthdate)
+    const adjustedAge = currentAge - yearDiff
+    return Math.round(adjustedAge * 100) / 100
   }
 
-  return null;
+  return null
 }
 
 /**
@@ -61,9 +58,6 @@ export function getDisplayAge(
  * @param viewingYear - The year being viewed in the UI
  * @returns Age in CampMinder format (years.months) or null if unavailable
  */
-export function getDisplayAgeForYear(
-  person: PersonWithAge,
-  viewingYear: number,
-): number | null {
-  return getDisplayAge(person, viewingYear);
+export function getDisplayAgeForYear(person: PersonWithAge, viewingYear: number): number | null {
+  return getDisplayAge(person, viewingYear)
 }

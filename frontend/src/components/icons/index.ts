@@ -1,1 +1,1 @@
-export { CampMinderIcon } from "./CampMinderIcon";
+export { CampMinderIcon } from './CampMinderIcon'

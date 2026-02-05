@@ -1,4 +1,4 @@
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient } from '@tanstack/react-query'
 
 // Create a custom query client for tests
 export const createTestQueryClient = () =>
@@ -10,4 +10,4 @@ export const createTestQueryClient = () =>
         staleTime: 0,
       },
     },
-  });
+  })

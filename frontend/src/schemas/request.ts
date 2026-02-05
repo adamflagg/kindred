@@ -1,30 +1,26 @@
 /**
  * Zod schemas for request-related collections: bunk_requests, original_bunk_requests
  */
-import { z } from "zod";
+import { z } from 'zod'
 import {
   BaseSystemFieldsSchema,
   IsoDateStringSchema,
   RecordIdStringSchema,
   nullableJson,
-} from "./common";
+} from './common'
 
 // Bunk request type enum
 export const BunkRequestsRequestTypeSchema = z.enum([
-  "bunk_with",
-  "not_bunk_with",
-  "age_preference",
-]);
+  'bunk_with',
+  'not_bunk_with',
+  'age_preference',
+])
 
 // Bunk request status enum
-export const BunkRequestsStatusSchema = z.enum([
-  "resolved",
-  "pending",
-  "declined",
-]);
+export const BunkRequestsStatusSchema = z.enum(['resolved', 'pending', 'declined'])
 
 // Bunk request source enum
-export const BunkRequestsSourceSchema = z.enum(["family", "staff", "notes"]);
+export const BunkRequestsSourceSchema = z.enum(['family', 'staff', 'notes'])
 
 // Bunk requests record schema
 export const BunkRequestsRecordSchema = z.object({
@@ -62,21 +58,19 @@ export const BunkRequestsRecordSchema = z.object({
   status: BunkRequestsStatusSchema,
   was_dropped_for_spread: z.boolean().optional(),
   year: z.number(),
-});
+})
 
 // Full bunk requests response (with system fields)
-export const BunkRequestsResponseSchema = BunkRequestsRecordSchema.merge(
-  BaseSystemFieldsSchema,
-);
+export const BunkRequestsResponseSchema = BunkRequestsRecordSchema.merge(BaseSystemFieldsSchema)
 
 // Original bunk requests field enum
 export const OriginalBunkRequestsFieldSchema = z.enum([
-  "bunk_with",
-  "not_bunk_with",
-  "bunking_notes",
-  "internal_notes",
-  "socialize_with",
-]);
+  'bunk_with',
+  'not_bunk_with',
+  'bunking_notes',
+  'internal_notes',
+  'socialize_with',
+])
 
 // Original bunk requests record schema
 export const OriginalBunkRequestsRecordSchema = z.object({
@@ -85,26 +79,18 @@ export const OriginalBunkRequestsRecordSchema = z.object({
   processed: IsoDateStringSchema.optional(),
   requester: RecordIdStringSchema,
   year: z.number(),
-});
+})
 
 // Full original bunk requests response (with system fields)
 export const OriginalBunkRequestsResponseSchema =
-  OriginalBunkRequestsRecordSchema.merge(BaseSystemFieldsSchema);
+  OriginalBunkRequestsRecordSchema.merge(BaseSystemFieldsSchema)
 
 // Export types
-export type BunkRequestsRequestType = z.infer<
-  typeof BunkRequestsRequestTypeSchema
->;
-export type BunkRequestsStatus = z.infer<typeof BunkRequestsStatusSchema>;
-export type BunkRequestsSource = z.infer<typeof BunkRequestsSourceSchema>;
-export type BunkRequestsRecord = z.infer<typeof BunkRequestsRecordSchema>;
-export type BunkRequestsResponse = z.infer<typeof BunkRequestsResponseSchema>;
-export type OriginalBunkRequestsField = z.infer<
-  typeof OriginalBunkRequestsFieldSchema
->;
-export type OriginalBunkRequestsRecord = z.infer<
-  typeof OriginalBunkRequestsRecordSchema
->;
-export type OriginalBunkRequestsResponse = z.infer<
-  typeof OriginalBunkRequestsResponseSchema
->;
+export type BunkRequestsRequestType = z.infer<typeof BunkRequestsRequestTypeSchema>
+export type BunkRequestsStatus = z.infer<typeof BunkRequestsStatusSchema>
+export type BunkRequestsSource = z.infer<typeof BunkRequestsSourceSchema>
+export type BunkRequestsRecord = z.infer<typeof BunkRequestsRecordSchema>
+export type BunkRequestsResponse = z.infer<typeof BunkRequestsResponseSchema>
+export type OriginalBunkRequestsField = z.infer<typeof OriginalBunkRequestsFieldSchema>
+export type OriginalBunkRequestsRecord = z.infer<typeof OriginalBunkRequestsRecordSchema>
+export type OriginalBunkRequestsResponse = z.infer<typeof OriginalBunkRequestsResponseSchema>

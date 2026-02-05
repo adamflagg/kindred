@@ -1,18 +1,18 @@
-import { Link } from "react-router";
-import { ExternalLink } from "lucide-react";
-import clsx from "clsx";
+import { Link } from 'react-router'
+import { ExternalLink } from 'lucide-react'
+import clsx from 'clsx'
 
 interface CamperLinkProps {
   /** CampMinder person ID - must be positive to be valid for linking */
-  personCmId: number | null | undefined;
+  personCmId: number | null | undefined
   /** Name to display */
-  displayName: string;
+  displayName: string
   /** Whether the request/match is confirmed (resolved status) */
-  isConfirmed: boolean;
+  isConfirmed: boolean
   /** Whether to show "(unresolved)" suffix for unconfirmed requests */
-  showUnresolved?: boolean;
+  showUnresolved?: boolean
   /** Additional CSS classes */
-  className?: string;
+  className?: string
 }
 
 /**
@@ -32,47 +32,42 @@ export default function CamperLink({
   className,
 }: CamperLinkProps) {
   // Determine if we can create a valid link
-  const hasValidId = personCmId != null && personCmId > 0;
-  const canLink = hasValidId && isConfirmed;
+  const hasValidId = personCmId != null && personCmId > 0
+  const canLink = hasValidId && isConfirmed
 
   // Determine display text
-  const text = displayName || (hasValidId ? "View camper" : "");
+  const text = displayName || (hasValidId ? 'View camper' : '')
 
   // Build unresolved suffix
-  const unresolvedSuffix =
-    showUnresolved && !isConfirmed ? " (unresolved)" : "";
+  const unresolvedSuffix = showUnresolved && !isConfirmed ? ' (unresolved)' : ''
 
   if (canLink) {
     return (
       <Link
         to={`/summer/camper/${personCmId}`}
         className={clsx(
-          "inline-flex items-center gap-1 font-medium",
-          "text-foreground hover:text-primary hover:underline",
-          "transition-colors",
-          className,
+          'inline-flex items-center gap-1 font-medium',
+          'text-foreground hover:text-primary hover:underline',
+          'transition-colors',
+          className
         )}
         onClick={(e) => e.stopPropagation()}
         data-testid="camper-link-container"
       >
         {text}
-        <ExternalLink className="w-3 h-3 opacity-60 flex-shrink-0" />
+        <ExternalLink className="h-3 w-3 flex-shrink-0 opacity-60" />
       </Link>
-    );
+    )
   }
 
   // Render as plain text
   return (
     <span
-      className={clsx(
-        "text-muted-foreground",
-        !isConfirmed && "italic",
-        className,
-      )}
+      className={clsx('text-muted-foreground', !isConfirmed && 'italic', className)}
       data-testid="camper-link-container"
     >
       {text}
       {unresolvedSuffix}
     </span>
-  );
+  )
 }

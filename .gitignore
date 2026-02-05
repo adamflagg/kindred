@@ -199,6 +199,7 @@ tmp/
 !requirements-*.txt
 !package.json
 !package-lock.json
+!.prettierrc.json
 !**/sample_*.csv
 !config/staff_list.example.json
 !config/sheets_export.example.json

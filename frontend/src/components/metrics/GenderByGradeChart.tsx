@@ -18,128 +18,117 @@ import {
   ResponsiveContainer,
   Legend,
   LabelList,
-} from "recharts";
-import type {
-  GenderByGradeBreakdown,
-  DrilldownFilter,
-} from "../../types/metrics";
+} from 'recharts'
+import type { GenderByGradeBreakdown, DrilldownFilter } from '../../types/metrics'
 
 // Gender-specific colors
 const COLORS = {
-  male: "hsl(200, 70%, 50%)", // Blue
-  female: "hsl(350, 70%, 50%)", // Red/Pink
-};
+  male: 'hsl(200, 70%, 50%)', // Blue
+  female: 'hsl(350, 70%, 50%)', // Red/Pink
+}
 
 interface GenderByGradeChartProps {
-  data: GenderByGradeBreakdown[];
-  title?: string;
-  height?: number;
-  className?: string;
+  data: GenderByGradeBreakdown[]
+  title?: string
+  height?: number
+  className?: string
   /** Callback when a bar is clicked - drills down by grade */
-  onBarClick?: (filter: DrilldownFilter) => void;
+  onBarClick?: (filter: DrilldownFilter) => void
 }
 
 interface ChartDataItem {
-  name: string;
-  grade: number | null;
-  male: number;
-  female: number;
-  total: number;
+  name: string
+  grade: number | null
+  male: number
+  female: number
+  total: number
 }
 
 export function GenderByGradeChart({
   data,
-  title = "Gender by Grade",
+  title = 'Gender by Grade',
   height = 300,
-  className = "",
+  className = '',
   onBarClick,
 }: GenderByGradeChartProps) {
-  const isClickable = !!onBarClick;
+  const isClickable = !!onBarClick
 
   const handleClick = (item: ChartDataItem) => {
-    if (!onBarClick) return;
+    if (!onBarClick) return
 
     // Use 'null' string for unknown grade
-    const value = item.grade !== null ? String(item.grade) : "null";
+    const value = item.grade !== null ? String(item.grade) : 'null'
 
     onBarClick({
-      type: "grade",
+      type: 'grade',
       value,
       label: item.name,
-    });
-  };
+    })
+  }
 
   if (data.length === 0) {
     return (
       <div className={`card-lodge p-4 ${className}`}>
-        <h3 className="text-sm font-semibold text-foreground mb-4">{title}</h3>
-        <div className="flex items-center justify-center h-[200px] text-muted-foreground">
+        <h3 className="text-foreground mb-4 text-sm font-semibold">{title}</h3>
+        <div className="text-muted-foreground flex h-[200px] items-center justify-center">
           No data available
         </div>
       </div>
-    );
+    )
   }
 
   // Transform data for stacked bar chart
   const chartData: ChartDataItem[] = data.map((item) => ({
-    name: item.grade !== null ? `Grade ${item.grade}` : "Unknown",
+    name: item.grade !== null ? `Grade ${item.grade}` : 'Unknown',
     grade: item.grade,
     male: item.male_count,
     female: item.female_count,
     total: item.total,
-  }));
+  }))
 
   const CustomTooltip = ({
     active,
     payload,
     label,
   }: {
-    active?: boolean;
-    payload?: Array<{ name: string; value: number; color: string }>;
-    label?: string;
+    active?: boolean
+    payload?: Array<{ name: string; value: number; color: string }>
+    label?: string
   }) => {
     if (active && payload && payload.length) {
-      const total = payload.reduce((sum, p) => sum + (p.value || 0), 0);
+      const total = payload.reduce((sum, p) => sum + (p.value || 0), 0)
       return (
-        <div className="bg-card border border-border rounded-lg p-3 shadow-lg">
-          <p className="font-medium text-foreground mb-2">{label}</p>
+        <div className="bg-card border-border rounded-lg border p-3 shadow-lg">
+          <p className="text-foreground mb-2 font-medium">{label}</p>
           {payload.map((p, idx) => (
-            <p key={idx} className="text-sm text-muted-foreground">
-              <span style={{ color: p.color }}>{p.name}:</span>{" "}
-              <span className="font-semibold text-foreground">
-                {p.value} (
-                {total > 0 ? ((p.value / total) * 100).toFixed(0) : 0}%)
+            <p key={idx} className="text-muted-foreground text-sm">
+              <span style={{ color: p.color }}>{p.name}:</span>{' '}
+              <span className="text-foreground font-semibold">
+                {p.value} ({total > 0 ? ((p.value / total) * 100).toFixed(0) : 0}%)
               </span>
             </p>
           ))}
-          <p className="text-sm text-muted-foreground mt-1 border-t border-border pt-1">
-            Total:{" "}
-            <span className="font-semibold text-foreground">{total}</span>
+          <p className="text-muted-foreground border-border mt-1 border-t pt-1 text-sm">
+            Total: <span className="text-foreground font-semibold">{total}</span>
           </p>
         </div>
-      );
+      )
     }
-    return null;
-  };
+    return null
+  }
 
   return (
     <div className={`card-lodge p-4 ${className}`}>
-      <h3 className="text-sm font-semibold text-foreground mb-4">{title}</h3>
+      <h3 className="text-foreground mb-4 text-sm font-semibold">{title}</h3>
       <ResponsiveContainer width="100%" height={height}>
-        <BarChart
-          data={chartData}
-          margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-        >
+        <BarChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis
             dataKey="name"
             className="text-xs"
-            tick={{ fill: "hsl(var(--muted-foreground))" }}
+            tick={{ fill: 'hsl(var(--muted-foreground))' }}
           />
-          <YAxis
-            className="text-xs"
-            tick={{ fill: "hsl(var(--muted-foreground))" }}
-          />
+          <YAxis className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
           <Tooltip content={<CustomTooltip />} />
           <Legend />
           <Bar
@@ -149,10 +138,10 @@ export function GenderByGradeChart({
             fill={COLORS.male}
             radius={[0, 0, 0, 0]}
             onClick={(barData) => {
-              const item = barData as unknown as ChartDataItem;
-              if (item?.name) handleClick(item);
+              const item = barData as unknown as ChartDataItem
+              if (item?.name) handleClick(item)
             }}
-            style={{ cursor: isClickable ? "pointer" : undefined }}
+            style={{ cursor: isClickable ? 'pointer' : undefined }}
           />
           <Bar
             dataKey="female"
@@ -161,10 +150,10 @@ export function GenderByGradeChart({
             fill={COLORS.female}
             radius={[4, 4, 0, 0]}
             onClick={(barData) => {
-              const item = barData as unknown as ChartDataItem;
-              if (item?.name) handleClick(item);
+              const item = barData as unknown as ChartDataItem
+              if (item?.name) handleClick(item)
             }}
-            style={{ cursor: isClickable ? "pointer" : undefined }}
+            style={{ cursor: isClickable ? 'pointer' : undefined }}
           >
             <LabelList
               dataKey="total"
@@ -176,5 +165,5 @@ export function GenderByGradeChart({
         </BarChart>
       </ResponsiveContainer>
     </div>
-  );
+  )
 }

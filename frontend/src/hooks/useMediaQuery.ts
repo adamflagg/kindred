@@ -1,4 +1,4 @@
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from 'react'
 
 /**
  * Custom hook for responsive design - detects if a media query matches
@@ -15,50 +15,50 @@ export function useMediaQuery(query: string): boolean {
   // Use useSyncExternalStore pattern for subscribing to media query changes
   // This is the recommended React 18+ pattern for subscribing to external stores
   const getSnapshot = useCallback(() => {
-    if (typeof window === "undefined") return false;
-    return window.matchMedia(query).matches;
-  }, [query]);
+    if (typeof window === 'undefined') return false
+    return window.matchMedia(query).matches
+  }, [query])
 
   const subscribe = useCallback(
     (callback: () => void) => {
-      if (typeof window === "undefined") return () => {};
-      const mediaQuery = window.matchMedia(query);
-      mediaQuery.addEventListener("change", callback);
-      return () => mediaQuery.removeEventListener("change", callback);
+      if (typeof window === 'undefined') return () => {}
+      const mediaQuery = window.matchMedia(query)
+      mediaQuery.addEventListener('change', callback)
+      return () => mediaQuery.removeEventListener('change', callback)
     },
-    [query],
-  );
+    [query]
+  )
 
-  return useSyncExternalStore(subscribe, getSnapshot, () => false);
+  return useSyncExternalStore(subscribe, getSnapshot, () => false)
 }
 
 /**
  * Predefined breakpoint hooks for common Tailwind breakpoints
  */
 export function useIsMobile(): boolean {
-  return useMediaQuery("(max-width: 639px)");
+  return useMediaQuery('(max-width: 639px)')
 }
 
 export function useIsTablet(): boolean {
-  return useMediaQuery("(min-width: 640px) and (max-width: 1023px)");
+  return useMediaQuery('(min-width: 640px) and (max-width: 1023px)')
 }
 
 export function useIsDesktop(): boolean {
-  return useMediaQuery("(min-width: 1024px)");
+  return useMediaQuery('(min-width: 1024px)')
 }
 
 export function useIsLargeDesktop(): boolean {
-  return useMediaQuery("(min-width: 1280px)");
+  return useMediaQuery('(min-width: 1280px)')
 }
 
 /**
  * Returns responsive state object with all breakpoint info
  */
 export function useResponsive() {
-  const isMobile = useIsMobile();
-  const isTablet = useIsTablet();
-  const isDesktop = useIsDesktop();
-  const isLargeDesktop = useIsLargeDesktop();
+  const isMobile = useIsMobile()
+  const isTablet = useIsTablet()
+  const isDesktop = useIsDesktop()
+  const isLargeDesktop = useIsLargeDesktop()
 
   return {
     isMobile,
@@ -67,29 +67,29 @@ export function useResponsive() {
     isLargeDesktop,
     // Convenience: any touch-likely device (mobile or tablet)
     isTouchDevice: isMobile || isTablet,
-  };
+  }
 }
 
 /**
  * Detects if user prefers dark color scheme
  */
 export function usePrefersDarkMode(): boolean {
-  return useMediaQuery("(prefers-color-scheme: dark)");
+  return useMediaQuery('(prefers-color-scheme: dark)')
 }
 
 /**
  * Detects if user prefers reduced motion
  */
 export function usePrefersReducedMotion(): boolean {
-  return useMediaQuery("(prefers-reduced-motion: reduce)");
+  return useMediaQuery('(prefers-reduced-motion: reduce)')
 }
 
 /**
  * Detects device orientation
  */
-export function useOrientation(): "portrait" | "landscape" {
-  const isPortrait = useMediaQuery("(orientation: portrait)");
-  return isPortrait ? "portrait" : "landscape";
+export function useOrientation(): 'portrait' | 'landscape' {
+  const isPortrait = useMediaQuery('(orientation: portrait)')
+  return isPortrait ? 'portrait' : 'landscape'
 }
 
 /**
@@ -97,5 +97,5 @@ export function useOrientation(): "portrait" | "landscape" {
  * Note: This uses pointer media query, not just screen size
  */
 export function useHasTouch(): boolean {
-  return useMediaQuery("(pointer: coarse)");
+  return useMediaQuery('(pointer: coarse)')
 }

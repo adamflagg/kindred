@@ -3,72 +3,68 @@
  * Provides sticky navigation with primary tabs and conditional sub-nav
  * Wraps content with MetricsSessionProvider for unified session filtering
  */
-import { Outlet, useLocation } from "react-router";
-import { LayoutDashboard, Globe, Building2, Clock } from "lucide-react";
-import MetricsTypeTabs from "../../components/metrics/MetricsTypeTabs";
-import MetricsSubNav, {
-  type SubNavItem,
-} from "../../components/metrics/MetricsSubNav";
-import { MetricsSessionProvider } from "../../contexts/MetricsSessionContext";
+import { Outlet, useLocation } from 'react-router'
+import { LayoutDashboard, Globe, Building2, Clock } from 'lucide-react'
+import MetricsTypeTabs from '../../components/metrics/MetricsTypeTabs'
+import MetricsSubNav, { type SubNavItem } from '../../components/metrics/MetricsSubNav'
+import { MetricsSessionProvider } from '../../contexts/MetricsSessionContext'
 
 /** Sub-nav items for registration section */
 const REGISTRATION_SUB_NAV: SubNavItem[] = [
   {
-    id: "overview",
-    label: "Overview",
+    id: 'overview',
+    label: 'Overview',
     icon: LayoutDashboard,
-    path: "/metrics/registration/overview",
+    path: '/metrics/registration/overview',
   },
   {
-    id: "geo",
-    label: "Geographic",
+    id: 'geo',
+    label: 'Geographic',
     icon: Globe,
-    path: "/metrics/registration/geo",
+    path: '/metrics/registration/geo',
   },
   {
-    id: "synagogue",
-    label: "Synagogue",
+    id: 'synagogue',
+    label: 'Synagogue',
     icon: Building2,
-    path: "/metrics/registration/synagogue",
+    path: '/metrics/registration/synagogue',
   },
   {
-    id: "waitlist",
-    label: "Waitlist",
+    id: 'waitlist',
+    label: 'Waitlist',
     icon: Clock,
-    path: "/metrics/registration/waitlist",
+    path: '/metrics/registration/waitlist',
   },
-];
+]
 
 export default function MetricsLayout() {
-  const location = useLocation();
+  const location = useLocation()
 
   // Determine which sub-nav to show based on current section
   const getSubNavItems = (): SubNavItem[] => {
-    if (location.pathname.startsWith("/metrics/registration")) {
-      return REGISTRATION_SUB_NAV;
+    if (location.pathname.startsWith('/metrics/registration')) {
+      return REGISTRATION_SUB_NAV
     }
     // retention and trends don't have sub-pages yet
-    return [];
-  };
+    return []
+  }
 
-  const subNavItems = getSubNavItems();
+  const subNavItems = getSubNavItems()
 
   return (
     <MetricsSessionProvider>
-      <div className="min-h-screen bg-background">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-8">
+      <div className="bg-background min-h-screen">
+        <div className="mx-auto max-w-7xl px-4 pt-4 pb-8 sm:px-6 lg:px-8">
           {/* Header */}
           <div className="mb-6">
-            <h1 className="text-2xl font-bold text-foreground">
-              Registration Metrics
-            </h1>
-            <p className="mt-1 text-muted-foreground">
+            <h1 className="text-foreground text-2xl font-bold">Registration Metrics</h1>
+            <p className="text-muted-foreground mt-1">
               Analyze registration data and retention trends
             </p>
           </div>
 
           {/* Sticky Navigation */}
-          <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
+          <div className="bg-background/95 sticky top-0 z-10 backdrop-blur-sm">
             <MetricsTypeTabs />
             {subNavItems.length > 0 && <MetricsSubNav items={subNavItems} />}
           </div>
@@ -80,5 +76,5 @@ export default function MetricsLayout() {
         </div>
       </div>
     </MetricsSessionProvider>
-  );
+  )
 }

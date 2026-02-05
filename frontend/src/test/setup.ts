@@ -1,19 +1,19 @@
-import "@testing-library/jest-dom";
-import { cleanup } from "@testing-library/react";
-import { afterEach, vi, beforeEach } from "vitest";
+import '@testing-library/jest-dom'
+import { cleanup } from '@testing-library/react'
+import { afterEach, vi, beforeEach } from 'vitest'
 
 // Cleanup after each test case
 afterEach(() => {
-  cleanup();
-});
+  cleanup()
+})
 
 // Reset all mocks before each test
 beforeEach(() => {
-  vi.clearAllMocks();
-});
+  vi.clearAllMocks()
+})
 
 // Mock window.matchMedia
-Object.defineProperty(window, "matchMedia", {
+Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: vi.fn().mockImplementation((query) => ({
     matches: false,
@@ -25,28 +25,28 @@ Object.defineProperty(window, "matchMedia", {
     removeEventListener: vi.fn(),
     dispatchEvent: vi.fn(),
   })),
-});
+})
 
 // Mock IntersectionObserver
 globalThis.IntersectionObserver = class IntersectionObserver {
-  readonly root: Element | Document | null = null;
-  readonly rootMargin: string = "";
-  readonly thresholds: readonly number[] = [];
+  readonly root: Element | Document | null = null
+  readonly rootMargin: string = ''
+  readonly thresholds: readonly number[] = []
 
   disconnect() {}
   observe() {}
   unobserve() {}
   takeRecords() {
-    return [];
+    return []
   }
-} as unknown as typeof IntersectionObserver;
+} as unknown as typeof IntersectionObserver
 
 // Mock ResizeObserver (required for Headless UI components)
 globalThis.ResizeObserver = class ResizeObserver {
   disconnect() {}
   observe() {}
   unobserve() {}
-} as unknown as typeof ResizeObserver;
+} as unknown as typeof ResizeObserver
 
 // Mock fetch globally
 globalThis.fetch = vi.fn(() =>
@@ -54,11 +54,11 @@ globalThis.fetch = vi.fn(() =>
     ok: true,
     status: 200,
     json: async () => ({}),
-    text: async () => "",
+    text: async () => '',
     blob: async () => new Blob(),
     headers: new Headers(),
-  } as Response),
-);
+  } as Response)
+)
 
 // Mock localStorage for auth
 const localStorageMock = {
@@ -68,10 +68,10 @@ const localStorageMock = {
   clear: vi.fn(),
   length: 0,
   key: vi.fn(),
-};
-Object.defineProperty(window, "localStorage", {
+}
+Object.defineProperty(window, 'localStorage', {
   value: localStorageMock,
-});
+})
 
 // Mock console methods to reduce noise in tests
 globalThis.console = {
@@ -79,4 +79,4 @@ globalThis.console = {
   error: vi.fn(),
   warn: vi.fn(),
   log: vi.fn(),
-};
+}

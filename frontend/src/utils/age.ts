@@ -5,14 +5,14 @@
  */
 export function formatAge(age: number): string {
   // Extract years and months from CampMinder format
-  const years = Math.floor(age);
-  const months = Math.round((age - years) * 100);
+  const years = Math.floor(age)
+  const months = Math.round((age - years) * 100)
 
   // Return in format "11 years, 6 months"
   if (months === 0) {
-    return `${years} years`;
+    return `${years} years`
   }
-  return `${years} years, ${months} month${months === 1 ? "" : "s"}`;
+  return `${years} years, ${months} month${months === 1 ? '' : 's'}`
 }
 
 /**
@@ -22,5 +22,5 @@ export function formatAge(age: number): string {
  */
 export function displayCampMinderAge(age: number): string {
   // Ensure we always show 2 decimal places and avoid floating point issues
-  return age.toFixed(2);
+  return age.toFixed(2)
 }

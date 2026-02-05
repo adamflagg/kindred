@@ -2,15 +2,15 @@
  * React Query hooks for metrics API endpoints.
  */
 
-import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { useApiWithAuth } from "./useApiWithAuth";
-import { queryKeys, syncDataOptions } from "../utils/queryKeys";
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
+import { useApiWithAuth } from './useApiWithAuth'
+import { queryKeys, syncDataOptions } from '../utils/queryKeys'
 import type {
   RetentionMetrics,
   RegistrationMetrics,
   ComparisonMetrics,
   HistoricalTrendsResponse,
-} from "../types/metrics";
+} from '../types/metrics'
 
 /**
  * Fetch retention metrics comparing two years.
@@ -19,40 +19,35 @@ export function useRetentionMetrics(
   baseYear: number,
   compareYear: number,
   sessionTypes?: string,
-  sessionCmId?: number,
+  sessionCmId?: number
 ) {
-  const { fetchWithAuth } = useApiWithAuth();
+  const { fetchWithAuth } = useApiWithAuth()
 
   return useQuery({
-    queryKey: queryKeys.retention(
-      baseYear,
-      compareYear,
-      sessionTypes,
-      sessionCmId,
-    ),
+    queryKey: queryKeys.retention(baseYear, compareYear, sessionTypes, sessionCmId),
     queryFn: async (): Promise<RetentionMetrics> => {
       const params = new URLSearchParams({
         base_year: baseYear.toString(),
         compare_year: compareYear.toString(),
-      });
+      })
       if (sessionTypes) {
-        params.set("session_types", sessionTypes);
+        params.set('session_types', sessionTypes)
       }
       if (sessionCmId !== undefined) {
-        params.set("session_cm_id", sessionCmId.toString());
+        params.set('session_cm_id', sessionCmId.toString())
       }
 
-      const response = await fetchWithAuth(`/api/metrics/retention?${params}`);
+      const response = await fetchWithAuth(`/api/metrics/retention?${params}`)
       if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.detail || "Failed to fetch retention metrics");
+        const error = await response.json().catch(() => ({}))
+        throw new Error(error.detail || 'Failed to fetch retention metrics')
       }
-      return response.json();
+      return response.json()
     },
     enabled: baseYear > 0 && compareYear > 0,
     placeholderData: keepPreviousData, // Keep showing old data during filter changes
     ...syncDataOptions,
-  });
+  })
 }
 
 /**
@@ -62,46 +57,44 @@ export function useRegistrationMetrics(
   year: number,
   sessionTypes?: string,
   statuses?: string,
-  sessionCmId?: number,
+  sessionCmId?: number
 ) {
-  const { fetchWithAuth } = useApiWithAuth();
+  const { fetchWithAuth } = useApiWithAuth()
 
   return useQuery({
     queryKey: queryKeys.registration(year, sessionTypes, statuses, sessionCmId),
     queryFn: async (): Promise<RegistrationMetrics> => {
       const params = new URLSearchParams({
         year: year.toString(),
-      });
+      })
       if (sessionTypes) {
-        params.set("session_types", sessionTypes);
+        params.set('session_types', sessionTypes)
       }
       if (statuses) {
-        params.set("statuses", statuses);
+        params.set('statuses', statuses)
       }
       if (sessionCmId !== undefined) {
-        params.set("session_cm_id", sessionCmId.toString());
+        params.set('session_cm_id', sessionCmId.toString())
       }
 
-      const response = await fetchWithAuth(
-        `/api/metrics/registration?${params}`,
-      );
+      const response = await fetchWithAuth(`/api/metrics/registration?${params}`)
       if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.detail || "Failed to fetch registration metrics");
+        const error = await response.json().catch(() => ({}))
+        throw new Error(error.detail || 'Failed to fetch registration metrics')
       }
-      return response.json();
+      return response.json()
     },
     enabled: year > 0,
     placeholderData: keepPreviousData, // Keep showing old data during filter changes
     ...syncDataOptions,
-  });
+  })
 }
 
 /**
  * Fetch comparison metrics between two years.
  */
 export function useComparisonMetrics(yearA: number, yearB: number) {
-  const { fetchWithAuth } = useApiWithAuth();
+  const { fetchWithAuth } = useApiWithAuth()
 
   return useQuery({
     queryKey: queryKeys.comparison(yearA, yearB),
@@ -109,19 +102,19 @@ export function useComparisonMetrics(yearA: number, yearB: number) {
       const params = new URLSearchParams({
         year_a: yearA.toString(),
         year_b: yearB.toString(),
-      });
+      })
 
-      const response = await fetchWithAuth(`/api/metrics/comparison?${params}`);
+      const response = await fetchWithAuth(`/api/metrics/comparison?${params}`)
       if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.detail || "Failed to fetch comparison metrics");
+        const error = await response.json().catch(() => ({}))
+        throw new Error(error.detail || 'Failed to fetch comparison metrics')
       }
-      return response.json();
+      return response.json()
     },
     enabled: yearA > 0 && yearB > 0,
     placeholderData: keepPreviousData, // Keep showing old data during filter changes
     ...syncDataOptions,
-  });
+  })
 }
 
 /**
@@ -134,39 +127,35 @@ export function useComparisonMetrics(yearA: number, yearB: number) {
  *                      Uses name-matching across years to show trends
  *                      for the same session across multiple years.
  */
-export function useHistoricalTrends(
-  years?: string,
-  sessionTypes?: string,
-  sessionCmId?: number,
-) {
-  const { fetchWithAuth } = useApiWithAuth();
+export function useHistoricalTrends(years?: string, sessionTypes?: string, sessionCmId?: number) {
+  const { fetchWithAuth } = useApiWithAuth()
 
   return useQuery({
     queryKey: queryKeys.historical(years, sessionTypes, sessionCmId),
     queryFn: async (): Promise<HistoricalTrendsResponse> => {
-      const params = new URLSearchParams();
+      const params = new URLSearchParams()
       if (years) {
-        params.set("years", years);
+        params.set('years', years)
       }
       if (sessionTypes) {
-        params.set("session_types", sessionTypes);
+        params.set('session_types', sessionTypes)
       }
       if (sessionCmId !== undefined) {
-        params.set("session_cm_id", sessionCmId.toString());
+        params.set('session_cm_id', sessionCmId.toString())
       }
 
       const url = params.toString()
         ? `/api/metrics/historical?${params}`
-        : "/api/metrics/historical";
+        : '/api/metrics/historical'
 
-      const response = await fetchWithAuth(url);
+      const response = await fetchWithAuth(url)
       if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.detail || "Failed to fetch historical trends");
+        const error = await response.json().catch(() => ({}))
+        throw new Error(error.detail || 'Failed to fetch historical trends')
       }
-      return response.json();
+      return response.json()
     },
     placeholderData: keepPreviousData, // Keep showing old data during filter changes
     ...syncDataOptions,
-  });
+  })
 }

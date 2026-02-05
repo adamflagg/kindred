@@ -1,7 +1,7 @@
 interface ClearAssignmentsDialogProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onConfirm: () => void;
+  isOpen: boolean
+  onClose: () => void
+  onConfirm: () => void
 }
 
 export default function ClearAssignmentsDialog({
@@ -9,31 +9,29 @@ export default function ClearAssignmentsDialog({
   onClose,
   onConfirm,
 }: ClearAssignmentsDialogProps) {
-  if (!isOpen) return null;
+  if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
-      <div className="card-lodge p-6 max-w-md w-full mx-4 shadow-lodge-lg animate-scale-in">
-        <h2 className="text-xl font-display font-bold mb-4">
-          Clear All Assignments?
-        </h2>
+    <div className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div className="card-lodge shadow-lodge-lg animate-scale-in mx-4 w-full max-w-md p-6">
+        <h2 className="font-display mb-4 text-xl font-bold">Clear All Assignments?</h2>
         <p className="text-muted-foreground mb-6">
-          Are you sure you want to clear all assignments in this scenario? This
-          action cannot be undone.
+          Are you sure you want to clear all assignments in this scenario? This action cannot be
+          undone.
         </p>
 
-        <div className="flex gap-3 justify-end">
+        <div className="flex justify-end gap-3">
           <button onClick={onClose} className="btn-ghost px-4 py-2">
             Cancel
           </button>
           <button
             onClick={onConfirm}
-            className="px-4 py-2.5 text-sm font-semibold rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-all shadow-lodge"
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-lodge rounded-xl px-4 py-2.5 text-sm font-semibold transition-all"
           >
             Clear Assignments
           </button>
         </div>
       </div>
     </div>
-  );
+  )
 }

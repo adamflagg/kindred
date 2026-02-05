@@ -66,6 +66,13 @@ else
     echo -e "${YELLOW}  ⚠️  golangci-lint not installed, skipping (install: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)${NC}"
 fi
 
+# Frontend formatting check
+echo -e "${CYAN}  prettier...${NC}"
+(cd frontend && npm run format:check) || {
+    echo -e "${RED}❌ prettier failed (run 'cd frontend && npm run format' to fix)${NC}"
+    exit 1
+}
+
 # Frontend linting
 echo -e "${CYAN}  eslint...${NC}"
 (cd frontend && npm run lint) || {

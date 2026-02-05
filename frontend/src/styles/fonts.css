@@ -42,7 +42,9 @@
 
 @font-face {
   font-family: 'DM Sans-fallback';
-  src: local('-apple-system'), local('BlinkMacSystemFont'), local('Segoe UI'), local('Helvetica Neue'), local('Arial');
+  src:
+    local('-apple-system'), local('BlinkMacSystemFont'), local('Segoe UI'), local('Helvetica Neue'),
+    local('Arial');
   font-display: swap;
   ascent-override: 92%;
   descent-override: 23%;
@@ -57,7 +59,12 @@
 }
 
 .font-body {
-  font-family: 'DM Sans', 'DM Sans-fallback', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family:
+    'DM Sans',
+    'DM Sans-fallback',
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
   font-optical-sizing: auto;
 }
 
@@ -67,7 +74,11 @@
 
 /* Legacy compatibility mappings */
 .font-proxima-nova {
-  font-family: 'DM Sans', 'DM Sans-fallback', -apple-system, sans-serif !important;
+  font-family:
+    'DM Sans',
+    'DM Sans-fallback',
+    -apple-system,
+    sans-serif !important;
 }
 
 .font-p22-mackinac {
@@ -77,12 +88,19 @@
 
 /* Base body font */
 body {
-  font-family: 'DM Sans', 'DM Sans-fallback', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family:
+    'DM Sans',
+    'DM Sans-fallback',
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
   font-optical-sizing: auto;
 }
 
 /* Display headings use Fraunces */
-h1, h2, h3,
+h1,
+h2,
+h3,
 .font-display,
 .title-decorated {
   font-family: 'Fraunces', 'Fraunces-fallback', Georgia, serif;
@@ -90,11 +108,21 @@ h1, h2, h3,
 }
 
 /* Font weight mappings */
-.font-light { font-weight: 300; }
-.font-normal { font-weight: 400; }
-.font-medium { font-weight: 500; }
-.font-semibold { font-weight: 600; }
-.font-bold { font-weight: 700; }
+.font-light {
+  font-weight: 300;
+}
+.font-normal {
+  font-weight: 400;
+}
+.font-medium {
+  font-weight: 500;
+}
+.font-semibold {
+  font-weight: 600;
+}
+.font-bold {
+  font-weight: 700;
+}
 
 /* Special text treatments - Lodge style */
 .text-decorated {
@@ -135,15 +163,18 @@ h1, h2, h3,
 }
 
 /* Letter spacing adjustments for headers */
-h1, h2 {
+h1,
+h2 {
   letter-spacing: -0.025em;
 }
 
-h3, h4 {
+h3,
+h4 {
   letter-spacing: -0.015em;
 }
 
-h5, h6 {
+h5,
+h6 {
   letter-spacing: -0.01em;
 }
 
@@ -186,7 +217,9 @@ h5, h6 {
     font-family: Georgia, 'Times New Roman', serif;
   }
 
-  h1, h2, h3 {
+  h1,
+  h2,
+  h3 {
     font-family: Georgia, 'Times New Roman', serif;
   }
 }

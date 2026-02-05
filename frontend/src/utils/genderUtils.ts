@@ -1,43 +1,37 @@
-import type { Camper } from "../types/app-types";
-import type { PersonsResponse } from "../types/pocketbase-types";
+import type { Camper } from '../types/app-types'
+import type { PersonsResponse } from '../types/pocketbase-types'
 
 /**
  * Categorizes gender identity into one of three groups
  */
-export type GenderCategory = "boys" | "girls" | "other";
+export type GenderCategory = 'boys' | 'girls' | 'other'
 
 /**
  * Categorizes pronouns into color groups
  */
-export type PronounCategory =
-  | "she_her"
-  | "he_him"
-  | "non_binary"
-  | "prefer_not_answer";
+export type PronounCategory = 'she_her' | 'he_him' | 'non_binary' | 'prefer_not_answer'
 
 /**
  * Determines the gender category based on gender identity name
  * @param genderIdentity - The gender identity name or write-in value
  * @returns The gender category: 'boys', 'girls', or 'other'
  */
-export function getGenderCategory(
-  genderIdentity: string | undefined,
-): GenderCategory {
-  if (!genderIdentity) return "other";
+export function getGenderCategory(genderIdentity: string | undefined): GenderCategory {
+  if (!genderIdentity) return 'other'
 
-  const identity = genderIdentity.toLowerCase().trim();
+  const identity = genderIdentity.toLowerCase().trim()
 
   // Strict matching for boy/man and girl/woman only
-  if (identity === "boy/man") {
-    return "boys";
+  if (identity === 'boy/man') {
+    return 'boys'
   }
 
-  if (identity === "girl/woman") {
-    return "girls";
+  if (identity === 'girl/woman') {
+    return 'girls'
   }
 
   // Everything else is other (transgender, non-binary, agender, prefer not to answer, etc.)
-  return "other";
+  return 'other'
 }
 
 /**
@@ -45,21 +39,19 @@ export function getGenderCategory(
  * @param entity - Camper or Person object
  * @returns The gender identity to display (no fallback to M/F)
  */
-export function getGenderIdentityDisplay(
-  entity: Camper | PersonsResponse,
-): string {
+export function getGenderIdentityDisplay(entity: Camper | PersonsResponse): string {
   // Check if entity has write-in field (Camper type)
-  if ("gender_identity_write_in" in entity && entity.gender_identity_write_in) {
-    return entity.gender_identity_write_in;
+  if ('gender_identity_write_in' in entity && entity.gender_identity_write_in) {
+    return entity.gender_identity_write_in
   }
 
   // Use gender identity name if available
   if (entity.gender_identity_name) {
-    return entity.gender_identity_name;
+    return entity.gender_identity_name
   }
 
   // No gender identity provided
-  return "Not specified";
+  return 'Not specified'
 }
 
 /**
@@ -68,17 +60,14 @@ export function getGenderIdentityDisplay(
  * @param _genderIdentity - Unused, kept for API compatibility
  * @returns Tailwind color classes for the category
  */
-export function getGenderColorClasses(
-  category: GenderCategory,
-  _genderIdentity?: string,
-): string {
+export function getGenderColorClasses(category: GenderCategory, _genderIdentity?: string): string {
   switch (category) {
-    case "boys":
-      return "bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700";
-    case "girls":
-      return "bg-pink-100 dark:bg-pink-900/30 border-pink-300 dark:border-pink-700";
-    case "other":
-      return "bg-purple-100 dark:bg-purple-900/30 border-purple-300 dark:border-purple-700";
+    case 'boys':
+      return 'bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700'
+    case 'girls':
+      return 'bg-pink-100 dark:bg-pink-900/30 border-pink-300 dark:border-pink-700'
+    case 'other':
+      return 'bg-purple-100 dark:bg-purple-900/30 border-purple-300 dark:border-purple-700'
   }
 }
 
@@ -88,17 +77,14 @@ export function getGenderColorClasses(
  * @param _genderIdentity - Unused, kept for API compatibility
  * @returns Tailwind badge color classes for the category
  */
-export function getGenderBadgeClasses(
-  category: GenderCategory,
-  _genderIdentity?: string,
-): string {
+export function getGenderBadgeClasses(category: GenderCategory, _genderIdentity?: string): string {
   switch (category) {
-    case "boys":
-      return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300";
-    case "girls":
-      return "bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300";
-    case "other":
-      return "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300";
+    case 'boys':
+      return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
+    case 'girls':
+      return 'bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300'
+    case 'other':
+      return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'
   }
 }
 
@@ -109,18 +95,18 @@ export function getGenderBadgeClasses(
  * @returns Whether the camper can be assigned to the bunk
  */
 export function canAssignToBunk(camperSex: string, bunkName: string): boolean {
-  const bunkPrefix = bunkName.substring(0, 2).toUpperCase();
+  const bunkPrefix = bunkName.substring(0, 2).toUpperCase()
 
   // AG bunks accept everyone
-  if (bunkPrefix === "AG") return true;
+  if (bunkPrefix === 'AG') return true
 
   // Boys bunks accept M
-  if (bunkPrefix === "B-" && camperSex === "M") return true;
+  if (bunkPrefix === 'B-' && camperSex === 'M') return true
 
   // Girls bunks accept F
-  if (bunkPrefix === "G-" && camperSex === "F") return true;
+  if (bunkPrefix === 'G-' && camperSex === 'F') return true
 
-  return false;
+  return false
 }
 
 /**
@@ -129,26 +115,23 @@ export function canAssignToBunk(camperSex: string, bunkName: string): boolean {
  * @param sexFilter - Selected sex filter (M/F/all)
  * @returns Filtered array of bunks
  */
-export function getVisibleBunks<T extends { name: string }>(
-  bunks: T[],
-  sexFilter: string,
-): T[] {
-  if (sexFilter === "all") {
-    return bunks; // Show all bunks
+export function getVisibleBunks<T extends { name: string }>(bunks: T[], sexFilter: string): T[] {
+  if (sexFilter === 'all') {
+    return bunks // Show all bunks
   }
 
   return bunks.filter((bunk) => {
-    const prefix = bunk.name.substring(0, 2).toUpperCase();
+    const prefix = bunk.name.substring(0, 2).toUpperCase()
 
     // AG bunks always visible
-    if (prefix === "AG") return true;
+    if (prefix === 'AG') return true
 
     // Show appropriate gendered bunks
-    if (sexFilter === "M") return prefix === "B-";
-    if (sexFilter === "F") return prefix === "G-";
+    if (sexFilter === 'M') return prefix === 'B-'
+    if (sexFilter === 'F') return prefix === 'G-'
 
-    return true;
-  });
+    return true
+  })
 }
 
 /**
@@ -158,22 +141,22 @@ export function getVisibleBunks<T extends { name: string }>(
  */
 export function getPronouns(entity: Camper | PersonsResponse): string {
   // Check for pronoun write-in field
-  if ("gender_pronoun_write_in" in entity && entity.gender_pronoun_write_in) {
-    return entity.gender_pronoun_write_in;
+  if ('gender_pronoun_write_in' in entity && entity.gender_pronoun_write_in) {
+    return entity.gender_pronoun_write_in
   }
 
   // Use pronoun name if available
-  if ("gender_pronoun_name" in entity && entity.gender_pronoun_name) {
-    return entity.gender_pronoun_name;
+  if ('gender_pronoun_name' in entity && entity.gender_pronoun_name) {
+    return entity.gender_pronoun_name
   }
 
   // Check for pronouns field (from mapped data)
-  if ("pronouns" in entity && entity.pronouns) {
-    return entity.pronouns;
+  if ('pronouns' in entity && entity.pronouns) {
+    return entity.pronouns
   }
 
   // No pronouns found
-  return "";
+  return ''
 }
 
 /**
@@ -182,30 +165,27 @@ export function getPronouns(entity: Camper | PersonsResponse): string {
  * @returns The pronoun category for coloring
  */
 export function getPronounCategory(pronouns: string): PronounCategory {
-  if (!pronouns) return "prefer_not_answer";
+  if (!pronouns) return 'prefer_not_answer'
 
-  const pronounLower = pronouns.toLowerCase();
+  const pronounLower = pronouns.toLowerCase()
 
   // Check for she/her
-  if (pronounLower === "she/her" || pronounLower === "she / her") {
-    return "she_her";
+  if (pronounLower === 'she/her' || pronounLower === 'she / her') {
+    return 'she_her'
   }
 
   // Check for he/him
-  if (pronounLower === "he/him" || pronounLower === "he / him") {
-    return "he_him";
+  if (pronounLower === 'he/him' || pronounLower === 'he / him') {
+    return 'he_him'
   }
 
   // Check for prefer not to answer
-  if (
-    pronounLower.includes("prefer not") ||
-    pronounLower === "prefer not to answer"
-  ) {
-    return "prefer_not_answer";
+  if (pronounLower.includes('prefer not') || pronounLower === 'prefer not to answer') {
+    return 'prefer_not_answer'
   }
 
   // Everything else is non-binary (they/them, she/they, he/they, etc.)
-  return "non_binary";
+  return 'non_binary'
 }
 
 /**
@@ -215,13 +195,13 @@ export function getPronounCategory(pronouns: string): PronounCategory {
  */
 export function getPronounColorClasses(category: PronounCategory): string {
   switch (category) {
-    case "he_him":
-      return "bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700";
-    case "she_her":
-      return "bg-pink-100 dark:bg-pink-900/30 border-pink-300 dark:border-pink-700";
-    case "non_binary":
-    case "prefer_not_answer":
-      return "bg-purple-100 dark:bg-purple-900/30 border-purple-300 dark:border-purple-700";
+    case 'he_him':
+      return 'bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700'
+    case 'she_her':
+      return 'bg-pink-100 dark:bg-pink-900/30 border-pink-300 dark:border-pink-700'
+    case 'non_binary':
+    case 'prefer_not_answer':
+      return 'bg-purple-100 dark:bg-purple-900/30 border-purple-300 dark:border-purple-700'
   }
 }
 
@@ -232,12 +212,12 @@ export function getPronounColorClasses(category: PronounCategory): string {
  */
 export function getPronounBadgeClasses(category: PronounCategory): string {
   switch (category) {
-    case "he_him":
-      return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300";
-    case "she_her":
-      return "bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300";
-    case "non_binary":
-    case "prefer_not_answer":
-      return "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300";
+    case 'he_him':
+      return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
+    case 'she_her':
+      return 'bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300'
+    case 'non_binary':
+    case 'prefer_not_answer':
+      return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'
   }
 }

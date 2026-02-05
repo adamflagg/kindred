@@ -1,7 +1,7 @@
 /**
  * Zod schemas for camper-related collections: persons, attendees
  */
-import { z } from "zod";
+import { z } from 'zod'
 import {
   BaseSystemFieldsSchema,
   IsoDateStringSchema,
@@ -10,21 +10,21 @@ import {
   PhoneNumberSchema,
   EmailAddressSchema,
   nullableJson,
-} from "./common";
+} from './common'
 
 // Attendee status enum
 export const AttendeesStatusSchema = z.enum([
-  "enrolled",
-  "applied",
-  "waitlisted",
-  "left_early",
-  "cancelled",
-  "dismissed",
-  "inquiry",
-  "withdrawn",
-  "incomplete",
-  "unknown",
-]);
+  'enrolled',
+  'applied',
+  'waitlisted',
+  'left_early',
+  'cancelled',
+  'dismissed',
+  'inquiry',
+  'withdrawn',
+  'incomplete',
+  'unknown',
+])
 
 // Persons record schema
 export const PersonsRecordSchema = z.object({
@@ -52,12 +52,10 @@ export const PersonsRecordSchema = z.object({
   school: z.string().optional(),
   year: z.number(),
   years_at_camp: z.number().optional(),
-});
+})
 
 // Full persons response (with system fields)
-export const PersonsResponseSchema = PersonsRecordSchema.merge(
-  BaseSystemFieldsSchema,
-);
+export const PersonsResponseSchema = PersonsRecordSchema.merge(BaseSystemFieldsSchema)
 
 // Attendees record schema
 export const AttendeesRecordSchema = z.object({
@@ -69,16 +67,14 @@ export const AttendeesRecordSchema = z.object({
   status: AttendeesStatusSchema.optional(),
   status_id: z.number().optional(),
   year: z.number(),
-});
+})
 
 // Full attendees response (with system fields)
-export const AttendeesResponseSchema = AttendeesRecordSchema.merge(
-  BaseSystemFieldsSchema,
-);
+export const AttendeesResponseSchema = AttendeesRecordSchema.merge(BaseSystemFieldsSchema)
 
 // Export types
-export type AttendeesStatus = z.infer<typeof AttendeesStatusSchema>;
-export type PersonsRecord = z.infer<typeof PersonsRecordSchema>;
-export type PersonsResponse = z.infer<typeof PersonsResponseSchema>;
-export type AttendeesRecord = z.infer<typeof AttendeesRecordSchema>;
-export type AttendeesResponse = z.infer<typeof AttendeesResponseSchema>;
+export type AttendeesStatus = z.infer<typeof AttendeesStatusSchema>
+export type PersonsRecord = z.infer<typeof PersonsRecordSchema>
+export type PersonsResponse = z.infer<typeof PersonsResponseSchema>
+export type AttendeesRecord = z.infer<typeof AttendeesRecordSchema>
+export type AttendeesResponse = z.infer<typeof AttendeesResponseSchema>

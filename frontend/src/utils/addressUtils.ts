@@ -3,9 +3,9 @@
  */
 
 interface AddressData {
-  city?: string;
-  state?: string;
-  [key: string]: unknown;
+  city?: string
+  state?: string
+  [key: string]: unknown
 }
 
 /**
@@ -13,19 +13,18 @@ interface AddressData {
  * Handles both JSON string and object formats
  */
 export function getLocationDisplay(
-  address: string | AddressData | null | undefined | unknown,
+  address: string | AddressData | null | undefined | unknown
 ): string | null {
-  if (!address) return null;
+  if (!address) return null
 
   try {
-    const addr: AddressData =
-      typeof address === "string" ? JSON.parse(address) : address;
+    const addr: AddressData = typeof address === 'string' ? JSON.parse(address) : address
     if (addr?.city || addr?.state) {
-      return [addr.city, addr.state].filter(Boolean).join(", ");
+      return [addr.city, addr.state].filter(Boolean).join(', ')
     }
   } catch {
     // Ignore parse errors
   }
 
-  return null;
+  return null
 }

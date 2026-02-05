@@ -1,6 +1,6 @@
-import { useState, useMemo, useCallback } from "react";
-import { useParams, Link } from "react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useMemo, useCallback } from 'react'
+import { useParams, Link } from 'react-router'
+import { useQuery } from '@tanstack/react-query'
 import {
   ArrowLeft,
   ArrowRight,
@@ -19,15 +19,10 @@ import {
   CheckCircle2,
   Percent,
   Table2,
-} from "lucide-react";
-import clsx from "clsx";
-import {
-  Listbox,
-  ListboxButton,
-  ListboxOptions,
-  ListboxOption,
-} from "@headlessui/react";
-import { pb } from "../lib/pocketbase";
+} from 'lucide-react'
+import clsx from 'clsx'
+import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
+import { pb } from '../lib/pocketbase'
 import type {
   SavedScenariosResponse,
   BunkAssignmentsDraftResponse,
@@ -36,114 +31,106 @@ import type {
   BunksResponse,
   BunkPlansResponse,
   CampSessionsResponse,
-} from "../types/pocketbase-types";
-import { useYear } from "../hooks/useCurrentYear";
-import { useAuth } from "../contexts/AuthContext";
-import { useApiWithAuth } from "../hooks/useApiWithAuth";
-import {
-  queryKeys,
-  userDataOptions,
-  syncDataOptions,
-} from "../utils/queryKeys";
-import { formatGradeOrdinal } from "../utils/gradeUtils";
-import { findSessionByUrlSegment } from "../utils/sessionUtils";
-import { solverService } from "../services/solver";
-import type { Session } from "../types/app-types";
+} from '../types/pocketbase-types'
+import { useYear } from '../hooks/useCurrentYear'
+import { useAuth } from '../contexts/AuthContext'
+import { useApiWithAuth } from '../hooks/useApiWithAuth'
+import { queryKeys, userDataOptions, syncDataOptions } from '../utils/queryKeys'
+import { formatGradeOrdinal } from '../utils/gradeUtils'
+import { findSessionByUrlSegment } from '../utils/sessionUtils'
+import { solverService } from '../services/solver'
+import type { Session } from '../types/app-types'
 
 // Types for comparison
 interface CamperAssignment {
-  personId: string;
-  personCmId: number;
-  name: string;
-  grade: number;
-  gender: string;
-  bunkId: string;
-  bunkName: string;
-  bunkPlanId: string;
+  personId: string
+  personCmId: number
+  name: string
+  grade: number
+  gender: string
+  bunkId: string
+  bunkName: string
+  bunkPlanId: string
 }
 
 interface ComparisonResult {
   moved: Array<{
-    camper: CamperAssignment;
-    fromBunk: { id: string; name: string };
-    toBunk: { id: string; name: string };
-  }>;
+    camper: CamperAssignment
+    fromBunk: { id: string; name: string }
+    toBunk: { id: string; name: string }
+  }>
   newlyAssigned: Array<{
-    camper: CamperAssignment;
-    toBunk: { id: string; name: string };
-  }>;
+    camper: CamperAssignment
+    toBunk: { id: string; name: string }
+  }>
   newlyUnassigned: Array<{
-    camper: CamperAssignment;
-    fromBunk: { id: string; name: string };
-  }>;
-  unchanged: CamperAssignment[];
+    camper: CamperAssignment
+    fromBunk: { id: string; name: string }
+  }>
+  unchanged: CamperAssignment[]
   metrics: {
-    totalCampers: { left: number; right: number };
-    movedCount: number;
-    newlyAssignedCount: number;
-    newlyUnassignedCount: number;
-    unchangedCount: number;
-    changePercentage: number;
-  };
+    totalCampers: { left: number; right: number }
+    movedCount: number
+    newlyAssignedCount: number
+    newlyUnassignedCount: number
+    unchangedCount: number
+    changePercentage: number
+  }
 }
 
 interface BunkComparison {
-  bunkId: string;
-  bunkName: string;
-  leftCampers: CamperAssignment[];
-  rightCampers: CamperAssignment[];
-  movedIn: Array<{ camper: CamperAssignment; fromBunk: string }>;
-  movedOut: Array<{ camper: CamperAssignment; toBunk: string }>;
-  unchanged: CamperAssignment[];
+  bunkId: string
+  bunkName: string
+  leftCampers: CamperAssignment[]
+  rightCampers: CamperAssignment[]
+  movedIn: Array<{ camper: CamperAssignment; fromBunk: string }>
+  movedOut: Array<{ camper: CamperAssignment; toBunk: string }>
+  unchanged: CamperAssignment[]
 }
 
 // Validation score types
 interface ValidationStatistics {
-  total_requests: number;
-  satisfied_requests: number;
-  request_satisfaction_rate: number;
-  explicit_csv_requests: number;
-  satisfied_explicit_csv_requests: number;
-  explicit_csv_request_satisfaction_rate: number;
-  negative_request_violations: number;
-  assigned_campers: number;
-  unassigned_campers: number;
-  isolation_risks: number;
+  total_requests: number
+  satisfied_requests: number
+  request_satisfaction_rate: number
+  explicit_csv_requests: number
+  satisfied_explicit_csv_requests: number
+  explicit_csv_request_satisfaction_rate: number
+  negative_request_violations: number
+  assigned_campers: number
+  unassigned_campers: number
+  isolation_risks: number
 }
 
 interface ValidationResult {
-  statistics: ValidationStatistics;
-  issues: Array<{ severity: string; type: string; message: string }>;
+  statistics: ValidationStatistics
+  issues: Array<{ severity: string; type: string; message: string }>
 }
 
-type ViewMode = "split" | "changes";
-type ChangeFilter = "all" | "moved" | "newly-assigned" | "newly-unassigned";
+type ViewMode = 'split' | 'changes'
+type ChangeFilter = 'all' | 'moved' | 'newly-assigned' | 'newly-unassigned'
 
 export default function ScenarioComparisonPage() {
-  const { sessionId: sessionUrlSegment } = useParams<{ sessionId: string }>();
-  const currentYear = useYear();
-  const { user, isLoading: authLoading } = useAuth();
-  const { fetchWithAuth } = useApiWithAuth();
+  const { sessionId: sessionUrlSegment } = useParams<{ sessionId: string }>()
+  const currentYear = useYear()
+  const { user, isLoading: authLoading } = useAuth()
+  const { fetchWithAuth } = useApiWithAuth()
 
   // State for scenario selection
-  const [leftScenarioId, setLeftScenarioId] = useState<string>("production");
-  const [rightScenarioId, setRightScenarioId] = useState<string>("");
-  const [viewMode, setViewMode] = useState<ViewMode>("split");
-  const [changeFilter, setChangeFilter] = useState<ChangeFilter>("all");
-  const [selectedBunkArea, setSelectedBunkArea] = useState<
-    "all" | "boys" | "girls" | "ag"
-  >("all");
+  const [leftScenarioId, setLeftScenarioId] = useState<string>('production')
+  const [rightScenarioId, setRightScenarioId] = useState<string>('')
+  const [viewMode, setViewMode] = useState<ViewMode>('split')
+  const [changeFilter, setChangeFilter] = useState<ChangeFilter>('all')
+  const [selectedBunkArea, setSelectedBunkArea] = useState<'all' | 'boys' | 'girls' | 'ag'>('all')
 
   // Fetch all sessions for the current year to resolve the URL segment
   const { data: allSessions = [] } = useQuery({
     queryKey: queryKeys.sessions(currentYear),
     queryFn: async () => {
-      const result = await pb
-        .collection("camp_sessions")
-        .getFullList<CampSessionsResponse>({
-          filter: `year = ${currentYear} && (session_type = "main" || session_type = "embedded")`,
-          sort: "name",
-        });
+      const result = await pb.collection('camp_sessions').getFullList<CampSessionsResponse>({
+        filter: `year = ${currentYear} && (session_type = "main" || session_type = "embedded")`,
+        sort: 'name',
+      })
       // Convert to Session type
       return result.map((s) => ({
         id: s.id,
@@ -154,156 +141,149 @@ export default function ScenarioComparisonPage() {
         end_date: s.end_date,
         year: s.year,
         parent_id: s.parent_id,
-      })) as Session[];
+      })) as Session[]
     },
     ...syncDataOptions,
     enabled: !!user,
-  });
+  })
 
   // Resolve session from URL segment
   const session = useMemo(() => {
-    if (!sessionUrlSegment || allSessions.length === 0) return null;
-    return findSessionByUrlSegment(allSessions, sessionUrlSegment);
-  }, [sessionUrlSegment, allSessions]);
+    if (!sessionUrlSegment || allSessions.length === 0) return null
+    return findSessionByUrlSegment(allSessions, sessionUrlSegment)
+  }, [sessionUrlSegment, allSessions])
 
   // Get session CM ID for queries
-  const sessionCmId = session?.cm_id ?? 0;
+  const sessionCmId = session?.cm_id ?? 0
 
   // Fetch saved scenarios for this session
   const { data: scenarios = [] } = useQuery({
     queryKey: queryKeys.savedScenarios(sessionCmId, currentYear),
     queryFn: async () => {
-      const result = await pb
-        .collection("saved_scenarios")
-        .getFullList<SavedScenariosResponse>({
-          filter: `session.cm_id = ${sessionCmId} && year = ${currentYear}`,
-          sort: "-created",
-          expand: "session",
-        });
-      return result;
+      const result = await pb.collection('saved_scenarios').getFullList<SavedScenariosResponse>({
+        filter: `session.cm_id = ${sessionCmId} && year = ${currentYear}`,
+        sort: '-created',
+        expand: 'session',
+      })
+      return result
     },
     ...userDataOptions,
     enabled: !!user && sessionCmId > 0,
-  });
+  })
 
   // Fetch production assignments (bunk_assignments)
   const { data: productionAssignments = [] } = useQuery({
-    queryKey: ["production-assignments", sessionCmId, currentYear],
+    queryKey: ['production-assignments', sessionCmId, currentYear],
     queryFn: async () => {
-      const result = await pb.collection("bunk_assignments").getFullList<
+      const result = await pb.collection('bunk_assignments').getFullList<
         BunkAssignmentsResponse<{
-          person: PersonsResponse;
-          bunk: BunksResponse;
-          bunk_plan: BunkPlansResponse;
+          person: PersonsResponse
+          bunk: BunksResponse
+          bunk_plan: BunkPlansResponse
         }>
       >({
         filter: `session.cm_id = ${sessionCmId} && year = ${currentYear}`,
-        expand: "person,bunk,bunk_plan",
-      });
-      return result;
+        expand: 'person,bunk,bunk_plan',
+      })
+      return result
     },
     ...syncDataOptions,
     enabled: !!user && sessionCmId > 0,
-  });
+  })
 
   // Fetch draft assignments for selected scenario
   const { data: leftDraftAssignments = [] } = useQuery({
-    queryKey: ["draft-assignments", leftScenarioId, sessionCmId, currentYear],
+    queryKey: ['draft-assignments', leftScenarioId, sessionCmId, currentYear],
     queryFn: async () => {
-      if (leftScenarioId === "production") return [];
-      const result = await pb.collection("bunk_assignments_draft").getFullList<
+      if (leftScenarioId === 'production') return []
+      const result = await pb.collection('bunk_assignments_draft').getFullList<
         BunkAssignmentsDraftResponse<{
-          person: PersonsResponse;
-          bunk: BunksResponse;
-          bunk_plan: BunkPlansResponse;
+          person: PersonsResponse
+          bunk: BunksResponse
+          bunk_plan: BunkPlansResponse
         }>
       >({
         filter: `scenario = "${leftScenarioId}" && year = ${currentYear}`,
-        expand: "person,bunk,bunk_plan",
-      });
-      return result;
+        expand: 'person,bunk,bunk_plan',
+      })
+      return result
     },
     ...userDataOptions,
-    enabled: !!user && leftScenarioId !== "production" && leftScenarioId !== "",
-  });
+    enabled: !!user && leftScenarioId !== 'production' && leftScenarioId !== '',
+  })
 
   const { data: rightDraftAssignments = [] } = useQuery({
-    queryKey: ["draft-assignments", rightScenarioId, sessionCmId, currentYear],
+    queryKey: ['draft-assignments', rightScenarioId, sessionCmId, currentYear],
     queryFn: async () => {
-      if (rightScenarioId === "production") return [];
-      const result = await pb.collection("bunk_assignments_draft").getFullList<
+      if (rightScenarioId === 'production') return []
+      const result = await pb.collection('bunk_assignments_draft').getFullList<
         BunkAssignmentsDraftResponse<{
-          person: PersonsResponse;
-          bunk: BunksResponse;
-          bunk_plan: BunkPlansResponse;
+          person: PersonsResponse
+          bunk: BunksResponse
+          bunk_plan: BunkPlansResponse
         }>
       >({
         filter: `scenario = "${rightScenarioId}" && year = ${currentYear}`,
-        expand: "person,bunk,bunk_plan",
-      });
-      return result;
+        expand: 'person,bunk,bunk_plan',
+      })
+      return result
     },
     ...userDataOptions,
-    enabled:
-      !!user && rightScenarioId !== "production" && rightScenarioId !== "",
-  });
+    enabled: !!user && rightScenarioId !== 'production' && rightScenarioId !== '',
+  })
 
   // Fetch validation scores for both scenarios
   const isReady =
-    Boolean(leftScenarioId) &&
-    Boolean(rightScenarioId) &&
-    leftScenarioId !== rightScenarioId;
+    Boolean(leftScenarioId) && Boolean(rightScenarioId) && leftScenarioId !== rightScenarioId
 
   const { data: leftValidation } = useQuery<ValidationResult | null>({
-    queryKey: ["validation", leftScenarioId, sessionCmId, currentYear],
+    queryKey: ['validation', leftScenarioId, sessionCmId, currentYear],
     queryFn: async (): Promise<ValidationResult | null> => {
       try {
-        const scenarioId =
-          leftScenarioId === "production" ? undefined : leftScenarioId;
+        const scenarioId = leftScenarioId === 'production' ? undefined : leftScenarioId
         const result = await solverService.validateBunking(
           sessionCmId.toString(),
           currentYear,
           scenarioId,
-          fetchWithAuth,
-        );
-        return result as unknown as ValidationResult;
+          fetchWithAuth
+        )
+        return result as unknown as ValidationResult
       } catch {
-        return null;
+        return null
       }
     },
     ...userDataOptions,
     enabled: Boolean(user) && sessionCmId > 0 && isReady,
-  });
+  })
 
   const { data: rightValidation } = useQuery<ValidationResult | null>({
-    queryKey: ["validation", rightScenarioId, sessionCmId, currentYear],
+    queryKey: ['validation', rightScenarioId, sessionCmId, currentYear],
     queryFn: async (): Promise<ValidationResult | null> => {
       try {
-        const scenarioId =
-          rightScenarioId === "production" ? undefined : rightScenarioId;
+        const scenarioId = rightScenarioId === 'production' ? undefined : rightScenarioId
         const result = await solverService.validateBunking(
           sessionCmId.toString(),
           currentYear,
           scenarioId,
-          fetchWithAuth,
-        );
-        return result as unknown as ValidationResult;
+          fetchWithAuth
+        )
+        return result as unknown as ValidationResult
       } catch {
-        return null;
+        return null
       }
     },
     ...userDataOptions,
     enabled: Boolean(user) && sessionCmId > 0 && isReady,
-  });
+  })
 
   // Type for expanded assignment
   interface ExpandedAssignment {
     expand?: {
-      person?: PersonsResponse;
-      bunk?: BunksResponse;
-      bunk_plan?: BunkPlansResponse;
-    };
-    bunk_plan?: string;
+      person?: PersonsResponse
+      bunk?: BunksResponse
+      bunk_plan?: BunkPlansResponse
+    }
+    bunk_plan?: string
   }
 
   // Transform assignments to unified format (stable callback since it's a pure function)
@@ -312,88 +292,72 @@ export default function ScenarioComparisonPage() {
       return assignments
         .filter((a) => a.expand?.person && a.expand?.bunk)
         .map((a) => {
-          const person = a.expand?.person;
-          const bunk = a.expand?.bunk;
+          const person = a.expand?.person
+          const bunk = a.expand?.bunk
           if (!person || !bunk) {
             // This should never happen due to the filter above, but TypeScript needs the guard
-            throw new Error("Missing expand data");
+            throw new Error('Missing expand data')
           }
           return {
             personId: person.id,
             personCmId: person.cm_id,
             name: `${person.preferred_name ?? person.first_name} ${person.last_name}`,
             grade: person.grade ?? 0,
-            gender: person.gender ?? "",
+            gender: person.gender ?? '',
             bunkId: bunk.id,
             bunkName: bunk.name,
-            bunkPlanId: a.bunk_plan ?? "",
-          };
-        });
+            bunkPlanId: a.bunk_plan ?? '',
+          }
+        })
     },
-    [],
-  );
+    []
+  )
 
   // Get left and right assignments
   const leftAssignments = useMemo(() => {
-    if (leftScenarioId === "production") {
-      return normalizeAssignments(
-        productionAssignments as ExpandedAssignment[],
-      );
+    if (leftScenarioId === 'production') {
+      return normalizeAssignments(productionAssignments as ExpandedAssignment[])
     }
-    return normalizeAssignments(leftDraftAssignments as ExpandedAssignment[]);
-  }, [
-    leftScenarioId,
-    productionAssignments,
-    leftDraftAssignments,
-    normalizeAssignments,
-  ]);
+    return normalizeAssignments(leftDraftAssignments as ExpandedAssignment[])
+  }, [leftScenarioId, productionAssignments, leftDraftAssignments, normalizeAssignments])
 
   const rightAssignments = useMemo(() => {
-    if (rightScenarioId === "production") {
-      return normalizeAssignments(
-        productionAssignments as ExpandedAssignment[],
-      );
+    if (rightScenarioId === 'production') {
+      return normalizeAssignments(productionAssignments as ExpandedAssignment[])
     }
-    return normalizeAssignments(rightDraftAssignments as ExpandedAssignment[]);
-  }, [
-    rightScenarioId,
-    productionAssignments,
-    rightDraftAssignments,
-    normalizeAssignments,
-  ]);
+    return normalizeAssignments(rightDraftAssignments as ExpandedAssignment[])
+  }, [rightScenarioId, productionAssignments, rightDraftAssignments, normalizeAssignments])
 
   // Compute comparison result
   const comparison = useMemo((): ComparisonResult => {
-    const leftByPerson = new Map(leftAssignments.map((a) => [a.personCmId, a]));
-    const rightByPerson = new Map(
-      rightAssignments.map((a) => [a.personCmId, a]),
-    );
+    const leftByPerson = new Map(leftAssignments.map((a) => [a.personCmId, a]))
+    const rightByPerson = new Map(rightAssignments.map((a) => [a.personCmId, a]))
 
-    const moved: ComparisonResult["moved"] = [];
-    const newlyAssigned: ComparisonResult["newlyAssigned"] = [];
-    const newlyUnassigned: ComparisonResult["newlyUnassigned"] = [];
-    const unchanged: CamperAssignment[] = [];
+    const moved: ComparisonResult['moved'] = []
+    const newlyAssigned: ComparisonResult['newlyAssigned'] = []
+    const newlyUnassigned: ComparisonResult['newlyUnassigned'] = []
+    const unchanged: CamperAssignment[] = []
 
     // Check all campers in left scenario
     for (const [personCmId, leftCamper] of leftByPerson) {
-      const rightCamper = rightByPerson.get(personCmId);
+      const rightCamper = rightByPerson.get(personCmId)
 
       if (!rightCamper) {
         // Camper was assigned in left but not in right (became unassigned)
         newlyUnassigned.push({
           camper: leftCamper,
           fromBunk: { id: leftCamper.bunkId, name: leftCamper.bunkName },
-        });
+        })
       } else if (leftCamper.bunkId !== rightCamper.bunkId) {
         // Camper moved to different bunk
         moved.push({
           camper: rightCamper,
           fromBunk: { id: leftCamper.bunkId, name: leftCamper.bunkName },
           toBunk: { id: rightCamper.bunkId, name: rightCamper.bunkName },
-        });
+        })
       } else {
         // Camper unchanged
-        unchanged.push(leftCamper);
+        unchanged.push(leftCamper)
       }
     }
 
@@ -403,16 +367,12 @@ export default function ScenarioComparisonPage() {
         newlyAssigned.push({
           camper: rightCamper,
           toBunk: { id: rightCamper.bunkId, name: rightCamper.bunkName },
-        });
+        })
       }
     }
 
-    const totalChanges =
-      moved.length + newlyAssigned.length + newlyUnassigned.length;
-    const totalInvolved = Math.max(
-      leftAssignments.length,
-      rightAssignments.length,
-    );
+    const totalChanges = moved.length + newlyAssigned.length + newlyUnassigned.length
+    const totalInvolved = Math.max(leftAssignments.length, rightAssignments.length)
 
     return {
       moved,
@@ -428,86 +388,76 @@ export default function ScenarioComparisonPage() {
         newlyAssignedCount: newlyAssigned.length,
         newlyUnassignedCount: newlyUnassigned.length,
         unchangedCount: unchanged.length,
-        changePercentage:
-          totalInvolved > 0
-            ? Math.round((totalChanges / totalInvolved) * 100)
-            : 0,
+        changePercentage: totalInvolved > 0 ? Math.round((totalChanges / totalInvolved) * 100) : 0,
       },
-    };
-  }, [leftAssignments, rightAssignments]);
+    }
+  }, [leftAssignments, rightAssignments])
 
   // Get all unique bunks for split view
   const allBunks = useMemo(() => {
-    const bunkMap = new Map<
-      string,
-      { id: string; name: string; gender: string }
-    >();
+    const bunkMap = new Map<string, { id: string; name: string; gender: string }>()
 
-    [...leftAssignments, ...rightAssignments].forEach((a) => {
+    ;[...leftAssignments, ...rightAssignments].forEach((a) => {
       if (!bunkMap.has(a.bunkId)) {
-        const gender = a.bunkName.startsWith("B-")
-          ? "M"
-          : a.bunkName.startsWith("G-")
-            ? "F"
-            : a.bunkName.startsWith("AG-")
-              ? "Mixed"
-              : "Unknown";
-        bunkMap.set(a.bunkId, { id: a.bunkId, name: a.bunkName, gender });
+        const gender = a.bunkName.startsWith('B-')
+          ? 'M'
+          : a.bunkName.startsWith('G-')
+            ? 'F'
+            : a.bunkName.startsWith('AG-')
+              ? 'Mixed'
+              : 'Unknown'
+        bunkMap.set(a.bunkId, { id: a.bunkId, name: a.bunkName, gender })
       }
-    });
+    })
 
-    return Array.from(bunkMap.values()).sort((a, b) =>
-      a.name.localeCompare(b.name),
-    );
-  }, [leftAssignments, rightAssignments]);
+    return Array.from(bunkMap.values()).sort((a, b) => a.name.localeCompare(b.name))
+  }, [leftAssignments, rightAssignments])
 
   // Filter bunks by selected area
   const filteredBunks = useMemo(() => {
     return allBunks.filter((bunk) => {
-      if (selectedBunkArea === "all") return true;
-      if (selectedBunkArea === "boys") return bunk.gender === "M";
-      if (selectedBunkArea === "girls") return bunk.gender === "F";
-      if (selectedBunkArea === "ag") return bunk.gender === "Mixed";
-      return true;
-    });
-  }, [allBunks, selectedBunkArea]);
+      if (selectedBunkArea === 'all') return true
+      if (selectedBunkArea === 'boys') return bunk.gender === 'M'
+      if (selectedBunkArea === 'girls') return bunk.gender === 'F'
+      if (selectedBunkArea === 'ag') return bunk.gender === 'Mixed'
+      return true
+    })
+  }, [allBunks, selectedBunkArea])
 
   // Create bunk comparison data with movement tracking
   const bunkComparisons = useMemo((): BunkComparison[] => {
     // Build lookup maps for movement tracking
-    const leftByPerson = new Map(leftAssignments.map((a) => [a.personCmId, a]));
-    const rightByPerson = new Map(
-      rightAssignments.map((a) => [a.personCmId, a]),
-    );
+    const leftByPerson = new Map(leftAssignments.map((a) => [a.personCmId, a]))
+    const rightByPerson = new Map(rightAssignments.map((a) => [a.personCmId, a]))
 
     return filteredBunks.map((bunk) => {
-      const leftCampers = leftAssignments.filter((a) => a.bunkId === bunk.id);
-      const rightCampers = rightAssignments.filter((a) => a.bunkId === bunk.id);
+      const leftCampers = leftAssignments.filter((a) => a.bunkId === bunk.id)
+      const rightCampers = rightAssignments.filter((a) => a.bunkId === bunk.id)
 
-      const leftPersonIds = new Set(leftCampers.map((c) => c.personCmId));
-      const rightPersonIds = new Set(rightCampers.map((c) => c.personCmId));
+      const leftPersonIds = new Set(leftCampers.map((c) => c.personCmId))
+      const rightPersonIds = new Set(rightCampers.map((c) => c.personCmId))
 
       // Track moved in with their origin
       const movedIn = rightCampers
         .filter((c) => !leftPersonIds.has(c.personCmId))
         .map((c) => {
-          const prevAssignment = leftByPerson.get(c.personCmId);
+          const prevAssignment = leftByPerson.get(c.personCmId)
           return {
             camper: c,
-            fromBunk: prevAssignment?.bunkName || "(Unassigned)",
-          };
-        });
+            fromBunk: prevAssignment?.bunkName || '(Unassigned)',
+          }
+        })
 
       // Track moved out with their destination
       const movedOut = leftCampers
         .filter((c) => !rightPersonIds.has(c.personCmId))
         .map((c) => {
-          const nextAssignment = rightByPerson.get(c.personCmId);
+          const nextAssignment = rightByPerson.get(c.personCmId)
           return {
             camper: c,
-            toBunk: nextAssignment?.bunkName || "(Unassigned)",
-          };
-        });
+            toBunk: nextAssignment?.bunkName || '(Unassigned)',
+          }
+        })
 
       return {
         bunkId: bunk.id,
@@ -517,111 +467,107 @@ export default function ScenarioComparisonPage() {
         movedIn,
         movedOut,
         unchanged: rightCampers.filter((c) => leftPersonIds.has(c.personCmId)),
-      };
-    });
-  }, [filteredBunks, leftAssignments, rightAssignments]);
+      }
+    })
+  }, [filteredBunks, leftAssignments, rightAssignments])
 
   // Filter changes based on selected filter
   const filteredChanges = useMemo(() => {
     switch (changeFilter) {
-      case "moved":
+      case 'moved':
         return {
           moved: comparison.moved,
           newlyAssigned: [],
           newlyUnassigned: [],
-        };
-      case "newly-assigned":
+        }
+      case 'newly-assigned':
         return {
           moved: [],
           newlyAssigned: comparison.newlyAssigned,
           newlyUnassigned: [],
-        };
-      case "newly-unassigned":
+        }
+      case 'newly-unassigned':
         return {
           moved: [],
           newlyAssigned: [],
           newlyUnassigned: comparison.newlyUnassigned,
-        };
+        }
       default:
         return {
           moved: comparison.moved,
           newlyAssigned: comparison.newlyAssigned,
           newlyUnassigned: comparison.newlyUnassigned,
-        };
+        }
     }
-  }, [comparison, changeFilter]);
+  }, [comparison, changeFilter])
 
   const leftScenarioName =
-    leftScenarioId === "production"
-      ? "CampMinder (Production)"
-      : scenarios.find((s) => s.id === leftScenarioId)?.name ||
-        "Select scenario";
+    leftScenarioId === 'production'
+      ? 'CampMinder (Production)'
+      : scenarios.find((s) => s.id === leftScenarioId)?.name || 'Select scenario'
 
   const rightScenarioName =
-    rightScenarioId === "production"
-      ? "CampMinder (Production)"
-      : scenarios.find((s) => s.id === rightScenarioId)?.name ||
-        "Select scenario";
+    rightScenarioId === 'production'
+      ? 'CampMinder (Production)'
+      : scenarios.find((s) => s.id === rightScenarioId)?.name || 'Select scenario'
 
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="spinner-lodge w-8 h-8" />
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="spinner-lodge h-8 w-8" />
       </div>
-    );
+    )
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="bg-background min-h-screen">
       {/* Header - matches card-lodge style with rounded corners, dark mode aware */}
-      <header className="sticky top-0 z-20 mx-4 mt-4 bg-forest-800 dark:bg-forest-900 text-white shadow-lodge-lg rounded-2xl">
-        <div className="px-4 sm:px-6 py-4">
+      <header className="bg-forest-800 dark:bg-forest-900 shadow-lodge-lg sticky top-0 z-20 mx-4 mt-4 rounded-2xl text-white">
+        <div className="px-4 py-4 sm:px-6">
           <div className="flex items-center justify-between gap-4">
             {/* Back button and title */}
             <div className="flex items-center gap-4">
               <Link
                 to={`/summer/session/${sessionUrlSegment}/bunks`}
-                className="btn-ghost text-white/70 hover:text-white hover:bg-white/10 p-2 rounded-xl"
+                className="btn-ghost rounded-xl p-2 text-white/70 hover:bg-white/10 hover:text-white"
               >
-                <ArrowLeft className="w-5 h-5" />
+                <ArrowLeft className="h-5 w-5" />
               </Link>
               <div>
-                <h1 className="text-xl font-display font-bold flex items-center gap-3">
-                  <GitCompare className="w-6 h-6 text-amber-400" />
+                <h1 className="font-display flex items-center gap-3 text-xl font-bold">
+                  <GitCompare className="h-6 w-6 text-amber-400" />
                   Scenario Comparison
                 </h1>
-                <p className="text-sm text-white/60">
-                  Compare bunk assignments between scenarios
-                </p>
+                <p className="text-sm text-white/60">Compare bunk assignments between scenarios</p>
               </div>
             </div>
 
             {/* View mode toggle */}
-            <div className="flex items-center gap-2 bg-white/10 rounded-xl p-1">
+            <div className="flex items-center gap-2 rounded-xl bg-white/10 p-1">
               {[
                 {
-                  mode: "split" as ViewMode,
+                  mode: 'split' as ViewMode,
                   icon: LayoutGrid,
-                  label: "Split View",
+                  label: 'Split View',
                 },
                 {
-                  mode: "changes" as ViewMode,
+                  mode: 'changes' as ViewMode,
                   icon: Table2,
-                  label: "Changes Table",
+                  label: 'Changes Table',
                 },
               ].map(({ mode, icon: Icon, label }) => (
                 <button
                   key={mode}
                   onClick={() => setViewMode(mode)}
                   className={clsx(
-                    "flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all",
+                    'flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all',
                     viewMode === mode
-                      ? "bg-white text-forest-800"
-                      : "text-white/70 hover:text-white hover:bg-white/10",
+                      ? 'text-forest-800 bg-white'
+                      : 'text-white/70 hover:bg-white/10 hover:text-white'
                   )}
                   title={label}
                 >
-                  <Icon className="w-4 h-4" />
+                  <Icon className="h-4 w-4" />
                   <span className="hidden sm:inline">{label}</span>
                 </button>
               ))}
@@ -631,34 +577,30 @@ export default function ScenarioComparisonPage() {
       </header>
 
       {/* Scenario Selectors */}
-      <div className="bg-background border-b border-border sticky top-0 z-10 mt-4">
+      <div className="bg-background border-border sticky top-0 z-10 mt-4 border-b">
         <div className="container mx-auto px-4 py-4">
-          <div className="flex flex-col lg:flex-row items-center gap-4 lg:gap-8">
+          <div className="flex flex-col items-center gap-4 lg:flex-row lg:gap-8">
             {/* Left Scenario */}
-            <div className="flex-1 w-full">
-              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 block">
+            <div className="w-full flex-1">
+              <label className="text-muted-foreground mb-2 block text-xs font-semibold tracking-wider uppercase">
                 Compare From (Before)
               </label>
               <Listbox value={leftScenarioId} onChange={setLeftScenarioId}>
                 <div className="relative">
                   <ListboxButton className="listbox-button font-medium">
                     <span className="truncate">
-                      {leftScenarioId === "production"
-                        ? "CampMinder (Production)"
-                        : scenarios.find((s) => s.id === leftScenarioId)
-                            ?.name || "Select..."}
+                      {leftScenarioId === 'production'
+                        ? 'CampMinder (Production)'
+                        : scenarios.find((s) => s.id === leftScenarioId)?.name || 'Select...'}
                     </span>
-                    <ChevronDown className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                    <ChevronDown className="text-muted-foreground h-5 w-5 flex-shrink-0" />
                   </ListboxButton>
                   <ListboxOptions className="listbox-options w-full">
-                    <ListboxOption
-                      value="production"
-                      className="listbox-option"
-                    >
+                    <ListboxOption value="production" className="listbox-option">
                       CampMinder (Production)
                     </ListboxOption>
                     {scenarios.length > 0 && (
-                      <div className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground border-t border-border mt-1">
+                      <div className="text-muted-foreground border-border mt-1 border-t px-4 py-1.5 text-xs font-semibold tracking-wider uppercase">
                         Draft Scenarios
                       </div>
                     )}
@@ -679,44 +621,38 @@ export default function ScenarioComparisonPage() {
 
             {/* Arrow indicator */}
             <div className="flex items-center justify-center">
-              <div className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-                <ArrowRight className="w-6 h-6 text-amber-600" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
+                <ArrowRight className="h-6 w-6 text-amber-600" />
               </div>
             </div>
 
             {/* Right Scenario */}
-            <div className="flex-1 w-full">
-              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 block">
+            <div className="w-full flex-1">
+              <label className="text-muted-foreground mb-2 block text-xs font-semibold tracking-wider uppercase">
                 Compare To (After)
               </label>
               <Listbox value={rightScenarioId} onChange={setRightScenarioId}>
                 <div className="relative">
                   <ListboxButton className="listbox-button font-medium">
-                    <span
-                      className={clsx(
-                        "truncate",
-                        !rightScenarioId && "text-muted-foreground",
-                      )}
-                    >
+                    <span className={clsx('truncate', !rightScenarioId && 'text-muted-foreground')}>
                       {!rightScenarioId
-                        ? "Select a scenario..."
-                        : rightScenarioId === "production"
-                          ? "CampMinder (Production)"
-                          : scenarios.find((s) => s.id === rightScenarioId)
-                              ?.name || "Select..."}
+                        ? 'Select a scenario...'
+                        : rightScenarioId === 'production'
+                          ? 'CampMinder (Production)'
+                          : scenarios.find((s) => s.id === rightScenarioId)?.name || 'Select...'}
                     </span>
-                    <ChevronDown className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                    <ChevronDown className="text-muted-foreground h-5 w-5 flex-shrink-0" />
                   </ListboxButton>
                   <ListboxOptions className="listbox-options w-full">
                     <ListboxOption
                       value="production"
-                      disabled={leftScenarioId === "production"}
+                      disabled={leftScenarioId === 'production'}
                       className="listbox-option"
                     >
                       CampMinder (Production)
                     </ListboxOption>
                     {scenarios.length > 0 && (
-                      <div className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground border-t border-border mt-1">
+                      <div className="text-muted-foreground border-border mt-1 border-t px-4 py-1.5 text-xs font-semibold tracking-wider uppercase">
                         Draft Scenarios
                       </div>
                     )}
@@ -743,27 +679,27 @@ export default function ScenarioComparisonPage() {
         {!isReady ? (
           /* Empty state */
           <div className="card-lodge p-12 text-center">
-            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-forest-100 dark:bg-forest-900/30 flex items-center justify-center">
-              <GitCompare className="w-10 h-10 text-forest-500" />
+            <div className="bg-forest-100 dark:bg-forest-900/30 mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full">
+              <GitCompare className="text-forest-500 h-10 w-10" />
             </div>
-            <h2 className="text-2xl font-display font-bold text-foreground mb-3">
+            <h2 className="font-display text-foreground mb-3 text-2xl font-bold">
               Select Two Scenarios to Compare
             </h2>
-            <p className="text-muted-foreground max-w-md mx-auto">
-              Choose a "before" and "after" scenario above to see what changed.
-              You can compare production data with any draft scenario.
+            <p className="text-muted-foreground mx-auto max-w-md">
+              Choose a "before" and "after" scenario above to see what changed. You can compare
+              production data with any draft scenario.
             </p>
           </div>
         ) : (
           <>
             {/* Validation Score Comparison - Detailed breakdown */}
             {(leftValidation || rightValidation) && (
-              <div className="card-lodge p-4 mb-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <CheckCircle2 className="w-5 h-5 text-forest-600" />
+              <div className="card-lodge mb-6 p-4">
+                <div className="mb-4 flex items-center gap-2">
+                  <CheckCircle2 className="text-forest-600 h-5 w-5" />
                   <h3 className="font-semibold">Validation Details</h3>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   {/* Left Scenario Score */}
                   <ValidationScoreCard
                     label={leftScenarioName}
@@ -781,7 +717,7 @@ export default function ScenarioComparisonPage() {
             )}
 
             {/* Metrics Summary */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
               <MetricCard
                 label="Total Campers"
                 value={comparison.metrics.totalCampers.right}
@@ -794,9 +730,7 @@ export default function ScenarioComparisonPage() {
                 value={comparison.metrics.movedCount}
                 icon={ArrowLeftRight}
                 color="amber"
-                trend={
-                  comparison.metrics.movedCount > 0 ? "neutral" : undefined
-                }
+                trend={comparison.metrics.movedCount > 0 ? 'neutral' : undefined}
               />
               <MetricCard
                 label="Change Rate"
@@ -819,56 +753,50 @@ export default function ScenarioComparisonPage() {
             </div>
 
             {/* Area Filter (for split view) */}
-            {viewMode === "split" && (
-              <div className="flex items-center gap-2 mb-4">
-                <Filter className="w-4 h-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground mr-2">
-                  Area:
-                </span>
-                {["all", "boys", "girls", "ag"].map((area) => (
+            {viewMode === 'split' && (
+              <div className="mb-4 flex items-center gap-2">
+                <Filter className="text-muted-foreground h-4 w-4" />
+                <span className="text-muted-foreground mr-2 text-sm">Area:</span>
+                {['all', 'boys', 'girls', 'ag'].map((area) => (
                   <button
                     key={area}
-                    onClick={() =>
-                      setSelectedBunkArea(area as typeof selectedBunkArea)
-                    }
+                    onClick={() => setSelectedBunkArea(area as typeof selectedBunkArea)}
                     className={clsx(
-                      "px-3 py-1.5 rounded-lg text-sm font-medium transition-all",
+                      'rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
                       selectedBunkArea === area
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted/50 text-muted-foreground hover:bg-muted",
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted/50 text-muted-foreground hover:bg-muted'
                     )}
                   >
-                    {area === "all"
-                      ? "All"
-                      : area === "boys"
-                        ? "Boys"
-                        : area === "girls"
-                          ? "Girls"
-                          : "AG"}
+                    {area === 'all'
+                      ? 'All'
+                      : area === 'boys'
+                        ? 'Boys'
+                        : area === 'girls'
+                          ? 'Girls'
+                          : 'AG'}
                   </button>
                 ))}
               </div>
             )}
 
             {/* Change Filter (for changes view) */}
-            {viewMode === "changes" && (
-              <div className="flex items-center gap-2 mb-4">
-                <Filter className="w-4 h-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground mr-2">
-                  Show:
-                </span>
+            {viewMode === 'changes' && (
+              <div className="mb-4 flex items-center gap-2">
+                <Filter className="text-muted-foreground h-4 w-4" />
+                <span className="text-muted-foreground mr-2 text-sm">Show:</span>
                 {[
-                  { id: "all" as ChangeFilter, label: "All Changes" },
+                  { id: 'all' as ChangeFilter, label: 'All Changes' },
                   {
-                    id: "moved" as ChangeFilter,
+                    id: 'moved' as ChangeFilter,
                     label: `Moved (${comparison.metrics.movedCount})`,
                   },
                   {
-                    id: "newly-assigned" as ChangeFilter,
+                    id: 'newly-assigned' as ChangeFilter,
                     label: `New (${comparison.metrics.newlyAssignedCount})`,
                   },
                   {
-                    id: "newly-unassigned" as ChangeFilter,
+                    id: 'newly-unassigned' as ChangeFilter,
                     label: `Gone (${comparison.metrics.newlyUnassignedCount})`,
                   },
                 ].map((filter) => (
@@ -876,10 +804,10 @@ export default function ScenarioComparisonPage() {
                     key={filter.id}
                     onClick={() => setChangeFilter(filter.id)}
                     className={clsx(
-                      "px-3 py-1.5 rounded-lg text-sm font-medium transition-all",
+                      'rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
                       changeFilter === filter.id
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted/50 text-muted-foreground hover:bg-muted",
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted/50 text-muted-foreground hover:bg-muted'
                     )}
                   >
                     {filter.label}
@@ -889,7 +817,7 @@ export default function ScenarioComparisonPage() {
             )}
 
             {/* Split View */}
-            {viewMode === "split" && (
+            {viewMode === 'split' && (
               <div className="space-y-4">
                 {bunkComparisons.map((bunkComp) => (
                   <BunkComparisonCard
@@ -903,52 +831,43 @@ export default function ScenarioComparisonPage() {
             )}
 
             {/* Changes Table View */}
-            {viewMode === "changes" && (
+            {viewMode === 'changes' && (
               <div className="card-lodge overflow-hidden">
                 <table className="w-full">
                   <thead className="bg-muted/50">
                     <tr>
-                      <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      <th className="text-muted-foreground px-4 py-3 text-left text-xs font-semibold tracking-wider uppercase">
                         Camper
                       </th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      <th className="text-muted-foreground px-4 py-3 text-left text-xs font-semibold tracking-wider uppercase">
                         Grade
                       </th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      <th className="text-muted-foreground px-4 py-3 text-left text-xs font-semibold tracking-wider uppercase">
                         Change
                       </th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      <th className="text-muted-foreground px-4 py-3 text-left text-xs font-semibold tracking-wider uppercase">
                         From
                       </th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      <th className="text-muted-foreground px-4 py-3 text-left text-xs font-semibold tracking-wider uppercase">
                         To
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-border">
+                  <tbody className="divide-border divide-y">
                     {filteredChanges.moved.map((change) => (
-                      <tr
-                        key={`moved-${change.camper.personCmId}`}
-                        className="hover:bg-muted/30"
-                      >
-                        <td className="px-4 py-3 font-medium">
-                          {change.camper.name}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-muted-foreground">
+                      <tr key={`moved-${change.camper.personCmId}`} className="hover:bg-muted/30">
+                        <td className="px-4 py-3 font-medium">{change.camper.name}</td>
+                        <td className="text-muted-foreground px-4 py-3 text-sm">
                           {formatGradeOrdinal(change.camper.grade)}
                         </td>
                         <td className="px-4 py-3">
-                          <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-medium">
-                            <ArrowLeftRight className="w-3 h-3" />
+                          <span className="inline-flex items-center gap-1.5 rounded-lg bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                            <ArrowLeftRight className="h-3 w-3" />
                             Moved
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-sm">
-                          {change.fromBunk.name}
-                        </td>
-                        <td className="px-4 py-3 text-sm">
-                          {change.toBunk.name}
-                        </td>
+                        <td className="px-4 py-3 text-sm">{change.fromBunk.name}</td>
+                        <td className="px-4 py-3 text-sm">{change.toBunk.name}</td>
                       </tr>
                     ))}
                     {filteredChanges.newlyAssigned.map((change) => (
@@ -956,24 +875,18 @@ export default function ScenarioComparisonPage() {
                         key={`assigned-${change.camper.personCmId}`}
                         className="hover:bg-muted/30"
                       >
-                        <td className="px-4 py-3 font-medium">
-                          {change.camper.name}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-muted-foreground">
+                        <td className="px-4 py-3 font-medium">{change.camper.name}</td>
+                        <td className="text-muted-foreground px-4 py-3 text-sm">
                           {formatGradeOrdinal(change.camper.grade)}
                         </td>
                         <td className="px-4 py-3">
-                          <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-forest-100 dark:bg-forest-900/30 text-forest-700 dark:text-forest-400 text-xs font-medium">
-                            <CheckCircle2 className="w-3 h-3" />
+                          <span className="bg-forest-100 dark:bg-forest-900/30 text-forest-700 dark:text-forest-400 inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium">
+                            <CheckCircle2 className="h-3 w-3" />
                             Assigned
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-sm text-muted-foreground">
-                          —
-                        </td>
-                        <td className="px-4 py-3 text-sm">
-                          {change.toBunk.name}
-                        </td>
+                        <td className="text-muted-foreground px-4 py-3 text-sm">—</td>
+                        <td className="px-4 py-3 text-sm">{change.toBunk.name}</td>
                       </tr>
                     ))}
                     {filteredChanges.newlyUnassigned.map((change) => (
@@ -981,24 +894,18 @@ export default function ScenarioComparisonPage() {
                         key={`unassigned-${change.camper.personCmId}`}
                         className="hover:bg-muted/30"
                       >
-                        <td className="px-4 py-3 font-medium">
-                          {change.camper.name}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-muted-foreground">
+                        <td className="px-4 py-3 font-medium">{change.camper.name}</td>
+                        <td className="text-muted-foreground px-4 py-3 text-sm">
                           {formatGradeOrdinal(change.camper.grade)}
                         </td>
                         <td className="px-4 py-3">
-                          <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-bark-100 dark:bg-bark-800/30 text-bark-700 dark:text-bark-400 text-xs font-medium">
-                            <AlertTriangle className="w-3 h-3" />
+                          <span className="bg-bark-100 dark:bg-bark-800/30 text-bark-700 dark:text-bark-400 inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium">
+                            <AlertTriangle className="h-3 w-3" />
                             Unassigned
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-sm">
-                          {change.fromBunk.name}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-muted-foreground">
-                          —
-                        </td>
+                        <td className="px-4 py-3 text-sm">{change.fromBunk.name}</td>
+                        <td className="text-muted-foreground px-4 py-3 text-sm">—</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1006,7 +913,7 @@ export default function ScenarioComparisonPage() {
                 {filteredChanges.moved.length === 0 &&
                   filteredChanges.newlyAssigned.length === 0 &&
                   filteredChanges.newlyUnassigned.length === 0 && (
-                    <div className="p-8 text-center text-muted-foreground">
+                    <div className="text-muted-foreground p-8 text-center">
                       No changes to display
                     </div>
                   )}
@@ -1016,70 +923,58 @@ export default function ScenarioComparisonPage() {
         )}
       </main>
     </div>
-  );
+  )
 }
 
 // Validation Score Card Component - detailed validation stats
 interface ValidationScoreCardProps {
-  label: string;
-  validation: ValidationResult | null | undefined;
-  side: "left" | "right";
+  label: string
+  validation: ValidationResult | null | undefined
+  side: 'left' | 'right'
 }
 
-function ValidationScoreCard({
-  label,
-  validation,
-  side,
-}: ValidationScoreCardProps) {
+function ValidationScoreCard({ label, validation, side }: ValidationScoreCardProps) {
   if (!validation) {
     return (
       <div
         className={clsx(
-          "p-4 rounded-xl border-2 border-dashed",
-          side === "left" ? "border-muted" : "border-muted",
+          'rounded-xl border-2 border-dashed p-4',
+          side === 'left' ? 'border-muted' : 'border-muted'
         )}
       >
-        <div className="text-sm font-medium text-muted-foreground mb-2 truncate">
-          {label}
-        </div>
-        <div className="text-sm text-muted-foreground/60">
-          Loading validation...
-        </div>
+        <div className="text-muted-foreground mb-2 truncate text-sm font-medium">{label}</div>
+        <div className="text-muted-foreground/60 text-sm">Loading validation...</div>
       </div>
-    );
+    )
   }
 
-  const stats = validation.statistics;
-  const satisfactionPct = Math.round(stats.request_satisfaction_rate * 100);
-  const explicitPct = Math.round(
-    stats.explicit_csv_request_satisfaction_rate * 100,
-  );
+  const stats = validation.statistics
+  const satisfactionPct = Math.round(stats.request_satisfaction_rate * 100)
+  const explicitPct = Math.round(stats.explicit_csv_request_satisfaction_rate * 100)
 
   return (
     <div
       className={clsx(
-        "p-4 rounded-xl border-2",
-        side === "left"
-          ? "border-bark-200 dark:border-bark-700"
-          : "border-forest-200 dark:border-forest-700",
+        'rounded-xl border-2 p-4',
+        side === 'left'
+          ? 'border-bark-200 dark:border-bark-700'
+          : 'border-forest-200 dark:border-forest-700'
       )}
     >
-      <div className="text-sm font-semibold mb-3 truncate">{label}</div>
+      <div className="mb-3 truncate text-sm font-semibold">{label}</div>
       <div className="grid grid-cols-2 gap-3 text-sm">
         {/* Request Satisfaction */}
         <div>
-          <div className="text-muted-foreground text-xs uppercase tracking-wider">
-            All Requests
-          </div>
+          <div className="text-muted-foreground text-xs tracking-wider uppercase">All Requests</div>
           <div className="flex items-baseline gap-1">
             <span
               className={clsx(
-                "text-xl font-bold",
+                'text-xl font-bold',
                 satisfactionPct >= 80
-                  ? "text-forest-600"
+                  ? 'text-forest-600'
                   : satisfactionPct >= 60
-                    ? "text-amber-600"
-                    : "text-red-600",
+                    ? 'text-amber-600'
+                    : 'text-red-600'
               )}
             >
               {satisfactionPct}%
@@ -1091,52 +986,47 @@ function ValidationScoreCard({
         </div>
         {/* Explicit Field Satisfaction */}
         <div>
-          <div className="text-muted-foreground text-xs uppercase tracking-wider">
+          <div className="text-muted-foreground text-xs tracking-wider uppercase">
             Parent Requests
           </div>
           <div className="flex items-baseline gap-1">
             <span
               className={clsx(
-                "text-xl font-bold",
+                'text-xl font-bold',
                 explicitPct >= 80
-                  ? "text-forest-600"
+                  ? 'text-forest-600'
                   : explicitPct >= 60
-                    ? "text-amber-600"
-                    : "text-red-600",
+                    ? 'text-amber-600'
+                    : 'text-red-600'
               )}
             >
               {explicitPct}%
             </span>
             <span className="text-muted-foreground text-xs">
-              ({stats.satisfied_explicit_csv_requests}/
-              {stats.explicit_csv_requests})
+              ({stats.satisfied_explicit_csv_requests}/{stats.explicit_csv_requests})
             </span>
           </div>
         </div>
         {/* Violations & Risks */}
         <div>
-          <div className="text-muted-foreground text-xs uppercase tracking-wider">
-            Violations
-          </div>
+          <div className="text-muted-foreground text-xs tracking-wider uppercase">Violations</div>
           <div
             className={clsx(
-              "text-xl font-bold",
-              stats.negative_request_violations > 0
-                ? "text-red-600"
-                : "text-forest-600",
+              'text-xl font-bold',
+              stats.negative_request_violations > 0 ? 'text-red-600' : 'text-forest-600'
             )}
           >
             {stats.negative_request_violations}
           </div>
         </div>
         <div>
-          <div className="text-muted-foreground text-xs uppercase tracking-wider">
+          <div className="text-muted-foreground text-xs tracking-wider uppercase">
             Isolation Risks
           </div>
           <div
             className={clsx(
-              "text-xl font-bold",
-              stats.isolation_risks > 0 ? "text-amber-600" : "text-forest-600",
+              'text-xl font-bold',
+              stats.isolation_risks > 0 ? 'text-amber-600' : 'text-forest-600'
             )}
           >
             {stats.isolation_risks}
@@ -1144,155 +1034,123 @@ function ValidationScoreCard({
         </div>
       </div>
     </div>
-  );
+  )
 }
 
 // Metric Card Component
 interface MetricCardProps {
-  label: string;
-  value: string | number;
-  sublabel?: string | undefined;
-  icon: React.ElementType;
-  color: "forest" | "amber" | "green" | "red" | "bark";
-  trend?: "up" | "down" | "neutral" | undefined;
+  label: string
+  value: string | number
+  sublabel?: string | undefined
+  icon: React.ElementType
+  color: 'forest' | 'amber' | 'green' | 'red' | 'bark'
+  trend?: 'up' | 'down' | 'neutral' | undefined
 }
 
-function MetricCard({
-  label,
-  value,
-  sublabel,
-  icon: Icon,
-  color,
-  trend,
-}: MetricCardProps) {
+function MetricCard({ label, value, sublabel, icon: Icon, color, trend }: MetricCardProps) {
   const colorClasses = {
-    forest:
-      "bg-forest-100 dark:bg-forest-900/30 text-forest-600 dark:text-forest-400",
-    amber:
-      "bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400",
-    green:
-      "bg-forest-100 dark:bg-forest-900/30 text-forest-600 dark:text-forest-400",
-    red: "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400",
-    bark: "bg-bark-100 dark:bg-bark-800/30 text-bark-600 dark:text-bark-400",
-  };
+    forest: 'bg-forest-100 dark:bg-forest-900/30 text-forest-600 dark:text-forest-400',
+    amber: 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400',
+    green: 'bg-forest-100 dark:bg-forest-900/30 text-forest-600 dark:text-forest-400',
+    red: 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400',
+    bark: 'bg-bark-100 dark:bg-bark-800/30 text-bark-600 dark:text-bark-400',
+  }
 
   return (
     <div className="card-lodge p-4">
-      <div className="flex items-start justify-between mb-2">
+      <div className="mb-2 flex items-start justify-between">
         <div
           className={clsx(
-            "w-10 h-10 rounded-xl flex items-center justify-center",
-            colorClasses[color],
+            'flex h-10 w-10 items-center justify-center rounded-xl',
+            colorClasses[color]
           )}
         >
-          <Icon className="w-5 h-5" />
+          <Icon className="h-5 w-5" />
         </div>
         {trend && (
           <div
             className={clsx(
-              "flex items-center gap-1 text-xs font-medium",
-              trend === "up" && "text-forest-600",
-              trend === "down" && "text-red-600",
-              trend === "neutral" && "text-amber-600",
+              'flex items-center gap-1 text-xs font-medium',
+              trend === 'up' && 'text-forest-600',
+              trend === 'down' && 'text-red-600',
+              trend === 'neutral' && 'text-amber-600'
             )}
           >
-            {trend === "up" && <TrendingUp className="w-3 h-3" />}
-            {trend === "down" && <TrendingDown className="w-3 h-3" />}
-            {trend === "neutral" && <Minus className="w-3 h-3" />}
+            {trend === 'up' && <TrendingUp className="h-3 w-3" />}
+            {trend === 'down' && <TrendingDown className="h-3 w-3" />}
+            {trend === 'neutral' && <Minus className="h-3 w-3" />}
           </div>
         )}
       </div>
       <div className="stat-card-value text-2xl">{value}</div>
-      <div className="text-xs text-muted-foreground mt-1">{label}</div>
-      {sublabel && (
-        <div className="text-xs text-muted-foreground/70 mt-0.5">
-          {sublabel}
-        </div>
-      )}
+      <div className="text-muted-foreground mt-1 text-xs">{label}</div>
+      {sublabel && <div className="text-muted-foreground/70 mt-0.5 text-xs">{sublabel}</div>}
     </div>
-  );
+  )
 }
 
 // Bunk Comparison Card (Split View)
 interface BunkComparisonCardProps {
-  comparison: BunkComparison;
-  leftLabel: string;
-  rightLabel: string;
+  comparison: BunkComparison
+  leftLabel: string
+  rightLabel: string
 }
 
-function BunkComparisonCard({
-  comparison,
-  leftLabel,
-  rightLabel,
-}: BunkComparisonCardProps) {
-  const hasChanges =
-    comparison.movedIn.length > 0 || comparison.movedOut.length > 0;
-  const movedInIds = new Set(
-    comparison.movedIn.map((c) => c.camper.personCmId),
-  );
-  const movedOutIds = new Set(
-    comparison.movedOut.map((c) => c.camper.personCmId),
-  );
+function BunkComparisonCard({ comparison, leftLabel, rightLabel }: BunkComparisonCardProps) {
+  const hasChanges = comparison.movedIn.length > 0 || comparison.movedOut.length > 0
+  const movedInIds = new Set(comparison.movedIn.map((c) => c.camper.personCmId))
+  const movedOutIds = new Set(comparison.movedOut.map((c) => c.camper.personCmId))
 
   // Build lookup for movement destinations
   const movedOutDestinations = new Map(
-    comparison.movedOut.map((c) => [c.camper.personCmId, c.toBunk]),
-  );
-  const movedInOrigins = new Map(
-    comparison.movedIn.map((c) => [c.camper.personCmId, c.fromBunk]),
-  );
+    comparison.movedOut.map((c) => [c.camper.personCmId, c.toBunk])
+  )
+  const movedInOrigins = new Map(comparison.movedIn.map((c) => [c.camper.personCmId, c.fromBunk]))
 
   return (
     <div
       className={clsx(
-        "card-lodge overflow-hidden transition-all",
-        hasChanges && "ring-2 ring-amber-400/50",
+        'card-lodge overflow-hidden transition-all',
+        hasChanges && 'ring-2 ring-amber-400/50'
       )}
     >
       {/* Bunk Header */}
       <div
         className={clsx(
-          "px-4 py-3 border-b border-border flex items-center justify-between",
-          hasChanges ? "bg-amber-50 dark:bg-amber-900/10" : "bg-muted/30",
+          'border-border flex items-center justify-between border-b px-4 py-3',
+          hasChanges ? 'bg-amber-50 dark:bg-amber-900/10' : 'bg-muted/30'
         )}
       >
         <div className="flex items-center gap-3">
-          <Home className="w-5 h-5 text-muted-foreground" />
-          <h3 className="font-semibold text-lg">{comparison.bunkName}</h3>
+          <Home className="text-muted-foreground h-5 w-5" />
+          <h3 className="text-lg font-semibold">{comparison.bunkName}</h3>
           {hasChanges && (
-            <span className="px-2 py-0.5 rounded-full bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200 text-xs font-medium">
+            <span className="rounded-full bg-amber-200 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-800 dark:text-amber-200">
               Changed
             </span>
           )}
         </div>
-        <div className="text-sm text-muted-foreground">
-          {comparison.leftCampers.length} → {comparison.rightCampers.length}{" "}
-          campers
+        <div className="text-muted-foreground text-sm">
+          {comparison.leftCampers.length} → {comparison.rightCampers.length} campers
         </div>
       </div>
 
       {/* Split Content */}
-      <div className="grid grid-cols-2 divide-x divide-border">
+      <div className="divide-border grid grid-cols-2 divide-x">
         {/* Left Side (Before) */}
         <div className="p-4">
-          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+          <div className="text-muted-foreground mb-3 text-xs font-semibold tracking-wider uppercase">
             {leftLabel}
           </div>
           <div className="space-y-1.5">
             {comparison.leftCampers.length === 0 ? (
-              <div className="text-sm text-muted-foreground italic py-2">
-                Empty
-              </div>
+              <div className="text-muted-foreground py-2 text-sm italic">Empty</div>
             ) : (
               comparison.leftCampers.map((camper) => (
                 <CamperPill
                   key={camper.personCmId}
                   camper={camper}
-                  status={
-                    movedOutIds.has(camper.personCmId)
-                      ? "moved-out"
-                      : "unchanged"
-                  }
+                  status={movedOutIds.has(camper.personCmId) ? 'moved-out' : 'unchanged'}
                   destination={movedOutDestinations.get(camper.personCmId)}
                 />
               ))
@@ -1302,22 +1160,18 @@ function BunkComparisonCard({
 
         {/* Right Side (After) */}
         <div className="p-4">
-          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+          <div className="text-muted-foreground mb-3 text-xs font-semibold tracking-wider uppercase">
             {rightLabel}
           </div>
           <div className="space-y-1.5">
             {comparison.rightCampers.length === 0 ? (
-              <div className="text-sm text-muted-foreground italic py-2">
-                Empty
-              </div>
+              <div className="text-muted-foreground py-2 text-sm italic">Empty</div>
             ) : (
               comparison.rightCampers.map((camper) => (
                 <CamperPill
                   key={camper.personCmId}
                   camper={camper}
-                  status={
-                    movedInIds.has(camper.personCmId) ? "moved-in" : "unchanged"
-                  }
+                  status={movedInIds.has(camper.personCmId) ? 'moved-in' : 'unchanged'}
                   origin={movedInOrigins.get(camper.personCmId)}
                 />
               ))
@@ -1326,54 +1180,47 @@ function BunkComparisonCard({
         </div>
       </div>
     </div>
-  );
+  )
 }
 
 // Camper Pill Component with origin/destination info
 interface CamperPillProps {
-  camper: CamperAssignment;
-  status: "unchanged" | "moved-in" | "moved-out";
-  origin?: string | undefined; // Where they came from (for moved-in)
-  destination?: string | undefined; // Where they went (for moved-out)
+  camper: CamperAssignment
+  status: 'unchanged' | 'moved-in' | 'moved-out'
+  origin?: string | undefined // Where they came from (for moved-in)
+  destination?: string | undefined // Where they went (for moved-out)
 }
 
 function CamperPill({ camper, status, origin, destination }: CamperPillProps) {
   return (
     <div
       className={clsx(
-        "flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all",
-        status === "unchanged" && "bg-muted/50",
-        status === "moved-in" &&
-          "bg-forest-100 dark:bg-forest-900/30 ring-1 ring-forest-300 dark:ring-forest-700",
-        status === "moved-out" &&
-          "bg-red-50 dark:bg-red-900/20 ring-1 ring-red-200 dark:ring-red-800 opacity-75",
+        'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all',
+        status === 'unchanged' && 'bg-muted/50',
+        status === 'moved-in' &&
+          'bg-forest-100 dark:bg-forest-900/30 ring-forest-300 dark:ring-forest-700 ring-1',
+        status === 'moved-out' &&
+          'bg-red-50 opacity-75 ring-1 ring-red-200 dark:bg-red-900/20 dark:ring-red-800'
       )}
     >
-      <span
-        className={clsx(
-          "font-medium",
-          status === "moved-out" && "line-through",
-        )}
-      >
+      <span className={clsx('font-medium', status === 'moved-out' && 'line-through')}>
         {camper.name}
       </span>
-      <span className="text-muted-foreground text-xs">
-        {formatGradeOrdinal(camper.grade)}
-      </span>
+      <span className="text-muted-foreground text-xs">{formatGradeOrdinal(camper.grade)}</span>
       {/* Show origin for moved-in campers */}
-      {status === "moved-in" && origin && (
-        <span className="ml-auto flex items-center gap-1 text-xs text-forest-600 dark:text-forest-400">
-          <ArrowLeft className="w-3 h-3" />
+      {status === 'moved-in' && origin && (
+        <span className="text-forest-600 dark:text-forest-400 ml-auto flex items-center gap-1 text-xs">
+          <ArrowLeft className="h-3 w-3" />
           <span className="opacity-80">{origin}</span>
         </span>
       )}
       {/* Show destination for moved-out campers */}
-      {status === "moved-out" && destination && (
+      {status === 'moved-out' && destination && (
         <span className="ml-auto flex items-center gap-1 text-xs text-red-600 dark:text-red-400">
-          <ArrowRight className="w-3 h-3" />
+          <ArrowRight className="h-3 w-3" />
           <span className="opacity-80">{destination}</span>
         </span>
       )}
     </div>
-  );
+  )
 }
