@@ -33,6 +33,7 @@ export const SYNC_TYPE_NAMES: Record<string, string> = {
   quest_registrations: 'Quest Registrations', // Extracted from Quest-/Q- custom fields
   staff_applications: 'Staff Applications', // Extracted from App- custom fields
   staff_vehicle_info: 'Staff Vehicle Info', // Extracted from SVI- custom fields
+  normalize_geographic: 'Normalize Geographic', // Normalizes geographic columns to standard format
   bunk_requests: 'Intake Requests',
   process_requests: 'Process Requests',
   // On-demand syncs (not part of daily sync)
