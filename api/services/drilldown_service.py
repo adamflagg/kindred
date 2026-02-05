@@ -7,7 +7,6 @@ individual attendee records instead of aggregated counts.
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING, Any
 
 from api.schemas.metrics import DrilldownAttendee
@@ -355,10 +354,9 @@ class DrilldownService:
             years_at_camp = getattr(person, "years_at_camp", None)
             is_returning = years_at_camp is not None and years_at_camp > 1
 
-            # Parse city and state from address JSON if available
-            address = getattr(person, "address", None)
-            city = self._parse_city_from_address(address)
-            state = self._parse_state_from_address(address)
+            # Read city and state from discrete columns (address_city, address_state)
+            city = getattr(person, "address_city", None) or None
+            state = getattr(person, "address_state", None) or None
 
             result.append(
                 DrilldownAttendee(
@@ -381,49 +379,3 @@ class DrilldownService:
             )
 
         return result
-
-    def _parse_city_from_address(self, address: str | dict[str, Any] | None) -> str | None:
-        """Parse city from address (dict or JSON string).
-
-        Args:
-            address: Address dict or JSON string containing address fields, or None.
-
-        Returns:
-            City name if found, None otherwise.
-        """
-        if not address:
-            return None
-
-        try:
-            # Handle dict (PocketBase JSON fields return dicts directly)
-            if isinstance(address, dict):
-                addr_data = address
-            else:
-                addr_data = json.loads(address)
-            city = addr_data.get("city")
-            return str(city) if city else None
-        except (json.JSONDecodeError, TypeError, AttributeError):
-            return None
-
-    def _parse_state_from_address(self, address: str | dict[str, Any] | None) -> str | None:
-        """Parse state from address (dict or JSON string).
-
-        Args:
-            address: Address dict or JSON string containing address fields, or None.
-
-        Returns:
-            State abbreviation if found, None otherwise.
-        """
-        if not address:
-            return None
-
-        try:
-            # Handle dict (PocketBase JSON fields return dicts directly)
-            if isinstance(address, dict):
-                addr_data = address
-            else:
-                addr_data = json.loads(address)
-            state = addr_data.get("state")
-            return str(state) if state else None
-        except (json.JSONDecodeError, TypeError, AttributeError):
-            return None

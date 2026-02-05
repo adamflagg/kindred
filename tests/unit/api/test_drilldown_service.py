@@ -816,9 +816,14 @@ class TestDiscreteAddressColumns:
         """DrilldownAttendee.city should be populated from person.address_city."""
         persons = {
             101: create_mock_person(
-                101, "Emma", "Johnson", "F", 5,
+                101,
+                "Emma",
+                "Johnson",
+                "F",
+                5,
                 years_at_camp=1,
-                address_city="Springfield", address_state="IL",
+                address_city="Springfield",
+                address_state="IL",
             ),
         }
         attendees = [
@@ -849,9 +854,14 @@ class TestDiscreteAddressColumns:
         """DrilldownAttendee.city/state should be None when discrete columns are empty."""
         persons = {
             101: create_mock_person(
-                101, "Emma", "Johnson", "F", 5,
+                101,
+                "Emma",
+                "Johnson",
+                "F",
+                5,
                 years_at_camp=1,
-                address_city="", address_state="",
+                address_city="",
+                address_state="",
             ),
         }
         attendees = [

@@ -15,7 +15,6 @@ import (
 	"strings"
 
 	"github.com/pocketbase/pocketbase/core"
-	"github.com/pocketbase/pocketbase/tools/types"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -288,12 +287,7 @@ func (n *NormalizeGeographicSync) loadAttendeeGeoData(ctx context.Context, year 
 				SessionPBID: sessionRecord.Id,
 				SessionCMID: int(sessionRecord.GetFloat("cm_id")),
 				School:      personRecord.GetString("school"),
-			}
-
-			// Extract city from address JSON field
-			addressRaw := personRecord.Get("address")
-			if addressRaw != nil {
-				data.City = n.extractCityFromAddress(addressRaw)
+				City:        personRecord.GetString("address_city"),
 			}
 
 			// Get congregation from person_custom_values
@@ -386,54 +380,6 @@ func (n *NormalizeGeographicSync) loadPersonCongregations(year int, fieldID stri
 
 	slog.Info("Loaded person congregations", "count", len(result))
 	return result, nil
-}
-
-// extractCityFromAddress extracts city from address JSON field
-func (n *NormalizeGeographicSync) extractCityFromAddress(addressRaw any) string {
-	if addressRaw == nil {
-		return ""
-	}
-
-	// Handle string (JSON encoded)
-	if addrStr, ok := addressRaw.(string); ok && addrStr != "" {
-		var addr map[string]any
-		if err := json.Unmarshal([]byte(addrStr), &addr); err == nil {
-			if city, ok := addr["city"].(string); ok {
-				return city
-			}
-		}
-		return ""
-	}
-
-	// Handle map[string]any (direct map)
-	if addr, ok := addressRaw.(map[string]any); ok {
-		if city, cityOk := addr["city"].(string); cityOk {
-			return city
-		}
-	}
-
-	// Handle types.JSONRaw (PocketBase JSON field type)
-	// Note: types.JSONRaw is a distinct type, not []byte, so type assertion must be exact
-	if raw, ok := addressRaw.(types.JSONRaw); ok && len(raw) > 0 {
-		var addr map[string]any
-		if err := json.Unmarshal(raw, &addr); err == nil {
-			if city, ok := addr["city"].(string); ok {
-				return city
-			}
-		}
-	}
-
-	// Handle []byte (fallback for raw JSON bytes)
-	if raw, ok := addressRaw.([]byte); ok && len(raw) > 0 {
-		var addr map[string]any
-		if err := json.Unmarshal(raw, &addr); err == nil {
-			if city, ok := addr["city"].(string); ok {
-				return city
-			}
-		}
-	}
-
-	return ""
 }
 
 // normalizationLookup maps original values to normalized values per category
