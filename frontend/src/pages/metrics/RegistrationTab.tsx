@@ -278,17 +278,12 @@ export function RegistrationTab({ year, sessionTypes }: RegistrationTabProps) {
         </div>
       </div>
 
-      {/* Demographic Breakdowns (from camper_history) */}
-      <div className="mt-8">
-        <h2 className="text-lg font-semibold text-foreground mb-4">Demographic Analysis</h2>
-        <DemographicBreakdowns
-          bySchool={data.by_school}
-          byCity={data.by_city}
-          bySynagogue={data.by_synagogue}
-          byFirstYear={data.by_first_year}
-          bySessionBunk={data.by_session_bunk}
-        />
-      </div>
+      {/* Session+Bunk Combinations */}
+      {data.by_session_bunk && data.by_session_bunk.length > 0 && (
+        <div className="mt-8">
+          <DemographicBreakdowns bySessionBunk={data.by_session_bunk} />
+        </div>
+      )}
 
       {/* Drill-down Modal */}
       <DrilldownModal />

@@ -17,7 +17,6 @@ import { useMetricsSessions } from '../../../hooks/useMetricsSessions';
 import { useDrilldown } from '../../../hooks/useDrilldown';
 import { MetricCard } from '../../../components/metrics/MetricCard';
 import { BreakdownChart } from '../../../components/metrics/BreakdownChart';
-import { DemographicBreakdowns } from '../../../components/metrics/DemographicBreakdowns';
 import { RegistrationSessionSelector } from '../../../components/metrics/RegistrationSessionSelector';
 import { GenderByGradeChart } from '../../../components/metrics/GenderByGradeChart';
 import { SessionLengthBySessionChart } from '../../../components/metrics/SessionLengthBySessionChart';
@@ -314,18 +313,6 @@ export default function RegistrationOverview() {
             </tbody>
           </table>
         </div>
-      </div>
-
-      {/* Demographic Breakdowns (from camper_history) */}
-      <div className="mt-8">
-        <h2 className="text-lg font-semibold text-foreground mb-4">Demographic Analysis</h2>
-        <DemographicBreakdowns
-          bySchool={data.by_school}
-          byCity={data.by_city}
-          bySynagogue={data.by_synagogue}
-          byFirstYear={data.by_first_year}
-          bySessionBunk={data.by_session_bunk}
-        />
       </div>
 
       {/* Drill-down Modal */}
