@@ -447,3 +447,36 @@ class TestStaticCityList:
         assert lookup.get("san francisco") == "San Francisco"
         assert lookup.get("los angeles") == "Los Angeles"
         assert lookup.get("new york") == "New York"
+
+
+class TestCityAliases:
+    """Tests for city alias expansion in normalization."""
+
+    def test_millbrae_blvd_alias(self) -> None:
+        """'Millbrae Blvd' should normalize to 'Millbrae'."""
+        from bunking.geo_normalizer import normalize_cities
+
+        result = normalize_cities(["Millbrae Blvd"])
+        assert result["Millbrae Blvd"]["canonical"] == "Millbrae"
+
+    def test_la_canada_flt_alias(self) -> None:
+        """'La Canada Flt' should normalize to 'La Canada Flintridge'."""
+        from bunking.geo_normalizer import normalize_cities
+
+        result = normalize_cities(["La Canada Flt"])
+        assert result["La Canada Flt"]["canonical"] == "La Canada Flintridge"
+
+    def test_west_menlo_park_alias(self) -> None:
+        """'West Menlo Park' should normalize to 'Menlo Park'."""
+        from bunking.geo_normalizer import normalize_cities
+
+        result = normalize_cities(["West Menlo Park"])
+        assert result["West Menlo Park"]["canonical"] == "Menlo Park"
+
+    def test_aliases_are_case_insensitive(self) -> None:
+        """Aliases should work regardless of case."""
+        from bunking.geo_normalizer import normalize_cities
+
+        result = normalize_cities(["millbrae blvd", "MILLBRAE BLVD"])
+        assert result["millbrae blvd"]["canonical"] == "Millbrae"
+        assert result["MILLBRAE BLVD"]["canonical"] == "Millbrae"
