@@ -145,6 +145,17 @@ class TestCongregationNormalization:
 class TestCLIInterface:
     """Tests for the CLI interface that Go will call."""
 
+    @staticmethod
+    def _project_root() -> str:
+        """Find the project root (directory containing pyproject.toml)."""
+        from pathlib import Path
+
+        path = Path(__file__).resolve()
+        for parent in path.parents:
+            if (parent / "pyproject.toml").exists():
+                return str(parent)
+        raise RuntimeError("Could not find project root")
+
     def test_cli_json_output(self) -> None:
         """CLI should output valid JSON."""
         import json
@@ -164,7 +175,7 @@ class TestCLIInterface:
             ],
             capture_output=True,
             text=True,
-            cwd="/home/adam/kindred",
+            cwd=self._project_root(),
         )
         assert result.returncode == 0
         output = json.loads(result.stdout)
@@ -191,7 +202,7 @@ class TestCLIInterface:
             ],
             capture_output=True,
             text=True,
-            cwd="/home/adam/kindred",
+            cwd=self._project_root(),
         )
         assert result.returncode == 0
         output = json.loads(result.stdout)
