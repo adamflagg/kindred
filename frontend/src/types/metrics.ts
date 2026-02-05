@@ -355,6 +355,7 @@ export interface DrilldownAttendee {
   age?: number
   school?: string
   city?: string
+  state?: string
   years_at_camp?: number
   session_name: string
   session_cm_id: number

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/pocketbase/pocketbase/tools/types"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -1316,5 +1317,92 @@ func TestEnrolledOnlyInNormalizedMappings(t *testing.T) {
 		if !expected[pid] {
 			t.Errorf("unexpected person %d in enrolled list", pid)
 		}
+	}
+}
+
+// ============================================================================
+// City Extraction Tests
+// ============================================================================
+
+// TestExtractCityFromAddressJSON tests extracting city from JSON address field
+func TestExtractCityFromAddressJSON(t *testing.T) {
+	tests := []struct {
+		name         string
+		addressRaw   any
+		expectedCity string
+	}{
+		{
+			name:         "nil address",
+			addressRaw:   nil,
+			expectedCity: "",
+		},
+		{
+			name:         "empty string",
+			addressRaw:   "",
+			expectedCity: "",
+		},
+		{
+			name:         "JSON string with city",
+			addressRaw:   `{"city":"San Francisco","state":"CA"}`,
+			expectedCity: "San Francisco",
+		},
+		{
+			name:         "JSON string with city only",
+			addressRaw:   `{"city":"Oakland"}`,
+			expectedCity: "Oakland",
+		},
+		{
+			name:         "JSON string without city",
+			addressRaw:   `{"state":"CA"}`,
+			expectedCity: "",
+		},
+		{
+			name:         "JSON string with null city",
+			addressRaw:   `{"city":null,"state":"CA"}`,
+			expectedCity: "",
+		},
+		{
+			name:         "map with city",
+			addressRaw:   map[string]any{"city": "Los Angeles", "state": "CA"},
+			expectedCity: "Los Angeles",
+		},
+		{
+			name:         "map without city",
+			addressRaw:   map[string]any{"state": "CA"},
+			expectedCity: "",
+		},
+		{
+			name:         "byte slice JSON",
+			addressRaw:   []byte(`{"city":"Berkeley","state":"CA"}`),
+			expectedCity: "Berkeley",
+		},
+		{
+			name:         "types.JSONRaw (PocketBase JSON field type)",
+			addressRaw:   types.JSONRaw(`{"city":"San Francisco","state":"CA"}`),
+			expectedCity: "San Francisco",
+		},
+		{
+			name:         "invalid JSON string",
+			addressRaw:   `{invalid json}`,
+			expectedCity: "",
+		},
+		{
+			name:         "empty JSON object",
+			addressRaw:   `{}`,
+			expectedCity: "",
+		},
+	}
+
+	// Use the real NormalizeGeographicSync for testing
+	n := &NormalizeGeographicSync{}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			city := n.extractCityFromAddress(tt.addressRaw)
+			if city != tt.expectedCity {
+				t.Errorf("extractCityFromAddress(%v) = %q, want %q",
+					tt.addressRaw, city, tt.expectedCity)
+			}
+		})
 	}
 }
