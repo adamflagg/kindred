@@ -544,9 +544,7 @@ class TestCityBreakdown:
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = persons_with_cities
         mock_repository.fetch_attendees.return_value = attendees
-        mock_repository.fetch_normalized_city_by_person = AsyncMock(
-            return_value=normalized_city_mapping
-        )
+        mock_repository.fetch_normalized_city_by_person = AsyncMock(return_value=normalized_city_mapping)
 
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2026,
@@ -584,9 +582,7 @@ class TestCityBreakdown:
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = persons_with_cities
         mock_repository.fetch_attendees.return_value = attendees
-        mock_repository.fetch_normalized_city_by_person = AsyncMock(
-            return_value=normalized_city_mapping
-        )
+        mock_repository.fetch_normalized_city_by_person = AsyncMock(return_value=normalized_city_mapping)
 
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2026,
@@ -616,9 +612,7 @@ class TestCityBreakdown:
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = persons_with_cities
         mock_repository.fetch_attendees.return_value = attendees
-        mock_repository.fetch_normalized_city_by_person = AsyncMock(
-            return_value=normalized_city_mapping
-        )
+        mock_repository.fetch_normalized_city_by_person = AsyncMock(return_value=normalized_city_mapping)
 
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2026,
@@ -650,9 +644,7 @@ class TestCityBreakdown:
         mock_repository.fetch_persons.return_value = persons_with_cities
         mock_repository.fetch_attendees.return_value = attendees
         # Only person 101 has a normalized mapping
-        mock_repository.fetch_normalized_city_by_person = AsyncMock(
-            return_value={101: "San Francisco"}
-        )
+        mock_repository.fetch_normalized_city_by_person = AsyncMock(return_value={101: "San Francisco"})
 
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2026,
