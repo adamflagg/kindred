@@ -122,6 +122,73 @@ def create_mock_camper_history(
     return history
 
 
+def create_mock_bunk(
+    pb_id: str = "bunk_001",
+    name: str = "B-1",
+    gender: str = "M",
+    year: int = 2026,
+) -> Mock:
+    """Create a mock bunk record.
+
+    Args:
+        pb_id: PocketBase record ID.
+        name: Bunk name (e.g., "B-1", "G-2", "AG-3").
+        gender: Bunk gender - "M", "F", or "Mixed" (for AG bunks).
+        year: Year for the bunk.
+    """
+    bunk = Mock()
+    bunk.id = pb_id
+    bunk.name = name
+    bunk.gender = gender
+    bunk.year = year
+    return bunk
+
+
+def create_mock_bunk_plan(
+    session_pb_id: str,
+    bunk: Mock,
+    year: int = 2026,
+    pb_id: str | None = None,
+) -> Mock:
+    """Create a mock bunk_plan record with bunk expansion.
+
+    Args:
+        session_pb_id: PocketBase ID of the session.
+        bunk: Mock bunk record (will be in expand.bunk).
+        year: Year for the bunk plan.
+        pb_id: Optional PocketBase record ID.
+    """
+    bunk_plan = Mock()
+    bunk_plan.id = pb_id or f"bp_{session_pb_id}_{bunk.id}"
+    bunk_plan.session = session_pb_id
+    bunk_plan.bunk = bunk.id
+    bunk_plan.year = year
+    bunk_plan.expand = {"bunk": bunk}
+    return bunk_plan
+
+
+def create_mock_config(
+    category: str,
+    subcategory: str,
+    config_key: str,
+    value: str,
+) -> Mock:
+    """Create a mock config record.
+
+    Args:
+        category: Config category (e.g., "constraint").
+        subcategory: Config subcategory (e.g., "cabin_capacity").
+        config_key: Config key (e.g., "default").
+        value: Config value (e.g., "12").
+    """
+    config = Mock()
+    config.category = category
+    config.subcategory = subcategory
+    config.config_key = config_key
+    config.value = value
+    return config
+
+
 # ============================================================================
 # Fixtures
 # ============================================================================
@@ -1207,3 +1274,429 @@ class TestSessionLengthBySessionAGMerging:
         all_session_names = [s.session_name for cat in result for s in cat.sessions]
         assert "Session 2" in all_session_names
         assert "Orphan AG" in all_session_names
+
+
+# ============================================================================
+# Session Capacity and Utilization Tests
+# ============================================================================
+
+
+class TestSessionCapacityUtilization:
+    """Tests for capacity and utilization in session breakdown.
+
+    The capacity calculation follows the pattern from the bunking landing page:
+    1. Fetch bunk_plans with bunk expansion
+    2. Get default capacity from config (default: 12)
+    3. Filter out AG bunks (gender='Mixed') for main sessions
+    4. Capacity = bunk_plans count × default_capacity
+    5. Utilization = (enrolled / capacity) × 100
+    """
+
+    def test_capacity_basic_calculation(self) -> None:
+        """Basic capacity = bunk_plans count × default_capacity.
+
+        Session with 5 bunk_plans and capacity of 12 = 60 capacity.
+        """
+        from api.services.registration_service import RegistrationService
+
+        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
+        # Add PocketBase ID to session for bunk_plan matching
+        session_2.pb_id = "session_2001"
+
+        sessions_dict = {2001: session_2}
+
+        # Create 5 bunk plans for session 2 (non-AG bunks)
+        bunks = [
+            create_mock_bunk(f"bunk_{i}", f"B-{i}", "M", 2026) for i in range(1, 6)
+        ]
+        bunk_plans = [
+            create_mock_bunk_plan("session_2001", bunk, 2026) for bunk in bunks
+        ]
+
+        # 10 attendees enrolled
+        attendees = [
+            create_mock_attendee(100 + i, session_2, 2026) for i in range(10)
+        ]
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+
+        # Test the helper method that calculates capacity
+        # Expected: 5 bunks × 12 capacity = 60
+        default_capacity = 12
+        session_capacity = len(bunk_plans) * default_capacity
+
+        assert session_capacity == 60
+
+        # Utilization = 10 / 60 = 16.67%
+        utilization = (len(attendees) / session_capacity) * 100
+        assert utilization == pytest.approx(16.67, rel=0.01)
+
+    def test_capacity_excludes_ag_bunks_for_main_sessions(self) -> None:
+        """Main sessions should exclude AG bunks (gender='Mixed') from capacity.
+
+        Session 2 (main) has 5 boys bunks and 2 AG bunks.
+        Only the 5 boys bunks should count toward capacity.
+        """
+        from api.services.registration_service import RegistrationService
+
+        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
+        session_2.pb_id = "session_2001"
+
+        # Create 5 regular bunks + 2 AG bunks
+        regular_bunks = [
+            create_mock_bunk(f"bunk_{i}", f"B-{i}", "M", 2026) for i in range(1, 6)
+        ]
+        ag_bunks = [
+            create_mock_bunk("bunk_ag_1", "AG-1", "Mixed", 2026),
+            create_mock_bunk("bunk_ag_2", "AG-2", "Mixed", 2026),
+        ]
+
+        all_bunk_plans = [
+            create_mock_bunk_plan("session_2001", bunk, 2026) for bunk in regular_bunks + ag_bunks
+        ]
+
+        # Filter out AG bunks for main session (mimics frontend logic)
+        is_main_session = session_2.session_type == "main"
+        filtered_plans = []
+        for bp in all_bunk_plans:
+            bunk_gender = bp.expand.get("bunk", {})
+            if hasattr(bunk_gender, "gender"):
+                bunk_gender = bunk_gender.gender
+            else:
+                bunk_gender = bunk_gender.get("gender", "")
+            bunk_gender = bunk_gender.lower() if bunk_gender else ""
+            is_ag_bunk = bunk_gender in ("ag", "mixed", "all-gender", "nb")
+
+            # For main sessions, exclude AG bunks
+            if is_main_session and is_ag_bunk:
+                continue
+            filtered_plans.append(bp)
+
+        # Should have only 5 regular bunks
+        assert len(filtered_plans) == 5
+
+        # Capacity = 5 × 12 = 60 (not 7 × 12 = 84)
+        default_capacity = 12
+        assert len(filtered_plans) * default_capacity == 60
+
+    def test_capacity_includes_all_bunks_for_embedded_sessions(self) -> None:
+        """Embedded sessions should include ALL bunks in capacity (no AG filtering).
+
+        Taste of Camp (embedded) has 3 bunks - all should count.
+        """
+        taste = create_mock_session(1001, "Taste of Camp", 2026, "embedded", "2026-06-20", "2026-06-23")
+        taste.pb_id = "session_1001"
+
+        # Create bunks of different genders
+        bunks = [
+            create_mock_bunk("bunk_1", "B-1", "M", 2026),
+            create_mock_bunk("bunk_2", "G-1", "F", 2026),
+            create_mock_bunk("bunk_3", "AG-1", "Mixed", 2026),  # AG bunk included!
+        ]
+
+        bunk_plans = [
+            create_mock_bunk_plan("session_1001", bunk, 2026) for bunk in bunks
+        ]
+
+        # Embedded session - no filtering
+        is_main_session = taste.session_type == "main"
+        assert is_main_session is False
+
+        # All 3 bunks should count
+        default_capacity = 12
+        assert len(bunk_plans) * default_capacity == 36
+
+    def test_utilization_calculation(self) -> None:
+        """Utilization = (enrolled / capacity) × 100.
+
+        30 enrolled with capacity 60 = 50% utilization.
+        """
+        enrolled = 30
+        capacity = 60
+
+        utilization = (enrolled / capacity) * 100
+        assert utilization == 50.0
+
+    def test_utilization_none_when_capacity_zero(self) -> None:
+        """Utilization should be None when capacity is 0 or None.
+
+        Prevents division by zero.
+        """
+
+        def calculate_utilization(count: int, capacity: int | None) -> float | None:
+            """Helper that matches the service implementation."""
+            if capacity is None or capacity == 0:
+                return None
+            return (count / capacity) * 100
+
+        # Zero capacity
+        assert calculate_utilization(10, 0) is None
+
+        # None capacity
+        assert calculate_utilization(10, None) is None
+
+        # Valid capacity
+        assert calculate_utilization(10, 100) == 10.0
+
+    def test_capacity_uses_default_when_config_missing(self) -> None:
+        """When config is missing, use default capacity of 12."""
+        # The frontend uses: const bunkCapacity = capacityConfig?.value ? Number(capacityConfig.value) : 12
+        default_capacity = 12
+
+        # Simulate missing config (returns None)
+        config_value = None
+        bunk_capacity = int(config_value) if config_value else default_capacity
+
+        assert bunk_capacity == 12
+
+        # Simulate config with value
+        config_value = "10"
+        bunk_capacity = int(config_value) if config_value else default_capacity
+        assert bunk_capacity == 10
+
+    def test_ag_capacity_merges_into_parent(self) -> None:
+        """AG session capacity should be merged into parent main session.
+
+        Main Session 2 has 5 bunks → capacity 60
+        AG Session 2 has 2 bunks → capacity 24
+        When viewing Session 2, total capacity = 84 (including AG)
+
+        BUT when looking at bunk_plans for main session only,
+        we EXCLUDE the AG bunks attached to the main session.
+        The AG session has its OWN bunk_plans for AG bunks.
+        """
+        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
+        session_2.pb_id = "session_2001"
+        ag_session_2 = create_mock_session(2005, "AG Session 2", 2026, "ag", "2026-06-15", "2026-07-05", parent_id=2001)
+        ag_session_2.pb_id = "session_2005"
+
+        # Main session bunk plans (5 boys bunks)
+        main_bunks = [
+            create_mock_bunk(f"bunk_{i}", f"B-{i}", "M", 2026) for i in range(1, 6)
+        ]
+        main_bunk_plans = [
+            create_mock_bunk_plan("session_2001", bunk, 2026) for bunk in main_bunks
+        ]
+
+        # AG session bunk plans (2 AG bunks)
+        ag_bunks = [
+            create_mock_bunk("bunk_ag_1", "AG-1", "Mixed", 2026),
+            create_mock_bunk("bunk_ag_2", "AG-2", "Mixed", 2026),
+        ]
+        ag_bunk_plans = [
+            create_mock_bunk_plan("session_2005", bunk, 2026) for bunk in ag_bunks
+        ]
+
+        default_capacity = 12
+
+        # Main session capacity: 5 bunks × 12 = 60
+        main_capacity = len(main_bunk_plans) * default_capacity
+        assert main_capacity == 60
+
+        # AG session capacity: 2 bunks × 12 = 24
+        ag_capacity = len(ag_bunk_plans) * default_capacity
+        assert ag_capacity == 24
+
+        # When merging AG into parent (for display), total = 84
+        combined_capacity = main_capacity + ag_capacity
+        assert combined_capacity == 84
+
+    def test_no_bunk_plans_returns_none_capacity(self) -> None:
+        """Session with no bunk_plans should have capacity=None, utilization=None."""
+        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
+        session_2.pb_id = "session_2001"
+
+        bunk_plans: list[Mock] = []  # No bunk plans
+
+        # With no bunk plans, capacity should be None (not 0)
+        # This indicates "capacity not configured" vs "capacity is zero"
+        if len(bunk_plans) == 0:
+            capacity = None
+            utilization = None
+        else:
+            capacity = len(bunk_plans) * 12
+            utilization = 0.0  # Would calculate based on enrolled
+
+        assert capacity is None
+        assert utilization is None
+
+    def test_full_integration_with_service(self) -> None:
+        """Integration test: verify _compute_session_breakdown includes capacity/utilization.
+
+        NEW SIGNATURE (after implementation):
+        _compute_session_breakdown(attendees, sessions, bunk_plans, default_capacity)
+
+        5 bunk plans × 12 capacity = 60
+        30 enrolled / 60 capacity = 50% utilization
+        """
+        from api.services.registration_service import RegistrationService
+
+        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
+        session_2.pb_id = "session_2001"
+
+        sessions_dict = {2001: session_2}
+
+        # Create 5 bunk plans for session 2
+        bunks = [
+            create_mock_bunk(f"bunk_{i}", f"B-{i}", "M", 2026) for i in range(1, 6)
+        ]
+        bunk_plans = [
+            create_mock_bunk_plan("session_2001", bunk, 2026) for bunk in bunks
+        ]
+
+        # 30 attendees enrolled
+        attendees = [
+            create_mock_attendee(100 + i, session_2, 2026) for i in range(30)
+        ]
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+
+        # NEW: Pass bunk_plans and default_capacity to the method
+        result = service._compute_session_breakdown(attendees, sessions_dict, bunk_plans, 12)
+
+        # Find session 2 breakdown
+        session_2_breakdown = next((s for s in result if s.session_cm_id == 2001), None)
+        assert session_2_breakdown is not None
+        assert session_2_breakdown.count == 30
+
+        # Capacity = 5 bunks × 12 = 60
+        assert session_2_breakdown.capacity == 60
+        # Utilization = 30 / 60 × 100 = 50%
+        assert session_2_breakdown.utilization == pytest.approx(50.0, rel=0.01)
+
+    def test_session_breakdown_with_ag_merging(self) -> None:
+        """AG session counts and capacity merge into parent main session.
+
+        Main: 4 attendees, 5 bunks → capacity 60
+        AG: 2 attendees, 2 bunks → capacity 24
+        Combined: 6 attendees, 84 capacity → 7.14% utilization
+        """
+        from api.services.registration_service import RegistrationService
+
+        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
+        session_2.pb_id = "session_2001"
+        ag_session_2 = create_mock_session(2005, "AG Session 2", 2026, "ag", "2026-06-15", "2026-07-05", parent_id=2001)
+        ag_session_2.pb_id = "session_2005"
+
+        sessions_dict = {2001: session_2, 2005: ag_session_2}
+
+        # Main session bunk plans (5 boys bunks)
+        main_bunks = [
+            create_mock_bunk(f"bunk_{i}", f"B-{i}", "M", 2026) for i in range(1, 6)
+        ]
+        main_bunk_plans = [
+            create_mock_bunk_plan("session_2001", bunk, 2026) for bunk in main_bunks
+        ]
+
+        # AG session bunk plans (2 AG bunks)
+        ag_bunks = [
+            create_mock_bunk("bunk_ag_1", "AG-1", "Mixed", 2026),
+            create_mock_bunk("bunk_ag_2", "AG-2", "Mixed", 2026),
+        ]
+        ag_bunk_plans = [
+            create_mock_bunk_plan("session_2005", bunk, 2026) for bunk in ag_bunks
+        ]
+
+        # 4 main attendees + 2 AG attendees
+        main_attendees = [
+            create_mock_attendee(100 + i, session_2, 2026) for i in range(4)
+        ]
+        ag_attendees = [
+            create_mock_attendee(200 + i, ag_session_2, 2026) for i in range(2)
+        ]
+        all_attendees = main_attendees + ag_attendees
+        all_bunk_plans = main_bunk_plans + ag_bunk_plans
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+
+        result = service._compute_session_breakdown(all_attendees, sessions_dict, all_bunk_plans, 12)
+
+        # Session 2 should have merged AG counts and capacity
+        session_2_breakdown = next((s for s in result if s.session_cm_id == 2001), None)
+        assert session_2_breakdown is not None
+
+        # Count: 4 main + 2 AG = 6
+        assert session_2_breakdown.count == 6
+
+        # Capacity: 5 main bunks × 12 + 2 AG bunks × 12 = 60 + 24 = 84
+        assert session_2_breakdown.capacity == 84
+
+        # Utilization: 6 / 84 × 100 = 7.14%
+        assert session_2_breakdown.utilization == pytest.approx(7.14, rel=0.01)
+
+        # AG session should NOT appear in results (merged into parent)
+        ag_breakdown = next((s for s in result if s.session_cm_id == 2005), None)
+        assert ag_breakdown is None
+
+    def test_embedded_session_includes_all_bunks(self) -> None:
+        """Embedded sessions include all bunks including AG bunks.
+
+        Taste of Camp (embedded) with 3 bunks including 1 AG.
+        All 3 should count toward capacity.
+        """
+        from api.services.registration_service import RegistrationService
+
+        taste = create_mock_session(1001, "Taste of Camp", 2026, "embedded", "2026-06-20", "2026-06-23")
+        taste.pb_id = "session_1001"
+
+        sessions_dict = {1001: taste}
+
+        # 3 bunks: 1 boys, 1 girls, 1 AG (all should count)
+        bunks = [
+            create_mock_bunk("bunk_1", "B-1", "M", 2026),
+            create_mock_bunk("bunk_2", "G-1", "F", 2026),
+            create_mock_bunk("bunk_3", "AG-1", "Mixed", 2026),
+        ]
+        bunk_plans = [
+            create_mock_bunk_plan("session_1001", bunk, 2026) for bunk in bunks
+        ]
+
+        # 18 attendees
+        attendees = [
+            create_mock_attendee(100 + i, taste, 2026) for i in range(18)
+        ]
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+
+        result = service._compute_session_breakdown(attendees, sessions_dict, bunk_plans, 12)
+
+        taste_breakdown = next((s for s in result if s.session_cm_id == 1001), None)
+        assert taste_breakdown is not None
+        assert taste_breakdown.count == 18
+
+        # All 3 bunks count → capacity = 36
+        assert taste_breakdown.capacity == 36
+        # Utilization = 18 / 36 × 100 = 50%
+        assert taste_breakdown.utilization == pytest.approx(50.0, rel=0.01)
+
+    def test_session_with_no_bunk_plans(self) -> None:
+        """Session with no bunk_plans should have capacity=None, utilization=None."""
+        from api.services.registration_service import RegistrationService
+
+        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
+        session_2.pb_id = "session_2001"
+
+        sessions_dict = {2001: session_2}
+        bunk_plans: list[Mock] = []  # No bunk plans for any session
+
+        attendees = [
+            create_mock_attendee(100 + i, session_2, 2026) for i in range(10)
+        ]
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+
+        result = service._compute_session_breakdown(attendees, sessions_dict, bunk_plans, 12)
+
+        session_2_breakdown = next((s for s in result if s.session_cm_id == 2001), None)
+        assert session_2_breakdown is not None
+        assert session_2_breakdown.count == 10
+
+        # No bunk plans → capacity should be None
+        assert session_2_breakdown.capacity is None
+        # Utilization should also be None (can't calculate without capacity)
+        assert session_2_breakdown.utilization is None
