@@ -9,9 +9,7 @@ These tests verify drilldown filtering logic for new breakdown types:
 
 from __future__ import annotations
 
-import json
 import os
-from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -36,11 +34,12 @@ def create_mock_person(
     years_at_camp: int = 2,
     year: int = 2026,
     school: str = "Riverside Elementary",
-    address: dict[str, Any] | None = None,
+    address_city: str = "Springfield",
+    address_state: str = "IL",
 ) -> Mock:
     """Create a mock person record.
 
-    Note: address is stored as a JSON string to match PocketBase behavior.
+    Uses discrete address columns (address_city, address_state) instead of JSON.
     """
     person = Mock()
     person.cm_id = cm_id
@@ -51,9 +50,9 @@ def create_mock_person(
     person.years_at_camp = years_at_camp
     person.year = year
     person.school = school
-    # PocketBase returns address as JSON string, not dict
-    address_data = address or {"city": "Springfield", "state": "IL"}
-    person.address = json.dumps(address_data)
+    # Use discrete address columns
+    person.address_city = address_city
+    person.address_state = address_state
     person.preferred_name = None
     person.age = 12
     return person
@@ -490,22 +489,22 @@ class TestCityBreakdown:
 
     @pytest.fixture
     def persons_with_cities(self) -> dict[int, Mock]:
-        """Sample persons with various raw city values in address.
+        """Sample persons with various raw city values in discrete columns.
 
         Note: The raw address values here differ from the normalized values
         to demonstrate that city drilldown matches on normalized, not raw.
         """
         return {
             # Raw: "san francisco" (lowercase) -> Normalized: "San Francisco"
-            101: create_mock_person(101, "Emma", "Johnson", "F", 5, address={"city": "san francisco", "state": "CA"}),
+            101: create_mock_person(101, "Emma", "Johnson", "F", 5, address_city="san francisco", address_state="CA"),
             # Raw: "SF, CA" (abbreviation) -> Normalized: "San Francisco"
-            102: create_mock_person(102, "Liam", "Garcia", "M", 6, address={"city": "SF, CA", "state": "CA"}),
+            102: create_mock_person(102, "Liam", "Garcia", "M", 6, address_city="SF, CA", address_state="CA"),
             # Raw: "oakland" (lowercase) -> Normalized: "Oakland"
-            103: create_mock_person(103, "Olivia", "Chen", "F", 6, address={"city": "oakland", "state": "CA"}),
+            103: create_mock_person(103, "Olivia", "Chen", "F", 6, address_city="oakland", address_state="CA"),
             # Raw: "Berkeley" (already correct) -> Normalized: "Berkeley"
-            104: create_mock_person(104, "Noah", "Williams", "M", 7, address={"city": "Berkeley", "state": "CA"}),
+            104: create_mock_person(104, "Noah", "Williams", "M", 7, address_city="Berkeley", address_state="CA"),
             # Raw: "Oaklnad" (typo) -> Normalized: "Oakland"
-            105: create_mock_person(105, "Ava", "Brown", "F", 8, address={"city": "Oaklnad", "state": "CA"}),
+            105: create_mock_person(105, "Ava", "Brown", "F", 8, address_city="Oaklnad", address_state="CA"),
         }
 
     @pytest.fixture

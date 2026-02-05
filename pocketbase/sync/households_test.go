@@ -72,9 +72,15 @@ func TestTransformHouseholdToPB(t *testing.T) {
 		t.Errorf("year = %d, want %d", got, want)
 	}
 
-	// Verify billing_address is present and is the raw map (stored as JSON)
-	if _, exists := pbData["billing_address"]; !exists {
-		t.Error("billing_address missing from pbData")
+	// Verify discrete billing address fields are extracted
+	if got, ok := pbData["billing_address1"].(string); !ok || got != "123 Main St" {
+		t.Errorf("billing_address1 = %v, want '123 Main St'", pbData["billing_address1"])
+	}
+	if got, ok := pbData["billing_city"].(string); !ok || got != "Boulder" {
+		t.Errorf("billing_city = %v, want 'Boulder'", pbData["billing_city"])
+	}
+	if got, ok := pbData["billing_state"].(string); !ok || got != "CO" {
+		t.Errorf("billing_state = %v, want 'CO'", pbData["billing_state"])
 	}
 }
 
@@ -100,9 +106,12 @@ func TestTransformHouseholdHandlesMissingFields(t *testing.T) {
 	}
 
 	// Optional fields should be present (even if nil/zero value)
+	// Note: billing_address JSON field removed - discrete fields used instead
 	optionalFields := []string{
 		"greeting", "mailing_title", "alternate_mailing_title",
-		"billing_mailing_title", "household_phone", "billing_address", "last_updated_utc",
+		"billing_mailing_title", "household_phone", "last_updated_utc",
+		"billing_address1", "billing_address2", "billing_city",
+		"billing_state", "billing_postal_code", "billing_country",
 	}
 	for _, field := range optionalFields {
 		if _, exists := pbData[field]; !exists {

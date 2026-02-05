@@ -1,30 +1,23 @@
 /**
- * Shared address utilities for parsing and displaying location
+ * Shared address utilities for displaying location
+ *
+ * Phase 2: Uses discrete columns (address_city, address_state) instead of JSON parsing.
  */
-
-interface AddressData {
-  city?: string
-  state?: string
-  [key: string]: unknown
-}
 
 /**
- * Extract city/state display string from address field
- * Handles both JSON string and object formats
+ * Format city/state into a display string.
+ * Uses discrete columns directly - no JSON parsing needed.
  */
 export function getLocationDisplay(
-  address: string | AddressData | null | undefined | unknown
+  city: string | null | undefined,
+  state: string | null | undefined
 ): string | null {
-  if (!address) return null
+  const trimmedCity = city?.trim() || ''
+  const trimmedState = state?.trim() || ''
 
-  try {
-    const addr: AddressData = typeof address === 'string' ? JSON.parse(address) : address
-    if (addr?.city || addr?.state) {
-      return [addr.city, addr.state].filter(Boolean).join(', ')
-    }
-  } catch {
-    // Ignore parse errors
+  if (!trimmedCity && !trimmedState) {
+    return null
   }
 
-  return null
+  return [trimmedCity, trimmedState].filter(Boolean).join(', ')
 }

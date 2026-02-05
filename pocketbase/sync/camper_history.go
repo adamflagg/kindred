@@ -2,7 +2,6 @@ package sync
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -584,22 +583,9 @@ func (c *CamperHistorySync) loadPersonDemographics(
 				yearsAtCamp = int(yac)
 			}
 
-			// Extract city and state from address JSON field
-			// Note: address is stored as a JSON string, not map[string]interface{},
-			// so we need to unmarshal it first
-			city := ""
-			state := ""
-			if addressStr, ok := record.Get("address").(string); ok && addressStr != "" {
-				var address map[string]interface{}
-				if err := json.Unmarshal([]byte(addressStr), &address); err == nil {
-					if c, ok := address["city"].(string); ok {
-						city = c
-					}
-					if s, ok := address["state"].(string); ok {
-						state = s
-					}
-				}
-			}
+			// Use discrete address columns instead of JSON parsing
+			city := record.GetString("address_city")
+			state := record.GetString("address_state")
 
 			result[cmID] = personDemographics{
 				pbID:        record.Id,

@@ -1,7 +1,6 @@
 package sync
 
 import (
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -2002,65 +2001,69 @@ func isFamilySessionType(sessionType string) bool {
 // ============================================================================
 
 // ============================================================================
-// Bug Fix Tests: City extraction from JSON string address field
+// Tests: City/State extraction from discrete address columns
 // ============================================================================
 
-// TestCamperHistoryAddressJSONStringParsing tests that city/state are extracted
-// from the address field which is stored as a JSON string (not map[string]interface{})
-func TestCamperHistoryAddressJSONStringParsing(t *testing.T) {
+// TestCamperHistoryAddressDiscreteColumns tests that city/state are read
+// directly from address_city and address_state columns (not JSON parsing)
+func TestCamperHistoryAddressDiscreteColumns(t *testing.T) {
 	tests := []struct {
 		name          string
-		addressJSON   string
+		addressCity   string
+		addressState  string
 		expectedCity  string
 		expectedState string
 	}{
 		{
-			name:          "valid JSON with city and state",
-			addressJSON:   `{"city":"Oakland","state":"CA"}`,
+			name:          "both city and state present",
+			addressCity:   "Oakland",
+			addressState:  "CA",
 			expectedCity:  "Oakland",
 			expectedState: "CA",
 		},
 		{
-			name:          "valid JSON with city only",
-			addressJSON:   `{"city":"San Francisco"}`,
+			name:          "city only",
+			addressCity:   "San Francisco",
+			addressState:  "",
 			expectedCity:  "San Francisco",
 			expectedState: "",
 		},
 		{
-			name:          "valid JSON with state only",
-			addressJSON:   `{"state":"NY"}`,
+			name:          "state only",
+			addressCity:   "",
+			addressState:  "NY",
 			expectedCity:  "",
 			expectedState: "NY",
 		},
 		{
-			name:          "empty JSON object",
-			addressJSON:   `{}`,
+			name:          "both empty",
+			addressCity:   "",
+			addressState:  "",
 			expectedCity:  "",
 			expectedState: "",
 		},
 		{
-			name:          "empty string",
-			addressJSON:   "",
-			expectedCity:  "",
-			expectedState: "",
+			name:          "city with space",
+			addressCity:   "Los Angeles",
+			addressState:  "CA",
+			expectedCity:  "Los Angeles",
+			expectedState: "CA",
 		},
 		{
-			name:          "full address with street and zip",
-			addressJSON:   `{"street1":"123 Main St","city":"Berkeley","state":"CA","zip":"94704"}`,
+			name:          "full state name",
+			addressCity:   "Berkeley",
+			addressState:  "California",
 			expectedCity:  "Berkeley",
-			expectedState: "CA",
-		},
-		{
-			name:          "null city value",
-			addressJSON:   `{"city":null,"state":"CA"}`,
-			expectedCity:  "",
-			expectedState: "CA",
+			expectedState: "California",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			city, state := extractCityStateFromAddressJSON(tt.addressJSON)
+			// Production code now directly reads address_city and address_state
+			// from the persons table - no JSON parsing needed
+			city := tt.addressCity
+			state := tt.addressState
 			if city != tt.expectedCity {
 				t.Errorf("city = %q, want %q", city, tt.expectedCity)
 			}
@@ -2069,54 +2072,6 @@ func TestCamperHistoryAddressJSONStringParsing(t *testing.T) {
 			}
 		})
 	}
-}
-
-// TestCamperHistoryAddressNotMapDirectly tests that the address field type
-// is handled correctly - it's stored as a JSON string, not a map
-func TestCamperHistoryAddressNotMapDirectly(t *testing.T) {
-	// This simulates the bug: trying to type-assert string as map
-	// The fix is to unmarshal the JSON string first
-
-	// Simulate what PocketBase returns: address field is a string
-	addressFieldValue := `{"city":"Oakland","state":"CA"}`
-
-	// WRONG approach (the bug): try to type-assert as map directly
-	_, okAsMap := interface{}(addressFieldValue).(map[string]interface{})
-	if okAsMap {
-		t.Error("address should NOT type-assert as map[string]interface{} directly")
-	}
-
-	// CORRECT approach: recognize it's a string and unmarshal
-	_, okAsString := interface{}(addressFieldValue).(string)
-	if !okAsString {
-		t.Error("address SHOULD type-assert as string")
-	}
-}
-
-// extractCityStateFromAddressJSON extracts city and state from JSON string
-// This is the test implementation that the production code should match
-func extractCityStateFromAddressJSON(addressJSON string) (city, state string) {
-	if addressJSON == "" {
-		return "", ""
-	}
-
-	// Unmarshal the JSON string
-	var address map[string]interface{}
-	if err := json.Unmarshal([]byte(addressJSON), &address); err != nil {
-		return "", ""
-	}
-
-	// Extract city
-	if c, ok := address["city"].(string); ok {
-		city = c
-	}
-
-	// Extract state
-	if s, ok := address["state"].(string); ok {
-		state = s
-	}
-
-	return city, state
 }
 
 // ============================================================================

@@ -17,17 +17,11 @@ export {
   RecordIdStringSchema,
   BaseSystemFieldsSchema,
   AuthSystemFieldsSchema,
-  AddressSchema,
-  PhoneNumberSchema,
-  EmailAddressSchema,
   nullableJson,
   type IsoDateString,
   type RecordIdString,
   type BaseSystemFields,
   type AuthSystemFields,
-  type Address,
-  type PhoneNumber,
-  type EmailAddress,
 } from './common'
 
 // Camper schemas
