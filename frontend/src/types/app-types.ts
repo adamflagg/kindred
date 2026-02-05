@@ -53,8 +53,9 @@ export interface Camper {
   primary_household_id?: string
   alternate_household_id?: string
   external_id?: string
-  phone_numbers?: Array<string | { number?: string; Number?: string }>
   email_addresses?: string[]
+  primary_email?: string
+  secondary_email?: string
   address?: {
     street?: string
     city?: string

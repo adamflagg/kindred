@@ -257,7 +257,13 @@ Household/family records from CampMinder persons response.
 | `alternate_mailing_title` | text | Alternate mailing title |
 | `billing_mailing_title` | text | Billing mailing title |
 | `household_phone` | text | Phone number |
-| `billing_address` | json | Address object |
+| `billing_address` | json | Address object (legacy, for backward compat) |
+| `billing_address1` | text | Street address line 1 |
+| `billing_address2` | text | Street address line 2 |
+| `billing_city` | text | City |
+| `billing_state` | text | State/province |
+| `billing_postal_code` | text | ZIP/postal code |
+| `billing_country` | text | Country code (default: US) |
 | `year` | number | Camp year |
 
 **Unique**: `(cm_id, year)`
@@ -287,12 +293,17 @@ Person records with demographics, contacts, and relationships.
 | `tags` | relation | Multi-relation to person_tag_defs |
 | `is_camper` | bool | Is a camper (vs parent/staff) |
 | `parent_names` | json | Parent names array |
-| `phone_numbers` | json | Phone numbers array |
-| `email_addresses` | json | Email addresses array |
-| `address` | json | Address object |
+| `email_addresses` | json | Email addresses array (legacy, for backward compat) |
+| `primary_email` | email | Primary email (IsLogin or first) |
+| `secondary_email` | email | Secondary email |
+| `address` | json | Address object (legacy, for backward compat) |
+| `address_city` | text | City (from address) |
+| `address_state` | text | State (from address) |
 | `year` | number | Camp year |
 
 **Unique**: `(cm_id, year)`
+
+**Note**: `phone_numbers` field was removed (unused in application).
 
 ### attendees
 

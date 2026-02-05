@@ -1177,3 +1177,365 @@ func TestMergePersonIDs_PreservesCamperInfo(t *testing.T) {
 		t.Error("expected staff-only ID 2002 to NOT be in camperIDsSet")
 	}
 }
+
+// =============================================================================
+// Tests for extracting address_city and address_state from address
+// =============================================================================
+
+// TestExtractAddressCity tests extraction of city from address for the new address_city field
+func TestExtractAddressCity(t *testing.T) {
+	s := &PersonsSync{
+		missingDataStats: make(map[string]int),
+	}
+
+	personData := map[string]interface{}{
+		"ID":          float64(12345),
+		"DateOfBirth": "2010-03-15",
+		"GenderID":    float64(0),
+		"Name": map[string]interface{}{
+			"First": testFirstName,
+			"Last":  "Johnson",
+		},
+		"CamperDetails": map[string]interface{}{
+			"CampGradeID": float64(8),
+		},
+		"Households": map[string]interface{}{
+			"PrimaryChildhoodHousehold": map[string]interface{}{
+				"ID": float64(100),
+				"BillingAddress": map[string]interface{}{
+					"Street1":       "123 Main St",
+					"City":          "San Francisco",
+					"StateProvince": "CA",
+					"Zip":           "94102",
+				},
+			},
+		},
+	}
+
+	year := 2025
+
+	pbData, err := s.transformPersonToPB(personData, year, true)
+	if err != nil {
+		t.Fatalf("transformPersonToPB returned error: %v", err)
+	}
+
+	// Verify address_city is extracted
+	if got, ok := pbData["address_city"].(string); !ok || got != "San Francisco" {
+		t.Errorf("address_city = %v, want 'San Francisco'", pbData["address_city"])
+	}
+
+	// Verify address_state is extracted
+	if got, ok := pbData["address_state"].(string); !ok || got != "CA" {
+		t.Errorf("address_state = %v, want 'CA'", pbData["address_state"])
+	}
+}
+
+// TestExtractAddressCity_StateField tests extraction when State field is used instead of StateProvince
+func TestExtractAddressCity_StateField(t *testing.T) {
+	s := &PersonsSync{
+		missingDataStats: make(map[string]int),
+	}
+
+	personData := map[string]interface{}{
+		"ID":          float64(12345),
+		"DateOfBirth": "2010-03-15",
+		"GenderID":    float64(0),
+		"Name": map[string]interface{}{
+			"First": testFirstName,
+			"Last":  "Johnson",
+		},
+		"CamperDetails": map[string]interface{}{
+			"CampGradeID": float64(8),
+		},
+		"Households": map[string]interface{}{
+			"PrimaryChildhoodHousehold": map[string]interface{}{
+				"ID": float64(100),
+				"BillingAddress": map[string]interface{}{
+					"City":  "Oakland",
+					"State": "California",
+				},
+			},
+		},
+	}
+
+	year := 2025
+
+	pbData, err := s.transformPersonToPB(personData, year, true)
+	if err != nil {
+		t.Fatalf("transformPersonToPB returned error: %v", err)
+	}
+
+	// Verify address_city is extracted
+	if got, ok := pbData["address_city"].(string); !ok || got != "Oakland" {
+		t.Errorf("address_city = %v, want 'Oakland'", pbData["address_city"])
+	}
+
+	// Verify address_state is extracted (uses State field)
+	if got, ok := pbData["address_state"].(string); !ok || got != "California" {
+		t.Errorf("address_state = %v, want 'California'", pbData["address_state"])
+	}
+}
+
+// TestExtractAddressCity_NoHouseholds tests graceful handling when no household data
+func TestExtractAddressCity_NoHouseholds(t *testing.T) {
+	s := &PersonsSync{
+		missingDataStats: make(map[string]int),
+	}
+
+	personData := map[string]interface{}{
+		"ID":          float64(12345),
+		"DateOfBirth": "2010-03-15",
+		"GenderID":    float64(0),
+		"Name": map[string]interface{}{
+			"First": testFirstName,
+			"Last":  "Johnson",
+		},
+		"CamperDetails": map[string]interface{}{
+			"CampGradeID": float64(8),
+		},
+		// No Households object
+	}
+
+	year := 2025
+
+	pbData, err := s.transformPersonToPB(personData, year, true)
+	if err != nil {
+		t.Fatalf("transformPersonToPB returned error: %v", err)
+	}
+
+	// Verify address_city defaults to empty string
+	if got := pbData["address_city"]; got != "" {
+		t.Errorf("address_city = %v, want '' for missing households", got)
+	}
+
+	// Verify address_state defaults to empty string
+	if got := pbData["address_state"]; got != "" {
+		t.Errorf("address_state = %v, want '' for missing households", got)
+	}
+}
+
+// =============================================================================
+// Tests for extracting primary_email and secondary_email
+// =============================================================================
+
+// TestExtractPrimaryEmail tests extraction of primary email (IsLogin: true)
+func TestExtractPrimaryEmail(t *testing.T) {
+	s := &PersonsSync{
+		missingDataStats: make(map[string]int),
+	}
+
+	personData := map[string]interface{}{
+		"ID":          float64(12345),
+		"DateOfBirth": "2010-03-15",
+		"GenderID":    float64(0),
+		"Name": map[string]interface{}{
+			"First": testFirstName,
+			"Last":  "Johnson",
+		},
+		"CamperDetails": map[string]interface{}{
+			"CampGradeID": float64(8),
+		},
+		"ContactDetails": map[string]interface{}{
+			"Emails": []interface{}{
+				map[string]interface{}{
+					"Address": "secondary@example.com",
+					"IsLogin": false,
+				},
+				map[string]interface{}{
+					"Address": "primary@example.com",
+					"IsLogin": true,
+				},
+			},
+		},
+	}
+
+	year := 2025
+
+	pbData, err := s.transformPersonToPB(personData, year, true)
+	if err != nil {
+		t.Fatalf("transformPersonToPB returned error: %v", err)
+	}
+
+	// Verify primary_email is the one with IsLogin: true
+	if got, ok := pbData["primary_email"].(string); !ok || got != "primary@example.com" {
+		t.Errorf("primary_email = %v, want 'primary@example.com'", pbData["primary_email"])
+	}
+
+	// Verify secondary_email is the other email
+	if got, ok := pbData["secondary_email"].(string); !ok || got != "secondary@example.com" {
+		t.Errorf("secondary_email = %v, want 'secondary@example.com'", pbData["secondary_email"])
+	}
+}
+
+// TestExtractPrimaryEmail_FirstEntryFallback tests that first entry is used when no IsLogin
+func TestExtractPrimaryEmail_FirstEntryFallback(t *testing.T) {
+	s := &PersonsSync{
+		missingDataStats: make(map[string]int),
+	}
+
+	personData := map[string]interface{}{
+		"ID":          float64(12345),
+		"DateOfBirth": "2010-03-15",
+		"GenderID":    float64(0),
+		"Name": map[string]interface{}{
+			"First": testFirstName,
+			"Last":  "Johnson",
+		},
+		"CamperDetails": map[string]interface{}{
+			"CampGradeID": float64(8),
+		},
+		"ContactDetails": map[string]interface{}{
+			"Emails": []interface{}{
+				map[string]interface{}{
+					"Address": "first@example.com",
+				},
+				map[string]interface{}{
+					"Address": "second@example.com",
+				},
+			},
+		},
+	}
+
+	year := 2025
+
+	pbData, err := s.transformPersonToPB(personData, year, true)
+	if err != nil {
+		t.Fatalf("transformPersonToPB returned error: %v", err)
+	}
+
+	// When no IsLogin flag, use first email as primary
+	if got, ok := pbData["primary_email"].(string); !ok || got != "first@example.com" {
+		t.Errorf("primary_email = %v, want 'first@example.com'", pbData["primary_email"])
+	}
+
+	// Second email becomes secondary
+	if got, ok := pbData["secondary_email"].(string); !ok || got != "second@example.com" {
+		t.Errorf("secondary_email = %v, want 'second@example.com'", pbData["secondary_email"])
+	}
+}
+
+// TestExtractPrimaryEmail_SingleEmail tests handling when only one email exists
+func TestExtractPrimaryEmail_SingleEmail(t *testing.T) {
+	s := &PersonsSync{
+		missingDataStats: make(map[string]int),
+	}
+
+	personData := map[string]interface{}{
+		"ID":          float64(12345),
+		"DateOfBirth": "2010-03-15",
+		"GenderID":    float64(0),
+		"Name": map[string]interface{}{
+			"First": testFirstName,
+			"Last":  "Johnson",
+		},
+		"CamperDetails": map[string]interface{}{
+			"CampGradeID": float64(8),
+		},
+		"ContactDetails": map[string]interface{}{
+			"Emails": []interface{}{
+				map[string]interface{}{
+					"Address": "only@example.com",
+				},
+			},
+		},
+	}
+
+	year := 2025
+
+	pbData, err := s.transformPersonToPB(personData, year, true)
+	if err != nil {
+		t.Fatalf("transformPersonToPB returned error: %v", err)
+	}
+
+	// Single email becomes primary
+	if got, ok := pbData["primary_email"].(string); !ok || got != "only@example.com" {
+		t.Errorf("primary_email = %v, want 'only@example.com'", pbData["primary_email"])
+	}
+
+	// No secondary email
+	if got := pbData["secondary_email"]; got != "" {
+		t.Errorf("secondary_email = %v, want '' for single email", got)
+	}
+}
+
+// TestExtractPrimaryEmail_NoEmails tests handling when no emails exist
+func TestExtractPrimaryEmail_NoEmails(t *testing.T) {
+	s := &PersonsSync{
+		missingDataStats: make(map[string]int),
+	}
+
+	personData := map[string]interface{}{
+		"ID":          float64(12345),
+		"DateOfBirth": "2010-03-15",
+		"GenderID":    float64(0),
+		"Name": map[string]interface{}{
+			"First": testFirstName,
+			"Last":  "Johnson",
+		},
+		"CamperDetails": map[string]interface{}{
+			"CampGradeID": float64(8),
+		},
+		// No ContactDetails
+	}
+
+	year := 2025
+
+	pbData, err := s.transformPersonToPB(personData, year, true)
+	if err != nil {
+		t.Fatalf("transformPersonToPB returned error: %v", err)
+	}
+
+	// No primary_email when no emails
+	if got := pbData["primary_email"]; got != "" {
+		t.Errorf("primary_email = %v, want '' for no emails", got)
+	}
+
+	// No secondary_email when no emails
+	if got := pbData["secondary_email"]; got != "" {
+		t.Errorf("secondary_email = %v, want '' for no emails", got)
+	}
+}
+
+// =============================================================================
+// Tests for phone_numbers removal
+// =============================================================================
+
+// TestPhoneNumbersRemoved tests that phone_numbers field is no longer populated
+func TestPhoneNumbersRemoved(t *testing.T) {
+	s := &PersonsSync{
+		missingDataStats: make(map[string]int),
+	}
+
+	personData := map[string]interface{}{
+		"ID":          float64(12345),
+		"DateOfBirth": "2010-03-15",
+		"GenderID":    float64(0),
+		"Name": map[string]interface{}{
+			"First": testFirstName,
+			"Last":  "Johnson",
+		},
+		"CamperDetails": map[string]interface{}{
+			"CampGradeID": float64(8),
+		},
+		"ContactDetails": map[string]interface{}{
+			"PhoneNumbers": []interface{}{
+				map[string]interface{}{
+					"Number": "555-123-4567",
+					"Type":   "Mobile",
+				},
+			},
+		},
+	}
+
+	year := 2025
+
+	pbData, err := s.transformPersonToPB(personData, year, true)
+	if err != nil {
+		t.Fatalf("transformPersonToPB returned error: %v", err)
+	}
+
+	// phone_numbers field should not exist in the output
+	if _, exists := pbData["phone_numbers"]; exists {
+		t.Errorf("phone_numbers field should not be populated, got %v", pbData["phone_numbers"])
+	}
+}
