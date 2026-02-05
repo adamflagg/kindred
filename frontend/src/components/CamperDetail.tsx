@@ -218,8 +218,8 @@ export default function CamperDetail() {
     )
   }
 
-  // Computed values
-  const location = getLocationDisplay(person?.address)
+  // Computed values - use discrete columns instead of JSON parsing
+  const location = getLocationDisplay(person?.address_city, person?.address_state)
   const pronouns = formatPronouns(camper)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sessionShortName = getSessionShortName(camper.expand?.session as any)

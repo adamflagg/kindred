@@ -35,9 +35,10 @@ def create_mock_person(
     last_year_attended: int = 2025,
     year: int = 2026,
     school: str = "Riverside Elementary",
-    address: dict[str, Any] | None = None,
+    address_city: str = "Springfield",
+    address_state: str = "IL",
 ) -> Mock:
-    """Create a mock person record."""
+    """Create a mock person record with discrete address columns."""
     person = Mock()
     person.cm_id = cm_id
     person.first_name = first_name
@@ -48,7 +49,9 @@ def create_mock_person(
     person.last_year_attended = last_year_attended
     person.year = year
     person.school = school
-    person.address = address or {"city": "Springfield", "state": "IL"}
+    # Use discrete address columns
+    person.address_city = address_city
+    person.address_state = address_state
     return person
 
 

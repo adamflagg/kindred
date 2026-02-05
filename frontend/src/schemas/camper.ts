@@ -6,8 +6,6 @@ import {
   BaseSystemFieldsSchema,
   IsoDateStringSchema,
   RecordIdStringSchema,
-  AddressSchema,
-  EmailAddressSchema,
   nullableJson,
 } from './common'
 
@@ -26,12 +24,11 @@ export const AttendeesStatusSchema = z.enum([
 ])
 
 // Persons record schema
+// Note: address and email_addresses JSON fields removed - use discrete fields instead
 export const PersonsRecordSchema = z.object({
-  address: nullableJson(AddressSchema),
   age: z.number().optional(),
   birthdate: z.string().optional(),
   cm_id: z.number(),
-  email_addresses: nullableJson(z.array(EmailAddressSchema)),
   first_name: z.string(),
   gender: z.string().optional(),
   gender_identity_id: z.number().optional(),

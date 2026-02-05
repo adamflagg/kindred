@@ -129,13 +129,12 @@ export function useCamperEnrollment(
         session as Parameters<typeof toAppCamper>[4]
       )
 
-      // Add birthdate and address to camper for display purposes
+      // Add birthdate to camper for display purposes
       return {
         camper: {
           ...camper,
           birthdate: person.birthdate,
-          address: person.address,
-        } as Camper & { birthdate?: string; address?: string },
+        } as Camper & { birthdate?: string },
         person,
       }
     },

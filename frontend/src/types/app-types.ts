@@ -53,16 +53,8 @@ export interface Camper {
   primary_household_id?: string
   alternate_household_id?: string
   external_id?: string
-  email_addresses?: string[]
   primary_email?: string
   secondary_email?: string
-  address?: {
-    street?: string
-    city?: string
-    state?: string
-    zip?: string
-    country?: string
-  }
   bunking_requests?: Array<{
     id?: string
     type?: string

@@ -327,19 +327,13 @@ export interface OriginalBunkRequestsRecord {
   year: number
 }
 
-export interface PersonsRecord<
-  Taddress = unknown,
-  Temail_addresses = unknown,
-  Traw_data = unknown,
-> {
-  address?: null | Taddress
+export interface PersonsRecord<Traw_data = unknown> {
   address_city?: string
   address_state?: string
   age?: number
   birthdate?: string
   cm_id: number
   created?: IsoDateString
-  email_addresses?: null | Temail_addresses
   first_name: string
   gender?: string
   gender_identity_id?: number
@@ -476,12 +470,10 @@ export type LockedGroupsResponse<Texpand = unknown> = Required<LockedGroupsRecor
   BaseSystemFields<Texpand>
 export type OriginalBunkRequestsResponse<Texpand = unknown> = Required<OriginalBunkRequestsRecord> &
   BaseSystemFields<Texpand>
-export type PersonsResponse<
-  Taddress = unknown,
-  Temail_addresses = unknown,
-  Traw_data = unknown,
-  Texpand = unknown,
-> = Required<PersonsRecord<Taddress, Temail_addresses, Traw_data>> & BaseSystemFields<Texpand>
+export type PersonsResponse<Traw_data = unknown, Texpand = unknown> = Required<
+  PersonsRecord<Traw_data>
+> &
+  BaseSystemFields<Texpand>
 export type SavedScenariosResponse<Tmetadata = unknown, Texpand = unknown> = Required<
   SavedScenariosRecord<Tmetadata>
 > &

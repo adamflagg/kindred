@@ -414,8 +414,8 @@ export default function CamperDetailsPanel({
     onClose()
   }, [onClose])
 
-  // Helper: get location from person's address
-  const location = getLocationDisplay(person?.address)
+  // Helper: get location from person's discrete address columns
+  const location = getLocationDisplay(person?.address_city, person?.address_state)
 
   const getSessionShortName = () => {
     const session = camper?.expand?.session
