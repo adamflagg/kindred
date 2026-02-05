@@ -272,3 +272,201 @@ class TestHistoricalServiceEdgeCases:
         assert len(result.years) == 5
         years = [y.year for y in result.years]
         assert years == [2021, 2022, 2023, 2024, 2025]
+
+
+# ============================================================================
+# TestHistoricalServiceSessionFiltering - Session name filtering across years
+# ============================================================================
+
+
+def make_mock_camper_history_with_session(
+    person_id: int,
+    gender: str,
+    session_name: str,
+    years_at_camp: int = 1,
+    first_year_attended: int | None = None,
+) -> MagicMock:
+    """Create a mock camper_history record with session_name."""
+    record = MagicMock()
+    record.person_id = person_id
+    record.gender = gender
+    record.session_name = session_name
+    record.years_at_camp = years_at_camp
+    record.first_year_attended = first_year_attended
+    return record
+
+
+def make_mock_session(
+    cm_id: int,
+    name: str,
+    session_type: str = "main",
+    parent_id: int | None = None,
+) -> MagicMock:
+    """Create a mock session record."""
+    session = MagicMock()
+    session.cm_id = cm_id
+    session.name = name
+    session.session_type = session_type
+    session.parent_id = parent_id
+    return session
+
+
+class TestHistoricalServiceSessionFiltering:
+    """Test session_cm_id filtering with name-matching across years."""
+
+    @pytest.fixture
+    def mock_repository(self) -> MagicMock:
+        """Create a mock MetricsRepository."""
+        repo = MagicMock(spec=MetricsRepository)
+        repo.fetch_camper_history = AsyncMock(return_value=[])
+        repo.fetch_sessions = AsyncMock(return_value={})
+        return repo
+
+    @pytest.mark.asyncio
+    async def test_session_cm_id_accepted(self, mock_repository: MagicMock) -> None:
+        """Test that session_cm_id parameter is accepted by the service."""
+        from api.services.historical_service import HistoricalService
+
+        # Setup session with name "Session 2"
+        mock_repository.fetch_sessions = AsyncMock(return_value={
+            1001: make_mock_session(1001, "Session 2", "main"),
+        })
+        mock_repository.fetch_camper_history = AsyncMock(return_value=[])
+
+        service = HistoricalService(mock_repository)
+
+        # Should not raise - parameter should be accepted
+        result = await service.calculate_historical_trends(
+            years=[2024],
+            session_cm_id=1001,
+        )
+
+        assert result is not None
+        assert len(result.years) == 1
+
+    @pytest.mark.asyncio
+    async def test_session_filtering_by_name_match(self, mock_repository: MagicMock) -> None:
+        """Test filtering by session name across years.
+
+        When session_cm_id is provided for a session named "Session 2" in 2025,
+        historical years (2024, 2023) should also filter to sessions named "Session 2"
+        even if they have different cm_ids.
+        """
+        from api.services.historical_service import HistoricalService
+
+        # Sessions for different years (same name, different cm_ids)
+        sessions_2024 = {
+            2001: make_mock_session(2001, "Session 1", "main"),
+            2002: make_mock_session(2002, "Session 2", "main"),  # Match by name
+        }
+        sessions_2025 = {
+            3001: make_mock_session(3001, "Session 1", "main"),
+            3002: make_mock_session(3002, "Session 2", "main"),  # Selected session
+        }
+
+        # Camper history for 2024 - 5 in Session 1, 3 in Session 2
+        history_2024 = [
+            *[make_mock_camper_history_with_session(i, "M", "Session 1") for i in range(1, 6)],
+            *[make_mock_camper_history_with_session(i, "M", "Session 2") for i in range(6, 9)],
+        ]
+        # Camper history for 2025 - 4 in Session 1, 6 in Session 2
+        history_2025 = [
+            *[make_mock_camper_history_with_session(i, "M", "Session 1") for i in range(1, 5)],
+            *[make_mock_camper_history_with_session(i, "M", "Session 2") for i in range(5, 11)],
+        ]
+
+        def mock_fetch_sessions(year: int, session_types: list[str] | None = None) -> dict:
+            return sessions_2024 if year == 2024 else sessions_2025
+
+        def mock_fetch_history(year: int, session_types: list[str] | None = None, session_name: str | None = None) -> list:
+            data = history_2024 if year == 2024 else history_2025
+            # Simulate filtering by session_name
+            if session_name:
+                return [r for r in data if r.session_name == session_name]
+            return data
+
+        mock_repository.fetch_sessions = AsyncMock(side_effect=mock_fetch_sessions)
+        mock_repository.fetch_camper_history = AsyncMock(side_effect=mock_fetch_history)
+
+        service = HistoricalService(mock_repository)
+
+        # Filter to session_cm_id=3002 (Session 2 in 2025)
+        result = await service.calculate_historical_trends(
+            years=[2024, 2025],
+            session_cm_id=3002,
+        )
+
+        # Both years should be filtered to "Session 2" only
+        year_dict = {y.year: y for y in result.years}
+
+        # 2024 should show only Session 2 campers (3)
+        assert year_dict[2024].total_enrolled == 3
+
+        # 2025 should show only Session 2 campers (6)
+        assert year_dict[2025].total_enrolled == 6
+
+    @pytest.mark.asyncio
+    async def test_no_session_filter_returns_all(self, mock_repository: MagicMock) -> None:
+        """Test that omitting session_cm_id returns all campers."""
+        from api.services.historical_service import HistoricalService
+
+        # 10 campers across multiple sessions
+        history_2024 = [
+            *[make_mock_camper_history_with_session(i, "M", "Session 1") for i in range(1, 6)],
+            *[make_mock_camper_history_with_session(i, "M", "Session 2") for i in range(6, 11)],
+        ]
+
+        mock_repository.fetch_camper_history = AsyncMock(return_value=history_2024)
+
+        service = HistoricalService(mock_repository)
+
+        # No session filter
+        result = await service.calculate_historical_trends(years=[2024])
+
+        # Should include all 10 campers
+        assert result.years[0].total_enrolled == 10
+
+    @pytest.mark.asyncio
+    async def test_session_not_found_returns_empty(self, mock_repository: MagicMock) -> None:
+        """Test that filtering to non-existent session returns empty data."""
+        from api.services.historical_service import HistoricalService
+
+        # Session exists only in 2025, not in 2024
+        sessions_2024 = {
+            2001: make_mock_session(2001, "Session 1", "main"),
+        }
+        sessions_2025 = {
+            3001: make_mock_session(3001, "Session 1", "main"),
+            3002: make_mock_session(3002, "Session 2", "main"),  # Only in 2025
+        }
+
+        history_2024 = [make_mock_camper_history_with_session(i, "M", "Session 1") for i in range(1, 6)]
+        history_2025 = [make_mock_camper_history_with_session(i, "M", "Session 2") for i in range(1, 4)]
+
+        def mock_fetch_sessions(year: int, session_types: list[str] | None = None) -> dict:
+            return sessions_2024 if year == 2024 else sessions_2025
+
+        def mock_fetch_history(year: int, session_types: list[str] | None = None, session_name: str | None = None) -> list:
+            data = history_2024 if year == 2024 else history_2025
+            if session_name:
+                return [r for r in data if r.session_name == session_name]
+            return data
+
+        mock_repository.fetch_sessions = AsyncMock(side_effect=mock_fetch_sessions)
+        mock_repository.fetch_camper_history = AsyncMock(side_effect=mock_fetch_history)
+
+        service = HistoricalService(mock_repository)
+
+        # Filter to Session 2 (only exists in 2025)
+        result = await service.calculate_historical_trends(
+            years=[2024, 2025],
+            session_cm_id=3002,
+        )
+
+        year_dict = {y.year: y for y in result.years}
+
+        # 2024 should be empty (Session 2 doesn't exist in 2024)
+        assert year_dict[2024].total_enrolled == 0
+
+        # 2025 should have 3 campers
+        assert year_dict[2025].total_enrolled == 3
