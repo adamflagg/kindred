@@ -8,8 +8,11 @@ const projectRoot = join(__dirname, '..');
 
 console.log('Starting dev server...');
 
-// Spawn vite with default config
-const vite = spawn('vite', [], {
+// Forward CLI args to vite (e.g. --host --port 3020)
+const args = process.argv.slice(2);
+
+// Spawn vite with forwarded args
+const vite = spawn('vite', args, {
   stdio: 'inherit',
   shell: true,
   cwd: projectRoot
