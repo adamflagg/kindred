@@ -79,7 +79,7 @@ describe('transformGradeData', () => {
     const result = transformGradeData(input);
 
     expect(result[0]!.name).toBe('Unknown');
-    expect(result[0]!.id).toBe('null');
+    expect(result[0]!['id']).toBe('null');
   });
 
   it('returns empty array for undefined input', () => {

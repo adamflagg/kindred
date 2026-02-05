@@ -73,9 +73,7 @@ class DrilldownService:
         # For first_summer_year breakdown, pre-compute first year for each person
         first_year_by_person: dict[int, int] = {}
         if breakdown_type == "first_summer_year":
-            person_ids = {
-                pid for a in filtered_attendees if (pid := getattr(a, "person_id", None)) is not None
-            }
+            person_ids = {pid for a in filtered_attendees if (pid := getattr(a, "person_id", None)) is not None}
             if person_ids:
                 enrollment_history = await self.repo.fetch_summer_enrollment_history(person_ids, year)
                 _, first_year_by_person = compute_summer_metrics(enrollment_history, person_ids)
