@@ -694,63 +694,48 @@ class RegistrationService:
     ) -> list[SessionLengthBySessionBreakdown]:
         """Compute session breakdown grouped by length category.
 
-        Returns stacked bar chart data showing which sessions fall into each
-        length category with camper counts per session.
-
         AG sessions are merged into their parent main sessions.
         """
-        # Build AG -> parent mapping
-        ag_parent_map: dict[int, int] = {}
-        for sid, session in sessions.items():
-            if getattr(session, "session_type", None) == "ag":
-                parent_id = getattr(session, "parent_id", None)
-                if parent_id:
-                    ag_parent_map[int(sid)] = int(parent_id)
-
-        # Group attendees by length category and session (with AG merging)
-        length_session_counts: dict[str, dict[int, int]] = {}
-
+        # Step 1: Count attendees by session (same as _compute_session_breakdown)
+        session_counts: dict[int, int] = {}
         for a in attendees:
             expand = getattr(a, "expand", {}) or {}
             session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
             if not session:
                 continue
-
             session_cm_id = getattr(session, "cm_id", None)
-            if not session_cm_id:
+            if session_cm_id:
+                sid = int(session_cm_id)
+                session_counts[sid] = session_counts.get(sid, 0) + 1
+
+        # Step 2: Merge AG counts into parent sessions (reuse existing helper)
+        merged_counts = self._merge_ag_into_parent_sessions(session_counts, sessions)
+
+        # Step 3: Group by length category
+        length_session_counts: dict[str, dict[int, int]] = {}
+        for sid, count in merged_counts.items():
+            session_obj = sessions.get(sid)
+            if not session_obj:
                 continue
-
-            # Redirect AG to parent
-            sid = int(session_cm_id)
-            target_sid = ag_parent_map.get(sid, sid)
-
-            # Use TARGET session for length calculation
-            target_session = sessions.get(target_sid)
-            if not target_session:
-                continue
-
-            start_date = getattr(target_session, "start_date", "") or ""
-            end_date = getattr(target_session, "end_date", "") or ""
+            start_date = getattr(session_obj, "start_date", "") or ""
+            end_date = getattr(session_obj, "end_date", "") or ""
             length = get_session_length_category(start_date, end_date)
 
             if length not in length_session_counts:
                 length_session_counts[length] = {}
-            length_session_counts[length][target_sid] = length_session_counts[length].get(target_sid, 0) + 1
+            length_session_counts[length][sid] = count
 
-        # Sort order for length categories
+        # Step 4: Build result sorted by length category
         length_order = {"1-week": 0, "2-week": 1, "3-week": 2, "4-week+": 3, "unknown": 4}
 
         result = []
-        for length, session_counts in sorted(length_session_counts.items(), key=lambda x: length_order.get(x[0], 5)):
+        for length, session_counts_for_length in sorted(
+            length_session_counts.items(), key=lambda x: length_order.get(x[0], 5)
+        ):
             session_list = []
             total = 0
-            for sid, count in sorted(session_counts.items()):
+            for sid, count in sorted(session_counts_for_length.items()):
                 session_obj = sessions.get(sid)
-                # Skip AG sessions that were merged (have a parent in ag_parent_map)
-                # But keep orphan AG sessions (no parent) as they need to appear separately
-                if sid in ag_parent_map:
-                    # This AG had a parent and its counts were redirected - skip
-                    continue
                 session_name = getattr(session_obj, "name", f"Session {sid}") if session_obj else f"Session {sid}"
                 session_list.append(
                     SessionInLengthCategory(
