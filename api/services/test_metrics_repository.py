@@ -503,16 +503,12 @@ class TestMetricsRepositoryFetchSynagogueByHousehold:
         mock_hh_cv_collection = MagicMock()
         mock_hh_collection = MagicMock()
 
-        def collection_router(name: str) -> MagicMock:
-            if name == "field_definitions":
-                return mock_field_def_collection
-            elif name == "household_custom_values":
-                return mock_hh_cv_collection
-            elif name == "households":
-                return mock_hh_collection
-            return MagicMock()
-
-        mock_pb.collection.side_effect = collection_router
+        collections = {
+            "field_definitions": mock_field_def_collection,
+            "household_custom_values": mock_hh_cv_collection,
+            "households": mock_hh_collection,
+        }
+        mock_pb.collection.side_effect = lambda name: collections.get(name, MagicMock())
 
         # Mock field definition response
         mock_field_def = MagicMock()
@@ -554,16 +550,12 @@ class TestMetricsRepositoryFetchSynagogueByHousehold:
         mock_hh_cv_collection = MagicMock()
         mock_hh_collection = MagicMock()
 
-        def collection_router(name: str) -> MagicMock:
-            if name == "field_definitions":
-                return mock_field_def_collection
-            elif name == "household_custom_values":
-                return mock_hh_cv_collection
-            elif name == "households":
-                return mock_hh_collection
-            return MagicMock()
-
-        mock_pb.collection.side_effect = collection_router
+        collections = {
+            "field_definitions": mock_field_def_collection,
+            "household_custom_values": mock_hh_cv_collection,
+            "households": mock_hh_collection,
+        }
+        mock_pb.collection.side_effect = lambda name: collections.get(name, MagicMock())
 
         # Mock field definition
         mock_field_def = MagicMock()
