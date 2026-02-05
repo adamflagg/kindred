@@ -15,4 +15,6 @@ export { GeoDetailList } from './GeoDetailList'
 export { GeoLayerToggles } from './GeoLayerToggles'
 export type { GeoLayerTogglesProps } from './GeoLayerToggles'
 
+export { GeoGapsList } from './GeoGapsList'
+
 export { RegionOverlays } from './RegionOverlays'

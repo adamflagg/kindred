@@ -5080,6 +5080,7 @@
     "mariposa school of global education": "Mariposa School Of Global Education",
     "mariposa-nabi primary center": "Mariposa-Nabi Primary Center",
     "marjorie h. tobias elementary": "Marjorie H. Tobias Elementary",
+    "mark day school": "Mark Day School",
     "mark keppel": "Mark Keppel",
     "mark keppel elementary": "Mark Keppel Elementary",
     "mark keppel high": "Mark Keppel High",
@@ -6260,6 +6261,7 @@
     "paramount virtual academy": "Paramount Virtual Academy",
     "park avenue elementary": "Park Avenue Elementary",
     "park dale lane elementary": "Park Dale Lane Elementary",
+    "park day school": "Park Day School",
     "park elementary": "Park Elementary",
     "park hill elementary": "Park Hill Elementary",
     "park middle": "Park Middle",
@@ -29451,6 +29453,10 @@
       37.691,
       -122.4899
     ],
+    "Mark Day School": [
+      37.96,
+      -122.535
+    ],
     "Mark Keppel": [
       33.8939,
       -118.1806
@@ -34170,6 +34176,10 @@
     "Park Dale Lane Elementary": [
       33.0474,
       -117.2425
+    ],
+    "Park Day School": [
+      37.8395,
+      -122.253
     ],
     "Park Elementary": [
       34.0953,

@@ -9,12 +9,13 @@ import { useEffect, useRef } from 'react'
 import { MapContainer, TileLayer, CircleMarker, Tooltip, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import {
-  getCityCoords,
   BAY_AREA_CENTER,
   BAY_AREA_ZOOM,
   REGION_COLORS,
   type LatLng,
 } from '../../../data/californiaGeo'
+import { getLocationCoords } from '../../../data/geoCoords'
+import type { DrilldownFilter } from '../../../types/metrics'
 import { RegionOverlays } from './RegionOverlays'
 
 export interface GeoDataItem {
@@ -30,6 +31,8 @@ export interface GeoMapProps {
   category: 'city' | 'school' | 'synagogue'
   /** Callback when a marker is clicked */
   onMarkerClick?: (name: string) => void
+  /** Callback for drilldown when a marker is clicked */
+  onDrilldown?: (filter: DrilldownFilter) => void
   /** Currently selected/highlighted item */
   selectedItem?: string | null
   /** Map height in pixels or CSS value */
@@ -78,6 +81,7 @@ export function GeoMap({
   data,
   category,
   onMarkerClick,
+  onDrilldown,
   selectedItem,
   height = 575,
   showRegions = true,
@@ -85,16 +89,16 @@ export function GeoMap({
   const mapRef = useRef<L.Map | null>(null)
   const colors = CATEGORY_COLORS[category]
 
-  // Filter data to items with known coordinates
+  // Filter data to items with known coordinates (category-aware)
   const mappableData = data
     .map((item) => ({
       ...item,
-      coords: getCityCoords(item.name),
+      coords: getLocationCoords(category, item.name),
     }))
     .filter((item): item is GeoDataItem & { coords: LatLng } => item.coords !== undefined)
 
-  // Items without coordinates (for display in "Other" section)
-  const unmappableData = data.filter((item) => !getCityCoords(item.name))
+  // Items without coordinates (gaps - not in canonical lookup)
+  const unmappableData = data.filter((item) => !getLocationCoords(category, item.name))
 
   // Calculate max count for radius scaling
   const maxCount = Math.max(...mappableData.map((d) => d.count), 1)
@@ -122,8 +126,8 @@ export function GeoMap({
 
           <MapController center={BAY_AREA_CENTER} zoom={BAY_AREA_ZOOM} />
 
-          {/* Region overlays */}
-          <RegionOverlays show={showRegions} />
+          {/* Region overlays (city category only) */}
+          <RegionOverlays show={showRegions && category === 'city'} />
 
           {/* Circle markers for each location */}
           {mappableData.map((item) => {
@@ -142,7 +146,14 @@ export function GeoMap({
                   weight: isSelected ? 3 : 2,
                 }}
                 eventHandlers={{
-                  click: () => onMarkerClick?.(item.name),
+                  click: () => {
+                    onMarkerClick?.(item.name)
+                    onDrilldown?.({
+                      type: category,
+                      value: item.name,
+                      label: item.name,
+                    })
+                  },
                 }}
               >
                 <Tooltip direction="top" offset={[0, -radius]} opacity={0.95}>

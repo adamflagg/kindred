@@ -48,7 +48,7 @@ describe('GeoGapsList', () => {
 
   it('shows total count of gaps', () => {
     render(<GeoGapsList gaps={sampleGaps} category="school" />)
-    // Should show "3" as the count of unmapped items
-    expect(screen.getByText(/3/)).toBeInTheDocument()
+    // Should show "3" as the count of unmapped items in the header
+    expect(screen.getByText(/3 Unmapped/)).toBeInTheDocument()
   })
 })
