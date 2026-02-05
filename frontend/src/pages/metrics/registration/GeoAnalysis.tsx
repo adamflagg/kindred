@@ -6,10 +6,11 @@
  * live updates without requiring camper_history sync.
  */
 
-import { useState, useMemo } from 'react';
-import { Globe, Loader2, AlertCircle } from 'lucide-react';
-import { useCurrentYear } from '../../../hooks/useCurrentYear';
-import { useRegistrationMetrics } from '../../../hooks/useMetrics';
+import { useState, useMemo } from "react";
+import { Globe, Loader2, AlertCircle } from "lucide-react";
+import { useCurrentYear } from "../../../hooks/useCurrentYear";
+import { useRegistrationMetrics } from "../../../hooks/useMetrics";
+import { useMetricsSession } from "../../../hooks/useMetricsSession";
 import {
   GeoMap,
   GeoCategoryTabs,
@@ -17,22 +18,26 @@ import {
   GeoDetailList,
   type GeoCategory,
   type GeoDataItem,
-} from '../../../components/metrics/geo';
+} from "../../../components/metrics/geo";
 
 /** Default session types for summer camp metrics */
-const DEFAULT_SESSION_TYPES = ['main', 'embedded', 'ag'];
+const DEFAULT_SESSION_TYPES = ["main", "embedded", "ag"];
 
 export default function GeoAnalysis() {
   const { currentYear } = useCurrentYear();
-  const [activeCategory, setActiveCategory] = useState<GeoCategory>('city');
+  const [activeCategory, setActiveCategory] = useState<GeoCategory>("city");
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
 
+  // Get session filter from context (unified selector is in MetricsTypeTabs)
+  const { selectedSessionCmId } = useMetricsSession();
+
   // Fetch registration data with geographic breakdowns
-  const sessionTypesParam = DEFAULT_SESSION_TYPES.join(',');
+  const sessionTypesParam = DEFAULT_SESSION_TYPES.join(",");
   const { data, isLoading, error } = useRegistrationMetrics(
     currentYear,
     sessionTypesParam,
-    'enrolled'
+    "enrolled",
+    selectedSessionCmId ?? undefined,
   );
 
   // Transform data for display
@@ -50,13 +55,25 @@ export default function GeoAnalysis() {
 
     return {
       city: (data.by_city ?? [])
-        .map((c) => ({ name: c.city, count: c.count, percentage: c.percentage }))
+        .map((c) => ({
+          name: c.city,
+          count: c.count,
+          percentage: c.percentage,
+        }))
         .sort(sortByCount),
       school: (data.by_school ?? [])
-        .map((s) => ({ name: s.school, count: s.count, percentage: s.percentage }))
+        .map((s) => ({
+          name: s.school,
+          count: s.count,
+          percentage: s.percentage,
+        }))
         .sort(sortByCount),
       synagogue: (data.by_synagogue ?? [])
-        .map((s) => ({ name: s.synagogue, count: s.count, percentage: s.percentage }))
+        .map((s) => ({
+          name: s.synagogue,
+          count: s.count,
+          percentage: s.percentage,
+        }))
         .sort(sortByCount),
     };
   }, [data]);
@@ -64,15 +81,18 @@ export default function GeoAnalysis() {
   // Get top location across all categories
   const topLocation = useMemo(() => {
     const allItems = [
-      ...geoData.city.map((d) => ({ ...d, category: 'city' as const })),
-      ...geoData.school.map((d) => ({ ...d, category: 'school' as const })),
-      ...geoData.synagogue.map((d) => ({ ...d, category: 'synagogue' as const })),
+      ...geoData.city.map((d) => ({ ...d, category: "city" as const })),
+      ...geoData.school.map((d) => ({ ...d, category: "school" as const })),
+      ...geoData.synagogue.map((d) => ({
+        ...d,
+        category: "synagogue" as const,
+      })),
     ];
 
     if (allItems.length === 0) return undefined;
 
     return allItems.reduce((max, item) =>
-      item.count > max.count ? item : max
+      item.count > max.count ? item : max,
     );
   }, [geoData]);
 
@@ -85,7 +105,9 @@ export default function GeoAnalysis() {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
-        <span className="ml-2 text-muted-foreground">Loading geographic data...</span>
+        <span className="ml-2 text-muted-foreground">
+          Loading geographic data...
+        </span>
       </div>
     );
   }
@@ -101,7 +123,10 @@ export default function GeoAnalysis() {
 
   const currentData = geoData[activeCategory];
   const hasData = currentData.length > 0;
-  const anyData = geoData.city.length > 0 || geoData.school.length > 0 || geoData.synagogue.length > 0;
+  const anyData =
+    geoData.city.length > 0 ||
+    geoData.school.length > 0 ||
+    geoData.synagogue.length > 0;
 
   return (
     <div className="space-y-6">
@@ -120,12 +145,15 @@ export default function GeoAnalysis() {
         /* Empty state when no data at all */
         <div className="card-lodge p-8 text-center">
           <Globe className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-          <h2 className="text-lg font-semibold text-foreground mb-2">No Geographic Data</h2>
+          <h2 className="text-lg font-semibold text-foreground mb-2">
+            No Geographic Data
+          </h2>
           <p className="text-muted-foreground">
             Geographic breakdown data is not yet available for {currentYear}.
           </p>
           <p className="text-sm text-muted-foreground mt-2">
-            Make sure person records have school and address information populated.
+            Make sure person records have school and address information
+            populated.
           </p>
         </div>
       ) : (
