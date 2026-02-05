@@ -2749,3 +2749,191 @@ func TestQueuedSyncDebugFieldSerialization(t *testing.T) {
 		t.Error("expected Debug field to be accessible and set to true")
 	}
 }
+
+// =============================================================================
+// GetCurrentRunProgress Tests - Progress tracking for current sync sequence
+// =============================================================================
+
+// TestGetCurrentRunProgress_NoSyncRunning tests that no progress is returned when nothing runs
+func TestGetCurrentRunProgress_NoSyncRunning(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	runType, remaining, total, completed := o.GetCurrentRunProgress()
+
+	if runType != "" {
+		t.Errorf("expected empty runType when no sync running, got %q", runType)
+	}
+	if remaining != nil {
+		t.Errorf("expected nil remaining when no sync running, got %v", remaining)
+	}
+	if total != 0 {
+		t.Errorf("expected 0 total when no sync running, got %d", total)
+	}
+	if completed != 0 {
+		t.Errorf("expected 0 completed when no sync running, got %d", completed)
+	}
+}
+
+// TestGetCurrentRunProgress_DailySyncRunning tests progress tracking during daily sync
+func TestGetCurrentRunProgress_DailySyncRunning(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	// Simulate daily sync in progress with 5 jobs, currently on job 2 (index 1)
+	o.mu.Lock()
+	o.dailySyncRunning = true
+	o.dailySyncQueue = []string{"sessions", "attendees", "persons", "bunks", "bunk_plans"}
+	o.currentRunIndex = 1 // Currently running job at index 1 (attendees)
+	o.mu.Unlock()
+
+	runType, remaining, total, completed := o.GetCurrentRunProgress()
+
+	if runType != "daily" {
+		t.Errorf("expected runType 'daily', got %q", runType)
+	}
+	if total != 5 {
+		t.Errorf("expected total 5, got %d", total)
+	}
+	if completed != 1 {
+		t.Errorf("expected completed 1 (currentRunIndex), got %d", completed)
+	}
+	// Remaining should be jobs after current: persons, bunks, bunk_plans
+	expectedRemaining := []string{"persons", "bunks", "bunk_plans"}
+	if len(remaining) != len(expectedRemaining) {
+		t.Errorf("expected %d remaining jobs, got %d", len(expectedRemaining), len(remaining))
+	}
+	for i, job := range expectedRemaining {
+		if i < len(remaining) && remaining[i] != job {
+			t.Errorf("expected remaining[%d] = %q, got %q", i, job, remaining[i])
+		}
+	}
+}
+
+// TestGetCurrentRunProgress_HistoricalSyncRunning tests progress tracking during historical sync
+func TestGetCurrentRunProgress_HistoricalSyncRunning(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	// Simulate historical sync in progress
+	o.mu.Lock()
+	o.historicalSyncRunning = true
+	o.historicalSyncQueue = []string{"sessions", "attendees", "persons"}
+	o.currentRunIndex = 2 // On last job
+	o.mu.Unlock()
+
+	runType, remaining, total, completed := o.GetCurrentRunProgress()
+
+	if runType != "historical" {
+		t.Errorf("expected runType 'historical', got %q", runType)
+	}
+	if total != 3 {
+		t.Errorf("expected total 3, got %d", total)
+	}
+	if completed != 2 {
+		t.Errorf("expected completed 2, got %d", completed)
+	}
+	// No remaining jobs after current
+	if len(remaining) != 0 {
+		t.Errorf("expected 0 remaining jobs, got %d", len(remaining))
+	}
+}
+
+// TestGetCurrentRunProgress_WeeklySyncRunning tests progress tracking during weekly sync
+func TestGetCurrentRunProgress_WeeklySyncRunning(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	// Simulate weekly sync in progress
+	o.mu.Lock()
+	o.weeklySyncRunning = true
+	o.weeklySyncQueue = []string{"person_tag_defs", "custom_field_defs", "divisions"}
+	o.currentRunIndex = 0 // On first job
+	o.mu.Unlock()
+
+	runType, remaining, total, completed := o.GetCurrentRunProgress()
+
+	if runType != "weekly" {
+		t.Errorf("expected runType 'weekly', got %q", runType)
+	}
+	if total != 3 {
+		t.Errorf("expected total 3, got %d", total)
+	}
+	if completed != 0 {
+		t.Errorf("expected completed 0, got %d", completed)
+	}
+	// Remaining should be: custom_field_defs, divisions
+	if len(remaining) != 2 {
+		t.Errorf("expected 2 remaining jobs, got %d", len(remaining))
+	}
+}
+
+// TestGetCurrentRunProgress_CustomValuesSyncRunning tests progress tracking during CV sync
+func TestGetCurrentRunProgress_CustomValuesSyncRunning(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	// Simulate custom values sync in progress
+	o.mu.Lock()
+	o.customValuesSyncRunning = true
+	o.customValuesSyncQueue = []string{"person_custom_values", "household_custom_values"}
+	o.currentRunIndex = 1 // On second job
+	o.mu.Unlock()
+
+	runType, remaining, total, completed := o.GetCurrentRunProgress()
+
+	if runType != "custom_values" {
+		t.Errorf("expected runType 'custom_values', got %q", runType)
+	}
+	if total != 2 {
+		t.Errorf("expected total 2, got %d", total)
+	}
+	if completed != 1 {
+		t.Errorf("expected completed 1, got %d", completed)
+	}
+	// No remaining jobs after current
+	if len(remaining) != 0 {
+		t.Errorf("expected 0 remaining jobs (last job running), got %d", len(remaining))
+	}
+}
+
+// TestGetCurrentRunProgress_IndexOutOfBounds tests handling when index exceeds queue
+func TestGetCurrentRunProgress_IndexOutOfBounds(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	// Simulate edge case where index is at queue length
+	o.mu.Lock()
+	o.dailySyncRunning = true
+	o.dailySyncQueue = []string{"sessions", "attendees"}
+	o.currentRunIndex = 2 // Beyond queue length
+	o.mu.Unlock()
+
+	runType, remaining, total, completed := o.GetCurrentRunProgress()
+
+	if runType != "daily" {
+		t.Errorf("expected runType 'daily', got %q", runType)
+	}
+	if total != 2 {
+		t.Errorf("expected total 2, got %d", total)
+	}
+	// remaining should be nil or empty when index >= total
+	if len(remaining) != 0 {
+		t.Errorf("expected 0 remaining jobs when index >= total, got %d", len(remaining))
+	}
+}
+
+// TestGetCurrentRunProgress_PriorityOrder tests which sync type takes precedence
+func TestGetCurrentRunProgress_PriorityOrder(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	// Set multiple sync flags (shouldn't happen in practice, but tests priority)
+	o.mu.Lock()
+	o.dailySyncRunning = true
+	o.dailySyncQueue = []string{"daily_job"}
+	o.historicalSyncRunning = true
+	o.historicalSyncQueue = []string{"historical_job"}
+	o.currentRunIndex = 0
+	o.mu.Unlock()
+
+	runType, _, _, _ := o.GetCurrentRunProgress()
+
+	// Daily should take priority (checked first in implementation)
+	if runType != "daily" {
+		t.Errorf("expected 'daily' to take priority, got %q", runType)
+	}
+}
