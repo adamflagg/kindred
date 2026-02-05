@@ -58,9 +58,22 @@ def create_mock_session(
     start_date: str = "2026-06-15",
     end_date: str = "2026-07-05",
     parent_id: int | None = None,
+    pb_id: str | None = None,
 ) -> Mock:
-    """Create a mock session record."""
+    """Create a mock session record.
+
+    Args:
+        cm_id: CampMinder ID (used as key in sessions dict).
+        name: Session name.
+        year: Year.
+        session_type: main, ag, or embedded.
+        start_date: Start date string.
+        end_date: End date string.
+        parent_id: Parent session cm_id (for AG sessions).
+        pb_id: PocketBase ID (defaults to "session_{cm_id}").
+    """
     session = Mock()
+    session.id = pb_id or f"session_{cm_id}"  # PocketBase ID
     session.cm_id = cm_id
     session.name = name
     session.year = year
@@ -1297,15 +1310,7 @@ class TestSessionCapacityUtilization:
 
         Session with 5 bunk_plans and capacity of 12 = 60 capacity.
         """
-        from api.services.registration_service import RegistrationService
-
-        session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
-        # Add PocketBase ID to session for bunk_plan matching
-        session_2.pb_id = "session_2001"
-
-        sessions_dict = {2001: session_2}
-
-        # Create 5 bunk plans for session 2 (non-AG bunks)
+        # Create 5 bunk plans (non-AG bunks)
         bunks = [
             create_mock_bunk(f"bunk_{i}", f"B-{i}", "M", 2026) for i in range(1, 6)
         ]
@@ -1314,12 +1319,7 @@ class TestSessionCapacityUtilization:
         ]
 
         # 10 attendees enrolled
-        attendees = [
-            create_mock_attendee(100 + i, session_2, 2026) for i in range(10)
-        ]
-
-        mock_repo = Mock()
-        service = RegistrationService(mock_repo)
+        num_attendees = 10
 
         # Test the helper method that calculates capacity
         # Expected: 5 bunks × 12 capacity = 60
@@ -1329,7 +1329,7 @@ class TestSessionCapacityUtilization:
         assert session_capacity == 60
 
         # Utilization = 10 / 60 = 16.67%
-        utilization = (len(attendees) / session_capacity) * 100
+        utilization = (num_attendees / session_capacity) * 100
         assert utilization == pytest.approx(16.67, rel=0.01)
 
     def test_capacity_excludes_ag_bunks_for_main_sessions(self) -> None:
@@ -1338,7 +1338,6 @@ class TestSessionCapacityUtilization:
         Session 2 (main) has 5 boys bunks and 2 AG bunks.
         Only the 5 boys bunks should count toward capacity.
         """
-        from api.services.registration_service import RegistrationService
 
         session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
         session_2.pb_id = "session_2001"

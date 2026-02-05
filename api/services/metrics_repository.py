@@ -212,3 +212,45 @@ class MetricsRepository:
                 if pid not in result:
                     result[pid] = record
         return result
+
+    async def fetch_bunk_plans(
+        self,
+        year: int,
+        session_pb_ids: list[str] | None = None,
+    ) -> list[Any]:
+        """Fetch bunk_plans with bunk expansion for capacity calculation.
+
+        Args:
+            year: The year to fetch bunk_plans for.
+            session_pb_ids: Optional list of session PocketBase IDs to filter.
+
+        Returns:
+            List of bunk_plan records with bunk expansion.
+        """
+        filter_str = f"year = {year}"
+        if session_pb_ids:
+            session_filter = " || ".join(f'session = "{sid}"' for sid in session_pb_ids)
+            filter_str = f"({filter_str}) && ({session_filter})"
+
+        return await asyncio.to_thread(
+            self.pb.collection("bunk_plans").get_full_list,
+            query_params={"filter": filter_str, "expand": "bunk"},
+        )
+
+    async def fetch_capacity_config(self) -> int:
+        """Fetch default cabin capacity from config table.
+
+        Looks for category="constraint", subcategory="cabin_capacity", key="default".
+
+        Returns:
+            Default capacity value (12 if config not found).
+        """
+        try:
+            config = await asyncio.to_thread(
+                self.pb.collection("config").get_first_list_item,
+                'category = "constraint" && subcategory = "cabin_capacity" && config_key = "default"',
+            )
+            return int(config.value) if config and config.value else 12
+        except Exception:
+            # Config not found or error - return default
+            return 12
