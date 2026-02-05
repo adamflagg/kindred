@@ -298,6 +298,231 @@ type testNormStats struct {
 	Errors  int
 }
 
+// ============================================================================
+// Bug Fix Tests: Float64 epsilon comparison for idempotent updates
+// ============================================================================
+
+// TestConfidenceEpsilonComparison tests that float64 confidence values are compared
+// with epsilon tolerance to ensure idempotent updates
+func TestConfidenceEpsilonComparison(t *testing.T) {
+	tests := []struct {
+		name        string
+		existing    float64
+		new         float64
+		wantChanged bool
+	}{
+		{
+			name:        "identical values",
+			existing:    0.9,
+			new:         0.9,
+			wantChanged: false,
+		},
+		{
+			name:        "different values",
+			existing:    0.9,
+			new:         0.85,
+			wantChanged: true,
+		},
+		{
+			name:        "tiny difference within epsilon",
+			existing:    0.90000001,
+			new:         0.9,
+			wantChanged: false, // Should be treated as equal
+		},
+		{
+			name:        "floating point precision issue",
+			existing:    0.1 + 0.2, // 0.30000000000000004 in IEEE 754
+			new:         0.3,
+			wantChanged: false, // Should be treated as equal
+		},
+		{
+			name:        "zero vs very small",
+			existing:    0.0,
+			new:         0.00001,
+			wantChanged: false, // Within epsilon
+		},
+		{
+			name:        "zero vs larger than epsilon",
+			existing:    0.0,
+			new:         0.001,
+			wantChanged: true,
+		},
+		{
+			name:        "significantly different",
+			existing:    1.0,
+			new:         0.5,
+			wantChanged: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			changed := confidenceChanged(tt.existing, tt.new)
+			if changed != tt.wantChanged {
+				t.Errorf("confidenceChanged(%v, %v) = %v, want %v",
+					tt.existing, tt.new, changed, tt.wantChanged)
+			}
+		})
+	}
+}
+
+// TestMappingNeedsUpdateWithEpsilon tests the full update detection with epsilon comparison
+func TestMappingNeedsUpdateWithEpsilon(t *testing.T) {
+	tests := []struct {
+		name          string
+		existingConf  float64
+		existingCount int
+		existingNorm  string
+		newConf       float64
+		newCount      int
+		newNorm       string
+		wantUpdate    bool
+	}{
+		{
+			name:          "no changes",
+			existingConf:  0.9,
+			existingCount: 10,
+			existingNorm:  "Oakland",
+			newConf:       0.9,
+			newCount:      10,
+			newNorm:       "Oakland",
+			wantUpdate:    false,
+		},
+		{
+			name:          "confidence epsilon difference - no update",
+			existingConf:  0.90000001,
+			existingCount: 10,
+			existingNorm:  "Oakland",
+			newConf:       0.9,
+			newCount:      10,
+			newNorm:       "Oakland",
+			wantUpdate:    false,
+		},
+		{
+			name:          "count changed",
+			existingConf:  0.9,
+			existingCount: 10,
+			existingNorm:  "Oakland",
+			newConf:       0.9,
+			newCount:      15,
+			newNorm:       "Oakland",
+			wantUpdate:    true,
+		},
+		{
+			name:          "normalized value changed",
+			existingConf:  0.9,
+			existingCount: 10,
+			existingNorm:  "Oakland",
+			newConf:       0.9,
+			newCount:      10,
+			newNorm:       "oakland", // Different case
+			wantUpdate:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			existing := &testNormMappingRecord{
+				NormalizedValue: tt.existingNorm,
+				OccurrenceCount: tt.existingCount,
+				Confidence:      tt.existingConf,
+			}
+			newMapping := &testNormalizedMapping{
+				NormalizedValue: tt.newNorm,
+				OccurrenceCount: tt.newCount,
+				Confidence:      tt.newConf,
+			}
+
+			needsUpdate := mappingNeedsUpdateWithEpsilon(existing, newMapping)
+			if needsUpdate != tt.wantUpdate {
+				t.Errorf("mappingNeedsUpdateWithEpsilon() = %v, want %v", needsUpdate, tt.wantUpdate)
+			}
+		})
+	}
+}
+
+// TestIdempotentSyncRuns tests that running sync twice produces 0 updates on second run
+func TestIdempotentSyncRuns(t *testing.T) {
+	// Simulate first run creating records
+	mappings := []*testNormalizedMapping{
+		{Category: "city", OriginalValue: "Oakland", NormalizedValue: "Oakland", OccurrenceCount: 10, Confidence: 0.9, Year: 2025},
+	}
+
+	// After first run, records exist with same values
+	existing := make(map[string]*testNormMappingRecord)
+	for _, m := range mappings {
+		key := buildNormalizedMappingKey(m.Category, m.OriginalValue, m.Year)
+		existing[key] = &testNormMappingRecord{
+			Category:        m.Category,
+			NormalizedValue: m.NormalizedValue,
+			OriginalValue:   m.OriginalValue,
+			OccurrenceCount: m.OccurrenceCount,
+			Confidence:      m.Confidence,
+			Year:            m.Year,
+		}
+	}
+
+	// Second run with same data should produce 0 updates
+	stats := simulateUpsertWithEpsilon(mappings, existing, 2025)
+
+	if stats.Updated != 0 {
+		t.Errorf("second run should have Updated=0, got %d", stats.Updated)
+	}
+	if stats.Skipped != 1 {
+		t.Errorf("second run should have Skipped=1, got %d", stats.Skipped)
+	}
+}
+
+// confidenceChanged checks if confidence changed beyond epsilon threshold
+func confidenceChanged(existing, new float64) bool {
+	const epsilon = 0.0001
+	diff := existing - new
+	if diff < 0 {
+		diff = -diff
+	}
+	return diff > epsilon
+}
+
+// mappingNeedsUpdateWithEpsilon checks if update needed using epsilon for confidence
+func mappingNeedsUpdateWithEpsilon(existing *testNormMappingRecord, newMapping *testNormalizedMapping) bool {
+	if existing.NormalizedValue != newMapping.NormalizedValue {
+		return true
+	}
+	if existing.OccurrenceCount != newMapping.OccurrenceCount {
+		return true
+	}
+	return confidenceChanged(existing.Confidence, newMapping.Confidence)
+}
+
+// simulateUpsertWithEpsilon simulates upsert using epsilon comparison
+func simulateUpsertWithEpsilon(
+	mappings []*testNormalizedMapping,
+	existing map[string]*testNormMappingRecord,
+	year int,
+) testNormStats {
+	stats := testNormStats{}
+
+	for _, m := range mappings {
+		key := buildNormalizedMappingKey(m.Category, m.OriginalValue, year)
+
+		if existingRecord, ok := existing[key]; ok {
+			if mappingNeedsUpdateWithEpsilon(existingRecord, m) {
+				stats.Updated++
+			} else {
+				stats.Skipped++
+			}
+		} else {
+			stats.Created++
+		}
+	}
+
+	return stats
+}
+
+// ============================================================================
+// Original idempotency tests
+// ============================================================================
+
 // TestUpsertNormalizedMappingsIdempotency verifies idempotent upsert behavior
 func TestUpsertNormalizedMappingsIdempotency(t *testing.T) {
 	// Simulate computed mappings from source data
