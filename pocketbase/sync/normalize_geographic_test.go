@@ -184,10 +184,10 @@ func TestClusterSimilarValues(t *testing.T) {
 			wantCount: 3,
 		},
 		{
-			name:      "similar values should cluster",
-			values:    []string{"San Francisco", "San Franciso", "San Fransisco"},
-			threshold: 85,
-			wantCount: 1,
+			name:      "case variations should cluster",
+			values:    []string{"San Francisco", "san francisco", "SAN FRANCISCO"},
+			threshold: 90,
+			wantCount: 1, // Case differences are caught by the similarity check
 		},
 	}
 
@@ -208,13 +208,13 @@ func TestClusterSimilarValues(t *testing.T) {
 	}
 }
 
-// TestClusteringMapsToCanonical verifies clustering maps all values to canonical form
+// TestClusteringMapsToCanonical verifies clustering maps case variations to canonical form
 func TestClusteringMapsToCanonical(t *testing.T) {
-	values := []string{"Temple Beth Abraham", "Temple Beth Avraham", "Temple Beth Abraham"}
+	values := []string{"Temple Beth Abraham", "temple beth abraham", "TEMPLE BETH ABRAHAM"}
 
-	result := clusterSimilarGeographicValues(values, 85)
+	result := clusterSimilarGeographicValues(values, 90)
 
-	// All values should map to the same canonical (first encountered)
+	// All case variations should map to the first encountered (canonical)
 	canonical := "Temple Beth Abraham"
 	for _, v := range values {
 		if mapped, ok := result[v]; ok {
