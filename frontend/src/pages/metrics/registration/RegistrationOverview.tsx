@@ -238,7 +238,7 @@ export default function RegistrationOverview() {
         <SessionLengthBySessionChart
           data={data.by_session_length_by_session ?? []}
           title="Enrollment by Session Length"
-          height={250}
+          height={350}
           onCategoryClick={(lengthCategory) =>
             setFilter({
               type: 'session_length',
