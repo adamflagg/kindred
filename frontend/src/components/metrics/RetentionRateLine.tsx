@@ -14,8 +14,8 @@ import {
   ResponsiveContainer,
   ReferenceLine,
   LabelList,
-} from 'recharts';
-import type { RetentionTrendYear } from '../../types/metrics';
+} from "recharts";
+import type { RetentionTrendYear } from "../../types/metrics";
 
 interface RetentionRateLineProps {
   data: RetentionTrendYear[];
@@ -34,9 +34,9 @@ interface ChartDataItem {
 
 export function RetentionRateLine({
   data,
-  title = 'Retention Rate Trend',
+  title = "Retention Rate Trend",
   height = 250,
-  className = '',
+  className = "",
 }: RetentionRateLineProps) {
   if (data.length === 0) {
     return (
@@ -49,9 +49,9 @@ export function RetentionRateLine({
     );
   }
 
-  // Transform data for line chart
+  // Transform data for line chart - show base year on X-axis (tooltip shows full transition)
   const chartData: ChartDataItem[] = data.map((year) => ({
-    name: `${year.from_year}→${year.to_year}`,
+    name: year.from_year.toString(),
     transition: `${year.from_year} → ${year.to_year}`,
     retentionRate: Math.round(year.retention_rate * 100),
     baseCount: year.base_count,
@@ -71,8 +71,10 @@ export function RetentionRateLine({
         <div className="bg-card border border-border rounded-lg p-3 shadow-lg">
           <p className="font-medium text-foreground mb-1">{item.transition}</p>
           <p className="text-sm text-muted-foreground">
-            Retention Rate:{' '}
-            <span className="font-semibold text-primary">{item.retentionRate}%</span>
+            Retention Rate:{" "}
+            <span className="font-semibold text-primary">
+              {item.retentionRate}%
+            </span>
           </p>
           <p className="text-sm text-muted-foreground">
             Returned: {item.returnedCount} of {item.baseCount}
@@ -87,18 +89,21 @@ export function RetentionRateLine({
     <div className={`card-lodge p-4 ${className}`}>
       <h3 className="text-sm font-semibold text-foreground mb-4">{title}</h3>
       <ResponsiveContainer width="100%" height={height}>
-        <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+        <LineChart
+          data={chartData}
+          margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+        >
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis
             dataKey="name"
             className="text-xs"
-            tick={{ fill: 'hsl(var(--muted-foreground))' }}
+            tick={{ fill: "hsl(var(--muted-foreground))" }}
           />
           <YAxis
             domain={[0, 100]}
             tickFormatter={(value) => `${value}%`}
             className="text-xs"
-            tick={{ fill: 'hsl(var(--muted-foreground))' }}
+            tick={{ fill: "hsl(var(--muted-foreground))" }}
           />
           <Tooltip content={<CustomTooltip />} />
           {/* Reference line at 50% */}
@@ -106,14 +111,18 @@ export function RetentionRateLine({
             y={50}
             stroke="hsl(var(--muted-foreground))"
             strokeDasharray="3 3"
-            label={{ value: '50%', position: 'left', fill: 'hsl(var(--muted-foreground))' }}
+            label={{
+              value: "50%",
+              position: "left",
+              fill: "hsl(var(--muted-foreground))",
+            }}
           />
           <Line
             type="monotone"
             dataKey="retentionRate"
             stroke="hsl(160, 100%, 35%)"
             strokeWidth={3}
-            dot={{ fill: 'hsl(160, 100%, 35%)', r: 6 }}
+            dot={{ fill: "hsl(160, 100%, 35%)", r: 6 }}
             activeDot={{ r: 8 }}
           >
             <LabelList
