@@ -2190,8 +2190,8 @@ func mergeCongregationSources(personCongregation, householdSynagogue string) (re
 // TestCamperHistoryCongregationFieldNames tests the correct custom field names
 func TestCamperHistoryCongregationFieldNames(t *testing.T) {
 	// These are the expected field names in CampMinder custom values
-	personFieldName := "HH-Name of Congregation"   // person_custom_values - rich data (2376 records)
-	householdFieldName := "Synagogue"               // household_custom_values - sparse data (29 records)
+	personFieldName := "HH-Name of Congregation" // person_custom_values - rich data (2376 records)
+	householdFieldName := "Synagogue"            // household_custom_values - sparse data (29 records)
 
 	// Verify the field names are not empty
 	if personFieldName == "" {

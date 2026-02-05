@@ -1167,8 +1167,8 @@ func countByNormalizedValue(mappings []*testPersonSessionMapping) map[string]int
 func TestCongregationUsesPersonLevelData(t *testing.T) {
 	// Simulate person_custom_values data (person-level congregation)
 	personCongregations := map[int]string{
-		101: "Temple Beth El - Oakland",      // Person 101
-		102: "Congregation Beth Israel",      // Person 102
+		101: "Temple Beth El - Oakland",         // Person 101
+		102: "Congregation Beth Israel",         // Person 102
 		103: "Temple Sinai Reform Congregation", // Person 103
 	}
 
@@ -1318,4 +1318,3 @@ func TestEnrolledOnlyInNormalizedMappings(t *testing.T) {
 		}
 	}
 }
-
