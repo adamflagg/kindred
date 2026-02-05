@@ -397,6 +397,43 @@ class MetricsRepository:
             logger.warning(f"Error fetching congregation custom values: {e}")
             return {}
 
+    async def fetch_normalized_city_by_person(self, year: int) -> dict[int, str]:
+        """Fetch normalized city by person cm_id from normalized_mappings.
+
+        Used by city drilldown to match on normalized city values instead of
+        raw address values. This ensures consistency with GeoDetailList which
+        displays normalized values.
+
+        Args:
+            year: The year to filter mappings for.
+
+        Returns:
+            Dictionary mapping person cm_id (int) to normalized city name (str).
+        """
+        try:
+            filter_str = f'year = {year} && category = "city"'
+            records = await asyncio.to_thread(
+                self.pb.collection("normalized_mappings").get_full_list,
+                query_params={"filter": filter_str, "expand": "person"},
+            )
+
+            result: dict[int, str] = {}
+            for record in records:
+                normalized = getattr(record, "normalized_value", "")
+                if not normalized:
+                    continue
+                expand = getattr(record, "expand", {})
+                person = expand.get("person") if expand else None
+                if person:
+                    person_cm_id = getattr(person, "cm_id", None)
+                    if person_cm_id is not None:
+                        result[int(person_cm_id)] = normalized
+
+            return result
+        except Exception as e:
+            logger.warning(f"Error fetching normalized city mappings: {e}")
+            return {}
+
     async def fetch_normalized_geo(
         self,
         year: int,

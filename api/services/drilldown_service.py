@@ -83,6 +83,13 @@ class DrilldownService:
         if breakdown_type == "synagogue":
             congregation_by_person = await self.repo.fetch_congregation_by_person(year)
 
+        # For city breakdown, pre-fetch normalized city mapping
+        # This ensures drilldown matches on normalized values (what GeoDetailList shows)
+        # instead of raw person.address["city"] values which may have typos/variations
+        normalized_city_by_person: dict[int, str] = {}
+        if breakdown_type == "city":
+            normalized_city_by_person = await self.repo.fetch_normalized_city_by_person(year)
+
         # Filter by breakdown criteria
         filtered_attendees = self._filter_by_breakdown(
             filtered_attendees,
@@ -92,6 +99,7 @@ class DrilldownService:
             breakdown_value,
             first_year_by_person,
             congregation_by_person,
+            normalized_city_by_person,
         )
 
         # Build response
@@ -168,6 +176,7 @@ class DrilldownService:
         breakdown_value: str,
         first_year_by_person: dict[int, int] | None = None,
         congregation_by_person: dict[int, str] | None = None,
+        normalized_city_by_person: dict[int, str] | None = None,
     ) -> list[Any]:
         """Filter attendees by the specific breakdown criteria.
 
@@ -181,6 +190,8 @@ class DrilldownService:
                 (only populated for first_summer_year breakdown).
             congregation_by_person: Pre-computed congregation by person cm_id
                 (only populated for synagogue breakdown).
+            normalized_city_by_person: Pre-computed normalized city by person cm_id
+                (only populated for city breakdown).
 
         Returns:
             Filtered list of attendees.
@@ -189,6 +200,8 @@ class DrilldownService:
             first_year_by_person = {}
         if congregation_by_person is None:
             congregation_by_person = {}
+        if normalized_city_by_person is None:
+            normalized_city_by_person = {}
         filtered = []
         for a in attendees:
             person_id = getattr(a, "person_id", None)
@@ -233,13 +246,13 @@ class DrilldownService:
                     filtered.append(a)
 
             elif breakdown_type == "city":
-                # Match on person.address["city"]
-                if person:
-                    address = getattr(person, "address", None)
-                    if address and isinstance(address, dict):
-                        city = address.get("city", "") or ""
-                        if city == breakdown_value:
-                            filtered.append(a)
+                # Match on normalized city from normalized_mappings
+                # This ensures consistency with GeoDetailList which shows normalized values
+                pid = int(person_id) if person_id is not None else None
+                if pid is not None:
+                    normalized_city = normalized_city_by_person.get(pid, "")
+                    if normalized_city == breakdown_value:
+                        filtered.append(a)
 
             elif breakdown_type == "synagogue":
                 # Match on congregation/synagogue from person custom values
@@ -309,7 +322,7 @@ class DrilldownService:
         self,
         attendees: list[Any],
         persons: dict[int, Any],
-        sessions: dict[int, Any],
+        _sessions: dict[int, Any],
     ) -> list[DrilldownAttendee]:
         """Build the response list from filtered attendees.
 
@@ -342,8 +355,10 @@ class DrilldownService:
             years_at_camp = getattr(person, "years_at_camp", None)
             is_returning = years_at_camp is not None and years_at_camp > 1
 
-            # Parse city from address JSON if available
-            city = self._parse_city_from_address(getattr(person, "address", None))
+            # Parse city and state from address JSON if available
+            address = getattr(person, "address", None)
+            city = self._parse_city_from_address(address)
+            state = self._parse_state_from_address(address)
 
             result.append(
                 DrilldownAttendee(
@@ -356,6 +371,7 @@ class DrilldownService:
                     age=getattr(person, "age", None),
                     school=getattr(person, "school", None),
                     city=city,
+                    state=state,
                     years_at_camp=years_at_camp,
                     session_name=session_name,
                     session_cm_id=session_cm_id,
@@ -366,11 +382,11 @@ class DrilldownService:
 
         return result
 
-    def _parse_city_from_address(self, address: str | None) -> str | None:
-        """Parse city from address JSON string.
+    def _parse_city_from_address(self, address: str | dict[str, Any] | None) -> str | None:
+        """Parse city from address (dict or JSON string).
 
         Args:
-            address: JSON string containing address fields, or None.
+            address: Address dict or JSON string containing address fields, or None.
 
         Returns:
             City name if found, None otherwise.
@@ -379,8 +395,35 @@ class DrilldownService:
             return None
 
         try:
-            addr_data = json.loads(address)
+            # Handle dict (PocketBase JSON fields return dicts directly)
+            if isinstance(address, dict):
+                addr_data = address
+            else:
+                addr_data = json.loads(address)
             city = addr_data.get("city")
             return str(city) if city else None
+        except (json.JSONDecodeError, TypeError, AttributeError):
+            return None
+
+    def _parse_state_from_address(self, address: str | dict[str, Any] | None) -> str | None:
+        """Parse state from address (dict or JSON string).
+
+        Args:
+            address: Address dict or JSON string containing address fields, or None.
+
+        Returns:
+            State abbreviation if found, None otherwise.
+        """
+        if not address:
+            return None
+
+        try:
+            # Handle dict (PocketBase JSON fields return dicts directly)
+            if isinstance(address, dict):
+                addr_data = address
+            else:
+                addr_data = json.loads(address)
+            state = addr_data.get("state")
+            return str(state) if state else None
         except (json.JSONDecodeError, TypeError, AttributeError):
             return None

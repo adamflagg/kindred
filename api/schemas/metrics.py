@@ -524,6 +524,7 @@ class DrilldownAttendee(BaseModel):
     age: float | None = Field(None, description="Age in years")
     school: str | None = Field(None, description="School name")
     city: str | None = Field(None, description="City (parsed from address)")
+    state: str | None = Field(None, description="State abbreviation (parsed from address)")
     years_at_camp: int | None = Field(None, description="Years at camp")
     session_name: str = Field(description="Session name")
     session_cm_id: int = Field(description="Session CampMinder ID")
