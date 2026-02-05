@@ -145,3 +145,62 @@ class TestSchoolNormalizationBulk:
         # All should cluster together (same case, minor variation)
         canonical = result["Xyzzy Academy of Fine Arts"]["canonical"]
         assert result["Xyzzy Academy Of Fine Arts"]["canonical"] == canonical
+
+    def test_distinct_canonical_schools_not_merged(self) -> None:
+        """Two schools that are distinct canonical entries must not be merged.
+
+        Park Day School and Mark Day School are both in schools.json as separate
+        canonical entries. Even though token_sort_ratio("Mark Day School",
+        "Park Day School") ~ 85.7, they must remain distinct because the
+        per-value lookup resolved them to different canonical entries.
+        """
+        from bunking.geo_normalizer import normalize_schools
+
+        result = normalize_schools(["Park Day School", "Mark Day School"])
+
+        assert result["Park Day School"]["canonical"] == "Park Day School"
+        assert result["Mark Day School"]["canonical"] == "Mark Day School"
+        # They must NOT be merged into the same canonical
+        assert result["Park Day School"]["canonical"] != result["Mark Day School"]["canonical"]
+
+    def test_canonical_match_skips_clustering(self) -> None:
+        """Values that matched distinct canonical entries should never be clustered.
+
+        Even with typo variants, if the per-value lookup resolves two inputs to
+        different canonical entries, the clustering step must not re-merge them.
+        """
+        from bunking.geo_normalizer import normalize_schools
+
+        # Both resolve via lookup to distinct canonical names
+        # Adding case variation to verify lookup still works
+        result = normalize_schools(["park day school", "mark day school"])
+
+        park_canonical = result["park day school"]["canonical"]
+        mark_canonical = result["mark day school"]["canonical"]
+
+        assert park_canonical == "Park Day School"
+        assert mark_canonical == "Mark Day School"
+        assert park_canonical != mark_canonical
+
+    def test_canonical_and_unknown_mixed(self) -> None:
+        """Mix of canonical-matched and unknown schools normalizes correctly.
+
+        Canonical-matched schools keep their lookup result.
+        Unknown schools still get clustered among themselves.
+        """
+        from bunking.geo_normalizer import normalize_schools
+
+        result = normalize_schools(
+            [
+                "Park Day School",
+                "Mark Day School",
+                "Xyzzy Academy",
+                "Xyzzy Academy",
+            ]
+        )
+
+        # Canonical schools stay separate
+        assert result["Park Day School"]["canonical"] == "Park Day School"
+        assert result["Mark Day School"]["canonical"] == "Mark Day School"
+        # Unknown school clusters with itself
+        assert result["Xyzzy Academy"]["canonical"] == "Xyzzy Academy"

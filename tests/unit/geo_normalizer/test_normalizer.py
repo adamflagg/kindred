@@ -102,6 +102,26 @@ class TestSchoolNormalization:
         # These should remain distinct
         assert result["Riverside Elementary"]["canonical"] != result["Oak Valley Middle"]["canonical"]
 
+    def test_preserve_similar_but_distinct_canonical_schools(self) -> None:
+        """Schools with similar names that are both in canonical lookup stay separate.
+
+        This is the Park Day School / Mark Day School bug: token_sort_ratio
+        gives ~85.7 which exceeds the clustering threshold of 85. But both are
+        distinct canonical entries in schools.json, so they must not be merged.
+        """
+        from bunking.geo_normalizer import normalize_schools
+
+        result = normalize_schools(
+            [
+                "Park Day School",
+                "Mark Day School",
+                "Park Day School",  # duplicate to test frequency handling
+            ]
+        )
+
+        assert result["Park Day School"]["canonical"] == "Park Day School"
+        assert result["Mark Day School"]["canonical"] == "Mark Day School"
+
 
 class TestCongregationNormalization:
     """Tests for congregation/synagogue name normalization."""
