@@ -79,10 +79,10 @@ describe('MetricsLayout', () => {
   it('renders sub-nav for registration routes', () => {
     renderWithRouter('/metrics/registration/overview')
 
-    // Sub-nav items for registration
+    // Sub-nav items for registration (synagogue removed — data lives in geo tab)
     expect(screen.getByRole('link', { name: /overview/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /geographic/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /synagogue/i })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /synagogue/i })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /waitlist/i })).toBeInTheDocument()
   })
 
