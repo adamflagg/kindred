@@ -287,8 +287,9 @@ export const BAY_AREA_REGIONS = {
  */
 export function getCityCoords(cityName: string): LatLng | undefined {
   // Direct lookup first
-  if (CA_CITY_COORDS[cityName]) {
-    return CA_CITY_COORDS[cityName];
+  const direct = CA_CITY_COORDS[cityName];
+  if (direct) {
+    return direct;
   }
 
   // Try case-insensitive match
@@ -300,7 +301,7 @@ export function getCityCoords(cityName: string): LatLng | undefined {
   }
 
   // Try partial match for city names with state suffix (e.g., "Oakland, CA")
-  const cityOnly = cityName.split(',')[0].trim();
+  const cityOnly = cityName.split(',')[0]?.trim() ?? cityName;
   if (cityOnly !== cityName) {
     return getCityCoords(cityOnly);
   }
