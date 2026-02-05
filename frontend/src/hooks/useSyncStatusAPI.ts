@@ -21,6 +21,14 @@ export interface QueuedSyncItem {
   queued_at: string;
 }
 
+// Progress of the current sync sequence (remaining jobs to run)
+export interface CurrentRunProgress {
+  type: 'daily' | 'historical' | 'weekly' | 'custom_values';
+  total_jobs: number;
+  completed_jobs: number;
+  remaining_jobs: string[];
+}
+
 export interface SyncStatus {
   status: 'idle' | 'running' | 'success' | 'failed' | 'pending';
   start_time?: string;
@@ -71,6 +79,8 @@ export interface SyncStatusResponse {
   // Sync queue
   _queue?: QueuedSyncItem[];
   _queue_length?: number;
+  // Current run progress (remaining jobs in active sequence)
+  _current_run?: CurrentRunProgress;
 }
 
 export function useSyncStatusAPI() {

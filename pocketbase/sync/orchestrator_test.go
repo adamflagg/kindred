@@ -2787,8 +2787,8 @@ func TestGetCurrentRunProgress_DailySyncRunning(t *testing.T) {
 
 	runType, remaining, total, completed := o.GetCurrentRunProgress()
 
-	if runType != "daily" {
-		t.Errorf("expected runType 'daily', got %q", runType)
+	if runType != runTypeDaily {
+		t.Errorf("expected runType %q, got %q", runTypeDaily, runType)
 	}
 	if total != 5 {
 		t.Errorf("expected total 5, got %d", total)
@@ -2821,8 +2821,8 @@ func TestGetCurrentRunProgress_HistoricalSyncRunning(t *testing.T) {
 
 	runType, remaining, total, completed := o.GetCurrentRunProgress()
 
-	if runType != "historical" {
-		t.Errorf("expected runType 'historical', got %q", runType)
+	if runType != runTypeHistorical {
+		t.Errorf("expected runType %q, got %q", runTypeHistorical, runType)
 	}
 	if total != 3 {
 		t.Errorf("expected total 3, got %d", total)
@@ -2849,8 +2849,8 @@ func TestGetCurrentRunProgress_WeeklySyncRunning(t *testing.T) {
 
 	runType, remaining, total, completed := o.GetCurrentRunProgress()
 
-	if runType != "weekly" {
-		t.Errorf("expected runType 'weekly', got %q", runType)
+	if runType != runTypeWeekly {
+		t.Errorf("expected runType %q, got %q", runTypeWeekly, runType)
 	}
 	if total != 3 {
 		t.Errorf("expected total 3, got %d", total)
@@ -2877,8 +2877,8 @@ func TestGetCurrentRunProgress_CustomValuesSyncRunning(t *testing.T) {
 
 	runType, remaining, total, completed := o.GetCurrentRunProgress()
 
-	if runType != "custom_values" {
-		t.Errorf("expected runType 'custom_values', got %q", runType)
+	if runType != runTypeCustomValues {
+		t.Errorf("expected runType %q, got %q", runTypeCustomValues, runType)
 	}
 	if total != 2 {
 		t.Errorf("expected total 2, got %d", total)
@@ -2905,11 +2905,14 @@ func TestGetCurrentRunProgress_IndexOutOfBounds(t *testing.T) {
 
 	runType, remaining, total, completed := o.GetCurrentRunProgress()
 
-	if runType != "daily" {
-		t.Errorf("expected runType 'daily', got %q", runType)
+	if runType != runTypeDaily {
+		t.Errorf("expected runType %q, got %q", runTypeDaily, runType)
 	}
 	if total != 2 {
 		t.Errorf("expected total 2, got %d", total)
+	}
+	if completed != 2 {
+		t.Errorf("expected completed 2 (out of bounds index), got %d", completed)
 	}
 	// remaining should be nil or empty when index >= total
 	if len(remaining) != 0 {
@@ -2933,7 +2936,7 @@ func TestGetCurrentRunProgress_PriorityOrder(t *testing.T) {
 	runType, _, _, _ := o.GetCurrentRunProgress()
 
 	// Daily should take priority (checked first in implementation)
-	if runType != "daily" {
-		t.Errorf("expected 'daily' to take priority, got %q", runType)
+	if runType != runTypeDaily {
+		t.Errorf("expected %q to take priority, got %q", runTypeDaily, runType)
 	}
 }

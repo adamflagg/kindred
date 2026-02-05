@@ -25,6 +25,12 @@ const (
 	statusPending = "pending"
 	// statusCompleted indicates a sync job has completed successfully
 	statusCompleted = "completed"
+
+	// Run type constants for GetCurrentRunProgress
+	runTypeDaily        = "daily"
+	runTypeHistorical   = "historical"
+	runTypeWeekly       = "weekly"
+	runTypeCustomValues = "custom_values"
 )
 
 // Phase represents a category of sync jobs
@@ -225,6 +231,7 @@ type Orchestrator struct {
 	customValuesSyncQueue   []string           // Services queued for custom values sync
 	pendingUnifiedSyncs     []QueuedSync       // Queue of pending unified sync requests (FIFO)
 	activeSyncCancel        context.CancelFunc // Cancel function for the currently running sync
+	currentRunIndex         int                // 0-based index of currently running job in active queue
 }
 
 // NewOrchestrator creates a new orchestrator
@@ -329,6 +336,44 @@ func (o *Orchestrator) IsCustomValuesSyncRunning() bool {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 	return o.customValuesSyncRunning
+}
+
+// GetCurrentRunProgress returns progress information for the currently running sync sequence.
+// Returns:
+//   - runType: "daily", "historical", "weekly", "custom_values", or "" if nothing running
+//   - remaining: slice of job IDs that will run after the current job
+//   - total: total number of jobs in the current sequence
+//   - completed: number of jobs completed so far (currentRunIndex)
+func (o *Orchestrator) GetCurrentRunProgress() (runType string, remaining []string, total, completed int) {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+
+	// Determine which queue is active and return its remaining jobs
+	var queue []string
+	switch {
+	case o.dailySyncRunning:
+		runType = runTypeDaily
+		queue = o.dailySyncQueue
+	case o.historicalSyncRunning:
+		runType = runTypeHistorical
+		queue = o.historicalSyncQueue
+	case o.weeklySyncRunning:
+		runType = runTypeWeekly
+		queue = o.weeklySyncQueue
+	case o.customValuesSyncRunning:
+		runType = runTypeCustomValues
+		queue = o.customValuesSyncQueue
+	default:
+		return "", nil, 0, 0
+	}
+
+	total = len(queue)
+	completed = o.currentRunIndex
+	// Jobs after current one (currentRunIndex points to currently running job)
+	if completed+1 < total {
+		remaining = queue[completed+1:]
+	}
+	return
 }
 
 // IsAnyJobRunning returns true if any sync job is currently running.
@@ -569,6 +614,7 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 	o.mu.Lock()
 	o.dailySyncRunning = true
 	o.dailySyncQueue = orderedJobs
+	o.currentRunIndex = 0 // Reset index at start
 	o.mu.Unlock()
 
 	// Ensure flag and queue are cleared on exit
@@ -576,12 +622,18 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 		o.mu.Lock()
 		o.dailySyncRunning = false
 		o.dailySyncQueue = nil
+		o.currentRunIndex = 0
 		o.mu.Unlock()
 	}()
 
 	slog.Info("Starting daily sync sequence")
 
 	for i, jobName := range orderedJobs {
+		// Update current run index
+		o.mu.Lock()
+		o.currentRunIndex = i
+		o.mu.Unlock()
+
 		// Check if context is canceled
 		select {
 		case <-ctx.Done():
@@ -622,6 +674,7 @@ func (o *Orchestrator) RunWeeklySync(ctx context.Context) error {
 	o.mu.Lock()
 	o.weeklySyncRunning = true
 	o.weeklySyncQueue = weeklyJobs
+	o.currentRunIndex = 0 // Reset index at start
 	o.mu.Unlock()
 
 	// Ensure flag and queue are cleared on exit
@@ -629,12 +682,18 @@ func (o *Orchestrator) RunWeeklySync(ctx context.Context) error {
 		o.mu.Lock()
 		o.weeklySyncRunning = false
 		o.weeklySyncQueue = nil
+		o.currentRunIndex = 0
 		o.mu.Unlock()
 	}()
 
 	slog.Info("Starting weekly sync sequence", "services", weeklyJobs)
 
 	for i, jobName := range weeklyJobs {
+		// Update current run index
+		o.mu.Lock()
+		o.currentRunIndex = i
+		o.mu.Unlock()
+
 		// Check if context is canceled
 		select {
 		case <-ctx.Done():
@@ -672,9 +731,11 @@ func (o *Orchestrator) RunCustomValuesSync(ctx context.Context) error {
 	customValuesJobs := GetCustomValuesSyncJobs()
 
 	// Set custom values sync flag and queue
+	// Note: currentRunIndex is 0 for parallel syncs (all jobs run simultaneously)
 	o.mu.Lock()
 	o.customValuesSyncRunning = true
 	o.customValuesSyncQueue = customValuesJobs
+	o.currentRunIndex = 0
 	o.mu.Unlock()
 
 	// Ensure flag and queue are cleared on exit
@@ -682,6 +743,7 @@ func (o *Orchestrator) RunCustomValuesSync(ctx context.Context) error {
 		o.mu.Lock()
 		o.customValuesSyncRunning = false
 		o.customValuesSyncQueue = nil
+		o.currentRunIndex = 0
 		o.mu.Unlock()
 	}()
 
@@ -969,6 +1031,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		o.historicalSyncRunning = true
 		o.historicalSyncQueue = servicesToRun
 		o.historicalSyncYear = opts.Year
+		o.currentRunIndex = 0 // Reset index at start
 		o.mu.Unlock()
 
 		defer func() {
@@ -976,6 +1039,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 			o.historicalSyncRunning = false
 			o.historicalSyncQueue = nil
 			o.historicalSyncYear = 0
+			o.currentRunIndex = 0
 			o.mu.Unlock()
 		}()
 	} else {
@@ -983,12 +1047,14 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		o.mu.Lock()
 		o.dailySyncRunning = true
 		o.dailySyncQueue = servicesToRun
+		o.currentRunIndex = 0 // Reset index at start
 		o.mu.Unlock()
 
 		defer func() {
 			o.mu.Lock()
 			o.dailySyncRunning = false
 			o.dailySyncQueue = nil
+			o.currentRunIndex = 0
 			o.mu.Unlock()
 		}()
 	}
@@ -1135,6 +1201,11 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 	// Run sequentially - custom values syncs run in order to prevent context deadline issues
 	// from concurrent API rate limiting during historical syncs
 	for i, serviceName := range servicesToRun {
+		// Update current run index
+		o.mu.Lock()
+		o.currentRunIndex = i
+		o.mu.Unlock()
+
 		// Check if context is canceled
 		select {
 		case <-ctx.Done():

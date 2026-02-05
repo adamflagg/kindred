@@ -856,6 +856,17 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 	statuses["_queue"] = queueInfo
 	statuses["_queue_length"] = len(queue)
 
+	// Add current run progress (remaining jobs in current sequence)
+	runType, remaining, total, completed := orchestrator.GetCurrentRunProgress()
+	if runType != "" {
+		statuses["_current_run"] = map[string]interface{}{
+			"type":           runType,
+			"total_jobs":     total,
+			"completed_jobs": completed,
+			"remaining_jobs": remaining,
+		}
+	}
+
 	return e.JSON(http.StatusOK, statuses)
 }
 

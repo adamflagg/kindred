@@ -501,10 +501,54 @@ export function SyncTab() {
                     );
                   })}
 
-                  {/* Connector to queue if there are queued items */}
-                  {hasQueuedItems && (
+                  {/* Connector to remaining jobs or queue */}
+                  {(syncStatus?._current_run && syncStatus._current_run.remaining_jobs?.length > 0) ? (
+                    <div className="flex items-center gap-1 text-bark-400 dark:text-bark-600 flex-shrink-0 px-1">
+                      <div className="w-6 h-px bg-gradient-to-r from-forest-300 to-teal-300 dark:from-forest-700 dark:to-teal-700" />
+                      <ChevronRight className="w-3 h-3" />
+                    </div>
+                  ) : hasQueuedItems && (
                     <div className="flex items-center gap-1 text-bark-400 dark:text-bark-600 flex-shrink-0 px-1">
                       <div className="w-6 h-px bg-gradient-to-r from-forest-300 to-amber-300 dark:from-forest-700 dark:to-amber-700" />
+                      <ChevronRight className="w-3 h-3" />
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Remaining Jobs in Current Sequence - teal theme */}
+              {syncStatus?._current_run && syncStatus._current_run.remaining_jobs?.length > 0 && (
+                <>
+                  {/* Remaining label with count */}
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <div className="w-2 h-2 rounded-full bg-teal-400 dark:bg-teal-500" />
+                    <span className="text-xs font-semibold tracking-wide uppercase text-teal-600 dark:text-teal-400">
+                      Next ({syncStatus._current_run.remaining_jobs.length})
+                    </span>
+                  </div>
+
+                  {/* Job chips - show first 4, then "+N more" */}
+                  {syncStatus._current_run.remaining_jobs.slice(0, 4).map((jobId) => {
+                    const syncType = [...CURRENT_YEAR_SYNC_TYPES, ...GLOBAL_SYNC_TYPES].find(t => t.id === jobId);
+                    return (
+                      <div
+                        key={jobId}
+                        className="flex items-center gap-1.5 px-2 py-1 rounded-md border flex-shrink-0 bg-teal-50 dark:bg-teal-900/20 border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300"
+                      >
+                        <span className="text-xs font-medium">{syncType?.name || jobId.replace(/_/g, ' ')}</span>
+                      </div>
+                    );
+                  })}
+                  {syncStatus._current_run.remaining_jobs.length > 4 && (
+                    <span className="text-xs text-teal-600 dark:text-teal-400 font-medium">
+                      +{syncStatus._current_run.remaining_jobs.length - 4} more
+                    </span>
+                  )}
+
+                  {/* Connector to external queue if items exist */}
+                  {hasQueuedItems && (
+                    <div className="flex items-center gap-1 text-bark-400 dark:text-bark-600 flex-shrink-0 px-1">
+                      <div className="w-6 h-px bg-gradient-to-r from-teal-300 to-amber-300 dark:from-teal-700 dark:to-amber-700" />
                       <ChevronRight className="w-3 h-3" />
                     </div>
                   )}
