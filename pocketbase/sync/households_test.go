@@ -201,3 +201,160 @@ func TestExtractHouseholdsFromPersons(t *testing.T) {
 		t.Error("household ID 200 not found in extracted households")
 	}
 }
+
+// =============================================================================
+// Tests for discrete billing address field extraction
+// =============================================================================
+
+// TestTransformHouseholdToPB_BillingAddressFields tests extraction of individual billing address fields
+func TestTransformHouseholdToPB_BillingAddressFields(t *testing.T) {
+	s := &HouseholdsSync{}
+
+	householdData := map[string]interface{}{
+		"ID": float64(123456),
+		"BillingAddress": map[string]interface{}{
+			"Address1":      "123 Main St",
+			"Address2":      "Apt 4B",
+			"City":          "Boulder",
+			"StateProvince": "CO",
+			"PostalCode":    "80303",
+			"Country":       "US",
+		},
+	}
+
+	year := 2025
+
+	pbData, err := s.transformHouseholdToPB(householdData, year)
+	if err != nil {
+		t.Fatalf("transformHouseholdToPB returned error: %v", err)
+	}
+
+	// Verify billing address discrete fields
+	if got, ok := pbData["billing_address1"].(string); !ok || got != "123 Main St" {
+		t.Errorf("billing_address1 = %v, want '123 Main St'", pbData["billing_address1"])
+	}
+	if got, ok := pbData["billing_address2"].(string); !ok || got != "Apt 4B" {
+		t.Errorf("billing_address2 = %v, want 'Apt 4B'", pbData["billing_address2"])
+	}
+	if got, ok := pbData["billing_city"].(string); !ok || got != "Boulder" {
+		t.Errorf("billing_city = %v, want 'Boulder'", pbData["billing_city"])
+	}
+	if got, ok := pbData["billing_state"].(string); !ok || got != "CO" {
+		t.Errorf("billing_state = %v, want 'CO'", pbData["billing_state"])
+	}
+	if got, ok := pbData["billing_postal_code"].(string); !ok || got != "80303" {
+		t.Errorf("billing_postal_code = %v, want '80303'", pbData["billing_postal_code"])
+	}
+	if got, ok := pbData["billing_country"].(string); !ok || got != "US" {
+		t.Errorf("billing_country = %v, want 'US'", pbData["billing_country"])
+	}
+}
+
+// TestTransformHouseholdToPB_BillingAddressFields_StateFieldFallback tests State field when StateProvince is missing
+func TestTransformHouseholdToPB_BillingAddressFields_StateFieldFallback(t *testing.T) {
+	s := &HouseholdsSync{}
+
+	householdData := map[string]interface{}{
+		"ID": float64(123456),
+		"BillingAddress": map[string]interface{}{
+			"Address1": "456 Oak St",
+			"City":     "Austin",
+			"State":    "TX", // Using State instead of StateProvince
+			"PostalCode": "78701",
+		},
+	}
+
+	year := 2025
+
+	pbData, err := s.transformHouseholdToPB(householdData, year)
+	if err != nil {
+		t.Fatalf("transformHouseholdToPB returned error: %v", err)
+	}
+
+	// Verify billing_state uses State field when StateProvince is missing
+	if got, ok := pbData["billing_state"].(string); !ok || got != "TX" {
+		t.Errorf("billing_state = %v, want 'TX'", pbData["billing_state"])
+	}
+}
+
+// TestTransformHouseholdToPB_BillingAddressFields_ZipFieldFallback tests Zip field when PostalCode is missing
+func TestTransformHouseholdToPB_BillingAddressFields_ZipFieldFallback(t *testing.T) {
+	s := &HouseholdsSync{}
+
+	householdData := map[string]interface{}{
+		"ID": float64(123456),
+		"BillingAddress": map[string]interface{}{
+			"Address1": "789 Pine Ave",
+			"City":     "Seattle",
+			"State":    "WA",
+			"Zip":      "98101", // Using Zip instead of PostalCode
+		},
+	}
+
+	year := 2025
+
+	pbData, err := s.transformHouseholdToPB(householdData, year)
+	if err != nil {
+		t.Fatalf("transformHouseholdToPB returned error: %v", err)
+	}
+
+	// Verify billing_postal_code uses Zip field when PostalCode is missing
+	if got, ok := pbData["billing_postal_code"].(string); !ok || got != "98101" {
+		t.Errorf("billing_postal_code = %v, want '98101'", pbData["billing_postal_code"])
+	}
+}
+
+// TestTransformHouseholdToPB_BillingAddressFields_MissingAddress tests graceful handling when no billing address
+func TestTransformHouseholdToPB_BillingAddressFields_MissingAddress(t *testing.T) {
+	s := &HouseholdsSync{}
+
+	householdData := map[string]interface{}{
+		"ID": float64(123456),
+		// No BillingAddress
+	}
+
+	year := 2025
+
+	pbData, err := s.transformHouseholdToPB(householdData, year)
+	if err != nil {
+		t.Fatalf("transformHouseholdToPB returned error: %v", err)
+	}
+
+	// All billing address fields should default to empty strings
+	fields := []string{
+		"billing_address1", "billing_address2", "billing_city",
+		"billing_state", "billing_postal_code", "billing_country",
+	}
+	for _, field := range fields {
+		if got := pbData[field]; got != "" {
+			t.Errorf("%s = %v, want '' for missing billing address", field, got)
+		}
+	}
+}
+
+// TestTransformHouseholdToPB_BillingAddressFields_CountryDefault tests country defaults to "US" when not specified
+func TestTransformHouseholdToPB_BillingAddressFields_CountryDefault(t *testing.T) {
+	s := &HouseholdsSync{}
+
+	householdData := map[string]interface{}{
+		"ID": float64(123456),
+		"BillingAddress": map[string]interface{}{
+			"Address1": "123 Main St",
+			"City":     "Chicago",
+			"State":    "IL",
+			// No Country field
+		},
+	}
+
+	year := 2025
+
+	pbData, err := s.transformHouseholdToPB(householdData, year)
+	if err != nil {
+		t.Fatalf("transformHouseholdToPB returned error: %v", err)
+	}
+
+	// billing_country should default to "US" when not specified but other address fields exist
+	if got, ok := pbData["billing_country"].(string); !ok || got != "US" {
+		t.Errorf("billing_country = %v, want 'US' (default)", pbData["billing_country"])
+	}
+}
