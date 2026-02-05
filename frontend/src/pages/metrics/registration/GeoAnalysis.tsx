@@ -11,6 +11,7 @@ import { Globe, Loader2, AlertCircle } from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useRegistrationMetrics } from '../../../hooks/useMetrics'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
+import { useDrilldown } from '../../../hooks/useDrilldown'
 import {
   GeoMap,
   GeoCategoryTabs,
@@ -23,6 +24,9 @@ import {
 /** Default session types for summer camp metrics */
 const DEFAULT_SESSION_TYPES = ['main', 'embedded', 'ag']
 
+/** Default status filter for enrolled campers */
+const DEFAULT_STATUS_FILTER = ['enrolled']
+
 export default function GeoAnalysis() {
   const { currentYear } = useCurrentYear()
   const [activeCategory, setActiveCategory] = useState<GeoCategory>('city')
@@ -30,6 +34,14 @@ export default function GeoAnalysis() {
 
   // Get session filter from context (unified selector is in MetricsTypeTabs)
   const { selectedSessionCmId } = useMetricsSession()
+
+  // Drilldown hook for modal functionality
+  const { setFilter, DrilldownModal } = useDrilldown({
+    year: currentYear,
+    sessionCmId: selectedSessionCmId ?? undefined,
+    sessionTypes: DEFAULT_SESSION_TYPES,
+    statusFilter: DEFAULT_STATUS_FILTER,
+  })
 
   // Fetch registration data with geographic breakdowns
   const sessionTypesParam = DEFAULT_SESSION_TYPES.join(',')
@@ -187,6 +199,7 @@ export default function GeoAnalysis() {
                 category={activeCategory}
                 selectedItem={selectedItem}
                 onItemClick={handleItemClick}
+                onDrilldown={setFilter}
               />
             </div>
           ) : (
@@ -199,6 +212,9 @@ export default function GeoAnalysis() {
           )}
         </>
       )}
+
+      {/* Drilldown Modal */}
+      <DrilldownModal />
     </div>
   )
 }

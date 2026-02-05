@@ -6,12 +6,15 @@ import { useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { GeoDataItem } from './GeoMap'
 import type { GeoCategory } from './GeoCategoryTabs'
+import type { DrilldownFilter } from '../../../types/metrics'
 
 interface GeoDetailListProps {
   data: GeoDataItem[]
   category: GeoCategory
   selectedItem?: string | null
   onItemClick?: (name: string) => void
+  /** Callback for drilldown when row is clicked */
+  onDrilldown?: (filter: DrilldownFilter) => void
   /** Max items to show before "show more" */
   initialLimit?: number
 }
@@ -22,11 +25,18 @@ const CATEGORY_LABELS: Record<GeoCategory, string> = {
   synagogue: 'Synagogue',
 }
 
+const CATEGORY_PLURALS: Record<GeoCategory, string> = {
+  city: 'Cities',
+  school: 'Schools',
+  synagogue: 'Synagogues',
+}
+
 export function GeoDetailList({
   data,
   category,
   selectedItem,
   onItemClick,
+  onDrilldown,
   initialLimit = 15,
 }: GeoDetailListProps) {
   const [isExpanded, setIsExpanded] = useState(false)
@@ -48,7 +58,7 @@ export function GeoDetailList({
           ) : (
             <ChevronRight className="text-muted-foreground h-4 w-4" />
           )}
-          <span className="text-foreground font-medium">{CATEGORY_LABELS[category]}s</span>
+          <span className="text-foreground font-medium">{CATEGORY_PLURALS[category]}</span>
           <span className="text-muted-foreground text-sm">({data.length})</span>
         </div>
       </button>
@@ -75,7 +85,14 @@ export function GeoDetailList({
                   return (
                     <tr
                       key={item.name}
-                      onClick={() => onItemClick?.(item.name)}
+                      onClick={() => {
+                        onItemClick?.(item.name)
+                        onDrilldown?.({
+                          type: category,
+                          value: item.name,
+                          label: item.name,
+                        })
+                      }}
                       className={`border-border cursor-pointer border-t transition-colors ${isSelected ? 'bg-primary/10' : 'hover:bg-muted/30'} `}
                     >
                       <td className="text-foreground px-4 py-2">{item.name}</td>
@@ -101,7 +118,7 @@ export function GeoDetailList({
               >
                 {showAll
                   ? 'Show less'
-                  : `Show all ${data.length} ${CATEGORY_LABELS[category].toLowerCase()}s`}
+                  : `Show all ${data.length} ${CATEGORY_PLURALS[category].toLowerCase()}`}
               </button>
             </div>
           )}
