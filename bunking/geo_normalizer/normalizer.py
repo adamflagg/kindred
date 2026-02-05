@@ -378,6 +378,11 @@ def normalize_schools(values: list[str]) -> dict[str, NormalizedResult]:
     - Abbreviations ("Elem" vs "Elementary") - via fuzzy match
     - Case differences
 
+    To prevent re-merging canonically distinct schools (e.g. "Park Day School"
+    and "Mark Day School" which have token_sort_ratio ~85.7), values that matched
+    distinct canonical entries in the lookup are kept separate from clustering.
+    Only unknown values (no canonical match) are clustered.
+
     Args:
         values: List of school names
 
@@ -387,31 +392,52 @@ def normalize_schools(values: list[str]) -> dict[str, NormalizedResult]:
     if not values:
         return {}
 
-    # Step 1: Normalize each value (minimal preprocessing)
-    normalized_map: dict[str, str] = {}
-    normalized_values: list[str] = []
+    lookup, _ = _load_school_lookup()
+
+    # Step 1: Normalize each value and track which came from canonical lookup
+    normalized_map: dict[str, str] = {}  # original -> normalized
+    canonical_values: dict[str, str] = {}  # normalized -> canonical (from lookup)
+    unknown_values: list[str] = []  # values not in canonical lookup
 
     for original in values:
         normalized = normalize_school_value(original)
-        if normalized:
-            normalized_map[original] = normalized
-            normalized_values.append(normalized)
+        if not normalized:
+            continue
+        normalized_map[original] = normalized
 
-    # Step 2: Cluster with slightly lower threshold for schools
-    # (to catch abbreviations like "Elem" vs "Elementary")
-    clusters = cluster_similar_values(normalized_values, threshold=85)
+        # Check if this normalized value came from a canonical lookup match
+        # (normalize_school_value returns the canonical name for matched schools)
+        if normalized.lower() in lookup or _is_canonical_match(normalized, lookup):
+            canonical_values[normalized] = normalized
+        else:
+            unknown_values.append(normalized)
+
+    # Step 2: Only cluster unknown values (not in canonical lookup)
+    unknown_clusters = cluster_similar_values(unknown_values, threshold=85)
 
     # Step 3: Build final result
     result: dict[str, NormalizedResult] = {}
     for original, normalized in normalized_map.items():
-        if normalized in clusters:
-            cluster_result = clusters[normalized]
+        if normalized in canonical_values:
+            # Canonical match - use directly, skip clustering
+            result[original] = NormalizedResult(
+                canonical=normalized,
+                confidence=1.0,
+            )
+        elif normalized in unknown_clusters:
+            # Unknown value - use clustering result
+            cluster_result = unknown_clusters[normalized]
             result[original] = NormalizedResult(
                 canonical=cluster_result["canonical"],
                 confidence=cluster_result["confidence"],
             )
 
     return result
+
+
+def _is_canonical_match(value: str, lookup: dict[str, str]) -> bool:
+    """Check if a value is a canonical name (i.e. appears as a lookup value)."""
+    return value in lookup.values()
 
 
 def cluster_similar_values_token_set(
