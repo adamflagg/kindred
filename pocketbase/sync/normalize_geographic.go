@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -281,10 +282,14 @@ func (n *NormalizeGeographicSync) computeNormalizedMappings(
 		}
 
 		// Step 2: Cluster similar normalized values
+		// IMPORTANT: Sort values before clustering to ensure deterministic order.
+		// Go map iteration order is non-deterministic, which would cause different
+		// clustering results on each run (non-idempotent behavior).
 		normalizedValues := make([]string, 0, len(preprocessed))
 		for _, v := range preprocessed {
 			normalizedValues = append(normalizedValues, v)
 		}
+		sort.Strings(normalizedValues)
 
 		clusters := clusterSimilarValuesGo(normalizedValues, defaultFuzzyThreshold)
 

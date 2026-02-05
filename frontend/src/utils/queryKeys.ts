@@ -147,6 +147,10 @@ export const queryKeys = {
       sessionTypes,
       statusFilter,
     ] as const,
+
+  // Normalized mappings for geographic source tracking
+  normalizedMappings: (year: number, category: string) =>
+    ['normalized-mappings', year, category] as const,
 }
 
 /**
