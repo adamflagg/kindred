@@ -205,9 +205,7 @@ class TestHistoricalServiceFiltering:
         )
 
         # Verify repository was called with session_types (session_name=None when no session filter)
-        mock_repository.fetch_camper_history.assert_called_with(
-            2024, session_types=["main", "ag"], session_name=None
-        )
+        mock_repository.fetch_camper_history.assert_called_with(2024, session_types=["main", "ag"], session_name=None)
 
 
 # ============================================================================
@@ -334,9 +332,11 @@ class TestHistoricalServiceSessionFiltering:
         from api.services.historical_service import HistoricalService
 
         # Setup session with name "Session 2"
-        mock_repository.fetch_sessions = AsyncMock(return_value={
-            1001: make_mock_session(1001, "Session 2", "main"),
-        })
+        mock_repository.fetch_sessions = AsyncMock(
+            return_value={
+                1001: make_mock_session(1001, "Session 2", "main"),
+            }
+        )
         mock_repository.fetch_camper_history = AsyncMock(return_value=[])
 
         service = HistoricalService(mock_repository)
@@ -384,7 +384,9 @@ class TestHistoricalServiceSessionFiltering:
         def mock_fetch_sessions(year: int, session_types: list[str] | None = None) -> dict:
             return sessions_2024 if year == 2024 else sessions_2025
 
-        def mock_fetch_history(year: int, session_types: list[str] | None = None, session_name: str | None = None) -> list:
+        def mock_fetch_history(
+            year: int, session_types: list[str] | None = None, session_name: str | None = None
+        ) -> list:
             data = history_2024 if year == 2024 else history_2025
             # Simulate filtering by session_name
             if session_name:
@@ -452,7 +454,9 @@ class TestHistoricalServiceSessionFiltering:
         def mock_fetch_sessions(year: int, session_types: list[str] | None = None) -> dict:
             return sessions_2024 if year == 2024 else sessions_2025
 
-        def mock_fetch_history(year: int, session_types: list[str] | None = None, session_name: str | None = None) -> list:
+        def mock_fetch_history(
+            year: int, session_types: list[str] | None = None, session_name: str | None = None
+        ) -> list:
             data = history_2024 if year == 2024 else history_2025
             if session_name:
                 return [r for r in data if r.session_name == session_name]

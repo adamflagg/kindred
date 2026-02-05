@@ -1057,7 +1057,9 @@ class TestSessionLengthBySessionBreakdown:
         from api.services.registration_service import RegistrationService
 
         # Create sessions of different lengths
-        taste = create_mock_session(1001, "Taste of Camp", 2026, "embedded", "2026-06-20", "2026-06-23")  # 4 days = 1-week
+        taste = create_mock_session(
+            1001, "Taste of Camp", 2026, "embedded", "2026-06-20", "2026-06-23"
+        )  # 4 days = 1-week
         session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")  # 21 days = 3-week
         session_3 = create_mock_session(2002, "Session 3", 2026, "main", "2026-07-07", "2026-07-27")  # 21 days = 3-week
 
@@ -1311,12 +1313,8 @@ class TestSessionCapacityUtilization:
         Session with 5 bunk_plans and capacity of 12 = 60 capacity.
         """
         # Create 5 bunk plans (non-AG bunks)
-        bunks = [
-            create_mock_bunk(f"bunk_{i}", f"B-{i}", "M", 2026) for i in range(1, 6)
-        ]
-        bunk_plans = [
-            create_mock_bunk_plan("session_2001", bunk, 2026) for bunk in bunks
-        ]
+        bunks = [create_mock_bunk(f"bunk_{i}", f"B-{i}", "M", 2026) for i in range(1, 6)]
+        bunk_plans = [create_mock_bunk_plan("session_2001", bunk, 2026) for bunk in bunks]
 
         # 10 attendees enrolled
         num_attendees = 10
@@ -1343,17 +1341,13 @@ class TestSessionCapacityUtilization:
         session_2.pb_id = "session_2001"
 
         # Create 5 regular bunks + 2 AG bunks
-        regular_bunks = [
-            create_mock_bunk(f"bunk_{i}", f"B-{i}", "M", 2026) for i in range(1, 6)
-        ]
+        regular_bunks = [create_mock_bunk(f"bunk_{i}", f"B-{i}", "M", 2026) for i in range(1, 6)]
         ag_bunks = [
             create_mock_bunk("bunk_ag_1", "AG-1", "Mixed", 2026),
             create_mock_bunk("bunk_ag_2", "AG-2", "Mixed", 2026),
         ]
 
-        all_bunk_plans = [
-            create_mock_bunk_plan("session_2001", bunk, 2026) for bunk in regular_bunks + ag_bunks
-        ]
+        all_bunk_plans = [create_mock_bunk_plan("session_2001", bunk, 2026) for bunk in regular_bunks + ag_bunks]
 
         # Filter out AG bunks for main session (mimics frontend logic)
         is_main_session = session_2.session_type == "main"
@@ -1394,9 +1388,7 @@ class TestSessionCapacityUtilization:
             create_mock_bunk("bunk_3", "AG-1", "Mixed", 2026),  # AG bunk included!
         ]
 
-        bunk_plans = [
-            create_mock_bunk_plan("session_1001", bunk, 2026) for bunk in bunks
-        ]
+        bunk_plans = [create_mock_bunk_plan("session_1001", bunk, 2026) for bunk in bunks]
 
         # Embedded session - no filtering
         is_main_session = taste.session_type == "main"
@@ -1471,21 +1463,15 @@ class TestSessionCapacityUtilization:
         ag_session_2.pb_id = "session_2005"
 
         # Main session bunk plans (5 boys bunks)
-        main_bunks = [
-            create_mock_bunk(f"bunk_{i}", f"B-{i}", "M", 2026) for i in range(1, 6)
-        ]
-        main_bunk_plans = [
-            create_mock_bunk_plan("session_2001", bunk, 2026) for bunk in main_bunks
-        ]
+        main_bunks = [create_mock_bunk(f"bunk_{i}", f"B-{i}", "M", 2026) for i in range(1, 6)]
+        main_bunk_plans = [create_mock_bunk_plan("session_2001", bunk, 2026) for bunk in main_bunks]
 
         # AG session bunk plans (2 AG bunks)
         ag_bunks = [
             create_mock_bunk("bunk_ag_1", "AG-1", "Mixed", 2026),
             create_mock_bunk("bunk_ag_2", "AG-2", "Mixed", 2026),
         ]
-        ag_bunk_plans = [
-            create_mock_bunk_plan("session_2005", bunk, 2026) for bunk in ag_bunks
-        ]
+        ag_bunk_plans = [create_mock_bunk_plan("session_2005", bunk, 2026) for bunk in ag_bunks]
 
         default_capacity = 12
 
@@ -1537,17 +1523,11 @@ class TestSessionCapacityUtilization:
         sessions_dict = {2001: session_2}
 
         # Create 5 bunk plans for session 2
-        bunks = [
-            create_mock_bunk(f"bunk_{i}", f"B-{i}", "M", 2026) for i in range(1, 6)
-        ]
-        bunk_plans = [
-            create_mock_bunk_plan("session_2001", bunk, 2026) for bunk in bunks
-        ]
+        bunks = [create_mock_bunk(f"bunk_{i}", f"B-{i}", "M", 2026) for i in range(1, 6)]
+        bunk_plans = [create_mock_bunk_plan("session_2001", bunk, 2026) for bunk in bunks]
 
         # 30 attendees enrolled
-        attendees = [
-            create_mock_attendee(100 + i, session_2, 2026) for i in range(30)
-        ]
+        attendees = [create_mock_attendee(100 + i, session_2, 2026) for i in range(30)]
 
         mock_repo = Mock()
         service = RegistrationService(mock_repo)
@@ -1582,29 +1562,19 @@ class TestSessionCapacityUtilization:
         sessions_dict = {2001: session_2, 2005: ag_session_2}
 
         # Main session bunk plans (5 boys bunks)
-        main_bunks = [
-            create_mock_bunk(f"bunk_{i}", f"B-{i}", "M", 2026) for i in range(1, 6)
-        ]
-        main_bunk_plans = [
-            create_mock_bunk_plan("session_2001", bunk, 2026) for bunk in main_bunks
-        ]
+        main_bunks = [create_mock_bunk(f"bunk_{i}", f"B-{i}", "M", 2026) for i in range(1, 6)]
+        main_bunk_plans = [create_mock_bunk_plan("session_2001", bunk, 2026) for bunk in main_bunks]
 
         # AG session bunk plans (2 AG bunks)
         ag_bunks = [
             create_mock_bunk("bunk_ag_1", "AG-1", "Mixed", 2026),
             create_mock_bunk("bunk_ag_2", "AG-2", "Mixed", 2026),
         ]
-        ag_bunk_plans = [
-            create_mock_bunk_plan("session_2005", bunk, 2026) for bunk in ag_bunks
-        ]
+        ag_bunk_plans = [create_mock_bunk_plan("session_2005", bunk, 2026) for bunk in ag_bunks]
 
         # 4 main attendees + 2 AG attendees
-        main_attendees = [
-            create_mock_attendee(100 + i, session_2, 2026) for i in range(4)
-        ]
-        ag_attendees = [
-            create_mock_attendee(200 + i, ag_session_2, 2026) for i in range(2)
-        ]
+        main_attendees = [create_mock_attendee(100 + i, session_2, 2026) for i in range(4)]
+        ag_attendees = [create_mock_attendee(200 + i, ag_session_2, 2026) for i in range(2)]
         all_attendees = main_attendees + ag_attendees
         all_bunk_plans = main_bunk_plans + ag_bunk_plans
 
@@ -1649,14 +1619,10 @@ class TestSessionCapacityUtilization:
             create_mock_bunk("bunk_2", "G-1", "F", 2026),
             create_mock_bunk("bunk_3", "AG-1", "Mixed", 2026),
         ]
-        bunk_plans = [
-            create_mock_bunk_plan("session_1001", bunk, 2026) for bunk in bunks
-        ]
+        bunk_plans = [create_mock_bunk_plan("session_1001", bunk, 2026) for bunk in bunks]
 
         # 18 attendees
-        attendees = [
-            create_mock_attendee(100 + i, taste, 2026) for i in range(18)
-        ]
+        attendees = [create_mock_attendee(100 + i, taste, 2026) for i in range(18)]
 
         mock_repo = Mock()
         service = RegistrationService(mock_repo)
@@ -1682,9 +1648,7 @@ class TestSessionCapacityUtilization:
         sessions_dict = {2001: session_2}
         bunk_plans: list[Mock] = []  # No bunk plans for any session
 
-        attendees = [
-            create_mock_attendee(100 + i, session_2, 2026) for i in range(10)
-        ]
+        attendees = [create_mock_attendee(100 + i, session_2, 2026) for i in range(10)]
 
         mock_repo = Mock()
         service = RegistrationService(mock_repo)

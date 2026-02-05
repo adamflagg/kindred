@@ -61,16 +61,11 @@ class HistoricalService:
         # If session_cm_id provided, get the session name to filter by
         session_name: str | None = None
         if session_cm_id is not None:
-            session_name = await self._get_session_name_for_filtering(
-                session_cm_id, years, session_types
-            )
+            session_name = await self._get_session_name_for_filtering(session_cm_id, years, session_types)
 
         # Fetch camper history for all years in parallel
         history_futures = [
-            self.repo.fetch_camper_history(
-                y, session_types=session_types, session_name=session_name
-            )
-            for y in years
+            self.repo.fetch_camper_history(y, session_types=session_types, session_name=session_name) for y in years
         ]
         all_history = await asyncio.gather(*history_futures)
 
@@ -103,10 +98,7 @@ class HistoricalService:
             The session name if found, None otherwise.
         """
         # Fetch sessions from all years in parallel
-        session_futures = [
-            self.repo.fetch_sessions(year, session_types=session_types)
-            for year in years
-        ]
+        session_futures = [self.repo.fetch_sessions(year, session_types=session_types) for year in years]
         all_sessions = await asyncio.gather(*session_futures)
 
         # Search for the session in all years

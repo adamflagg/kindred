@@ -478,9 +478,7 @@ class TestMetricsRepositoryFetchAttendeesWithPersons:
 
         # Create mock record with expand
         mock_record = MockRecord(id="1", cm_id=100, person_id=500)
-        mock_record.expand = {
-            "person": MockRecord(id="p1", cm_id=500, person_id=500)
-        }
+        mock_record.expand = {"person": MockRecord(id="p1", cm_id=500, person_id=500)}
         mock_collection.get_full_list.return_value = [mock_record]
 
         repo = MetricsRepository(mock_pb)
