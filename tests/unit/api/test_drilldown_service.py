@@ -463,3 +463,258 @@ class TestFirstSummerYearBreakdown:
         )
 
         assert len(result) == 0
+
+
+# ============================================================================
+# Tests for city breakdown type
+# ============================================================================
+
+
+class TestCityBreakdown:
+    """Tests for filtering by city from person address."""
+
+    @pytest.fixture
+    def persons_with_cities(self) -> dict[int, Mock]:
+        """Sample persons with various cities."""
+        return {
+            101: create_mock_person(
+                101, "Emma", "Johnson", "F", 5,
+                address={"city": "San Francisco", "state": "CA"}
+            ),
+            102: create_mock_person(
+                102, "Liam", "Garcia", "M", 6,
+                address={"city": "San Francisco", "state": "CA"}
+            ),
+            103: create_mock_person(
+                103, "Olivia", "Chen", "F", 6,
+                address={"city": "Oakland", "state": "CA"}
+            ),
+            104: create_mock_person(
+                104, "Noah", "Williams", "M", 7,
+                address={"city": "Berkeley", "state": "CA"}
+            ),
+            105: create_mock_person(
+                105, "Ava", "Brown", "F", 8,
+                address={"city": "Oakland", "state": "CA"}
+            ),
+        }
+
+    @pytest.mark.asyncio
+    async def test_filter_by_city(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        persons_with_cities: dict[int, Mock],
+    ) -> None:
+        """Filter for campers from a specific city."""
+        attendees = [
+            create_mock_attendee(101, sample_sessions[1001], 2026),
+            create_mock_attendee(102, sample_sessions[1002], 2026),
+            create_mock_attendee(103, sample_sessions[1003], 2026),
+            create_mock_attendee(104, sample_sessions[1004], 2026),
+            create_mock_attendee(105, sample_sessions[1003], 2026),
+        ]
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = persons_with_cities
+        mock_repository.fetch_attendees.return_value = attendees
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="city",
+            breakdown_value="San Francisco",
+        )
+
+        # Should return Emma (101) and Liam (102) from San Francisco
+        assert len(result) == 2
+        person_ids = {r.person_id for r in result}
+        assert person_ids == {101, 102}
+
+    @pytest.mark.asyncio
+    async def test_filter_by_city_oakland(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        persons_with_cities: dict[int, Mock],
+    ) -> None:
+        """Filter for campers from Oakland."""
+        attendees = [
+            create_mock_attendee(101, sample_sessions[1001], 2026),
+            create_mock_attendee(102, sample_sessions[1002], 2026),
+            create_mock_attendee(103, sample_sessions[1003], 2026),
+            create_mock_attendee(104, sample_sessions[1004], 2026),
+            create_mock_attendee(105, sample_sessions[1003], 2026),
+        ]
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = persons_with_cities
+        mock_repository.fetch_attendees.return_value = attendees
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="city",
+            breakdown_value="Oakland",
+        )
+
+        # Should return Olivia (103) and Ava (105) from Oakland
+        assert len(result) == 2
+        person_ids = {r.person_id for r in result}
+        assert person_ids == {103, 105}
+
+    @pytest.mark.asyncio
+    async def test_filter_by_city_no_match(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        persons_with_cities: dict[int, Mock],
+    ) -> None:
+        """Filter for city with no campers returns empty list."""
+        attendees = [
+            create_mock_attendee(101, sample_sessions[1001], 2026),
+        ]
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = persons_with_cities
+        mock_repository.fetch_attendees.return_value = attendees
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="city",
+            breakdown_value="Los Angeles",
+        )
+
+        assert len(result) == 0
+
+
+# ============================================================================
+# Tests for synagogue breakdown type
+# ============================================================================
+
+
+class TestSynagogueBreakdown:
+    """Tests for filtering by synagogue/congregation."""
+
+    @pytest.fixture
+    def persons_with_households(self) -> dict[int, Mock]:
+        """Sample persons with household IDs for synagogue lookup."""
+        persons = {
+            101: create_mock_person(101, "Emma", "Johnson", "F", 5),
+            102: create_mock_person(102, "Liam", "Garcia", "M", 6),
+            103: create_mock_person(103, "Olivia", "Chen", "F", 6),
+            104: create_mock_person(104, "Noah", "Williams", "M", 7),
+            105: create_mock_person(105, "Ava", "Brown", "F", 8),
+        }
+        # Set household_id for synagogue lookup
+        persons[101].household_id = 1001
+        persons[102].household_id = 1001  # Same household as Emma
+        persons[103].household_id = 1002
+        persons[104].household_id = 1003
+        persons[105].household_id = 1002  # Same household as Olivia
+        return persons
+
+    @pytest.fixture
+    def synagogue_mapping(self) -> dict[int, str]:
+        """Sample synagogue by household mapping."""
+        return {
+            1001: "Congregation Beth Israel",
+            1002: "Temple Sinai",
+            1003: "Congregation Beth Israel",  # Same as household 1001
+        }
+
+    @pytest.mark.asyncio
+    async def test_filter_by_synagogue(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        persons_with_households: dict[int, Mock],
+    ) -> None:
+        """Filter for campers from a specific synagogue."""
+        attendees = [
+            create_mock_attendee(101, sample_sessions[1001], 2026),
+            create_mock_attendee(102, sample_sessions[1002], 2026),
+            create_mock_attendee(103, sample_sessions[1003], 2026),
+            create_mock_attendee(104, sample_sessions[1004], 2026),
+            create_mock_attendee(105, sample_sessions[1003], 2026),
+        ]
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = persons_with_households
+        mock_repository.fetch_attendees.return_value = attendees
+        mock_repository.fetch_congregation_by_person = AsyncMock(return_value={
+            101: "Congregation Beth Israel",
+            102: "Congregation Beth Israel",
+            103: "Temple Sinai",
+            104: "Congregation Beth Israel",
+            105: "Temple Sinai",
+        })
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="synagogue",
+            breakdown_value="Congregation Beth Israel",
+        )
+
+        # Should return Emma (101), Liam (102), and Noah (104)
+        assert len(result) == 3
+        person_ids = {r.person_id for r in result}
+        assert person_ids == {101, 102, 104}
+
+    @pytest.mark.asyncio
+    async def test_filter_by_synagogue_temple_sinai(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        persons_with_households: dict[int, Mock],
+    ) -> None:
+        """Filter for campers from Temple Sinai."""
+        attendees = [
+            create_mock_attendee(101, sample_sessions[1001], 2026),
+            create_mock_attendee(102, sample_sessions[1002], 2026),
+            create_mock_attendee(103, sample_sessions[1003], 2026),
+            create_mock_attendee(104, sample_sessions[1004], 2026),
+            create_mock_attendee(105, sample_sessions[1003], 2026),
+        ]
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = persons_with_households
+        mock_repository.fetch_attendees.return_value = attendees
+        mock_repository.fetch_congregation_by_person = AsyncMock(return_value={
+            103: "Temple Sinai",
+            105: "Temple Sinai",
+        })
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="synagogue",
+            breakdown_value="Temple Sinai",
+        )
+
+        # Should return Olivia (103) and Ava (105) from Temple Sinai
+        assert len(result) == 2
+        person_ids = {r.person_id for r in result}
+        assert person_ids == {103, 105}
+
+    @pytest.mark.asyncio
+    async def test_filter_by_synagogue_no_match(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        persons_with_households: dict[int, Mock],
+    ) -> None:
+        """Filter for synagogue with no campers returns empty list."""
+        attendees = [
+            create_mock_attendee(101, sample_sessions[1001], 2026),
+        ]
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = persons_with_households
+        mock_repository.fetch_attendees.return_value = attendees
+        mock_repository.fetch_congregation_by_person = AsyncMock(return_value={})
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="synagogue",
+            breakdown_value="Unknown Temple",
+        )
+
+        assert len(result) == 0
