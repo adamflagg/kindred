@@ -149,8 +149,10 @@ export const queryKeys = {
     ] as const,
 
   // Normalized mappings for geographic source tracking
-  normalizedMappings: (year: number, category: string) =>
-    ['normalized-mappings', year, category] as const,
+  normalizedMappings: (year: number, category: string, sessionCmId?: number) =>
+    sessionCmId !== undefined
+      ? (['normalized-mappings', year, category, sessionCmId] as const)
+      : (['normalized-mappings', year, category] as const),
 }
 
 /**

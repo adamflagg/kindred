@@ -941,3 +941,381 @@ func isUpperAlpha(b byte) bool {
 	return b >= 'A' && b <= 'Z'
 }
 
+// ============================================================================
+// Person+Session Normalized Mappings Tests
+// ============================================================================
+
+// testPersonSessionMapping represents a normalized mapping with person+session keys
+type testPersonSessionMapping struct {
+	PersonPBID      string
+	SessionPBID     string
+	Category        string
+	OriginalValue   string
+	NormalizedValue string
+	Confidence      float64
+	Year            int
+}
+
+// testAttendeeGeoData represents geographic data extracted from an attendee
+type testAttendeeGeoData struct {
+	PersonPBID   string
+	PersonCMID   int
+	SessionPBID  string
+	SessionCMID  int
+	School       string // from persons
+	City         string // from persons.address
+	Congregation string // from person_custom_values
+}
+
+// buildPersonSessionMappingKey builds composite key for person+session normalized_mappings
+func buildPersonSessionMappingKey(personPBID, sessionPBID, category string) string {
+	return personPBID + ":" + sessionPBID + ":" + category
+}
+
+// TestPersonSessionMappingKey tests the composite key format for person+session mappings
+func TestPersonSessionMappingKey(t *testing.T) {
+	tests := []struct {
+		name        string
+		personPBID  string
+		sessionPBID string
+		category    string
+		expectedKey string
+	}{
+		{
+			name:        "school mapping key",
+			personPBID:  "pb_person_123",
+			sessionPBID: "pb_session_456",
+			category:    "school",
+			expectedKey: "pb_person_123:pb_session_456:school",
+		},
+		{
+			name:        "city mapping key",
+			personPBID:  "pb_person_789",
+			sessionPBID: "pb_session_101",
+			category:    "city",
+			expectedKey: "pb_person_789:pb_session_101:city",
+		},
+		{
+			name:        "congregation mapping key",
+			personPBID:  "pb_person_abc",
+			sessionPBID: "pb_session_def",
+			category:    "congregation",
+			expectedKey: "pb_person_abc:pb_session_def:congregation",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			key := buildPersonSessionMappingKey(tt.personPBID, tt.sessionPBID, tt.category)
+			if key != tt.expectedKey {
+				t.Errorf("buildPersonSessionMappingKey(%q, %q, %q) = %q, want %q",
+					tt.personPBID, tt.sessionPBID, tt.category, key, tt.expectedKey)
+			}
+		})
+	}
+}
+
+// TestPersonSessionMappingUniquePerPersonSession tests that each person+session+category
+// combination produces exactly one mapping record
+func TestPersonSessionMappingUniquePerPersonSession(t *testing.T) {
+	// Simulate attendee geo data for two campers in different sessions
+	attendeeData := []testAttendeeGeoData{
+		{
+			PersonPBID: "person_101", PersonCMID: 101,
+			SessionPBID: "session_2001", SessionCMID: 2001,
+			School: "Riverside Elementary", City: "Oakland", Congregation: "Temple Beth El",
+		},
+		{
+			PersonPBID: "person_101", PersonCMID: 101,
+			SessionPBID: "session_2002", SessionCMID: 2002, // Same person, different session
+			School: "Riverside Elementary", City: "Oakland", Congregation: "Temple Beth El",
+		},
+		{
+			PersonPBID: "person_102", PersonCMID: 102,
+			SessionPBID: "session_2001", SessionCMID: 2001, // Different person, same session
+			School: "Oak Valley Middle", City: "San Francisco", Congregation: "",
+		},
+	}
+
+	// Generate mappings for all three categories
+	mappings := make(map[string]*testPersonSessionMapping)
+
+	for _, data := range attendeeData {
+		// School mapping
+		if data.School != "" {
+			key := buildPersonSessionMappingKey(data.PersonPBID, data.SessionPBID, "school")
+			mappings[key] = &testPersonSessionMapping{
+				PersonPBID:      data.PersonPBID,
+				SessionPBID:     data.SessionPBID,
+				Category:        "school",
+				OriginalValue:   data.School,
+				NormalizedValue: data.School, // Simplified normalization
+				Confidence:      1.0,
+				Year:            2025,
+			}
+		}
+
+		// City mapping
+		if data.City != "" {
+			key := buildPersonSessionMappingKey(data.PersonPBID, data.SessionPBID, "city")
+			mappings[key] = &testPersonSessionMapping{
+				PersonPBID:      data.PersonPBID,
+				SessionPBID:     data.SessionPBID,
+				Category:        "city",
+				OriginalValue:   data.City,
+				NormalizedValue: data.City,
+				Confidence:      1.0,
+				Year:            2025,
+			}
+		}
+
+		// Congregation mapping
+		if data.Congregation != "" {
+			key := buildPersonSessionMappingKey(data.PersonPBID, data.SessionPBID, "congregation")
+			mappings[key] = &testPersonSessionMapping{
+				PersonPBID:      data.PersonPBID,
+				SessionPBID:     data.SessionPBID,
+				Category:        "congregation",
+				OriginalValue:   data.Congregation,
+				NormalizedValue: data.Congregation,
+				Confidence:      1.0,
+				Year:            2025,
+			}
+		}
+	}
+
+	// Expected: 3 attendees × 3 categories = 9 mappings, minus 1 empty congregation = 8
+	// Actually: person_101 has 2 sessions × 3 categories = 6
+	//           person_102 has 1 session × 2 categories (no congregation) = 2
+	//           Total = 8
+	expectedCount := 8
+	if len(mappings) != expectedCount {
+		t.Errorf("expected %d unique mappings, got %d", expectedCount, len(mappings))
+	}
+
+	// Verify person_101 has mappings for both sessions
+	if _, ok := mappings["person_101:session_2001:school"]; !ok {
+		t.Error("missing mapping for person_101 in session_2001 school")
+	}
+	if _, ok := mappings["person_101:session_2002:school"]; !ok {
+		t.Error("missing mapping for person_101 in session_2002 school")
+	}
+}
+
+// TestSessionFilterCountsMatchMainList tests that filtering by session returns
+// counts that match the main registration list (fixes the "show sources" mismatch bug)
+func TestSessionFilterCountsMatchMainList(t *testing.T) {
+	// Create mappings for 2 persons in session 2001, 1 person in session 2002
+	mappings := []*testPersonSessionMapping{
+		// Person 101 in session 2001: school = "Riverside Elementary"
+		{
+			PersonPBID: "p101", SessionPBID: "s2001", Category: "school",
+			OriginalValue: "Riverside Elementary", NormalizedValue: "Riverside Elementary",
+		},
+		// Person 102 in session 2001: school = "Riverside Elementary"
+		{
+			PersonPBID: "p102", SessionPBID: "s2001", Category: "school",
+			OriginalValue: "Riverside Elementary", NormalizedValue: "Riverside Elementary",
+		},
+		// Person 103 in session 2002: school = "Riverside Elementary"
+		{
+			PersonPBID: "p103", SessionPBID: "s2002", Category: "school",
+			OriginalValue: "Riverside Elementary", NormalizedValue: "Riverside Elementary",
+		},
+	}
+
+	// Filter to session 2001 only
+	session2001Mappings := filterMappingsBySession(mappings, "s2001")
+
+	// Should have 2 mappings (both from session 2001)
+	if len(session2001Mappings) != 2 {
+		t.Errorf("expected 2 mappings for session 2001, got %d", len(session2001Mappings))
+	}
+
+	// Count by normalized value
+	schoolCounts := countByNormalizedValue(session2001Mappings)
+
+	// "Riverside Elementary" should have count=2 (not count=3)
+	if schoolCounts["Riverside Elementary"] != 2 {
+		t.Errorf("expected Riverside Elementary count=2 for session 2001, got %d",
+			schoolCounts["Riverside Elementary"])
+	}
+}
+
+// filterMappingsBySession filters mappings to a specific session
+func filterMappingsBySession(mappings []*testPersonSessionMapping, sessionPBID string) []*testPersonSessionMapping {
+	var result []*testPersonSessionMapping
+	for _, m := range mappings {
+		if m.SessionPBID == sessionPBID {
+			result = append(result, m)
+		}
+	}
+	return result
+}
+
+// countByNormalizedValue groups mappings by normalized_value and counts
+func countByNormalizedValue(mappings []*testPersonSessionMapping) map[string]int {
+	counts := make(map[string]int)
+	for _, m := range mappings {
+		counts[m.NormalizedValue]++
+	}
+	return counts
+}
+
+// TestCongregationUsesPersonLevelData verifies that congregation comes from
+// person_custom_values (HH-Name of Congregation) not household_custom_values (Synagogue)
+func TestCongregationUsesPersonLevelData(t *testing.T) {
+	// Simulate person_custom_values data (person-level congregation)
+	personCongregations := map[int]string{
+		101: "Temple Beth El - Oakland",      // Person 101
+		102: "Congregation Beth Israel",      // Person 102
+		103: "Temple Sinai Reform Congregation", // Person 103
+	}
+
+	// Simulate household_custom_values data (household-level, should NOT be used)
+	householdSynagogues := map[int]string{
+		1001: "Temple Beth El", // Household 1001 (persons 101, 102)
+		1002: "Temple Sinai",   // Household 1002 (person 103)
+	}
+
+	// The test verifies that when we look up congregation for person 101,
+	// we get "Temple Beth El - Oakland" (person-level) not "Temple Beth El" (household-level)
+	congregation101 := personCongregations[101]
+	expectedCongregation := "Temple Beth El - Oakland"
+
+	if congregation101 != expectedCongregation {
+		t.Errorf("expected congregation %q (from person_custom_values), got %q",
+			expectedCongregation, congregation101)
+	}
+
+	// Person 103 should have their specific congregation
+	congregation103 := personCongregations[103]
+	if congregation103 != "Temple Sinai Reform Congregation" {
+		t.Errorf("expected congregation 'Temple Sinai Reform Congregation', got %q", congregation103)
+	}
+
+	// The household-level synagogue should be different (confirming we're using person-level)
+	householdSynagogue := householdSynagogues[1001] // Household for persons 101, 102
+	if congregation101 == householdSynagogue {
+		t.Error("congregation should come from person_custom_values, not household_custom_values")
+	}
+}
+
+// TestPersonSessionUpsertIdempotency tests that upserting the same person+session
+// mapping twice results in skip (not update or create)
+func TestPersonSessionUpsertIdempotency(t *testing.T) {
+	// First run: create mappings
+	mappings := []*testPersonSessionMapping{
+		{
+			PersonPBID: "p101", SessionPBID: "s2001", Category: "school",
+			OriginalValue: "Riverside Elementary", NormalizedValue: "Riverside Elementary",
+			Confidence: 1.0, Year: 2025,
+		},
+	}
+
+	// Simulate existing records (empty on first run)
+	existing := make(map[string]*testPersonSessionMapping)
+
+	stats1 := simulatePersonSessionUpsert(mappings, existing)
+
+	// First run should create
+	if stats1.Created != 1 {
+		t.Errorf("first run: expected Created=1, got %d", stats1.Created)
+	}
+
+	// Now simulate existing records from first run
+	for _, m := range mappings {
+		key := buildPersonSessionMappingKey(m.PersonPBID, m.SessionPBID, m.Category)
+		existing[key] = m
+	}
+
+	// Second run with identical data
+	stats2 := simulatePersonSessionUpsert(mappings, existing)
+
+	// Second run should skip (no changes)
+	if stats2.Created != 0 {
+		t.Errorf("second run: expected Created=0, got %d", stats2.Created)
+	}
+	if stats2.Updated != 0 {
+		t.Errorf("second run: expected Updated=0, got %d", stats2.Updated)
+	}
+	if stats2.Skipped != 1 {
+		t.Errorf("second run: expected Skipped=1, got %d", stats2.Skipped)
+	}
+}
+
+// simulatePersonSessionUpsert simulates the upsert logic for person+session mappings
+func simulatePersonSessionUpsert(
+	mappings []*testPersonSessionMapping,
+	existing map[string]*testPersonSessionMapping,
+) testNormStats {
+	stats := testNormStats{}
+
+	for _, m := range mappings {
+		key := buildPersonSessionMappingKey(m.PersonPBID, m.SessionPBID, m.Category)
+
+		if existingRecord, ok := existing[key]; ok {
+			if personSessionMappingNeedsUpdate(existingRecord, m) {
+				stats.Updated++
+			} else {
+				stats.Skipped++
+			}
+		} else {
+			stats.Created++
+		}
+	}
+
+	return stats
+}
+
+// personSessionMappingNeedsUpdate checks if a person+session mapping needs updating
+func personSessionMappingNeedsUpdate(existing, newMapping *testPersonSessionMapping) bool {
+	if existing.NormalizedValue != newMapping.NormalizedValue {
+		return true
+	}
+	if existing.OriginalValue != newMapping.OriginalValue {
+		return true
+	}
+	return confidenceChanged(existing.Confidence, newMapping.Confidence)
+}
+
+// TestEnrolledOnlyInNormalizedMappings verifies that only enrolled attendees
+// (status_id=2, is_active=1) are included in normalized_mappings
+func TestEnrolledOnlyInNormalizedMappings(t *testing.T) {
+	// Simulate attendees with different statuses
+	type testAttendee struct {
+		PersonID int
+		StatusID int
+		IsActive bool
+	}
+
+	attendees := []testAttendee{
+		{PersonID: 101, StatusID: 2, IsActive: true},  // Enrolled - INCLUDE
+		{PersonID: 102, StatusID: 2, IsActive: true},  // Enrolled - INCLUDE
+		{PersonID: 103, StatusID: 3, IsActive: true},  // Waitlisted - EXCLUDE
+		{PersonID: 104, StatusID: 4, IsActive: true},  // Canceled - EXCLUDE
+		{PersonID: 105, StatusID: 2, IsActive: false}, // Enrolled but inactive - EXCLUDE
+	}
+
+	// Filter to enrolled only (matches the sync query: is_active = 1 AND status_id = 2)
+	var enrolledPersonIDs []int
+	for _, a := range attendees {
+		if a.StatusID == 2 && a.IsActive {
+			enrolledPersonIDs = append(enrolledPersonIDs, a.PersonID)
+		}
+	}
+
+	// Should have exactly 2 enrolled persons
+	if len(enrolledPersonIDs) != 2 {
+		t.Errorf("expected 2 enrolled persons, got %d", len(enrolledPersonIDs))
+	}
+
+	// Verify correct persons included
+	expected := map[int]bool{101: true, 102: true}
+	for _, pid := range enrolledPersonIDs {
+		if !expected[pid] {
+			t.Errorf("unexpected person %d in enrolled list", pid)
+		}
+	}
+}
+

@@ -55,11 +55,12 @@ export default function GeoAnalysis() {
     statusFilter: DEFAULT_STATUS_FILTER,
   })
 
-  // Fetch normalized mappings for source display
+  // Fetch normalized mappings for source display (filtered by session if selected)
   const { data: sourceMappings } = useNormalizedMappings(
     currentYear,
     categoryToDbCategory[activeCategory],
-    showSources
+    showSources,
+    selectedSessionCmId ?? undefined
   )
 
   // Fetch registration data with geographic breakdowns
