@@ -5,7 +5,7 @@
  * the original source strings that normalized to each canonical value.
  */
 
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react'
 import type { GeoDataItem } from './GeoMap'
 import type { GeoCategory } from './GeoCategoryTabs'
@@ -111,9 +111,8 @@ export function GeoDetailList({
                   const hasSources = sources && sources.length > 0
 
                   return (
-                    <>
+                    <Fragment key={item.name}>
                       <tr
-                        key={item.name}
                         onClick={() => {
                           onItemClick?.(item.name)
                           onDrilldown?.({
@@ -150,36 +149,35 @@ export function GeoDetailList({
                         </td>
                       </tr>
                       {/* Source rows */}
-                      {showSources && isRowExpanded && hasSources && (
-                        <>
-                          {sources.map((source, idx) => (
-                            <tr
-                              key={`${item.name}-source-${idx}`}
-                              className="bg-muted/20 border-border border-t"
-                            >
-                              <td className="text-muted-foreground py-1.5 pr-4 pl-12 text-xs">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-muted-foreground/60">&#8627;</span>
-                                  <span>{source.original}</span>
-                                  {source.confidence < 1.0 && (
-                                    <span
-                                      className="text-amber-500"
-                                      title={`Fuzzy match (${Math.round(source.confidence * 100)}% confidence)`}
-                                    >
-                                      <AlertTriangle className="h-3 w-3" />
-                                    </span>
-                                  )}
-                                </div>
-                              </td>
-                              <td className="text-muted-foreground py-1.5 pr-4 text-right text-xs">
-                                {source.count}
-                              </td>
-                              <td />
-                            </tr>
-                          ))}
-                        </>
-                      )}
-                    </>
+                      {showSources &&
+                        isRowExpanded &&
+                        hasSources &&
+                        sources.map((source, idx) => (
+                          <tr
+                            key={`${item.name}-source-${idx}`}
+                            className="bg-muted/20 border-border border-t"
+                          >
+                            <td className="text-muted-foreground py-1.5 pr-4 pl-12 text-xs">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-muted-foreground/60">&#8627;</span>
+                                <span>{source.original}</span>
+                                {source.confidence < 1.0 && (
+                                  <span
+                                    className="text-amber-500"
+                                    title={`Fuzzy match (${Math.round(source.confidence * 100)}% confidence)`}
+                                  >
+                                    <AlertTriangle className="h-3 w-3" />
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="text-muted-foreground py-1.5 pr-4 text-right text-xs">
+                              {source.count}
+                            </td>
+                            <td />
+                          </tr>
+                        ))}
+                    </Fragment>
                   )
                 })}
               </tbody>
