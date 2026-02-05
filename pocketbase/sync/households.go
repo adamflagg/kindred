@@ -141,9 +141,10 @@ func (s *HouseholdsSync) Sync(ctx context.Context) error {
 	slog.Info("Extracted unique households from persons", "count", len(allHouseholds))
 
 	// Process each unique household
+	// billing_address JSON field removed - only discrete fields are compared
 	compareFields := []string{
 		"cm_id", "greeting", "mailing_title", "alternate_mailing_title",
-		"billing_mailing_title", "household_phone", "billing_address", "last_updated_utc",
+		"billing_mailing_title", "household_phone", "last_updated_utc",
 		"billing_address1", "billing_address2", "billing_city", "billing_state",
 		"billing_postal_code", "billing_country",
 	}
@@ -273,10 +274,8 @@ func (s *HouseholdsSync) transformHouseholdToPB(
 		pbData["household_phone"] = nil
 	}
 
-	// Extract billing address as JSON (for backward compatibility)
-	pbData["billing_address"] = data["BillingAddress"]
-
 	// Extract discrete billing address fields for querying
+	// billing_address JSON field removed - only discrete fields are populated
 	pbData["billing_address1"] = ""
 	pbData["billing_address2"] = ""
 	pbData["billing_city"] = ""
