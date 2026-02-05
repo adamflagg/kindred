@@ -56,10 +56,18 @@ describe('BAY_AREA_REGION_POLYGONS', () => {
     }
   })
 
-  it('each polygon has at least 3 coordinate tuples', () => {
+  it('each polygon has at least 3 coordinate tuples (single or multi-ring)', () => {
     for (const key of REGION_KEYS) {
       const poly: RegionPolygon = BAY_AREA_REGION_POLYGONS[key]
-      expect(poly.polygon.length).toBeGreaterThanOrEqual(3)
+      // Multi-polygon: array of rings; single polygon: array of [lat,lng]
+      const isMulti = Array.isArray(poly.polygon[0]?.[0])
+      if (isMulti) {
+        for (const ring of poly.polygon as [number, number][][]) {
+          expect(ring.length).toBeGreaterThanOrEqual(3)
+        }
+      } else {
+        expect(poly.polygon.length).toBeGreaterThanOrEqual(3)
+      }
     }
   })
 
@@ -72,14 +80,22 @@ describe('BAY_AREA_REGION_POLYGONS', () => {
   })
 
   it('polygon coordinates are within Bay Area bounds', () => {
-    // Bay Area roughly: lat 36.9-39.0, lng -123.5 to -121.0
+    // Bay Area roughly: lat 36.5-39.5, lng -124 to -120.5
+    const checkPoint = ([lat, lng]: [number, number]) => {
+      expect(lat).toBeGreaterThan(36.5)
+      expect(lat).toBeLessThan(39.5)
+      expect(lng).toBeGreaterThan(-124)
+      expect(lng).toBeLessThan(-120.5)
+    }
     for (const key of REGION_KEYS) {
       const poly: RegionPolygon = BAY_AREA_REGION_POLYGONS[key]
-      for (const [lat, lng] of poly.polygon) {
-        expect(lat).toBeGreaterThan(36.5)
-        expect(lat).toBeLessThan(39.5)
-        expect(lng).toBeGreaterThan(-124)
-        expect(lng).toBeLessThan(-120.5)
+      const isMulti = Array.isArray(poly.polygon[0]?.[0])
+      if (isMulti) {
+        for (const ring of poly.polygon as [number, number][][]) {
+          for (const pt of ring) checkPoint(pt)
+        }
+      } else {
+        for (const pt of poly.polygon as [number, number][]) checkPoint(pt)
       }
     }
   })

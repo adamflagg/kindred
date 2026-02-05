@@ -1,15 +1,11 @@
 /**
  * RegionOverlays - Semi-transparent Bay Area region polygons for the GeoMap.
  *
- * Renders 6 region zones with permanent center-positioned labels.
+ * Renders 6 region zones as semi-transparent county boundary polygons.
  */
 
-import { Polygon, Tooltip } from 'react-leaflet'
-import {
-  BAY_AREA_REGION_POLYGONS,
-  REGION_COLORS,
-  type RegionPolygon,
-} from '../../../data/californiaGeo'
+import { Polygon } from 'react-leaflet'
+import { BAY_AREA_REGION_POLYGONS, REGION_COLORS } from '../../../data/californiaGeo'
 
 interface RegionOverlaysProps {
   show: boolean
@@ -25,7 +21,7 @@ export function RegionOverlays({ show }: RegionOverlaysProps) {
   return (
     <>
       {regionKeys.map((key) => {
-        const region: RegionPolygon = BAY_AREA_REGION_POLYGONS[key]
+        const region = BAY_AREA_REGION_POLYGONS[key]
         const colors = REGION_COLORS[key]
 
         return (
@@ -40,11 +36,7 @@ export function RegionOverlays({ show }: RegionOverlaysProps) {
               opacity: 0.3,
               interactive: false,
             }}
-          >
-            <Tooltip permanent direction="center" className="region-label">
-              {region.name}
-            </Tooltip>
-          </Polygon>
+          />
         )
       })}
     </>

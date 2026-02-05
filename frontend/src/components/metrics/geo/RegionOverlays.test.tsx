@@ -11,19 +11,8 @@ import { RegionOverlays } from './RegionOverlays'
 
 // Mock react-leaflet components
 vi.mock('react-leaflet', () => ({
-  Polygon: ({ children, ...props }: { children?: React.ReactNode; [key: string]: unknown }) => (
-    <div data-testid="polygon" data-positions={JSON.stringify(props['positions'])}>
-      {children}
-    </div>
-  ),
-  Tooltip: ({ children, ...props }: { children?: React.ReactNode; [key: string]: unknown }) => (
-    <div
-      data-testid="tooltip"
-      data-permanent={props['permanent'] ? 'true' : 'false'}
-      data-direction={String(props['direction'])}
-    >
-      {children}
-    </div>
+  Polygon: (props: { [key: string]: unknown }) => (
+    <div data-testid="polygon" data-positions={JSON.stringify(props['positions'])} />
   ),
 }))
 
@@ -39,25 +28,14 @@ describe('RegionOverlays', () => {
     expect(polygons).toHaveLength(6)
   })
 
-  it('renders permanent tooltips for each region', () => {
+  it('each polygon has positions data', () => {
     const { getAllByTestId } = render(<RegionOverlays show={true} />)
-    const tooltips = getAllByTestId('tooltip')
-    expect(tooltips).toHaveLength(6)
-    for (const tooltip of tooltips) {
-      expect(tooltip.getAttribute('data-permanent')).toBe('true')
-      expect(tooltip.getAttribute('data-direction')).toBe('center')
+    const polygons = getAllByTestId('polygon')
+    for (const polygon of polygons) {
+      const positions = polygon.getAttribute('data-positions')
+      expect(positions).toBeTruthy()
+      const parsed = JSON.parse(positions!)
+      expect(parsed.length).toBeGreaterThan(0)
     }
-  })
-
-  it('renders region names in tooltips', () => {
-    const { getAllByTestId } = render(<RegionOverlays show={true} />)
-    const tooltips = getAllByTestId('tooltip')
-    const names = tooltips.map((t) => t.textContent)
-    expect(names).toContain('Marin County')
-    expect(names).toContain('San Francisco')
-    expect(names).toContain('Peninsula')
-    expect(names).toContain('South Bay')
-    expect(names).toContain('East Bay')
-    expect(names).toContain('Napa / Sonoma')
   })
 })
