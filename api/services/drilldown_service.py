@@ -78,9 +78,20 @@ class DrilldownService:
                 enrollment_history = await self.repo.fetch_summer_enrollment_history(person_ids, year)
                 _, first_year_by_person = compute_summer_metrics(enrollment_history, person_ids)
 
+        # For synagogue breakdown, pre-fetch congregation mapping
+        congregation_by_person: dict[int, str] = {}
+        if breakdown_type == "synagogue":
+            congregation_by_person = await self.repo.fetch_congregation_by_person(year)
+
         # Filter by breakdown criteria
         filtered_attendees = self._filter_by_breakdown(
-            filtered_attendees, persons, sessions, breakdown_type, breakdown_value, first_year_by_person
+            filtered_attendees,
+            persons,
+            sessions,
+            breakdown_type,
+            breakdown_value,
+            first_year_by_person,
+            congregation_by_person,
         )
 
         # Build response
@@ -156,6 +167,7 @@ class DrilldownService:
         breakdown_type: str,
         breakdown_value: str,
         first_year_by_person: dict[int, int] | None = None,
+        congregation_by_person: dict[int, str] | None = None,
     ) -> list[Any]:
         """Filter attendees by the specific breakdown criteria.
 
@@ -167,12 +179,16 @@ class DrilldownService:
             breakdown_value: Value to match.
             first_year_by_person: Pre-computed first summer year by person_id
                 (only populated for first_summer_year breakdown).
+            congregation_by_person: Pre-computed congregation by person cm_id
+                (only populated for synagogue breakdown).
 
         Returns:
             Filtered list of attendees.
         """
         if first_year_by_person is None:
             first_year_by_person = {}
+        if congregation_by_person is None:
+            congregation_by_person = {}
         filtered = []
         for a in attendees:
             person_id = getattr(a, "person_id", None)
@@ -215,6 +231,23 @@ class DrilldownService:
             elif breakdown_type == "school":
                 if person and getattr(person, "school", None) == breakdown_value:
                     filtered.append(a)
+
+            elif breakdown_type == "city":
+                # Match on person.address["city"]
+                if person:
+                    address = getattr(person, "address", None)
+                    if address and isinstance(address, dict):
+                        city = address.get("city", "") or ""
+                        if city == breakdown_value:
+                            filtered.append(a)
+
+            elif breakdown_type == "synagogue":
+                # Match on congregation/synagogue from person custom values
+                pid = int(person_id) if person_id is not None else None
+                if pid is not None:
+                    congregation = congregation_by_person.get(pid, "")
+                    if congregation == breakdown_value:
+                        filtered.append(a)
 
             elif breakdown_type == "years_at_camp":
                 try:
