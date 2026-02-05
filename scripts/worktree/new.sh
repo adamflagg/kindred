@@ -232,10 +232,18 @@ cp -r frontend/dist/* pocketbase/pb_public/
 cat > /tmp/Caddyfile.$$ << EOF
 :$CADDY_PORT {
     @pocketbase path /api/collections /api/collections/* /api/files/* /api/realtime /api/custom/* /api/oauth2-redirect
-    handle @pocketbase { reverse_proxy 127.0.0.1:$POCKETBASE_PORT }
-    handle /_/* { reverse_proxy 127.0.0.1:$POCKETBASE_PORT }
-    handle /health { reverse_proxy 127.0.0.1:$FASTAPI_PORT }
-    handle /api/* { reverse_proxy 127.0.0.1:$FASTAPI_PORT }
+    handle @pocketbase {
+        reverse_proxy 127.0.0.1:$POCKETBASE_PORT
+    }
+    handle /_/* {
+        reverse_proxy 127.0.0.1:$POCKETBASE_PORT
+    }
+    handle /health {
+        reverse_proxy 127.0.0.1:$FASTAPI_PORT
+    }
+    handle /api/* {
+        reverse_proxy 127.0.0.1:$FASTAPI_PORT
+    }
     handle {
         root * $(pwd)/pocketbase/pb_public
         try_files {path} /index.html
