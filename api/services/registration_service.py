@@ -572,7 +572,7 @@ class RegistrationService:
         )
 
     def _compute_school_breakdown(self, camper_history: list[Any], total: int) -> list[SchoolBreakdown]:
-        """Compute school breakdown (top 20)."""
+        """Compute school breakdown from camper history."""
         school_counts: dict[str, int] = {}
         for record in camper_history:
             school = getattr(record, "school", "") or ""
@@ -585,11 +585,11 @@ class RegistrationService:
                 count=c,
                 percentage=calculate_percentage(c, total),
             )
-            for s, c in sorted(school_counts.items(), key=lambda x: -x[1])[:20]
+            for s, c in sorted(school_counts.items(), key=lambda x: -x[1])
         ]
 
     def _compute_city_breakdown(self, camper_history: list[Any], total: int) -> list[CityBreakdown]:
-        """Compute city breakdown (top 20)."""
+        """Compute city breakdown from camper history."""
         city_counts: dict[str, int] = {}
         for record in camper_history:
             city = getattr(record, "city", "") or ""
@@ -602,11 +602,11 @@ class RegistrationService:
                 count=cnt,
                 percentage=calculate_percentage(cnt, total),
             )
-            for c, cnt in sorted(city_counts.items(), key=lambda x: -x[1])[:20]
+            for c, cnt in sorted(city_counts.items(), key=lambda x: -x[1])
         ]
 
     def _compute_synagogue_breakdown(self, camper_history: list[Any], total: int) -> list[SynagogueBreakdown]:
-        """Compute synagogue breakdown (top 20). DEPRECATED: Use _compute_synagogue_breakdown_from_persons."""
+        """Compute synagogue breakdown from camper history. DEPRECATED: Use _compute_synagogue_breakdown_from_persons."""
         synagogue_counts: dict[str, int] = {}
         for record in camper_history:
             synagogue = getattr(record, "synagogue", "") or ""
@@ -619,15 +619,16 @@ class RegistrationService:
                 count=c,
                 percentage=calculate_percentage(c, total),
             )
-            for s, c in sorted(synagogue_counts.items(), key=lambda x: -x[1])[:20]
+            for s, c in sorted(synagogue_counts.items(), key=lambda x: -x[1])
         ]
 
     def _compute_school_breakdown_from_persons(
         self, person_ids: set[int], persons: dict[int, Any], total: int
     ) -> list[SchoolBreakdown]:
-        """Compute school breakdown from persons table (top 20).
+        """Compute school breakdown from persons table.
 
         Uses persons.school field directly instead of camper_history.
+        Returns all schools sorted by count (descending).
         """
         school_counts: dict[str, int] = {}
         for pid in person_ids:
@@ -644,15 +645,16 @@ class RegistrationService:
                 count=c,
                 percentage=calculate_percentage(c, total),
             )
-            for s, c in sorted(school_counts.items(), key=lambda x: -x[1])[:20]
+            for s, c in sorted(school_counts.items(), key=lambda x: -x[1])
         ]
 
     def _compute_city_breakdown_from_persons(
         self, person_ids: set[int], persons: dict[int, Any], total: int
     ) -> list[CityBreakdown]:
-        """Compute city breakdown from persons table (top 20).
+        """Compute city breakdown from persons table.
 
         Uses persons.address["city"] (JSON field) instead of camper_history.
+        Returns all cities sorted by count (descending).
         """
         city_counts: dict[str, int] = {}
         for pid in person_ids:
@@ -672,7 +674,7 @@ class RegistrationService:
                 count=cnt,
                 percentage=calculate_percentage(cnt, total),
             )
-            for c, cnt in sorted(city_counts.items(), key=lambda x: -x[1])[:20]
+            for c, cnt in sorted(city_counts.items(), key=lambda x: -x[1])
         ]
 
     def _compute_synagogue_breakdown_from_persons(
@@ -682,10 +684,11 @@ class RegistrationService:
         synagogue_by_household: dict[int, str],
         total: int,
     ) -> list[SynagogueBreakdown]:
-        """Compute synagogue breakdown from household custom values (top 20).
+        """Compute synagogue breakdown from household custom values.
 
         Uses the synagogue_by_household mapping (from household_custom_values)
         which maps household CampMinder IDs to synagogue names.
+        Returns all synagogues sorted by count (descending).
         """
         synagogue_counts: dict[str, int] = {}
         for pid in person_ids:
@@ -705,7 +708,7 @@ class RegistrationService:
                 count=c,
                 percentage=calculate_percentage(c, total),
             )
-            for s, c in sorted(synagogue_counts.items(), key=lambda x: -x[1])[:20]
+            for s, c in sorted(synagogue_counts.items(), key=lambda x: -x[1])
         ]
 
     def _compute_first_year_breakdown(self, camper_history: list[Any], total: int) -> list[FirstYearBreakdown]:

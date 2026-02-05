@@ -349,3 +349,50 @@ class MetricsRepository:
         except Exception as e:
             logger.warning(f"Error fetching synagogue custom values: {e}")
             return {}
+
+    async def fetch_congregation_by_person(self, year: int) -> dict[int, str]:
+        """Fetch congregation values from person_custom_values.
+
+        Uses "HH-Name of Congregation" field which has much richer data
+        than the household-level "Synagogue" field.
+
+        Args:
+            year: The year to filter custom values for.
+
+        Returns:
+            Dictionary mapping person cm_id (int) to congregation name (str).
+            Returns empty dict if the field is not found or has no data.
+        """
+        try:
+            # Find the "HH-Name of Congregation" field definition
+            field_def = await asyncio.to_thread(
+                self.pb.collection("custom_field_defs").get_first_list_item,
+                'name = "HH-Name of Congregation"',
+            )
+        except Exception as e:
+            logger.debug(f"HH-Name of Congregation field not found: {e}")
+            return {}
+
+        try:
+            filter_str = f'field_definition = "{field_def.id}" && year = {year} && value != ""'
+            custom_values = await asyncio.to_thread(
+                self.pb.collection("person_custom_values").get_full_list,
+                query_params={"filter": filter_str, "expand": "person"},
+            )
+
+            result: dict[int, str] = {}
+            for cv in custom_values:
+                value = getattr(cv, "value", "")
+                if not value:
+                    continue
+                expand = getattr(cv, "expand", {})
+                person = expand.get("person") if expand else None
+                if person:
+                    person_cm_id = getattr(person, "cm_id", None)
+                    if person_cm_id is not None:
+                        result[int(person_cm_id)] = value
+
+            return result
+        except Exception as e:
+            logger.warning(f"Error fetching congregation custom values: {e}")
+            return {}
