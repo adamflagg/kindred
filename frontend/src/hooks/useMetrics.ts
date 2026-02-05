@@ -2,15 +2,15 @@
  * React Query hooks for metrics API endpoints.
  */
 
-import { useQuery, keepPreviousData } from '@tanstack/react-query';
-import { useApiWithAuth } from './useApiWithAuth';
-import { queryKeys, syncDataOptions } from '../utils/queryKeys';
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { useApiWithAuth } from "./useApiWithAuth";
+import { queryKeys, syncDataOptions } from "../utils/queryKeys";
 import type {
   RetentionMetrics,
   RegistrationMetrics,
   ComparisonMetrics,
   HistoricalTrendsResponse,
-} from '../types/metrics';
+} from "../types/metrics";
 
 /**
  * Fetch retention metrics comparing two years.
@@ -19,28 +19,33 @@ export function useRetentionMetrics(
   baseYear: number,
   compareYear: number,
   sessionTypes?: string,
-  sessionCmId?: number
+  sessionCmId?: number,
 ) {
   const { fetchWithAuth } = useApiWithAuth();
 
   return useQuery({
-    queryKey: queryKeys.retention(baseYear, compareYear, sessionTypes, sessionCmId),
+    queryKey: queryKeys.retention(
+      baseYear,
+      compareYear,
+      sessionTypes,
+      sessionCmId,
+    ),
     queryFn: async (): Promise<RetentionMetrics> => {
       const params = new URLSearchParams({
         base_year: baseYear.toString(),
         compare_year: compareYear.toString(),
       });
       if (sessionTypes) {
-        params.set('session_types', sessionTypes);
+        params.set("session_types", sessionTypes);
       }
       if (sessionCmId !== undefined) {
-        params.set('session_cm_id', sessionCmId.toString());
+        params.set("session_cm_id", sessionCmId.toString());
       }
 
       const response = await fetchWithAuth(`/api/metrics/retention?${params}`);
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
-        throw new Error(error.detail || 'Failed to fetch retention metrics');
+        throw new Error(error.detail || "Failed to fetch retention metrics");
       }
       return response.json();
     },
@@ -57,7 +62,7 @@ export function useRegistrationMetrics(
   year: number,
   sessionTypes?: string,
   statuses?: string,
-  sessionCmId?: number
+  sessionCmId?: number,
 ) {
   const { fetchWithAuth } = useApiWithAuth();
 
@@ -68,19 +73,21 @@ export function useRegistrationMetrics(
         year: year.toString(),
       });
       if (sessionTypes) {
-        params.set('session_types', sessionTypes);
+        params.set("session_types", sessionTypes);
       }
       if (statuses) {
-        params.set('statuses', statuses);
+        params.set("statuses", statuses);
       }
       if (sessionCmId !== undefined) {
-        params.set('session_cm_id', sessionCmId.toString());
+        params.set("session_cm_id", sessionCmId.toString());
       }
 
-      const response = await fetchWithAuth(`/api/metrics/registration?${params}`);
+      const response = await fetchWithAuth(
+        `/api/metrics/registration?${params}`,
+      );
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
-        throw new Error(error.detail || 'Failed to fetch registration metrics');
+        throw new Error(error.detail || "Failed to fetch registration metrics");
       }
       return response.json();
     },
@@ -107,7 +114,7 @@ export function useComparisonMetrics(yearA: number, yearB: number) {
       const response = await fetchWithAuth(`/api/metrics/comparison?${params}`);
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
-        throw new Error(error.detail || 'Failed to fetch comparison metrics');
+        throw new Error(error.detail || "Failed to fetch comparison metrics");
       }
       return response.json();
     },
@@ -120,29 +127,42 @@ export function useComparisonMetrics(yearA: number, yearB: number) {
 /**
  * Fetch historical trends across multiple years.
  * Default: last 5 years (2021-2025).
+ *
+ * @param years - Comma-separated years (e.g., "2021,2022,2023")
+ * @param sessionTypes - Comma-separated session types (e.g., "main,embedded,ag")
+ * @param sessionCmId - Filter to specific session by CampMinder ID.
+ *                      Uses name-matching across years to show trends
+ *                      for the same session across multiple years.
  */
-export function useHistoricalTrends(years?: string, sessionTypes?: string) {
+export function useHistoricalTrends(
+  years?: string,
+  sessionTypes?: string,
+  sessionCmId?: number,
+) {
   const { fetchWithAuth } = useApiWithAuth();
 
   return useQuery({
-    queryKey: queryKeys.historical(years, sessionTypes),
+    queryKey: queryKeys.historical(years, sessionTypes, sessionCmId),
     queryFn: async (): Promise<HistoricalTrendsResponse> => {
       const params = new URLSearchParams();
       if (years) {
-        params.set('years', years);
+        params.set("years", years);
       }
       if (sessionTypes) {
-        params.set('session_types', sessionTypes);
+        params.set("session_types", sessionTypes);
+      }
+      if (sessionCmId !== undefined) {
+        params.set("session_cm_id", sessionCmId.toString());
       }
 
       const url = params.toString()
         ? `/api/metrics/historical?${params}`
-        : '/api/metrics/historical';
+        : "/api/metrics/historical";
 
       const response = await fetchWithAuth(url);
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
-        throw new Error(error.detail || 'Failed to fetch historical trends');
+        throw new Error(error.detail || "Failed to fetch historical trends");
       }
       return response.json();
     },

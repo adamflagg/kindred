@@ -8,102 +8,181 @@
  */
 export const queryKeys = {
   // Sessions (Tier 1 - sync data)
-  sessions: (year: number) => ['sessions', year] as const,
-  allSessions: (year: number) => ['all-sessions', year] as const,
-  session: (id: string) => ['session', id] as const,
-  sessionGroups: (year: number) => ['session-groups', year] as const,
-  sessionPrograms: (year: number) => ['session-programs', year] as const,
+  sessions: (year: number) => ["sessions", year] as const,
+  allSessions: (year: number) => ["all-sessions", year] as const,
+  session: (id: string) => ["session", id] as const,
+  sessionGroups: (year: number) => ["session-groups", year] as const,
+  sessionPrograms: (year: number) => ["session-programs", year] as const,
 
   // Campers (Tier 1 - sync data)
-  allCampers: () => ['all-campers'] as const,
-  camper: (id: string) => ['camper', id] as const,
-  campersForSession: (sessionId: string, agSessions: string[], year?: number) =>
+  allCampers: () => ["all-campers"] as const,
+  camper: (id: string) => ["camper", id] as const,
+  campersForSession: (
+    sessionId: string,
+    agSessions: string[],
+    year?: number,
+  ) =>
     year
-      ? (['campers', sessionId, agSessions.sort(), year] as const)
-      : (['campers', sessionId, agSessions.sort()] as const),
+      ? (["campers", sessionId, agSessions.sort(), year] as const)
+      : (["campers", sessionId, agSessions.sort()] as const),
 
   // Bunks (Tier 1 - sync data)
   bunksForSession: (sessionId: string, agSessions: string[]) =>
-    ['bunks', sessionId, agSessions.sort()] as const,
+    ["bunks", sessionId, agSessions.sort()] as const,
 
   // Historical data (Tier 1 - sync data)
   historicalBunking: (personCmId: number, year: number) =>
-    ['historical-bunking', personCmId, year] as const,
-  camperHistory: (personId: string) => ['camper-history', personId] as const,
+    ["historical-bunking", personCmId, year] as const,
+  camperHistory: (personId: string) => ["camper-history", personId] as const,
 
   // Statistics (Tier 1 - sync data)
-  sessionStats: (sessionId: string) => ['session-stats', sessionId] as const,
+  sessionStats: (sessionId: string) => ["session-stats", sessionId] as const,
 
   // Scenarios (Tier 2 - user data)
   savedScenarios: (sessionCmId: number, year?: number) =>
     year
-      ? (['saved-scenarios', sessionCmId, year] as const)
-      : (['saved-scenarios', sessionCmId] as const),
-  scenario: (id: string) => ['scenario', id] as const,
+      ? (["saved-scenarios", sessionCmId, year] as const)
+      : (["saved-scenarios", sessionCmId] as const),
+  scenario: (id: string) => ["scenario", id] as const,
 
   // Bunk Requests (Tier 2 - user data)
   bunkRequests: (sessionId: string, year: number) =>
-    ['bunk-requests', sessionId, year] as const,
+    ["bunk-requests", sessionId, year] as const,
 
   // Locked Groups (Tier 2 - user data)
   lockedGroups: (scenarioId: string, sessionId: string, year: number) =>
-    ['locked-groups', scenarioId, sessionId, year] as const,
+    ["locked-groups", scenarioId, sessionId, year] as const,
 
   // Sync Status (Tier 2 - frequently updated)
-  syncStatus: () => ['sync-status'] as const,
-  syncStatusForService: (service: string) => ['sync-status', service] as const,
+  syncStatus: () => ["sync-status"] as const,
+  syncStatusForService: (service: string) => ["sync-status", service] as const,
 
   // Admin/Config (Tier 2 - user data)
-  adminSettings: () => ['admin-settings'] as const,
-  solverConfig: () => ['solver-config'] as const,
+  adminSettings: () => ["admin-settings"] as const,
+  solverConfig: () => ["solver-config"] as const,
 
   // Debug (Tier 2 - frequently updated during testing)
-  parseAnalysis: (filters?: { sessionCmId?: number | undefined; sourceField?: string | undefined }) =>
+  parseAnalysis: (filters?: {
+    sessionCmId?: number | undefined;
+    sourceField?: string | undefined;
+  }) =>
     filters
-      ? (['parse-analysis', filters.sessionCmId, filters.sourceField] as const)
-      : (['parse-analysis'] as const),
-  parseAnalysisDetail: (id: string) => ['parse-analysis', id] as const,
-  originalRequests: (year: number, filters?: { sessionCmId?: number | undefined; sourceField?: string | undefined }) =>
+      ? (["parse-analysis", filters.sessionCmId, filters.sourceField] as const)
+      : (["parse-analysis"] as const),
+  parseAnalysisDetail: (id: string) => ["parse-analysis", id] as const,
+  originalRequests: (
+    year: number,
+    filters?: {
+      sessionCmId?: number | undefined;
+      sourceField?: string | undefined;
+    },
+  ) =>
     filters
-      ? (['original-requests', year, filters.sessionCmId, filters.sourceField] as const)
-      : (['original-requests', year] as const),
-  originalRequestsWithStatus: (year: number, filters?: { sessionCmId?: number | undefined; sourceField?: string | undefined }) =>
+      ? ([
+          "original-requests",
+          year,
+          filters.sessionCmId,
+          filters.sourceField,
+        ] as const)
+      : (["original-requests", year] as const),
+  originalRequestsWithStatus: (
+    year: number,
+    filters?: {
+      sessionCmId?: number | undefined;
+      sourceField?: string | undefined;
+    },
+  ) =>
     filters
-      ? (['original-requests-with-status', year, filters.sessionCmId, filters.sourceField] as const)
-      : (['original-requests-with-status', year] as const),
+      ? ([
+          "original-requests-with-status",
+          year,
+          filters.sessionCmId,
+          filters.sourceField,
+        ] as const)
+      : (["original-requests-with-status", year] as const),
   parseResultWithFallback: (originalRequestId: string) =>
-    ['parse-result-with-fallback', originalRequestId] as const,
+    ["parse-result-with-fallback", originalRequestId] as const,
 
   // Prompts (Tier 2 - editable config files)
-  prompts: () => ['prompts'] as const,
-  prompt: (name: string) => ['prompts', name] as const,
+  prompts: () => ["prompts"] as const,
+  prompt: (name: string) => ["prompts", name] as const,
 
   // Metrics (Tier 1 - sync data, historical analysis)
-  retention: (baseYear: number, compareYear: number, sessionTypes?: string, sessionCmId?: number) =>
+  retention: (
+    baseYear: number,
+    compareYear: number,
+    sessionTypes?: string,
+    sessionCmId?: number,
+  ) =>
     sessionCmId
-      ? (['metrics', 'retention', baseYear, compareYear, sessionTypes, sessionCmId] as const)
+      ? ([
+          "metrics",
+          "retention",
+          baseYear,
+          compareYear,
+          sessionTypes,
+          sessionCmId,
+        ] as const)
       : sessionTypes
-        ? (['metrics', 'retention', baseYear, compareYear, sessionTypes] as const)
-        : (['metrics', 'retention', baseYear, compareYear] as const),
-  metricsSessions: (year: number) => ['metrics', 'sessions', year] as const,
-  registration: (year: number, sessionTypes?: string, statuses?: string, sessionCmId?: number) =>
+        ? ([
+            "metrics",
+            "retention",
+            baseYear,
+            compareYear,
+            sessionTypes,
+          ] as const)
+        : (["metrics", "retention", baseYear, compareYear] as const),
+  metricsSessions: (year: number) => ["metrics", "sessions", year] as const,
+  registration: (
+    year: number,
+    sessionTypes?: string,
+    statuses?: string,
+    sessionCmId?: number,
+  ) =>
     sessionCmId
-      ? (['metrics', 'registration', year, sessionTypes, statuses, sessionCmId] as const)
+      ? ([
+          "metrics",
+          "registration",
+          year,
+          sessionTypes,
+          statuses,
+          sessionCmId,
+        ] as const)
       : sessionTypes || statuses
-        ? (['metrics', 'registration', year, sessionTypes, statuses] as const)
-        : (['metrics', 'registration', year] as const),
+        ? (["metrics", "registration", year, sessionTypes, statuses] as const)
+        : (["metrics", "registration", year] as const),
   comparison: (yearA: number, yearB: number) =>
-    ['metrics', 'comparison', yearA, yearB] as const,
-  historical: (years?: string, sessionTypes?: string) =>
-    years || sessionTypes
-      ? (['metrics', 'historical', years, sessionTypes] as const)
-      : (['metrics', 'historical'] as const),
-  retentionTrends: (currentYear: number, numYears?: number, sessionTypes?: string, sessionCmId?: number) =>
+    ["metrics", "comparison", yearA, yearB] as const,
+  historical: (years?: string, sessionTypes?: string, sessionCmId?: number) =>
+    sessionCmId !== undefined
+      ? (["metrics", "historical", years, sessionTypes, sessionCmId] as const)
+      : years || sessionTypes
+        ? (["metrics", "historical", years, sessionTypes] as const)
+        : (["metrics", "historical"] as const),
+  retentionTrends: (
+    currentYear: number,
+    numYears?: number,
+    sessionTypes?: string,
+    sessionCmId?: number,
+  ) =>
     sessionCmId
-      ? (['metrics', 'retention-trends', currentYear, numYears, sessionTypes, sessionCmId] as const)
+      ? ([
+          "metrics",
+          "retention-trends",
+          currentYear,
+          numYears,
+          sessionTypes,
+          sessionCmId,
+        ] as const)
       : numYears || sessionTypes
-        ? (['metrics', 'retention-trends', currentYear, numYears, sessionTypes] as const)
-        : (['metrics', 'retention-trends', currentYear] as const),
+        ? ([
+            "metrics",
+            "retention-trends",
+            currentYear,
+            numYears,
+            sessionTypes,
+          ] as const)
+        : (["metrics", "retention-trends", currentYear] as const),
   drilldown: (
     year: number,
     breakdownType?: string,
@@ -113,8 +192,8 @@ export const queryKeys = {
     statusFilter?: string,
   ) =>
     [
-      'metrics',
-      'drilldown',
+      "metrics",
+      "drilldown",
       year,
       breakdownType,
       breakdownValue,

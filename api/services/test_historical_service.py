@@ -74,7 +74,11 @@ class TestHistoricalServiceBasic:
         history_2024 = [make_mock_camper_history(i, "M") for i in range(1, 11)]  # 10 campers
         history_2025 = [make_mock_camper_history(i, "M") for i in range(1, 16)]  # 15 campers
 
-        def mock_fetch_history(year: int, session_types: list[str] | None = None) -> list[Any]:
+        def mock_fetch_history(
+            year: int,
+            session_types: list[str] | None = None,
+            session_name: str | None = None,
+        ) -> list[Any]:
             return history_2024 if year == 2024 else history_2025
 
         mock_repository.fetch_camper_history = AsyncMock(side_effect=mock_fetch_history)
@@ -200,8 +204,10 @@ class TestHistoricalServiceFiltering:
             session_types=["main", "ag"],
         )
 
-        # Verify repository was called with session_types
-        mock_repository.fetch_camper_history.assert_called_with(2024, session_types=["main", "ag"])
+        # Verify repository was called with session_types (session_name=None when no session filter)
+        mock_repository.fetch_camper_history.assert_called_with(
+            2024, session_types=["main", "ag"], session_name=None
+        )
 
 
 # ============================================================================

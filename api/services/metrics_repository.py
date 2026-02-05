@@ -119,6 +119,7 @@ class MetricsRepository:
         self,
         year: int,
         session_types: list[str] | None = None,
+        session_name: str | None = None,
     ) -> list[Any]:
         """Fetch camper_history records for a given year.
 
@@ -128,6 +129,9 @@ class MetricsRepository:
         Args:
             year: The year to fetch records for.
             session_types: Optional list of session types to filter.
+            session_name: Optional session name to filter by. Used for
+                cross-year filtering where the same session name appears
+                across multiple years with different cm_ids.
 
         Returns:
             List of camper_history records. Returns empty list on error.
@@ -139,6 +143,12 @@ class MetricsRepository:
             if session_types:
                 type_filter = " || ".join(f'session_type = "{t}"' for t in session_types)
                 filter_str = f"({filter_str}) && ({type_filter})"
+
+            # Filter by session name for cross-year filtering
+            if session_name:
+                # Escape quotes in session name for PocketBase filter
+                escaped_name = session_name.replace('"', '\\"')
+                filter_str = f'({filter_str}) && session_name = "{escaped_name}"'
 
             records = await asyncio.to_thread(
                 self.pb.collection("camper_history").get_full_list,
