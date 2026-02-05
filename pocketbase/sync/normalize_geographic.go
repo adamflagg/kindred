@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"math"
@@ -29,17 +30,18 @@ const (
 // Fuzzy matching threshold (0-100)
 const defaultFuzzyThreshold = 90
 
-// NormalizeGeographicSync normalizes geographic data in camper_history
-// and stores mappings in normalized_mappings table.
+// NormalizeGeographicSync normalizes geographic data from enrolled attendees
+// and stores mappings in normalized_mappings table with person+session keys.
 //
 // This is a pure Go implementation that:
-// 1. Loads unique city/school/congregation values from camper_history
-// 2. Applies preprocessing (N/A filtering, whitespace normalization)
-// 3. Applies domain-specific normalization (city state suffix removal)
-// 4. Clusters similar values using fuzzy matching
-// 5. Upserts to normalized_mappings table
-// 6. Updates camper_history.*_normalized columns
-// 7. Deletes orphaned mappings
+// 1. Loads enrolled attendees (status_id=2, is_active=1) with person+session data
+// 2. Gets school/city from persons table, congregation from person_custom_values
+// 3. Applies preprocessing (N/A filtering, whitespace normalization)
+// 4. Applies domain-specific normalization (city state suffix removal)
+// 5. Clusters similar values using fuzzy matching
+// 6. Upserts to normalized_mappings with (person, session, category) keys
+// 7. Updates camper_history.*_normalized columns for backwards compatibility
+// 8. Deletes orphaned mappings
 type NormalizeGeographicSync struct {
 	App            core.App
 	Year           int
@@ -48,6 +50,28 @@ type NormalizeGeographicSync struct {
 	Stats          Stats
 	SyncSuccessful bool
 	ProcessedKeys  map[string]bool // Track processed keys for orphan detection
+}
+
+// attendeeGeoData holds geographic data for one attendee
+type attendeeGeoData struct {
+	PersonPBID   string
+	PersonCMID   int
+	SessionPBID  string
+	SessionCMID  int
+	School       string // from persons.school
+	City         string // from persons.address.city
+	Congregation string // from person_custom_values (HH-Name of Congregation)
+}
+
+// personSessionMapping holds a computed mapping for person+session
+type personSessionMapping struct {
+	personPBID      string
+	sessionPBID     string
+	category        string
+	originalValue   string
+	normalizedValue string
+	confidence      float64
+	year            int
 }
 
 // NewNormalizeGeographicSync creates a new normalize geographic sync service
@@ -112,33 +136,30 @@ func (n *NormalizeGeographicSync) Sync(ctx context.Context) error {
 		"dry_run", n.DryRun,
 	)
 
-	// Step 1: Load unique values from camper_history
-	uniqueValues, err := n.loadUniqueValues(ctx, year)
+	// Step 1: Load enrolled attendees with geographic data
+	attendeeData, err := n.loadAttendeeGeoData(ctx, year)
 	if err != nil {
-		return fmt.Errorf("loading unique values: %w", err)
+		return fmt.Errorf("loading attendee geo data: %w", err)
 	}
 
-	if len(uniqueValues[categoryCity]) == 0 &&
-		len(uniqueValues[categorySchool]) == 0 &&
-		len(uniqueValues[categoryCongregation]) == 0 {
-		slog.Info("No geographic data found for year", "year", year)
+	if len(attendeeData) == 0 {
+		slog.Info("No enrolled attendees found for year", "year", year)
 		n.SyncSuccessful = true
 		return nil
 	}
 
-	slog.Info("Loaded unique geographic values",
-		"cities", len(uniqueValues[categoryCity]),
-		"schools", len(uniqueValues[categorySchool]),
-		"congregations", len(uniqueValues[categoryCongregation]),
+	slog.Info("Loaded attendee geographic data",
+		"attendees", len(attendeeData),
 	)
 
-	// Step 2: Preprocess and normalize values
-	normalizedMappings := n.computeNormalizedMappings(uniqueValues)
+	// Step 2: Build normalization lookup maps from all unique values
+	normalizedLookup := n.buildNormalizationLookup(attendeeData)
 
-	slog.Info("Computed normalized mappings",
-		"city_mappings", len(normalizedMappings[categoryCity]),
-		"school_mappings", len(normalizedMappings[categorySchool]),
-		"congregation_mappings", len(normalizedMappings[categoryCongregation]),
+	// Step 3: Create person+session mappings
+	mappings := n.createPersonSessionMappings(attendeeData, normalizedLookup, year)
+
+	slog.Info("Created person+session mappings",
+		"total_mappings", len(mappings),
 	)
 
 	if n.DryRun {
@@ -147,26 +168,26 @@ func (n *NormalizeGeographicSync) Sync(ctx context.Context) error {
 		return nil
 	}
 
-	// Step 3: Preload existing mappings for upsert
+	// Step 4: Preload existing mappings for upsert
 	existingMappings, err := n.preloadExistingMappings(year)
 	if err != nil {
 		return fmt.Errorf("preloading existing mappings: %w", err)
 	}
 
-	// Step 4: Upsert normalized_mappings
-	if err := n.upsertNormalizedMappings(ctx, normalizedMappings, existingMappings, year); err != nil {
+	// Step 5: Upsert normalized_mappings
+	if err := n.upsertPersonSessionMappings(ctx, mappings, existingMappings, year); err != nil {
 		return fmt.Errorf("upserting normalized mappings: %w", err)
 	}
 
-	// Step 5: Update camper_history.*_normalized columns
-	if err := n.updateCamperHistoryNormalized(ctx, normalizedMappings, year); err != nil {
+	// Step 6: Update camper_history.*_normalized columns (backwards compatibility)
+	if err := n.updateCamperHistoryNormalized(ctx, normalizedLookup, year); err != nil {
 		return fmt.Errorf("updating camper history: %w", err)
 	}
 
 	// Mark sync as successful before orphan deletion
 	n.SyncSuccessful = true
 
-	// Step 6: Delete orphaned mappings
+	// Step 7: Delete orphaned mappings
 	n.deleteOrphans(existingMappings)
 
 	// WAL checkpoint
@@ -188,24 +209,29 @@ func (n *NormalizeGeographicSync) Sync(ctx context.Context) error {
 	return nil
 }
 
-// normalizedMapping holds a computed mapping from original to normalized value
-type normalizedMapping struct {
-	category        string
-	originalValue   string
-	normalizedValue string
-	occurrenceCount int
-	confidence      float64
-}
+// loadAttendeeGeoData loads enrolled attendees with their geographic data
+func (n *NormalizeGeographicSync) loadAttendeeGeoData(ctx context.Context, year int) ([]attendeeGeoData, error) {
+	var result []attendeeGeoData
 
-// loadUniqueValues loads unique city/school/congregation values from camper_history
-func (n *NormalizeGeographicSync) loadUniqueValues(ctx context.Context, year int) (map[string]map[string]int, error) {
-	result := map[string]map[string]int{
-		categoryCity:         make(map[string]int),
-		categorySchool:       make(map[string]int),
-		categoryCongregation: make(map[string]int),
+	// Load congregation field definition ID
+	congregationFieldID, err := n.getCongregationFieldID()
+	if err != nil {
+		slog.Warn("Could not find congregation field definition", "error", err)
+		// Continue without congregation data
 	}
 
-	filter := fmt.Sprintf("year = %d", year)
+	// Load person congregations from person_custom_values
+	congregationByPersonPBID := make(map[string]string)
+	if congregationFieldID != "" {
+		congregationByPersonPBID, err = n.loadPersonCongregations(year, congregationFieldID)
+		if err != nil {
+			slog.Warn("Could not load person congregations", "error", err)
+			// Continue without congregation data
+		}
+	}
+
+	// Load enrolled attendees (status_id=2, is_active=1)
+	filter := fmt.Sprintf("year = %d && is_active = 1 && status_id = 2", year)
 	page := 1
 	perPage := 500
 
@@ -217,29 +243,54 @@ func (n *NormalizeGeographicSync) loadUniqueValues(ctx context.Context, year int
 		}
 
 		records, err := n.App.FindRecordsByFilter(
-			"camper_history",
+			"attendees",
 			filter,
 			"-created",
 			perPage,
 			(page-1)*perPage,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("querying camper_history page %d: %w", page, err)
+			return nil, fmt.Errorf("querying attendees page %d: %w", page, err)
+		}
+
+		// Expand person and session relations
+		if errs := n.App.ExpandRecords(records, []string{"person", "session"}, nil); len(errs) > 0 {
+			n.DebugLog("Some expansions failed", "errors", errs)
 		}
 
 		for _, record := range records {
-			// City
-			if city := record.GetString("city"); city != "" {
-				result[categoryCity][city]++
+			// Get person expand
+			personRecord := record.ExpandedOne("person")
+			if personRecord == nil {
+				continue
 			}
-			// School
-			if school := record.GetString("school"); school != "" {
-				result[categorySchool][school]++
+
+			// Get session expand
+			sessionRecord := record.ExpandedOne("session")
+			if sessionRecord == nil {
+				continue
 			}
-			// Synagogue/congregation
-			if synagogue := record.GetString("synagogue"); synagogue != "" {
-				result[categoryCongregation][synagogue]++
+
+			data := attendeeGeoData{
+				PersonPBID:  personRecord.Id,
+				PersonCMID:  int(personRecord.GetFloat("cm_id")),
+				SessionPBID: sessionRecord.Id,
+				SessionCMID: int(sessionRecord.GetFloat("cm_id")),
+				School:      personRecord.GetString("school"),
 			}
+
+			// Extract city from address JSON field
+			addressRaw := personRecord.Get("address")
+			if addressRaw != nil {
+				data.City = n.extractCityFromAddress(addressRaw)
+			}
+
+			// Get congregation from person_custom_values
+			if congregation, ok := congregationByPersonPBID[personRecord.Id]; ok {
+				data.Congregation = congregation
+			}
+
+			result = append(result, data)
 		}
 
 		if len(records) < perPage {
@@ -251,71 +302,228 @@ func (n *NormalizeGeographicSync) loadUniqueValues(ctx context.Context, year int
 	return result, nil
 }
 
-// computeNormalizedMappings applies normalization and clustering to unique values
-func (n *NormalizeGeographicSync) computeNormalizedMappings(
-	uniqueValues map[string]map[string]int,
-) map[string][]*normalizedMapping {
-	result := map[string][]*normalizedMapping{
-		categoryCity:         {},
-		categorySchool:       {},
-		categoryCongregation: {},
+// getCongregationFieldID returns the PocketBase ID for the "HH-Name of Congregation" field
+func (n *NormalizeGeographicSync) getCongregationFieldID() (string, error) {
+	records, err := n.App.FindRecordsByFilter(
+		"custom_field_defs",
+		`name = "HH-Name of Congregation"`,
+		"",
+		1,
+		0,
+	)
+	if err != nil || len(records) == 0 {
+		return "", fmt.Errorf("congregation field not found")
+	}
+	return records[0].Id, nil
+}
+
+// loadPersonCongregations loads congregation values from person_custom_values
+func (n *NormalizeGeographicSync) loadPersonCongregations(year int, fieldID string) (map[string]string, error) {
+	result := make(map[string]string)
+
+	filter := fmt.Sprintf(`field_definition = %q && year = %d && value != ""`, fieldID, year)
+	page := 1
+	perPage := 500
+
+	for {
+		records, err := n.App.FindRecordsByFilter(
+			"person_custom_values",
+			filter,
+			"-created",
+			perPage,
+			(page-1)*perPage,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("querying person_custom_values page %d: %w", page, err)
+		}
+
+		for _, record := range records {
+			personPBID := record.GetString("person")
+			value := record.GetString("value")
+			if personPBID != "" && value != "" {
+				result[personPBID] = value
+			}
+		}
+
+		if len(records) < perPage {
+			break
+		}
+		page++
 	}
 
-	for category, values := range uniqueValues {
-		// Step 1: Preprocess and normalize each value
-		preprocessed := make(map[string]string) // original → preprocessed
-		for original := range values {
-			var normalized string
-			switch category {
-			case categoryCity:
-				normalized = normalizeCityGo(original)
-			case categorySchool:
-				normalized = normalizeSchoolGo(original)
-			case categoryCongregation:
-				normalized = normalizeCongregationGo(original)
-			default:
-				normalized = preprocessGo(original)
-			}
-			if normalized != "" {
-				preprocessed[original] = normalized
+	slog.Info("Loaded person congregations", "count", len(result))
+	return result, nil
+}
+
+// extractCityFromAddress extracts city from address JSON field
+func (n *NormalizeGeographicSync) extractCityFromAddress(addressRaw any) string {
+	// Handle string (JSON encoded)
+	if addrStr, ok := addressRaw.(string); ok && addrStr != "" {
+		var addr map[string]interface{}
+		if err := json.Unmarshal([]byte(addrStr), &addr); err == nil {
+			if city, ok := addr["city"].(string); ok {
+				return city
 			}
 		}
+		return ""
+	}
 
-		// Step 2: Cluster similar normalized values
-		// IMPORTANT: Sort values before clustering to ensure deterministic order.
-		// Go map iteration order is non-deterministic, which would cause different
-		// clustering results on each run (non-idempotent behavior).
-		normalizedValues := make([]string, 0, len(preprocessed))
-		for _, v := range preprocessed {
-			normalizedValues = append(normalizedValues, v)
+	// Handle map directly
+	if addr, ok := addressRaw.(map[string]interface{}); ok {
+		if city, cityOk := addr["city"].(string); cityOk {
+			return city
 		}
-		sort.Strings(normalizedValues)
+	}
 
-		clusters := clusterSimilarValuesGo(normalizedValues, defaultFuzzyThreshold)
+	return ""
+}
 
-		// Step 3: Build mappings
-		for original, normalized := range preprocessed {
-			canonical := clusters[normalized]
-			if canonical == "" {
-				canonical = normalized
-			}
+// normalizationLookup maps original values to normalized values per category
+type normalizationLookup struct {
+	city         map[string]string // original → normalized
+	school       map[string]string
+	congregation map[string]string
+}
 
-			confidence := 1.0
-			if canonical != normalized {
-				confidence = 0.9 // Fuzzy match
-			}
+// buildNormalizationLookup builds lookup maps from unique values
+func (n *NormalizeGeographicSync) buildNormalizationLookup(data []attendeeGeoData) *normalizationLookup {
+	// Collect unique values per category
+	uniqueCities := make(map[string]bool)
+	uniqueSchools := make(map[string]bool)
+	uniqueCongregations := make(map[string]bool)
 
-			result[category] = append(result[category], &normalizedMapping{
-				category:        category,
-				originalValue:   original,
-				normalizedValue: canonical,
-				occurrenceCount: values[original],
-				confidence:      confidence,
-			})
+	for _, d := range data {
+		if d.City != "" {
+			uniqueCities[d.City] = true
 		}
+		if d.School != "" {
+			uniqueSchools[d.School] = true
+		}
+		if d.Congregation != "" {
+			uniqueCongregations[d.Congregation] = true
+		}
+	}
+
+	// Normalize and cluster each category
+	lookup := &normalizationLookup{
+		city:         n.normalizeAndCluster(uniqueCities, categoryCity),
+		school:       n.normalizeAndCluster(uniqueSchools, categorySchool),
+		congregation: n.normalizeAndCluster(uniqueCongregations, categoryCongregation),
+	}
+
+	return lookup
+}
+
+// normalizeAndCluster normalizes values and clusters similar ones
+func (n *NormalizeGeographicSync) normalizeAndCluster(unique map[string]bool, category string) map[string]string {
+	result := make(map[string]string)
+
+	// Preprocess each value
+	preprocessed := make(map[string]string) // original → preprocessed
+	for original := range unique {
+		var normalized string
+		switch category {
+		case categoryCity:
+			normalized = normalizeCityGo(original)
+		case categorySchool:
+			normalized = normalizeSchoolGo(original)
+		case categoryCongregation:
+			normalized = normalizeCongregationGo(original)
+		default:
+			normalized = preprocessGo(original)
+		}
+		if normalized != "" {
+			preprocessed[original] = normalized
+		}
+	}
+
+	// Sort values for deterministic clustering
+	normalizedValues := make([]string, 0, len(preprocessed))
+	for _, v := range preprocessed {
+		normalizedValues = append(normalizedValues, v)
+	}
+	sort.Strings(normalizedValues)
+
+	// Cluster similar values
+	clusters := clusterSimilarValuesGo(normalizedValues, defaultFuzzyThreshold)
+
+	// Build final lookup: original → canonical
+	for original, normalized := range preprocessed {
+		canonical := clusters[normalized]
+		if canonical == "" {
+			canonical = normalized
+		}
+		result[original] = canonical
 	}
 
 	return result
+}
+
+// createPersonSessionMappings creates mappings for each person+session
+func (n *NormalizeGeographicSync) createPersonSessionMappings(
+	data []attendeeGeoData,
+	lookup *normalizationLookup,
+	year int,
+) []*personSessionMapping {
+	var mappings []*personSessionMapping
+
+	for _, d := range data {
+		// School mapping
+		if d.School != "" {
+			if normalized, ok := lookup.school[d.School]; ok && normalized != "" {
+				mappings = append(mappings, &personSessionMapping{
+					personPBID:      d.PersonPBID,
+					sessionPBID:     d.SessionPBID,
+					category:        categorySchool,
+					originalValue:   d.School,
+					normalizedValue: normalized,
+					confidence:      n.computeConfidence(d.School, normalized),
+					year:            year,
+				})
+			}
+		}
+
+		// City mapping
+		if d.City != "" {
+			if normalized, ok := lookup.city[d.City]; ok && normalized != "" {
+				mappings = append(mappings, &personSessionMapping{
+					personPBID:      d.PersonPBID,
+					sessionPBID:     d.SessionPBID,
+					category:        categoryCity,
+					originalValue:   d.City,
+					normalizedValue: normalized,
+					confidence:      n.computeConfidence(d.City, normalized),
+					year:            year,
+				})
+			}
+		}
+
+		// Congregation mapping
+		if d.Congregation != "" {
+			if normalized, ok := lookup.congregation[d.Congregation]; ok && normalized != "" {
+				mappings = append(mappings, &personSessionMapping{
+					personPBID:      d.PersonPBID,
+					sessionPBID:     d.SessionPBID,
+					category:        categoryCongregation,
+					originalValue:   d.Congregation,
+					normalizedValue: normalized,
+					confidence:      n.computeConfidence(d.Congregation, normalized),
+					year:            year,
+				})
+			}
+		}
+	}
+
+	return mappings
+}
+
+// computeConfidence returns confidence score based on how much the value changed
+func (n *NormalizeGeographicSync) computeConfidence(original, normalized string) float64 {
+	if strings.EqualFold(original, normalized) {
+		return 1.0
+	}
+	// Fuzzy match has lower confidence
+	return 0.9
 }
 
 // preloadExistingMappings loads all existing normalized_mappings for the year
@@ -339,10 +547,21 @@ func (n *NormalizeGeographicSync) preloadExistingMappings(year int) (map[string]
 		}
 
 		for _, record := range records {
+			// Use person+session+category as key for new schema
+			personPBID := record.GetString("person")
+			sessionPBID := record.GetString("session")
 			category := record.GetString("category")
-			originalValue := record.GetString("original_value")
-			key := fmt.Sprintf("%s:%s:%d", category, originalValue, year)
-			existingRecords[key] = record
+
+			if personPBID != "" && sessionPBID != "" {
+				// New schema: key by person+session+category
+				key := fmt.Sprintf("%s:%s:%s", personPBID, sessionPBID, category)
+				existingRecords[key] = record
+			} else {
+				// Old schema: key by category+original+year (for migration)
+				originalValue := record.GetString("original_value")
+				key := fmt.Sprintf("%s:%s:%d", category, originalValue, year)
+				existingRecords[key] = record
+			}
 		}
 
 		if len(records) < perPage {
@@ -355,10 +574,10 @@ func (n *NormalizeGeographicSync) preloadExistingMappings(year int) (map[string]
 	return existingRecords, nil
 }
 
-// upsertNormalizedMappings upserts the computed mappings to normalized_mappings table
-func (n *NormalizeGeographicSync) upsertNormalizedMappings(
+// upsertPersonSessionMappings upserts mappings with person+session keys
+func (n *NormalizeGeographicSync) upsertPersonSessionMappings(
 	ctx context.Context,
-	normalizedMappings map[string][]*normalizedMapping,
+	mappings []*personSessionMapping,
 	existingMappings map[string]*core.Record,
 	year int,
 ) error {
@@ -367,84 +586,83 @@ func (n *NormalizeGeographicSync) upsertNormalizedMappings(
 		return fmt.Errorf("finding normalized_mappings collection: %w", err)
 	}
 
-	for category, mappings := range normalizedMappings {
-		for _, mapping := range mappings {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			default:
-			}
+	for _, m := range mappings {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 
-			key := fmt.Sprintf("%s:%s:%d", category, mapping.originalValue, year)
-			n.ProcessedKeys[key] = true
+		key := fmt.Sprintf("%s:%s:%s", m.personPBID, m.sessionPBID, m.category)
+		n.ProcessedKeys[key] = true
 
-			// Build record data
-			recordData := map[string]interface{}{
-				"category":         mapping.category,
-				"original_value":   mapping.originalValue,
-				"normalized_value": mapping.normalizedValue,
-				"occurrence_count": mapping.occurrenceCount,
-				"confidence":       mapping.confidence,
-				"year":             year,
-			}
+		// Build record data
+		recordData := map[string]interface{}{
+			"person":           m.personPBID,
+			"session":          m.sessionPBID,
+			"category":         m.category,
+			"original_value":   m.originalValue,
+			"normalized_value": m.normalizedValue,
+			"confidence":       m.confidence,
+			"year":             year,
+		}
 
-			existing := existingMappings[key]
-			if existing != nil {
-				// Check if update needed
-				if n.mappingNeedsUpdate(existing, recordData) {
-					for field, value := range recordData {
-						existing.Set(field, value)
-					}
-					if err := n.App.Save(existing); err != nil {
-						slog.Error("Error updating normalized mapping",
-							"category", category,
-							"original", mapping.originalValue,
-							"error", err)
-						n.Stats.Errors++
-						continue
-					}
-					n.Stats.Updated++
-				} else {
-					n.Stats.Skipped++
-				}
-			} else {
-				// Create new record
-				record := core.NewRecord(col)
+		existing := existingMappings[key]
+		if existing != nil {
+			// Check if update needed
+			if n.personSessionMappingNeedsUpdate(existing, recordData) {
 				for field, value := range recordData {
-					record.Set(field, value)
+					existing.Set(field, value)
 				}
-				if err := n.App.Save(record); err != nil {
-					slog.Error("Error creating normalized mapping",
-						"category", category,
-						"original", mapping.originalValue,
+				if err := n.App.Save(existing); err != nil {
+					slog.Error("Error updating normalized mapping",
+						"person", m.personPBID,
+						"session", m.sessionPBID,
+						"category", m.category,
 						"error", err)
 					n.Stats.Errors++
 					continue
 				}
-				n.Stats.Created++
+				n.Stats.Updated++
+			} else {
+				n.Stats.Skipped++
 			}
+		} else {
+			// Create new record
+			record := core.NewRecord(col)
+			for field, value := range recordData {
+				record.Set(field, value)
+			}
+			if err := n.App.Save(record); err != nil {
+				slog.Error("Error creating normalized mapping",
+					"person", m.personPBID,
+					"session", m.sessionPBID,
+					"category", m.category,
+					"error", err)
+				n.Stats.Errors++
+				continue
+			}
+			n.Stats.Created++
 		}
 	}
 
 	return nil
 }
 
-// mappingNeedsUpdate checks if a mapping record needs updating
-func (n *NormalizeGeographicSync) mappingNeedsUpdate(existing *core.Record, newData map[string]interface{}) bool {
+// personSessionMappingNeedsUpdate checks if a mapping record needs updating
+func (n *NormalizeGeographicSync) personSessionMappingNeedsUpdate(
+	existing *core.Record,
+	newData map[string]interface{},
+) bool {
 	// Compare normalized_value
 	if existing.GetString("normalized_value") != newData["normalized_value"].(string) {
 		return true
 	}
-	// Compare occurrence_count
-	existingCount := 0
-	if c, ok := existing.Get("occurrence_count").(float64); ok {
-		existingCount = int(c)
-	}
-	if existingCount != newData["occurrence_count"].(int) {
+	// Compare original_value
+	if existing.GetString("original_value") != newData["original_value"].(string) {
 		return true
 	}
 	// Compare confidence with epsilon for float precision
-	// Direct != comparison causes non-idempotent updates due to floating point errors
 	const epsilon = 0.0001
 	existingConf := 0.0
 	if c, ok := existing.Get("confidence").(float64); ok {
@@ -457,24 +675,9 @@ func (n *NormalizeGeographicSync) mappingNeedsUpdate(existing *core.Record, newD
 // updateCamperHistoryNormalized updates the *_normalized columns in camper_history
 func (n *NormalizeGeographicSync) updateCamperHistoryNormalized(
 	ctx context.Context,
-	normalizedMappings map[string][]*normalizedMapping,
+	lookup *normalizationLookup,
 	year int,
 ) error {
-	// Build lookup maps: original → normalized
-	cityMap := make(map[string]string)
-	schoolMap := make(map[string]string)
-	congregationMap := make(map[string]string)
-
-	for _, m := range normalizedMappings[categoryCity] {
-		cityMap[m.originalValue] = m.normalizedValue
-	}
-	for _, m := range normalizedMappings[categorySchool] {
-		schoolMap[m.originalValue] = m.normalizedValue
-	}
-	for _, m := range normalizedMappings[categoryCongregation] {
-		congregationMap[m.originalValue] = m.normalizedValue
-	}
-
 	// Update camper_history records
 	filter := fmt.Sprintf("year = %d", year)
 	page := 1
@@ -504,7 +707,7 @@ func (n *NormalizeGeographicSync) updateCamperHistoryNormalized(
 
 			// City
 			if city := record.GetString("city"); city != "" {
-				if normalized, ok := cityMap[city]; ok {
+				if normalized, ok := lookup.city[city]; ok {
 					if record.GetString("city_normalized") != normalized {
 						record.Set("city_normalized", normalized)
 						needsUpdate = true
@@ -514,7 +717,7 @@ func (n *NormalizeGeographicSync) updateCamperHistoryNormalized(
 
 			// School
 			if school := record.GetString("school"); school != "" {
-				if normalized, ok := schoolMap[school]; ok {
+				if normalized, ok := lookup.school[school]; ok {
 					if record.GetString("school_normalized") != normalized {
 						record.Set("school_normalized", normalized)
 						needsUpdate = true
@@ -522,9 +725,9 @@ func (n *NormalizeGeographicSync) updateCamperHistoryNormalized(
 				}
 			}
 
-			// Congregation
+			// Congregation (synagogue field in camper_history)
 			if synagogue := record.GetString("synagogue"); synagogue != "" {
-				if normalized, ok := congregationMap[synagogue]; ok {
+				if normalized, ok := lookup.congregation[synagogue]; ok {
 					if record.GetString("congregation_normalized") != normalized {
 						record.Set("congregation_normalized", normalized)
 						needsUpdate = true
@@ -567,10 +770,13 @@ func (n *NormalizeGeographicSync) deleteOrphans(existingMappings map[string]*cor
 		}
 
 		category := record.GetString("category")
-		originalValue := record.GetString("original_value")
-		slog.Info("Deleting orphaned normalized mapping",
+		personPBID := record.GetString("person")
+		sessionPBID := record.GetString("session")
+
+		n.DebugLog("Deleting orphaned normalized mapping",
 			"category", category,
-			"original_value", originalValue)
+			"person", personPBID,
+			"session", sessionPBID)
 
 		if err := n.App.Delete(record); err != nil {
 			slog.Error("Error deleting orphan", "id", record.Id, "error", err)

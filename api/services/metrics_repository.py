@@ -396,3 +396,45 @@ class MetricsRepository:
         except Exception as e:
             logger.warning(f"Error fetching congregation custom values: {e}")
             return {}
+
+    async def fetch_normalized_geo(
+        self,
+        year: int,
+        session_cm_id: int | None = None,
+        session_types: list[str] | None = None,
+    ) -> list[Any]:
+        """Fetch normalized geo data filtered by session.
+
+        Returns normalized_mappings records for the given year/session filter.
+        Each record represents one (person, session, category) mapping.
+
+        Args:
+            year: The year to filter by.
+            session_cm_id: Optional specific session cm_id to filter by.
+            session_types: Optional list of session types to filter by.
+
+        Returns:
+            List of normalized_mappings records with person and session expansion.
+        """
+        filter_parts = [f"year = {year}"]
+
+        if session_cm_id is not None:
+            filter_parts.append(f"session.cm_id = {session_cm_id}")
+
+        if session_types:
+            types_filter = " || ".join([f'session.session_type = "{t}"' for t in session_types])
+            filter_parts.append(f"({types_filter})")
+
+        filter_str = " && ".join(filter_parts)
+
+        try:
+            return await asyncio.to_thread(
+                self.pb.collection("normalized_mappings").get_full_list,
+                query_params={
+                    "filter": filter_str,
+                    "expand": "person,session",
+                },
+            )
+        except Exception as e:
+            logger.warning(f"Error fetching normalized geo data: {e}")
+            return []
