@@ -103,14 +103,36 @@ class SessionBunkBreakdown(BaseModel):
 class GenderByGradeBreakdown(BaseModel):
     """Gender breakdown for a specific grade.
 
-    Shows male/female/other counts per grade for stacked bar chart visualization.
+    Shows male/female counts per grade for stacked bar chart visualization.
+    Note: Only M/F tracked since CampMinder sex field only has these values.
     """
 
     grade: int | None = Field(description="Grade level (None if unknown)")
     male_count: int = Field(description="Number of male campers")
     female_count: int = Field(description="Number of female campers")
-    other_count: int = Field(description="Number of other/unknown gender campers")
     total: int = Field(description="Total campers in this grade")
+
+
+class SessionInLengthCategory(BaseModel):
+    """A session within a length category.
+
+    Used for stacked bar chart showing session breakdown per length category.
+    """
+
+    session_name: str = Field(description="Session name")
+    session_cm_id: int = Field(description="CampMinder session ID")
+    count: int = Field(description="Number of campers in this session")
+
+
+class SessionLengthBySessionBreakdown(BaseModel):
+    """Session breakdown for a specific length category.
+
+    Shows which sessions fall into each length category with camper counts.
+    """
+
+    length_category: str = Field(description="Length category (1-week, 2-week, etc.)")
+    sessions: list[SessionInLengthCategory] = Field(description="Sessions in this category")
+    total: int = Field(description="Total campers in this length category")
 
 
 class SummerYearsBreakdown(BaseModel):
@@ -331,6 +353,9 @@ class RegistrationMetricsResponse(BaseModel):
     # New breakdowns for registration tab redesign
     by_gender_grade: list[GenderByGradeBreakdown] = Field(
         default_factory=list, description="Gender breakdown by grade (for stacked bar chart)"
+    )
+    by_session_length_by_session: list[SessionLengthBySessionBreakdown] = Field(
+        default_factory=list, description="Session breakdown by length category (for stacked bar chart)"
     )
     by_summer_years: list[SummerYearsBreakdown] = Field(
         default_factory=list, description="Enrollment by summer years (calculated from attendees)"

@@ -1,9 +1,11 @@
 /**
  * GenderByGradeChart - Stacked bar chart showing gender breakdown per grade.
  *
- * Displays male/female/other counts for each grade level,
+ * Displays male/female counts for each grade level,
  * enabling comparison of gender distribution across grades.
  * Supports drill-down: click a bar to see campers in that grade.
+ *
+ * Note: Only M/F tracked since CampMinder sex field only has these values.
  */
 
 import {
@@ -23,7 +25,6 @@ import type { GenderByGradeBreakdown, DrilldownFilter } from '../../types/metric
 const COLORS = {
   male: 'hsl(200, 70%, 50%)',     // Blue
   female: 'hsl(350, 70%, 50%)',   // Red/Pink
-  other: 'hsl(280, 60%, 50%)',    // Purple
 };
 
 interface GenderByGradeChartProps {
@@ -40,7 +41,6 @@ interface ChartDataItem {
   grade: number | null;
   male: number;
   female: number;
-  other: number;
   total: number;
 }
 
@@ -83,7 +83,6 @@ export function GenderByGradeChart({
     grade: item.grade,
     male: item.male_count,
     female: item.female_count,
-    other: item.other_count,
     total: item.total,
   }));
 
@@ -152,18 +151,6 @@ export function GenderByGradeChart({
             name="Female"
             stackId="gender"
             fill={COLORS.female}
-            radius={[0, 0, 0, 0]}
-            onClick={(barData) => {
-              const item = barData as unknown as ChartDataItem;
-              if (item?.name) handleClick(item);
-            }}
-            style={{ cursor: isClickable ? 'pointer' : undefined }}
-          />
-          <Bar
-            dataKey="other"
-            name="Other"
-            stackId="gender"
-            fill={COLORS.other}
             radius={[4, 4, 0, 0]}
             onClick={(barData) => {
               const item = barData as unknown as ChartDataItem;
