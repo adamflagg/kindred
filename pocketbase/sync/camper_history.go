@@ -199,10 +199,17 @@ func (c *CamperHistorySync) Sync(ctx context.Context) error {
 	}
 	slog.Info("Loaded historical enrollment data")
 
-	// Step 5: Load synagogue data from household custom values
+	// Step 5: Load congregation data from person_custom_values (primary source)
+	congregationByPerson, err := c.loadCongregationByPerson(ctx, year)
+	if err != nil {
+		slog.Warn("Error loading congregation data from persons, continuing without", "error", err)
+		congregationByPerson = make(map[int]string)
+	}
+
+	// Step 5b: Load synagogue data from household_custom_values (fallback source)
 	synagogueByHousehold, err := c.loadSynagogueByHousehold(ctx, year)
 	if err != nil {
-		slog.Warn("Error loading synagogue data, continuing without", "error", err)
+		slog.Warn("Error loading synagogue data from households, continuing without", "error", err)
 		synagogueByHousehold = make(map[int]string)
 	}
 
@@ -272,9 +279,12 @@ func (c *CamperHistorySync) Sync(ctx context.Context) error {
 			yearsAtCamp = c.computeYearsAtCamp(hist)
 		}
 
-		// Lookup synagogue by household
+		// Lookup congregation: person source takes priority (HH-Name of Congregation),
+		// fallback to household source (Synagogue)
 		synagogue := ""
-		if demo.householdID > 0 {
+		if personCong := congregationByPerson[attendee.personCMID]; personCong != "" {
+			synagogue = personCong
+		} else if demo.householdID > 0 {
 			synagogue = synagogueByHousehold[demo.householdID]
 		}
 
@@ -888,6 +898,90 @@ func (c *CamperHistorySync) loadSynagogueByHousehold(ctx context.Context, year i
 	}
 
 	slog.Info("Loaded synagogue data", "householdsWithSynagogue", len(result))
+	return result, nil
+}
+
+// loadCongregationByPerson loads congregation values from person_custom_values
+// This is the primary data source (2376 records vs 29 for household synagogue)
+// Field name in CampMinder: "HH-Name of Congregation"
+func (c *CamperHistorySync) loadCongregationByPerson(ctx context.Context, year int) (map[int]string, error) {
+	result := make(map[int]string)
+
+	// First, find the custom field definition for "HH-Name of Congregation"
+	fieldFilter := `name = "HH-Name of Congregation"`
+	fieldDefs, err := c.App.FindRecordsByFilter("custom_field_defs", fieldFilter, "", 1, 0)
+	if err != nil || len(fieldDefs) == 0 {
+		slog.Debug("HH-Name of Congregation custom field not found", "error", err)
+		return result, nil
+	}
+	congregationFieldID := fieldDefs[0].Id
+
+	// Query person_custom_values for congregation field
+	filter := fmt.Sprintf("field_definition = '%s' && year = %d", congregationFieldID, year)
+
+	page := 1
+	perPage := 500
+
+	// Cache person CM ID lookups
+	personCMIDCache := make(map[string]int)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
+		records, err := c.App.FindRecordsByFilter(
+			"person_custom_values",
+			filter,
+			"",
+			perPage,
+			(page-1)*perPage,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("querying person_custom_values page %d: %w", page, err)
+		}
+
+		for _, record := range records {
+			value := record.GetString("value")
+			if value == "" {
+				continue
+			}
+
+			personPBID := record.GetString("person")
+			if personPBID == "" {
+				continue
+			}
+
+			// Get person CM ID
+			personCMID := 0
+			if cached, ok := personCMIDCache[personPBID]; ok {
+				personCMID = cached
+			} else {
+				personFilter := fmt.Sprintf("id = '%s'", personPBID)
+				persons, err := c.App.FindRecordsByFilter("persons", personFilter, "", 1, 0)
+				if err != nil || len(persons) == 0 {
+					continue
+				}
+				if pcmid, ok := persons[0].Get("cm_id").(float64); ok {
+					personCMID = int(pcmid)
+					personCMIDCache[personPBID] = personCMID
+				}
+			}
+
+			if personCMID > 0 {
+				result[personCMID] = value
+			}
+		}
+
+		if len(records) < perPage {
+			break
+		}
+		page++
+	}
+
+	slog.Info("Loaded congregation data from person_custom_values", "personsWithCongregation", len(result))
 	return result, nil
 }
 
