@@ -381,12 +381,12 @@ class TestHistoricalServiceSessionFiltering:
             *[make_mock_camper_history_with_session(i, "M", "Session 2") for i in range(5, 11)],
         ]
 
-        def mock_fetch_sessions(year: int, session_types: list[str] | None = None) -> dict:
+        def mock_fetch_sessions(year: int, session_types: list[str] | None = None) -> dict[int, MagicMock]:
             return sessions_2024 if year == 2024 else sessions_2025
 
         def mock_fetch_history(
             year: int, session_types: list[str] | None = None, session_name: str | None = None
-        ) -> list:
+        ) -> list[MagicMock]:
             data = history_2024 if year == 2024 else history_2025
             # Simulate filtering by session_name
             if session_name:
@@ -451,12 +451,12 @@ class TestHistoricalServiceSessionFiltering:
         history_2024 = [make_mock_camper_history_with_session(i, "M", "Session 1") for i in range(1, 6)]
         history_2025 = [make_mock_camper_history_with_session(i, "M", "Session 2") for i in range(1, 4)]
 
-        def mock_fetch_sessions(year: int, session_types: list[str] | None = None) -> dict:
+        def mock_fetch_sessions(year: int, session_types: list[str] | None = None) -> dict[int, MagicMock]:
             return sessions_2024 if year == 2024 else sessions_2025
 
         def mock_fetch_history(
             year: int, session_types: list[str] | None = None, session_name: str | None = None
-        ) -> list:
+        ) -> list[MagicMock]:
             data = history_2024 if year == 2024 else history_2025
             if session_name:
                 return [r for r in data if r.session_name == session_name]

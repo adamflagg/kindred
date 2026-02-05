@@ -146,7 +146,7 @@ def sample_persons() -> dict[int, Mock]:
 
 
 @pytest.fixture
-def sample_attendees(sample_sessions, sample_persons) -> list[Mock]:
+def sample_attendees(sample_sessions: dict[int, Mock], sample_persons: dict[int, Mock]) -> list[Mock]:
     """Sample attendees with various sessions."""
     return [
         # New campers
@@ -175,7 +175,7 @@ class TestReturningStatusBreakdown:
         sample_sessions: dict[int, Mock],
         sample_persons: dict[int, Mock],
         sample_attendees: list[Mock],
-    ):
+    ) -> None:
         """Filter for new campers (years_at_camp == 1)."""
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
@@ -200,7 +200,7 @@ class TestReturningStatusBreakdown:
         sample_sessions: dict[int, Mock],
         sample_persons: dict[int, Mock],
         sample_attendees: list[Mock],
-    ):
+    ) -> None:
         """Filter for returning campers (years_at_camp > 1)."""
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
@@ -234,7 +234,7 @@ class TestSessionLengthBreakdown:
         sample_sessions: dict[int, Mock],
         sample_persons: dict[int, Mock],
         sample_attendees: list[Mock],
-    ):
+    ) -> None:
         """Filter for 1-week sessions."""
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
@@ -258,7 +258,7 @@ class TestSessionLengthBreakdown:
         sample_sessions: dict[int, Mock],
         sample_persons: dict[int, Mock],
         sample_attendees: list[Mock],
-    ):
+    ) -> None:
         """Filter for 2-week sessions."""
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
@@ -282,7 +282,7 @@ class TestSessionLengthBreakdown:
         sample_sessions: dict[int, Mock],
         sample_persons: dict[int, Mock],
         sample_attendees: list[Mock],
-    ):
+    ) -> None:
         """Filter for 3-week sessions."""
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
@@ -307,7 +307,7 @@ class TestSessionLengthBreakdown:
         sample_sessions: dict[int, Mock],
         sample_persons: dict[int, Mock],
         sample_attendees: list[Mock],
-    ):
+    ) -> None:
         """Filter for 4-week+ sessions."""
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
@@ -339,7 +339,7 @@ class TestFirstSummerYearBreakdown:
         mock_repository: Mock,
         sample_sessions: dict[int, Mock],
         sample_persons: dict[int, Mock],
-    ):
+    ) -> None:
         """Filter for campers whose first summer was a specific year."""
         # Create attendees for current year
         attendees_2026 = [
@@ -393,7 +393,7 @@ class TestFirstSummerYearBreakdown:
         mock_repository: Mock,
         sample_sessions: dict[int, Mock],
         sample_persons: dict[int, Mock],
-    ):
+    ) -> None:
         """Filter for campers whose first summer is the current year (brand new)."""
         # Create attendees for current year
         attendees_2026 = [
@@ -440,7 +440,7 @@ class TestFirstSummerYearBreakdown:
         mock_repository: Mock,
         sample_sessions: dict[int, Mock],
         sample_persons: dict[int, Mock],
-    ):
+    ) -> None:
         """Filter for a year with no matching campers returns empty list."""
         attendees_2026 = [
             create_mock_attendee(101, sample_sessions[1001], 2026),
