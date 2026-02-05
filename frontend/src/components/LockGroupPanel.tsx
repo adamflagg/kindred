@@ -1,16 +1,20 @@
-import { useState, useCallback, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { X, Trash2, Users, ChevronRight, AlertTriangle } from 'lucide-react';
-import clsx from 'clsx';
-import { pb } from '../lib/pocketbase';
-import { useYear } from '../hooks/useCurrentYear';
-import { useLockGroupContext } from '../contexts/LockGroupContext';
-import { getDisplayAgeForYear } from '../utils/displayAge';
-import type { LockedGroupsResponse, LockedGroupMembersResponse, AttendeesResponse } from '../types/pocketbase-types';
+import { useState, useCallback, useMemo } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { X, Trash2, Users, ChevronRight, AlertTriangle } from "lucide-react";
+import clsx from "clsx";
+import { pb } from "../lib/pocketbase";
+import { useYear } from "../hooks/useCurrentYear";
+import { useLockGroupContext } from "../contexts/LockGroupContext";
+import { getDisplayAgeForYear } from "../utils/displayAge";
+import type {
+  LockedGroupsResponse,
+  LockedGroupMembersResponse,
+  AttendeesResponse,
+} from "../types/pocketbase-types";
 
-import type { Camper } from '../types/app-types';
+import type { Camper } from "../types/app-types";
 
-type BunkArea = 'all' | 'boys' | 'girls' | 'all-gender';
+type BunkArea = "all" | "boys" | "girls" | "all-gender";
 
 interface LockGroupPanelProps {
   isOpen: boolean;
@@ -49,31 +53,31 @@ type ExpandedMember = LockedGroupMembersResponse & {
 
 // Available colors for groups - hex values in rainbow order (no greys)
 const GROUP_COLORS = [
-  '#ef4444', // red
-  '#f97316', // orange
-  '#eab308', // yellow
-  '#22c55e', // green
-  '#14b8a6', // teal
-  '#3b82f6', // blue
-  '#6366f1', // indigo
-  '#a855f7', // purple
-  '#ec4899', // pink
+  "#ef4444", // red
+  "#f97316", // orange
+  "#eab308", // yellow
+  "#22c55e", // green
+  "#14b8a6", // teal
+  "#3b82f6", // blue
+  "#6366f1", // indigo
+  "#a855f7", // purple
+  "#ec4899", // pink
 ];
 
 // Helper to check if a camper matches a specific area (same logic as unassigned filtering)
 function camperMatchesArea(camper: Camper, area: BunkArea): boolean {
-  if (area === 'all') return true;
+  if (area === "all") return true;
 
-  const isFromAGSession = camper.expand?.session?.session_type === 'ag';
+  const isFromAGSession = camper.expand?.session?.session_type === "ag";
 
-  if (area === 'all-gender') {
+  if (area === "all-gender") {
     return isFromAGSession;
   }
 
   if (isFromAGSession) return false;
 
-  if (area === 'boys') return camper.gender === 'M';
-  if (area === 'girls') return camper.gender === 'F';
+  if (area === "boys") return camper.gender === "M";
+  if (area === "girls") return camper.gender === "F";
 
   return true;
 }
@@ -86,15 +90,17 @@ function LockGroupPanel({
   selectedGroupId,
   onGroupSelect,
   requestClose = false,
-  selectedArea = 'all',
-  campers = []
+  selectedArea = "all",
+  campers = [],
 }: LockGroupPanelProps) {
   const queryClient = useQueryClient();
   const currentYear = useYear();
   useLockGroupContext(); // Keep context subscription for future use
 
   // Track expanded group - derive from prop or allow local overrides
-  const [localExpandedGroupId, setLocalExpandedGroupId] = useState<string | null>(null);
+  const [localExpandedGroupId, setLocalExpandedGroupId] = useState<
+    string | null
+  >(null);
   // Derive effective expanded group: use selectedGroupId if provided, otherwise use local state
   const expandedGroupId = selectedGroupId || localExpandedGroupId;
   const setExpandedGroupId = setLocalExpandedGroupId;
@@ -123,67 +129,93 @@ function LockGroupPanel({
 
   // Fetch lock groups for the scenario, session, and year
   const { data: groups = [], isLoading: groupsLoading } = useQuery({
-    queryKey: ['locked-groups-panel', scenarioId, sessionPbId, currentYear],
+    queryKey: ["locked-groups-panel", scenarioId, sessionPbId, currentYear],
     queryFn: async () => {
-      const result = await pb.collection('locked_groups').getList<LockedGroupsResponse>(1, 500, {
-        filter: pb.filter('scenario = {:scenario} && session = {:session} && year = {:year}', {
-          scenario: scenarioId,
-          session: sessionPbId,
-          year: currentYear
-        }),
-        sort: 'created'
-      });
+      const result = await pb
+        .collection("locked_groups")
+        .getList<LockedGroupsResponse>(1, 500, {
+          filter: pb.filter(
+            "scenario = {:scenario} && session = {:session} && year = {:year}",
+            {
+              scenario: scenarioId,
+              session: sessionPbId,
+              year: currentYear,
+            },
+          ),
+          sort: "created",
+        });
       return result.items;
     },
-    enabled: isOpen && !!sessionPbId && !!scenarioId
+    enabled: isOpen && !!sessionPbId && !!scenarioId,
   });
 
   // Fetch all group members with expanded attendee -> person and session
   const { data: allMembers = [], isLoading: membersLoading } = useQuery({
-    queryKey: ['locked-group-members-panel', scenarioId, sessionPbId, groups.length],
+    queryKey: [
+      "locked-group-members-panel",
+      scenarioId,
+      sessionPbId,
+      groups.length,
+    ],
     queryFn: async () => {
       if (groups.length === 0) return [];
 
       const groupIds = groups.map((g: LockedGroupsResponse) => g.id);
       // Build OR filter for each group ID
       const filterParts = groupIds.map((_, i) => `group = {:g${i}}`);
-      const filterParams = groupIds.reduce((acc, id, i) => ({ ...acc, [`g${i}`]: id }), {});
-      const filter = pb.filter(filterParts.join(' || '), filterParams);
+      const filterParams = groupIds.reduce(
+        (acc, id, i) => ({ ...acc, [`g${i}`]: id }),
+        {},
+      );
+      const filter = pb.filter(filterParts.join(" || "), filterParams);
 
-      const result = await pb.collection('locked_group_members').getList<ExpandedMember>(1, 500, {
-        filter,
-        expand: 'attendee,attendee.person,attendee.session'
-      });
+      const result = await pb
+        .collection("locked_group_members")
+        .getList<ExpandedMember>(1, 500, {
+          filter,
+          expand: "attendee,attendee.person,attendee.session",
+        });
       return result.items;
     },
-    enabled: isOpen && groups.length > 0
+    enabled: isOpen && groups.length > 0,
   });
 
   // Group members by group ID
-  const membersByGroup = allMembers.reduce((acc: Record<string, ExpandedMember[]>, member: ExpandedMember) => {
-    const groupId = member.group;
-    if (!acc[groupId]) {
-      acc[groupId] = [];
-    }
-    acc[groupId]?.push(member);
-    return acc;
-  }, {} as Record<string, ExpandedMember[]>);
+  const membersByGroup = allMembers.reduce(
+    (acc: Record<string, ExpandedMember[]>, member: ExpandedMember) => {
+      const groupId = member.group;
+      if (!acc[groupId]) {
+        acc[groupId] = [];
+      }
+      acc[groupId]?.push(member);
+      return acc;
+    },
+    {} as Record<string, ExpandedMember[]>,
+  );
 
   // Helper to get age from member (year-aware for historical viewing)
-  const getMemberAge = useCallback((member: ExpandedMember): number | null => {
-    const person = member.expand?.attendee?.expand?.person;
-    if (!person) return null;
-    // Cast to include age/birthdate for getDisplayAgeForYear
-    const personWithAge = person as { age?: number; birthdate?: string };
-    return getDisplayAgeForYear(personWithAge, currentYear);
-  }, [currentYear]);
+  const getMemberAge = useCallback(
+    (member: ExpandedMember): number | null => {
+      const person = member.expand?.attendee?.expand?.person;
+      if (!person) return null;
+      // Cast to include age/birthdate for getDisplayAgeForYear
+      const personWithAge = person as { age?: number; birthdate?: string };
+      return getDisplayAgeForYear(personWithAge, currentYear);
+    },
+    [currentYear],
+  );
 
   // Calculate average age for a group's members
-  const getGroupAverageAge = useCallback((members: ExpandedMember[]): number | null => {
-    const ages = members.map(m => getMemberAge(m)).filter((age): age is number => age !== null);
-    if (ages.length === 0) return null;
-    return ages.reduce((sum, age) => sum + age, 0) / ages.length;
-  }, [getMemberAge]);
+  const getGroupAverageAge = useCallback(
+    (members: ExpandedMember[]): number | null => {
+      const ages = members
+        .map((m) => getMemberAge(m))
+        .filter((age): age is number => age !== null);
+      if (ages.length === 0) return null;
+      return ages.reduce((sum, age) => sum + age, 0) / ages.length;
+    },
+    [getMemberAge],
+  );
 
   // Sort groups by average age of members (ascending)
   const sortedGroups = useMemo(() => {
@@ -205,19 +237,19 @@ function LockGroupPanel({
 
   // Filter groups by selected area (ALL members must match the area)
   const filteredGroups = useMemo(() => {
-    if (selectedArea === 'all') return sortedGroups;
+    if (selectedArea === "all") return sortedGroups;
 
-    return sortedGroups.filter(group => {
+    return sortedGroups.filter((group) => {
       const members = membersByGroup[group.id] || [];
       if (members.length === 0) return true; // Empty groups show everywhere
 
       // Get the person CM IDs for this group's members
       const memberPersonCmIds = members
-        .map(m => m.expand?.attendee?.person_id)
+        .map((m) => m.expand?.attendee?.person_id)
         .filter((id): id is number => id !== undefined);
 
       // ALL members must match the selected area
-      return memberPersonCmIds.every(personCmId => {
+      return memberPersonCmIds.every((personCmId) => {
         const camper = camperByPersonCmId.get(personCmId);
         if (!camper) return false; // If we can't find the camper, exclude from this area
         return camperMatchesArea(camper, selectedArea);
@@ -234,13 +266,23 @@ function LockGroupPanel({
 
   // Update group color mutation
   const updateGroupMutation = useMutation({
-    mutationFn: async ({ groupId, updates }: { groupId: string; updates: Partial<LockedGroupsResponse> }) => {
-      return await pb.collection('locked_groups').update(groupId, updates);
+    mutationFn: async ({
+      groupId,
+      updates,
+    }: {
+      groupId: string;
+      updates: Partial<LockedGroupsResponse>;
+    }) => {
+      return await pb.collection("locked_groups").update(groupId, updates);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['locked-groups', scenarioId, sessionPbId, currentYear] });
-      queryClient.invalidateQueries({ queryKey: ['locked-groups-panel', scenarioId, sessionPbId, currentYear] });
-    }
+      queryClient.invalidateQueries({
+        queryKey: ["locked-groups", scenarioId, sessionPbId, currentYear],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["locked-groups-panel", scenarioId, sessionPbId, currentYear],
+      });
+    },
   });
 
   // Delete group mutation
@@ -249,35 +291,47 @@ function LockGroupPanel({
       // Delete all members first
       const members = membersByGroup[groupId] || [];
       for (const member of members) {
-        await pb.collection('locked_group_members').delete(member.id);
+        await pb.collection("locked_group_members").delete(member.id);
       }
 
       // Then delete the group
-      return await pb.collection('locked_groups').delete(groupId);
+      return await pb.collection("locked_groups").delete(groupId);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['locked-groups', scenarioId, sessionPbId, currentYear] });
-      queryClient.invalidateQueries({ queryKey: ['locked-groups-panel', scenarioId, sessionPbId, currentYear] });
-      queryClient.invalidateQueries({ queryKey: ['locked-group-members', scenarioId, sessionPbId] });
-      queryClient.invalidateQueries({ queryKey: ['locked-group-members-panel', scenarioId, sessionPbId] });
-    }
+      queryClient.invalidateQueries({
+        queryKey: ["locked-groups", scenarioId, sessionPbId, currentYear],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["locked-groups-panel", scenarioId, sessionPbId, currentYear],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["locked-group-members", scenarioId, sessionPbId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["locked-group-members-panel", scenarioId, sessionPbId],
+      });
+    },
   });
 
   // Remove member from group mutation
   const removeMemberMutation = useMutation({
     mutationFn: async (memberId: string) => {
-      return await pb.collection('locked_group_members').delete(memberId);
+      return await pb.collection("locked_group_members").delete(memberId);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['locked-group-members', scenarioId, sessionPbId] });
-      queryClient.invalidateQueries({ queryKey: ['locked-group-members-panel', scenarioId, sessionPbId] });
-    }
+      queryClient.invalidateQueries({
+        queryKey: ["locked-group-members", scenarioId, sessionPbId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["locked-group-members-panel", scenarioId, sessionPbId],
+      });
+    },
   });
 
   const handleColorChange = (groupId: string, color: string) => {
     updateGroupMutation.mutate({
       groupId,
-      updates: { color }
+      updates: { color },
     });
   };
 
@@ -285,21 +339,23 @@ function LockGroupPanel({
   const getMemberDisplayName = (member: ExpandedMember): string => {
     const person = member.expand?.attendee?.expand?.person;
     if (person) {
-      const firstName = person.preferred_name || person.first_name || '';
-      const lastName = person.last_name || '';
+      const firstName = person.preferred_name || person.first_name || "";
+      const lastName = person.last_name || "";
       return `${firstName} ${lastName}`.trim() || `Camper ${person.cm_id}`;
     }
     return `Attendee ${member.attendee}`;
   };
 
   // Get session info for a member (for cross-session detection)
-  const getMemberSessionInfo = (member: ExpandedMember): { name: string; type: string; id: string } | null => {
+  const getMemberSessionInfo = (
+    member: ExpandedMember,
+  ): { name: string; type: string; id: string } | null => {
     const session = member.expand?.attendee?.expand?.session;
     if (session) {
       return {
         name: session.name,
         type: session.session_type,
-        id: session.id
+        id: session.id,
       };
     }
     return null;
@@ -309,7 +365,7 @@ function LockGroupPanel({
   const getMemberGender = (member: ExpandedMember): string | null => {
     // Gender is on the attendee, not the person
     const attendee = member.expand?.attendee;
-    if (attendee && 'gender' in attendee) {
+    if (attendee && "gender" in attendee) {
       return (attendee as { gender?: string }).gender || null;
     }
     return null;
@@ -329,7 +385,7 @@ function LockGroupPanel({
       const sessionInfo = getMemberSessionInfo(member);
       if (sessionInfo) {
         sessions.set(sessionInfo.id, sessionInfo.name);
-        if (sessionInfo.type === 'ag') {
+        if (sessionInfo.type === "ag") {
           hasAGSession = true;
         }
       }
@@ -337,7 +393,7 @@ function LockGroupPanel({
 
     if (sessions.size > 1) {
       const sessionNames = Array.from(sessions.values());
-      issues.push(`Cross-session: ${sessionNames.join(', ')}`);
+      issues.push(`Cross-session: ${sessionNames.join(", ")}`);
     }
 
     // Check for cross-gender issues (only for non-AG sessions)
@@ -350,9 +406,9 @@ function LockGroupPanel({
         }
       }
 
-      if (genders.size > 1 && !genders.has('NB')) {
+      if (genders.size > 1 && !genders.has("NB")) {
         // Has both M and F without being in an AG session
-        issues.push('Cross-gender: cannot bunk M and F campers together');
+        issues.push("Cross-gender: cannot bunk M and F campers together");
       }
     }
 
@@ -368,7 +424,7 @@ function LockGroupPanel({
       data-panel="lock-group"
       className={clsx(
         "fixed inset-y-0 left-0 w-96 bg-background border-r shadow-xl z-50",
-        isClosing ? "animate-slide-out-left" : "animate-slide-in-left"
+        isClosing ? "animate-slide-out-left" : "animate-slide-in-left",
       )}
     >
       <div className="h-full flex flex-col">
@@ -397,11 +453,10 @@ function LockGroupPanel({
           ) : groups.length === 0 ? (
             <div className="p-6 text-center">
               <Users className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-              <p className="text-muted-foreground mb-4">
-                No friend groups yet
-              </p>
+              <p className="text-muted-foreground mb-4">No friend groups yet</p>
               <p className="text-sm text-muted-foreground">
-                Ctrl+Click campers to select them, then click "Create Group" to keep them together.
+                Ctrl+Click campers to select them, then click "Create Group" to
+                keep them together.
               </p>
             </div>
           ) : filteredGroups.length === 0 ? (
@@ -411,7 +466,8 @@ function LockGroupPanel({
                 No friend groups in this area
               </p>
               <p className="text-sm text-muted-foreground">
-                {groups.length} group{groups.length !== 1 ? 's' : ''} exist in other areas.
+                {groups.length} group{groups.length !== 1 ? "s" : ""} exist in
+                other areas.
               </p>
             </div>
           ) : (
@@ -426,9 +482,9 @@ function LockGroupPanel({
                   <div
                     key={group.id}
                     className={clsx(
-                      'border rounded-lg overflow-hidden transition-all',
-                      isExpanded && 'ring-2 ring-primary',
-                      hasIssues && 'border-destructive'
+                      "border rounded-lg overflow-hidden transition-all",
+                      isExpanded && "ring-2 ring-primary",
+                      hasIssues && "border-destructive",
                     )}
                   >
                     {/* Group Header */}
@@ -444,15 +500,16 @@ function LockGroupPanel({
                         <div className="flex items-center gap-3">
                           <ChevronRight
                             className={clsx(
-                              'h-4 w-4 transition-transform',
-                              isExpanded && 'rotate-90'
+                              "h-4 w-4 transition-transform",
+                              isExpanded && "rotate-90",
                             )}
                           />
                           <span className="font-medium">
-                            {group.name || 'Unnamed Group'}
+                            {group.name || "Unnamed Group"}
                           </span>
                           <span className="text-sm text-muted-foreground">
-                            • {members.length} camper{members.length !== 1 ? 's' : ''}
+                            • {members.length} camper
+                            {members.length !== 1 ? "s" : ""}
                           </span>
                           {hasIssues && (
                             <AlertTriangle className="h-4 w-4 text-destructive" />
@@ -462,8 +519,12 @@ function LockGroupPanel({
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              const displayName = group.name || 'this group';
-                              if (confirm(`Delete "${displayName}"? This will remove all ${members.length} campers from the group.`)) {
+                              const displayName = group.name || "this group";
+                              if (
+                                confirm(
+                                  `Delete "${displayName}"? This will remove all ${members.length} campers from the group.`,
+                                )
+                              ) {
                                 deleteGroupMutation.mutate(group.id);
                               }
                             }}
@@ -485,7 +546,9 @@ function LockGroupPanel({
                             <div className="flex items-start gap-2">
                               <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
                               <div className="text-sm">
-                                <p className="font-medium text-destructive">Validation Issues</p>
+                                <p className="font-medium text-destructive">
+                                  Validation Issues
+                                </p>
                                 <ul className="mt-1 space-y-1 text-destructive/80">
                                   {validationIssues.map((issue, i) => (
                                     <li key={i}>{issue}</li>
@@ -504,20 +567,20 @@ function LockGroupPanel({
                           <div className="flex gap-2">
                             <input
                               type="text"
-                              defaultValue={group.name || ''}
+                              defaultValue={group.name || ""}
                               placeholder="Enter group name"
                               className="flex-1 px-3 py-1.5 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/50"
                               onBlur={(e) => {
                                 const newName = e.target.value.trim();
-                                if (newName !== (group.name || '')) {
+                                if (newName !== (group.name || "")) {
                                   updateGroupMutation.mutate({
                                     groupId: group.id,
-                                    updates: { name: newName } // Empty string clears the name
+                                    updates: { name: newName }, // Empty string clears the name
                                   });
                                 }
                               }}
                               onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
+                                if (e.key === "Enter") {
                                   e.currentTarget.blur();
                                 }
                               }}
@@ -534,10 +597,13 @@ function LockGroupPanel({
                             {GROUP_COLORS.map((color) => (
                               <button
                                 key={color}
-                                onClick={() => handleColorChange(group.id, color)}
+                                onClick={() =>
+                                  handleColorChange(group.id, color)
+                                }
                                 className={clsx(
-                                  'w-8 h-8 rounded-full transition-all',
-                                  group.color === color && 'ring-2 ring-offset-2 ring-foreground scale-110'
+                                  "w-8 h-8 rounded-full transition-all",
+                                  group.color === color &&
+                                    "ring-2 ring-offset-2 ring-foreground scale-110",
                                 )}
                                 style={{ backgroundColor: color }}
                                 title={color}
@@ -558,7 +624,8 @@ function LockGroupPanel({
                           ) : (
                             <div className="space-y-2">
                               {members.map((member: ExpandedMember) => {
-                                const sessionInfo = getMemberSessionInfo(member);
+                                const sessionInfo =
+                                  getMemberSessionInfo(member);
                                 const gender = getMemberGender(member);
 
                                 return (
@@ -571,12 +638,14 @@ function LockGroupPanel({
                                         {getMemberDisplayName(member)}
                                       </p>
                                       <p className="text-xs text-muted-foreground">
-                                        {sessionInfo?.name || 'Unknown session'}
+                                        {sessionInfo?.name || "Unknown session"}
                                         {gender && ` • ${gender}`}
                                       </p>
                                     </div>
                                     <button
-                                      onClick={() => removeMemberMutation.mutate(member.id)}
+                                      onClick={() =>
+                                        removeMemberMutation.mutate(member.id)
+                                      }
                                       className="p-1 hover:bg-muted rounded flex-shrink-0"
                                       title="Remove from group"
                                     >
@@ -601,12 +670,16 @@ function LockGroupPanel({
         {filteredGroups.length > 0 && (
           <div className="p-4 border-t bg-muted/20">
             <p className="text-sm text-muted-foreground text-center">
-              {filteredGroups.length} group{filteredGroups.length !== 1 ? 's' : ''} • {filteredMemberCount} camper{filteredMemberCount !== 1 ? 's' : ''} locked
-              {selectedArea !== 'all' && groups.length > filteredGroups.length && (
-                <span className="block text-xs mt-1 opacity-70">
-                  ({groups.length - filteredGroups.length} more in other areas)
-                </span>
-              )}
+              {filteredGroups.length} group
+              {filteredGroups.length !== 1 ? "s" : ""} • {filteredMemberCount}{" "}
+              camper{filteredMemberCount !== 1 ? "s" : ""} locked
+              {selectedArea !== "all" &&
+                groups.length > filteredGroups.length && (
+                  <span className="block text-xs mt-1 opacity-70">
+                    ({groups.length - filteredGroups.length} more in other
+                    areas)
+                  </span>
+                )}
             </p>
           </div>
         )}

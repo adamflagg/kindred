@@ -2,7 +2,7 @@
  * Collapsible identity panel showing personal details
  * Birthday, school, location, gender identity, pronouns
  */
-import { useState } from 'react';
+import { useState } from "react";
 import {
   User,
   ChevronDown,
@@ -10,12 +10,12 @@ import {
   Cake,
   School,
   MapPin,
-} from 'lucide-react';
-import { formatAge } from '../../utils/age';
-import { formatGradeOrdinal } from '../../utils/gradeUtils';
-import { getDisplayAgeForYear } from '../../utils/displayAge';
-import { useYear } from '../../hooks/useCurrentYear';
-import type { Camper } from '../../types/app-types';
+} from "lucide-react";
+import { formatAge } from "../../utils/age";
+import { formatGradeOrdinal } from "../../utils/gradeUtils";
+import { getDisplayAgeForYear } from "../../utils/displayAge";
+import { useYear } from "../../hooks/useCurrentYear";
+import type { Camper } from "../../types/app-types";
 
 interface IdentityPanelProps {
   camper: Camper;
@@ -66,12 +66,12 @@ export function IdentityPanel({
                 </dt>
                 <dd className="text-sm mt-0.5 font-medium">
                   {camper.birthdate
-                    ? new Date(camper.birthdate).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
+                    ? new Date(camper.birthdate).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
                       })
-                    : 'Not provided'}
+                    : "Not provided"}
                 </dd>
                 <dd className="text-xs text-muted-foreground">
                   {formatAge(getDisplayAgeForYear(camper, viewingYear) ?? 0)}
@@ -86,7 +86,7 @@ export function IdentityPanel({
                   School
                 </dt>
                 <dd className="text-sm mt-0.5 font-medium">
-                  {camper.school || 'Not provided'}
+                  {camper.school || "Not provided"}
                 </dd>
                 <dd className="text-xs text-muted-foreground">
                   {formatGradeOrdinal(camper.grade)} Grade
@@ -101,7 +101,7 @@ export function IdentityPanel({
                   Location
                 </dt>
                 <dd className="text-sm mt-0.5 font-medium">
-                  {location || 'Not specified'}
+                  {location || "Not specified"}
                 </dd>
               </div>
             </div>
@@ -116,18 +116,18 @@ export function IdentityPanel({
                 </dt>
                 <dd className="text-sm">
                   <span className="font-medium">
-                    {camper.gender === 'M'
-                      ? 'Male'
-                      : camper.gender === 'F'
-                        ? 'Female'
-                        : 'Non-Binary'}
+                    {camper.gender === "M"
+                      ? "Male"
+                      : camper.gender === "F"
+                        ? "Female"
+                        : "Non-Binary"}
                   </span>
-                  {' • '}
+                  {" • "}
                   <span className="text-muted-foreground">
                     {camper.gender_identity_write_in &&
-                    camper.gender_identity_write_in.trim() !== ''
+                    camper.gender_identity_write_in.trim() !== ""
                       ? camper.gender_identity_write_in
-                      : camper.gender_identity_name || 'Not specified'}
+                      : camper.gender_identity_name || "Not specified"}
                   </span>
                 </dd>
               </div>

@@ -2,10 +2,10 @@
  * GeoCategoryTabs - Tab selector for City/School/Synagogue views.
  */
 
-import clsx from 'clsx';
-import { MapPin, Building2, Heart } from 'lucide-react';
+import clsx from "clsx";
+import { MapPin, Building2, Heart } from "lucide-react";
 
-export type GeoCategory = 'city' | 'school' | 'synagogue';
+export type GeoCategory = "city" | "school" | "synagogue";
 
 interface GeoCategoryTabsProps {
   activeCategory: GeoCategory;
@@ -17,10 +17,10 @@ interface GeoCategoryTabsProps {
   };
 }
 
-const TABS: { id: GeoCategory; label: string; icon: typeof MapPin }[] = [
-  { id: 'city', label: 'Cities', icon: MapPin },
-  { id: 'school', label: 'Schools', icon: Building2 },
-  { id: 'synagogue', label: 'Synagogues', icon: Heart },
+const TABS: Array<{ id: GeoCategory; label: string; icon: typeof MapPin }> = [
+  { id: "city", label: "Cities", icon: MapPin },
+  { id: "school", label: "Schools", icon: Building2 },
+  { id: "synagogue", label: "Synagogues", icon: Heart },
 ];
 
 export function GeoCategoryTabs({
@@ -40,18 +40,20 @@ export function GeoCategoryTabs({
             key={tab.id}
             onClick={() => onCategoryChange(tab.id)}
             className={clsx(
-              'flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all',
+              "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all",
               isActive
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground hover:bg-background/50",
             )}
           >
             <Icon className="w-4 h-4" />
             <span>{tab.label}</span>
             <span
               className={clsx(
-                'px-1.5 py-0.5 rounded text-xs',
-                isActive ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+                "px-1.5 py-0.5 rounded text-xs",
+                isActive
+                  ? "bg-primary/10 text-primary"
+                  : "bg-muted text-muted-foreground",
               )}
             >
               {count}

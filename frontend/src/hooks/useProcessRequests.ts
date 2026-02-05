@@ -1,7 +1,7 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { pb } from '../lib/pocketbase';
-import toast from 'react-hot-toast';
-import type { ProcessRequestOptionsState } from '../components/admin/ProcessRequestOptions';
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { pb } from "../lib/pocketbase";
+import toast from "react-hot-toast";
+import type { ProcessRequestOptionsState } from "../components/admin/ProcessRequestOptions";
 
 interface ProcessRequestsResponse {
   status: string;
@@ -21,41 +21,43 @@ export function useProcessRequests() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (options: ProcessRequestOptionsState): Promise<ProcessRequestsResponse> => {
+    mutationFn: async (
+      options: ProcessRequestOptionsState,
+    ): Promise<ProcessRequestsResponse> => {
       // Build query params
       const params = new URLSearchParams();
 
       // Session is now a string (e.g., 'all', '1', '2', '2a', 'toc')
-      if (options.session !== 'all') {
-        params.set('session', options.session);
+      if (options.session !== "all") {
+        params.set("session", options.session);
       }
 
       // Source fields (comma-separated)
       if (options.sourceFields.length > 0) {
-        params.set('source_field', options.sourceFields.join(','));
+        params.set("source_field", options.sourceFields.join(","));
       }
 
       if (options.limit !== undefined && options.limit > 0) {
-        params.set('limit', String(options.limit));
+        params.set("limit", String(options.limit));
       }
 
       if (options.forceReprocess) {
-        params.set('force', 'true');
+        params.set("force", "true");
       }
 
       if (options.debug) {
-        params.set('debug', 'true');
+        params.set("debug", "true");
       }
 
       if (options.trace) {
-        params.set('trace', 'true');
+        params.set("trace", "true");
       }
 
       const queryString = params.toString();
-      const url = `/api/custom/sync/process-requests${queryString ? `?${queryString}` : ''}`;
+      const url = `/api/custom/sync/process-requests${queryString ? `?${queryString}` : ""}`;
 
       const response = await pb.send<ProcessRequestsResponse>(url, {
-        method: 'POST',
+        method: "POST",
       });
 
       return response;
@@ -65,10 +67,10 @@ export function useProcessRequests() {
       const parts: string[] = [];
 
       // Session description (string-based)
-      if (options.session === 'all') {
-        parts.push('all sessions');
-      } else if (options.session === '1' || options.session === 'toc') {
-        parts.push('Taste of Camp');
+      if (options.session === "all") {
+        parts.push("all sessions");
+      } else if (options.session === "1" || options.session === "toc") {
+        parts.push("Taste of Camp");
       } else {
         parts.push(`Session ${options.session}`);
       }
@@ -76,14 +78,14 @@ export function useProcessRequests() {
       // Add source fields if specified
       if (options.sourceFields.length > 0) {
         const fieldLabels: Record<string, string> = {
-          bunk_with: 'Bunk With',
-          not_bunk_with: 'Not Bunk With',
-          bunking_notes: 'Bunking Notes',
-          internal_notes: 'Internal Notes',
-          socialize_with: 'Socialize With',
+          bunk_with: "Bunk With",
+          not_bunk_with: "Not Bunk With",
+          bunking_notes: "Bunking Notes",
+          internal_notes: "Internal Notes",
+          socialize_with: "Socialize With",
         };
         const fieldNames = options.sourceFields.map((f) => fieldLabels[f] ?? f);
-        parts.push(`fields: ${fieldNames.join(', ')}`);
+        parts.push(`fields: ${fieldNames.join(", ")}`);
       }
 
       // Add limit if specified
@@ -93,35 +95,36 @@ export function useProcessRequests() {
 
       // Add force indicator
       if (options.forceReprocess) {
-        parts.push('force reprocess');
+        parts.push("force reprocess");
       }
 
       // Add debug/trace indicator
       if (options.trace) {
-        parts.push('trace mode');
+        parts.push("trace mode");
       } else if (options.debug) {
-        parts.push('debug mode');
+        parts.push("debug mode");
       }
 
-      const description = parts.join(', ');
+      const description = parts.join(", ");
 
       toast(`Processing requests: ${description}`, {
-        icon: '🧠',
+        icon: "🧠",
         duration: 4000,
-        className: 'toast-lodge toast-lodge-success',
+        className: "toast-lodge toast-lodge-success",
         style: {
-          borderLeft: '4px solid hsl(174, 100%, 30%)',
+          borderLeft: "4px solid hsl(174, 100%, 30%)",
         },
       });
 
       // Invalidate sync status to show it's running
-      queryClient.invalidateQueries({ queryKey: ['sync-status-api'] });
+      queryClient.invalidateQueries({ queryKey: ["sync-status-api"] });
     },
     onError: (error) => {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
 
-      if (errorMessage.includes('already in progress')) {
-        toast.error('Request processing is already running');
+      if (errorMessage.includes("already in progress")) {
+        toast.error("Request processing is already running");
       } else {
         toast.error(`Failed to start processing: ${errorMessage}`);
       }

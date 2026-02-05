@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Modal } from './ui/Modal';
+import { useState } from "react";
+import { Modal } from "./ui/Modal";
 
 interface Scenario {
   id: string;
@@ -10,28 +10,35 @@ interface Scenario {
 interface ScenarioEditModalProps {
   scenario: Scenario;
   onClose: () => void;
-  onSave: (scenarioId: string, updates: { name?: string; description?: string }) => Promise<void>;
+  onSave: (
+    scenarioId: string,
+    updates: { name?: string; description?: string },
+  ) => Promise<void>;
 }
 
-export default function ScenarioEditModal({ scenario, onClose, onSave }: ScenarioEditModalProps) {
+export default function ScenarioEditModal({
+  scenario,
+  onClose,
+  onSave,
+}: ScenarioEditModalProps) {
   const [name, setName] = useState(scenario.name);
-  const [description, setDescription] = useState(scenario.description || '');
+  const [description, setDescription] = useState(scenario.description || "");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!name.trim()) {
-      setError('Scenario name is required');
+      setError("Scenario name is required");
       return;
     }
-    
+
     setIsSaving(true);
     setError(null);
-    
+
     try {
-      const updates: {name?: string; description?: string} = {
+      const updates: { name?: string; description?: string } = {
         name: name.trim(),
       };
       if (description.trim()) {
@@ -40,7 +47,9 @@ export default function ScenarioEditModal({ scenario, onClose, onSave }: Scenari
       await onSave(scenario.id, updates);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update scenario');
+      setError(
+        err instanceof Error ? err.message : "Failed to update scenario",
+      );
     } finally {
       setIsSaving(false);
     }
@@ -50,7 +59,10 @@ export default function ScenarioEditModal({ scenario, onClose, onSave }: Scenari
     <Modal isOpen={true} onClose={onClose} title="Edit Scenario" size="sm">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label htmlFor="edit-scenario-name" className="block text-sm font-medium mb-2">
+          <label
+            htmlFor="edit-scenario-name"
+            className="block text-sm font-medium mb-2"
+          >
             Scenario Name
           </label>
           <input
@@ -65,7 +77,10 @@ export default function ScenarioEditModal({ scenario, onClose, onSave }: Scenari
         </div>
 
         <div>
-          <label htmlFor="edit-scenario-description" className="block text-sm font-medium mb-2">
+          <label
+            htmlFor="edit-scenario-description"
+            className="block text-sm font-medium mb-2"
+          >
             Description (Optional)
           </label>
           <textarea
@@ -98,7 +113,7 @@ export default function ScenarioEditModal({ scenario, onClose, onSave }: Scenari
             className="flex-1 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg font-medium transition-colors disabled:opacity-50"
             disabled={isSaving}
           >
-            {isSaving ? 'Saving...' : 'Save Changes'}
+            {isSaving ? "Saving..." : "Save Changes"}
           </button>
         </div>
       </form>

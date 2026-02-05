@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect } from "react";
 
 // Hook for using error boundary programmatically
 export function useErrorHandler() {

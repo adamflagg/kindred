@@ -12,21 +12,21 @@ import {
   ResponsiveContainer,
   Legend,
   LabelList,
-} from 'recharts';
-import type { YearMetrics } from '../../types/metrics';
+} from "recharts";
+import type { YearMetrics } from "../../types/metrics";
 
 const COLORS = {
-  total: 'hsl(160, 100%, 35%)', // Primary green
-  new: 'hsl(200, 70%, 50%)', // Blue
-  returning: 'hsl(42, 92%, 50%)', // Gold
-  male: 'hsl(200, 70%, 50%)', // Blue
-  female: 'hsl(350, 70%, 50%)', // Red/Pink
+  total: "hsl(160, 100%, 35%)", // Primary green
+  new: "hsl(200, 70%, 50%)", // Blue
+  returning: "hsl(42, 92%, 50%)", // Gold
+  male: "hsl(200, 70%, 50%)", // Blue
+  female: "hsl(350, 70%, 50%)", // Red/Pink
 };
 
 interface TrendLineChartProps {
   data: YearMetrics[];
   title: string;
-  metric: 'total' | 'new_vs_returning' | 'gender';
+  metric: "total" | "new_vs_returning" | "gender";
   height?: number;
   className?: string;
 }
@@ -36,7 +36,7 @@ export function TrendLineChart({
   title,
   metric,
   height = 300,
-  className = '',
+  className = "",
 }: TrendLineChartProps) {
   if (data.length === 0) {
     return (
@@ -53,11 +53,11 @@ export function TrendLineChart({
   const chartData = data.map((yearData) => {
     const base = { year: yearData.year };
 
-    if (metric === 'total') {
+    if (metric === "total") {
       return { ...base, total: yearData.total_enrolled };
     }
 
-    if (metric === 'new_vs_returning') {
+    if (metric === "new_vs_returning") {
       return {
         ...base,
         new: yearData.new_vs_returning.new_count,
@@ -65,9 +65,9 @@ export function TrendLineChart({
       };
     }
 
-    if (metric === 'gender') {
-      const maleData = yearData.by_gender.find((g) => g.gender === 'M');
-      const femaleData = yearData.by_gender.find((g) => g.gender === 'F');
+    if (metric === "gender") {
+      const maleData = yearData.by_gender.find((g) => g.gender === "M");
+      const femaleData = yearData.by_gender.find((g) => g.gender === "F");
       return {
         ...base,
         male: maleData?.count ?? 0,
@@ -93,7 +93,10 @@ export function TrendLineChart({
           <p className="font-medium text-foreground mb-2">{label}</p>
           {payload.map((entry, index) => (
             <p key={index} className="text-sm" style={{ color: entry.color }}>
-              {entry.name}: <span className="font-semibold">{entry.value.toLocaleString()}</span>
+              {entry.name}:{" "}
+              <span className="font-semibold">
+                {entry.value.toLocaleString()}
+              </span>
             </p>
           ))}
         </div>
@@ -106,22 +109,25 @@ export function TrendLineChart({
     <div className={`card-lodge p-4 ${className}`}>
       <h3 className="text-sm font-semibold text-foreground mb-4">{title}</h3>
       <ResponsiveContainer width="100%" height={height}>
-        <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+        <LineChart
+          data={chartData}
+          margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+        >
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis
             dataKey="year"
             className="text-xs"
-            tick={{ fill: 'hsl(var(--muted-foreground))' }}
+            tick={{ fill: "hsl(var(--muted-foreground))" }}
           />
           <YAxis
             className="text-xs"
-            tick={{ fill: 'hsl(var(--muted-foreground))' }}
+            tick={{ fill: "hsl(var(--muted-foreground))" }}
             tickFormatter={(value) => value.toLocaleString()}
           />
           <Tooltip content={<CustomTooltip />} />
           <Legend />
 
-          {metric === 'total' && (
+          {metric === "total" && (
             <Line
               type="monotone"
               dataKey="total"
@@ -136,12 +142,16 @@ export function TrendLineChart({
                 position="top"
                 className="text-xs"
                 fill="hsl(var(--muted-foreground))"
-                formatter={(value) => typeof value === 'number' ? value.toLocaleString() : String(value ?? '')}
+                formatter={(value) =>
+                  typeof value === "number"
+                    ? value.toLocaleString()
+                    : String(value ?? "")
+                }
               />
             </Line>
           )}
 
-          {metric === 'new_vs_returning' && (
+          {metric === "new_vs_returning" && (
             <>
               <Line
                 type="monotone"
@@ -157,7 +167,11 @@ export function TrendLineChart({
                   position="top"
                   className="text-xs"
                   fill="hsl(var(--muted-foreground))"
-                  formatter={(value) => typeof value === 'number' ? value.toLocaleString() : String(value ?? '')}
+                  formatter={(value) =>
+                    typeof value === "number"
+                      ? value.toLocaleString()
+                      : String(value ?? "")
+                  }
                 />
               </Line>
               <Line
@@ -174,13 +188,17 @@ export function TrendLineChart({
                   position="bottom"
                   className="text-xs"
                   fill="hsl(var(--muted-foreground))"
-                  formatter={(value) => typeof value === 'number' ? value.toLocaleString() : String(value ?? '')}
+                  formatter={(value) =>
+                    typeof value === "number"
+                      ? value.toLocaleString()
+                      : String(value ?? "")
+                  }
                 />
               </Line>
             </>
           )}
 
-          {metric === 'gender' && (
+          {metric === "gender" && (
             <>
               <Line
                 type="monotone"
@@ -196,7 +214,11 @@ export function TrendLineChart({
                   position="top"
                   className="text-xs"
                   fill="hsl(var(--muted-foreground))"
-                  formatter={(value) => typeof value === 'number' ? value.toLocaleString() : String(value ?? '')}
+                  formatter={(value) =>
+                    typeof value === "number"
+                      ? value.toLocaleString()
+                      : String(value ?? "")
+                  }
                 />
               </Line>
               <Line
@@ -213,7 +235,11 @@ export function TrendLineChart({
                   position="bottom"
                   className="text-xs"
                   fill="hsl(var(--muted-foreground))"
-                  formatter={(value) => typeof value === 'number' ? value.toLocaleString() : String(value ?? '')}
+                  formatter={(value) =>
+                    typeof value === "number"
+                      ? value.toLocaleString()
+                      : String(value ?? "")
+                  }
                 />
               </Line>
             </>

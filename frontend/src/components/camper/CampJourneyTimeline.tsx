@@ -2,10 +2,10 @@
  * Sidebar timeline showing camper's historical camp records
  * Compact left-aligned layout
  */
-import { TreePine, Home } from 'lucide-react';
-import { getSessionDisplayNameFromString } from '../../utils/sessionDisplay';
-import type { HistoricalRecord } from '../../hooks/camper/types';
-import { getCampTagline } from '../../config/branding';
+import { TreePine, Home } from "lucide-react";
+import { getSessionDisplayNameFromString } from "../../utils/sessionDisplay";
+import type { HistoricalRecord } from "../../hooks/camper/types";
+import { getCampTagline } from "../../config/branding";
 
 interface CampJourneyTimelineProps {
   history: HistoricalRecord[];
@@ -45,14 +45,14 @@ export function CampJourneyTimeline({
                 return (
                   <div
                     key={`${record.year}-${record.sessionName}-${idx}`}
-                    className={`relative flex items-center gap-3 ${isCurrentYear ? '' : 'opacity-75'}`}
+                    className={`relative flex items-center gap-3 ${isCurrentYear ? "" : "opacity-75"}`}
                   >
                     {/* Left dot */}
                     <div
                       className={`relative z-10 flex-shrink-0 rounded-full ${
                         isCurrentYear
-                          ? 'w-3 h-3 bg-forest-600 ring-2 ring-forest-100 dark:ring-forest-900'
-                          : 'w-3 h-3 bg-forest-400 dark:bg-forest-600'
+                          ? "w-3 h-3 bg-forest-600 ring-2 ring-forest-100 dark:ring-forest-900"
+                          : "w-3 h-3 bg-forest-400 dark:bg-forest-600"
                       }`}
                     />
 
@@ -60,8 +60,8 @@ export function CampJourneyTimeline({
                     <span
                       className={`font-display font-bold w-12 ${
                         isCurrentYear
-                          ? 'text-forest-700 dark:text-forest-300 text-base'
-                          : 'text-foreground/80'
+                          ? "text-forest-700 dark:text-forest-300 text-base"
+                          : "text-foreground/80"
                       }`}
                     >
                       {record.year}
@@ -71,7 +71,7 @@ export function CampJourneyTimeline({
                     <span className="text-sm text-muted-foreground truncate">
                       {getSessionDisplayNameFromString(
                         record.sessionName,
-                        record.sessionType
+                        record.sessionType,
                       )}
                     </span>
 
@@ -80,9 +80,9 @@ export function CampJourneyTimeline({
                     {/* Bunk */}
                     <span
                       className={`text-sm truncate flex items-center gap-1 ${
-                        record.bunkName === 'Unassigned'
-                          ? 'text-amber-600 dark:text-amber-400 italic'
-                          : 'text-foreground font-medium'
+                        record.bunkName === "Unassigned"
+                          ? "text-amber-600 dark:text-amber-400 italic"
+                          : "text-foreground font-medium"
                       }`}
                     >
                       <Home className="w-3.5 h-3.5 opacity-60 flex-shrink-0" />

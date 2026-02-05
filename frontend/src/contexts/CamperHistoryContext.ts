@@ -1,4 +1,4 @@
-import { createContext } from 'react';
+import { createContext } from "react";
 
 export interface CamperHistory {
   year: number;
@@ -17,4 +17,6 @@ interface CamperHistoryContextValue {
   error: Error | null;
 }
 
-export const CamperHistoryContext = createContext<CamperHistoryContextValue | undefined>(undefined);
+export const CamperHistoryContext = createContext<
+  CamperHistoryContextValue | undefined
+>(undefined);

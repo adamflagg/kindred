@@ -1,11 +1,14 @@
-import { useState, useMemo } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, GitMerge, AlertCircle, User, HelpCircle } from 'lucide-react';
-import { Modal } from './ui/Modal';
-import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types';
-import { BunkRequestsRequestTypeOptions } from '../types/pocketbase-types';
-import { pb } from '../lib/pocketbase';
-import { useApiWithAuth } from '../hooks/useApiWithAuth';
+import { useState, useMemo } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Loader2, GitMerge, AlertCircle, User, HelpCircle } from "lucide-react";
+import { Modal } from "./ui/Modal";
+import type {
+  BunkRequestsResponse,
+  PersonsResponse,
+} from "../types/pocketbase-types";
+import { BunkRequestsRequestTypeOptions } from "../types/pocketbase-types";
+import { pb } from "../lib/pocketbase";
+import { useApiWithAuth } from "../hooks/useApiWithAuth";
 
 interface MergeRequestsModalProps {
   isOpen: boolean;
@@ -29,39 +32,46 @@ export default function MergeRequestsModal({
 }: MergeRequestsModalProps) {
   const queryClient = useQueryClient();
   const { fetchWithAuth } = useApiWithAuth();
-  const [selectedTargetId, setSelectedTargetId] = useState<string>(requests[0]?.id || '');
+  const [selectedTargetId, setSelectedTargetId] = useState<string>(
+    requests[0]?.id || "",
+  );
   const [finalType, setFinalType] = useState<BunkRequestsRequestTypeOptions>(
-    requests[0]?.request_type || BunkRequestsRequestTypeOptions.bunk_with
+    requests[0]?.request_type || BunkRequestsRequestTypeOptions.bunk_with,
   );
   const [error, setError] = useState<string | null>(null);
 
   // Compute combined source fields preview
-  const combinedSourceFields = [...new Set(requests.map((r) => r.source_field).filter(Boolean))];
+  const combinedSourceFields = [
+    ...new Set(requests.map((r) => r.source_field).filter(Boolean)),
+  ];
 
   // Get unique requestee IDs that are positive (resolved) for person lookup
   const requesteeIds = useMemo(() => {
-    return [...new Set(requests
-      .map(r => r.requestee_id)
-      .filter((id): id is number => typeof id === 'number' && id > 0)
-    )];
+    return [
+      ...new Set(
+        requests
+          .map((r) => r.requestee_id)
+          .filter((id): id is number => typeof id === "number" && id > 0),
+      ),
+    ];
   }, [requests]);
 
   // Fetch person data for resolved targets
   const { data: persons = [] } = useQuery({
-    queryKey: ['persons-for-merge', requesteeIds, requests[0]?.year],
+    queryKey: ["persons-for-merge", requesteeIds, requests[0]?.year],
     queryFn: async () => {
       if (requesteeIds.length === 0) return [];
       const year = requests[0]?.year;
       if (!year) return [];
 
-      const filter = `(${requesteeIds.map(id => `cm_id = ${id}`).join(' || ')}) && year = ${year}`;
-      return pb.collection<PersonsResponse>('persons').getFullList({ filter });
+      const filter = `(${requesteeIds.map((id) => `cm_id = ${id}`).join(" || ")}) && year = ${year}`;
+      return pb.collection<PersonsResponse>("persons").getFullList({ filter });
     },
     enabled: requesteeIds.length > 0,
   });
 
   const personMap = useMemo(() => {
-    return new Map(persons.map(p => [p.cm_id, p]));
+    return new Map(persons.map((p) => [p.cm_id, p]));
   }, [persons]);
 
   // Helper to render target display
@@ -97,7 +107,8 @@ export default function MergeRequestsModal({
         <span className="flex items-center gap-1.5">
           <HelpCircle className="w-3.5 h-3.5 text-amber-500" />
           <span className="text-amber-700 dark:text-amber-300 italic">
-            {requestedName || 'Unknown'} <span className="text-xs text-muted-foreground">(unresolved)</span>
+            {requestedName || "Unknown"}{" "}
+            <span className="text-xs text-muted-foreground">(unresolved)</span>
           </span>
         </span>
       );
@@ -109,7 +120,8 @@ export default function MergeRequestsModal({
         <span className="flex items-center gap-1.5">
           <HelpCircle className="w-3.5 h-3.5 text-amber-500" />
           <span className="text-amber-700 dark:text-amber-300 italic">
-            {requestedName} <span className="text-xs text-muted-foreground">(unresolved)</span>
+            {requestedName}{" "}
+            <span className="text-xs text-muted-foreground">(unresolved)</span>
           </span>
         </span>
       );
@@ -122,10 +134,10 @@ export default function MergeRequestsModal({
   // Merge mutation
   const mergeMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetchWithAuth('/api/requests/merge', {
-        method: 'POST',
+      const response = await fetchWithAuth("/api/requests/merge", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           request_ids: requests.map((r) => r.id),
@@ -136,17 +148,17 @@ export default function MergeRequestsModal({
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || 'Merge failed');
+        throw new Error(errorData.detail || "Merge failed");
       }
 
       return response.json() as Promise<MergeResponse>;
     },
     onSuccess: () => {
       // Invalidate all related queries to refresh data
-      queryClient.invalidateQueries({ queryKey: ['bunk-requests'] });
-      queryClient.invalidateQueries({ queryKey: ['all-bunk-requests'] });
-      queryClient.invalidateQueries({ queryKey: ['source-links'] });
-      queryClient.invalidateQueries({ queryKey: ['expanded-source-links'] });
+      queryClient.invalidateQueries({ queryKey: ["bunk-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["all-bunk-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["source-links"] });
+      queryClient.invalidateQueries({ queryKey: ["expanded-source-links"] });
       onMergeComplete();
       onClose();
     },
@@ -175,15 +187,17 @@ export default function MergeRequestsModal({
 
         {/* Side-by-side comparison */}
         <div>
-          <h3 className="text-sm font-medium mb-3">Select which request's target to keep:</h3>
+          <h3 className="text-sm font-medium mb-3">
+            Select which request's target to keep:
+          </h3>
           <div className="grid gap-4 md:grid-cols-2">
             {requests.map((request, index) => (
               <label
                 key={request.id}
                 className={`relative p-4 border rounded-lg cursor-pointer transition-colors ${
                   selectedTargetId === request.id
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border hover:border-primary/50'
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:border-primary/50"
                 }`}
               >
                 <input
@@ -206,27 +220,33 @@ export default function MergeRequestsModal({
                     )}
                   </div>
                   <div className="text-sm">
-                    <span className="font-medium">Target:</span>{' '}
+                    <span className="font-medium">Target:</span>{" "}
                     {renderTarget(request)}
                   </div>
                   <div className="text-sm">
-                    <span className="font-medium">Type:</span>{' '}
-                    <span className="text-muted-foreground">{request.request_type.replace('_', ' ')}</span>
+                    <span className="font-medium">Type:</span>{" "}
+                    <span className="text-muted-foreground">
+                      {request.request_type.replace("_", " ")}
+                    </span>
                   </div>
                   <div className="text-sm">
-                    <span className="font-medium">Source:</span>{' '}
-                    <span className="text-muted-foreground">{request.source_field}</span>
+                    <span className="font-medium">Source:</span>{" "}
+                    <span className="text-muted-foreground">
+                      {request.source_field}
+                    </span>
                   </div>
                   <div className="text-sm">
-                    <span className="font-medium">Confidence:</span>{' '}
+                    <span className="font-medium">Confidence:</span>{" "}
                     <span className="text-muted-foreground">
                       {(request.confidence_score * 100).toFixed(0)}%
                     </span>
                   </div>
                   {request.original_text && (
                     <div className="text-sm">
-                      <span className="font-medium">Original:</span>{' '}
-                      <span className="text-muted-foreground text-xs italic">"{request.original_text}"</span>
+                      <span className="font-medium">Original:</span>{" "}
+                      <span className="text-muted-foreground text-xs italic">
+                        "{request.original_text}"
+                      </span>
                     </div>
                   )}
                 </div>
@@ -237,19 +257,30 @@ export default function MergeRequestsModal({
 
         {/* Final type selection */}
         <div>
-          <label htmlFor="final-type" className="block text-sm font-medium mb-2">
+          <label
+            htmlFor="final-type"
+            className="block text-sm font-medium mb-2"
+          >
             Final Request Type:
           </label>
           <select
             id="final-type"
             aria-label="Final request type"
             value={finalType}
-            onChange={(e) => setFinalType(e.target.value as BunkRequestsRequestTypeOptions)}
+            onChange={(e) =>
+              setFinalType(e.target.value as BunkRequestsRequestTypeOptions)
+            }
             className="w-full px-3 py-2 border border-border rounded-lg bg-background"
           >
-            <option value={BunkRequestsRequestTypeOptions.bunk_with}>Bunk With</option>
-            <option value={BunkRequestsRequestTypeOptions.not_bunk_with}>Not Bunk With</option>
-            <option value={BunkRequestsRequestTypeOptions.age_preference}>Age Preference</option>
+            <option value={BunkRequestsRequestTypeOptions.bunk_with}>
+              Bunk With
+            </option>
+            <option value={BunkRequestsRequestTypeOptions.not_bunk_with}>
+              Not Bunk With
+            </option>
+            <option value={BunkRequestsRequestTypeOptions.age_preference}>
+              Age Preference
+            </option>
           </select>
         </div>
 
@@ -269,7 +300,9 @@ export default function MergeRequestsModal({
                 ))}
               </div>
             ) : (
-              <span className="text-sm text-muted-foreground">No source fields</span>
+              <span className="text-sm text-muted-foreground">
+                No source fields
+              </span>
             )}
           </div>
         </div>

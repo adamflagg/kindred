@@ -6,9 +6,9 @@
  * This component now only shows the session+bunk combinations table.
  */
 
-import { useState } from 'react';
-import { ChevronDown, ChevronRight, Building2 } from 'lucide-react';
-import type { SessionBunkBreakdown } from '../../types/metrics';
+import { useState } from "react";
+import { ChevronDown, ChevronRight, Building2 } from "lucide-react";
+import type { SessionBunkBreakdown } from "../../types/metrics";
 
 interface DemographicBreakdownsProps {
   bySessionBunk: SessionBunkBreakdown[] | undefined;
@@ -77,16 +77,25 @@ export function DemographicBreakdowns({
                 <th className="px-4 py-2 text-left font-medium text-muted-foreground">
                   Session
                 </th>
-                <th className="px-4 py-2 text-left font-medium text-muted-foreground">Bunk</th>
-                <th className="px-4 py-2 text-right font-medium text-muted-foreground">Count</th>
+                <th className="px-4 py-2 text-left font-medium text-muted-foreground">
+                  Bunk
+                </th>
+                <th className="px-4 py-2 text-right font-medium text-muted-foreground">
+                  Count
+                </th>
               </tr>
             </thead>
             <tbody>
               {bySessionBunk.map((item, idx) => (
-                <tr key={idx} className="border-t border-border hover:bg-muted/30">
+                <tr
+                  key={idx}
+                  className="border-t border-border hover:bg-muted/30"
+                >
                   <td className="px-4 py-2 text-foreground">{item.session}</td>
                   <td className="px-4 py-2 text-foreground">{item.bunk}</td>
-                  <td className="px-4 py-2 text-right text-foreground">{item.count}</td>
+                  <td className="px-4 py-2 text-right text-foreground">
+                    {item.count}
+                  </td>
                 </tr>
               ))}
             </tbody>

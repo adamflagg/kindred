@@ -1,10 +1,10 @@
-import React from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { pb } from '../lib/pocketbase';
-import { useAuth } from '../contexts/AuthContext';
-import { useYear } from '../hooks/useCurrentYear';
-import type { CamperHistory } from '../contexts/CamperHistoryContext';
-import { CamperHistoryContext } from '../contexts/CamperHistoryContext';
+import React from "react";
+import { useQuery } from "@tanstack/react-query";
+import { pb } from "../lib/pocketbase";
+import { useAuth } from "../contexts/AuthContext";
+import { useYear } from "../hooks/useCurrentYear";
+import type { CamperHistory } from "../contexts/CamperHistoryContext";
+import { CamperHistoryContext } from "../contexts/CamperHistoryContext";
 
 interface CamperHistoryProviderProps {
   sessionCmId: number;
@@ -27,14 +27,27 @@ interface BunkAssignmentExpanded {
   };
 }
 
-export function CamperHistoryProvider({ sessionCmId, camperPersonIds, children }: CamperHistoryProviderProps) {
+export function CamperHistoryProvider({
+  sessionCmId,
+  camperPersonIds,
+  children,
+}: CamperHistoryProviderProps) {
   const currentYear = useYear();
   const lastYear = currentYear - 1;
   const { user } = useAuth();
 
   // Batch fetch historical data for all campers in the session
-  const { data: historyMap = {}, isLoading, error } = useQuery<Record<number, CamperHistory | null>>({
-    queryKey: ['batch-camper-history', sessionCmId, camperPersonIds.sort().join(','), lastYear],
+  const {
+    data: historyMap = {},
+    isLoading,
+    error,
+  } = useQuery<Record<number, CamperHistory | null>>({
+    queryKey: [
+      "batch-camper-history",
+      sessionCmId,
+      camperPersonIds.sort().join(","),
+      lastYear,
+    ],
     queryFn: async () => {
       const historyRecord: Record<number, CamperHistory | null> = {};
 
@@ -43,7 +56,7 @@ export function CamperHistoryProvider({ sessionCmId, camperPersonIds, children }
       }
 
       // Initialize all campers with null
-      camperPersonIds.forEach(id => {
+      camperPersonIds.forEach((id) => {
         historyRecord[id] = null;
       });
 
@@ -57,19 +70,23 @@ export function CamperHistoryProvider({ sessionCmId, camperPersonIds, children }
         }
 
         // Standard camp session types to include
-        const allowedTypes = ['main', 'ag', 'embedded', 'taste'];
+        const allowedTypes = ["main", "ag", "embedded", "taste"];
 
         // Process chunks in parallel
         const chunkPromises = chunks.map(async (chunk) => {
           // Build OR filter for this chunk of person cm_ids
-          const personFilters = chunk.map(id => `person.cm_id = ${id}`).join(' || ');
+          const personFilters = chunk
+            .map((id) => `person.cm_id = ${id}`)
+            .join(" || ");
           const filter = `(${personFilters}) && year < ${currentYear}`;
 
-          const assignments = await pb.collection('bunk_assignments').getFullList<BunkAssignmentExpanded>({
-            filter,
-            expand: 'person,session,bunk',
-            sort: '-year'
-          });
+          const assignments = await pb
+            .collection("bunk_assignments")
+            .getFullList<BunkAssignmentExpanded>({
+              filter,
+              expand: "person,session,bunk",
+              sort: "-year",
+            });
 
           return assignments;
         });
@@ -83,7 +100,11 @@ export function CamperHistoryProvider({ sessionCmId, camperPersonIds, children }
           const personCmId = assignment.expand?.person?.cm_id;
           const sessionType = assignment.expand?.session?.session_type;
 
-          if (!personCmId || !sessionType || !allowedTypes.includes(sessionType)) {
+          if (
+            !personCmId ||
+            !sessionType ||
+            !allowedTypes.includes(sessionType)
+          ) {
             continue;
           }
 
@@ -99,25 +120,26 @@ export function CamperHistoryProvider({ sessionCmId, camperPersonIds, children }
         // For each person, find last year's assigned bunk
         byPerson.forEach((assignments, personCmId) => {
           // Find last year's assignment with a bunk
-          const lastYearAssignment = assignments.find(a =>
-            a.year === lastYear && a.expand?.bunk?.name
+          const lastYearAssignment = assignments.find(
+            (a) => a.year === lastYear && a.expand?.bunk?.name,
           );
 
           if (lastYearAssignment?.expand) {
             historyRecord[personCmId] = {
               year: lastYearAssignment.year,
-              sessionName: lastYearAssignment.expand.session?.name || '',
-              sessionType: lastYearAssignment.expand.session?.session_type || '',
-              bunkName: lastYearAssignment.expand.bunk?.name || 'Unassigned',
-              startDate: lastYearAssignment.expand.session?.start_date || '',
-              endDate: lastYearAssignment.expand.session?.end_date || ''
+              sessionName: lastYearAssignment.expand.session?.name || "",
+              sessionType:
+                lastYearAssignment.expand.session?.session_type || "",
+              bunkName: lastYearAssignment.expand.bunk?.name || "Unassigned",
+              startDate: lastYearAssignment.expand.session?.start_date || "",
+              endDate: lastYearAssignment.expand.session?.end_date || "",
             };
           }
         });
 
         return historyRecord;
       } catch (error) {
-        console.error('Error batch fetching camper histories:', error);
+        console.error("Error batch fetching camper histories:", error);
         return historyRecord;
       }
     },
@@ -126,8 +148,8 @@ export function CamperHistoryProvider({ sessionCmId, camperPersonIds, children }
   });
 
   const getLastYearHistory = (personCmId: number): CamperHistory | null => {
-    if (!historyMap || typeof historyMap !== 'object') {
-      console.warn('historyMap is not a valid object:', historyMap);
+    if (!historyMap || typeof historyMap !== "object") {
+      console.warn("historyMap is not a valid object:", historyMap);
       return null;
     }
     return historyMap[personCmId] || null;

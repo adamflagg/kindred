@@ -14,21 +14,21 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
-} from 'recharts';
-import type { YearEnrollment } from '../../types/metrics';
+} from "recharts";
+import type { YearEnrollment } from "../../types/metrics";
 
 // Gender-specific colors (consistent with app theme)
 const GENDER_COLORS: Record<string, string> = {
-  M: 'hsl(200, 70%, 50%)', // Blue
-  F: 'hsl(340, 70%, 50%)', // Pink
-  Unknown: 'hsl(0, 0%, 60%)', // Gray
+  M: "hsl(200, 70%, 50%)", // Blue
+  F: "hsl(340, 70%, 50%)", // Pink
+  Unknown: "hsl(0, 0%, 60%)", // Gray
 };
 
 // Fallback colors for other genders
 const FALLBACK_COLORS = [
-  'hsl(280, 60%, 50%)', // Purple
-  'hsl(42, 92%, 50%)', // Gold
-  'hsl(160, 100%, 35%)', // Green
+  "hsl(280, 60%, 50%)", // Purple
+  "hsl(42, 92%, 50%)", // Gold
+  "hsl(160, 100%, 35%)", // Green
 ];
 
 interface GenderStackedChartProps {
@@ -47,7 +47,10 @@ interface ChartDataItem {
  * Transform YearEnrollment data to chart format.
  * Each year becomes a bar with stacked gender segments.
  */
-function transformData(data: YearEnrollment[]): { chartData: ChartDataItem[]; genders: string[] } {
+function transformData(data: YearEnrollment[]): {
+  chartData: ChartDataItem[];
+  genders: string[];
+} {
   // Collect all unique genders across all years
   const genderSet = new Set<string>();
   for (const year of data) {
@@ -71,9 +74,9 @@ function transformData(data: YearEnrollment[]): { chartData: ChartDataItem[]; ge
 
 export function GenderStackedChart({
   data,
-  title = 'Gender Composition by Year',
+  title = "Gender Composition by Year",
   height = 300,
-  className = '',
+  className = "",
 }: GenderStackedChartProps) {
   // Show empty state if no data or no gender data
   const hasGenderData = data.some((y) => y.by_gender.length > 0);
@@ -107,14 +110,16 @@ export function GenderStackedChart({
           <p className="font-medium text-foreground mb-2">Year {label}</p>
           {payload.map((p, idx) => (
             <p key={idx} className="text-sm text-muted-foreground">
-              <span style={{ color: p.color }}>{p.name}:</span>{' '}
+              <span style={{ color: p.color }}>{p.name}:</span>{" "}
               <span className="font-semibold text-foreground">
-                {p.value} ({total > 0 ? ((p.value / total) * 100).toFixed(0) : 0}%)
+                {p.value} (
+                {total > 0 ? ((p.value / total) * 100).toFixed(0) : 0}%)
               </span>
             </p>
           ))}
           <p className="text-sm text-muted-foreground mt-1 border-t border-border pt-1">
-            Total: <span className="font-semibold text-foreground">{total}</span>
+            Total:{" "}
+            <span className="font-semibold text-foreground">{total}</span>
           </p>
         </div>
       );
@@ -125,9 +130,9 @@ export function GenderStackedChart({
   // Get color for gender
   const getGenderColor = (gender: string, index: number): string => {
     if (gender in GENDER_COLORS) {
-      return GENDER_COLORS[gender] ?? 'hsl(0, 0%, 50%)';
+      return GENDER_COLORS[gender] ?? "hsl(0, 0%, 50%)";
     }
-    return FALLBACK_COLORS[index % FALLBACK_COLORS.length] ?? 'hsl(0, 0%, 50%)';
+    return FALLBACK_COLORS[index % FALLBACK_COLORS.length] ?? "hsl(0, 0%, 50%)";
   };
 
   return (
@@ -143,13 +148,13 @@ export function GenderStackedChart({
           <XAxis
             dataKey="name"
             className="text-xs"
-            tick={{ fill: 'hsl(var(--muted-foreground))' }}
+            tick={{ fill: "hsl(var(--muted-foreground))" }}
           />
           <YAxis
             tickFormatter={(value: number) => `${(value * 100).toFixed(0)}%`}
             domain={[0, 1]}
             className="text-xs"
-            tick={{ fill: 'hsl(var(--muted-foreground))' }}
+            tick={{ fill: "hsl(var(--muted-foreground))" }}
           />
           <Tooltip content={<CustomTooltip />} />
           <Legend />
@@ -160,7 +165,9 @@ export function GenderStackedChart({
               name={gender}
               stackId="gender"
               fill={getGenderColor(gender, index)}
-              radius={index === genders.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
+              radius={
+                index === genders.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]
+              }
             />
           ))}
         </BarChart>

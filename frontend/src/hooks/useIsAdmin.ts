@@ -7,7 +7,7 @@
  * - User ID matches configured admin = admin
  * - Otherwise = not admin
  */
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from "../contexts/AuthContext";
 
 export function useIsAdmin(): boolean {
   const { user, isBypassMode } = useAuth();
@@ -16,7 +16,7 @@ export function useIsAdmin(): boolean {
   if (isBypassMode) return true;
 
   // No admin configured = everyone is admin
-  const adminUserId = import.meta.env['ADMIN_USER'] as string | undefined;
+  const adminUserId = import.meta.env["ADMIN_USER"] as string | undefined;
   if (!adminUserId) return true;
 
   // Check if current user matches configured admin

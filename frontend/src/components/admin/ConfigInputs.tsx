@@ -1,12 +1,18 @@
-import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
-import { createPortal } from 'react-dom';
-import { Clock, CheckCircle, XCircle, Loader2, Info } from 'lucide-react';
-import { type SyncStatus } from '../../hooks/useSyncStatusAPI';
+import {
+  useState,
+  useRef,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+} from "react";
+import { createPortal } from "react-dom";
+import { Clock, CheckCircle, XCircle, Loader2, Info } from "lucide-react";
+import { type SyncStatus } from "../../hooks/useSyncStatusAPI";
 import {
   type ScaleType,
   SCALE_DEFINITIONS,
   getImpactLevel,
-} from '../../utils/scaleContext';
+} from "../../utils/scaleContext";
 
 // ============ INPUT COMPONENTS ============
 
@@ -16,22 +22,29 @@ export interface ToggleSwitchProps {
   disabled?: boolean;
 }
 
-export function ToggleSwitch({ value, onChange, disabled = false }: ToggleSwitchProps) {
-  const isChecked = value === true || value === '1' || value === 'true' || value === 1;
+export function ToggleSwitch({
+  value,
+  onChange,
+  disabled = false,
+}: ToggleSwitchProps) {
+  const isChecked =
+    value === true || value === "1" || value === "true" || value === 1;
 
   return (
     <button
-      onClick={() => !disabled && onChange(isChecked ? '0' : '1')}
+      onClick={() => !disabled && onChange(isChecked ? "0" : "1")}
       disabled={disabled}
       className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-forest-500 focus:ring-offset-2 dark:focus:ring-offset-card ${
-        isChecked ? 'bg-forest-600 dark:bg-forest-500' : 'bg-stone-300 dark:bg-stone-600'
-      } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+        isChecked
+          ? "bg-forest-600 dark:bg-forest-500"
+          : "bg-stone-300 dark:bg-stone-600"
+      } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
       role="switch"
       aria-checked={isChecked}
     >
       <span
         className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${
-          isChecked ? 'translate-x-6' : 'translate-x-1'
+          isChecked ? "translate-x-6" : "translate-x-1"
         }`}
       />
     </button>
@@ -41,12 +54,18 @@ export function ToggleSwitch({ value, onChange, disabled = false }: ToggleSwitch
 export interface SliderProps {
   value: string | number;
   onChange: (value: string) => void;
-  config?: { min?: number; max?: number; step?: number; suffix?: string; precision?: number };
+  config?: {
+    min?: number;
+    max?: number;
+    step?: number;
+    suffix?: string;
+    precision?: number;
+  };
 }
 
 export function Slider({ value, onChange, config = {} }: SliderProps) {
-  const { min = 0, max = 100, step = 1, suffix = '', precision = 0 } = config;
-  const numValue = typeof value === 'string' ? parseFloat(value) || min : value;
+  const { min = 0, max = 100, step = 1, suffix = "", precision = 0 } = config;
+  const numValue = typeof value === "string" ? parseFloat(value) || min : value;
 
   // Use local state during dragging for smooth interaction
   const [localValue, setLocalValue] = useState<number | null>(null);
@@ -76,7 +95,8 @@ export function Slider({ value, onChange, config = {} }: SliderProps) {
         className="flex-1 h-2 bg-stone-200 dark:bg-stone-700 rounded-full appearance-none cursor-pointer accent-forest-600 dark:accent-forest-400"
       />
       <span className="w-14 sm:w-16 text-right font-mono text-xs sm:text-sm text-muted-foreground tabular-nums">
-        {precision > 0 ? displayValue.toFixed(precision) : displayValue}{suffix}
+        {precision > 0 ? displayValue.toFixed(precision) : displayValue}
+        {suffix}
       </span>
     </div>
   );
@@ -88,8 +108,12 @@ export interface NumberInputProps {
   config?: { min?: number; max?: number; step?: number; suffix?: string };
 }
 
-export function NumberInput({ value, onChange, config = {} }: NumberInputProps) {
-  const { min, max, step = 1, suffix = '' } = config;
+export function NumberInput({
+  value,
+  onChange,
+  config = {},
+}: NumberInputProps) {
+  const { min, max, step = 1, suffix = "" } = config;
 
   return (
     <div className="flex items-center gap-2">
@@ -102,7 +126,9 @@ export function NumberInput({ value, onChange, config = {} }: NumberInputProps) 
         onChange={(e) => onChange(e.target.value)}
         className="w-20 px-2 py-1.5 text-sm border border-border rounded-lg text-center font-mono bg-background text-foreground focus:border-forest-500 focus:ring-1 focus:ring-forest-500 focus:outline-none"
       />
-      {suffix && <span className="text-sm text-muted-foreground">{suffix}</span>}
+      {suffix && (
+        <span className="text-sm text-muted-foreground">{suffix}</span>
+      )}
     </div>
   );
 }
@@ -110,11 +136,18 @@ export function NumberInput({ value, onChange, config = {} }: NumberInputProps) 
 export interface SelectInputProps {
   value: string;
   onChange: (value: string) => void;
-  config?: { placeholder?: string; options?: Array<{ value: string; label: string }> };
+  config?: {
+    placeholder?: string;
+    options?: Array<{ value: string; label: string }>;
+  };
 }
 
-export function SelectInput({ value, onChange, config = {} }: SelectInputProps) {
-  const { placeholder = 'Select...', options = [] } = config;
+export function SelectInput({
+  value,
+  onChange,
+  config = {},
+}: SelectInputProps) {
+  const { placeholder = "Select...", options = [] } = config;
 
   return (
     <select
@@ -124,7 +157,9 @@ export function SelectInput({ value, onChange, config = {} }: SelectInputProps) 
     >
       {placeholder && <option value="">{placeholder}</option>}
       {options.map((opt) => (
-        <option key={opt.value} value={opt.value}>{opt.label}</option>
+        <option key={opt.value} value={opt.value}>
+          {opt.label}
+        </option>
       ))}
     </select>
   );
@@ -137,7 +172,7 @@ export interface TextInputProps {
 }
 
 export function TextInput({ value, onChange, config = {} }: TextInputProps) {
-  const { placeholder = '' } = config;
+  const { placeholder = "" } = config;
 
   return (
     <input
@@ -160,23 +195,35 @@ export function inferComponentType(value: unknown, configKey: string): string {
   const strValue = String(value);
 
   // Boolean-like values
-  if (strValue === 'true' || strValue === 'false' || strValue === '0' || strValue === '1') {
-    if (configKey.includes('enabled') || configKey.includes('enable') ||
-        configKey.includes('prevent') || configKey.includes('prefer') ||
-        configKey.includes('require') || configKey.includes('ignore') ||
-        configKey.includes('use_') || configKey.includes('include') ||
-        configKey.includes('flag') || configKey.includes('auto_')) {
-      return 'toggle';
+  if (
+    strValue === "true" ||
+    strValue === "false" ||
+    strValue === "0" ||
+    strValue === "1"
+  ) {
+    if (
+      configKey.includes("enabled") ||
+      configKey.includes("enable") ||
+      configKey.includes("prevent") ||
+      configKey.includes("prefer") ||
+      configKey.includes("require") ||
+      configKey.includes("ignore") ||
+      configKey.includes("use_") ||
+      configKey.includes("include") ||
+      configKey.includes("flag") ||
+      configKey.includes("auto_")
+    ) {
+      return "toggle";
     }
   }
 
   // Numeric values - use number input for precision
   const numValue = parseFloat(strValue);
   if (!isNaN(numValue)) {
-    return 'number';
+    return "number";
   }
 
-  return 'text';
+  return "text";
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any, react-refresh/only-export-components -- Config constant for component registry
@@ -190,15 +237,19 @@ export const COMPONENT_MAP: Record<string, React.FC<any>> = {
 
 // ============ STATUS & UTILITY COMPONENTS ============
 
-export function StatusIcon({ status }: { status: SyncStatus['status'] | 'pending' }) {
+export function StatusIcon({
+  status,
+}: {
+  status: SyncStatus["status"] | "pending";
+}) {
   switch (status) {
-    case 'running':
+    case "running":
       return <Loader2 className="w-4 h-4 text-sky-600 animate-spin" />;
-    case 'pending':
+    case "pending":
       return <Clock className="w-4 h-4 text-amber-600" />;
-    case 'success':
+    case "success":
       return <CheckCircle className="w-4 h-4 text-emerald-600" />;
-    case 'failed':
+    case "failed":
       return <XCircle className="w-4 h-4 text-red-600" />;
     default:
       return <div className="w-4 h-4 rounded-full bg-stone-200" />;
@@ -207,8 +258,8 @@ export function StatusIcon({ status }: { status: SyncStatus['status'] | 'pending
 
 // eslint-disable-next-line react-refresh/only-export-components -- Utility function for duration formatting
 export function formatDuration(seconds?: number): string {
-  if (seconds === null || seconds === undefined) return '';
-  if (seconds === 0) return '< 1s';
+  if (seconds === null || seconds === undefined) return "";
+  if (seconds === 0) return "< 1s";
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
@@ -228,7 +279,9 @@ export function ImpactBadge({ scaleType, value, metadata }: ImpactBadgeProps) {
   if (!level) return null;
 
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold tracking-wide uppercase ${level.color} ${level.bgColor}`}>
+    <span
+      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold tracking-wide uppercase ${level.color} ${level.bgColor}`}
+    >
       {level.label}
     </span>
   );
@@ -240,12 +293,16 @@ export interface ScaleContextBarProps {
   metadata?: Record<string, unknown>;
 }
 
-export function ScaleContextBar({ scaleType, value, metadata }: ScaleContextBarProps) {
+export function ScaleContextBar({
+  scaleType,
+  value,
+  metadata,
+}: ScaleContextBarProps) {
   const scale = SCALE_DEFINITIONS[scaleType];
-  if (!scale || scaleType === 'unknown') return null;
+  if (!scale || scaleType === "unknown") return null;
 
-  const minValue = (metadata?.['min_value'] as number) ?? scale.min;
-  const maxValue = (metadata?.['max_value'] as number) ?? scale.max;
+  const minValue = (metadata?.["min_value"] as number) ?? scale.min;
+  const maxValue = (metadata?.["max_value"] as number) ?? scale.max;
 
   const normalizedValue = (value - minValue) / (maxValue - minValue);
   const position = Math.max(0, Math.min(100, normalizedValue * 100));
@@ -269,7 +326,11 @@ export interface PortalTooltipProps {
   className?: string;
 }
 
-export function PortalTooltip({ children, content, className = "w-64" }: PortalTooltipProps) {
+export function PortalTooltip({
+  children,
+  content,
+  className = "w-64",
+}: PortalTooltipProps) {
   const triggerRef = useRef<HTMLDivElement>(null);
   const [isVisible, setIsVisible] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });
@@ -277,7 +338,7 @@ export function PortalTooltip({ children, content, className = "w-64" }: PortalT
   const updatePosition = useCallback(() => {
     if (triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect();
-      const tooltipWidth = className.includes('w-72') ? 288 : 256;
+      const tooltipWidth = className.includes("w-72") ? 288 : 256;
       const tooltipHeight = 100;
       const padding = 8;
 
@@ -308,11 +369,11 @@ export function PortalTooltip({ children, content, className = "w-64" }: PortalT
   // Regular useEffect for event listeners
   useEffect(() => {
     if (isVisible) {
-      window.addEventListener('scroll', updatePosition, true);
-      window.addEventListener('resize', updatePosition);
+      window.addEventListener("scroll", updatePosition, true);
+      window.addEventListener("resize", updatePosition);
       return () => {
-        window.removeEventListener('scroll', updatePosition, true);
-        window.removeEventListener('resize', updatePosition);
+        window.removeEventListener("scroll", updatePosition, true);
+        window.removeEventListener("resize", updatePosition);
       };
     }
   }, [isVisible, updatePosition]);
@@ -324,7 +385,7 @@ export function PortalTooltip({ children, content, className = "w-64" }: PortalT
         top: position.top,
         left: position.left,
         opacity: isVisible ? 1 : 0,
-        visibility: isVisible ? 'visible' : 'hidden',
+        visibility: isVisible ? "visible" : "hidden",
       }}
     >
       {content}
@@ -351,7 +412,11 @@ export interface ScaleTooltipProps {
   metadata?: Record<string, unknown>;
 }
 
-export function ScaleTooltip({ scaleType, value, metadata }: ScaleTooltipProps) {
+export function ScaleTooltip({
+  scaleType,
+  value,
+  metadata,
+}: ScaleTooltipProps) {
   const scale = SCALE_DEFINITIONS[scaleType];
   const triggerRef = useRef<HTMLDivElement>(null);
   const [isVisible, setIsVisible] = useState(false);
@@ -382,27 +447,27 @@ export function ScaleTooltip({ scaleType, value, metadata }: ScaleTooltipProps) 
 
   // useLayoutEffect for synchronous DOM measurements before paint
   useLayoutEffect(() => {
-    if (!scale || scaleType === 'unknown' || !isVisible) return;
+    if (!scale || scaleType === "unknown" || !isVisible) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- DOM measurement requires sync state update
     updatePosition();
   }, [isVisible, scale, scaleType, updatePosition]);
 
   // Regular useEffect for event listeners
   useEffect(() => {
-    if (!scale || scaleType === 'unknown' || !isVisible) return;
+    if (!scale || scaleType === "unknown" || !isVisible) return;
 
-    window.addEventListener('scroll', updatePosition, true);
-    window.addEventListener('resize', updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    window.addEventListener("resize", updatePosition);
     return () => {
-      window.removeEventListener('scroll', updatePosition, true);
-      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+      window.removeEventListener("resize", updatePosition);
     };
   }, [isVisible, scale, scaleType, updatePosition]);
 
-  if (!scale || scaleType === 'unknown') return null;
+  if (!scale || scaleType === "unknown") return null;
 
-  const minValue = (metadata?.['min_value'] as number) ?? scale.min;
-  const maxValue = (metadata?.['max_value'] as number) ?? scale.max;
+  const minValue = (metadata?.["min_value"] as number) ?? scale.min;
+  const maxValue = (metadata?.["max_value"] as number) ?? scale.max;
   const impactText = scale.impactExplainer(value, minValue, maxValue);
 
   const tooltipContent = (
@@ -412,7 +477,7 @@ export function ScaleTooltip({ scaleType, value, metadata }: ScaleTooltipProps) 
         top: position.top,
         left: position.left,
         opacity: isVisible ? 1 : 0,
-        visibility: isVisible ? 'visible' : 'hidden',
+        visibility: isVisible ? "visible" : "hidden",
       }}
     >
       <div className="bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 text-sm rounded-lg p-4 shadow-xl border border-stone-700 dark:border-stone-300">
@@ -439,7 +504,9 @@ export function ScaleTooltip({ scaleType, value, metadata }: ScaleTooltipProps) 
         onMouseLeave={() => setIsVisible(false)}
         className="w-5 h-5 rounded-full bg-stone-100 dark:bg-stone-800 flex items-center justify-center cursor-help border border-stone-200 dark:border-stone-700 hover:border-forest-400 transition-colors"
       >
-        <span className="text-xs font-bold text-stone-500 dark:text-stone-400">?</span>
+        <span className="text-xs font-bold text-stone-500 dark:text-stone-400">
+          ?
+        </span>
       </div>
       {createPortal(tooltipContent, document.body)}
     </div>

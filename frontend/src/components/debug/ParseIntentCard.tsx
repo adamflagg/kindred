@@ -6,9 +6,16 @@
  * Sierra Lodge aesthetic with warm, nature-inspired styling.
  */
 
-import { AlertCircle, Clock, Hash, MessageSquare, Target, Zap } from 'lucide-react';
-import { REQUEST_TYPE_COLORS } from './types';
-import type { ParsedIntent } from './types';
+import {
+  AlertCircle,
+  Clock,
+  Hash,
+  MessageSquare,
+  Target,
+  Zap,
+} from "lucide-react";
+import { REQUEST_TYPE_COLORS } from "./types";
+import type { ParsedIntent } from "./types";
 
 interface ParseIntentCardProps {
   intent: ParsedIntent;
@@ -16,9 +23,9 @@ interface ParseIntentCardProps {
 }
 
 const DEFAULT_COLORS = {
-  bg: 'bg-parchment-200/50 dark:bg-bark-800/50',
-  text: 'text-bark-700 dark:text-bark-300',
-  border: 'border-bark-200 dark:border-bark-700',
+  bg: "bg-parchment-200/50 dark:bg-bark-800/50",
+  text: "text-bark-700 dark:text-bark-300",
+  border: "border-bark-200 dark:border-bark-700",
 };
 
 export function ParseIntentCard({ intent, index }: ParseIntentCardProps) {
@@ -26,9 +33,9 @@ export function ParseIntentCard({ intent, index }: ParseIntentCardProps) {
 
   const formatRequestType = (type: string) => {
     return type
-      .split('_')
+      .split("_")
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
+      .join(" ");
   };
 
   return (
@@ -52,7 +59,9 @@ export function ParseIntentCard({ intent, index }: ParseIntentCardProps) {
 
       {/* Header */}
       <div className="px-4 pt-4 pb-3">
-        <div className={`inline-flex items-center gap-2 text-sm font-bold ${colors.text}`}>
+        <div
+          className={`inline-flex items-center gap-2 text-sm font-bold ${colors.text}`}
+        >
           <Target className="w-4 h-4" />
           {formatRequestType(intent.request_type)}
         </div>
@@ -88,7 +97,9 @@ export function ParseIntentCard({ intent, index }: ParseIntentCardProps) {
         {intent.parse_notes && (
           <div className="flex items-start gap-2">
             <MessageSquare className="w-3.5 h-3.5 text-forest-500 mt-0.5 flex-shrink-0" />
-            <p className="text-sm text-muted-foreground leading-relaxed">{intent.parse_notes}</p>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              {intent.parse_notes}
+            </p>
           </div>
         )}
 
@@ -107,15 +118,17 @@ export function ParseIntentCard({ intent, index }: ParseIntentCardProps) {
           <div
             className={`
               flex items-start gap-2 p-3 rounded-xl
-              ${intent.temporal_info.is_superseded ? 'bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800' : 'bg-forest-50 dark:bg-forest-900/20 border border-forest-200 dark:border-forest-800'}
+              ${intent.temporal_info.is_superseded ? "bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800" : "bg-forest-50 dark:bg-forest-900/20 border border-forest-200 dark:border-forest-800"}
             `}
           >
             <Clock
-              className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${intent.temporal_info.is_superseded ? 'text-amber-600' : 'text-forest-600'}`}
+              className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${intent.temporal_info.is_superseded ? "text-amber-600" : "text-forest-600"}`}
             />
             <div className="text-sm">
               {intent.temporal_info.date && (
-                <span className="font-medium">Date: {intent.temporal_info.date}</span>
+                <span className="font-medium">
+                  Date: {intent.temporal_info.date}
+                </span>
               )}
               {intent.temporal_info.is_superseded && (
                 <span className="ml-2 text-amber-700 dark:text-amber-400">

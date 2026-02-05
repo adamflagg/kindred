@@ -18,13 +18,16 @@ import {
   ResponsiveContainer,
   Legend,
   LabelList,
-} from 'recharts';
-import type { GenderByGradeBreakdown, DrilldownFilter } from '../../types/metrics';
+} from "recharts";
+import type {
+  GenderByGradeBreakdown,
+  DrilldownFilter,
+} from "../../types/metrics";
 
 // Gender-specific colors
 const COLORS = {
-  male: 'hsl(200, 70%, 50%)',     // Blue
-  female: 'hsl(350, 70%, 50%)',   // Red/Pink
+  male: "hsl(200, 70%, 50%)", // Blue
+  female: "hsl(350, 70%, 50%)", // Red/Pink
 };
 
 interface GenderByGradeChartProps {
@@ -46,9 +49,9 @@ interface ChartDataItem {
 
 export function GenderByGradeChart({
   data,
-  title = 'Gender by Grade',
+  title = "Gender by Grade",
   height = 300,
-  className = '',
+  className = "",
   onBarClick,
 }: GenderByGradeChartProps) {
   const isClickable = !!onBarClick;
@@ -57,10 +60,10 @@ export function GenderByGradeChart({
     if (!onBarClick) return;
 
     // Use 'null' string for unknown grade
-    const value = item.grade !== null ? String(item.grade) : 'null';
+    const value = item.grade !== null ? String(item.grade) : "null";
 
     onBarClick({
-      type: 'grade',
+      type: "grade",
       value,
       label: item.name,
     });
@@ -79,7 +82,7 @@ export function GenderByGradeChart({
 
   // Transform data for stacked bar chart
   const chartData: ChartDataItem[] = data.map((item) => ({
-    name: item.grade !== null ? `Grade ${item.grade}` : 'Unknown',
+    name: item.grade !== null ? `Grade ${item.grade}` : "Unknown",
     grade: item.grade,
     male: item.male_count,
     female: item.female_count,
@@ -102,14 +105,16 @@ export function GenderByGradeChart({
           <p className="font-medium text-foreground mb-2">{label}</p>
           {payload.map((p, idx) => (
             <p key={idx} className="text-sm text-muted-foreground">
-              <span style={{ color: p.color }}>{p.name}:</span>{' '}
+              <span style={{ color: p.color }}>{p.name}:</span>{" "}
               <span className="font-semibold text-foreground">
-                {p.value} ({total > 0 ? ((p.value / total) * 100).toFixed(0) : 0}%)
+                {p.value} (
+                {total > 0 ? ((p.value / total) * 100).toFixed(0) : 0}%)
               </span>
             </p>
           ))}
           <p className="text-sm text-muted-foreground mt-1 border-t border-border pt-1">
-            Total: <span className="font-semibold text-foreground">{total}</span>
+            Total:{" "}
+            <span className="font-semibold text-foreground">{total}</span>
           </p>
         </div>
       );
@@ -121,16 +126,19 @@ export function GenderByGradeChart({
     <div className={`card-lodge p-4 ${className}`}>
       <h3 className="text-sm font-semibold text-foreground mb-4">{title}</h3>
       <ResponsiveContainer width="100%" height={height}>
-        <BarChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+        <BarChart
+          data={chartData}
+          margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+        >
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis
             dataKey="name"
             className="text-xs"
-            tick={{ fill: 'hsl(var(--muted-foreground))' }}
+            tick={{ fill: "hsl(var(--muted-foreground))" }}
           />
           <YAxis
             className="text-xs"
-            tick={{ fill: 'hsl(var(--muted-foreground))' }}
+            tick={{ fill: "hsl(var(--muted-foreground))" }}
           />
           <Tooltip content={<CustomTooltip />} />
           <Legend />
@@ -144,7 +152,7 @@ export function GenderByGradeChart({
               const item = barData as unknown as ChartDataItem;
               if (item?.name) handleClick(item);
             }}
-            style={{ cursor: isClickable ? 'pointer' : undefined }}
+            style={{ cursor: isClickable ? "pointer" : undefined }}
           />
           <Bar
             dataKey="female"
@@ -156,7 +164,7 @@ export function GenderByGradeChart({
               const item = barData as unknown as ChartDataItem;
               if (item?.name) handleClick(item);
             }}
-            style={{ cursor: isClickable ? 'pointer' : undefined }}
+            style={{ cursor: isClickable ? "pointer" : undefined }}
           >
             <LabelList
               dataKey="total"

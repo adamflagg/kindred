@@ -1,7 +1,7 @@
 /**
  * Common Zod schemas for shared types and base fields
  */
-import { z } from 'zod';
+import { z } from "zod";
 
 // Base primitive schemas
 export const IsoDateStringSchema = z.string();
@@ -29,26 +29,32 @@ export const nullableJson = <T extends z.ZodTypeAny>(schema: T) =>
   z.union([schema, z.null()]).optional();
 
 // Address schema (nested in persons)
-export const AddressSchema = z.object({
-  street1: z.string().optional(),
-  street2: z.string().optional(),
-  city: z.string().optional(),
-  state: z.string().optional(),
-  zip: z.string().optional(),
-  country: z.string().optional(),
-}).passthrough();
+export const AddressSchema = z
+  .object({
+    street1: z.string().optional(),
+    street2: z.string().optional(),
+    city: z.string().optional(),
+    state: z.string().optional(),
+    zip: z.string().optional(),
+    country: z.string().optional(),
+  })
+  .passthrough();
 
 // Phone number schema
-export const PhoneNumberSchema = z.object({
-  type: z.string().optional(),
-  number: z.string(),
-}).passthrough();
+export const PhoneNumberSchema = z
+  .object({
+    type: z.string().optional(),
+    number: z.string(),
+  })
+  .passthrough();
 
 // Email schema
-export const EmailAddressSchema = z.object({
-  type: z.string().optional(),
-  email: z.string().email(),
-}).passthrough();
+export const EmailAddressSchema = z
+  .object({
+    type: z.string().optional(),
+    email: z.string().email(),
+  })
+  .passthrough();
 
 // Export types inferred from schemas
 export type IsoDateString = z.infer<typeof IsoDateStringSchema>;

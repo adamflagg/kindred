@@ -1,7 +1,7 @@
 /**
  * Zod schemas for camper-related collections: persons, attendees
  */
-import { z } from 'zod';
+import { z } from "zod";
 import {
   BaseSystemFieldsSchema,
   IsoDateStringSchema,
@@ -10,20 +10,20 @@ import {
   PhoneNumberSchema,
   EmailAddressSchema,
   nullableJson,
-} from './common';
+} from "./common";
 
 // Attendee status enum
 export const AttendeesStatusSchema = z.enum([
-  'enrolled',
-  'applied',
-  'waitlisted',
-  'left_early',
-  'cancelled',
-  'dismissed',
-  'inquiry',
-  'withdrawn',
-  'incomplete',
-  'unknown',
+  "enrolled",
+  "applied",
+  "waitlisted",
+  "left_early",
+  "cancelled",
+  "dismissed",
+  "inquiry",
+  "withdrawn",
+  "incomplete",
+  "unknown",
 ]);
 
 // Persons record schema
@@ -55,7 +55,9 @@ export const PersonsRecordSchema = z.object({
 });
 
 // Full persons response (with system fields)
-export const PersonsResponseSchema = PersonsRecordSchema.merge(BaseSystemFieldsSchema);
+export const PersonsResponseSchema = PersonsRecordSchema.merge(
+  BaseSystemFieldsSchema,
+);
 
 // Attendees record schema
 export const AttendeesRecordSchema = z.object({
@@ -70,7 +72,9 @@ export const AttendeesRecordSchema = z.object({
 });
 
 // Full attendees response (with system fields)
-export const AttendeesResponseSchema = AttendeesRecordSchema.merge(BaseSystemFieldsSchema);
+export const AttendeesResponseSchema = AttendeesRecordSchema.merge(
+  BaseSystemFieldsSchema,
+);
 
 // Export types
 export type AttendeesStatus = z.infer<typeof AttendeesStatusSchema>;

@@ -2,8 +2,8 @@
  * MetricsSubNav - Secondary navigation for metrics sub-pages
  * Pattern: AreaFilterBar.tsx - segmented control inside container
  */
-import { Link, useLocation } from 'react-router';
-import type { LucideIcon } from 'lucide-react';
+import { Link, useLocation } from "react-router";
+import type { LucideIcon } from "lucide-react";
 
 export interface SubNavItem {
   id: string;
@@ -27,7 +27,7 @@ export default function MetricsSubNav({ items }: MetricsSubNavProps) {
       }
     }
     // Default to first item if no exact match
-    return items[0]?.id ?? '';
+    return items[0]?.id ?? "";
   };
 
   const activeId = getActiveId();
@@ -43,9 +43,10 @@ export default function MetricsSubNav({ items }: MetricsSubNavProps) {
               key={item.id}
               to={item.path}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200
-                ${isActive
-                  ? 'bg-primary text-primary-foreground shadow-lodge-sm'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted dark:hover:bg-muted/80'
+                ${
+                  isActive
+                    ? "bg-primary text-primary-foreground shadow-lodge-sm"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted dark:hover:bg-muted/80"
                 }`}
             >
               <Icon className="h-3.5 w-3.5" />

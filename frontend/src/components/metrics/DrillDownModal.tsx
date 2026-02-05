@@ -8,10 +8,18 @@
  * - CSV export
  */
 
-import { useState, useMemo, useEffect } from 'react';
-import { X, Download, Search, ArrowUpDown, ArrowUp, ArrowDown, Loader2 } from 'lucide-react';
-import { useDrilldownAttendees } from '../../hooks/useDrilldownAttendees';
-import type { DrilldownFilter } from '../../types/metrics';
+import { useState, useMemo, useEffect } from "react";
+import {
+  X,
+  Download,
+  Search,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  Loader2,
+} from "lucide-react";
+import { useDrilldownAttendees } from "../../hooks/useDrilldownAttendees";
+import type { DrilldownFilter } from "../../types/metrics";
 
 interface DrillDownModalProps {
   year: number;
@@ -22,8 +30,15 @@ interface DrillDownModalProps {
   onClose: () => void;
 }
 
-type SortField = 'name' | 'grade' | 'gender' | 'school' | 'city' | 'session' | 'years';
-type SortDirection = 'asc' | 'desc';
+type SortField =
+  | "name"
+  | "grade"
+  | "gender"
+  | "school"
+  | "city"
+  | "session"
+  | "years";
+type SortDirection = "asc" | "desc";
 
 export function DrillDownModal({
   year,
@@ -33,11 +48,15 @@ export function DrillDownModal({
   statusFilter,
   onClose,
 }: DrillDownModalProps) {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [sortField, setSortField] = useState<SortField>('name');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sortField, setSortField] = useState<SortField>("name");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
 
-  const { data: attendees = [], isLoading, error } = useDrilldownAttendees({
+  const {
+    data: attendees = [],
+    isLoading,
+    error,
+  } = useDrilldownAttendees({
     year,
     filter,
     sessionCmId,
@@ -50,12 +69,12 @@ export function DrillDownModal({
     if (!filter) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         onClose();
       }
     };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [filter, onClose]);
 
   // Filter attendees by search term
@@ -83,38 +102,38 @@ export function DrillDownModal({
       let bVal: string | number | null | undefined;
 
       switch (sortField) {
-        case 'name':
+        case "name":
           aVal = `${a.last_name} ${a.first_name}`.toLowerCase();
           bVal = `${b.last_name} ${b.first_name}`.toLowerCase();
           break;
-        case 'grade':
+        case "grade":
           aVal = a.grade ?? -1;
           bVal = b.grade ?? -1;
           break;
-        case 'gender':
-          aVal = a.gender ?? '';
-          bVal = b.gender ?? '';
+        case "gender":
+          aVal = a.gender ?? "";
+          bVal = b.gender ?? "";
           break;
-        case 'school':
-          aVal = a.school?.toLowerCase() ?? '';
-          bVal = b.school?.toLowerCase() ?? '';
+        case "school":
+          aVal = a.school?.toLowerCase() ?? "";
+          bVal = b.school?.toLowerCase() ?? "";
           break;
-        case 'city':
-          aVal = a.city?.toLowerCase() ?? '';
-          bVal = b.city?.toLowerCase() ?? '';
+        case "city":
+          aVal = a.city?.toLowerCase() ?? "";
+          bVal = b.city?.toLowerCase() ?? "";
           break;
-        case 'session':
+        case "session":
           aVal = a.session_name.toLowerCase();
           bVal = b.session_name.toLowerCase();
           break;
-        case 'years':
+        case "years":
           aVal = a.years_at_camp ?? 0;
           bVal = b.years_at_camp ?? 0;
           break;
       }
 
-      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+      if (aVal < bVal) return sortDirection === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortDirection === "asc" ? 1 : -1;
       return 0;
     });
     return sorted;
@@ -122,49 +141,51 @@ export function DrillDownModal({
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
-      setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+      setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
     } else {
       setSortField(field);
-      setSortDirection('asc');
+      setSortDirection("asc");
     }
   };
 
   const downloadCsv = () => {
     const headers = [
-      'Name',
-      'Grade',
-      'Gender',
-      'Age',
-      'School',
-      'City',
-      'Session',
-      'Years at Camp',
-      'Status',
-      'Returning',
+      "Name",
+      "Grade",
+      "Gender",
+      "Age",
+      "School",
+      "City",
+      "Session",
+      "Years at Camp",
+      "Status",
+      "Returning",
     ];
 
     const rows = sortedAttendees.map((a) => [
       a.preferred_name || `${a.first_name} ${a.last_name}`,
-      a.grade ?? '',
-      a.gender ?? '',
-      a.age ?? '',
-      a.school ?? '',
-      a.city ?? '',
+      a.grade ?? "",
+      a.gender ?? "",
+      a.age ?? "",
+      a.school ?? "",
+      a.city ?? "",
       a.session_name,
-      a.years_at_camp ?? '',
+      a.years_at_camp ?? "",
       a.status,
-      a.is_returning ? 'Yes' : 'No',
+      a.is_returning ? "Yes" : "No",
     ]);
 
     const csv = [headers, ...rows]
-      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-      .join('\n');
+      .map((row) =>
+        row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","),
+      )
+      .join("\n");
 
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = `${filter?.label.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `${filter?.label.replace(/\s+/g, "_")}_${new Date().toISOString().split("T")[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -173,7 +194,7 @@ export function DrillDownModal({
     if (sortField !== field) {
       return <ArrowUpDown className="w-3 h-3 opacity-50" />;
     }
-    return sortDirection === 'asc' ? (
+    return sortDirection === "asc" ? (
       <ArrowUp className="w-3 h-3" />
     ) : (
       <ArrowDown className="w-3 h-3" />
@@ -189,8 +210,8 @@ export function DrillDownModal({
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div>
             <h2 className="text-lg font-semibold text-foreground">
-              {sortedAttendees.length} camper{sortedAttendees.length !== 1 ? 's' : ''} in{' '}
-              {filter.label}
+              {sortedAttendees.length} camper
+              {sortedAttendees.length !== 1 ? "s" : ""} in {filter.label}
             </h2>
             <p className="text-sm text-muted-foreground">
               {year} enrollment data
@@ -234,7 +255,9 @@ export function DrillDownModal({
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-6 h-6 animate-spin text-primary" />
-              <span className="ml-2 text-muted-foreground">Loading campers...</span>
+              <span className="ml-2 text-muted-foreground">
+                Loading campers...
+              </span>
             </div>
           ) : error ? (
             <div className="flex items-center justify-center py-12 text-red-600">
@@ -242,14 +265,14 @@ export function DrillDownModal({
             </div>
           ) : sortedAttendees.length === 0 ? (
             <div className="flex items-center justify-center py-12 text-muted-foreground">
-              {searchTerm ? 'No campers match your search' : 'No campers found'}
+              {searchTerm ? "No campers match your search" : "No campers found"}
             </div>
           ) : (
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-muted/80 backdrop-blur">
                 <tr>
                   <th
-                    onClick={() => handleSort('name')}
+                    onClick={() => handleSort("name")}
                     className="px-4 py-3 text-left font-medium text-muted-foreground cursor-pointer hover:text-foreground"
                   >
                     <div className="flex items-center gap-1">
@@ -257,7 +280,7 @@ export function DrillDownModal({
                     </div>
                   </th>
                   <th
-                    onClick={() => handleSort('grade')}
+                    onClick={() => handleSort("grade")}
                     className="px-4 py-3 text-center font-medium text-muted-foreground cursor-pointer hover:text-foreground"
                   >
                     <div className="flex items-center justify-center gap-1">
@@ -265,7 +288,7 @@ export function DrillDownModal({
                     </div>
                   </th>
                   <th
-                    onClick={() => handleSort('gender')}
+                    onClick={() => handleSort("gender")}
                     className="px-4 py-3 text-center font-medium text-muted-foreground cursor-pointer hover:text-foreground"
                   >
                     <div className="flex items-center justify-center gap-1">
@@ -273,7 +296,7 @@ export function DrillDownModal({
                     </div>
                   </th>
                   <th
-                    onClick={() => handleSort('school')}
+                    onClick={() => handleSort("school")}
                     className="px-4 py-3 text-left font-medium text-muted-foreground cursor-pointer hover:text-foreground"
                   >
                     <div className="flex items-center gap-1">
@@ -281,7 +304,7 @@ export function DrillDownModal({
                     </div>
                   </th>
                   <th
-                    onClick={() => handleSort('city')}
+                    onClick={() => handleSort("city")}
                     className="px-4 py-3 text-left font-medium text-muted-foreground cursor-pointer hover:text-foreground"
                   >
                     <div className="flex items-center gap-1">
@@ -289,7 +312,7 @@ export function DrillDownModal({
                     </div>
                   </th>
                   <th
-                    onClick={() => handleSort('session')}
+                    onClick={() => handleSort("session")}
                     className="px-4 py-3 text-left font-medium text-muted-foreground cursor-pointer hover:text-foreground"
                   >
                     <div className="flex items-center gap-1">
@@ -297,7 +320,7 @@ export function DrillDownModal({
                     </div>
                   </th>
                   <th
-                    onClick={() => handleSort('years')}
+                    onClick={() => handleSort("years")}
                     className="px-4 py-3 text-center font-medium text-muted-foreground cursor-pointer hover:text-foreground"
                   >
                     <div className="flex items-center justify-center gap-1">
@@ -313,7 +336,8 @@ export function DrillDownModal({
                     className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors"
                   >
                     <td className="px-4 py-3 font-medium text-foreground">
-                      {attendee.preferred_name || `${attendee.first_name} ${attendee.last_name}`}
+                      {attendee.preferred_name ||
+                        `${attendee.first_name} ${attendee.last_name}`}
                       {attendee.is_returning && (
                         <span className="ml-2 px-1.5 py-0.5 text-xs bg-primary/10 text-primary rounded">
                           Returning
@@ -321,16 +345,22 @@ export function DrillDownModal({
                       )}
                     </td>
                     <td className="px-4 py-3 text-center text-foreground">
-                      {attendee.grade ?? '—'}
+                      {attendee.grade ?? "—"}
                     </td>
                     <td className="px-4 py-3 text-center text-foreground">
-                      {attendee.gender ?? '—'}
+                      {attendee.gender ?? "—"}
                     </td>
-                    <td className="px-4 py-3 text-foreground">{attendee.school ?? '—'}</td>
-                    <td className="px-4 py-3 text-foreground">{attendee.city ?? '—'}</td>
-                    <td className="px-4 py-3 text-foreground">{attendee.session_name}</td>
+                    <td className="px-4 py-3 text-foreground">
+                      {attendee.school ?? "—"}
+                    </td>
+                    <td className="px-4 py-3 text-foreground">
+                      {attendee.city ?? "—"}
+                    </td>
+                    <td className="px-4 py-3 text-foreground">
+                      {attendee.session_name}
+                    </td>
                     <td className="px-4 py-3 text-center text-foreground">
-                      {attendee.years_at_camp ?? '—'}
+                      {attendee.years_at_camp ?? "—"}
                     </td>
                   </tr>
                 ))}

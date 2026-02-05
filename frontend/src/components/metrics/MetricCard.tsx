@@ -6,14 +6,14 @@
  * 2. Auto mode: Pass compareValue and compareYear for automatic delta calculation
  */
 
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 
 interface MetricCardProps {
   title: string;
   value: string | number;
   subtitle?: string | undefined;
   /** Manual trend direction */
-  trend?: 'up' | 'down' | 'neutral' | undefined;
+  trend?: "up" | "down" | "neutral" | undefined;
   /** Manual trend value string (e.g., "+15%") */
   trendValue?: string | undefined;
   /** Comparison value for auto-calculated delta badge */
@@ -33,13 +33,13 @@ export function MetricCard({
   trendValue,
   compareValue,
   compareYear,
-  className = '',
+  className = "",
   onClick,
 }: MetricCardProps) {
   const trendColors = {
-    up: 'text-emerald-600 dark:text-emerald-400',
-    down: 'text-red-600 dark:text-red-400',
-    neutral: 'text-muted-foreground',
+    up: "text-emerald-600 dark:text-emerald-400",
+    down: "text-red-600 dark:text-red-400",
+    neutral: "text-muted-foreground",
   };
 
   const TrendIcon = {
@@ -49,20 +49,20 @@ export function MetricCard({
   };
 
   // Calculate auto delta if compareValue is provided
-  let autoTrend: 'up' | 'down' | 'neutral' | undefined;
+  let autoTrend: "up" | "down" | "neutral" | undefined;
   let autoTrendValue: string | undefined;
 
-  if (compareValue !== undefined && typeof value === 'number') {
+  if (compareValue !== undefined && typeof value === "number") {
     const delta = value - compareValue;
     if (delta > 0) {
-      autoTrend = 'up';
+      autoTrend = "up";
       autoTrendValue = `+${delta}`;
     } else if (delta < 0) {
-      autoTrend = 'down';
+      autoTrend = "down";
       autoTrendValue = `${delta}`;
     } else {
-      autoTrend = 'neutral';
-      autoTrendValue = '0';
+      autoTrend = "neutral";
+      autoTrendValue = "0";
     }
     if (compareYear) {
       autoTrendValue += ` vs ${compareYear}`;
@@ -75,7 +75,7 @@ export function MetricCard({
 
   // Handle keyboard events for accessibility
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (onClick && (e.key === 'Enter' || e.key === ' ')) {
+    if (onClick && (e.key === "Enter" || e.key === " ")) {
       e.preventDefault();
       onClick();
     }
@@ -83,24 +83,28 @@ export function MetricCard({
 
   // Build className with optional interactive styles
   const cardClassName = [
-    'card-lodge p-4',
-    onClick ? 'cursor-pointer hover:bg-muted/30 transition-colors' : '',
+    "card-lodge p-4",
+    onClick ? "cursor-pointer hover:bg-muted/30 transition-colors" : "",
     className,
-  ].filter(Boolean).join(' ');
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <div
       className={cardClassName}
       onClick={onClick}
       onKeyDown={handleKeyDown}
-      role={onClick ? 'button' : undefined}
+      role={onClick ? "button" : undefined}
       tabIndex={onClick ? 0 : undefined}
     >
       <p className="text-sm font-medium text-muted-foreground">{title}</p>
       <div className="mt-2 flex items-baseline gap-2">
         <p className="text-2xl font-bold text-foreground">{value}</p>
         {displayTrend && displayTrendValue && (
-          <span className={`flex items-center gap-0.5 text-sm font-medium ${trendColors[displayTrend]}`}>
+          <span
+            className={`flex items-center gap-0.5 text-sm font-medium ${trendColors[displayTrend]}`}
+          >
             {(() => {
               const Icon = TrendIcon[displayTrend];
               return <Icon className="w-4 h-4" />;

@@ -1,14 +1,17 @@
-import { useState } from 'react';
-import { toast } from 'react-hot-toast';
-import type { Constraint, Camper, ConstraintType } from '../types/app-types';
-import RequestForm from './RequestForm';
+import { useState } from "react";
+import { toast } from "react-hot-toast";
+import type { Constraint, Camper, ConstraintType } from "../types/app-types";
+import RequestForm from "./RequestForm";
 
 interface RequestsPanelProps {
   sessionId: string;
   constraints: Constraint[];
   campers: Camper[];
   onConstraintCreate: (constraint: Partial<Constraint>) => Promise<void>;
-  onConstraintUpdate: (id: string, updates: Partial<Constraint>) => Promise<void>;
+  onConstraintUpdate: (
+    id: string,
+    updates: Partial<Constraint>,
+  ) => Promise<void>;
   onConstraintDelete: (id: string) => Promise<void>;
 }
 
@@ -30,9 +33,9 @@ export default function RequestsPanel({
         session: sessionId,
       });
       setIsCreating(false);
-      toast.success('Constraint created');
+      toast.success("Constraint created");
     } catch {
-      toast.error('Failed to create constraint');
+      toast.error("Failed to create constraint");
     }
   };
 
@@ -40,62 +43,61 @@ export default function RequestsPanel({
     try {
       await onConstraintUpdate(id, data);
       setEditingId(null);
-      toast.success('Request updated');
+      toast.success("Request updated");
     } catch {
-      toast.error('Failed to update request');
+      toast.error("Failed to update request");
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this request?')) {
+    if (!confirm("Are you sure you want to delete this request?")) {
       return;
     }
 
     try {
       await onConstraintDelete(id);
-      toast.success('Request deleted');
+      toast.success("Request deleted");
     } catch {
-      toast.error('Failed to delete request');
+      toast.error("Failed to delete request");
     }
   };
 
   const getConstraintIcon = (type: ConstraintType) => {
     switch (type) {
-      case 'pair_together':
-        return '👫';
-      case 'keep_apart':
-        return '🚫';
-      case 'age_preference':
-        return '📅';
-      case 'bunk_preference':
-        return '🏠';
+      case "pair_together":
+        return "👫";
+      case "keep_apart":
+        return "🚫";
+      case "age_preference":
+        return "📅";
+      case "bunk_preference":
+        return "🏠";
       default:
-        return '📌';
+        return "📌";
     }
   };
 
   const getConstraintDescription = (constraint: Constraint) => {
-    const camperNames = constraint.expand?.campers?.map(c => c.name) || [];
+    const camperNames = constraint.expand?.campers?.map((c) => c.name) || [];
     const constraintType = constraint.type || constraint.constraint_type;
-    
+
     switch (constraintType) {
-      case 'pair_together':
-        return `${camperNames.join(' and ')} should bunk together`;
-      case 'keep_apart':
-        return `Keep ${camperNames.join(', ')} in different bunks`;
-      case 'age_preference': {
-        const pref = constraint.metadata?.['preference'] || 'similar';
+      case "pair_together":
+        return `${camperNames.join(" and ")} should bunk together`;
+      case "keep_apart":
+        return `Keep ${camperNames.join(", ")} in different bunks`;
+      case "age_preference": {
+        const pref = constraint.metadata?.["preference"] || "similar";
         return `${camperNames[0]} prefers ${pref} age campers`;
       }
-      case 'bunk_preference': {
-        const bunkName = constraint.metadata?.['bunkName'] || 'specific bunk';
+      case "bunk_preference": {
+        const bunkName = constraint.metadata?.["bunkName"] || "specific bunk";
         return `${camperNames[0]} prefers ${bunkName}`;
       }
       default:
-        return 'Unknown constraint';
+        return "Unknown constraint";
     }
   };
-
 
   return (
     <div className="bg-white rounded-lg shadow-sm border p-6">
@@ -129,7 +131,7 @@ export default function RequestsPanel({
         )}
 
         {/* Existing Requests */}
-        {constraints.map(constraint => (
+        {constraints.map((constraint) => (
           <div
             key={constraint.id}
             className="border rounded-lg p-4 hover:shadow-sm transition-shadow"
@@ -144,8 +146,15 @@ export default function RequestsPanel({
             ) : (
               <div className="flex items-center justify-between">
                 <div className="flex items-start space-x-3">
-                  <span className="text-2xl" role="img" aria-label={constraint.type || constraint.constraint_type}>
-                    {getConstraintIcon((constraint.type || constraint.constraint_type) as ConstraintType)}
+                  <span
+                    className="text-2xl"
+                    role="img"
+                    aria-label={constraint.type || constraint.constraint_type}
+                  >
+                    {getConstraintIcon(
+                      (constraint.type ||
+                        constraint.constraint_type) as ConstraintType,
+                    )}
                   </span>
                   <div>
                     <p className="font-medium">
@@ -153,7 +162,7 @@ export default function RequestsPanel({
                     </p>
                     <div className="flex items-center space-x-2 mt-1">
                       <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800">
-                        {constraint.severity || 'soft'}
+                        {constraint.severity || "soft"}
                       </span>
                     </div>
                   </div>
@@ -165,8 +174,18 @@ export default function RequestsPanel({
                     className="p-2 text-gray-600 hover:bg-gray-100 rounded-md"
                     title="Edit constraint"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                      />
                     </svg>
                   </button>
                   <button
@@ -174,8 +193,18 @@ export default function RequestsPanel({
                     className="p-2 text-red-600 hover:bg-red-50 rounded-md"
                     title="Delete constraint"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
                     </svg>
                   </button>
                 </div>
@@ -189,10 +218,22 @@ export default function RequestsPanel({
       <div className="mt-6 p-4 bg-blue-50 rounded-lg">
         <h3 className="font-medium text-blue-900 mb-2">About Constraints</h3>
         <ul className="text-sm text-blue-800 space-y-1">
-          <li>• <strong>Pair Together:</strong> Ensures two campers are placed in the same bunk</li>
-          <li>• <strong>Keep Apart:</strong> Prevents campers from being in the same bunk</li>
-          <li>• <strong>Age Preference:</strong> Tries to place camper with similar/older/younger campers</li>
-          <li>• <strong>Priority:</strong> Higher priority constraints are satisfied first (5 is highest)</li>
+          <li>
+            • <strong>Pair Together:</strong> Ensures two campers are placed in
+            the same bunk
+          </li>
+          <li>
+            • <strong>Keep Apart:</strong> Prevents campers from being in the
+            same bunk
+          </li>
+          <li>
+            • <strong>Age Preference:</strong> Tries to place camper with
+            similar/older/younger campers
+          </li>
+          <li>
+            • <strong>Priority:</strong> Higher priority constraints are
+            satisfied first (5 is highest)
+          </li>
         </ul>
       </div>
     </div>

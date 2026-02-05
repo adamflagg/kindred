@@ -1,7 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
-import { pb, type SavedScenario } from '../lib/pocketbase';
-import { useAuth } from '../contexts/AuthContext';
-import { queryKeys, userDataOptions } from '../utils/queryKeys';
+import { useQuery } from "@tanstack/react-query";
+import { pb, type SavedScenario } from "../lib/pocketbase";
+import { useAuth } from "../contexts/AuthContext";
+import { queryKeys, userDataOptions } from "../utils/queryKeys";
 
 export function useSavedScenarios(sessionCmId?: number, year?: number) {
   const { user } = useAuth();
@@ -18,12 +18,12 @@ export function useSavedScenarios(sessionCmId?: number, year?: number) {
       }
 
       const scenarios = await pb
-        .collection<SavedScenario>('saved_scenarios')
+        .collection<SavedScenario>("saved_scenarios")
         .getFullList({
-          sort: 'name',
-          expand: 'session',
+          sort: "name",
+          expand: "session",
           ...(filterParts.length > 0 && {
-            filter: filterParts.join(' && '),
+            filter: filterParts.join(" && "),
           }),
         });
 

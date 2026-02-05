@@ -5,10 +5,10 @@
  * campers to display in a modal.
  */
 
-import { useQuery } from '@tanstack/react-query';
-import type { DrilldownAttendee, DrilldownFilter } from '../types/metrics';
-import { queryKeys, syncDataOptions } from '../utils/queryKeys';
-import { useApiWithAuth } from './useApiWithAuth';
+import { useQuery } from "@tanstack/react-query";
+import type { DrilldownAttendee, DrilldownFilter } from "../types/metrics";
+import { queryKeys, syncDataOptions } from "../utils/queryKeys";
+import { useApiWithAuth } from "./useApiWithAuth";
 
 interface UseDrilldownAttendeesOptions {
   year: number;
@@ -26,10 +26,10 @@ export function useDrilldownAttendees({
   statusFilter,
 }: UseDrilldownAttendeesOptions) {
   const { fetchWithAuth } = useApiWithAuth();
-  const sessionTypesParam = sessionTypes?.join(',');
+  const sessionTypesParam = sessionTypes?.join(",");
   // Use statusOverride from filter if present, otherwise use default statusFilter
   const effectiveStatusFilter = filter?.statusOverride ?? statusFilter;
-  const statusFilterParam = effectiveStatusFilter?.join(',');
+  const statusFilterParam = effectiveStatusFilter?.join(",");
 
   return useQuery({
     queryKey: queryKeys.drilldown(
@@ -52,19 +52,21 @@ export function useDrilldownAttendees({
       });
 
       if (sessionCmId) {
-        params.set('session_cm_id', String(sessionCmId));
+        params.set("session_cm_id", String(sessionCmId));
       }
       if (sessionTypesParam) {
-        params.set('session_types', sessionTypesParam);
+        params.set("session_types", sessionTypesParam);
       }
       if (statusFilterParam) {
-        params.set('status_filter', statusFilterParam);
+        params.set("status_filter", statusFilterParam);
       }
 
       const res = await fetchWithAuth(`/api/metrics/drilldown?${params}`);
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
-        throw new Error(error.detail || `Failed to fetch drilldown data: ${res.statusText}`);
+        throw new Error(
+          error.detail || `Failed to fetch drilldown data: ${res.statusText}`,
+        );
       }
       return res.json();
     },

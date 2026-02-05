@@ -1,11 +1,21 @@
-import { useState, useEffect, useRef } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Scissors, AlertCircle, User, HelpCircle, Star } from 'lucide-react';
-import { Modal } from './ui/Modal';
-import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types';
-import { BunkRequestsRequestTypeOptions } from '../types/pocketbase-types';
-import { pb } from '../lib/pocketbase';
-import { useApiWithAuth } from '../hooks/useApiWithAuth';
+import { useState, useEffect, useRef } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Loader2,
+  Scissors,
+  AlertCircle,
+  User,
+  HelpCircle,
+  Star,
+} from "lucide-react";
+import { Modal } from "./ui/Modal";
+import type {
+  BunkRequestsResponse,
+  PersonsResponse,
+} from "../types/pocketbase-types";
+import { BunkRequestsRequestTypeOptions } from "../types/pocketbase-types";
+import { pb } from "../lib/pocketbase";
+import { useApiWithAuth } from "../hooks/useApiWithAuth";
 
 interface SourceLinkData {
   original_request_id: string;
@@ -50,8 +60,12 @@ export default function SplitRequestModal({
 }: SplitRequestModalProps) {
   const queryClient = useQueryClient();
   const { fetchWithAuth } = useApiWithAuth();
-  const [selectedSources, setSelectedSources] = useState<Set<string>>(new Set());
-  const [sourceTypes, setSourceTypes] = useState<Record<string, BunkRequestsRequestTypeOptions>>({});
+  const [selectedSources, setSelectedSources] = useState<Set<string>>(
+    new Set(),
+  );
+  const [sourceTypes, setSourceTypes] = useState<
+    Record<string, BunkRequestsRequestTypeOptions>
+  >({});
   const [error, setError] = useState<string | null>(null);
   const prevIsOpenRef = useRef(false);
 
@@ -80,19 +94,23 @@ export default function SplitRequestModal({
 
   // Get current source fields from request
   // source_fields may be an array if the request was merged
-  const currentSourceFields = (request as unknown as { source_fields?: string[] }).source_fields || [request.source_field];
+  const currentSourceFields = (
+    request as unknown as { source_fields?: string[] }
+  ).source_fields || [request.source_field];
 
   // Fetch person data for resolved target
   const requesteeId = request.requestee_id;
   const { data: targetPerson } = useQuery({
-    queryKey: ['person-for-split', requesteeId, request.year],
+    queryKey: ["person-for-split", requesteeId, request.year],
     queryFn: async () => {
       if (!requesteeId || requesteeId <= 0) return null;
       const year = request.year;
       if (!year) return null;
 
       const filter = `cm_id = ${requesteeId} && year = ${year}`;
-      const results = await pb.collection<PersonsResponse>('persons').getFullList({ filter });
+      const results = await pb
+        .collection<PersonsResponse>("persons")
+        .getFullList({ filter });
       return results[0] || null;
     },
     enabled: !!requesteeId && requesteeId > 0,
@@ -129,7 +147,8 @@ export default function SplitRequestModal({
         <span className="flex items-center gap-1.5">
           <HelpCircle className="w-3.5 h-3.5 text-amber-500" />
           <span className="text-amber-700 dark:text-amber-300 italic">
-            {requestedName || 'Unknown'} <span className="text-xs text-muted-foreground">(unresolved)</span>
+            {requestedName || "Unknown"}{" "}
+            <span className="text-xs text-muted-foreground">(unresolved)</span>
           </span>
         </span>
       );
@@ -141,7 +160,8 @@ export default function SplitRequestModal({
         <span className="flex items-center gap-1.5">
           <HelpCircle className="w-3.5 h-3.5 text-amber-500" />
           <span className="text-amber-700 dark:text-amber-300 italic">
-            {requestedName} <span className="text-xs text-muted-foreground">(unresolved)</span>
+            {requestedName}{" "}
+            <span className="text-xs text-muted-foreground">(unresolved)</span>
           </span>
         </span>
       );
@@ -170,7 +190,10 @@ export default function SplitRequestModal({
   };
 
   // Update type for a selected source
-  const updateSourceType = (originalRequestId: string, type: BunkRequestsRequestTypeOptions) => {
+  const updateSourceType = (
+    originalRequestId: string,
+    type: BunkRequestsRequestTypeOptions,
+  ) => {
     setSourceTypes((prev) => ({
       ...prev,
       [originalRequestId]: type,
@@ -180,16 +203,19 @@ export default function SplitRequestModal({
   // Split mutation
   const splitMutation = useMutation({
     mutationFn: async () => {
-      const splitSources: SplitSourceConfig[] = Array.from(selectedSources).map((origId) => ({
-        original_request_id: origId,
-        new_type: sourceTypes[origId] || BunkRequestsRequestTypeOptions.bunk_with,
-        new_target_id: null,
-      }));
+      const splitSources: SplitSourceConfig[] = Array.from(selectedSources).map(
+        (origId) => ({
+          original_request_id: origId,
+          new_type:
+            sourceTypes[origId] || BunkRequestsRequestTypeOptions.bunk_with,
+          new_target_id: null,
+        }),
+      );
 
-      const response = await fetchWithAuth('/api/requests/split', {
-        method: 'POST',
+      const response = await fetchWithAuth("/api/requests/split", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           request_id: request.id,
@@ -199,17 +225,17 @@ export default function SplitRequestModal({
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || 'Split failed');
+        throw new Error(errorData.detail || "Split failed");
       }
 
       return response.json() as Promise<SplitResponse>;
     },
     onSuccess: () => {
       // Invalidate all related queries to refresh data
-      queryClient.invalidateQueries({ queryKey: ['bunk-requests'] });
-      queryClient.invalidateQueries({ queryKey: ['all-bunk-requests'] });
-      queryClient.invalidateQueries({ queryKey: ['source-links'] });
-      queryClient.invalidateQueries({ queryKey: ['expanded-source-links'] });
+      queryClient.invalidateQueries({ queryKey: ["bunk-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["all-bunk-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["source-links"] });
+      queryClient.invalidateQueries({ queryKey: ["expanded-source-links"] });
       onSplitComplete();
       onClose();
     },
@@ -242,19 +268,22 @@ export default function SplitRequestModal({
         <div className="p-4 bg-muted/30 rounded-lg">
           <h3 className="text-sm font-medium mb-2">Current Request</h3>
           <div className="text-sm mb-1">
-            <span className="font-medium text-foreground">Target:</span>{' '}
+            <span className="font-medium text-foreground">Target:</span>{" "}
             {renderTarget()}
           </div>
           <div className="text-sm text-muted-foreground">
-            <span className="font-medium text-foreground">Type:</span> {request.request_type.replace('_', ' ')}
+            <span className="font-medium text-foreground">Type:</span>{" "}
+            {request.request_type.replace("_", " ")}
           </div>
           <div className="text-sm text-muted-foreground">
-            <span className="font-medium text-foreground">Source Fields:</span>{' '}
-            {Array.isArray(currentSourceFields) ? currentSourceFields.join(', ') : currentSourceFields}
+            <span className="font-medium text-foreground">Source Fields:</span>{" "}
+            {Array.isArray(currentSourceFields)
+              ? currentSourceFields.join(", ")
+              : currentSourceFields}
           </div>
           {request.original_text && (
             <div className="text-sm text-muted-foreground mt-1">
-              <span className="font-medium text-foreground">Original:</span>{' '}
+              <span className="font-medium text-foreground">Original:</span>{" "}
               <span className="italic text-xs">"{request.original_text}"</span>
             </div>
           )}
@@ -262,7 +291,9 @@ export default function SplitRequestModal({
 
         {/* Source selection */}
         <div>
-          <h3 className="text-sm font-medium mb-3">Select sources to split off:</h3>
+          <h3 className="text-sm font-medium mb-3">
+            Select sources to split off:
+          </h3>
           <div className="space-y-3">
             {sourceLinks.map((link) => {
               const isSelected = selectedSources.has(link.original_request_id);
@@ -272,10 +303,10 @@ export default function SplitRequestModal({
                   key={link.original_request_id}
                   className={`p-4 border rounded-lg transition-colors ${
                     isPrimary
-                      ? 'border-border bg-muted/20 opacity-60'
+                      ? "border-border bg-muted/20 opacity-60"
                       : isSelected
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border'
+                        ? "border-primary bg-primary/5"
+                        : "border-border"
                   }`}
                 >
                   <div className="flex items-start gap-3">
@@ -285,19 +316,21 @@ export default function SplitRequestModal({
                       checked={isSelected}
                       onChange={() => toggleSource(link.original_request_id)}
                       disabled={isPrimary}
-                      className={`mt-1 rounded ${isPrimary ? 'cursor-not-allowed' : ''}`}
+                      className={`mt-1 rounded ${isPrimary ? "cursor-not-allowed" : ""}`}
                     />
                     <div className="flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <label
                           htmlFor={`source-${link.original_request_id}`}
-                          className={`text-sm font-medium ${isPrimary ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                          className={`text-sm font-medium ${isPrimary ? "cursor-not-allowed" : "cursor-pointer"}`}
                         >
                           {link.requested_person_name ? (
                             <span className="flex items-center gap-1.5">
                               <User className="w-3.5 h-3.5 text-forest-600 dark:text-forest-400" />
                               {link.requested_person_name}
-                              <span className="text-xs text-muted-foreground">({link.source_field})</span>
+                              <span className="text-xs text-muted-foreground">
+                                ({link.source_field})
+                              </span>
                             </span>
                           ) : (
                             link.source_field
@@ -317,7 +350,8 @@ export default function SplitRequestModal({
                       )}
                       {link.parse_notes && (
                         <p className="text-xs text-muted-foreground mt-1 bg-muted/50 px-2 py-1 rounded">
-                          <span className="font-medium">AI Notes:</span> {link.parse_notes}
+                          <span className="font-medium">AI Notes:</span>{" "}
+                          {link.parse_notes}
                         </p>
                       )}
                       {link.created && (
@@ -338,18 +372,38 @@ export default function SplitRequestModal({
                           <select
                             id={`type-${link.original_request_id}`}
                             aria-label="New request type"
-                            value={sourceTypes[link.original_request_id] || request.request_type}
+                            value={
+                              sourceTypes[link.original_request_id] ||
+                              request.request_type
+                            }
                             onChange={(e) =>
                               updateSourceType(
                                 link.original_request_id,
-                                e.target.value as BunkRequestsRequestTypeOptions
+                                e.target
+                                  .value as BunkRequestsRequestTypeOptions,
                               )
                             }
                             className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background"
                           >
-                            <option value={BunkRequestsRequestTypeOptions.bunk_with}>Bunk With</option>
-                            <option value={BunkRequestsRequestTypeOptions.not_bunk_with}>Not Bunk With</option>
-                            <option value={BunkRequestsRequestTypeOptions.age_preference}>Age Preference</option>
+                            <option
+                              value={BunkRequestsRequestTypeOptions.bunk_with}
+                            >
+                              Bunk With
+                            </option>
+                            <option
+                              value={
+                                BunkRequestsRequestTypeOptions.not_bunk_with
+                              }
+                            >
+                              Not Bunk With
+                            </option>
+                            <option
+                              value={
+                                BunkRequestsRequestTypeOptions.age_preference
+                              }
+                            >
+                              Age Preference
+                            </option>
                           </select>
                         </div>
                       )}
@@ -368,7 +422,9 @@ export default function SplitRequestModal({
           )}
 
           {!isLoadingSourceLinks && sourceLinks.length === 0 && (
-            <p className="text-sm text-muted-foreground">No sources available to split.</p>
+            <p className="text-sm text-muted-foreground">
+              No sources available to split.
+            </p>
           )}
         </div>
 
@@ -377,14 +433,15 @@ export default function SplitRequestModal({
           <div className="p-4 bg-muted/30 rounded-lg">
             <h3 className="text-sm font-medium mb-2">Split Preview</h3>
             <p className="text-sm text-muted-foreground">
-              {selectedSources.size} source(s) will be restored to their original requests.
+              {selectedSources.size} source(s) will be restored to their
+              original requests.
             </p>
             <p className="text-sm text-muted-foreground mt-1">
-              Remaining sources:{' '}
+              Remaining sources:{" "}
               {sourceLinks
                 .filter((l) => !selectedSources.has(l.original_request_id))
                 .map((l) => l.source_field)
-                .join(', ') || 'None'}
+                .join(", ") || "None"}
             </p>
           </div>
         )}

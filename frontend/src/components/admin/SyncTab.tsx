@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { format } from 'date-fns';
+import { useState, useMemo } from "react";
+import { format } from "date-fns";
 import {
   Play,
   Loader2,
@@ -10,48 +10,63 @@ import {
   ChevronRight,
   ChevronDown,
   Cog,
-} from 'lucide-react';
-import toast from 'react-hot-toast';
-import { useYear } from '../../hooks/useCurrentYear';
-import { type SyncStatus, type QueuedSyncItem } from '../../hooks/useSyncStatusAPI';
-import { useSyncCompletionToasts } from '../../hooks/useSyncCompletionToasts';
-import { useRunIndividualSync } from '../../hooks/useRunIndividualSync';
-import { useRunOnDemandSync } from '../../hooks/useRunOnDemandSync';
-import { useUnifiedSync } from '../../hooks/useUnifiedSync';
-import { useProcessRequests } from '../../hooks/useProcessRequests';
-import { useCamperHistorySync } from '../../hooks/useCamperHistorySync';
-import { useFamilyCampDerivedSync } from '../../hooks/useFamilyCampDerivedSync';
-import { useStaffSkillsSync } from '../../hooks/useStaffSkillsSync';
-import { useFinancialAidApplicationsSync } from '../../hooks/useFinancialAidApplicationsSync';
-import { useHouseholdDemographicsSync } from '../../hooks/useHouseholdDemographicsSync';
-import { useCamperDietarySync } from '../../hooks/useCamperDietarySync';
-import { useCamperTransportationSync } from '../../hooks/useCamperTransportationSync';
-import { useQuestRegistrationsSync } from '../../hooks/useQuestRegistrationsSync';
-import { useStaffApplicationsSync } from '../../hooks/useStaffApplicationsSync';
-import { useStaffVehicleInfoSync } from '../../hooks/useStaffVehicleInfoSync';
-import { useCancelQueuedSync } from '../../hooks/useCancelQueuedSync';
-import { useCancelRunningSync } from '../../hooks/useCancelRunningSync';
-import { useRunPhaseSync } from '../../hooks/useRunPhaseSync';
-import { StatusIcon, formatDuration } from './ConfigInputs';
-import { clearCache } from '../../utils/queryClient';
-import ProcessRequestOptions, { type ProcessRequestOptionsState } from './ProcessRequestOptions';
-import { GLOBAL_SYNC_TYPES, CURRENT_YEAR_SYNC_TYPES, getYearSyncTypes, Globe, SYNC_PHASES, getSyncTypesByPhase, type SyncPhase } from './syncTypes';
-import clsx from 'clsx';
+} from "lucide-react";
+import toast from "react-hot-toast";
+import { useYear } from "../../hooks/useCurrentYear";
+import {
+  type SyncStatus,
+  type QueuedSyncItem,
+} from "../../hooks/useSyncStatusAPI";
+import { useSyncCompletionToasts } from "../../hooks/useSyncCompletionToasts";
+import { useRunIndividualSync } from "../../hooks/useRunIndividualSync";
+import { useRunOnDemandSync } from "../../hooks/useRunOnDemandSync";
+import { useUnifiedSync } from "../../hooks/useUnifiedSync";
+import { useProcessRequests } from "../../hooks/useProcessRequests";
+import { useCamperHistorySync } from "../../hooks/useCamperHistorySync";
+import { useFamilyCampDerivedSync } from "../../hooks/useFamilyCampDerivedSync";
+import { useStaffSkillsSync } from "../../hooks/useStaffSkillsSync";
+import { useFinancialAidApplicationsSync } from "../../hooks/useFinancialAidApplicationsSync";
+import { useHouseholdDemographicsSync } from "../../hooks/useHouseholdDemographicsSync";
+import { useCamperDietarySync } from "../../hooks/useCamperDietarySync";
+import { useCamperTransportationSync } from "../../hooks/useCamperTransportationSync";
+import { useQuestRegistrationsSync } from "../../hooks/useQuestRegistrationsSync";
+import { useStaffApplicationsSync } from "../../hooks/useStaffApplicationsSync";
+import { useStaffVehicleInfoSync } from "../../hooks/useStaffVehicleInfoSync";
+import { useCancelQueuedSync } from "../../hooks/useCancelQueuedSync";
+import { useCancelRunningSync } from "../../hooks/useCancelRunningSync";
+import { useRunPhaseSync } from "../../hooks/useRunPhaseSync";
+import { StatusIcon, formatDuration } from "./ConfigInputs";
+import { clearCache } from "../../utils/queryClient";
+import ProcessRequestOptions, {
+  type ProcessRequestOptionsState,
+} from "./ProcessRequestOptions";
+import {
+  GLOBAL_SYNC_TYPES,
+  CURRENT_YEAR_SYNC_TYPES,
+  getYearSyncTypes,
+  Globe,
+  SYNC_PHASES,
+  getSyncTypesByPhase,
+  type SyncPhase,
+} from "./syncTypes";
+import clsx from "clsx";
 
 export function SyncTab() {
   const currentYear = useYear();
   // Unified sync state (replaces separate daily/historical)
   const [syncYear, setSyncYear] = useState(currentYear);
-  const [syncService, setSyncService] = useState('all');
+  const [syncService, setSyncService] = useState("all");
   const [includeCustomValues, setIncludeCustomValues] = useState(false);
   const [syncDebug, setSyncDebug] = useState(false);
   const [showProcessOptions, setShowProcessOptions] = useState(false);
   // Phase-based sync mode
-  const [syncMode, setSyncMode] = useState<'full' | 'phase'>('full');
-  const [selectedPhase, setSelectedPhase] = useState<SyncPhase>('source');
+  const [syncMode, setSyncMode] = useState<"full" | "phase">("full");
+  const [selectedPhase, setSelectedPhase] = useState<SyncPhase>("source");
   // Collapsible sections
   const [globalsExpanded, setGlobalsExpanded] = useState(false);
-  const [collapsedPhases, setCollapsedPhases] = useState<Set<SyncPhase>>(new Set());
+  const [collapsedPhases, setCollapsedPhases] = useState<Set<SyncPhase>>(
+    new Set(),
+  );
 
   // Use the completion toasts hook - it wraps useSyncStatusAPI and fires toasts on completion
   const syncStatus = useSyncCompletionToasts();
@@ -83,48 +98,60 @@ export function SyncTab() {
     if (!syncStatus) return [];
     const allSyncTypes = [...CURRENT_YEAR_SYNC_TYPES, ...GLOBAL_SYNC_TYPES];
     return allSyncTypes
-      .map(syncType => {
+      .map((syncType) => {
         const statusValue = syncStatus[syncType.id as keyof typeof syncStatus];
-        if (statusValue && typeof statusValue === 'object' && 'status' in statusValue) {
+        if (
+          statusValue &&
+          typeof statusValue === "object" &&
+          "status" in statusValue
+        ) {
           const status = statusValue as SyncStatus;
-          if (status.status === 'running') {
+          if (status.status === "running") {
             return { ...syncType, year: status.year || currentYear };
           }
         }
         return null;
       })
-      .filter((job): job is (typeof allSyncTypes[number] & { year: number }) => job !== null);
+      .filter(
+        (job): job is (typeof allSyncTypes)[number] & { year: number } =>
+          job !== null,
+      );
   }, [syncStatus, currentYear]);
 
   // Compute available sync types based on year (excludes currentYearOnly types for historical years)
-  const availableSyncTypes = useMemo(() =>
-    getYearSyncTypes(syncYear, currentYear),
-    [syncYear, currentYear]
+  const availableSyncTypes = useMemo(
+    () => getYearSyncTypes(syncYear, currentYear),
+    [syncYear, currentYear],
   );
 
   // Handle year change - reset service if it becomes unavailable
   const handleYearChange = (year: number) => {
     setSyncYear(year);
     // Reset service if it's a current-year-only type and we're switching to historical
-    if (year !== currentYear &&
-        (syncService === 'bunk_requests' || syncService === 'process_requests')) {
-      setSyncService('all');
+    if (
+      year !== currentYear &&
+      (syncService === "bunk_requests" || syncService === "process_requests")
+    ) {
+      setSyncService("all");
     }
   };
 
   // Helper to get display name for queue item
   const getQueueItemDisplay = (item: QueuedSyncItem) => {
-    if (item.type === 'phase') {
-      const phase = SYNC_PHASES.find(p => p.id === item.service);
+    if (item.type === "phase") {
+      const phase = SYNC_PHASES.find((p) => p.id === item.service);
       return phase ? `${phase.name} Phase` : item.service;
     }
     // Look up friendly name from sync types
-    if (item.service === 'all') {
-      return 'All Services';
+    if (item.service === "all") {
+      return "All Services";
     }
     const allSyncTypes = [...CURRENT_YEAR_SYNC_TYPES, ...GLOBAL_SYNC_TYPES];
-    const syncType = allSyncTypes.find(t => t.id === item.service);
-    return syncType?.name || item.service.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const syncType = allSyncTypes.find((t) => t.id === item.service);
+    return (
+      syncType?.name ||
+      item.service.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+    );
   };
 
   if (isLoading) {
@@ -136,56 +163,57 @@ export function SyncTab() {
   }
 
   // Render a sync card for a given sync type
-  const renderSyncCard = (syncType: typeof availableSyncTypes[number]) => {
+  const renderSyncCard = (syncType: (typeof availableSyncTypes)[number]) => {
     const statusValue = syncStatus?.[syncType.id as keyof typeof syncStatus];
-    const status = (statusValue && typeof statusValue === 'object' && 'status' in statusValue)
-      ? statusValue as SyncStatus
-      : { status: 'idle' } as SyncStatus;
+    const status =
+      statusValue && typeof statusValue === "object" && "status" in statusValue
+        ? (statusValue as SyncStatus)
+        : ({ status: "idle" } as SyncStatus);
     const Icon = syncType.icon;
-    const isRunning = status.status === 'running';
-    const isPending = status.status === 'pending';
+    const isRunning = status.status === "running";
+    const isPending = status.status === "pending";
 
     // Determine which hook to use based on sync type
     const handleRun = () => {
       switch (syncType.id) {
-        case 'process_requests':
+        case "process_requests":
           runIndividualSync.mutate(syncType.id);
           break;
-        case 'camper_history':
+        case "camper_history":
           camperHistorySync.mutate(syncYear);
           break;
-        case 'family_camp_derived':
+        case "family_camp_derived":
           familyCampDerivedSync.mutate(syncYear);
           break;
-        case 'staff_skills':
+        case "staff_skills":
           staffSkillsSync.mutate(syncYear);
           break;
-        case 'financial_aid_applications':
+        case "financial_aid_applications":
           faApplicationsSync.mutate(syncYear);
           break;
-        case 'household_demographics':
+        case "household_demographics":
           householdDemographicsSync.mutate(syncYear);
           break;
-        case 'camper_dietary':
+        case "camper_dietary":
           camperDietarySync.mutate(syncYear);
           break;
-        case 'camper_transportation':
+        case "camper_transportation":
           camperTransportationSync.mutate(syncYear);
           break;
-        case 'quest_registrations':
+        case "quest_registrations":
           questRegistrationsSync.mutate(syncYear);
           break;
-        case 'staff_applications':
+        case "staff_applications":
           staffApplicationsSync.mutate(syncYear);
           break;
-        case 'staff_vehicle_info':
+        case "staff_vehicle_info":
           staffVehicleInfoSync.mutate(syncYear);
           break;
-        case 'person_custom_values':
-        case 'household_custom_values':
+        case "person_custom_values":
+        case "household_custom_values":
           runOnDemandSync.mutate({
             syncType: syncType.id,
-            session: 'all',
+            session: "all",
             debug: false,
           });
           break;
@@ -202,45 +230,63 @@ export function SyncTab() {
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2 min-w-0">
             <Icon className={`w-5 h-5 flex-shrink-0 ${syncType.color}`} />
-            <span className="font-semibold text-sm sm:text-base truncate">{syncType.name}</span>
+            <span className="font-semibold text-sm sm:text-base truncate">
+              {syncType.name}
+            </span>
           </div>
           <StatusIcon status={status.status} />
         </div>
 
         {/* Status info */}
         <div className="flex-1 min-h-[3rem]">
-          {status.summary && status.status !== 'idle' ? (
+          {status.summary && status.status !== "idle" ? (
             <div className="space-y-1">
               <div className="flex flex-wrap gap-x-2 gap-y-1 text-xs sm:text-sm">
                 {status.summary.created > 0 && (
-                  <span className="text-emerald-600 dark:text-emerald-400 font-medium">{status.summary.created} new</span>
+                  <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                    {status.summary.created} new
+                  </span>
                 )}
                 {status.summary.updated > 0 && (
-                  <span className="text-sky-600 dark:text-sky-400 font-medium">{status.summary.updated} upd</span>
+                  <span className="text-sky-600 dark:text-sky-400 font-medium">
+                    {status.summary.updated} upd
+                  </span>
                 )}
                 {(status.summary.already_processed || 0) > 0 && (
-                  <span className="text-muted-foreground">{status.summary.already_processed} done</span>
+                  <span className="text-muted-foreground">
+                    {status.summary.already_processed} done
+                  </span>
                 )}
                 {(status.summary.skipped || 0) > 0 && (
-                  <span className="text-muted-foreground">{status.summary.skipped} skip</span>
+                  <span className="text-muted-foreground">
+                    {status.summary.skipped} skip
+                  </span>
                 )}
                 {status.summary.errors > 0 && (
-                  <span className="text-red-600 dark:text-red-400 font-medium">{status.summary.errors} err</span>
+                  <span className="text-red-600 dark:text-red-400 font-medium">
+                    {status.summary.errors} err
+                  </span>
                 )}
               </div>
               <div className="text-muted-foreground text-xs sm:text-sm truncate">
-                {status.summary.duration !== undefined && formatDuration(status.summary.duration)}
-                {status.summary.duration !== undefined && status.end_time && ' · '}
-                {status.end_time && format(new Date(status.end_time), 'MMM d, h:mm a')}
+                {status.summary.duration !== undefined &&
+                  formatDuration(status.summary.duration)}
+                {status.summary.duration !== undefined &&
+                  status.end_time &&
+                  " · "}
+                {status.end_time &&
+                  format(new Date(status.end_time), "MMM d, h:mm a")}
               </div>
             </div>
           ) : (
-            <div className="text-xs sm:text-sm text-muted-foreground">Not run yet</div>
+            <div className="text-xs sm:text-sm text-muted-foreground">
+              Not run yet
+            </div>
           )}
         </div>
 
         {/* Run button - special handling for process_requests */}
-        {syncType.id === 'process_requests' ? (
+        {syncType.id === "process_requests" ? (
           <div className="flex gap-2 mt-3">
             <button
               onClick={handleRun}
@@ -250,7 +296,9 @@ export function SyncTab() {
               {isRunning || isPending ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
-                <><Play className="w-4 h-4" /> Run</>
+                <>
+                  <Play className="w-4 h-4" /> Run
+                </>
               )}
             </button>
             <button
@@ -265,13 +313,20 @@ export function SyncTab() {
         ) : (
           <button
             onClick={handleRun}
-            disabled={isRunning || isPending || runIndividualSync.isPending || runOnDemandSync.isPending}
+            disabled={
+              isRunning ||
+              isPending ||
+              runIndividualSync.isPending ||
+              runOnDemandSync.isPending
+            }
             className="w-full py-2 mt-3 text-xs sm:text-sm font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
           >
             {isRunning || isPending ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
-              <><Play className="w-4 h-4" /> Run</>
+              <>
+                <Play className="w-4 h-4" /> Run
+              </>
             )}
           </button>
         )}
@@ -287,28 +342,27 @@ export function SyncTab() {
         <div className="bg-card rounded-xl border border-border shadow-lodge-sm overflow-hidden">
           {/* Controls Row */}
           <div className="p-3 sm:p-4 flex flex-col lg:flex-row gap-4 lg:items-center">
-
             {/* Selection Group */}
             <div className="flex items-center gap-2 bg-muted/50 dark:bg-muted/30 rounded-xl p-1.5 border border-border/50">
               {/* Mode Toggle */}
               <div className="flex rounded-lg bg-background p-0.5">
                 <button
-                  onClick={() => setSyncMode('full')}
+                  onClick={() => setSyncMode("full")}
                   className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                    syncMode === 'full'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:text-foreground'
+                    syncMode === "full"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground"
                   }`}
                   disabled={unifiedSync.isPending || runPhaseSync.isPending}
                 >
                   Full
                 </button>
                 <button
-                  onClick={() => setSyncMode('phase')}
+                  onClick={() => setSyncMode("phase")}
                   className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                    syncMode === 'phase'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:text-foreground'
+                    syncMode === "phase"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground"
                   }`}
                   disabled={unifiedSync.isPending || runPhaseSync.isPending}
                 >
@@ -326,19 +380,27 @@ export function SyncTab() {
                 disabled={unifiedSync.isPending || runPhaseSync.isPending}
               >
                 <option value={currentYear}>{currentYear}</option>
-                {Array.from({ length: currentYear - 2017 }, (_, i) => currentYear - 1 - i).map(year => (
-                  <option key={year} value={year}>{year}</option>
+                {Array.from(
+                  { length: currentYear - 2017 },
+                  (_, i) => currentYear - 1 - i,
+                ).map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
                 ))}
               </select>
 
               <div className="w-px h-6 bg-border/50" />
 
-              {syncMode === 'full' ? (
+              {syncMode === "full" ? (
                 <select
                   value={syncService}
                   onChange={(e) => {
                     setSyncService(e.target.value);
-                    if (e.target.value !== 'all' && e.target.value !== 'persons') {
+                    if (
+                      e.target.value !== "all" &&
+                      e.target.value !== "persons"
+                    ) {
                       setIncludeCustomValues(false);
                     }
                   }}
@@ -347,20 +409,26 @@ export function SyncTab() {
                   disabled={unifiedSync.isPending}
                 >
                   <option value="all">All Services</option>
-                  {availableSyncTypes.map(type => (
-                    <option key={type.id} value={type.id}>{type.name}</option>
+                  {availableSyncTypes.map((type) => (
+                    <option key={type.id} value={type.id}>
+                      {type.name}
+                    </option>
                   ))}
                 </select>
               ) : (
                 <select
                   value={selectedPhase}
-                  onChange={(e) => setSelectedPhase(e.target.value as SyncPhase)}
+                  onChange={(e) =>
+                    setSelectedPhase(e.target.value as SyncPhase)
+                  }
                   aria-label="Sync phase"
                   className="px-3 py-2 bg-background border-none rounded-lg text-sm font-medium min-w-[140px] focus:ring-2 focus:ring-primary/20 focus:outline-none cursor-pointer"
                   disabled={runPhaseSync.isPending}
                 >
-                  {SYNC_PHASES.map(phase => (
-                    <option key={phase.id} value={phase.id}>{phase.name}</option>
+                  {SYNC_PHASES.map((phase) => (
+                    <option key={phase.id} value={phase.id}>
+                      {phase.name}
+                    </option>
                   ))}
                 </select>
               )}
@@ -369,23 +437,24 @@ export function SyncTab() {
             {/* Options Group */}
             <div className="flex items-center gap-4 lg:border-l lg:border-border/50 lg:pl-4">
               {/* Include custom values - only for full mode with all/persons */}
-              {syncMode === 'full' && (syncService === 'all' || syncService === 'persons') && (
-                <label className="flex items-center gap-2 text-sm cursor-pointer hover:text-foreground transition-colors">
-                  <input
-                    type="checkbox"
-                    checked={includeCustomValues}
-                    onChange={(e) => setIncludeCustomValues(e.target.checked)}
-                    className="rounded border-gray-300"
-                    disabled={unifiedSync.isPending}
-                  />
-                  <span className="text-muted-foreground">Include CV</span>
-                </label>
-              )}
+              {syncMode === "full" &&
+                (syncService === "all" || syncService === "persons") && (
+                  <label className="flex items-center gap-2 text-sm cursor-pointer hover:text-foreground transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={includeCustomValues}
+                      onChange={(e) => setIncludeCustomValues(e.target.checked)}
+                      className="rounded border-gray-300"
+                      disabled={unifiedSync.isPending}
+                    />
+                    <span className="text-muted-foreground">Include CV</span>
+                  </label>
+                )}
 
               {/* Phase description - only in phase mode */}
-              {syncMode === 'phase' && (
+              {syncMode === "phase" && (
                 <span className="text-sm text-muted-foreground">
-                  {SYNC_PHASES.find(p => p.id === selectedPhase)?.description}
+                  {SYNC_PHASES.find((p) => p.id === selectedPhase)?.description}
                 </span>
               )}
 
@@ -404,7 +473,8 @@ export function SyncTab() {
 
             {/* Action Group */}
             <div className="lg:ml-auto flex gap-2">
-              {(syncStatus?._daily_sync_running || syncStatus?._historical_sync_running) && (
+              {(syncStatus?._daily_sync_running ||
+                syncStatus?._historical_sync_running) && (
                 <button
                   onClick={() => cancelRunningSync.mutate()}
                   disabled={cancelRunningSync.isPending}
@@ -412,17 +482,22 @@ export function SyncTab() {
                   title="Cancel the currently running sync"
                 >
                   {cancelRunningSync.isPending ? (
-                    <><Loader2 className="w-5 h-5 animate-spin" /></>
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    </>
                   ) : (
-                    <><X className="w-5 h-5" /> Cancel</>
+                    <>
+                      <X className="w-5 h-5" /> Cancel
+                    </>
                   )}
                 </button>
               )}
-              {syncMode === 'full' ? (
+              {syncMode === "full" ? (
                 <button
                   onClick={() => {
-                    const shouldIncludeCustomValues = includeCustomValues &&
-                      (syncService === 'all' || syncService === 'persons');
+                    const shouldIncludeCustomValues =
+                      includeCustomValues &&
+                      (syncService === "all" || syncService === "persons");
                     unifiedSync.mutate({
                       year: syncYear,
                       service: syncService,
@@ -434,9 +509,13 @@ export function SyncTab() {
                   className="btn-primary w-full lg:w-auto min-w-[130px]"
                 >
                   {unifiedSync.isPending ? (
-                    <><Loader2 className="w-5 h-5 animate-spin" /> Starting...</>
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" /> Starting...
+                    </>
                   ) : (
-                    <><Zap className="w-5 h-5" /> Run Sync</>
+                    <>
+                      <Zap className="w-5 h-5" /> Run Sync
+                    </>
                   )}
                 </button>
               ) : (
@@ -452,15 +531,18 @@ export function SyncTab() {
                   className="btn-primary w-full lg:w-auto min-w-[130px]"
                 >
                   {runPhaseSync.isPending ? (
-                    <><Loader2 className="w-5 h-5 animate-spin" /> Starting...</>
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" /> Starting...
+                    </>
                   ) : (
-                    <><Zap className="w-5 h-5" /> Run Phase</>
+                    <>
+                      <Zap className="w-5 h-5" /> Run Phase
+                    </>
                   )}
                 </button>
               )}
             </div>
           </div>
-
         </div>
 
         {/* Unified Sync Pipeline - combines queue + currently processing */}
@@ -487,13 +569,17 @@ export function SyncTab() {
                           "flex items-center gap-2 px-3 py-1.5 rounded-lg border flex-shrink-0",
                           "bg-gradient-to-r from-forest-100 to-forest-50 dark:from-forest-800/50 dark:to-forest-900/30",
                           "border-forest-300 dark:border-forest-700",
-                          "shadow-sm"
+                          "shadow-sm",
                         )}
                       >
                         <Loader2 className="w-3.5 h-3.5 text-forest-600 dark:text-forest-400 animate-spin" />
                         <span className="font-medium text-sm text-forest-800 dark:text-forest-200 whitespace-nowrap">
-                          <span className="text-forest-600 dark:text-forest-400">{job.year}</span>
-                          <span className="mx-1.5 text-forest-400 dark:text-forest-600">·</span>
+                          <span className="text-forest-600 dark:text-forest-400">
+                            {job.year}
+                          </span>
+                          <span className="mx-1.5 text-forest-400 dark:text-forest-600">
+                            ·
+                          </span>
                           {job.name}
                         </span>
                         <Icon className={`w-3.5 h-3.5 ${job.color}`} />
@@ -502,58 +588,70 @@ export function SyncTab() {
                   })}
 
                   {/* Connector to remaining jobs or queue */}
-                  {(syncStatus?._current_run && syncStatus._current_run.remaining_jobs?.length > 0) ? (
+                  {syncStatus?._current_run &&
+                  syncStatus._current_run.remaining_jobs?.length > 0 ? (
                     <div className="flex items-center gap-1 text-bark-400 dark:text-bark-600 flex-shrink-0 px-1">
                       <div className="w-6 h-px bg-gradient-to-r from-forest-300 to-teal-300 dark:from-forest-700 dark:to-teal-700" />
                       <ChevronRight className="w-3 h-3" />
                     </div>
-                  ) : hasQueuedItems && (
-                    <div className="flex items-center gap-1 text-bark-400 dark:text-bark-600 flex-shrink-0 px-1">
-                      <div className="w-6 h-px bg-gradient-to-r from-forest-300 to-amber-300 dark:from-forest-700 dark:to-amber-700" />
-                      <ChevronRight className="w-3 h-3" />
-                    </div>
+                  ) : (
+                    hasQueuedItems && (
+                      <div className="flex items-center gap-1 text-bark-400 dark:text-bark-600 flex-shrink-0 px-1">
+                        <div className="w-6 h-px bg-gradient-to-r from-forest-300 to-amber-300 dark:from-forest-700 dark:to-amber-700" />
+                        <ChevronRight className="w-3 h-3" />
+                      </div>
+                    )
                   )}
                 </>
               )}
 
               {/* Remaining Jobs in Current Sequence - teal theme */}
-              {syncStatus?._current_run && syncStatus._current_run.remaining_jobs?.length > 0 && (
-                <>
-                  {/* Remaining label with count */}
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                    <div className="w-2 h-2 rounded-full bg-teal-400 dark:bg-teal-500" />
-                    <span className="text-xs font-semibold tracking-wide uppercase text-teal-600 dark:text-teal-400">
-                      Next ({syncStatus._current_run.remaining_jobs.length})
-                    </span>
-                  </div>
-
-                  {/* Job chips - show first 4, then "+N more" */}
-                  {syncStatus._current_run.remaining_jobs.slice(0, 4).map((jobId) => {
-                    const syncType = [...CURRENT_YEAR_SYNC_TYPES, ...GLOBAL_SYNC_TYPES].find(t => t.id === jobId);
-                    return (
-                      <div
-                        key={jobId}
-                        className="flex items-center gap-1.5 px-2 py-1 rounded-md border flex-shrink-0 bg-teal-50 dark:bg-teal-900/20 border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300"
-                      >
-                        <span className="text-xs font-medium">{syncType?.name || jobId.replace(/_/g, ' ')}</span>
-                      </div>
-                    );
-                  })}
-                  {syncStatus._current_run.remaining_jobs.length > 4 && (
-                    <span className="text-xs text-teal-600 dark:text-teal-400 font-medium">
-                      +{syncStatus._current_run.remaining_jobs.length - 4} more
-                    </span>
-                  )}
-
-                  {/* Connector to external queue if items exist */}
-                  {hasQueuedItems && (
-                    <div className="flex items-center gap-1 text-bark-400 dark:text-bark-600 flex-shrink-0 px-1">
-                      <div className="w-6 h-px bg-gradient-to-r from-teal-300 to-amber-300 dark:from-teal-700 dark:to-amber-700" />
-                      <ChevronRight className="w-3 h-3" />
+              {syncStatus?._current_run &&
+                syncStatus._current_run.remaining_jobs?.length > 0 && (
+                  <>
+                    {/* Remaining label with count */}
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <div className="w-2 h-2 rounded-full bg-teal-400 dark:bg-teal-500" />
+                      <span className="text-xs font-semibold tracking-wide uppercase text-teal-600 dark:text-teal-400">
+                        Next ({syncStatus._current_run.remaining_jobs.length})
+                      </span>
                     </div>
-                  )}
-                </>
-              )}
+
+                    {/* Job chips - show first 4, then "+N more" */}
+                    {syncStatus._current_run.remaining_jobs
+                      .slice(0, 4)
+                      .map((jobId) => {
+                        const syncType = [
+                          ...CURRENT_YEAR_SYNC_TYPES,
+                          ...GLOBAL_SYNC_TYPES,
+                        ].find((t) => t.id === jobId);
+                        return (
+                          <div
+                            key={jobId}
+                            className="flex items-center gap-1.5 px-2 py-1 rounded-md border flex-shrink-0 bg-teal-50 dark:bg-teal-900/20 border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300"
+                          >
+                            <span className="text-xs font-medium">
+                              {syncType?.name || jobId.replace(/_/g, " ")}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    {syncStatus._current_run.remaining_jobs.length > 4 && (
+                      <span className="text-xs text-teal-600 dark:text-teal-400 font-medium">
+                        +{syncStatus._current_run.remaining_jobs.length - 4}{" "}
+                        more
+                      </span>
+                    )}
+
+                    {/* Connector to external queue if items exist */}
+                    {hasQueuedItems && (
+                      <div className="flex items-center gap-1 text-bark-400 dark:text-bark-600 flex-shrink-0 px-1">
+                        <div className="w-6 h-px bg-gradient-to-r from-teal-300 to-amber-300 dark:from-teal-700 dark:to-amber-700" />
+                        <ChevronRight className="w-3 h-3" />
+                      </div>
+                    )}
+                  </>
+                )}
 
               {/* Queued Items - amber theme */}
               {hasQueuedItems && (
@@ -570,22 +668,33 @@ export function SyncTab() {
 
                   {/* Queue items */}
                   {queue.map((item, index) => (
-                    <div key={item.id} className="flex items-center gap-1 flex-shrink-0">
+                    <div
+                      key={item.id}
+                      className="flex items-center gap-1 flex-shrink-0"
+                    >
                       <div
                         className={clsx(
                           "group flex items-center gap-2 px-2.5 py-1.5 rounded-lg border transition-all",
                           "bg-gradient-to-r from-amber-50 to-amber-100/50 dark:from-amber-900/30 dark:to-amber-900/10",
-                          "border-amber-200 dark:border-amber-800 hover:border-amber-300 dark:hover:border-amber-700"
+                          "border-amber-200 dark:border-amber-800 hover:border-amber-300 dark:hover:border-amber-700",
                         )}
                       >
                         <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200 text-xs font-bold tabular-nums">
                           {item.position}
                         </span>
                         <span className="font-medium text-sm text-amber-900 dark:text-amber-100 whitespace-nowrap">
-                          <span className="text-amber-600 dark:text-amber-400">{item.year}</span>
-                          <span className="mx-1 text-amber-400 dark:text-amber-600">·</span>
+                          <span className="text-amber-600 dark:text-amber-400">
+                            {item.year}
+                          </span>
+                          <span className="mx-1 text-amber-400 dark:text-amber-600">
+                            ·
+                          </span>
                           {getQueueItemDisplay(item)}
-                          {item.include_custom_values && <span className="text-amber-500 dark:text-amber-500 ml-1 text-xs">+CV</span>}
+                          {item.include_custom_values && (
+                            <span className="text-amber-500 dark:text-amber-500 ml-1 text-xs">
+                              +CV
+                            </span>
+                          )}
                         </span>
                         <button
                           onClick={() => cancelQueuedSync.mutate(item.id)}
@@ -611,7 +720,9 @@ export function SyncTab() {
             <button
               onClick={() => {
                 clearCache();
-                toast.success('Cache cleared - data will refresh', { duration: 3000 });
+                toast.success("Cache cleared - data will refresh", {
+                  duration: 3000,
+                });
               }}
               className="btn-ghost text-sm"
               title="Clear cached data and force refresh from server"
@@ -632,7 +743,7 @@ export function SyncTab() {
         const isCollapsed = collapsedPhases.has(phase.id);
 
         const togglePhase = () => {
-          setCollapsedPhases(prev => {
+          setCollapsedPhases((prev) => {
             const next = new Set(prev);
             if (next.has(phase.id)) {
               next.delete(phase.id);
@@ -651,16 +762,26 @@ export function SyncTab() {
                 onClick={togglePhase}
                 className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
               >
-                <ChevronDown className={clsx(
-                  "w-4 h-4 transition-transform",
-                  isCollapsed && "-rotate-90"
-                )} />
+                <ChevronDown
+                  className={clsx(
+                    "w-4 h-4 transition-transform",
+                    isCollapsed && "-rotate-90",
+                  )}
+                />
                 <PhaseIcon className="w-4 h-4" />
                 <span className="text-sm font-medium">{phase.name}</span>
-                <span className="text-xs text-muted-foreground/70">({types.length} jobs)</span>
+                <span className="text-xs text-muted-foreground/70">
+                  ({types.length} jobs)
+                </span>
               </button>
               <button
-                onClick={() => runPhaseSync.mutate({ year: syncYear, phase: phase.id, debug: syncDebug })}
+                onClick={() =>
+                  runPhaseSync.mutate({
+                    year: syncYear,
+                    phase: phase.id,
+                    debug: syncDebug,
+                  })
+                }
                 disabled={runPhaseSync.isPending}
                 className="text-sm px-4 py-2 rounded-lg bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
               >
@@ -676,7 +797,7 @@ export function SyncTab() {
             {/* Consistent grid across all phases - collapsible */}
             {!isCollapsed && (
               <div className="grid gap-3 sm:gap-4 grid-cols-2 md:grid-cols-4 xl:grid-cols-5">
-                {types.map(syncType => renderSyncCard(syncType))}
+                {types.map((syncType) => renderSyncCard(syncType))}
               </div>
             )}
           </div>
@@ -691,23 +812,31 @@ export function SyncTab() {
         >
           <Globe className="w-4 h-4" />
           <span className="text-sm font-medium">Global Definitions</span>
-          <span className="text-xs text-muted-foreground/70">(auto-synced if missing)</span>
-          <ChevronDown className={clsx(
-            "w-4 h-4 ml-auto transition-transform",
-            globalsExpanded && "rotate-180"
-          )} />
+          <span className="text-xs text-muted-foreground/70">
+            (auto-synced if missing)
+          </span>
+          <ChevronDown
+            className={clsx(
+              "w-4 h-4 ml-auto transition-transform",
+              globalsExpanded && "rotate-180",
+            )}
+          />
         </button>
 
         {globalsExpanded && (
           <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4 mt-3">
             {GLOBAL_SYNC_TYPES.map((syncType) => {
-              const statusValue = syncStatus?.[syncType.id as keyof typeof syncStatus];
-              const status = (statusValue && typeof statusValue === 'object' && 'status' in statusValue)
-                ? statusValue as SyncStatus
-                : { status: 'idle' } as SyncStatus;
+              const statusValue =
+                syncStatus?.[syncType.id as keyof typeof syncStatus];
+              const status =
+                statusValue &&
+                typeof statusValue === "object" &&
+                "status" in statusValue
+                  ? (statusValue as SyncStatus)
+                  : ({ status: "idle" } as SyncStatus);
               const Icon = syncType.icon;
-              const isRunning = status.status === 'running';
-              const isPending = status.status === 'pending';
+              const isRunning = status.status === "running";
+              const isPending = status.status === "pending";
 
               return (
                 <div
@@ -716,51 +845,73 @@ export function SyncTab() {
                 >
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2 min-w-0">
-                      <Icon className={`w-5 h-5 flex-shrink-0 ${syncType.color}`} />
-                      <span className="font-semibold text-sm sm:text-base truncate">{syncType.name}</span>
+                      <Icon
+                        className={`w-5 h-5 flex-shrink-0 ${syncType.color}`}
+                      />
+                      <span className="font-semibold text-sm sm:text-base truncate">
+                        {syncType.name}
+                      </span>
                     </div>
                     <StatusIcon status={status.status} />
                   </div>
 
                   {/* Status info */}
                   <div className="flex-1 min-h-[3rem]">
-                    {status.summary && status.status !== 'idle' ? (
+                    {status.summary && status.status !== "idle" ? (
                       <div className="space-y-1">
                         <div className="flex flex-wrap gap-x-2 gap-y-1 text-xs sm:text-sm">
                           {status.summary.created > 0 && (
-                            <span className="text-emerald-600 dark:text-emerald-400 font-medium">{status.summary.created} new</span>
+                            <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                              {status.summary.created} new
+                            </span>
                           )}
                           {status.summary.updated > 0 && (
-                            <span className="text-sky-600 dark:text-sky-400 font-medium">{status.summary.updated} upd</span>
+                            <span className="text-sky-600 dark:text-sky-400 font-medium">
+                              {status.summary.updated} upd
+                            </span>
                           )}
                           {(status.summary.skipped || 0) > 0 && (
-                            <span className="text-muted-foreground">{status.summary.skipped} skip</span>
+                            <span className="text-muted-foreground">
+                              {status.summary.skipped} skip
+                            </span>
                           )}
                           {status.summary.errors > 0 && (
-                            <span className="text-red-600 dark:text-red-400 font-medium">{status.summary.errors} err</span>
+                            <span className="text-red-600 dark:text-red-400 font-medium">
+                              {status.summary.errors} err
+                            </span>
                           )}
                         </div>
                         <div className="text-muted-foreground text-xs sm:text-sm truncate">
-                          {status.summary.duration !== undefined && formatDuration(status.summary.duration)}
-                          {status.summary.duration !== undefined && status.end_time && ' · '}
-                          {status.end_time && format(new Date(status.end_time), 'MMM d, h:mm a')}
+                          {status.summary.duration !== undefined &&
+                            formatDuration(status.summary.duration)}
+                          {status.summary.duration !== undefined &&
+                            status.end_time &&
+                            " · "}
+                          {status.end_time &&
+                            format(new Date(status.end_time), "MMM d, h:mm a")}
                         </div>
                       </div>
                     ) : (
-                      <div className="text-xs sm:text-sm text-muted-foreground">Not run yet</div>
+                      <div className="text-xs sm:text-sm text-muted-foreground">
+                        Not run yet
+                      </div>
                     )}
                   </div>
 
                   {/* Run button */}
                   <button
                     onClick={() => runIndividualSync.mutate(syncType.id)}
-                    disabled={isRunning || isPending || runIndividualSync.isPending}
+                    disabled={
+                      isRunning || isPending || runIndividualSync.isPending
+                    }
                     className="w-full py-2 mt-3 text-xs sm:text-sm font-medium rounded-lg bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
                   >
                     {isRunning || isPending ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
-                      <><Play className="w-4 h-4" /> Run</>
+                      <>
+                        <Play className="w-4 h-4" /> Run
+                      </>
                     )}
                   </button>
                 </div>

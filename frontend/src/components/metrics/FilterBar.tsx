@@ -5,7 +5,7 @@
  * The compare year selector is separate (CompareYearSelector component).
  */
 
-import { Filter } from 'lucide-react';
+import { Filter } from "lucide-react";
 
 interface FilterBarProps {
   /** Currently selected statuses (multi-select) */
@@ -20,24 +20,24 @@ interface FilterBarProps {
 
 /** Available enrollment statuses (matches attendees.status PB field) */
 const STATUS_OPTIONS = [
-  { id: 'enrolled', label: 'Enrolled' },
-  { id: 'applied', label: 'Applied' },
-  { id: 'waitlisted', label: 'Waitlisted' },
-  { id: 'left_early', label: 'Left Early' },
-  { id: 'cancelled', label: 'Cancelled' },
-  { id: 'dismissed', label: 'Dismissed' },
-  { id: 'inquiry', label: 'Inquiry' },
-  { id: 'withdrawn', label: 'Withdrawn' },
-  { id: 'incomplete', label: 'Incomplete' },
-  { id: 'unknown', label: 'Unknown' },
+  { id: "enrolled", label: "Enrolled" },
+  { id: "applied", label: "Applied" },
+  { id: "waitlisted", label: "Waitlisted" },
+  { id: "left_early", label: "Left Early" },
+  { id: "cancelled", label: "Cancelled" },
+  { id: "dismissed", label: "Dismissed" },
+  { id: "inquiry", label: "Inquiry" },
+  { id: "withdrawn", label: "Withdrawn" },
+  { id: "incomplete", label: "Incomplete" },
+  { id: "unknown", label: "Unknown" },
 ] as const;
 
 /** Available session types */
 const SESSION_TYPE_OPTIONS = [
-  { id: 'main', label: 'Main' },
-  { id: 'embedded', label: 'Embedded' },
-  { id: 'ag', label: 'All-Gender' },
-  { id: 'family', label: 'Family Camp' },
+  { id: "main", label: "Main" },
+  { id: "embedded", label: "Embedded" },
+  { id: "ag", label: "All-Gender" },
+  { id: "family", label: "Family Camp" },
 ] as const;
 
 interface CheckboxGroupProps {
@@ -47,7 +47,12 @@ interface CheckboxGroupProps {
   onChange: (selected: string[]) => void;
 }
 
-function CheckboxGroup({ label, options, selected, onChange }: CheckboxGroupProps) {
+function CheckboxGroup({
+  label,
+  options,
+  selected,
+  onChange,
+}: CheckboxGroupProps) {
   const handleToggle = (id: string) => {
     if (selected.includes(id)) {
       // Don't allow deselecting the last option

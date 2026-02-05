@@ -5,19 +5,27 @@
  * Session+Bunk table kept as custom due to unique 2-name-column structure.
  */
 
-import { useState } from 'react';
-import { ChevronDown, ChevronRight, Building2, MapPin, Heart, Calendar, Home } from 'lucide-react';
+import { useState } from "react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Building2,
+  MapPin,
+  Heart,
+  Calendar,
+  Home,
+} from "lucide-react";
 import {
   CollapsibleDemographicTable,
   type RetentionTableData,
-} from './CollapsibleDemographicTable';
+} from "./CollapsibleDemographicTable";
 import type {
   RetentionBySchool,
   RetentionByCity,
   RetentionBySynagogue,
   RetentionByFirstYear,
   RetentionBySessionBunk,
-} from '../../types/metrics';
+} from "../../types/metrics";
 
 interface RetentionDemographicBreakdownsProps {
   bySchool: RetentionBySchool[] | undefined;
@@ -47,7 +55,9 @@ function transformCityData(data: RetentionByCity[]): RetentionTableData[] {
   }));
 }
 
-function transformSynagogueData(data: RetentionBySynagogue[]): RetentionTableData[] {
+function transformSynagogueData(
+  data: RetentionBySynagogue[],
+): RetentionTableData[] {
   return data.map((item) => ({
     name: item.synagogue,
     base_count: item.base_count,
@@ -56,7 +66,9 @@ function transformSynagogueData(data: RetentionBySynagogue[]): RetentionTableDat
   }));
 }
 
-function transformFirstYearData(data: RetentionByFirstYear[]): RetentionTableData[] {
+function transformFirstYearData(
+  data: RetentionByFirstYear[],
+): RetentionTableData[] {
   return data.map((item) => ({
     name: String(item.first_year),
     base_count: item.base_count,
@@ -70,10 +82,10 @@ function RetentionRateCell({ rate }: { rate: number }) {
   const percentage = rate * 100;
   const colorClass =
     percentage >= 60
-      ? 'text-emerald-600 dark:text-emerald-400'
+      ? "text-emerald-600 dark:text-emerald-400"
       : percentage >= 40
-        ? 'text-amber-600 dark:text-amber-400'
-        : 'text-red-600 dark:text-red-400';
+        ? "text-amber-600 dark:text-amber-400"
+        : "text-red-600 dark:text-red-400";
 
   return <span className={colorClass}>{percentage.toFixed(1)}%</span>;
 }
@@ -185,7 +197,9 @@ export function RetentionDemographicBreakdowns({
                   <th className="px-4 py-2 text-left font-medium text-muted-foreground">
                     Session
                   </th>
-                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">Bunk</th>
+                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">
+                    Bunk
+                  </th>
                   <th className="px-4 py-2 text-right font-medium text-muted-foreground">
                     {baseYear}
                   </th>
@@ -199,11 +213,20 @@ export function RetentionDemographicBreakdowns({
               </thead>
               <tbody>
                 {bySessionBunk.map((item, idx) => (
-                  <tr key={idx} className="border-t border-border hover:bg-muted/30">
-                    <td className="px-4 py-2 text-foreground">{item.session}</td>
+                  <tr
+                    key={idx}
+                    className="border-t border-border hover:bg-muted/30"
+                  >
+                    <td className="px-4 py-2 text-foreground">
+                      {item.session}
+                    </td>
                     <td className="px-4 py-2 text-foreground">{item.bunk}</td>
-                    <td className="px-4 py-2 text-right text-foreground">{item.base_count}</td>
-                    <td className="px-4 py-2 text-right text-foreground">{item.returned_count}</td>
+                    <td className="px-4 py-2 text-right text-foreground">
+                      {item.base_count}
+                    </td>
+                    <td className="px-4 py-2 text-right text-foreground">
+                      {item.returned_count}
+                    </td>
                     <td className="px-4 py-2 text-right">
                       <RetentionRateCell rate={item.retention_rate} />
                     </td>

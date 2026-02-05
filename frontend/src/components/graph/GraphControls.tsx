@@ -3,11 +3,25 @@
  * Extracted from SocialNetworkGraph.tsx - handles view mode, zoom, and toggle controls
  */
 
-import { Eye, EyeOff, ZoomIn, ZoomOut, Maximize2, Minimize2, HelpCircle, ChevronDown } from 'lucide-react';
-import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react';
-import clsx from 'clsx';
+import {
+  Eye,
+  EyeOff,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  Minimize2,
+  HelpCircle,
+  ChevronDown,
+} from "lucide-react";
+import {
+  Listbox,
+  ListboxButton,
+  ListboxOptions,
+  ListboxOption,
+} from "@headlessui/react";
+import clsx from "clsx";
 
-export type ViewMode = 'all' | 'ego';
+export type ViewMode = "all" | "ego";
 
 export interface GraphControlsProps {
   /** Current view mode */
@@ -55,17 +69,23 @@ export default function GraphControls({
           <ListboxButton
             className="listbox-button-compact min-h-[44px] text-xs sm:text-sm"
             title={
-              viewMode === 'ego'
-                ? 'Click on a camper to see their direct connections'
-                : 'Shows all social connections in the session'
+              viewMode === "ego"
+                ? "Click on a camper to see their direct connections"
+                : "Shows all social connections in the session"
             }
           >
-            <span>{viewMode === 'all' ? 'All Connections' : 'Ego Network'}</span>
+            <span>
+              {viewMode === "all" ? "All Connections" : "Ego Network"}
+            </span>
             <ChevronDown className="h-4 w-4 text-muted-foreground" />
           </ListboxButton>
           <ListboxOptions className="listbox-options w-auto min-w-[140px]">
-            <ListboxOption value="all" className="listbox-option py-1.5">All Connections</ListboxOption>
-            <ListboxOption value="ego" className="listbox-option py-1.5">Ego Network</ListboxOption>
+            <ListboxOption value="all" className="listbox-option py-1.5">
+              All Connections
+            </ListboxOption>
+            <ListboxOption value="ego" className="listbox-option py-1.5">
+              Ego Network
+            </ListboxOption>
           </ListboxOptions>
         </div>
       </Listbox>
@@ -74,24 +94,28 @@ export default function GraphControls({
       <button
         onClick={onToggleLabels}
         className={clsx(
-          'p-2.5 sm:p-2 rounded-xl transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center hidden xs:flex',
+          "p-2.5 sm:p-2 rounded-xl transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center hidden xs:flex",
           showLabels
-            ? 'bg-primary text-primary-foreground'
-            : 'bg-muted hover:bg-muted/80'
+            ? "bg-primary text-primary-foreground"
+            : "bg-muted hover:bg-muted/80",
         )}
-        title={showLabels ? 'Hide labels' : 'Show labels'}
+        title={showLabels ? "Hide labels" : "Show labels"}
       >
-        {showLabels ? <Eye className="w-5 h-5 sm:w-4 sm:h-4" /> : <EyeOff className="w-5 h-5 sm:w-4 sm:h-4" />}
+        {showLabels ? (
+          <Eye className="w-5 h-5 sm:w-4 sm:h-4" />
+        ) : (
+          <EyeOff className="w-5 h-5 sm:w-4 sm:h-4" />
+        )}
       </button>
 
       {/* Help Toggle - Hidden on mobile */}
       <button
         onClick={onToggleHelp}
         className={clsx(
-          'p-2.5 sm:p-2 rounded-xl transition-colors min-w-[44px] min-h-[44px] items-center justify-center hidden sm:flex',
+          "p-2.5 sm:p-2 rounded-xl transition-colors min-w-[44px] min-h-[44px] items-center justify-center hidden sm:flex",
           showHelp
-            ? 'bg-primary text-primary-foreground'
-            : 'bg-muted hover:bg-muted/80'
+            ? "bg-primary text-primary-foreground"
+            : "bg-muted hover:bg-muted/80",
         )}
         title="Toggle help information"
       >
@@ -127,12 +151,12 @@ export default function GraphControls({
       <button
         onClick={onToggleExpand}
         className={clsx(
-          'p-2.5 sm:p-2 rounded-xl transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center touch-manipulation',
+          "p-2.5 sm:p-2 rounded-xl transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center touch-manipulation",
           isExpanded
-            ? 'bg-primary text-primary-foreground'
-            : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+            ? "bg-primary text-primary-foreground"
+            : "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         )}
-        title={isExpanded ? 'Exit expanded view' : 'Expand graph'}
+        title={isExpanded ? "Exit expanded view" : "Expand graph"}
       >
         {isExpanded ? (
           <Minimize2 className="w-5 h-5 sm:w-4 sm:h-4" />

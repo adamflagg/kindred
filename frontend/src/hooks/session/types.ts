@@ -2,7 +2,7 @@
  * Session hooks shared types
  */
 
-import type { Session } from '../../types/app-types';
+import type { Session } from "../../types/app-types";
 
 /**
  * Session hierarchy result - contains main session with related sub/AG sessions
@@ -51,7 +51,9 @@ export interface CamperMovement {
   /** Pending move awaiting production confirmation */
   pendingMove: { camperId: string; bunkId: string | null } | null;
   /** Set pending move (for production confirmation dialog) */
-  setPendingMove: (move: { camperId: string; bunkId: string | null } | null) => void;
+  setPendingMove: (
+    move: { camperId: string; bunkId: string | null } | null,
+  ) => void;
   /** Execute the pending move */
   executePendingMove: () => Promise<void>;
 }

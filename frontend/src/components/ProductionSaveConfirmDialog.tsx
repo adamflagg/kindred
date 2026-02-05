@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { X, AlertTriangle, FlaskConical, ArrowRight } from 'lucide-react';
+import { useState } from "react";
+import { X, AlertTriangle, FlaskConical, ArrowRight } from "lucide-react";
 
 interface ProductionSaveConfirmDialogProps {
   isOpen: boolean;
@@ -8,11 +8,11 @@ interface ProductionSaveConfirmDialogProps {
   onCreateScenario: () => void;
 }
 
-export default function ProductionSaveConfirmDialog({ 
-  isOpen, 
-  onClose, 
-  onConfirm, 
-  onCreateScenario 
+export default function ProductionSaveConfirmDialog({
+  isOpen,
+  onClose,
+  onConfirm,
+  onCreateScenario,
 }: ProductionSaveConfirmDialogProps) {
   const [understanding, setUnderstanding] = useState(false);
 
@@ -27,7 +27,7 @@ export default function ProductionSaveConfirmDialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      
+
       {/* Modal */}
       <div className="relative bg-card rounded-xl shadow-xl border border-border p-6 w-full max-w-lg mx-4">
         <div className="flex items-center justify-between mb-4">
@@ -42,12 +42,13 @@ export default function ProductionSaveConfirmDialog({
             <X className="h-5 w-5" />
           </button>
         </div>
-        
+
         <div className="space-y-4">
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
             <p className="text-sm text-yellow-800">
-              <strong>Important:</strong> You are about to save changes in production mode. 
-              These changes will be <strong>overwritten</strong> during the next sync from CampMinder.
+              <strong>Important:</strong> You are about to save changes in
+              production mode. These changes will be{" "}
+              <strong>overwritten</strong> during the next sync from CampMinder.
             </p>
           </div>
 
@@ -84,7 +85,7 @@ export default function ProductionSaveConfirmDialog({
             </label>
           </div>
         </div>
-        
+
         <div className="flex gap-3 mt-6">
           <button
             onClick={onClose}

@@ -5,8 +5,8 @@
  * that shows meaningful feedback during the optimization process.
  */
 
-import { useEffect, useState, useCallback } from 'react';
-import { createPortal } from 'react-dom';
+import { useEffect, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import {
   Flame,
   CheckCircle2,
@@ -20,18 +20,18 @@ import {
   AlertTriangle,
   X,
   Minimize2,
-} from 'lucide-react';
+} from "lucide-react";
 
 // Solver progress phases
 export type SolverPhase =
-  | 'starting'
-  | 'loading'
-  | 'searching'
-  | 'optimizing'
-  | 'finalizing'
-  | 'completed'
-  | 'failed'
-  | 'applying';
+  | "starting"
+  | "loading"
+  | "searching"
+  | "optimizing"
+  | "finalizing"
+  | "completed"
+  | "failed"
+  | "applying";
 
 // Stats from solver results
 export interface SolverResultStats {
@@ -42,10 +42,12 @@ export interface SolverResultStats {
   assignments_changed?: number | undefined;
   new_assignments?: number | undefined;
   duration_seconds?: number | undefined;
-  request_validation?: {
-    impossible_requests: number;
-    affected_campers: number;
-  } | undefined;
+  request_validation?:
+    | {
+        impossible_requests: number;
+        affected_campers: number;
+      }
+    | undefined;
 }
 
 export interface SolverProgressState {
@@ -76,60 +78,60 @@ const phaseConfig: Record<
   }
 > = {
   starting: {
-    label: 'Starting Up',
-    sublabel: 'Preparing optimization engine...',
+    label: "Starting Up",
+    sublabel: "Preparing optimization engine...",
     icon: Sparkles,
-    color: 'text-amber-500',
-    bgGlow: 'from-amber-500/10',
+    color: "text-amber-500",
+    bgGlow: "from-amber-500/10",
   },
   loading: {
-    label: 'Loading Data',
-    sublabel: 'Gathering camper information...',
+    label: "Loading Data",
+    sublabel: "Gathering camper information...",
     icon: Users,
-    color: 'text-blue-500',
-    bgGlow: 'from-blue-500/10',
+    color: "text-blue-500",
+    bgGlow: "from-blue-500/10",
   },
   searching: {
-    label: 'Searching',
-    sublabel: 'Finding valid bunk arrangements...',
+    label: "Searching",
+    sublabel: "Finding valid bunk arrangements...",
     icon: Target,
-    color: 'text-amber-500',
-    bgGlow: 'from-amber-500/15',
+    color: "text-amber-500",
+    bgGlow: "from-amber-500/15",
   },
   optimizing: {
-    label: 'Optimizing',
-    sublabel: 'Maximizing request satisfaction...',
+    label: "Optimizing",
+    sublabel: "Maximizing request satisfaction...",
     icon: Flame,
-    color: 'text-orange-500',
-    bgGlow: 'from-orange-500/20',
+    color: "text-orange-500",
+    bgGlow: "from-orange-500/20",
   },
   finalizing: {
-    label: 'Finalizing',
-    sublabel: 'Polishing the solution...',
+    label: "Finalizing",
+    sublabel: "Polishing the solution...",
     icon: TreePine,
-    color: 'text-green-500',
-    bgGlow: 'from-green-500/15',
+    color: "text-green-500",
+    bgGlow: "from-green-500/15",
   },
   completed: {
-    label: 'Complete',
-    sublabel: 'Optimization finished!',
+    label: "Complete",
+    sublabel: "Optimization finished!",
     icon: CheckCircle2,
-    color: 'text-green-500',
-    bgGlow: 'from-green-500/20',
+    color: "text-green-500",
+    bgGlow: "from-green-500/20",
   },
   failed: {
-    label: 'Failed',
-    sublabel: 'Unable to find a solution',
+    label: "Failed",
+    sublabel: "Unable to find a solution",
     icon: XCircle,
-    color: 'text-red-500',
-    bgGlow: 'from-red-500/15',
+    color: "text-red-500",
+    bgGlow: "from-red-500/15",
   },
   applying: {
-    label: 'Applying',
-    sublabel: 'Saving assignments...',
+    label: "Applying",
+    sublabel: "Saving assignments...",
     icon: ArrowRight,
-    color: 'text-blue-500',
-    bgGlow: 'from-blue-500/15',
+    color: "text-blue-500",
+    bgGlow: "from-blue-500/15",
   },
 };
 
@@ -141,7 +143,7 @@ function formatTime(seconds: number): string {
 }
 
 function formatPercentage(value: number, total: number): string {
-  if (total === 0) return '0%';
+  if (total === 0) return "0%";
   return `${Math.round((value / total) * 100)}%`;
 }
 
@@ -233,40 +235,63 @@ function StatCard({
     <div
       className={`
       flex items-center gap-3 p-3 rounded-xl
-      ${highlight ? 'bg-green-50 dark:bg-green-950/30 ring-1 ring-green-200 dark:ring-green-800' : 'bg-muted/50'}
+      ${highlight ? "bg-green-50 dark:bg-green-950/30 ring-1 ring-green-200 dark:ring-green-800" : "bg-muted/50"}
     `}
     >
       <div
         className={`
         flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center
-        ${highlight ? 'bg-green-100 dark:bg-green-900/50' : 'bg-background'}
+        ${highlight ? "bg-green-100 dark:bg-green-900/50" : "bg-background"}
       `}
       >
         <Icon
-          className={`h-5 w-5 ${highlight ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}
+          className={`h-5 w-5 ${highlight ? "text-green-600 dark:text-green-400" : "text-muted-foreground"}`}
         />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-xs text-muted-foreground uppercase tracking-wide">{label}</p>
-        <p className={`text-lg font-semibold ${highlight ? 'text-green-700 dark:text-green-300' : ''}`}>
+        <p className="text-xs text-muted-foreground uppercase tracking-wide">
+          {label}
+        </p>
+        <p
+          className={`text-lg font-semibold ${highlight ? "text-green-700 dark:text-green-300" : ""}`}
+        >
           {value}
         </p>
-        {subvalue && <p className="text-xs text-muted-foreground">{subvalue}</p>}
+        {subvalue && (
+          <p className="text-xs text-muted-foreground">{subvalue}</p>
+        )}
       </div>
     </div>
   );
 }
 
-export default function SolverProgressModal({ state, onClose, onMinimize }: SolverProgressModalProps) {
-  const { isOpen, phase, elapsedSeconds, timeLimit, scenarioName, stats, errorMessage } = state;
+export default function SolverProgressModal({
+  state,
+  onClose,
+  onMinimize,
+}: SolverProgressModalProps) {
+  const {
+    isOpen,
+    phase,
+    elapsedSeconds,
+    timeLimit,
+    scenarioName,
+    stats,
+    errorMessage,
+  } = state;
 
   const config = phaseConfig[phase];
   const Icon = config.icon;
-  const isInProgress = ['starting', 'loading', 'searching', 'optimizing', 'finalizing', 'applying'].includes(
-    phase
-  );
-  const isComplete = phase === 'completed';
-  const isFailed = phase === 'failed';
+  const isInProgress = [
+    "starting",
+    "loading",
+    "searching",
+    "optimizing",
+    "finalizing",
+    "applying",
+  ].includes(phase);
+  const isComplete = phase === "completed";
+  const isFailed = phase === "failed";
 
   // Calculate progress percentage based on elapsed time and phase
   const progressPercent = isInProgress
@@ -312,10 +337,16 @@ export default function SolverProgressModal({ state, onClose, onMinimize }: Solv
         {/* Header */}
         <div className="relative px-6 pt-5 pb-4 flex items-start justify-between">
           <div>
-            <h2 className="font-display text-xl font-bold text-foreground">{config.label}</h2>
-            <p className="text-sm text-muted-foreground mt-0.5">{config.sublabel}</p>
+            <h2 className="font-display text-xl font-bold text-foreground">
+              {config.label}
+            </h2>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              {config.sublabel}
+            </p>
             {scenarioName && (
-              <p className="text-xs text-primary font-medium mt-1">Scenario: {scenarioName}</p>
+              <p className="text-xs text-primary font-medium mt-1">
+                Scenario: {scenarioName}
+              </p>
             )}
           </div>
           <div className="flex items-center gap-1">
@@ -347,14 +378,18 @@ export default function SolverProgressModal({ state, onClose, onMinimize }: Solv
             <div className="flex flex-col items-center py-6">
               {/* Progress ring with icon */}
               <div className="relative">
-                <ProgressRing progress={progressPercent} size={140} strokeWidth={10} />
+                <ProgressRing
+                  progress={progressPercent}
+                  size={140}
+                  strokeWidth={10}
+                />
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div
                     className={`
                     w-16 h-16 rounded-full flex items-center justify-center
                     bg-gradient-to-br from-amber-100 to-orange-100
                     dark:from-amber-900/50 dark:to-orange-900/50
-                    ${phase === 'optimizing' ? 'animate-pulse' : ''}
+                    ${phase === "optimizing" ? "animate-pulse" : ""}
                   `}
                   >
                     <Icon className={`h-8 w-8 ${config.color}`} />
@@ -371,30 +406,37 @@ export default function SolverProgressModal({ state, onClose, onMinimize }: Solv
                 <p className="text-sm text-muted-foreground mt-1">
                   {estimatedRemaining > 0
                     ? `up to ${formatTime(estimatedRemaining)} remaining`
-                    : 'Wrapping up...'}
+                    : "Wrapping up..."}
                 </p>
               </div>
 
               {/* Phase indicator dots */}
               <div className="flex items-center gap-2 mt-6">
-                {['loading', 'searching', 'optimizing', 'finalizing'].map((p, i) => {
-                  const phases = ['loading', 'searching', 'optimizing', 'finalizing'];
-                  const currentIndex = phases.indexOf(phase);
-                  const isActive = i === currentIndex;
-                  const isPast = i < currentIndex;
+                {["loading", "searching", "optimizing", "finalizing"].map(
+                  (p, i) => {
+                    const phases = [
+                      "loading",
+                      "searching",
+                      "optimizing",
+                      "finalizing",
+                    ];
+                    const currentIndex = phases.indexOf(phase);
+                    const isActive = i === currentIndex;
+                    const isPast = i < currentIndex;
 
-                  return (
-                    <div
-                      key={p}
-                      className={`
+                    return (
+                      <div
+                        key={p}
+                        className={`
                         h-2 rounded-full transition-all duration-300
-                        ${isActive ? 'w-8 bg-amber-500' : 'w-2'}
-                        ${isPast ? 'bg-green-500' : ''}
-                        ${!isActive && !isPast ? 'bg-muted' : ''}
+                        ${isActive ? "w-8 bg-amber-500" : "w-2"}
+                        ${isPast ? "bg-green-500" : ""}
+                        ${!isActive && !isPast ? "bg-muted" : ""}
                       `}
-                    />
-                  );
-                })}
+                      />
+                    );
+                  },
+                )}
               </div>
             </div>
           )}
@@ -423,8 +465,10 @@ export default function SolverProgressModal({ state, onClose, onMinimize }: Solv
                   label="Requests Satisfied"
                   value={`${stats.satisfied_request_count ?? stats.satisfied_constraints ?? 0}/${stats.total_requests ?? stats.total_constraints ?? 0}`}
                   subvalue={formatPercentage(
-                    stats.satisfied_request_count ?? stats.satisfied_constraints ?? 0,
-                    stats.total_requests ?? stats.total_constraints ?? 0
+                    stats.satisfied_request_count ??
+                      stats.satisfied_constraints ??
+                      0,
+                    stats.total_requests ?? stats.total_constraints ?? 0,
                   )}
                   highlight
                 />
@@ -438,28 +482,38 @@ export default function SolverProgressModal({ state, onClose, onMinimize }: Solv
                     icon={ArrowRight}
                     label="Campers Moved"
                     value={stats.assignments_changed}
-                    subvalue={stats.assignments_changed === 0 ? 'No changes needed' : undefined}
+                    subvalue={
+                      stats.assignments_changed === 0
+                        ? "No changes needed"
+                        : undefined
+                    }
                   />
                 )}
                 {stats.new_assignments !== undefined && (
-                  <StatCard icon={Users} label="New Assignments" value={stats.new_assignments} />
+                  <StatCard
+                    icon={Users}
+                    label="New Assignments"
+                    value={stats.new_assignments}
+                  />
                 )}
               </div>
 
               {/* Validation warnings */}
-              {stats.request_validation && stats.request_validation.impossible_requests > 0 && (
-                <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 ring-1 ring-amber-200 dark:ring-amber-800">
-                  <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
-                      {stats.request_validation.impossible_requests} requests skipped
-                    </p>
-                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
-                      Campers not enrolled in this session
-                    </p>
+              {stats.request_validation &&
+                stats.request_validation.impossible_requests > 0 && (
+                  <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 ring-1 ring-amber-200 dark:ring-amber-800">
+                    <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                        {stats.request_validation.impossible_requests} requests
+                        skipped
+                      </p>
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                        Campers not enrolled in this session
+                      </p>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
             </div>
           )}
 
@@ -480,9 +534,12 @@ export default function SolverProgressModal({ state, onClose, onMinimize }: Solv
               </div>
 
               <div className="mt-4 p-4 rounded-xl bg-red-50 dark:bg-red-950/30 ring-1 ring-red-200 dark:ring-red-800">
-                <p className="text-sm text-red-700 dark:text-red-300">{errorMessage}</p>
+                <p className="text-sm text-red-700 dark:text-red-300">
+                  {errorMessage}
+                </p>
                 <p className="text-xs text-red-600 dark:text-red-400 mt-2">
-                  Try using &quot;Pre-Check&quot; to identify unsatisfiable constraints.
+                  Try using &quot;Pre-Check&quot; to identify unsatisfiable
+                  constraints.
                 </p>
               </div>
             </div>
@@ -498,13 +555,13 @@ export default function SolverProgressModal({ state, onClose, onMinimize }: Solv
                 font-semibold
               "
             >
-              {isComplete ? 'Done' : 'Close'}
+              {isComplete ? "Done" : "Close"}
             </button>
           )}
         </div>
       </div>
     </div>,
-    document.body
+    document.body,
   );
 }
 
@@ -512,7 +569,7 @@ export default function SolverProgressModal({ state, onClose, onMinimize }: Solv
 export function useSolverProgress() {
   const [state, setState] = useState<SolverProgressState>({
     isOpen: false,
-    phase: 'starting',
+    phase: "starting",
     elapsedSeconds: 0,
     timeLimit: 60,
   });
@@ -521,7 +578,12 @@ export function useSolverProgress() {
 
   // Timer effect
   useEffect(() => {
-    if (!startTime || !state.isOpen || state.phase === 'completed' || state.phase === 'failed') {
+    if (
+      !startTime ||
+      !state.isOpen ||
+      state.phase === "completed" ||
+      state.phase === "failed"
+    ) {
       return;
     }
 
@@ -532,14 +594,15 @@ export function useSolverProgress() {
         elapsedSeconds: elapsed,
         // Auto-advance phases based on elapsed time
         phase:
-          prev.phase === 'starting' && elapsed >= 1
-            ? 'loading'
-            : prev.phase === 'loading' && elapsed >= 3
-              ? 'searching'
-              : prev.phase === 'searching' && elapsed >= Math.max(5, prev.timeLimit * 0.2)
-                ? 'optimizing'
-                : prev.phase === 'optimizing' && elapsed >= prev.timeLimit * 0.9
-                  ? 'finalizing'
+          prev.phase === "starting" && elapsed >= 1
+            ? "loading"
+            : prev.phase === "loading" && elapsed >= 3
+              ? "searching"
+              : prev.phase === "searching" &&
+                  elapsed >= Math.max(5, prev.timeLimit * 0.2)
+                ? "optimizing"
+                : prev.phase === "optimizing" && elapsed >= prev.timeLimit * 0.9
+                  ? "finalizing"
                   : prev.phase,
       }));
     }, 100);
@@ -551,7 +614,7 @@ export function useSolverProgress() {
     setStartTime(Date.now());
     setState({
       isOpen: true,
-      phase: 'starting',
+      phase: "starting",
       elapsedSeconds: 0,
       timeLimit,
       scenarioName,
@@ -565,7 +628,7 @@ export function useSolverProgress() {
   const complete = useCallback((stats: SolverResultStats) => {
     setState((prev) => ({
       ...prev,
-      phase: 'completed',
+      phase: "completed",
       stats: {
         ...stats,
         duration_seconds: prev.elapsedSeconds,
@@ -577,14 +640,14 @@ export function useSolverProgress() {
   const fail = useCallback((errorMessage: string) => {
     setState((prev) => ({
       ...prev,
-      phase: 'failed',
+      phase: "failed",
       errorMessage,
     }));
     setStartTime(null);
   }, []);
 
   const startApplying = useCallback(() => {
-    setState((prev) => ({ ...prev, phase: 'applying' }));
+    setState((prev) => ({ ...prev, phase: "applying" }));
   }, []);
 
   const close = useCallback(() => {

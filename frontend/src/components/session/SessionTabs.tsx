@@ -1,6 +1,6 @@
-import { Link } from 'react-router';
-import { Home, Users, Link2, UsersRound, type LucideIcon } from 'lucide-react';
-import type { ValidTab } from '../../utils/sessionUtils';
+import { Link } from "react-router";
+import { Home, Users, Link2, UsersRound, type LucideIcon } from "lucide-react";
+import type { ValidTab } from "../../utils/sessionUtils";
 
 export interface TabItem {
   id: ValidTab;
@@ -14,12 +14,15 @@ interface CreateTabsOptions {
 }
 
 // eslint-disable-next-line react-refresh/only-export-components -- Utility function for tab creation
-export function createTabs({ camperCount, requestCount }: CreateTabsOptions): TabItem[] {
+export function createTabs({
+  camperCount,
+  requestCount,
+}: CreateTabsOptions): TabItem[] {
   return [
-    { id: 'bunks', label: 'Bunks', icon: Home },
-    { id: 'campers', label: `Campers (${camperCount})`, icon: Users },
-    { id: 'requests', label: `Requests (${requestCount})`, icon: Link2 },
-    { id: 'friends', label: 'Graph', icon: UsersRound },
+    { id: "bunks", label: "Bunks", icon: Home },
+    { id: "campers", label: `Campers (${camperCount})`, icon: Users },
+    { id: "requests", label: `Requests (${requestCount})`, icon: Link2 },
+    { id: "friends", label: "Graph", icon: UsersRound },
   ];
 }
 
@@ -49,9 +52,10 @@ export default function SessionTabs({
               to={`/summer/session/${sessionId}/${tab.id}`}
               className={`
                 flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm transition-all duration-200
-                ${activeTab === tab.id
-                  ? 'bg-primary text-primary-foreground shadow-lodge-sm'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-forest-50/50 dark:hover:bg-forest-950/30'
+                ${
+                  activeTab === tab.id
+                    ? "bg-primary text-primary-foreground shadow-lodge-sm"
+                    : "text-muted-foreground hover:text-foreground hover:bg-forest-50/50 dark:hover:bg-forest-950/30"
                 }
               `}
             >

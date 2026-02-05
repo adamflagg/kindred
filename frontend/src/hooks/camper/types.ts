@@ -2,7 +2,7 @@
  * Shared types for camper hooks
  */
 
-import type { PersonsResponse } from '../../types/pocketbase-types';
+import type { PersonsResponse } from "../../types/pocketbase-types";
 
 // Historical camp record
 export interface HistoricalRecord {
@@ -37,7 +37,11 @@ export interface OriginalBunkData {
 }
 
 // Satisfaction check types
-export type SatisfactionStatus = 'satisfied' | 'not_satisfied' | 'checking' | 'unknown';
+export type SatisfactionStatus =
+  | "satisfied"
+  | "not_satisfied"
+  | "checking"
+  | "unknown";
 
 export interface SatisfactionResult {
   status: SatisfactionStatus;

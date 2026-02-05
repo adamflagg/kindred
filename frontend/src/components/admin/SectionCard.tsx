@@ -1,7 +1,10 @@
-import { useState } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
-import { type ConfigSection, type ConfigWithMetadata } from '../../hooks/useSolverConfig';
-import { inferScaleType } from '../../utils/scaleContext';
+import { useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import {
+  type ConfigSection,
+  type ConfigWithMetadata,
+} from "../../hooks/useSolverConfig";
+import { inferScaleType } from "../../utils/scaleContext";
 import {
   COMPONENT_MAP,
   inferComponentType,
@@ -11,7 +14,7 @@ import {
   PortalTooltip,
   TextInput,
   Info,
-} from './ConfigInputs';
+} from "./ConfigInputs";
 
 export interface SectionCardProps {
   section: ConfigSection;
@@ -20,35 +23,54 @@ export interface SectionCardProps {
   defaultExpanded?: boolean;
 }
 
-export function SectionCard({ section, editedValues, onValueChange, defaultExpanded = true }: SectionCardProps) {
+export function SectionCard({
+  section,
+  editedValues,
+  onValueChange,
+  defaultExpanded = true,
+}: SectionCardProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
   const renderConfigRow = (item: ConfigWithMetadata) => {
-    const fullKey = [item.category, item.subcategory, item.config_key].filter(Boolean).join('.');
+    const fullKey = [item.category, item.subcategory, item.config_key]
+      .filter(Boolean)
+      .join(".");
     const editedValue = editedValues[fullKey];
-    const currentValue = editedValue !== undefined ? editedValue : String(item.value);
-    const hasChange = editedValue !== undefined && editedValue !== String(item.value);
+    const currentValue =
+      editedValue !== undefined ? editedValue : String(item.value);
+    const hasChange =
+      editedValue !== undefined && editedValue !== String(item.value);
     const numericValue = parseFloat(currentValue);
 
     // Use metadata component_type or infer from value
-    let componentType = item.metadata?.['component_type'];
+    let componentType = item.metadata?.["component_type"];
     if (!componentType) {
       componentType = inferComponentType(item.value, item.config_key);
     }
 
     // Merge component_config with metadata min/max
-    const baseConfig = (item.metadata?.['component_config'] as Record<string, unknown>) || {};
+    const baseConfig =
+      (item.metadata?.["component_config"] as Record<string, unknown>) || {};
     const componentConfig: Record<string, unknown> = {
       ...baseConfig,
-      ...(item.metadata?.['min_value'] != null ? { min: item.metadata['min_value'] as number } : {}),
-      ...(item.metadata?.['max_value'] != null ? { max: item.metadata['max_value'] as number } : {}),
+      ...(item.metadata?.["min_value"] != null
+        ? { min: item.metadata["min_value"] as number }
+        : {}),
+      ...(item.metadata?.["max_value"] != null
+        ? { max: item.metadata["max_value"] as number }
+        : {}),
     };
     const Component = COMPONENT_MAP[componentType as string] || TextInput;
 
     // Determine scale type for numeric values (not toggles)
-    const isNumeric = componentType !== 'toggle' && componentType !== 'select' && !isNaN(numericValue);
-    const scaleType = isNumeric ? inferScaleType(item.config_key, numericValue, item.metadata) : 'unknown';
-    const showScaleContext = isNumeric && scaleType !== 'unknown';
+    const isNumeric =
+      componentType !== "toggle" &&
+      componentType !== "select" &&
+      !isNaN(numericValue);
+    const scaleType = isNumeric
+      ? inferScaleType(item.config_key, numericValue, item.metadata)
+      : "unknown";
+    const showScaleContext = isNumeric && scaleType !== "unknown";
 
     return (
       <div
@@ -64,7 +86,11 @@ export function SectionCard({ section, editedValues, onValueChange, defaultExpan
               </span>
               {/* Impact badge for numeric values */}
               {showScaleContext && (
-                <ImpactBadge scaleType={scaleType} value={numericValue} metadata={item.metadata} />
+                <ImpactBadge
+                  scaleType={scaleType}
+                  value={numericValue}
+                  metadata={item.metadata}
+                />
               )}
               {/* Existing tooltip */}
               {item.metadata?.tooltip && (
@@ -87,7 +113,11 @@ export function SectionCard({ section, editedValues, onValueChange, defaultExpan
             {/* Scale context bar */}
             {showScaleContext && (
               <div className="mt-2 max-w-[200px]">
-                <ScaleContextBar scaleType={scaleType} value={numericValue} metadata={item.metadata} />
+                <ScaleContextBar
+                  scaleType={scaleType}
+                  value={numericValue}
+                  metadata={item.metadata}
+                />
               </div>
             )}
           </div>
@@ -101,10 +131,17 @@ export function SectionCard({ section, editedValues, onValueChange, defaultExpan
             />
             {/* Scale explanation tooltip */}
             {showScaleContext && (
-              <ScaleTooltip scaleType={scaleType} value={numericValue} metadata={item.metadata} />
+              <ScaleTooltip
+                scaleType={scaleType}
+                value={numericValue}
+                metadata={item.metadata}
+              />
             )}
             {hasChange && (
-              <div className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0" title="Unsaved change" />
+              <div
+                className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0"
+                title="Unsaved change"
+              />
             )}
           </div>
         </div>
@@ -124,13 +161,19 @@ export function SectionCard({ section, editedValues, onValueChange, defaultExpan
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="text-left">
-          <h3 className="font-semibold text-base text-foreground">{section.title}</h3>
+          <h3 className="font-semibold text-base text-foreground">
+            {section.title}
+          </h3>
           {section.description && (
-            <p className="text-sm text-muted-foreground mt-1">{section.description}</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              {section.description}
+            </p>
           )}
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-sm text-muted-foreground font-medium">{section.configs.length}</span>
+          <span className="text-sm text-muted-foreground font-medium">
+            {section.configs.length}
+          </span>
           {isExpanded ? (
             <ChevronDown className="w-5 h-5 text-muted-foreground" />
           ) : (
@@ -142,7 +185,7 @@ export function SectionCard({ section, editedValues, onValueChange, defaultExpan
       {/* Content */}
       {isExpanded && (
         <div className="divide-y divide-border">
-          {section.configs.map(config => renderConfigRow(config))}
+          {section.configs.map((config) => renderConfigRow(config))}
         </div>
       )}
     </div>

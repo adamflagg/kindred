@@ -1,9 +1,9 @@
-import { useState } from 'react';
-import { CheckCircle } from 'lucide-react';
-import { useScenario } from '../hooks/useScenario';
-import { useApiWithAuth } from '../hooks/useApiWithAuth';
-import { solverService } from '../services/solver';
-import PostValidationResultsModal from './PostValidationResultsModal';
+import { useState } from "react";
+import { CheckCircle } from "lucide-react";
+import { useScenario } from "../hooks/useScenario";
+import { useApiWithAuth } from "../hooks/useApiWithAuth";
+import { solverService } from "../services/solver";
+import PostValidationResultsModal from "./PostValidationResultsModal";
 
 interface ValidationResults {
   statistics: {
@@ -17,11 +17,14 @@ interface ValidationResults {
     bunks_under_capacity: number;
     bunks_over_capacity: number;
 
-    field_stats: Record<string, {
-      total: number;
-      satisfied: number;
-      satisfaction_rate: number;
-    }>;
+    field_stats: Record<
+      string,
+      {
+        total: number;
+        satisfied: number;
+        satisfaction_rate: number;
+      }
+    >;
   };
   issues: Array<{
     type: string;
@@ -38,25 +41,35 @@ interface ValidateBunkingButtonProps {
   className?: string;
 }
 
-export default function ValidateBunkingButton({ sessionCmId, year, className = '' }: ValidateBunkingButtonProps) {
+export default function ValidateBunkingButton({
+  sessionCmId,
+  year,
+  className = "",
+}: ValidateBunkingButtonProps) {
   const { currentScenario } = useScenario();
   const { fetchWithAuth } = useApiWithAuth();
   const [isValidating, setIsValidating] = useState(false);
   const [showResults, setShowResults] = useState(false);
-  const [validationResults, setValidationResults] = useState<ValidationResults | null>(null);
+  const [validationResults, setValidationResults] =
+    useState<ValidationResults | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const handleValidate = async () => {
     setIsValidating(true);
     setError(null);
-    
+
     try {
-      const results = await solverService.validateBunking(sessionCmId.toString(), year, currentScenario?.id, fetchWithAuth);
+      const results = await solverService.validateBunking(
+        sessionCmId.toString(),
+        year,
+        currentScenario?.id,
+        fetchWithAuth,
+      );
       setValidationResults(results as unknown as ValidationResults);
       setShowResults(true);
     } catch (err) {
-      console.error('Validation failed:', err);
-      setError(err instanceof Error ? err.message : 'Validation failed');
+      console.error("Validation failed:", err);
+      setError(err instanceof Error ? err.message : "Validation failed");
     } finally {
       setIsValidating(false);
     }
@@ -71,10 +84,10 @@ export default function ValidateBunkingButton({ sessionCmId, year, className = '
       >
         <CheckCircle className="h-4 w-4" />
         <span className="hidden sm:inline">
-          {isValidating ? 'Checking...' : 'Check Bunking'}
+          {isValidating ? "Checking..." : "Check Bunking"}
         </span>
         <span className="sm:hidden">
-          {isValidating ? 'Checking...' : 'Check'}
+          {isValidating ? "Checking..." : "Check"}
         </span>
       </button>
 

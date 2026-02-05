@@ -1,10 +1,16 @@
-import { useState } from 'react';
-import { Settings, RefreshCw, AlertCircle, Sliders, FileSpreadsheet } from 'lucide-react';
-import { ErrorBoundary } from './ErrorBoundary';
-import { SyncTab } from './admin/SyncTab';
-import { ConfigTab } from './admin/ConfigTab';
-import { SheetsTab } from './admin/SheetsTab';
-import { useIsAdmin } from '../hooks/useIsAdmin';
+import { useState } from "react";
+import {
+  Settings,
+  RefreshCw,
+  AlertCircle,
+  Sliders,
+  FileSpreadsheet,
+} from "lucide-react";
+import { ErrorBoundary } from "./ErrorBoundary";
+import { SyncTab } from "./admin/SyncTab";
+import { ConfigTab } from "./admin/ConfigTab";
+import { SheetsTab } from "./admin/SheetsTab";
+import { useIsAdmin } from "../hooks/useIsAdmin";
 
 /**
  * AdminConfig - Main admin control center container
@@ -18,7 +24,9 @@ import { useIsAdmin } from '../hooks/useIsAdmin';
  * - ConfigTab: Categorized settings with search, scale context UI
  */
 function AdminConfigInner() {
-  const [activeTab, setActiveTab] = useState<'sync' | 'config' | 'sheets'>('sync');
+  const [activeTab, setActiveTab] = useState<"sync" | "config" | "sheets">(
+    "sync",
+  );
   const isAdmin = useIsAdmin();
 
   return (
@@ -43,22 +51,22 @@ function AdminConfigInner() {
       {/* Tabs */}
       <div className="flex gap-1.5 p-1.5 bg-muted/50 dark:bg-muted rounded-lg w-full sm:w-fit">
         <button
-          onClick={() => setActiveTab('sync')}
+          onClick={() => setActiveTab("sync")}
           className={`flex-1 sm:flex-none px-4 sm:px-5 py-2.5 text-sm sm:text-base font-semibold rounded-md transition-colors flex items-center justify-center gap-2 ${
-            activeTab === 'sync'
-              ? 'bg-card text-forest-800 dark:text-forest-200 shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
+            activeTab === "sync"
+              ? "bg-card text-forest-800 dark:text-forest-200 shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
           }`}
         >
           <RefreshCw className="w-4 h-4 sm:w-5 sm:h-5" />
           <span className="hidden sm:inline">Sync </span>Operations
         </button>
         <button
-          onClick={() => setActiveTab('config')}
+          onClick={() => setActiveTab("config")}
           className={`flex-1 sm:flex-none px-4 sm:px-5 py-2.5 text-sm sm:text-base font-semibold rounded-md transition-colors flex items-center justify-center gap-2 ${
-            activeTab === 'config'
-              ? 'bg-card text-forest-800 dark:text-forest-200 shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
+            activeTab === "config"
+              ? "bg-card text-forest-800 dark:text-forest-200 shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
           }`}
         >
           <Sliders className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -66,11 +74,11 @@ function AdminConfigInner() {
         </button>
         {isAdmin && (
           <button
-            onClick={() => setActiveTab('sheets')}
+            onClick={() => setActiveTab("sheets")}
             className={`flex-1 sm:flex-none px-4 sm:px-5 py-2.5 text-sm sm:text-base font-semibold rounded-md transition-colors flex items-center justify-center gap-2 ${
-              activeTab === 'sheets'
-                ? 'bg-card text-forest-800 dark:text-forest-200 shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
+              activeTab === "sheets"
+                ? "bg-card text-forest-800 dark:text-forest-200 shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
             <FileSpreadsheet className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -80,9 +88,9 @@ function AdminConfigInner() {
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'sync' && <SyncTab />}
-      {activeTab === 'config' && <ConfigTab />}
-      {activeTab === 'sheets' && isAdmin && <SheetsTab />}
+      {activeTab === "sync" && <SyncTab />}
+      {activeTab === "config" && <ConfigTab />}
+      {activeTab === "sheets" && isAdmin && <SheetsTab />}
     </div>
   );
 }
@@ -96,8 +104,12 @@ export function AdminConfig() {
             <div className="flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
               <div className="flex-1 min-w-0">
-                <h3 className="font-display font-bold text-red-800 dark:text-red-200 text-sm sm:text-base">Failed to load Admin Configuration</h3>
-                <p className="text-red-600 dark:text-red-400 mt-1 text-sm">{error.message}</p>
+                <h3 className="font-display font-bold text-red-800 dark:text-red-200 text-sm sm:text-base">
+                  Failed to load Admin Configuration
+                </h3>
+                <p className="text-red-600 dark:text-red-400 mt-1 text-sm">
+                  {error.message}
+                </p>
                 <button
                   onClick={reset}
                   className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 text-sm"

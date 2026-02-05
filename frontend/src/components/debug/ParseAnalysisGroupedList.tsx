@@ -6,14 +6,14 @@
  * Sierra Lodge aesthetic with warm, nature-inspired styling.
  */
 
-import { useMemo } from 'react';
-import { Loader2, RefreshCw, Trash2, User } from 'lucide-react';
-import { SOURCE_FIELD_LABELS } from './types';
+import { useMemo } from "react";
+import { Loader2, RefreshCw, Trash2, User } from "lucide-react";
+import { SOURCE_FIELD_LABELS } from "./types";
 import type {
   CamperGroupedRequests,
   FieldParseResult,
   SourceFieldType,
-} from './types';
+} from "./types";
 
 interface ParseAnalysisGroupedListProps {
   items: CamperGroupedRequests[];
@@ -30,29 +30,30 @@ interface ParseAnalysisGroupedListProps {
 // Small badge component showing field type + status dot
 function FieldBadge({ field }: { field: FieldParseResult }) {
   const label =
-    SOURCE_FIELD_LABELS[field.source_field as SourceFieldType] || field.source_field;
+    SOURCE_FIELD_LABELS[field.source_field as SourceFieldType] ||
+    field.source_field;
 
   const colorClass = (() => {
     switch (field.source_field) {
-      case 'bunk_with':
-        return 'bg-forest-100 text-forest-700 dark:bg-forest-900/40 dark:text-forest-400';
-      case 'not_bunk_with':
-        return 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400';
-      case 'bunking_notes':
-        return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400';
-      case 'internal_notes':
-        return 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400';
+      case "bunk_with":
+        return "bg-forest-100 text-forest-700 dark:bg-forest-900/40 dark:text-forest-400";
+      case "not_bunk_with":
+        return "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400";
+      case "bunking_notes":
+        return "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400";
+      case "internal_notes":
+        return "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400";
       default:
-        return 'bg-bark-100 text-bark-600 dark:bg-bark-800 dark:text-bark-400';
+        return "bg-bark-100 text-bark-600 dark:bg-bark-800 dark:text-bark-400";
     }
   })();
 
   // Status dot: amber=debug, green=production, gray=none
   const statusDot = field.has_debug_result
-    ? 'bg-amber-500'
+    ? "bg-amber-500"
     : field.has_production_result
-      ? 'bg-forest-500'
-      : 'bg-bark-300';
+      ? "bg-forest-500"
+      : "bg-bark-300";
 
   return (
     <span
@@ -83,7 +84,7 @@ export function ParseAnalysisGroupedList({
     if (!searchQuery) return items;
     const query = searchQuery.toLowerCase();
     return items.filter((item) =>
-      item.requester_name.toLowerCase().includes(query)
+      item.requester_name.toLowerCase().includes(query),
     );
   }, [items, searchQuery]);
 
@@ -92,7 +93,9 @@ export function ParseAnalysisGroupedList({
       <div className="card-lodge flex items-center justify-center h-64 bg-parchment-100/30 dark:bg-bark-900/20">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="w-6 h-6 animate-spin text-forest-600" />
-          <span className="text-sm text-muted-foreground">Loading requests...</span>
+          <span className="text-sm text-muted-foreground">
+            Loading requests...
+          </span>
         </div>
       </div>
     );
@@ -106,7 +109,9 @@ export function ParseAnalysisGroupedList({
             <User className="w-7 h-7 text-bark-400" />
           </div>
           <div className="text-center">
-            <span className="text-sm font-semibold text-foreground">No results found</span>
+            <span className="text-sm font-semibold text-foreground">
+              No results found
+            </span>
             <p className="text-xs mt-1">Try adjusting your filters</p>
           </div>
         </div>
@@ -131,8 +136,8 @@ export function ParseAnalysisGroupedList({
                 rounded-xl border-2 transition-all duration-200 cursor-pointer
                 ${
                   isSelected
-                    ? 'bg-white dark:bg-bark-800 border-forest-300 dark:border-forest-600 ring-2 ring-forest-500/20 shadow-sm'
-                    : 'bg-white dark:bg-bark-800 border-transparent hover:border-bark-200 dark:hover:border-bark-600'
+                    ? "bg-white dark:bg-bark-800 border-forest-300 dark:border-forest-600 ring-2 ring-forest-500/20 shadow-sm"
+                    : "bg-white dark:bg-bark-800 border-transparent hover:border-bark-200 dark:hover:border-bark-600"
                 }
               `}
             >

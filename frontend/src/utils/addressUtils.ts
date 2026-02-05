@@ -12,13 +12,16 @@ interface AddressData {
  * Extract city/state display string from address field
  * Handles both JSON string and object formats
  */
-export function getLocationDisplay(address: string | AddressData | null | undefined | unknown): string | null {
+export function getLocationDisplay(
+  address: string | AddressData | null | undefined | unknown,
+): string | null {
   if (!address) return null;
 
   try {
-    const addr: AddressData = typeof address === 'string' ? JSON.parse(address) : address;
+    const addr: AddressData =
+      typeof address === "string" ? JSON.parse(address) : address;
     if (addr?.city || addr?.state) {
-      return [addr.city, addr.state].filter(Boolean).join(', ');
+      return [addr.city, addr.state].filter(Boolean).join(", ");
     }
   } catch {
     // Ignore parse errors

@@ -19,10 +19,10 @@
  * <DrilldownModal />
  */
 
-import type { ReactElement } from 'react';
-import { useState, useCallback, useMemo } from 'react';
-import { DrillDownModal } from '../components/metrics/DrillDownModal';
-import type { DrilldownFilter } from '../types/metrics';
+import type { ReactElement } from "react";
+import { useState, useCallback, useMemo } from "react";
+import { DrillDownModal } from "../components/metrics/DrillDownModal";
+import type { DrilldownFilter } from "../types/metrics";
 
 interface UseDrilldownOptions {
   /** The year for drilldown data */

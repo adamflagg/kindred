@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
-import { pb } from '../lib/pocketbase';
-import { Users as UsersIcon, Mail, Calendar, Shield } from 'lucide-react';
-import type { RecordModel } from 'pocketbase';
+import { useState, useEffect } from "react";
+import { pb } from "../lib/pocketbase";
+import { Users as UsersIcon, Mail, Calendar, Shield } from "lucide-react";
+import type { RecordModel } from "pocketbase";
 
 interface User extends RecordModel {
   email: string;
@@ -13,21 +13,24 @@ interface User extends RecordModel {
 // Generate consistent color from string (for avatar backgrounds)
 function getAvatarColor(str: string): string {
   const colors = [
-    'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
-    'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300',
-    'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
-    'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-    'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
-    'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300',
-    'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
-    'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
+    "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+    "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
+    "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
+    "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+    "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300",
+    "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300",
+    "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300",
+    "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
   ];
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash = (hash << 5) - hash + str.charCodeAt(i);
     hash = hash & hash;
   }
-  return colors[Math.abs(hash) % colors.length] || 'bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300';
+  return (
+    colors[Math.abs(hash) % colors.length] ||
+    "bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300"
+  );
 }
 
 // Format relative time
@@ -37,8 +40,8 @@ function formatRelativeTime(dateStr: string): string {
   const diffMs = now.getTime() - date.getTime();
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
-  if (diffDays === 0) return 'Today';
-  if (diffDays === 1) return 'Yesterday';
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
   if (diffDays < 7) return `${diffDays} days ago`;
   if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
   if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
@@ -59,18 +62,18 @@ export default function Users() {
       setIsLoading(true);
       setError(null);
 
-      const result = await pb.collection('users').getList<User>(1, 1000, {
-        sort: '-created',
-        requestKey: null
+      const result = await pb.collection("users").getList<User>(1, 1000, {
+        sort: "-created",
+        requestKey: null,
       });
 
       setUsers(result.items);
     } catch (err: unknown) {
       const error = err as { message?: string };
-      if (error?.message?.includes('autocancelled')) {
+      if (error?.message?.includes("autocancelled")) {
         return;
       }
-      setError(error?.message || 'Failed to fetch users');
+      setError(error?.message || "Failed to fetch users");
       setUsers([]);
     } finally {
       setIsLoading(false);
@@ -101,7 +104,7 @@ export default function Users() {
                 {users.length}
               </div>
               <div className="text-forest-300 text-xs sm:text-sm">
-                {users.length === 1 ? 'user' : 'users'}
+                {users.length === 1 ? "user" : "users"}
               </div>
             </div>
           )}
@@ -142,12 +145,14 @@ export default function Users() {
               style={{ animationDelay: `${index * 30}ms` }}
             >
               {/* Avatar */}
-              <div className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden ${
-                user.avatar ? '' : getAvatarColor(user.email)
-              }`}>
+              <div
+                className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden ${
+                  user.avatar ? "" : getAvatarColor(user.email)
+                }`}
+              >
                 {user.avatar ? (
                   <img
-                    src={pb.files.getURL(user, user.avatar, { thumb: '44x44' })}
+                    src={pb.files.getURL(user, user.avatar, { thumb: "44x44" })}
                     alt=""
                     className="w-full h-full object-cover"
                   />
@@ -161,7 +166,7 @@ export default function Users() {
               {/* User Info */}
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-foreground truncate text-sm sm:text-base">
-                  {user.name || user.email.split('@')[0]}
+                  {user.name || user.email.split("@")[0]}
                 </div>
                 <div className="flex items-center gap-1.5 text-xs sm:text-sm text-muted-foreground">
                   <Mail className="h-3 w-3 sm:h-3.5 sm:w-3.5 flex-shrink-0" />

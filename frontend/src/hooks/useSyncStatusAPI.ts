@@ -1,6 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '../contexts/AuthContext';
-import { pb } from '../lib/pocketbase';
+import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "../contexts/AuthContext";
+import { pb } from "../lib/pocketbase";
 
 // Sub-entity stats for combined syncs (e.g., persons includes households)
 export interface SubStats {
@@ -14,7 +14,7 @@ export interface SubStats {
 export interface QueuedSyncItem {
   id: string;
   year: number;
-  type: 'unified' | 'phase' | 'individual'; // Type of queued sync
+  type: "unified" | "phase" | "individual"; // Type of queued sync
   service: string;
   include_custom_values?: boolean;
   position: number;
@@ -23,14 +23,14 @@ export interface QueuedSyncItem {
 
 // Progress of the current sync sequence (remaining jobs to run)
 export interface CurrentRunProgress {
-  type: 'daily' | 'historical' | 'weekly' | 'custom_values';
+  type: "daily" | "historical" | "weekly" | "custom_values";
   total_jobs: number;
   completed_jobs: number;
   remaining_jobs: string[];
 }
 
 export interface SyncStatus {
-  status: 'idle' | 'running' | 'success' | 'failed' | 'pending';
+  status: "idle" | "running" | "success" | "failed" | "pending";
   start_time?: string;
   end_time?: string;
   error?: string;
@@ -85,14 +85,14 @@ export interface SyncStatusResponse {
 
 export function useSyncStatusAPI() {
   const { user } = useAuth();
-  
+
   return useQuery({
-    queryKey: ['sync-status-api'],
+    queryKey: ["sync-status-api"],
     queryFn: async (): Promise<SyncStatusResponse> => {
-      const response = await pb.send('/api/custom/sync/status', {
-        method: 'GET',
+      const response = await pb.send("/api/custom/sync/status", {
+        method: "GET",
       });
-      
+
       return response as SyncStatusResponse;
     },
     // Poll every 3 seconds if running or queue has items, stop polling otherwise
@@ -110,17 +110,20 @@ export function useSyncStatusAPI() {
       const hasQueuedItems = (data._queue_length || 0) > 0;
 
       // Check if any individual sync is running or pending
-      const hasActiveSync = Object.entries(data).some(
-        ([key, value]) => {
-          // Skip the special fields
-          if (key.startsWith('_')) return false;
-          const status = (value as SyncStatus).status;
-          return status === 'running' || status === 'pending';
-        }
-      );
+      const hasActiveSync = Object.entries(data).some(([key, value]) => {
+        // Skip the special fields
+        if (key.startsWith("_")) return false;
+        const status = (value as SyncStatus).status;
+        return status === "running" || status === "pending";
+      });
 
       // 3 seconds while any sync is running, queued, or queue has items
-      return (hasActiveSync || dailySyncRunning || historicalSyncRunning || hasQueuedItems) ? 3000 : false;
+      return hasActiveSync ||
+        dailySyncRunning ||
+        historicalSyncRunning ||
+        hasQueuedItems
+        ? 3000
+        : false;
     },
     // Always refetch on window focus to get latest status
     refetchOnWindowFocus: true,

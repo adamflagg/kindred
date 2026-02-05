@@ -1,5 +1,5 @@
-import type { MutableRefObject } from 'react';
-import { useState, useEffect, useRef } from 'react';
+import type { MutableRefObject } from "react";
+import { useState, useEffect, useRef } from "react";
 
 export interface UseTableLayoutReturn {
   scrollbarWidth: number;
@@ -16,7 +16,8 @@ export function useTableLayout(): UseTableLayoutReturn {
     const measureScrollbar = () => {
       if (scrollRef.current) {
         // Calculate scrollbar width: outer width - inner width
-        const width = scrollRef.current.offsetWidth - scrollRef.current.clientWidth;
+        const width =
+          scrollRef.current.offsetWidth - scrollRef.current.clientWidth;
         setScrollbarWidth(width);
       }
     };
@@ -25,8 +26,8 @@ export function useTableLayout(): UseTableLayoutReturn {
     measureScrollbar();
 
     // Re-measure on window resize
-    window.addEventListener('resize', measureScrollbar);
-    
+    window.addEventListener("resize", measureScrollbar);
+
     // Also observe the scroll container for size changes
     const resizeObserver = new ResizeObserver(measureScrollbar);
     if (scrollRef.current) {
@@ -34,7 +35,7 @@ export function useTableLayout(): UseTableLayoutReturn {
     }
 
     return () => {
-      window.removeEventListener('resize', measureScrollbar);
+      window.removeEventListener("resize", measureScrollbar);
       resizeObserver.disconnect();
     };
   }, []);

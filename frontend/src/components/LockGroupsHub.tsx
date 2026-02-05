@@ -1,8 +1,12 @@
-import { useState, useMemo } from 'react';
-import { Users, ChevronUp } from 'lucide-react';
-import clsx from 'clsx';
-import type { LockedGroupsResponse, LockedGroupMembersResponse, AttendeesResponse } from '../types/pocketbase-types';
-import type { Camper } from '../types/app-types';
+import { useState, useMemo } from "react";
+import { Users, ChevronUp } from "lucide-react";
+import clsx from "clsx";
+import type {
+  LockedGroupsResponse,
+  LockedGroupMembersResponse,
+  AttendeesResponse,
+} from "../types/pocketbase-types";
+import type { Camper } from "../types/app-types";
 
 // Type for members with expanded attendee (matching LockGroupContext)
 type ExpandedMember = LockedGroupMembersResponse & {
@@ -18,7 +22,7 @@ type ExpandedMember = LockedGroupMembersResponse & {
   };
 };
 
-type BunkArea = 'all' | 'boys' | 'girls' | 'all-gender';
+type BunkArea = "all" | "boys" | "girls" | "all-gender";
 
 interface LockGroupsHubProps {
   groups: LockedGroupsResponse[];
@@ -32,11 +36,11 @@ interface LockGroupsHubProps {
 
 // Helper to check if a camper matches a specific area (same logic as unassigned filtering)
 function camperMatchesArea(camper: Camper, area: BunkArea): boolean {
-  if (area === 'all') return true;
+  if (area === "all") return true;
 
-  const isFromAGSession = camper.expand?.session?.session_type === 'ag';
+  const isFromAGSession = camper.expand?.session?.session_type === "ag";
 
-  if (area === 'all-gender') {
+  if (area === "all-gender") {
     // AG area: only campers from AG sessions
     return isFromAGSession;
   }
@@ -44,8 +48,8 @@ function camperMatchesArea(camper: Camper, area: BunkArea): boolean {
   // Boys/Girls areas: campers must NOT be from AG sessions
   if (isFromAGSession) return false;
 
-  if (area === 'boys') return camper.gender === 'M';
-  if (area === 'girls') return camper.gender === 'F';
+  if (area === "boys") return camper.gender === "M";
+  if (area === "girls") return camper.gender === "F";
 
   return true;
 }
@@ -57,7 +61,7 @@ export default function LockGroupsHub({
   selectedArea,
   campers,
   onOpenPanel,
-  isDraftMode
+  isDraftMode,
 }: LockGroupsHubProps) {
   const [showTooltip, setShowTooltip] = useState(false);
 
@@ -72,19 +76,19 @@ export default function LockGroupsHub({
 
   // Filter groups by selected area - ALL members must match
   const filteredGroups = useMemo(() => {
-    if (selectedArea === 'all') return groups;
+    if (selectedArea === "all") return groups;
 
-    return groups.filter(group => {
+    return groups.filter((group) => {
       const members = membersByGroup[group.id] || [];
       if (members.length === 0) return true; // Empty groups show everywhere
 
       // Get the person CM IDs for this group's members
       const memberPersonCmIds = members
-        .map(m => m.expand?.attendee?.person_id)
+        .map((m) => m.expand?.attendee?.person_id)
         .filter((id): id is number => id !== undefined);
 
       // ALL members must match the selected area
-      return memberPersonCmIds.every(personCmId => {
+      return memberPersonCmIds.every((personCmId) => {
         const camper = camperByPersonCmId.get(personCmId);
         if (!camper) return false; // If we can't find the camper, exclude from this area
         return camperMatchesArea(camper, selectedArea);
@@ -94,8 +98,10 @@ export default function LockGroupsHub({
 
   // Filter pending campers by selected area
   const filteredPendingCampers = useMemo(() => {
-    if (selectedArea === 'all') return pendingCampers;
-    return pendingCampers.filter(camper => camperMatchesArea(camper, selectedArea));
+    if (selectedArea === "all") return pendingCampers;
+    return pendingCampers.filter((camper) =>
+      camperMatchesArea(camper, selectedArea),
+    );
   }, [pendingCampers, selectedArea]);
 
   if (!isDraftMode) return null;
@@ -104,10 +110,15 @@ export default function LockGroupsHub({
   const hasPending = filteredPendingCampers.length > 0;
   const pendingCount = filteredPendingCampers.length;
   // When action bar is visible (pending > 0), shift up to avoid overlap
-  const actionBarHeight = hasPending ? 'bottom-16' : 'bottom-4';
+  const actionBarHeight = hasPending ? "bottom-16" : "bottom-4";
 
   return (
-    <div className={clsx('fixed left-4 z-40 transition-all duration-200', actionBarHeight)}>
+    <div
+      className={clsx(
+        "fixed left-4 z-40 transition-all duration-200",
+        actionBarHeight,
+      )}
+    >
       {/* Main Hub Button */}
       <button
         onClick={() => {
@@ -118,24 +129,27 @@ export default function LockGroupsHub({
         onMouseEnter={() => !hasGroups && !hasPending && setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
         className={clsx(
-          'flex items-center gap-2 px-4 py-2.5 rounded-xl shadow-lodge-lg transition-all',
-          'hover:shadow-lodge-xl hover:scale-[1.02] active:scale-[0.98]',
+          "flex items-center gap-2 px-4 py-2.5 rounded-xl shadow-lodge-lg transition-all",
+          "hover:shadow-lodge-xl hover:scale-[1.02] active:scale-[0.98]",
           hasGroups || hasPending
-            ? 'bg-primary text-primary-foreground'
-            : 'bg-muted/80 backdrop-blur-sm text-muted-foreground hover:bg-muted border border-border'
+            ? "bg-primary text-primary-foreground"
+            : "bg-muted/80 backdrop-blur-sm text-muted-foreground hover:bg-muted border border-border",
         )}
       >
         <Users className="h-4 w-4" />
         <span className="font-medium">
           {hasGroups ? (
             <>
-              {filteredGroups.length} Friend Group{filteredGroups.length !== 1 ? 's' : ''}
-              {hasPending && <span className="text-accent"> +{pendingCount}</span>}
+              {filteredGroups.length} Friend Group
+              {filteredGroups.length !== 1 ? "s" : ""}
+              {hasPending && (
+                <span className="text-accent"> +{pendingCount}</span>
+              )}
             </>
           ) : hasPending ? (
             <>{pendingCount} Selected</>
           ) : (
-            'Friend Groups'
+            "Friend Groups"
           )}
         </span>
         {(hasGroups || hasPending) && (
@@ -145,12 +159,10 @@ export default function LockGroupsHub({
 
       {/* Empty State Tooltip - simple tip, no unclickable button */}
       {!hasGroups && !hasPending && showTooltip && (
-        <div
-          className="absolute left-0 bottom-full mb-2 w-64 p-3 card-lodge shadow-lodge-lg text-sm animate-fade-in"
-        >
+        <div className="absolute left-0 bottom-full mb-2 w-64 p-3 card-lodge shadow-lodge-lg text-sm animate-fade-in">
           <p className="text-muted-foreground">
-            <strong className="text-foreground">Ctrl+Click</strong> campers to select,
-            then create a friend group to keep them together.
+            <strong className="text-foreground">Ctrl+Click</strong> campers to
+            select, then create a friend group to keep them together.
           </p>
         </div>
       )}

@@ -3,9 +3,9 @@
  * Uses Cytoscape in headless mode with fcose for compound node support.
  */
 
-import cytoscape from 'cytoscape';
+import cytoscape from "cytoscape";
 // @ts-expect-error - No types available for cytoscape-fcose
-import fcose from 'cytoscape-fcose';
+import fcose from "cytoscape-fcose";
 
 // Register fcose extension
 cytoscape.use(fcose);
@@ -34,7 +34,7 @@ export interface LayoutWorkerInput {
 }
 
 export interface LayoutWorkerOutput {
-  type: 'positions' | 'error' | 'progress';
+  type: "positions" | "error" | "progress";
   positions?: Record<string, { x: number; y: number }>;
   error?: string;
   progress?: number;
@@ -53,13 +53,13 @@ self.onmessage = (event: MessageEvent<LayoutWorkerInput>) => {
       styleEnabled: false,
       elements: {
         nodes,
-        edges
-      }
+        edges,
+      },
     });
 
     // Run fcose layout with compound node support
     const layout = cy.layout({
-      name: 'fcose',
+      name: "fcose",
       animate: false,
       // Performance tuning - can be adjusted via options
       numIter: options.numIter ?? 1000,
@@ -77,13 +77,13 @@ self.onmessage = (event: MessageEvent<LayoutWorkerInput>) => {
       tilingPaddingVertical: 15,
       tilingPaddingHorizontal: 15,
       // Quality settings
-      quality: 'default',
+      quality: "default",
       randomize: true,
       // Edge length based on weight for better clustering
       idealEdgeLength: (edge: cytoscape.EdgeSingular) => {
-        const weight = edge.data('weight') || 1;
+        const weight = edge.data("weight") || 1;
         return 100 / Math.sqrt(weight);
-      }
+      },
     } as cytoscape.LayoutOptions);
 
     // Run layout synchronously (we're in a worker, blocking is fine)
@@ -97,22 +97,23 @@ self.onmessage = (event: MessageEvent<LayoutWorkerInput>) => {
     });
 
     const duration = performance.now() - startTime;
-    console.log(`[LayoutWorker] Computed ${Object.keys(positions).length} positions in ${duration.toFixed(0)}ms`);
+    console.log(
+      `[LayoutWorker] Computed ${Object.keys(positions).length} positions in ${duration.toFixed(0)}ms`,
+    );
 
     // Send positions back to main thread
     const response: LayoutWorkerOutput = {
-      type: 'positions',
-      positions
+      type: "positions",
+      positions,
     };
     self.postMessage(response);
 
     // Clean up
     cy.destroy();
-
   } catch (error) {
     const response: LayoutWorkerOutput = {
-      type: 'error',
-      error: error instanceof Error ? error.message : 'Unknown layout error'
+      type: "error",
+      error: error instanceof Error ? error.message : "Unknown layout error",
     };
     self.postMessage(response);
   }

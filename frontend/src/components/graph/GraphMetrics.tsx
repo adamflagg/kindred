@@ -3,7 +3,7 @@
  * Extracted from SocialNetworkGraph.tsx - displays network metrics
  */
 
-import type { GraphData } from '../../types/graph';
+import type { GraphData } from "../../types/graph";
 
 export interface GraphMetricsProps {
   /** Graph data containing metrics */
@@ -20,33 +20,35 @@ export default function GraphMetrics({ graphData }: GraphMetricsProps) {
       <div className="font-medium mb-2 text-foreground">Network Metrics</div>
       <div className="space-y-1 text-xs text-muted-foreground">
         <div>
-          Nodes: <span className="text-foreground">{graphData.nodes.length}</span>
+          Nodes:{" "}
+          <span className="text-foreground">{graphData.nodes.length}</span>
         </div>
         <div>
-          Edges: <span className="text-foreground">{graphData.edges.length}</span>
+          Edges:{" "}
+          <span className="text-foreground">{graphData.edges.length}</span>
         </div>
         <div>
-          Density:{' '}
+          Density:{" "}
           <span className="text-foreground">
             {(graphData.metrics.density * 100).toFixed(1)}%
           </span>
         </div>
         <div>
-          Avg Clustering:{' '}
+          Avg Clustering:{" "}
           <span className="text-foreground">
             {graphData.metrics.average_clustering.toFixed(3)}
           </span>
         </div>
         <div>
-          Communities:{' '}
+          Communities:{" "}
           <span className="text-foreground">
-            {graphData.metrics['num_communities']}
+            {graphData.metrics["num_communities"]}
           </span>
         </div>
         <div>
-          Isolated:{' '}
+          Isolated:{" "}
           <span className="text-foreground">
-            {graphData.metrics['isolated_nodes']} nodes
+            {graphData.metrics["isolated_nodes"]} nodes
           </span>
         </div>
       </div>

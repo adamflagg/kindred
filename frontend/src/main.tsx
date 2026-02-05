@@ -1,9 +1,9 @@
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-import App from './App.tsx'
-import './index.css'
-import { isChunkLoadError } from './utils/chunkLoadError'
-import { shouldAutoReload, autoReload } from './utils/autoReload'
+import React from "react";
+import ReactDOM from "react-dom/client";
+import App from "./App.tsx";
+import "./index.css";
+import { isChunkLoadError } from "./utils/chunkLoadError";
+import { shouldAutoReload, autoReload } from "./utils/autoReload";
 
 /**
  * Global handler for dynamic import failures that bypass React error boundaries.
@@ -20,7 +20,7 @@ import { shouldAutoReload, autoReload } from './utils/autoReload'
  * the error is silently ignored (ErrorBoundary will show fallback UI).
  */
 function handleChunkLoadError(event: PromiseRejectionEvent | ErrorEvent) {
-  const error = 'reason' in event ? event.reason : event.error;
+  const error = "reason" in event ? event.reason : event.error;
 
   if (isChunkLoadError(error)) {
     event.preventDefault();
@@ -34,16 +34,16 @@ function handleChunkLoadError(event: PromiseRejectionEvent | ErrorEvent) {
 }
 
 // Listen for unhandled promise rejections (from dynamic imports)
-window.addEventListener('unhandledrejection', handleChunkLoadError);
+window.addEventListener("unhandledrejection", handleChunkLoadError);
 
 // Listen for regular errors (some bundlers throw these instead)
-window.addEventListener('error', handleChunkLoadError);
+window.addEventListener("error", handleChunkLoadError);
 
-const rootElement = document.getElementById('root');
-if (!rootElement) throw new Error('Root element not found');
+const rootElement = document.getElementById("root");
+if (!rootElement) throw new Error("Root element not found");
 
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
     <App />
   </React.StrictMode>,
-)
+);

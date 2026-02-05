@@ -3,8 +3,8 @@
  */
 
 interface YearModeToggleProps {
-  mode: 'single' | 'comparison';
-  onModeChange: (mode: 'single' | 'comparison') => void;
+  mode: "single" | "comparison";
+  onModeChange: (mode: "single" | "comparison") => void;
   yearA: number;
   yearB: number;
   onYearAChange: (year: number) => void;
@@ -26,21 +26,21 @@ export function YearModeToggle({
       <div className="flex rounded-lg border border-border overflow-hidden">
         <button
           className={`px-4 py-2 text-sm font-medium transition-colors ${
-            mode === 'single'
-              ? 'bg-primary text-primary-foreground'
-              : 'bg-background text-foreground hover:bg-muted'
+            mode === "single"
+              ? "bg-primary text-primary-foreground"
+              : "bg-background text-foreground hover:bg-muted"
           }`}
-          onClick={() => onModeChange('single')}
+          onClick={() => onModeChange("single")}
         >
           Single Year
         </button>
         <button
           className={`px-4 py-2 text-sm font-medium transition-colors ${
-            mode === 'comparison'
-              ? 'bg-primary text-primary-foreground'
-              : 'bg-background text-foreground hover:bg-muted'
+            mode === "comparison"
+              ? "bg-primary text-primary-foreground"
+              : "bg-background text-foreground hover:bg-muted"
           }`}
-          onClick={() => onModeChange('comparison')}
+          onClick={() => onModeChange("comparison")}
         >
           Compare Years
         </button>
@@ -59,7 +59,7 @@ export function YearModeToggle({
           ))}
         </select>
 
-        {mode === 'comparison' && (
+        {mode === "comparison" && (
           <>
             <span className="text-muted-foreground">vs</span>
             <select

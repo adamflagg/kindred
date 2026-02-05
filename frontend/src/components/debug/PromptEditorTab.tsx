@@ -7,15 +7,27 @@
  * Design: Sierra Lodge aesthetic with warm, nature-inspired tones
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, Check, ChevronDown, Clock, FileText, Loader2, Save } from 'lucide-react';
-import { EditorView, basicSetup } from 'codemirror';
-import type { ViewUpdate } from '@codemirror/view';
-import { EditorState } from '@codemirror/state';
-import { markdown } from '@codemirror/lang-markdown';
-import { oneDark } from '@codemirror/theme-one-dark';
-import { usePromptsList, usePrompt, useUpdatePrompt } from '../../hooks/useParseAnalysis';
-import { useTheme } from '../../hooks/useTheme';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  AlertCircle,
+  Check,
+  ChevronDown,
+  Clock,
+  FileText,
+  Loader2,
+  Save,
+} from "lucide-react";
+import { EditorView, basicSetup } from "codemirror";
+import type { ViewUpdate } from "@codemirror/view";
+import { EditorState } from "@codemirror/state";
+import { markdown } from "@codemirror/lang-markdown";
+import { oneDark } from "@codemirror/theme-one-dark";
+import {
+  usePromptsList,
+  usePrompt,
+  useUpdatePrompt,
+} from "../../hooks/useParseAnalysis";
+import { useTheme } from "../../hooks/useTheme";
 
 /**
  * Format a prompt name for display
@@ -23,73 +35,82 @@ import { useTheme } from '../../hooks/useTheme';
  */
 function formatPromptName(name: string): string {
   return name
-    .split('_')
+    .split("_")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
+    .join(" ");
 }
 
 /**
  * Format a date string for display
  */
 function formatDate(dateStr: string | null): string {
-  if (!dateStr) return 'Unknown';
+  if (!dateStr) return "Unknown";
   try {
     return new Date(dateStr).toLocaleString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   } catch {
-    return 'Unknown';
+    return "Unknown";
   }
 }
 
 // Light theme for CodeMirror
 const lightTheme = EditorView.theme({
-  '&': {
-    backgroundColor: '#faf8f5',
-    color: '#2d3a2e',
+  "&": {
+    backgroundColor: "#faf8f5",
+    color: "#2d3a2e",
   },
-  '.cm-content': {
-    caretColor: '#006d4a',
+  ".cm-content": {
+    caretColor: "#006d4a",
   },
-  '.cm-cursor, .cm-dropCursor': {
-    borderLeftColor: '#006d4a',
+  ".cm-cursor, .cm-dropCursor": {
+    borderLeftColor: "#006d4a",
   },
-  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
-    backgroundColor: '#d4e8dc',
+  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
+    {
+      backgroundColor: "#d4e8dc",
+    },
+  ".cm-gutters": {
+    backgroundColor: "#f0ece6",
+    color: "#8a8378",
+    border: "none",
   },
-  '.cm-gutters': {
-    backgroundColor: '#f0ece6',
-    color: '#8a8378',
-    border: 'none',
+  ".cm-activeLineGutter": {
+    backgroundColor: "#e8e4dc",
   },
-  '.cm-activeLineGutter': {
-    backgroundColor: '#e8e4dc',
-  },
-  '.cm-activeLine': {
-    backgroundColor: '#f5f2ed',
+  ".cm-activeLine": {
+    backgroundColor: "#f5f2ed",
   },
 });
 
 export function PromptEditorTab() {
   const { resolvedTheme } = useTheme();
-  const isDark = resolvedTheme === 'dark';
+  const isDark = resolvedTheme === "dark";
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
 
   // State - user-selected prompt (null means use first from list)
-  const [userSelectedPrompt, setUserSelectedPrompt] = useState<string | null>(null);
+  const [userSelectedPrompt, setUserSelectedPrompt] = useState<string | null>(
+    null,
+  );
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [editorContent, setEditorContent] = useState<string>('');
+  const [editorContent, setEditorContent] = useState<string>("");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [lastLoadedPromptName, setLastLoadedPromptName] = useState<string | null>(null);
+  const [lastLoadedPromptName, setLastLoadedPromptName] = useState<
+    string | null
+  >(null);
 
   // Queries and mutations
-  const { data: promptsData, isLoading: isLoadingList, error: listError } = usePromptsList();
+  const {
+    data: promptsData,
+    isLoading: isLoadingList,
+    error: listError,
+  } = usePromptsList();
 
   // Derive the effective selected prompt (user selection or first from list)
   const selectedPrompt = useMemo(() => {
@@ -97,7 +118,11 @@ export function PromptEditorTab() {
     return promptsData?.prompts?.[0]?.name ?? null;
   }, [userSelectedPrompt, promptsData]);
 
-  const { data: promptContent, isLoading: isLoadingContent, error: contentError } = usePrompt(selectedPrompt);
+  const {
+    data: promptContent,
+    isLoading: isLoadingContent,
+    error: contentError,
+  } = usePrompt(selectedPrompt);
   const updatePromptMutation = useUpdatePrompt();
 
   // Combined error for display
@@ -121,7 +146,11 @@ export function PromptEditorTab() {
       // Only dispatch if content actually differs (avoids loop from user typing)
       if (editorContent !== currentDoc) {
         viewRef.current.dispatch({
-          changes: { from: 0, to: viewRef.current.state.doc.length, insert: editorContent },
+          changes: {
+            from: 0,
+            to: viewRef.current.state.doc.length,
+            insert: editorContent,
+          },
         });
       }
     }
@@ -153,13 +182,14 @@ export function PromptEditorTab() {
           }
         }),
         EditorView.theme({
-          '&': {
-            height: '100%',
-            fontSize: '14px',
+          "&": {
+            height: "100%",
+            fontSize: "14px",
           },
-          '.cm-scroller': {
-            overflow: 'auto',
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+          ".cm-scroller": {
+            overflow: "auto",
+            fontFamily:
+              "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
           },
         }),
       ],
@@ -191,20 +221,20 @@ export function PromptEditorTab() {
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (error) {
-      console.error('Failed to save prompt:', error);
+      console.error("Failed to save prompt:", error);
     }
   }, [selectedPrompt, hasUnsavedChanges, editorContent, updatePromptMutation]);
 
   // Keyboard shortcut for save
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
         e.preventDefault();
         handleSave();
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleSave]);
 
   // Warn about unsaved changes on navigation
@@ -212,11 +242,11 @@ export function PromptEditorTab() {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (hasUnsavedChanges) {
         e.preventDefault();
-        e.returnValue = '';
+        e.returnValue = "";
       }
     };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [hasUnsavedChanges]);
 
   // Selected prompt metadata
@@ -242,18 +272,20 @@ export function PromptEditorTab() {
               hover:border-forest-300 dark:hover:border-forest-600
               transition-all duration-200
               min-w-[280px] text-left
-              ${isDropdownOpen ? 'ring-2 ring-forest-500/30 border-forest-400 dark:border-forest-500' : ''}
+              ${isDropdownOpen ? "ring-2 ring-forest-500/30 border-forest-400 dark:border-forest-500" : ""}
             `}
           >
             <FileText className="w-4 h-4 text-forest-600 dark:text-forest-400 flex-shrink-0" />
             <span className="flex-1 font-medium text-foreground truncate">
-              {selectedPrompt ? formatPromptName(selectedPrompt) : 'Select a prompt...'}
+              {selectedPrompt
+                ? formatPromptName(selectedPrompt)
+                : "Select a prompt..."}
             </span>
             {isLoadingList ? (
               <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
             ) : (
               <ChevronDown
-                className={`w-4 h-4 text-muted-foreground transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`}
+                className={`w-4 h-4 text-muted-foreground transition-transform ${isDropdownOpen ? "rotate-180" : ""}`}
               />
             )}
           </button>
@@ -261,7 +293,10 @@ export function PromptEditorTab() {
           {/* Dropdown menu */}
           {isDropdownOpen && promptsData?.prompts && (
             <>
-              <div className="fixed inset-0 z-10" onClick={() => setIsDropdownOpen(false)} />
+              <div
+                className="fixed inset-0 z-10"
+                onClick={() => setIsDropdownOpen(false)}
+              />
               <div
                 className="
                   absolute top-full left-0 mt-2 z-20
@@ -277,7 +312,7 @@ export function PromptEditorTab() {
                     onClick={() => {
                       if (hasUnsavedChanges) {
                         const confirmSwitch = window.confirm(
-                          'You have unsaved changes. Are you sure you want to switch prompts?'
+                          "You have unsaved changes. Are you sure you want to switch prompts?",
                         );
                         if (!confirmSwitch) return;
                       }
@@ -291,14 +326,18 @@ export function PromptEditorTab() {
                       transition-colors duration-150
                       ${
                         selectedPrompt === prompt.name
-                          ? 'bg-forest-50 dark:bg-forest-900/30 text-forest-700 dark:text-forest-400'
-                          : 'hover:bg-parchment-100 dark:hover:bg-bark-700/50 text-foreground'
+                          ? "bg-forest-50 dark:bg-forest-900/30 text-forest-700 dark:text-forest-400"
+                          : "hover:bg-parchment-100 dark:hover:bg-bark-700/50 text-foreground"
                       }
                     `}
                   >
                     <FileText className="w-4 h-4 flex-shrink-0" />
-                    <span className="flex-1 font-medium truncate">{formatPromptName(prompt.name)}</span>
-                    {selectedPrompt === prompt.name && <Check className="w-4 h-4 text-forest-600" />}
+                    <span className="flex-1 font-medium truncate">
+                      {formatPromptName(prompt.name)}
+                    </span>
+                    {selectedPrompt === prompt.name && (
+                      <Check className="w-4 h-4 text-forest-600" />
+                    )}
                   </button>
                 ))}
               </div>
@@ -313,7 +352,7 @@ export function PromptEditorTab() {
           className={`
             btn-primary !rounded-xl flex items-center gap-2
             disabled:opacity-50 disabled:cursor-not-allowed
-            ${saveSuccess ? '!bg-forest-600 !border-forest-600' : ''}
+            ${saveSuccess ? "!bg-forest-600 !border-forest-600" : ""}
           `}
         >
           {updatePromptMutation.isPending ? (
@@ -353,7 +392,10 @@ export function PromptEditorTab() {
                 </span>
                 <span className="flex items-center gap-1.5 text-muted-foreground">
                   <Clock className="w-3.5 h-3.5" />
-                  {formatDate(promptContent?.modified_at ?? selectedPromptMeta.modified_at)}
+                  {formatDate(
+                    promptContent?.modified_at ??
+                      selectedPromptMeta.modified_at,
+                  )}
                 </span>
               </>
             )}
@@ -370,12 +412,14 @@ export function PromptEditorTab() {
         </div>
 
         {/* CodeMirror editor */}
-        <div className="relative" style={{ height: '500px' }}>
+        <div className="relative" style={{ height: "500px" }}>
           {isLoading ? (
             <div className="absolute inset-0 flex items-center justify-center bg-parchment-100/50 dark:bg-bark-900/30">
               <div className="flex flex-col items-center gap-3">
                 <Loader2 className="w-8 h-8 animate-spin text-forest-600" />
-                <span className="text-sm text-muted-foreground">Loading prompt...</span>
+                <span className="text-sm text-muted-foreground">
+                  Loading prompt...
+                </span>
               </div>
             </div>
           ) : (
@@ -390,9 +434,13 @@ export function PromptEditorTab() {
           <div className="flex items-start gap-3">
             <AlertCircle className="w-5 h-5 text-rose-600 flex-shrink-0 mt-0.5" />
             <div>
-              <p className="font-semibold text-rose-800 dark:text-rose-300">Failed to Load Prompts</p>
+              <p className="font-semibold text-rose-800 dark:text-rose-300">
+                Failed to Load Prompts
+              </p>
               <p className="mt-1 text-sm text-rose-700 dark:text-rose-400">
-                {queryError instanceof Error ? queryError.message : 'An unknown error occurred'}
+                {queryError instanceof Error
+                  ? queryError.message
+                  : "An unknown error occurred"}
               </p>
             </div>
           </div>
@@ -405,11 +453,13 @@ export function PromptEditorTab() {
           <div className="flex items-start gap-3">
             <AlertCircle className="w-5 h-5 text-rose-600 flex-shrink-0 mt-0.5" />
             <div>
-              <p className="font-semibold text-rose-800 dark:text-rose-300">Save Failed</p>
+              <p className="font-semibold text-rose-800 dark:text-rose-300">
+                Save Failed
+              </p>
               <p className="mt-1 text-sm text-rose-700 dark:text-rose-400">
                 {updatePromptMutation.error instanceof Error
                   ? updatePromptMutation.error.message
-                  : 'An unknown error occurred'}
+                  : "An unknown error occurred"}
               </p>
             </div>
           </div>
@@ -418,8 +468,15 @@ export function PromptEditorTab() {
 
       {/* Keyboard shortcut hint */}
       <p className="text-xs text-muted-foreground text-center">
-        Press <kbd className="px-1.5 py-0.5 rounded bg-bark-100 dark:bg-bark-700 font-mono">Ctrl+S</kbd> or{' '}
-        <kbd className="px-1.5 py-0.5 rounded bg-bark-100 dark:bg-bark-700 font-mono">Cmd+S</kbd> to save
+        Press{" "}
+        <kbd className="px-1.5 py-0.5 rounded bg-bark-100 dark:bg-bark-700 font-mono">
+          Ctrl+S
+        </kbd>{" "}
+        or{" "}
+        <kbd className="px-1.5 py-0.5 rounded bg-bark-100 dark:bg-bark-700 font-mono">
+          Cmd+S
+        </kbd>{" "}
+        to save
       </p>
     </div>
   );

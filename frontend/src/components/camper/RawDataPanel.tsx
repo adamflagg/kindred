@@ -2,9 +2,9 @@
  * Collapsible panel showing original CSV import data
  * Shows raw bunking data before AI parsing
  */
-import { useState } from 'react';
-import { GraduationCap, ChevronDown, ChevronRight, User } from 'lucide-react';
-import type { OriginalBunkData } from '../../hooks/camper/types';
+import { useState } from "react";
+import { GraduationCap, ChevronDown, ChevronRight, User } from "lucide-react";
+import type { OriginalBunkData } from "../../hooks/camper/types";
 
 interface RawDataPanelProps {
   data: OriginalBunkData;
@@ -23,15 +23,22 @@ interface StaffAttribution {
  * Pattern: "Note text STAFFNAME (Month DD YYYY H:MMAM/PM)"
  * Example: "Do not bunk with Emma JORDAN RIVERS (May 30 2024 2:18PM)"
  */
-function parseStaffAttribution(text: string | undefined): StaffAttribution | null {
+function parseStaffAttribution(
+  text: string | undefined,
+): StaffAttribution | null {
   if (!text) return null;
 
   // Pattern matches: FIRSTNAME LASTNAME (Month DD YYYY H:MMAM/PM)
-  const staffPattern = /([A-Z]+)\s+([A-Z]+)\s*\(([A-Za-z]+\s+\d{1,2}\s+\d{4}\s+\d{1,2}:\d{2}(?:AM|PM))\)\s*$/;
+  const staffPattern =
+    /([A-Z]+)\s+([A-Z]+)\s*\(([A-Za-z]+\s+\d{1,2}\s+\d{4}\s+\d{1,2}:\d{2}(?:AM|PM))\)\s*$/;
 
   // Split by newlines for multi-entry notes
-  const lines = text.split('\n').filter((l) => l.trim());
-  const parsedLines: Array<{ content: string; staff: string | null; timestamp: string | null }> = [];
+  const lines = text.split("\n").filter((l) => l.trim());
+  const parsedLines: Array<{
+    content: string;
+    staff: string | null;
+    timestamp: string | null;
+  }> = [];
 
   for (const line of lines) {
     const match = staffPattern.exec(line);
@@ -50,7 +57,7 @@ function parseStaffAttribution(text: string | undefined): StaffAttribution | nul
   }
 
   // Join all content, use most recent staff attribution
-  const allContent = parsedLines.map((p) => p.content).join(' | ');
+  const allContent = parsedLines.map((p) => p.content).join(" | ");
   const staffEntries = parsedLines.filter((p) => p.staff);
   const mostRecent = staffEntries[staffEntries.length - 1];
 
@@ -83,9 +90,7 @@ function RawDataField({
         <dt className="text-sm font-medium text-muted-foreground">{label}</dt>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           {updatedAt && (
-            <span>
-              Synced: {new Date(updatedAt).toLocaleDateString()}
-            </span>
+            <span>Synced: {new Date(updatedAt).toLocaleDateString()}</span>
           )}
           {processedAt ? (
             <span className="text-green-600 dark:text-green-400">
@@ -198,7 +203,8 @@ export function RawDataPanel({
           {/* Person Metadata */}
           <div className="mt-4 pt-4 border-t border-border">
             <p className="text-xs text-muted-foreground">
-              {data.first_name} {data.last_name} • Person ID: {data.person_cm_id}
+              {data.first_name} {data.last_name} • Person ID:{" "}
+              {data.person_cm_id}
             </p>
           </div>
         </div>

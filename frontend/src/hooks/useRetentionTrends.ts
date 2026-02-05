@@ -4,10 +4,10 @@
  * Returns retention data across multiple year transitions for the retention tab.
  */
 
-import { useQuery, keepPreviousData } from '@tanstack/react-query';
-import { useApiWithAuth } from './useApiWithAuth';
-import { queryKeys, syncDataOptions } from '../utils/queryKeys';
-import type { RetentionTrendsResponse } from '../types/metrics';
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { useApiWithAuth } from "./useApiWithAuth";
+import { queryKeys, syncDataOptions } from "../utils/queryKeys";
+import type { RetentionTrendsResponse } from "../types/metrics";
 
 export interface UseRetentionTrendsOptions {
   /** Number of years to include (default: 3) */
@@ -30,34 +30,41 @@ export interface UseRetentionTrendsOptions {
  */
 export function useRetentionTrends(
   currentYear: number,
-  options: UseRetentionTrendsOptions = {}
+  options: UseRetentionTrendsOptions = {},
 ) {
   const { fetchWithAuth } = useApiWithAuth();
   const { numYears = 3, sessionTypes, sessionCmId } = options;
 
   return useQuery({
-    queryKey: queryKeys.retentionTrends(currentYear, numYears, sessionTypes, sessionCmId),
+    queryKey: queryKeys.retentionTrends(
+      currentYear,
+      numYears,
+      sessionTypes,
+      sessionCmId,
+    ),
     queryFn: async (): Promise<RetentionTrendsResponse> => {
       const params = new URLSearchParams({
         current_year: currentYear.toString(),
       });
 
       if (numYears !== 3) {
-        params.set('num_years', numYears.toString());
+        params.set("num_years", numYears.toString());
       }
 
       if (sessionTypes) {
-        params.set('session_types', sessionTypes);
+        params.set("session_types", sessionTypes);
       }
 
       if (sessionCmId !== undefined) {
-        params.set('session_cm_id', sessionCmId.toString());
+        params.set("session_cm_id", sessionCmId.toString());
       }
 
-      const response = await fetchWithAuth(`/api/metrics/retention-trends?${params}`);
+      const response = await fetchWithAuth(
+        `/api/metrics/retention-trends?${params}`,
+      );
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
-        throw new Error(error.detail || 'Failed to fetch retention trends');
+        throw new Error(error.detail || "Failed to fetch retention trends");
       }
       return response.json();
     },

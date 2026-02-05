@@ -1,10 +1,10 @@
-import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Brain, Loader2, AlertTriangle, ChevronDown } from 'lucide-react';
-import { Modal } from '../ui/Modal';
-import { pb } from '../../lib/pocketbase';
-import { useYear } from '../../hooks/useCurrentYear';
-import { queryKeys, syncDataOptions } from '../../utils/queryKeys';
+import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Brain, Loader2, AlertTriangle, ChevronDown } from "lucide-react";
+import { Modal } from "../ui/Modal";
+import { pb } from "../../lib/pocketbase";
+import { useYear } from "../../hooks/useCurrentYear";
+import { queryKeys, syncDataOptions } from "../../utils/queryKeys";
 
 export interface ProcessRequestOptionsState {
   session: string;
@@ -27,7 +27,7 @@ const SESSION_NAME_PATTERN = /Session\s+(\d+[a-z]?)/i;
 const TOC_PATTERN = /Taste\s+of\s+Camp/i;
 
 function extractFriendlyName(name: string): string | null {
-  if (TOC_PATTERN.test(name)) return '1';
+  if (TOC_PATTERN.test(name)) return "1";
   const match = name.match(SESSION_NAME_PATTERN);
   const captured = match?.[1];
   return captured ? captured.toLowerCase() : null;
@@ -35,11 +35,11 @@ function extractFriendlyName(name: string): string | null {
 
 // Source field options (static - these don't change between years)
 const SOURCE_FIELD_OPTIONS = [
-  { value: 'bunk_with', label: 'Bunk With' },
-  { value: 'not_bunk_with', label: 'Not Bunk With' },
-  { value: 'bunking_notes', label: 'Bunking Notes' },
-  { value: 'internal_notes', label: 'Internal Notes' },
-  { value: 'socialize_with', label: 'Socialize With' },
+  { value: "bunk_with", label: "Bunk With" },
+  { value: "not_bunk_with", label: "Not Bunk With" },
+  { value: "bunking_notes", label: "Bunking Notes" },
+  { value: "internal_notes", label: "Internal Notes" },
+  { value: "socialize_with", label: "Socialize With" },
 ] as const;
 
 export default function ProcessRequestOptions({
@@ -50,8 +50,8 @@ export default function ProcessRequestOptions({
 }: ProcessRequestOptionsProps) {
   const currentYear = useYear();
 
-  const [session, setSession] = useState<string>('all');
-  const [limitValue, setLimitValue] = useState<string>('');
+  const [session, setSession] = useState<string>("all");
+  const [limitValue, setLimitValue] = useState<string>("");
   const [forceReprocess, setForceReprocess] = useState(false);
   const [sourceFields, setSourceFields] = useState<string[]>([]);
   const [debug, setDebug] = useState(false);
@@ -61,8 +61,8 @@ export default function ProcessRequestOptions({
   // Reset form when modal closes (render-time check to avoid setState in effect)
   if (!isOpen && prevIsOpen) {
     setPrevIsOpen(isOpen);
-    setSession('all');
-    setLimitValue('');
+    setSession("all");
+    setLimitValue("");
     setForceReprocess(false);
     setSourceFields([]);
     setDebug(false);
@@ -75,9 +75,9 @@ export default function ProcessRequestOptions({
   const { data: sessions } = useQuery({
     queryKey: queryKeys.sessions(currentYear),
     queryFn: async () => {
-      const records = await pb.collection('camp_sessions').getFullList({
+      const records = await pb.collection("camp_sessions").getFullList({
         filter: `year = ${currentYear} && (session_type = "main" || session_type = "embedded")`,
-        sort: 'start_date',
+        sort: "start_date",
       });
       return records;
     },
@@ -87,13 +87,15 @@ export default function ProcessRequestOptions({
 
   // Build session options dynamically from database
   const sessionOptions = useMemo(() => {
-    const options: Array<{ value: string; label: string }> = [{ value: 'all', label: 'All Sessions' }];
+    const options: Array<{ value: string; label: string }> = [
+      { value: "all", label: "All Sessions" },
+    ];
 
     if (sessions) {
       // Sort logically: 1, 2, 2a, 2b, 3, 3a, 4
       const sorted = [...sessions].sort((a, b) => {
-        const aName = extractFriendlyName(a.name) || '';
-        const bName = extractFriendlyName(b.name) || '';
+        const aName = extractFriendlyName(a.name) || "";
+        const bName = extractFriendlyName(b.name) || "";
         // Compare numeric part first, then alpha suffix
         const aNum = parseInt(aName) || 0;
         const bNum = parseInt(bName) || 0;
@@ -112,16 +114,16 @@ export default function ProcessRequestOptions({
     return options;
   }, [sessions]);
 
-
   const handleSourceFieldToggle = (field: string) => {
     setSourceFields((prev) =>
-      prev.includes(field) ? prev.filter((f) => f !== field) : [...prev, field]
+      prev.includes(field) ? prev.filter((f) => f !== field) : [...prev, field],
     );
   };
 
   const handleSubmit = () => {
     const parsedLimit = parseInt(limitValue, 10);
-    const limit = !isNaN(parsedLimit) && parsedLimit > 0 ? parsedLimit : undefined;
+    const limit =
+      !isNaN(parsedLimit) && parsedLimit > 0 ? parsedLimit : undefined;
 
     onSubmit({
       session,
@@ -142,7 +144,11 @@ export default function ProcessRequestOptions({
             <Brain className="w-5 h-5 text-teal-600 dark:text-teal-400" />
           </div>
           <div>
-            <h2 className="text-lg font-display font-semibold" role="heading" aria-level={2}>
+            <h2
+              className="text-lg font-display font-semibold"
+              role="heading"
+              aria-level={2}
+            >
               Process Requests
             </h2>
             <p className="text-sm text-muted-foreground">
@@ -155,7 +161,10 @@ export default function ProcessRequestOptions({
         <div className="space-y-4">
           {/* Session Selector */}
           <div>
-            <label htmlFor="session-select" className="block text-sm font-medium mb-1.5">
+            <label
+              htmlFor="session-select"
+              className="block text-sm font-medium mb-1.5"
+            >
               Session
             </label>
             <div className="relative">
@@ -178,13 +187,18 @@ export default function ProcessRequestOptions({
 
           {/* Source Fields */}
           <div>
-            <label className="block text-sm font-medium mb-1.5">Source Fields</label>
+            <label className="block text-sm font-medium mb-1.5">
+              Source Fields
+            </label>
             <p className="text-xs text-muted-foreground mb-2">
               Filter by field type (empty = all fields)
             </p>
             <div className="space-y-2">
               {SOURCE_FIELD_OPTIONS.map((opt) => (
-                <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                <label
+                  key={opt.value}
+                  className="flex items-center gap-2 cursor-pointer"
+                >
                   <input
                     type="checkbox"
                     checked={sourceFields.includes(opt.value)}
@@ -201,7 +215,10 @@ export default function ProcessRequestOptions({
 
           {/* Limit Input */}
           <div>
-            <label htmlFor="limit-input" className="block text-sm font-medium mb-1.5">
+            <label
+              htmlFor="limit-input"
+              className="block text-sm font-medium mb-1.5"
+            >
               Limit (optional)
             </label>
             <input
@@ -228,7 +245,7 @@ export default function ProcessRequestOptions({
                 onChange={(e) => setForceReprocess(e.target.checked)}
                 disabled={isProcessing}
                 className="w-4 h-4 rounded border-border text-primary focus:ring-primary/30 focus:ring-offset-0 disabled:opacity-50"
-                aria-describedby={forceReprocess ? 'force-warning' : undefined}
+                aria-describedby={forceReprocess ? "force-warning" : undefined}
               />
               <span className="text-sm font-medium group-hover:text-foreground transition-colors">
                 Force reprocess
@@ -243,8 +260,9 @@ export default function ProcessRequestOptions({
               >
                 <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
                 <p className="text-xs text-amber-800 dark:text-amber-200">
-                  <strong>Warning:</strong> This will clear processed flags and delete existing parsed
-                  requests for the selected scope, then reprocess from scratch.
+                  <strong>Warning:</strong> This will clear processed flags and
+                  delete existing parsed requests for the selected scope, then
+                  reprocess from scratch.
                 </p>
               </div>
             )}
@@ -286,7 +304,8 @@ export default function ProcessRequestOptions({
               </label>
             </div>
             <p className="text-xs text-muted-foreground">
-              Debug: AI prompts & resolution details. Trace: Very verbose (API params, SDK internals)
+              Debug: AI prompts & resolution details. Trace: Very verbose (API
+              params, SDK internals)
             </p>
           </div>
         </div>
@@ -313,7 +332,7 @@ export default function ProcessRequestOptions({
                 Processing...
               </>
             ) : (
-              'Process'
+              "Process"
             )}
           </button>
         </div>

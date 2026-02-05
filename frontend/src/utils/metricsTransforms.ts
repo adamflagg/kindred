@@ -5,12 +5,12 @@
  * testing and reduce component complexity.
  */
 
-import { getSessionChartLabel } from './sessionDisplay';
+import { getSessionChartLabel } from "./sessionDisplay";
 import {
   sortSessionDataByDate,
   sortPriorSessionDataByDate,
   type SessionDateLookup,
-} from './sessionUtils';
+} from "./sessionUtils";
 
 // ============================================================================
 // Common types
@@ -45,10 +45,12 @@ export interface GenderBreakdown {
   percentage: number;
 }
 
-export function transformGenderData(data: GenderBreakdown[] | undefined): ChartDataPoint[] {
+export function transformGenderData(
+  data: GenderBreakdown[] | undefined,
+): ChartDataPoint[] {
   if (!data?.length) return [];
   return data.map((g) => ({
-    name: g.gender || 'Unknown',
+    name: g.gender || "Unknown",
     value: g.count,
     percentage: g.percentage,
   }));
@@ -60,13 +62,15 @@ export interface GradeBreakdown {
   percentage: number;
 }
 
-export function transformGradeData(data: GradeBreakdown[] | undefined): ChartDataPoint[] {
+export function transformGradeData(
+  data: GradeBreakdown[] | undefined,
+): ChartDataPoint[] {
   if (!data?.length) return [];
   return data.map((g) => ({
-    name: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
+    name: g.grade !== null ? `Grade ${g.grade}` : "Unknown",
     value: g.count,
     percentage: g.percentage,
-    id: g.grade !== null ? g.grade : 'null',
+    id: g.grade !== null ? g.grade : "null",
   }));
 }
 
@@ -78,7 +82,7 @@ export interface SessionBreakdown {
 
 export function transformSessionData(
   data: SessionBreakdown[] | undefined,
-  sessionDateLookup: SessionDateLookup
+  sessionDateLookup: SessionDateLookup,
 ): ChartDataPoint[] {
   if (!data?.length) return [];
   const sorted = sortSessionDataByDate(data, sessionDateLookup);
@@ -96,7 +100,7 @@ export interface SessionLengthBreakdown {
 }
 
 export function transformSessionLengthData(
-  data: SessionLengthBreakdown[] | undefined
+  data: SessionLengthBreakdown[] | undefined,
 ): ChartDataPoint[] {
   if (!data?.length) return [];
   return data.map((s) => ({
@@ -113,11 +117,11 @@ export interface SummerYearsBreakdown {
 }
 
 export function transformSummerYearsData(
-  data: SummerYearsBreakdown[] | undefined
+  data: SummerYearsBreakdown[] | undefined,
 ): ChartDataPoint[] {
   if (!data?.length) return [];
   return data.map((y) => ({
-    name: y.summer_years === 1 ? '1 summer' : `${y.summer_years} summers`,
+    name: y.summer_years === 1 ? "1 summer" : `${y.summer_years} summers`,
     value: y.count,
     percentage: y.percentage,
     id: y.summer_years,
@@ -131,7 +135,7 @@ export interface FirstSummerYearBreakdown {
 }
 
 export function transformFirstSummerYearData(
-  data: FirstSummerYearBreakdown[] | undefined
+  data: FirstSummerYearBreakdown[] | undefined,
 ): ChartDataPoint[] {
   if (!data?.length) return [];
   return data.map((y) => ({
@@ -149,12 +153,20 @@ export interface NewVsReturningData {
 }
 
 export function transformNewVsReturningData(
-  data: NewVsReturningData | undefined
+  data: NewVsReturningData | undefined,
 ): ChartDataPoint[] {
   if (!data) return [];
   return [
-    { name: 'New Campers', value: data.new_count, percentage: data.new_percentage },
-    { name: 'Returning', value: data.returning_count, percentage: data.returning_percentage },
+    {
+      name: "New Campers",
+      value: data.new_count,
+      percentage: data.new_percentage,
+    },
+    {
+      name: "Returning",
+      value: data.returning_count,
+      percentage: data.returning_percentage,
+    },
   ];
 }
 
@@ -171,7 +183,7 @@ export interface RetentionSessionBreakdown {
 
 export function transformRetentionSessionData(
   data: RetentionSessionBreakdown[] | undefined,
-  sessionDateLookup: SessionDateLookup
+  sessionDateLookup: SessionDateLookup,
 ): ChartDataPoint[] {
   if (!data?.length) return [];
   const sorted = sortSessionDataByDate(data, sessionDateLookup);
@@ -190,11 +202,11 @@ export interface RetentionSummerYearsBreakdown {
 }
 
 export function transformRetentionSummerYearsData(
-  data: RetentionSummerYearsBreakdown[] | undefined
+  data: RetentionSummerYearsBreakdown[] | undefined,
 ): ChartDataPoint[] {
   if (!data?.length) return [];
   return data.map((y) => ({
-    name: y.summer_years === 1 ? '1 summer' : `${y.summer_years} summers`,
+    name: y.summer_years === 1 ? "1 summer" : `${y.summer_years} summers`,
     value: y.returned_count,
     percentage: y.retention_rate * 100,
   }));
@@ -208,7 +220,7 @@ export interface RetentionFirstSummerYearBreakdown {
 }
 
 export function transformRetentionFirstSummerYearData(
-  data: RetentionFirstSummerYearBreakdown[] | undefined
+  data: RetentionFirstSummerYearBreakdown[] | undefined,
 ): ChartDataPoint[] {
   if (!data?.length) return [];
   return data.map((y) => ({
@@ -227,7 +239,7 @@ export interface PriorSessionBreakdown {
 
 export function transformPriorSessionData(
   data: PriorSessionBreakdown[] | undefined,
-  sessionDateLookup: SessionDateLookup
+  sessionDateLookup: SessionDateLookup,
 ): ChartDataPoint[] {
   if (!data?.length) return [];
   const sorted = sortPriorSessionDataByDate(data, sessionDateLookup);
@@ -249,11 +261,11 @@ export interface DemographicBreakdown {
 
 export function transformDemographicTableData(
   data: DemographicBreakdown[] | undefined,
-  field: 'school' | 'city' | 'synagogue'
+  field: "school" | "city" | "synagogue",
 ): DemographicTableRow[] {
   if (!data?.length) return [];
   return data.map((item) => ({
-    name: (item[field] as string) || '',
+    name: (item[field] as string) || "",
     base_count: item.base_count,
     returned_count: item.returned_count,
     retention_rate: item.retention_rate,
@@ -264,15 +276,15 @@ export function transformDemographicTableData(
 // Trend utilities
 // ============================================================================
 
-export type TrendDirection = 'improving' | 'declining' | 'stable';
+export type TrendDirection = "improving" | "declining" | "stable";
 
 export function getTrendDirection(direction: TrendDirection): TrendDisplay {
   switch (direction) {
-    case 'improving':
-      return { label: 'Improving', colorClass: 'text-emerald-500' };
-    case 'declining':
-      return { label: 'Declining', colorClass: 'text-red-500' };
+    case "improving":
+      return { label: "Improving", colorClass: "text-emerald-500" };
+    case "declining":
+      return { label: "Declining", colorClass: "text-red-500" };
     default:
-      return { label: 'Stable', colorClass: 'text-muted-foreground' };
+      return { label: "Stable", colorClass: "text-muted-foreground" };
   }
 }

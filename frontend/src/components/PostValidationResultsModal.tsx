@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo } from "react";
 import {
   CheckCircle2,
   AlertTriangle,
@@ -11,9 +11,9 @@ import {
   Sparkles,
   TrendingUp,
   Target,
-  Activity
-} from 'lucide-react';
-import { Modal } from './ui/Modal';
+  Activity,
+} from "lucide-react";
+import { Modal } from "./ui/Modal";
 
 interface FieldStats {
   total: number;
@@ -60,7 +60,7 @@ interface ParsedIssue {
   primary: string;
   secondary?: string;
   badge?: string;
-  badgeColor?: 'red' | 'amber' | 'muted';
+  badgeColor?: "red" | "amber" | "muted";
   // For grade ratio - show all grades with counts
   gradeRatio?: {
     grades: Array<{ grade: number; count: number }>;
@@ -72,88 +72,111 @@ function parseIssueMessage(issue: Issue): ParsedIssue {
   const msg = issue.message;
 
   // Handle unsatisfied request messages
-  const unsatMatch = msg.match(/Request from (.+?) to (?:bunk with|avoid) (.+?) not satisfied/i);
+  const unsatMatch = msg.match(
+    /Request from (.+?) to (?:bunk with|avoid) (.+?) not satisfied/i,
+  );
   if (unsatMatch?.[1] && unsatMatch?.[2]) {
-    const requester = unsatMatch[1].replace(/\s*\(\d+\)$/, '').trim();
-    const requested = unsatMatch[2].replace(/\s*\(\d+\)$/, '').trim();
+    const requester = unsatMatch[1].replace(/\s*\(\d+\)$/, "").trim();
+    const requested = unsatMatch[2].replace(/\s*\(\d+\)$/, "").trim();
     return { primary: requester, secondary: requested };
   }
 
   // Handle capacity exceeded
-  const capacityMatch = msg.match(/Bunk (.+?) is over capacity.*?(\d+).*?(\d+)/i);
+  const capacityMatch = msg.match(
+    /Bunk (.+?) is over capacity.*?(\d+).*?(\d+)/i,
+  );
   if (capacityMatch?.[1]) {
-    const over = capacityMatch[2] && capacityMatch[3]
-      ? parseInt(capacityMatch[2]) - parseInt(capacityMatch[3])
-      : null;
+    const over =
+      capacityMatch[2] && capacityMatch[3]
+        ? parseInt(capacityMatch[2]) - parseInt(capacityMatch[3])
+        : null;
     return {
       primary: capacityMatch[1],
-      badge: over ? `+${over}` : 'over',
-      badgeColor: 'red'
+      badge: over ? `+${over}` : "over",
+      badgeColor: "red",
     };
   }
 
   // Handle unassigned campers
   const unassignedMatch = msg.match(/(.+?) is not assigned to any bunk/i);
   if (unassignedMatch?.[1]) {
-    const name = unassignedMatch[1].replace(/\s*\(\d+\)$/, '').trim();
-    return { primary: name, badge: 'no bunk', badgeColor: 'red' };
+    const name = unassignedMatch[1].replace(/\s*\(\d+\)$/, "").trim();
+    return { primary: name, badge: "no bunk", badgeColor: "red" };
   }
 
   // Handle level regression messages
-  const regressionMatch = msg.match(/(.+?) was in (.+?) last year but is now in (.+?) \(regression of (\d+) level/i);
-  if (regressionMatch?.[1] && regressionMatch?.[2] && regressionMatch?.[3] && regressionMatch?.[4]) {
-    const name = regressionMatch[1].replace(/\s*\(\d+\)$/, '').trim();
+  const regressionMatch = msg.match(
+    /(.+?) was in (.+?) last year but is now in (.+?) \(regression of (\d+) level/i,
+  );
+  if (
+    regressionMatch?.[1] &&
+    regressionMatch?.[2] &&
+    regressionMatch?.[3] &&
+    regressionMatch?.[4]
+  ) {
+    const name = regressionMatch[1].replace(/\s*\(\d+\)$/, "").trim();
     return {
       primary: name,
       secondary: `${regressionMatch[2]} → ${regressionMatch[3]}`,
       badge: `−${regressionMatch[4]}`,
-      badgeColor: 'amber'
+      badgeColor: "amber",
     };
   }
 
   // Handle age flow inversion messages
-  const ageFlowMatch = msg.match(/(.+?) \(avg age ([\d.]+)\) has older campers than (.+?) \(avg age ([\d.]+)\)/i);
-  if (ageFlowMatch?.[1] && ageFlowMatch?.[2] && ageFlowMatch?.[3] && ageFlowMatch?.[4]) {
+  const ageFlowMatch = msg.match(
+    /(.+?) \(avg age ([\d.]+)\) has older campers than (.+?) \(avg age ([\d.]+)\)/i,
+  );
+  if (
+    ageFlowMatch?.[1] &&
+    ageFlowMatch?.[2] &&
+    ageFlowMatch?.[3] &&
+    ageFlowMatch?.[4]
+  ) {
     return {
       primary: `${ageFlowMatch[1]} > ${ageFlowMatch[3]}`,
       badge: `${ageFlowMatch[2]} vs ${ageFlowMatch[4]}`,
-      badgeColor: 'amber'
+      badgeColor: "amber",
     };
   }
 
   // Handle isolation risk messages
-  const isolationMatch = msg.match(/(.+?) has (\d+) connected friends \+ (\d+) isolated camper/i);
+  const isolationMatch = msg.match(
+    /(.+?) has (\d+) connected friends \+ (\d+) isolated camper/i,
+  );
   if (isolationMatch?.[1] && isolationMatch?.[2] && isolationMatch?.[3]) {
     return {
       primary: isolationMatch[1],
       secondary: `${isolationMatch[2]} friends`,
       badge: `${isolationMatch[3]} alone`,
-      badgeColor: 'amber'
+      badgeColor: "amber",
     };
   }
 
   // Handle grade ratio warning messages - use all_grades for full breakdown
   // "Bunk B-6 has 75.0% of campers from grade 5 (exceeds 67% limit)"
-  if (issue.type === 'grade_ratio_warning' && issue.details) {
+  if (issue.type === "grade_ratio_warning" && issue.details) {
     const d = issue.details as {
       bunk_name?: string;
       total?: number;
-      all_grades?: Record<string, number>;  // { "7": 9, "6": 3 }
+      all_grades?: Record<string, number>; // { "7": 9, "6": 3 }
     };
     if (d.bunk_name && d.total !== undefined && d.all_grades) {
       // Convert all_grades object to sorted array (already sorted by count desc from backend)
       const grades = Object.entries(d.all_grades).map(([g, c]) => ({
         grade: parseInt(g, 10),
-        count: c as number
+        count: c as number,
       }));
       return {
         primary: d.bunk_name,
-        gradeRatio: { grades, total: d.total }
+        gradeRatio: { grades, total: d.total },
       };
     }
   }
   // Fallback regex for grade ratio if details not available
-  const gradeRatioMatch = msg.match(/Bunk (.+?) has ([\d.]+)% of campers from grade (\d+)/i);
+  const gradeRatioMatch = msg.match(
+    /Bunk (.+?) has ([\d.]+)% of campers from grade (\d+)/i,
+  );
   if (gradeRatioMatch?.[1] && gradeRatioMatch?.[2] && gradeRatioMatch?.[3]) {
     const percentage = parseFloat(gradeRatioMatch[2]);
     const grade = parseInt(gradeRatioMatch[3], 10);
@@ -164,42 +187,48 @@ function parseIssueMessage(issue: Issue): ParsedIssue {
       gradeRatio: {
         grades: [
           { grade, count: estimatedCount },
-          { grade: grade - 1, count: estimatedTotal - estimatedCount }
+          { grade: grade - 1, count: estimatedTotal - estimatedCount },
         ],
-        total: estimatedTotal
-      }
+        total: estimatedTotal,
+      },
     };
   }
 
   // Handle grade spread warning messages
   // "Bunk B-5 has too many different grades (4 grades, max allowed: 3)"
-  const gradeSpreadMatch = msg.match(/Bunk (.+?) has too many different grades \((\d+) grades?, max.*?(\d+)\)/i);
+  const gradeSpreadMatch = msg.match(
+    /Bunk (.+?) has too many different grades \((\d+) grades?, max.*?(\d+)\)/i,
+  );
   if (gradeSpreadMatch?.[1] && gradeSpreadMatch?.[2] && gradeSpreadMatch?.[3]) {
     return {
       primary: gradeSpreadMatch[1],
       badge: `${gradeSpreadMatch[2]}/${gradeSpreadMatch[3]} grades`,
-      badgeColor: 'amber'
+      badgeColor: "amber",
     };
   }
 
   // Handle grade adjacency warning messages
   // "Bunk B-5 has non-adjacent grades [2, 4] (missing grade 3)"
-  const gradeAdjMatch = msg.match(/Bunk (.+?) has non-adjacent grades.*missing grades? (.+?)\)/i);
+  const gradeAdjMatch = msg.match(
+    /Bunk (.+?) has non-adjacent grades.*missing grades? (.+?)\)/i,
+  );
   if (gradeAdjMatch?.[1] && gradeAdjMatch?.[2]) {
     return {
       primary: gradeAdjMatch[1],
       badge: `gap: gr ${gradeAdjMatch[2]}`,
-      badgeColor: 'amber'
+      badgeColor: "amber",
     };
   }
 
   // Handle no requests satisfied messages
-  const noReqMatch = msg.match(/(\d+) campers? have bunking requests but none were satisfied/i);
+  const noReqMatch = msg.match(
+    /(\d+) campers? have bunking requests but none were satisfied/i,
+  );
   if (noReqMatch?.[1]) {
     return {
-      primary: `${noReqMatch[1]} camper${parseInt(noReqMatch[1]) > 1 ? 's' : ''}`,
-      badge: '0 satisfied',
-      badgeColor: 'red'
+      primary: `${noReqMatch[1]} camper${parseInt(noReqMatch[1]) > 1 ? "s" : ""}`,
+      badge: "0 satisfied",
+      badgeColor: "red",
     };
   }
 
@@ -207,59 +236,85 @@ function parseIssueMessage(issue: Issue): ParsedIssue {
   const negReqMatch = msg.match(/(\d+) 'not bunk with' request\(s\) violated/i);
   if (negReqMatch?.[1]) {
     return {
-      primary: `${negReqMatch[1]} "avoid" request${parseInt(negReqMatch[1]) > 1 ? 's' : ''}`,
-      badge: 'violated',
-      badgeColor: 'red'
+      primary: `${negReqMatch[1]} "avoid" request${parseInt(negReqMatch[1]) > 1 ? "s" : ""}`,
+      badge: "violated",
+      badgeColor: "red",
     };
   }
 
   // Fallback - clean up the message
-  const cleaned = msg.replace(/\s*\(\d+\)/g, '').replace(/camper \d+/g, 'a camper');
-  return { primary: cleaned.length > 40 ? cleaned.slice(0, 37) + '...' : cleaned };
+  const cleaned = msg
+    .replace(/\s*\(\d+\)/g, "")
+    .replace(/camper \d+/g, "a camper");
+  return {
+    primary: cleaned.length > 40 ? cleaned.slice(0, 37) + "..." : cleaned,
+  };
 }
 
 // Get a human-readable label for issue types
 function getIssueTypeLabel(type: string): string {
   const labels: Record<string, string> = {
-    'unsatisfied_request': 'Unfulfilled Requests',
-    'capacity_exceeded': 'Over Capacity',
-    'age_spread': 'Age Spread Issues',
-    'grade_imbalance': 'Grade Imbalance',
-    'unassigned_camper': 'Unassigned Campers',
-    'conflicting_request': 'Conflicting Requests',
-    'level_regression': 'Level Regression',
-    'age_flow_inversion': 'Age Flow Issues',
-    'isolation_risk': 'Isolation Risk',
-    'no_requests_satisfied': 'No Requests Met',
-    'negative_request_violated': 'Separation Violated',
+    unsatisfied_request: "Unfulfilled Requests",
+    capacity_exceeded: "Over Capacity",
+    age_spread: "Age Spread Issues",
+    grade_imbalance: "Grade Imbalance",
+    unassigned_camper: "Unassigned Campers",
+    conflicting_request: "Conflicting Requests",
+    level_regression: "Level Regression",
+    age_flow_inversion: "Age Flow Issues",
+    isolation_risk: "Isolation Risk",
+    no_requests_satisfied: "No Requests Met",
+    negative_request_violated: "Separation Violated",
   };
-  return labels[type] || type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  return (
+    labels[type] ||
+    type.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())
+  );
 }
 
 // Format field names nicely
 function formatFieldName(fieldName: string): string {
   const labels: Record<string, string> = {
-    'bunk_with': 'Bunk With',
-    'not_bunk_with': 'Avoid',
-    'bunking_notes': 'Bunking Notes',
-    'internal_notes': 'Staff Notes',
-    'socialize_with': 'Socialize With',
+    bunk_with: "Bunk With",
+    not_bunk_with: "Avoid",
+    bunking_notes: "Bunking Notes",
+    internal_notes: "Staff Notes",
+    socialize_with: "Socialize With",
   };
-  return labels[fieldName] || fieldName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  return (
+    labels[fieldName] ||
+    fieldName.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())
+  );
 }
 
 // Satisfaction ring component - the visual centerpiece
-function SatisfactionRing({ rate, size = 120 }: { rate: number; size?: number }) {
+function SatisfactionRing({
+  rate,
+  size = 120,
+}: {
+  rate: number;
+  size?: number;
+}) {
   const percentage = Math.round(rate * 100);
   const radius = (size - 12) / 2;
   const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference - (rate * circumference);
+  const strokeDashoffset = circumference - rate * circumference;
 
   // Color based on satisfaction rate
   const getColor = () => {
-    if (rate >= 0.8) return { stroke: 'stroke-forest-500', text: 'text-forest-600', bg: 'bg-forest-500' };
-    if (rate >= 0.6) return { stroke: 'stroke-amber-500', text: 'text-amber-600', bg: 'bg-amber-500' };
-    return { stroke: 'stroke-red-500', text: 'text-red-600', bg: 'bg-red-500' };
+    if (rate >= 0.8)
+      return {
+        stroke: "stroke-forest-500",
+        text: "text-forest-600",
+        bg: "bg-forest-500",
+      };
+    if (rate >= 0.6)
+      return {
+        stroke: "stroke-amber-500",
+        text: "text-amber-600",
+        bg: "bg-amber-500",
+      };
+    return { stroke: "stroke-red-500", text: "text-red-600", bg: "bg-red-500" };
   };
 
   const colors = getColor();
@@ -305,18 +360,22 @@ function SatisfactionRing({ rate, size = 120 }: { rate: number; size?: number })
 
 // Grade colors for visual distinction
 const GRADE_COLORS = [
-  'bg-amber-500',    // dominant (first)
-  'bg-sky-400',      // second
-  'bg-emerald-400',  // third
-  'bg-violet-400',   // fourth
-  'bg-rose-400',     // fifth+
+  "bg-amber-500", // dominant (first)
+  "bg-sky-400", // second
+  "bg-emerald-400", // third
+  "bg-violet-400", // fourth
+  "bg-rose-400", // fifth+
 ];
 
 // Mini segmented grade bar component
-function GradeRatioBar({ ratio }: { ratio: NonNullable<ParsedIssue['gradeRatio']> }) {
+function GradeRatioBar({
+  ratio,
+}: {
+  ratio: NonNullable<ParsedIssue["gradeRatio"]>;
+}) {
   // Format grade as ordinal (5 -> 5th, 2 -> 2nd, etc.)
   const ordinal = (n: number): string => {
-    const s = ['th', 'st', 'nd', 'rd'] as const;
+    const s = ["th", "st", "nd", "rd"] as const;
     const v = n % 100;
     return n + (s[(v - 20) % 10] ?? s[v] ?? s[0]);
   };
@@ -330,7 +389,7 @@ function GradeRatioBar({ ratio }: { ratio: NonNullable<ParsedIssue['gradeRatio']
           return (
             <div
               key={g.grade}
-              className={`h-full ${GRADE_COLORS[Math.min(i, GRADE_COLORS.length - 1)]} ${i === 0 ? 'rounded-l-full' : ''} ${i === ratio.grades.length - 1 ? 'rounded-r-full' : ''}`}
+              className={`h-full ${GRADE_COLORS[Math.min(i, GRADE_COLORS.length - 1)]} ${i === 0 ? "rounded-l-full" : ""} ${i === ratio.grades.length - 1 ? "rounded-r-full" : ""}`}
               style={{ width: `${pct}%` }}
             />
           );
@@ -343,7 +402,9 @@ function GradeRatioBar({ ratio }: { ratio: NonNullable<ParsedIssue['gradeRatio']
             <span
               className={`w-2 h-2 rounded-full flex-shrink-0 ${GRADE_COLORS[Math.min(i, GRADE_COLORS.length - 1)]}`}
             />
-            <span className={`w-5 text-right tabular-nums font-semibold ${i === 0 ? 'text-foreground' : 'text-foreground/70'}`}>
+            <span
+              className={`w-5 text-right tabular-nums font-semibold ${i === 0 ? "text-foreground" : "text-foreground/70"}`}
+            >
               {g.count}
             </span>
             <span className="text-muted-foreground text-xs">
@@ -362,12 +423,12 @@ function IssueItem({ issue }: { issue: Issue }) {
 
   const getBadgeStyles = () => {
     switch (parsed.badgeColor) {
-      case 'red':
-        return 'bg-red-500/15 text-red-600';
-      case 'amber':
-        return 'bg-amber-500/15 text-amber-600';
+      case "red":
+        return "bg-red-500/15 text-red-600";
+      case "amber":
+        return "bg-amber-500/15 text-amber-600";
       default:
-        return 'bg-muted text-muted-foreground';
+        return "bg-muted text-muted-foreground";
     }
   };
 
@@ -399,7 +460,9 @@ function IssueItem({ issue }: { issue: Issue }) {
         )}
       </div>
       {parsed.badge && (
-        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium whitespace-nowrap ${getBadgeStyles()}`}>
+        <span
+          className={`text-[10px] px-1.5 py-0.5 rounded font-medium whitespace-nowrap ${getBadgeStyles()}`}
+        >
           {parsed.badge}
         </span>
       )}
@@ -411,7 +474,7 @@ function IssueItem({ issue }: { issue: Issue }) {
 function IssueGroup({
   type,
   issues,
-  severity
+  severity,
 }: {
   type: string;
   issues: Issue[];
@@ -421,32 +484,37 @@ function IssueGroup({
 
   const getSeverityStyles = () => {
     switch (severity) {
-      case 'error':
+      case "error":
         return {
-          bg: 'bg-red-500/8',
-          border: 'border-red-500/20',
-          icon: 'text-red-500',
-          badge: 'bg-red-500/15 text-red-600',
+          bg: "bg-red-500/8",
+          border: "border-red-500/20",
+          icon: "text-red-500",
+          badge: "bg-red-500/15 text-red-600",
         };
-      case 'warning':
+      case "warning":
         return {
-          bg: 'bg-amber-500/8',
-          border: 'border-amber-500/20',
-          icon: 'text-amber-500',
-          badge: 'bg-amber-500/15 text-amber-600',
+          bg: "bg-amber-500/8",
+          border: "border-amber-500/20",
+          icon: "text-amber-500",
+          badge: "bg-amber-500/15 text-amber-600",
         };
       default:
         return {
-          bg: 'bg-forest-500/8',
-          border: 'border-forest-500/20',
-          icon: 'text-forest-500',
-          badge: 'bg-forest-500/15 text-forest-600',
+          bg: "bg-forest-500/8",
+          border: "border-forest-500/20",
+          icon: "text-forest-500",
+          badge: "bg-forest-500/15 text-forest-600",
         };
     }
   };
 
   const styles = getSeverityStyles();
-  const Icon = severity === 'error' ? AlertTriangle : severity === 'warning' ? AlertCircle : Activity;
+  const Icon =
+    severity === "error"
+      ? AlertTriangle
+      : severity === "warning"
+        ? AlertCircle
+        : Activity;
 
   return (
     <div className={`rounded-xl border ${styles.border} overflow-hidden`}>
@@ -459,7 +527,9 @@ function IssueGroup({
           <span className="font-medium text-foreground text-sm">
             {getIssueTypeLabel(type)}
           </span>
-          <span className={`text-xs px-1.5 py-0.5 rounded-full ${styles.badge}`}>
+          <span
+            className={`text-xs px-1.5 py-0.5 rounded-full ${styles.badge}`}
+          >
             {issues.length}
           </span>
         </div>
@@ -471,7 +541,9 @@ function IssueGroup({
       </button>
 
       {isExpanded && (
-        <div className={`${styles.bg} border-t ${styles.border} max-h-40 overflow-y-auto`}>
+        <div
+          className={`${styles.bg} border-t ${styles.border} max-h-40 overflow-y-auto`}
+        >
           <div className="divide-y divide-border/30">
             {issues.map((issue, idx) => (
               <IssueItem key={idx} issue={issue} />
@@ -487,7 +559,7 @@ export default function PostValidationResultsModal({
   isOpen,
   onClose,
   results,
-  scenarioId
+  scenarioId,
 }: PostValidationResultsModalProps) {
   const [showDetails, setShowDetails] = useState(false);
 
@@ -511,51 +583,58 @@ export default function PostValidationResultsModal({
     }
 
     // Sort by severity (errors first, then warnings, then info)
-    const severityOrder: Record<string, number> = { error: 0, warning: 1, info: 2 };
+    const severityOrder: Record<string, number> = {
+      error: 0,
+      warning: 1,
+      info: 2,
+    };
     return [...byType.entries()].sort((a, b) => {
-      return (severityOrder[a[1].severity] || 3) - (severityOrder[b[1].severity] || 3);
+      return (
+        (severityOrder[a[1].severity] || 3) -
+        (severityOrder[b[1].severity] || 3)
+      );
     });
   }, [issues]);
 
   const hasIssues = issues.length > 0;
-  const errorCount = issues.filter(i => i.severity === 'error').length;
-  const warningCount = issues.filter(i => i.severity === 'warning').length;
+  const errorCount = issues.filter((i) => i.severity === "error").length;
+  const warningCount = issues.filter((i) => i.severity === "warning").length;
 
   // Determine overall status
   const getOverallStatus = () => {
     if (satisfactionRate >= 0.85 && errorCount === 0) {
       return {
-        label: 'Excellent!',
-        sublabel: 'Bunking looks great',
+        label: "Excellent!",
+        sublabel: "Bunking looks great",
         icon: Sparkles,
-        gradient: 'from-forest-500/10 to-forest-400/5',
-        iconBg: 'bg-forest-500 text-white shadow-lg shadow-forest-500/30'
+        gradient: "from-forest-500/10 to-forest-400/5",
+        iconBg: "bg-forest-500 text-white shadow-lg shadow-forest-500/30",
       };
     }
     if (satisfactionRate >= 0.7 && errorCount === 0) {
       return {
-        label: 'Looking Good',
+        label: "Looking Good",
         sublabel: `${Math.round(satisfactionRate * 100)}% requests satisfied`,
         icon: CheckCircle2,
-        gradient: 'from-forest-500/10 to-forest-400/5',
-        iconBg: 'bg-forest-500 text-white shadow-lg shadow-forest-500/30'
+        gradient: "from-forest-500/10 to-forest-400/5",
+        iconBg: "bg-forest-500 text-white shadow-lg shadow-forest-500/30",
       };
     }
     if (satisfactionRate >= 0.5) {
       return {
-        label: 'Needs Attention',
-        sublabel: `${hasIssues ? issues.length : 0} issue${issues.length !== 1 ? 's' : ''} to review`,
+        label: "Needs Attention",
+        sublabel: `${hasIssues ? issues.length : 0} issue${issues.length !== 1 ? "s" : ""} to review`,
         icon: AlertCircle,
-        gradient: 'from-amber-500/15 to-amber-400/5',
-        iconBg: 'bg-amber-500 text-white shadow-lg shadow-amber-500/30'
+        gradient: "from-amber-500/15 to-amber-400/5",
+        iconBg: "bg-amber-500 text-white shadow-lg shadow-amber-500/30",
       };
     }
     return {
-      label: 'Needs Work',
-      sublabel: 'Consider re-running the solver',
+      label: "Needs Work",
+      sublabel: "Consider re-running the solver",
       icon: AlertTriangle,
-      gradient: 'from-red-500/15 to-red-400/5',
-      iconBg: 'bg-red-500 text-white shadow-lg shadow-red-500/30'
+      gradient: "from-red-500/15 to-red-400/5",
+      iconBg: "bg-red-500 text-white shadow-lg shadow-red-500/30",
     };
   };
 
@@ -563,8 +642,12 @@ export default function PostValidationResultsModal({
   const StatusIcon = status.icon;
 
   const headerContent = (
-    <div className={`pl-5 pr-14 py-4 flex items-center gap-3 bg-gradient-to-r ${status.gradient}`}>
-      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${status.iconBg}`}>
+    <div
+      className={`pl-5 pr-14 py-4 flex items-center gap-3 bg-gradient-to-r ${status.gradient}`}
+    >
+      <div
+        className={`w-10 h-10 rounded-xl flex items-center justify-center ${status.iconBg}`}
+      >
         <StatusIcon className="w-5 h-5" />
       </div>
       <div>
@@ -588,11 +671,11 @@ export default function PostValidationResultsModal({
         onClick={onClose}
         className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
           satisfactionRate >= 0.7 && errorCount === 0
-            ? 'bg-forest-500 text-white hover:bg-forest-600 shadow-lg shadow-forest-500/20'
-            : 'bg-muted hover:bg-muted/80 text-foreground'
+            ? "bg-forest-500 text-white hover:bg-forest-600 shadow-lg shadow-forest-500/20"
+            : "bg-muted hover:bg-muted/80 text-foreground"
         }`}
       >
-        {satisfactionRate >= 0.7 && errorCount === 0 ? 'Looks Great!' : 'Close'}
+        {satisfactionRate >= 0.7 && errorCount === 0 ? "Looks Great!" : "Close"}
       </button>
     </div>
   ) : null;
@@ -606,96 +689,110 @@ export default function PostValidationResultsModal({
       size="md"
       noPadding
     >
+      {/* Satisfaction Ring + Quick Stats */}
+      <div className="px-5 py-5 flex items-center gap-6 border-b border-border/50">
+        {/* Ring */}
+        <SatisfactionRing rate={satisfactionRate} size={100} />
 
-        {/* Satisfaction Ring + Quick Stats */}
-        <div className="px-5 py-5 flex items-center gap-6 border-b border-border/50">
-          {/* Ring */}
-          <SatisfactionRing rate={satisfactionRate} size={100} />
-
-          {/* Stats grid */}
-          <div className="flex-1 grid grid-cols-2 gap-3">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-forest-500/10 flex items-center justify-center">
-                <Users className="w-4 h-4 text-forest-600" />
-              </div>
-              <div>
-                <p className="text-lg font-semibold text-foreground leading-tight">
-                  {statistics.assigned_campers}/{statistics.total_campers}
-                </p>
-                <p className="text-xs text-muted-foreground">assigned</p>
-              </div>
+        {/* Stats grid */}
+        <div className="flex-1 grid grid-cols-2 gap-3">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-forest-500/10 flex items-center justify-center">
+              <Users className="w-4 h-4 text-forest-600" />
             </div>
-
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-forest-500/10 flex items-center justify-center">
-                <Heart className="w-4 h-4 text-forest-600" />
-              </div>
-              <div>
-                <p className="text-lg font-semibold text-foreground leading-tight">
-                  {statistics.satisfied_requests}/{statistics.total_requests}
-                </p>
-                <p className="text-xs text-muted-foreground">requests met</p>
-              </div>
+            <div>
+              <p className="text-lg font-semibold text-foreground leading-tight">
+                {statistics.assigned_campers}/{statistics.total_campers}
+              </p>
+              <p className="text-xs text-muted-foreground">assigned</p>
             </div>
+          </div>
 
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-forest-500/10 flex items-center justify-center">
-                <Home className="w-4 h-4 text-forest-600" />
-              </div>
-              <div>
-                <p className="text-lg font-semibold text-foreground leading-tight">
-                  {statistics.bunks_at_capacity + statistics.bunks_under_capacity + statistics.bunks_over_capacity}
-                </p>
-                <p className="text-xs text-muted-foreground">bunks used</p>
-              </div>
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-forest-500/10 flex items-center justify-center">
+              <Heart className="w-4 h-4 text-forest-600" />
             </div>
+            <div>
+              <p className="text-lg font-semibold text-foreground leading-tight">
+                {statistics.satisfied_requests}/{statistics.total_requests}
+              </p>
+              <p className="text-xs text-muted-foreground">requests met</p>
+            </div>
+          </div>
 
-            <div className="flex items-center gap-2">
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                errorCount > 0 ? 'bg-red-500/10' : warningCount > 0 ? 'bg-amber-500/10' : 'bg-forest-500/10'
-              }`}>
-                <Target className={`w-4 h-4 ${
-                  errorCount > 0 ? 'text-red-600' : warningCount > 0 ? 'text-amber-600' : 'text-forest-600'
-                }`} />
-              </div>
-              <div>
-                <p className="text-lg font-semibold text-foreground leading-tight">
-                  {issues.length}
-                </p>
-                <p className="text-xs text-muted-foreground">issues</p>
-              </div>
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-forest-500/10 flex items-center justify-center">
+              <Home className="w-4 h-4 text-forest-600" />
+            </div>
+            <div>
+              <p className="text-lg font-semibold text-foreground leading-tight">
+                {statistics.bunks_at_capacity +
+                  statistics.bunks_under_capacity +
+                  statistics.bunks_over_capacity}
+              </p>
+              <p className="text-xs text-muted-foreground">bunks used</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div
+              className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                errorCount > 0
+                  ? "bg-red-500/10"
+                  : warningCount > 0
+                    ? "bg-amber-500/10"
+                    : "bg-forest-500/10"
+              }`}
+            >
+              <Target
+                className={`w-4 h-4 ${
+                  errorCount > 0
+                    ? "text-red-600"
+                    : warningCount > 0
+                      ? "text-amber-600"
+                      : "text-forest-600"
+                }`}
+              />
+            </div>
+            <div>
+              <p className="text-lg font-semibold text-foreground leading-tight">
+                {issues.length}
+              </p>
+              <p className="text-xs text-muted-foreground">issues</p>
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Issues List (if any) */}
-        {hasIssues && (
-          <div className="px-5 py-4 space-y-2 max-h-64 overflow-y-auto">
-            {groupedIssues.map(([type, { issues: typeIssues, severity }]) => (
-              <IssueGroup
-                key={type}
-                type={type}
-                issues={typeIssues}
-                severity={severity}
-              />
-            ))}
+      {/* Issues List (if any) */}
+      {hasIssues && (
+        <div className="px-5 py-4 space-y-2 max-h-64 overflow-y-auto">
+          {groupedIssues.map(([type, { issues: typeIssues, severity }]) => (
+            <IssueGroup
+              key={type}
+              type={type}
+              issues={typeIssues}
+              severity={severity}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Success state message */}
+      {!hasIssues && (
+        <div className="px-5 py-6 text-center">
+          <div className="w-12 h-12 rounded-2xl bg-forest-500/10 flex items-center justify-center mx-auto mb-3">
+            <Sparkles className="w-6 h-6 text-forest-500" />
           </div>
-        )}
+          <p className="text-sm text-muted-foreground">
+            No issues detected. All bunking assignments look great!
+          </p>
+        </div>
+      )}
 
-        {/* Success state message */}
-        {!hasIssues && (
-          <div className="px-5 py-6 text-center">
-            <div className="w-12 h-12 rounded-2xl bg-forest-500/10 flex items-center justify-center mx-auto mb-3">
-              <Sparkles className="w-6 h-6 text-forest-500" />
-            </div>
-            <p className="text-sm text-muted-foreground">
-              No issues detected. All bunking assignments look great!
-            </p>
-          </div>
-        )}
-
-        {/* Collapsible Details */}
-        {(statistics.field_stats && Object.keys(statistics.field_stats).length > 0) && (
+      {/* Collapsible Details */}
+      {statistics.field_stats &&
+        Object.keys(statistics.field_stats).length > 0 && (
           <div className="border-t border-border/50">
             <button
               onClick={() => setShowDetails(!showDetails)}
@@ -729,13 +826,15 @@ export default function PostValidationResultsModal({
                           {stats.satisfied}/{stats.total}
                         </span>
                       </div>
-                      <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
-                        stats.satisfaction_rate >= 0.8
-                          ? 'bg-forest-500/15 text-forest-600'
-                          : stats.satisfaction_rate >= 0.5
-                          ? 'bg-amber-500/15 text-amber-600'
-                          : 'bg-red-500/15 text-red-600'
-                      }`}>
+                      <span
+                        className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+                          stats.satisfaction_rate >= 0.8
+                            ? "bg-forest-500/15 text-forest-600"
+                            : stats.satisfaction_rate >= 0.5
+                              ? "bg-amber-500/15 text-amber-600"
+                              : "bg-red-500/15 text-red-600"
+                        }`}
+                      >
                         {Math.round(stats.satisfaction_rate * 100)}%
                       </span>
                     </div>
@@ -744,20 +843,25 @@ export default function PostValidationResultsModal({
                 {/* Capacity info */}
                 {statistics.bunks_over_capacity > 0 && (
                   <div className="mt-3 text-xs text-muted-foreground p-2 rounded-lg bg-amber-500/5 border border-amber-500/10">
-                    <span className="font-medium text-amber-600">Note:</span> {statistics.bunks_over_capacity} bunk{statistics.bunks_over_capacity > 1 ? 's are' : ' is'} over capacity
+                    <span className="font-medium text-amber-600">Note:</span>{" "}
+                    {statistics.bunks_over_capacity} bunk
+                    {statistics.bunks_over_capacity > 1 ? "s are" : " is"} over
+                    capacity
                   </div>
                 )}
 
                 {statistics.unassigned_campers > 0 && (
                   <div className="text-xs text-muted-foreground p-2 rounded-lg bg-red-500/5 border border-red-500/10">
-                    <span className="font-medium text-red-600">Note:</span> {statistics.unassigned_campers} camper{statistics.unassigned_campers > 1 ? 's need' : ' needs'} bunk assignment
+                    <span className="font-medium text-red-600">Note:</span>{" "}
+                    {statistics.unassigned_campers} camper
+                    {statistics.unassigned_campers > 1 ? "s need" : " needs"}{" "}
+                    bunk assignment
                   </div>
                 )}
               </div>
             )}
           </div>
         )}
-
     </Modal>
   );
 }

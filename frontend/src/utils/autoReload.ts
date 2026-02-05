@@ -7,7 +7,7 @@
  */
 
 /** Session storage key for tracking reload timestamps */
-export const AUTO_RELOAD_KEY = 'kindred_auto_reload_timestamp';
+export const AUTO_RELOAD_KEY = "kindred_auto_reload_timestamp";
 
 /** Cooldown period in milliseconds (10 seconds) */
 export const RELOAD_COOLDOWN_MS = 10000;

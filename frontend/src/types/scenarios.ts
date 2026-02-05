@@ -1,30 +1,30 @@
 // Types for Enhanced Hybrid Scenario Planning
 
-import type { Session } from './app-types';
-import type { AttendeesResponse, BunkPlansResponse } from './pocketbase-types';
+import type { Session } from "./app-types";
+import type { AttendeesResponse, BunkPlansResponse } from "./pocketbase-types";
 
 export interface ScenarioMetrics {
   id: string;
   scenario_name: string;
   total_campers: number;
-  
+
   // Request satisfaction
   requests_satisfied: number;
   requests_total: number;
   satisfaction_rate: number;
-  
+
   // Detailed request breakdowns
   together_requests_met: number;
   together_requests_total: number;
   apart_requests_met: number;
   apart_requests_total: number;
-  
+
   // Age/Grade cohesion metrics
   avg_age_variance_per_bunk: number;
   avg_grade_spread_per_bunk: number;
   max_age_spread_in_bunk: number;
   max_grade_spread_in_bunk: number;
-  
+
   // Bunk utilization
   bunks_used: number;
   total_bunks: number;
@@ -32,11 +32,11 @@ export interface ScenarioMetrics {
   min_occupancy: number;
   max_occupancy: number;
   unassigned_campers: number;
-  
+
   // Constraint violations
   hard_constraints_violated: number;
   soft_constraints_violated: number;
-  
+
   // Timing
   calculation_time_ms?: number;
 }
@@ -63,9 +63,9 @@ export interface SavedScenario {
   name: string;
   description?: string;
   session: string;
-  year: number;  // Year for filtering
+  year: number; // Year for filtering
   created_by?: string;
-  status?: 'draft' | 'review' | 'approved' | 'implemented' | 'archived';
+  status?: "draft" | "review" | "approved" | "implemented" | "archived";
   assignments: BunkAssignmentData[]; // Stored as JSON
   metrics?: ScenarioMetrics; // Pre-calculated metrics stored as JSON
   snapshot_date?: string;
@@ -118,7 +118,7 @@ export interface ScenarioComparison {
 // Request types for scenario planning
 export interface RequestSatisfactionDetail {
   request_id: string;
-  request_type: 'pair_together' | 'keep_apart';
+  request_type: "pair_together" | "keep_apart";
   camper_ids: string[];
   is_satisfied: boolean;
   reason?: string; // Why it wasn't satisfied
@@ -133,7 +133,7 @@ export interface BunkCohesionDetail {
 }
 
 // Planning mode state
-export type PlanningMode = 'view' | 'draft' | 'compare';
+export type PlanningMode = "view" | "draft" | "compare";
 
 export interface PlanningState {
   mode: PlanningMode;

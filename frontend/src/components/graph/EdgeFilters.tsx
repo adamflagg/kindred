@@ -3,8 +3,8 @@
  * Extracted from SocialNetworkGraph.tsx - handles edge type filtering
  */
 
-import { Filter } from 'lucide-react';
-import { EDGE_COLORS, EDGE_LABELS } from './constants';
+import { Filter } from "lucide-react";
+import { EDGE_COLORS, EDGE_LABELS } from "./constants";
 
 export interface EdgeFiltersProps {
   /** Current edge visibility state */

@@ -5,30 +5,30 @@
  * Uses fallback pattern: shows debug results if available, otherwise production.
  */
 
-import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import toast from 'react-hot-toast';
+import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import toast from "react-hot-toast";
 
-import { useYear } from '../../hooks/useCurrentYear';
-import { useApiWithAuth } from '../../hooks/useApiWithAuth';
+import { useYear } from "../../hooks/useCurrentYear";
+import { useApiWithAuth } from "../../hooks/useApiWithAuth";
 import {
   useGroupedRequests,
   useParsePhase1Only,
   useClearParseAnalysis,
   useClearSingleParseAnalysis,
   useParseResultsBatchDual,
-} from '../../hooks/useParseAnalysis';
-import { queryKeys, syncDataOptions } from '../../utils/queryKeys';
+} from "../../hooks/useParseAnalysis";
+import { queryKeys, syncDataOptions } from "../../utils/queryKeys";
 import {
   getDebugDropdownSessions,
   buildAgSessionCmIdMap,
   getEffectiveCmIds,
-} from '../../utils/debugParserUtils';
+} from "../../utils/debugParserUtils";
 
-import { ParseAnalysisFilters } from './ParseAnalysisFilters';
-import { ParseAnalysisGroupedList } from './ParseAnalysisGroupedList';
-import { ParseAnalysisDetail } from './ParseAnalysisDetail';
-import type { SourceFieldType, FieldParseResult } from './types';
+import { ParseAnalysisFilters } from "./ParseAnalysisFilters";
+import { ParseAnalysisGroupedList } from "./ParseAnalysisGroupedList";
+import { ParseAnalysisDetail } from "./ParseAnalysisDetail";
+import type { SourceFieldType, FieldParseResult } from "./types";
 
 interface Session {
   id: string;
@@ -45,10 +45,12 @@ export function ParseAnalysisTab() {
   // Filter state
   const [sessionCmId, setSessionCmId] = useState<number | null>(null);
   const [sourceField, setSourceField] = useState<SourceFieldType | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Selection state - now camper-level instead of field-level
-  const [selectedCamperCmId, setSelectedCamperCmId] = useState<number | null>(null);
+  const [selectedCamperCmId, setSelectedCamperCmId] = useState<number | null>(
+    null,
+  );
 
   // Operation tracking state - now at camper level
   const [reparsingCmIds, setReparsingCmIds] = useState<Set<number>>(new Set());
@@ -56,15 +58,15 @@ export function ParseAnalysisTab() {
 
   // Fetch all summer camp sessions (main + ag + embedded)
   const { data: allSessions = [] } = useQuery<Session[]>({
-    queryKey: [...queryKeys.sessions(currentYear), 'debug-filter'],
+    queryKey: [...queryKeys.sessions(currentYear), "debug-filter"],
     queryFn: async () => {
       const filter = encodeURIComponent(
-        `(session_type = "main" || session_type = "ag" || session_type = "embedded") && year = ${currentYear}`
+        `(session_type = "main" || session_type = "ag" || session_type = "embedded") && year = ${currentYear}`,
       );
       const res = await fetchWithAuth(
-        `/api/collections/camp_sessions/records?filter=${filter}&sort=name`
+        `/api/collections/camp_sessions/records?filter=${filter}&sort=name`,
       );
-      if (!res.ok) throw new Error('Failed to fetch sessions');
+      if (!res.ok) throw new Error("Failed to fetch sessions");
       const data = await res.json();
       return data.items || [];
     },
@@ -75,16 +77,19 @@ export function ParseAnalysisTab() {
   // Filter sessions for dropdown (main + embedded only, AG excluded)
   const dropdownSessions = useMemo(
     () => getDebugDropdownSessions(allSessions),
-    [allSessions]
+    [allSessions],
   );
 
   // Build AG session cm_id mapping (main cm_id -> [ag cm_ids])
-  const agSessionMap = useMemo(() => buildAgSessionCmIdMap(allSessions), [allSessions]);
+  const agSessionMap = useMemo(
+    () => buildAgSessionCmIdMap(allSessions),
+    [allSessions],
+  );
 
   // Get effective cm_ids for API call (includes AG children for main sessions)
   const effectiveCmIds = useMemo(
     () => getEffectiveCmIds(sessionCmId, agSessionMap),
-    [sessionCmId, agSessionMap]
+    [sessionCmId, agSessionMap],
   );
 
   // Fetch grouped requests (campers with their fields)
@@ -106,7 +111,10 @@ export function ParseAnalysisTab() {
   // Get the selected camper's data
   const selectedCamper = useMemo(() => {
     if (!selectedCamperCmId || !groupedData?.items) return null;
-    return groupedData.items.find((c) => c.requester_cm_id === selectedCamperCmId) ?? null;
+    return (
+      groupedData.items.find((c) => c.requester_cm_id === selectedCamperCmId) ??
+      null
+    );
   }, [selectedCamperCmId, groupedData?.items]);
 
   // Get filtered fields for selected camper (respects sourceField filter)
@@ -120,11 +128,12 @@ export function ParseAnalysisTab() {
   // Get original request IDs for the selected camper's visible fields
   const selectedFieldIds = useMemo(
     () => selectedCamperFields.map((f) => f.original_request_id),
-    [selectedCamperFields]
+    [selectedCamperFields],
   );
 
   // Fetch parse results for all visible fields of selected camper (batch call with dual sources)
-  const { data: batchResults, isLoading: isLoadingDetail } = useParseResultsBatchDual(selectedFieldIds);
+  const { data: batchResults, isLoading: isLoadingDetail } =
+    useParseResultsBatchDual(selectedFieldIds);
 
   // Map batch results to match the expected format (array aligned with selectedCamperFields)
   const parseResults = useMemo(() => {
@@ -154,10 +163,12 @@ export function ParseAnalysisTab() {
         original_request_ids: ids,
         force_reparse: true,
       });
-      toast.success(`Reparsed ${ids.length} field${ids.length !== 1 ? 's' : ''}`);
+      toast.success(
+        `Reparsed ${ids.length} field${ids.length !== 1 ? "s" : ""}`,
+      );
       await refetchGrouped();
     } catch {
-      toast.error('Failed to reparse');
+      toast.error("Failed to reparse");
     } finally {
       setReparsingCmIds((prev) => {
         const next = new Set(prev);
@@ -181,12 +192,16 @@ export function ParseAnalysisTab() {
     try {
       // Clear each field's debug result
       await Promise.all(
-        fieldsWithDebug.map((f) => clearSingleMutation.mutateAsync(f.original_request_id))
+        fieldsWithDebug.map((f) =>
+          clearSingleMutation.mutateAsync(f.original_request_id),
+        ),
       );
-      toast.success(`Cleared ${fieldsWithDebug.length} debug result${fieldsWithDebug.length !== 1 ? 's' : ''}`);
+      toast.success(
+        `Cleared ${fieldsWithDebug.length} debug result${fieldsWithDebug.length !== 1 ? "s" : ""}`,
+      );
       await refetchGrouped();
     } catch {
-      toast.error('Failed to clear debug results');
+      toast.error("Failed to clear debug results");
     } finally {
       setClearingCmIds((prev) => {
         const next = new Set(prev);
@@ -202,7 +217,7 @@ export function ParseAnalysisTab() {
 
     // Collect all original request IDs from visible grouped items
     const ids = groupedData.items.flatMap((camper) =>
-      camper.fields.map((f) => f.original_request_id)
+      camper.fields.map((f) => f.original_request_id),
     );
 
     // Track all camper IDs as reparsing
@@ -217,7 +232,7 @@ export function ParseAnalysisTab() {
       toast.success(`Reparsed ${ids.length} requests`);
       await refetchGrouped();
     } catch {
-      toast.error('Failed to reparse requests');
+      toast.error("Failed to reparse requests");
     } finally {
       setReparsingCmIds(new Set());
     }
@@ -232,8 +247,8 @@ export function ParseAnalysisTab() {
 
     const hasFilters = effectiveCmIds || sourceField;
     const confirmMessage = hasFilters
-      ? 'Are you sure you want to clear debug results for the current filtered view?'
-      : 'Are you sure you want to clear ALL debug parse analysis results?';
+      ? "Are you sure you want to clear debug results for the current filtered view?"
+      : "Are you sure you want to clear ALL debug parse analysis results?";
 
     if (!confirm(confirmMessage)) return;
 
@@ -242,14 +257,18 @@ export function ParseAnalysisTab() {
       toast.success(`Cleared ${result.deleted_count} debug results`);
       await refetchGrouped();
     } catch {
-      toast.error('Failed to clear results');
+      toast.error("Failed to clear results");
     }
   };
 
   // Count total fields for display
   const totalFields = useMemo(
-    () => groupedData?.items.reduce((sum, camper) => sum + camper.fields.length, 0) ?? 0,
-    [groupedData?.items]
+    () =>
+      groupedData?.items.reduce(
+        (sum, camper) => sum + camper.fields.length,
+        0,
+      ) ?? 0,
+    [groupedData?.items],
   );
 
   // Handle reparse from detail panel header
@@ -282,7 +301,9 @@ export function ParseAnalysisTab() {
         <div className="lg:col-span-4">
           <div className="flex items-center justify-between gap-4 mb-4">
             <div>
-              <h3 className="text-xl font-display font-bold text-foreground">Campers</h3>
+              <h3 className="text-xl font-display font-bold text-foreground">
+                Campers
+              </h3>
               {groupedData && groupedData.items.length > 0 && (
                 <span className="px-2 py-0.5 rounded-md bg-bark-100 dark:bg-bark-800 font-mono text-xs text-muted-foreground">
                   {groupedData.items.length} total
@@ -312,7 +333,11 @@ export function ParseAnalysisTab() {
             parseResults={parseResults}
             isLoading={isLoadingDetail}
             onReparse={handleDetailReparse}
-            isReparsing={selectedCamperCmId ? reparsingCmIds.has(selectedCamperCmId) : false}
+            isReparsing={
+              selectedCamperCmId
+                ? reparsingCmIds.has(selectedCamperCmId)
+                : false
+            }
           />
         </div>
       </div>

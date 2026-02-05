@@ -1,10 +1,14 @@
-import { useCallback, useEffect, useState, useRef } from 'react';
-import { useLocation, useNavigate } from 'react-router';
-import { useAuth } from '../contexts/AuthContext';
-import { getAuthMethods } from '../lib/pocketbase';
-import { Loader2, LogIn, Trees, Mountain, AlertCircle } from 'lucide-react';
-import { BrandedLogo } from '../components/BrandedLogo';
-import { getCampName, getPageDescription, getSsoDisplayName } from '../config/branding';
+import { useCallback, useEffect, useState, useRef } from "react";
+import { useLocation, useNavigate } from "react-router";
+import { useAuth } from "../contexts/AuthContext";
+import { getAuthMethods } from "../lib/pocketbase";
+import { Loader2, LogIn, Trees, Mountain, AlertCircle } from "lucide-react";
+import { BrandedLogo } from "../components/BrandedLogo";
+import {
+  getCampName,
+  getPageDescription,
+  getSsoDisplayName,
+} from "../config/branding";
 
 interface OAuth2Provider {
   name: string;
@@ -28,21 +32,24 @@ const LoginPage = () => {
 
   // Get the 'from' location if redirected from a protected route or query param
   const searchParams = new URLSearchParams(location.search);
-  const fromQuery = searchParams.get('from');
-  const from = fromQuery || location.state?.from?.pathname || '/';
+  const fromQuery = searchParams.get("from");
+  const from = fromQuery || location.state?.from?.pathname || "/";
 
   // Define handleProviderLogin BEFORE useEffects that use it
-  const handleProviderLogin = useCallback(async (provider: OAuth2Provider) => {
-    setIsLoading(true);
-    try {
-      await login(provider.name);
-      // On success, the auth change will trigger redirect
-    } catch (err: unknown) {
-      console.error('Login failed:', err);
-      setError('Login failed. Please try again.');
-      setIsLoading(false);
-    }
-  }, [login]);
+  const handleProviderLogin = useCallback(
+    async (provider: OAuth2Provider) => {
+      setIsLoading(true);
+      try {
+        await login(provider.name);
+        // On success, the auth change will trigger redirect
+      } catch (err: unknown) {
+        console.error("Login failed:", err);
+        setError("Login failed. Please try again.");
+        setIsLoading(false);
+      }
+    },
+    [login],
+  );
 
   // Fetch available auth providers
   useEffect(() => {
@@ -53,8 +60,8 @@ const LoginPage = () => {
         setProviders(oauth2Providers);
         setIsLoading(false);
       } catch (err) {
-        console.error('Failed to fetch auth providers:', err);
-        setError('Failed to load authentication options');
+        console.error("Failed to fetch auth providers:", err);
+        setError("Failed to load authentication options");
         setIsLoading(false);
       }
     };
@@ -72,7 +79,12 @@ const LoginPage = () => {
     }
 
     // Auto-login if there's only one provider and we haven't tried yet
-    if (providers.length === 1 && !autoLoginAttemptedRef.current && !error && providers[0]) {
+    if (
+      providers.length === 1 &&
+      !autoLoginAttemptedRef.current &&
+      !error &&
+      providers[0]
+    ) {
       autoLoginAttemptedRef.current = true;
       // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional one-time auto-login action
       handleProviderLogin(providers[0]);
@@ -85,15 +97,15 @@ const LoginPage = () => {
 
     // Common provider name mappings
     const nameMap: Record<string, string> = {
-      'oidc': getSsoDisplayName(),
-      'google': 'Google',
-      'github': 'GitHub',
-      'microsoft': 'Microsoft',
-      'discord': 'Discord',
-      'gitlab': 'GitLab',
-      'facebook': 'Facebook',
-      'twitter': 'Twitter',
-      'apple': 'Apple',
+      oidc: getSsoDisplayName(),
+      google: "Google",
+      github: "GitHub",
+      microsoft: "Microsoft",
+      discord: "Discord",
+      gitlab: "GitLab",
+      facebook: "Facebook",
+      twitter: "Twitter",
+      apple: "Apple",
     };
 
     return nameMap[provider.name] || provider.name;
@@ -106,7 +118,11 @@ const LoginPage = () => {
 
       {/* Mountain silhouette */}
       <div className="absolute bottom-0 left-0 right-0 h-48 opacity-[0.04]">
-        <svg viewBox="0 0 1440 320" className="w-full h-full" preserveAspectRatio="none">
+        <svg
+          viewBox="0 0 1440 320"
+          className="w-full h-full"
+          preserveAspectRatio="none"
+        >
           <path
             fill="currentColor"
             d="M0,224L60,213.3C120,203,240,181,360,181.3C480,181,600,203,720,197.3C840,192,960,160,1080,165.3C1200,171,1320,213,1380,234.7L1440,256L1440,320L1380,320C1320,320,1200,320,1080,320C960,320,840,320,720,320C600,320,480,320,360,320C240,320,120,320,60,320L0,320Z"
@@ -115,10 +131,16 @@ const LoginPage = () => {
       </div>
 
       {/* Floating decorative elements */}
-      <div className="absolute top-16 left-8 text-primary/5 animate-float" style={{ animationDelay: '0s' }}>
+      <div
+        className="absolute top-16 left-8 text-primary/5 animate-float"
+        style={{ animationDelay: "0s" }}
+      >
         <Trees className="w-20 h-20" />
       </div>
-      <div className="absolute bottom-24 right-12 text-primary/5 animate-float" style={{ animationDelay: '1.5s' }}>
+      <div
+        className="absolute bottom-24 right-12 text-primary/5 animate-float"
+        style={{ animationDelay: "1.5s" }}
+      >
         <Mountain className="w-16 h-16" />
       </div>
 
@@ -138,9 +160,7 @@ const LoginPage = () => {
             <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground mb-2">
               {getCampName()}
             </h1>
-            <p className="text-muted-foreground">
-              {getPageDescription()}
-            </p>
+            <p className="text-muted-foreground">{getPageDescription()}</p>
           </div>
 
           {/* Auth content */}
@@ -177,7 +197,7 @@ const LoginPage = () => {
                 <p className="mt-4 text-foreground font-medium">
                   {providers.length === 1 && providers[0]
                     ? `Connecting to ${getProviderDisplayName(providers[0])}...`
-                    : 'Preparing login...'}
+                    : "Preparing login..."}
                 </p>
                 <p className="mt-2 text-sm text-muted-foreground">
                   A popup window will appear shortly

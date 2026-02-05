@@ -1,16 +1,24 @@
-import React, { useState, useRef } from 'react';
-import { Upload, Loader2, FileText, AlertCircle, CheckCircle } from 'lucide-react';
-import { useApiWithAuth } from '../hooks/useApiWithAuth';
-import { syncService, type UploadError } from '../services/sync';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import toast from 'react-hot-toast';
-import { useCurrentYear } from '../hooks/useCurrentYear';
+import React, { useState, useRef } from "react";
+import {
+  Upload,
+  Loader2,
+  FileText,
+  AlertCircle,
+  CheckCircle,
+} from "lucide-react";
+import { useApiWithAuth } from "../hooks/useApiWithAuth";
+import { syncService, type UploadError } from "../services/sync";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
+import { useCurrentYear } from "../hooks/useCurrentYear";
 
 interface BunkRequestsUploadProps {
   compact?: boolean;
 }
 
-export default function BunkRequestsUpload({ compact = false }: BunkRequestsUploadProps) {
+export default function BunkRequestsUpload({
+  compact = false,
+}: BunkRequestsUploadProps) {
   const { fetchWithAuth } = useApiWithAuth();
   const queryClient = useQueryClient();
   const { currentYear } = useCurrentYear();
@@ -19,7 +27,8 @@ export default function BunkRequestsUpload({ compact = false }: BunkRequestsUplo
   const [showModal, setShowModal] = useState(false);
 
   const uploadMutation = useMutation({
-    mutationFn: (file: File) => syncService.uploadBunkRequestsCSV(file, fetchWithAuth, currentYear),
+    mutationFn: (file: File) =>
+      syncService.uploadBunkRequestsCSV(file, fetchWithAuth, currentYear),
     onSuccess: (data) => {
       const message = data.process_requests_started
         ? `CSV uploaded - syncing and processing requests...`
@@ -30,10 +39,10 @@ export default function BunkRequestsUpload({ compact = false }: BunkRequestsUplo
       setShowModal(false);
       setSelectedFile(null);
       if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+        fileInputRef.current.value = "";
       }
       // Invalidate sync status
-      queryClient.invalidateQueries({ queryKey: ['sync-status'] });
+      queryClient.invalidateQueries({ queryKey: ["sync-status"] });
     },
     onError: (error: UploadError) => {
       if (error.missing_columns) {
@@ -47,21 +56,23 @@ export default function BunkRequestsUpload({ compact = false }: BunkRequestsUplo
             </ul>
             {error.found_columns && error.found_columns.length > 0 && (
               <p className="text-xs mt-2 text-muted-foreground">
-                Found columns: {error.found_columns.join(', ')}
+                Found columns: {error.found_columns.join(", ")}
               </p>
             )}
           </div>,
-          { duration: 8000 }
+          { duration: 8000 },
         );
       } else {
         toast.error(
           <div>
-            <p>{error.error || 'Failed to upload CSV'}</p>
+            <p>{error.error || "Failed to upload CSV"}</p>
             {error.details && (
-              <p className="text-sm mt-1 text-muted-foreground">{error.details}</p>
+              <p className="text-sm mt-1 text-muted-foreground">
+                {error.details}
+              </p>
             )}
           </div>,
-          { duration: 6000 }
+          { duration: 6000 },
         );
       }
     },
@@ -71,12 +82,13 @@ export default function BunkRequestsUpload({ compact = false }: BunkRequestsUplo
     const file = event.target.files?.[0];
     if (file) {
       // Check file extension or MIME type
-      const isCSV = file.name.toLowerCase().endsWith('.csv') || file.type === 'text/csv';
+      const isCSV =
+        file.name.toLowerCase().endsWith(".csv") || file.type === "text/csv";
       if (isCSV) {
         setSelectedFile(file);
         setShowModal(true);
       } else {
-        toast.error('Please select a CSV file (must have .csv extension)');
+        toast.error("Please select a CSV file (must have .csv extension)");
       }
     }
   };
@@ -123,7 +135,9 @@ export default function BunkRequestsUpload({ compact = false }: BunkRequestsUplo
       {showModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
           <div className="card-lodge p-6 max-w-md w-full max-h-[90vh] overflow-y-auto animate-scale-in">
-            <h2 className="text-xl font-display font-bold mb-4">Upload Bunk Requests CSV</h2>
+            <h2 className="text-xl font-display font-bold mb-4">
+              Upload Bunk Requests CSV
+            </h2>
 
             {selectedFile && (
               <div className="mb-4 p-4 bg-muted/30 rounded-xl flex items-center gap-3 border border-border/50">
@@ -131,7 +145,9 @@ export default function BunkRequestsUpload({ compact = false }: BunkRequestsUplo
                   <FileText className="w-5 h-5 text-primary" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm truncate">{selectedFile.name}</p>
+                  <p className="font-medium text-sm truncate">
+                    {selectedFile.name}
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     {(selectedFile.size / 1024).toFixed(1)} KB
                   </p>
@@ -164,7 +180,7 @@ export default function BunkRequestsUpload({ compact = false }: BunkRequestsUplo
                   setShowModal(false);
                   setSelectedFile(null);
                   if (fileInputRef.current) {
-                    fileInputRef.current.value = '';
+                    fileInputRef.current.value = "";
                   }
                 }}
                 className="btn-ghost py-2.5"

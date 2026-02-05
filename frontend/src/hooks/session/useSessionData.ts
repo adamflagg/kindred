@@ -3,10 +3,10 @@
  * Extracted from SessionView.tsx for better separation of concerns
  */
 
-import { useQuery } from '@tanstack/react-query';
-import type { Session, Camper, BunkRequest, Bunk } from '../../types/app-types';
-import { pb } from '../../lib/pocketbase';
-import { fetchCampersForSession } from '../../utils/pocketbaseDataFetchers';
+import { useQuery } from "@tanstack/react-query";
+import type { Session, Camper, BunkRequest, Bunk } from "../../types/app-types";
+import { pb } from "../../lib/pocketbase";
+import { fetchCampersForSession } from "../../utils/pocketbaseDataFetchers";
 
 // ============================================================================
 // Types
@@ -42,9 +42,11 @@ export interface UseBunkRequestsCountOptions {
  * Extract unique bunk IDs from bunk plans, filtering out nulls
  */
 export function extractBunkIds(
-  bunkPlans: Array<{ bunk: string | null }>
+  bunkPlans: Array<{ bunk: string | null }>,
 ): string[] {
-  return [...new Set(bunkPlans.map((bp) => bp.bunk).filter(Boolean))] as string[];
+  return [
+    ...new Set(bunkPlans.map((bp) => bp.bunk).filter(Boolean)),
+  ] as string[];
 }
 
 /**
@@ -52,10 +54,10 @@ export function extractBunkIds(
  */
 export function filterAgBunks<T extends { name: string }>(
   bunks: T[],
-  includeAg: boolean
+  includeAg: boolean,
 ): T[] {
   return bunks.filter((b) =>
-    includeAg ? b.name.startsWith('AG-') : !b.name.startsWith('AG-')
+    includeAg ? b.name.startsWith("AG-") : !b.name.startsWith("AG-"),
   );
 }
 
@@ -63,7 +65,7 @@ export function filterAgBunks<T extends { name: string }>(
  * Deduplicate bunks by name, keeping the first occurrence
  */
 export function deduplicateBunksByName<T extends { name: string }>(
-  bunks: T[]
+  bunks: T[],
 ): T[] {
   const bunkMap = new Map<string, T>();
   bunks.forEach((bunk) => {
@@ -79,7 +81,7 @@ export function deduplicateBunksByName<T extends { name: string }>(
  */
 export function mergeCampers<T extends { id: string }>(
   mainCampers: T[],
-  additionalCampers: T[]
+  additionalCampers: T[],
 ): T[] {
   const existingIds = new Set(mainCampers.map((c) => c.id));
   const newCampers = additionalCampers.filter((c) => !existingIds.has(c.id));
@@ -92,7 +94,7 @@ export function mergeCampers<T extends { id: string }>(
 export function buildBunkRequestsFilter(
   sessionCmId: number,
   year: number,
-  includeAll: boolean
+  includeAll: boolean,
 ): string {
   let filter = `session_id = ${sessionCmId} && year = ${year}`;
   if (!includeAll) {
@@ -107,11 +109,11 @@ export function buildBunkRequestsFilter(
 
 async function fetchBunksForSession(
   sessionCmId: number,
-  currentYear: number
+  currentYear: number,
 ): Promise<Bunk[]> {
   // Get session by CampMinder ID
   const sessionResp = await pb
-    .collection<Session>('camp_sessions')
+    .collection<Session>("camp_sessions")
     .getList(1, 1, {
       filter: `cm_id = ${sessionCmId} && year = ${currentYear}`,
     });
@@ -127,7 +129,7 @@ async function fetchBunksForSession(
 
   // Get bunk plans for this session
   const filter = `session = "${session.id}" && year = ${currentYear}`;
-  const bunkPlans = await pb.collection('bunk_plans').getFullList({ filter });
+  const bunkPlans = await pb.collection("bunk_plans").getFullList({ filter });
 
   if (bunkPlans.length === 0) return [];
 
@@ -137,14 +139,14 @@ async function fetchBunksForSession(
 
   // Fetch bunks - use batched query for small sets, full scan for large
   if (bunkIds.length <= 50) {
-    return pb.collection<Bunk>('bunks').getFullList({
-      filter: bunkIds.map((id) => `id = "${id}"`).join(' || '),
-      sort: 'name',
+    return pb.collection<Bunk>("bunks").getFullList({
+      filter: bunkIds.map((id) => `id = "${id}"`).join(" || "),
+      sort: "name",
     });
   } else {
     const allBunks = await pb
-      .collection<Bunk>('bunks')
-      .getFullList({ sort: 'name' });
+      .collection<Bunk>("bunks")
+      .getFullList({ sort: "name" });
     const bunkIdSet = new Set(bunkIds);
     return allBunks.filter((b) => bunkIdSet.has(b.id));
   }
@@ -162,7 +164,7 @@ export function useSessionBunks({
 }: UseSessionBunksOptions) {
   return useQuery({
     queryKey: [
-      'bunks',
+      "bunks",
       selectedSession,
       sessionCmId,
       agSessions.map((s) => s.id).sort(),
@@ -182,14 +184,17 @@ export function useSessionBunks({
       }
 
       // For main sessions, we need to handle AG bunks specially
-      const allBunks = await fetchBunksForSession(actualSessionCmId, currentYear);
+      const allBunks = await fetchBunksForSession(
+        actualSessionCmId,
+        currentYear,
+      );
       const mainSessionBunks = filterAgBunks(allBunks, false);
       const mainSessionAgBunks = filterAgBunks(allBunks, true);
 
       // Fetch AG bunks from AG sessions if they exist
       if (agSessions.length > 0) {
         const agBunkPromises = agSessions.map((agSession) =>
-          fetchBunksForSession(agSession.cm_id, currentYear).catch(() => [])
+          fetchBunksForSession(agSession.cm_id, currentYear).catch(() => []),
         );
         const agBunksArrays = await Promise.all(agBunkPromises);
         const agBunks = agBunksArrays.flat();
@@ -224,7 +229,7 @@ export function useSessionCampers({
 }: UseSessionCampersOptions) {
   return useQuery({
     queryKey: [
-      'campers',
+      "campers",
       selectedSession,
       agSessions.map((s) => s.id).sort(),
       scenarioId,
@@ -233,18 +238,18 @@ export function useSessionCampers({
       if (!selectedSession) return [];
 
       const getCampersForSession = async (
-        sessionCmId: string | number
+        sessionCmId: string | number,
       ): Promise<Camper[]> => {
         try {
           const sessionResp = await pb
-            .collection<Session>('camp_sessions')
+            .collection<Session>("camp_sessions")
             .getList(1, 1, {
               filter: `cm_id = ${sessionCmId} && year = ${currentYear}`,
             });
 
           if (sessionResp.items.length === 0) {
             throw new Error(
-              `Session with CampMinder ID ${sessionCmId} not found`
+              `Session with CampMinder ID ${sessionCmId} not found`,
             );
           }
 
@@ -257,10 +262,10 @@ export function useSessionCampers({
             targetSession.id,
             Number(sessionCmId),
             currentYear,
-            scenarioId
+            scenarioId,
           );
         } catch (error) {
-          console.error('Error fetching campers:', error);
+          console.error("Error fetching campers:", error);
           return [];
         }
       };
@@ -271,7 +276,7 @@ export function useSessionCampers({
       // Get AG session campers and merge
       if (agSessions.length > 0) {
         const agCamperPromises = agSessions.map((agSession) =>
-          getCampersForSession(agSession.cm_id.toString())
+          getCampersForSession(agSession.cm_id.toString()),
         );
         const agCampersArrays = await Promise.all(agCamperPromises);
         const agCampers = agCampersArrays.flat();
@@ -299,7 +304,7 @@ export function useBunkRequestsCount({
 }: UseBunkRequestsCountOptions) {
   return useQuery({
     queryKey: [
-      'bunk-requests-count',
+      "bunk-requests-count",
       selectedSession,
       currentYear,
       subSessions.map((s) => s.cm_id).sort(),
@@ -308,20 +313,22 @@ export function useBunkRequestsCount({
     queryFn: async (): Promise<number> => {
       if (!selectedSession) return 0;
 
-      const getRequestsCount = async (
-        sessionCmId: number
-      ): Promise<number> => {
+      const getRequestsCount = async (sessionCmId: number): Promise<number> => {
         try {
-          const filter = buildBunkRequestsFilter(sessionCmId, currentYear, false);
+          const filter = buildBunkRequestsFilter(
+            sessionCmId,
+            currentYear,
+            false,
+          );
           const requests = await pb
-            .collection<BunkRequest>('bunk_requests')
+            .collection<BunkRequest>("bunk_requests")
             .getFullList({
               filter,
-              sort: '-priority,requester_id',
+              sort: "-priority,requester_id",
             });
           return requests.length;
         } catch (error) {
-          console.error('Error fetching bunk requests:', error);
+          console.error("Error fetching bunk requests:", error);
           return 0;
         }
       };
@@ -340,7 +347,7 @@ export function useBunkRequestsCount({
       // Sub-sessions
       if (subSessions.length > 0) {
         const subCountPromises = subSessions.map((s) =>
-          getRequestsCount(s.cm_id)
+          getRequestsCount(s.cm_id),
         );
         const subCounts = await Promise.all(subCountPromises);
         totalCount += subCounts.reduce((a, b) => a + b, 0);
@@ -349,7 +356,7 @@ export function useBunkRequestsCount({
       // AG sessions
       if (agSessions.length > 0) {
         const agCountPromises = agSessions.map((s) =>
-          getRequestsCount(s.cm_id)
+          getRequestsCount(s.cm_id),
         );
         const agCounts = await Promise.all(agCountPromises);
         totalCount += agCounts.reduce((a, b) => a + b, 0);

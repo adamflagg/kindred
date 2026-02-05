@@ -3,26 +3,26 @@
  * These types compose or extend the auto-generated PocketBase types
  */
 
-import type { 
-  BunksResponse, 
-  CampSessionsResponse, 
-  AttendeesResponse
-} from './pocketbase-types';
+import type {
+  BunksResponse,
+  CampSessionsResponse,
+  AttendeesResponse,
+} from "./pocketbase-types";
 
 /**
  * UI representation of a camper that combines data from multiple tables
  * Used throughout the frontend for displaying and managing camper information
  */
 export interface Camper {
-  id: string;  // Composite ID: "person_id:session_id"
+  id: string; // Composite ID: "person_id:session_id"
   attendee_id?: string; // PocketBase attendee ID if needed
   name: string;
   age: number;
   grade: number;
-  gender: 'M' | 'F' | 'NB';
-  session_cm_id: number;  // CampMinder session ID
-  assigned_bunk_cm_id?: number;  // CampMinder bunk ID
-  assigned_bunk?: string;  // PocketBase bunk ID relation
+  gender: "M" | "F" | "NB";
+  session_cm_id: number; // CampMinder session ID
+  assigned_bunk_cm_id?: number; // CampMinder bunk ID
+  assigned_bunk?: string; // PocketBase bunk ID relation
   person_cm_id: number; // CampMinder person ID
   created: string;
   updated: string;
@@ -108,7 +108,21 @@ export interface Session {
   name: string;
   start_date: string;
   end_date: string;
-  session_type: 'main' | 'embedded' | 'ag' | 'family' | 'quest' | 'training' | 'bmitzvah' | 'tli' | 'adult' | 'school' | 'hebrew' | 'teen' | 'taste' | 'other';
+  session_type:
+    | "main"
+    | "embedded"
+    | "ag"
+    | "family"
+    | "quest"
+    | "training"
+    | "bmitzvah"
+    | "tli"
+    | "adult"
+    | "school"
+    | "hebrew"
+    | "teen"
+    | "taste"
+    | "other";
   cm_id: number; // CampMinder ID, used in queries
   year: number;
   code?: string;
@@ -145,23 +159,23 @@ export interface BunkRequest {
   id: string;
   requester_id: number; // CampMinder person ID
   requestee_id?: number | null; // CampMinder person ID
-  request_type: 'bunk_with' | 'not_bunk_with' | 'age_preference';
+  request_type: "bunk_with" | "not_bunk_with" | "age_preference";
   priority?: number;
   year: number;
   session_id: number; // CampMinder session ID
-  status: 'resolved' | 'pending' | 'declined';
+  status: "resolved" | "pending" | "declined";
   original_text?: string;
   confidence_score?: number;
   parse_notes?: string;
   socialize_explain?: string;
-  source?: 'family' | 'staff' | 'notes';
-  source_field?: string;  // CSV field this came from (bunk_with, not_bunk_with, etc.)
+  source?: "family" | "staff" | "notes";
+  source_field?: string; // CSV field this came from (bunk_with, not_bunk_with, etc.)
   is_reciprocal?: boolean;
   priority_locked?: boolean;
   manual_notes?: string;
   // Age preference specific
-  age_preference_target?: string;  // 'older' or 'younger'
-  metadata?: Record<string, unknown>;  // JSON metadata field
+  age_preference_target?: string; // 'older' or 'younger'
+  metadata?: Record<string, unknown>; // JSON metadata field
   ai_reasoning?: {
     csv_source_field?: string;
     [key: string]: unknown;
@@ -180,14 +194,18 @@ export interface BunkRequest {
   updated: string;
 }
 
-export type ConstraintType = 'pair_together' | 'keep_apart' | 'age_preference' | 'bunk_preference';
+export type ConstraintType =
+  | "pair_together"
+  | "keep_apart"
+  | "age_preference"
+  | "bunk_preference";
 
 export interface Constraint {
   id: string;
   description: string; // Required in DB
   session_id: number; // CampMinder session ID
-  scope?: 'global' | 'single' | 'pair';
-  severity?: 'hard' | 'soft';
+  scope?: "global" | "single" | "pair";
+  severity?: "hard" | "soft";
   single_camper_id?: number; // CampMinder person ID for single constraints
   pair_camper1_id?: number; // CampMinder person ID for pair constraints
   pair_camper2_id?: number; // CampMinder person ID for pair constraints
@@ -210,7 +228,7 @@ export interface Constraint {
 export interface SolverRun {
   id: string;
   session: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: "pending" | "running" | "completed" | "failed";
   constraints_snapshot?: Record<string, unknown>;
   locked_bunks?: string[];
   results?: {
@@ -243,7 +261,7 @@ export interface SolverRun {
 // UI-specific types
 export interface DragItem {
   id: string;
-  type: 'camper';
+  type: "camper";
   camper: Camper;
   sourceBunkId?: string;
 }

@@ -6,7 +6,7 @@
 
 // Session types that should appear in the dropdown for debug parser
 // (AG is excluded because it's grouped with parent main session)
-const DEBUG_DROPDOWN_SESSION_TYPES = ['main', 'embedded'] as const;
+const DEBUG_DROPDOWN_SESSION_TYPES = ["main", "embedded"] as const;
 
 /**
  * Session with type information for debug parser
@@ -24,13 +24,15 @@ export interface DebugSession {
  * - Includes: main, embedded sessions
  * - Excludes: AG (grouped with parent)
  */
-export function getDebugDropdownSessions(sessions: DebugSession[]): DebugSession[] {
+export function getDebugDropdownSessions(
+  sessions: DebugSession[],
+): DebugSession[] {
   return sessions.filter(
     (s) =>
       s.session_type &&
       DEBUG_DROPDOWN_SESSION_TYPES.includes(
-        s.session_type as (typeof DEBUG_DROPDOWN_SESSION_TYPES)[number]
-      )
+        s.session_type as (typeof DEBUG_DROPDOWN_SESSION_TYPES)[number],
+      ),
   );
 }
 
@@ -42,11 +44,13 @@ export function getDebugDropdownSessions(sessions: DebugSession[]): DebugSession
  * - Key: main session cm_id
  * - Value: array of AG session cm_ids that belong to this main session
  */
-export function buildAgSessionCmIdMap(sessions: DebugSession[]): Map<number, number[]> {
+export function buildAgSessionCmIdMap(
+  sessions: DebugSession[],
+): Map<number, number[]> {
   const map = new Map<number, number[]>();
 
   sessions.forEach((session) => {
-    if (session.session_type === 'ag' && session.parent_id) {
+    if (session.session_type === "ag" && session.parent_id) {
       const existing = map.get(session.parent_id) || [];
       existing.push(session.cm_id);
       map.set(session.parent_id, existing);
@@ -67,7 +71,7 @@ export function buildAgSessionCmIdMap(sessions: DebugSession[]): Map<number, num
  */
 export function getEffectiveCmIds(
   selectedCmId: number | null,
-  agSessionMap: Map<number, number[]>
+  agSessionMap: Map<number, number[]>,
 ): number[] | undefined {
   if (selectedCmId === null) {
     return undefined;
@@ -80,15 +84,16 @@ export function getEffectiveCmIds(
 /**
  * Filter items by requester name (case-insensitive)
  */
-export function filterByRequesterName<T extends { requester_name: string | null }>(
-  items: T[],
-  searchQuery: string
-): T[] {
+export function filterByRequesterName<
+  T extends { requester_name: string | null },
+>(items: T[], searchQuery: string): T[] {
   const trimmed = searchQuery.trim();
   if (!trimmed) {
     return items;
   }
 
   const term = trimmed.toLowerCase();
-  return items.filter((item) => item.requester_name?.toLowerCase().includes(term));
+  return items.filter((item) =>
+    item.requester_name?.toLowerCase().includes(term),
+  );
 }

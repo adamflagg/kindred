@@ -1,12 +1,15 @@
-import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Search, UserCheck } from 'lucide-react';
-import { pb } from '../lib/pocketbase';
-import type { BunkRequest, Camper } from '../types/app-types';
-import type { PersonsResponse, AttendeesResponse } from '../types/pocketbase-types';
-import { calculateAge } from '../utils/ageCalculator';
-import { getDisplayAgeForYear } from '../utils/displayAge';
-import { Modal } from './ui/Modal';
+import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Search, UserCheck } from "lucide-react";
+import { pb } from "../lib/pocketbase";
+import type { BunkRequest, Camper } from "../types/app-types";
+import type {
+  PersonsResponse,
+  AttendeesResponse,
+} from "../types/pocketbase-types";
+import { calculateAge } from "../utils/ageCalculator";
+import { getDisplayAgeForYear } from "../utils/displayAge";
+import { Modal } from "./ui/Modal";
 
 interface ManualResolutionModalProps {
   request: BunkRequest;
@@ -20,14 +23,14 @@ interface ManualResolutionModalProps {
 
 // Helper function to format camper name
 function formatCamperName(camper: Camper): string {
-  const firstName = camper.first_name || '';
-  const preferredName = camper.preferred_name?.replace(/^["']|["']$/g, '');
-  const lastName = camper.last_name || '';
-  
+  const firstName = camper.first_name || "";
+  const preferredName = camper.preferred_name?.replace(/^["']|["']$/g, "");
+  const lastName = camper.last_name || "";
+
   if (preferredName && preferredName !== firstName) {
     return `${firstName} "${preferredName}" ${lastName}`.trim();
   }
-  
+
   return `${firstName} ${lastName}`.trim();
 }
 
@@ -38,47 +41,54 @@ export default function ManualResolutionModal({
   year,
   isOpen,
   onClose,
-  onResolve
+  onResolve,
 }: ManualResolutionModalProps) {
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedCamperId, setSelectedCamperId] = useState<number | null>(null);
 
   // Fetch all campers for this session
   const { data: allCampers = [] } = useQuery({
-    queryKey: ['session-campers', sessionId, year],
+    queryKey: ["session-campers", sessionId, year],
     queryFn: async () => {
       // Get attendees for this specific session
       const attendeeFilter = `session_id = ${sessionId} && status = "enrolled" && year = ${year}`;
-      const attendees = await pb.collection('attendees').getFullList<AttendeesResponse>({ filter: attendeeFilter });
-      
+      const attendees = await pb
+        .collection("attendees")
+        .getFullList<AttendeesResponse>({ filter: attendeeFilter });
+
       if (attendees.length === 0) return [];
-      
+
       // Collect unique person CampMinder IDs
-      const personCmIds = [...new Set(attendees.map(a => a.person_id))];
-      
+      const personCmIds = [...new Set(attendees.map((a) => a.person_id))];
+
       // Load persons in batches
       const persons: PersonsResponse[] = [];
       const BATCH_SIZE = 50;
-      
+
       for (let i = 0; i < personCmIds.length; i += BATCH_SIZE) {
         const batch = personCmIds.slice(i, i + BATCH_SIZE);
-        const batchFilter = batch.map(id => `person_id = ${id}`).join(' || ');
-        
+        const batchFilter = batch.map((id) => `person_id = ${id}`).join(" || ");
+
         try {
-          const batchPersons = await pb.collection('persons').getFullList<PersonsResponse>({ filter: batchFilter });
+          const batchPersons = await pb
+            .collection("persons")
+            .getFullList<PersonsResponse>({ filter: batchFilter });
           persons.push(...batchPersons);
         } catch (error) {
-          console.error(`Error fetching person batch ${Math.floor(i / BATCH_SIZE) + 1}:`, error);
+          console.error(
+            `Error fetching person batch ${Math.floor(i / BATCH_SIZE) + 1}:`,
+            error,
+          );
         }
       }
-      
+
       // Transform attendees to campers
       const campers: Camper[] = [];
-      
+
       for (const attendee of attendees) {
-        const person = persons.find(p => p.id === attendee.person);
+        const person = persons.find((p) => p.id === attendee.person);
         if (!person || !person.is_camper) continue;
-        
+
         // Create a minimal camper object using available data
         const camper: Camper = {
           id: `${person.cm_id}:${sessionId}`,
@@ -88,42 +98,46 @@ export default function ManualResolutionModal({
           first_name: person.first_name,
           last_name: person.last_name,
           preferred_name: person.preferred_name,
-          age: person.age ?? (person.birthdate ? calculateAge(person.birthdate) : 0),
+          age:
+            person.age ??
+            (person.birthdate ? calculateAge(person.birthdate) : 0),
           birthdate: person.birthdate,
           grade: person.grade || 0,
-          gender: (person.gender || 'NB') as 'M' | 'F' | 'NB',
+          gender: (person.gender || "NB") as "M" | "F" | "NB",
           session_cm_id: sessionId,
-          assigned_bunk: '', // Will be set later if they have an assignment
+          assigned_bunk: "", // Will be set later if they have an assignment
           created: attendee.created || new Date().toISOString(),
           updated: attendee.updated || new Date().toISOString(),
         };
-        
+
         campers.push(camper);
       }
-      
+
       return campers;
     },
-    enabled: isOpen
+    enabled: isOpen,
   });
 
   // Filter campers based on search query and exclude the requester
   const filteredCampers = useMemo(() => {
-    let filtered = allCampers.filter((camper: Camper) => 
-      camper.person_cm_id !== request.requester_id
+    let filtered = allCampers.filter(
+      (camper: Camper) => camper.person_cm_id !== request.requester_id,
     );
 
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter((camper: Camper) => {
         const fullName = formatCamperName(camper).toLowerCase();
-        const firstName = camper.first_name?.toLowerCase() || '';
-        const lastName = camper.last_name?.toLowerCase() || '';
-        const preferredName = camper.preferred_name?.toLowerCase() || '';
-        
-        return fullName.includes(query) ||
-               firstName.includes(query) ||
-               lastName.includes(query) ||
-               preferredName.includes(query);
+        const firstName = camper.first_name?.toLowerCase() || "";
+        const lastName = camper.last_name?.toLowerCase() || "";
+        const preferredName = camper.preferred_name?.toLowerCase() || "";
+
+        return (
+          fullName.includes(query) ||
+          firstName.includes(query) ||
+          lastName.includes(query) ||
+          preferredName.includes(query)
+        );
       });
     }
 
@@ -159,7 +173,8 @@ export default function ManualResolutionModal({
     <div className="p-6 border-t border-border bg-muted/20">
       <div className="flex items-center justify-between">
         <div className="text-sm text-muted-foreground">
-          {filteredCampers.length} camper{filteredCampers.length !== 1 ? 's' : ''} available
+          {filteredCampers.length} camper
+          {filteredCampers.length !== 1 ? "s" : ""} available
         </div>
         <div className="flex gap-3">
           <button
@@ -194,7 +209,9 @@ export default function ManualResolutionModal({
         <div className="p-6 bg-muted/30 border-b border-border flex-shrink-0">
           <div className="space-y-2">
             <div className="flex gap-2">
-              <span className="text-sm font-medium text-muted-foreground">Requester:</span>
+              <span className="text-sm font-medium text-muted-foreground">
+                Requester:
+              </span>
               <span className="text-sm font-medium">
                 {requesterPerson
                   ? `${requesterPerson.first_name} ${requesterPerson.last_name}`
@@ -202,13 +219,19 @@ export default function ManualResolutionModal({
               </span>
             </div>
             <div className="flex gap-2">
-              <span className="text-sm font-medium text-muted-foreground">Original Request:</span>
+              <span className="text-sm font-medium text-muted-foreground">
+                Original Request:
+              </span>
               <span className="text-sm italic">"{request.original_text}"</span>
             </div>
             {request.parse_notes && (
               <div className="flex gap-2">
-                <span className="text-sm font-medium text-muted-foreground">Parse notes:</span>
-                <span className="text-sm font-medium text-primary">{request.parse_notes}</span>
+                <span className="text-sm font-medium text-muted-foreground">
+                  Parse notes:
+                </span>
+                <span className="text-sm font-medium text-primary">
+                  {request.parse_notes}
+                </span>
               </div>
             )}
           </div>
@@ -234,7 +257,9 @@ export default function ManualResolutionModal({
           <div className="space-y-2">
             {filteredCampers.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                {searchQuery ? 'No campers match your search' : 'No campers found in this session'}
+                {searchQuery
+                  ? "No campers match your search"
+                  : "No campers found in this session"}
               </div>
             ) : (
               filteredCampers.map((camper: Camper) => (
@@ -243,15 +268,19 @@ export default function ManualResolutionModal({
                   onClick={() => setSelectedCamperId(camper.person_cm_id)}
                   className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
                     selectedCamperId === camper.person_cm_id
-                      ? 'border-primary bg-primary/10'
-                      : 'border-border hover:border-primary/50 hover:bg-muted/50'
+                      ? "border-primary bg-primary/10"
+                      : "border-border hover:border-primary/50 hover:bg-muted/50"
                   }`}
                 >
                   <div className="flex items-center justify-between">
                     <div>
-                      <div className="font-medium">{formatCamperName(camper)}</div>
+                      <div className="font-medium">
+                        {formatCamperName(camper)}
+                      </div>
                       <div className="text-sm text-muted-foreground mt-1">
-                        Age {(getDisplayAgeForYear(camper, year) ?? 0).toFixed(2)} • Grade {camper.grade} • {camper.gender}
+                        Age{" "}
+                        {(getDisplayAgeForYear(camper, year) ?? 0).toFixed(2)} •
+                        Grade {camper.grade} • {camper.gender}
                       </div>
                     </div>
                     {selectedCamperId === camper.person_cm_id && (

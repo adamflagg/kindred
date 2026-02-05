@@ -3,7 +3,7 @@
  * Provides methods for triggering syncs and uploading data
  */
 
-const API_BASE = '/api/custom/sync';
+const API_BASE = "/api/custom/sync";
 
 export interface UploadResponse {
   message: string;
@@ -34,13 +34,13 @@ export const syncService = {
    * Refresh bunking assignments from CampMinder
    */
   async refreshBunking(
-    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>,
   ): Promise<unknown> {
     const response = await fetchWithAuth(`${API_BASE}/refresh-bunking`, {
-      method: 'POST',
+      method: "POST",
     });
     if (!response.ok) {
-      throw new Error('Failed to refresh cabin assignments');
+      throw new Error("Failed to refresh cabin assignments");
     }
     return response.json();
   },
@@ -55,10 +55,10 @@ export const syncService = {
   async uploadBunkRequestsCSV(
     file: File,
     fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>,
-    year?: number
+    year?: number,
   ): Promise<UploadResponse> {
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append("file", file);
 
     // Build URL with run_sync=true and run_process_requests=true
     // This chains: CSV upload → bunk_requests sync → process_requests (AI processing)
@@ -68,7 +68,7 @@ export const syncService = {
     }
 
     const response = await fetchWithAuth(url, {
-      method: 'POST',
+      method: "POST",
       body: formData,
     });
 
@@ -88,25 +88,25 @@ export const syncService = {
   async exportToGoogleSheets(
     fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>,
     years?: number[],
-    includeGlobals?: boolean
+    includeGlobals?: boolean,
   ): Promise<GoogleSheetsExportResponse> {
     const params = new URLSearchParams();
     if (years?.length) {
-      params.set('years', years.join(','));
+      params.set("years", years.join(","));
     }
     if (includeGlobals) {
-      params.set('includeGlobals', 'true');
+      params.set("includeGlobals", "true");
     }
     const queryString = params.toString();
     const url = queryString
       ? `${API_BASE}/google-sheets-export?${queryString}`
       : `${API_BASE}/google-sheets-export`;
     const response = await fetchWithAuth(url, {
-      method: 'POST',
+      method: "POST",
     });
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error || 'Failed to export to Google Sheets');
+      throw new Error(error.error || "Failed to export to Google Sheets");
     }
     return response.json();
   },

@@ -2,18 +2,20 @@
  * GeoSummaryCards - Summary statistics for geographic distribution.
  */
 
-import { MapPin, Building2, Heart, TrendingUp } from 'lucide-react';
+import { MapPin, Building2, Heart, TrendingUp } from "lucide-react";
 
 interface GeoSummaryCardsProps {
   cityCount: number;
   schoolCount: number;
   synagogueCount: number;
-  topLocation?: {
-    name: string;
-    count: number;
-    percentage: number;
-    category: 'city' | 'school' | 'synagogue';
-  } | undefined;
+  topLocation?:
+    | {
+        name: string;
+        count: number;
+        percentage: number;
+        category: "city" | "school" | "synagogue";
+      }
+    | undefined;
 }
 
 export function GeoSummaryCards({
@@ -31,7 +33,9 @@ export function GeoSummaryCards({
             <MapPin className="w-5 h-5 text-blue-500" />
           </div>
           <div>
-            <div className="text-2xl font-bold text-foreground">{cityCount}</div>
+            <div className="text-2xl font-bold text-foreground">
+              {cityCount}
+            </div>
             <div className="text-sm text-muted-foreground">Cities</div>
           </div>
         </div>
@@ -44,7 +48,9 @@ export function GeoSummaryCards({
             <Building2 className="w-5 h-5 text-emerald-500" />
           </div>
           <div>
-            <div className="text-2xl font-bold text-foreground">{schoolCount}</div>
+            <div className="text-2xl font-bold text-foreground">
+              {schoolCount}
+            </div>
             <div className="text-sm text-muted-foreground">Schools</div>
           </div>
         </div>
@@ -57,7 +63,9 @@ export function GeoSummaryCards({
             <Heart className="w-5 h-5 text-amber-500" />
           </div>
           <div>
-            <div className="text-2xl font-bold text-foreground">{synagogueCount}</div>
+            <div className="text-2xl font-bold text-foreground">
+              {synagogueCount}
+            </div>
             <div className="text-sm text-muted-foreground">Synagogues</div>
           </div>
         </div>
@@ -71,7 +79,10 @@ export function GeoSummaryCards({
               <TrendingUp className="w-5 h-5 text-primary" />
             </div>
             <div className="min-w-0">
-              <div className="text-lg font-bold text-foreground truncate" title={topLocation.name}>
+              <div
+                className="text-lg font-bold text-foreground truncate"
+                title={topLocation.name}
+              >
                 {topLocation.name}
               </div>
               <div className="text-sm text-muted-foreground">

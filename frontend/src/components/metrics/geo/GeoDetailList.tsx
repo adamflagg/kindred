@@ -2,10 +2,10 @@
  * GeoDetailList - Scrollable list of locations with counts.
  */
 
-import { useState } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
-import type { GeoDataItem } from './GeoMap';
-import type { GeoCategory } from './GeoCategoryTabs';
+import { useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import type { GeoDataItem } from "./GeoMap";
+import type { GeoCategory } from "./GeoCategoryTabs";
 
 interface GeoDetailListProps {
   data: GeoDataItem[];
@@ -17,9 +17,9 @@ interface GeoDetailListProps {
 }
 
 const CATEGORY_LABELS: Record<GeoCategory, string> = {
-  city: 'City',
-  school: 'School',
-  synagogue: 'Synagogue',
+  city: "City",
+  school: "School",
+  synagogue: "Synagogue",
 };
 
 export function GeoDetailList({
@@ -82,7 +82,7 @@ export function GeoDetailList({
                       onClick={() => onItemClick?.(item.name)}
                       className={`
                         border-t border-border cursor-pointer transition-colors
-                        ${isSelected ? 'bg-primary/10' : 'hover:bg-muted/30'}
+                        ${isSelected ? "bg-primary/10" : "hover:bg-muted/30"}
                       `}
                     >
                       <td className="px-4 py-2 text-foreground">{item.name}</td>
@@ -106,7 +106,9 @@ export function GeoDetailList({
                 onClick={() => setShowAll(!showAll)}
                 className="text-sm text-primary hover:text-primary/80 transition-colors"
               >
-                {showAll ? 'Show less' : `Show all ${data.length} ${CATEGORY_LABELS[category].toLowerCase()}s`}
+                {showAll
+                  ? "Show less"
+                  : `Show all ${data.length} ${CATEGORY_LABELS[category].toLowerCase()}s`}
               </button>
             </div>
           )}

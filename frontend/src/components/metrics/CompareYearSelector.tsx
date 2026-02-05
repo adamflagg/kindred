@@ -18,7 +18,7 @@ export function CompareYearSelector({
   availableYears,
 }: CompareYearSelectorProps) {
   // Filter out the primary year from comparison options
-  const comparisonYears = availableYears.filter(y => y !== primaryYear);
+  const comparisonYears = availableYears.filter((y) => y !== primaryYear);
 
   return (
     <div className="flex flex-wrap items-center gap-3">

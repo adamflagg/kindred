@@ -1,6 +1,18 @@
-import { ExternalLink, FileSpreadsheet, RefreshCw, AlertCircle, CheckCircle, Clock, AlertTriangle } from 'lucide-react';
-import { useSheetsWorkbooks, useMultiWorkbookExport, type SheetsWorkbook } from '../../hooks/useSheetsWorkbooks';
-import { useYear } from '../../hooks/useCurrentYear';
+import {
+  ExternalLink,
+  FileSpreadsheet,
+  RefreshCw,
+  AlertCircle,
+  CheckCircle,
+  Clock,
+  AlertTriangle,
+} from "lucide-react";
+import {
+  useSheetsWorkbooks,
+  useMultiWorkbookExport,
+  type SheetsWorkbook,
+} from "../../hooks/useSheetsWorkbooks";
+import { useYear } from "../../hooks/useCurrentYear";
 
 /**
  * SheetsTab - Google Sheets Workbooks Management Tab
@@ -11,23 +23,31 @@ import { useYear } from '../../hooks/useCurrentYear';
  * - Per-year workbooks contain year-specific data
  */
 
-function StatusBadge({ status, errorMessage }: { status: SheetsWorkbook['status']; errorMessage?: string }) {
+function StatusBadge({
+  status,
+  errorMessage,
+}: {
+  status: SheetsWorkbook["status"];
+  errorMessage?: string;
+}) {
   const config = {
     ok: {
       icon: CheckCircle,
-      label: 'OK',
-      classes: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300',
+      label: "OK",
+      classes:
+        "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300",
     },
     syncing: {
       icon: Clock,
-      label: 'Syncing',
-      classes: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300',
-      iconClass: 'animate-pulse',
+      label: "Syncing",
+      classes:
+        "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300",
+      iconClass: "animate-pulse",
     },
     error: {
       icon: AlertTriangle,
-      label: 'Error',
-      classes: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300',
+      label: "Error",
+      classes: "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300",
     },
   }[status];
 
@@ -37,23 +57,23 @@ function StatusBadge({ status, errorMessage }: { status: SheetsWorkbook['status'
   return (
     <span
       className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full ${config.classes}`}
-      title={status === 'error' && errorMessage ? errorMessage : undefined}
+      title={status === "error" && errorMessage ? errorMessage : undefined}
     >
-      <Icon className={`w-3 h-3 ${config.iconClass || ''}`} />
+      <Icon className={`w-3 h-3 ${config.iconClass || ""}`} />
       <span>{config.label}</span>
     </span>
   );
 }
 
 function formatDate(dateStr: string) {
-  if (!dateStr) return 'Never';
+  if (!dateStr) return "Never";
   try {
     const date = new Date(dateStr);
     return date.toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   } catch {
     return dateStr;
@@ -62,8 +82,8 @@ function formatDate(dateStr: string) {
 
 /** Mobile card view for small screens */
 function WorkbookMobileCard({ workbook }: { workbook: SheetsWorkbook }) {
-  const isGlobals = workbook.workbook_type === 'globals';
-  const name = isGlobals ? 'Globals' : String(workbook.year);
+  const isGlobals = workbook.workbook_type === "globals";
+  const name = isGlobals ? "Globals" : String(workbook.year);
 
   return (
     <a
@@ -72,8 +92,8 @@ function WorkbookMobileCard({ workbook }: { workbook: SheetsWorkbook }) {
       rel="noopener noreferrer"
       className={`block p-3 rounded-lg border transition-colors hover:border-primary/50 ${
         isGlobals
-          ? 'border-l-2 border-l-amber-500 border-border bg-amber-50/30 dark:bg-amber-950/10'
-          : 'border-border bg-card'
+          ? "border-l-2 border-l-amber-500 border-border bg-amber-50/30 dark:bg-amber-950/10"
+          : "border-border bg-card"
       }`}
     >
       <div className="flex items-center justify-between mb-2">
@@ -81,11 +101,16 @@ function WorkbookMobileCard({ workbook }: { workbook: SheetsWorkbook }) {
           <span className="font-medium text-sm">{name}</span>
           <ExternalLink className="w-3 h-3 text-muted-foreground" />
         </div>
-        <StatusBadge status={workbook.status} errorMessage={workbook.error_message} />
+        <StatusBadge
+          status={workbook.status}
+          errorMessage={workbook.error_message}
+        />
       </div>
       <div className="flex items-center gap-4 text-xs text-muted-foreground">
         <span>{workbook.tab_count} tabs</span>
-        <span className="tabular-nums">{workbook.total_records.toLocaleString()} records</span>
+        <span className="tabular-nums">
+          {workbook.total_records.toLocaleString()} records
+        </span>
         <span className="ml-auto">{formatDate(workbook.last_sync)}</span>
       </div>
     </a>
@@ -107,8 +132,8 @@ export function SheetsTab() {
 
   // Combine all workbooks: globals first, then years descending
   const sortedWorkbooks = [...(workbooks || [])].sort((a, b) => {
-    if (a.workbook_type === 'globals') return -1;
-    if (b.workbook_type === 'globals') return 1;
+    if (a.workbook_type === "globals") return -1;
+    if (b.workbook_type === "globals") return 1;
     return b.year - a.year;
   });
 
@@ -118,7 +143,8 @@ export function SheetsTab() {
         <div className="flex items-center gap-2">
           <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0" />
           <p className="text-sm text-red-600 dark:text-red-400">
-            Failed to load workbooks: {error instanceof Error ? error.message : 'Unknown error'}
+            Failed to load workbooks:{" "}
+            {error instanceof Error ? error.message : "Unknown error"}
           </p>
         </div>
       </div>
@@ -130,26 +156,35 @@ export function SheetsTab() {
       {/* Header with Export Buttons */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-base font-semibold text-foreground">Google Sheets</h2>
-          <p className="text-xs text-muted-foreground">Export data to workbooks</p>
+          <h2 className="text-base font-semibold text-foreground">
+            Google Sheets
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Export data to workbooks
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          {currentYear && sortedWorkbooks.some((w) => w.year === currentYear) && (
-            <button
-              onClick={() => handleYearExport(currentYear)}
-              disabled={multiExport.isPending}
-              className="text-xs text-primary hover:text-primary/80 font-medium"
-            >
-              Export {currentYear}
-            </button>
-          )}
+          {currentYear &&
+            sortedWorkbooks.some((w) => w.year === currentYear) && (
+              <button
+                onClick={() => handleYearExport(currentYear)}
+                disabled={multiExport.isPending}
+                className="text-xs text-primary hover:text-primary/80 font-medium"
+              >
+                Export {currentYear}
+              </button>
+            )}
           <button
             onClick={handleFullExport}
             disabled={multiExport.isPending}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-md text-xs font-medium transition-colors"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${multiExport.isPending ? 'animate-spin' : ''}`} />
-            <span>{multiExport.isPending ? 'Exporting...' : 'Full Export'}</span>
+            <RefreshCw
+              className={`w-3.5 h-3.5 ${multiExport.isPending ? "animate-spin" : ""}`}
+            />
+            <span>
+              {multiExport.isPending ? "Exporting..." : "Full Export"}
+            </span>
           </button>
         </div>
       </div>
@@ -171,7 +206,7 @@ export function SheetsTab() {
             disabled={multiExport.isPending}
             className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md text-xs font-medium"
           >
-            {multiExport.isPending ? 'Creating...' : 'Create Workbooks'}
+            {multiExport.isPending ? "Creating..." : "Create Workbooks"}
           </button>
         </div>
       )}
@@ -184,25 +219,43 @@ export function SheetsTab() {
             <table className="w-full text-sm">
               <thead className="bg-muted/50">
                 <tr className="border-b border-border">
-                  <th className="text-left py-2 px-3 font-medium text-muted-foreground">Workbook</th>
-                  <th className="text-right py-2 px-3 font-medium text-muted-foreground">Tabs</th>
-                  <th className="text-right py-2 px-3 font-medium text-muted-foreground">Records</th>
-                  <th className="text-right py-2 px-3 font-medium text-muted-foreground">Last Sync</th>
-                  <th className="text-center py-2 px-3 font-medium text-muted-foreground">Status</th>
+                  <th className="text-left py-2 px-3 font-medium text-muted-foreground">
+                    Workbook
+                  </th>
+                  <th className="text-right py-2 px-3 font-medium text-muted-foreground">
+                    Tabs
+                  </th>
+                  <th className="text-right py-2 px-3 font-medium text-muted-foreground">
+                    Records
+                  </th>
+                  <th className="text-right py-2 px-3 font-medium text-muted-foreground">
+                    Last Sync
+                  </th>
+                  <th className="text-center py-2 px-3 font-medium text-muted-foreground">
+                    Status
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {sortedWorkbooks.map((workbook) => {
-                  const isGlobals = workbook.workbook_type === 'globals';
-                  const name = isGlobals ? 'Globals' : String(workbook.year);
+                  const isGlobals = workbook.workbook_type === "globals";
+                  const name = isGlobals ? "Globals" : String(workbook.year);
 
                   return (
                     <tr
                       key={workbook.id}
                       className={`border-b border-border last:border-0 cursor-pointer transition-colors hover:bg-muted/30 ${
-                        isGlobals ? 'border-l-2 border-l-amber-500 bg-amber-50/30 dark:bg-amber-950/10' : ''
+                        isGlobals
+                          ? "border-l-2 border-l-amber-500 bg-amber-50/30 dark:bg-amber-950/10"
+                          : ""
                       }`}
-                      onClick={() => window.open(workbook.url, '_blank', 'noopener,noreferrer')}
+                      onClick={() =>
+                        window.open(
+                          workbook.url,
+                          "_blank",
+                          "noopener,noreferrer",
+                        )
+                      }
                     >
                       <td className="py-2.5 px-3">
                         <div className="flex items-center gap-2">
@@ -220,7 +273,10 @@ export function SheetsTab() {
                         {formatDate(workbook.last_sync)}
                       </td>
                       <td className="text-center py-2.5 px-3">
-                        <StatusBadge status={workbook.status} errorMessage={workbook.error_message} />
+                        <StatusBadge
+                          status={workbook.status}
+                          errorMessage={workbook.error_message}
+                        />
                       </td>
                     </tr>
                   );
@@ -240,7 +296,8 @@ export function SheetsTab() {
 
       {/* Help Text */}
       <p className="text-xs text-muted-foreground">
-        <span className="font-medium">Full Export</span> updates all workbooks. Click any row to open in Google Sheets.
+        <span className="font-medium">Full Export</span> updates all workbooks.
+        Click any row to open in Google Sheets.
       </p>
     </div>
   );

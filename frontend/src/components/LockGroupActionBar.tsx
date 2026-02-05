@@ -1,10 +1,10 @@
-import { useState, useMemo } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Users, AlertTriangle, Heart } from 'lucide-react';
-import clsx from 'clsx';
-import { pb, getCurrentUserEmail } from '../lib/pocketbase';
-import type { Camper } from '../types/app-types';
-import { useLockGroupContext } from '../contexts/LockGroupContext';
+import { useState, useMemo } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Users, AlertTriangle, Heart } from "lucide-react";
+import clsx from "clsx";
+import { pb, getCurrentUserEmail } from "../lib/pocketbase";
+import type { Camper } from "../types/app-types";
+import { useLockGroupContext } from "../contexts/LockGroupContext";
 
 interface LockGroupActionBarProps {
   pendingCampers: Camper[];
@@ -24,15 +24,15 @@ interface ValidationResult {
 
 // Available colors for groups - hex values in rainbow order (no greys)
 const GROUP_COLORS = [
-  '#ef4444', // red
-  '#f97316', // orange
-  '#eab308', // yellow
-  '#22c55e', // green
-  '#14b8a6', // teal
-  '#3b82f6', // blue
-  '#6366f1', // indigo
-  '#a855f7', // purple
-  '#ec4899', // pink
+  "#ef4444", // red
+  "#f97316", // orange
+  "#eab308", // yellow
+  "#22c55e", // green
+  "#14b8a6", // teal
+  "#3b82f6", // blue
+  "#6366f1", // indigo
+  "#a855f7", // purple
+  "#ec4899", // pink
 ];
 
 /**
@@ -41,11 +41,11 @@ const GROUP_COLORS = [
  */
 function generateDefaultGroupName(campers: Camper[]): string {
   const lastNames = campers
-    .map(c => c.last_name)
+    .map((c) => c.last_name)
     .filter((name): name is string => !!name && name.length > 0);
 
-  if (lastNames.length === 0) return '';
-  if (lastNames.length === 1) return lastNames[0] ?? '';
+  if (lastNames.length === 0) return "";
+  if (lastNames.length === 1) return lastNames[0] ?? "";
 
   // Sort by length, take shortest two
   const sorted = [...lastNames].sort((a, b) => a.length - b.length);
@@ -54,7 +54,7 @@ function generateDefaultGroupName(campers: Camper[]): string {
   // Sort alphabetically for consistent display
   shortest.sort((a, b) => a.localeCompare(b));
 
-  return shortest.join(', ');
+  return shortest.join(", ");
 }
 
 /**
@@ -74,15 +74,19 @@ function validateFriendGroup(campers: Camper[]): ValidationResult {
   }
 
   // Check for session consistency
-  const sessions = new Map<number, { name: string; type: string; count: number }>();
+  const sessions = new Map<
+    number,
+    { name: string; type: string; count: number }
+  >();
   let hasAGSession = false;
 
   for (const camper of campers) {
     const sessionCmId = camper.session_cm_id;
-    const sessionType = camper.expand?.session?.session_type || 'main';
-    const sessionName = camper.expand?.session?.name || `Session ${sessionCmId}`;
+    const sessionType = camper.expand?.session?.session_type || "main";
+    const sessionName =
+      camper.expand?.session?.name || `Session ${sessionCmId}`;
 
-    if (sessionType === 'ag') {
+    if (sessionType === "ag") {
       hasAGSession = true;
     }
 
@@ -90,14 +94,18 @@ function validateFriendGroup(campers: Camper[]): ValidationResult {
     if (existing) {
       existing.count++;
     } else {
-      sessions.set(sessionCmId, { name: sessionName, type: sessionType, count: 1 });
+      sessions.set(sessionCmId, {
+        name: sessionName,
+        type: sessionType,
+        count: 1,
+      });
     }
   }
 
   // Cross-session validation
   if (sessions.size > 1) {
-    const sessionNames = Array.from(sessions.values()).map(s => s.name);
-    errors.push(`Cross-session: ${sessionNames.join(', ')}`);
+    const sessionNames = Array.from(sessions.values()).map((s) => s.name);
+    errors.push(`Cross-session: ${sessionNames.join(", ")}`);
   }
 
   // Cross-gender validation (only for non-AG sessions)
@@ -110,18 +118,18 @@ function validateFriendGroup(campers: Camper[]): ValidationResult {
     }
 
     // Check if we have both M and F (excluding NB which can go with either)
-    const hasM = genders.has('M');
-    const hasF = genders.has('F');
+    const hasM = genders.has("M");
+    const hasF = genders.has("F");
 
     if (hasM && hasF) {
-      errors.push('Cross-gender: Cannot group M and F campers together');
+      errors.push("Cross-gender: Cannot group M and F campers together");
     }
   }
 
   return {
     isValid: errors.length === 0,
     errors,
-    warnings
+    warnings,
   };
 }
 
@@ -131,21 +139,29 @@ function LockGroupActionBar({
   scenarioId,
   year,
   onClearPending,
-  onGroupCreated
+  onGroupCreated,
 }: LockGroupActionBarProps) {
   const queryClient = useQueryClient();
   const { groups } = useLockGroupContext();
 
   // Auto-select next color based on existing groups count
   const nextColorIndex = groups.length % GROUP_COLORS.length;
-  const [selectedColor, setSelectedColor] = useState(GROUP_COLORS[nextColorIndex] || GROUP_COLORS[0]);
-  const [groupName, setGroupName] = useState('');
+  const [selectedColor, setSelectedColor] = useState(
+    GROUP_COLORS[nextColorIndex] || GROUP_COLORS[0],
+  );
+  const [groupName, setGroupName] = useState("");
 
   // Validate pending campers
-  const validation = useMemo(() => validateFriendGroup(pendingCampers), [pendingCampers]);
+  const validation = useMemo(
+    () => validateFriendGroup(pendingCampers),
+    [pendingCampers],
+  );
 
   // Generate default name preview for placeholder
-  const defaultName = useMemo(() => generateDefaultGroupName(pendingCampers), [pendingCampers]);
+  const defaultName = useMemo(
+    () => generateDefaultGroupName(pendingCampers),
+    [pendingCampers],
+  );
 
   // Create lock group mutation
   const createGroupMutation = useMutation({
@@ -156,16 +172,16 @@ function LockGroupActionBar({
 
       const groupData: Record<string, unknown> = {
         color: selectedColor,
-        session: sessionPbId,  // relation to camp_sessions
-        scenario: scenarioId,  // relation to saved_scenarios
+        session: sessionPbId, // relation to camp_sessions
+        scenario: scenarioId, // relation to saved_scenarios
         year: year,
-        created_by: getCurrentUserEmail()
+        created_by: getCurrentUserEmail(),
       };
       // Add name (either custom or auto-generated)
       if (finalName) {
-        groupData['name'] = finalName;
+        groupData["name"] = finalName;
       }
-      const group = await pb.collection('locked_groups').create(groupData);
+      const group = await pb.collection("locked_groups").create(groupData);
 
       // Add all pending campers to the group using relations
       for (const camper of pendingCampers) {
@@ -173,27 +189,35 @@ function LockGroupActionBar({
           console.warn(`Camper ${camper.name} missing attendee_id, skipping`);
           continue;
         }
-        await pb.collection('locked_group_members').create({
-          group: group.id,      // relation to locked_groups
-          attendee: camper.attendee_id,  // relation to attendees (PB ID)
-          added_by: getCurrentUserEmail()
+        await pb.collection("locked_group_members").create({
+          group: group.id, // relation to locked_groups
+          attendee: camper.attendee_id, // relation to attendees (PB ID)
+          added_by: getCurrentUserEmail(),
         });
       }
 
       return group;
     },
     onSuccess: (group) => {
-      queryClient.invalidateQueries({ queryKey: ['locked-groups', scenarioId, sessionPbId, year] });
-      queryClient.invalidateQueries({ queryKey: ['locked-groups-panel', scenarioId, sessionPbId, year] });
-      queryClient.invalidateQueries({ queryKey: ['locked-group-members', scenarioId, sessionPbId] });
-      queryClient.invalidateQueries({ queryKey: ['locked-group-members-panel', scenarioId, sessionPbId] });
+      queryClient.invalidateQueries({
+        queryKey: ["locked-groups", scenarioId, sessionPbId, year],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["locked-groups-panel", scenarioId, sessionPbId, year],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["locked-group-members", scenarioId, sessionPbId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["locked-group-members-panel", scenarioId, sessionPbId],
+      });
       onGroupCreated(group.id);
       onClearPending();
       // Advance to next color and clear name
       const newNextIndex = (groups.length + 1) % GROUP_COLORS.length;
       setSelectedColor(GROUP_COLORS[newNextIndex] || GROUP_COLORS[0]);
-      setGroupName('');
-    }
+      setGroupName("");
+    },
   });
 
   const handleCreateGroup = () => {
@@ -211,7 +235,11 @@ function LockGroupActionBar({
   const maxGroupSize = 12;
   const isOverLimit = pendingCampers.length > maxGroupSize;
   const hasValidationErrors = !validation.isValid;
-  const canCreate = pendingCampers.length >= 2 && !isOverLimit && !hasValidationErrors && !createGroupMutation.isPending;
+  const canCreate =
+    pendingCampers.length >= 2 &&
+    !isOverLimit &&
+    !hasValidationErrors &&
+    !createGroupMutation.isPending;
 
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-background border-t shadow-lodge-lg z-40">
@@ -222,7 +250,8 @@ function LockGroupActionBar({
             <div className="flex items-center gap-2">
               <Users className="h-5 w-5 text-primary" />
               <span className="font-medium">
-                {pendingCampers.length} camper{pendingCampers.length !== 1 ? 's' : ''} selected
+                {pendingCampers.length} camper
+                {pendingCampers.length !== 1 ? "s" : ""} selected
               </span>
             </div>
             {pendingCampers.length < 2 && (
@@ -250,7 +279,7 @@ function LockGroupActionBar({
               type="text"
               value={groupName}
               onChange={(e) => setGroupName(e.target.value)}
-              placeholder={defaultName || 'Group name'}
+              placeholder={defaultName || "Group name"}
               className="px-3 py-1.5 text-sm border rounded-lg bg-background w-44 focus:outline-none focus:ring-2 focus:ring-primary/50"
             />
 
@@ -263,8 +292,9 @@ function LockGroupActionBar({
                   key={color}
                   onClick={() => setSelectedColor(color)}
                   className={clsx(
-                    'w-6 h-6 rounded-full transition-all',
-                    selectedColor === color && 'ring-2 ring-offset-2 ring-foreground scale-110'
+                    "w-6 h-6 rounded-full transition-all",
+                    selectedColor === color &&
+                      "ring-2 ring-offset-2 ring-foreground scale-110",
                   )}
                   style={{ backgroundColor: color }}
                 />
@@ -285,7 +315,7 @@ function LockGroupActionBar({
               className="inline-flex items-center gap-2 px-4 py-1.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Heart className="h-4 w-4" />
-              {createGroupMutation.isPending ? 'Creating...' : 'Create Group'}
+              {createGroupMutation.isPending ? "Creating..." : "Create Group"}
             </button>
           </div>
         </div>

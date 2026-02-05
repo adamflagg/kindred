@@ -1,4 +1,4 @@
-import { useIsFetching } from '@tanstack/react-query';
+import { useIsFetching } from "@tanstack/react-query";
 
 export default function CacheStatus() {
   const isFetching = useIsFetching();

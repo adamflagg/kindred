@@ -8,72 +8,72 @@
  * - useBunkRequestsCount: Fetches count of pending bunk requests
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from "vitest";
 
-describe('useSessionBunks', () => {
-  describe('query key construction', () => {
-    it('should include selectedSession in query key', () => {
-      const selectedSession = '1000001';
+describe("useSessionBunks", () => {
+  describe("query key construction", () => {
+    it("should include selectedSession in query key", () => {
+      const selectedSession = "1000001";
       const sessionCmId = 1000001;
-      const agSessionIds = ['ag1', 'ag2'];
+      const agSessionIds = ["ag1", "ag2"];
 
       const queryKey = [
-        'bunks',
+        "bunks",
         selectedSession,
         sessionCmId,
         agSessionIds.sort(),
       ];
 
-      expect(queryKey[0]).toBe('bunks');
-      expect(queryKey[1]).toBe('1000001');
+      expect(queryKey[0]).toBe("bunks");
+      expect(queryKey[1]).toBe("1000001");
       expect(queryKey[2]).toBe(1000001);
     });
 
-    it('should sort AG session IDs for consistent caching', () => {
-      const agSessionIds = ['ag3', 'ag1', 'ag2'];
+    it("should sort AG session IDs for consistent caching", () => {
+      const agSessionIds = ["ag3", "ag1", "ag2"];
       const sorted = [...agSessionIds].sort();
 
-      expect(sorted).toEqual(['ag1', 'ag2', 'ag3']);
+      expect(sorted).toEqual(["ag1", "ag2", "ag3"]);
     });
   });
 
-  describe('query behavior', () => {
-    it('should be disabled when no selectedSession', () => {
+  describe("query behavior", () => {
+    it("should be disabled when no selectedSession", () => {
       const selectedSession: string | undefined = undefined;
       const enabled = !!selectedSession;
 
       expect(enabled).toBe(false);
     });
 
-    it('should be enabled when selectedSession exists', () => {
-      const selectedSession = '1000001';
+    it("should be enabled when selectedSession exists", () => {
+      const selectedSession = "1000001";
       const enabled = !!selectedSession;
 
       expect(enabled).toBe(true);
     });
   });
 
-  describe('AG bunk filtering', () => {
-    it('should identify AG bunks by name prefix', () => {
+  describe("AG bunk filtering", () => {
+    it("should identify AG bunks by name prefix", () => {
       const bunks = [
-        { id: '1', name: 'B-1' },
-        { id: '2', name: 'G-1' },
-        { id: '3', name: 'AG-8' },
-        { id: '4', name: 'AG-10' },
+        { id: "1", name: "B-1" },
+        { id: "2", name: "G-1" },
+        { id: "3", name: "AG-8" },
+        { id: "4", name: "AG-10" },
       ];
 
-      const agBunks = bunks.filter((b) => b.name.startsWith('AG-'));
-      const nonAgBunks = bunks.filter((b) => !b.name.startsWith('AG-'));
+      const agBunks = bunks.filter((b) => b.name.startsWith("AG-"));
+      const nonAgBunks = bunks.filter((b) => !b.name.startsWith("AG-"));
 
       expect(agBunks).toHaveLength(2);
       expect(nonAgBunks).toHaveLength(2);
     });
 
-    it('should deduplicate AG bunks by name', () => {
+    it("should deduplicate AG bunks by name", () => {
       const agBunks = [
-        { id: '1', name: 'AG-8' },
-        { id: '2', name: 'AG-8' }, // Duplicate
-        { id: '3', name: 'AG-10' },
+        { id: "1", name: "AG-8" },
+        { id: "2", name: "AG-8" }, // Duplicate
+        { id: "3", name: "AG-10" },
       ];
 
       const bunkMap = new Map<string, (typeof agBunks)[0]>();
@@ -84,18 +84,18 @@ describe('useSessionBunks', () => {
       });
 
       expect(bunkMap.size).toBe(2);
-      expect(bunkMap.get('AG-8')?.id).toBe('1'); // First one wins
+      expect(bunkMap.get("AG-8")?.id).toBe("1"); // First one wins
     });
   });
 
-  describe('bunk plan parsing', () => {
-    it('should extract unique bunk IDs from bunk plans', () => {
+  describe("bunk plan parsing", () => {
+    it("should extract unique bunk IDs from bunk plans", () => {
       const bunkPlans = [
-        { bunk: 'bunk1' },
-        { bunk: 'bunk2' },
-        { bunk: 'bunk1' }, // Duplicate
+        { bunk: "bunk1" },
+        { bunk: "bunk2" },
+        { bunk: "bunk1" }, // Duplicate
         { bunk: null }, // Null should be filtered
-        { bunk: 'bunk3' },
+        { bunk: "bunk3" },
       ];
 
       const bunkIds = [
@@ -103,47 +103,47 @@ describe('useSessionBunks', () => {
       ];
 
       expect(bunkIds).toHaveLength(3);
-      expect(bunkIds).toContain('bunk1');
-      expect(bunkIds).toContain('bunk2');
-      expect(bunkIds).toContain('bunk3');
+      expect(bunkIds).toContain("bunk1");
+      expect(bunkIds).toContain("bunk2");
+      expect(bunkIds).toContain("bunk3");
     });
   });
 });
 
-describe('useSessionCampers', () => {
-  describe('query key construction', () => {
-    it('should include scenario ID for scenario-aware caching', () => {
-      const selectedSession = '1000001';
-      const agSessionIds = ['ag1'];
-      const scenarioId = 'scenario123';
+describe("useSessionCampers", () => {
+  describe("query key construction", () => {
+    it("should include scenario ID for scenario-aware caching", () => {
+      const selectedSession = "1000001";
+      const agSessionIds = ["ag1"];
+      const scenarioId = "scenario123";
 
       const queryKey = [
-        'campers',
+        "campers",
         selectedSession,
         agSessionIds.sort(),
         scenarioId,
       ];
 
-      expect(queryKey).toContain('scenario123');
+      expect(queryKey).toContain("scenario123");
     });
 
-    it('should use undefined for production mode', () => {
+    it("should use undefined for production mode", () => {
       const scenarioId: string | undefined = undefined;
-      const queryKey = ['campers', '1000001', [], scenarioId];
+      const queryKey = ["campers", "1000001", [], scenarioId];
 
       expect(queryKey[3]).toBeUndefined();
     });
   });
 
-  describe('camper merging', () => {
-    it('should avoid duplicate campers when merging AG campers', () => {
+  describe("camper merging", () => {
+    it("should avoid duplicate campers when merging AG campers", () => {
       const mainCampers = [
-        { id: 'c1', name: 'Alice' },
-        { id: 'c2', name: 'Bob' },
+        { id: "c1", name: "Alice" },
+        { id: "c2", name: "Bob" },
       ];
       const agCampers = [
-        { id: 'c2', name: 'Bob' }, // Duplicate
-        { id: 'c3', name: 'Charlie' },
+        { id: "c2", name: "Bob" }, // Duplicate
+        { id: "c3", name: "Charlie" },
       ];
 
       const existingIds = new Set(mainCampers.map((c) => c.id));
@@ -151,34 +151,34 @@ describe('useSessionCampers', () => {
       const allCampers = [...mainCampers, ...newAgCampers];
 
       expect(allCampers).toHaveLength(3);
-      expect(allCampers.map((c) => c.id)).toEqual(['c1', 'c2', 'c3']);
+      expect(allCampers.map((c) => c.id)).toEqual(["c1", "c2", "c3"]);
     });
   });
 });
 
-describe('useBunkRequestsCount', () => {
-  describe('query key construction', () => {
-    it('should include all related session IDs', () => {
-      const selectedSession = '1000001';
+describe("useBunkRequestsCount", () => {
+  describe("query key construction", () => {
+    it("should include all related session IDs", () => {
+      const selectedSession = "1000001";
       const currentYear = 2025;
       const subSessionCmIds = [1000002, 1000003];
       const agSessionCmIds = [1235410];
 
       const queryKey = [
-        'bunk-requests-count',
+        "bunk-requests-count",
         selectedSession,
         currentYear,
         subSessionCmIds.sort(),
         agSessionCmIds.sort(),
       ];
 
-      expect(queryKey[0]).toBe('bunk-requests-count');
+      expect(queryKey[0]).toBe("bunk-requests-count");
       expect(queryKey[2]).toBe(2025);
     });
   });
 
-  describe('count aggregation', () => {
-    it('should sum counts from main, sub, and AG sessions', () => {
+  describe("count aggregation", () => {
+    it("should sum counts from main, sub, and AG sessions", () => {
       const mainCount = 5;
       const subCounts = [3, 2];
       const agCounts = [1];
@@ -191,7 +191,7 @@ describe('useBunkRequestsCount', () => {
       expect(totalCount).toBe(11);
     });
 
-    it('should return 0 for empty sessions', () => {
+    it("should return 0 for empty sessions", () => {
       const mainCount = 0;
       const subCounts: number[] = [];
       const agCounts: number[] = [];
@@ -205,40 +205,40 @@ describe('useBunkRequestsCount', () => {
     });
   });
 
-  describe('filter construction', () => {
-    it('should filter by session_id, year, and status', () => {
+  describe("filter construction", () => {
+    it("should filter by session_id, year, and status", () => {
       const sessionCmId = 1000001;
       const year = 2025;
-      const status = 'pending';
+      const status = "pending";
 
       const filter = `session_id = ${sessionCmId} && year = ${year} && status = "${status}"`;
 
       expect(filter).toBe(
-        'session_id = 1000001 && year = 2025 && status = "pending"'
+        'session_id = 1000001 && year = 2025 && status = "pending"',
       );
     });
   });
 });
 
-describe('session ID parsing', () => {
-  it('should parse valid session CampMinder ID', () => {
-    const selectedSession = '1000001';
+describe("session ID parsing", () => {
+  it("should parse valid session CampMinder ID", () => {
+    const selectedSession = "1000001";
     const sessionCmId = parseInt(selectedSession, 10);
 
     expect(isNaN(sessionCmId)).toBe(false);
     expect(sessionCmId).toBe(1000001);
   });
 
-  it('should handle invalid session ID gracefully', () => {
-    const selectedSession = 'invalid';
+  it("should handle invalid session ID gracefully", () => {
+    const selectedSession = "invalid";
     const sessionCmId = parseInt(selectedSession, 10);
 
     expect(isNaN(sessionCmId)).toBe(true);
   });
 });
 
-describe('hook options interface', () => {
-  it('should define required options for useSessionBunks', () => {
+describe("hook options interface", () => {
+  it("should define required options for useSessionBunks", () => {
     interface UseSessionBunksOptions {
       selectedSession: string | undefined;
       sessionCmId: number | undefined;
@@ -247,9 +247,9 @@ describe('hook options interface', () => {
     }
 
     const options: UseSessionBunksOptions = {
-      selectedSession: '1000001',
+      selectedSession: "1000001",
       sessionCmId: 1000001,
-      agSessions: [{ id: 'ag1', cm_id: 1235410 }],
+      agSessions: [{ id: "ag1", cm_id: 1235410 }],
       currentYear: 2025,
     };
 
@@ -257,7 +257,7 @@ describe('hook options interface', () => {
     expect(options.agSessions).toHaveLength(1);
   });
 
-  it('should define required options for useSessionCampers', () => {
+  it("should define required options for useSessionCampers", () => {
     interface UseSessionCampersOptions {
       selectedSession: string | undefined;
       agSessions: Array<{ id: string; cm_id: number }>;
@@ -266,7 +266,7 @@ describe('hook options interface', () => {
     }
 
     const options: UseSessionCampersOptions = {
-      selectedSession: '1000001',
+      selectedSession: "1000001",
       agSessions: [],
       currentYear: 2025,
       scenarioId: undefined,
@@ -275,7 +275,7 @@ describe('hook options interface', () => {
     expect(options.scenarioId).toBeUndefined();
   });
 
-  it('should define required options for useBunkRequestsCount', () => {
+  it("should define required options for useBunkRequestsCount", () => {
     interface UseBunkRequestsCountOptions {
       selectedSession: string | undefined;
       sessionCmId: number | undefined;
@@ -285,7 +285,7 @@ describe('hook options interface', () => {
     }
 
     const options: UseBunkRequestsCountOptions = {
-      selectedSession: '1000001',
+      selectedSession: "1000001",
       sessionCmId: 1000001,
       currentYear: 2025,
       subSessions: [{ cm_id: 1000002 }],
@@ -297,8 +297,8 @@ describe('hook options interface', () => {
   });
 });
 
-describe('return type validation', () => {
-  it('useSessionBunks should return bunks array', () => {
+describe("return type validation", () => {
+  it("useSessionBunks should return bunks array", () => {
     const defaultReturn = {
       bunks: [] as Array<{ id: string; name: string }>,
       isLoading: false,
@@ -308,7 +308,7 @@ describe('return type validation', () => {
     expect(Array.isArray(defaultReturn.bunks)).toBe(true);
   });
 
-  it('useSessionCampers should return campers array', () => {
+  it("useSessionCampers should return campers array", () => {
     const defaultReturn = {
       campers: [] as Array<{ id: string; name: string }>,
       isLoading: false,
@@ -318,13 +318,13 @@ describe('return type validation', () => {
     expect(Array.isArray(defaultReturn.campers)).toBe(true);
   });
 
-  it('useBunkRequestsCount should return number', () => {
+  it("useBunkRequestsCount should return number", () => {
     const defaultReturn = {
       count: 0,
       isLoading: false,
       error: null,
     };
 
-    expect(typeof defaultReturn.count).toBe('number');
+    expect(typeof defaultReturn.count).toBe("number");
   });
 });

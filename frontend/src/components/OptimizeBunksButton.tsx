@@ -6,9 +6,16 @@
  * glows warmer as effort level increases, like adding fuel to a fire.
  */
 
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { Wand2, ChevronDown, Zap, Flame, TreePine, Mountain } from 'lucide-react';
-import { createPortal } from 'react-dom';
+import { useState, useRef, useEffect, useCallback } from "react";
+import {
+  Wand2,
+  ChevronDown,
+  Zap,
+  Flame,
+  TreePine,
+  Mountain,
+} from "lucide-react";
+import { createPortal } from "react-dom";
 
 // Optimization levels with their configurations
 export interface OptimizationLevel {
@@ -18,61 +25,61 @@ export interface OptimizationLevel {
   timeLimit: number; // seconds
   description: string;
   icon: React.ElementType;
-  warmth: 'cool' | 'warm' | 'hot' | 'blazing';
+  warmth: "cool" | "warm" | "hot" | "blazing";
 }
 
 // Default level constant - guaranteed to exist
 const DEFAULT_LEVEL: OptimizationLevel = {
-  id: 'standard',
-  name: 'Standard',
-  shortName: 'Standard',
+  id: "standard",
+  name: "Standard",
+  shortName: "Standard",
   timeLimit: 60,
-  description: 'Balanced optimization (default)',
+  description: "Balanced optimization (default)",
   icon: TreePine,
-  warmth: 'warm',
+  warmth: "warm",
 };
 
 // eslint-disable-next-line react-refresh/only-export-components -- Config constant needed by other components
 export const OPTIMIZATION_LEVELS: OptimizationLevel[] = [
   {
-    id: 'quick',
-    name: 'Quick Check',
-    shortName: 'Quick',
+    id: "quick",
+    name: "Quick Check",
+    shortName: "Quick",
     timeLimit: 30,
-    description: 'Fast scan for obvious improvements',
+    description: "Fast scan for obvious improvements",
     icon: Zap,
-    warmth: 'cool',
+    warmth: "cool",
   },
   DEFAULT_LEVEL,
   {
-    id: 'thorough',
-    name: 'Thorough',
-    shortName: 'Thorough',
+    id: "thorough",
+    name: "Thorough",
+    shortName: "Thorough",
     timeLimit: 180,
-    description: 'Deep exploration of possibilities',
+    description: "Deep exploration of possibilities",
     icon: Flame,
-    warmth: 'hot',
+    warmth: "hot",
   },
   {
-    id: 'deep-think',
-    name: 'Deep Think',
-    shortName: 'Deep',
+    id: "deep-think",
+    name: "Deep Think",
+    shortName: "Deep",
     timeLimit: 300,
-    description: 'Comprehensive search for best solution',
+    description: "Comprehensive search for best solution",
     icon: Mountain,
-    warmth: 'blazing',
+    warmth: "blazing",
   },
 ];
 
-const STORAGE_KEY = 'bunking-optimization-level';
+const STORAGE_KEY = "bunking-optimization-level";
 
 function getStoredLevel(): string {
-  if (typeof window === 'undefined') return 'standard';
-  return localStorage.getItem(STORAGE_KEY) || 'standard';
+  if (typeof window === "undefined") return "standard";
+  return localStorage.getItem(STORAGE_KEY) || "standard";
 }
 
 function setStoredLevel(levelId: string): void {
-  if (typeof window !== 'undefined') {
+  if (typeof window !== "undefined") {
     localStorage.setItem(STORAGE_KEY, levelId);
   }
 }
@@ -80,36 +87,36 @@ function setStoredLevel(levelId: string): void {
 // Warmth-based glow styles
 const warmthStyles = {
   cool: {
-    glow: 'shadow-[0_0_15px_rgba(59,130,246,0.3)]',
-    gradient: 'from-blue-500/10 to-transparent',
-    ring: 'ring-blue-400/30',
-    text: 'text-blue-600 dark:text-blue-400',
-    bg: 'bg-blue-50 dark:bg-blue-950/30',
-    iconBg: 'bg-blue-100 dark:bg-blue-900/50',
+    glow: "shadow-[0_0_15px_rgba(59,130,246,0.3)]",
+    gradient: "from-blue-500/10 to-transparent",
+    ring: "ring-blue-400/30",
+    text: "text-blue-600 dark:text-blue-400",
+    bg: "bg-blue-50 dark:bg-blue-950/30",
+    iconBg: "bg-blue-100 dark:bg-blue-900/50",
   },
   warm: {
-    glow: 'shadow-[0_0_15px_rgba(34,197,94,0.3)]',
-    gradient: 'from-green-500/10 to-transparent',
-    ring: 'ring-green-400/30',
-    text: 'text-green-600 dark:text-green-400',
-    bg: 'bg-green-50 dark:bg-green-950/30',
-    iconBg: 'bg-green-100 dark:bg-green-900/50',
+    glow: "shadow-[0_0_15px_rgba(34,197,94,0.3)]",
+    gradient: "from-green-500/10 to-transparent",
+    ring: "ring-green-400/30",
+    text: "text-green-600 dark:text-green-400",
+    bg: "bg-green-50 dark:bg-green-950/30",
+    iconBg: "bg-green-100 dark:bg-green-900/50",
   },
   hot: {
-    glow: 'shadow-[0_0_20px_rgba(251,146,60,0.4)]',
-    gradient: 'from-orange-500/15 to-transparent',
-    ring: 'ring-orange-400/40',
-    text: 'text-orange-600 dark:text-orange-400',
-    bg: 'bg-orange-50 dark:bg-orange-950/30',
-    iconBg: 'bg-orange-100 dark:bg-orange-900/50',
+    glow: "shadow-[0_0_20px_rgba(251,146,60,0.4)]",
+    gradient: "from-orange-500/15 to-transparent",
+    ring: "ring-orange-400/40",
+    text: "text-orange-600 dark:text-orange-400",
+    bg: "bg-orange-50 dark:bg-orange-950/30",
+    iconBg: "bg-orange-100 dark:bg-orange-900/50",
   },
   blazing: {
-    glow: 'shadow-[0_0_25px_rgba(239,68,68,0.5)]',
-    gradient: 'from-red-500/20 to-orange-500/10',
-    ring: 'ring-red-400/50',
-    text: 'text-red-600 dark:text-red-400',
-    bg: 'bg-red-50 dark:bg-red-950/30',
-    iconBg: 'bg-red-100 dark:bg-red-900/50',
+    glow: "shadow-[0_0_25px_rgba(239,68,68,0.5)]",
+    gradient: "from-red-500/20 to-orange-500/10",
+    ring: "ring-red-400/50",
+    text: "text-red-600 dark:text-red-400",
+    bg: "bg-red-50 dark:bg-red-950/30",
+    iconBg: "bg-red-100 dark:bg-red-900/50",
   },
 };
 
@@ -141,7 +148,11 @@ export default function OptimizeBunksButton({
   const [selectedLevelId, setSelectedLevelId] = useState(getStoredLevel);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
+  const [dropdownPosition, setDropdownPosition] = useState({
+    top: 0,
+    left: 0,
+    width: 0,
+  });
 
   // Default to standard level if stored level not found
   const selectedLevel =
@@ -175,23 +186,24 @@ export default function OptimizeBunksButton({
     }
 
     if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside);
+      return () =>
+        document.removeEventListener("mousedown", handleClickOutside);
     }
   }, [isOpen]);
 
   // Handle escape key to close dropdown
   useEffect(() => {
     function handleEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
+      if (event.key === "Escape") {
         setIsOpen(false);
         buttonRef.current?.focus();
       }
     }
 
     if (isOpen) {
-      document.addEventListener('keydown', handleEscape);
-      return () => document.removeEventListener('keydown', handleEscape);
+      document.addEventListener("keydown", handleEscape);
+      return () => document.removeEventListener("keydown", handleEscape);
     }
   }, [isOpen]);
 
@@ -222,9 +234,9 @@ export default function OptimizeBunksButton({
 
   // Get button text based on state
   const getButtonText = () => {
-    if (isSolving) return 'Optimizing...';
-    if (isApplyingResults) return 'Applying...';
-    return 'Optimize';
+    if (isSolving) return "Optimizing...";
+    if (isApplyingResults) return "Applying...";
+    return "Optimize";
   };
 
   return (
@@ -234,8 +246,8 @@ export default function OptimizeBunksButton({
         className={`
           inline-flex items-stretch rounded-xl overflow-hidden
           transition-all duration-300
-          ${isDisabled ? 'opacity-70' : warmth.glow}
-          ${className || ''}
+          ${isDisabled ? "opacity-70" : warmth.glow}
+          ${className || ""}
         `}
       >
         {/* Primary action button */}
@@ -258,7 +270,9 @@ export default function OptimizeBunksButton({
             <Wand2 className="h-4 w-4" />
           )}
           <span className="hidden sm:inline">{getButtonText()}</span>
-          <span className="sm:hidden">{isSolving || isApplyingResults ? '...' : 'Go'}</span>
+          <span className="sm:hidden">
+            {isSolving || isApplyingResults ? "..." : "Go"}
+          </span>
         </button>
 
         {/* Dropdown toggle */}
@@ -281,7 +295,7 @@ export default function OptimizeBunksButton({
             {formatTime(selectedLevel.timeLimit)}
           </span>
           <ChevronDown
-            className={`h-3.5 w-3.5 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+            className={`h-3.5 w-3.5 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
           />
         </button>
       </div>
@@ -330,7 +344,7 @@ export default function OptimizeBunksButton({
                       className={`
                         w-full px-3 py-2.5 flex items-center gap-3
                         transition-all duration-150
-                        ${isSelected ? levelWarmth.bg + ' ' + levelWarmth.ring + ' ring-1 ring-inset' : 'hover:bg-muted/50'}
+                        ${isSelected ? levelWarmth.bg + " " + levelWarmth.ring + " ring-1 ring-inset" : "hover:bg-muted/50"}
                       `}
                     >
                       {/* Icon with warmth-colored background */}
@@ -349,20 +363,22 @@ export default function OptimizeBunksButton({
                       <div className="flex-1 text-left">
                         <div className="flex items-center justify-between gap-2">
                           <span
-                            className={`font-semibold text-sm ${isSelected ? levelWarmth.text : 'text-foreground'}`}
+                            className={`font-semibold text-sm ${isSelected ? levelWarmth.text : "text-foreground"}`}
                           >
                             {level.name}
                           </span>
                           <span
                             className={`
                             text-xs font-mono px-1.5 py-0.5 rounded
-                            ${isSelected ? levelWarmth.bg + ' ' + levelWarmth.text : 'bg-muted text-muted-foreground'}
+                            ${isSelected ? levelWarmth.bg + " " + levelWarmth.text : "bg-muted text-muted-foreground"}
                           `}
                           >
                             {formatTime(level.timeLimit)}
                           </span>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">{level.description}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {level.description}
+                        </p>
                       </div>
 
                       {/* Selection indicator */}
@@ -370,10 +386,10 @@ export default function OptimizeBunksButton({
                         <div
                           className={`
                           flex-shrink-0 w-2 h-2 rounded-full
-                          ${level.warmth === 'cool' ? 'bg-blue-500' : ''}
-                          ${level.warmth === 'warm' ? 'bg-green-500' : ''}
-                          ${level.warmth === 'hot' ? 'bg-orange-500 animate-pulse' : ''}
-                          ${level.warmth === 'blazing' ? 'bg-red-500 animate-pulse' : ''}
+                          ${level.warmth === "cool" ? "bg-blue-500" : ""}
+                          ${level.warmth === "warm" ? "bg-green-500" : ""}
+                          ${level.warmth === "hot" ? "bg-orange-500 animate-pulse" : ""}
+                          ${level.warmth === "blazing" ? "bg-red-500 animate-pulse" : ""}
                         `}
                         />
                       )}
@@ -390,7 +406,7 @@ export default function OptimizeBunksButton({
               </div>
             </div>
           </div>,
-          document.body
+          document.body,
         )}
     </div>
   );

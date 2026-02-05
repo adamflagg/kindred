@@ -1,8 +1,8 @@
-import type { ReactNode, ErrorInfo } from 'react';
-import { Component } from 'react';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
-import { isChunkLoadError } from '../utils/chunkLoadError';
-import { shouldAutoReload, autoReload } from '../utils/autoReload';
+import type { ReactNode, ErrorInfo } from "react";
+import { Component } from "react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
+import { isChunkLoadError } from "../utils/chunkLoadError";
+import { shouldAutoReload, autoReload } from "../utils/autoReload";
 
 interface Props {
   children: ReactNode;
@@ -36,7 +36,7 @@ export class ErrorBoundary extends Component<Props, State> {
     }
 
     // React 19 feature: reportError for better error tracking
-    if ('reportError' in window && typeof window.reportError === 'function') {
+    if ("reportError" in window && typeof window.reportError === "function") {
       window.reportError({
         error,
         componentStack: errorInfo.componentStack,
@@ -45,7 +45,7 @@ export class ErrorBoundary extends Component<Props, State> {
       });
     } else {
       // Fallback to console for older environments
-      console.error('Error caught by boundary:', error, errorInfo);
+      console.error("Error caught by boundary:", error, errorInfo);
     }
   }
 
@@ -76,7 +76,8 @@ export class ErrorBoundary extends Component<Props, State> {
                     App Update Available
                   </h2>
                   <p className="text-sm text-blue-700 dark:text-blue-300 mb-4">
-                    A new version of the app has been deployed. Please reload the page to get the latest updates.
+                    A new version of the app has been deployed. Please reload
+                    the page to get the latest updates.
                   </p>
                   <button
                     onClick={this.handleReload}
@@ -103,7 +104,7 @@ export class ErrorBoundary extends Component<Props, State> {
                   Something went wrong
                 </h2>
                 <p className="text-sm text-red-700 dark:text-red-300 mb-4">
-                  {this.state.error?.message || 'An unexpected error occurred'}
+                  {this.state.error?.message || "An unexpected error occurred"}
                 </p>
                 <button
                   onClick={this.reset}

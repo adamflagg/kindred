@@ -7,12 +7,12 @@ export function formatAge(age: number): string {
   // Extract years and months from CampMinder format
   const years = Math.floor(age);
   const months = Math.round((age - years) * 100);
-  
+
   // Return in format "11 years, 6 months"
   if (months === 0) {
     return `${years} years`;
   }
-  return `${years} years, ${months} month${months === 1 ? '' : 's'}`;
+  return `${years} years, ${months} month${months === 1 ? "" : "s"}`;
 }
 
 /**

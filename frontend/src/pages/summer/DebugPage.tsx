@@ -8,11 +8,11 @@
  * that match the overall app theme while retaining developer focus.
  */
 
-import { useState } from 'react';
-import { Bug, FileCode, Sparkles, Trees } from 'lucide-react';
-import { ParseAnalysisTab, PromptEditorTab } from '../../components/debug';
+import { useState } from "react";
+import { Bug, FileCode, Sparkles, Trees } from "lucide-react";
+import { ParseAnalysisTab, PromptEditorTab } from "../../components/debug";
 
-type TabId = 'parse-analysis' | 'prompt-editor';
+type TabId = "parse-analysis" | "prompt-editor";
 
 interface Tab {
   id: TabId;
@@ -23,19 +23,19 @@ interface Tab {
 
 const TABS: Tab[] = [
   {
-    id: 'parse-analysis',
-    label: 'Parse Analysis',
+    id: "parse-analysis",
+    label: "Parse Analysis",
     icon: <Sparkles className="w-4 h-4" />,
   },
   {
-    id: 'prompt-editor',
-    label: 'Prompt Editor',
+    id: "prompt-editor",
+    label: "Prompt Editor",
     icon: <FileCode className="w-4 h-4" />,
   },
 ];
 
 export default function DebugPage() {
-  const [activeTab, setActiveTab] = useState<TabId>('parse-analysis');
+  const [activeTab, setActiveTab] = useState<TabId>("parse-analysis");
 
   return (
     <div className="relative space-y-6">
@@ -79,10 +79,10 @@ export default function DebugPage() {
                 transition-all duration-200 border-b-2 -mb-px rounded-t-lg
                 ${
                   activeTab === tab.id
-                    ? 'border-forest-500 text-forest-700 dark:text-forest-400 bg-forest-50/50 dark:bg-forest-900/20'
-                    : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-parchment-200/50 dark:hover:bg-bark-800/30'
+                    ? "border-forest-500 text-forest-700 dark:text-forest-400 bg-forest-50/50 dark:bg-forest-900/20"
+                    : "border-transparent text-muted-foreground hover:text-foreground hover:bg-parchment-200/50 dark:hover:bg-bark-800/30"
                 }
-                ${tab.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                ${tab.disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}
               `}
               aria-selected={activeTab === tab.id}
               role="tab"
@@ -101,8 +101,8 @@ export default function DebugPage() {
 
       {/* Tab content */}
       <div role="tabpanel" className="relative">
-        {activeTab === 'parse-analysis' && <ParseAnalysisTab />}
-        {activeTab === 'prompt-editor' && <PromptEditorTab />}
+        {activeTab === "parse-analysis" && <ParseAnalysisTab />}
+        {activeTab === "prompt-editor" && <PromptEditorTab />}
       </div>
     </div>
   );

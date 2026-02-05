@@ -1,13 +1,21 @@
-import { useState } from 'react';
-import { Edit, Trash2, RotateCcw, Plus, FlaskConical, Package, Calendar } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
-import { useScenario } from '../hooks/useScenario';
-import { useYear } from '../hooks/useCurrentYear';
-import { useSyncStatusAPI } from '../hooks/useSyncStatusAPI';
-import ScenarioEditModal from './ScenarioEditModal';
-import NewScenarioModal from './NewScenarioModal';
-import { Modal } from './ui/Modal';
-import { toast } from 'react-hot-toast';
+import { useState } from "react";
+import {
+  Edit,
+  Trash2,
+  RotateCcw,
+  Plus,
+  FlaskConical,
+  Package,
+  Calendar,
+} from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
+import { useScenario } from "../hooks/useScenario";
+import { useYear } from "../hooks/useCurrentYear";
+import { useSyncStatusAPI } from "../hooks/useSyncStatusAPI";
+import ScenarioEditModal from "./ScenarioEditModal";
+import NewScenarioModal from "./NewScenarioModal";
+import { Modal } from "./ui/Modal";
+import { toast } from "react-hot-toast";
 
 interface Scenario {
   id: string;
@@ -25,7 +33,10 @@ interface ScenarioManagementModalProps {
   onClose: () => void;
 }
 
-export default function ScenarioManagementModal({ sessionId, onClose }: ScenarioManagementModalProps) {
+export default function ScenarioManagementModal({
+  sessionId,
+  onClose,
+}: ScenarioManagementModalProps) {
   const currentYear = useYear();
   const {
     scenarios,
@@ -34,24 +45,27 @@ export default function ScenarioManagementModal({ sessionId, onClose }: Scenario
     updateScenario,
     deleteScenario,
     clearScenario,
-    loading
+    loading,
   } = useScenario();
   const { data: syncStatus } = useSyncStatusAPI();
 
   const [editingScenario, setEditingScenario] = useState<Scenario | null>(null);
   const [showNewScenarioModal, setShowNewScenarioModal] = useState(false);
-  const [confirmAction, setConfirmAction] = useState<{ type: 'delete' | 'clear'; scenario: Scenario } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{
+    type: "delete" | "clear";
+    scenario: Scenario;
+  } | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
   const formatDate = (dateString?: string) => {
-    if (!dateString) return 'Unknown';
+    if (!dateString) return "Unknown";
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   };
 
@@ -62,7 +76,7 @@ export default function ScenarioManagementModal({ sessionId, onClose }: Scenario
       toast.success(`Deleted scenario: ${scenario.name}`);
       setConfirmAction(null);
     } catch {
-      toast.error('Failed to delete scenario');
+      toast.error("Failed to delete scenario");
     } finally {
       setIsProcessing(false);
     }
@@ -75,15 +89,18 @@ export default function ScenarioManagementModal({ sessionId, onClose }: Scenario
       toast.success(`Cleared assignments in: ${scenario.name}`);
       setConfirmAction(null);
     } catch {
-      toast.error('Failed to clear scenario');
+      toast.error("Failed to clear scenario");
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const handleUpdate = async (scenarioId: string, updates: { name?: string; description?: string }) => {
+  const handleUpdate = async (
+    scenarioId: string,
+    updates: { name?: string; description?: string },
+  ) => {
     await updateScenario(scenarioId, updates);
-    toast.success('Scenario updated');
+    toast.success("Scenario updated");
   };
 
   const headerContent = (
@@ -120,8 +137,8 @@ export default function ScenarioManagementModal({ sessionId, onClose }: Scenario
             <div
               className={`p-4 rounded-xl border-2 ${
                 !currentScenario
-                  ? 'border-primary bg-primary/5'
-                  : 'border-border bg-muted/30 hover:bg-muted/50'
+                  ? "border-primary bg-primary/5"
+                  : "border-border bg-muted/30 hover:bg-muted/50"
               } cursor-pointer transition-all`}
               onClick={() => selectScenario(null)}
             >
@@ -133,7 +150,7 @@ export default function ScenarioManagementModal({ sessionId, onClose }: Scenario
                     <p className="text-sm text-muted-foreground">
                       {syncStatus?.bunk_assignments?.end_time
                         ? `Synced ${formatDistanceToNow(new Date(syncStatus.bunk_assignments.end_time), { addSuffix: true })}`
-                        : 'Production bunking assignments'}
+                        : "Production bunking assignments"}
                     </p>
                   </div>
                 </div>
@@ -145,16 +162,21 @@ export default function ScenarioManagementModal({ sessionId, onClose }: Scenario
               </div>
             </div>
           </div>
-          
+
           {/* Scenarios List */}
           <div className="flex-1 overflow-y-auto space-y-3 p-6 pt-4">
             {loading ? (
-              <div className="text-center py-8 text-muted-foreground">Loading scenarios...</div>
+              <div className="text-center py-8 text-muted-foreground">
+                Loading scenarios...
+              </div>
             ) : scenarios.length === 0 ? (
               <div className="text-center py-8">
                 <FlaskConical className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
                 <p className="text-muted-foreground">No draft scenarios yet</p>
-                <p className="text-sm text-muted-foreground mt-1">Create a scenario to experiment with different bunking arrangements</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Create a scenario to experiment with different bunking
+                  arrangements
+                </p>
               </div>
             ) : (
               scenarios.map((scenario) => (
@@ -162,8 +184,8 @@ export default function ScenarioManagementModal({ sessionId, onClose }: Scenario
                   key={scenario.id}
                   className={`p-4 rounded-xl border-2 ${
                     currentScenario?.id === scenario.id
-                      ? 'border-accent bg-accent/5'
-                      : 'border-border bg-muted/30 hover:bg-muted/50'
+                      ? "border-accent bg-accent/5"
+                      : "border-border bg-muted/30 hover:bg-muted/50"
                   } transition-all`}
                 >
                   <div className="flex items-start justify-between gap-4">
@@ -181,7 +203,9 @@ export default function ScenarioManagementModal({ sessionId, onClose }: Scenario
                         )}
                       </div>
                       {scenario.description && (
-                        <p className="text-sm text-muted-foreground mb-2">{scenario.description}</p>
+                        <p className="text-sm text-muted-foreground mb-2">
+                          {scenario.description}
+                        </p>
                       )}
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <Calendar className="h-3 w-3" />
@@ -198,14 +222,18 @@ export default function ScenarioManagementModal({ sessionId, onClose }: Scenario
                         <Edit className="h-4 w-4" />
                       </button>
                       <button
-                        onClick={() => setConfirmAction({ type: 'clear', scenario })}
+                        onClick={() =>
+                          setConfirmAction({ type: "clear", scenario })
+                        }
                         className="btn-ghost p-2"
                         title="Clear assignments"
                       >
                         <RotateCcw className="h-4 w-4" />
                       </button>
                       <button
-                        onClick={() => setConfirmAction({ type: 'delete', scenario })}
+                        onClick={() =>
+                          setConfirmAction({ type: "delete", scenario })
+                        }
                         className="p-2 rounded-xl hover:bg-destructive/10 text-destructive transition-colors"
                         title="Delete scenario"
                       >
@@ -224,16 +252,19 @@ export default function ScenarioManagementModal({ sessionId, onClose }: Scenario
       <Modal
         isOpen={!!confirmAction}
         onClose={() => setConfirmAction(null)}
-        title={confirmAction?.type === 'delete' ? 'Delete Scenario?' : 'Clear Assignments?'}
+        title={
+          confirmAction?.type === "delete"
+            ? "Delete Scenario?"
+            : "Clear Assignments?"
+        }
         size="sm"
       >
         {confirmAction && (
           <>
             <p className="text-muted-foreground mb-6">
-              {confirmAction.type === 'delete'
+              {confirmAction.type === "delete"
                 ? `Are you sure you want to delete "${confirmAction.scenario.name}"? This action cannot be undone.`
-                : `Are you sure you want to clear all assignments in "${confirmAction.scenario.name}"? This action cannot be undone.`
-              }
+                : `Are you sure you want to clear all assignments in "${confirmAction.scenario.name}"? This action cannot be undone.`}
             </p>
             <div className="flex gap-3">
               <button
@@ -245,7 +276,7 @@ export default function ScenarioManagementModal({ sessionId, onClose }: Scenario
               </button>
               <button
                 onClick={() => {
-                  if (confirmAction.type === 'delete') {
+                  if (confirmAction.type === "delete") {
                     handleDelete(confirmAction.scenario);
                   } else {
                     handleClear(confirmAction.scenario);
@@ -255,15 +286,18 @@ export default function ScenarioManagementModal({ sessionId, onClose }: Scenario
                 disabled={isProcessing}
               >
                 {isProcessing
-                  ? (confirmAction.type === 'delete' ? 'Deleting...' : 'Clearing...')
-                  : (confirmAction.type === 'delete' ? 'Delete' : 'Clear')
-                }
+                  ? confirmAction.type === "delete"
+                    ? "Deleting..."
+                    : "Clearing..."
+                  : confirmAction.type === "delete"
+                    ? "Delete"
+                    : "Clear"}
               </button>
             </div>
           </>
         )}
       </Modal>
-      
+
       {/* Edit Modal */}
       {editingScenario && (
         <ScenarioEditModal
@@ -272,7 +306,7 @@ export default function ScenarioManagementModal({ sessionId, onClose }: Scenario
           onSave={handleUpdate}
         />
       )}
-      
+
       {/* New Scenario Modal */}
       {showNewScenarioModal && (
         <NewScenarioModal

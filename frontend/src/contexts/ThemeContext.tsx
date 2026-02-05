@@ -1,8 +1,8 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useEffect, useState, useCallback } from "react";
 
-export type Theme = 'light' | 'dark' | 'system';
-export type ResolvedTheme = 'light' | 'dark';
+export type Theme = "light" | "dark" | "system";
+export type ResolvedTheme = "light" | "dark";
 
 export interface ThemeContextType {
   /** Current theme setting (light, dark, or system) */
@@ -17,35 +17,39 @@ export interface ThemeContextType {
   isSystemTheme: boolean;
 }
 
-export const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+export const ThemeContext = createContext<ThemeContextType | undefined>(
+  undefined,
+);
 
 /**
  * Get the system's preferred color scheme
  */
 function getSystemTheme(): ResolvedTheme {
-  if (typeof window === 'undefined') return 'light';
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  if (typeof window === "undefined") return "light";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
 }
 
 /**
  * Get initial theme from localStorage or default to system preference
  */
 function getInitialTheme(): Theme {
-  if (typeof window === 'undefined') return 'system';
+  if (typeof window === "undefined") return "system";
 
-  const stored = localStorage.getItem('theme');
-  if (stored === 'light' || stored === 'dark' || stored === 'system') {
+  const stored = localStorage.getItem("theme");
+  if (stored === "light" || stored === "dark" || stored === "system") {
     return stored;
   }
   // Default to system preference
-  return 'system';
+  return "system";
 }
 
 /**
  * Resolve the actual theme to display based on preference
  */
 function resolveTheme(theme: Theme): ResolvedTheme {
-  if (theme === 'system') {
+  if (theme === "system") {
     return getSystemTheme();
   }
   return theme;
@@ -54,7 +58,7 @@ function resolveTheme(theme: Theme): ResolvedTheme {
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(getInitialTheme);
   const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() =>
-    resolveTheme(getInitialTheme())
+    resolveTheme(getInitialTheme()),
   );
   const [prevTheme, setPrevTheme] = useState<Theme>(theme);
 
@@ -63,16 +67,16 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const root = window.document.documentElement;
 
     // Add transitioning class to disable transitions temporarily
-    root.classList.add('transitioning');
+    root.classList.add("transitioning");
 
     // Use requestAnimationFrame to ensure the class is applied before theme change
     requestAnimationFrame(() => {
-      root.classList.remove('light', 'dark');
+      root.classList.remove("light", "dark");
       root.classList.add(resolved);
 
       // Remove transitioning class after a short delay to re-enable transitions
       requestAnimationFrame(() => {
-        root.classList.remove('transitioning');
+        root.classList.remove("transitioning");
       });
     });
   }, []);
@@ -83,30 +87,30 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const resolved = resolveTheme(theme);
     setResolvedTheme(resolved);
     applyTheme(resolved);
-    localStorage.setItem('theme', theme);
+    localStorage.setItem("theme", theme);
   }
 
   // Listen for system theme changes when in system mode
   useEffect(() => {
-    if (theme !== 'system') return;
+    if (theme !== "system") return;
 
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
     const handleChange = (e: MediaQueryListEvent) => {
-      const newResolved = e.matches ? 'dark' : 'light';
+      const newResolved = e.matches ? "dark" : "light";
       setResolvedTheme(newResolved);
       applyTheme(newResolved);
     };
 
-    mediaQuery.addEventListener('change', handleChange);
-    return () => mediaQuery.removeEventListener('change', handleChange);
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
   }, [theme, applyTheme]);
 
   const toggleTheme = useCallback(() => {
     setThemeState((prev) => {
       // When toggling, resolve current and flip
       const current = resolveTheme(prev);
-      return current === 'light' ? 'dark' : 'light';
+      return current === "light" ? "dark" : "light";
     });
   }, []);
 
@@ -121,7 +125,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         resolvedTheme,
         toggleTheme,
         setTheme,
-        isSystemTheme: theme === 'system',
+        isSystemTheme: theme === "system",
       }}
     >
       {children}

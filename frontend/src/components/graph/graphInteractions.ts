@@ -2,7 +2,7 @@
  * Graph interaction utilities for Cytoscape social network graphs
  * Extracted from SocialNetworkGraph.tsx
  */
-import type { Core, NodeSingular } from 'cytoscape';
+import type { Core, NodeSingular } from "cytoscape";
 
 /**
  * Adjust label positions to prevent overlap
@@ -14,9 +14,11 @@ export function adjustLabelPositions(cy: Core): void {
   // Sort nodes by Y position (exclude parent nodes - they have fixed label positions)
   const nodes = cy
     .nodes()
-    .filter((n) => !n.data('isBunkParent'))
+    .filter((n) => !n.data("isBunkParent"))
     .sort((a, b) => {
-      return (a as NodeSingular).position().y - (b as NodeSingular).position().y;
+      return (
+        (a as NodeSingular).position().y - (b as NodeSingular).position().y
+      );
     });
 
   // Track label positions to detect overlaps
@@ -35,7 +37,7 @@ export function adjustLabelPositions(cy: Core): void {
     try {
       const pos = node.renderedPosition();
       const bb = node.renderedBoundingBox();
-      const label = node.data('label') || '';
+      const label = node.data("label") || "";
       const labelWidth = label.length * 6; // Approximate width
       const labelHeight = 14; // Font size
 
@@ -85,7 +87,7 @@ export function adjustLabelPositions(cy: Core): void {
           });
 
           // Apply the offset
-          node.style('text-margin-y', offsetY);
+          node.style("text-margin-y", offsetY);
         }
       }
     } catch {
@@ -104,8 +106,8 @@ export function showEgoNetwork(cy: Core, nodeId: string): void {
   const node = cy.$(`#${nodeId}`);
   const neighborhood = node.closedNeighborhood();
 
-  cy.elements().addClass('faded');
-  neighborhood.removeClass('faded');
+  cy.elements().addClass("faded");
+  neighborhood.removeClass("faded");
 }
 
 /**
@@ -113,27 +115,27 @@ export function showEgoNetwork(cy: Core, nodeId: string): void {
  */
 export function updateEdgeVisibility(
   cy: Core,
-  showEdges: Record<string, boolean>
+  showEdges: Record<string, boolean>,
 ): void {
   if (!cy || cy.destroyed()) return;
 
   // Batch style updates for better performance
   cy.batch(() => {
     cy.edges().forEach((edge) => {
-      const edgeType = edge.data('edge_type');
-      const isBundled = edgeType === 'bundled';
+      const edgeType = edge.data("edge_type");
+      const isBundled = edgeType === "bundled";
 
       if (isBundled) {
         // For bundled edges, check if any of the bundled types should be shown
-        const types = edge.data('types') || [];
+        const types = edge.data("types") || [];
         const shouldShow = types.some((type: string) => showEdges[type]);
 
         edge.style({
           opacity: shouldShow ? 1 : 0,
-          events: shouldShow ? 'yes' : 'no',
-          'transition-property': 'opacity',
-          'transition-duration': '300ms',
-          'transition-timing-function': 'ease-in-out',
+          events: shouldShow ? "yes" : "no",
+          "transition-property": "opacity",
+          "transition-duration": "300ms",
+          "transition-timing-function": "ease-in-out",
         });
       } else if (edgeType in showEdges) {
         // Known edge type - use checkbox state with smooth transition
@@ -141,19 +143,19 @@ export function updateEdgeVisibility(
 
         edge.style({
           opacity: shouldShow ? 1 : 0,
-          events: shouldShow ? 'yes' : 'no',
-          'transition-property': 'opacity',
-          'transition-duration': '300ms',
-          'transition-timing-function': 'ease-in-out',
+          events: shouldShow ? "yes" : "no",
+          "transition-property": "opacity",
+          "transition-duration": "300ms",
+          "transition-timing-function": "ease-in-out",
         });
       } else {
         // Unknown edge type - hide with transition
         edge.style({
           opacity: 0,
-          events: 'no',
-          'transition-property': 'opacity',
-          'transition-duration': '300ms',
-          'transition-timing-function': 'ease-in-out',
+          events: "no",
+          "transition-property": "opacity",
+          "transition-duration": "300ms",
+          "transition-timing-function": "ease-in-out",
         });
       }
     });
@@ -166,20 +168,20 @@ export function updateEdgeVisibility(
 export function setupZoomBasedLabels(cy: Core): void {
   if (!cy || cy.destroyed()) return;
 
-  cy.on('zoom', () => {
+  cy.on("zoom", () => {
     const zoom = cy.zoom();
     const threshold = zoom < 0.5 ? 0.8 : zoom < 0.7 ? 0.6 : 0.4;
 
     cy.nodes()
-      .filter((n) => !n.data('isBunkParent'))
+      .filter((n) => !n.data("isBunkParent"))
       .forEach((node) => {
         const neighbors = node.neighborhood().nodes();
         const density = neighbors.length / 15; // Normalize density
 
-        if (density > threshold && !node.hasClass('highlighted')) {
-          node.addClass('hide-label');
+        if (density > threshold && !node.hasClass("highlighted")) {
+          node.addClass("hide-label");
         } else {
-          node.removeClass('hide-label');
+          node.removeClass("hide-label");
         }
       });
   });
@@ -192,17 +194,17 @@ export function setupNodeHover(cy: Core): void {
   if (!cy || cy.destroyed()) return;
 
   // Show label on hover
-  cy.on('mouseover', 'node', (event) => {
+  cy.on("mouseover", "node", (event) => {
     const node = event.target;
-    node.addClass('highlighted');
-    node.removeClass('hide-label');
+    node.addClass("highlighted");
+    node.removeClass("hide-label");
   });
 
-  cy.on('mouseout', 'node', (event) => {
+  cy.on("mouseout", "node", (event) => {
     const node = event.target;
-    node.removeClass('highlighted');
+    node.removeClass("highlighted");
     // Re-check if it should be hidden based on zoom
-    cy.emit('zoom');
+    cy.emit("zoom");
   });
 }
 
@@ -216,7 +218,7 @@ export function setupTapToReveal(cy: Core): void {
   let lastTappedNode: NodeSingular | null = null;
   let hideTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  cy.on('tap', 'node', (event) => {
+  cy.on("tap", "node", (event) => {
     const node = event.target;
 
     // If tapping the same node, do nothing special
@@ -231,34 +233,34 @@ export function setupTapToReveal(cy: Core): void {
 
     // Hide label from previously tapped node
     if (lastTappedNode && !lastTappedNode.removed()) {
-      lastTappedNode.removeClass('highlighted');
-      cy.emit('zoom'); // Re-evaluate if it should be hidden
+      lastTappedNode.removeClass("highlighted");
+      cy.emit("zoom"); // Re-evaluate if it should be hidden
     }
 
     // Show label for tapped node
-    node.addClass('highlighted');
-    node.removeClass('hide-label');
+    node.addClass("highlighted");
+    node.removeClass("hide-label");
     lastTappedNode = node;
 
     // Auto-hide after 5 seconds (gives time to read)
     hideTimeout = setTimeout(() => {
       if (node && !node.removed()) {
-        node.removeClass('highlighted');
-        cy.emit('zoom');
+        node.removeClass("highlighted");
+        cy.emit("zoom");
       }
       lastTappedNode = null;
     }, 5000);
   });
 
   // Tap on background clears highlighted node
-  cy.on('tap', (event) => {
+  cy.on("tap", (event) => {
     if (event.target === cy) {
       if (hideTimeout) {
         clearTimeout(hideTimeout);
       }
       if (lastTappedNode && !lastTappedNode.removed()) {
-        lastTappedNode.removeClass('highlighted');
-        cy.emit('zoom');
+        lastTappedNode.removeClass("highlighted");
+        cy.emit("zoom");
       }
       lastTappedNode = null;
     }

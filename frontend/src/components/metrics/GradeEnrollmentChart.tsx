@@ -14,16 +14,16 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
-} from 'recharts';
-import type { YearEnrollment } from '../../types/metrics';
+} from "recharts";
+import type { YearEnrollment } from "../../types/metrics";
 
 // Year-specific colors for grouped bars
 const YEAR_COLORS = [
-  'hsl(200, 70%, 50%)', // Blue (oldest)
-  'hsl(160, 100%, 35%)', // Green (middle)
-  'hsl(42, 92%, 50%)', // Gold (most recent)
-  'hsl(280, 60%, 50%)', // Purple
-  'hsl(350, 70%, 50%)', // Red
+  "hsl(200, 70%, 50%)", // Blue (oldest)
+  "hsl(160, 100%, 35%)", // Green (middle)
+  "hsl(42, 92%, 50%)", // Gold (most recent)
+  "hsl(280, 60%, 50%)", // Purple
+  "hsl(350, 70%, 50%)", // Red
 ];
 
 interface GradeEnrollmentChartProps {
@@ -43,7 +43,10 @@ interface ChartDataItem {
  * Transform YearEnrollment data to chart format.
  * Each grade becomes a group with one bar per year.
  */
-function transformData(data: YearEnrollment[]): { chartData: ChartDataItem[]; years: number[] } {
+function transformData(data: YearEnrollment[]): {
+  chartData: ChartDataItem[];
+  years: number[];
+} {
   // Collect all unique grades across all years
   const gradeSet = new Set<number | null>();
   for (const year of data) {
@@ -64,7 +67,7 @@ function transformData(data: YearEnrollment[]): { chartData: ChartDataItem[]; ye
 
   // Create data points for each grade
   const chartData = sortedGrades.map((grade) => {
-    const name = grade !== null ? `Grade ${grade}` : 'Unknown';
+    const name = grade !== null ? `Grade ${grade}` : "Unknown";
     const item: ChartDataItem = { name, grade };
 
     for (const yearData of data) {
@@ -80,9 +83,9 @@ function transformData(data: YearEnrollment[]): { chartData: ChartDataItem[]; ye
 
 export function GradeEnrollmentChart({
   data,
-  title = 'Enrollment by Grade',
+  title = "Enrollment by Grade",
   height = 300,
-  className = '',
+  className = "",
 }: GradeEnrollmentChartProps) {
   // Show empty state if no data or no grade data
   const hasGradeData = data.some((y) => y.by_grade.length > 0);
@@ -115,7 +118,7 @@ export function GradeEnrollmentChart({
           <p className="font-medium text-foreground mb-2">{label}</p>
           {payload.map((p, idx) => (
             <p key={idx} className="text-sm text-muted-foreground">
-              <span style={{ color: p.color }}>Year {p.name}:</span>{' '}
+              <span style={{ color: p.color }}>Year {p.name}:</span>{" "}
               <span className="font-semibold text-foreground">{p.value}</span>
             </p>
           ))}
@@ -129,14 +132,20 @@ export function GradeEnrollmentChart({
     <div className={`card-lodge p-4 ${className}`}>
       <h3 className="text-sm font-semibold text-foreground mb-4">{title}</h3>
       <ResponsiveContainer width="100%" height={height}>
-        <BarChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+        <BarChart
+          data={chartData}
+          margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+        >
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis
             dataKey="name"
             className="text-xs"
-            tick={{ fill: 'hsl(var(--muted-foreground))' }}
+            tick={{ fill: "hsl(var(--muted-foreground))" }}
           />
-          <YAxis className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+          <YAxis
+            className="text-xs"
+            tick={{ fill: "hsl(var(--muted-foreground))" }}
+          />
           <Tooltip content={<CustomTooltip />} />
           <Legend />
           {years.map((year, index) => (
@@ -144,7 +153,9 @@ export function GradeEnrollmentChart({
               key={year}
               dataKey={year.toString()}
               name={year.toString()}
-              fill={YEAR_COLORS[index % YEAR_COLORS.length] ?? 'hsl(0, 0%, 50%)'}
+              fill={
+                YEAR_COLORS[index % YEAR_COLORS.length] ?? "hsl(0, 0%, 50%)"
+              }
               radius={[4, 4, 0, 0]}
             />
           ))}

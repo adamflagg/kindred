@@ -8,9 +8,9 @@
  * with any existing requests (same requester + same requestee + same type).
  */
 
-import { useState, useCallback, useMemo } from 'react';
-import type { BunkRequestsResponse } from '../types/pocketbase-types';
-import type { BunkRequestsRequestTypeOptions } from '../types/pocketbase-types';
+import { useState, useCallback, useMemo } from "react";
+import type { BunkRequestsResponse } from "../types/pocketbase-types";
+import type { BunkRequestsRequestTypeOptions } from "../types/pocketbase-types";
 
 export interface ValidationParams {
   requestId: string;
@@ -23,7 +23,7 @@ export interface ValidationParams {
 export interface Conflict {
   conflictingRequestId: string;
   conflictingRequest: BunkRequestsResponse;
-  suggestedResolution: 'merge';
+  suggestedResolution: "merge";
 }
 
 export interface UseOptimisticValidationResult {
@@ -35,13 +35,14 @@ export interface UseOptimisticValidationResult {
 }
 
 export function useOptimisticValidation(
-  existingRequests: BunkRequestsResponse[]
+  existingRequests: BunkRequestsResponse[],
 ): UseOptimisticValidationResult {
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
 
   const validateChange = useCallback(
     (params: ValidationParams) => {
-      const { requestId, requesterId, newRequesteeId, newType, sessionId } = params;
+      const { requestId, requesterId, newRequesteeId, newType, sessionId } =
+        params;
 
       // Find conflicts: requests with same requester, requestee, type, and session
       // Exclude the request being edited from conflict detection
@@ -63,14 +64,14 @@ export function useOptimisticValidation(
           foundConflicts.push({
             conflictingRequestId: existing.id,
             conflictingRequest: existing,
-            suggestedResolution: 'merge',
+            suggestedResolution: "merge",
           });
         }
       }
 
       setConflicts(foundConflicts);
     },
-    [existingRequests]
+    [existingRequests],
   );
 
   const clearConflicts = useCallback(() => {

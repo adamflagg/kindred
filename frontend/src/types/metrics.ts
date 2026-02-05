@@ -319,7 +319,7 @@ export interface RetentionTrendYear {
 export interface RetentionTrendsResponse {
   years: RetentionTrendYear[];
   avg_retention_rate: number;
-  trend_direction: 'improving' | 'declining' | 'stable';
+  trend_direction: "improving" | "declining" | "stable";
   by_gender_grouped?: RetentionTrendGenderBreakdown[];
   by_grade_grouped?: RetentionTrendGradeBreakdown[];
   enrollment_by_year?: YearEnrollment[];
@@ -327,7 +327,16 @@ export interface RetentionTrendsResponse {
 
 // Drilldown types (chart click-through)
 export interface DrilldownFilter {
-  type: 'session' | 'gender' | 'grade' | 'school' | 'years_at_camp' | 'status' | 'returning_status' | 'session_length' | 'first_summer_year';
+  type:
+    | "session"
+    | "gender"
+    | "grade"
+    | "school"
+    | "years_at_camp"
+    | "status"
+    | "returning_status"
+    | "session_length"
+    | "first_summer_year";
   value: string;
   label: string; // Display label for modal title
   /** Override status filter (for status cards like Waitlisted, Cancelled) */

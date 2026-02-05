@@ -10,9 +10,9 @@
  * This hook fetches all records for a person and transforms them into a denormalized object.
  */
 
-import { useQuery } from '@tanstack/react-query';
-import { pb } from '../../lib/pocketbase';
-import type { OriginalBunkData } from './types';
+import { useQuery } from "@tanstack/react-query";
+import { pb } from "../../lib/pocketbase";
+import type { OriginalBunkData } from "./types";
 
 export interface UseOriginalBunkDataResult {
   originalBunkData: OriginalBunkData | null;
@@ -22,22 +22,28 @@ export interface UseOriginalBunkDataResult {
 
 export function useOriginalBunkData(
   personCmId: number | undefined,
-  currentYear: number
+  currentYear: number,
 ): UseOriginalBunkDataResult {
-  const { data: originalBunkData = null, isLoading, error } = useQuery({
-    queryKey: ['original-bunk-requests', personCmId, currentYear],
+  const {
+    data: originalBunkData = null,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["original-bunk-requests", personCmId, currentYear],
     queryFn: async (): Promise<OriginalBunkData | null> => {
       if (!personCmId) {
-        throw new Error('No camper person ID');
+        throw new Error("No camper person ID");
       }
 
       try {
         // Filter by relation field and year
         const filter = `requester.cm_id = ${personCmId} && year = ${currentYear}`;
-        const records = await pb.collection('original_bunk_requests').getList(1, 100, {
-          filter,
-          expand: 'requester',
-        });
+        const records = await pb
+          .collection("original_bunk_requests")
+          .getList(1, 100, {
+            filter,
+            expand: "requester",
+          });
 
         if (records.items.length === 0) {
           return null;
@@ -55,38 +61,45 @@ export function useOriginalBunkData(
           const processed = record.processed as string | undefined;
 
           switch (fieldName) {
-            case 'bunk_with':
+            case "bunk_with":
               result.share_bunk_with = content;
               if (updated) result.share_bunk_with_updated = updated;
               if (processed) result.share_bunk_with_processed = processed;
               break;
-            case 'not_bunk_with':
+            case "not_bunk_with":
               result.do_not_share_bunk_with = content;
               if (updated) result.do_not_share_bunk_with_updated = updated;
-              if (processed) result.do_not_share_bunk_with_processed = processed;
+              if (processed)
+                result.do_not_share_bunk_with_processed = processed;
               break;
-            case 'bunking_notes':
+            case "bunking_notes":
               result.bunking_notes_notes = content;
               if (updated) result.bunking_notes_notes_updated = updated;
               if (processed) result.bunking_notes_notes_processed = processed;
               break;
-            case 'internal_notes':
+            case "internal_notes":
               result.internal_bunk_notes = content;
               if (updated) result.internal_bunk_notes_updated = updated;
               if (processed) result.internal_bunk_notes_processed = processed;
               break;
-            case 'socialize_with':
+            case "socialize_with":
               result.ret_parent_socialize_with_best = content;
-              if (updated) result.ret_parent_socialize_with_best_updated = updated;
-              if (processed) result.ret_parent_socialize_with_best_processed = processed;
+              if (updated)
+                result.ret_parent_socialize_with_best_updated = updated;
+              if (processed)
+                result.ret_parent_socialize_with_best_processed = processed;
               break;
           }
         }
 
         // Get first/last name from expanded requester if available
         const firstRecord = records.items[0];
-        const expandData = firstRecord?.expand as Record<string, unknown> | undefined;
-        const requester = expandData?.['requester'] as { first_name?: string; last_name?: string } | undefined;
+        const expandData = firstRecord?.expand as
+          | Record<string, unknown>
+          | undefined;
+        const requester = expandData?.["requester"] as
+          | { first_name?: string; last_name?: string }
+          | undefined;
         if (requester?.first_name) {
           result.first_name = requester.first_name;
         }
@@ -96,7 +109,7 @@ export function useOriginalBunkData(
 
         return result;
       } catch (err) {
-        console.error('Error fetching original bunk requests:', err);
+        console.error("Error fetching original bunk requests:", err);
         return null;
       }
     },

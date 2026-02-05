@@ -11,13 +11,13 @@
 
 // Default branding values (generic)
 const defaultBranding = {
-  camp_name: 'Kindred',
-  camp_name_short: 'Kindred',
-  camp_description: 'a cabin assignment system that puts relationships first',
-  camp_tagline: 'where campers find their people',
-  sso_display_name: 'Staff SSO',
-  page_title: 'Kindred',
-  page_description: 'Cabin assignments that put relationships first',
+  camp_name: "Kindred",
+  camp_name_short: "Kindred",
+  camp_description: "a cabin assignment system that puts relationships first",
+  camp_tagline: "where campers find their people",
+  sso_display_name: "Staff SSO",
+  page_title: "Kindred",
+  page_description: "Cabin assignments that put relationships first",
   logo: {
     large: null as string | null,
     nav: null as string | null,
@@ -30,7 +30,7 @@ let localBranding: Partial<typeof defaultBranding> = {};
 try {
   // This will be replaced by Vite's define plugin if local config exists
   // @ts-expect-error - VITE_LOCAL_BRANDING is injected at build time
-  if (typeof VITE_LOCAL_BRANDING !== 'undefined') {
+  if (typeof VITE_LOCAL_BRANDING !== "undefined") {
     // @ts-expect-error - VITE_LOCAL_BRANDING is injected at build time
     localBranding = VITE_LOCAL_BRANDING;
   }
@@ -69,7 +69,7 @@ export function getSsoDisplayName(): string {
   return branding.sso_display_name;
 }
 
-export function getLogoPath(size: 'large' | 'nav' = 'large'): string | null {
+export function getLogoPath(size: "large" | "nav" = "large"): string | null {
   return branding.logo[size];
 }
 

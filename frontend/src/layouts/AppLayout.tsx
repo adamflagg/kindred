@@ -1,24 +1,39 @@
-import { useState, useEffect, useRef } from 'react';
-import { Link, useLocation, Outlet, useNavigate } from 'react-router';
-import { useTheme } from '../hooks/useTheme';
-import { useAuth } from '../contexts/AuthContext';
-import { useApiWithAuth } from '../hooks/useApiWithAuth';
-import { syncService } from '../services/sync';
-import { useMutation } from '@tanstack/react-query';
-import { RefreshCw, Loader2, User, Home, ChevronDown, Menu, X, Sun, Moon, TreePine, Clock, LogOut, Settings, BarChart3 } from 'lucide-react';
-import toast from 'react-hot-toast';
-import YearSelector from '../components/YearSelector';
-import CacheStatus from '../components/CacheStatus';
-import BunkRequestsUpload from '../components/BunkRequestsUpload';
-import { BrandedLogo } from '../components/BrandedLogo';
-import { useYear } from '../hooks/useCurrentYear';
-import { useIsAdmin } from '../hooks/useIsAdmin';
-import { useSyncStatusAPI } from '../hooks/useSyncStatusAPI';
-import { formatDistanceToNow } from 'date-fns';
-import { useProgram } from '../contexts/ProgramContext';
-import { getProgramFromPath } from '../utils/programUrls';
-import { pb } from '../lib/pocketbase';
-import { VersionInfo } from '../components/VersionInfo';
+import { useState, useEffect, useRef } from "react";
+import { Link, useLocation, Outlet, useNavigate } from "react-router";
+import { useTheme } from "../hooks/useTheme";
+import { useAuth } from "../contexts/AuthContext";
+import { useApiWithAuth } from "../hooks/useApiWithAuth";
+import { syncService } from "../services/sync";
+import { useMutation } from "@tanstack/react-query";
+import {
+  RefreshCw,
+  Loader2,
+  User,
+  Home,
+  ChevronDown,
+  Menu,
+  X,
+  Sun,
+  Moon,
+  TreePine,
+  Clock,
+  LogOut,
+  Settings,
+  BarChart3,
+} from "lucide-react";
+import toast from "react-hot-toast";
+import YearSelector from "../components/YearSelector";
+import CacheStatus from "../components/CacheStatus";
+import BunkRequestsUpload from "../components/BunkRequestsUpload";
+import { BrandedLogo } from "../components/BrandedLogo";
+import { useYear } from "../hooks/useCurrentYear";
+import { useIsAdmin } from "../hooks/useIsAdmin";
+import { useSyncStatusAPI } from "../hooks/useSyncStatusAPI";
+import { formatDistanceToNow } from "date-fns";
+import { useProgram } from "../contexts/ProgramContext";
+import { getProgramFromPath } from "../utils/programUrls";
+import { pb } from "../lib/pocketbase";
+import { VersionInfo } from "../components/VersionInfo";
 
 export const AppLayout = () => {
   const location = useLocation();
@@ -38,33 +53,41 @@ export const AppLayout = () => {
 
   // Determine current program from URL if not set
   const urlProgram = getProgramFromPath(location.pathname);
-  const activeProgram = urlProgram || currentProgram || 'summer';
+  const activeProgram = urlProgram || currentProgram || "summer";
 
   // Close program menu on click outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (programMenuRef.current && !programMenuRef.current.contains(event.target as Node)) {
+      if (
+        programMenuRef.current &&
+        !programMenuRef.current.contains(event.target as Node)
+      ) {
         setIsProgramMenuOpen(false);
       }
     };
 
     if (isProgramMenuOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside);
+      return () =>
+        document.removeEventListener("mousedown", handleClickOutside);
     }
   }, [isProgramMenuOpen]);
 
   // Close user menu on click outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+      if (
+        userMenuRef.current &&
+        !userMenuRef.current.contains(event.target as Node)
+      ) {
         setIsUserMenuOpen(false);
       }
     };
 
     if (isUserMenuOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside);
+      return () =>
+        document.removeEventListener("mousedown", handleClickOutside);
     }
   }, [isUserMenuOpen]);
 
@@ -72,18 +95,18 @@ export const AppLayout = () => {
     setIsUserMenuOpen(false);
     setIsMobileMenuOpen(false);
     logout();
-    navigate('/login');
+    navigate("/login");
   };
 
-  const handleProgramSwitch = (program: 'summer' | 'family' | 'metrics') => {
+  const handleProgramSwitch = (program: "summer" | "family" | "metrics") => {
     setProgram(program);
     setIsProgramMenuOpen(false);
-    if (program === 'summer') {
-      navigate('/summer/sessions');
-    } else if (program === 'family') {
-      navigate('/family/');
+    if (program === "summer") {
+      navigate("/summer/sessions");
+    } else if (program === "family") {
+      navigate("/family/");
     } else {
-      navigate('/metrics');
+      navigate("/metrics");
     }
   };
 
@@ -97,11 +120,13 @@ export const AppLayout = () => {
 
   const isActiveRoute = (path: string) => {
     // Special case: Campers nav should NOT be active on session-level campers tab
-    if (path === '/camper') {
+    if (path === "/camper") {
       // Match /summer/campers (all campers) or /summer/camper/ (camper detail)
       // But NOT /summer/session/*/campers
-      return location.pathname === '/summer/campers' ||
-             location.pathname.includes('/summer/camper/');
+      return (
+        location.pathname === "/summer/campers" ||
+        location.pathname.includes("/summer/camper/")
+      );
     }
     return location.pathname.includes(path);
   };
@@ -128,7 +153,13 @@ export const AppLayout = () => {
 
               {/* Logo with subtle white outline for visibility on dark nav */}
               <Link
-                to={activeProgram === 'summer' ? '/summer/sessions' : activeProgram === 'family' ? '/family/' : '/'}
+                to={
+                  activeProgram === "summer"
+                    ? "/summer/sessions"
+                    : activeProgram === "family"
+                      ? "/family/"
+                      : "/"
+                }
                 className="flex-shrink-0 flex items-center"
               >
                 <BrandedLogo
@@ -143,12 +174,12 @@ export const AppLayout = () => {
                   onClick={() => setIsProgramMenuOpen(!isProgramMenuOpen)}
                   className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
                 >
-                  {activeProgram === 'summer' ? (
+                  {activeProgram === "summer" ? (
                     <>
                       <TreePine className="w-4 h-4 text-amber-400" />
                       <span className="hidden sm:inline">Summer</span>
                     </>
-                  ) : activeProgram === 'family' ? (
+                  ) : activeProgram === "family" ? (
                     <>
                       <Home className="w-4 h-4 text-amber-400" />
                       <span className="hidden sm:inline">Family</span>
@@ -159,39 +190,41 @@ export const AppLayout = () => {
                       <span className="hidden sm:inline">Metrics</span>
                     </>
                   )}
-                  <ChevronDown className={`w-3 h-3 transition-transform ${isProgramMenuOpen ? 'rotate-180' : ''}`} />
+                  <ChevronDown
+                    className={`w-3 h-3 transition-transform ${isProgramMenuOpen ? "rotate-180" : ""}`}
+                  />
                 </button>
 
                 {isProgramMenuOpen && (
                   <div className="absolute top-full left-0 mt-2 w-52 card-lodge p-2 shadow-lodge-lg animate-scale-in z-50">
                     <button
-                      onClick={() => handleProgramSwitch('summer')}
+                      onClick={() => handleProgramSwitch("summer")}
                       className={`w-full px-3 py-2.5 text-left text-sm font-medium rounded-lg transition-colors flex items-center gap-3 ${
-                        activeProgram === 'summer'
-                          ? 'bg-primary/10 text-primary'
-                          : 'hover:bg-muted/50 text-foreground'
+                        activeProgram === "summer"
+                          ? "bg-primary/10 text-primary"
+                          : "hover:bg-muted/50 text-foreground"
                       }`}
                     >
                       <TreePine className="w-4 h-4" />
                       Summer Camp
                     </button>
                     <button
-                      onClick={() => handleProgramSwitch('family')}
+                      onClick={() => handleProgramSwitch("family")}
                       className={`w-full px-3 py-2.5 text-left text-sm font-medium rounded-lg transition-colors flex items-center gap-3 ${
-                        activeProgram === 'family'
-                          ? 'bg-accent/10 text-amber-600 dark:text-accent'
-                          : 'hover:bg-muted/50 text-foreground'
+                        activeProgram === "family"
+                          ? "bg-accent/10 text-amber-600 dark:text-accent"
+                          : "hover:bg-muted/50 text-foreground"
                       }`}
                     >
                       <Home className="w-4 h-4" />
                       Family Camp
                     </button>
                     <button
-                      onClick={() => handleProgramSwitch('metrics')}
+                      onClick={() => handleProgramSwitch("metrics")}
                       className={`w-full px-3 py-2.5 text-left text-sm font-medium rounded-lg transition-colors flex items-center gap-3 ${
-                        activeProgram === 'metrics'
-                          ? 'bg-sky-500/10 text-sky-600 dark:text-sky-400'
-                          : 'hover:bg-muted/50 text-foreground'
+                        activeProgram === "metrics"
+                          ? "bg-sky-500/10 text-sky-600 dark:text-sky-400"
+                          : "hover:bg-muted/50 text-foreground"
                       }`}
                     >
                       <BarChart3 className="w-4 h-4" />
@@ -202,7 +235,7 @@ export const AppLayout = () => {
                       onClick={() => {
                         clearProgram();
                         setIsProgramMenuOpen(false);
-                        navigate('/');
+                        navigate("/");
                       }}
                       className="w-full px-3 py-2.5 text-left text-sm font-medium rounded-lg hover:bg-muted/50 transition-colors flex items-center gap-3 text-muted-foreground"
                     >
@@ -215,40 +248,42 @@ export const AppLayout = () => {
 
               {/* Desktop navigation */}
               <div className="hidden sm:flex sm:gap-1">
-                {activeProgram === 'summer' && (
+                {activeProgram === "summer" && (
                   <Link
                     to="/summer/sessions"
-                    className={`nav-link-lodge ${isActiveRoute('/session') ? 'active' : ''}`}
+                    className={`nav-link-lodge ${isActiveRoute("/session") ? "active" : ""}`}
                   >
                     Sessions
                   </Link>
                 )}
-                {(activeProgram === 'summer' || activeProgram === 'metrics') && (
+                {(activeProgram === "summer" ||
+                  activeProgram === "metrics") && (
                   <Link
                     to="/summer/campers"
-                    className={`nav-link-lodge ${activeProgram === 'summer' && isActiveRoute('/camper') ? 'active' : ''}`}
+                    className={`nav-link-lodge ${activeProgram === "summer" && isActiveRoute("/camper") ? "active" : ""}`}
                   >
                     Campers
                   </Link>
                 )}
                 <Link
                   to={`/${activeProgram}/users`}
-                  className={`nav-link-lodge ${isActiveRoute('/users') ? 'active' : ''}`}
+                  className={`nav-link-lodge ${isActiveRoute("/users") ? "active" : ""}`}
                 >
                   Users
                 </Link>
-                {(activeProgram === 'summer' || activeProgram === 'metrics') && (
+                {(activeProgram === "summer" ||
+                  activeProgram === "metrics") && (
                   <Link
                     to="/summer/admin"
-                    className={`nav-link-lodge ${activeProgram === 'summer' && isActiveRoute('/admin') ? 'active' : ''}`}
+                    className={`nav-link-lodge ${activeProgram === "summer" && isActiveRoute("/admin") ? "active" : ""}`}
                   >
                     Admin
                   </Link>
                 )}
-                {activeProgram === 'summer' && isAdmin && (
+                {activeProgram === "summer" && isAdmin && (
                   <Link
                     to="/summer/debug"
-                    className={`nav-link-lodge ${isActiveRoute('/debug') ? 'active' : ''}`}
+                    className={`nav-link-lodge ${isActiveRoute("/debug") ? "active" : ""}`}
                   >
                     Debug
                   </Link>
@@ -266,10 +301,10 @@ export const AppLayout = () => {
                     className="flex items-center gap-2 px-2 py-1.5 rounded-xl hover:bg-white/10 transition-all"
                   >
                     <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0 overflow-hidden border border-white/30">
-                      {user['avatar'] ? (
+                      {user["avatar"] ? (
                         <img
-                          src={pb.files.getURL(user, user['avatar'])}
-                          alt={user['name'] || user['email']}
+                          src={pb.files.getURL(user, user["avatar"])}
+                          alt={user["name"] || user["email"]}
                           className="w-full h-full object-cover"
                         />
                       ) : (
@@ -278,13 +313,15 @@ export const AppLayout = () => {
                     </div>
                     <div className="hidden lg:block text-left">
                       <div className="text-sm font-semibold text-white leading-tight">
-                        {user['name'] || user['email']?.split('@')[0] || 'User'}
+                        {user["name"] || user["email"]?.split("@")[0] || "User"}
                       </div>
                       <div className="text-xs text-white/70 leading-tight">
-                        {user['email'] || 'Profile'}
+                        {user["email"] || "Profile"}
                       </div>
                     </div>
-                    <ChevronDown className={`w-3 h-3 text-white/70 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} />
+                    <ChevronDown
+                      className={`w-3 h-3 text-white/70 transition-transform ${isUserMenuOpen ? "rotate-180" : ""}`}
+                    />
                   </button>
 
                   {isUserMenuOpen && (
@@ -293,10 +330,10 @@ export const AppLayout = () => {
                       <div className="px-3 py-3 border-b border-border mb-2">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 overflow-hidden border border-primary/20">
-                            {user['avatar'] ? (
+                            {user["avatar"] ? (
                               <img
-                                src={pb.files.getURL(user, user['avatar'])}
-                                alt={user['name'] || user['email']}
+                                src={pb.files.getURL(user, user["avatar"])}
+                                alt={user["name"] || user["email"]}
                                 className="w-full h-full object-cover"
                               />
                             ) : (
@@ -305,10 +342,12 @@ export const AppLayout = () => {
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="font-semibold text-foreground truncate">
-                              {user['name'] || user['email']?.split('@')[0] || 'User'}
+                              {user["name"] ||
+                                user["email"]?.split("@")[0] ||
+                                "User"}
                             </p>
                             <p className="text-xs text-muted-foreground truncate">
-                              {user['email']}
+                              {user["email"]}
                             </p>
                           </div>
                         </div>
@@ -316,7 +355,7 @@ export const AppLayout = () => {
 
                       {/* Menu items */}
                       <Link
-                        to={`${location.pathname.startsWith('/family') ? '/family' : '/summer'}/user`}
+                        to={`${location.pathname.startsWith("/family") ? "/family" : "/summer"}/user`}
                         onClick={() => setIsUserMenuOpen(false)}
                         className="w-full px-3 py-2.5 text-left text-sm font-medium rounded-lg hover:bg-muted/50 transition-colors flex items-center gap-3 text-foreground"
                       >
@@ -342,9 +381,13 @@ export const AppLayout = () => {
               <button
                 onClick={toggleTheme}
                 className="w-10 h-10 p-0 flex items-center justify-center rounded-xl text-white/70 hover:text-white hover:bg-white/10 transition-all"
-                aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                aria-label={
+                  theme === "dark"
+                    ? "Switch to light mode"
+                    : "Switch to dark mode"
+                }
               >
-                {theme === 'dark' ? (
+                {theme === "dark" ? (
                   <Sun className="h-5 w-5" />
                 ) : (
                   <Moon className="h-5 w-5" />
@@ -360,36 +403,38 @@ export const AppLayout = () => {
             <div className="px-4 py-4 space-y-4">
               {/* Program Switcher for Mobile */}
               <div className="space-y-2">
-                <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider px-1">Program</p>
+                <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider px-1">
+                  Program
+                </p>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => handleProgramSwitch('summer')}
+                    onClick={() => handleProgramSwitch("summer")}
                     className={`flex-1 px-3 py-2.5 text-sm font-medium rounded-xl transition-colors flex items-center justify-center gap-2 ${
-                      activeProgram === 'summer'
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted/50 text-foreground hover:bg-muted'
+                      activeProgram === "summer"
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted/50 text-foreground hover:bg-muted"
                     }`}
                   >
                     <TreePine className="w-4 h-4" />
                     Summer
                   </button>
                   <button
-                    onClick={() => handleProgramSwitch('family')}
+                    onClick={() => handleProgramSwitch("family")}
                     className={`flex-1 px-3 py-2.5 text-sm font-medium rounded-xl transition-colors flex items-center justify-center gap-2 ${
-                      activeProgram === 'family'
-                        ? 'bg-accent text-accent-foreground'
-                        : 'bg-muted/50 text-foreground hover:bg-muted'
+                      activeProgram === "family"
+                        ? "bg-accent text-accent-foreground"
+                        : "bg-muted/50 text-foreground hover:bg-muted"
                     }`}
                   >
                     <Home className="w-4 h-4" />
                     Family
                   </button>
                   <button
-                    onClick={() => handleProgramSwitch('metrics')}
+                    onClick={() => handleProgramSwitch("metrics")}
                     className={`flex-1 px-3 py-2.5 text-sm font-medium rounded-xl transition-colors flex items-center justify-center gap-2 ${
-                      activeProgram === 'metrics'
-                        ? 'bg-sky-500 text-white'
-                        : 'bg-muted/50 text-foreground hover:bg-muted'
+                      activeProgram === "metrics"
+                        ? "bg-sky-500 text-white"
+                        : "bg-muted/50 text-foreground hover:bg-muted"
                     }`}
                   >
                     <BarChart3 className="w-4 h-4" />
@@ -402,15 +447,15 @@ export const AppLayout = () => {
               {isAuthenticated && user && (
                 <div className="border-t border-border/50 pt-4">
                   <Link
-                    to={`${location.pathname.startsWith('/family') ? '/family' : '/summer'}/user`}
+                    to={`${location.pathname.startsWith("/family") ? "/family" : "/summer"}/user`}
                     onClick={() => setIsMobileMenuOpen(false)}
                     className="flex items-center gap-3 px-3 py-3 rounded-xl bg-muted/30 hover:bg-muted/50 transition-colors"
                   >
                     <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 overflow-hidden border border-primary/20">
-                      {user['avatar'] ? (
+                      {user["avatar"] ? (
                         <img
-                          src={pb.files.getURL(user, user['avatar'])}
-                          alt={user['name'] || user['email']}
+                          src={pb.files.getURL(user, user["avatar"])}
+                          alt={user["name"] || user["email"]}
                           className="w-full h-full object-cover"
                         />
                       ) : (
@@ -419,10 +464,10 @@ export const AppLayout = () => {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-foreground truncate">
-                        {user['name'] || user['email']?.split('@')[0] || 'User'}
+                        {user["name"] || user["email"]?.split("@")[0] || "User"}
                       </p>
                       <p className="text-xs text-muted-foreground truncate">
-                        {user['email']}
+                        {user["email"]}
                       </p>
                     </div>
                     <Settings className="w-4 h-4 text-muted-foreground" />
@@ -432,26 +477,27 @@ export const AppLayout = () => {
 
               {/* Navigation Items */}
               <div className="space-y-1">
-                {activeProgram === 'summer' && (
+                {activeProgram === "summer" && (
                   <Link
                     to="/summer/sessions"
                     className={`block px-4 py-3 text-base font-semibold rounded-xl transition-all ${
-                      isActiveRoute('/session')
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-foreground hover:bg-muted/50'
+                      isActiveRoute("/session")
+                        ? "bg-primary text-primary-foreground"
+                        : "text-foreground hover:bg-muted/50"
                     }`}
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
                     Sessions
                   </Link>
                 )}
-                {(activeProgram === 'summer' || activeProgram === 'metrics') && (
+                {(activeProgram === "summer" ||
+                  activeProgram === "metrics") && (
                   <Link
                     to="/summer/campers"
                     className={`block px-4 py-3 text-base font-semibold rounded-xl transition-all ${
-                      activeProgram === 'summer' && isActiveRoute('/camper')
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-foreground hover:bg-muted/50'
+                      activeProgram === "summer" && isActiveRoute("/camper")
+                        ? "bg-primary text-primary-foreground"
+                        : "text-foreground hover:bg-muted/50"
                     }`}
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
@@ -461,34 +507,35 @@ export const AppLayout = () => {
                 <Link
                   to={`/${activeProgram}/users`}
                   className={`block px-4 py-3 text-base font-semibold rounded-xl transition-all ${
-                    isActiveRoute('/users')
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-foreground hover:bg-muted/50'
+                    isActiveRoute("/users")
+                      ? "bg-primary text-primary-foreground"
+                      : "text-foreground hover:bg-muted/50"
                   }`}
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   Users
                 </Link>
-                {(activeProgram === 'summer' || activeProgram === 'metrics') && (
+                {(activeProgram === "summer" ||
+                  activeProgram === "metrics") && (
                   <Link
                     to="/summer/admin"
                     className={`block px-4 py-3 text-base font-semibold rounded-xl transition-all ${
-                      activeProgram === 'summer' && isActiveRoute('/admin')
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-foreground hover:bg-muted/50'
+                      activeProgram === "summer" && isActiveRoute("/admin")
+                        ? "bg-primary text-primary-foreground"
+                        : "text-foreground hover:bg-muted/50"
                     }`}
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
                     Admin
                   </Link>
                 )}
-                {activeProgram === 'summer' && isAdmin && (
+                {activeProgram === "summer" && isAdmin && (
                   <Link
                     to="/summer/debug"
                     className={`block px-4 py-3 text-base font-semibold rounded-xl transition-all ${
-                      isActiveRoute('/debug')
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-foreground hover:bg-muted/50'
+                      isActiveRoute("/debug")
+                        ? "bg-primary text-primary-foreground"
+                        : "text-foreground hover:bg-muted/50"
                     }`}
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
@@ -500,12 +547,14 @@ export const AppLayout = () => {
               {/* Mobile-only utilities */}
               <div className="border-t border-border/50 pt-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-muted-foreground">Theme</span>
+                  <span className="text-sm font-medium text-muted-foreground">
+                    Theme
+                  </span>
                   <button
                     onClick={toggleTheme}
                     className="btn-ghost px-3 py-2 flex items-center gap-2 text-sm"
                   >
-                    {theme === 'dark' ? (
+                    {theme === "dark" ? (
                       <>
                         <Sun className="h-4 w-4" />
                         Light
@@ -522,15 +571,18 @@ export const AppLayout = () => {
                 <YearSelector />
 
                 {/* Summer-only: Bunking controls */}
-                {activeProgram === 'summer' && (
+                {activeProgram === "summer" && (
                   <>
                     <BunkRequestsUpload />
                     <button
                       onClick={() => {
-                        toast(`Refreshing bunking assignments for ${currentYear}...`, {
-                          icon: '🔄',
-                          duration: 2000,
-                        });
+                        toast(
+                          `Refreshing bunking assignments for ${currentYear}...`,
+                          {
+                            icon: "🔄",
+                            duration: 2000,
+                          },
+                        );
                         refreshBunkingMutation.mutate();
                         setIsMobileMenuOpen(false);
                       }}
@@ -570,38 +622,59 @@ export const AppLayout = () => {
             {/* Left side: Year context + sync status (summer only) */}
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-3">
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Year</span>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Year
+                </span>
                 <YearSelector />
               </div>
-              {activeProgram === 'summer' && (syncStatus?.bunk_assignments?.end_time || syncStatus?.bunk_requests?.end_time) && (
-                <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                  {syncStatus?.bunk_assignments?.end_time && (
-                    <span className="flex items-center gap-1.5" title="Last bunk assignments sync">
-                      <Home className="w-3 h-3" />
-                      Assignments {formatDistanceToNow(new Date(syncStatus.bunk_assignments.end_time), { addSuffix: true })}
-                    </span>
-                  )}
-                  {syncStatus?.bunk_requests?.end_time && (
-                    <span className="flex items-center gap-1.5" title="Last bunk requests sync">
-                      <Clock className="w-3 h-3" />
-                      Requests {formatDistanceToNow(new Date(syncStatus.bunk_requests.end_time), { addSuffix: true })}
-                    </span>
-                  )}
-                </div>
-              )}
+              {activeProgram === "summer" &&
+                (syncStatus?.bunk_assignments?.end_time ||
+                  syncStatus?.bunk_requests?.end_time) && (
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    {syncStatus?.bunk_assignments?.end_time && (
+                      <span
+                        className="flex items-center gap-1.5"
+                        title="Last bunk assignments sync"
+                      >
+                        <Home className="w-3 h-3" />
+                        Assignments{" "}
+                        {formatDistanceToNow(
+                          new Date(syncStatus.bunk_assignments.end_time),
+                          { addSuffix: true },
+                        )}
+                      </span>
+                    )}
+                    {syncStatus?.bunk_requests?.end_time && (
+                      <span
+                        className="flex items-center gap-1.5"
+                        title="Last bunk requests sync"
+                      >
+                        <Clock className="w-3 h-3" />
+                        Requests{" "}
+                        {formatDistanceToNow(
+                          new Date(syncStatus.bunk_requests.end_time),
+                          { addSuffix: true },
+                        )}
+                      </span>
+                    )}
+                  </div>
+                )}
             </div>
 
             {/* Right side: Program-specific actions */}
             <div className="flex items-center gap-2">
-              {activeProgram === 'summer' && (
+              {activeProgram === "summer" && (
                 <>
                   <BunkRequestsUpload />
                   <button
                     onClick={() => {
-                      toast(`Refreshing bunking assignments for ${currentYear}...`, {
-                        icon: '🔄',
-                        duration: 2000,
-                      });
+                      toast(
+                        `Refreshing bunking assignments for ${currentYear}...`,
+                        {
+                          icon: "🔄",
+                          duration: 2000,
+                        },
+                      );
                       refreshBunkingMutation.mutate();
                     }}
                     disabled={refreshBunkingMutation.isPending}
@@ -618,7 +691,7 @@ export const AppLayout = () => {
                   </button>
                 </>
               )}
-{/* Export button removed from metrics nav - export functionality will move inside metrics page if needed */}
+              {/* Export button removed from metrics nav - export functionality will move inside metrics page if needed */}
             </div>
           </div>
         </div>

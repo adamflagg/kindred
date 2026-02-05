@@ -13,7 +13,7 @@
  * - Viewing 2024: 15.04 - 2 = 13.04
  */
 
-import { calculateAge } from './ageCalculator';
+import { calculateAge } from "./ageCalculator";
 
 export interface PersonWithAge {
   age?: number | undefined;
@@ -33,7 +33,7 @@ export interface PersonWithAge {
  */
 export function getDisplayAge(
   person: PersonWithAge,
-  viewingYear: number
+  viewingYear: number,
 ): number | null {
   const currentYear = new Date().getFullYear();
   const yearDiff = currentYear - viewingYear;
@@ -63,7 +63,7 @@ export function getDisplayAge(
  */
 export function getDisplayAgeForYear(
   person: PersonWithAge,
-  viewingYear: number
+  viewingYear: number,
 ): number | null {
   return getDisplayAge(person, viewingYear);
 }

@@ -1,15 +1,15 @@
 /**
  * Sidebar panel showing enrolled siblings with links
  */
-import { Link } from 'react-router';
-import { Users, Home, Calendar, ChevronRight } from 'lucide-react';
-import { getAvatarColor, getInitial } from '../../utils/avatarUtils';
-import { formatAge } from '../../utils/age';
-import { formatGradeOrdinal } from '../../utils/gradeUtils';
-import { getSessionDisplayNameFromString } from '../../utils/sessionDisplay';
-import { getDisplayAgeForYear } from '../../utils/displayAge';
-import { useYear } from '../../hooks/useCurrentYear';
-import type { SiblingWithEnrollment } from '../../hooks/camper/types';
+import { Link } from "react-router";
+import { Users, Home, Calendar, ChevronRight } from "lucide-react";
+import { getAvatarColor, getInitial } from "../../utils/avatarUtils";
+import { formatAge } from "../../utils/age";
+import { formatGradeOrdinal } from "../../utils/gradeUtils";
+import { getSessionDisplayNameFromString } from "../../utils/sessionDisplay";
+import { getDisplayAgeForYear } from "../../utils/displayAge";
+import { useYear } from "../../hooks/useCurrentYear";
+import type { SiblingWithEnrollment } from "../../hooks/camper/types";
 
 interface SiblingsPanelProps {
   siblings: SiblingWithEnrollment[];
@@ -17,7 +17,11 @@ interface SiblingsPanelProps {
   error: Error | null;
 }
 
-export function SiblingsPanel({ siblings, isLoading, error }: SiblingsPanelProps) {
+export function SiblingsPanel({
+  siblings,
+  isLoading,
+  error,
+}: SiblingsPanelProps) {
   const viewingYear = useYear();
 
   return (
@@ -50,7 +54,7 @@ export function SiblingsPanel({ siblings, isLoading, error }: SiblingsPanelProps
               >
                 {/* Sibling avatar */}
                 <div
-                  className={`w-10 h-10 rounded-xl ${getAvatarColor(sibling.gender || '')} flex items-center justify-center flex-shrink-0`}
+                  className={`w-10 h-10 rounded-xl ${getAvatarColor(sibling.gender || "")} flex items-center justify-center flex-shrink-0`}
                 >
                   <span className="text-sm font-display font-bold text-white">
                     {getInitial(sibling.first_name)}
@@ -60,14 +64,14 @@ export function SiblingsPanel({ siblings, isLoading, error }: SiblingsPanelProps
                 {/* Sibling info */}
                 <div className="flex-1 min-w-0">
                   <div className="font-medium text-sm text-foreground group-hover:text-forest-700 dark:group-hover:text-forest-300 transition-colors truncate">
-                    {sibling.preferred_name || sibling.first_name}{' '}
+                    {sibling.preferred_name || sibling.first_name}{" "}
                     {sibling.last_name}
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5">
                     {(() => {
                       const age = getDisplayAgeForYear(sibling, viewingYear);
-                      return age !== null ? formatAge(age) : '?';
-                    })()}{' '}
+                      return age !== null ? formatAge(age) : "?";
+                    })()}{" "}
                     • {formatGradeOrdinal(sibling.grade || 0)}
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1 flex-wrap">
@@ -77,7 +81,7 @@ export function SiblingsPanel({ siblings, isLoading, error }: SiblingsPanelProps
                         <span>
                           {getSessionDisplayNameFromString(
                             sibling.session.name,
-                            sibling.session.session_type
+                            sibling.session.session_type,
                           )}
                         </span>
                       </>
@@ -100,7 +104,9 @@ export function SiblingsPanel({ siblings, isLoading, error }: SiblingsPanelProps
         ) : (
           <div className="text-center py-4">
             <Users className="w-8 h-8 mx-auto text-muted-foreground/50 mb-2" />
-            <p className="text-sm text-muted-foreground">No siblings enrolled</p>
+            <p className="text-sm text-muted-foreground">
+              No siblings enrolled
+            </p>
           </div>
         )}
       </div>

@@ -1,13 +1,13 @@
 /**
  * Panel showing bunking status, assignments, and request satisfaction
  */
-import { Link } from 'react-router';
-import { Heart, Home, Clock, CheckCircle, Sparkles } from 'lucide-react';
-import CamperLink from '../CamperLink';
-import { sessionNameToUrl } from '../../utils/sessionUtils';
-import type { Camper } from '../../types/app-types';
-import type { EnhancedBunkRequest } from '../../hooks/camper/useAllBunkRequests';
-import type { SatisfactionMap } from '../../hooks/camper/types';
+import { Link } from "react-router";
+import { Heart, Home, Clock, CheckCircle, Sparkles } from "lucide-react";
+import CamperLink from "../CamperLink";
+import { sessionNameToUrl } from "../../utils/sessionUtils";
+import type { Camper } from "../../types/app-types";
+import type { EnhancedBunkRequest } from "../../hooks/camper/useAllBunkRequests";
+import type { SatisfactionMap } from "../../hooks/camper/types";
 
 interface BunkingStatusPanelProps {
   camper: Camper;
@@ -29,23 +29,23 @@ export function BunkingStatusPanel({
   // Calculate satisfaction summary
   const countableRequests = allBunkRequests.filter(
     (r) =>
-      r.status !== 'pending' &&
-      ((r.request_type === 'bunk_with' || r.request_type === 'not_bunk_with')
+      r.status !== "pending" &&
+      (r.request_type === "bunk_with" || r.request_type === "not_bunk_with"
         ? r.requestee_id && r.requestee_id > 0
-        : r.request_type === 'age_preference'
+        : r.request_type === "age_preference"
           ? !!r.age_preference_target
-          : false)
+          : false),
   );
   const totalCount = countableRequests.length;
   const satisfiedCount = countableRequests.filter(
-    (r) => satisfactionData[r.id]?.status === 'satisfied'
+    (r) => satisfactionData[r.id]?.status === "satisfied",
   ).length;
   const hasSatisfactionData =
     !satisfactionLoading && Object.keys(satisfactionData).length > 0;
 
   // Filter person-based requests (not age preference)
   const personRequests = allBunkRequests.filter(
-    (r) => r.request_type !== 'age_preference'
+    (r) => r.request_type !== "age_preference",
   );
 
   return (
@@ -71,7 +71,7 @@ export function BunkingStatusPanel({
           <div className="flex-shrink-0">
             {camper.expand?.assigned_bunk ? (
               <Link
-                to={`/summer/session/${sessionNameToUrl(camper.expand?.session?.name || '')}/board`}
+                to={`/summer/session/${sessionNameToUrl(camper.expand?.session?.name || "")}/board`}
                 className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-forest-50 dark:bg-forest-900/30 border border-forest-200 dark:border-forest-800 hover:bg-forest-100 dark:hover:bg-forest-900/50 transition-colors"
               >
                 <Home className="w-4 h-4 text-forest-600 dark:text-forest-400" />
@@ -99,10 +99,10 @@ export function BunkingStatusPanel({
             <span
               className={`font-semibold ${
                 satisfiedCount === totalCount
-                  ? 'text-green-600 dark:text-green-400'
+                  ? "text-green-600 dark:text-green-400"
                   : satisfiedCount > 0
-                    ? 'text-amber-600 dark:text-amber-400'
-                    : 'text-red-600 dark:text-red-400'
+                    ? "text-amber-600 dark:text-amber-400"
+                    : "text-red-600 dark:text-red-400"
               }`}
             >
               {satisfiedCount}/{totalCount} met
@@ -117,9 +117,9 @@ export function BunkingStatusPanel({
         {personRequests.length > 0 ? (
           <div className="space-y-1.5">
             {personRequests.map((request, idx) => {
-              const isBunkWith = request.request_type === 'bunk_with';
+              const isBunkWith = request.request_type === "bunk_with";
               const isConfirmed =
-                request.status === 'resolved' &&
+                request.status === "resolved" &&
                 request.requestee_id &&
                 request.requestee_id > 0;
 
@@ -130,12 +130,12 @@ export function BunkingStatusPanel({
                   .requested_person_name ||
                 (request.requestee_id && request.requestee_id < 0
                   ? `Person ${request.requestee_id}`
-                  : 'Unknown');
+                  : "Unknown");
 
               // Get satisfaction status
               const satisfaction = satisfactionData[request.id];
               const showSatisfaction =
-                request.status === 'resolved' &&
+                request.status === "resolved" &&
                 request.requestee_id &&
                 request.requestee_id > 0;
 
@@ -147,19 +147,19 @@ export function BunkingStatusPanel({
                   {/* Status indicator */}
                   <div
                     className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                      request.status === 'resolved'
-                        ? 'bg-green-500'
-                        : request.status === 'declined'
-                          ? 'bg-red-500'
-                          : 'bg-amber-500'
+                      request.status === "resolved"
+                        ? "bg-green-500"
+                        : request.status === "declined"
+                          ? "bg-red-500"
+                          : "bg-amber-500"
                     }`}
                   />
 
                   {/* Request type */}
                   <span
-                    className={`font-medium ${isBunkWith ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}
+                    className={`font-medium ${isBunkWith ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}`}
                   >
-                    {isBunkWith ? 'Bunk with' : 'Not with'}
+                    {isBunkWith ? "Bunk with" : "Not with"}
                   </span>
 
                   <span className="text-muted-foreground/60">→</span>
@@ -183,14 +183,14 @@ export function BunkingStatusPanel({
                     <span className="ml-auto flex items-center">
                       {satisfactionLoading ? (
                         <span className="inline-block w-3 h-3 border border-muted-foreground/30 border-t-primary rounded-full animate-spin" />
-                      ) : satisfaction?.status === 'satisfied' ? (
+                      ) : satisfaction?.status === "satisfied" ? (
                         <span
                           className="px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-medium"
                           title={satisfaction.detail}
                         >
                           Met
                         </span>
-                      ) : satisfaction?.status === 'not_satisfied' ? (
+                      ) : satisfaction?.status === "not_satisfied" ? (
                         <span
                           className="px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-xs font-medium"
                           title={satisfaction.detail}
@@ -235,16 +235,16 @@ function AgePreferenceNote({
   satisfaction: { status: string; detail?: string } | undefined;
   satisfactionLoading: boolean;
 }) {
-  const prefersOlder = request.age_preference_target === 'older';
+  const prefersOlder = request.age_preference_target === "older";
 
   return (
     <div className="flex items-center gap-2 pt-3 border-t border-border text-sm px-3">
       <Sparkles className="w-4 h-4 flex-shrink-0 text-amber-500" />
       <span className="text-muted-foreground">
-        Prefers bunking with{' '}
+        Prefers bunking with{" "}
         <span className="font-medium text-foreground">
-          {prefersOlder ? 'older' : 'younger'}
-        </span>{' '}
+          {prefersOlder ? "older" : "younger"}
+        </span>{" "}
         campers
       </span>
 
@@ -252,11 +252,11 @@ function AgePreferenceNote({
       <span className="ml-auto" title={satisfaction?.detail}>
         {satisfactionLoading ? (
           <span className="inline-block w-3 h-3 border border-muted-foreground/30 border-t-primary rounded-full animate-spin" />
-        ) : satisfaction?.status === 'satisfied' ? (
+        ) : satisfaction?.status === "satisfied" ? (
           <span className="px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-medium">
             Met
           </span>
-        ) : satisfaction?.status === 'not_satisfied' ? (
+        ) : satisfaction?.status === "not_satisfied" ? (
           <span className="px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-xs font-medium">
             Unmet
           </span>

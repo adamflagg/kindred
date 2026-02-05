@@ -1,18 +1,18 @@
-import type { Program } from '../contexts/ProgramContext';
+import type { Program } from "../contexts/ProgramContext";
 
 /**
  * Generate a program-specific URL
  */
 export function getProgramUrl(path: string, program: Program): string {
   // Remove leading slash if present
-  const cleanPath = path.startsWith('/') ? path.slice(1) : path;
-  
+  const cleanPath = path.startsWith("/") ? path.slice(1) : path;
+
   // Don't add prefix for shared routes
-  const sharedRoutes = ['user', 'users'];
-  if (sharedRoutes.some(route => cleanPath.startsWith(route))) {
+  const sharedRoutes = ["user", "users"];
+  if (sharedRoutes.some((route) => cleanPath.startsWith(route))) {
     return `/${cleanPath}`;
   }
-  
+
   return `/${program}/${cleanPath}`;
 }
 
@@ -20,16 +20,20 @@ export function getProgramUrl(path: string, program: Program): string {
  * Check if a path is a program-specific route
  */
 export function isProgramRoute(path: string): boolean {
-  return path.startsWith('/summer/') || path.startsWith('/family/') || path.startsWith('/metrics');
+  return (
+    path.startsWith("/summer/") ||
+    path.startsWith("/family/") ||
+    path.startsWith("/metrics")
+  );
 }
 
 /**
  * Extract program from a path
  */
 export function getProgramFromPath(path: string): Program | null {
-  if (path.startsWith('/summer/')) return 'summer';
-  if (path.startsWith('/family/')) return 'family';
-  if (path.startsWith('/metrics')) return 'metrics';
+  if (path.startsWith("/summer/")) return "summer";
+  if (path.startsWith("/family/")) return "family";
+  if (path.startsWith("/metrics")) return "metrics";
   return null;
 }
 
@@ -37,10 +41,10 @@ export function getProgramFromPath(path: string): Program | null {
  * Remove program prefix from a path
  */
 export function removeProgramPrefix(path: string): string {
-  if (path.startsWith('/summer/')) return path.slice(7);
-  if (path.startsWith('/family/')) return path.slice(7);
-  if (path.startsWith('/metrics/')) return path.slice(8);
-  if (path === '/metrics') return '/';
+  if (path.startsWith("/summer/")) return path.slice(7);
+  if (path.startsWith("/family/")) return path.slice(7);
+  if (path.startsWith("/metrics/")) return path.slice(8);
+  if (path === "/metrics") return "/";
   return path;
 }
 
@@ -49,7 +53,7 @@ export function removeProgramPrefix(path: string): string {
  */
 export function getSummerUrl(path: string): string {
   // Remove leading slash if present
-  const cleanPath = path.startsWith('/') ? path.slice(1) : path;
+  const cleanPath = path.startsWith("/") ? path.slice(1) : path;
   return `/summer/${cleanPath}`;
 }
 
@@ -58,7 +62,7 @@ export function getSummerUrl(path: string): string {
  */
 export function getFamilyUrl(path: string): string {
   // Remove leading slash if present
-  const cleanPath = path.startsWith('/') ? path.slice(1) : path;
+  const cleanPath = path.startsWith("/") ? path.slice(1) : path;
   return `/family/${cleanPath}`;
 }
 
@@ -66,7 +70,7 @@ export function getFamilyUrl(path: string): string {
  * Generate a metrics URL
  */
 export function getMetricsUrl(): string {
-  return '/metrics';
+  return "/metrics";
 }
 
 /**
@@ -88,12 +92,12 @@ export function getCamperUrl(camperId: string | number): string {
  * Generate URL for the all campers view
  */
 export function getAllCampersUrl(): string {
-  return '/summer/campers';
+  return "/summer/campers";
 }
 
 /**
  * Generate URL for the sessions list
  */
 export function getSessionsListUrl(): string {
-  return '/summer/sessions';
+  return "/summer/sessions";
 }

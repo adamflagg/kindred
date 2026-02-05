@@ -1,9 +1,15 @@
-import { Calendar, Loader2, ChevronDown } from 'lucide-react';
-import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react';
-import { useCurrentYear } from '../hooks/useCurrentYear';
+import { Calendar, Loader2, ChevronDown } from "lucide-react";
+import {
+  Listbox,
+  ListboxButton,
+  ListboxOptions,
+  ListboxOption,
+} from "@headlessui/react";
+import { useCurrentYear } from "../hooks/useCurrentYear";
 
 export default function YearSelector() {
-  const { currentYear, setCurrentYear, availableYears, isTransitioning } = useCurrentYear();
+  const { currentYear, setCurrentYear, availableYears, isTransitioning } =
+    useCurrentYear();
 
   return (
     <div className="relative">
@@ -21,7 +27,11 @@ export default function YearSelector() {
             </ListboxButton>
             <ListboxOptions className="listbox-options w-auto min-w-[80px]">
               {availableYears.map((year) => (
-                <ListboxOption key={year} value={year} className="listbox-option py-1.5">
+                <ListboxOption
+                  key={year}
+                  value={year}
+                  className="listbox-option py-1.5"
+                >
                   {year}
                 </ListboxOption>
               ))}

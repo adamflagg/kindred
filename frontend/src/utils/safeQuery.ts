@@ -5,7 +5,7 @@
  * API contract violations at runtime, providing better error messages
  * than TypeScript alone (which only checks at compile time).
  */
-import type { z } from 'zod';
+import type { z } from "zod";
 
 /**
  * Parse an API response with a Zod schema, throwing on validation failure.
@@ -34,14 +34,14 @@ export function parseResponse<T>(schema: z.ZodSchema<T>, data: unknown): T {
 export function safeParseResponse<T>(
   schema: z.ZodSchema<T>,
   data: unknown,
-  context?: string
+  context?: string,
 ): T | undefined {
   const result = schema.safeParse(data);
 
   if (!result.success) {
     console.error(
-      `API response validation failed${context ? ` (${context})` : ''}:`,
-      result.error.format()
+      `API response validation failed${context ? ` (${context})` : ""}:`,
+      result.error.format(),
     );
     return undefined;
   }
@@ -61,7 +61,7 @@ export function safeParseResponse<T>(
 export function parseArrayResponse<T>(
   schema: z.ZodSchema<T>,
   data: unknown[],
-  context?: string
+  context?: string,
 ): T[] {
   const results: T[] = [];
   let errorCount = 0;
@@ -75,8 +75,8 @@ export function parseArrayResponse<T>(
       if (errorCount <= 3) {
         // Only log first 3 errors to avoid console spam
         console.error(
-          `API response validation failed for item ${i}${context ? ` (${context})` : ''}:`,
-          result.error.format()
+          `API response validation failed for item ${i}${context ? ` (${context})` : ""}:`,
+          result.error.format(),
         );
       }
     }
@@ -84,7 +84,7 @@ export function parseArrayResponse<T>(
 
   if (errorCount > 3) {
     console.error(
-      `... and ${errorCount - 3} more validation errors${context ? ` (${context})` : ''}`
+      `... and ${errorCount - 3} more validation errors${context ? ` (${context})` : ""}`,
     );
   }
 
@@ -105,7 +105,7 @@ export function parseArrayResponse<T>(
  */
 export function validatedQueryFn<T>(
   schema: z.ZodSchema<T>,
-  queryFn: () => Promise<unknown>
+  queryFn: () => Promise<unknown>,
 ): () => Promise<T> {
   return async () => {
     const data = await queryFn();
@@ -128,7 +128,7 @@ export function validatedQueryFn<T>(
 export function validatedListQueryFn<T>(
   schema: z.ZodSchema<T>,
   queryFn: () => Promise<unknown[]>,
-  context?: string
+  context?: string,
 ): () => Promise<T[]> {
   return async () => {
     const data = await queryFn();

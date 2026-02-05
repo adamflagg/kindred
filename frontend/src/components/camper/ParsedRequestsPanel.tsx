@@ -1,37 +1,48 @@
 /**
  * Panel showing parsed bunk requests with expandable details
  */
-import { useState } from 'react';
-import { Users, ChevronDown, ChevronRight, Hash, Zap } from 'lucide-react';
-import type { EnhancedBunkRequest } from '../../hooks/camper/useAllBunkRequests';
+import { useState } from "react";
+import { Users, ChevronDown, ChevronRight, Hash, Zap } from "lucide-react";
+import type { EnhancedBunkRequest } from "../../hooks/camper/useAllBunkRequests";
 
 // Source field normalization - maps CSV column names to normalized keys
 const normalizeSourceField = (field: string): string => {
   const normalized = field.toLowerCase().trim();
-  if (normalized.includes('share bunk with') && !normalized.includes('do not')) return 'bunk_with';
-  if (normalized.includes('do not share') || normalized.includes('not_bunk')) return 'not_bunk_with';
-  if (normalized.includes('bunkingnotes') || normalized.includes('bunking_notes')) return 'bunking_notes';
-  if (normalized.includes('internal')) return 'internal_notes';
-  if (normalized.includes('socialize')) return 'socialize_with';
+  if (normalized.includes("share bunk with") && !normalized.includes("do not"))
+    return "bunk_with";
+  if (normalized.includes("do not share") || normalized.includes("not_bunk"))
+    return "not_bunk_with";
+  if (
+    normalized.includes("bunkingnotes") ||
+    normalized.includes("bunking_notes")
+  )
+    return "bunking_notes";
+  if (normalized.includes("internal")) return "internal_notes";
+  if (normalized.includes("socialize")) return "socialize_with";
   return field; // Return original if no match
 };
 
 // Source field display labels
 const SOURCE_FIELD_LABELS: Record<string, string> = {
-  bunk_with: 'Bunk With',
-  not_bunk_with: 'Not Bunk',
-  bunking_notes: 'Bunking Notes',
-  internal_notes: 'Internal Notes',
-  socialize_with: 'Socialize',
+  bunk_with: "Bunk With",
+  not_bunk_with: "Not Bunk",
+  bunking_notes: "Bunking Notes",
+  internal_notes: "Internal Notes",
+  socialize_with: "Socialize",
 };
 
 // Source field colors (matches debug page style)
 const SOURCE_FIELD_COLORS: Record<string, string> = {
-  bunk_with: 'bg-forest-100 text-forest-700 dark:bg-forest-900/40 dark:text-forest-400',
-  not_bunk_with: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400',
-  bunking_notes: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400',
-  internal_notes: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400',
-  socialize_with: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-400',
+  bunk_with:
+    "bg-forest-100 text-forest-700 dark:bg-forest-900/40 dark:text-forest-400",
+  not_bunk_with:
+    "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400",
+  bunking_notes:
+    "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400",
+  internal_notes:
+    "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400",
+  socialize_with:
+    "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-400",
 };
 
 interface ParsedRequestsPanelProps {
@@ -40,7 +51,7 @@ interface ParsedRequestsPanelProps {
 
 export function ParsedRequestsPanel({ requests }: ParsedRequestsPanelProps) {
   const [expandedRequests, setExpandedRequests] = useState<Set<string>>(
-    new Set()
+    new Set(),
   );
 
   const toggleRequestExpanded = (id: string) => {
@@ -67,7 +78,7 @@ export function ParsedRequestsPanel({ requests }: ParsedRequestsPanelProps) {
           </h2>
           {requests.length > 0 && (
             <p className="text-xs text-muted-foreground">
-              {requests.length} request{requests.length !== 1 ? 's' : ''} found
+              {requests.length} request{requests.length !== 1 ? "s" : ""} found
             </p>
           )}
         </div>
@@ -106,44 +117,46 @@ interface RequestCardProps {
 
 function RequestCard({ request, isExpanded, onToggle }: RequestCardProps) {
   // Check direct source_field first, then ai_reasoning.csv_source_field
-  const sourceField = request.source_field || (request.ai_reasoning?.csv_source_field as string | undefined);
+  const sourceField =
+    request.source_field ||
+    (request.ai_reasoning?.csv_source_field as string | undefined);
 
   const borderColor =
-    request.request_type === 'bunk_with'
-      ? 'border-l-green-500'
-      : request.request_type === 'not_bunk_with'
-        ? 'border-l-red-500'
-        : 'border-l-blue-500';
+    request.request_type === "bunk_with"
+      ? "border-l-green-500"
+      : request.request_type === "not_bunk_with"
+        ? "border-l-red-500"
+        : "border-l-blue-500";
 
   const bgColor =
-    request.request_type === 'bunk_with'
-      ? 'bg-green-100 dark:bg-green-900/30'
-      : request.request_type === 'not_bunk_with'
-        ? 'bg-red-100 dark:bg-red-900/30'
-        : 'bg-blue-100 dark:bg-blue-900/30';
+    request.request_type === "bunk_with"
+      ? "bg-green-100 dark:bg-green-900/30"
+      : request.request_type === "not_bunk_with"
+        ? "bg-red-100 dark:bg-red-900/30"
+        : "bg-blue-100 dark:bg-blue-900/30";
 
   const textColor =
-    request.request_type === 'bunk_with'
-      ? 'text-green-600 dark:text-green-400'
-      : request.request_type === 'not_bunk_with'
-        ? 'text-red-600 dark:text-red-400'
-        : 'text-blue-600 dark:text-blue-400';
+    request.request_type === "bunk_with"
+      ? "text-green-600 dark:text-green-400"
+      : request.request_type === "not_bunk_with"
+        ? "text-red-600 dark:text-red-400"
+        : "text-blue-600 dark:text-blue-400";
 
   const typeLabel =
-    request.request_type === 'bunk_with'
-      ? 'Bunk With'
-      : request.request_type === 'not_bunk_with'
-        ? 'Not Bunk With'
-        : request.request_type === 'age_preference'
-          ? 'Age Preference'
+    request.request_type === "bunk_with"
+      ? "Bunk With"
+      : request.request_type === "not_bunk_with"
+        ? "Not Bunk With"
+        : request.request_type === "age_preference"
+          ? "Age Preference"
           : request.request_type;
 
   const typeIcon =
-    request.request_type === 'bunk_with'
-      ? '+'
-      : request.request_type === 'not_bunk_with'
-        ? '−'
-        : '↕';
+    request.request_type === "bunk_with"
+      ? "+"
+      : request.request_type === "not_bunk_with"
+        ? "−"
+        : "↕";
 
   return (
     <div
@@ -167,7 +180,7 @@ function RequestCard({ request, isExpanded, onToggle }: RequestCardProps) {
             <span className="font-medium text-foreground">{typeLabel}</span>
             {request.requestedPersonName && (
               <span className="text-muted-foreground">
-                →{' '}
+                →{" "}
                 <span className="text-foreground font-medium">
                   {request.requestedPersonName}
                 </span>
@@ -211,21 +224,23 @@ function RequestCard({ request, isExpanded, onToggle }: RequestCardProps) {
 function PriorityBadge({ priority }: { priority: number }) {
   const bgColor =
     priority >= 8
-      ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+      ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
       : priority >= 5
-        ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
-        : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400';
+        ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
+        : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400";
 
-  return <span className={`px-1.5 py-0.5 rounded ${bgColor}`}>P{priority}</span>;
+  return (
+    <span className={`px-1.5 py-0.5 rounded ${bgColor}`}>P{priority}</span>
+  );
 }
 
 function StatusBadge({ status }: { status: string }) {
   const bgColor =
-    status === 'resolved'
-      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-      : status === 'pending'
-        ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
-        : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400';
+    status === "resolved"
+      ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+      : status === "pending"
+        ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
+        : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400";
 
   return <span className={`px-1.5 py-0.5 rounded ${bgColor}`}>{status}</span>;
 }
@@ -233,10 +248,10 @@ function StatusBadge({ status }: { status: string }) {
 function ConfidenceBadge({ score }: { score: number }) {
   const textColor =
     score >= 0.95
-      ? 'text-green-600 dark:text-green-400'
+      ? "text-green-600 dark:text-green-400"
       : score >= 0.85
-        ? 'text-amber-600 dark:text-amber-400'
-        : 'text-red-600 dark:text-red-400';
+        ? "text-amber-600 dark:text-amber-400"
+        : "text-red-600 dark:text-red-400";
 
   return (
     <span className={textColor}>{(score * 100).toFixed(0)}% confidence</span>
@@ -244,12 +259,18 @@ function ConfidenceBadge({ score }: { score: number }) {
 }
 
 // Badge showing which source field the request came from
-function SourceFieldBadge({ sourceField }: { sourceField: string | undefined }) {
+function SourceFieldBadge({
+  sourceField,
+}: {
+  sourceField: string | undefined;
+}) {
   if (!sourceField) return null;
 
   const normalized = normalizeSourceField(sourceField);
   const label = SOURCE_FIELD_LABELS[normalized] || sourceField;
-  const colorClass = SOURCE_FIELD_COLORS[normalized] || 'bg-bark-100 text-bark-600 dark:bg-bark-800 dark:text-bark-400';
+  const colorClass =
+    SOURCE_FIELD_COLORS[normalized] ||
+    "bg-bark-100 text-bark-600 dark:bg-bark-800 dark:text-bark-400";
 
   return (
     <span
@@ -265,7 +286,9 @@ function SourceFieldBadge({ sourceField }: { sourceField: string | undefined }) 
 
 function RequestDetails({ request }: { request: EnhancedBunkRequest }) {
   // Check direct source_field first, then ai_reasoning.csv_source_field
-  const sourceField = request.source_field || (request.ai_reasoning?.csv_source_field as string | undefined);
+  const sourceField =
+    request.source_field ||
+    (request.ai_reasoning?.csv_source_field as string | undefined);
 
   return (
     <div className="px-4 pb-4 pt-2 border-t border-border bg-muted/20">
@@ -328,10 +351,15 @@ function RequestDetails({ request }: { request: EnhancedBunkRequest }) {
 
       {/* Technical details grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-        <DetailField label="Record ID" value={request.id || 'N/A'} mono color={undefined} />
+        <DetailField
+          label="Record ID"
+          value={request.id || "N/A"}
+          mono
+          color={undefined}
+        />
         <DetailField
           label="Requester ID"
-          value={String(request.requester_id || 'N/A')}
+          value={String(request.requester_id || "N/A")}
           color={undefined}
         />
         <DetailField
@@ -341,57 +369,59 @@ function RequestDetails({ request }: { request: EnhancedBunkRequest }) {
               ? String(request.requestee_id)
               : request.requestee_id
                 ? `Unresolved (${request.requestee_id})`
-                : 'None'
+                : "None"
           }
           color={undefined}
         />
         <DetailField
           label="Requested Name"
-          value={request.requestedPersonName || 'N/A'}
+          value={request.requestedPersonName || "N/A"}
           color={undefined}
           warning={request.requestee_id != null && request.requestee_id < 0}
           suffix={
-            request.requestee_id != null && request.requestee_id < 0 ? ' (needs resolution)' : ''
+            request.requestee_id != null && request.requestee_id < 0
+              ? " (needs resolution)"
+              : ""
           }
         />
         <DetailField
           label="Session ID"
-          value={String(request.session_id || 'N/A')}
+          value={String(request.session_id || "N/A")}
           color={undefined}
         />
-        <DetailField label="Year" value={String(request.year || 'N/A')} color={undefined} />
+        <DetailField
+          label="Year"
+          value={String(request.year || "N/A")}
+          color={undefined}
+        />
         <DetailField
           label="Confidence"
           value={
             request.confidence_score
               ? `${(request.confidence_score * 100).toFixed(2)}%`
-              : 'N/A'
+              : "N/A"
           }
           color={
             (request.confidence_score ?? 0) >= 0.95
-              ? 'text-green-600 dark:text-green-400'
+              ? "text-green-600 dark:text-green-400"
               : (request.confidence_score ?? 0) >= 0.85
-                ? 'text-amber-600 dark:text-amber-400'
+                ? "text-amber-600 dark:text-amber-400"
                 : (request.confidence_score ?? 0) > 0
-                  ? 'text-red-600 dark:text-red-400'
+                  ? "text-red-600 dark:text-red-400"
                   : undefined
           }
         />
         <DetailField
           label="Created"
           value={
-            request.created
-              ? new Date(request.created).toLocaleString()
-              : 'N/A'
+            request.created ? new Date(request.created).toLocaleString() : "N/A"
           }
           color={undefined}
         />
         <DetailField
           label="Updated"
           value={
-            request.updated
-              ? new Date(request.updated).toLocaleString()
-              : 'N/A'
+            request.updated ? new Date(request.updated).toLocaleString() : "N/A"
           }
           color={undefined}
         />
@@ -400,14 +430,14 @@ function RequestDetails({ request }: { request: EnhancedBunkRequest }) {
       {/* Flags row */}
       <div className="flex gap-3 mt-3 pt-3 border-t border-border text-xs">
         <span
-          className={`px-2 py-1 rounded ${request.is_reciprocal ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-muted text-muted-foreground'}`}
+          className={`px-2 py-1 rounded ${request.is_reciprocal ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400" : "bg-muted text-muted-foreground"}`}
         >
-          {request.is_reciprocal ? 'Reciprocal' : 'Not Reciprocal'}
+          {request.is_reciprocal ? "Reciprocal" : "Not Reciprocal"}
         </span>
         <span
-          className={`px-2 py-1 rounded ${request.priority_locked ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' : 'bg-muted text-muted-foreground'}`}
+          className={`px-2 py-1 rounded ${request.priority_locked ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400" : "bg-muted text-muted-foreground"}`}
         >
-          {request.priority_locked ? 'Priority Locked' : 'Priority Unlocked'}
+          {request.priority_locked ? "Priority Locked" : "Priority Unlocked"}
         </span>
       </div>
     </div>
@@ -422,12 +452,15 @@ function getKeywordsArray(request: EnhancedBunkRequest): string[] {
       return request.keywords_found as string[];
     }
     // Handle if stored as JSON object with array
-    if (typeof request.keywords_found === 'object' && 'keywords' in request.keywords_found) {
+    if (
+      typeof request.keywords_found === "object" &&
+      "keywords" in request.keywords_found
+    ) {
       return (request.keywords_found as { keywords: string[] }).keywords;
     }
   }
   // Check metadata['keywords_found']
-  const metadataKeywords = request.metadata?.['keywords_found'];
+  const metadataKeywords = request.metadata?.["keywords_found"];
   if (metadataKeywords) {
     if (Array.isArray(metadataKeywords)) {
       return metadataKeywords as string[];
@@ -439,12 +472,14 @@ function getKeywordsArray(request: EnhancedBunkRequest): string[] {
 // Helper to extract reasoning from various formats
 function getReasoning(request: EnhancedBunkRequest): string | null {
   // Check ai_reasoning['reasoning'] (most common)
-  const aiReasoning = request.ai_reasoning?.['reasoning'];
+  const aiReasoning = request.ai_reasoning?.["reasoning"];
   if (aiReasoning) {
     return aiReasoning as string;
   }
   // Check metadata['ai_p1_reasoning'].reasoning
-  const p1Reasoning = request.metadata?.['ai_p1_reasoning'] as { reasoning?: string } | undefined;
+  const p1Reasoning = request.metadata?.["ai_p1_reasoning"] as
+    | { reasoning?: string }
+    | undefined;
   if (p1Reasoning?.reasoning) {
     return p1Reasoning.reasoning;
   }
@@ -505,7 +540,7 @@ function DetailField({
     <div>
       <span className="text-muted-foreground block">{label}</span>
       <span
-        className={`${mono ? 'font-mono' : 'font-medium'} ${color || 'text-foreground'} ${warning ? 'text-amber-600 dark:text-amber-400 italic' : ''}`}
+        className={`${mono ? "font-mono" : "font-medium"} ${color || "text-foreground"} ${warning ? "text-amber-600 dark:text-amber-400 italic" : ""}`}
       >
         {value}
         {suffix}

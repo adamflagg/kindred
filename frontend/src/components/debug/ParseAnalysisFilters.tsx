@@ -5,9 +5,17 @@
  * Sierra Lodge aesthetic with warm, nature-inspired styling.
  */
 
-import { ChevronDown, Filter, Loader2, RefreshCw, Search, Trash2, X } from 'lucide-react';
-import { SOURCE_FIELD_LABELS } from './types';
-import type { SourceFieldType } from './types';
+import {
+  ChevronDown,
+  Filter,
+  Loader2,
+  RefreshCw,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
+import { SOURCE_FIELD_LABELS } from "./types";
+import type { SourceFieldType } from "./types";
 
 interface Session {
   id: string;
@@ -71,7 +79,7 @@ export function ParseAnalysisFilters({
         />
         {searchQuery && (
           <button
-            onClick={() => onSearchChange('')}
+            onClick={() => onSearchChange("")}
             className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-bark-100 dark:hover:bg-bark-700 text-bark-400 hover:text-bark-600 dark:hover:text-bark-300 transition-colors"
           >
             <X className="w-3.5 h-3.5" />
@@ -82,8 +90,10 @@ export function ParseAnalysisFilters({
       {/* Session dropdown */}
       <div className="relative">
         <select
-          value={selectedSessionCmId ?? ''}
-          onChange={(e) => onSessionChange(e.target.value ? Number(e.target.value) : null)}
+          value={selectedSessionCmId ?? ""}
+          onChange={(e) =>
+            onSessionChange(e.target.value ? Number(e.target.value) : null)
+          }
           className="
             appearance-none pl-4 pr-9 py-2.5 rounded-xl text-sm font-medium
             bg-white dark:bg-bark-800 border-2 border-bark-200 dark:border-bark-700
@@ -105,8 +115,10 @@ export function ParseAnalysisFilters({
       {/* Source field dropdown */}
       <div className="relative">
         <select
-          value={selectedSourceField ?? ''}
-          onChange={(e) => onSourceFieldChange((e.target.value as SourceFieldType) || null)}
+          value={selectedSourceField ?? ""}
+          onChange={(e) =>
+            onSourceFieldChange((e.target.value as SourceFieldType) || null)
+          }
           className="
             appearance-none pl-4 pr-9 py-2.5 rounded-xl text-sm font-medium
             bg-white dark:bg-bark-800 border-2 border-bark-200 dark:border-bark-700
@@ -116,13 +128,15 @@ export function ParseAnalysisFilters({
           "
         >
           <option value="">All Fields</option>
-          {(Object.entries(SOURCE_FIELD_LABELS) as Array<[SourceFieldType, string]>).map(
-            ([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            )
-          )}
+          {(
+            Object.entries(SOURCE_FIELD_LABELS) as Array<
+              [SourceFieldType, string]
+            >
+          ).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
         </select>
         <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-bark-400 pointer-events-none" />
       </div>

@@ -1,8 +1,8 @@
-import { useState } from 'react';
-import { ClipboardCheck } from 'lucide-react';
-import { useApiWithAuth } from '../hooks/useApiWithAuth';
-import { solverService } from '../services/solver';
-import PreValidationResultsModal from './PreValidationResultsModal';
+import { useState } from "react";
+import { ClipboardCheck } from "lucide-react";
+import { useApiWithAuth } from "../hooks/useApiWithAuth";
+import { solverService } from "../services/solver";
+import PreValidationResultsModal from "./PreValidationResultsModal";
 
 interface PreValidateRequestsButtonProps {
   sessionCmId: number;
@@ -30,11 +30,16 @@ interface ValidationResult {
   };
 }
 
-export default function PreValidateRequestsButton({ sessionCmId, year, className = '' }: PreValidateRequestsButtonProps) {
+export default function PreValidateRequestsButton({
+  sessionCmId,
+  year,
+  className = "",
+}: PreValidateRequestsButtonProps) {
   const { fetchWithAuth } = useApiWithAuth();
   const [isValidating, setIsValidating] = useState(false);
   const [showResults, setShowResults] = useState(false);
-  const [validationResults, setValidationResults] = useState<ValidationResult | null>(null);
+  const [validationResults, setValidationResults] =
+    useState<ValidationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const handlePreValidate = async () => {
@@ -42,12 +47,16 @@ export default function PreValidateRequestsButton({ sessionCmId, year, className
     setError(null);
 
     try {
-      const results = await solverService.preValidateRequests(sessionCmId, year, fetchWithAuth);
+      const results = await solverService.preValidateRequests(
+        sessionCmId,
+        year,
+        fetchWithAuth,
+      );
       setValidationResults(results);
       setShowResults(true);
     } catch (err) {
-      console.error('Pre-validation failed:', err);
-      setError(err instanceof Error ? err.message : 'Pre-validation failed');
+      console.error("Pre-validation failed:", err);
+      setError(err instanceof Error ? err.message : "Pre-validation failed");
     } finally {
       setIsValidating(false);
     }
@@ -63,11 +72,9 @@ export default function PreValidateRequestsButton({ sessionCmId, year, className
       >
         <ClipboardCheck className="h-4 w-4" />
         <span className="hidden sm:inline">
-          {isValidating ? 'Checking...' : 'Pre-Check'}
+          {isValidating ? "Checking..." : "Pre-Check"}
         </span>
-        <span className="sm:hidden">
-          {isValidating ? '...' : 'Pre-Check'}
-        </span>
+        <span className="sm:hidden">{isValidating ? "..." : "Pre-Check"}</span>
       </button>
 
       {error && (

@@ -52,5 +52,5 @@ export function isChunkLoadError(error: unknown): boolean {
  * @returns A message explaining the error and suggesting a reload
  */
 export function getChunkLoadErrorMessage(): string {
-  return 'A new version of the app has been deployed. Please reload the page to get the latest updates.';
+  return "A new version of the app has been deployed. Please reload the page to get the latest updates.";
 }

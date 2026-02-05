@@ -1,6 +1,14 @@
-import { Link } from 'react-router';
-import { useProgram } from '../contexts/ProgramContext';
-import { Home, Users, FileText, Settings, ArrowLeft, Sparkles, Calendar } from 'lucide-react';
+import { Link } from "react-router";
+import { useProgram } from "../contexts/ProgramContext";
+import {
+  Home,
+  Users,
+  FileText,
+  Settings,
+  ArrowLeft,
+  Sparkles,
+  Calendar,
+} from "lucide-react";
 
 export default function FamilyCampDashboard() {
   const { clearProgram } = useProgram();
@@ -47,9 +55,10 @@ export default function FamilyCampDashboard() {
           </h2>
 
           <p className="text-muted-foreground mb-8 leading-relaxed">
-            We're building a streamlined cabin assignment system for family camps, adult retreats,
-            and multi-generational programs. Focus on family groupings and relationship
-            mapping without the complexity of youth session constraints.
+            We're building a streamlined cabin assignment system for family
+            camps, adult retreats, and multi-generational programs. Focus on
+            family groupings and relationship mapping without the complexity of
+            youth session constraints.
           </p>
 
           {/* Feature Preview */}
@@ -89,7 +98,7 @@ export default function FamilyCampDashboard() {
 
       {/* Switch program hint */}
       <p className="text-center mt-6 text-sm text-muted-foreground">
-        Working on Summer Camp instead?{' '}
+        Working on Summer Camp instead?{" "}
         <Link
           to="/"
           onClick={() => clearProgram()}

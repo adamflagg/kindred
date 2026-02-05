@@ -1,4 +1,4 @@
-import { useContext, createContext } from 'react';
+import { useContext, createContext } from "react";
 
 export interface CurrentYearContextType {
   currentYear: number;
@@ -7,12 +7,14 @@ export interface CurrentYearContextType {
   isTransitioning: boolean;
 }
 
-export const CurrentYearContext = createContext<CurrentYearContextType | undefined>(undefined);
+export const CurrentYearContext = createContext<
+  CurrentYearContextType | undefined
+>(undefined);
 
 export function useCurrentYear() {
   const context = useContext(CurrentYearContext);
   if (!context) {
-    throw new Error('useCurrentYear must be used within a CurrentYearProvider');
+    throw new Error("useCurrentYear must be used within a CurrentYearProvider");
   }
   return context;
 }

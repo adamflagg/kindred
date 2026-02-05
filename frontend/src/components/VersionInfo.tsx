@@ -1,18 +1,20 @@
-import React from 'react';
-import { Github } from 'lucide-react';
+import React from "react";
+import { Github } from "lucide-react";
 
 interface VersionInfoProps {
   className?: string;
 }
 
-const GITHUB_REPO_URL = 'https://github.com/adamflagg/kindred';
+const GITHUB_REPO_URL = "https://github.com/adamflagg/kindred";
 
-export const VersionInfo: React.FC<VersionInfoProps> = ({ className = '' }) => {
+export const VersionInfo: React.FC<VersionInfoProps> = ({ className = "" }) => {
   const version = import.meta.env.VITE_APP_VERSION;
 
   return (
-    <div className={`text-xs text-gray-400 flex items-center gap-2 ${className}`}>
-      {version && version !== 'undefined' && (
+    <div
+      className={`text-xs text-gray-400 flex items-center gap-2 ${className}`}
+    >
+      {version && version !== "undefined" && (
         <>
           <span>Kindred {version}</span>
           <a

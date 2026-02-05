@@ -1,11 +1,8 @@
 /**
  * Zod schemas for bunk-related collections: bunks, bunk_assignments, bunk_assignments_draft
  */
-import { z } from 'zod';
-import {
-  BaseSystemFieldsSchema,
-  RecordIdStringSchema,
-} from './common';
+import { z } from "zod";
+import { BaseSystemFieldsSchema, RecordIdStringSchema } from "./common";
 
 // Bunks record schema
 export const BunksRecordSchema = z.object({
@@ -16,7 +13,9 @@ export const BunksRecordSchema = z.object({
 });
 
 // Full bunks response (with system fields)
-export const BunksResponseSchema = BunksRecordSchema.merge(BaseSystemFieldsSchema);
+export const BunksResponseSchema = BunksRecordSchema.merge(
+  BaseSystemFieldsSchema,
+);
 
 // Bunk assignments record schema
 export const BunkAssignmentsRecordSchema = z.object({
@@ -29,7 +28,9 @@ export const BunkAssignmentsRecordSchema = z.object({
 });
 
 // Full bunk assignments response (with system fields)
-export const BunkAssignmentsResponseSchema = BunkAssignmentsRecordSchema.merge(BaseSystemFieldsSchema);
+export const BunkAssignmentsResponseSchema = BunkAssignmentsRecordSchema.merge(
+  BaseSystemFieldsSchema,
+);
 
 // Bunk assignments draft record schema
 export const BunkAssignmentsDraftRecordSchema = z.object({
@@ -43,12 +44,19 @@ export const BunkAssignmentsDraftRecordSchema = z.object({
 });
 
 // Full bunk assignments draft response (with system fields)
-export const BunkAssignmentsDraftResponseSchema = BunkAssignmentsDraftRecordSchema.merge(BaseSystemFieldsSchema);
+export const BunkAssignmentsDraftResponseSchema =
+  BunkAssignmentsDraftRecordSchema.merge(BaseSystemFieldsSchema);
 
 // Export types
 export type BunksRecord = z.infer<typeof BunksRecordSchema>;
 export type BunksResponse = z.infer<typeof BunksResponseSchema>;
 export type BunkAssignmentsRecord = z.infer<typeof BunkAssignmentsRecordSchema>;
-export type BunkAssignmentsResponse = z.infer<typeof BunkAssignmentsResponseSchema>;
-export type BunkAssignmentsDraftRecord = z.infer<typeof BunkAssignmentsDraftRecordSchema>;
-export type BunkAssignmentsDraftResponse = z.infer<typeof BunkAssignmentsDraftResponseSchema>;
+export type BunkAssignmentsResponse = z.infer<
+  typeof BunkAssignmentsResponseSchema
+>;
+export type BunkAssignmentsDraftRecord = z.infer<
+  typeof BunkAssignmentsDraftRecordSchema
+>;
+export type BunkAssignmentsDraftResponse = z.infer<
+  typeof BunkAssignmentsDraftResponseSchema
+>;

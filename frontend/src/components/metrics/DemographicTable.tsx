@@ -5,8 +5,8 @@
  * Enables data quality visibility by showing ALL values, not just top-N.
  */
 
-import { useState, useMemo } from 'react';
-import { Search, ChevronDown, ChevronUp, Download } from 'lucide-react';
+import { useState, useMemo } from "react";
+import { Search, ChevronDown, ChevronUp, Download } from "lucide-react";
 
 export interface DemographicRow {
   name: string;
@@ -24,13 +24,17 @@ export interface DemographicTableProps {
   onRowClick?: (name: string) => void;
 }
 
-type SortField = 'name' | 'base_count' | 'retention_rate';
-type SortDirection = 'asc' | 'desc';
+type SortField = "name" | "base_count" | "retention_rate";
+type SortDirection = "asc" | "desc";
 
-export function DemographicTable({ title, data, onRowClick }: DemographicTableProps) {
-  const [search, setSearch] = useState('');
-  const [sortField, setSortField] = useState<SortField>('base_count');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+export function DemographicTable({
+  title,
+  data,
+  onRowClick,
+}: DemographicTableProps) {
+  const [search, setSearch] = useState("");
+  const [sortField, setSortField] = useState<SortField>("base_count");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
   // Filter and sort data
   const filteredData = useMemo(() => {
@@ -39,24 +43,26 @@ export function DemographicTable({ title, data, onRowClick }: DemographicTablePr
     // Apply search filter
     if (search) {
       const searchLower = search.toLowerCase();
-      result = result.filter((row) => row.name.toLowerCase().includes(searchLower));
+      result = result.filter((row) =>
+        row.name.toLowerCase().includes(searchLower),
+      );
     }
 
     // Apply sorting
     result = [...result].sort((a, b) => {
       let comparison = 0;
       switch (sortField) {
-        case 'name':
+        case "name":
           comparison = a.name.localeCompare(b.name);
           break;
-        case 'base_count':
+        case "base_count":
           comparison = a.base_count - b.base_count;
           break;
-        case 'retention_rate':
+        case "retention_rate":
           comparison = a.retention_rate - b.retention_rate;
           break;
       }
-      return sortDirection === 'desc' ? -comparison : comparison;
+      return sortDirection === "desc" ? -comparison : comparison;
     });
 
     return result;
@@ -64,16 +70,16 @@ export function DemographicTable({ title, data, onRowClick }: DemographicTablePr
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
-      setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+      setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
     } else {
       setSortField(field);
-      setSortDirection('desc');
+      setSortDirection("desc");
     }
   };
 
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field) return null;
-    return sortDirection === 'desc' ? (
+    return sortDirection === "desc" ? (
       <ChevronDown className="h-4 w-4" />
     ) : (
       <ChevronUp className="h-4 w-4" />
@@ -82,7 +88,7 @@ export function DemographicTable({ title, data, onRowClick }: DemographicTablePr
 
   // Export to CSV
   const handleExport = () => {
-    const headers = ['Name', 'Base Count', 'Returned', 'Retention Rate'];
+    const headers = ["Name", "Base Count", "Returned", "Retention Rate"];
     const rows = filteredData.map((row) => [
       row.name,
       row.base_count,
@@ -90,10 +96,10 @@ export function DemographicTable({ title, data, onRowClick }: DemographicTablePr
       `${(row.retention_rate * 100).toFixed(1)}%`,
     ]);
 
-    const csv = [headers, ...rows].map((row) => row.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const csv = [headers, ...rows].map((row) => row.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
     a.download = `${title.toLowerCase()}_retention.csv`;
     a.click();
@@ -131,7 +137,7 @@ export function DemographicTable({ title, data, onRowClick }: DemographicTablePr
             <tr className="border-b border-border">
               <th
                 className="text-left py-2 px-2 cursor-pointer hover:bg-muted/50"
-                onClick={() => handleSort('name')}
+                onClick={() => handleSort("name")}
               >
                 <div className="flex items-center gap-1">
                   {title}
@@ -140,7 +146,7 @@ export function DemographicTable({ title, data, onRowClick }: DemographicTablePr
               </th>
               <th
                 className="text-right py-2 px-2 cursor-pointer hover:bg-muted/50"
-                onClick={() => handleSort('base_count')}
+                onClick={() => handleSort("base_count")}
               >
                 <div className="flex items-center justify-end gap-1">
                   Count
@@ -150,7 +156,7 @@ export function DemographicTable({ title, data, onRowClick }: DemographicTablePr
               <th className="text-right py-2 px-2">Returned</th>
               <th
                 className="text-right py-2 px-2 cursor-pointer hover:bg-muted/50"
-                onClick={() => handleSort('retention_rate')}
+                onClick={() => handleSort("retention_rate")}
               >
                 <div className="flex items-center justify-end gap-1">
                   Rate
@@ -162,15 +168,18 @@ export function DemographicTable({ title, data, onRowClick }: DemographicTablePr
           <tbody>
             {filteredData.length === 0 ? (
               <tr>
-                <td colSpan={4} className="text-center py-4 text-muted-foreground">
-                  {search ? 'No matching results' : 'No data available'}
+                <td
+                  colSpan={4}
+                  className="text-center py-4 text-muted-foreground"
+                >
+                  {search ? "No matching results" : "No data available"}
                 </td>
               </tr>
             ) : (
               filteredData.map((row) => (
                 <tr
                   key={row.name}
-                  className={`border-b border-border last:border-0 ${onRowClick ? 'cursor-pointer hover:bg-muted/30' : ''}`}
+                  className={`border-b border-border last:border-0 ${onRowClick ? "cursor-pointer hover:bg-muted/30" : ""}`}
                   onClick={() => onRowClick?.(row.name)}
                 >
                   <td className="py-2 px-2">{row.name}</td>
@@ -180,10 +189,10 @@ export function DemographicTable({ title, data, onRowClick }: DemographicTablePr
                     <span
                       className={
                         row.retention_rate >= 0.7
-                          ? 'text-green-600 dark:text-green-400'
+                          ? "text-green-600 dark:text-green-400"
                           : row.retention_rate >= 0.5
-                            ? 'text-yellow-600 dark:text-yellow-400'
-                            : 'text-red-600 dark:text-red-400'
+                            ? "text-yellow-600 dark:text-yellow-400"
+                            : "text-red-600 dark:text-red-400"
                       }
                     >
                       {(row.retention_rate * 100).toFixed(1)}%

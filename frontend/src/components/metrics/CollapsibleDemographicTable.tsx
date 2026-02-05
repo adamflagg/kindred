@@ -6,8 +6,8 @@
  * - retention: Name, BaseYear, Returned, Retention columns with color-coded rates
  */
 
-import { useState } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 
 // ============================================================================
 // Types
@@ -35,35 +35,41 @@ interface BaseProps {
 }
 
 interface RegistrationProps extends BaseProps {
-  variant: 'registration';
+  variant: "registration";
   data: RegistrationTableData[];
   baseYear?: never;
 }
 
 interface RetentionProps extends BaseProps {
-  variant: 'retention';
+  variant: "retention";
   data: RetentionTableData[];
   baseYear: number;
 }
 
-export type CollapsibleDemographicTableProps = RegistrationProps | RetentionProps;
+export type CollapsibleDemographicTableProps =
+  | RegistrationProps
+  | RetentionProps;
 
 // ============================================================================
 // Helper Components
 // ============================================================================
 
 function EmptyState({ message }: { message: string }) {
-  return <div className="px-4 py-8 text-center text-muted-foreground text-sm">{message}</div>;
+  return (
+    <div className="px-4 py-8 text-center text-muted-foreground text-sm">
+      {message}
+    </div>
+  );
 }
 
 function RetentionRateCell({ rate }: { rate: number }) {
   const percentage = rate * 100;
   const colorClass =
     percentage >= 60
-      ? 'text-emerald-600 dark:text-emerald-400'
+      ? "text-emerald-600 dark:text-emerald-400"
       : percentage >= 40
-        ? 'text-amber-600 dark:text-amber-400'
-        : 'text-red-600 dark:text-red-400';
+        ? "text-amber-600 dark:text-amber-400"
+        : "text-red-600 dark:text-red-400";
 
   return <span className={colorClass}>{percentage.toFixed(1)}%</span>;
 }
@@ -72,13 +78,15 @@ function RetentionRateCell({ rate }: { rate: number }) {
 // Main Component
 // ============================================================================
 
-export function CollapsibleDemographicTable(props: CollapsibleDemographicTableProps) {
+export function CollapsibleDemographicTable(
+  props: CollapsibleDemographicTableProps,
+) {
   const {
     title,
     icon,
     nameColumn,
     defaultOpen = false,
-    emptyMessage = 'No data available',
+    emptyMessage = "No data available",
     variant,
     data,
   } = props;
@@ -115,7 +123,7 @@ export function CollapsibleDemographicTable(props: CollapsibleDemographicTablePr
                     <th className="px-4 py-2 text-left font-medium text-muted-foreground">
                       {nameColumn}
                     </th>
-                    {variant === 'registration' ? (
+                    {variant === "registration" ? (
                       <>
                         <th className="px-4 py-2 text-right font-medium text-muted-foreground">
                           Count
@@ -140,7 +148,7 @@ export function CollapsibleDemographicTable(props: CollapsibleDemographicTablePr
                   </tr>
                 </thead>
                 <tbody>
-                  {variant === 'registration'
+                  {variant === "registration"
                     ? (data as RegistrationTableData[]).map((item, idx) => (
                         <tr
                           key={idx}
@@ -152,7 +160,9 @@ export function CollapsibleDemographicTable(props: CollapsibleDemographicTablePr
                           >
                             {item.name}
                           </td>
-                          <td className="px-4 py-2 text-right text-foreground">{item.count}</td>
+                          <td className="px-4 py-2 text-right text-foreground">
+                            {item.count}
+                          </td>
                           <td className="px-4 py-2 text-right text-muted-foreground">
                             {item.percentage.toFixed(1)}%
                           </td>

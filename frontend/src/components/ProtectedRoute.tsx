@@ -1,6 +1,6 @@
-import { Navigate, Outlet, useLocation } from 'react-router';
-import { useAuth } from '../contexts/AuthContext';
-import { Loader2 } from 'lucide-react';
+import { Navigate, Outlet, useLocation } from "react-router";
+import { useAuth } from "../contexts/AuthContext";
+import { Loader2 } from "lucide-react";
 
 export const ProtectedRoute = () => {
   const { user, isLoading, isBypassMode } = useAuth();

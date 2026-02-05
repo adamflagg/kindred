@@ -1,5 +1,5 @@
-import { createContext } from 'react';
-import type { BunkRequest } from '../types/app-types';
+import { createContext } from "react";
+import type { BunkRequest } from "../types/app-types";
 
 // Bunkmate info needed for satisfaction calculation
 export interface BunkmateInfo {
@@ -19,7 +19,7 @@ interface BunkRequestContextValue {
     personCmId: number,
     bunkCmId: number,
     campersInBunk: BunkmateInfo[],
-    requesterGrade: number | null
+    requesterGrade: number | null,
   ) => {
     totalRequests: number;
     satisfiedCount: number;
@@ -32,4 +32,6 @@ interface BunkRequestContextValue {
   error: Error | null;
 }
 
-export const BunkRequestContext = createContext<BunkRequestContextValue | undefined>(undefined);
+export const BunkRequestContext = createContext<
+  BunkRequestContextValue | undefined
+>(undefined);

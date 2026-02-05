@@ -1,5 +1,5 @@
-import { Navigate } from 'react-router';
-import { useIsAdmin } from '../hooks/useIsAdmin';
+import { Navigate } from "react-router";
+import { useIsAdmin } from "../hooks/useIsAdmin";
 
 interface AdminRouteProps {
   children: React.ReactNode;
@@ -10,7 +10,10 @@ interface AdminRouteProps {
  * Route wrapper that only allows admin users to access.
  * Non-admins are silently redirected to the fallback path (default: /summer).
  */
-export const AdminRoute = ({ children, fallback = '/summer' }: AdminRouteProps) => {
+export const AdminRoute = ({
+  children,
+  fallback = "/summer",
+}: AdminRouteProps) => {
   const isAdmin = useIsAdmin();
 
   if (!isAdmin) {

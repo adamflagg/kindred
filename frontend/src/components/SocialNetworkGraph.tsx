@@ -1,14 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Core } from 'cytoscape';
-import cytoscape from 'cytoscape';
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { Core } from "cytoscape";
+import cytoscape from "cytoscape";
 // @ts-expect-error - No types available for cytoscape-fcose
-import fcose from 'cytoscape-fcose';
-import BubbleSets from 'cytoscape-bubblesets';
-import { useYear } from '../hooks/useCurrentYear';
-import { useBunkNames } from '../hooks/useBunkNames';
-import { useSocialGraphData } from '../hooks/useSocialGraphData';
-import { Network, AlertCircle } from 'lucide-react';
-import clsx from 'clsx';
+import fcose from "cytoscape-fcose";
+import BubbleSets from "cytoscape-bubblesets";
+import { useYear } from "../hooks/useCurrentYear";
+import { useBunkNames } from "../hooks/useBunkNames";
+import { useSocialGraphData } from "../hooks/useSocialGraphData";
+import { Network, AlertCircle } from "lucide-react";
+import clsx from "clsx";
 import {
   ZOOM_SETTINGS,
   GraphControls,
@@ -28,12 +28,16 @@ import {
   type ViewMode,
   type BubbleRenderStatus,
   type PopperRef,
-} from './graph';
-import { batchElements, cleanupPoppers, cleanupCytoscape } from '../hooks/graph';
+} from "./graph";
+import {
+  batchElements,
+  cleanupPoppers,
+  cleanupCytoscape,
+} from "../hooks/graph";
 
 // Register extensions only once (survives HMR reloads)
 // Use a symbol on globalThis to track registration across module reloads
-const EXTENSIONS_REGISTERED = Symbol.for('cytoscape-extensions-registered');
+const EXTENSIONS_REGISTERED = Symbol.for("cytoscape-extensions-registered");
 if (!(globalThis as Record<symbol, boolean>)[EXTENSIONS_REGISTERED]) {
   if (!cytoscape.prototype.fcose) {
     cytoscape.use(fcose);
@@ -49,9 +53,11 @@ interface SocialNetworkGraphProps {
 }
 
 // Import worker types
-import type { LayoutWorkerOutput } from '../workers/layoutWorker';
+import type { LayoutWorkerOutput } from "../workers/layoutWorker";
 
-export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphProps) {
+export default function SocialNetworkGraph({
+  sessionCmId,
+}: SocialNetworkGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
   const layoutRef = useRef<cytoscape.Layouts | null>(null);
@@ -62,9 +68,12 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
   useYear(); // Ensure year context is available
 
   // Create refs object for bubble rendering - memoized to avoid recreation on every render
-  const bubbleRefs = useMemo(() => ({ bubblesetsRef, pathsRef, poppersRef, containerRef }), []);
+  const bubbleRefs = useMemo(
+    () => ({ bubblesetsRef, pathsRef, poppersRef, containerRef }),
+    [],
+  );
 
-  const [viewMode, setViewMode] = useState<ViewMode>('all');
+  const [viewMode, setViewMode] = useState<ViewMode>("all");
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
   const [showLabels, setShowLabels] = useState(true);
   const [showBubbles, setShowBubbles] = useState(false);
@@ -77,7 +86,8 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     sibling: true,
     school: true,
   });
-  const [bubbleRenderStatus, setBubbleRenderStatus] = useState<BubbleRenderStatus | null>(null);
+  const [bubbleRenderStatus, setBubbleRenderStatus] =
+    useState<BubbleRenderStatus | null>(null);
 
   // Fetch graph and bunk data using custom hooks
   const { data: graphData, isLoading } = useSocialGraphData(sessionCmId);
@@ -89,12 +99,12 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
   // Handle escape key for expanded mode
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isExpanded) {
+      if (e.key === "Escape" && isExpanded) {
         setIsExpanded(false);
       }
     };
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
   }, [isExpanded]);
 
   // Initialize Cytoscape
@@ -107,13 +117,13 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     if (!targetContainer || !graphData) return;
 
     // Wait for bunk names to load before rendering
-    if (!bunksData && graphData.nodes.some(n => n.bunk_cm_id)) {
+    if (!bunksData && graphData.nodes.some((n) => n.bunk_cm_id)) {
       return;
     }
 
     // Destroy existing instance when switching views
     if (cyRef.current) {
-      if (layoutRef.current && typeof layoutRef.current.stop === 'function') {
+      if (layoutRef.current && typeof layoutRef.current.stop === "function") {
         layoutRef.current.stop();
       }
       cyRef.current.destroy();
@@ -122,7 +132,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
 
     const cy = cytoscape({
       container: targetContainer,
-      layout: { name: 'preset' }, // Prevent default grid layout
+      layout: { name: "preset" }, // Prevent default grid layout
       style: getCytoscapeStyles({ showLabels }),
       panningEnabled: true,
       userPanningEnabled: true,
@@ -130,7 +140,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
       userZoomingEnabled: true,
       boxSelectionEnabled: false,
       minZoom: 0.1,
-      maxZoom: 10
+      maxZoom: 10,
     });
 
     cyRef.current = cy;
@@ -140,14 +150,17 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
       graphData.nodes as Parameters<typeof createGraphElements>[0],
       graphData.edges as Parameters<typeof createGraphElements>[1],
       bunksData,
-      showEdges
+      showEdges,
     );
 
     // Staged rendering for smoother loading
-    const stageElements = async (elements: cytoscape.ElementDefinition[], batchSize: number = 50) => {
+    const stageElements = async (
+      elements: cytoscape.ElementDefinition[],
+      batchSize: number = 50,
+    ) => {
       const batches = batchElements(elements, batchSize);
       for (const batch of batches) {
-        await new Promise<void>(resolve => {
+        await new Promise<void>((resolve) => {
           requestAnimationFrame(() => {
             cy.add(batch);
             resolve();
@@ -172,103 +185,115 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     };
 
     const runLayout = () => {
-    if (!cyRef.current) return;
-    const cy = cyRef.current;
+      if (!cyRef.current) return;
+      const cy = cyRef.current;
 
-    // Post-layout completion handler
-    const onLayoutComplete = () => {
-      setIsComputingLayout(false);
-      setTimeout(() => {
-        try {
-          // Draw bunk bubbles after layout if enabled
-          if (showBubbles) {
-            drawBunkBubbles(cy, bunksData, bubbleRefs, setBubbleRenderStatus);
+      // Post-layout completion handler
+      const onLayoutComplete = () => {
+        setIsComputingLayout(false);
+        setTimeout(() => {
+          try {
+            // Draw bunk bubbles after layout if enabled
+            if (showBubbles) {
+              drawBunkBubbles(cy, bunksData, bubbleRefs, setBubbleRenderStatus);
+            }
+          } catch (error) {
+            console.error("Error drawing bunk bubbles:", error);
           }
-        } catch (error) {
-          console.error('Error drawing bunk bubbles:', error);
-        }
-        // Adjust label positions to prevent overlap
-        adjustLabelPositions(cy);
-      }, 500);
-    };
-
-    // Prepare data for worker
-    const workerInput = prepareWorkerInput(parentNodes, nodes, edges);
-
-    // Try to use WebWorker for layout computation
-    try {
-      setIsComputingLayout(true);
-
-      // Create worker if not exists
-      if (!layoutWorkerRef.current) {
-        layoutWorkerRef.current = new Worker(
-          new URL('../workers/layoutWorker.ts', import.meta.url),
-          { type: 'module' }
-        );
-      }
-
-      const worker = layoutWorkerRef.current;
-
-      // Handle worker response
-      const handleMessage = (event: MessageEvent<LayoutWorkerOutput>) => {
-        const { type, positions, error } = event.data;
-
-        if (type === 'positions' && positions) {
-          // Apply positions to visible graph
-          cy.batch(() => {
-            Object.entries(positions).forEach(([nodeId, pos]) => {
-              const node = cy.getElementById(nodeId);
-              if (node.length > 0) {
-                node.position(pos);
-              }
-            });
-          });
-          cy.fit(undefined, 80);
-          onLayoutComplete();
-        } else if (type === 'error') {
-          console.error('[SocialNetworkGraph] Worker error:', error);
-          // Fallback to main thread layout
-          runFallbackLayout();
-        }
-
-        // Remove listener after handling
-        worker.removeEventListener('message', handleMessage);
+          // Adjust label positions to prevent overlap
+          adjustLabelPositions(cy);
+        }, 500);
       };
 
-      worker.addEventListener('message', handleMessage);
-      worker.postMessage(workerInput);
+      // Prepare data for worker
+      const workerInput = prepareWorkerInput(parentNodes, nodes, edges);
 
-    } catch (error) {
-      console.warn('[SocialNetworkGraph] WebWorker failed, using main thread:', error);
-      runFallbackLayout();
-    }
+      // Try to use WebWorker for layout computation
+      try {
+        setIsComputingLayout(true);
 
-    // Fallback layout on main thread (if worker fails)
-    function runFallbackLayout() {
-      const layout = cy.layout(FCOSE_LAYOUT_OPTIONS as cytoscape.LayoutOptions);
-      layoutRef.current = layout;
-      layout.on('layoutstop', onLayoutComplete);
-      layout.run();
-    }
+        // Create worker if not exists
+        if (!layoutWorkerRef.current) {
+          layoutWorkerRef.current = new Worker(
+            new URL("../workers/layoutWorker.ts", import.meta.url),
+            { type: "module" },
+          );
+        }
 
-    // Setup event handlers using extracted utility
-    setupGraphEventHandlers(cy, {
-      onNodeSelect: (nodeId) => setSelectedNodeId(nodeId),
-      onClearSelection: () => setSelectedNodeId(null),
-      viewMode,
+        const worker = layoutWorkerRef.current;
+
+        // Handle worker response
+        const handleMessage = (event: MessageEvent<LayoutWorkerOutput>) => {
+          const { type, positions, error } = event.data;
+
+          if (type === "positions" && positions) {
+            // Apply positions to visible graph
+            cy.batch(() => {
+              Object.entries(positions).forEach(([nodeId, pos]) => {
+                const node = cy.getElementById(nodeId);
+                if (node.length > 0) {
+                  node.position(pos);
+                }
+              });
+            });
+            cy.fit(undefined, 80);
+            onLayoutComplete();
+          } else if (type === "error") {
+            console.error("[SocialNetworkGraph] Worker error:", error);
+            // Fallback to main thread layout
+            runFallbackLayout();
+          }
+
+          // Remove listener after handling
+          worker.removeEventListener("message", handleMessage);
+        };
+
+        worker.addEventListener("message", handleMessage);
+        worker.postMessage(workerInput);
+      } catch (error) {
+        console.warn(
+          "[SocialNetworkGraph] WebWorker failed, using main thread:",
+          error,
+        );
+        runFallbackLayout();
+      }
+
+      // Fallback layout on main thread (if worker fails)
+      function runFallbackLayout() {
+        const layout = cy.layout(
+          FCOSE_LAYOUT_OPTIONS as cytoscape.LayoutOptions,
+        );
+        layoutRef.current = layout;
+        layout.on("layoutstop", onLayoutComplete);
+        layout.run();
+      }
+
+      // Setup event handlers using extracted utility
+      setupGraphEventHandlers(cy, {
+        onNodeSelect: (nodeId) => setSelectedNodeId(nodeId),
+        onClearSelection: () => setSelectedNodeId(null),
+        viewMode,
+      });
+    }; // End of runLayout function
+
+    // Start staged addition
+    addElementsStaged().then(() => {
+      // Run layout after all elements are added
+      runLayout();
     });
-  }; // End of runLayout function
 
-  // Start staged addition
-  addElementsStaged().then(() => {
-    // Run layout after all elements are added
-    runLayout();
-  });
-
-  return () => {
-    cleanupCytoscape(cyRef, layoutRef, bubblesetsRef, poppersRef);
-  };
-}, [graphData, viewMode, bunksData, showBubbles, showEdges, showLabels, bubbleRefs]); // Removed isExpanded - handled by separate effect
+    return () => {
+      cleanupCytoscape(cyRef, layoutRef, bubblesetsRef, poppersRef);
+    };
+  }, [
+    graphData,
+    viewMode,
+    bunksData,
+    showBubbles,
+    showEdges,
+    showLabels,
+    bubbleRefs,
+  ]); // Removed isExpanded - handled by separate effect
 
   // Handle resize when expanding/collapsing - container stays the same, just resizes
   useEffect(() => {
@@ -312,9 +337,10 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
   // Update labels without re-rendering the whole graph
   useEffect(() => {
     if (cyRef.current) {
-      cyRef.current.style()
-        .selector('node')
-        .style('label', showLabels ? 'data(label)' : '')
+      cyRef.current
+        .style()
+        .selector("node")
+        .style("label", showLabels ? "data(label)" : "")
         .update();
     }
   }, [showLabels]);
@@ -345,13 +371,13 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     setIsExpanded(!isExpanded);
   };
 
-
   const toggleLabels = () => {
     setShowLabels(!showLabels);
     if (cyRef.current) {
-      cyRef.current.style()
-        .selector('node')
-        .style('label', !showLabels ? 'data(label)' : '')
+      cyRef.current
+        .style()
+        .selector("node")
+        .style("label", !showLabels ? "data(label)" : "")
         .update();
     }
   };
@@ -366,7 +392,8 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
 
   if (!graphData || graphData.nodes.length === 0) {
     // Display API warnings if available, otherwise show default message
-    const warningMessage = graphData?.warnings?.[0] || 'No social network data available';
+    const warningMessage =
+      graphData?.warnings?.[0] || "No social network data available";
     return (
       <div className="card-lodge p-12 text-center">
         <Network className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
@@ -374,7 +401,6 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
       </div>
     );
   }
-
 
   // Unified view - single structure with conditional styling
   return (
@@ -388,17 +414,19 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
       )}
 
       {/* Main container - card style when normal, fixed fullscreen when expanded */}
-      <div className={clsx(
-        'overflow-hidden flex flex-col',
-        isExpanded
-          ? 'fixed inset-4 bg-card rounded-2xl border border-border shadow-lodge-xl z-50'
-          : 'card-lodge'
-      )}>
+      <div
+        className={clsx(
+          "overflow-hidden flex flex-col",
+          isExpanded
+            ? "fixed inset-4 bg-card rounded-2xl border border-border shadow-lodge-xl z-50"
+            : "card-lodge",
+        )}
+      >
         <div className="p-4 border-b border-border">
           <div className="flex items-center justify-between">
             <h3 className="font-display font-semibold flex items-center gap-2 text-foreground">
               <Network className="w-5 h-5 text-primary" />
-              Social Network Graph{isExpanded ? ' - Expanded View' : ''}
+              Social Network Graph{isExpanded ? " - Expanded View" : ""}
             </h3>
             <GraphControls
               viewMode={viewMode}
@@ -417,7 +445,9 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
 
           <EdgeFilters
             showEdges={showEdges}
-            onEdgeFilterChange={(filters) => setShowEdges(filters as typeof showEdges)}
+            onEdgeFilterChange={(filters) =>
+              setShowEdges(filters as typeof showEdges)
+            }
             showBubbles={showBubbles}
             onToggleBubbles={setShowBubbles}
           />
@@ -425,15 +455,17 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
 
         {/* Graph container - ALWAYS in same tree position */}
         {/* Mobile-responsive: min-h-[50vh] on mobile, h-[600px] on desktop */}
-        <div className={clsx(
-          'relative',
-          isExpanded
-            ? 'flex-1 min-h-0 flex flex-col'
-            : 'min-h-[50vh] h-[50vh] sm:h-[60vh] lg:h-[600px]'
-        )}>
+        <div
+          className={clsx(
+            "relative",
+            isExpanded
+              ? "flex-1 min-h-0 flex flex-col"
+              : "min-h-[50vh] h-[50vh] sm:h-[60vh] lg:h-[600px]",
+          )}
+        >
           <div
             ref={containerRef}
-            className={clsx(isExpanded ? 'flex-1 w-full' : 'w-full h-full')}
+            className={clsx(isExpanded ? "flex-1 w-full" : "w-full h-full")}
           />
 
           {/* Layout Computing Overlay */}
@@ -441,7 +473,9 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
             <div className="absolute inset-0 bg-card/80 backdrop-blur-sm flex items-center justify-center z-10">
               <div className="flex flex-col items-center gap-3">
                 <div className="spinner-lodge w-8 h-8" />
-                <div className="text-sm text-muted-foreground">Computing layout...</div>
+                <div className="text-sm text-muted-foreground">
+                  Computing layout...
+                </div>
               </div>
             </div>
           )}
@@ -449,22 +483,24 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
           <GraphMetrics graphData={graphData} />
 
           {/* Bubble Render Status */}
-          {bubbleRenderStatus && bubbleRenderStatus.rendered < bubbleRenderStatus.total && (
-            <div className="absolute top-4 left-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-sm shadow-lodge-sm">
-              <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
-                <AlertCircle className="w-4 h-4" />
-                <span className="font-medium">Bubble Rendering Issue</span>
+          {bubbleRenderStatus &&
+            bubbleRenderStatus.rendered < bubbleRenderStatus.total && (
+              <div className="absolute top-4 left-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-sm shadow-lodge-sm">
+                <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
+                  <AlertCircle className="w-4 h-4" />
+                  <span className="font-medium">Bubble Rendering Issue</span>
+                </div>
+                <div className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                  Only {bubbleRenderStatus.rendered} of{" "}
+                  {bubbleRenderStatus.total} bunk bubbles rendered. This is a
+                  known library limitation. The graph is still fully functional.
+                </div>
               </div>
-              <div className="mt-1 text-xs text-amber-700 dark:text-amber-300">
-                Only {bubbleRenderStatus.rendered} of {bubbleRenderStatus.total} bunk bubbles rendered.
-                This is a known library limitation. The graph is still fully functional.
-              </div>
-            </div>
-          )}
+            )}
 
           <GraphLegend />
         </div>
-        
+
         {showHelp && <GraphHelp />}
       </div>
     </>

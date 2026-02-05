@@ -1,6 +1,6 @@
-import type { RefObject, MutableRefObject } from 'react';
-import type { Core, Layouts } from 'cytoscape';
-import type { ViewMode, PopperRef } from '../../components/graph';
+import type { RefObject, MutableRefObject } from "react";
+import type { Core, Layouts } from "cytoscape";
+import type { ViewMode, PopperRef } from "../../components/graph";
 
 /**
  * Configuration for graph initialization
@@ -44,7 +44,9 @@ export function batchElements<T>(elements: T[], batchSize: number): T[][] {
 /**
  * Clean up popper instances
  */
-export function cleanupPoppers(poppersRef: MutableRefObject<PopperRef[]>): void {
+export function cleanupPoppers(
+  poppersRef: MutableRefObject<PopperRef[]>,
+): void {
   if (poppersRef.current.length > 0) {
     poppersRef.current.forEach(({ element, instance }) => {
       instance.destroy();
@@ -61,9 +63,9 @@ export function cleanupCytoscape(
   cyRef: MutableRefObject<Core | null>,
   layoutRef: MutableRefObject<Layouts | null>,
   bubblesetsRef: MutableRefObject<unknown | null>,
-  poppersRef: MutableRefObject<PopperRef[]>
+  poppersRef: MutableRefObject<PopperRef[]>,
 ): void {
-  if (layoutRef.current && typeof layoutRef.current.stop === 'function') {
+  if (layoutRef.current && typeof layoutRef.current.stop === "function") {
     layoutRef.current.stop();
   }
   if (bubblesetsRef.current) {

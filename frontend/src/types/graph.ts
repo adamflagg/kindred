@@ -10,7 +10,7 @@ export interface GraphNode {
   centrality: number;
   clustering: number;
   community: number | null;
-  satisfaction_status?: 'satisfied' | 'partial' | 'isolated';
+  satisfaction_status?: "satisfied" | "partial" | "isolated";
   // Legacy fields that may still be referenced
   age?: number;
   sex?: string;
@@ -25,9 +25,9 @@ export interface GraphEdge {
   weight: number;
   type: string;
   reciprocal: boolean;
-  confidence?: number;  // AI confidence score for request edges
-  priority?: number;    // Priority level for request edges
-  metadata?: Record<string, unknown>;  // Additional edge metadata (e.g., location for classmate edges)
+  confidence?: number; // AI confidence score for request edges
+  priority?: number; // Priority level for request edges
+  metadata?: Record<string, unknown>; // Additional edge metadata (e.g., location for classmate edges)
   // Legacy fields that may still be referenced
   edge_type?: string;
   is_reciprocal?: boolean;

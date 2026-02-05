@@ -6,9 +6,9 @@
  * Sierra Lodge aesthetic with warm, nature-inspired styling.
  */
 
-import { Database, FlaskConical, Loader2, RefreshCw, User } from 'lucide-react';
-import { SOURCE_FIELD_LABELS } from './types';
-import type { OriginalRequestWithStatus, SourceFieldType } from './types';
+import { Database, FlaskConical, Loader2, RefreshCw, User } from "lucide-react";
+import { SOURCE_FIELD_LABELS } from "./types";
+import type { OriginalRequestWithStatus, SourceFieldType } from "./types";
 
 interface ParseAnalysisListProps {
   items: OriginalRequestWithStatus[];
@@ -32,7 +32,9 @@ export function ParseAnalysisList({
       <div className="card-lodge flex items-center justify-center h-64 bg-parchment-100/30 dark:bg-bark-900/20">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="w-6 h-6 animate-spin text-forest-600" />
-          <span className="text-sm text-muted-foreground">Loading requests...</span>
+          <span className="text-sm text-muted-foreground">
+            Loading requests...
+          </span>
         </div>
       </div>
     );
@@ -46,7 +48,9 @@ export function ParseAnalysisList({
             <User className="w-7 h-7 text-bark-400" />
           </div>
           <div className="text-center">
-            <span className="text-sm font-semibold text-foreground">No results found</span>
+            <span className="text-sm font-semibold text-foreground">
+              No results found
+            </span>
             <p className="text-xs mt-1">Try adjusting your filters</p>
           </div>
         </div>
@@ -63,10 +67,11 @@ export function ParseAnalysisList({
           const sourceLabel =
             SOURCE_FIELD_LABELS[item.source_field as SourceFieldType] ||
             item.source_field ||
-            'Unknown';
+            "Unknown";
 
           // Determine parse status for badge
-          const hasAnyResult = item.has_debug_result || item.has_production_result;
+          const hasAnyResult =
+            item.has_debug_result || item.has_production_result;
 
           return (
             <div
@@ -76,8 +81,8 @@ export function ParseAnalysisList({
                 transition-all duration-200 border-2
                 ${
                   isSelected
-                    ? 'bg-forest-50 dark:bg-forest-900/30 border-forest-300 dark:border-forest-700 shadow-sm'
-                    : 'bg-white dark:bg-bark-800 border-transparent hover:bg-parchment-200/70 dark:hover:bg-bark-700/50 hover:border-bark-200 dark:hover:border-bark-600'
+                    ? "bg-forest-50 dark:bg-forest-900/30 border-forest-300 dark:border-forest-700 shadow-sm"
+                    : "bg-white dark:bg-bark-800 border-transparent hover:bg-parchment-200/70 dark:hover:bg-bark-700/50 hover:border-bark-200 dark:hover:border-bark-600"
                 }
               `}
               onClick={() => onSelect(item)}
@@ -87,17 +92,19 @@ export function ParseAnalysisList({
                 className={`
                   w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0
                   transition-all duration-200
-                  ${isSelected ? 'border-forest-500 bg-forest-500' : 'border-bark-300 dark:border-bark-600'}
+                  ${isSelected ? "border-forest-500 bg-forest-500" : "border-bark-300 dark:border-bark-600"}
                 `}
               >
-                {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                {isSelected && (
+                  <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                )}
               </div>
 
               {/* Content */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-foreground truncate">
-                    {item.requester_name || 'Unknown'}
+                    {item.requester_name || "Unknown"}
                   </span>
                   {/* Parse status badge */}
                   {item.has_debug_result ? (
@@ -120,16 +127,18 @@ export function ParseAnalysisList({
                   <span
                     className={`
                       inline-flex px-2 py-0.5 rounded-md text-[10px] font-semibold
-                      ${item.source_field === 'bunk_with' ? 'bg-forest-100 text-forest-700 dark:bg-forest-900/40 dark:text-forest-400' : ''}
-                      ${item.source_field === 'not_bunk_with' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400' : ''}
-                      ${item.source_field === 'bunking_notes' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' : ''}
-                      ${item.source_field === 'internal_notes' ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400' : ''}
+                      ${item.source_field === "bunk_with" ? "bg-forest-100 text-forest-700 dark:bg-forest-900/40 dark:text-forest-400" : ""}
+                      ${item.source_field === "not_bunk_with" ? "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400" : ""}
+                      ${item.source_field === "bunking_notes" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400" : ""}
+                      ${item.source_field === "internal_notes" ? "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400" : ""}
                     `}
                   >
                     {sourceLabel}
                   </span>
                   {!hasAnyResult && (
-                    <span className="text-xs text-muted-foreground italic">Not parsed</span>
+                    <span className="text-xs text-muted-foreground italic">
+                      Not parsed
+                    </span>
                   )}
                 </div>
               </div>
@@ -145,8 +154,8 @@ export function ParseAnalysisList({
                   p-2 rounded-lg transition-all duration-200 flex-shrink-0
                   ${
                     isReparsing
-                      ? 'bg-forest-100 dark:bg-forest-900/30'
-                      : 'opacity-0 group-hover:opacity-100 bg-bark-100 dark:bg-bark-700 hover:bg-forest-100 dark:hover:bg-forest-900/30'
+                      ? "bg-forest-100 dark:bg-forest-900/30"
+                      : "opacity-0 group-hover:opacity-100 bg-bark-100 dark:bg-bark-700 hover:bg-forest-100 dark:hover:bg-forest-900/30"
                   }
                 `}
                 title="Reparse this request"

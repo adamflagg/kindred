@@ -17,19 +17,19 @@ import {
   Cell,
   Legend,
   LabelList,
-} from 'recharts';
-import type { PieLabelRenderProps } from 'recharts';
-import type { DrilldownFilter } from '../../types/metrics';
+} from "recharts";
+import type { PieLabelRenderProps } from "recharts";
+import type { DrilldownFilter } from "../../types/metrics";
 
 const COLORS = [
-  'hsl(160, 100%, 35%)', // Primary green
-  'hsl(42, 92%, 50%)', // Accent gold
-  'hsl(200, 70%, 50%)', // Blue
-  'hsl(280, 60%, 50%)', // Purple
-  'hsl(350, 70%, 50%)', // Red
-  'hsl(100, 60%, 45%)', // Lime
-  'hsl(30, 80%, 50%)', // Orange
-  'hsl(180, 60%, 45%)', // Teal
+  "hsl(160, 100%, 35%)", // Primary green
+  "hsl(42, 92%, 50%)", // Accent gold
+  "hsl(200, 70%, 50%)", // Blue
+  "hsl(280, 60%, 50%)", // Purple
+  "hsl(350, 70%, 50%)", // Red
+  "hsl(100, 60%, 45%)", // Lime
+  "hsl(30, 80%, 50%)", // Orange
+  "hsl(180, 60%, 45%)", // Teal
 ];
 
 interface ChartData {
@@ -44,12 +44,12 @@ interface ChartData {
 interface BreakdownChartProps {
   data: ChartData[];
   title: string;
-  type?: 'bar' | 'pie';
+  type?: "bar" | "pie";
   height?: number;
   showPercentage?: boolean;
   className?: string;
   /** Type of breakdown for drill-down (e.g., 'gender', 'grade', 'session') */
-  breakdownType?: DrilldownFilter['type'];
+  breakdownType?: DrilldownFilter["type"];
   /** Callback when a bar/segment is clicked */
   onSegmentClick?: (filter: DrilldownFilter) => void;
 }
@@ -57,10 +57,10 @@ interface BreakdownChartProps {
 export function BreakdownChart({
   data,
   title,
-  type = 'bar',
+  type = "bar",
   height = 300,
   showPercentage = false,
-  className = '',
+  className = "",
   breakdownType,
   onSegmentClick,
 }: BreakdownChartProps) {
@@ -89,18 +89,28 @@ export function BreakdownChart({
     );
   }
 
-  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: ChartData }> }) => {
+  const CustomTooltip = ({
+    active,
+    payload,
+  }: {
+    active?: boolean;
+    payload?: Array<{ payload: ChartData }>;
+  }) => {
     if (active && payload && payload.length && payload[0]) {
       const item = payload[0].payload;
       return (
         <div className="bg-card border border-border rounded-lg p-3 shadow-lg">
           <p className="font-medium text-foreground">{item.name}</p>
           <p className="text-sm text-muted-foreground">
-            Count: <span className="font-semibold text-foreground">{item.value}</span>
+            Count:{" "}
+            <span className="font-semibold text-foreground">{item.value}</span>
           </p>
           {item.percentage !== undefined && (
             <p className="text-sm text-muted-foreground">
-              Percentage: <span className="font-semibold text-foreground">{item.percentage.toFixed(1)}%</span>
+              Percentage:{" "}
+              <span className="font-semibold text-foreground">
+                {item.percentage.toFixed(1)}%
+              </span>
             </p>
           )}
         </div>
@@ -113,7 +123,7 @@ export function BreakdownChart({
     <div className={`card-lodge p-4 ${className}`}>
       <h3 className="text-sm font-semibold text-foreground mb-4">{title}</h3>
       <ResponsiveContainer width="100%" height={height}>
-        {type === 'pie' ? (
+        {type === "pie" ? (
           <PieChart>
             <Pie
               data={data}
@@ -126,7 +136,7 @@ export function BreakdownChart({
                 const item = props.payload as ChartData;
                 const pct = item.percentage;
                 const count = item.value;
-                const labelName = props.name ?? '';
+                const labelName = props.name ?? "";
                 // Show count always, percentage conditionally
                 if (showPercentage && pct !== undefined) {
                   return `${labelName}: ${count} (${pct.toFixed(0)}%)`;
@@ -138,17 +148,24 @@ export function BreakdownChart({
                 const item = data[index];
                 if (item) handleClick(item);
               }}
-              style={{ cursor: isClickable ? 'pointer' : undefined }}
+              style={{ cursor: isClickable ? "pointer" : undefined }}
             >
               {data.map((_, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length] ?? '#00b36b'} />
+                <Cell
+                  key={`cell-${index}`}
+                  fill={COLORS[index % COLORS.length] ?? "#00b36b"}
+                />
               ))}
             </Pie>
             <Tooltip content={<CustomTooltip />} />
             <Legend />
           </PieChart>
         ) : (
-          <BarChart data={data} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+          <BarChart
+            data={data}
+            layout="vertical"
+            margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+          >
             <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
             <XAxis type="number" className="text-xs" />
             <YAxis
@@ -156,8 +173,13 @@ export function BreakdownChart({
               dataKey="name"
               className="text-xs"
               width={130}
-              tick={{ fill: 'hsl(var(--muted-foreground))', style: { whiteSpace: 'nowrap' } }}
-              tickFormatter={(value: string) => value.length > 18 ? `${value.slice(0, 16)}…` : value}
+              tick={{
+                fill: "hsl(var(--muted-foreground))",
+                style: { whiteSpace: "nowrap" },
+              }}
+              tickFormatter={(value: string) =>
+                value.length > 18 ? `${value.slice(0, 16)}…` : value
+              }
             />
             <Tooltip content={<CustomTooltip />} />
             <Bar
@@ -169,7 +191,7 @@ export function BreakdownChart({
                 const item = barData as unknown as ChartData;
                 if (item?.name) handleClick(item);
               }}
-              style={{ cursor: isClickable ? 'pointer' : undefined }}
+              style={{ cursor: isClickable ? "pointer" : undefined }}
             >
               <LabelList
                 dataKey="value"

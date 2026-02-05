@@ -2,9 +2,9 @@
  * Cytoscape styles and graph data transformations
  * Extracted from SocialNetworkGraph.tsx
  */
-import type { NodeSingular, EdgeSingular, StylesheetStyle } from 'cytoscape';
-import { GRADE_COLORS, EDGE_COLORS, STATUS_COLORS } from './constants';
-import { formatGradeOrdinal } from '../../utils/gradeUtils';
+import type { NodeSingular, EdgeSingular, StylesheetStyle } from "cytoscape";
+import { GRADE_COLORS, EDGE_COLORS, STATUS_COLORS } from "./constants";
+import { formatGradeOrdinal } from "../../utils/gradeUtils";
 
 /** Input node data from API */
 export interface GraphNodeData {
@@ -44,140 +44,142 @@ export interface CytoscapeStyleOptions {
 /**
  * Get Cytoscape stylesheet for the social network graph
  */
-export function getCytoscapeStyles({ showLabels }: CytoscapeStyleOptions): StylesheetStyle[] {
+export function getCytoscapeStyles({
+  showLabels,
+}: CytoscapeStyleOptions): StylesheetStyle[] {
   return [
     // Camper nodes (exclude parent compound nodes)
     {
-      selector: 'node:childless',
+      selector: "node:childless",
       style: {
-        'background-color': (ele: NodeSingular) => {
-          const grade = ele.data('grade');
-          return grade ? GRADE_COLORS[grade] || '#95a5a6' : '#95a5a6';
+        "background-color": (ele: NodeSingular) => {
+          const grade = ele.data("grade");
+          return grade ? GRADE_COLORS[grade] || "#95a5a6" : "#95a5a6";
         },
-        'width': (ele: NodeSingular) => {
-          const centrality = ele.data('centrality') || 0;
+        width: (ele: NodeSingular) => {
+          const centrality = ele.data("centrality") || 0;
           return 10 + centrality * 40; // 10-50px range
         },
-        'height': (ele: NodeSingular) => {
-          const centrality = ele.data('centrality') || 0;
+        height: (ele: NodeSingular) => {
+          const centrality = ele.data("centrality") || 0;
           return 10 + centrality * 40; // 10-50px range
         },
-        'label': showLabels ? 'data(label)' : '',
+        label: showLabels ? "data(label)" : "",
         // Responsive font size: larger base for mobile readability
-        'font-size': '12px',
-        'color': '#f5f5f5',
-        'text-outline-width': 2,
-        'text-outline-color': '#1a1a1a',
-        'text-valign': 'bottom',
-        'text-margin-y': 6,
-        'text-max-width': '100px',
-        'text-wrap': 'ellipsis',
-        'border-width': 3,
-        'border-color': (ele: NodeSingular) => {
-          const status = ele.data('satisfaction_status');
-          return STATUS_COLORS[status] || STATUS_COLORS['default'] || '#2c3e50';
+        "font-size": "12px",
+        color: "#f5f5f5",
+        "text-outline-width": 2,
+        "text-outline-color": "#1a1a1a",
+        "text-valign": "bottom",
+        "text-margin-y": 6,
+        "text-max-width": "100px",
+        "text-wrap": "ellipsis",
+        "border-width": 3,
+        "border-color": (ele: NodeSingular) => {
+          const status = ele.data("satisfaction_status");
+          return STATUS_COLORS[status] || STATUS_COLORS["default"] || "#2c3e50";
         },
-        'overlay-padding': '6px',
+        "overlay-padding": "6px",
       },
     },
     {
-      selector: 'node:childless:selected',
+      selector: "node:childless:selected",
       style: {
-        'border-width': 4,
-        'border-color': '#e74c3c',
-        'overlay-color': '#e74c3c',
-        'overlay-opacity': 0.2,
+        "border-width": 4,
+        "border-color": "#e74c3c",
+        "overlay-color": "#e74c3c",
+        "overlay-opacity": 0.2,
       },
     },
     {
-      selector: 'edge',
+      selector: "edge",
       style: {
-        'width': 2,
-        'line-color': (ele: EdgeSingular) => {
-          const edgeType = ele.data('edge_type');
-          return EDGE_COLORS[edgeType] || '#95a5a6';
+        width: 2,
+        "line-color": (ele: EdgeSingular) => {
+          const edgeType = ele.data("edge_type");
+          return EDGE_COLORS[edgeType] || "#95a5a6";
         },
-        'line-opacity': (ele: EdgeSingular) => {
-          const confidence = ele.data('confidence') || 0.5;
+        "line-opacity": (ele: EdgeSingular) => {
+          const confidence = ele.data("confidence") || 0.5;
           return 0.3 + confidence * 0.7; // 0.3-1.0 range
         },
-        'target-arrow-shape': 'triangle',
-        'target-arrow-color': (ele: EdgeSingular) => {
-          const edgeType = ele.data('edge_type');
-          return EDGE_COLORS[edgeType] || '#95a5a6';
+        "target-arrow-shape": "triangle",
+        "target-arrow-color": (ele: EdgeSingular) => {
+          const edgeType = ele.data("edge_type");
+          return EDGE_COLORS[edgeType] || "#95a5a6";
         },
-        'curve-style': 'bezier',
-        'overlay-padding': '2px',
+        "curve-style": "bezier",
+        "overlay-padding": "2px",
       },
     },
     {
-      selector: 'edge.hidden',
+      selector: "edge.hidden",
       style: {
-        display: 'none',
+        display: "none",
       },
     },
     {
       selector: 'edge[type = "bundled"]',
       style: {
         width: 3,
-        'line-style': 'solid',
-        'line-dash-pattern': [6, 3],
+        "line-style": "solid",
+        "line-dash-pattern": [6, 3],
       },
     },
     {
-      selector: '.faded',
+      selector: ".faded",
       style: {
         opacity: 0.1,
-        events: 'no',
+        events: "no",
       },
     },
     {
-      selector: '.hide-label',
+      selector: ".hide-label",
       style: {
-        label: '',
+        label: "",
       },
     },
     {
-      selector: '.highlighted',
+      selector: ".highlighted",
       style: {
-        'z-index': 999,
-        'font-weight': 'bold',
-        'font-size': '14px',
-        'text-outline-width': 2,
-        'text-outline-color': '#fff',
+        "z-index": 999,
+        "font-weight": "bold",
+        "font-size": "14px",
+        "text-outline-width": 2,
+        "text-outline-color": "#fff",
       },
     },
     {
-      selector: '.bunk-label',
+      selector: ".bunk-label",
       style: {
-        shape: 'rectangle',
+        shape: "rectangle",
         width: 1,
         height: 1,
-        'background-opacity': 0,
-        'border-width': 0,
-        label: 'data(label)',
-        'font-size': '18px',
-        'font-weight': 'bold',
-        color: '#333',
-        'text-outline-width': 3,
-        'text-outline-color': '#fff',
-        'text-valign': 'center',
-        'text-halign': 'center',
-        events: 'no',
-        'z-index': 1000,
+        "background-opacity": 0,
+        "border-width": 0,
+        label: "data(label)",
+        "font-size": "18px",
+        "font-weight": "bold",
+        color: "#333",
+        "text-outline-width": 3,
+        "text-outline-color": "#fff",
+        "text-valign": "center",
+        "text-halign": "center",
+        events: "no",
+        "z-index": 1000,
       },
     },
     // Compound parent nodes for bunk grouping (invisible - used for layout only)
     {
-      selector: 'node[isBunkParent]',
+      selector: "node[isBunkParent]",
       style: {
-        'background-opacity': 0,
-        'border-width': 0,
-        label: '',
-        padding: '20px',
-        'min-width': '60px',
-        'min-height': '60px',
-        events: 'no',
+        "background-opacity": 0,
+        "border-width": 0,
+        label: "",
+        padding: "20px",
+        "min-width": "60px",
+        "min-height": "60px",
+        events: "no",
       },
     },
   ];
@@ -236,7 +238,7 @@ export function createGraphElements(
   nodeData: GraphNodeData[],
   edgeData: GraphEdgeData[],
   bunksData: Record<number, string> | null | undefined,
-  showEdges: ShowEdgesSettings
+  showEdges: ShowEdgesSettings,
 ): GraphElements {
   // Group nodes by bunk
   const bunkGroups: Record<number, GraphNodeData[]> = {};
@@ -266,7 +268,7 @@ export function createGraphElements(
           bunk_cm_id: bunkId,
         },
       };
-    }
+    },
   );
 
   // Create camper nodes with parent property for compound grouping

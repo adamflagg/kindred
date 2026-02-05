@@ -2,7 +2,11 @@
  * CampMinder logo icon - lowercase "cm"
  * Uses Open Sans (official CampMinder brand font)
  */
-export function CampMinderIcon({ className = "w-6 h-5" }: { className?: string }) {
+export function CampMinderIcon({
+  className = "w-6 h-5",
+}: {
+  className?: string;
+}) {
   return (
     <svg
       className={className}

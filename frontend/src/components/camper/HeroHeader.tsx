@@ -2,7 +2,7 @@
  * Hero header for camper detail page
  * Displays avatar, name, quick stats bar, and CampMinder link
  */
-import { Link } from 'react-router';
+import { Link } from "react-router";
 import {
   ArrowLeft,
   ExternalLink,
@@ -10,14 +10,14 @@ import {
   Calendar,
   Home,
   TreePine,
-} from 'lucide-react';
-import { CampMinderIcon } from '../icons';
-import { getAvatarColor, getInitial } from '../../utils/avatarUtils';
-import { formatAge } from '../../utils/age';
-import { formatGradeOrdinal } from '../../utils/gradeUtils';
-import { getDisplayAgeForYear } from '../../utils/displayAge';
-import { sessionNameToUrl } from '../../utils/sessionUtils';
-import type { Camper } from '../../types/app-types';
+} from "lucide-react";
+import { CampMinderIcon } from "../icons";
+import { getAvatarColor, getInitial } from "../../utils/avatarUtils";
+import { formatAge } from "../../utils/age";
+import { formatGradeOrdinal } from "../../utils/gradeUtils";
+import { getDisplayAgeForYear } from "../../utils/displayAge";
+import { sessionNameToUrl } from "../../utils/sessionUtils";
+import type { Camper } from "../../types/app-types";
 
 interface HeroHeaderProps {
   camper: Camper;
@@ -55,7 +55,7 @@ export function HeroHeader({
             className={`w-20 h-20 sm:w-24 sm:h-24 rounded-2xl ${getAvatarColor(camper.gender)} flex items-center justify-center shadow-lg ring-4 ring-white/20 flex-shrink-0`}
           >
             <span className="text-3xl sm:text-4xl font-bold text-white font-display">
-              {getInitial(camper.first_name || '')}
+              {getInitial(camper.first_name || "")}
             </span>
           </div>
 
@@ -65,19 +65,20 @@ export function HeroHeader({
               {camper.first_name} {camper.last_name}
             </h1>
             {camper.preferred_name &&
-              camper.preferred_name.replace(/^["']|["']$/g, '') !==
+              camper.preferred_name.replace(/^["']|["']$/g, "") !==
                 camper.first_name && (
                 <p className="text-forest-200 text-lg mt-0.5">
-                  Goes by "{camper.preferred_name.replace(/^["']|["']$/g, '')}"
+                  Goes by "{camper.preferred_name.replace(/^["']|["']$/g, "")}"
                 </p>
               )}
             <p className="text-forest-100 mt-2 text-base sm:text-lg">
-              {camper.gender === 'M'
-                ? 'Male'
-                : camper.gender === 'F'
-                  ? 'Female'
-                  : 'Non-Binary'}{' '}
-              • {pronouns} • {formatAge(getDisplayAgeForYear(camper, currentYear) ?? 0)} •{' '}
+              {camper.gender === "M"
+                ? "Male"
+                : camper.gender === "F"
+                  ? "Female"
+                  : "Non-Binary"}{" "}
+              • {pronouns} •{" "}
+              {formatAge(getDisplayAgeForYear(camper, currentYear) ?? 0)} •{" "}
               {formatGradeOrdinal(camper.grade)} Grade
             </p>
           </div>
@@ -110,13 +111,15 @@ export function HeroHeader({
           )}
           <div className="flex items-center gap-2 text-forest-100">
             <TreePine className="w-4 h-4 text-forest-300" />
-            <span className="text-sm">{camper.years_at_camp || 0} years at camp</span>
+            <span className="text-sm">
+              {camper.years_at_camp || 0} years at camp
+            </span>
           </div>
           {camper.expand?.assigned_bunk && (
             <div className="flex items-center gap-2 text-forest-100">
               <Home className="w-4 h-4 text-forest-300" />
               <Link
-                to={`/summer/session/${sessionNameToUrl(camper.expand?.session?.name || '')}/board`}
+                to={`/summer/session/${sessionNameToUrl(camper.expand?.session?.name || "")}/board`}
                 className="text-sm hover:text-white transition-colors"
               >
                 {camper.expand.assigned_bunk.name}

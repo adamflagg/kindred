@@ -3,8 +3,8 @@
  * Extracted from SocialNetworkGraph.tsx - displays legend for graph elements
  */
 
-import { formatGradeOrdinal } from '../../utils/gradeUtils';
-import { EDGE_COLORS, GRADE_COLORS, CONFIDENCE_LEVELS } from './constants';
+import { formatGradeOrdinal } from "../../utils/gradeUtils";
+import { EDGE_COLORS, GRADE_COLORS, CONFIDENCE_LEVELS } from "./constants";
 
 export interface GraphLegendProps {
   /** Optional custom edge colors (defaults to EDGE_COLORS) */
@@ -26,28 +26,28 @@ export default function GraphLegend({
           <div className="flex items-center gap-2">
             <div
               className="w-4 h-0.5"
-              style={{ backgroundColor: edgeColors['request'] }}
+              style={{ backgroundColor: edgeColors["request"] }}
             />
             <span>Bunk Request</span>
           </div>
           <div className="flex items-center gap-2">
             <div
               className="w-4 h-0.5"
-              style={{ backgroundColor: edgeColors['historical'] }}
+              style={{ backgroundColor: edgeColors["historical"] }}
             />
             <span>Historical</span>
           </div>
           <div className="flex items-center gap-2">
             <div
               className="w-4 h-0.5"
-              style={{ backgroundColor: edgeColors['sibling'] }}
+              style={{ backgroundColor: edgeColors["sibling"] }}
             />
             <span>Sibling</span>
           </div>
           <div className="flex items-center gap-2">
             <div
               className="w-4 h-0.5"
-              style={{ backgroundColor: edgeColors['school'] }}
+              style={{ backgroundColor: edgeColors["school"] }}
             />
             <span>Classmates</span>
           </div>

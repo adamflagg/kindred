@@ -1,24 +1,24 @@
-import { X } from 'lucide-react';
-import { useEffect } from 'react';
-import type { ReactNode } from 'react';
+import { X } from "lucide-react";
+import { useEffect } from "react";
+import type { ReactNode } from "react";
 
 interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
   title?: string;
-  header?: ReactNode;  // Custom header content (overrides title)
-  footer?: ReactNode;  // Footer content
+  header?: ReactNode; // Custom header content (overrides title)
+  footer?: ReactNode; // Footer content
   children: ReactNode;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
-  noPadding?: boolean;  // Remove default padding for complex layouts
-  scrollable?: boolean;  // Make content area scrollable
+  size?: "sm" | "md" | "lg" | "xl";
+  noPadding?: boolean; // Remove default padding for complex layouts
+  scrollable?: boolean; // Make content area scrollable
 }
 
 const sizeClasses = {
-  sm: 'max-w-md',
-  md: 'max-w-lg',
-  lg: 'max-w-2xl',
-  xl: 'max-w-4xl',
+  sm: "max-w-md",
+  md: "max-w-lg",
+  lg: "max-w-2xl",
+  xl: "max-w-4xl",
 } as const;
 
 /**
@@ -52,7 +52,7 @@ export function Modal({
   header,
   footer,
   children,
-  size = 'md',
+  size = "md",
   noPadding = false,
   scrollable = false,
 }: ModalProps) {
@@ -60,12 +60,12 @@ export function Modal({
     if (!isOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         onClose();
       }
     };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
@@ -79,7 +79,7 @@ export function Modal({
       className="fixed inset-0 z-50 flex items-center justify-center"
       role="dialog"
       aria-modal="true"
-      aria-labelledby={hasSimpleTitle ? 'modal-title' : undefined}
+      aria-labelledby={hasSimpleTitle ? "modal-title" : undefined}
     >
       {/* Backdrop */}
       <div
@@ -92,7 +92,7 @@ export function Modal({
       {/* Modal content */}
       <div
         data-testid="modal-content"
-        className={`relative bg-card rounded-xl shadow-xl border border-border overflow-hidden ${noPadding ? '' : 'p-6'} ${sizeClasses[size]} w-full mx-4`}
+        className={`relative bg-card rounded-xl shadow-xl border border-border overflow-hidden ${noPadding ? "" : "p-6"} ${sizeClasses[size]} w-full mx-4`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Custom header mode - header spans full width, close button floats on top */}
@@ -140,7 +140,10 @@ export function Modal({
 
         {/* Content area - optionally scrollable */}
         {scrollable ? (
-          <div data-testid="modal-body" className="overflow-y-auto max-h-[calc(90vh-200px)]">
+          <div
+            data-testid="modal-body"
+            className="overflow-y-auto max-h-[calc(90vh-200px)]"
+          >
             {children}
           </div>
         ) : (
@@ -148,11 +151,7 @@ export function Modal({
         )}
 
         {/* Footer */}
-        {footer && (
-          <div data-testid="modal-footer">
-            {footer}
-          </div>
-        )}
+        {footer && <div data-testid="modal-footer">{footer}</div>}
       </div>
     </div>
   );

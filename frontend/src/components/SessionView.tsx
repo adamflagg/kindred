@@ -1,13 +1,13 @@
-import { useState, useEffect, useCallback, Activity } from 'react';
-import { useParams, useNavigate } from 'react-router';
-import { toast } from 'react-hot-toast';
-import type { Camper } from '../types/app-types';
-import { socialGraphService } from '../services/socialGraph';
-import { useAuth } from '../contexts/AuthContext';
-import { useYear } from '../hooks/useCurrentYear';
-import { useScenario } from '../hooks/useScenario';
-import { graphCacheService } from '../services/GraphCacheService';
-import { useApiWithAuth } from '../hooks/useApiWithAuth';
+import { useState, useEffect, useCallback, Activity } from "react";
+import { useParams, useNavigate } from "react-router";
+import { toast } from "react-hot-toast";
+import type { Camper } from "../types/app-types";
+import { socialGraphService } from "../services/socialGraph";
+import { useAuth } from "../contexts/AuthContext";
+import { useYear } from "../hooks/useCurrentYear";
+import { useScenario } from "../hooks/useScenario";
+import { graphCacheService } from "../services/GraphCacheService";
+import { useApiWithAuth } from "../hooks/useApiWithAuth";
 import {
   useSessionHierarchy,
   useSolverOperations,
@@ -15,24 +15,37 @@ import {
   useSessionBunks,
   useSessionCampers,
   useBunkRequestsCount,
-} from '../hooks/session';
-import SolverProgressModal, { useSolverProgress } from './SolverProgressModal';
-import { isValidTab, type ValidTab, sessionNameToUrl } from '../utils/sessionUtils';
-import BunkingBoardByArea from './BunkingBoardByArea';
-import RequestReviewPanel from './RequestReviewPanel';
-import CampersView from './CampersView';
-import FriendGroupsView from './FriendGroupsView';
-import NewScenarioModal from './NewScenarioModal';
-import ScenarioManagementModal from './ScenarioManagementModal';
-import ProductionSaveConfirmDialog from './ProductionSaveConfirmDialog';
-import { SessionHeader, AreaFilterBar, SessionTabs, ClearAssignmentsDialog, type BunkArea } from './session';
-import { useSolverConfigValue } from '../hooks/useSolverConfig';
-import { BunkRequestProvider } from '../providers/BunkRequestProvider';
-import { CamperHistoryProvider } from '../providers/CamperHistoryProvider';
-import { useLockGroupContext } from '../contexts/LockGroupContext';
+} from "../hooks/session";
+import SolverProgressModal, { useSolverProgress } from "./SolverProgressModal";
+import {
+  isValidTab,
+  type ValidTab,
+  sessionNameToUrl,
+} from "../utils/sessionUtils";
+import BunkingBoardByArea from "./BunkingBoardByArea";
+import RequestReviewPanel from "./RequestReviewPanel";
+import CampersView from "./CampersView";
+import FriendGroupsView from "./FriendGroupsView";
+import NewScenarioModal from "./NewScenarioModal";
+import ScenarioManagementModal from "./ScenarioManagementModal";
+import ProductionSaveConfirmDialog from "./ProductionSaveConfirmDialog";
+import {
+  SessionHeader,
+  AreaFilterBar,
+  SessionTabs,
+  ClearAssignmentsDialog,
+  type BunkArea,
+} from "./session";
+import { useSolverConfigValue } from "../hooks/useSolverConfig";
+import { BunkRequestProvider } from "../providers/BunkRequestProvider";
+import { CamperHistoryProvider } from "../providers/CamperHistoryProvider";
+import { useLockGroupContext } from "../contexts/LockGroupContext";
 
 export default function SessionView() {
-  const { sessionId, '*': tabPath } = useParams<{ sessionId: string; '*': string }>(); // sessionId can be friendly URL or numeric
+  const { sessionId, "*": tabPath } = useParams<{
+    sessionId: string;
+    "*": string;
+  }>(); // sessionId can be friendly URL or numeric
   const navigate = useNavigate();
   const currentYear = useYear();
   const { isLoading: authLoading } = useAuth();
@@ -43,12 +56,12 @@ export default function SessionView() {
     scenarios,
     loadScenarios,
     selectScenario,
-    loading: scenarioLoading
+    loading: scenarioLoading,
   } = useScenario();
   const { setSessionPbId: setLockGroupSessionPbId } = useLockGroupContext();
 
   // Extract tab from URL path
-  const activeTab = (isValidTab(tabPath || '') ? tabPath : 'bunks') as ValidTab;
+  const activeTab = (isValidTab(tabPath || "") ? tabPath : "bunks") as ValidTab;
 
   // Session hierarchy hook - handles session lookups, sub-sessions, AG sessions
   const {
@@ -58,20 +71,34 @@ export default function SessionView() {
     agSessions,
     showAgArea,
     selectedSession,
-  } = useSessionHierarchy({ sessionId, tabPath: tabPath ?? '' });
+  } = useSessionHierarchy({ sessionId, tabPath: tabPath ?? "" });
 
   // UI state
   const [showNewScenarioModal, setShowNewScenarioModal] = useState(false);
-  const [showScenarioManagementModal, setShowScenarioManagementModal] = useState(false);
-  const [showProductionSaveDialog, setShowProductionSaveDialog] = useState(false);
-  const [pendingMove, setPendingMove] = useState<{ camperId: string; bunkId: string | null } | null>(null);
+  const [showScenarioManagementModal, setShowScenarioManagementModal] =
+    useState(false);
+  const [showProductionSaveDialog, setShowProductionSaveDialog] =
+    useState(false);
+  const [pendingMove, setPendingMove] = useState<{
+    camperId: string;
+    bunkId: string | null;
+  } | null>(null);
   const [showClearDialog, setShowClearDialog] = useState(false);
-  const [selectedBunkArea, setSelectedBunkArea] = useState<BunkArea>('all');
+  const [selectedBunkArea, setSelectedBunkArea] = useState<BunkArea>("all");
 
   // Fetch solver config values
-  const autoApplyEnabled = useSolverConfigValue('solver.auto_apply_enabled', true) as boolean;
-  const autoApplyTimeout = useSolverConfigValue('solver.auto_apply_timeout', 0) as number;
-  const defaultBunkCapacity = useSolverConfigValue('constraint.cabin_capacity.standard', 12) as number;
+  const autoApplyEnabled = useSolverConfigValue(
+    "solver.auto_apply_enabled",
+    true,
+  ) as boolean;
+  const autoApplyTimeout = useSolverConfigValue(
+    "solver.auto_apply_timeout",
+    0,
+  ) as number;
+  const defaultBunkCapacity = useSolverConfigValue(
+    "constraint.cabin_capacity.standard",
+    12,
+  ) as number;
 
   // Solver progress modal
   const solverProgress = useSolverProgress();
@@ -84,7 +111,7 @@ export default function SessionView() {
     handleRunSolver: runSolverInternal,
     handleClearAssignments,
   } = useSolverOperations({
-    selectedSession: selectedSession || '',
+    selectedSession: selectedSession || "",
     currentYear,
     currentScenario,
     scenarios,
@@ -94,33 +121,36 @@ export default function SessionView() {
   });
 
   // Wrapped handleRunSolver that coordinates with progress modal
-  const handleRunSolver = useCallback(async (timeLimit: number = 60) => {
-    // Start progress modal
-    solverProgress.start(timeLimit, currentScenario?.name);
+  const handleRunSolver = useCallback(
+    async (timeLimit: number = 60) => {
+      // Start progress modal
+      solverProgress.start(timeLimit, currentScenario?.name);
 
-    // Run the solver (this handles its own toasts internally)
-    const result = await runSolverInternal(timeLimit);
+      // Run the solver (this handles its own toasts internally)
+      const result = await runSolverInternal(timeLimit);
 
-    if (result.success) {
-      // Show stats in modal
-      solverProgress.complete({
-        satisfied_request_count: result.stats?.satisfied_request_count,
-        satisfied_constraints: result.stats?.satisfied_constraints,
-        total_requests: result.stats?.total_requests,
-        total_constraints: result.stats?.total_constraints,
-        assignments_changed: result.stats?.assignments_changed,
-        new_assignments: result.stats?.new_assignments,
-        request_validation: result.stats?.request_validation,
-      });
-    } else {
-      // Show error in modal
-      solverProgress.fail(result.errorMessage || 'Optimization failed');
-    }
-  }, [solverProgress, runSolverInternal, currentScenario?.name]);
+      if (result.success) {
+        // Show stats in modal
+        solverProgress.complete({
+          satisfied_request_count: result.stats?.satisfied_request_count,
+          satisfied_constraints: result.stats?.satisfied_constraints,
+          total_requests: result.stats?.total_requests,
+          total_constraints: result.stats?.total_constraints,
+          assignments_changed: result.stats?.assignments_changed,
+          new_assignments: result.stats?.new_assignments,
+          request_validation: result.stats?.request_validation,
+        });
+      } else {
+        // Show error in modal
+        solverProgress.fail(result.errorMessage || "Optimization failed");
+      }
+    },
+    [solverProgress, runSolverInternal, currentScenario?.name],
+  );
 
   // Reset selected area if All-Gender is selected but no longer available (render-time check)
-  if (selectedBunkArea === 'all-gender' && !showAgArea) {
-    setSelectedBunkArea('all');
+  if (selectedBunkArea === "all-gender" && !showAgArea) {
+    setSelectedBunkArea("all");
   }
 
   // Load scenarios when session changes
@@ -159,18 +189,15 @@ export default function SessionView() {
     subSessions,
     agSessions,
   });
-  
 
   // Camper movement hook
   const { moveCamper } = useCamperMovement({
-    selectedSession: selectedSession || '',
+    selectedSession: selectedSession || "",
     currentYear,
     currentScenario,
     fetchWithAuth,
     onPendingMoveCleared: () => setPendingMove(null),
   });
-
-
 
   // Pre-warm graph cache on session load (only if session has bunk requests)
   useEffect(() => {
@@ -181,16 +208,28 @@ export default function SessionView() {
     const sessionCmId = parseInt(selectedSession, 10);
     if (!isNaN(sessionCmId)) {
       // Pre-fetch the session graph in the background
-      graphCacheService.getSessionGraph(sessionCmId, async () => {
-        return socialGraphService.getSessionSocialGraph(sessionCmId, currentYear, fetchWithAuth);
-      }).catch(error => {
-        // Only log actual errors, not empty graphs
-        if (!error.message?.includes('no social graph data')) {
-          console.error('Failed to pre-warm graph cache:', error);
-        }
-      });
+      graphCacheService
+        .getSessionGraph(sessionCmId, async () => {
+          return socialGraphService.getSessionSocialGraph(
+            sessionCmId,
+            currentYear,
+            fetchWithAuth,
+          );
+        })
+        .catch((error) => {
+          // Only log actual errors, not empty graphs
+          if (!error.message?.includes("no social graph data")) {
+            console.error("Failed to pre-warm graph cache:", error);
+          }
+        });
     }
-  }, [authLoading, selectedSession, currentYear, bunkRequestsCount, fetchWithAuth]);
+  }, [
+    authLoading,
+    selectedSession,
+    currentYear,
+    bunkRequestsCount,
+    fetchWithAuth,
+  ]);
 
   // Handle clear dialog close after successful clear
   const onClearAssignments = async () => {
@@ -201,11 +240,11 @@ export default function SessionView() {
   if (!sessionId) {
     return <div>Invalid session URL</div>;
   }
-  
+
   if (allSessionsForLookup.length === 0) {
     return <div>Loading sessions...</div>;
   }
-  
+
   if (!session) {
     return <div>Session not found</div>;
   }
@@ -225,7 +264,9 @@ export default function SessionView() {
         isApplyingResults={isApplyingResults}
         capturedScenarioId={capturedScenarioId}
         onSessionChange={(sessionCmId) => {
-          const selectedSess = allSessionsForLookup.find(s => s.cm_id.toString() === sessionCmId);
+          const selectedSess = allSessionsForLookup.find(
+            (s) => s.cm_id.toString() === sessionCmId,
+          );
           if (selectedSess) {
             navigate(`/summer/session/${sessionNameToUrl(selectedSess.name)}`);
           }
@@ -247,7 +288,7 @@ export default function SessionView() {
         />
 
         {/* Contextual Bar - Area filter + Stats (Bunks tab only) */}
-        {activeTab === 'bunks' && (
+        {activeTab === "bunks" && (
           <AreaFilterBar
             selectedArea={selectedBunkArea}
             onAreaChange={setSelectedBunkArea}
@@ -255,7 +296,7 @@ export default function SessionView() {
             bunks={bunks}
             campers={campers}
             defaultCapacity={defaultBunkCapacity}
-            agSessionCmIds={agSessions.map(s => s.cm_id)}
+            agSessionCmIds={agSessions.map((s) => s.cm_id)}
           />
         )}
       </div>
@@ -263,14 +304,14 @@ export default function SessionView() {
       {/* Content - Using Activity to preserve state across tab switches */}
       <div className="pt-4">
         {/* Bunks Tab - preserves drag state and complex board state */}
-        <Activity mode={activeTab === 'bunks' ? 'visible' : 'hidden'}>
+        <Activity mode={activeTab === "bunks" ? "visible" : "hidden"}>
           <BunkRequestProvider sessionCmId={session?.cm_id || 0}>
             <CamperHistoryProvider
               sessionCmId={session?.cm_id || 0}
-              camperPersonIds={campers.map(c => c.person_cm_id)}
+              camperPersonIds={campers.map((c) => c.person_cm_id)}
             >
               <BunkingBoardByArea
-                sessionId={sessionId || ''}
+                sessionId={sessionId || ""}
                 sessionCmId={session?.cm_id || 0}
                 bunks={bunks}
                 campers={campers}
@@ -292,7 +333,7 @@ export default function SessionView() {
         </Activity>
 
         {/* Campers Tab - preserves filter/sort state */}
-        <Activity mode={activeTab === 'campers' ? 'visible' : 'hidden'}>
+        <Activity mode={activeTab === "campers" ? "visible" : "hidden"}>
           <CampersView
             sessionId={selectedSession}
             session={session}
@@ -302,33 +343,35 @@ export default function SessionView() {
         </Activity>
 
         {/* Requests Tab - preserves selection/review state */}
-        <Activity mode={activeTab === 'requests' ? 'visible' : 'hidden'}>
+        <Activity mode={activeTab === "requests" ? "visible" : "hidden"}>
           {selectedSession && !isNaN(parseInt(selectedSession, 10)) ? (
             <RequestReviewPanel
               sessionId={parseInt(selectedSession, 10)}
               relatedSessionIds={
                 selectedSession === session?.cm_id.toString()
                   ? [
-                      ...subSessions.map(s => s.cm_id),
-                      ...agSessions.map(s => s.cm_id)
+                      ...subSessions.map((s) => s.cm_id),
+                      ...agSessions.map((s) => s.cm_id),
                     ]
                   : []
               }
               year={currentYear}
             />
           ) : (
-            <div className="text-center text-muted-foreground">Loading session data...</div>
+            <div className="text-center text-muted-foreground">
+              Loading session data...
+            </div>
           )}
         </Activity>
 
         {/* Friends Tab - preserves group selection state */}
-        <Activity mode={activeTab === 'friends' ? 'visible' : 'hidden'}>
+        <Activity mode={activeTab === "friends" ? "visible" : "hidden"}>
           {selectedSession && !isNaN(parseInt(selectedSession, 10)) ? (
-            <FriendGroupsView
-              sessionCmId={parseInt(selectedSession, 10)}
-            />
+            <FriendGroupsView sessionCmId={parseInt(selectedSession, 10)} />
           ) : (
-            <div className="text-center text-muted-foreground">Loading session data...</div>
+            <div className="text-center text-muted-foreground">
+              Loading session data...
+            </div>
           )}
         </Activity>
       </div>
@@ -344,7 +387,7 @@ export default function SessionView() {
           }}
         />
       )}
-      
+
       {/* Scenario Management Modal */}
       {showScenarioManagementModal && session && (
         <ScenarioManagementModal
@@ -352,7 +395,7 @@ export default function SessionView() {
           onClose={() => setShowScenarioManagementModal(false)}
         />
       )}
-      
+
       {/* Production Save Confirmation Dialog */}
       <ProductionSaveConfirmDialog
         isOpen={showProductionSaveDialog}
@@ -370,7 +413,7 @@ export default function SessionView() {
           setShowNewScenarioModal(true);
         }}
       />
-      
+
       {/* Clear Assignments Confirmation Dialog */}
       <ClearAssignmentsDialog
         isOpen={showClearDialog}

@@ -5,15 +5,21 @@
  * Uses OpenStreetMap tiles with CartoDB Positron styling for a clean look.
  */
 
-import { useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, CircleMarker, Tooltip, useMap } from 'react-leaflet';
-import 'leaflet/dist/leaflet.css';
+import { useEffect, useRef } from "react";
+import {
+  MapContainer,
+  TileLayer,
+  CircleMarker,
+  Tooltip,
+  useMap,
+} from "react-leaflet";
+import "leaflet/dist/leaflet.css";
 import {
   getCityCoords,
   BAY_AREA_CENTER,
   BAY_AREA_ZOOM,
   type LatLng,
-} from '../../../data/californiaGeo';
+} from "../../../data/californiaGeo";
 
 export interface GeoDataItem {
   name: string;
@@ -25,7 +31,7 @@ export interface GeoMapProps {
   /** Data to display on map */
   data: GeoDataItem[];
   /** Category being displayed (affects marker color) */
-  category: 'city' | 'school' | 'synagogue';
+  category: "city" | "school" | "synagogue";
   /** Callback when a marker is clicked */
   onMarkerClick?: (name: string) => void;
   /** Currently selected/highlighted item */
@@ -37,19 +43,19 @@ export interface GeoMapProps {
 /** Color palette matching Sierra Lodge theme */
 const CATEGORY_COLORS = {
   city: {
-    fill: 'hsl(200, 70%, 50%)',
-    stroke: 'hsl(200, 80%, 35%)',
-    selected: 'hsl(42, 92%, 55%)',
+    fill: "hsl(200, 70%, 50%)",
+    stroke: "hsl(200, 80%, 35%)",
+    selected: "hsl(42, 92%, 55%)",
   },
   school: {
-    fill: 'hsl(160, 60%, 45%)',
-    stroke: 'hsl(160, 70%, 30%)',
-    selected: 'hsl(42, 92%, 55%)',
+    fill: "hsl(160, 60%, 45%)",
+    stroke: "hsl(160, 70%, 30%)",
+    selected: "hsl(42, 92%, 55%)",
   },
   synagogue: {
-    fill: 'hsl(42, 80%, 55%)',
-    stroke: 'hsl(42, 90%, 40%)',
-    selected: 'hsl(160, 100%, 35%)',
+    fill: "hsl(42, 80%, 55%)",
+    stroke: "hsl(42, 90%, 40%)",
+    selected: "hsl(160, 100%, 35%)",
   },
 };
 
@@ -86,7 +92,10 @@ export function GeoMap({
       ...item,
       coords: getCityCoords(item.name),
     }))
-    .filter((item): item is GeoDataItem & { coords: LatLng } => item.coords !== undefined);
+    .filter(
+      (item): item is GeoDataItem & { coords: LatLng } =>
+        item.coords !== undefined,
+    );
 
   // Items without coordinates (for display in "Other" section)
   const unmappableData = data.filter((item) => !getCityCoords(item.name));
@@ -140,7 +149,8 @@ export function GeoMap({
                 <Tooltip direction="top" offset={[0, -radius]} opacity={0.95}>
                   <div className="text-sm font-medium">{item.name}</div>
                   <div className="text-xs text-gray-600">
-                    {item.count} camper{item.count !== 1 ? 's' : ''} ({item.percentage.toFixed(1)}%)
+                    {item.count} camper{item.count !== 1 ? "s" : ""} (
+                    {item.percentage.toFixed(1)}%)
                   </div>
                 </Tooltip>
               </CircleMarker>
@@ -155,19 +165,24 @@ export function GeoMap({
           <div className="flex items-center gap-1.5">
             <div
               className="w-3 h-3 rounded-full"
-              style={{ backgroundColor: colors.fill, border: `2px solid ${colors.stroke}` }}
+              style={{
+                backgroundColor: colors.fill,
+                border: `2px solid ${colors.stroke}`,
+              }}
             />
             <span>Size = camper count</span>
           </div>
           {mappableData.length > 0 && (
             <span>
-              {mappableData.length} location{mappableData.length !== 1 ? 's' : ''} shown
+              {mappableData.length} location
+              {mappableData.length !== 1 ? "s" : ""} shown
             </span>
           )}
         </div>
         {unmappableData.length > 0 && (
           <span className="text-xs">
-            {unmappableData.length} location{unmappableData.length !== 1 ? 's' : ''} not mapped
+            {unmappableData.length} location
+            {unmappableData.length !== 1 ? "s" : ""} not mapped
           </span>
         )}
       </div>

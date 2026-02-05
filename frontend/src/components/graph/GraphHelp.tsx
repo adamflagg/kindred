@@ -3,7 +3,7 @@
  * Extracted from SocialNetworkGraph.tsx - displays help information
  */
 
-import { HelpCircle } from 'lucide-react';
+import { HelpCircle } from "lucide-react";
 
 export default function GraphHelp() {
   return (
@@ -21,13 +21,13 @@ export default function GraphHelp() {
             <li>
               <strong className="text-forest-800 dark:text-forest-200">
                 All Connections:
-              </strong>{' '}
+              </strong>{" "}
               Shows the complete social network with all request types
             </li>
             <li>
               <strong className="text-forest-800 dark:text-forest-200">
                 Ego Network:
-              </strong>{' '}
+              </strong>{" "}
               Click on any camper to see only their direct connections (1-hop
               network)
             </li>
@@ -36,7 +36,7 @@ export default function GraphHelp() {
         <div>
           <strong className="text-forest-800 dark:text-forest-200">
             Edge Directionality:
-          </strong>{' '}
+          </strong>{" "}
           Arrows show the direction of requests. More opaque lines = higher
           confidence. Dashed lines indicate bundled relationships (multiple
           types between same campers).
@@ -44,7 +44,7 @@ export default function GraphHelp() {
         <div>
           <strong className="text-forest-800 dark:text-forest-200">
             Node Size:
-          </strong>{' '}
+          </strong>{" "}
           Larger nodes have more connections (higher centrality in the network).
         </div>
       </div>

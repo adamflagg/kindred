@@ -3,21 +3,26 @@
  * Optimized for quick session/scenario switching with minimal vertical space
  */
 
-import { Link } from 'react-router';
-import { Tent, Trash2, GitCompare, Settings, ChevronDown } from 'lucide-react';
-import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react';
-import type { Session } from '../../types/app-types';
-import { getFormattedSessionName } from '../../utils/sessionDisplay';
+import { Link } from "react-router";
+import { Tent, Trash2, GitCompare, Settings, ChevronDown } from "lucide-react";
+import {
+  Listbox,
+  ListboxButton,
+  ListboxOptions,
+  ListboxOption,
+} from "@headlessui/react";
+import type { Session } from "../../types/app-types";
+import { getFormattedSessionName } from "../../utils/sessionDisplay";
 import {
   sessionNameToUrl,
   sortSessionsByDate,
   filterSelectableSessions,
-} from '../../utils/sessionUtils';
-import PreValidateRequestsButton from '../PreValidateRequestsButton';
-import ValidateBunkingButton from '../ValidateBunkingButton';
-import { BunkingLegendButton } from '../BunkingLegend';
-import ModeBadge from '../ModeBadge';
-import OptimizeBunksButton from '../OptimizeBunksButton';
+} from "../../utils/sessionUtils";
+import PreValidateRequestsButton from "../PreValidateRequestsButton";
+import ValidateBunkingButton from "../ValidateBunkingButton";
+import { BunkingLegendButton } from "../BunkingLegend";
+import ModeBadge from "../ModeBadge";
+import OptimizeBunksButton from "../OptimizeBunksButton";
 
 export interface SessionHeaderProps {
   /** Current session data */
@@ -72,15 +77,18 @@ export default function SessionHeader({
   onShowScenarioManagement,
   onSelectScenario,
 }: SessionHeaderProps) {
-  const selectableSessions = sortSessionsByDate(filterSelectableSessions(allSessions));
-  const showPulse = (isSolving || isApplyingResults) && capturedScenarioId !== null;
+  const selectableSessions = sortSessionsByDate(
+    filterSelectableSessions(allSessions),
+  );
+  const showPulse =
+    (isSolving || isApplyingResults) && capturedScenarioId !== null;
 
   // Handle scenario dropdown change - includes "new" option
   const handleScenarioChange = (value: string) => {
-    if (value === 'new') {
+    if (value === "new") {
       onShowNewScenarioModal();
     } else {
-      onSelectScenario(value === 'production' ? null : value);
+      onSelectScenario(value === "production" ? null : value);
     }
   };
 
@@ -124,18 +132,21 @@ export default function SessionHeader({
 
           <div className="relative">
             <Listbox
-              value={currentScenario?.id || 'production'}
+              value={currentScenario?.id || "production"}
               onChange={handleScenarioChange}
               disabled={scenarioLoading || isSolving || isApplyingResults}
             >
               <ListboxButton className="listbox-button-compact min-w-[130px]">
                 <span className="flex-1 text-left truncate">
-                  {currentScenario?.name || 'CampMinder'}
+                  {currentScenario?.name || "CampMinder"}
                 </span>
                 <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
               </ListboxButton>
               <ListboxOptions className="listbox-options w-auto min-w-[160px]">
-                <ListboxOption value="production" className="listbox-option py-1.5">
+                <ListboxOption
+                  value="production"
+                  className="listbox-option py-1.5"
+                >
                   CampMinder
                 </ListboxOption>
                 {scenarios.map((scenario) => (

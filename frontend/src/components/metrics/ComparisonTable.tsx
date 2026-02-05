@@ -2,7 +2,7 @@
  * ComparisonTable - Display year-over-year comparison data in a table.
  */
 
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 
 interface ComparisonRow {
   label: string;
@@ -25,7 +25,7 @@ export function ComparisonTable({
   yearALabel,
   yearBLabel,
   rows,
-  className = '',
+  className = "",
 }: ComparisonTableProps) {
   const getTrendIcon = (change: number | undefined) => {
     if (change === undefined || change === 0) {
@@ -39,8 +39,8 @@ export function ComparisonTable({
   };
 
   const formatChange = (change: number | undefined, percent?: number) => {
-    if (change === undefined) return '';
-    const sign = change > 0 ? '+' : '';
+    if (change === undefined) return "";
+    const sign = change > 0 ? "+" : "";
     const changeStr = `${sign}${change}`;
     if (percent !== undefined) {
       return `${changeStr} (${sign}${percent.toFixed(1)}%)`;
@@ -49,10 +49,10 @@ export function ComparisonTable({
   };
 
   const getChangeClass = (change: number | undefined) => {
-    if (change === undefined || change === 0) return 'text-muted-foreground';
+    if (change === undefined || change === 0) return "text-muted-foreground";
     return change > 0
-      ? 'text-emerald-600 dark:text-emerald-400'
-      : 'text-red-600 dark:text-red-400';
+      ? "text-emerald-600 dark:text-emerald-400"
+      : "text-red-600 dark:text-red-400";
   };
 
   return (
@@ -64,19 +64,38 @@ export function ComparisonTable({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-muted/30">
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Category</th>
-              <th className="px-4 py-3 text-right font-medium text-muted-foreground">{yearALabel}</th>
-              <th className="px-4 py-3 text-right font-medium text-muted-foreground">{yearBLabel}</th>
-              <th className="px-4 py-3 text-right font-medium text-muted-foreground">Change</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+                Category
+              </th>
+              <th className="px-4 py-3 text-right font-medium text-muted-foreground">
+                {yearALabel}
+              </th>
+              <th className="px-4 py-3 text-right font-medium text-muted-foreground">
+                {yearBLabel}
+              </th>
+              <th className="px-4 py-3 text-right font-medium text-muted-foreground">
+                Change
+              </th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row, index) => (
-              <tr key={index} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
-                <td className="px-4 py-3 font-medium text-foreground">{row.label}</td>
-                <td className="px-4 py-3 text-right text-foreground">{row.yearA}</td>
-                <td className="px-4 py-3 text-right text-foreground">{row.yearB}</td>
-                <td className={`px-4 py-3 text-right ${getChangeClass(row.change)}`}>
+              <tr
+                key={index}
+                className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors"
+              >
+                <td className="px-4 py-3 font-medium text-foreground">
+                  {row.label}
+                </td>
+                <td className="px-4 py-3 text-right text-foreground">
+                  {row.yearA}
+                </td>
+                <td className="px-4 py-3 text-right text-foreground">
+                  {row.yearB}
+                </td>
+                <td
+                  className={`px-4 py-3 text-right ${getChangeClass(row.change)}`}
+                >
                   <span className="flex items-center justify-end gap-1">
                     {getTrendIcon(row.change)}
                     {formatChange(row.change, row.changePercent)}

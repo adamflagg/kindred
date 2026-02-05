@@ -1,15 +1,15 @@
-import { useRef, useEffect, useCallback } from 'react';
-import { useDroppable } from '@dnd-kit/core';
+import { useRef, useEffect, useCallback } from "react";
+import { useDroppable } from "@dnd-kit/core";
 import {
   SortableContext,
   verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import clsx from 'clsx';
-import { UserRoundSearch, Users, X, CircleCheck } from 'lucide-react';
-import type { Camper } from '../types/app-types';
-import CamperCard from './CamperCard';
-import { useBunkRequestsFromContext } from '../hooks';
-import { useLockGroupContext } from '../contexts/LockGroupContext';
+} from "@dnd-kit/sortable";
+import clsx from "clsx";
+import { UserRoundSearch, Users, X, CircleCheck } from "lucide-react";
+import type { Camper } from "../types/app-types";
+import CamperCard from "./CamperCard";
+import { useBunkRequestsFromContext } from "../hooks";
+import { useLockGroupContext } from "../contexts/LockGroupContext";
 
 interface FloatingUnassignedBadgeProps {
   campers: Camper[];
@@ -32,27 +32,28 @@ export default function FloatingUnassignedBadge({
 
   // Set up droppable for the unassigned area
   const { setNodeRef, isOver } = useDroppable({
-    id: 'unassigned',
+    id: "unassigned",
   });
 
   // Sort campers by lastname (alpha), then firstname
   const sortedCampers = [...campers].sort((a, b) => {
-    const lastNameA = a.last_name || a.name.split(' ').pop() || '';
-    const lastNameB = b.last_name || b.name.split(' ').pop() || '';
+    const lastNameA = a.last_name || a.name.split(" ").pop() || "";
+    const lastNameB = b.last_name || b.name.split(" ").pop() || "";
     const lastNameCompare = lastNameA.localeCompare(lastNameB);
     if (lastNameCompare !== 0) return lastNameCompare;
 
-    const firstNameA = a.first_name || a.name.split(' ')[0] || '';
-    const firstNameB = b.first_name || b.name.split(' ')[0] || '';
+    const firstNameA = a.first_name || a.name.split(" ")[0] || "";
+    const firstNameB = b.first_name || b.name.split(" ")[0] || "";
     return firstNameA.localeCompare(firstNameB);
   });
 
   // Get bunk request status for all unassigned campers
-  const camperPersonIds = campers.map(c => c.person_cm_id);
+  const camperPersonIds = campers.map((c) => c.person_cm_id);
   const { data: requestStatus } = useBunkRequestsFromContext(camperPersonIds);
 
   // Get lock group context for draft mode
-  const { getCamperLockState, getCamperLockGroupColor, isDraftMode } = useLockGroupContext();
+  const { getCamperLockState, getCamperLockGroupColor, isDraftMode } =
+    useLockGroupContext();
 
   // Handle click outside to close (but not when panel is open - user is viewing details)
   const handleClickOutside = useCallback(
@@ -60,7 +61,7 @@ export default function FloatingUnassignedBadge({
       const target = event.target as HTMLElement;
 
       // Never close when clicking on a camper card (user is about to view details)
-      if (target.closest('[data-camper-card]')) {
+      if (target.closest("[data-camper-card]")) {
         return;
       }
 
@@ -73,27 +74,27 @@ export default function FloatingUnassignedBadge({
         onClose();
       }
     },
-    [isExpanded, isPanelOpen, onClose]
+    [isExpanded, isPanelOpen, onClose],
   );
 
   // Handle ESC key to close
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && isExpanded) {
+      if (event.key === "Escape" && isExpanded) {
         onClose();
       }
     },
-    [isExpanded, onClose]
+    [isExpanded, onClose],
   );
 
   useEffect(() => {
     if (isExpanded) {
-      document.addEventListener('mousedown', handleClickOutside);
-      document.addEventListener('keydown', handleKeyDown);
+      document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("keydown", handleKeyDown);
     }
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
     };
   }, [isExpanded, handleClickOutside, handleKeyDown]);
 
@@ -107,7 +108,7 @@ export default function FloatingUnassignedBadge({
     <div
       data-floating-badge
       className="fixed bottom-14 right-6 z-[70] transition-transform duration-300"
-      style={{ transform: isPanelOpen ? 'translateX(-28.5rem)' : 'none' }}
+      style={{ transform: isPanelOpen ? "translateX(-28.5rem)" : "none" }}
       ref={popoverRef}
     >
       {/* Collapsed Badge */}
@@ -115,9 +116,9 @@ export default function FloatingUnassignedBadge({
         <button
           onClick={onToggle}
           className={clsx(
-            'w-14 h-14 rounded-full flex items-center justify-center shadow-lodge-lg transition-all relative',
-            'hover:scale-105 hover:shadow-lodge-xl active:scale-95',
-            'border-2 bg-primary text-primary-foreground border-primary-foreground/20'
+            "w-14 h-14 rounded-full flex items-center justify-center shadow-lodge-lg transition-all relative",
+            "hover:scale-105 hover:shadow-lodge-xl active:scale-95",
+            "border-2 bg-primary text-primary-foreground border-primary-foreground/20",
           )}
           title={`${campers.length} unassigned campers`}
         >
@@ -125,7 +126,7 @@ export default function FloatingUnassignedBadge({
             <>
               <UserRoundSearch className="w-6 h-6" />
               <span className="absolute -top-1 -right-1 min-w-[22px] h-[22px] px-1 bg-accent text-accent-foreground text-xs font-bold rounded-full flex items-center justify-center shadow-md">
-                {campers.length > 99 ? '99+' : campers.length}
+                {campers.length > 99 ? "99+" : campers.length}
               </span>
             </>
           ) : (
@@ -138,9 +139,9 @@ export default function FloatingUnassignedBadge({
       {isExpanded && (
         <div
           className={clsx(
-            'w-80 max-w-[calc(100vw-3rem)] max-h-[70vh] card-lodge shadow-lodge-xl flex flex-col animate-scale-in',
-            'border-2',
-            isOver ? 'border-primary' : 'border-border'
+            "w-80 max-w-[calc(100vw-3rem)] max-h-[70vh] card-lodge shadow-lodge-xl flex flex-col animate-scale-in",
+            "border-2",
+            isOver ? "border-primary" : "border-border",
           )}
         >
           {/* Header */}
@@ -167,8 +168,8 @@ export default function FloatingUnassignedBadge({
           <div
             ref={setNodeRef}
             className={clsx(
-              'flex-1 overflow-y-auto p-3 min-h-[200px]',
-              isOver && 'bg-primary/5'
+              "flex-1 overflow-y-auto p-3 min-h-[200px]",
+              isOver && "bg-primary/5",
             )}
           >
             {campers.length === 0 ? (
@@ -186,18 +187,26 @@ export default function FloatingUnassignedBadge({
             ) : (
               <div className="space-y-2">
                 <SortableContext
-                  items={sortedCampers.map(c => c.id)}
+                  items={sortedCampers.map((c) => c.id)}
                   strategy={verticalListSortingStrategy}
                 >
-                  {sortedCampers.map(camper => (
+                  {sortedCampers.map((camper) => (
                     <CamperCard
                       key={camper.id}
                       camper={camper}
                       onClick={handleCamperClick}
                       hasRequests={requestStatus?.[camper.person_cm_id] ?? true}
                       bunkCampers={[]}
-                      lockState={isDraftMode ? getCamperLockState(camper.person_cm_id) : 'none'}
-                      lockGroupColor={isDraftMode ? getCamperLockGroupColor(camper.person_cm_id) : undefined}
+                      lockState={
+                        isDraftMode
+                          ? getCamperLockState(camper.person_cm_id)
+                          : "none"
+                      }
+                      lockGroupColor={
+                        isDraftMode
+                          ? getCamperLockGroupColor(camper.person_cm_id)
+                          : undefined
+                      }
                       isDraftMode={isDraftMode}
                     />
                   ))}

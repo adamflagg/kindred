@@ -1,6 +1,6 @@
-import { Link } from 'react-router';
-import { ExternalLink } from 'lucide-react';
-import clsx from 'clsx';
+import { Link } from "react-router";
+import { ExternalLink } from "lucide-react";
+import clsx from "clsx";
 
 interface CamperLinkProps {
   /** CampMinder person ID - must be positive to be valid for linking */
@@ -36,20 +36,21 @@ export default function CamperLink({
   const canLink = hasValidId && isConfirmed;
 
   // Determine display text
-  const text = displayName || (hasValidId ? 'View camper' : '');
+  const text = displayName || (hasValidId ? "View camper" : "");
 
   // Build unresolved suffix
-  const unresolvedSuffix = showUnresolved && !isConfirmed ? ' (unresolved)' : '';
+  const unresolvedSuffix =
+    showUnresolved && !isConfirmed ? " (unresolved)" : "";
 
   if (canLink) {
     return (
       <Link
         to={`/summer/camper/${personCmId}`}
         className={clsx(
-          'inline-flex items-center gap-1 font-medium',
-          'text-foreground hover:text-primary hover:underline',
-          'transition-colors',
-          className
+          "inline-flex items-center gap-1 font-medium",
+          "text-foreground hover:text-primary hover:underline",
+          "transition-colors",
+          className,
         )}
         onClick={(e) => e.stopPropagation()}
         data-testid="camper-link-container"
@@ -64,13 +65,14 @@ export default function CamperLink({
   return (
     <span
       className={clsx(
-        'text-muted-foreground',
-        !isConfirmed && 'italic',
-        className
+        "text-muted-foreground",
+        !isConfirmed && "italic",
+        className,
       )}
       data-testid="camper-link-container"
     >
-      {text}{unresolvedSuffix}
+      {text}
+      {unresolvedSuffix}
     </span>
   );
 }

@@ -2,10 +2,10 @@
  * Bunk bubble rendering utilities for Cytoscape social network graphs
  * Extracted from SocialNetworkGraph.tsx
  */
-import type { Core, NodeSingular } from 'cytoscape';
-import type { Instance as PopperInstance } from '@popperjs/core';
-import { createPopper } from '@popperjs/core';
-import { getBunkColor } from '../../utils/graphUtils';
+import type { Core, NodeSingular } from "cytoscape";
+import type { Instance as PopperInstance } from "@popperjs/core";
+import { createPopper } from "@popperjs/core";
+import { getBunkColor } from "../../utils/graphUtils";
 
 export interface BubbleRenderStatus {
   total: number;
@@ -32,13 +32,13 @@ export function drawBunkBubbles(
   cy: Core,
   bunksData: Record<number, string> | null | undefined,
   refs: BubbleRenderRefs,
-  updateStatus?: (status: BubbleRenderStatus) => void
+  updateStatus?: (status: BubbleRenderStatus) => void,
 ): void {
   const { bubblesetsRef, pathsRef, poppersRef, containerRef } = refs;
 
   // Check if cy is valid before doing anything
   if (!cy || cy.destroyed()) {
-    console.error('Cytoscape instance is not valid, cannot create bubbles');
+    console.error("Cytoscape instance is not valid, cannot create bubbles");
     return;
   }
 
@@ -50,14 +50,14 @@ export function drawBunkBubbles(
   pathsRef.current = [];
 
   // Remove any existing bunk labels
-  cy.remove('.bunk-label');
+  cy.remove(".bunk-label");
 
   // Group nodes by bunk (excluding label nodes and parent compound nodes)
   const bunkGroups: Record<number, NodeSingular[]> = {};
   cy.nodes()
-    .filter((n) => !n.data('isBunkLabel') && !n.data('isBunkParent'))
+    .filter((n) => !n.data("isBunkLabel") && !n.data("isBunkParent"))
     .forEach((node) => {
-      const bunkId = node.data('bunk_cm_id');
+      const bunkId = node.data("bunk_cm_id");
       if (bunkId) {
         if (!bunkGroups[bunkId]) {
           bunkGroups[bunkId] = [];
@@ -72,7 +72,7 @@ export function drawBunkBubbles(
   // Create ONE bubbleset instance
   const bb = (cy as unknown as { bubbleSets: () => unknown }).bubbleSets();
   if (!bb) {
-    console.error('Failed to create bubblesets instance');
+    console.error("Failed to create bubblesets instance");
     return;
   }
   bubblesetsRef.current = bb;
@@ -90,7 +90,7 @@ export function drawBunkBubbles(
 
     try {
       // Create a bubble path for this bunk
-      const nodeIds = nodes.map((n) => `#${n.id()}`).join(', ');
+      const nodeIds = nodes.map((n) => `#${n.id()}`).join(", ");
       const nodeCollection = cy.$(nodeIds);
 
       // Add path to the single bubbleset instance
@@ -121,7 +121,7 @@ export function drawBunkBubbles(
             includeLabels: false,
             includeMainLabels: false,
             virtualEdges: true,
-          }
+          },
         );
 
         if (path) {
@@ -156,7 +156,7 @@ export function drawBunkBubbles(
   try {
     (bb as { update: (force: boolean) => void }).update(true);
   } catch (updateError) {
-    console.error('Error calling bb.update(true):', updateError);
+    console.error("Error calling bb.update(true):", updateError);
   }
 
   // Force a render update to ensure bubbles are drawn
@@ -194,10 +194,10 @@ export function drawBunkBubbles(
     });
 
     // Create label element
-    const labelEl = document.createElement('div');
-    labelEl.className = 'bunk-label-popper';
-    labelEl.style.position = 'absolute';
-    labelEl.style.zIndex = '1000';
+    const labelEl = document.createElement("div");
+    labelEl.className = "bunk-label-popper";
+    labelEl.style.position = "absolute";
+    labelEl.style.zIndex = "1000";
     labelEl.innerHTML = `
       <div style="
         background-color: ${bunkColor};
@@ -244,29 +244,40 @@ export function drawBunkBubbles(
           height: 0,
           x: x,
           y: y,
-          toJSON: () => ({ top: y, bottom: y, left: x, right: x, width: 0, height: 0 }),
+          toJSON: () => ({
+            top: y,
+            bottom: y,
+            left: x,
+            right: x,
+            width: 0,
+            height: 0,
+          }),
         } as DOMRect;
       },
     };
 
     // Create popper instance
-    const popperInstance = createPopper(virtualElement as unknown as Element, labelEl, {
-      placement: 'top',
-      modifiers: [
-        {
-          name: 'offset',
-          options: {
-            offset: [0, 10],
+    const popperInstance = createPopper(
+      virtualElement as unknown as Element,
+      labelEl,
+      {
+        placement: "top",
+        modifiers: [
+          {
+            name: "offset",
+            options: {
+              offset: [0, 10],
+            },
           },
-        },
-        {
-          name: 'preventOverflow',
-          options: {
-            boundary: 'viewport',
+          {
+            name: "preventOverflow",
+            options: {
+              boundary: "viewport",
+            },
           },
-        },
-      ],
-    });
+        ],
+      },
+    );
 
     // Store reference for cleanup
     poppersRef.current.push({ element: labelEl, instance: popperInstance });
@@ -279,7 +290,7 @@ export function drawBunkBubbles(
     });
   };
 
-  cy.on('pan zoom resize', updatePoppers);
+  cy.on("pan zoom resize", updatePoppers);
 }
 
 /**
