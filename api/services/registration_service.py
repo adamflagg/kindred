@@ -120,6 +120,7 @@ class RegistrationService:
             self.repo.fetch_camper_history(year, session_types=session_types),
             self.repo.fetch_bunk_plans(year),
             self.repo.fetch_capacity_config(),
+            self.repo.fetch_synagogue_by_household(year),
         )
         # Type assertions for asyncio.gather results
         requested_attendees = cast(list[Any], results[0])
@@ -130,6 +131,7 @@ class RegistrationService:
         camper_history = cast(list[Any], results[5])
         bunk_plans = cast(list[Any], results[6])
         default_capacity = cast(int, results[7])
+        synagogue_by_household = cast(dict[int, str], results[8])
 
         # Filter attendees by session
         combined_attendees = self._filter_by_session(requested_attendees, session_types, session_cm_id, ag_session_ids)
@@ -156,11 +158,15 @@ class RegistrationService:
         by_years_at_camp = self._compute_years_at_camp_breakdown(enrolled_person_ids, persons, total_enrolled)
         new_vs_returning = self._compute_new_vs_returning(enrolled_person_ids, persons, total_enrolled)
 
-        # Demographics from camper_history
+        # Demographics from persons data (school, city, synagogue)
+        # Note: These use enrolled_person_ids + persons dict instead of camper_history
+        by_school = self._compute_school_breakdown_from_persons(enrolled_person_ids, persons, total_enrolled)
+        by_city = self._compute_city_breakdown_from_persons(enrolled_person_ids, persons, total_enrolled)
+        by_synagogue = self._compute_synagogue_breakdown_from_persons(
+            enrolled_person_ids, persons, synagogue_by_household, total_enrolled
+        )
+        # First year and session_bunk still use camper_history (historical data)
         total_history = len(camper_history)
-        by_school = self._compute_school_breakdown(camper_history, total_history)
-        by_city = self._compute_city_breakdown(camper_history, total_history)
-        by_synagogue = self._compute_synagogue_breakdown(camper_history, total_history)
         by_first_year = self._compute_first_year_breakdown(camper_history, total_history)
         by_session_bunk = self._compute_session_bunk_breakdown(camper_history)
 
@@ -600,12 +606,98 @@ class RegistrationService:
         ]
 
     def _compute_synagogue_breakdown(self, camper_history: list[Any], total: int) -> list[SynagogueBreakdown]:
-        """Compute synagogue breakdown (top 20)."""
+        """Compute synagogue breakdown (top 20). DEPRECATED: Use _compute_synagogue_breakdown_from_persons."""
         synagogue_counts: dict[str, int] = {}
         for record in camper_history:
             synagogue = getattr(record, "synagogue", "") or ""
             if synagogue:
                 synagogue_counts[synagogue] = synagogue_counts.get(synagogue, 0) + 1
+
+        return [
+            SynagogueBreakdown(
+                synagogue=s,
+                count=c,
+                percentage=calculate_percentage(c, total),
+            )
+            for s, c in sorted(synagogue_counts.items(), key=lambda x: -x[1])[:20]
+        ]
+
+    def _compute_school_breakdown_from_persons(
+        self, person_ids: set[int], persons: dict[int, Any], total: int
+    ) -> list[SchoolBreakdown]:
+        """Compute school breakdown from persons table (top 20).
+
+        Uses persons.school field directly instead of camper_history.
+        """
+        school_counts: dict[str, int] = {}
+        for pid in person_ids:
+            person = persons.get(pid)
+            if not person:
+                continue
+            school = getattr(person, "school", "") or ""
+            if school:
+                school_counts[school] = school_counts.get(school, 0) + 1
+
+        return [
+            SchoolBreakdown(
+                school=s,
+                count=c,
+                percentage=calculate_percentage(c, total),
+            )
+            for s, c in sorted(school_counts.items(), key=lambda x: -x[1])[:20]
+        ]
+
+    def _compute_city_breakdown_from_persons(
+        self, person_ids: set[int], persons: dict[int, Any], total: int
+    ) -> list[CityBreakdown]:
+        """Compute city breakdown from persons table (top 20).
+
+        Uses persons.address["city"] (JSON field) instead of camper_history.
+        """
+        city_counts: dict[str, int] = {}
+        for pid in person_ids:
+            person = persons.get(pid)
+            if not person:
+                continue
+            # address is a JSON field with city as a key
+            address = getattr(person, "address", None)
+            if address and isinstance(address, dict):
+                city = address.get("city", "") or ""
+                if city:
+                    city_counts[city] = city_counts.get(city, 0) + 1
+
+        return [
+            CityBreakdown(
+                city=c,
+                count=cnt,
+                percentage=calculate_percentage(cnt, total),
+            )
+            for c, cnt in sorted(city_counts.items(), key=lambda x: -x[1])[:20]
+        ]
+
+    def _compute_synagogue_breakdown_from_persons(
+        self,
+        person_ids: set[int],
+        persons: dict[int, Any],
+        synagogue_by_household: dict[int, str],
+        total: int,
+    ) -> list[SynagogueBreakdown]:
+        """Compute synagogue breakdown from household custom values (top 20).
+
+        Uses the synagogue_by_household mapping (from household_custom_values)
+        which maps household CampMinder IDs to synagogue names.
+        """
+        synagogue_counts: dict[str, int] = {}
+        for pid in person_ids:
+            person = persons.get(pid)
+            if not person:
+                continue
+            # Get household ID from person and look up synagogue
+            household_id = getattr(person, "household_id", None)
+            if household_id is not None:
+                synagogue = synagogue_by_household.get(int(household_id), "")
+                if synagogue:
+                    synagogue_counts[synagogue] = synagogue_counts.get(synagogue, 0) + 1
 
         return [
             SynagogueBreakdown(
