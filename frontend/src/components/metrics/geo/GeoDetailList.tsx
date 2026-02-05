@@ -1,12 +1,16 @@
 /**
  * GeoDetailList - Scrollable list of locations with counts.
+ *
+ * When showSources is enabled, displays expandable rows showing
+ * the original source strings that normalized to each canonical value.
  */
 
 import { useState } from 'react'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react'
 import type { GeoDataItem } from './GeoMap'
 import type { GeoCategory } from './GeoCategoryTabs'
 import type { DrilldownFilter } from '../../../types/metrics'
+import type { SourceMapping } from '../../../hooks/useNormalizedMappings'
 
 interface GeoDetailListProps {
   data: GeoDataItem[]
@@ -17,6 +21,10 @@ interface GeoDetailListProps {
   onDrilldown?: (filter: DrilldownFilter) => void
   /** Max items to show before "show more" */
   initialLimit?: number
+  /** Whether to show source strings for each normalized value */
+  showSources?: boolean
+  /** Source mappings from normalized_mappings table (grouped by normalized_value) */
+  sourceMappings?: Map<string, SourceMapping[]> | undefined
 }
 
 const CATEGORY_LABELS: Record<GeoCategory, string> = {
@@ -38,12 +46,28 @@ export function GeoDetailList({
   onItemClick,
   onDrilldown,
   initialLimit = 15,
+  showSources = false,
+  sourceMappings,
 }: GeoDetailListProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [showAll, setShowAll] = useState(false)
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
 
   const displayData = showAll ? data : data.slice(0, initialLimit)
   const hasMore = data.length > initialLimit
+
+  const toggleRowExpansion = (name: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setExpandedRows((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) {
+        next.delete(name)
+      } else {
+        next.add(name)
+      }
+      return next
+    })
+  }
 
   return (
     <div className="card-lodge overflow-hidden">
@@ -82,27 +106,80 @@ export function GeoDetailList({
               <tbody>
                 {displayData.map((item) => {
                   const isSelected = selectedItem === item.name
+                  const isRowExpanded = expandedRows.has(item.name)
+                  const sources = showSources ? sourceMappings?.get(item.name) : undefined
+                  const hasSources = sources && sources.length > 0
+
                   return (
-                    <tr
-                      key={item.name}
-                      onClick={() => {
-                        onItemClick?.(item.name)
-                        onDrilldown?.({
-                          type: category,
-                          value: item.name,
-                          label: item.name,
-                        })
-                      }}
-                      className={`border-border cursor-pointer border-t transition-colors ${isSelected ? 'bg-primary/10' : 'hover:bg-muted/30'} `}
-                    >
-                      <td className="text-foreground px-4 py-2">{item.name}</td>
-                      <td className="text-foreground px-4 py-2 text-right font-medium">
-                        {item.count}
-                      </td>
-                      <td className="text-muted-foreground px-4 py-2 text-right">
-                        {item.percentage.toFixed(1)}%
-                      </td>
-                    </tr>
+                    <>
+                      <tr
+                        key={item.name}
+                        onClick={() => {
+                          onItemClick?.(item.name)
+                          onDrilldown?.({
+                            type: category,
+                            value: item.name,
+                            label: item.name,
+                          })
+                        }}
+                        className={`border-border cursor-pointer border-t transition-colors ${isSelected ? 'bg-primary/10' : 'hover:bg-muted/30'} `}
+                      >
+                        <td className="text-foreground px-4 py-2">
+                          <div className="flex items-center gap-2">
+                            {showSources && hasSources && (
+                              <button
+                                onClick={(e) => toggleRowExpansion(item.name, e)}
+                                className="hover:bg-muted rounded p-0.5"
+                              >
+                                {isRowExpanded ? (
+                                  <ChevronDown className="h-3 w-3" />
+                                ) : (
+                                  <ChevronRight className="h-3 w-3" />
+                                )}
+                              </button>
+                            )}
+                            {showSources && !hasSources && <span className="w-4" />}
+                            {item.name}
+                          </div>
+                        </td>
+                        <td className="text-foreground px-4 py-2 text-right font-medium">
+                          {item.count}
+                        </td>
+                        <td className="text-muted-foreground px-4 py-2 text-right">
+                          {item.percentage.toFixed(1)}%
+                        </td>
+                      </tr>
+                      {/* Source rows */}
+                      {showSources && isRowExpanded && hasSources && (
+                        <>
+                          {sources.map((source, idx) => (
+                            <tr
+                              key={`${item.name}-source-${idx}`}
+                              className="bg-muted/20 border-border border-t"
+                            >
+                              <td className="text-muted-foreground py-1.5 pr-4 pl-12 text-xs">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-muted-foreground/60">&#8627;</span>
+                                  <span>{source.original}</span>
+                                  {source.confidence < 1.0 && (
+                                    <span
+                                      className="text-amber-500"
+                                      title={`Fuzzy match (${Math.round(source.confidence * 100)}% confidence)`}
+                                    >
+                                      <AlertTriangle className="h-3 w-3" />
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="text-muted-foreground py-1.5 pr-4 text-right text-xs">
+                                {source.count}
+                              </td>
+                              <td />
+                            </tr>
+                          ))}
+                        </>
+                      )}
+                    </>
                   )
                 })}
               </tbody>
