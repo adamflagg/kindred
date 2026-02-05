@@ -239,6 +239,7 @@ export default function RegistrationOverview() {
           data={data.by_session_length_by_session ?? []}
           title="Enrollment by Session Length"
           height={350}
+          sessionDateLookup={sessionDateLookup}
           onCategoryClick={(lengthCategory) =>
             setFilter({
               type: 'session_length',
