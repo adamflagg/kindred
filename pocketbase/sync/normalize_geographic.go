@@ -7,12 +7,15 @@ import (
 	"log/slog"
 	"math"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/types"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -158,8 +161,16 @@ func (n *NormalizeGeographicSync) Sync(ctx context.Context) error {
 	// Step 3: Create person+session mappings
 	mappings := n.createPersonSessionMappings(attendeeData, normalizedLookup, year)
 
+	// Count mappings by category for debugging
+	categoryCount := make(map[string]int)
+	for _, m := range mappings {
+		categoryCount[m.category]++
+	}
 	slog.Info("Created person+session mappings",
 		"total_mappings", len(mappings),
+		"city_mappings", categoryCount[categoryCity],
+		"school_mappings", categoryCount[categorySchool],
+		"congregation_mappings", categoryCount[categoryCongregation],
 	)
 
 	if n.DryRun {
@@ -255,7 +266,7 @@ func (n *NormalizeGeographicSync) loadAttendeeGeoData(ctx context.Context, year 
 
 		// Expand person and session relations
 		if errs := n.App.ExpandRecords(records, []string{"person", "session"}, nil); len(errs) > 0 {
-			n.DebugLog("Some expansions failed", "errors", errs)
+			slog.Warn("Some relation expansions failed", "page", page, "errors", errs)
 		}
 
 		for _, record := range records {
@@ -298,6 +309,28 @@ func (n *NormalizeGeographicSync) loadAttendeeGeoData(ctx context.Context, year 
 		}
 		page++
 	}
+
+	// Debug: count how many records have each field populated
+	withCity := 0
+	withSchool := 0
+	withCongregation := 0
+	for _, d := range result {
+		if d.City != "" {
+			withCity++
+		}
+		if d.School != "" {
+			withSchool++
+		}
+		if d.Congregation != "" {
+			withCongregation++
+		}
+	}
+	slog.Info("Loaded attendee geographic data (field counts)",
+		"total", len(result),
+		"with_city", withCity,
+		"with_school", withSchool,
+		"with_congregation", withCongregation,
+	)
 
 	return result, nil
 }
@@ -357,9 +390,13 @@ func (n *NormalizeGeographicSync) loadPersonCongregations(year int, fieldID stri
 
 // extractCityFromAddress extracts city from address JSON field
 func (n *NormalizeGeographicSync) extractCityFromAddress(addressRaw any) string {
+	if addressRaw == nil {
+		return ""
+	}
+
 	// Handle string (JSON encoded)
 	if addrStr, ok := addressRaw.(string); ok && addrStr != "" {
-		var addr map[string]interface{}
+		var addr map[string]any
 		if err := json.Unmarshal([]byte(addrStr), &addr); err == nil {
 			if city, ok := addr["city"].(string); ok {
 				return city
@@ -368,10 +405,31 @@ func (n *NormalizeGeographicSync) extractCityFromAddress(addressRaw any) string 
 		return ""
 	}
 
-	// Handle map directly
-	if addr, ok := addressRaw.(map[string]interface{}); ok {
+	// Handle map[string]any (direct map)
+	if addr, ok := addressRaw.(map[string]any); ok {
 		if city, cityOk := addr["city"].(string); cityOk {
 			return city
+		}
+	}
+
+	// Handle types.JSONRaw (PocketBase JSON field type)
+	// Note: types.JSONRaw is a distinct type, not []byte, so type assertion must be exact
+	if raw, ok := addressRaw.(types.JSONRaw); ok && len(raw) > 0 {
+		var addr map[string]any
+		if err := json.Unmarshal(raw, &addr); err == nil {
+			if city, ok := addr["city"].(string); ok {
+				return city
+			}
+		}
+	}
+
+	// Handle []byte (fallback for raw JSON bytes)
+	if raw, ok := addressRaw.([]byte); ok && len(raw) > 0 {
+		var addr map[string]any
+		if err := json.Unmarshal(raw, &addr); err == nil {
+			if city, ok := addr["city"].(string); ok {
+				return city
+			}
 		}
 	}
 
@@ -385,7 +443,73 @@ type normalizationLookup struct {
 	congregation map[string]string
 }
 
+// pythonNormalizedResult represents the JSON response from Python normalizer
+type pythonNormalizedResult struct {
+	Canonical  string  `json:"canonical"`
+	Confidence float64 `json:"confidence"`
+}
+
+// normalizeWithPython calls the Python geo_normalizer CLI for advanced fuzzy matching
+// Falls back to Go implementation if Python call fails
+func (n *NormalizeGeographicSync) normalizeWithPython(values []string, category string) (map[string]string, error) {
+	if len(values) == 0 {
+		return make(map[string]string), nil
+	}
+
+	// Serialize values to JSON
+	valuesJSON, err := json.Marshal(values)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling values: %w", err)
+	}
+
+	// Find the project root (where pyproject.toml is)
+	// The pocketbase binary runs from pocketbase/ directory, so project root is ../
+	projectRoot := filepath.Join(filepath.Dir(os.Args[0]), "..")
+	if _, statErr := os.Stat(filepath.Join(projectRoot, "pyproject.toml")); os.IsNotExist(statErr) {
+		// Try current working directory
+		cwd, _ := os.Getwd()
+		projectRoot = cwd
+		if _, statErr2 := os.Stat(filepath.Join(projectRoot, "pyproject.toml")); os.IsNotExist(statErr2) {
+			// Try one level up
+			projectRoot = filepath.Dir(cwd)
+		}
+	}
+
+	// Call Python normalizer
+	// #nosec G204 -- arguments are from internal sync logic, not user input
+	cmd := exec.Command("uv", "run", "python", "-m", "bunking.geo_normalizer",
+		"--category", category,
+		"--values", string(valuesJSON))
+	cmd.Dir = projectRoot
+
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			slog.Warn("Python normalizer failed",
+				"category", category,
+				"stderr", string(exitErr.Stderr),
+				"error", err)
+		}
+		return nil, fmt.Errorf("running python normalizer: %w", err)
+	}
+
+	// Parse JSON response
+	var results map[string]pythonNormalizedResult
+	if err := json.Unmarshal(output, &results); err != nil {
+		return nil, fmt.Errorf("parsing python normalizer output: %w", err)
+	}
+
+	// Convert to simple map
+	result := make(map[string]string)
+	for original, normalized := range results {
+		result[original] = normalized.Canonical
+	}
+
+	return result, nil
+}
+
 // buildNormalizationLookup builds lookup maps from unique values
+// Uses Python RapidFuzz for advanced fuzzy matching, with Go fallback
 func (n *NormalizeGeographicSync) buildNormalizationLookup(data []attendeeGeoData) *normalizationLookup {
 	// Collect unique values per category
 	uniqueCities := make(map[string]bool)
@@ -404,14 +528,74 @@ func (n *NormalizeGeographicSync) buildNormalizationLookup(data []attendeeGeoDat
 		}
 	}
 
-	// Normalize and cluster each category
+	// Debug: log unique counts before normalization
+	slog.Info("Unique values collected",
+		"cities", len(uniqueCities),
+		"schools", len(uniqueSchools),
+		"congregations", len(uniqueCongregations),
+	)
+
 	lookup := &normalizationLookup{
-		city:         n.normalizeAndCluster(uniqueCities, categoryCity),
-		school:       n.normalizeAndCluster(uniqueSchools, categorySchool),
-		congregation: n.normalizeAndCluster(uniqueCongregations, categoryCongregation),
+		city:         make(map[string]string),
+		school:       make(map[string]string),
+		congregation: make(map[string]string),
+	}
+
+	// Try Python normalizer first for better fuzzy matching
+	// Fall back to Go implementation if Python fails
+	usePython := true
+
+	// Convert maps to slices for Python
+	cityValues := mapKeysToSlice(uniqueCities)
+	schoolValues := mapKeysToSlice(uniqueSchools)
+	congregationValues := mapKeysToSlice(uniqueCongregations)
+
+	if usePython && len(cityValues) > 0 {
+		if result, err := n.normalizeWithPython(cityValues, categoryCity); err == nil {
+			lookup.city = result
+			slog.Debug("Used Python normalizer for cities", "count", len(result))
+		} else {
+			slog.Warn("Python normalizer failed for cities, using Go fallback", "error", err)
+			lookup.city = n.normalizeAndCluster(uniqueCities, categoryCity)
+		}
+	} else {
+		lookup.city = n.normalizeAndCluster(uniqueCities, categoryCity)
+	}
+
+	if usePython && len(schoolValues) > 0 {
+		if result, err := n.normalizeWithPython(schoolValues, categorySchool); err == nil {
+			lookup.school = result
+			slog.Debug("Used Python normalizer for schools", "count", len(result))
+		} else {
+			slog.Warn("Python normalizer failed for schools, using Go fallback", "error", err)
+			lookup.school = n.normalizeAndCluster(uniqueSchools, categorySchool)
+		}
+	} else {
+		lookup.school = n.normalizeAndCluster(uniqueSchools, categorySchool)
+	}
+
+	if usePython && len(congregationValues) > 0 {
+		if result, err := n.normalizeWithPython(congregationValues, categoryCongregation); err == nil {
+			lookup.congregation = result
+			slog.Debug("Used Python normalizer for congregations", "count", len(result))
+		} else {
+			slog.Warn("Python normalizer failed for congregations, using Go fallback", "error", err)
+			lookup.congregation = n.normalizeAndCluster(uniqueCongregations, categoryCongregation)
+		}
+	} else {
+		lookup.congregation = n.normalizeAndCluster(uniqueCongregations, categoryCongregation)
 	}
 
 	return lookup
+}
+
+// mapKeysToSlice converts a map[string]bool to a []string
+func mapKeysToSlice(m map[string]bool) []string {
+	result := make([]string, 0, len(m))
+	for k := range m {
+		result = append(result, k)
+	}
+	return result
 }
 
 // normalizeAndCluster normalizes values and clusters similar ones
@@ -597,7 +781,7 @@ func (n *NormalizeGeographicSync) upsertPersonSessionMappings(
 		n.ProcessedKeys[key] = true
 
 		// Build record data
-		recordData := map[string]interface{}{
+		recordData := map[string]any{
 			"person":           m.personPBID,
 			"session":          m.sessionPBID,
 			"category":         m.category,
@@ -652,7 +836,7 @@ func (n *NormalizeGeographicSync) upsertPersonSessionMappings(
 // personSessionMappingNeedsUpdate checks if a mapping record needs updating
 func (n *NormalizeGeographicSync) personSessionMappingNeedsUpdate(
 	existing *core.Record,
-	newData map[string]interface{},
+	newData map[string]any,
 ) bool {
 	// Compare normalized_value
 	if existing.GetString("normalized_value") != newData["normalized_value"].(string) {
@@ -949,32 +1133,20 @@ func stringSimilarityGo(a, b string) int {
 
 	// Check if one contains the other (common with typos)
 	if strings.Contains(lowerA, lowerB) || strings.Contains(lowerB, lowerA) {
-		shorter := len(lowerA)
-		if len(lowerB) < shorter {
-			shorter = len(lowerB)
-		}
-		longer := len(lowerA)
-		if len(lowerB) > longer {
-			longer = len(lowerB)
-		}
+		shorter := min(len(lowerA), len(lowerB))
+		longer := max(len(lowerA), len(lowerB))
 		return (shorter * 100) / longer
 	}
 
 	// Simple edit distance ratio
-	maxLen := len(lowerA)
-	if len(lowerB) > maxLen {
-		maxLen = len(lowerB)
-	}
+	maxLen := max(len(lowerA), len(lowerB))
 
 	if maxLen == 0 {
 		return 100
 	}
 
 	// Count matching characters at same positions
-	minLen := len(lowerA)
-	if len(lowerB) < minLen {
-		minLen = len(lowerB)
-	}
+	minLen := min(len(lowerA), len(lowerB))
 
 	matches := 0
 	for i := 0; i < minLen; i++ {

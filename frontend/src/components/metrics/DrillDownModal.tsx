@@ -75,6 +75,7 @@ export function DrillDownModal({
         (a.preferred_name?.toLowerCase().includes(term) ?? false) ||
         (a.school?.toLowerCase().includes(term) ?? false) ||
         (a.city?.toLowerCase().includes(term) ?? false) ||
+        (a.state?.toLowerCase().includes(term) ?? false) ||
         a.session_name.toLowerCase().includes(term)
     )
   }, [attendees, searchTerm])
@@ -141,6 +142,7 @@ export function DrillDownModal({
       'Age',
       'School',
       'City',
+      'State',
       'Session',
       'Years at Camp',
       'Status',
@@ -154,6 +156,7 @@ export function DrillDownModal({
       a.age ?? '',
       a.school ?? '',
       a.city ?? '',
+      a.state ?? '',
       a.session_name,
       a.years_at_camp ?? '',
       a.status,
@@ -331,7 +334,13 @@ export function DrillDownModal({
                       {attendee.gender ?? '—'}
                     </td>
                     <td className="text-foreground px-4 py-3">{attendee.school ?? '—'}</td>
-                    <td className="text-foreground px-4 py-3">{attendee.city ?? '—'}</td>
+                    <td className="text-foreground px-4 py-3">
+                      {attendee.city
+                        ? attendee.state
+                          ? `${attendee.city}, ${attendee.state}`
+                          : attendee.city
+                        : '—'}
+                    </td>
                     <td className="text-foreground px-4 py-3">{attendee.session_name}</td>
                     <td className="text-foreground px-4 py-3 text-center">
                       {attendee.years_at_camp ?? '—'}
