@@ -4,7 +4,7 @@
  * Wraps content with MetricsSessionProvider for unified session filtering
  */
 import { Outlet, useLocation } from 'react-router'
-import { LayoutDashboard, Globe, Building2, Clock } from 'lucide-react'
+import { LayoutDashboard, Globe, Clock } from 'lucide-react'
 import MetricsTypeTabs from '../../components/metrics/MetricsTypeTabs'
 import MetricsSubNav, { type SubNavItem } from '../../components/metrics/MetricsSubNav'
 import { MetricsSessionProvider } from '../../contexts/MetricsSessionContext'
@@ -22,12 +22,6 @@ const REGISTRATION_SUB_NAV: SubNavItem[] = [
     label: 'Geographic',
     icon: Globe,
     path: '/metrics/registration/geo',
-  },
-  {
-    id: 'synagogue',
-    label: 'Synagogue',
-    icon: Building2,
-    path: '/metrics/registration/synagogue',
   },
   {
     id: 'waitlist',

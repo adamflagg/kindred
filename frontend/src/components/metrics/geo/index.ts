@@ -11,3 +11,8 @@ export type { GeoCategory } from './GeoCategoryTabs'
 export { GeoSummaryCards } from './GeoSummaryCards'
 
 export { GeoDetailList } from './GeoDetailList'
+
+export { GeoLayerToggles } from './GeoLayerToggles'
+export type { GeoLayerTogglesProps } from './GeoLayerToggles'
+
+export { RegionOverlays } from './RegionOverlays'
