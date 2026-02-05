@@ -445,7 +445,10 @@ func TestMappingNeedsUpdateWithEpsilon(t *testing.T) {
 func TestIdempotentSyncRuns(t *testing.T) {
 	// Simulate first run creating records
 	mappings := []*testNormalizedMapping{
-		{Category: "city", OriginalValue: "Oakland", NormalizedValue: "Oakland", OccurrenceCount: 10, Confidence: 0.9, Year: 2025},
+		{
+			Category: "city", OriginalValue: "Oakland", NormalizedValue: "Oakland",
+			OccurrenceCount: 10, Confidence: 0.9, Year: 2025,
+		},
 	}
 
 	// After first run, records exist with same values
@@ -474,9 +477,9 @@ func TestIdempotentSyncRuns(t *testing.T) {
 }
 
 // confidenceChanged checks if confidence changed beyond epsilon threshold
-func confidenceChanged(existing, new float64) bool {
+func confidenceChanged(existing, newVal float64) bool {
 	const epsilon = 0.0001
-	diff := existing - new
+	diff := existing - newVal
 	if diff < 0 {
 		diff = -diff
 	}
