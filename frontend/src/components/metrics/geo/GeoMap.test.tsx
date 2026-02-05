@@ -10,10 +10,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Track CircleMarker renders for assertion
 const renderedMarkers: Array<{
-  pane?: string
-  fillOpacity?: number
-  fillColor?: string
-  category?: string
+  pane: string | undefined
+  fillOpacity: number | undefined
+  fillColor: string | undefined
 }> = []
 
 // Mock react-leaflet components before imports
@@ -48,8 +47,8 @@ vi.mock('react-leaflet', () => ({
   Polygon: () => <div data-testid="polygon" />,
   useMap: () => ({
     setView: vi.fn(),
-    createPane: vi.fn(),
-    getPane: vi.fn(),
+    createPane: vi.fn(() => ({ style: {} })),
+    getPane: vi.fn(() => undefined),
   }),
 }))
 

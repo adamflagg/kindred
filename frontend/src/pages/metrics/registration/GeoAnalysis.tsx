@@ -25,6 +25,7 @@ import {
   GeoGapsList,
   type GeoCategory,
   type GeoDataItem,
+  type GeoMapLayer,
 } from '../../../components/metrics/geo'
 import { getLocationCoords } from '../../../data/geoCoords'
 
@@ -256,24 +257,17 @@ export default function GeoAnalysis() {
             isAdmin={isAdmin}
           />
 
-          {/* Map - shows the first active category's data */}
-          {(() => {
-            const mapCategory: GeoCategory =
-              activeLayers.has('city') ? 'city' :
-              activeLayers.has('school') ? 'school' :
-              activeLayers.has('synagogue') ? 'synagogue' : 'city'
-            return (
-              <GeoMap
-                data={activeLayers.has(mapCategory) ? geoData[mapCategory] : []}
-                category={mapCategory}
-                selectedItem={selectedItem}
-                onMarkerClick={handleItemClick}
-                onDrilldown={setFilter}
-                height={575}
-                showRegions={showRegions}
-              />
-            )
-          })()}
+          {/* Map - shows all active layers simultaneously */}
+          <GeoMap
+            layers={(['city', 'school', 'synagogue'] as const)
+              .filter((cat) => activeLayers.has(cat) && geoData[cat].length > 0)
+              .map((cat): GeoMapLayer => ({ category: cat, data: geoData[cat] }))}
+            selectedItem={selectedItem}
+            onMarkerClick={handleItemClick}
+            onDrilldown={setFilter}
+            height={575}
+            showRegions={showRegions}
+          />
 
           {/* Stacked Detail Lists */}
           <div className="space-y-3">

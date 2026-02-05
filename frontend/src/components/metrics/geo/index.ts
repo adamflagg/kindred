@@ -3,7 +3,7 @@
  */
 
 export { GeoMap } from './GeoMap'
-export type { GeoMapProps, GeoDataItem } from './GeoMap'
+export type { GeoMapProps, GeoMapLayer, GeoDataItem } from './GeoMap'
 
 export { GeoCategoryTabs } from './GeoCategoryTabs'
 export type { GeoCategory } from './GeoCategoryTabs'
