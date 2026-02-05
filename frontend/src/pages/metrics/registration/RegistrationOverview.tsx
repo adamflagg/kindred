@@ -301,7 +301,13 @@ export default function RegistrationOverview() {
                   <td className="px-4 py-3 text-right text-foreground">{session.capacity ?? '—'}</td>
                   <td className="px-4 py-3 text-right">
                     {session.utilization !== null ? (
-                      <span className={session.utilization >= 90 ? 'text-emerald-600 dark:text-emerald-400' : 'text-foreground'}>
+                      <span className={
+                        session.utilization > 100
+                          ? 'text-red-600 dark:text-red-400'
+                          : session.utilization >= 90
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : 'text-foreground'
+                      }>
                         {session.utilization.toFixed(1)}%
                       </span>
                     ) : (
