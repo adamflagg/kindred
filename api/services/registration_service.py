@@ -21,7 +21,9 @@ from api.schemas.metrics import (
     SchoolBreakdown,
     SessionBreakdown,
     SessionBunkBreakdown,
+    SessionInLengthCategory,
     SessionLengthBreakdown,
+    SessionLengthBySessionBreakdown,
     SummerYearsBreakdown,
     SynagogueBreakdown,
     YearsAtCampBreakdown,
@@ -161,6 +163,9 @@ class RegistrationService:
         # Gender by grade cross-tabulation
         by_gender_grade = self._compute_gender_by_grade(enrolled_person_ids, persons)
 
+        # Session length by session (stacked bar chart showing sessions per length category)
+        by_session_length_by_session = self._compute_session_length_by_session(combined_attendees, sessions)
+
         # Summer enrollment history metrics (uses shared utility)
         enrollment_history = await self.repo.fetch_summer_enrollment_history(enrolled_person_ids, year)
         summer_years_by_person, first_year_by_person = compute_summer_metrics(enrollment_history, enrolled_person_ids)
@@ -184,6 +189,7 @@ class RegistrationService:
             by_first_year=by_first_year,
             by_session_bunk=by_session_bunk,
             by_gender_grade=by_gender_grade,
+            by_session_length_by_session=by_session_length_by_session,
             by_summer_years=by_summer_years,
             by_first_summer_year=by_first_summer_year,
         )
@@ -510,7 +516,10 @@ class RegistrationService:
         ]
 
     def _compute_gender_by_grade(self, person_ids: set[int], persons: dict[int, Any]) -> list[GenderByGradeBreakdown]:
-        """Compute gender by grade cross-tabulation."""
+        """Compute gender by grade cross-tabulation.
+
+        Note: Only M/F tracked since CampMinder sex field only has these values.
+        """
         gender_grade_stats: dict[int | None, dict[str, int]] = {}
         for pid in person_ids:
             person = persons.get(pid)
@@ -520,25 +529,108 @@ class RegistrationService:
             gender = getattr(person, "gender", "") or ""
 
             if grade not in gender_grade_stats:
-                gender_grade_stats[grade] = {"M": 0, "F": 0, "other": 0}
+                gender_grade_stats[grade] = {"M": 0, "F": 0}
 
             if gender == "M":
                 gender_grade_stats[grade]["M"] += 1
             elif gender == "F":
                 gender_grade_stats[grade]["F"] += 1
-            else:
-                gender_grade_stats[grade]["other"] += 1
+            # Non-M/F values are ignored since CampMinder sex field only has M/F
 
         return [
             GenderByGradeBreakdown(
                 grade=g,
                 male_count=stats["M"],
                 female_count=stats["F"],
-                other_count=stats["other"],
-                total=stats["M"] + stats["F"] + stats["other"],
+                total=stats["M"] + stats["F"],
             )
             for g, stats in sorted(gender_grade_stats.items(), key=lambda x: (x[0] is None, x[0]))
         ]
+
+    def _compute_session_length_by_session(
+        self, attendees: list[Any], sessions: dict[int, Any]
+    ) -> list[SessionLengthBySessionBreakdown]:
+        """Compute session breakdown grouped by length category.
+
+        Returns stacked bar chart data showing which sessions fall into each
+        length category with camper counts per session.
+
+        AG sessions are merged into their parent main sessions.
+        """
+        # Build AG -> parent mapping
+        ag_parent_map: dict[int, int] = {}
+        for sid, session in sessions.items():
+            if getattr(session, "session_type", None) == "ag":
+                parent_id = getattr(session, "parent_id", None)
+                if parent_id:
+                    ag_parent_map[int(sid)] = int(parent_id)
+
+        # Group attendees by length category and session (with AG merging)
+        length_session_counts: dict[str, dict[int, int]] = {}
+
+        for a in attendees:
+            expand = getattr(a, "expand", {}) or {}
+            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            if not session:
+                continue
+
+            session_cm_id = getattr(session, "cm_id", None)
+            if not session_cm_id:
+                continue
+
+            # Redirect AG to parent
+            sid = int(session_cm_id)
+            target_sid = ag_parent_map.get(sid, sid)
+
+            # Use TARGET session for length calculation
+            target_session = sessions.get(target_sid)
+            if not target_session:
+                continue
+
+            start_date = getattr(target_session, "start_date", "") or ""
+            end_date = getattr(target_session, "end_date", "") or ""
+            length = get_session_length_category(start_date, end_date)
+
+            if length not in length_session_counts:
+                length_session_counts[length] = {}
+            length_session_counts[length][target_sid] = length_session_counts[length].get(target_sid, 0) + 1
+
+        # Sort order for length categories
+        length_order = {"1-week": 0, "2-week": 1, "3-week": 2, "4-week+": 3, "unknown": 4}
+
+        result = []
+        for length, session_counts in sorted(
+            length_session_counts.items(), key=lambda x: length_order.get(x[0], 5)
+        ):
+            session_list = []
+            total = 0
+            for sid, count in sorted(session_counts.items()):
+                session_obj = sessions.get(sid)
+                # Skip AG sessions that were merged (have a parent in ag_parent_map)
+                # But keep orphan AG sessions (no parent) as they need to appear separately
+                if sid in ag_parent_map:
+                    # This AG had a parent and its counts were redirected - skip
+                    continue
+                session_name = getattr(session_obj, "name", f"Session {sid}") if session_obj else f"Session {sid}"
+                session_list.append(
+                    SessionInLengthCategory(
+                        session_name=session_name,
+                        session_cm_id=sid,
+                        count=count,
+                    )
+                )
+                total += count
+
+            if session_list:
+                result.append(
+                    SessionLengthBySessionBreakdown(
+                        length_category=length,
+                        sessions=session_list,
+                        total=total,
+                    )
+                )
+
+        return result
 
     def _build_summer_years_breakdown(
         self, summer_years_by_person: dict[int, int], total: int
