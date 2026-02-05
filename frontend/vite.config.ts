@@ -232,7 +232,7 @@ const baseConfig: UserConfig = {
       // All API requests go through Caddy (single source of truth for routing)
       // Caddy routes PocketBase patterns to PocketBase, everything else to FastAPI
       '/api': {
-        target: 'http://127.0.0.1:8080',  // Caddy handles all routing
+        target: `http://127.0.0.1:${process.env.CADDY_PORT || 8080}`,  // Caddy handles all routing
         changeOrigin: true,
         ws: true,
         configure: (proxy) => {
@@ -246,7 +246,7 @@ const baseConfig: UserConfig = {
       },
       // PocketBase admin UI (direct to PocketBase)
       '/_': {
-        target: 'http://127.0.0.1:8090',
+        target: `http://127.0.0.1:${process.env.POCKETBASE_PORT || 8090}`,
         changeOrigin: true,
       },
     },

@@ -166,6 +166,24 @@ npm ci --prefer-offline &  # Root deps (commitlint)
 (cd frontend && npm ci --prefer-offline) &
 wait
 
+# Link local config (branding, logos) if kindred-local exists
+LOCAL_REPO="${KINDRED_LOCAL_PATH:-$HOME/kindred-local}"
+if [ -d "$LOCAL_REPO" ]; then
+    echo -e "${BLUE}Linking local config from kindred-local...${NC}"
+    ln -sfr "$LOCAL_REPO/CLAUDE.local.md" "$WORKTREE_DIR/CLAUDE.local.md"
+    ln -sfr "$LOCAL_REPO/config/branding.local.json" "$WORKTREE_DIR/config/branding.local.json"
+    ln -sfr "$LOCAL_REPO/config/staff_list.json" "$WORKTREE_DIR/config/staff_list.json"
+    ln -sfr "$LOCAL_REPO/config/sheets_sharing.local.json" "$WORKTREE_DIR/config/sheets_sharing.local.json"
+    ln -sfr "$LOCAL_REPO/frontend/vite.config.local.ts" "$WORKTREE_DIR/frontend/vite.config.local.ts"
+    ln -sfr "$LOCAL_REPO/scripts/vault.config" "$WORKTREE_DIR/scripts/vault.config"
+    rm -rf "$WORKTREE_DIR/docs/camp" "$WORKTREE_DIR/local"
+    ln -sfrn "$LOCAL_REPO/docs/camp" "$WORKTREE_DIR/docs/camp"
+    ln -sfrn "$LOCAL_REPO/local" "$WORKTREE_DIR/local"
+    echo -e "${GREEN}Local config linked${NC}"
+else
+    echo -e "${YELLOW}kindred-local not found at $LOCAL_REPO, skipping local config${NC}"
+fi
+
 # Build PocketBase
 echo -e "${BLUE}Building PocketBase...${NC}"
 (cd pocketbase && go build -o pocketbase .)
@@ -232,10 +250,18 @@ cp -r frontend/dist/* pocketbase/pb_public/
 cat > /tmp/Caddyfile.$$ << EOF
 :$CADDY_PORT {
     @pocketbase path /api/collections /api/collections/* /api/files/* /api/realtime /api/custom/* /api/oauth2-redirect
-    handle @pocketbase { reverse_proxy 127.0.0.1:$POCKETBASE_PORT }
-    handle /_/* { reverse_proxy 127.0.0.1:$POCKETBASE_PORT }
-    handle /health { reverse_proxy 127.0.0.1:$FASTAPI_PORT }
-    handle /api/* { reverse_proxy 127.0.0.1:$FASTAPI_PORT }
+    handle @pocketbase {
+        reverse_proxy 127.0.0.1:$POCKETBASE_PORT
+    }
+    handle /_/* {
+        reverse_proxy 127.0.0.1:$POCKETBASE_PORT
+    }
+    handle /health {
+        reverse_proxy 127.0.0.1:$FASTAPI_PORT
+    }
+    handle /api/* {
+        reverse_proxy 127.0.0.1:$FASTAPI_PORT
+    }
     handle {
         root * $(pwd)/pocketbase/pb_public
         try_files {path} /index.html
