@@ -15,6 +15,10 @@
  * - Add: session relation (nullable during migration)
  * - Update: unique index from (category, original_value, year) to (person, session, category)
  * - Add: session filtering index
+ *
+ * NOTE: This migration deletes all existing normalized_mappings data because
+ * the old format (one row per original_value) is incompatible with the new format
+ * (one row per person+session). Run normalize-geographic sync after migration.
  */
 
 migrate((app) => {
@@ -22,11 +26,18 @@ migrate((app) => {
   const personsCol = app.findCollectionByNameOrId("persons");
   const sessionsCol = app.findCollectionByNameOrId("camp_sessions");
 
+  // Delete all existing records - old format is incompatible with new schema
+  // The sync will repopulate with fresh data in the new format
+  const existingRecords = app.findRecordsByFilter(collection.id, "1=1", "", 0, 0);
+  for (const record of existingRecords) {
+    app.delete(record);
+  }
+
   // Add person relation field
   collection.fields.add(new Field({
     type: "relation",
     name: "person",
-    required: false,  // Nullable to support migration of existing data
+    required: false,  // Nullable to support edge cases
     presentable: false,
     collectionId: personsCol.id,
     cascadeDelete: false,
@@ -38,7 +49,7 @@ migrate((app) => {
   collection.fields.add(new Field({
     type: "relation",
     name: "session",
-    required: false,  // Nullable to support migration of existing data
+    required: false,  // Nullable to support edge cases
     presentable: false,
     collectionId: sessionsCol.id,
     cascadeDelete: false,
@@ -55,8 +66,6 @@ migrate((app) => {
   // Add new indexes
   collection.indexes.push(
     // New unique constraint: (person, session, category)
-    // Note: This allows multiple original_values per person+session+category
-    // because different runs may normalize the same data differently
     "CREATE UNIQUE INDEX IF NOT EXISTS `idx_norm_person_session` ON `normalized_mappings` (`person`, `session`, `category`)",
 
     // Index for session filtering (common query pattern)
