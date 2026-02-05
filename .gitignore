@@ -207,6 +207,7 @@ tmp/
 !config/branding.json
 !**/example_*.json
 !campminder/**/*.json
+!bunking/geo_normalizer/data/us_cities.json
 !docs/api/external/campminder/examples/*.json
 !ruff.toml
 !tsconfig.json
