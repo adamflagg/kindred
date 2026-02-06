@@ -588,12 +588,20 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 		"bunk_assignments",       // Depends on sessions, persons, bunks
 		"staff",                  // Staff sync: depends on divisions, bunks, persons
 		"financial_transactions", // Source data: depends on sessions, persons, households, divisions
-		// Note: Transform phase (derived tables) is NOT included in daily sync
-		// Transform jobs require fresh custom values data, but custom values only run weekly
-		// (they are expensive - 1 API call per entity). Transform jobs run as part of:
-		// - Weekly custom values sync (includes CV + transform)
-		// - Manual unified sync with includeCustomValues=true
-		// - Manual phase sync for transform phase (will use existing CV data)
+		// Transform phase: derived tables run daily using latest source data
+		// and existing custom values from the most recent weekly sync.
+		// New enrollments, session changes, etc. are reflected immediately.
+		"camper_history",
+		"family_camp_derived",
+		"staff_skills",
+		"financial_aid_applications",
+		"household_demographics",
+		"camper_dietary",
+		"camper_transportation",
+		"quest_registrations",
+		"staff_applications",
+		"staff_vehicle_info",
+		"normalize_geographic",
 		"bunk_requests", // CSV import, depends on persons
 	}
 

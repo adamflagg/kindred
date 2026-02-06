@@ -2201,16 +2201,6 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 		requestedBy = e.Auth.GetString("email")
 	}
 
-	// Check for warning: Transform phase without custom values
-	var warning string
-	if phase == PhaseTransform {
-		// Check if custom values exist for this year
-		if !checkCustomValuesExist(scheduler.app, year) {
-			warning = "Transform phase requires Custom Values phase to have run first. " +
-				"4 of 5 transform jobs depend on custom values data and will produce incomplete results without it."
-		}
-	}
-
 	// Check if any sync is already running (must match handleIndividualSync check)
 	if orchestrator.IsDailySyncRunning() || orchestrator.IsWeeklySyncRunning() ||
 		orchestrator.IsHistoricalSyncRunning() || orchestrator.IsCustomValuesSyncRunning() ||
@@ -2232,9 +2222,6 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 			"phase":    string(phase),
 			"year":     year,
 			"jobs":     jobs,
-		}
-		if warning != "" {
-			response["warning"] = warning
 		}
 		return e.JSON(http.StatusAccepted, response)
 	}
@@ -2316,23 +2303,7 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 		"jobs":    jobs,
 		"debug":   debug,
 	}
-	if warning != "" {
-		response["warning"] = warning
-	}
 	return e.JSON(http.StatusOK, response)
-}
-
-// checkCustomValuesExist checks if custom values have been synced for a given year
-func checkCustomValuesExist(app core.App, year int) bool {
-	// Check for at least one person_custom_values record for this year
-	records, err := app.FindRecordsByFilter(
-		"person_custom_values",
-		fmt.Sprintf("year = %d", year),
-		"",
-		1,
-		0,
-	)
-	return err == nil && len(records) > 0
 }
 
 // handleCamperDietarySync handles the camper dietary extraction endpoint
