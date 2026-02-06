@@ -19,10 +19,7 @@ import { getSchoolCoords } from './schoolGeo'
  * @param name - Location name to look up (case-insensitive)
  * @returns [lat, lng] pair or undefined if not found
  */
-export function getLocationCoords(
-  category: string,
-  name: string,
-): LatLng | undefined {
+export function getLocationCoords(category: string, name: string): LatLng | undefined {
   switch (category) {
     case 'city':
       return getCityCoords(name)

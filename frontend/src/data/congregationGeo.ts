@@ -15,10 +15,10 @@ export const CONGREGATION_COORDS: Record<string, LatLng> = {
   'Beth El': [37.8716, -122.2727],
   'Beth Jacob Oakland': [37.8244, -122.2317],
   'Chabad of the East Bay': [37.8716, -122.2727],
-  'Congregation B\'nai Israel': [37.9101, -122.0652],
-  'Congregation B\'nai Israel Sacramento': [38.5816, -121.4944],
-  'Congregation B\'nai Shalom': [37.9101, -122.0652],
-  'Congregation B\'nai Tikvah': [37.9101, -122.0652],
+  "Congregation B'nai Israel": [37.9101, -122.0652],
+  "Congregation B'nai Israel Sacramento": [38.5816, -121.4944],
+  "Congregation B'nai Shalom": [37.9101, -122.0652],
+  "Congregation B'nai Tikvah": [37.9101, -122.0652],
   'Congregation Beth Am': [37.388, -122.116],
   'Congregation Beth Am Los Angeles': [34.0522, -118.2437],
   'Congregation Beth Ami': [38.4404, -122.7141],
@@ -36,7 +36,7 @@ export const CONGREGATION_COORDS: Record<string, LatLng> = {
   'Congregation Ner Tamid': [37.7237, -122.4769],
   'Congregation Netivot Shalom': [37.8716, -122.2727],
   'Congregation Rodef Sholom': [37.9735, -122.5311],
-  'Congregation Sha\'ar Zahav': [37.7606, -122.4269],
+  "Congregation Sha'ar Zahav": [37.7606, -122.4269],
   'Congregation Sherith Israel': [37.7885, -122.4285],
   'Congregation Shir Hadash': [37.2358, -121.9624],
   'Congregation Shomrei Torah': [38.4404, -122.7141],
@@ -70,9 +70,7 @@ let _lowerCache: Map<string, LatLng> | null = null
 
 function getLowerCache(): Map<string, LatLng> {
   if (!_lowerCache) {
-    _lowerCache = new Map(
-      Object.entries(CONGREGATION_COORDS).map(([k, v]) => [k.toLowerCase(), v]),
-    )
+    _lowerCache = new Map(Object.entries(CONGREGATION_COORDS).map(([k, v]) => [k.toLowerCase(), v]))
   }
   return _lowerCache
 }
