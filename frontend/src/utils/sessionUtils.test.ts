@@ -738,3 +738,130 @@ describe('compareByDateCampThenQuest', () => {
     expect(result).toBe(0)
   })
 })
+
+// Import sortSessionDataByCampThenQuest for testing
+import { sortSessionDataByCampThenQuest, type SessionTypeLookup } from './sessionUtils'
+
+describe('sortSessionDataByCampThenQuest', () => {
+  const dateLookup: SessionDateLookup = {
+    'Session 1': '2026-06-15',
+    'Session 2': '2026-07-01',
+    'Session 2a': '2026-07-01',
+    'Session 3': '2026-08-01',
+    'Teen Quest': '2026-06-10',
+    'Quest B': '2026-08-15',
+  }
+
+  const typeLookup: SessionTypeLookup = {
+    'Session 1': 'main',
+    'Session 2': 'main',
+    'Session 2a': 'embedded',
+    'Session 3': 'main',
+    'Teen Quest': 'quest',
+    'Quest B': 'quest',
+  }
+
+  it('should sort camp sessions before quest sessions', () => {
+    const data = [
+      { session_name: 'Teen Quest', count: 20 },
+      { session_name: 'Session 2', count: 100 },
+      { session_name: 'Session 1', count: 80 },
+      { session_name: 'Quest B', count: 15 },
+      { session_name: 'Session 2a', count: 40 },
+    ]
+
+    const sorted = sortSessionDataByCampThenQuest(data, dateLookup, typeLookup)
+
+    // Camp sessions first (chronological), then quest sessions (chronological)
+    expect(sorted.map((s) => s.session_name)).toEqual([
+      'Session 1',
+      'Session 2',
+      'Session 2a',
+      'Teen Quest',
+      'Quest B',
+    ])
+  })
+
+  it('should sort camp sessions chronologically within their group', () => {
+    const data = [
+      { session_name: 'Session 3', count: 120 },
+      { session_name: 'Session 1', count: 80 },
+      { session_name: 'Session 2', count: 100 },
+    ]
+
+    const sorted = sortSessionDataByCampThenQuest(data, dateLookup, typeLookup)
+
+    expect(sorted.map((s) => s.session_name)).toEqual(['Session 1', 'Session 2', 'Session 3'])
+  })
+
+  it('should sort quest sessions chronologically within their group', () => {
+    const data = [
+      { session_name: 'Quest B', count: 15 },
+      { session_name: 'Teen Quest', count: 20 },
+    ]
+
+    const sorted = sortSessionDataByCampThenQuest(data, dateLookup, typeLookup)
+
+    expect(sorted.map((s) => s.session_name)).toEqual(['Teen Quest', 'Quest B'])
+  })
+
+  it('should use name-based tiebreaker for same date', () => {
+    const data = [
+      { session_name: 'Session 2a', count: 40 },
+      { session_name: 'Session 2', count: 100 },
+    ]
+
+    const sorted = sortSessionDataByCampThenQuest(data, dateLookup, typeLookup)
+
+    // Both have date 2026-07-01, Session 2 should sort before Session 2a by name
+    expect(sorted.map((s) => s.session_name)).toEqual(['Session 2', 'Session 2a'])
+  })
+
+  it('should handle empty array', () => {
+    expect(sortSessionDataByCampThenQuest([], dateLookup, typeLookup)).toEqual([])
+  })
+
+  it('should not mutate original array', () => {
+    const data = [
+      { session_name: 'Quest B', count: 15 },
+      { session_name: 'Session 1', count: 80 },
+    ]
+    const original = [...data]
+
+    sortSessionDataByCampThenQuest(data, dateLookup, typeLookup)
+
+    expect(data).toEqual(original)
+  })
+
+  it('should preserve other fields', () => {
+    const data = [
+      { session_name: 'Teen Quest', count: 20, utilization: 50 },
+      { session_name: 'Session 1', count: 80, utilization: 90 },
+    ]
+
+    const sorted = sortSessionDataByCampThenQuest(data, dateLookup, typeLookup)
+
+    expect(sorted[0]).toEqual({ session_name: 'Session 1', count: 80, utilization: 90 })
+    expect(sorted[1]).toEqual({ session_name: 'Teen Quest', count: 20, utilization: 50 })
+  })
+
+  it('should handle only camp sessions', () => {
+    const data = [
+      { session_name: 'Session 2', count: 100 },
+      { session_name: 'Session 1', count: 80 },
+    ]
+
+    const sorted = sortSessionDataByCampThenQuest(data, dateLookup, typeLookup)
+    expect(sorted.map((s) => s.session_name)).toEqual(['Session 1', 'Session 2'])
+  })
+
+  it('should handle only quest sessions', () => {
+    const data = [
+      { session_name: 'Quest B', count: 15 },
+      { session_name: 'Teen Quest', count: 20 },
+    ]
+
+    const sorted = sortSessionDataByCampThenQuest(data, dateLookup, typeLookup)
+    expect(sorted.map((s) => s.session_name)).toEqual(['Teen Quest', 'Quest B'])
+  })
+})
