@@ -57,6 +57,9 @@ CITY_ALIASES: dict[str, str] = {
     "dc": "Washington DC",
     "philly": "Philadelphia",
     "chi": "Chicago",
+    "millbrae blvd": "Millbrae",
+    "la canada flt": "La Canada Flintridge",
+    "west menlo park": "Menlo Park",
 }
 
 # State suffix pattern (", CA", ", CA 94102", etc.)
