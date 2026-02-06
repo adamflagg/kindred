@@ -426,23 +426,27 @@ func (n *NormalizeGeographicSync) normalizeWithPython(values []string, category 
 		return nil, fmt.Errorf("marshaling values: %w", err)
 	}
 
-	// Find the project root (where pyproject.toml is)
-	// The pocketbase binary runs from pocketbase/ directory, so project root is ../
-	projectRoot := filepath.Join(filepath.Dir(os.Args[0]), "..")
-	if _, statErr := os.Stat(filepath.Join(projectRoot, "pyproject.toml")); os.IsNotExist(statErr) {
-		// Try current working directory
-		cwd, _ := os.Getwd()
-		projectRoot = cwd
-		if _, statErr2 := os.Stat(filepath.Join(projectRoot, "pyproject.toml")); os.IsNotExist(statErr2) {
-			// Try one level up
-			projectRoot = filepath.Dir(cwd)
+	// Find the project root
+	var projectRoot string
+	if os.Getenv("IS_DOCKER") == boolTrue {
+		projectRoot = "/app"
+	} else {
+		// Dev: find project root from DataDir (pocketbase/pb_data -> ../..)
+		dataDir := n.App.DataDir()
+		absDataDir, absErr := filepath.Abs(dataDir)
+		if absErr != nil {
+			absDataDir = dataDir
 		}
+		projectRoot = filepath.Dir(filepath.Dir(absDataDir))
 	}
 
 	// Call Python normalizer
 	program, args := buildPythonNormalizerCommand(category, string(valuesJSON))
 	cmd := exec.Command(program, args...) // #nosec G204 -- arguments are from internal sync logic, not user input
 	cmd.Dir = projectRoot
+	cmd.Env = append(os.Environ(),
+		"PYTHONPATH="+projectRoot,
+	)
 
 	output, err := cmd.Output()
 	if err != nil {
