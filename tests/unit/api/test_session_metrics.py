@@ -2,11 +2,11 @@
 TDD tests for session metrics utility module.
 
 Tests for:
-- DISPLAY_SESSION_TYPES constant for UI display (excludes quest)
+- DISPLAY_SESSION_TYPES constant for UI display (includes quest)
 - SUMMER_PROGRAM_SESSION_TYPES constant for calculations (includes quest)
 - compute_summer_metrics() correctly filters by session type
 - Quest sessions ARE included in summer metrics calculations
-- Quest sessions are EXCLUDED from session breakdown charts
+- Quest sessions ARE included in session breakdown charts
 - Family camp, training, tli, etc. ARE excluded from both
 
 These tests are written FIRST before implementation (TDD).
@@ -89,15 +89,15 @@ class TestDisplaySessionTypesConstant:
 
         assert "ag" in DISPLAY_SESSION_TYPES
 
-    def test_display_types_excludes_quest_sessions(self) -> None:
-        """Quest sessions should NOT be shown in session breakdown charts.
+    def test_display_types_includes_quest_sessions(self) -> None:
+        """Quest sessions should be shown in session dropdowns and breakdown charts.
 
-        Quest sessions count toward summer years calculations but are not
-        shown in session dropdowns or breakdown charts.
+        Quest sessions are child-oriented summer programs that appear alongside
+        main, embedded, and ag sessions in all metrics views.
         """
         from api.utils.session_metrics import DISPLAY_SESSION_TYPES
 
-        assert "quest" not in DISPLAY_SESSION_TYPES
+        assert "quest" in DISPLAY_SESSION_TYPES
 
     def test_display_types_excludes_family_sessions(self) -> None:
         """Family camp sessions should NOT be in display types."""
@@ -187,15 +187,15 @@ class TestConstantRelationship:
 
         assert set(DISPLAY_SESSION_TYPES).issubset(set(SUMMER_PROGRAM_SESSION_TYPES))
 
-    def test_quest_is_the_difference(self) -> None:
-        """Quest should be the only difference between the two constants.
+    def test_constants_are_equal(self) -> None:
+        """Both constants should now contain the same session types.
 
-        SUMMER_PROGRAM_SESSION_TYPES - DISPLAY_SESSION_TYPES = {'quest'}
+        DISPLAY_SESSION_TYPES and SUMMER_PROGRAM_SESSION_TYPES are equal
+        since quest sessions are now included in display views.
         """
         from api.utils.session_metrics import DISPLAY_SESSION_TYPES, SUMMER_PROGRAM_SESSION_TYPES
 
-        difference = set(SUMMER_PROGRAM_SESSION_TYPES) - set(DISPLAY_SESSION_TYPES)
-        assert difference == {"quest"}
+        assert set(SUMMER_PROGRAM_SESSION_TYPES) == set(DISPLAY_SESSION_TYPES)
 
 
 # ============================================================================
@@ -431,21 +431,20 @@ class TestComputeSummerMetrics:
 class TestSessionBreakdownUsesDisplayTypes:
     """Tests verifying session breakdowns use DISPLAY_SESSION_TYPES.
 
-    Session breakdown charts should NOT include quest sessions - they should
-    use DISPLAY_SESSION_TYPES which excludes quest.
+    Session breakdown charts should include quest sessions since they are
+    now part of DISPLAY_SESSION_TYPES.
     """
 
-    def test_display_types_excludes_quest_for_session_breakdown(self) -> None:
-        """Session breakdown should use DISPLAY_SESSION_TYPES which excludes quest.
+    def test_display_types_includes_quest_for_session_breakdown(self) -> None:
+        """Session breakdown should use DISPLAY_SESSION_TYPES which includes quest.
 
-        The _merge_ag_into_parent_sessions method in registration_service and
-        _build_session_breakdown in retention_service should filter to
-        DISPLAY_SESSION_TYPES, not SUMMER_PROGRAM_SESSION_TYPES.
+        Quest sessions appear in session dropdowns and breakdown charts
+        alongside main and embedded sessions.
         """
         from api.utils.session_metrics import DISPLAY_SESSION_TYPES
 
-        # Quest should NOT be in the constant used for session breakdown display
-        assert "quest" not in DISPLAY_SESSION_TYPES
+        # Quest SHOULD be in the constant used for session breakdown display
+        assert "quest" in DISPLAY_SESSION_TYPES
 
     def test_main_and_embedded_in_display_types(self) -> None:
         """Main and embedded sessions should appear in session breakdown."""
