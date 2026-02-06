@@ -241,8 +241,16 @@ class DrilldownService:
                         filtered.append(a)
 
             elif breakdown_type == "school":
-                if person and getattr(person, "school", None) == breakdown_value:
-                    filtered.append(a)
+                # Match on normalized_school (set by normalize_geographic sync)
+                # for consistency with GeoDetailList which shows normalized values.
+                # Fall back to raw person.school if normalized_school not populated.
+                if person:
+                    normalized = getattr(person, "normalized_school", None)
+                    if normalized:
+                        if normalized == breakdown_value:
+                            filtered.append(a)
+                    elif getattr(person, "school", None) == breakdown_value:
+                        filtered.append(a)
 
             elif breakdown_type == "city":
                 # Match on normalized city from normalized_mappings

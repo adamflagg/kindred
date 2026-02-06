@@ -9,13 +9,14 @@ import { BAY_AREA_REGION_POLYGONS, REGION_COLORS } from '../../../data/californi
 
 interface RegionOverlaysProps {
   show: boolean
+  pane?: string
 }
 
 const regionKeys = Object.keys(BAY_AREA_REGION_POLYGONS) as Array<
   keyof typeof BAY_AREA_REGION_POLYGONS
 >
 
-export function RegionOverlays({ show }: RegionOverlaysProps) {
+export function RegionOverlays({ show, pane }: RegionOverlaysProps) {
   if (!show) return null
 
   return (
@@ -28,6 +29,7 @@ export function RegionOverlays({ show }: RegionOverlaysProps) {
           <Polygon
             key={key}
             positions={region.polygon}
+            pane={pane}
             pathOptions={{
               fillColor: colors.fill,
               fillOpacity: 0.1,

@@ -26,9 +26,10 @@ function getCheckboxes(): HTMLInputElement[] {
 }
 
 describe('GeoLayerToggles', () => {
-  it('renders 3 layer checkboxes plus 2 secondary toggles', () => {
+  it('renders 3 layer checkboxes plus 3 secondary toggles', () => {
     render(<GeoLayerToggles {...defaultProps} />)
-    expect(getCheckboxes()).toHaveLength(5)
+    // 3 layers + 1 region + 2 admin (sources, gaps) = 6
+    expect(getCheckboxes()).toHaveLength(6)
   })
 
   it('renders layer labels with counts', () => {

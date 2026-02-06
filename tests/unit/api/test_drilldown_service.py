@@ -795,6 +795,137 @@ class TestSynagogueBreakdown:
 
 
 # ============================================================================
+# Tests for school breakdown using normalized values
+# ============================================================================
+
+
+class TestSchoolBreakdownNormalized:
+    """Tests for filtering by school using normalized_school from persons.
+
+    School drilldown should match on the normalized_school column (set by
+    normalize_geographic sync), NOT the raw person.school value. This ensures
+    that clicking "Park Day School" in the GeoDetailList returns all campers
+    whose schools normalized to "Park Day School", even if the raw value
+    differs (e.g. "park day school", "Park Day").
+    """
+
+    @pytest.fixture
+    def persons_with_schools(self) -> dict[int, Mock]:
+        """Sample persons with raw school values and normalized_school."""
+        persons: dict[int, Mock] = {
+            # Raw: "park day school" (lowercase) -> Normalized: "Park Day School"
+            101: create_mock_person(101, "Emma", "Johnson", "F", 5, school="park day school"),
+            # Raw: "Park Day" (abbreviation) -> Normalized: "Park Day School"
+            102: create_mock_person(102, "Liam", "Garcia", "M", 6, school="Park Day"),
+            # Raw: "Mark Day School" (correct) -> Normalized: "Mark Day School"
+            103: create_mock_person(103, "Olivia", "Chen", "F", 6, school="Mark Day School"),
+            # Raw: "Riverside Elementary" -> Normalized: "Riverside Elementary School"
+            104: create_mock_person(104, "Noah", "Williams", "M", 7, school="Riverside Elementary"),
+        }
+        # Set normalized_school on each person (populated by normalize_geographic sync)
+        persons[101].normalized_school = "Park Day School"
+        persons[102].normalized_school = "Park Day School"
+        persons[103].normalized_school = "Mark Day School"
+        persons[104].normalized_school = "Riverside Elementary School"
+        return persons
+
+    @pytest.mark.asyncio
+    async def test_school_drilldown_uses_normalized_value(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        persons_with_schools: dict[int, Mock],
+    ) -> None:
+        """School drilldown matches on normalized_school, not raw person.school.
+
+        When user clicks "Park Day School" in GeoDetailList, the drilldown
+        should return all persons whose normalized_school is "Park Day School",
+        even if their raw school value is different.
+        """
+        attendees = [
+            create_mock_attendee(101, sample_sessions[1001], 2026),
+            create_mock_attendee(102, sample_sessions[1002], 2026),
+            create_mock_attendee(103, sample_sessions[1003], 2026),
+            create_mock_attendee(104, sample_sessions[1004], 2026),
+        ]
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = persons_with_schools
+        mock_repository.fetch_attendees.return_value = attendees
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="school",
+            breakdown_value="Park Day School",
+        )
+
+        # Should return Emma (101) and Liam (102) - both normalized to "Park Day School"
+        # even though raw school values are "park day school" and "Park Day"
+        assert len(result) == 2
+        person_ids = {r.person_id for r in result}
+        assert person_ids == {101, 102}
+
+    @pytest.mark.asyncio
+    async def test_school_drilldown_mark_day_separate(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        persons_with_schools: dict[int, Mock],
+    ) -> None:
+        """Mark Day School drilldown only returns Mark Day campers, not Park Day."""
+        attendees = [
+            create_mock_attendee(101, sample_sessions[1001], 2026),
+            create_mock_attendee(102, sample_sessions[1002], 2026),
+            create_mock_attendee(103, sample_sessions[1003], 2026),
+            create_mock_attendee(104, sample_sessions[1004], 2026),
+        ]
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = persons_with_schools
+        mock_repository.fetch_attendees.return_value = attendees
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="school",
+            breakdown_value="Mark Day School",
+        )
+
+        # Should return only Olivia (103)
+        assert len(result) == 1
+        assert result[0].person_id == 103
+
+    @pytest.mark.asyncio
+    async def test_school_drilldown_no_normalized_falls_back(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+    ) -> None:
+        """Persons without normalized_school still match on raw school value."""
+        persons: dict[int, Mock] = {
+            101: create_mock_person(101, "Emma", "Johnson", "F", 5, school="Hillcrest High"),
+        }
+        # No normalized_school attribute set (sync hasn't run yet)
+        persons[101].normalized_school = None
+        attendees = [
+            create_mock_attendee(101, sample_sessions[1001], 2026),
+        ]
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = persons
+        mock_repository.fetch_attendees.return_value = attendees
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="school",
+            breakdown_value="Hillcrest High",
+        )
+
+        # Should fall back to raw school match
+        assert len(result) == 1
+        assert result[0].person_id == 101
+
+
+# ============================================================================
 # Tests for discrete address columns in DrilldownAttendee
 # ============================================================================
 

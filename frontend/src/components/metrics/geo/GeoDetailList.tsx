@@ -92,7 +92,7 @@ export function GeoDetailList({
         <div className="border-border border-t">
           <div className="max-h-80 overflow-y-auto">
             <table className="w-full text-sm">
-              <thead className="bg-muted/50 sticky top-0">
+              <thead className="bg-card sticky top-0 z-10">
                 <tr>
                   <th className="text-muted-foreground px-4 py-2 text-left font-medium">
                     {CATEGORY_LABELS[category]}

@@ -16,14 +16,18 @@ import {
   useNormalizedMappings,
   type NormalizedCategory,
 } from '../../../hooks/useNormalizedMappings'
+import { useIsAdmin } from '../../../hooks/useIsAdmin'
 import {
   GeoMap,
   GeoSummaryCards,
   GeoDetailList,
   GeoLayerToggles,
+  GeoGapsList,
   type GeoCategory,
   type GeoDataItem,
+  type GeoMapLayer,
 } from '../../../components/metrics/geo'
+import { getLocationCoords } from '../../../data/geoCoords'
 
 /** Default session types for summer camp metrics */
 const DEFAULT_SESSION_TYPES = ['main', 'embedded', 'ag']
@@ -45,7 +49,9 @@ export default function GeoAnalysis() {
   )
   const [showRegions, setShowRegions] = useState(true)
   const [showSources, setShowSources] = useState(false)
+  const [showGaps, setShowGaps] = useState(false)
   const [selectedItem, setSelectedItem] = useState<string | null>(null)
+  const isAdmin = useIsAdmin()
 
   // Get session filter from context (unified selector is in MetricsTypeTabs)
   const { selectedSessionCmId } = useMetricsSession()
@@ -158,6 +164,18 @@ export default function GeoAnalysis() {
     setSelectedItem((prev) => (prev === name ? null : name))
   }
 
+  // Compute gaps (items without coordinates = not in canonical lookup)
+  const gaps = useMemo(() => {
+    const computeGaps = (items: GeoDataItem[], category: GeoCategory) =>
+      items.filter((item) => !getLocationCoords(category, item.name))
+
+    return {
+      city: computeGaps(geoData.city, 'city'),
+      school: computeGaps(geoData.school, 'school'),
+      synagogue: computeGaps(geoData.synagogue, 'synagogue'),
+    }
+  }, [geoData])
+
   // Source mappings per category
   const sourceMappingsFor: Record<
     GeoCategory,
@@ -234,14 +252,19 @@ export default function GeoAnalysis() {
             onToggleRegions={() => setShowRegions((v) => !v)}
             showSources={showSources}
             onToggleSources={() => setShowSources((v) => !v)}
+            showGaps={showGaps}
+            onToggleGaps={() => setShowGaps((v) => !v)}
+            isAdmin={isAdmin}
           />
 
-          {/* Map (always shows city markers when city layer is active) */}
+          {/* Map - shows all active layers simultaneously */}
           <GeoMap
-            data={activeLayers.has('city') ? geoData.city : []}
-            category="city"
+            layers={(['city', 'school', 'synagogue'] as const)
+              .filter((cat) => activeLayers.has(cat) && geoData[cat].length > 0)
+              .map((cat): GeoMapLayer => ({ category: cat, data: geoData[cat] }))}
             selectedItem={selectedItem}
             onMarkerClick={handleItemClick}
+            onDrilldown={setFilter}
             height={575}
             showRegions={showRegions}
           />
@@ -282,6 +305,17 @@ export default function GeoAnalysis() {
               />
             )}
           </div>
+
+          {/* Gap Tracking (admin only) */}
+          {showGaps && (
+            <div className="space-y-3">
+              {activeLayers.has('city') && <GeoGapsList gaps={gaps.city} category="city" />}
+              {activeLayers.has('school') && <GeoGapsList gaps={gaps.school} category="school" />}
+              {activeLayers.has('synagogue') && (
+                <GeoGapsList gaps={gaps.synagogue} category="synagogue" />
+              )}
+            </div>
+          )}
         </>
       )}
 

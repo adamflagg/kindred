@@ -27,8 +27,22 @@ DEFAULT_THRESHOLD = 90
 # Threshold for city typo correction (slightly lower to catch typos)
 CITY_FUZZY_THRESHOLD = 85
 
+# Threshold for school fuzzy match (lower than cities - school names vary more)
+SCHOOL_FUZZY_THRESHOLD = 80
+
+# Threshold for congregation fuzzy match
+CONGREGATION_FUZZY_THRESHOLD = 80
+
 # Module-level cache for city lookup (loaded once on first use)
 _CITY_LOOKUP: dict[str, str] | None = None
+
+# Module-level caches for school lookup + coords (loaded once on first use)
+_SCHOOL_LOOKUP: dict[str, str] | None = None
+_SCHOOL_COORDS: dict[str, list[float]] | None = None
+
+# Module-level caches for congregation lookup + coords (loaded once on first use)
+_CONGREGATION_LOOKUP: dict[str, str] | None = None
+_CONGREGATION_COORDS: dict[str, list[float]] | None = None
 
 
 def _load_city_lookup() -> dict[str, str]:
@@ -46,6 +60,48 @@ def _load_city_lookup() -> dict[str, str]:
     lookup: dict[str, str] = data["lookup"]
     _CITY_LOOKUP = lookup
     return lookup
+
+
+def _load_school_lookup() -> tuple[dict[str, str], dict[str, list[float]]]:
+    """Load the schools lookup and coords from the data file.
+
+    Returns a tuple of (lookup dict, coords dict).
+    The lookup maps lowercase school names to their canonical spelling.
+    The coords maps canonical names to [lat, lng] pairs.
+    Both are cached at module level for performance.
+    """
+    global _SCHOOL_LOOKUP, _SCHOOL_COORDS
+    if _SCHOOL_LOOKUP is not None and _SCHOOL_COORDS is not None:
+        return _SCHOOL_LOOKUP, _SCHOOL_COORDS
+
+    data_file = files("bunking.geo_normalizer.data").joinpath("schools.json")
+    data = json.loads(data_file.read_text())
+    lookup: dict[str, str] = data["lookup"]
+    coords: dict[str, list[float]] = data.get("coords", {})
+    _SCHOOL_LOOKUP = lookup
+    _SCHOOL_COORDS = coords
+    return lookup, coords
+
+
+def _load_congregation_lookup() -> tuple[dict[str, str], dict[str, list[float]]]:
+    """Load the congregations lookup and coords from the data file.
+
+    Returns a tuple of (lookup dict, coords dict).
+    The lookup maps lowercase congregation names to their canonical spelling.
+    The coords maps canonical names to [lat, lng] pairs.
+    Both are cached at module level for performance.
+    """
+    global _CONGREGATION_LOOKUP, _CONGREGATION_COORDS
+    if _CONGREGATION_LOOKUP is not None and _CONGREGATION_COORDS is not None:
+        return _CONGREGATION_LOOKUP, _CONGREGATION_COORDS
+
+    data_file = files("bunking.geo_normalizer.data").joinpath("congregations.json")
+    data = json.loads(data_file.read_text())
+    lookup: dict[str, str] = data["lookup"]
+    coords: dict[str, list[float]] = data.get("coords", {})
+    _CONGREGATION_LOOKUP = lookup
+    _CONGREGATION_COORDS = coords
+    return lookup, coords
 
 
 # City abbreviation aliases (SF -> San Francisco, etc.)
@@ -132,13 +188,72 @@ def normalize_city_value(city: str) -> str:
 
 
 def normalize_school_value(school: str) -> str:
-    """Normalize a single school value (minimal - preserve original case)."""
-    return preprocess_value(school)
+    """Normalize a single school value using canonical lookup.
+
+    Uses a static list of California schools (from NCES data) to resolve
+    names to canonical spelling. Falls back to the original value for
+    unknown schools. Uses token_sort_ratio with threshold 80 to accommodate
+    common variations like "Elem" vs "Elementary".
+    """
+    school = preprocess_value(school)
+    if not school:
+        return ""
+
+    lookup, _ = _load_school_lookup()
+    lower = school.lower()
+
+    # Exact match (case-insensitive)
+    if lower in lookup:
+        return lookup[lower]
+
+    # Fuzzy match with lower threshold for school name variations
+    match = process.extractOne(
+        lower,
+        lookup.keys(),
+        scorer=fuzz.token_sort_ratio,
+        score_cutoff=SCHOOL_FUZZY_THRESHOLD,
+    )
+
+    if match:
+        matched_key, _score, _ = match
+        return lookup[matched_key]
+
+    # No match - return original (preserves unknown schools)
+    return school
 
 
 def normalize_congregation_value(congregation: str) -> str:
-    """Normalize a single congregation value (minimal - preserve original case)."""
-    return preprocess_value(congregation)
+    """Normalize a single congregation value using canonical lookup.
+
+    Uses a curated list of Bay Area congregations to resolve names to
+    canonical spelling. Uses token_set_ratio to handle prefix variations
+    like "Congregation Beth Shalom" vs "Beth Shalom".
+    """
+    congregation = preprocess_value(congregation)
+    if not congregation:
+        return ""
+
+    lookup, _ = _load_congregation_lookup()
+    lower = congregation.lower()
+
+    # Exact match (case-insensitive)
+    if lower in lookup:
+        return lookup[lower]
+
+    # Fuzzy match using token_set_ratio for prefix handling
+    match = process.extractOne(
+        lower,
+        lookup.keys(),
+        scorer=fuzz.token_set_ratio,
+        score_cutoff=CONGREGATION_FUZZY_THRESHOLD,
+    )
+
+    if match:
+        matched_key, _score, _ = match
+        return lookup[matched_key]
+
+    # No match - return original (preserves unknown congregations)
+    return congregation
 
 
 def cluster_similar_values(
@@ -263,6 +378,11 @@ def normalize_schools(values: list[str]) -> dict[str, NormalizedResult]:
     - Abbreviations ("Elem" vs "Elementary") - via fuzzy match
     - Case differences
 
+    To prevent re-merging canonically distinct schools (e.g. "Park Day School"
+    and "Mark Day School" which have token_sort_ratio ~85.7), values that matched
+    distinct canonical entries in the lookup are kept separate from clustering.
+    Only unknown values (no canonical match) are clustered.
+
     Args:
         values: List of school names
 
@@ -272,31 +392,52 @@ def normalize_schools(values: list[str]) -> dict[str, NormalizedResult]:
     if not values:
         return {}
 
-    # Step 1: Normalize each value (minimal preprocessing)
-    normalized_map: dict[str, str] = {}
-    normalized_values: list[str] = []
+    lookup, _ = _load_school_lookup()
+
+    # Step 1: Normalize each value and track which came from canonical lookup
+    normalized_map: dict[str, str] = {}  # original -> normalized
+    canonical_values: dict[str, str] = {}  # normalized -> canonical (from lookup)
+    unknown_values: list[str] = []  # values not in canonical lookup
 
     for original in values:
         normalized = normalize_school_value(original)
-        if normalized:
-            normalized_map[original] = normalized
-            normalized_values.append(normalized)
+        if not normalized:
+            continue
+        normalized_map[original] = normalized
 
-    # Step 2: Cluster with slightly lower threshold for schools
-    # (to catch abbreviations like "Elem" vs "Elementary")
-    clusters = cluster_similar_values(normalized_values, threshold=85)
+        # Check if this normalized value came from a canonical lookup match
+        # (normalize_school_value returns the canonical name for matched schools)
+        if normalized.lower() in lookup or _is_canonical_match(normalized, lookup):
+            canonical_values[normalized] = normalized
+        else:
+            unknown_values.append(normalized)
+
+    # Step 2: Only cluster unknown values (not in canonical lookup)
+    unknown_clusters = cluster_similar_values(unknown_values, threshold=85)
 
     # Step 3: Build final result
     result: dict[str, NormalizedResult] = {}
     for original, normalized in normalized_map.items():
-        if normalized in clusters:
-            cluster_result = clusters[normalized]
+        if normalized in canonical_values:
+            # Canonical match - use directly, skip clustering
+            result[original] = NormalizedResult(
+                canonical=normalized,
+                confidence=1.0,
+            )
+        elif normalized in unknown_clusters:
+            # Unknown value - use clustering result
+            cluster_result = unknown_clusters[normalized]
             result[original] = NormalizedResult(
                 canonical=cluster_result["canonical"],
                 confidence=cluster_result["confidence"],
             )
 
     return result
+
+
+def _is_canonical_match(value: str, lookup: dict[str, str]) -> bool:
+    """Check if a value is a canonical name (i.e. appears as a lookup value)."""
+    return value in lookup.values()
 
 
 def cluster_similar_values_token_set(

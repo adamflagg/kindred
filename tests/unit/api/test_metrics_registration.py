@@ -1663,3 +1663,569 @@ class TestSessionCapacityUtilization:
         assert session_2_breakdown.capacity is None
         # Utilization should also be None (can't calculate without capacity)
         assert session_2_breakdown.utilization is None
+
+
+# ============================================================================
+# School/City/Synagogue Breakdown Count Consistency Tests
+# ============================================================================
+
+
+def create_mock_person_with_normalized(
+    cm_id: int,
+    first_name: str,
+    last_name: str,
+    gender: str = "M",
+    grade: int = 6,
+    years_at_camp: int = 2,
+    year: int = 2026,
+    school: str = "",
+    normalized_school: str = "",
+    address_city: str = "",
+    normalized_city: str = "",
+    normalized_congregation: str = "",
+) -> Mock:
+    """Create a mock person with normalized geo fields.
+
+    These normalized fields are set by the normalize_geographic sync job
+    and stored directly on the persons table.
+    """
+    person = create_mock_person(cm_id, first_name, last_name, gender, grade, years_at_camp, year)
+    person.school = school
+    person.normalized_school = normalized_school
+    person.address_city = address_city
+    person.normalized_city = normalized_city
+    person.normalized_congregation = normalized_congregation
+    return person
+
+
+class TestSchoolBreakdownFromPersons:
+    """Tests for school breakdown using enrolled persons instead of normalized_mappings.
+
+    The bug: school counts came from normalized_mappings (one row per person×session,
+    no enrollment filter), so a person in 3 sessions showed count=3 instead of 1.
+    The fix: count unique enrolled persons using persons.normalized_school field.
+    """
+
+    def test_school_counts_unique_enrolled_persons(self) -> None:
+        """Person enrolled in 3 sessions should be counted once in school breakdown.
+
+        Bug scenario: Emma (101) is enrolled in sessions 2, 3, and 4.
+        normalized_mappings had 3 rows for her school → count showed 3.
+        Fix: count unique persons → count should be 1.
+        """
+        from api.services.registration_service import RegistrationService
+
+        person_emma = create_mock_person_with_normalized(
+            101,
+            "Emma",
+            "Johnson",
+            "F",
+            5,
+            2,
+            2026,
+            school="Riverside Elementary",
+            normalized_school="Riverside Elementary",
+        )
+        person_liam = create_mock_person_with_normalized(
+            102,
+            "Liam",
+            "Garcia",
+            "M",
+            5,
+            1,
+            2026,
+            school="Oak Valley Middle",
+            normalized_school="Oak Valley Middle",
+        )
+
+        persons = {101: person_emma, 102: person_liam}
+        # Both enrolled (deduplicated person IDs from attendees)
+        enrolled_person_ids = {101, 102}
+        total_enrolled = 2
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_school_breakdown_from_persons(enrolled_person_ids, persons, total_enrolled)
+
+        school_map = {s.school: s.count for s in result}
+        assert school_map["Riverside Elementary"] == 1  # Emma counted once
+        assert school_map["Oak Valley Middle"] == 1  # Liam counted once
+
+    def test_school_uses_normalized_field(self) -> None:
+        """School breakdown should prefer normalized_school over raw school field.
+
+        The normalize_geographic sync standardizes school names (e.g., fixes
+        typos, normalizes abbreviations). The breakdown should use these
+        normalized values for consistency with the drilldown.
+        """
+        from api.services.registration_service import RegistrationService
+
+        person = create_mock_person_with_normalized(
+            101,
+            "Emma",
+            "Johnson",
+            "F",
+            5,
+            2,
+            2026,
+            school="riverside elem",  # Raw, non-normalized
+            normalized_school="Riverside Elementary",  # Normalized by sync
+        )
+
+        persons = {101: person}
+        enrolled_person_ids = {101}
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_school_breakdown_from_persons(enrolled_person_ids, persons, 1)
+
+        # Should use normalized value, not raw
+        assert len(result) == 1
+        assert result[0].school == "Riverside Elementary"
+
+    def test_school_falls_back_to_raw_when_no_normalized(self) -> None:
+        """When normalized_school is empty, fall back to raw school field.
+
+        Not all persons have been processed by normalize_geographic yet.
+        """
+        from api.services.registration_service import RegistrationService
+
+        person = create_mock_person_with_normalized(
+            101,
+            "Emma",
+            "Johnson",
+            "F",
+            5,
+            2,
+            2026,
+            school="Hillcrest High",
+            normalized_school="",  # Not yet normalized
+        )
+
+        persons = {101: person}
+        enrolled_person_ids = {101}
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_school_breakdown_from_persons(enrolled_person_ids, persons, 1)
+
+        assert len(result) == 1
+        assert result[0].school == "Hillcrest High"
+
+    def test_school_excludes_non_enrolled_persons(self) -> None:
+        """Only enrolled person_ids should be counted in school breakdown.
+
+        Persons in the persons dict but not in enrolled_person_ids should
+        not contribute to school counts.
+        """
+        from api.services.registration_service import RegistrationService
+
+        person_enrolled = create_mock_person_with_normalized(
+            101,
+            "Emma",
+            "Johnson",
+            "F",
+            5,
+            2,
+            2026,
+            normalized_school="Riverside Elementary",
+        )
+        person_not_enrolled = create_mock_person_with_normalized(
+            102,
+            "Liam",
+            "Garcia",
+            "M",
+            5,
+            1,
+            2026,
+            normalized_school="Oak Valley Middle",
+        )
+
+        persons = {101: person_enrolled, 102: person_not_enrolled}
+        # Only person 101 is enrolled
+        enrolled_person_ids = {101}
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_school_breakdown_from_persons(enrolled_person_ids, persons, 1)
+
+        school_names = [s.school for s in result]
+        assert "Riverside Elementary" in school_names
+        assert "Oak Valley Middle" not in school_names
+
+    def test_school_empty_values_excluded(self) -> None:
+        """Persons with no school (empty string) should not appear in breakdown."""
+        from api.services.registration_service import RegistrationService
+
+        person = create_mock_person_with_normalized(
+            101,
+            "Emma",
+            "Johnson",
+            "F",
+            5,
+            2,
+            2026,
+            school="",
+            normalized_school="",
+        )
+
+        persons = {101: person}
+        enrolled_person_ids = {101}
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_school_breakdown_from_persons(enrolled_person_ids, persons, 1)
+
+        assert result == []
+
+    def test_school_percentage_calculation(self) -> None:
+        """School breakdown should calculate correct percentages."""
+        from api.services.registration_service import RegistrationService
+
+        persons = {
+            101: create_mock_person_with_normalized(
+                101,
+                "Emma",
+                "Johnson",
+                normalized_school="Riverside Elementary",
+            ),
+            102: create_mock_person_with_normalized(
+                102,
+                "Liam",
+                "Garcia",
+                normalized_school="Riverside Elementary",
+            ),
+            103: create_mock_person_with_normalized(
+                103,
+                "Olivia",
+                "Chen",
+                normalized_school="Oak Valley Middle",
+            ),
+        }
+        enrolled_person_ids = {101, 102, 103}
+        total_enrolled = 3
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_school_breakdown_from_persons(enrolled_person_ids, persons, total_enrolled)
+
+        school_map = {s.school: s for s in result}
+        assert school_map["Riverside Elementary"].count == 2
+        assert school_map["Riverside Elementary"].percentage == pytest.approx(66.67, rel=0.01)
+        assert school_map["Oak Valley Middle"].count == 1
+        assert school_map["Oak Valley Middle"].percentage == pytest.approx(33.33, rel=0.01)
+
+
+class TestCityBreakdownFromPersons:
+    """Tests for city breakdown using enrolled persons instead of normalized_mappings.
+
+    Same bug pattern as school: counts came from per-session rows instead of
+    unique enrolled persons.
+    """
+
+    def test_city_counts_unique_enrolled_persons(self) -> None:
+        """Person enrolled in 3 sessions should be counted once in city breakdown."""
+        from api.services.registration_service import RegistrationService
+
+        persons = {
+            101: create_mock_person_with_normalized(
+                101,
+                "Emma",
+                "Johnson",
+                address_city="Springfield",
+                normalized_city="Springfield",
+            ),
+            102: create_mock_person_with_normalized(
+                102,
+                "Liam",
+                "Garcia",
+                address_city="Oakland",
+                normalized_city="Oakland",
+            ),
+        }
+        enrolled_person_ids = {101, 102}
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_city_breakdown_from_persons(enrolled_person_ids, persons, 2)
+
+        city_map = {c.city: c.count for c in result}
+        assert city_map["Springfield"] == 1
+        assert city_map["Oakland"] == 1
+
+    def test_city_uses_normalized_field(self) -> None:
+        """City breakdown should prefer normalized_city over raw address_city."""
+        from api.services.registration_service import RegistrationService
+
+        person = create_mock_person_with_normalized(
+            101,
+            "Emma",
+            "Johnson",
+            address_city="san francisco",  # Raw, not normalized
+            normalized_city="San Francisco",  # Normalized by sync
+        )
+
+        persons = {101: person}
+        enrolled_person_ids = {101}
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_city_breakdown_from_persons(enrolled_person_ids, persons, 1)
+
+        assert len(result) == 1
+        assert result[0].city == "San Francisco"
+
+    def test_city_falls_back_to_address_city(self) -> None:
+        """When normalized_city is empty, fall back to address_city."""
+        from api.services.registration_service import RegistrationService
+
+        person = create_mock_person_with_normalized(
+            101,
+            "Emma",
+            "Johnson",
+            address_city="Portland",
+            normalized_city="",
+        )
+
+        persons = {101: person}
+        enrolled_person_ids = {101}
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_city_breakdown_from_persons(enrolled_person_ids, persons, 1)
+
+        assert len(result) == 1
+        assert result[0].city == "Portland"
+
+    def test_city_excludes_non_enrolled(self) -> None:
+        """Only enrolled person_ids should be counted in city breakdown."""
+        from api.services.registration_service import RegistrationService
+
+        persons = {
+            101: create_mock_person_with_normalized(
+                101,
+                "Emma",
+                "Johnson",
+                normalized_city="Springfield",
+            ),
+            102: create_mock_person_with_normalized(
+                102,
+                "Liam",
+                "Garcia",
+                normalized_city="Oakland",
+            ),
+        }
+        # Only person 101 is enrolled
+        enrolled_person_ids = {101}
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_city_breakdown_from_persons(enrolled_person_ids, persons, 1)
+
+        city_names = [c.city for c in result]
+        assert "Springfield" in city_names
+        assert "Oakland" not in city_names
+
+    def test_city_empty_values_excluded(self) -> None:
+        """Persons with no city should not appear in breakdown."""
+        from api.services.registration_service import RegistrationService
+
+        person = create_mock_person_with_normalized(
+            101,
+            "Emma",
+            "Johnson",
+            address_city="",
+            normalized_city="",
+        )
+
+        persons = {101: person}
+        enrolled_person_ids = {101}
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_city_breakdown_from_persons(enrolled_person_ids, persons, 1)
+
+        assert result == []
+
+    def test_city_percentage_calculation(self) -> None:
+        """City breakdown should calculate correct percentages."""
+        from api.services.registration_service import RegistrationService
+
+        persons = {
+            101: create_mock_person_with_normalized(
+                101,
+                "Emma",
+                "Johnson",
+                normalized_city="Springfield",
+            ),
+            102: create_mock_person_with_normalized(
+                102,
+                "Liam",
+                "Garcia",
+                normalized_city="Springfield",
+            ),
+            103: create_mock_person_with_normalized(
+                103,
+                "Olivia",
+                "Chen",
+                normalized_city="Oakland",
+            ),
+            104: create_mock_person_with_normalized(
+                104,
+                "Noah",
+                "Williams",
+                normalized_city="Oakland",
+            ),
+        }
+        enrolled_person_ids = {101, 102, 103, 104}
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_city_breakdown_from_persons(enrolled_person_ids, persons, 4)
+
+        city_map = {c.city: c for c in result}
+        assert city_map["Springfield"].count == 2
+        assert city_map["Springfield"].percentage == pytest.approx(50.0)
+        assert city_map["Oakland"].count == 2
+        assert city_map["Oakland"].percentage == pytest.approx(50.0)
+
+
+class TestSynagogueBreakdownFromPersons:
+    """Tests for synagogue breakdown using enrolled persons instead of normalized_mappings.
+
+    Same bug pattern: counts came from per-session rows. The fix uses
+    persons.normalized_congregation field.
+    """
+
+    def test_synagogue_counts_unique_enrolled_persons(self) -> None:
+        """Person enrolled in 3 sessions should be counted once in synagogue breakdown."""
+        from api.services.registration_service import RegistrationService
+
+        persons = {
+            101: create_mock_person_with_normalized(
+                101,
+                "Emma",
+                "Johnson",
+                normalized_congregation="Temple Beth El",
+            ),
+            102: create_mock_person_with_normalized(
+                102,
+                "Liam",
+                "Garcia",
+                normalized_congregation="Congregation Shalom",
+            ),
+        }
+        enrolled_person_ids = {101, 102}
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_synagogue_breakdown_from_persons(enrolled_person_ids, persons, 2)
+
+        syn_map = {s.synagogue: s.count for s in result}
+        assert syn_map["Temple Beth El"] == 1
+        assert syn_map["Congregation Shalom"] == 1
+
+    def test_synagogue_uses_normalized_congregation(self) -> None:
+        """Synagogue breakdown should use persons.normalized_congregation field."""
+        from api.services.registration_service import RegistrationService
+
+        person = create_mock_person_with_normalized(
+            101,
+            "Emma",
+            "Johnson",
+            normalized_congregation="Temple Beth El",
+        )
+
+        persons = {101: person}
+        enrolled_person_ids = {101}
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_synagogue_breakdown_from_persons(enrolled_person_ids, persons, 1)
+
+        assert len(result) == 1
+        assert result[0].synagogue == "Temple Beth El"
+
+    def test_synagogue_excludes_non_enrolled(self) -> None:
+        """Only enrolled person_ids should be counted in synagogue breakdown."""
+        from api.services.registration_service import RegistrationService
+
+        persons = {
+            101: create_mock_person_with_normalized(
+                101,
+                "Emma",
+                "Johnson",
+                normalized_congregation="Temple Beth El",
+            ),
+            102: create_mock_person_with_normalized(
+                102,
+                "Liam",
+                "Garcia",
+                normalized_congregation="Congregation Shalom",
+            ),
+        }
+        enrolled_person_ids = {101}
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_synagogue_breakdown_from_persons(enrolled_person_ids, persons, 1)
+
+        syn_names = [s.synagogue for s in result]
+        assert "Temple Beth El" in syn_names
+        assert "Congregation Shalom" not in syn_names
+
+    def test_synagogue_empty_values_excluded(self) -> None:
+        """Persons with no congregation should not appear in breakdown."""
+        from api.services.registration_service import RegistrationService
+
+        person = create_mock_person_with_normalized(
+            101,
+            "Emma",
+            "Johnson",
+            normalized_congregation="",
+        )
+
+        persons = {101: person}
+        enrolled_person_ids = {101}
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_synagogue_breakdown_from_persons(enrolled_person_ids, persons, 1)
+
+        assert result == []
+
+    def test_synagogue_percentage_calculation(self) -> None:
+        """Synagogue breakdown should calculate correct percentages."""
+        from api.services.registration_service import RegistrationService
+
+        persons = {
+            101: create_mock_person_with_normalized(
+                101,
+                "Emma",
+                "Johnson",
+                normalized_congregation="Temple Beth El",
+            ),
+            102: create_mock_person_with_normalized(
+                102,
+                "Liam",
+                "Garcia",
+                normalized_congregation="Temple Beth El",
+            ),
+            103: create_mock_person_with_normalized(
+                103,
+                "Olivia",
+                "Chen",
+                normalized_congregation="Congregation Shalom",
+            ),
+        }
+        enrolled_person_ids = {101, 102, 103}
+
+        mock_repo = Mock()
+        service = RegistrationService(mock_repo)
+        result = service._compute_synagogue_breakdown_from_persons(enrolled_person_ids, persons, 3)
+
+        syn_map = {s.synagogue: s for s in result}
+        assert syn_map["Temple Beth El"].count == 2
+        assert syn_map["Temple Beth El"].percentage == pytest.approx(66.67, rel=0.01)
+        assert syn_map["Congregation Shalom"].count == 1
+        assert syn_map["Congregation Shalom"].percentage == pytest.approx(33.33, rel=0.01)

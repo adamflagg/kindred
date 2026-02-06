@@ -1,21 +1,24 @@
 /**
  * GeoMap - Interactive Leaflet map showing geographic distribution.
  *
- * Displays circle markers sized by count for cities, schools, or synagogues.
+ * Displays circle markers sized by count for cities, schools, and/or synagogues.
+ * Supports multiple simultaneous layers using Leaflet Panes for clean stacking.
  * Uses OpenStreetMap tiles with CartoDB Positron styling for a clean look.
  */
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useMemo } from 'react'
 import { MapContainer, TileLayer, CircleMarker, Tooltip, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import {
-  getCityCoords,
   BAY_AREA_CENTER,
   BAY_AREA_ZOOM,
   REGION_COLORS,
   type LatLng,
 } from '../../../data/californiaGeo'
+import { getLocationCoords } from '../../../data/geoCoords'
+import type { DrilldownFilter } from '../../../types/metrics'
 import { RegionOverlays } from './RegionOverlays'
+import type { GeoCategory } from './GeoCategoryTabs'
 
 export interface GeoDataItem {
   name: string
@@ -23,13 +26,18 @@ export interface GeoDataItem {
   percentage: number
 }
 
-export interface GeoMapProps {
-  /** Data to display on map */
+export interface GeoMapLayer {
+  category: GeoCategory
   data: GeoDataItem[]
-  /** Category being displayed (affects marker color) */
-  category: 'city' | 'school' | 'synagogue'
+}
+
+export interface GeoMapProps {
+  /** Layers to display on map (multiple categories simultaneously) */
+  layers: GeoMapLayer[]
   /** Callback when a marker is clicked */
   onMarkerClick?: (name: string) => void
+  /** Callback for drilldown when a marker is clicked */
+  onDrilldown?: (filter: DrilldownFilter) => void
   /** Currently selected/highlighted item */
   selectedItem?: string | null
   /** Map height in pixels or CSS value */
@@ -57,6 +65,13 @@ const CATEGORY_COLORS = {
   },
 }
 
+/** Pane names and z-index for each category */
+const CATEGORY_PANES: Record<GeoCategory, { name: string; zIndex: number }> = {
+  city: { name: 'cityPane', zIndex: 410 },
+  school: { name: 'schoolPane', zIndex: 420 },
+  synagogue: { name: 'synagoguePane', zIndex: 430 },
+}
+
 /** Calculate marker radius based on count (min 8, max 35) */
 function getMarkerRadius(count: number, maxCount: number): number {
   const minRadius = 8
@@ -65,45 +80,71 @@ function getMarkerRadius(count: number, maxCount: number): number {
   return minRadius + normalized * (maxRadius - minRadius)
 }
 
-/** Component to handle map bounds/center changes */
+/** Component to handle map bounds/center changes and create custom panes */
 function MapController({ center, zoom }: { center: LatLng; zoom: number }) {
   const map = useMap()
   useEffect(() => {
     map.setView(center, zoom)
   }, [map, center, zoom])
+
+  // Create custom panes for layer stacking
+  useEffect(() => {
+    for (const { name, zIndex } of Object.values(CATEGORY_PANES)) {
+      if (!map.getPane(name)) {
+        const pane = map.createPane(name)
+        pane.style.zIndex = String(zIndex)
+      }
+    }
+    // Region pane below markers
+    if (!map.getPane('regionPane')) {
+      const pane = map.createPane('regionPane')
+      pane.style.zIndex = '399'
+    }
+  }, [map])
+
   return null
 }
 
 export function GeoMap({
-  data,
-  category,
+  layers,
   onMarkerClick,
+  onDrilldown,
   selectedItem,
   height = 575,
   showRegions = true,
 }: GeoMapProps) {
   const mapRef = useRef<L.Map | null>(null)
-  const colors = CATEGORY_COLORS[category]
+  const isMultiLayer = layers.length > 1
+  const baseOpacity = isMultiLayer ? 0.5 : 0.7
 
-  // Filter data to items with known coordinates
-  const mappableData = data
-    .map((item) => ({
-      ...item,
-      coords: getCityCoords(item.name),
-    }))
-    .filter((item): item is GeoDataItem & { coords: LatLng } => item.coords !== undefined)
+  // Process all layers: resolve coords, compute max count across all
+  const processedLayers = useMemo(() => {
+    return layers.map((layer) => {
+      const mappable = layer.data
+        .map((item) => ({
+          ...item,
+          coords: getLocationCoords(layer.category, item.name),
+        }))
+        .filter((item): item is GeoDataItem & { coords: LatLng } => item.coords !== undefined)
+      const unmappable = layer.data.filter((item) => !getLocationCoords(layer.category, item.name))
+      return { ...layer, mappable, unmappable }
+    })
+  }, [layers])
 
-  // Items without coordinates (for display in "Other" section)
-  const unmappableData = data.filter((item) => !getCityCoords(item.name))
+  // Global max count across all layers for consistent marker sizing
+  const maxCount = useMemo(() => {
+    return Math.max(...processedLayers.flatMap((l) => l.mappable.map((d) => d.count)), 1)
+  }, [processedLayers])
 
-  // Calculate max count for radius scaling
-  const maxCount = Math.max(...mappableData.map((d) => d.count), 1)
+  // Total counts for legend
+  const totalMappable = processedLayers.reduce((sum, l) => sum + l.mappable.length, 0)
+  const totalUnmappable = processedLayers.reduce((sum, l) => sum + l.unmappable.length, 0)
 
   return (
     <div className="space-y-4">
       {/* Map Container */}
       <div
-        className="border-border shadow-lodge-sm overflow-hidden rounded-xl border"
+        className="border-border shadow-lodge-sm relative z-0 overflow-hidden rounded-xl border"
         style={{ height }}
       >
         <MapContainer
@@ -122,37 +163,51 @@ export function GeoMap({
 
           <MapController center={BAY_AREA_CENTER} zoom={BAY_AREA_ZOOM} />
 
-          {/* Region overlays */}
-          <RegionOverlays show={showRegions} />
+          {/* Region overlays - always available when enabled */}
+          <RegionOverlays show={showRegions} pane="regionPane" />
 
-          {/* Circle markers for each location */}
-          {mappableData.map((item) => {
-            const isSelected = selectedItem === item.name
-            const radius = getMarkerRadius(item.count, maxCount)
+          {/* Render markers for each layer */}
+          {processedLayers.map((layer) => {
+            const colors = CATEGORY_COLORS[layer.category]
+            const paneName = CATEGORY_PANES[layer.category].name
 
-            return (
-              <CircleMarker
-                key={item.name}
-                center={item.coords}
-                radius={radius}
-                pathOptions={{
-                  fillColor: isSelected ? colors.selected : colors.fill,
-                  fillOpacity: isSelected ? 0.9 : 0.7,
-                  color: isSelected ? colors.selected : colors.stroke,
-                  weight: isSelected ? 3 : 2,
-                }}
-                eventHandlers={{
-                  click: () => onMarkerClick?.(item.name),
-                }}
-              >
-                <Tooltip direction="top" offset={[0, -radius]} opacity={0.95}>
-                  <div className="text-sm font-medium">{item.name}</div>
-                  <div className="text-xs text-gray-600">
-                    {item.count} camper{item.count !== 1 ? 's' : ''} ({item.percentage.toFixed(1)}%)
-                  </div>
-                </Tooltip>
-              </CircleMarker>
-            )
+            return layer.mappable.map((item) => {
+              const isSelected = selectedItem === item.name
+              const radius = getMarkerRadius(item.count, maxCount)
+
+              return (
+                <CircleMarker
+                  key={`${layer.category}-${item.name}`}
+                  center={item.coords}
+                  radius={radius}
+                  pane={paneName}
+                  pathOptions={{
+                    fillColor: isSelected ? colors.selected : colors.fill,
+                    fillOpacity: isSelected ? 0.9 : baseOpacity,
+                    color: isSelected ? colors.selected : colors.stroke,
+                    weight: isSelected ? 3 : 2,
+                  }}
+                  eventHandlers={{
+                    click: () => {
+                      onMarkerClick?.(item.name)
+                      onDrilldown?.({
+                        type: layer.category,
+                        value: item.name,
+                        label: item.name,
+                      })
+                    },
+                  }}
+                >
+                  <Tooltip direction="top" offset={[0, -radius]} opacity={0.95}>
+                    <div className="text-sm font-medium">{item.name}</div>
+                    <div className="text-xs text-gray-600">
+                      {item.count} camper{item.count !== 1 ? 's' : ''} ({item.percentage.toFixed(1)}
+                      %)
+                    </div>
+                  </Tooltip>
+                </CircleMarker>
+              )
+            })
           })}
         </MapContainer>
       </div>
@@ -160,20 +215,30 @@ export function GeoMap({
       {/* Legend */}
       <div className="text-muted-foreground flex flex-wrap items-center justify-between gap-2 text-sm">
         <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-1.5">
-            <div
-              className="h-3 w-3 rounded-full"
-              style={{
-                backgroundColor: colors.fill,
-                border: `2px solid ${colors.stroke}`,
-              }}
-            />
-            <span>Size = camper count</span>
-          </div>
-          {mappableData.length > 0 && (
+          {/* Show color swatch for each active layer */}
+          {layers.map((layer) => {
+            const colors = CATEGORY_COLORS[layer.category]
+            return (
+              <div key={layer.category} className="flex items-center gap-1.5">
+                <div
+                  className="h-3 w-3 rounded-full"
+                  style={{
+                    backgroundColor: colors.fill,
+                    border: `2px solid ${colors.stroke}`,
+                  }}
+                />
+                <span className="capitalize">
+                  {layer.category === 'synagogue'
+                    ? 'synagogues'
+                    : `${layer.category === 'city' ? 'cities' : 'schools'}`}
+                </span>
+              </div>
+            )
+          })}
+          {totalMappable > 0 && (
             <span>
-              {mappableData.length} location
-              {mappableData.length !== 1 ? 's' : ''} shown
+              {totalMappable} location
+              {totalMappable !== 1 ? 's' : ''} shown
             </span>
           )}
           {showRegions && (
@@ -191,10 +256,10 @@ export function GeoMap({
             </div>
           )}
         </div>
-        {unmappableData.length > 0 && (
+        {totalUnmappable > 0 && (
           <span className="text-xs">
-            {unmappableData.length} location
-            {unmappableData.length !== 1 ? 's' : ''} not mapped
+            {totalUnmappable} location
+            {totalUnmappable !== 1 ? 's' : ''} not mapped
           </span>
         )}
       </div>
