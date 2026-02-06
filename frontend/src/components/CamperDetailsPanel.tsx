@@ -176,7 +176,10 @@ export default function CamperDetailsPanel({
       } as unknown as AttendeesResponse
 
       if (attendees.length === 0) {
-        return { camper: toAppCamper(person, dummyAttendee), enrollments: [] as CurrentEnrollment[] }
+        return {
+          camper: toAppCamper(person, dummyAttendee),
+          enrollments: [] as CurrentEnrollment[],
+        }
       }
 
       // Build enrollments list from ALL attendee records

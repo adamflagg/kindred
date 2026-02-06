@@ -226,10 +226,11 @@ export default function CamperDetail() {
   const pronouns = formatPronouns(camper)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sessionShortName = getSessionShortName(camper.expand?.session as any)
-  const allSessionNames = enrolledCampers.length > 1
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ? enrolledCampers.map((c) => getSessionShortName(c.expand?.session as any))
-    : undefined
+  const allSessionNames =
+    enrolledCampers.length > 1
+      ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        enrolledCampers.map((c) => getSessionShortName(c.expand?.session as any))
+      : undefined
   const agePreferenceRequests = allBunkRequests.filter((r) => r.request_type === 'age_preference')
 
   return (

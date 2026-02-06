@@ -441,7 +441,10 @@ export default function AllCampersView() {
             <span className="text-stone-500 dark:text-stone-400">
               {filteredCampers.length === 1 ? 'camper' : 'campers'}
               {filteredCampers.length !== mergedCampers.length && (
-                <span className="text-stone-400 dark:text-stone-500"> of {mergedCampers.length}</span>
+                <span className="text-stone-400 dark:text-stone-500">
+                  {' '}
+                  of {mergedCampers.length}
+                </span>
               )}
             </span>
           </div>

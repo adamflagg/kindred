@@ -42,9 +42,12 @@ export function useCamperHistory(
         const allHistory: HistoricalRecord[] = []
 
         // Add current year data for ALL enrollments (multi-session support)
-        const enrollments = allEnrolledCampers && allEnrolledCampers.length > 0
-          ? allEnrolledCampers
-          : camper ? [camper] : []
+        const enrollments =
+          allEnrolledCampers && allEnrolledCampers.length > 0
+            ? allEnrolledCampers
+            : camper
+              ? [camper]
+              : []
 
         for (const enrolled of enrollments) {
           if (enrolled.expand?.session) {
@@ -116,9 +119,12 @@ export function useCamperHistory(
       } catch (err) {
         console.error('Error fetching camp history:', err)
         // If error, at least return current year data for all enrollments
-        const fallbackEnrollments = allEnrolledCampers && allEnrolledCampers.length > 0
-          ? allEnrolledCampers
-          : camper ? [camper] : []
+        const fallbackEnrollments =
+          allEnrolledCampers && allEnrolledCampers.length > 0
+            ? allEnrolledCampers
+            : camper
+              ? [camper]
+              : []
 
         const fallback: HistoricalRecord[] = []
         for (const enrolled of fallbackEnrollments) {

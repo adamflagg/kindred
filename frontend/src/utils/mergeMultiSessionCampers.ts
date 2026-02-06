@@ -28,10 +28,7 @@ const SESSION_TYPE_PRIORITY: Record<string, number> = {
   taste: 3,
 }
 
-export function mergeMultiSessionCampers(
-  campers: Camper[],
-  sessions: Session[]
-): MergedCamper[] {
+export function mergeMultiSessionCampers(campers: Camper[], sessions: Session[]): MergedCamper[] {
   const sessionMap = new Map<number, Session>()
   for (const s of sessions) {
     sessionMap.set(s.cm_id, s)
