@@ -351,6 +351,9 @@ export interface PersonsRecord<Traw_data = unknown> {
   preferred_name?: string
   primary_email?: string
   secondary_email?: string
+  normalized_city?: string
+  normalized_congregation?: string
+  normalized_school?: string
   raw_data?: null | Traw_data
   school?: string
   updated?: IsoDateString

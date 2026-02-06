@@ -11,6 +11,7 @@ import type { SatisfactionMap } from '../../hooks/camper/types'
 
 interface BunkingStatusPanelProps {
   camper: Camper
+  enrolledCampers?: Camper[]
   sessionShortName: string
   allBunkRequests: EnhancedBunkRequest[]
   agePreferenceRequests: EnhancedBunkRequest[]
@@ -20,6 +21,7 @@ interface BunkingStatusPanelProps {
 
 export function BunkingStatusPanel({
   camper,
+  enrolledCampers,
   sessionShortName,
   allBunkRequests,
   agePreferenceRequests,
@@ -60,9 +62,44 @@ export function BunkingStatusPanel({
             </div>
           </div>
 
-          {/* Current Assignment Badge */}
-          <div className="flex-shrink-0">
-            {camper.expand?.assigned_bunk ? (
+          {/* Current Assignment Badge(s) */}
+          <div className="flex flex-shrink-0 flex-wrap gap-2">
+            {enrolledCampers && enrolledCampers.length > 1 ? (
+              enrolledCampers.map((ec) => {
+                const sess = ec.expand?.session
+                const bunk = ec.expand?.assigned_bunk
+                const sessMatch = sess?.name?.match(/(\d+[ab]?)/i)
+                const sessLabel = sessMatch?.[1]
+                  ? `S${sessMatch[1]}`
+                  : sess?.name?.toLowerCase().includes('taste')
+                    ? 'ToC'
+                    : sess?.session_type === 'ag'
+                      ? 'AG'
+                      : sess?.name || '?'
+                return bunk ? (
+                  <Link
+                    key={ec.id}
+                    to={`/summer/session/${sessionNameToUrl(sess?.name || '')}/board`}
+                    className="bg-forest-50 dark:bg-forest-900/30 border-forest-200 dark:border-forest-800 hover:bg-forest-100 dark:hover:bg-forest-900/50 inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 transition-colors"
+                  >
+                    <Home className="text-forest-600 dark:text-forest-400 h-3.5 w-3.5" />
+                    <span className="text-forest-700 dark:text-forest-300 text-sm font-semibold">
+                      {sessLabel}: {bunk.name}
+                    </span>
+                  </Link>
+                ) : (
+                  <span
+                    key={ec.id}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 dark:border-amber-800 dark:bg-amber-900/20"
+                  >
+                    <Clock className="h-3.5 w-3.5 text-amber-500" />
+                    <span className="text-xs font-medium text-amber-700 dark:text-amber-400">
+                      {sessLabel}: Awaiting
+                    </span>
+                  </span>
+                )
+              })
+            ) : camper.expand?.assigned_bunk ? (
               <Link
                 to={`/summer/session/${sessionNameToUrl(camper.expand?.session?.name || '')}/board`}
                 className="bg-forest-50 dark:bg-forest-900/30 border-forest-200 dark:border-forest-800 hover:bg-forest-100 dark:hover:bg-forest-900/50 inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2 transition-colors"

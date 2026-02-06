@@ -452,7 +452,10 @@ export default function CamperDetailsPanel({
   }, [onClose])
 
   // Helper: get location from person's discrete address columns
-  const location = getLocationDisplay(person?.address_city, person?.address_state)
+  const location = getLocationDisplay(
+    person?.normalized_city ?? person?.address_city,
+    person?.address_state
+  )
 
   const getSessionShortName = () => {
     const session = camper?.expand?.session
@@ -742,24 +745,41 @@ export default function CamperDetailsPanel({
               {camper.years_at_camp || 0} {(camper.years_at_camp || 0) === 1 ? 'year' : 'years'}
             </span>
           </div>
-          {camper.expand?.assigned_bunk && (
-            <div className="text-forest-100 flex items-center gap-1.5">
-              <Home className="text-forest-300 h-3 w-3" />
-              <span>{camper.expand.assigned_bunk.name}</span>
-            </div>
-          )}
           {currentEnrollments.length > 1 ? (
-            <div className="text-forest-100 flex items-center gap-1.5">
-              <Calendar className="text-forest-300 h-3 w-3" />
-              <span>{currentEnrollments.map(getEnrollmentShortName).join(', ')}</span>
-            </div>
-          ) : (
-            getSessionShortName() && (
-              <div className="text-forest-100 flex items-center gap-1.5">
+            currentEnrollments.map((enrollment) => (
+              <div
+                key={enrollment.sessionCmId}
+                className="text-forest-100 flex items-center gap-1.5"
+              >
                 <Calendar className="text-forest-300 h-3 w-3" />
-                <span>{getSessionShortName()}</span>
+                <span>
+                  {getEnrollmentShortName(enrollment)}
+                  {enrollment.bunkName ? (
+                    <>
+                      {' '}
+                      <Home className="text-forest-300 inline h-3 w-3" /> {enrollment.bunkName}
+                    </>
+                  ) : (
+                    <span className="text-amber-300"> (unassigned)</span>
+                  )}
+                </span>
               </div>
-            )
+            ))
+          ) : (
+            <>
+              {camper.expand?.assigned_bunk && (
+                <div className="text-forest-100 flex items-center gap-1.5">
+                  <Home className="text-forest-300 h-3 w-3" />
+                  <span>{camper.expand.assigned_bunk.name}</span>
+                </div>
+              )}
+              {getSessionShortName() && (
+                <div className="text-forest-100 flex items-center gap-1.5">
+                  <Calendar className="text-forest-300 h-3 w-3" />
+                  <span>{getSessionShortName()}</span>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

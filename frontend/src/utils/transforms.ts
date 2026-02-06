@@ -47,7 +47,9 @@ export function toAppCamper(
     created: new Date().toISOString(),
     updated: new Date().toISOString(),
     years_at_camp: person.years_at_camp || 0,
-    ...(person.school && { school: person.school }),
+    ...((person.normalized_school || person.school) && {
+      school: person.normalized_school || person.school,
+    }),
     pronouns: person.gender_pronoun_name || '',
     email: '',
     tags: [],

@@ -219,7 +219,10 @@ export default function CamperDetail() {
   }
 
   // Computed values - use discrete columns instead of JSON parsing
-  const location = getLocationDisplay(person?.address_city, person?.address_state)
+  const location = getLocationDisplay(
+    person?.normalized_city ?? person?.address_city,
+    person?.address_state
+  )
   const pronouns = formatPronouns(camper)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sessionShortName = getSessionShortName(camper.expand?.session as any)
@@ -247,6 +250,7 @@ export default function CamperDetail() {
       {/* Hero Header */}
       <HeroHeader
         camper={camper}
+        enrolledCampers={enrolledCampers}
         currentYear={currentYear}
         location={location}
         sessionShortName={sessionShortName}
@@ -268,6 +272,7 @@ export default function CamperDetail() {
           {/* Bunking Status */}
           <BunkingStatusPanel
             camper={camper}
+            enrolledCampers={enrolledCampers}
             sessionShortName={sessionShortName}
             allBunkRequests={allBunkRequests}
             agePreferenceRequests={agePreferenceRequests}
