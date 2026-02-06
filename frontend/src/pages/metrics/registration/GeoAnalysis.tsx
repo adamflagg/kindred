@@ -15,6 +15,7 @@ import { useDrilldown } from '../../../hooks/useDrilldown'
 import {
   useNormalizedMappings,
   type NormalizedCategory,
+  type SourceMapping,
 } from '../../../hooks/useNormalizedMappings'
 import { useIsAdmin } from '../../../hooks/useIsAdmin'
 import {
@@ -178,10 +179,7 @@ export default function GeoAnalysis() {
   }, [geoData])
 
   // Source mappings per category
-  const sourceMappingsFor: Record<
-    GeoCategory,
-    Map<string, import('../../../hooks/useNormalizedMappings').SourceMapping[]> | undefined
-  > = {
+  const sourceMappingsFor: Record<GeoCategory, Map<string, SourceMapping[]> | undefined> = {
     city: citySources,
     school: schoolSources,
     synagogue: synagogueSources,

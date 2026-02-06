@@ -9,16 +9,46 @@
  */
 
 import { useState, useMemo, useEffect } from 'react'
+import { Link } from 'react-router'
 import { X, Download, Search, ArrowUpDown, ArrowUp, ArrowDown, Loader2 } from 'lucide-react'
 import { useDrilldownAttendees } from '../../hooks/useDrilldownAttendees'
 import type { DrilldownAttendee, DrilldownFilter } from '../../types/metrics'
 
+/**
+ * Shorten AG session names for compact display.
+ * Detects AG sessions by "gender" keyword (present in all historical variants 2017-2026)
+ * or "AG " prefix, extracts session identifier + grade range.
+ *
+ * Examples (recent format, 2022+):
+ *   "All-Gender Cabin-Session 4 (4th - 6th grades)"       → "AG 4 (4-6)"
+ *   "All-Gender Cabin-Session 2 (9th & 10th grades)"      → "AG 2 (9-10)"
+ *   "All-Gender Cabin-Session 2 (7th - 9th grades)"       → "AG 2 (7-9)"
+ * Older formats:
+ *   "Session 4 (All-Gender Cabin)-6th & 7th grades"       → "AG 4 (6-7)"
+ *   "Session B (All-Gender Cabins)"                       → "AG B"
+ *   "Session 2" (non-AG)                                  → "Session 2" (unchanged)
+ */
+function shortenSessionName(name: string): string {
+  const lower = name.toLowerCase()
+  if (!lower.includes('gender') && !/\bag[\s-]/i.test(name)) return name
+
+  // Extract session identifier (number or letter)
+  const sessionMatch = name.match(/session\s*(\w+)/i)
+  const sessionId = sessionMatch?.[1] ?? ''
+
+  // Extract grade range — "(4th - 6th grades)", "(9th & 10th grades)", etc.
+  const grades = name.match(/(\d+)\w*\s*[-–&]\s*(\d+)\w*\s*grades?\b/i)
+  const gradeRange = grades ? ` (${grades[1]}-${grades[2]})` : ''
+
+  return sessionId ? `AG ${sessionId}${gradeRange}` : `AG${gradeRange}`
+}
+
 /** Get display session name: comma-joined if multi-session, fallback to single session_name. */
 function getSessionDisplay(a: DrilldownAttendee): string {
   if (a.sessions && a.sessions.length > 0) {
-    return a.sessions.map((s) => s.session_name).join(', ')
+    return a.sessions.map((s) => shortenSessionName(s.session_name)).join(', ')
   }
-  return a.session_name
+  return shortenSessionName(a.session_name)
 }
 
 interface DrillDownModalProps {
@@ -144,6 +174,7 @@ export function DrillDownModal({
 
   const downloadCsv = () => {
     const headers = [
+      'CampMinder ID',
       'Name',
       'Grade',
       'Gender',
@@ -158,7 +189,8 @@ export function DrillDownModal({
     ]
 
     const rows = sortedAttendees.map((a) => [
-      a.preferred_name || `${a.first_name} ${a.last_name}`,
+      a.person_id,
+      `${a.preferred_name || a.first_name} ${a.last_name}`,
       a.grade ?? '',
       a.gender ?? '',
       a.age ?? '',
@@ -261,7 +293,7 @@ export function DrillDownModal({
             </div>
           ) : (
             <table className="w-full text-sm">
-              <thead className="bg-muted/80 sticky top-0 backdrop-blur">
+              <thead className="bg-muted sticky top-0">
                 <tr>
                   <th
                     onClick={() => handleSort('name')}
@@ -327,30 +359,56 @@ export function DrillDownModal({
                     key={`${attendee.person_id}-${attendee.session_cm_id}-${index}`}
                     className="border-border hover:bg-muted/30 border-b transition-colors last:border-0"
                   >
-                    <td className="text-foreground px-4 py-3 font-medium">
-                      {attendee.preferred_name || `${attendee.first_name} ${attendee.last_name}`}
+                    <td
+                      className="text-foreground max-w-[180px] truncate px-4 py-3 font-medium"
+                      title={`${attendee.preferred_name || attendee.first_name} ${attendee.last_name}`}
+                    >
+                      <Link
+                        to={`/summer/camper/${attendee.person_id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:text-forest-700 dark:hover:text-forest-400 transition-colors"
+                      >
+                        {`${attendee.preferred_name || attendee.first_name} ${attendee.last_name}`}
+                      </Link>
                       {attendee.is_returning && (
-                        <span className="bg-primary/10 text-primary ml-2 rounded px-1.5 py-0.5 text-xs">
-                          Returning
+                        <span className="bg-primary/10 text-primary ml-1.5 rounded px-1 py-0.5 text-xs">
+                          R
                         </span>
                       )}
                     </td>
-                    <td className="text-foreground px-4 py-3 text-center">
+                    <td className="text-foreground px-4 py-3 text-center whitespace-nowrap">
                       {attendee.grade ?? '—'}
                     </td>
-                    <td className="text-foreground px-4 py-3 text-center">
+                    <td className="text-foreground px-4 py-3 text-center whitespace-nowrap">
                       {attendee.gender ?? '—'}
                     </td>
-                    <td className="text-foreground px-4 py-3">{attendee.school ?? '—'}</td>
-                    <td className="text-foreground px-4 py-3">
+                    <td
+                      className="text-foreground max-w-[160px] truncate px-4 py-3"
+                      title={attendee.school ?? undefined}
+                    >
+                      {attendee.school ?? '—'}
+                    </td>
+                    <td
+                      className="text-foreground max-w-[140px] truncate px-4 py-3"
+                      title={
+                        attendee.city
+                          ? attendee.state
+                            ? `${attendee.city}, ${attendee.state}`
+                            : attendee.city
+                          : undefined
+                      }
+                    >
                       {attendee.city
                         ? attendee.state
                           ? `${attendee.city}, ${attendee.state}`
                           : attendee.city
                         : '—'}
                     </td>
-                    <td className="text-foreground px-4 py-3">{getSessionDisplay(attendee)}</td>
-                    <td className="text-foreground px-4 py-3 text-center">
+                    <td className="text-foreground px-4 py-3 whitespace-nowrap">
+                      {getSessionDisplay(attendee)}
+                    </td>
+                    <td className="text-foreground px-4 py-3 text-center whitespace-nowrap">
                       {attendee.years_at_camp ?? '—'}
                     </td>
                   </tr>
