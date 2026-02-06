@@ -96,10 +96,9 @@ export default function WaitlistAnalysis() {
           className="border-amber-200 dark:border-amber-800"
           onClick={() =>
             setFilter({
-              type: 'status',
-              value: 'waitlisted',
+              type: 'waitlist_total',
+              value: 'all',
               label: 'Total Waitlisted',
-              statusOverride: ['waitlisted'],
             })
           }
         />
@@ -163,7 +162,11 @@ export default function WaitlistAnalysis() {
         <div className="grid gap-6 lg:grid-cols-2">
           {data.by_session.length > 0 && (
             <WaitlistBySessionChart
-              data={sortSessionDataByCampThenQuest(data.by_session, sessionDateLookup, sessionTypeLookup)}
+              data={sortSessionDataByCampThenQuest(
+                data.by_session,
+                sessionDateLookup,
+                sessionTypeLookup
+              )}
               onBarClick={setFilter}
               sessionDateLookup={sessionDateLookup}
               sessionTypeLookup={sessionTypeLookup}
@@ -226,32 +229,34 @@ export default function WaitlistAnalysis() {
                 </tr>
               </thead>
               <tbody>
-                {sortSessionDataByCampThenQuest(data.by_session, sessionDateLookup, sessionTypeLookup).map(
-                  (session: WaitlistSessionBreakdown) => (
-                    <tr key={session.session_cm_id} className="border-border/50 border-b">
-                      <td className="px-4 py-2 font-medium">{session.session_name}</td>
-                      <td className="px-4 py-2 text-right">
-                        <span
-                          className={
-                            session.no_enrollment > 0
-                              ? 'font-semibold text-red-600 dark:text-red-400'
-                              : ''
-                          }
-                        >
-                          {session.no_enrollment}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 text-right">{session.has_enrollment}</td>
-                      <td className="px-4 py-2 text-right text-emerald-600 dark:text-emerald-400">
-                        {session.accepted}
-                      </td>
-                      <td className="px-4 py-2 text-right text-red-600 dark:text-red-400">
-                        {session.declined}
-                      </td>
-                      <td className="px-4 py-2 text-right font-medium">{session.waitlisted}</td>
-                    </tr>
-                  )
-                )}
+                {sortSessionDataByCampThenQuest(
+                  data.by_session,
+                  sessionDateLookup,
+                  sessionTypeLookup
+                ).map((session: WaitlistSessionBreakdown) => (
+                  <tr key={session.session_cm_id} className="border-border/50 border-b">
+                    <td className="px-4 py-2 font-medium">{session.session_name}</td>
+                    <td className="px-4 py-2 text-right">
+                      <span
+                        className={
+                          session.no_enrollment > 0
+                            ? 'font-semibold text-red-600 dark:text-red-400'
+                            : ''
+                        }
+                      >
+                        {session.no_enrollment}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 text-right">{session.has_enrollment}</td>
+                    <td className="px-4 py-2 text-right text-emerald-600 dark:text-emerald-400">
+                      {session.accepted}
+                    </td>
+                    <td className="px-4 py-2 text-right text-red-600 dark:text-red-400">
+                      {session.declined}
+                    </td>
+                    <td className="px-4 py-2 text-right font-medium">{session.waitlisted}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

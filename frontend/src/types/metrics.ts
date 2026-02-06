@@ -348,6 +348,7 @@ export interface DrilldownFilter {
     | 'waitlist_has_enrollment'
     | 'waitlist_accepted'
     | 'waitlist_declined'
+    | 'waitlist_total'
   value: string
   label: string // Display label for modal title
   /** Override status filter (for status cards like Waitlisted, Cancelled) */
@@ -371,6 +372,7 @@ export interface DrilldownAttendee {
   status: string
   is_returning: boolean
   sessions?: DrilldownSession[]
+  enrolled_sessions?: DrilldownSession[]
 }
 
 // Waitlist analysis types

@@ -158,10 +158,9 @@ export function WaitlistBySessionChart({
   const handleBarClick = (barData: ChartDataItem) => {
     if (!onBarClick || !barData) return
     onBarClick({
-      type: 'session',
+      type: 'waitlist_total',
       value: String(barData.session_cm_id),
       label: barData.name,
-      statusOverride: ['waitlisted'],
     })
   }
 
