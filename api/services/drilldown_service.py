@@ -9,12 +9,28 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from api.schemas.metrics import DrilldownAttendee
+from api.schemas.metrics import DrilldownAttendee, DrilldownSession
 from api.services.registration_service import get_session_length_category
 from api.utils.session_metrics import compute_summer_metrics
 
 if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository
+
+# Breakdown types that are person-level attributes (should be deduped).
+# Session-based breakdowns (session, session_length) remain per-attendee.
+PERSON_LEVEL_BREAKDOWNS = frozenset(
+    {
+        "gender",
+        "grade",
+        "years_at_camp",
+        "returning_status",
+        "school",
+        "city",
+        "synagogue",
+        "status",
+        "first_summer_year",
+    }
+)
 
 
 class DrilldownService:
@@ -87,8 +103,19 @@ class DrilldownService:
             first_year_by_person,
         )
 
+        # Deduplicate for person-level breakdowns
+        person_attendee_groups: dict[int, list[Any]] | None = None
+        if breakdown_type in PERSON_LEVEL_BREAKDOWNS:
+            groups: dict[int, list[Any]] = {}
+            for a in filtered_attendees:
+                pid = getattr(a, "person_id", None)
+                if pid is not None:
+                    groups.setdefault(int(pid), []).append(a)
+            filtered_attendees = [g[0] for g in groups.values()]
+            person_attendee_groups = groups
+
         # Build response
-        return self._build_response(filtered_attendees, persons, sessions)
+        return self._build_response(filtered_attendees, persons, sessions, person_attendee_groups)
 
     def _find_ag_sessions_for_parent(self, sessions: dict[int, Any], session_cm_id: int | None) -> set[int]:
         """Find AG sessions that belong to a parent session.
@@ -247,13 +274,14 @@ class DrilldownService:
                     filtered.append(a)
 
             elif breakdown_type == "returning_status":
-                years = getattr(person, "years_at_camp", None) if person else None
-                if breakdown_value == "new":
-                    if years == 1:
-                        filtered.append(a)
-                elif breakdown_value == "returning":
-                    if years is not None and years > 1:
-                        filtered.append(a)
+                if person:
+                    years = getattr(person, "years_at_camp", 0)
+                    if breakdown_value == "new":
+                        if years == 1:
+                            filtered.append(a)
+                    elif breakdown_value == "returning":
+                        if years != 1:
+                            filtered.append(a)
 
             elif breakdown_type == "session_length":
                 if session:
@@ -295,13 +323,16 @@ class DrilldownService:
         attendees: list[Any],
         persons: dict[int, Any],
         _sessions: dict[int, Any],
+        person_attendee_groups: dict[int, list[Any]] | None = None,
     ) -> list[DrilldownAttendee]:
         """Build the response list from filtered attendees.
 
         Args:
             attendees: Filtered list of attendee records.
             persons: Dictionary of persons by cm_id.
-            sessions: Dictionary of sessions by cm_id.
+            _sessions: Dictionary of sessions by cm_id.
+            person_attendee_groups: If provided, maps person_id to all their
+                attendee records (for building multi-session lists).
 
         Returns:
             List of DrilldownAttendee records.
@@ -331,6 +362,24 @@ class DrilldownService:
             city = getattr(person, "address_city", None) or None
             state = getattr(person, "address_state", None) or None
 
+            # Build sessions list from all attendee records for this person
+            sessions_list: list[DrilldownSession] = []
+            if person_attendee_groups and person_id in person_attendee_groups:
+                for group_a in person_attendee_groups[person_id]:
+                    g_expand = getattr(group_a, "expand", {}) or {}
+                    g_session = (
+                        g_expand.get("session") if isinstance(g_expand, dict) else getattr(g_expand, "session", None)
+                    )
+                    if g_session:
+                        sessions_list.append(
+                            DrilldownSession(
+                                session_name=str(getattr(g_session, "name", "Unknown")),
+                                session_cm_id=int(getattr(g_session, "cm_id", 0)),
+                            )
+                        )
+            else:
+                sessions_list = [DrilldownSession(session_name=session_name, session_cm_id=session_cm_id)]
+
             result.append(
                 DrilldownAttendee(
                     person_id=person_id,
@@ -348,6 +397,7 @@ class DrilldownService:
                     session_cm_id=session_cm_id,
                     status=getattr(a, "status", "enrolled"),
                     is_returning=is_returning,
+                    sessions=sessions_list,
                 )
             )
 

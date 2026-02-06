@@ -508,6 +508,13 @@ class RetentionTrendsResponse(BaseModel):
 # ============================================================================
 
 
+class DrilldownSession(BaseModel):
+    """Session info for a deduped drilldown attendee."""
+
+    session_name: str = Field(description="Session name")
+    session_cm_id: int = Field(description="Session CampMinder ID")
+
+
 class DrilldownAttendee(BaseModel):
     """Attendee record for drill-down display.
 
@@ -530,3 +537,6 @@ class DrilldownAttendee(BaseModel):
     session_cm_id: int = Field(description="Session CampMinder ID")
     status: str = Field(description="Enrollment status")
     is_returning: bool = Field(False, description="Whether camper is returning (years_at_camp > 1)")
+    sessions: list[DrilldownSession] = Field(
+        default_factory=list, description="All sessions for this person (populated for person-level breakdowns)"
+    )

@@ -27,6 +27,11 @@ class MockPerson:
     school: str | None = None
     years_at_camp: int | None = None
     address: str | None = None  # JSON string with city
+    normalized_school: str | None = None
+    normalized_city: str | None = None
+    normalized_congregation: str | None = None
+    address_city: str | None = None
+    address_state: str | None = None
 
 
 @dataclass
@@ -218,8 +223,20 @@ class TestDrilldownServiceGetAttendees:
             ),
         ]
         mock_repo.fetch_persons.return_value = {
-            1: MockPerson(cm_id=1, first_name="Emma", last_name="Johnson", school="Riverside Elementary"),
-            2: MockPerson(cm_id=2, first_name="Liam", last_name="Garcia", school="Oak Valley Middle"),
+            1: MockPerson(
+                cm_id=1,
+                first_name="Emma",
+                last_name="Johnson",
+                school="Riverside Elementary",
+                normalized_school="Riverside Elementary",
+            ),
+            2: MockPerson(
+                cm_id=2,
+                first_name="Liam",
+                last_name="Garcia",
+                school="Oak Valley Middle",
+                normalized_school="Oak Valley Middle",
+            ),
         }
         mock_repo.fetch_sessions.return_value = {
             1000: MockSession(cm_id=1000, name="S1", session_type="main"),
