@@ -26,22 +26,22 @@ func failNTimes(n int) func() error {
 // trackingMock wraps MockSheetsWriter to inject errors per-method via error functions
 type trackingMock struct {
 	*MockSheetsWriter
-	writeErrFn          func() error
-	clearErrFn          func() error
-	ensureErrFn         func() error
-	setColorErrFn       func() error
-	setIndexErrFn       func() error
-	getMetadataErrFn    func() error
-	batchUpdateErrFn    func() error
-	deleteErrFn         func() error
-	writeCalls          atomic.Int32
-	clearCalls          atomic.Int32
-	ensureCalls         atomic.Int32
-	setColorCallCount   atomic.Int32
-	setIndexCallCount   atomic.Int32
-	getMetadataCallCnt  atomic.Int32
-	batchUpdateCallCnt  atomic.Int32
-	deleteCallCount     atomic.Int32
+	writeErrFn         func() error
+	clearErrFn         func() error
+	ensureErrFn        func() error
+	setColorErrFn      func() error
+	setIndexErrFn      func() error
+	getMetadataErrFn   func() error
+	batchUpdateErrFn   func() error
+	deleteErrFn        func() error
+	writeCalls         atomic.Int32
+	clearCalls         atomic.Int32
+	ensureCalls        atomic.Int32
+	setColorCallCount  atomic.Int32
+	setIndexCallCount  atomic.Int32
+	getMetadataCallCnt atomic.Int32
+	batchUpdateCallCnt atomic.Int32
+	deleteCallCount    atomic.Int32
 }
 
 func newTrackingMock() *trackingMock {
@@ -110,7 +110,9 @@ func (t *trackingMock) GetSheetMetadata(ctx context.Context, spreadsheetID strin
 	return t.MockSheetsWriter.GetSheetMetadata(ctx, spreadsheetID)
 }
 
-func (t *trackingMock) BatchUpdateTabProperties(ctx context.Context, spreadsheetID string, updates []TabPropertyUpdate) error {
+func (t *trackingMock) BatchUpdateTabProperties(
+	ctx context.Context, spreadsheetID string, updates []TabPropertyUpdate,
+) error {
 	t.batchUpdateCallCnt.Add(1)
 	if t.batchUpdateErrFn != nil {
 		if err := t.batchUpdateErrFn(); err != nil {
@@ -385,10 +387,10 @@ func TestRateLimitedWriter_RespectsContextCancellation(t *testing.T) {
 
 	err := writer.WriteToSheet(ctx, "s1", "tab", [][]interface{}{{"x"}})
 	if err == nil {
-		t.Fatal("WriteToSheet should return error when context is cancelled")
+		t.Fatal("WriteToSheet should return error when context is canceled")
 	}
 
-	// Should have been called fewer times than max retries because context was cancelled
+	// Should have been called fewer times than max retries because context was canceled
 	if mock.writeCalls.Load() >= 4 {
 		t.Errorf("WriteToSheet: inner called %d times, should be < 4 due to context cancellation", mock.writeCalls.Load())
 	}

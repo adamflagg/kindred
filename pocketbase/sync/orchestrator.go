@@ -1643,7 +1643,7 @@ func (o *Orchestrator) InitializeSyncServices() error {
 		if err != nil {
 			slog.Warn("Google Sheets disabled due to client error", "error", err)
 		} else if sheetsClient != nil {
-			sheetsWriter := NewRealSheetsWriter(sheetsClient)
+			sheetsWriter := NewRateLimitedSheetsWriter(NewRealSheetsWriter(sheetsClient), nil)
 			// Use DefaultDriveSearcher to enable automatic recovery of existing workbooks
 			// when the database is cleared but sheets still exist in Drive
 			driveSearcher := &DefaultDriveSearcher{}
