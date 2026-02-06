@@ -55,12 +55,18 @@ class WaitlistService:
         Returns:
             WaitlistMetricsResponse with summary counts and breakdowns.
         """
-        # Fetch sessions for filtering
-        effective_types = session_types or list(SUMMER_SESSION_TYPES)
-        sessions = await self.repository.fetch_sessions(year, effective_types)
+        # Fetch ALL sessions for enrollment lookup (cross-type visibility)
+        all_sessions = await self.repository.fetch_sessions(year, list(SUMMER_SESSION_TYPES))
 
-        # Build session cm_id set for filtering attendees
-        valid_session_ids = set(sessions.keys())
+        # Fetch filtered sessions for waitlist display
+        effective_types = session_types or list(SUMMER_SESSION_TYPES)
+        if effective_types == list(SUMMER_SESSION_TYPES):
+            filtered_sessions = all_sessions
+        else:
+            filtered_sessions = await self.repository.fetch_sessions(year, effective_types)
+
+        # Build session cm_id set for filtering waitlisted attendees
+        valid_session_ids = set(filtered_sessions.keys())
         if session_cm_id is not None:
             valid_session_ids = {sid for sid in valid_session_ids if sid == session_cm_id}
 
@@ -68,9 +74,9 @@ class WaitlistService:
         waitlisted_attendees = await self.repository.fetch_attendees(year, status_filter="waitlisted")
         enrolled_attendees = await self.repository.fetch_attendees(year, status_filter="enrolled")
 
-        # Filter to valid sessions
-        waitlisted_attendees = self._filter_to_sessions(waitlisted_attendees, valid_session_ids, sessions)
-        enrolled_attendees = self._filter_to_sessions(enrolled_attendees, set(sessions.keys()), sessions)
+        # Filter waitlisted to selected session types, enrolled to ALL types
+        waitlisted_attendees = self._filter_to_sessions(waitlisted_attendees, valid_session_ids, filtered_sessions)
+        enrolled_attendees = self._filter_to_sessions(enrolled_attendees, set(all_sessions.keys()), all_sessions)
 
         # Build mapping: person_id -> list of (session_cm_id, session_name) they're enrolled in
         enrolled_sessions_by_person: dict[int, list[tuple[int, str]]] = defaultdict(list)
@@ -94,7 +100,9 @@ class WaitlistService:
         # Key: waitlist_session_id -> {enrolled_session_id: count}
         enrolled_in_counts: dict[int, dict[int, int]] = defaultdict(lambda: defaultdict(int))
 
-        seen_waitlisted_persons: set[int] = set()
+        # Per-session dedup for breakdown, global dedup for summary
+        seen_per_session: dict[int, set[int]] = defaultdict(set)
+        seen_for_summary: set[int] = set()
         for att in waitlisted_attendees:
             pid = int(getattr(att, "person_id", 0))
             session_info = self._get_session_from_attendee(att)
@@ -103,23 +111,26 @@ class WaitlistService:
             if session_cmid:
                 waitlisted_by_session[int(session_cmid)]["waitlisted"] += 1
 
-            # Dedupe by person for summary counts
-            if pid in seen_waitlisted_persons:
+                # Per-session dedup for breakdown counts
+                if pid not in seen_per_session[int(session_cmid)]:
+                    seen_per_session[int(session_cmid)].add(pid)
+                    if pid in enrolled_person_ids:
+                        waitlisted_by_session[int(session_cmid)]["has_enrollment"] += 1
+                        for enrolled_sid, _enrolled_name in enrolled_sessions_by_person.get(pid, []):
+                            enrolled_in_counts[int(session_cmid)][enrolled_sid] += 1
+                    else:
+                        waitlisted_by_session[int(session_cmid)]["no_enrollment"] += 1
+
+            # Global dedup for summary counts
+            if pid in seen_for_summary:
                 continue
-            seen_waitlisted_persons.add(pid)
+            seen_for_summary.add(pid)
 
             entry = {"person_id": pid, "session_cm_id": int(session_cmid)}
             if pid in enrolled_person_ids:
                 waitlisted_has_enrollment.append(entry)
-                if session_cmid:
-                    waitlisted_by_session[int(session_cmid)]["has_enrollment"] += 1
-                    # Track which sessions this person is enrolled in
-                    for enrolled_sid, _enrolled_name in enrolled_sessions_by_person.get(pid, []):
-                        enrolled_in_counts[int(session_cmid)][enrolled_sid] += 1
             else:
                 waitlisted_no_enrollment.append(entry)
-                if session_cmid:
-                    waitlisted_by_session[int(session_cmid)]["no_enrollment"] += 1
 
         # --- UC3 & UC4: Historical transitions ---
         accepted_history = await self.repository.fetch_status_history(
@@ -153,12 +164,12 @@ class WaitlistService:
         # --- Build per-session breakdown ---
         by_session: list[WaitlistSessionBreakdown] = []
         for sid, counts in sorted(waitlisted_by_session.items()):
-            session = sessions.get(sid)
+            session = filtered_sessions.get(sid)
             if session:
                 # Build enrolled_in list for this waitlist session
                 enrolled_in_list: list[WaitlistEnrolledSessionCount] = []
                 for enrolled_sid, enrolled_count in sorted(enrolled_in_counts.get(sid, {}).items()):
-                    enrolled_session = sessions.get(enrolled_sid)
+                    enrolled_session = all_sessions.get(enrolled_sid)
                     enrolled_name = (
                         getattr(enrolled_session, "name", f"Session {enrolled_sid}")
                         if enrolled_session
@@ -187,10 +198,10 @@ class WaitlistService:
 
         # --- Build grade/gender breakdowns from waitlisted persons ---
         persons = await self.repository.fetch_persons(year)
-        all_waitlisted_pids = seen_waitlisted_persons
+        all_waitlisted_pids = seen_for_summary
         by_grade, by_gender = self._compute_demographics(all_waitlisted_pids, persons)
 
-        total_waitlisted = len(seen_waitlisted_persons)
+        total_waitlisted = len(seen_for_summary)
 
         return WaitlistMetricsResponse(
             year=year,

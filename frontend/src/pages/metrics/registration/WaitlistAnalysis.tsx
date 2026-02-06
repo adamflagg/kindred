@@ -25,7 +25,11 @@ import { useDrilldown } from '../../../hooks/useDrilldown'
 import { MetricCard } from '../../../components/metrics/MetricCard'
 import { BreakdownChart } from '../../../components/metrics/BreakdownChart'
 import { WaitlistBySessionChart } from '../../../components/metrics/WaitlistBySessionChart'
-import { buildSessionDateLookup, sortSessionDataByDate } from '../../../utils/sessionUtils'
+import {
+  buildSessionDateLookup,
+  buildSessionTypeLookup,
+  sortSessionDataByCampThenQuest,
+} from '../../../utils/sessionUtils'
 import type { WaitlistSessionBreakdown } from '../../../types/metrics'
 
 export default function WaitlistAnalysis() {
@@ -33,6 +37,7 @@ export default function WaitlistAnalysis() {
   const { selectedSessionCmId, sessions, sessionTypesParam, activeSessionTypes } =
     useMetricsSession()
   const sessionDateLookup = useMemo(() => buildSessionDateLookup(sessions), [sessions])
+  const sessionTypeLookup = useMemo(() => buildSessionTypeLookup(sessions), [sessions])
 
   const { data, isLoading, error } = useWaitlistMetrics(
     currentYear,
@@ -158,9 +163,10 @@ export default function WaitlistAnalysis() {
         <div className="grid gap-6 lg:grid-cols-2">
           {data.by_session.length > 0 && (
             <WaitlistBySessionChart
-              data={sortSessionDataByDate(data.by_session, sessionDateLookup)}
+              data={sortSessionDataByCampThenQuest(data.by_session, sessionDateLookup, sessionTypeLookup)}
               onBarClick={setFilter}
               sessionDateLookup={sessionDateLookup}
+              sessionTypeLookup={sessionTypeLookup}
             />
           )}
           {gradeChartData.length > 0 && (
@@ -220,7 +226,7 @@ export default function WaitlistAnalysis() {
                 </tr>
               </thead>
               <tbody>
-                {sortSessionDataByDate(data.by_session, sessionDateLookup).map(
+                {sortSessionDataByCampThenQuest(data.by_session, sessionDateLookup, sessionTypeLookup).map(
                   (session: WaitlistSessionBreakdown) => (
                     <tr key={session.session_cm_id} className="border-border/50 border-b">
                       <td className="px-4 py-2 font-medium">{session.session_name}</td>

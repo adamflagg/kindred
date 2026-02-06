@@ -17,8 +17,8 @@ import {
   LabelList,
 } from 'recharts'
 import type { SessionLengthBySessionBreakdown } from '../../types/metrics'
-import type { SessionDateLookup } from '../../utils/sessionUtils'
-import { compareByDateThenName } from '../../utils/sessionUtils'
+import type { SessionDateLookup, SessionTypeLookup } from '../../utils/sessionUtils'
+import { compareByDateCampThenQuest } from '../../utils/sessionUtils'
 
 // Color palette for sessions (cycles if more than 8 sessions)
 const COLORS = [
@@ -41,6 +41,8 @@ interface SessionLengthBySessionChartProps {
   onCategoryClick?: (lengthCategory: string) => void
   /** Lookup map for session dates (for chronological sorting) */
   sessionDateLookup?: SessionDateLookup
+  /** Lookup map for session types (for camp-then-quest sorting) */
+  sessionTypeLookup?: SessionTypeLookup
 }
 
 interface ChartDataItem {
@@ -56,6 +58,7 @@ export function SessionLengthBySessionChart({
   className = '',
   onCategoryClick,
   sessionDateLookup = {},
+  sessionTypeLookup = {},
 }: SessionLengthBySessionChartProps) {
   if (data.length === 0) {
     return (
@@ -75,9 +78,9 @@ export function SessionLengthBySessionChart({
       allSessions.set(session.session_cm_id, session.session_name)
     }
   }
-  // Sort sessions chronologically by date, with name-based fallback
+  // Sort sessions: camp first, then quests, chronological within each group
   const sessionList = Array.from(allSessions.entries()).sort((a, b) =>
-    compareByDateThenName(a[1], b[1], sessionDateLookup)
+    compareByDateCampThenQuest(a[1], b[1], sessionDateLookup, sessionTypeLookup)
   )
 
   // Transform data for stacked bar chart

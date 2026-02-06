@@ -58,7 +58,7 @@ export default function MetricsTypeTabs() {
             return (
               <Link
                 key={tab.id}
-                to={tab.path}
+                to={tab.path + location.search}
                 className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 ${
                   isActive
                     ? 'bg-primary text-primary-foreground shadow-lodge-sm'

@@ -263,6 +263,22 @@ export function sortSessionsCampThenQuest<
 }
 
 /**
+ * Sort session data by camp-then-quest ordering.
+ * Camp sessions (main/embedded/ag) come first chronologically,
+ * then quest sessions chronologically.
+ * Works with API response types that have session_name field.
+ */
+export function sortSessionDataByCampThenQuest<T extends { session_name: string }>(
+  data: T[],
+  dateLookup: SessionDateLookup,
+  typeLookup: SessionTypeLookup
+): T[] {
+  return [...data].sort((a, b) =>
+    compareByDateCampThenQuest(a.session_name, b.session_name, dateLookup, typeLookup)
+  )
+}
+
+/**
  * Compare two session names: camp sessions sort before quest sessions.
  * Within each group, sort by date (primary) then name (secondary).
  */

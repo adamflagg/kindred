@@ -20,7 +20,11 @@ import { BreakdownChart } from '../../../components/metrics/BreakdownChart'
 import { GenderByGradeChart } from '../../../components/metrics/GenderByGradeChart'
 import { SessionLengthBySessionChart } from '../../../components/metrics/SessionLengthBySessionChart'
 import { getSessionChartLabel } from '../../../utils/sessionDisplay'
-import { buildSessionDateLookup, sortSessionDataByDate } from '../../../utils/sessionUtils'
+import {
+  buildSessionDateLookup,
+  buildSessionTypeLookup,
+  sortSessionDataByCampThenQuest,
+} from '../../../utils/sessionUtils'
 import {
   transformGenderData,
   transformGradeData,
@@ -49,8 +53,9 @@ export default function RegistrationOverview() {
     statusFilter: [statusesParam],
   })
 
-  // Build session date lookup for date-aware sorting
+  // Build session lookups for date-aware and camp-then-quest sorting
   const sessionDateLookup = useMemo(() => buildSessionDateLookup(sessions), [sessions])
+  const sessionTypeLookup = useMemo(() => buildSessionTypeLookup(sessions), [sessions])
 
   // Fetch registration data with optional session filter
   const { data, isLoading, error } = useRegistrationMetrics(
@@ -89,7 +94,7 @@ export default function RegistrationOverview() {
   // Transform data for charts using utility functions
   const genderChartData = transformGenderData(data.by_gender)
   const gradeChartData = transformGradeData(data.by_grade)
-  const sessionChartData = transformSessionData(data.by_session, sessionDateLookup)
+  const sessionChartData = transformSessionData(data.by_session, sessionDateLookup, sessionTypeLookup)
   const summerYearsData = transformSummerYearsData(data.by_summer_years)
   const firstSummerYearData = transformFirstSummerYearData(data.by_first_summer_year)
   const newVsReturningData = transformNewVsReturningData(data.new_vs_returning)
@@ -105,7 +110,7 @@ export default function RegistrationOverview() {
         }))
 
   // Sort sessions for table (chart uses sorted version from transformSessionData)
-  const sortedBySession = sortSessionDataByDate(data.by_session, sessionDateLookup)
+  const sortedBySession = sortSessionDataByCampThenQuest(data.by_session, sessionDateLookup, sessionTypeLookup)
 
   return (
     <div className="space-y-6">
@@ -238,6 +243,7 @@ export default function RegistrationOverview() {
             title="Enrollment by Session Length"
             height={350}
             sessionDateLookup={sessionDateLookup}
+            sessionTypeLookup={sessionTypeLookup}
             onCategoryClick={(lengthCategory) =>
               setFilter({
                 type: 'session_length',
