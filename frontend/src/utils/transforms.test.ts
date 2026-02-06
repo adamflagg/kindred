@@ -214,6 +214,40 @@ describe('toAppCamper', () => {
     expect(camper.expand?.session).toBe(mockSession)
     expect(camper.expand?.assigned_bunk).toBe(mockBunk)
   })
+
+  describe('normalized school field', () => {
+    it('should prefer normalized_school over raw school', () => {
+      const person = createMockPerson({
+        school: 'RIVERSIDE ELEMENTARY',
+        normalized_school: 'Riverside Elementary',
+      })
+      const camper = toAppCamper(person, createMockAttendee())
+      expect(camper.school).toBe('Riverside Elementary')
+    })
+
+    it('should fall back to raw school when normalized_school is empty', () => {
+      const person = createMockPerson({
+        school: 'Oak Valley Middle',
+        normalized_school: '',
+      })
+      const camper = toAppCamper(person, createMockAttendee())
+      expect(camper.school).toBe('Oak Valley Middle')
+    })
+
+    it('should fall back to raw school when normalized_school is not set', () => {
+      const person = createMockPerson({
+        school: 'Hillcrest High',
+      })
+      const camper = toAppCamper(person, createMockAttendee())
+      expect(camper.school).toBe('Hillcrest High')
+    })
+
+    it('should omit school when neither normalized nor raw exists', () => {
+      const person = createMockPerson({ school: '', normalized_school: '' })
+      const camper = toAppCamper(person, createMockAttendee())
+      expect(camper.school).toBeUndefined()
+    })
+  })
 })
 
 describe('toAppSession', () => {
