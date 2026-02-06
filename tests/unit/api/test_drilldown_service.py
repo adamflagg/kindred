@@ -38,6 +38,7 @@ def create_mock_person(
     address_state: str = "IL",
     normalized_school: str | None = None,
     normalized_city: str | None = None,
+    normalized_congregation: str | None = None,
 ) -> Mock:
     """Create a mock person record.
 
@@ -59,6 +60,7 @@ def create_mock_person(
     person.age = 12
     person.normalized_school = normalized_school
     person.normalized_city = normalized_city
+    person.normalized_congregation = normalized_congregation
     return person
 
 
@@ -116,8 +118,6 @@ def mock_repository():
     repo.fetch_persons = AsyncMock(return_value={})
     repo.fetch_sessions = AsyncMock(return_value={})
     repo.fetch_summer_enrollment_history = AsyncMock(return_value=[])
-    repo.fetch_congregation_by_person = AsyncMock(return_value={})
-    repo.fetch_normalized_city_by_person = AsyncMock(return_value={})
     return repo
 
 
@@ -482,60 +482,92 @@ class TestFirstSummerYearBreakdown:
 
 
 class TestCityBreakdown:
-    """Tests for filtering by city using normalized_mappings.
+    """Tests for filtering by city using person.normalized_city.
 
-    City drilldown uses normalized city values from the normalized_mappings table,
-    NOT raw person.address["city"] values. This ensures that when a user clicks
-    "Oakland" in the GeoDetailList (which shows normalized values), they get
-    all campers whose addresses were normalized to "Oakland", regardless of how
-    the raw address was spelled (e.g., "oakland", "Oakland, CA", "Oaklnad").
+    City drilldown uses the normalized_city field on the person record (set by
+    the normalize_geographic sync), NOT raw person.address_city values. This
+    ensures that when a user clicks "Oakland" in the GeoDetailList (which shows
+    normalized values), they get all campers whose city was normalized to
+    "Oakland", regardless of how the raw address was spelled.
     """
 
     @pytest.fixture
     def persons_with_cities(self) -> dict[int, Mock]:
-        """Sample persons with various raw city values in discrete columns.
+        """Sample persons with normalized_city set by normalize_geographic sync.
 
-        Note: The raw address values here differ from the normalized values
-        to demonstrate that city drilldown matches on normalized, not raw.
+        Note: The raw address values differ from normalized values to demonstrate
+        that city drilldown matches on person.normalized_city, not raw address.
         """
         return {
-            # Raw: "san francisco" (lowercase) -> Normalized: "San Francisco"
-            101: create_mock_person(101, "Emma", "Johnson", "F", 5, address_city="san francisco", address_state="CA"),
-            # Raw: "SF, CA" (abbreviation) -> Normalized: "San Francisco"
-            102: create_mock_person(102, "Liam", "Garcia", "M", 6, address_city="SF, CA", address_state="CA"),
-            # Raw: "oakland" (lowercase) -> Normalized: "Oakland"
-            103: create_mock_person(103, "Olivia", "Chen", "F", 6, address_city="oakland", address_state="CA"),
-            # Raw: "Berkeley" (already correct) -> Normalized: "Berkeley"
-            104: create_mock_person(104, "Noah", "Williams", "M", 7, address_city="Berkeley", address_state="CA"),
+            # Raw: "san francisco" -> Normalized: "San Francisco"
+            101: create_mock_person(
+                101,
+                "Emma",
+                "Johnson",
+                "F",
+                5,
+                address_city="san francisco",
+                address_state="CA",
+                normalized_city="San Francisco",
+            ),
+            # Raw: "SF, CA" -> Normalized: "San Francisco"
+            102: create_mock_person(
+                102,
+                "Liam",
+                "Garcia",
+                "M",
+                6,
+                address_city="SF, CA",
+                address_state="CA",
+                normalized_city="San Francisco",
+            ),
+            # Raw: "oakland" -> Normalized: "Oakland"
+            103: create_mock_person(
+                103,
+                "Olivia",
+                "Chen",
+                "F",
+                6,
+                address_city="oakland",
+                address_state="CA",
+                normalized_city="Oakland",
+            ),
+            # Raw: "Berkeley" -> Normalized: "Berkeley"
+            104: create_mock_person(
+                104,
+                "Noah",
+                "Williams",
+                "M",
+                7,
+                address_city="Berkeley",
+                address_state="CA",
+                normalized_city="Berkeley",
+            ),
             # Raw: "Oaklnad" (typo) -> Normalized: "Oakland"
-            105: create_mock_person(105, "Ava", "Brown", "F", 8, address_city="Oaklnad", address_state="CA"),
-        }
-
-    @pytest.fixture
-    def normalized_city_mapping(self) -> dict[int, str]:
-        """Normalized city values by person cm_id from normalized_mappings table."""
-        return {
-            101: "San Francisco",
-            102: "San Francisco",
-            103: "Oakland",
-            104: "Berkeley",
-            105: "Oakland",
+            105: create_mock_person(
+                105,
+                "Ava",
+                "Brown",
+                "F",
+                8,
+                address_city="Oaklnad",
+                address_state="CA",
+                normalized_city="Oakland",
+            ),
         }
 
     @pytest.mark.asyncio
-    async def test_filter_by_city_uses_normalized_mapping(
+    async def test_filter_by_city_uses_normalized_field(
         self,
         drilldown_service: DrilldownService,
         mock_repository: Mock,
         sample_sessions: dict[int, Mock],
         persons_with_cities: dict[int, Mock],
-        normalized_city_mapping: dict[int, str],
     ) -> None:
-        """Filter for campers from a specific city using normalized values.
+        """Filter for campers from a specific city using person.normalized_city.
 
-        This test verifies that city drilldown matches on NORMALIZED city values
-        from normalized_mappings, not raw address values. Raw values like
-        "san francisco" and "SF, CA" both normalize to "San Francisco".
+        Raw values like "san francisco" and "SF, CA" both have
+        normalized_city="San Francisco" on the person record.
         """
         attendees = [
             create_mock_attendee(101, sample_sessions[1001], 2026),
@@ -547,7 +579,6 @@ class TestCityBreakdown:
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = persons_with_cities
         mock_repository.fetch_attendees.return_value = attendees
-        mock_repository.fetch_normalized_city_by_person = AsyncMock(return_value=normalized_city_mapping)
 
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2026,
@@ -556,7 +587,6 @@ class TestCityBreakdown:
         )
 
         # Should return Emma (101) and Liam (102) - both normalized to "San Francisco"
-        # even though raw addresses were "san francisco" and "SF, CA"
         assert len(result) == 2
         person_ids = {r.person_id for r in result}
         assert person_ids == {101, 102}
@@ -568,11 +598,10 @@ class TestCityBreakdown:
         mock_repository: Mock,
         sample_sessions: dict[int, Mock],
         persons_with_cities: dict[int, Mock],
-        normalized_city_mapping: dict[int, str],
     ) -> None:
         """Filter for Oakland includes campers with typos normalized to Oakland.
 
-        Ava (105) has raw address "Oaklnad" (typo) but normalized to "Oakland",
+        Ava (105) has raw address "Oaklnad" (typo) but normalized_city="Oakland",
         so she should appear in Oakland drilldown results.
         """
         attendees = [
@@ -585,7 +614,6 @@ class TestCityBreakdown:
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = persons_with_cities
         mock_repository.fetch_attendees.return_value = attendees
-        mock_repository.fetch_normalized_city_by_person = AsyncMock(return_value=normalized_city_mapping)
 
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2026,
@@ -594,7 +622,6 @@ class TestCityBreakdown:
         )
 
         # Should return Olivia (103) and Ava (105) - both normalized to "Oakland"
-        # Ava's raw address "Oaklnad" was corrected by normalization
         assert len(result) == 2
         person_ids = {r.person_id for r in result}
         assert person_ids == {103, 105}
@@ -606,7 +633,6 @@ class TestCityBreakdown:
         mock_repository: Mock,
         sample_sessions: dict[int, Mock],
         persons_with_cities: dict[int, Mock],
-        normalized_city_mapping: dict[int, str],
     ) -> None:
         """Filter for city with no campers returns empty list."""
         attendees = [
@@ -615,7 +641,6 @@ class TestCityBreakdown:
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = persons_with_cities
         mock_repository.fetch_attendees.return_value = attendees
-        mock_repository.fetch_normalized_city_by_person = AsyncMock(return_value=normalized_city_mapping)
 
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2026,
@@ -623,31 +648,48 @@ class TestCityBreakdown:
             breakdown_value="Los Angeles",
         )
 
-        # No one normalized to "Los Angeles"
+        # No one has normalized_city="Los Angeles"
         assert len(result) == 0
 
     @pytest.mark.asyncio
-    async def test_filter_by_city_person_not_in_normalized_mappings(
+    async def test_filter_by_city_person_without_normalized_city(
         self,
         drilldown_service: DrilldownService,
         mock_repository: Mock,
         sample_sessions: dict[int, Mock],
-        persons_with_cities: dict[int, Mock],
     ) -> None:
-        """Campers without normalized_mappings entries are not matched.
+        """Campers without normalized_city are not matched.
 
-        If a person doesn't have a normalized city mapping (e.g., new sync
-        hasn't run yet), they won't appear in city drilldown results.
+        If a person doesn't have normalized_city set (e.g., normalize_geographic
+        sync hasn't run yet), they won't appear in city drilldown results.
         """
+        persons = {
+            101: create_mock_person(
+                101,
+                "Emma",
+                "Johnson",
+                "F",
+                5,
+                address_city="San Francisco",
+                normalized_city="San Francisco",
+            ),
+            102: create_mock_person(
+                102,
+                "Liam",
+                "Garcia",
+                "M",
+                6,
+                address_city="San Francisco",
+                normalized_city=None,
+            ),
+        }
         attendees = [
             create_mock_attendee(101, sample_sessions[1001], 2026),
             create_mock_attendee(102, sample_sessions[1002], 2026),
         ]
         mock_repository.fetch_sessions.return_value = sample_sessions
-        mock_repository.fetch_persons.return_value = persons_with_cities
+        mock_repository.fetch_persons.return_value = persons
         mock_repository.fetch_attendees.return_value = attendees
-        # Only person 101 has a normalized mapping
-        mock_repository.fetch_normalized_city_by_person = AsyncMock(return_value={101: "San Francisco"})
 
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2026,
@@ -655,7 +697,7 @@ class TestCityBreakdown:
             breakdown_value="San Francisco",
         )
 
-        # Only Emma (101) has normalized mapping, Liam (102) doesn't
+        # Only Emma (101) has normalized_city, Liam (102) doesn't
         assert len(result) == 1
         assert result[0].person_id == 101
 
@@ -666,33 +708,58 @@ class TestCityBreakdown:
 
 
 class TestSynagogueBreakdown:
-    """Tests for filtering by synagogue/congregation."""
+    """Tests for filtering by synagogue using person.normalized_congregation.
+
+    Synagogue drilldown uses the normalized_congregation field on the person
+    record (set by the normalize_geographic sync), NOT raw values from the
+    person_custom_values table. This ensures drilldown counts match the
+    summary list which aggregates from persons.normalized_congregation.
+    """
 
     @pytest.fixture
-    def persons_with_households(self) -> dict[int, Mock]:
-        """Sample persons with household IDs for synagogue lookup."""
-        persons = {
-            101: create_mock_person(101, "Emma", "Johnson", "F", 5),
-            102: create_mock_person(102, "Liam", "Garcia", "M", 6),
-            103: create_mock_person(103, "Olivia", "Chen", "F", 6),
-            104: create_mock_person(104, "Noah", "Williams", "M", 7),
-            105: create_mock_person(105, "Ava", "Brown", "F", 8),
-        }
-        # Set household_id for synagogue lookup
-        persons[101].household_id = 1001
-        persons[102].household_id = 1001  # Same household as Emma
-        persons[103].household_id = 1002
-        persons[104].household_id = 1003
-        persons[105].household_id = 1002  # Same household as Olivia
-        return persons
-
-    @pytest.fixture
-    def synagogue_mapping(self) -> dict[int, str]:
-        """Sample synagogue by household mapping."""
+    def persons_with_congregations(self) -> dict[int, Mock]:
+        """Sample persons with normalized_congregation set."""
         return {
-            1001: "Congregation Beth Israel",
-            1002: "Temple Sinai",
-            1003: "Congregation Beth Israel",  # Same as household 1001
+            101: create_mock_person(
+                101,
+                "Emma",
+                "Johnson",
+                "F",
+                5,
+                normalized_congregation="Congregation Beth Israel",
+            ),
+            102: create_mock_person(
+                102,
+                "Liam",
+                "Garcia",
+                "M",
+                6,
+                normalized_congregation="Congregation Beth Israel",
+            ),
+            103: create_mock_person(
+                103,
+                "Olivia",
+                "Chen",
+                "F",
+                6,
+                normalized_congregation="Temple Sinai",
+            ),
+            104: create_mock_person(
+                104,
+                "Noah",
+                "Williams",
+                "M",
+                7,
+                normalized_congregation="Congregation Beth Israel",
+            ),
+            105: create_mock_person(
+                105,
+                "Ava",
+                "Brown",
+                "F",
+                8,
+                normalized_congregation="Temple Sinai",
+            ),
         }
 
     @pytest.mark.asyncio
@@ -701,7 +768,7 @@ class TestSynagogueBreakdown:
         drilldown_service: DrilldownService,
         mock_repository: Mock,
         sample_sessions: dict[int, Mock],
-        persons_with_households: dict[int, Mock],
+        persons_with_congregations: dict[int, Mock],
     ) -> None:
         """Filter for campers from a specific synagogue."""
         attendees = [
@@ -712,17 +779,8 @@ class TestSynagogueBreakdown:
             create_mock_attendee(105, sample_sessions[1003], 2026),
         ]
         mock_repository.fetch_sessions.return_value = sample_sessions
-        mock_repository.fetch_persons.return_value = persons_with_households
+        mock_repository.fetch_persons.return_value = persons_with_congregations
         mock_repository.fetch_attendees.return_value = attendees
-        mock_repository.fetch_congregation_by_person = AsyncMock(
-            return_value={
-                101: "Congregation Beth Israel",
-                102: "Congregation Beth Israel",
-                103: "Temple Sinai",
-                104: "Congregation Beth Israel",
-                105: "Temple Sinai",
-            }
-        )
 
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2026,
@@ -741,7 +799,7 @@ class TestSynagogueBreakdown:
         drilldown_service: DrilldownService,
         mock_repository: Mock,
         sample_sessions: dict[int, Mock],
-        persons_with_households: dict[int, Mock],
+        persons_with_congregations: dict[int, Mock],
     ) -> None:
         """Filter for campers from Temple Sinai."""
         attendees = [
@@ -752,14 +810,8 @@ class TestSynagogueBreakdown:
             create_mock_attendee(105, sample_sessions[1003], 2026),
         ]
         mock_repository.fetch_sessions.return_value = sample_sessions
-        mock_repository.fetch_persons.return_value = persons_with_households
+        mock_repository.fetch_persons.return_value = persons_with_congregations
         mock_repository.fetch_attendees.return_value = attendees
-        mock_repository.fetch_congregation_by_person = AsyncMock(
-            return_value={
-                103: "Temple Sinai",
-                105: "Temple Sinai",
-            }
-        )
 
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2026,
@@ -778,16 +830,17 @@ class TestSynagogueBreakdown:
         drilldown_service: DrilldownService,
         mock_repository: Mock,
         sample_sessions: dict[int, Mock],
-        persons_with_households: dict[int, Mock],
     ) -> None:
         """Filter for synagogue with no campers returns empty list."""
+        persons = {
+            101: create_mock_person(101, "Emma", "Johnson", "F", 5),
+        }
         attendees = [
             create_mock_attendee(101, sample_sessions[1001], 2026),
         ]
         mock_repository.fetch_sessions.return_value = sample_sessions
-        mock_repository.fetch_persons.return_value = persons_with_households
+        mock_repository.fetch_persons.return_value = persons
         mock_repository.fetch_attendees.return_value = attendees
-        mock_repository.fetch_congregation_by_person = AsyncMock(return_value={})
 
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2026,
@@ -899,17 +952,20 @@ class TestSchoolBreakdownNormalized:
         assert result[0].person_id == 103
 
     @pytest.mark.asyncio
-    async def test_school_drilldown_no_normalized_falls_back(
+    async def test_school_drilldown_no_normalized_not_matched(
         self,
         drilldown_service: DrilldownService,
         mock_repository: Mock,
         sample_sessions: dict[int, Mock],
     ) -> None:
-        """Persons without normalized_school still match on raw school value."""
+        """Persons without normalized_school are not matched in school drilldown.
+
+        The normalize_geographic sync always populates normalized_school for
+        enrolled attendees with non-empty school values, so no fallback is needed.
+        """
         persons: dict[int, Mock] = {
             101: create_mock_person(101, "Emma", "Johnson", "F", 5, school="Hillcrest High"),
         }
-        # No normalized_school attribute set (sync hasn't run yet)
         persons[101].normalized_school = None
         attendees = [
             create_mock_attendee(101, sample_sessions[1001], 2026),
@@ -924,9 +980,8 @@ class TestSchoolBreakdownNormalized:
             breakdown_value="Hillcrest High",
         )
 
-        # Should fall back to raw school match
-        assert len(result) == 1
-        assert result[0].person_id == 101
+        # No normalized_school means no match (no fallback to raw)
+        assert len(result) == 0
 
 
 # ============================================================================
