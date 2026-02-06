@@ -46,6 +46,11 @@ export function getSessionDisplayName(
     }
   }
 
+  // For quest sessions, return the name as-is (they don't follow "Session N" pattern)
+  if (session.session_type === 'quest') {
+    return session.name || 'Quest'
+  }
+
   // For embedded sessions, show the code (2a, 2b, 3a, 3b)
   if (session.session_type === 'embedded' && session.code) {
     return `Session ${session.code}`
@@ -146,6 +151,14 @@ export function getSessionChartLabel(
   const gradeMatch = sessionName.match(/\((?:Grades?\s*)?(\d+)[-–](\d+)\)/i)
   const gradeRange = gradeMatch ? ` (${gradeMatch[1]}-${gradeMatch[2]})` : ''
 
+  // Handle Quest sessions - return session name as-is (e.g., "Teen Adventure Quests")
+  if (sessionType === 'quest' || sessionName.toLowerCase().includes('quest')) {
+    if (sessionName.length > 25) {
+      return sessionName.slice(0, 22) + '...'
+    }
+    return sessionName
+  }
+
   // Handle Taste of Camp - return session name as-is (e.g., "Taste of Camp 2")
   if (sessionType === 'taste' || sessionName.toLowerCase().includes('taste')) {
     return sessionName
@@ -203,6 +216,11 @@ export function getSessionChartLabel(
  */
 export function getSessionShorthand(sessionName: string, sessionType?: string): string {
   if (!sessionName) return ''
+
+  // Handle Quest sessions
+  if (sessionType === 'quest' || sessionName.toLowerCase().includes('quest')) {
+    return 'Quest'
+  }
 
   // Handle Taste of Camp
   if (sessionType === 'taste' || sessionName.toLowerCase().includes('taste')) {

@@ -15,13 +15,13 @@ from typing import Any
 # - main: Standard sessions (Session 1, 2, 3, 4)
 # - embedded: Standalone partial sessions (2a, 2b, 3a, etc.)
 # - ag: All-Gender sessions (displayed merged into parent main session)
+# - quest: Quest adventure programs (child-oriented, shown in metrics/camper views)
 #
 # Excludes:
-# - quest: Quest sessions count toward history but don't appear in breakdowns
 # - family: Family camp (adult-focused, separate program)
 # - training: Staff training sessions
 # - tli: Teen Leadership Initiative (different program)
-DISPLAY_SESSION_TYPES = ("main", "embedded", "ag")
+DISPLAY_SESSION_TYPES = ("main", "embedded", "ag", "quest")
 
 # Session types that count toward "summers at camp" / "years as camper"
 # Used for metrics calculations: "Summers at Camp", "First Summer Year".

@@ -35,7 +35,7 @@ import {
 import { Loader2, AlertCircle, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 
 /** Default session types for summer camp metrics */
-const DEFAULT_SESSION_TYPES = ['main', 'embedded', 'ag']
+const DEFAULT_SESSION_TYPES = ['main', 'embedded', 'ag', 'quest']
 
 export default function RetentionOverview() {
   const { currentYear } = useCurrentYear()

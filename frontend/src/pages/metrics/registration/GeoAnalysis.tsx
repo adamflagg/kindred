@@ -31,7 +31,7 @@ import {
 import { getLocationCoords } from '../../../data/geoCoords'
 
 /** Default session types for summer camp metrics */
-const DEFAULT_SESSION_TYPES = ['main', 'embedded', 'ag']
+const DEFAULT_SESSION_TYPES = ['main', 'embedded', 'ag', 'quest']
 
 /** Default status filter for enrolled campers */
 const DEFAULT_STATUS_FILTER = ['enrolled']

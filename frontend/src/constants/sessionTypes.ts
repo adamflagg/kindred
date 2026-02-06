@@ -3,7 +3,7 @@
  */
 
 // Valid session types for summer camp views
-export const VALID_SUMMER_SESSION_TYPES = ['main', 'embedded', 'ag'] as const
+export const VALID_SUMMER_SESSION_TYPES = ['main', 'embedded', 'ag', 'quest'] as const
 
 // Primary session type (only main sessions appear in dropdowns)
 export const PRIMARY_SESSION_TYPE = 'main' as const

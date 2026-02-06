@@ -137,6 +137,7 @@ export default function AllCampersView() {
         'embedded',
         'ag',
         'taste',
+        'quest',
       ])
       const yearFilter = `year = ${currentYear}`
       const filter = formatFilter(`${sessionTypeFilter} && ${yearFilter}`)
@@ -157,6 +158,7 @@ export default function AllCampersView() {
         'embedded',
         'ag',
         'taste',
+        'quest',
       ])
       const yearFilter = `year = ${currentYear}`
       const filter = formatFilter(`${sessionTypeFilter} && ${yearFilter}`)
@@ -166,8 +168,7 @@ export default function AllCampersView() {
         sort: 'start_date,name',
       })
 
-      const filteredSessions = validSessions.filter((s) => !s.name.includes('Quest'))
-      const sessionIds = filteredSessions.map((s) => s.id)
+      const sessionIds = validSessions.map((s) => s.id)
 
       if (sessionIds.length === 0) return []
 

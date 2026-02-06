@@ -32,7 +32,7 @@ import {
 import { Loader2, AlertCircle } from 'lucide-react'
 
 /** Default session types for summer camp metrics */
-const DEFAULT_SESSION_TYPES = ['main', 'embedded', 'ag']
+const DEFAULT_SESSION_TYPES = ['main', 'embedded', 'ag', 'quest']
 
 export default function RegistrationOverview() {
   const { currentYear } = useCurrentYear()
