@@ -301,6 +301,34 @@ class MetricsRepository:
             query_params={"filter": filter_str, "expand": "person,session"},
         )
 
+    async def fetch_status_history(
+        self,
+        year: int,
+        old_status: str,
+        new_statuses: list[str],
+    ) -> list[Any]:
+        """Fetch attendee status history records for transition analysis.
+
+        Args:
+            year: The year to fetch history for.
+            old_status: The previous status to filter on (e.g., 'waitlisted').
+            new_statuses: List of new statuses to include (e.g., ['enrolled']).
+
+        Returns:
+            List of attendee_status_history records with session/person expansion.
+        """
+        try:
+            new_status_filter = " || ".join(f'new_status = "{s}"' for s in new_statuses)
+            filter_str = f'year = {year} && old_status = "{old_status}" && ({new_status_filter})'
+
+            return await asyncio.to_thread(
+                self.pb.collection("attendee_status_history").get_full_list,
+                query_params={"filter": filter_str, "expand": "session,person"},
+            )
+        except Exception as e:
+            logger.warning(f"Could not fetch status history: {e}")
+            return []
+
     async def fetch_synagogue_by_household(self, year: int) -> dict[int, str]:
         """Fetch synagogue values mapped by household CampMinder ID.
 

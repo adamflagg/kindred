@@ -10,6 +10,7 @@ import type {
   RegistrationMetrics,
   ComparisonMetrics,
   HistoricalTrendsResponse,
+  WaitlistMetrics,
 } from '../types/metrics'
 
 /**
@@ -156,6 +157,38 @@ export function useHistoricalTrends(years?: string, sessionTypes?: string, sessi
       return response.json()
     },
     placeholderData: keepPreviousData, // Keep showing old data during filter changes
+    ...syncDataOptions,
+  })
+}
+
+/**
+ * Fetch waitlist analysis metrics for a single year.
+ */
+export function useWaitlistMetrics(year: number, sessionTypes?: string, sessionCmId?: number) {
+  const { fetchWithAuth } = useApiWithAuth()
+
+  return useQuery({
+    queryKey: queryKeys.waitlist(year, sessionTypes, sessionCmId),
+    queryFn: async (): Promise<WaitlistMetrics> => {
+      const params = new URLSearchParams({
+        year: year.toString(),
+      })
+      if (sessionTypes) {
+        params.set('session_types', sessionTypes)
+      }
+      if (sessionCmId !== undefined) {
+        params.set('session_cm_id', sessionCmId.toString())
+      }
+
+      const response = await fetchWithAuth(`/api/metrics/waitlist?${params}`)
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}))
+        throw new Error(error.detail || 'Failed to fetch waitlist metrics')
+      }
+      return response.json()
+    },
+    enabled: year > 0,
+    placeholderData: keepPreviousData,
     ...syncDataOptions,
   })
 }

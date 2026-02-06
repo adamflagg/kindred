@@ -237,7 +237,11 @@ export function DrillDownModal({
           <div>
             <h2 className="text-foreground text-lg font-semibold">
               {sortedAttendees.length} camper
-              {sortedAttendees.length !== 1 ? 's' : ''} in {filter.label}
+              {sortedAttendees.length !== 1 ? 's' : ''}{' '}
+              {filter.statusOverride?.includes('waitlisted') && filter.type === 'session'
+                ? 'waiting for'
+                : 'in'}{' '}
+              {filter.label}
             </h2>
             <p className="text-muted-foreground text-sm">
               {year} enrollment data

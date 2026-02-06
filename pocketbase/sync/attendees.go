@@ -279,8 +279,61 @@ func (s *AttendeesSync) processEnrollment(
 		return fmt.Errorf("populating relations: %w", err)
 	}
 
+	// Detect status changes for history tracking
+	if existing, ok := existingAttendees[key]; ok {
+		oldStatus := existing.GetString("status")
+		if oldStatus != "" && oldStatus != status {
+			if err := s.logStatusChange(personCMID, sessionCMID, oldStatus, status, recordData); err != nil {
+				slog.Warn("Failed to log status change",
+					"person", personCMID,
+					"session", sessionCMID,
+					"old_status", oldStatus,
+					"new_status", status,
+					"error", err)
+			}
+		}
+	}
+
 	// Use ProcessCompositeRecord utility with year field skipped for idempotency
 	return s.ProcessCompositeRecord("attendees", key, recordData, existingAttendees, []string{"year"})
+}
+
+// logStatusChange creates a record in attendee_status_history when a status transition is detected.
+// This is a non-critical operation - errors are logged but do not fail the sync.
+func (s *AttendeesSync) logStatusChange(
+	personCMID, sessionCMID int, oldStatus, newStatus string, recordData map[string]interface{},
+) error {
+	collection, err := s.App.FindCollectionByNameOrId("attendee_status_history")
+	if err != nil {
+		return fmt.Errorf("finding attendee_status_history collection: %w", err)
+	}
+
+	record := core.NewRecord(collection)
+	record.Set("person_id", personCMID)
+	record.Set("old_status", oldStatus)
+	record.Set("new_status", newStatus)
+	record.Set("detected_at", time.Now().UTC().Format("2006-01-02 15:04:05.000Z"))
+	record.Set("year", s.Client.GetSeasonID())
+
+	// Copy session and person relations from the attendee record data
+	if sessionPBID, ok := recordData["session"]; ok {
+		record.Set("session", sessionPBID)
+	}
+	if personPBID, ok := recordData["person"]; ok {
+		record.Set("person", personPBID)
+	}
+
+	if err := s.App.Save(record); err != nil {
+		return fmt.Errorf("saving status history record: %w", err)
+	}
+
+	slog.Info("Recorded status change",
+		"person_id", personCMID,
+		"session_cm_id", sessionCMID,
+		"old_status", oldStatus,
+		"new_status", newStatus)
+
+	return nil
 }
 
 // parseDate parses CampMinder date format

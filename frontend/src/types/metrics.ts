@@ -344,6 +344,10 @@ export interface DrilldownFilter {
     | 'returning_status'
     | 'session_length'
     | 'first_summer_year'
+    | 'waitlist_no_enrollment'
+    | 'waitlist_has_enrollment'
+    | 'waitlist_accepted'
+    | 'waitlist_declined'
   value: string
   label: string // Display label for modal title
   /** Override status filter (for status cards like Waitlisted, Cancelled) */
@@ -367,4 +371,34 @@ export interface DrilldownAttendee {
   status: string
   is_returning: boolean
   sessions?: DrilldownSession[]
+}
+
+// Waitlist analysis types
+export interface WaitlistEnrolledSessionCount {
+  session_cm_id: number
+  session_name: string
+  count: number
+}
+
+export interface WaitlistSessionBreakdown {
+  session_cm_id: number
+  session_name: string
+  waitlisted: number
+  no_enrollment: number
+  has_enrollment: number
+  accepted: number
+  declined: number
+  enrolled_in: WaitlistEnrolledSessionCount[]
+}
+
+export interface WaitlistMetrics {
+  year: number
+  total_waitlisted: number
+  waitlisted_no_enrollment: number
+  waitlisted_has_enrollment: number
+  total_accepted: number
+  total_declined: number
+  by_session: WaitlistSessionBreakdown[]
+  by_grade: GradeBreakdown[]
+  by_gender: GenderBreakdown[]
 }

@@ -158,21 +158,22 @@ export function BreakdownChart({
           <BarChart
             data={data}
             layout="vertical"
-            margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+            margin={{ top: 5, right: 30, left: 0, bottom: 5 }}
           >
             <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-            <XAxis type="number" className="text-xs" />
+            <XAxis type="number" className="text-xs" allowDecimals={false} />
             <YAxis
               type="category"
               dataKey="name"
               className="text-xs"
-              width={130}
+              width={80}
+              interval={0}
               tick={{
                 fill: 'hsl(var(--muted-foreground))',
                 style: { whiteSpace: 'nowrap' },
               }}
               tickFormatter={(value: string) =>
-                value.length > 18 ? `${value.slice(0, 16)}…` : value
+                value.length > 12 ? `${value.slice(0, 10)}…` : value
               }
             />
             <Tooltip content={<CustomTooltip />} />
