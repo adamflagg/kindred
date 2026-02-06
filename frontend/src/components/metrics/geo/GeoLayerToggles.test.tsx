@@ -94,4 +94,41 @@ describe('GeoLayerToggles', () => {
     expect(boxes[3]?.checked).toBe(false) // regions
     expect(boxes[4]?.checked).toBe(true) // sources
   })
+
+  it('renders unmatched toggle when props are provided', () => {
+    const onToggleUnmatched = vi.fn()
+    render(
+      <GeoLayerToggles
+        {...defaultProps}
+        showUnmatched={false}
+        onToggleUnmatched={onToggleUnmatched}
+      />
+    )
+
+    expect(screen.getByText(/Unmatched sources/)).toBeInTheDocument()
+    // Now 6 checkboxes: 3 layers + regions + sources + unmatched
+    expect(getCheckboxes()).toHaveLength(6)
+  })
+
+  it('does not render unmatched toggle when props are omitted', () => {
+    render(<GeoLayerToggles {...defaultProps} />)
+
+    expect(screen.queryByText(/Unmatched sources/)).not.toBeInTheDocument()
+    expect(getCheckboxes()).toHaveLength(5)
+  })
+
+  it('calls onToggleUnmatched when unmatched checkbox is clicked', () => {
+    const onToggleUnmatched = vi.fn()
+    render(
+      <GeoLayerToggles
+        {...defaultProps}
+        showUnmatched={false}
+        onToggleUnmatched={onToggleUnmatched}
+      />
+    )
+
+    const boxes = getCheckboxes()
+    fireEvent.click(boxes[5] as HTMLElement)
+    expect(onToggleUnmatched).toHaveBeenCalledOnce()
+  })
 })

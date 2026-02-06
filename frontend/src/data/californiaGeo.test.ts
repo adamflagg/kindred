@@ -116,7 +116,7 @@ describe('REGION_COLORS', () => {
 })
 
 describe('getCityCoords (regression)', () => {
-  it('returns coordinates for known cities', () => {
+  it('returns coordinates for known CA cities', () => {
     expect(getCityCoords('San Francisco')).toBeDefined()
     expect(getCityCoords('Oakland')).toBeDefined()
     expect(getCityCoords('Palo Alto')).toBeDefined()
@@ -126,8 +126,34 @@ describe('getCityCoords (regression)', () => {
     expect(getCityCoords('san francisco')).toBeDefined()
   })
 
-  it('returns undefined for unknown cities', () => {
+  it('returns undefined for truly unknown cities', () => {
     expect(getCityCoords('Atlantis')).toBeUndefined()
+  })
+
+  it('returns coordinates for out-of-state US cities via US_CITY_COORDS', () => {
+    // These are NOT in CA_CITY_COORDS but should resolve via US_CITY_COORDS
+    expect(getCityCoords('Denver')).toBeDefined()
+    expect(getCityCoords('Portland')).toBeDefined()
+    expect(getCityCoords('Seattle')).toBeDefined()
+    expect(getCityCoords('Chicago')).toBeDefined()
+  })
+
+  it('prefers CA_CITY_COORDS over US_CITY_COORDS for Bay Area cities', () => {
+    // San Francisco is in both CA_CITY_COORDS and US_CITY_COORDS
+    // CA_CITY_COORDS should win (fast path)
+    const coords = getCityCoords('San Francisco')
+    expect(coords).toBeDefined()
+    expect(coords![0]).toBeCloseTo(37.7749, 2) // CA_CITY_COORDS value
+  })
+
+  it('handles city names with state suffix via US_CITY_COORDS fallback', () => {
+    // "Denver, CO" should strip to "Denver" and find via US_CITY_COORDS
+    expect(getCityCoords('Denver, CO')).toBeDefined()
+  })
+
+  it('handles case-insensitive US city lookup', () => {
+    expect(getCityCoords('denver')).toBeDefined()
+    expect(getCityCoords('PORTLAND')).toBeDefined()
   })
 })
 
