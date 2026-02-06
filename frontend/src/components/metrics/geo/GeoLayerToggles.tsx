@@ -17,9 +17,11 @@ export interface GeoLayerTogglesProps {
   onToggleRegions: () => void
   showSources: boolean
   onToggleSources: () => void
+  showUnmatched?: boolean
+  onToggleUnmatched?: () => void
   showGaps?: boolean
   onToggleGaps?: () => void
-  /** When false, hides sources and gaps toggles. Defaults to true. */
+  /** When true, shows sources, unmatched, and gaps toggles. Defaults to false. */
   isAdmin?: boolean
 }
 
@@ -42,9 +44,11 @@ export function GeoLayerToggles({
   onToggleRegions,
   showSources,
   onToggleSources,
+  showUnmatched = false,
+  onToggleUnmatched,
   showGaps = false,
   onToggleGaps,
-  isAdmin = true,
+  isAdmin = false,
 }: GeoLayerTogglesProps) {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -94,6 +98,16 @@ export function GeoLayerToggles({
               className="text-primary focus:ring-primary h-4 w-4 rounded border-gray-300"
             />
             <span className="text-muted-foreground">Show sources</span>
+          </label>
+
+          <label className="flex cursor-pointer items-center gap-1.5 text-sm">
+            <input
+              type="checkbox"
+              checked={showUnmatched}
+              onChange={onToggleUnmatched}
+              className="text-primary focus:ring-primary h-4 w-4 rounded border-gray-300"
+            />
+            <span className="text-muted-foreground">Unmatched sources</span>
           </label>
 
           <label className="flex cursor-pointer items-center gap-1.5 text-sm">

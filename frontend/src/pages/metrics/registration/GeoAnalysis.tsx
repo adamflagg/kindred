@@ -44,14 +44,15 @@ const categoryToDbCategory: Record<GeoCategory, NormalizedCategory> = {
 
 export default function GeoAnalysis() {
   const { currentYear } = useCurrentYear()
+  const isAdmin = useIsAdmin()
   const [activeLayers, setActiveLayers] = useState<Set<GeoCategory>>(
     new Set(['city', 'school', 'synagogue'])
   )
   const [showRegions, setShowRegions] = useState(true)
   const [showSources, setShowSources] = useState(false)
+  const [showUnmatched, setShowUnmatched] = useState(false)
   const [showGaps, setShowGaps] = useState(false)
   const [selectedItem, setSelectedItem] = useState<string | null>(null)
-  const isAdmin = useIsAdmin()
 
   // Get session filter from context (unified selector is in MetricsTypeTabs)
   const { selectedSessionCmId } = useMetricsSession()
@@ -252,6 +253,8 @@ export default function GeoAnalysis() {
             onToggleRegions={() => setShowRegions((v) => !v)}
             showSources={showSources}
             onToggleSources={() => setShowSources((v) => !v)}
+            showUnmatched={showUnmatched}
+            onToggleUnmatched={() => setShowUnmatched((v) => !v)}
             showGaps={showGaps}
             onToggleGaps={() => setShowGaps((v) => !v)}
             isAdmin={isAdmin}
@@ -280,6 +283,7 @@ export default function GeoAnalysis() {
                 onDrilldown={setFilter}
                 showSources={showSources}
                 sourceMappings={sourceMappingsFor.city}
+                showUnmatched={showUnmatched}
               />
             )}
             {activeLayers.has('school') && geoData.school.length > 0 && (

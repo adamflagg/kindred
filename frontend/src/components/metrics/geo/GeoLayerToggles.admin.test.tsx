@@ -1,7 +1,7 @@
 /**
  * Tests for GeoLayerToggles admin-gated behavior.
  *
- * Validates that "Show sources" and "Show gaps" toggles
+ * Validates that "Show sources", "Unmatched sources", and "Show gaps" toggles
  * are only rendered when isAdmin is true.
  */
 
@@ -37,18 +37,20 @@ describe('GeoLayerToggles admin gating', () => {
     expect(screen.queryByText(/Show gaps/)).not.toBeInTheDocument()
   })
 
-  it('shows sources and gaps toggles when isAdmin is true', () => {
+  it('shows sources, unmatched, and gaps toggles when isAdmin is true', () => {
     render(<GeoLayerToggles {...defaultProps} isAdmin={true} />)
 
-    // Should have 3 layers + 1 region + 2 admin toggles = 6 checkboxes
-    expect(getCheckboxes()).toHaveLength(6)
+    // Should have 3 layers + 1 region + 3 admin toggles = 7 checkboxes
+    expect(getCheckboxes()).toHaveLength(7)
     expect(screen.getByText(/Show sources/)).toBeInTheDocument()
+    expect(screen.getByText(/Unmatched sources/)).toBeInTheDocument()
     expect(screen.getByText(/Show gaps/)).toBeInTheDocument()
   })
 
-  it('defaults isAdmin to true for backwards compat', () => {
-    // When isAdmin prop is not provided, show all toggles (backwards compat)
+  it('defaults isAdmin to false (safe default)', () => {
     render(<GeoLayerToggles {...defaultProps} />)
-    expect(screen.getByText(/Show sources/)).toBeInTheDocument()
+    expect(screen.queryByText(/Show sources/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Unmatched sources/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Show gaps/)).not.toBeInTheDocument()
   })
 })
