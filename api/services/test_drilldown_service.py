@@ -386,7 +386,7 @@ class TestDrilldownServiceGetAttendees:
 
     @pytest.mark.asyncio
     async def test_deduplicates_persons_in_multiple_sessions(self) -> None:
-        """Same person in multiple sessions appears once per session."""
+        """Same person in multiple sessions is deduped for person-level breakdowns."""
         from api.services.drilldown_service import DrilldownService
 
         mock_repo = AsyncMock()
@@ -416,10 +416,11 @@ class TestDrilldownServiceGetAttendees:
             breakdown_value="F",
         )
 
-        # Should return both records (one per session enrollment)
-        assert len(result) == 2
-        sessions = {r.session_name for r in result}
-        assert sessions == {"S1", "S2"}
+        # Gender is person-level: deduped to 1 result with both sessions
+        assert len(result) == 1
+        assert len(result[0].sessions) == 2
+        session_names = {s.session_name for s in result[0].sessions}
+        assert session_names == {"S1", "S2"}
 
     @pytest.mark.asyncio
     async def test_includes_is_returning_flag(self) -> None:

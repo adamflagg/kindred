@@ -1218,3 +1218,282 @@ class TestNormalizedDisplayValues:
 
         assert len(result) == 1
         assert result[0].city == "Springfield"
+
+
+# ============================================================================
+# Tests for person-level deduplication across multiple sessions
+# ============================================================================
+
+
+class TestPersonLevelDeduplication:
+    """Tests for deduplicating persons enrolled in multiple sessions.
+
+    When a person is enrolled in multiple sessions (e.g., embedded sessions 2a + 3a),
+    person-level breakdowns (gender, grade, status, etc.) should return one result per
+    person with a sessions list, while session-level breakdowns should return one
+    result per attendee record (no dedup).
+    """
+
+    @pytest.fixture
+    def multi_session_sessions(self) -> dict[int, Mock]:
+        """Sessions including embedded sessions for multi-enrollment scenarios."""
+        return {
+            1001: create_mock_session(1001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05"),
+            1002: create_mock_session(1002, "Session 2a", 2026, "embedded", "2026-06-15", "2026-06-28"),
+            1003: create_mock_session(1003, "Session 3a", 2026, "embedded", "2026-06-29", "2026-07-12"),
+        }
+
+    @pytest.fixture
+    def multi_session_persons(self) -> dict[int, Mock]:
+        """Persons where one is enrolled in multiple sessions."""
+        return {
+            # Emma is enrolled in 2 embedded sessions
+            101: create_mock_person(101, "Emma", "Johnson", "F", 5, years_at_camp=2),
+            # Liam is enrolled in 1 session
+            102: create_mock_person(102, "Liam", "Garcia", "M", 6, years_at_camp=1),
+        }
+
+    @pytest.fixture
+    def multi_session_attendees(self, multi_session_sessions: dict[int, Mock]) -> list[Mock]:
+        """Attendees where Emma (101) is in two sessions."""
+        return [
+            create_mock_attendee(101, multi_session_sessions[1002], 2026),  # Emma in 2a
+            create_mock_attendee(101, multi_session_sessions[1003], 2026),  # Emma in 3a
+            create_mock_attendee(102, multi_session_sessions[1001], 2026),  # Liam in Session 2
+        ]
+
+    @pytest.mark.asyncio
+    async def test_gender_dedup(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        multi_session_sessions: dict[int, Mock],
+        multi_session_persons: dict[int, Mock],
+        multi_session_attendees: list[Mock],
+    ) -> None:
+        """Gender breakdown deduplicates: Emma appears once despite 2 sessions."""
+        mock_repository.fetch_sessions.return_value = multi_session_sessions
+        mock_repository.fetch_persons.return_value = multi_session_persons
+        mock_repository.fetch_attendees.return_value = multi_session_attendees
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="gender",
+            breakdown_value="F",
+        )
+
+        # Emma is F and in 2 sessions, but gender is person-level => 1 result
+        assert len(result) == 1
+        assert result[0].person_id == 101
+        assert len(result[0].sessions) == 2
+        session_names = {s.session_name for s in result[0].sessions}
+        assert session_names == {"Session 2a", "Session 3a"}
+
+    @pytest.mark.asyncio
+    async def test_grade_dedup(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        multi_session_sessions: dict[int, Mock],
+        multi_session_persons: dict[int, Mock],
+        multi_session_attendees: list[Mock],
+    ) -> None:
+        """Grade breakdown deduplicates: person in 2 sessions returns 1 result."""
+        mock_repository.fetch_sessions.return_value = multi_session_sessions
+        mock_repository.fetch_persons.return_value = multi_session_persons
+        mock_repository.fetch_attendees.return_value = multi_session_attendees
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="grade",
+            breakdown_value="5",
+        )
+
+        # Emma (grade 5) is in 2 sessions => 1 deduped result
+        assert len(result) == 1
+        assert result[0].person_id == 101
+
+    @pytest.mark.asyncio
+    async def test_status_dedup(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        multi_session_sessions: dict[int, Mock],
+        multi_session_persons: dict[int, Mock],
+        multi_session_attendees: list[Mock],
+    ) -> None:
+        """Status breakdown deduplicates: enrolled person in 2 sessions => 1 result."""
+        mock_repository.fetch_sessions.return_value = multi_session_sessions
+        mock_repository.fetch_persons.return_value = multi_session_persons
+        mock_repository.fetch_attendees.return_value = multi_session_attendees
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="status",
+            breakdown_value="enrolled",
+        )
+
+        # Both Emma and Liam are enrolled, but Emma deduped => 2 unique persons
+        assert len(result) == 2
+        person_ids = {r.person_id for r in result}
+        assert person_ids == {101, 102}
+
+    @pytest.mark.asyncio
+    async def test_session_no_dedup(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        multi_session_sessions: dict[int, Mock],
+        multi_session_persons: dict[int, Mock],
+        multi_session_attendees: list[Mock],
+    ) -> None:
+        """Session breakdown does NOT deduplicate: one result per attendee record."""
+        mock_repository.fetch_sessions.return_value = multi_session_sessions
+        mock_repository.fetch_persons.return_value = multi_session_persons
+        mock_repository.fetch_attendees.return_value = multi_session_attendees
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="session",
+            breakdown_value="1002",  # Session 2a
+        )
+
+        # Session-level: Emma in Session 2a => 1 result (no dedup needed here)
+        assert len(result) == 1
+        assert result[0].person_id == 101
+        assert result[0].session_cm_id == 1002
+
+    @pytest.mark.asyncio
+    async def test_session_length_no_dedup(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        multi_session_sessions: dict[int, Mock],
+        multi_session_persons: dict[int, Mock],
+        multi_session_attendees: list[Mock],
+    ) -> None:
+        """Session length breakdown does NOT deduplicate."""
+        mock_repository.fetch_sessions.return_value = multi_session_sessions
+        mock_repository.fetch_persons.return_value = multi_session_persons
+        mock_repository.fetch_attendees.return_value = multi_session_attendees
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="session_length",
+            breakdown_value="2-week",
+        )
+
+        # Session 2a (June 15 - June 28 = 13 days) is 2-week, Session 3a is also ~2-week
+        # Each attendee record is separate since session_length is per-attendee
+        assert all(r.session_cm_id in (1002, 1003) for r in result)
+
+    @pytest.mark.asyncio
+    async def test_returning_null_years(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        multi_session_sessions: dict[int, Mock],
+    ) -> None:
+        """Persons with years_at_camp=None are included in returning filter."""
+        persons = {
+            101: create_mock_person(101, "Emma", "Johnson", "F", 5, years_at_camp=3),
+        }
+        # Set years_at_camp to None to simulate missing data
+        persons[101].years_at_camp = None
+        attendees = [
+            create_mock_attendee(101, multi_session_sessions[1001], 2026),
+        ]
+        mock_repository.fetch_sessions.return_value = multi_session_sessions
+        mock_repository.fetch_persons.return_value = persons
+        mock_repository.fetch_attendees.return_value = attendees
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="returning_status",
+            breakdown_value="returning",
+        )
+
+        # years_at_camp=None should be treated as returning (not == 1)
+        assert len(result) == 1
+        assert result[0].person_id == 101
+
+    @pytest.mark.asyncio
+    async def test_returning_zero_years(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        multi_session_sessions: dict[int, Mock],
+    ) -> None:
+        """Persons with years_at_camp=0 are included in returning filter."""
+        persons = {
+            101: create_mock_person(101, "Emma", "Johnson", "F", 5, years_at_camp=0),
+        }
+        attendees = [
+            create_mock_attendee(101, multi_session_sessions[1001], 2026),
+        ]
+        mock_repository.fetch_sessions.return_value = multi_session_sessions
+        mock_repository.fetch_persons.return_value = persons
+        mock_repository.fetch_attendees.return_value = attendees
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="returning_status",
+            breakdown_value="returning",
+        )
+
+        # years_at_camp=0 should be treated as returning (not == 1)
+        assert len(result) == 1
+        assert result[0].person_id == 101
+
+    @pytest.mark.asyncio
+    async def test_sessions_list_populated(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        multi_session_sessions: dict[int, Mock],
+        multi_session_persons: dict[int, Mock],
+        multi_session_attendees: list[Mock],
+    ) -> None:
+        """Deduped person has all sessions in sessions field."""
+        mock_repository.fetch_sessions.return_value = multi_session_sessions
+        mock_repository.fetch_persons.return_value = multi_session_persons
+        mock_repository.fetch_attendees.return_value = multi_session_attendees
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="returning_status",
+            breakdown_value="returning",
+        )
+
+        # Emma (years_at_camp=2) is returning and in 2 sessions
+        assert len(result) == 1
+        assert result[0].person_id == 101
+        assert len(result[0].sessions) == 2
+        session_cm_ids = {s.session_cm_id for s in result[0].sessions}
+        assert session_cm_ids == {1002, 1003}
+
+    @pytest.mark.asyncio
+    async def test_single_session_person_has_sessions_list(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        multi_session_sessions: dict[int, Mock],
+        multi_session_persons: dict[int, Mock],
+        multi_session_attendees: list[Mock],
+    ) -> None:
+        """Single-session person still has a sessions list with 1 entry."""
+        mock_repository.fetch_sessions.return_value = multi_session_sessions
+        mock_repository.fetch_persons.return_value = multi_session_persons
+        mock_repository.fetch_attendees.return_value = multi_session_attendees
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="gender",
+            breakdown_value="M",
+        )
+
+        # Liam is M, in 1 session => 1 result with sessions list of 1
+        assert len(result) == 1
+        assert result[0].person_id == 102
+        assert len(result[0].sessions) == 1
+        assert result[0].sessions[0].session_name == "Session 2"
