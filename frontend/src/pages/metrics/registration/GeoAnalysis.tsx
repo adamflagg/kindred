@@ -8,6 +8,7 @@
 
 import { useState, useMemo, useCallback } from 'react'
 import { Globe, Loader2, AlertCircle } from 'lucide-react'
+import { useIsAdmin } from '../../../hooks/useIsAdmin'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useRegistrationMetrics } from '../../../hooks/useMetrics'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
@@ -40,11 +41,13 @@ const categoryToDbCategory: Record<GeoCategory, NormalizedCategory> = {
 
 export default function GeoAnalysis() {
   const { currentYear } = useCurrentYear()
+  const isAdmin = useIsAdmin()
   const [activeLayers, setActiveLayers] = useState<Set<GeoCategory>>(
     new Set(['city', 'school', 'synagogue'])
   )
   const [showRegions, setShowRegions] = useState(true)
   const [showSources, setShowSources] = useState(false)
+  const [showUnmatched, setShowUnmatched] = useState(false)
   const [selectedItem, setSelectedItem] = useState<string | null>(null)
 
   // Get session filter from context (unified selector is in MetricsTypeTabs)
@@ -234,6 +237,12 @@ export default function GeoAnalysis() {
             onToggleRegions={() => setShowRegions((v) => !v)}
             showSources={showSources}
             onToggleSources={() => setShowSources((v) => !v)}
+            {...(isAdmin
+              ? {
+                  showUnmatched,
+                  onToggleUnmatched: () => setShowUnmatched((v) => !v),
+                }
+              : {})}
           />
 
           {/* Map (always shows city markers when city layer is active) */}
@@ -257,6 +266,7 @@ export default function GeoAnalysis() {
                 onDrilldown={setFilter}
                 showSources={showSources}
                 sourceMappings={sourceMappingsFor.city}
+                showUnmatched={showUnmatched}
               />
             )}
             {activeLayers.has('school') && geoData.school.length > 0 && (

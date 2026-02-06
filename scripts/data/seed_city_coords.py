@@ -79,8 +79,8 @@ def query_camper_city_states(pb_url: str) -> dict[str, str]:
                 params={
                     "fields": "address_city,address_state,household_id",
                     "filter": 'address_city != ""',
-                    "perPage": per_page,
-                    "page": page,
+                    "perPage": str(per_page),
+                    "page": str(page),
                 },
                 headers=headers,
                 timeout=30,
@@ -111,7 +111,7 @@ def query_camper_city_states(pb_url: str) -> dict[str, str]:
 
     # If we got persons with city but no state, try household billing_state
     # Build a household lookup for fallback
-    persons_missing_state: list[dict] = []
+    persons_missing_state: list[dict[str, str]] = []
     page = 1
     while True:
         try:
@@ -120,8 +120,8 @@ def query_camper_city_states(pb_url: str) -> dict[str, str]:
                 params={
                     "fields": "address_city,address_state,household_id",
                     "filter": 'address_city != "" && address_state = ""',
-                    "perPage": per_page,
-                    "page": page,
+                    "perPage": str(per_page),
+                    "page": str(page),
                 },
                 headers=headers,
                 timeout=30,
@@ -156,7 +156,7 @@ def query_camper_city_states(pb_url: str) -> dict[str, str]:
                     params={
                         "fields": "household_id,billing_state",
                         "filter": filter_expr,
-                        "perPage": batch_size,
+                        "perPage": str(batch_size),
                     },
                     headers=headers,
                     timeout=30,

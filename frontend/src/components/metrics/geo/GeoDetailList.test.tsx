@@ -34,10 +34,14 @@ describe('GeoDetailList', () => {
     // Click header to expand
     fireEvent.click(screen.getByText('Cities'))
 
-    // Cities should show "City, ST" format
-    expect(screen.getByText(/San Francisco, CA/)).toBeInTheDocument()
-    expect(screen.getByText(/Portland, OR/)).toBeInTheDocument()
-    expect(screen.getByText(/Denver, CO/)).toBeInTheDocument()
+    // State abbreviations are in child spans, so check via textContent
+    const rows = screen.getAllByRole('row')
+    const sfRow = rows.find((row) => row.textContent?.includes('San Francisco'))
+    expect(sfRow?.textContent).toContain(', CA')
+    const portlandRow = rows.find((row) => row.textContent?.includes('Portland'))
+    expect(portlandRow?.textContent).toContain(', OR')
+    const denverRow = rows.find((row) => row.textContent?.includes('Denver'))
+    expect(denverRow?.textContent).toContain(', CO')
   })
 
   it('does not display state abbreviation for school category', () => {
@@ -54,18 +58,18 @@ describe('GeoDetailList', () => {
   it('shows unmatched indicator for cities not in US_CITY_COORDS when showUnmatched is true', () => {
     const itemsWithUnmatched: GeoDataItem[] = [
       { name: 'San Francisco', count: 25, percentage: 30 },
-      { name: 'London', count: 2, percentage: 2 }, // Not in US cities
+      { name: 'Harduf', count: 2, percentage: 2 }, // International, not in US cities
     ]
 
     render(<GeoDetailList data={itemsWithUnmatched} category="city" showUnmatched={true} />)
 
     fireEvent.click(screen.getByText('Cities'))
 
-    // London should have an unmatched indicator (amber dot or similar)
+    // Harduf should have an unmatched indicator (amber dot or similar)
     // San Francisco should not
     const rows = screen.getAllByRole('row')
-    // Find the London row - it should contain the unmatched indicator
-    const londonRow = rows.find((row) => row.textContent?.includes('London'))
+    // Find the Harduf row - it should contain the unmatched indicator
+    const londonRow = rows.find((row) => row.textContent?.includes('Harduf'))
     expect(londonRow).toBeDefined()
     expect(londonRow?.querySelector('[data-unmatched]')).toBeTruthy()
 
@@ -76,14 +80,14 @@ describe('GeoDetailList', () => {
   })
 
   it('does not show unmatched indicator when showUnmatched is false', () => {
-    const itemsWithUnmatched: GeoDataItem[] = [{ name: 'London', count: 2, percentage: 2 }]
+    const itemsWithUnmatched: GeoDataItem[] = [{ name: 'Harduf', count: 2, percentage: 2 }]
 
     render(<GeoDetailList data={itemsWithUnmatched} category="city" showUnmatched={false} />)
 
     fireEvent.click(screen.getByText('Cities'))
 
     const rows = screen.getAllByRole('row')
-    const londonRow = rows.find((row) => row.textContent?.includes('London'))
+    const londonRow = rows.find((row) => row.textContent?.includes('Harduf'))
     expect(londonRow?.querySelector('[data-unmatched]')).toBeFalsy()
   })
 

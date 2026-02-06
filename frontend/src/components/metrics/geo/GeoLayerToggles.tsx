@@ -17,6 +17,8 @@ export interface GeoLayerTogglesProps {
   onToggleRegions: () => void
   showSources: boolean
   onToggleSources: () => void
+  showUnmatched?: boolean
+  onToggleUnmatched?: () => void
 }
 
 const LAYERS: Array<{
@@ -38,6 +40,8 @@ export function GeoLayerToggles({
   onToggleRegions,
   showSources,
   onToggleSources,
+  showUnmatched,
+  onToggleUnmatched,
 }: GeoLayerTogglesProps) {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -85,6 +89,18 @@ export function GeoLayerToggles({
         />
         <span className="text-muted-foreground">Show sources</span>
       </label>
+
+      {onToggleUnmatched && (
+        <label className="flex cursor-pointer items-center gap-1.5 text-sm">
+          <input
+            type="checkbox"
+            checked={showUnmatched ?? false}
+            onChange={onToggleUnmatched}
+            className="text-primary focus:ring-primary h-4 w-4 rounded border-gray-300"
+          />
+          <span className="text-muted-foreground">Unmatched sources</span>
+        </label>
+      )}
     </div>
   )
 }

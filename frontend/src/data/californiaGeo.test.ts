@@ -127,7 +127,7 @@ describe('getCityCoords (regression)', () => {
   })
 
   it('returns undefined for truly unknown cities', () => {
-    expect(getCityCoords('Atlantis')).toBeUndefined()
+    expect(getCityCoords('Xyzzyville')).toBeUndefined()
   })
 
   it('returns coordinates for out-of-state US cities via US_CITY_COORDS', () => {

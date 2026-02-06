@@ -11,6 +11,8 @@
  * Also includes major California cities for out-of-area campers.
  */
 
+import { US_CITY_COORDS } from './cityGeo'
+
 /** Coordinates as [latitude, longitude] */
 export type LatLng = [number, number]
 
@@ -860,31 +862,33 @@ export const BAY_AREA_REGION_POLYGONS: Record<keyof typeof BAY_AREA_REGIONS, Reg
 
 /**
  * Look up coordinates for a city name.
- * Handles case-insensitive matching and common variations.
+ * Checks Bay Area coords first (fast path), then comprehensive US city coords,
+ * with case-insensitive fallback and state suffix stripping.
  *
  * @param cityName - City name to look up
  * @returns Coordinates [lat, lng] or undefined if not found
  */
 export function getCityCoords(cityName: string): LatLng | undefined {
-  // Direct lookup first
+  // 1. Bay Area coords (fast path)
   const direct = CA_CITY_COORDS[cityName]
-  if (direct) {
-    return direct
-  }
+  if (direct) return direct
 
-  // Try case-insensitive match
+  // 2. Comprehensive US city coords
+  const usCoord = US_CITY_COORDS[cityName]
+  if (usCoord) return usCoord
+
+  // 3. Case-insensitive fallback (both lookups)
   const lowerName = cityName.toLowerCase()
   for (const [city, coords] of Object.entries(CA_CITY_COORDS)) {
-    if (city.toLowerCase() === lowerName) {
-      return coords
-    }
+    if (city.toLowerCase() === lowerName) return coords
+  }
+  for (const [city, coords] of Object.entries(US_CITY_COORDS)) {
+    if (city.toLowerCase() === lowerName) return coords
   }
 
-  // Try partial match for city names with state suffix (e.g., "Oakland, CA")
+  // 4. Strip state suffix ("Oakland, CA" → "Oakland")
   const cityOnly = cityName.split(',')[0]?.trim() ?? cityName
-  if (cityOnly !== cityName) {
-    return getCityCoords(cityOnly)
-  }
+  if (cityOnly !== cityName) return getCityCoords(cityOnly)
 
   return undefined
 }
