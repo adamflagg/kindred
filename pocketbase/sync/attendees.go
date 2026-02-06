@@ -300,7 +300,9 @@ func (s *AttendeesSync) processEnrollment(
 
 // logStatusChange creates a record in attendee_status_history when a status transition is detected.
 // This is a non-critical operation - errors are logged but do not fail the sync.
-func (s *AttendeesSync) logStatusChange(personCMID, sessionCMID int, oldStatus, newStatus string, recordData map[string]interface{}) error {
+func (s *AttendeesSync) logStatusChange(
+	personCMID, sessionCMID int, oldStatus, newStatus string, recordData map[string]interface{},
+) error {
 	collection, err := s.App.FindCollectionByNameOrId("attendee_status_history")
 	if err != nil {
 		return fmt.Errorf("finding attendee_status_history collection: %w", err)

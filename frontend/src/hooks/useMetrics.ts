@@ -164,11 +164,7 @@ export function useHistoricalTrends(years?: string, sessionTypes?: string, sessi
 /**
  * Fetch waitlist analysis metrics for a single year.
  */
-export function useWaitlistMetrics(
-  year: number,
-  sessionTypes?: string,
-  sessionCmId?: number
-) {
+export function useWaitlistMetrics(year: number, sessionTypes?: string, sessionCmId?: number) {
   const { fetchWithAuth } = useApiWithAuth()
 
   return useQuery({

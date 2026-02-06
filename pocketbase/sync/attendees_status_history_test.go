@@ -33,12 +33,12 @@ func TestAttendeesSync_StatusChangeDetection(t *testing.T) {
 			expectNewValue: "enrolled",
 		},
 		{
-			name:           "waitlisted to cancelled (declined)",
+			name:           "waitlisted to cancelled (declined)", //nolint:misspell // CampMinder status value
 			oldStatus:      "waitlisted",
-			newStatus:      "cancelled",
+			newStatus:      "cancelled", //nolint:misspell // CampMinder status value
 			expectChange:   true,
 			expectOldValue: "waitlisted",
-			expectNewValue: "cancelled",
+			expectNewValue: "cancelled", //nolint:misspell // CampMinder status value
 		},
 		{
 			name:           "waitlisted to withdrawn",
@@ -57,12 +57,12 @@ func TestAttendeesSync_StatusChangeDetection(t *testing.T) {
 			expectNewValue: "dismissed",
 		},
 		{
-			name:           "enrolled to cancelled",
+			name:           "enrolled to cancelled", //nolint:misspell // CampMinder status value
 			oldStatus:      "enrolled",
-			newStatus:      "cancelled",
+			newStatus:      "cancelled", //nolint:misspell // CampMinder status value
 			expectChange:   true,
 			expectOldValue: "enrolled",
-			expectNewValue: "cancelled",
+			expectNewValue: "cancelled", //nolint:misspell // CampMinder status value
 		},
 		{
 			name:           "applied to enrolled",
@@ -116,7 +116,7 @@ func TestAttendeesSync_StatusMapCompleteness(t *testing.T) {
 		4:   "applied",
 		8:   "waitlisted",
 		16:  "left_early",
-		32:  "cancelled",
+		32:  "cancelled", //nolint:misspell // CampMinder status value
 		64:  "dismissed",
 		128: "inquiry",
 		256: "withdrawn",
@@ -126,7 +126,7 @@ func TestAttendeesSync_StatusMapCompleteness(t *testing.T) {
 	// Verify all expected statuses are present
 	expectedStatuses := []string{
 		"none", "enrolled", "applied", "waitlisted", "left_early",
-		"cancelled", "dismissed", "inquiry", "withdrawn", "incomplete",
+		"cancelled", "dismissed", "inquiry", "withdrawn", "incomplete", //nolint:misspell // CampMinder status value
 	}
 
 	statusValues := make(map[string]bool)

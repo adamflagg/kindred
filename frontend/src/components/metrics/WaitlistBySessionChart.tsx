@@ -173,7 +173,11 @@ export function WaitlistBySessionChart({
             className="text-xs"
             tick={{ fill: 'hsl(var(--muted-foreground))' }}
           />
-          <YAxis className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))' }} allowDecimals={false} />
+          <YAxis
+            className="text-xs"
+            tick={{ fill: 'hsl(var(--muted-foreground))' }}
+            allowDecimals={false}
+          />
           <Tooltip content={<CustomTooltip />} />
           {/* No Enrollment segment (always first, red) */}
           <Bar
@@ -230,10 +234,7 @@ export function WaitlistBySessionChart({
       {/* Legend rendered outside ResponsiveContainer for test accessibility */}
       <div className="mt-2 flex flex-wrap justify-center gap-4">
         <div className="flex items-center gap-1.5">
-          <div
-            className="h-3 w-3 rounded-sm"
-            style={{ backgroundColor: NO_ENROLLMENT_COLOR }}
-          />
+          <div className="h-3 w-3 rounded-sm" style={{ backgroundColor: NO_ENROLLMENT_COLOR }} />
           <span className="text-muted-foreground text-sm">No Enrollment</span>
         </div>
         {enrolledSessionList.map(([sessionId, sessionName], index) => (

@@ -9,7 +9,15 @@
  */
 
 import { useMemo } from 'react'
-import { Loader2, AlertCircle, AlertTriangle, CheckCircle, XCircle, Users, Clock } from 'lucide-react'
+import {
+  Loader2,
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle,
+  XCircle,
+  Users,
+  Clock,
+} from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useWaitlistMetrics } from '../../../hooks/useMetrics'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
@@ -178,13 +186,13 @@ export default function WaitlistAnalysis() {
       {/* Session Details Table */}
       {data.by_session.length > 0 && (
         <div className="card-lodge overflow-hidden">
-          <div className="border-b border-border px-4 py-3">
+          <div className="border-border border-b px-4 py-3">
             <h3 className="text-foreground text-sm font-semibold">Session Details</h3>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border bg-muted/30">
+                <tr className="border-border bg-muted/30 border-b">
                   <th className="px-4 py-2 text-left font-medium">Session</th>
                   <th className="px-4 py-2 text-right font-medium">
                     <span className="inline-flex items-center gap-1">
@@ -214,28 +222,32 @@ export default function WaitlistAnalysis() {
                 </tr>
               </thead>
               <tbody>
-                {sortSessionDataByDate(data.by_session, sessionDateLookup).map((session: WaitlistSessionBreakdown) => (
-                  <tr key={session.session_cm_id} className="border-b border-border/50">
-                    <td className="px-4 py-2 font-medium">{session.session_name}</td>
-                    <td className="px-4 py-2 text-right">
-                      <span
-                        className={
-                          session.no_enrollment > 0 ? 'font-semibold text-red-600 dark:text-red-400' : ''
-                        }
-                      >
-                        {session.no_enrollment}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2 text-right">{session.has_enrollment}</td>
-                    <td className="px-4 py-2 text-right text-emerald-600 dark:text-emerald-400">
-                      {session.accepted}
-                    </td>
-                    <td className="px-4 py-2 text-right text-red-600 dark:text-red-400">
-                      {session.declined}
-                    </td>
-                    <td className="px-4 py-2 text-right font-medium">{session.waitlisted}</td>
-                  </tr>
-                ))}
+                {sortSessionDataByDate(data.by_session, sessionDateLookup).map(
+                  (session: WaitlistSessionBreakdown) => (
+                    <tr key={session.session_cm_id} className="border-border/50 border-b">
+                      <td className="px-4 py-2 font-medium">{session.session_name}</td>
+                      <td className="px-4 py-2 text-right">
+                        <span
+                          className={
+                            session.no_enrollment > 0
+                              ? 'font-semibold text-red-600 dark:text-red-400'
+                              : ''
+                          }
+                        >
+                          {session.no_enrollment}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-right">{session.has_enrollment}</td>
+                      <td className="px-4 py-2 text-right text-emerald-600 dark:text-emerald-400">
+                        {session.accepted}
+                      </td>
+                      <td className="px-4 py-2 text-right text-red-600 dark:text-red-400">
+                        {session.declined}
+                      </td>
+                      <td className="px-4 py-2 text-right font-medium">{session.waitlisted}</td>
+                    </tr>
+                  )
+                )}
               </tbody>
             </table>
           </div>
