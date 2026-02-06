@@ -27,6 +27,8 @@ import {
   getDropdownSessions,
   getSessionRelationshipsForCamperView,
 } from '../utils/allCampersUtils'
+import { mergeMultiSessionCampers } from '../utils/mergeMultiSessionCampers'
+import type { MergedCamper } from '../utils/mergeMultiSessionCampers'
 import type { Camper, Session } from '../types/app-types'
 import type { BunksResponse } from '../types/pocketbase-types'
 
@@ -201,6 +203,12 @@ export default function AllCampersView() {
     return filterSummerCampBunks(bunksData.bunks, bunksData.bunkPlans, allSessions)
   }, [bunksData, allSessions])
 
+  // Merge multi-session campers into single entries
+  const mergedCampers: MergedCamper[] = useMemo(
+    () => mergeMultiSessionCampers(allCampers, allSessions),
+    [allCampers, allSessions]
+  )
+
   const dropdownSessions = useMemo(() => getDropdownSessions(allSessions), [allSessions])
   const sessionRelationships = useMemo(
     () => getSessionRelationshipsForCamperView(allSessions),
@@ -209,7 +217,7 @@ export default function AllCampersView() {
 
   // Filter and sort campers
   const filteredCampers = useMemo(() => {
-    let filtered = allCampers
+    let filtered: MergedCamper[] = mergedCampers
 
     if (searchTerm) {
       const term = searchTerm.toLowerCase()
@@ -226,8 +234,17 @@ export default function AllCampersView() {
     if (filterSession !== 'all') {
       const relatedSessionIds = sessionRelationships.get(filterSession) || [filterSession]
       filtered = filtered.filter((camper) => {
+        // Check primary session
         const session = allSessions.find((s) => s.cm_id === camper.session_cm_id)
-        return session && relatedSessionIds.includes(session.id)
+        if (session && relatedSessionIds.includes(session.id)) return true
+        // Check additional sessions
+        if (camper.additionalSessions) {
+          return camper.additionalSessions.some((as) => {
+            const addSession = allSessions.find((s) => s.cm_id === as.session_cm_id)
+            return addSession && relatedSessionIds.includes(addSession.id)
+          })
+        }
+        return false
       })
     }
 
@@ -248,7 +265,7 @@ export default function AllCampersView() {
 
     return filtered
   }, [
-    allCampers,
+    mergedCampers,
     searchTerm,
     filterSession,
     filterSex,
@@ -423,8 +440,8 @@ export default function AllCampersView() {
             </span>
             <span className="text-stone-500 dark:text-stone-400">
               {filteredCampers.length === 1 ? 'camper' : 'campers'}
-              {filteredCampers.length !== allCampers.length && (
-                <span className="text-stone-400 dark:text-stone-500"> of {allCampers.length}</span>
+              {filteredCampers.length !== mergedCampers.length && (
+                <span className="text-stone-400 dark:text-stone-500"> of {mergedCampers.length}</span>
               )}
             </span>
           </div>
@@ -432,9 +449,9 @@ export default function AllCampersView() {
           {/* Quick stats */}
           {!hasActiveFilters && !searchTerm && (
             <div className="hidden items-center gap-4 text-sm text-stone-500 sm:flex dark:text-stone-400">
-              <span>{allCampers.filter((c) => c.assigned_bunk).length} assigned</span>
+              <span>{mergedCampers.filter((c) => c.assigned_bunk).length} assigned</span>
               <span className="text-stone-300 dark:text-stone-600">|</span>
-              <span>{allCampers.filter((c) => !c.assigned_bunk).length} unassigned</span>
+              <span>{mergedCampers.filter((c) => !c.assigned_bunk).length} unassigned</span>
             </div>
           )}
         </div>
@@ -545,11 +562,26 @@ export default function AllCampersView() {
                         </div>
                       </div>
 
-                      {/* Session Badge */}
-                      <div
-                        className={`hidden items-center rounded-lg border px-3 py-1.5 text-sm font-medium sm:flex ${getSessionColor(sessionDisplayName)}`}
-                      >
-                        {sessionDisplayName}
+                      {/* Session Badge(s) */}
+                      <div className="hidden flex-shrink-0 items-center gap-1 sm:flex">
+                        <div
+                          className={`items-center rounded-lg border px-3 py-1.5 text-sm font-medium ${getSessionColor(sessionDisplayName)}`}
+                        >
+                          {sessionDisplayName}
+                        </div>
+                        {camper.additionalSessions?.map((as) => {
+                          const addSessionName =
+                            allSessions.find((s) => s.cm_id === as.session_cm_id)?.name ??
+                            as.session_name
+                          return (
+                            <div
+                              key={as.session_cm_id}
+                              className={`items-center rounded-lg border px-3 py-1.5 text-sm font-medium ${getSessionColor(addSessionName)}`}
+                            >
+                              {addSessionName}
+                            </div>
+                          )
+                        })}
                       </div>
 
                       {/* Bunk Badge / Unassigned */}
