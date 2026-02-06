@@ -231,30 +231,32 @@ export default function RegistrationOverview() {
         />
       </div>
 
-      {/* Charts Row 3: Session, Session Length */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <BreakdownChart
-          title="Enrollment by Session"
-          data={sessionChartData}
-          type="bar"
-          height={350}
-          breakdownType="session"
-          onSegmentClick={setFilter}
-        />
-        <SessionLengthBySessionChart
-          data={data.by_session_length_by_session ?? []}
-          title="Enrollment by Session Length"
-          height={350}
-          sessionDateLookup={sessionDateLookup}
-          onCategoryClick={(lengthCategory) =>
-            setFilter({
-              type: 'session_length',
-              value: lengthCategory,
-              label: `${lengthCategory} Sessions`,
-            })
-          }
-        />
-      </div>
+      {/* Charts Row 3: Session, Session Length (hidden when single session selected) */}
+      {!selectedSessionCmId && (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <BreakdownChart
+            title="Enrollment by Session"
+            data={sessionChartData}
+            type="bar"
+            height={350}
+            breakdownType="session"
+            onSegmentClick={setFilter}
+          />
+          <SessionLengthBySessionChart
+            data={data.by_session_length_by_session ?? []}
+            title="Enrollment by Session Length"
+            height={350}
+            sessionDateLookup={sessionDateLookup}
+            onCategoryClick={(lengthCategory) =>
+              setFilter({
+                type: 'session_length',
+                value: lengthCategory,
+                label: `${lengthCategory} Sessions`,
+              })
+            }
+          />
+        </div>
+      )}
 
       {/* Charts Row 4: Years at Camp, First Summer Year */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
