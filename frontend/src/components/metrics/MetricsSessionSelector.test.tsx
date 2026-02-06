@@ -35,6 +35,12 @@ vi.mock('../../hooks/useMetricsSessions', () => ({
         session_type: 'embedded',
         start_date: '2026-07-01',
       },
+      {
+        cm_id: 2001,
+        name: 'Teen Adventure Quest',
+        session_type: 'quest',
+        start_date: '2026-06-10',
+      },
     ],
     isLoading: false,
   })),
@@ -197,6 +203,66 @@ describe('MetricsSessionSelector', () => {
 
       const options = screen.getAllByRole('option')
       expect(options.length).toBeGreaterThan(0)
+    })
+  })
+
+  describe('view mode (camp vs quest)', () => {
+    it('should show "All Quests" option in dropdown', () => {
+      render(<MetricsSessionSelector />, { wrapper: createWrapper() })
+
+      const button = screen.getByRole('button')
+      fireEvent.click(button)
+
+      expect(screen.getByRole('option', { name: 'All Quests' })).toBeInTheDocument()
+    })
+
+    it('should show "All Sessions" as default button text', () => {
+      render(<MetricsSessionSelector />, { wrapper: createWrapper() })
+
+      expect(screen.getByRole('button')).toHaveTextContent('All Sessions')
+    })
+
+    it('should show "All Quests" as button text in quest view mode', () => {
+      render(<MetricsSessionSelector />, {
+        wrapper: createWrapper('/metrics/registration?view=quests'),
+      })
+
+      expect(screen.getByRole('button')).toHaveTextContent('All Quests')
+    })
+
+    it('should show camp sessions and quest sessions as separate groups', () => {
+      render(<MetricsSessionSelector />, { wrapper: createWrapper() })
+
+      const button = screen.getByRole('button')
+      fireEvent.click(button)
+
+      // Camp sessions should be listed
+      expect(screen.getByRole('option', { name: 'Session 1' })).toBeInTheDocument()
+      expect(screen.getByRole('option', { name: 'Session 2' })).toBeInTheDocument()
+      expect(screen.getByRole('option', { name: 'Session 2a' })).toBeInTheDocument()
+
+      // Quest sessions should be listed
+      expect(screen.getByRole('option', { name: 'Teen Adventure Quest' })).toBeInTheDocument()
+    })
+
+    it('should switch to quest mode when "All Quests" is selected', () => {
+      render(<MetricsSessionSelector />, { wrapper: createWrapper() })
+
+      const button = screen.getByRole('button')
+      fireEvent.click(button)
+
+      const allQuestsOption = screen.getByRole('option', { name: 'All Quests' })
+      fireEvent.click(allQuestsOption)
+
+      expect(screen.getByRole('button')).toHaveTextContent('All Quests')
+    })
+
+    it('should show specific session name when individual session selected', () => {
+      render(<MetricsSessionSelector />, {
+        wrapper: createWrapper('/metrics/registration?session=2001'),
+      })
+
+      expect(screen.getByRole('button')).toHaveTextContent('Teen Adventure Quest')
     })
   })
 })
