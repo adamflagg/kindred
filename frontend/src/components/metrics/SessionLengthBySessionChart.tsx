@@ -18,7 +18,7 @@ import {
 } from 'recharts'
 import type { SessionLengthBySessionBreakdown } from '../../types/metrics'
 import type { SessionDateLookup } from '../../utils/sessionUtils'
-import { parseSessionName } from '../../utils/sessionUtils'
+import { compareByDateThenName } from '../../utils/sessionUtils'
 
 // Color palette for sessions (cycles if more than 8 sessions)
 const COLORS = [
@@ -49,31 +49,6 @@ interface ChartDataItem {
   [sessionKey: string]: string | number
 }
 
-/**
- * Compare two session names by date (primary) then by name (secondary).
- * Used for chronological sorting with embedded sessions after main.
- */
-function compareSessionsByDate(
-  nameA: string,
-  nameB: string,
-  dateLookup: SessionDateLookup
-): number {
-  const dateA = dateLookup[nameA]
-  const dateB = dateLookup[nameB]
-
-  // If both have dates, compare by date first
-  if (dateA && dateB) {
-    const dateCompare = dateA.localeCompare(dateB)
-    if (dateCompare !== 0) return dateCompare
-  }
-
-  // Fall back to name-based sorting (as tiebreaker or when dates unavailable)
-  const [numA, suffixA] = parseSessionName(nameA)
-  const [numB, suffixB] = parseSessionName(nameB)
-  if (numA !== numB) return numA - numB
-  return suffixA.localeCompare(suffixB)
-}
-
 export function SessionLengthBySessionChart({
   data,
   title = 'Enrollment by Session Length',
@@ -102,7 +77,7 @@ export function SessionLengthBySessionChart({
   }
   // Sort sessions chronologically by date, with name-based fallback
   const sessionList = Array.from(allSessions.entries()).sort((a, b) =>
-    compareSessionsByDate(a[1], b[1], sessionDateLookup)
+    compareByDateThenName(a[1], b[1], sessionDateLookup)
   )
 
   // Transform data for stacked bar chart

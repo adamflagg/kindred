@@ -28,12 +28,10 @@ import { WaitlistBySessionChart } from '../../../components/metrics/WaitlistBySe
 import { buildSessionDateLookup, sortSessionDataByDate } from '../../../utils/sessionUtils'
 import type { WaitlistSessionBreakdown } from '../../../types/metrics'
 
-const DEFAULT_SESSION_TYPES = ['main', 'embedded', 'ag', 'quest']
-
 export default function WaitlistAnalysis() {
   const { currentYear } = useCurrentYear()
-  const { selectedSessionCmId, sessions } = useMetricsSession()
-  const sessionTypesParam = DEFAULT_SESSION_TYPES.join(',')
+  const { selectedSessionCmId, sessions, sessionTypesParam, activeSessionTypes } =
+    useMetricsSession()
   const sessionDateLookup = useMemo(() => buildSessionDateLookup(sessions), [sessions])
 
   const { data, isLoading, error } = useWaitlistMetrics(
@@ -45,7 +43,7 @@ export default function WaitlistAnalysis() {
   const { setFilter, DrilldownModal } = useDrilldown({
     year: currentYear,
     sessionCmId: selectedSessionCmId ?? undefined,
-    sessionTypes: DEFAULT_SESSION_TYPES,
+    sessionTypes: [...activeSessionTypes],
     statusFilter: ['waitlisted'],
   })
 

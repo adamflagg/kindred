@@ -31,17 +31,13 @@ import {
 } from '../../../utils/metricsTransforms'
 import { Loader2, AlertCircle } from 'lucide-react'
 
-/** Default session types for summer camp metrics */
-const DEFAULT_SESSION_TYPES = ['main', 'embedded', 'ag', 'quest']
-
 export default function RegistrationOverview() {
   const { currentYear } = useCurrentYear()
 
   // Get session filter from context (unified selector is in MetricsTypeTabs)
-  const { selectedSessionCmId, sessions } = useMetricsSession()
+  const { selectedSessionCmId, sessions, sessionTypesParam, activeSessionTypes, viewMode } =
+    useMetricsSession()
 
-  // Build session types param string
-  const sessionTypesParam = DEFAULT_SESSION_TYPES.join(',')
   // Always use enrolled status only
   const statusesParam = 'enrolled'
 
@@ -49,7 +45,7 @@ export default function RegistrationOverview() {
   const { setFilter, DrilldownModal } = useDrilldown({
     year: currentYear,
     sessionCmId: selectedSessionCmId ?? undefined,
-    sessionTypes: DEFAULT_SESSION_TYPES,
+    sessionTypes: [...activeSessionTypes],
     statusFilter: [statusesParam],
   })
 
@@ -113,11 +109,6 @@ export default function RegistrationOverview() {
 
   return (
     <div className="space-y-6">
-      {/* Session filter indicator (selector is in MetricsTypeTabs) */}
-      {selectedSessionCmId && (
-        <div className="text-muted-foreground text-sm">Showing data for selected session only</div>
-      )}
-
       {/* Summary Cards */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
         <MetricCard
@@ -242,19 +233,21 @@ export default function RegistrationOverview() {
             breakdownType="session"
             onSegmentClick={setFilter}
           />
-          <SessionLengthBySessionChart
-            data={data.by_session_length_by_session ?? []}
-            title="Enrollment by Session Length"
-            height={350}
-            sessionDateLookup={sessionDateLookup}
-            onCategoryClick={(lengthCategory) =>
-              setFilter({
-                type: 'session_length',
-                value: lengthCategory,
-                label: `${lengthCategory} Sessions`,
-              })
-            }
-          />
+          {viewMode !== 'quests' && (
+            <SessionLengthBySessionChart
+              data={data.by_session_length_by_session ?? []}
+              title="Enrollment by Session Length"
+              height={350}
+              sessionDateLookup={sessionDateLookup}
+              onCategoryClick={(lengthCategory) =>
+                setFilter({
+                  type: 'session_length',
+                  value: lengthCategory,
+                  label: `${lengthCategory} Sessions`,
+                })
+              }
+            />
+          )}
         </div>
       )}
 

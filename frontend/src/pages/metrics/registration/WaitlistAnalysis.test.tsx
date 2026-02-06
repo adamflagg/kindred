@@ -72,6 +72,12 @@ vi.mock('../../../hooks/useMetricsSession', () => ({
     isLoading: false,
     setSelectedSessionCmId: vi.fn(),
     clearSession: vi.fn(),
+    viewMode: 'sessions',
+    setViewMode: vi.fn(),
+    activeSessionTypes: ['main', 'embedded', 'ag'],
+    sessionTypesParam: 'main,embedded,ag',
+    campSessions: [],
+    questSessions: [],
   })),
 }))
 

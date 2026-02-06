@@ -157,7 +157,7 @@ describe('MetricsSessionContext', () => {
     it('should provide sessions from useMetricsSessions', () => {
       render(<TestConsumer />, { wrapper: createWrapper() })
 
-      expect(screen.getByTestId('sessionsCount')).toHaveTextContent('3')
+      expect(screen.getByTestId('sessionsCount')).toHaveTextContent('4')
     })
   })
 

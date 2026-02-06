@@ -17,3 +17,19 @@ export type ValidSummerSessionType = (typeof VALID_SUMMER_SESSION_TYPES)[number]
 export function isValidSummerSession(sessionType: string): boolean {
   return VALID_SUMMER_SESSION_TYPES.includes(sessionType as ValidSummerSessionType)
 }
+
+// ============================================================================
+// Metrics view mode constants
+// ============================================================================
+
+/** Camp session types (main, embedded, ag) - excludes quest */
+export const CAMP_SESSION_TYPES = ['main', 'embedded', 'ag'] as const
+
+/** Quest session types only */
+export const QUEST_SESSION_TYPES = ['quest'] as const
+
+/** All session types (camp + quest) */
+export const ALL_SESSION_TYPES = ['main', 'embedded', 'ag', 'quest'] as const
+
+/** View mode for metrics: camp sessions vs quest sessions */
+export type MetricsViewMode = 'sessions' | 'quests'

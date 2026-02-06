@@ -34,15 +34,12 @@ import {
 } from '../../../utils/metricsTransforms'
 import { Loader2, AlertCircle, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 
-/** Default session types for summer camp metrics */
-const DEFAULT_SESSION_TYPES = ['main', 'embedded', 'ag', 'quest']
-
 export default function RetentionOverview() {
   const { currentYear } = useCurrentYear()
-  const sessionTypesParam = DEFAULT_SESSION_TYPES.join(',')
 
   // Get session filter from context (unified selector is in MetricsTypeTabs)
-  const { selectedSessionCmId, sessions } = useMetricsSession()
+  const { selectedSessionCmId, sessions, sessionTypesParam, activeSessionTypes } =
+    useMetricsSession()
 
   // Calculate base year (year before current year) for the primary view
   const baseYear = currentYear - 1
@@ -51,7 +48,7 @@ export default function RetentionOverview() {
   const { setFilter, DrilldownModal } = useDrilldown({
     year: baseYear,
     sessionCmId: selectedSessionCmId ?? undefined,
-    sessionTypes: DEFAULT_SESSION_TYPES,
+    sessionTypes: [...activeSessionTypes],
     statusFilter: ['enrolled'],
   })
 

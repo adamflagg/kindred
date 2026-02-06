@@ -30,9 +30,6 @@ import {
 } from '../../../components/metrics/geo'
 import { getLocationCoords } from '../../../data/geoCoords'
 
-/** Default session types for summer camp metrics */
-const DEFAULT_SESSION_TYPES = ['main', 'embedded', 'ag', 'quest']
-
 /** Default status filter for enrolled campers */
 const DEFAULT_STATUS_FILTER = ['enrolled']
 
@@ -56,13 +53,13 @@ export default function GeoAnalysis() {
   const [selectedItem, setSelectedItem] = useState<string | null>(null)
 
   // Get session filter from context (unified selector is in MetricsTypeTabs)
-  const { selectedSessionCmId } = useMetricsSession()
+  const { selectedSessionCmId, sessionTypesParam, activeSessionTypes } = useMetricsSession()
 
   // Drilldown hook for modal functionality
   const { setFilter, DrilldownModal } = useDrilldown({
     year: currentYear,
     sessionCmId: selectedSessionCmId ?? undefined,
-    sessionTypes: DEFAULT_SESSION_TYPES,
+    sessionTypes: [...activeSessionTypes],
     statusFilter: DEFAULT_STATUS_FILTER,
   })
 
@@ -87,7 +84,6 @@ export default function GeoAnalysis() {
   )
 
   // Fetch registration data with geographic breakdowns
-  const sessionTypesParam = DEFAULT_SESSION_TYPES.join(',')
   const { data, isLoading, error } = useRegistrationMetrics(
     currentYear,
     sessionTypesParam,
