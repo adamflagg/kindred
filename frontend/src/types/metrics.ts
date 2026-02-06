@@ -368,3 +368,26 @@ export interface DrilldownAttendee {
   is_returning: boolean
   sessions?: DrilldownSession[]
 }
+
+// Waitlist analysis types
+export interface WaitlistSessionBreakdown {
+  session_cm_id: number
+  session_name: string
+  waitlisted: number
+  no_enrollment: number
+  has_enrollment: number
+  accepted: number
+  declined: number
+}
+
+export interface WaitlistMetrics {
+  year: number
+  total_waitlisted: number
+  waitlisted_no_enrollment: number
+  waitlisted_has_enrollment: number
+  total_accepted: number
+  total_declined: number
+  by_session: WaitlistSessionBreakdown[]
+  by_grade: GradeBreakdown[]
+  by_gender: GenderBreakdown[]
+}
