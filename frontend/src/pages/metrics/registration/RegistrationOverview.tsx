@@ -35,7 +35,7 @@ export default function RegistrationOverview() {
   const { currentYear } = useCurrentYear()
 
   // Get session filter from context (unified selector is in MetricsTypeTabs)
-  const { selectedSessionCmId, sessions, sessionTypesParam, activeSessionTypes, viewMode } =
+  const { selectedSessionCmId, sessions, sessionTypesParam, activeSessionTypes } =
     useMetricsSession()
 
   // Always use enrolled status only
@@ -233,21 +233,19 @@ export default function RegistrationOverview() {
             breakdownType="session"
             onSegmentClick={setFilter}
           />
-          {viewMode !== 'quests' && (
-            <SessionLengthBySessionChart
-              data={data.by_session_length_by_session ?? []}
-              title="Enrollment by Session Length"
-              height={350}
-              sessionDateLookup={sessionDateLookup}
-              onCategoryClick={(lengthCategory) =>
-                setFilter({
-                  type: 'session_length',
-                  value: lengthCategory,
-                  label: `${lengthCategory} Sessions`,
-                })
-              }
-            />
-          )}
+          <SessionLengthBySessionChart
+            data={data.by_session_length_by_session ?? []}
+            title="Enrollment by Session Length"
+            height={350}
+            sessionDateLookup={sessionDateLookup}
+            onCategoryClick={(lengthCategory) =>
+              setFilter({
+                type: 'session_length',
+                value: lengthCategory,
+                label: `${lengthCategory} Sessions`,
+              })
+            }
+          />
         </div>
       )}
 

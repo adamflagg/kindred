@@ -31,5 +31,5 @@ export const QUEST_SESSION_TYPES = ['quest'] as const
 /** All session types (camp + quest) */
 export const ALL_SESSION_TYPES = ['main', 'embedded', 'ag', 'quest'] as const
 
-/** View mode for metrics: camp sessions vs quest sessions */
-export type MetricsViewMode = 'sessions' | 'quests'
+/** View mode for metrics: camp sessions, quest sessions, or all combined */
+export type MetricsViewMode = 'sessions' | 'quests' | 'all'

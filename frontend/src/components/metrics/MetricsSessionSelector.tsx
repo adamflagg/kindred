@@ -19,6 +19,7 @@ import { useMetricsSession } from '../../hooks/useMetricsSession'
 
 const ALL_SESSIONS_VALUE = 'all-sessions'
 const ALL_QUESTS_VALUE = 'all-quests'
+const ALL_SUMMER_VALUE = 'all-summer'
 
 export function MetricsSessionSelector() {
   const {
@@ -35,22 +36,28 @@ export function MetricsSessionSelector() {
   // Display name for current selection
   const displayName = selectedSession
     ? selectedSession.name
-    : viewMode === 'quests'
-      ? 'All Quests'
-      : 'All Sessions'
+    : viewMode === 'all'
+      ? 'All Summer'
+      : viewMode === 'quests'
+        ? 'All Quests'
+        : 'All Sessions'
 
   // Determine current listbox value
   const currentValue = selectedSessionCmId
     ? selectedSessionCmId.toString()
-    : viewMode === 'quests'
-      ? ALL_QUESTS_VALUE
-      : ALL_SESSIONS_VALUE
+    : viewMode === 'all'
+      ? ALL_SUMMER_VALUE
+      : viewMode === 'quests'
+        ? ALL_QUESTS_VALUE
+        : ALL_SESSIONS_VALUE
 
   const handleChange = (value: string) => {
     if (value === ALL_SESSIONS_VALUE) {
       setViewMode('sessions')
     } else if (value === ALL_QUESTS_VALUE) {
       setViewMode('quests')
+    } else if (value === ALL_SUMMER_VALUE) {
+      setViewMode('all')
     } else {
       setSelectedSessionCmId(Number(value))
     }
@@ -71,6 +78,9 @@ export function MetricsSessionSelector() {
             </ListboxOption>
             <ListboxOption value={ALL_QUESTS_VALUE} className="listbox-option">
               All Quests
+            </ListboxOption>
+            <ListboxOption value={ALL_SUMMER_VALUE} className="listbox-option">
+              All Summer
             </ListboxOption>
             {campSessions.length > 0 && <div className="border-border my-1 border-t" />}
             {campSessions.map((session) => (

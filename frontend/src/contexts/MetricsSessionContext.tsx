@@ -42,6 +42,7 @@ function parseSessionParam(param: string | null): number | null {
  */
 function parseViewParam(param: string | null): MetricsViewMode {
   if (param === 'quests') return 'quests'
+  if (param === 'all') return 'all'
   return 'sessions'
 }
 
@@ -71,6 +72,7 @@ export function MetricsSessionProvider({ children }: { children: React.ReactNode
   // Derive active session types based on view mode and selection
   const activeSessionTypes = useMemo(() => {
     if (selectedSessionCmId !== null) return ALL_SESSION_TYPES
+    if (viewMode === 'all') return ALL_SESSION_TYPES
     if (viewMode === 'quests') return QUEST_SESSION_TYPES
     return CAMP_SESSION_TYPES
   }, [selectedSessionCmId, viewMode])
@@ -117,6 +119,8 @@ export function MetricsSessionProvider({ children }: { children: React.ReactNode
           newParams.delete(SESSION_PARAM)
           if (mode === 'quests') {
             newParams.set(VIEW_PARAM, 'quests')
+          } else if (mode === 'all') {
+            newParams.set(VIEW_PARAM, 'all')
           } else {
             newParams.delete(VIEW_PARAM)
           }
