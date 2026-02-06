@@ -1497,3 +1497,271 @@ class TestPersonLevelDeduplication:
         assert result[0].person_id == 102
         assert len(result[0].sessions) == 1
         assert result[0].sessions[0].session_name == "Session 2"
+
+
+# ============================================================================
+# Tests for waitlist drilldown breakdown types
+# ============================================================================
+
+
+def create_mock_status_history(
+    person_id: int,
+    session: Mock,
+    person: Mock | None,
+    old_status: str,
+    new_status: str,
+    detected_at: str = "2026-01-15 10:00:00.000Z",
+    year: int = 2026,
+) -> Mock:
+    """Create a mock attendee_status_history record."""
+    record = Mock()
+    record.person_id = person_id
+    record.old_status = old_status
+    record.new_status = new_status
+    record.detected_at = detected_at
+    record.year = year
+    record.expand = {"session": session}
+    if person:
+        record.expand["person"] = person
+    return record
+
+
+class TestWaitlistDrilldowns:
+    """Tests for waitlist-specific drilldown breakdown types.
+
+    These breakdown types use separate fetching logic from the standard
+    breakdown pipeline since they need to cross-reference waitlisted vs
+    enrolled attendees or query status history.
+    """
+
+    @pytest.fixture
+    def waitlist_sessions(self) -> dict[int, Mock]:
+        """Sessions for waitlist drilldown tests."""
+        return {
+            1001: create_mock_session(1001, "Session 1", 2026, "main", "2026-06-15", "2026-07-05"),
+            1002: create_mock_session(1002, "Session 2", 2026, "main", "2026-07-06", "2026-07-26"),
+            1003: create_mock_session(1003, "Session 2a", 2026, "embedded", "2026-07-06", "2026-07-19"),
+        }
+
+    @pytest.fixture
+    def waitlist_persons(self) -> dict[int, Mock]:
+        """Persons for waitlist drilldown tests."""
+        return {
+            101: create_mock_person(101, "Emma", "Johnson", "F", 5, years_at_camp=1),
+            102: create_mock_person(102, "Liam", "Garcia", "M", 6, years_at_camp=2),
+            103: create_mock_person(103, "Olivia", "Chen", "F", 7, years_at_camp=1),
+            104: create_mock_person(104, "Noah", "Williams", "M", 8, years_at_camp=3),
+        }
+
+    @pytest.mark.asyncio
+    async def test_waitlist_no_enrollment(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        waitlist_sessions: dict[int, Mock],
+        waitlist_persons: dict[int, Mock],
+    ) -> None:
+        """waitlist_no_enrollment returns persons waitlisted with no enrolled sessions."""
+        session1 = waitlist_sessions[1001]
+        session2 = waitlist_sessions[1002]
+
+        # Emma (101) waitlisted for Session 1, NOT enrolled anywhere
+        # Liam (102) waitlisted for Session 1, enrolled in Session 2
+        waitlisted = [
+            create_mock_attendee(101, session1, 2026, status="waitlisted"),
+            create_mock_attendee(102, session1, 2026, status="waitlisted"),
+        ]
+        enrolled = [
+            create_mock_attendee(102, session2, 2026, status="enrolled"),
+        ]
+
+        mock_repository.fetch_sessions.return_value = waitlist_sessions
+        mock_repository.fetch_persons.return_value = waitlist_persons
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (
+                waitlisted if status_filter == ["waitlisted"] else enrolled if status_filter == ["enrolled"] else []
+            )
+        )
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="waitlist_no_enrollment",
+            breakdown_value="true",
+        )
+
+        # Only Emma should be returned (waitlisted, no enrollment)
+        assert len(result) == 1
+        assert result[0].person_id == 101
+
+    @pytest.mark.asyncio
+    async def test_waitlist_has_enrollment(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        waitlist_sessions: dict[int, Mock],
+        waitlist_persons: dict[int, Mock],
+    ) -> None:
+        """waitlist_has_enrollment returns persons waitlisted who are enrolled elsewhere."""
+        session1 = waitlist_sessions[1001]
+        session2 = waitlist_sessions[1002]
+
+        # Emma (101) waitlisted, NOT enrolled. Liam (102) waitlisted + enrolled in S2
+        waitlisted = [
+            create_mock_attendee(101, session1, 2026, status="waitlisted"),
+            create_mock_attendee(102, session1, 2026, status="waitlisted"),
+        ]
+        enrolled = [
+            create_mock_attendee(102, session2, 2026, status="enrolled"),
+        ]
+
+        mock_repository.fetch_sessions.return_value = waitlist_sessions
+        mock_repository.fetch_persons.return_value = waitlist_persons
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (
+                waitlisted if status_filter == ["waitlisted"] else enrolled if status_filter == ["enrolled"] else []
+            )
+        )
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="waitlist_has_enrollment",
+            breakdown_value="true",
+        )
+
+        # Only Liam should be returned (waitlisted + enrolled elsewhere)
+        assert len(result) == 1
+        assert result[0].person_id == 102
+
+    @pytest.mark.asyncio
+    async def test_waitlist_accepted(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        waitlist_sessions: dict[int, Mock],
+        waitlist_persons: dict[int, Mock],
+    ) -> None:
+        """waitlist_accepted returns persons with waitlisted->enrolled transition."""
+        session1 = waitlist_sessions[1001]
+
+        history = [
+            create_mock_status_history(
+                104, session1, waitlist_persons[104], old_status="waitlisted", new_status="enrolled"
+            ),
+        ]
+
+        mock_repository.fetch_sessions.return_value = waitlist_sessions
+        mock_repository.fetch_persons.return_value = waitlist_persons
+        mock_repository.fetch_status_history = AsyncMock(return_value=history)
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="waitlist_accepted",
+            breakdown_value="true",
+        )
+
+        assert len(result) == 1
+        assert result[0].person_id == 104
+        assert result[0].first_name == "Noah"
+
+    @pytest.mark.asyncio
+    async def test_waitlist_declined(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        waitlist_sessions: dict[int, Mock],
+        waitlist_persons: dict[int, Mock],
+    ) -> None:
+        """waitlist_declined returns persons with waitlisted->cancelled/withdrawn/dismissed."""
+        session1 = waitlist_sessions[1001]
+
+        history = [
+            create_mock_status_history(
+                103, session1, waitlist_persons[103], old_status="waitlisted", new_status="cancelled"
+            ),
+        ]
+
+        mock_repository.fetch_sessions.return_value = waitlist_sessions
+        mock_repository.fetch_persons.return_value = waitlist_persons
+        mock_repository.fetch_status_history = AsyncMock(return_value=history)
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="waitlist_declined",
+            breakdown_value="true",
+        )
+
+        assert len(result) == 1
+        assert result[0].person_id == 103
+        assert result[0].first_name == "Olivia"
+
+    @pytest.mark.asyncio
+    async def test_waitlist_with_session_filter(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        waitlist_sessions: dict[int, Mock],
+        waitlist_persons: dict[int, Mock],
+    ) -> None:
+        """Waitlist drilldown respects session_cm_id filter."""
+        session1 = waitlist_sessions[1001]
+        session2 = waitlist_sessions[1002]
+
+        # Emma waitlisted for S1, Olivia waitlisted for S2, neither enrolled
+        waitlisted = [
+            create_mock_attendee(101, session1, 2026, status="waitlisted"),
+            create_mock_attendee(103, session2, 2026, status="waitlisted"),
+        ]
+
+        mock_repository.fetch_sessions.return_value = waitlist_sessions
+        mock_repository.fetch_persons.return_value = waitlist_persons
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (waitlisted if status_filter == ["waitlisted"] else [])
+        )
+
+        # Filter to Session 1 only
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="waitlist_no_enrollment",
+            breakdown_value="true",
+            session_cm_id=1001,
+        )
+
+        # Only Emma (waitlisted in Session 1)
+        assert len(result) == 1
+        assert result[0].person_id == 101
+
+    @pytest.mark.asyncio
+    async def test_waitlist_accepted_deduplicates_by_person(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        waitlist_sessions: dict[int, Mock],
+        waitlist_persons: dict[int, Mock],
+    ) -> None:
+        """waitlist_accepted deduplicates: person accepted from multiple sessions returns once."""
+        session1 = waitlist_sessions[1001]
+        session2 = waitlist_sessions[1002]
+
+        # Noah accepted from waitlist in both sessions
+        history = [
+            create_mock_status_history(
+                104, session1, waitlist_persons[104], old_status="waitlisted", new_status="enrolled"
+            ),
+            create_mock_status_history(
+                104, session2, waitlist_persons[104], old_status="waitlisted", new_status="enrolled"
+            ),
+        ]
+
+        mock_repository.fetch_sessions.return_value = waitlist_sessions
+        mock_repository.fetch_persons.return_value = waitlist_persons
+        mock_repository.fetch_status_history = AsyncMock(return_value=history)
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="waitlist_accepted",
+            breakdown_value="true",
+        )
+
+        # Should return Noah once, not twice
+        assert len(result) == 1
+        assert result[0].person_id == 104

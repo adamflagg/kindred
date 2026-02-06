@@ -530,3 +530,168 @@ class TestSessionBreakdown:
         session_map = {s.session_cm_id: s for s in result.by_session}
         assert session_map[1001].waitlisted == 2
         assert session_map[1002].waitlisted == 1
+
+
+# ============================================================================
+# Enrolled-In Breakdown (per-session enrollment detail)
+# ============================================================================
+
+
+class TestEnrolledInBreakdown:
+    """Test enrolled_in field on WaitlistSessionBreakdown.
+
+    The enrolled_in list shows which specific sessions the "has_enrollment"
+    persons are enrolled in, enabling stacked bar chart visualization.
+    """
+
+    @pytest.mark.asyncio
+    async def test_enrolled_in_breakdown_shows_specific_sessions(
+        self,
+        waitlist_service: WaitlistService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """Person waitlisted for Session 2a, enrolled in Session 1 -> enrolled_in contains Session 1."""
+        session1 = sample_sessions[1001]
+        session2a = sample_sessions[1003]  # Session 2a (embedded)
+        # Emma (101) waitlisted for Session 2a, enrolled in Session 1
+        waitlisted_attendees = [
+            create_mock_attendee(101, session2a, status="waitlisted", status_id=8, is_active=False),
+        ]
+        enrolled_attendees = [
+            create_mock_attendee(101, session1, status="enrolled", status_id=2, is_active=True),
+        ]
+
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (
+                waitlisted_attendees if status_filter == "waitlisted" else enrolled_attendees
+            )
+        )
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_status_history = AsyncMock(return_value=[])
+
+        result = await waitlist_service.calculate_waitlist(year=2026)
+
+        # Find the Session 2a breakdown
+        session_map = {s.session_cm_id: s for s in result.by_session}
+        session_2a = session_map[1003]
+        assert session_2a.has_enrollment == 1
+
+        # enrolled_in should show Session 1 with count=1
+        assert len(session_2a.enrolled_in) == 1
+        assert session_2a.enrolled_in[0].session_cm_id == 1001
+        assert session_2a.enrolled_in[0].session_name == "Session 1"
+        assert session_2a.enrolled_in[0].count == 1
+
+    @pytest.mark.asyncio
+    async def test_enrolled_in_multi_session(
+        self,
+        waitlist_service: WaitlistService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """Person enrolled in Sessions 1 and 2 -> both appear in enrolled_in."""
+        session1 = sample_sessions[1001]
+        session2 = sample_sessions[1002]
+        session2a = sample_sessions[1003]
+        # Liam (102) waitlisted for Session 2a, enrolled in Sessions 1 and 2
+        waitlisted_attendees = [
+            create_mock_attendee(102, session2a, status="waitlisted", status_id=8, is_active=False),
+        ]
+        enrolled_attendees = [
+            create_mock_attendee(102, session1, status="enrolled", status_id=2, is_active=True),
+            create_mock_attendee(102, session2, status="enrolled", status_id=2, is_active=True),
+        ]
+
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (
+                waitlisted_attendees if status_filter == "waitlisted" else enrolled_attendees
+            )
+        )
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_status_history = AsyncMock(return_value=[])
+
+        result = await waitlist_service.calculate_waitlist(year=2026)
+
+        session_map = {s.session_cm_id: s for s in result.by_session}
+        session_2a = session_map[1003]
+        assert session_2a.has_enrollment == 1
+
+        # enrolled_in should have both sessions
+        enrolled_names = {e.session_name for e in session_2a.enrolled_in}
+        assert enrolled_names == {"Session 1", "Session 2"}
+        for entry in session_2a.enrolled_in:
+            assert entry.count == 1
+
+    @pytest.mark.asyncio
+    async def test_enrolled_in_aggregates_multiple_persons(
+        self,
+        waitlist_service: WaitlistService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """Two persons waitlisted for same session, both enrolled in Session 1 -> count=2."""
+        session1 = sample_sessions[1001]
+        session2a = sample_sessions[1003]
+        # Emma (101) and Liam (102) both waitlisted for Session 2a, both enrolled in Session 1
+        waitlisted_attendees = [
+            create_mock_attendee(101, session2a, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(102, session2a, status="waitlisted", status_id=8, is_active=False),
+        ]
+        enrolled_attendees = [
+            create_mock_attendee(101, session1, status="enrolled", status_id=2, is_active=True),
+            create_mock_attendee(102, session1, status="enrolled", status_id=2, is_active=True),
+        ]
+
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (
+                waitlisted_attendees if status_filter == "waitlisted" else enrolled_attendees
+            )
+        )
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_status_history = AsyncMock(return_value=[])
+
+        result = await waitlist_service.calculate_waitlist(year=2026)
+
+        session_map = {s.session_cm_id: s for s in result.by_session}
+        session_2a = session_map[1003]
+        assert session_2a.has_enrollment == 2
+
+        # enrolled_in should show Session 1 with count=2
+        assert len(session_2a.enrolled_in) == 1
+        assert session_2a.enrolled_in[0].session_cm_id == 1001
+        assert session_2a.enrolled_in[0].count == 2
+
+    @pytest.mark.asyncio
+    async def test_no_enrollment_session_has_empty_enrolled_in(
+        self,
+        waitlist_service: WaitlistService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """Person with no_enrollment -> enrolled_in is empty list."""
+        session1 = sample_sessions[1001]
+        waitlisted_attendees = [
+            create_mock_attendee(101, session1, status="waitlisted", status_id=8, is_active=False),
+        ]
+
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (waitlisted_attendees if status_filter == "waitlisted" else [])
+        )
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_status_history = AsyncMock(return_value=[])
+
+        result = await waitlist_service.calculate_waitlist(year=2026)
+
+        session_map = {s.session_cm_id: s for s in result.by_session}
+        session_1 = session_map[1001]
+        assert session_1.no_enrollment == 1
+        assert session_1.enrolled_in == []
