@@ -11,7 +11,15 @@
 import { useState, useMemo, useEffect } from 'react'
 import { X, Download, Search, ArrowUpDown, ArrowUp, ArrowDown, Loader2 } from 'lucide-react'
 import { useDrilldownAttendees } from '../../hooks/useDrilldownAttendees'
-import type { DrilldownFilter } from '../../types/metrics'
+import type { DrilldownAttendee, DrilldownFilter } from '../../types/metrics'
+
+/** Get display session name: comma-joined if multi-session, fallback to single session_name. */
+function getSessionDisplay(a: DrilldownAttendee): string {
+  if (a.sessions && a.sessions.length > 0) {
+    return a.sessions.map((s) => s.session_name).join(', ')
+  }
+  return a.session_name
+}
 
 interface DrillDownModalProps {
   year: number
@@ -76,7 +84,7 @@ export function DrillDownModal({
         (a.school?.toLowerCase().includes(term) ?? false) ||
         (a.city?.toLowerCase().includes(term) ?? false) ||
         (a.state?.toLowerCase().includes(term) ?? false) ||
-        a.session_name.toLowerCase().includes(term)
+        getSessionDisplay(a).toLowerCase().includes(term)
     )
   }, [attendees, searchTerm])
 
@@ -109,8 +117,8 @@ export function DrillDownModal({
           bVal = b.city?.toLowerCase() ?? ''
           break
         case 'session':
-          aVal = a.session_name.toLowerCase()
-          bVal = b.session_name.toLowerCase()
+          aVal = getSessionDisplay(a).toLowerCase()
+          bVal = getSessionDisplay(b).toLowerCase()
           break
         case 'years':
           aVal = a.years_at_camp ?? 0
@@ -157,7 +165,7 @@ export function DrillDownModal({
       a.school ?? '',
       a.city ?? '',
       a.state ?? '',
-      a.session_name,
+      getSessionDisplay(a),
       a.years_at_camp ?? '',
       a.status,
       a.is_returning ? 'Yes' : 'No',
@@ -341,7 +349,7 @@ export function DrillDownModal({
                           : attendee.city
                         : '—'}
                     </td>
-                    <td className="text-foreground px-4 py-3">{attendee.session_name}</td>
+                    <td className="text-foreground px-4 py-3">{getSessionDisplay(attendee)}</td>
                     <td className="text-foreground px-4 py-3 text-center">
                       {attendee.years_at_camp ?? '—'}
                     </td>

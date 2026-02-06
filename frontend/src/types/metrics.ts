@@ -326,6 +326,11 @@ export interface RetentionTrendsResponse {
 }
 
 // Drilldown types (chart click-through)
+export interface DrilldownSession {
+  session_name: string
+  session_cm_id: number
+}
+
 export interface DrilldownFilter {
   type:
     | 'session'
@@ -361,4 +366,5 @@ export interface DrilldownAttendee {
   session_cm_id: number
   status: string
   is_returning: boolean
+  sessions?: DrilldownSession[]
 }
