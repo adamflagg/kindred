@@ -1765,3 +1765,356 @@ class TestWaitlistDrilldowns:
         # Should return Noah once, not twice
         assert len(result) == 1
         assert result[0].person_id == 104
+
+
+class TestWaitlistTotalDrilldown:
+    """Tests for waitlist_total breakdown type.
+
+    waitlist_total returns all currently waitlisted persons (UC1 + UC2 combined)
+    with enrolled session info. Supports filtering by session via breakdown_value.
+    """
+
+    @pytest.fixture
+    def waitlist_sessions(self) -> dict[int, Mock]:
+        """Sessions for waitlist_total drilldown tests."""
+        return {
+            1001: create_mock_session(1001, "Session 1", 2026, "main", "2026-06-15", "2026-07-05"),
+            1002: create_mock_session(1002, "Session 2", 2026, "main", "2026-07-06", "2026-07-26"),
+            1003: create_mock_session(1003, "Session 2a", 2026, "embedded", "2026-07-06", "2026-07-19"),
+        }
+
+    @pytest.fixture
+    def waitlist_persons(self) -> dict[int, Mock]:
+        """Persons for waitlist_total drilldown tests."""
+        return {
+            101: create_mock_person(101, "Emma", "Johnson", "F", 5, years_at_camp=1),
+            102: create_mock_person(102, "Liam", "Garcia", "M", 6, years_at_camp=2),
+            103: create_mock_person(103, "Olivia", "Chen", "F", 7, years_at_camp=1),
+        }
+
+    @pytest.mark.asyncio
+    async def test_waitlist_total_all_returns_uc1_and_uc2(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        waitlist_sessions: dict[int, Mock],
+        waitlist_persons: dict[int, Mock],
+    ) -> None:
+        """waitlist_total with value='all' returns both UC1 and UC2 persons."""
+        session1 = waitlist_sessions[1001]
+        session2 = waitlist_sessions[1002]
+
+        # Emma (101) waitlisted for S1, no enrollment (UC1)
+        # Liam (102) waitlisted for S1, enrolled in S2 (UC2)
+        waitlisted = [
+            create_mock_attendee(101, session1, 2026, status="waitlisted"),
+            create_mock_attendee(102, session1, 2026, status="waitlisted"),
+        ]
+        enrolled = [
+            create_mock_attendee(102, session2, 2026, status="enrolled"),
+        ]
+
+        mock_repository.fetch_sessions.return_value = waitlist_sessions
+        mock_repository.fetch_persons.return_value = waitlist_persons
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (
+                waitlisted if status_filter == ["waitlisted"] else enrolled if status_filter == ["enrolled"] else []
+            )
+        )
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="waitlist_total",
+            breakdown_value="all",
+        )
+
+        # Both UC1 and UC2 should be returned
+        assert len(result) == 2
+        person_ids = {r.person_id for r in result}
+        assert person_ids == {101, 102}
+
+    @pytest.mark.asyncio
+    async def test_waitlist_total_filtered_by_session(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        waitlist_sessions: dict[int, Mock],
+        waitlist_persons: dict[int, Mock],
+    ) -> None:
+        """waitlist_total with numeric value filters to that session's waitlisted persons."""
+        session1 = waitlist_sessions[1001]
+        session2 = waitlist_sessions[1002]
+
+        # Emma waitlisted for S1, Olivia waitlisted for S2
+        waitlisted = [
+            create_mock_attendee(101, session1, 2026, status="waitlisted"),
+            create_mock_attendee(103, session2, 2026, status="waitlisted"),
+        ]
+
+        mock_repository.fetch_sessions.return_value = waitlist_sessions
+        mock_repository.fetch_persons.return_value = waitlist_persons
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (waitlisted if status_filter == ["waitlisted"] else [])
+        )
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="waitlist_total",
+            breakdown_value="1001",
+        )
+
+        # Only Emma (waitlisted for session 1001)
+        assert len(result) == 1
+        assert result[0].person_id == 101
+
+    @pytest.mark.asyncio
+    async def test_waitlist_total_deduplicates_multi_session_person(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        waitlist_sessions: dict[int, Mock],
+        waitlist_persons: dict[int, Mock],
+    ) -> None:
+        """Person waitlisted in 2 sessions appears once with both sessions listed."""
+        session1 = waitlist_sessions[1001]
+        session2 = waitlist_sessions[1002]
+
+        # Emma waitlisted in both S1 and S2
+        waitlisted = [
+            create_mock_attendee(101, session1, 2026, status="waitlisted"),
+            create_mock_attendee(101, session2, 2026, status="waitlisted"),
+        ]
+
+        mock_repository.fetch_sessions.return_value = waitlist_sessions
+        mock_repository.fetch_persons.return_value = waitlist_persons
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (waitlisted if status_filter == ["waitlisted"] else [])
+        )
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="waitlist_total",
+            breakdown_value="all",
+        )
+
+        # Emma appears once
+        assert len(result) == 1
+        assert result[0].person_id == 101
+
+        # sessions field should contain both waitlisted sessions
+        assert len(result[0].sessions) == 2
+        session_ids = {s.session_cm_id for s in result[0].sessions}
+        assert session_ids == {1001, 1002}
+
+
+class TestWaitlistDrilldownEnrolledSessions:
+    """Tests for enrolled_sessions field on waitlist drilldown results.
+
+    All waitlist breakdown types should populate enrolled_sessions to show
+    which sessions the waitlisted person is enrolled in.
+    """
+
+    @pytest.fixture
+    def waitlist_sessions(self) -> dict[int, Mock]:
+        """Sessions for enrolled_sessions tests."""
+        return {
+            1001: create_mock_session(1001, "Session 1", 2026, "main", "2026-06-15", "2026-07-05"),
+            1002: create_mock_session(1002, "Session 2", 2026, "main", "2026-07-06", "2026-07-26"),
+            1003: create_mock_session(1003, "Session 2a", 2026, "embedded", "2026-07-06", "2026-07-19"),
+        }
+
+    @pytest.fixture
+    def waitlist_persons(self) -> dict[int, Mock]:
+        """Persons for enrolled_sessions tests."""
+        return {
+            101: create_mock_person(101, "Emma", "Johnson", "F", 5, years_at_camp=1),
+            102: create_mock_person(102, "Liam", "Garcia", "M", 6, years_at_camp=2),
+            103: create_mock_person(103, "Olivia", "Chen", "F", 7, years_at_camp=1),
+            104: create_mock_person(104, "Noah", "Williams", "M", 8, years_at_camp=3),
+        }
+
+    @pytest.mark.asyncio
+    async def test_waitlist_total_populates_enrolled_sessions(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        waitlist_sessions: dict[int, Mock],
+        waitlist_persons: dict[int, Mock],
+    ) -> None:
+        """waitlist_total should populate enrolled_sessions for UC2 persons."""
+        session1 = waitlist_sessions[1001]
+        session2 = waitlist_sessions[1002]
+
+        # Liam waitlisted for S1, enrolled in S2
+        waitlisted = [
+            create_mock_attendee(102, session1, 2026, status="waitlisted"),
+        ]
+        enrolled = [
+            create_mock_attendee(102, session2, 2026, status="enrolled"),
+        ]
+
+        mock_repository.fetch_sessions.return_value = waitlist_sessions
+        mock_repository.fetch_persons.return_value = waitlist_persons
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (
+                waitlisted if status_filter == ["waitlisted"] else enrolled if status_filter == ["enrolled"] else []
+            )
+        )
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="waitlist_total",
+            breakdown_value="all",
+        )
+
+        assert len(result) == 1
+        liam = result[0]
+        assert liam.person_id == 102
+        assert len(liam.enrolled_sessions) == 1
+        assert liam.enrolled_sessions[0].session_cm_id == 1002
+        assert liam.enrolled_sessions[0].session_name == "Session 2"
+
+    @pytest.mark.asyncio
+    async def test_waitlist_no_enrollment_has_empty_enrolled_sessions(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        waitlist_sessions: dict[int, Mock],
+        waitlist_persons: dict[int, Mock],
+    ) -> None:
+        """waitlist_no_enrollment persons should have empty enrolled_sessions."""
+        session1 = waitlist_sessions[1001]
+
+        waitlisted = [
+            create_mock_attendee(101, session1, 2026, status="waitlisted"),
+        ]
+
+        mock_repository.fetch_sessions.return_value = waitlist_sessions
+        mock_repository.fetch_persons.return_value = waitlist_persons
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (waitlisted if status_filter == ["waitlisted"] else [])
+        )
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="waitlist_no_enrollment",
+            breakdown_value="true",
+        )
+
+        assert len(result) == 1
+        assert result[0].enrolled_sessions == []
+
+    @pytest.mark.asyncio
+    async def test_waitlist_has_enrollment_populates_enrolled_sessions(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        waitlist_sessions: dict[int, Mock],
+        waitlist_persons: dict[int, Mock],
+    ) -> None:
+        """waitlist_has_enrollment persons should have their enrolled sessions listed."""
+        session1 = waitlist_sessions[1001]
+        session2 = waitlist_sessions[1002]
+        session2a = waitlist_sessions[1003]
+
+        # Liam waitlisted for S1, enrolled in S2 and S2a
+        waitlisted = [
+            create_mock_attendee(102, session1, 2026, status="waitlisted"),
+        ]
+        enrolled = [
+            create_mock_attendee(102, session2, 2026, status="enrolled"),
+            create_mock_attendee(102, session2a, 2026, status="enrolled"),
+        ]
+
+        mock_repository.fetch_sessions.return_value = waitlist_sessions
+        mock_repository.fetch_persons.return_value = waitlist_persons
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (
+                waitlisted if status_filter == ["waitlisted"] else enrolled if status_filter == ["enrolled"] else []
+            )
+        )
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="waitlist_has_enrollment",
+            breakdown_value="true",
+        )
+
+        assert len(result) == 1
+        liam = result[0]
+        assert liam.person_id == 102
+        assert len(liam.enrolled_sessions) == 2
+        enrolled_ids = {s.session_cm_id for s in liam.enrolled_sessions}
+        assert enrolled_ids == {1002, 1003}
+
+    @pytest.mark.asyncio
+    async def test_waitlist_accepted_populates_enrolled_sessions(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        waitlist_sessions: dict[int, Mock],
+        waitlist_persons: dict[int, Mock],
+    ) -> None:
+        """waitlist_accepted should populate enrolled_sessions from current enrollments."""
+        session1 = waitlist_sessions[1001]
+        session2 = waitlist_sessions[1002]
+
+        history = [
+            create_mock_status_history(
+                104, session1, waitlist_persons[104], old_status="waitlisted", new_status="enrolled"
+            ),
+        ]
+        # Noah is now enrolled in S1 and S2
+        enrolled = [
+            create_mock_attendee(104, session1, 2026, status="enrolled"),
+            create_mock_attendee(104, session2, 2026, status="enrolled"),
+        ]
+
+        mock_repository.fetch_sessions.return_value = waitlist_sessions
+        mock_repository.fetch_persons.return_value = waitlist_persons
+        mock_repository.fetch_status_history = AsyncMock(return_value=history)
+        mock_repository.fetch_attendees = AsyncMock(return_value=enrolled)
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="waitlist_accepted",
+            breakdown_value="true",
+        )
+
+        assert len(result) == 1
+        noah = result[0]
+        assert noah.person_id == 104
+        assert len(noah.enrolled_sessions) == 2
+        enrolled_ids = {s.session_cm_id for s in noah.enrolled_sessions}
+        assert enrolled_ids == {1001, 1002}
+
+    @pytest.mark.asyncio
+    async def test_waitlist_declined_has_empty_enrolled_sessions(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        waitlist_sessions: dict[int, Mock],
+        waitlist_persons: dict[int, Mock],
+    ) -> None:
+        """waitlist_declined persons (not enrolled) should have empty enrolled_sessions."""
+        session1 = waitlist_sessions[1001]
+
+        history = [
+            create_mock_status_history(
+                103, session1, waitlist_persons[103], old_status="waitlisted", new_status="cancelled"
+            ),
+        ]
+
+        mock_repository.fetch_sessions.return_value = waitlist_sessions
+        mock_repository.fetch_persons.return_value = waitlist_persons
+        mock_repository.fetch_status_history = AsyncMock(return_value=history)
+        mock_repository.fetch_attendees = AsyncMock(return_value=[])
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="waitlist_declined",
+            breakdown_value="true",
+        )
+
+        assert len(result) == 1
+        assert result[0].enrolled_sessions == []
