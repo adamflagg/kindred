@@ -580,7 +580,12 @@ class DrilldownService:
             seen_persons.add(pid)
 
             is_enrolled = pid in enrolled_person_ids
-            if breakdown_type == "waitlist_no_enrollment" and not is_enrolled or breakdown_type == "waitlist_has_enrollment" and is_enrolled:
+            if (
+                breakdown_type == "waitlist_no_enrollment"
+                and not is_enrolled
+                or breakdown_type == "waitlist_has_enrollment"
+                and is_enrolled
+            ):
                 matching_attendees.append(att)
 
         return self._build_response(matching_attendees, persons, sessions)

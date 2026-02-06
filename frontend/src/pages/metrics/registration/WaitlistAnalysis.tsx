@@ -162,7 +162,7 @@ export default function WaitlistAnalysis() {
               data={gradeChartData}
               title="Grade Distribution"
               type="bar"
-              height={300}
+              height={360}
               breakdownType="grade"
               onSegmentClick={(filter) =>
                 setFilter({
