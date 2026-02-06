@@ -144,7 +144,7 @@ export function GeoMap({
     <div className="space-y-4">
       {/* Map Container */}
       <div
-        className="border-border shadow-lodge-sm overflow-hidden rounded-xl border"
+        className="border-border shadow-lodge-sm relative z-0 overflow-hidden rounded-xl border"
         style={{ height }}
       >
         <MapContainer
