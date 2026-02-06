@@ -77,18 +77,6 @@ class DrilldownService:
                 enrollment_history = await self.repo.fetch_summer_enrollment_history(person_ids, year)
                 _, first_year_by_person = compute_summer_metrics(enrollment_history, person_ids)
 
-        # For synagogue breakdown, pre-fetch congregation mapping
-        congregation_by_person: dict[int, str] = {}
-        if breakdown_type == "synagogue":
-            congregation_by_person = await self.repo.fetch_congregation_by_person(year)
-
-        # For city breakdown, pre-fetch normalized city mapping
-        # This ensures drilldown matches on normalized values (what GeoDetailList shows)
-        # instead of raw person.address["city"] values which may have typos/variations
-        normalized_city_by_person: dict[int, str] = {}
-        if breakdown_type == "city":
-            normalized_city_by_person = await self.repo.fetch_normalized_city_by_person(year)
-
         # Filter by breakdown criteria
         filtered_attendees = self._filter_by_breakdown(
             filtered_attendees,
@@ -97,8 +85,6 @@ class DrilldownService:
             breakdown_type,
             breakdown_value,
             first_year_by_person,
-            congregation_by_person,
-            normalized_city_by_person,
         )
 
         # Build response
@@ -174,8 +160,6 @@ class DrilldownService:
         breakdown_type: str,
         breakdown_value: str,
         first_year_by_person: dict[int, int] | None = None,
-        congregation_by_person: dict[int, str] | None = None,
-        normalized_city_by_person: dict[int, str] | None = None,
     ) -> list[Any]:
         """Filter attendees by the specific breakdown criteria.
 
@@ -187,20 +171,12 @@ class DrilldownService:
             breakdown_value: Value to match.
             first_year_by_person: Pre-computed first summer year by person_id
                 (only populated for first_summer_year breakdown).
-            congregation_by_person: Pre-computed congregation by person cm_id
-                (only populated for synagogue breakdown).
-            normalized_city_by_person: Pre-computed normalized city by person cm_id
-                (only populated for city breakdown).
 
         Returns:
             Filtered list of attendees.
         """
         if first_year_by_person is None:
             first_year_by_person = {}
-        if congregation_by_person is None:
-            congregation_by_person = {}
-        if normalized_city_by_person is None:
-            normalized_city_by_person = {}
         filtered = []
         for a in attendees:
             person_id = getattr(a, "person_id", None)
@@ -241,32 +217,21 @@ class DrilldownService:
                         filtered.append(a)
 
             elif breakdown_type == "school":
-                # Match on normalized_school (set by normalize_geographic sync)
-                # for consistency with GeoDetailList which shows normalized values.
-                # Fall back to raw person.school if normalized_school not populated.
                 if person:
                     normalized = getattr(person, "normalized_school", None)
-                    if normalized:
-                        if normalized == breakdown_value:
-                            filtered.append(a)
-                    elif getattr(person, "school", None) == breakdown_value:
+                    if normalized and normalized == breakdown_value:
                         filtered.append(a)
 
             elif breakdown_type == "city":
-                # Match on normalized city from normalized_mappings
-                # This ensures consistency with GeoDetailList which shows normalized values
-                pid = int(person_id) if person_id is not None else None
-                if pid is not None:
-                    normalized_city = normalized_city_by_person.get(pid, "")
-                    if normalized_city == breakdown_value:
+                if person:
+                    normalized = getattr(person, "normalized_city", None)
+                    if normalized and normalized == breakdown_value:
                         filtered.append(a)
 
             elif breakdown_type == "synagogue":
-                # Match on congregation/synagogue from person custom values
-                pid = int(person_id) if person_id is not None else None
-                if pid is not None:
-                    congregation = congregation_by_person.get(pid, "")
-                    if congregation == breakdown_value:
+                if person:
+                    normalized = getattr(person, "normalized_congregation", None)
+                    if normalized and normalized == breakdown_value:
                         filtered.append(a)
 
             elif breakdown_type == "years_at_camp":
