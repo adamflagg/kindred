@@ -19,7 +19,6 @@ interface PhaseSyncResponse {
   // Queue fields (for 202 Accepted)
   queue_id?: string
   position?: number
-  warning?: string
 }
 
 // Human-readable names for phases
@@ -73,14 +72,6 @@ export function useRunPhaseSync() {
       } else {
         toast.success(`${phaseName} phase started (${jobCount} jobs)`, {
           duration: 4000,
-        })
-      }
-
-      // Show warning if present (e.g., Transform without CV)
-      if (data.warning) {
-        toast(data.warning, {
-          icon: '⚠️',
-          duration: 6000,
         })
       }
 
