@@ -33,6 +33,7 @@ import argparse
 import csv
 import json
 from pathlib import Path
+from typing import Any
 
 # California FIPS state code
 CA_FIPS = "06"
@@ -97,7 +98,7 @@ def load_closed_schools(directory_path: Path | None) -> set[str]:
     return closed
 
 
-def parse_geocode_file(geocode_path: Path, closed_ids: set[str]) -> list[dict]:
+def parse_geocode_file(geocode_path: Path, closed_ids: set[str]) -> list[dict[str, Any]]:
     """Parse NCES EDGE geocode file (pipe-delimited, no header).
 
     Columns (0-indexed):
@@ -156,7 +157,7 @@ def parse_geocode_file(geocode_path: Path, closed_ids: set[str]) -> list[dict]:
     return schools
 
 
-def build_json(schools: list[dict]) -> dict:
+def build_json(schools: list[dict[str, Any]]) -> dict[str, Any]:
     """Build the schools.json structure with lookup + coords."""
     lookup: dict[str, str] = {}
     coords: dict[str, list[float]] = {}
@@ -203,7 +204,7 @@ def main() -> None:
         print("Download from: https://nces.ed.gov/programs/edge/geographic/schoollocations")
         print("Or specify: --geocode path/to/EDGE_GEOCODE_PUBLICSCH_XXXX.TXT")
         print("\nFalling back to supplemental schools only...")
-        schools: list[dict] = []
+        schools: list[dict[str, Any]] = []
     else:
         print(f"Using geocode file: {geocode_path}")
         closed_ids = load_closed_schools(directory_path)

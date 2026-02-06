@@ -16,6 +16,7 @@ This script is idempotent - running it again will overwrite the existing file.
 
 import json
 from pathlib import Path
+from typing import Any
 
 # Output path
 OUTPUT_PATH = Path(__file__).parent.parent.parent / "bunking" / "geo_normalizer" / "data" / "congregations.json"
@@ -85,7 +86,7 @@ CONGREGATIONS: dict[str, list[float]] = {
 }
 
 
-def build_json() -> dict:
+def build_json() -> dict[str, Any]:
     """Build the congregations.json structure with lookup + coords."""
     lookup: dict[str, str] = {}
     coords: dict[str, list[float]] = {}
