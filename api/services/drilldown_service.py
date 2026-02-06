@@ -29,6 +29,20 @@ PERSON_LEVEL_BREAKDOWNS = frozenset(
         "synagogue",
         "status",
         "first_summer_year",
+        "waitlist_no_enrollment",
+        "waitlist_has_enrollment",
+        "waitlist_accepted",
+        "waitlist_declined",
+    }
+)
+
+# Waitlist breakdown types that need separate fetching logic
+WAITLIST_BREAKDOWNS = frozenset(
+    {
+        "waitlist_no_enrollment",
+        "waitlist_has_enrollment",
+        "waitlist_accepted",
+        "waitlist_declined",
     }
 )
 
@@ -75,6 +89,17 @@ class DrilldownService:
         # Fetch sessions first to find AG sessions with matching parent
         sessions = await self.repo.fetch_sessions(year, session_types)
         ag_session_ids = self._find_ag_sessions_for_parent(sessions, session_cm_id)
+
+        # Waitlist breakdown types need separate fetching logic
+        if breakdown_type in WAITLIST_BREAKDOWNS:
+            return await self._handle_waitlist_breakdown(
+                year=year,
+                breakdown_type=breakdown_type,
+                sessions=sessions,
+                session_cm_id=session_cm_id,
+                session_types=session_types,
+                ag_session_ids=ag_session_ids,
+            )
 
         # Fetch data in parallel
         attendees, persons = await asyncio.gather(
@@ -402,3 +427,167 @@ class DrilldownService:
             )
 
         return result
+
+    async def _handle_waitlist_breakdown(
+        self,
+        year: int,
+        breakdown_type: str,
+        sessions: dict[int, Any],
+        session_cm_id: int | None,
+        session_types: list[str] | None,
+        ag_session_ids: set[int],
+    ) -> list[DrilldownAttendee]:
+        """Handle waitlist-specific breakdown types.
+
+        These need separate fetching logic since they cross-reference
+        waitlisted vs enrolled attendees or query status history.
+
+        Args:
+            year: The year to get attendees for.
+            breakdown_type: One of waitlist_no_enrollment, waitlist_has_enrollment,
+                waitlist_accepted, waitlist_declined.
+            sessions: Dictionary of sessions by cm_id.
+            session_cm_id: Optional session filter.
+            session_types: Optional session type filter.
+            ag_session_ids: AG sessions for the filtered parent session.
+
+        Returns:
+            List of DrilldownAttendee records.
+        """
+        from api.services.waitlist_service import DECLINED_STATUSES
+
+        persons = await self.repo.fetch_persons(year)
+
+        if breakdown_type in ("waitlist_no_enrollment", "waitlist_has_enrollment"):
+            return await self._handle_waitlist_enrollment_breakdown(
+                year=year,
+                breakdown_type=breakdown_type,
+                sessions=sessions,
+                persons=persons,
+                session_cm_id=session_cm_id,
+                session_types=session_types,
+                ag_session_ids=ag_session_ids,
+            )
+
+        # UC3: accepted (waitlisted -> enrolled)
+        # UC4: declined (waitlisted -> cancelled/withdrawn/dismissed)
+        if breakdown_type == "waitlist_accepted":
+            new_statuses = ["enrolled"]
+        else:
+            new_statuses = list(DECLINED_STATUSES)
+
+        history = await self.repo.fetch_status_history(year, old_status="waitlisted", new_statuses=new_statuses)
+
+        # Deduplicate by person, build DrilldownAttendee from history + persons
+        seen_persons: set[int] = set()
+        result: list[DrilldownAttendee] = []
+        for record in history:
+            pid = int(getattr(record, "person_id", 0))
+            if not pid or pid in seen_persons:
+                continue
+
+            person = persons.get(pid)
+            if not person:
+                continue
+
+            # Apply session filter
+            session_info = self._get_session_from_record(record)
+            if session_cm_id is not None and session_info:
+                record_sid = int(getattr(session_info, "cm_id", 0))
+                if record_sid != session_cm_id and record_sid not in ag_session_ids:
+                    continue
+
+            seen_persons.add(pid)
+
+            session_name = getattr(session_info, "name", "Unknown") if session_info else "Unknown"
+            session_cmid = int(getattr(session_info, "cm_id", 0)) if session_info else 0
+
+            years_at_camp = getattr(person, "years_at_camp", None)
+            is_returning = years_at_camp is not None and years_at_camp > 1
+            city = getattr(person, "address_city", None) or None
+            state = getattr(person, "address_state", None) or None
+
+            result.append(
+                DrilldownAttendee(
+                    person_id=pid,
+                    first_name=getattr(person, "first_name", ""),
+                    last_name=getattr(person, "last_name", ""),
+                    preferred_name=getattr(person, "preferred_name", None),
+                    grade=getattr(person, "grade", None),
+                    gender=getattr(person, "gender", None),
+                    age=getattr(person, "age", None),
+                    school=getattr(person, "normalized_school", None) or getattr(person, "school", None),
+                    city=getattr(person, "normalized_city", None) or city,
+                    state=state,
+                    years_at_camp=years_at_camp,
+                    session_name=session_name,
+                    session_cm_id=session_cmid,
+                    status=getattr(record, "new_status", "unknown"),
+                    is_returning=is_returning,
+                    sessions=[DrilldownSession(session_name=session_name, session_cm_id=session_cmid)],
+                )
+            )
+
+        return result
+
+    async def _handle_waitlist_enrollment_breakdown(
+        self,
+        year: int,
+        breakdown_type: str,
+        sessions: dict[int, Any],
+        persons: dict[int, Any],
+        session_cm_id: int | None,
+        session_types: list[str] | None,
+        ag_session_ids: set[int],
+    ) -> list[DrilldownAttendee]:
+        """Handle waitlist_no_enrollment and waitlist_has_enrollment breakdowns.
+
+        Fetches waitlisted + enrolled attendees and partitions by enrollment status.
+        """
+        import asyncio
+
+        from api.services.waitlist_service import SUMMER_SESSION_TYPES
+
+        effective_types = session_types or list(SUMMER_SESSION_TYPES)
+
+        waitlisted_attendees, enrolled_attendees = await asyncio.gather(
+            self.repo.fetch_attendees(year, ["waitlisted"]),
+            self.repo.fetch_attendees(year, ["enrolled"]),
+        )
+
+        # Filter waitlisted by session
+        waitlisted_attendees = self._filter_by_session(
+            waitlisted_attendees, session_types, session_cm_id, ag_session_ids
+        )
+
+        # Build enrolled person_id set (across all summer sessions)
+        enrolled_person_ids: set[int] = set()
+        for att in enrolled_attendees:
+            pid = getattr(att, "person_id", None)
+            session_info = self._get_session_from_record(att)
+            if pid is not None and session_info:
+                session_type = getattr(session_info, "session_type", None)
+                if session_type in effective_types:
+                    enrolled_person_ids.add(int(pid))
+
+        # Partition and deduplicate by person
+        seen_persons: set[int] = set()
+        matching_attendees: list[Any] = []
+        for att in waitlisted_attendees:
+            pid = int(getattr(att, "person_id", 0))
+            if not pid or pid in seen_persons:
+                continue
+            seen_persons.add(pid)
+
+            is_enrolled = pid in enrolled_person_ids
+            if breakdown_type == "waitlist_no_enrollment" and not is_enrolled or breakdown_type == "waitlist_has_enrollment" and is_enrolled:
+                matching_attendees.append(att)
+
+        return self._build_response(matching_attendees, persons, sessions)
+
+    def _get_session_from_record(self, record: Any) -> Any:
+        """Extract session from a record's expand dict."""
+        expand = getattr(record, "expand", {}) or {}
+        if isinstance(expand, dict):
+            return expand.get("session")
+        return getattr(expand, "session", None)

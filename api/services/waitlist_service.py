@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 from api.schemas.metrics import (
     GenderBreakdown,
     GradeBreakdown,
+    WaitlistEnrolledSessionCount,
     WaitlistMetricsResponse,
     WaitlistSessionBreakdown,
 )
@@ -71,12 +72,17 @@ class WaitlistService:
         waitlisted_attendees = self._filter_to_sessions(waitlisted_attendees, valid_session_ids, sessions)
         enrolled_attendees = self._filter_to_sessions(enrolled_attendees, set(sessions.keys()), sessions)
 
-        # Build set of person_ids who have at least one enrolled summer session
-        enrolled_person_ids: set[int] = set()
+        # Build mapping: person_id -> list of (session_cm_id, session_name) they're enrolled in
+        enrolled_sessions_by_person: dict[int, list[tuple[int, str]]] = defaultdict(list)
         for att in enrolled_attendees:
             pid = getattr(att, "person_id", None)
             if pid is not None:
-                enrolled_person_ids.add(int(pid))
+                session_info = self._get_session_from_attendee(att)
+                if session_info:
+                    cmid = int(getattr(session_info, "cm_id", 0))
+                    name = getattr(session_info, "name", f"Session {cmid}")
+                    enrolled_sessions_by_person[int(pid)].append((cmid, name))
+        enrolled_person_ids = set(enrolled_sessions_by_person.keys())
 
         # Partition waitlisted persons
         waitlisted_no_enrollment: list[dict[str, Any]] = []
@@ -84,6 +90,9 @@ class WaitlistService:
         waitlisted_by_session: dict[int, dict[str, int]] = defaultdict(
             lambda: {"waitlisted": 0, "no_enrollment": 0, "has_enrollment": 0, "accepted": 0, "declined": 0}
         )
+        # Track enrolled-in-session counts per waitlisted session
+        # Key: waitlist_session_id -> {enrolled_session_id: count}
+        enrolled_in_counts: dict[int, dict[int, int]] = defaultdict(lambda: defaultdict(int))
 
         seen_waitlisted_persons: set[int] = set()
         for att in waitlisted_attendees:
@@ -104,6 +113,9 @@ class WaitlistService:
                 waitlisted_has_enrollment.append(entry)
                 if session_cmid:
                     waitlisted_by_session[int(session_cmid)]["has_enrollment"] += 1
+                    # Track which sessions this person is enrolled in
+                    for enrolled_sid, _enrolled_name in enrolled_sessions_by_person.get(pid, []):
+                        enrolled_in_counts[int(session_cmid)][enrolled_sid] += 1
             else:
                 waitlisted_no_enrollment.append(entry)
                 if session_cmid:
@@ -143,6 +155,23 @@ class WaitlistService:
         for sid, counts in sorted(waitlisted_by_session.items()):
             session = sessions.get(sid)
             if session:
+                # Build enrolled_in list for this waitlist session
+                enrolled_in_list: list[WaitlistEnrolledSessionCount] = []
+                for enrolled_sid, enrolled_count in sorted(enrolled_in_counts.get(sid, {}).items()):
+                    enrolled_session = sessions.get(enrolled_sid)
+                    enrolled_name = (
+                        getattr(enrolled_session, "name", f"Session {enrolled_sid}")
+                        if enrolled_session
+                        else f"Session {enrolled_sid}"
+                    )
+                    enrolled_in_list.append(
+                        WaitlistEnrolledSessionCount(
+                            session_cm_id=enrolled_sid,
+                            session_name=enrolled_name,
+                            count=enrolled_count,
+                        )
+                    )
+
                 by_session.append(
                     WaitlistSessionBreakdown(
                         session_cm_id=sid,
@@ -152,6 +181,7 @@ class WaitlistService:
                         has_enrollment=counts["has_enrollment"],
                         accepted=counts["accepted"],
                         declined=counts["declined"],
+                        enrolled_in=enrolled_in_list,
                     )
                 )
 

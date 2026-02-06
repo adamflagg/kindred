@@ -508,6 +508,14 @@ class RetentionTrendsResponse(BaseModel):
 # ============================================================================
 
 
+class WaitlistEnrolledSessionCount(BaseModel):
+    """Count of waitlisted persons enrolled in a specific session."""
+
+    session_cm_id: int = Field(description="Session CampMinder ID")
+    session_name: str = Field(description="Session name")
+    count: int = Field(description="Number of waitlisted persons enrolled in this session")
+
+
 class WaitlistSessionBreakdown(BaseModel):
     """Per-session waitlist breakdown."""
 
@@ -518,6 +526,9 @@ class WaitlistSessionBreakdown(BaseModel):
     has_enrollment: int = Field(0, description="Waitlisted but enrolled in other session")
     accepted: int = Field(0, description="Previously waitlisted, now enrolled")
     declined: int = Field(0, description="Previously waitlisted, cancelled/withdrawn/dismissed")
+    enrolled_in: list[WaitlistEnrolledSessionCount] = Field(
+        default_factory=list, description="Per-session enrollment breakdown for has_enrollment persons"
+    )
 
 
 class WaitlistMetricsResponse(BaseModel):
