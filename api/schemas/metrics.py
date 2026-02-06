@@ -504,6 +504,39 @@ class RetentionTrendsResponse(BaseModel):
 
 
 # ============================================================================
+# Waitlist Analysis
+# ============================================================================
+
+
+class WaitlistSessionBreakdown(BaseModel):
+    """Per-session waitlist breakdown."""
+
+    session_cm_id: int = Field(description="Session CampMinder ID")
+    session_name: str = Field(description="Session name")
+    waitlisted: int = Field(description="Currently waitlisted count")
+    no_enrollment: int = Field(0, description="Waitlisted with no other enrollment")
+    has_enrollment: int = Field(0, description="Waitlisted but enrolled in other session")
+    accepted: int = Field(0, description="Previously waitlisted, now enrolled")
+    declined: int = Field(0, description="Previously waitlisted, cancelled/withdrawn/dismissed")
+
+
+class WaitlistMetricsResponse(BaseModel):
+    """Response model for waitlist analysis endpoint."""
+
+    year: int = Field(description="Year for metrics")
+    total_waitlisted: int = Field(description="Total currently waitlisted (unique persons)")
+    waitlisted_no_enrollment: int = Field(description="Waitlisted with no enrolled summer sessions (UC1)")
+    waitlisted_has_enrollment: int = Field(description="Waitlisted but enrolled in other sessions (UC2)")
+    total_accepted: int = Field(description="Previously waitlisted, now enrolled (UC3)")
+    total_declined: int = Field(description="Previously waitlisted, declined placement (UC4)")
+    by_session: list[WaitlistSessionBreakdown] = Field(
+        default_factory=list, description="Per-session waitlist breakdown"
+    )
+    by_grade: list[GradeBreakdown] = Field(default_factory=list, description="Waitlisted by grade")
+    by_gender: list[GenderBreakdown] = Field(default_factory=list, description="Waitlisted by gender")
+
+
+# ============================================================================
 # Drilldown (Chart Click-Through)
 # ============================================================================
 

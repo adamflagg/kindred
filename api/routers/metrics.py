@@ -21,6 +21,7 @@ from ..schemas.metrics import (
     RegistrationMetricsResponse,
     RetentionMetricsResponse,
     RetentionTrendsResponse,
+    WaitlistMetricsResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -626,6 +627,50 @@ async def get_retention_trends(
     except Exception as e:
         logger.error(f"Error calculating retention trends: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error calculating retention trends: {str(e)}")
+
+
+# ============================================================================
+# Waitlist Analysis Endpoint
+# ============================================================================
+
+
+@router.get("/waitlist", response_model=WaitlistMetricsResponse)
+async def get_waitlist_metrics(
+    year: int = Query(..., description="Year to analyze"),
+    session_types: str | None = Query(
+        "main,embedded,ag",
+        description="Comma-separated session types to filter (default: summer camp sessions)",
+    ),
+    session_cm_id: int | None = Query(
+        None,
+        description="Filter to specific session by CampMinder ID",
+    ),
+) -> WaitlistMetricsResponse:
+    """Get waitlist analysis metrics.
+
+    Returns four categories of waitlist data:
+    - Currently waitlisted with no other enrolled sessions (highest priority)
+    - Currently waitlisted but enrolled in other sessions
+    - Previously waitlisted, now accepted (enrolled)
+    - Previously waitlisted, declined (cancelled/withdrawn/dismissed)
+    """
+    from api.services.metrics_repository import MetricsRepository
+    from api.services.waitlist_service import WaitlistService
+
+    try:
+        type_filter = session_types.split(",") if session_types else None
+
+        repository = MetricsRepository(pb)
+        service = WaitlistService(repository)
+        return await service.calculate_waitlist(
+            year=year,
+            session_types=type_filter,
+            session_cm_id=session_cm_id,
+        )
+
+    except Exception as e:
+        logger.error(f"Error calculating waitlist metrics: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error calculating waitlist metrics: {str(e)}")
 
 
 # ============================================================================
