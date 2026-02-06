@@ -96,48 +96,6 @@ def create_mock_person_custom_value(
 
 
 # ============================================================================
-# Repository Tests - fetch_normalized_geo
-# ============================================================================
-
-
-class TestFetchNormalizedGeo:
-    """Tests for the new fetch_normalized_geo repository method."""
-
-    @pytest.mark.asyncio
-    async def test_fetch_normalized_geo_filters_by_year(self) -> None:
-        """fetch_normalized_geo should filter by year."""
-        # Test expected filter structure for year-only query
-        year = 2026
-        expected_filter_parts = [f"year = {year}"]
-        assert "year = 2026" in expected_filter_parts
-
-    @pytest.mark.asyncio
-    async def test_fetch_normalized_geo_filters_by_session_cm_id(self) -> None:
-        """fetch_normalized_geo should filter by session cm_id when provided."""
-        year = 2026
-        session_cm_id = 2001
-
-        # Expected filter when session_cm_id is provided
-        expected_filter = f"year = {year} && session.cm_id = {session_cm_id}"
-
-        assert "session.cm_id = 2001" in expected_filter
-        assert "year = 2026" in expected_filter
-
-    @pytest.mark.asyncio
-    async def test_fetch_normalized_geo_filters_by_session_types(self) -> None:
-        """fetch_normalized_geo should filter by session types when provided."""
-        year = 2026
-        session_types = ["main", "embedded"]
-
-        # Expected filter when session_types is provided
-        types_filter = " || ".join([f'session.session_type = "{t}"' for t in session_types])
-        expected_filter = f"year = {year} && ({types_filter})"
-
-        assert 'session.session_type = "main"' in expected_filter
-        assert 'session.session_type = "embedded"' in expected_filter
-
-
-# ============================================================================
 # Service Tests - Normalized Geo Breakdowns
 # ============================================================================
 
