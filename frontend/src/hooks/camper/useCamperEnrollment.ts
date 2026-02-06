@@ -118,7 +118,7 @@ export function useCamperEnrollment(
           created: attendee.created || new Date().toISOString(),
           updated: attendee.updated || new Date().toISOString(),
           years_at_camp: expandedPerson.years_at_camp || 0,
-          school: expandedPerson.school,
+          school: expandedPerson.normalized_school || expandedPerson.school,
           pronouns: expandedPerson.gender_pronoun_name || '',
           email: '',
           tags: [],

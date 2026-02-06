@@ -27,6 +27,11 @@ class MockPerson:
     school: str | None = None
     years_at_camp: int | None = None
     address: str | None = None  # JSON string with city
+    normalized_school: str | None = None
+    normalized_city: str | None = None
+    normalized_congregation: str | None = None
+    address_city: str | None = None
+    address_state: str | None = None
 
 
 @dataclass
@@ -218,8 +223,20 @@ class TestDrilldownServiceGetAttendees:
             ),
         ]
         mock_repo.fetch_persons.return_value = {
-            1: MockPerson(cm_id=1, first_name="Emma", last_name="Johnson", school="Riverside Elementary"),
-            2: MockPerson(cm_id=2, first_name="Liam", last_name="Garcia", school="Oak Valley Middle"),
+            1: MockPerson(
+                cm_id=1,
+                first_name="Emma",
+                last_name="Johnson",
+                school="Riverside Elementary",
+                normalized_school="Riverside Elementary",
+            ),
+            2: MockPerson(
+                cm_id=2,
+                first_name="Liam",
+                last_name="Garcia",
+                school="Oak Valley Middle",
+                normalized_school="Oak Valley Middle",
+            ),
         }
         mock_repo.fetch_sessions.return_value = {
             1000: MockSession(cm_id=1000, name="S1", session_type="main"),
@@ -386,7 +403,7 @@ class TestDrilldownServiceGetAttendees:
 
     @pytest.mark.asyncio
     async def test_deduplicates_persons_in_multiple_sessions(self) -> None:
-        """Same person in multiple sessions appears once per session."""
+        """Same person in multiple sessions is deduped for person-level breakdowns."""
         from api.services.drilldown_service import DrilldownService
 
         mock_repo = AsyncMock()
@@ -416,10 +433,11 @@ class TestDrilldownServiceGetAttendees:
             breakdown_value="F",
         )
 
-        # Should return both records (one per session enrollment)
-        assert len(result) == 2
-        sessions = {r.session_name for r in result}
-        assert sessions == {"S1", "S2"}
+        # Gender is person-level: deduped to 1 result with both sessions
+        assert len(result) == 1
+        assert len(result[0].sessions) == 2
+        session_names = {s.session_name for s in result[0].sessions}
+        assert session_names == {"S1", "S2"}
 
     @pytest.mark.asyncio
     async def test_includes_is_returning_flag(self) -> None:

@@ -14,18 +14,23 @@ import type { Camper } from '../../types/app-types'
 
 interface HeroHeaderProps {
   camper: Camper
+  enrolledCampers?: Camper[]
   currentYear: number
   location: string | null
   sessionShortName: string
   pronouns: string
+  /** Additional session short names for multi-session persons */
+  allSessionNames?: string[] | undefined
 }
 
 export function HeroHeader({
   camper,
+  enrolledCampers,
   currentYear,
   location,
   sessionShortName,
   pronouns,
+  allSessionNames,
 }: HeroHeaderProps) {
   return (
     <div className="from-forest-700 via-forest-800 to-forest-900 shadow-lodge-lg overflow-hidden rounded-2xl bg-gradient-to-br">
@@ -100,20 +105,38 @@ export function HeroHeader({
             <TreePine className="text-forest-300 h-4 w-4" />
             <span className="text-sm">{camper.years_at_camp || 0} years at camp</span>
           </div>
-          {camper.expand?.assigned_bunk && (
-            <div className="text-forest-100 flex items-center gap-2">
-              <Home className="text-forest-300 h-4 w-4" />
-              <Link
-                to={`/summer/session/${sessionNameToUrl(camper.expand?.session?.name || '')}/board`}
-                className="text-sm transition-colors hover:text-white"
-              >
-                {camper.expand.assigned_bunk.name}
-              </Link>
-            </div>
-          )}
+          {enrolledCampers && enrolledCampers.length > 1
+            ? enrolledCampers
+                .filter((ec) => ec.expand?.assigned_bunk)
+                .map((ec) => (
+                  <div key={ec.id} className="text-forest-100 flex items-center gap-2">
+                    <Home className="text-forest-300 h-4 w-4" />
+                    <Link
+                      to={`/summer/session/${sessionNameToUrl(ec.expand?.session?.name || '')}/board`}
+                      className="text-sm transition-colors hover:text-white"
+                    >
+                      {ec.expand?.assigned_bunk?.name}
+                    </Link>
+                  </div>
+                ))
+            : camper.expand?.assigned_bunk && (
+                <div className="text-forest-100 flex items-center gap-2">
+                  <Home className="text-forest-300 h-4 w-4" />
+                  <Link
+                    to={`/summer/session/${sessionNameToUrl(camper.expand?.session?.name || '')}/board`}
+                    className="text-sm transition-colors hover:text-white"
+                  >
+                    {camper.expand.assigned_bunk.name}
+                  </Link>
+                </div>
+              )}
           <div className="text-forest-100 flex items-center gap-2">
             <Calendar className="text-forest-300 h-4 w-4" />
-            <span className="text-sm">{sessionShortName}</span>
+            <span className="text-sm">
+              {allSessionNames && allSessionNames.length > 1
+                ? allSessionNames.join(', ')
+                : sessionShortName}
+            </span>
           </div>
         </div>
       </div>

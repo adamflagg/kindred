@@ -41,6 +41,9 @@ export function CampJourneyTimeline({
             <div className="space-y-2">
               {history.map((record, idx) => {
                 const isCurrentYear = record.year === currentYear
+                // Hide year label if same year as previous record (multi-session)
+                const prevRecord = idx > 0 ? history[idx - 1] : null
+                const showYear = !prevRecord || prevRecord.year !== record.year
 
                 return (
                   <div
@@ -56,7 +59,7 @@ export function CampJourneyTimeline({
                       }`}
                     />
 
-                    {/* Year */}
+                    {/* Year - hidden for subsequent same-year records */}
                     <span
                       className={`font-display w-12 font-bold ${
                         isCurrentYear
@@ -64,7 +67,7 @@ export function CampJourneyTimeline({
                           : 'text-foreground/80'
                       }`}
                     >
-                      {record.year}
+                      {showYear ? record.year : ''}
                     </span>
 
                     {/* Session */}
@@ -86,8 +89,8 @@ export function CampJourneyTimeline({
                       {record.bunkName}
                     </span>
 
-                    {/* Current badge */}
-                    {isCurrentYear && (
+                    {/* Current badge - only on first current-year record */}
+                    {isCurrentYear && showYear && (
                       <span className="bg-forest-600 ml-auto flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold text-white">
                         Now
                       </span>

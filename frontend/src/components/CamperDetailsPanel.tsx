@@ -96,6 +96,14 @@ interface HistoricalRecord {
   bunkName: string
 }
 
+// Interface for current-year enrollment (one per attendee record)
+interface CurrentEnrollment {
+  sessionName: string
+  sessionType: string
+  sessionCmId: number
+  bunkName: string | null
+}
+
 export default function CamperDetailsPanel({
   camperId,
   onClose,
@@ -130,8 +138,8 @@ export default function CamperDetailsPanel({
     [animationPhase, onClose]
   )
 
-  // Fetch camper details
-  const { data: camper, isLoading: camperLoading } = useQuery({
+  // Fetch camper details + all current-year enrollments
+  const { data: camperData, isLoading: camperLoading } = useQuery({
     queryKey: ['camper-details', camperId, currentYear],
     queryFn: async () => {
       const personId = parseInt(camperId)
@@ -167,35 +175,67 @@ export default function CamperDetailsPanel({
         updated: new Date().toISOString(),
       } as unknown as AttendeesResponse
 
-      if (attendees.length === 0) return toAppCamper(person, dummyAttendee)
-
-      const attendee = attendees[0]
-      const expandedAttendee = attendee?.expand as { session?: ExpandedSession } | undefined
-      const session = expandedAttendee?.session ?? null
-
-      let assignment = null
-      let bunk = null
-
-      if (attendee?.session) {
-        const assignments = await pb.collection('bunk_assignments').getFullList({
-          filter: `person = "${person.id}" && session = "${attendee.session}" && year = ${currentYear}`,
-          expand: 'bunk',
-        })
-        assignment = assignments.length > 0 ? assignments[0] : null
-        const expandedAssignment = assignment?.expand as { bunk?: ExpandedBunk } | undefined
-        bunk = expandedAssignment?.bunk ?? null
+      if (attendees.length === 0) {
+        return {
+          camper: toAppCamper(person, dummyAttendee),
+          enrollments: [] as CurrentEnrollment[],
+        }
       }
 
-      return toAppCamper(
+      // Build enrollments list from ALL attendee records
+      const enrollments: CurrentEnrollment[] = []
+      const primaryAttendee = attendees[0]
+      let primarySession: ExpandedSession | null = null
+      let primaryAssignment = null
+      let primaryBunk: ExpandedBunk | null = null
+
+      for (const att of attendees) {
+        const expAtt = att?.expand as { session?: ExpandedSession } | undefined
+        const sess = expAtt?.session ?? null
+
+        let bunkName: string | null = null
+        let assignment = null
+        if (att.session) {
+          const assignments = await pb.collection('bunk_assignments').getFullList({
+            filter: `person = "${person.id}" && session = "${att.session}" && year = ${currentYear}`,
+            expand: 'bunk',
+          })
+          assignment = assignments.length > 0 ? assignments[0] : null
+          const expAssign = assignment?.expand as { bunk?: ExpandedBunk } | undefined
+          bunkName = expAssign?.bunk?.name ?? null
+        }
+
+        enrollments.push({
+          sessionName: sess?.name ?? 'Unknown',
+          sessionType: sess?.session_type ?? '',
+          sessionCmId: sess?.cm_id ?? 0,
+          bunkName,
+        })
+
+        // First attendee is primary (used for the main camper card)
+        if (att === primaryAttendee) {
+          primarySession = sess
+          primaryAssignment = assignment
+          const expAssign = primaryAssignment?.expand as { bunk?: ExpandedBunk } | undefined
+          primaryBunk = expAssign?.bunk ?? null
+        }
+      }
+
+      const camper = toAppCamper(
         person,
-        attendee || dummyAttendee,
-        assignment,
-        bunk as BunksResponse | null,
-        session as CampSessionsResponse | null
+        primaryAttendee || dummyAttendee,
+        primaryAssignment,
+        primaryBunk as BunksResponse | null,
+        primarySession as CampSessionsResponse | null
       )
+
+      return { camper, enrollments }
     },
     retry: false,
   })
+
+  const camper = camperData?.camper
+  const currentEnrollments = camperData?.enrollments ?? []
 
   // Fetch person data for siblings query
   const { data: person } = useQuery({
@@ -415,7 +455,10 @@ export default function CamperDetailsPanel({
   }, [onClose])
 
   // Helper: get location from person's discrete address columns
-  const location = getLocationDisplay(person?.address_city, person?.address_state)
+  const location = getLocationDisplay(
+    person?.normalized_city ?? person?.address_city,
+    person?.address_state
+  )
 
   const getSessionShortName = () => {
     const session = camper?.expand?.session
@@ -431,6 +474,21 @@ export default function CamperDetailsPanel({
     }
     if (session.name?.toLowerCase().includes('taste')) return 'Taste of Camp'
     return session.name || 'Unknown'
+  }
+
+  /** Get short display name for an enrollment's session. */
+  const getEnrollmentShortName = (enrollment: CurrentEnrollment): string => {
+    if (enrollment.sessionType === 'ag') return enrollment.sessionName
+    if (enrollment.sessionType === 'embedded') {
+      const match = enrollment.sessionName.match(/([23][ab])/i)
+      if (match) return `Session ${match[1]}`
+    }
+    if (enrollment.sessionType === 'main') {
+      const match = enrollment.sessionName.match(/(\d+)/)
+      if (match) return `Session ${match[1]}`
+    }
+    if (enrollment.sessionName.toLowerCase().includes('taste')) return 'Taste of Camp'
+    return enrollment.sessionName || 'Unknown'
   }
 
   // Get age preference request for socializes best with
@@ -690,17 +748,41 @@ export default function CamperDetailsPanel({
               {camper.years_at_camp || 0} {(camper.years_at_camp || 0) === 1 ? 'year' : 'years'}
             </span>
           </div>
-          {camper.expand?.assigned_bunk && (
-            <div className="text-forest-100 flex items-center gap-1.5">
-              <Home className="text-forest-300 h-3 w-3" />
-              <span>{camper.expand.assigned_bunk.name}</span>
-            </div>
-          )}
-          {getSessionShortName() && (
-            <div className="text-forest-100 flex items-center gap-1.5">
-              <Calendar className="text-forest-300 h-3 w-3" />
-              <span>{getSessionShortName()}</span>
-            </div>
+          {currentEnrollments.length > 1 ? (
+            currentEnrollments.map((enrollment) => (
+              <div
+                key={enrollment.sessionCmId}
+                className="text-forest-100 flex items-center gap-1.5"
+              >
+                <Calendar className="text-forest-300 h-3 w-3" />
+                <span>
+                  {getEnrollmentShortName(enrollment)}
+                  {enrollment.bunkName ? (
+                    <>
+                      {' '}
+                      <Home className="text-forest-300 inline h-3 w-3" /> {enrollment.bunkName}
+                    </>
+                  ) : (
+                    <span className="text-amber-300"> (unassigned)</span>
+                  )}
+                </span>
+              </div>
+            ))
+          ) : (
+            <>
+              {camper.expand?.assigned_bunk && (
+                <div className="text-forest-100 flex items-center gap-1.5">
+                  <Home className="text-forest-300 h-3 w-3" />
+                  <span>{camper.expand.assigned_bunk.name}</span>
+                </div>
+              )}
+              {getSessionShortName() && (
+                <div className="text-forest-100 flex items-center gap-1.5">
+                  <Calendar className="text-forest-300 h-3 w-3" />
+                  <span>{getSessionShortName()}</span>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -846,27 +928,53 @@ export default function CamperDetailsPanel({
                 <div className="bg-forest-200 dark:bg-forest-800 absolute top-1 bottom-1 left-[5px] w-0.5" />
 
                 <div className="space-y-1.5">
-                  {/* Current year */}
-                  {camper.expand?.session && (
-                    <div className="relative flex items-center gap-2.5">
-                      <div className="bg-forest-600 ring-forest-100 dark:ring-forest-900 relative z-10 h-3 w-3 flex-shrink-0 rounded-full ring-2" />
-                      <span className="text-forest-700 dark:text-forest-300 w-11 text-sm font-bold">
-                        {currentYear}
-                      </span>
-                      <span className="text-muted-foreground truncate text-xs">
-                        {getSessionShortName()}
-                      </span>
-                      <span className="text-muted-foreground text-xs">·</span>
-                      <span
-                        className={`truncate text-xs ${camper.expand?.assigned_bunk ? 'text-foreground font-medium' : 'text-amber-600 italic'}`}
-                      >
-                        {camper.expand?.assigned_bunk?.name || 'Unassigned'}
-                      </span>
-                      <span className="bg-forest-600 ml-auto flex-shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold text-white">
-                        Now
-                      </span>
-                    </div>
-                  )}
+                  {/* Current year - show all enrollments */}
+                  {currentEnrollments.length > 0
+                    ? currentEnrollments.map((enrollment, idx) => (
+                        <div
+                          key={`current-${enrollment.sessionCmId}`}
+                          className="relative flex items-center gap-2.5"
+                        >
+                          <div className="bg-forest-600 ring-forest-100 dark:ring-forest-900 relative z-10 h-3 w-3 flex-shrink-0 rounded-full ring-2" />
+                          <span className="text-forest-700 dark:text-forest-300 w-11 text-sm font-bold">
+                            {idx === 0 ? currentYear : ''}
+                          </span>
+                          <span className="text-muted-foreground truncate text-xs">
+                            {getEnrollmentShortName(enrollment)}
+                          </span>
+                          <span className="text-muted-foreground text-xs">·</span>
+                          <span
+                            className={`truncate text-xs ${enrollment.bunkName ? 'text-foreground font-medium' : 'text-amber-600 italic'}`}
+                          >
+                            {enrollment.bunkName || 'Unassigned'}
+                          </span>
+                          {idx === 0 && (
+                            <span className="bg-forest-600 ml-auto flex-shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold text-white">
+                              Now
+                            </span>
+                          )}
+                        </div>
+                      ))
+                    : camper.expand?.session && (
+                        <div className="relative flex items-center gap-2.5">
+                          <div className="bg-forest-600 ring-forest-100 dark:ring-forest-900 relative z-10 h-3 w-3 flex-shrink-0 rounded-full ring-2" />
+                          <span className="text-forest-700 dark:text-forest-300 w-11 text-sm font-bold">
+                            {currentYear}
+                          </span>
+                          <span className="text-muted-foreground truncate text-xs">
+                            {getSessionShortName()}
+                          </span>
+                          <span className="text-muted-foreground text-xs">·</span>
+                          <span
+                            className={`truncate text-xs ${camper.expand?.assigned_bunk ? 'text-foreground font-medium' : 'text-amber-600 italic'}`}
+                          >
+                            {camper.expand?.assigned_bunk?.name || 'Unassigned'}
+                          </span>
+                          <span className="bg-forest-600 ml-auto flex-shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold text-white">
+                            Now
+                          </span>
+                        </div>
+                      )}
 
                   {/* Historical years */}
                   {historicalData.map((record: HistoricalRecord, idx: number) => (

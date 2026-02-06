@@ -19,7 +19,8 @@ export interface UseCamperHistoryResult {
 export function useCamperHistory(
   personCmId: number | null,
   currentYear: number,
-  camper: Camper | null
+  camper: Camper | null,
+  allEnrolledCampers?: Camper[]
 ): UseCamperHistoryResult {
   const {
     data: camperHistory = [],
@@ -32,6 +33,7 @@ export function useCamperHistory(
       currentYear,
       camper?.expand?.session,
       camper?.expand?.assigned_bunk,
+      allEnrolledCampers?.length,
     ],
     queryFn: async () => {
       if (!personCmId) return []
@@ -39,21 +41,29 @@ export function useCamperHistory(
       try {
         const allHistory: HistoricalRecord[] = []
 
-        // Add current year data if camper is loaded
-        if (camper && camper.expand?.session) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const session = camper.expand.session as any
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const assignedBunk = camper.expand?.assigned_bunk as any
-          const currentRecord: HistoricalRecord = {
-            year: currentYear,
-            sessionName: session.name || 'Unknown',
-            sessionType: session.session_type,
-            bunkName: assignedBunk?.name || 'Unassigned',
-            startDate: session.start_date,
-            endDate: session.end_date,
+        // Add current year data for ALL enrollments (multi-session support)
+        const enrollments =
+          allEnrolledCampers && allEnrolledCampers.length > 0
+            ? allEnrolledCampers
+            : camper
+              ? [camper]
+              : []
+
+        for (const enrolled of enrollments) {
+          if (enrolled.expand?.session) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const session = enrolled.expand.session as any
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const assignedBunk = enrolled.expand?.assigned_bunk as any
+            allHistory.push({
+              year: currentYear,
+              sessionName: session.name || 'Unknown',
+              sessionType: session.session_type,
+              bunkName: assignedBunk?.name || 'Unassigned',
+              startDate: session.start_date,
+              endDate: session.end_date,
+            })
           }
-          allHistory.push(currentRecord)
         }
 
         // Fetch historical data from bunk_assignments for previous years
@@ -108,24 +118,32 @@ export function useCamperHistory(
         return allHistory
       } catch (err) {
         console.error('Error fetching camp history:', err)
-        // If error, at least return current year data
-        if (camper && camper.expand?.session) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const session = camper.expand.session as any
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const assignedBunk = camper.expand?.assigned_bunk as any
-          return [
-            {
+        // If error, at least return current year data for all enrollments
+        const fallbackEnrollments =
+          allEnrolledCampers && allEnrolledCampers.length > 0
+            ? allEnrolledCampers
+            : camper
+              ? [camper]
+              : []
+
+        const fallback: HistoricalRecord[] = []
+        for (const enrolled of fallbackEnrollments) {
+          if (enrolled.expand?.session) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const session = enrolled.expand.session as any
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const assignedBunk = enrolled.expand?.assigned_bunk as any
+            fallback.push({
               year: currentYear,
               sessionName: session.name || 'Unknown',
               sessionType: session.session_type,
               bunkName: assignedBunk?.name || 'Unassigned',
               startDate: session.start_date,
               endDate: session.end_date,
-            },
-          ]
+            })
+          }
         }
-        return []
+        return fallback
       }
     },
     enabled: !!personCmId && !!camper,
