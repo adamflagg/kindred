@@ -626,7 +626,16 @@ class DrilldownService:
             except ValueError:
                 pass
 
-        # Filter waitlisted by session
+        # Build waitlisted groups from ALL waitlisted attendees BEFORE session filtering.
+        # This ensures the "Waitlisted For" column shows all sessions a person is
+        # waitlisted for, not just the one clicked in the drilldown.
+        all_waitlisted_groups: dict[int, list[Any]] = {}
+        for att in waitlisted_attendees:
+            pid = int(getattr(att, "person_id", 0))
+            if pid:
+                all_waitlisted_groups.setdefault(pid, []).append(att)
+
+        # Filter waitlisted by session (controls which persons appear in results)
         waitlisted_attendees = self._filter_by_session(
             waitlisted_attendees, session_types, effective_session_cm_id, ag_session_ids
         )
@@ -635,21 +644,14 @@ class DrilldownService:
         enrolled_person_ids: set[int] = set()
         enrolled_attendee_groups: dict[int, list[Any]] = {}
         for att in enrolled_attendees:
-            pid = getattr(att, "person_id", None)
+            enrolled_pid = getattr(att, "person_id", None)
             session_info = self._get_session_from_record(att)
-            if pid is not None and session_info:
+            if enrolled_pid is not None and session_info:
                 session_type = getattr(session_info, "session_type", None)
                 if session_type in effective_types:
-                    pid_int = int(pid)
+                    pid_int = int(enrolled_pid)
                     enrolled_person_ids.add(pid_int)
                     enrolled_attendee_groups.setdefault(pid_int, []).append(att)
-
-        # Build waitlisted groups: person_id -> list of waitlisted attendee records
-        waitlisted_groups: dict[int, list[Any]] = {}
-        for att in waitlisted_attendees:
-            pid = int(getattr(att, "person_id", 0))
-            if pid:
-                waitlisted_groups.setdefault(pid, []).append(att)
 
         # Partition and deduplicate by person
         seen_persons: set[int] = set()
@@ -676,7 +678,7 @@ class DrilldownService:
             matching_attendees,
             persons,
             sessions,
-            person_attendee_groups=waitlisted_groups,
+            person_attendee_groups=all_waitlisted_groups,
             enrolled_attendee_groups=enrolled_attendee_groups,
         )
 

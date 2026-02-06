@@ -353,6 +353,8 @@ export interface DrilldownFilter {
   label: string // Display label for modal title
   /** Override status filter (for status cards like Waitlisted, Cancelled) */
   statusOverride?: string[]
+  /** When true, drilldown from waitlist tab shows waitlist columns (Waitlisted For, Enrolled In) */
+  waitlistContext?: boolean
 }
 
 export interface DrilldownAttendee {

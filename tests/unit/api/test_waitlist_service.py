@@ -728,7 +728,6 @@ class TestCrossTypeEnrollment:
         main_session = create_mock_session(1001, "Session 1", 2026, "main")
         quest_session = create_mock_session(2001, "Teen Quest", 2026, "quest", start_date="2026-06-10")
         all_sessions = {1001: main_session, 2001: quest_session}
-        quest_only = {2001: quest_session}
 
         # Mock fetch_sessions to respect type filtering (this is how the real repo works)
         async def mock_fetch_sessions(year: int, types: list[str]) -> dict[int, Mock]:

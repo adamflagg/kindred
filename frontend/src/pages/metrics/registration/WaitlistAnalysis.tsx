@@ -183,6 +183,7 @@ export default function WaitlistAnalysis() {
                 setFilter({
                   ...filter,
                   statusOverride: ['waitlisted'],
+                  waitlistContext: true,
                 })
               }
             />

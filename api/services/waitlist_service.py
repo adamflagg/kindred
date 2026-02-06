@@ -75,8 +75,8 @@ class WaitlistService:
         enrolled_attendees = await self.repository.fetch_attendees(year, status_filter="enrolled")
 
         # Filter waitlisted to selected session types, enrolled to ALL types
-        waitlisted_attendees = self._filter_to_sessions(waitlisted_attendees, valid_session_ids, filtered_sessions)
-        enrolled_attendees = self._filter_to_sessions(enrolled_attendees, set(all_sessions.keys()), all_sessions)
+        waitlisted_attendees = self._filter_to_sessions(waitlisted_attendees, valid_session_ids)
+        enrolled_attendees = self._filter_to_sessions(enrolled_attendees, set(all_sessions.keys()))
 
         # Build mapping: person_id -> list of (session_cm_id, session_name) they're enrolled in
         enrolled_sessions_by_person: dict[int, list[tuple[int, str]]] = defaultdict(list)
@@ -140,26 +140,32 @@ class WaitlistService:
             year, old_status="waitlisted", new_statuses=DECLINED_STATUSES
         )
 
-        # Count accepted/declined (unique by person)
+        # Count accepted/declined (unique by person, filtered by session)
         accepted_persons: set[int] = set()
         for record in accepted_history:
             pid = int(getattr(record, "person_id", 0))
-            if pid:
-                accepted_persons.add(pid)
-                session_info = self._get_session_from_history(record)
-                session_cmid = getattr(session_info, "cm_id", 0) if session_info else 0
-                if session_cmid:
-                    waitlisted_by_session[int(session_cmid)]["accepted"] += 1
+            if not pid:
+                continue
+            session_info = self._get_session_from_history(record)
+            session_cmid = int(getattr(session_info, "cm_id", 0)) if session_info else 0
+            if session_cmid and session_cmid not in valid_session_ids:
+                continue
+            accepted_persons.add(pid)
+            if session_cmid:
+                waitlisted_by_session[session_cmid]["accepted"] += 1
 
         declined_persons: set[int] = set()
         for record in declined_history:
             pid = int(getattr(record, "person_id", 0))
-            if pid:
-                declined_persons.add(pid)
-                session_info = self._get_session_from_history(record)
-                session_cmid = getattr(session_info, "cm_id", 0) if session_info else 0
-                if session_cmid:
-                    waitlisted_by_session[int(session_cmid)]["declined"] += 1
+            if not pid:
+                continue
+            session_info = self._get_session_from_history(record)
+            session_cmid = int(getattr(session_info, "cm_id", 0)) if session_info else 0
+            if session_cmid and session_cmid not in valid_session_ids:
+                continue
+            declined_persons.add(pid)
+            if session_cmid:
+                waitlisted_by_session[session_cmid]["declined"] += 1
 
         # --- Build per-session breakdown ---
         by_session: list[WaitlistSessionBreakdown] = []
@@ -219,7 +225,6 @@ class WaitlistService:
         self,
         attendees: list[Any],
         valid_session_ids: set[int],
-        sessions: dict[int, Any],
     ) -> list[Any]:
         """Filter attendees to only those in valid sessions."""
         result = []
@@ -227,7 +232,7 @@ class WaitlistService:
             session = self._get_session_from_attendee(att)
             if session:
                 session_cmid = int(getattr(session, "cm_id", 0))
-                if session_cmid in valid_session_ids or session_cmid in sessions:
+                if session_cmid in valid_session_ids:
                     result.append(att)
         return result
 

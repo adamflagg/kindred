@@ -83,7 +83,7 @@ export function DrillDownModal({
   const [sortField, setSortField] = useState<SortField>('name')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
 
-  const isWaitlistDrilldown = filter?.type?.startsWith('waitlist_') ?? false
+  const isWaitlistDrilldown = (filter?.type?.startsWith('waitlist_') || filter?.waitlistContext) ?? false
 
   const {
     data: attendees = [],
@@ -195,6 +195,7 @@ export function DrillDownModal({
           'Grade',
           'Gender',
           'Age',
+          'School',
           'City',
           'State',
           'Waitlisted For',
@@ -226,6 +227,7 @@ export function DrillDownModal({
             a.grade ?? '',
             a.gender ?? '',
             a.age ?? '',
+            a.school ?? '',
             a.city ?? '',
             a.state ?? '',
             getSessionDisplay(a),
