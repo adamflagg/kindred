@@ -36,6 +36,8 @@ def create_mock_person(
     school: str = "Riverside Elementary",
     address_city: str = "Springfield",
     address_state: str = "IL",
+    normalized_school: str | None = None,
+    normalized_city: str | None = None,
 ) -> Mock:
     """Create a mock person record.
 
@@ -55,6 +57,8 @@ def create_mock_person(
     person.address_state = address_state
     person.preferred_name = None
     person.age = 12
+    person.normalized_school = normalized_school
+    person.normalized_city = normalized_city
     return person
 
 
@@ -1012,3 +1016,150 @@ class TestDiscreteAddressColumns:
         # Empty strings should become None
         assert result[0].city is None
         assert result[0].state is None
+
+
+# ============================================================================
+# Tests for normalized display values in drilldown response
+# ============================================================================
+
+
+class TestNormalizedDisplayValues:
+    """Verify _build_response uses normalized_school/normalized_city for display.
+
+    The filtering logic correctly matches on normalized values, but the response
+    should also DISPLAY normalized values (not raw) so the popup shows canonical
+    names like "Park Day School" instead of raw "park day school" or "Park Day".
+    """
+
+    @pytest.mark.asyncio
+    async def test_response_uses_normalized_school_for_display(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+    ) -> None:
+        """DrilldownAttendee.school should prefer normalized_school over raw school."""
+        persons = {
+            101: create_mock_person(
+                101,
+                "Emma",
+                "Johnson",
+                "F",
+                5,
+                school="park day",
+                normalized_school="Park Day School",
+            ),
+        }
+        attendees = [create_mock_attendee(101, sample_sessions[1001], 2026)]
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = persons
+        mock_repository.fetch_attendees.return_value = attendees
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="returning_status",
+            breakdown_value="returning",
+        )
+
+        # Use returning_status=returning to match years_at_camp=2 default
+        assert len(result) == 1
+        assert result[0].school == "Park Day School"
+
+    @pytest.mark.asyncio
+    async def test_response_uses_normalized_city_for_display(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+    ) -> None:
+        """DrilldownAttendee.city should prefer normalized_city over raw address_city."""
+        persons = {
+            101: create_mock_person(
+                101,
+                "Emma",
+                "Johnson",
+                "F",
+                5,
+                address_city="san francisco",
+                normalized_city="San Francisco",
+            ),
+        }
+        attendees = [create_mock_attendee(101, sample_sessions[1001], 2026)]
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = persons
+        mock_repository.fetch_attendees.return_value = attendees
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="returning_status",
+            breakdown_value="returning",
+        )
+
+        assert len(result) == 1
+        assert result[0].city == "San Francisco"
+
+    @pytest.mark.asyncio
+    async def test_response_falls_back_to_raw_school_when_no_normalized(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+    ) -> None:
+        """DrilldownAttendee.school falls back to raw school when normalized_school is None."""
+        persons = {
+            101: create_mock_person(
+                101,
+                "Emma",
+                "Johnson",
+                "F",
+                5,
+                school="Hillcrest High",
+                normalized_school=None,
+            ),
+        }
+        attendees = [create_mock_attendee(101, sample_sessions[1001], 2026)]
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = persons
+        mock_repository.fetch_attendees.return_value = attendees
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="returning_status",
+            breakdown_value="returning",
+        )
+
+        assert len(result) == 1
+        assert result[0].school == "Hillcrest High"
+
+    @pytest.mark.asyncio
+    async def test_response_falls_back_to_raw_city_when_no_normalized(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+    ) -> None:
+        """DrilldownAttendee.city falls back to raw address_city when normalized_city is None."""
+        persons = {
+            101: create_mock_person(
+                101,
+                "Emma",
+                "Johnson",
+                "F",
+                5,
+                address_city="Springfield",
+                normalized_city=None,
+            ),
+        }
+        attendees = [create_mock_attendee(101, sample_sessions[1001], 2026)]
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = persons
+        mock_repository.fetch_attendees.return_value = attendees
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="returning_status",
+            breakdown_value="returning",
+        )
+
+        assert len(result) == 1
+        assert result[0].city == "Springfield"
