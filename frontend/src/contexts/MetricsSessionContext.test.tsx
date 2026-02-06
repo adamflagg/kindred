@@ -83,7 +83,7 @@ function TestSetter({ sessionCmId }: { sessionCmId: number | null }) {
 }
 
 // Test component that sets view mode
-function TestViewModeSetter({ mode }: { mode: 'sessions' | 'quests' }) {
+function TestViewModeSetter({ mode }: { mode: 'sessions' | 'quests' | 'all' }) {
   const { setViewMode } = useMetricsSession()
   return (
     <button onClick={() => setViewMode(mode)} data-testid="set-view-mode">
@@ -526,6 +526,84 @@ describe('MetricsSessionContext viewMode', () => {
 
       expect(screen.getByTestId('url-view')).toHaveTextContent('none')
       expect(screen.getByTestId('selectedSessionCmId')).toHaveTextContent('1001')
+    })
+  })
+})
+
+describe('MetricsSessionContext "all" viewMode', () => {
+  describe('initial state', () => {
+    it('should read viewMode "all" from URL ?view=all param', () => {
+      render(<TestConsumer />, {
+        wrapper: createWrapper('/metrics/registration?view=all'),
+      })
+
+      expect(screen.getByTestId('viewMode')).toHaveTextContent('all')
+    })
+  })
+
+  describe('activeSessionTypes', () => {
+    it('should return all session types in "all" mode', () => {
+      render(<TestConsumer />, {
+        wrapper: createWrapper('/metrics/registration?view=all'),
+      })
+
+      expect(screen.getByTestId('activeSessionTypes')).toHaveTextContent('main,embedded,ag,quest')
+    })
+  })
+
+  describe('sessionTypesParam', () => {
+    it('should be all types comma-joined in "all" mode', () => {
+      render(<TestConsumer />, {
+        wrapper: createWrapper('/metrics/registration?view=all'),
+      })
+
+      expect(screen.getByTestId('sessionTypesParam')).toHaveTextContent('main,embedded,ag,quest')
+    })
+  })
+
+  describe('setViewMode to all', () => {
+    it('should update viewMode to "all" and set URL param', async () => {
+      function ViewParamViewer() {
+        const [searchParams] = useSearchParams()
+        return <span data-testid="url-view">{searchParams.get('view') ?? 'none'}</span>
+      }
+
+      render(
+        <>
+          <TestConsumer />
+          <TestViewModeSetter mode="all" />
+          <ViewParamViewer />
+        </>,
+        { wrapper: createWrapper() }
+      )
+
+      expect(screen.getByTestId('viewMode')).toHaveTextContent('sessions')
+
+      await act(async () => {
+        screen.getByTestId('set-view-mode').click()
+      })
+
+      expect(screen.getByTestId('viewMode')).toHaveTextContent('all')
+      expect(screen.getByTestId('url-view')).toHaveTextContent('all')
+    })
+
+    it('should clear session param when switching to "all" mode', async () => {
+      render(
+        <>
+          <TestConsumer />
+          <TestViewModeSetter mode="all" />
+          <UrlParamViewer />
+        </>,
+        { wrapper: createWrapper('/metrics/registration?session=1001') }
+      )
+
+      expect(screen.getByTestId('url-session')).toHaveTextContent('1001')
+
+      await act(async () => {
+        screen.getByTestId('set-view-mode').click()
+      })
+
+      expect(screen.getByTestId('url-session')).toHaveTextContent('none')
     })
   })
 })

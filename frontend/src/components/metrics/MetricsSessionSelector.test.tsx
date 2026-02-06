@@ -265,4 +265,35 @@ describe('MetricsSessionSelector', () => {
       expect(screen.getByRole('button')).toHaveTextContent('Teen Adventure Quest')
     })
   })
+
+  describe('all summer view mode', () => {
+    it('should show "All Summer" option in dropdown', () => {
+      render(<MetricsSessionSelector />, { wrapper: createWrapper() })
+
+      const button = screen.getByRole('button')
+      fireEvent.click(button)
+
+      expect(screen.getByRole('option', { name: 'All Summer' })).toBeInTheDocument()
+    })
+
+    it('should show "All Summer" as button text in all view mode', () => {
+      render(<MetricsSessionSelector />, {
+        wrapper: createWrapper('/metrics/registration?view=all'),
+      })
+
+      expect(screen.getByRole('button')).toHaveTextContent('All Summer')
+    })
+
+    it('should switch to all mode when "All Summer" is selected', () => {
+      render(<MetricsSessionSelector />, { wrapper: createWrapper() })
+
+      const button = screen.getByRole('button')
+      fireEvent.click(button)
+
+      const allSummerOption = screen.getByRole('option', { name: 'All Summer' })
+      fireEvent.click(allSummerOption)
+
+      expect(screen.getByRole('button')).toHaveTextContent('All Summer')
+    })
+  })
 })
