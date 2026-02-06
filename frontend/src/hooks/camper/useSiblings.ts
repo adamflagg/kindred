@@ -10,7 +10,17 @@ import type {
   PersonsResponse,
   AttendeesResponse,
   BunkAssignmentsResponse,
+  BunksResponse,
+  CampSessionsResponse,
 } from '../../types/pocketbase-types'
+
+interface AttendeeExpand {
+  session?: CampSessionsResponse
+}
+
+interface AssignmentExpand {
+  bunk?: BunksResponse
+}
 import type { SiblingWithEnrollment } from './types'
 
 export interface UseSiblingsResult {
@@ -73,9 +83,11 @@ export function useSiblings(
 
             // Get the first valid enrollment (prefer main session)
             const sortedAttendees = attendees.sort((a, b) => {
-              const aType = (a.expand as any)?.session?.session_type || 'unknown'
+              const aType =
+                (a.expand as AttendeeExpand | undefined)?.session?.session_type || 'unknown'
 
-              const bType = (b.expand as any)?.session?.session_type || 'unknown'
+              const bType =
+                (b.expand as AttendeeExpand | undefined)?.session?.session_type || 'unknown'
               const typeOrder: Record<string, number> = {
                 main: 1,
                 embedded: 2,
@@ -88,8 +100,7 @@ export function useSiblings(
             if (!primaryAttendee) {
               return null
             }
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const session = (primaryAttendee.expand as any)?.session
+            const session = (primaryAttendee.expand as AttendeeExpand | undefined)?.session
 
             // Try to get bunk assignment
             let bunkName: string | null = null
@@ -104,8 +115,8 @@ export function useSiblings(
                   })
 
                 if (assignments.length > 0 && assignments[0]) {
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  bunkName = (assignments[0].expand as any)?.bunk?.name || null
+                  bunkName =
+                    (assignments[0].expand as AssignmentExpand | undefined)?.bunk?.name || null
                 }
               } catch {
                 // Assignment fetch failed, continue without bunk

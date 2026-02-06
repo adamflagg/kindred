@@ -11,8 +11,21 @@ import type { Camper } from '../../types/app-types'
 import type {
   AttendeesResponse,
   BunkAssignmentsResponse,
+  BunksResponse,
+  CampSessionsResponse,
   PersonsResponse,
 } from '../../types/pocketbase-types'
+
+interface AttendeeExpand {
+  person?: PersonsResponse
+  session?: CampSessionsResponse
+}
+
+interface AssignmentExpand {
+  person?: PersonsResponse
+  session?: CampSessionsResponse
+  bunk?: BunksResponse
+}
 
 export interface UseCamperEnrollmentResult {
   enrolledCampers: Camper[]
@@ -52,8 +65,7 @@ export function useCamperEnrollment(
       }
 
       // Person data is now expanded in attendees, get from first attendee
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const person = (attendees[0]?.expand as any)?.person as PersonsResponse | undefined
+      const person = (attendees[0]?.expand as AttendeeExpand | undefined)?.person
       if (!person) {
         throw new Error(`Person with CampMinder ID ${personCmId} not found`)
       }
@@ -70,21 +82,21 @@ export function useCamperEnrollment(
       // Filter assignments for this person (using person CM ID from expanded person)
 
       const personAssignments = allAssignments.filter(
-        (a) => (a.expand as any)?.person?.cm_id === personCmId
+        (a) => (a.expand as AssignmentExpand | undefined)?.person?.cm_id === personCmId
       )
 
       // Transform attendees to campers
       const campers = attendees.map((attendee) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const expandedSession = (attendee.expand as any)?.session
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const expandedPerson = (attendee.expand as any)?.person || person
+        const expand = attendee.expand as AttendeeExpand | undefined
+        const expandedSession = expand?.session
+        const expandedPerson = expand?.person || person
 
         // Find assignment for this attendee's session
         // First try exact session match (for regular campers)
 
         let assignment = personAssignments.find(
-          (a) => (a.expand as any)?.session?.cm_id === expandedSession?.cm_id
+          (a) =>
+            (a.expand as AssignmentExpand | undefined)?.session?.cm_id === expandedSession?.cm_id
         )
 
         // If no match found (e.g., AG campers with parent session assignments),
@@ -93,8 +105,7 @@ export function useCamperEnrollment(
           assignment = personAssignments[0] // Person only has one bunk per year
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const assignedBunk = (assignment?.expand as any)?.bunk
+        const assignedBunk = (assignment?.expand as AssignmentExpand | undefined)?.bunk
 
         const displayName = `${expandedPerson.first_name} ${expandedPerson.last_name}`.trim() || ''
 
@@ -129,7 +140,6 @@ export function useCamperEnrollment(
           gender_pronoun_name: expandedPerson.gender_pronoun_name,
           gender_pronoun_write_in: expandedPerson.gender_pronoun_write_in,
           household_id: expandedPerson.household_id,
-          address: expandedPerson.address,
           expand: {
             session: expandedSession,
             assigned_bunk: assignedBunk,
