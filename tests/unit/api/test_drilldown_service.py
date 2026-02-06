@@ -2231,3 +2231,194 @@ class TestWaitlistDrilldownFullSessionsList:
         assert len(result[0].sessions) == 2
         session_ids = {s.session_cm_id for s in result[0].sessions}
         assert session_ids == {1001, 1002}
+
+
+# ============================================================================
+# Tests for person-level breakdowns with waitlisted status filter
+# ============================================================================
+
+
+class TestWaitlistPersonBreakdowns:
+    """Tests for person-level breakdowns (grade, gender, etc.) with status_filter=waitlisted.
+
+    Bug: When drilling down on a grade bar in the waitlist tab, the generic
+    drilldown path runs: it fetches only waitlisted attendees, applies session
+    filter, then builds person_attendee_groups from the *already-filtered* set.
+    This means "Waitlisted For" only shows the filtered session and "Enrolled In"
+    is always empty.
+
+    Fix: A new _handle_waitlist_person_breakdown method should:
+    1. Build all_waitlisted_groups BEFORE session filtering (like waitlist_total does)
+    2. Also fetch enrolled attendees and build enrolled_attendee_groups
+    3. Pass both to _build_response
+    """
+
+    @pytest.fixture
+    def waitlist_sessions(self) -> dict[int, Mock]:
+        """Sessions for waitlist person breakdown tests."""
+        return {
+            1001: create_mock_session(1001, "Session 1", 2026, "main", "2026-06-15", "2026-07-05"),
+            1002: create_mock_session(1002, "Session 2", 2026, "main", "2026-07-06", "2026-07-26"),
+            1003: create_mock_session(1003, "Session 2a", 2026, "embedded", "2026-07-06", "2026-07-19"),
+        }
+
+    @pytest.fixture
+    def waitlist_persons(self) -> dict[int, Mock]:
+        """Persons for waitlist person breakdown tests."""
+        return {
+            101: create_mock_person(101, "Emma", "Johnson", "F", 5, years_at_camp=1),
+            102: create_mock_person(102, "Liam", "Garcia", "M", 6, years_at_camp=2),
+            103: create_mock_person(103, "Olivia", "Chen", "F", 5, years_at_camp=1),
+            104: create_mock_person(104, "Noah", "Williams", "M", 7, years_at_camp=3),
+        }
+
+    @pytest.mark.asyncio
+    async def test_grade_drilldown_waitlisted_shows_all_sessions(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        waitlist_sessions: dict[int, Mock],
+        waitlist_persons: dict[int, Mock],
+    ) -> None:
+        """Person waitlisted in S1+S2, filter on S1, grade drilldown -> sessions shows both."""
+        session1 = waitlist_sessions[1001]
+        session2 = waitlist_sessions[1002]
+
+        # Emma (grade 5) waitlisted in BOTH Session 1 and Session 2
+        waitlisted = [
+            create_mock_attendee(101, session1, 2026, status="waitlisted"),
+            create_mock_attendee(101, session2, 2026, status="waitlisted"),
+        ]
+
+        mock_repository.fetch_sessions.return_value = waitlist_sessions
+        mock_repository.fetch_persons.return_value = waitlist_persons
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (waitlisted if status_filter == ["waitlisted"] else [])
+        )
+
+        # Grade drilldown for grade=5, filtered to Session 1, waitlisted status
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="grade",
+            breakdown_value="5",
+            session_cm_id=1001,
+            status_filter=["waitlisted"],
+        )
+
+        # Emma should appear (she's grade 5 and waitlisted in S1)
+        assert len(result) == 1
+        assert result[0].person_id == 101
+
+        # Sessions should show ALL waitlisted sessions, not just S1
+        assert len(result[0].sessions) == 2
+        session_ids = {s.session_cm_id for s in result[0].sessions}
+        assert session_ids == {1001, 1002}
+
+    @pytest.mark.asyncio
+    async def test_grade_drilldown_waitlisted_shows_enrolled_sessions(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        waitlist_sessions: dict[int, Mock],
+        waitlist_persons: dict[int, Mock],
+    ) -> None:
+        """Person waitlisted in S1, enrolled in S2 -> enrolled_sessions shows S2."""
+        session1 = waitlist_sessions[1001]
+        session2 = waitlist_sessions[1002]
+
+        # Emma (grade 5) waitlisted in S1, enrolled in S2
+        waitlisted = [
+            create_mock_attendee(101, session1, 2026, status="waitlisted"),
+        ]
+        enrolled = [
+            create_mock_attendee(101, session2, 2026, status="enrolled"),
+        ]
+
+        mock_repository.fetch_sessions.return_value = waitlist_sessions
+        mock_repository.fetch_persons.return_value = waitlist_persons
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (
+                waitlisted if status_filter == ["waitlisted"] else enrolled if status_filter == ["enrolled"] else []
+            )
+        )
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="grade",
+            breakdown_value="5",
+            status_filter=["waitlisted"],
+        )
+
+        # Emma should appear
+        assert len(result) == 1
+        assert result[0].person_id == 101
+
+        # enrolled_sessions should show Session 2
+        assert len(result[0].enrolled_sessions) == 1
+        assert result[0].enrolled_sessions[0].session_cm_id == 1002
+
+    @pytest.mark.asyncio
+    async def test_grade_drilldown_waitlisted_filters_by_grade_value(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        waitlist_sessions: dict[int, Mock],
+        waitlist_persons: dict[int, Mock],
+    ) -> None:
+        """Only matching grade persons appear in grade drilldown."""
+        session1 = waitlist_sessions[1001]
+
+        # Emma (grade 5) and Liam (grade 6) both waitlisted in S1
+        waitlisted = [
+            create_mock_attendee(101, session1, 2026, status="waitlisted"),
+            create_mock_attendee(102, session1, 2026, status="waitlisted"),
+        ]
+
+        mock_repository.fetch_sessions.return_value = waitlist_sessions
+        mock_repository.fetch_persons.return_value = waitlist_persons
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (waitlisted if status_filter == ["waitlisted"] else [])
+        )
+
+        # Drilldown on grade=5 with waitlisted filter
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="grade",
+            breakdown_value="5",
+            status_filter=["waitlisted"],
+        )
+
+        # Only Emma (grade 5) should appear, not Liam (grade 6)
+        assert len(result) == 1
+        assert result[0].person_id == 101
+
+    @pytest.mark.asyncio
+    async def test_grade_drilldown_enrolled_uses_generic_path(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        waitlist_sessions: dict[int, Mock],
+        waitlist_persons: dict[int, Mock],
+    ) -> None:
+        """status_filter=enrolled still uses generic path (no regression)."""
+        session1 = waitlist_sessions[1001]
+
+        # Emma (grade 5) enrolled in S1
+        enrolled = [
+            create_mock_attendee(101, session1, 2026, status="enrolled"),
+        ]
+
+        mock_repository.fetch_sessions.return_value = waitlist_sessions
+        mock_repository.fetch_persons.return_value = waitlist_persons
+        mock_repository.fetch_attendees.return_value = enrolled
+
+        # Standard enrolled grade drilldown should still work
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="grade",
+            breakdown_value="5",
+            status_filter=["enrolled"],
+        )
+
+        assert len(result) == 1
+        assert result[0].person_id == 101
