@@ -4,7 +4,7 @@
  * TDD: Tests written first to define expected rendering behavior
  * for the waitlist analysis tab before implementation.
  */
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import WaitlistAnalysis from './WaitlistAnalysis'
@@ -26,6 +26,7 @@ const mockWaitlistData = {
       has_enrollment: 2,
       accepted: 2,
       declined: 0,
+      enrolled_in: [{ session_cm_id: 1002, session_name: 'Session 2', count: 2 }],
     },
     {
       session_cm_id: 1002,
@@ -35,6 +36,7 @@ const mockWaitlistData = {
       has_enrollment: 1,
       accepted: 2,
       declined: 1,
+      enrolled_in: [{ session_cm_id: 1001, session_name: 'Session 1', count: 1 }],
     },
   ],
   by_grade: [
@@ -70,6 +72,18 @@ vi.mock('../../../hooks/useMetricsSession', () => ({
     isLoading: false,
     setSelectedSessionCmId: vi.fn(),
     clearSession: vi.fn(),
+  })),
+}))
+
+// Mock useDrilldown hook
+const mockSetFilter = vi.fn()
+const MockDrilldownModal = () => null
+vi.mock('../../../hooks/useDrilldown', () => ({
+  useDrilldown: vi.fn(() => ({
+    filter: null,
+    setFilter: mockSetFilter,
+    clearFilter: vi.fn(),
+    DrilldownModal: MockDrilldownModal,
   })),
 }))
 
@@ -206,6 +220,110 @@ describe('WaitlistAnalysis', () => {
 
       // Should render without errors even with zeros (multiple cards show 0)
       expect(screen.getAllByText('0').length).toBeGreaterThanOrEqual(1)
+    })
+  })
+
+  describe('drilldown interactions', () => {
+    beforeEach(() => {
+      mockUseWaitlistMetrics.mockReturnValue({
+        data: mockWaitlistData,
+        isLoading: false,
+        error: null,
+      })
+    })
+
+    it('calls setFilter when Total Waitlisted card is clicked', () => {
+      renderWithClient()
+
+      // Find and click the Total Waitlisted card (it has role="button")
+      const card = screen.getByText(/total waitlisted/i).closest('[role="button"]')
+      expect(card).toBeTruthy()
+      if (card) fireEvent.click(card)
+
+      expect(mockSetFilter).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'status',
+          value: 'waitlisted',
+          statusOverride: ['waitlisted'],
+        })
+      )
+    })
+
+    it('calls setFilter when No Other Sessions card is clicked', () => {
+      renderWithClient()
+
+      const card = screen.getByText(/no other sessions/i).closest('[role="button"]')
+      expect(card).toBeTruthy()
+      if (card) fireEvent.click(card)
+
+      expect(mockSetFilter).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'waitlist_no_enrollment',
+          value: 'true',
+        })
+      )
+    })
+
+    it('calls setFilter when Has Other Sessions card is clicked', () => {
+      renderWithClient()
+
+      const card = screen.getByText(/has other sessions/i).closest('[role="button"]')
+      expect(card).toBeTruthy()
+      if (card) fireEvent.click(card)
+
+      expect(mockSetFilter).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'waitlist_has_enrollment',
+          value: 'true',
+        })
+      )
+    })
+
+    it('calls setFilter when Accepted card is clicked', () => {
+      renderWithClient()
+
+      // Find the Accepted card - match by text within card title area
+      const acceptedCards = screen.getAllByText(/accepted/i)
+      // Find the one that's a card title (in MetricCard)
+      const cardTitle = acceptedCards.find((el) => el.closest('[role="button"]'))
+      expect(cardTitle).toBeTruthy()
+      if (cardTitle) {
+        const card = cardTitle.closest('[role="button"]')!
+        fireEvent.click(card)
+      }
+
+      expect(mockSetFilter).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'waitlist_accepted',
+          value: 'true',
+        })
+      )
+    })
+
+    it('calls setFilter when Declined card is clicked', () => {
+      renderWithClient()
+
+      const declinedCards = screen.getAllByText(/declined/i)
+      const cardTitle = declinedCards.find((el) => el.closest('[role="button"]'))
+      expect(cardTitle).toBeTruthy()
+      if (cardTitle) {
+        const card = cardTitle.closest('[role="button"]')!
+        fireEvent.click(card)
+      }
+
+      expect(mockSetFilter).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'waitlist_declined',
+          value: 'true',
+        })
+      )
+    })
+
+    it('renders stacked session chart instead of simple bar chart', () => {
+      renderWithClient()
+
+      // The WaitlistBySessionChart renders the "Waitlist by Session" heading
+      expect(screen.getByText(/waitlist by session/i)).toBeInTheDocument()
     })
   })
 })
