@@ -344,6 +344,10 @@ export interface DrilldownFilter {
     | 'returning_status'
     | 'session_length'
     | 'first_summer_year'
+    | 'waitlist_no_enrollment'
+    | 'waitlist_has_enrollment'
+    | 'waitlist_accepted'
+    | 'waitlist_declined'
   value: string
   label: string // Display label for modal title
   /** Override status filter (for status cards like Waitlisted, Cancelled) */
@@ -370,6 +374,12 @@ export interface DrilldownAttendee {
 }
 
 // Waitlist analysis types
+export interface WaitlistEnrolledSessionCount {
+  session_cm_id: number
+  session_name: string
+  count: number
+}
+
 export interface WaitlistSessionBreakdown {
   session_cm_id: number
   session_name: string
@@ -378,6 +388,7 @@ export interface WaitlistSessionBreakdown {
   has_enrollment: number
   accepted: number
   declined: number
+  enrolled_in: WaitlistEnrolledSessionCount[]
 }
 
 export interface WaitlistMetrics {

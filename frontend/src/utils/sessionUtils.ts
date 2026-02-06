@@ -174,7 +174,7 @@ export function buildSessionDateLookup(
  * Compare two session names using date lookup with name-based fallback.
  * Returns negative if a < b, positive if a > b, 0 if equal.
  */
-function compareByDateThenName(
+export function compareByDateThenName(
   nameA: string,
   nameB: string,
   dateLookup: SessionDateLookup

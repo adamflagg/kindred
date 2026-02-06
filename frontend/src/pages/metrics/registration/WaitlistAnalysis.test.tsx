@@ -186,8 +186,9 @@ describe('WaitlistAnalysis', () => {
     it('renders session details table', () => {
       renderWithClient()
 
-      expect(screen.getByText('Session 1')).toBeInTheDocument()
-      expect(screen.getByText('Session 2')).toBeInTheDocument()
+      // Session names appear in both the stacked chart legend and the table
+      expect(screen.getAllByText('Session 1').length).toBeGreaterThanOrEqual(1)
+      expect(screen.getAllByText('Session 2').length).toBeGreaterThanOrEqual(1)
     })
 
     it('renders grade breakdown', () => {

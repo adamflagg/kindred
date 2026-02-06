@@ -8,26 +8,38 @@
  * 4. Previously waitlisted, declined (cancelled/withdrawn/dismissed)
  */
 
+import { useMemo } from 'react'
 import { Loader2, AlertCircle, AlertTriangle, CheckCircle, XCircle, Users, Clock } from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useWaitlistMetrics } from '../../../hooks/useMetrics'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
+import { useDrilldown } from '../../../hooks/useDrilldown'
 import { MetricCard } from '../../../components/metrics/MetricCard'
 import { BreakdownChart } from '../../../components/metrics/BreakdownChart'
+import { WaitlistBySessionChart } from '../../../components/metrics/WaitlistBySessionChart'
+import { buildSessionDateLookup, sortSessionDataByDate } from '../../../utils/sessionUtils'
 import type { WaitlistSessionBreakdown } from '../../../types/metrics'
 
 const DEFAULT_SESSION_TYPES = ['main', 'embedded', 'ag']
 
 export default function WaitlistAnalysis() {
   const { currentYear } = useCurrentYear()
-  const { selectedSessionCmId } = useMetricsSession()
+  const { selectedSessionCmId, sessions } = useMetricsSession()
   const sessionTypesParam = DEFAULT_SESSION_TYPES.join(',')
+  const sessionDateLookup = useMemo(() => buildSessionDateLookup(sessions), [sessions])
 
   const { data, isLoading, error } = useWaitlistMetrics(
     currentYear,
     sessionTypesParam,
     selectedSessionCmId ?? undefined
   )
+
+  const { setFilter, DrilldownModal } = useDrilldown({
+    year: currentYear,
+    sessionCmId: selectedSessionCmId ?? undefined,
+    sessionTypes: DEFAULT_SESSION_TYPES,
+    statusFilter: ['waitlisted'],
+  })
 
   if (isLoading) {
     return (
@@ -60,15 +72,7 @@ export default function WaitlistAnalysis() {
     name: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
     value: g.count,
     percentage: g.percentage,
-  }))
-
-  // Transform session data for stacked display
-  const sessionChartData = (data.by_session || []).map((s) => ({
-    name: s.session_name,
-    value: s.waitlisted,
-    id: s.session_cm_id,
-    no_enrollment: s.no_enrollment,
-    has_enrollment: s.has_enrollment,
+    id: g.grade !== null ? String(g.grade) : 'null',
   }))
 
   return (
@@ -79,6 +83,14 @@ export default function WaitlistAnalysis() {
           title="Total Waitlisted"
           value={data.total_waitlisted}
           className="border-amber-200 dark:border-amber-800"
+          onClick={() =>
+            setFilter({
+              type: 'status',
+              value: 'waitlisted',
+              label: 'Total Waitlisted',
+              statusOverride: ['waitlisted'],
+            })
+          }
         />
         <MetricCard
           title="No Other Sessions"
@@ -89,38 +101,76 @@ export default function WaitlistAnalysis() {
               ? 'border-red-300 bg-red-50/50 dark:border-red-800 dark:bg-red-950/30'
               : ''
           }
+          onClick={() =>
+            setFilter({
+              type: 'waitlist_no_enrollment',
+              value: 'true',
+              label: 'No Other Sessions',
+            })
+          }
         />
         <MetricCard
           title="Has Other Sessions"
           value={data.waitlisted_has_enrollment}
           subtitle="Enrolled elsewhere"
+          onClick={() =>
+            setFilter({
+              type: 'waitlist_has_enrollment',
+              value: 'true',
+              label: 'Has Other Sessions',
+            })
+          }
         />
         <MetricCard
           title="Accepted"
           value={data.total_accepted}
           subtitle="From waitlist"
+          onClick={() =>
+            setFilter({
+              type: 'waitlist_accepted',
+              value: 'true',
+              label: 'Accepted from Waitlist',
+            })
+          }
         />
         <MetricCard
           title="Declined"
           value={data.total_declined}
           subtitle="From waitlist"
+          onClick={() =>
+            setFilter({
+              type: 'waitlist_declined',
+              value: 'true',
+              label: 'Declined from Waitlist',
+            })
+          }
         />
       </div>
 
       {/* Charts Row */}
-      {(sessionChartData.length > 0 || gradeChartData.length > 0) && (
+      {(data.by_session.length > 0 || gradeChartData.length > 0) && (
         <div className="grid gap-6 lg:grid-cols-2">
-          {sessionChartData.length > 0 && (
-            <div className="card-lodge p-4">
-              <h3 className="text-foreground mb-3 text-sm font-semibold">Waitlist by Session</h3>
-              <BreakdownChart data={sessionChartData} title="" type="bar" height={200} />
-            </div>
+          {data.by_session.length > 0 && (
+            <WaitlistBySessionChart
+              data={sortSessionDataByDate(data.by_session, sessionDateLookup)}
+              onBarClick={setFilter}
+              sessionDateLookup={sessionDateLookup}
+            />
           )}
           {gradeChartData.length > 0 && (
-            <div className="card-lodge p-4">
-              <h3 className="text-foreground mb-3 text-sm font-semibold">Grade Distribution</h3>
-              <BreakdownChart data={gradeChartData} title="" type="bar" height={200} />
-            </div>
+            <BreakdownChart
+              data={gradeChartData}
+              title="Grade Distribution"
+              type="bar"
+              height={300}
+              breakdownType="grade"
+              onSegmentClick={(filter) =>
+                setFilter({
+                  ...filter,
+                  statusOverride: ['waitlisted'],
+                })
+              }
+            />
           )}
         </div>
       )}
@@ -164,7 +214,7 @@ export default function WaitlistAnalysis() {
                 </tr>
               </thead>
               <tbody>
-                {data.by_session.map((session: WaitlistSessionBreakdown) => (
+                {sortSessionDataByDate(data.by_session, sessionDateLookup).map((session: WaitlistSessionBreakdown) => (
                   <tr key={session.session_cm_id} className="border-b border-border/50">
                     <td className="px-4 py-2 font-medium">{session.session_name}</td>
                     <td className="px-4 py-2 text-right">
@@ -205,6 +255,8 @@ export default function WaitlistAnalysis() {
           </div>
         </div>
       )}
+
+      <DrilldownModal />
     </div>
   )
 }
