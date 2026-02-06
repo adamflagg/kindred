@@ -208,6 +208,8 @@ tmp/
 !**/example_*.json
 !campminder/**/*.json
 !bunking/geo_normalizer/data/us_cities.json
+!bunking/geo_normalizer/data/schools.json
+!bunking/geo_normalizer/data/congregations.json
 !docs/api/external/campminder/examples/*.json
 !ruff.toml
 !tsconfig.json

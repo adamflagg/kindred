@@ -2,8 +2,8 @@
  * GeoLayerToggles - Checkbox toggles for geographic data layers.
  *
  * Replaces GeoCategoryTabs with simultaneous multi-layer visibility.
- * Three data layers (cities, schools, synagogues) plus region zones
- * and source string toggles.
+ * Three data layers (cities, schools, synagogues) plus region zones.
+ * Admin-only toggles: source strings and gap tracking.
  */
 
 import { MapPin, Building2, Heart } from 'lucide-react'
@@ -19,6 +19,10 @@ export interface GeoLayerTogglesProps {
   onToggleSources: () => void
   showUnmatched?: boolean
   onToggleUnmatched?: () => void
+  showGaps?: boolean
+  onToggleGaps?: () => void
+  /** When true, shows sources, unmatched, and gaps toggles. Defaults to false. */
+  isAdmin?: boolean
 }
 
 const LAYERS: Array<{
@@ -40,8 +44,11 @@ export function GeoLayerToggles({
   onToggleRegions,
   showSources,
   onToggleSources,
-  showUnmatched,
+  showUnmatched = false,
   onToggleUnmatched,
+  showGaps = false,
+  onToggleGaps,
+  isAdmin = false,
 }: GeoLayerTogglesProps) {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -80,26 +87,39 @@ export function GeoLayerToggles({
         <span className="text-muted-foreground">Region zones</span>
       </label>
 
-      <label className="flex cursor-pointer items-center gap-1.5 text-sm">
-        <input
-          type="checkbox"
-          checked={showSources}
-          onChange={onToggleSources}
-          className="text-primary focus:ring-primary h-4 w-4 rounded border-gray-300"
-        />
-        <span className="text-muted-foreground">Show sources</span>
-      </label>
+      {/* Admin-only toggles */}
+      {isAdmin && (
+        <>
+          <label className="flex cursor-pointer items-center gap-1.5 text-sm">
+            <input
+              type="checkbox"
+              checked={showSources}
+              onChange={onToggleSources}
+              className="text-primary focus:ring-primary h-4 w-4 rounded border-gray-300"
+            />
+            <span className="text-muted-foreground">Show sources</span>
+          </label>
 
-      {onToggleUnmatched && (
-        <label className="flex cursor-pointer items-center gap-1.5 text-sm">
-          <input
-            type="checkbox"
-            checked={showUnmatched ?? false}
-            onChange={onToggleUnmatched}
-            className="text-primary focus:ring-primary h-4 w-4 rounded border-gray-300"
-          />
-          <span className="text-muted-foreground">Unmatched sources</span>
-        </label>
+          <label className="flex cursor-pointer items-center gap-1.5 text-sm">
+            <input
+              type="checkbox"
+              checked={showUnmatched}
+              onChange={onToggleUnmatched}
+              className="text-primary focus:ring-primary h-4 w-4 rounded border-gray-300"
+            />
+            <span className="text-muted-foreground">Unmatched sources</span>
+          </label>
+
+          <label className="flex cursor-pointer items-center gap-1.5 text-sm">
+            <input
+              type="checkbox"
+              checked={showGaps}
+              onChange={onToggleGaps}
+              className="text-primary focus:ring-primary h-4 w-4 rounded border-gray-300"
+            />
+            <span className="text-muted-foreground">Show gaps</span>
+          </label>
+        </>
       )}
     </div>
   )

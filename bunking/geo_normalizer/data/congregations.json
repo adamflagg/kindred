@@ -1,0 +1,292 @@
+{
+  "lookup": {
+    "b'nai israel": "Congregation B'nai Israel",
+    "b'nai israel sacramento": "Congregation B'nai Israel Sacramento",
+    "b'nai shalom": "Congregation B'nai Shalom",
+    "b'nai tikvah": "Congregation B'nai Tikvah",
+    "beth abraham": "Temple Beth Abraham",
+    "beth am": "Congregation Beth Am",
+    "beth am los angeles": "Congregation Beth Am Los Angeles",
+    "beth ami": "Congregation Beth Ami",
+    "beth david": "Congregation Beth David",
+    "beth el": "Beth El",
+    "beth hillel": "Temple Beth Hillel",
+    "beth israel": "Congregation Beth Israel",
+    "beth jacob": "Congregation Beth Jacob",
+    "beth jacob oakland": "Beth Jacob Oakland",
+    "beth shalom sacramento": "Congregation Beth Shalom Sacramento",
+    "beth sholom": "Congregation Beth Sholom",
+    "chabad of the east bay": "Chabad of the East Bay",
+    "congregation b'nai israel": "Congregation B'nai Israel",
+    "congregation b'nai israel sacramento": "Congregation B'nai Israel Sacramento",
+    "congregation b'nai shalom": "Congregation B'nai Shalom",
+    "congregation b'nai tikvah": "Congregation B'nai Tikvah",
+    "congregation beth am": "Congregation Beth Am",
+    "congregation beth am los angeles": "Congregation Beth Am Los Angeles",
+    "congregation beth ami": "Congregation Beth Ami",
+    "congregation beth david": "Congregation Beth David",
+    "congregation beth el": "Congregation Beth El",
+    "congregation beth israel": "Congregation Beth Israel",
+    "congregation beth jacob": "Congregation Beth Jacob",
+    "congregation beth shalom sacramento": "Congregation Beth Shalom Sacramento",
+    "congregation beth sholom": "Congregation Beth Sholom",
+    "congregation emanu-el": "Congregation Emanu-El",
+    "congregation emeth": "Congregation Emeth",
+    "congregation etz chayim": "Congregation Etz Chayim",
+    "congregation kol emeth": "Congregation Kol Emeth",
+    "congregation kol shofar": "Congregation Kol Shofar",
+    "congregation ner tamid": "Congregation Ner Tamid",
+    "congregation netivot shalom": "Congregation Netivot Shalom",
+    "congregation rodef sholom": "Congregation Rodef Sholom",
+    "congregation sha'ar zahav": "Congregation Sha'ar Zahav",
+    "congregation sherith israel": "Congregation Sherith Israel",
+    "congregation shir hadash": "Congregation Shir Hadash",
+    "congregation shomrei torah": "Congregation Shomrei Torah",
+    "congregation sinai": "Congregation Sinai",
+    "emanu-el": "Congregation Emanu-El",
+    "emanu-el san jose": "Temple Emanu-El San Jose",
+    "emeth": "Congregation Emeth",
+    "etz chayim": "Congregation Etz Chayim",
+    "isaiah": "Temple Isaiah",
+    "israel": "Temple Israel",
+    "keddem congregation": "Keddem Congregation",
+    "kehilla community synagogue": "Kehilla Community Synagogue",
+    "kol emeth": "Congregation Kol Emeth",
+    "kol shofar": "Congregation Kol Shofar",
+    "marin jewish community center": "Marin Jewish Community Center",
+    "ner tamid": "Congregation Ner Tamid",
+    "netivot shalom": "Congregation Netivot Shalom",
+    "of the arts": "Temple of the Arts",
+    "or chadash": "Or Chadash",
+    "or shalom": "Or Shalom",
+    "or shalom jewish community": "Or Shalom Jewish Community",
+    "peninsula sinai congregation": "Peninsula Sinai Congregation",
+    "peninsula temple beth el": "Peninsula Temple Beth El",
+    "peninsula temple sholom": "Peninsula Temple Sholom",
+    "rodef sholom": "Congregation Rodef Sholom",
+    "sha'ar zahav": "Congregation Sha'ar Zahav",
+    "sherith israel": "Congregation Sherith Israel",
+    "shir hadash": "Congregation Shir Hadash",
+    "shomrei torah": "Congregation Shomrei Torah",
+    "sinai": "Temple Sinai",
+    "stephen wise temple": "Stephen Wise Temple",
+    "temple beth abraham": "Temple Beth Abraham",
+    "temple beth am": "Temple Beth Am",
+    "temple beth hillel": "Temple Beth Hillel",
+    "temple beth sholom": "Temple Beth Sholom",
+    "temple emanu-el": "Temple Emanu-El",
+    "temple emanu-el san jose": "Temple Emanu-El San Jose",
+    "temple isaiah": "Temple Isaiah",
+    "temple israel": "Temple Israel",
+    "temple of the arts": "Temple of the Arts",
+    "temple sinai": "Temple Sinai",
+    "tri-valley cultural jews": "Tri-Valley Cultural Jews",
+    "wilshire boulevard temple": "Wilshire Boulevard Temple"
+  },
+  "coords": {
+    "Beth El": [
+      37.8716,
+      -122.2727
+    ],
+    "Beth Jacob Oakland": [
+      37.8244,
+      -122.2317
+    ],
+    "Chabad of the East Bay": [
+      37.8716,
+      -122.2727
+    ],
+    "Congregation B'nai Israel": [
+      37.9101,
+      -122.0652
+    ],
+    "Congregation B'nai Israel Sacramento": [
+      38.5816,
+      -121.4944
+    ],
+    "Congregation B'nai Shalom": [
+      37.9101,
+      -122.0652
+    ],
+    "Congregation B'nai Tikvah": [
+      37.9101,
+      -122.0652
+    ],
+    "Congregation Beth Am": [
+      37.388,
+      -122.116
+    ],
+    "Congregation Beth Am Los Angeles": [
+      34.0522,
+      -118.2437
+    ],
+    "Congregation Beth Ami": [
+      38.4404,
+      -122.7141
+    ],
+    "Congregation Beth David": [
+      37.319,
+      -121.95
+    ],
+    "Congregation Beth El": [
+      37.8716,
+      -122.2727
+    ],
+    "Congregation Beth Israel": [
+      37.8716,
+      -122.2727
+    ],
+    "Congregation Beth Jacob": [
+      37.463,
+      -122.142
+    ],
+    "Congregation Beth Shalom Sacramento": [
+      38.5816,
+      -121.4944
+    ],
+    "Congregation Beth Sholom": [
+      37.783,
+      -122.4681
+    ],
+    "Congregation Emanu-El": [
+      37.7862,
+      -122.441
+    ],
+    "Congregation Emeth": [
+      37.4419,
+      -122.143
+    ],
+    "Congregation Etz Chayim": [
+      37.4419,
+      -122.143
+    ],
+    "Congregation Kol Emeth": [
+      37.4419,
+      -122.143
+    ],
+    "Congregation Kol Shofar": [
+      37.9249,
+      -122.5339
+    ],
+    "Congregation Ner Tamid": [
+      37.7237,
+      -122.4769
+    ],
+    "Congregation Netivot Shalom": [
+      37.8716,
+      -122.2727
+    ],
+    "Congregation Rodef Sholom": [
+      37.9735,
+      -122.5311
+    ],
+    "Congregation Sha'ar Zahav": [
+      37.7606,
+      -122.4269
+    ],
+    "Congregation Sherith Israel": [
+      37.7885,
+      -122.4285
+    ],
+    "Congregation Shir Hadash": [
+      37.2358,
+      -121.9624
+    ],
+    "Congregation Shomrei Torah": [
+      38.4404,
+      -122.7141
+    ],
+    "Congregation Sinai": [
+      37.3382,
+      -121.8863
+    ],
+    "Keddem Congregation": [
+      37.455,
+      -122.173
+    ],
+    "Kehilla Community Synagogue": [
+      37.843,
+      -122.2545
+    ],
+    "Marin Jewish Community Center": [
+      37.94,
+      -122.52
+    ],
+    "Or Chadash": [
+      37.6624,
+      -121.8747
+    ],
+    "Or Shalom": [
+      37.747,
+      -122.453
+    ],
+    "Or Shalom Jewish Community": [
+      37.747,
+      -122.453
+    ],
+    "Peninsula Sinai Congregation": [
+      37.3688,
+      -122.0363
+    ],
+    "Peninsula Temple Beth El": [
+      37.5529,
+      -122.3055
+    ],
+    "Peninsula Temple Sholom": [
+      37.5841,
+      -122.3661
+    ],
+    "Stephen Wise Temple": [
+      34.0903,
+      -118.4643
+    ],
+    "Temple Beth Abraham": [
+      37.8044,
+      -122.2712
+    ],
+    "Temple Beth Am": [
+      34.0522,
+      -118.2437
+    ],
+    "Temple Beth Hillel": [
+      37.8771,
+      -122.1797
+    ],
+    "Temple Beth Sholom": [
+      37.3382,
+      -121.8863
+    ],
+    "Temple Emanu-El": [
+      37.7862,
+      -122.441
+    ],
+    "Temple Emanu-El San Jose": [
+      37.3382,
+      -121.8863
+    ],
+    "Temple Isaiah": [
+      37.8791,
+      -122.5157
+    ],
+    "Temple Israel": [
+      37.6688,
+      -122.0808
+    ],
+    "Temple Sinai": [
+      37.8044,
+      -122.2712
+    ],
+    "Temple of the Arts": [
+      34.0522,
+      -118.2437
+    ],
+    "Tri-Valley Cultural Jews": [
+      37.6624,
+      -121.8747
+    ],
+    "Wilshire Boulevard Temple": [
+      34.0579,
+      -118.311
+    ]
+  }
+}

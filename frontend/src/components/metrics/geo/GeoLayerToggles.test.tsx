@@ -26,9 +26,16 @@ function getCheckboxes(): HTMLInputElement[] {
 }
 
 describe('GeoLayerToggles', () => {
-  it('renders 3 layer checkboxes plus 2 secondary toggles', () => {
+  it('renders 3 layer checkboxes plus region toggle (non-admin)', () => {
     render(<GeoLayerToggles {...defaultProps} />)
-    expect(getCheckboxes()).toHaveLength(5)
+    // 3 layers + 1 region = 4 (admin toggles hidden by default)
+    expect(getCheckboxes()).toHaveLength(4)
+  })
+
+  it('renders all 7 checkboxes when isAdmin is true', () => {
+    render(<GeoLayerToggles {...defaultProps} isAdmin={true} />)
+    // 3 layers + 1 region + 3 admin (sources, unmatched, gaps) = 7
+    expect(getCheckboxes()).toHaveLength(7)
   })
 
   it('renders layer labels with counts', () => {
@@ -42,11 +49,21 @@ describe('GeoLayerToggles', () => {
     expect(screen.getByText(/15/)).toBeInTheDocument()
   })
 
-  it('renders region and sources toggle labels', () => {
+  it('renders region toggle but hides admin toggles for non-admin', () => {
     render(<GeoLayerToggles {...defaultProps} />)
 
     expect(screen.getByText(/Region zones/)).toBeInTheDocument()
+    expect(screen.queryByText(/Show sources/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Unmatched sources/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Show gaps/)).not.toBeInTheDocument()
+  })
+
+  it('renders all admin toggles when isAdmin is true', () => {
+    render(<GeoLayerToggles {...defaultProps} isAdmin={true} />)
+
     expect(screen.getByText(/Show sources/)).toBeInTheDocument()
+    expect(screen.getByText(/Unmatched sources/)).toBeInTheDocument()
+    expect(screen.getByText(/Show gaps/)).toBeInTheDocument()
   })
 
   it('calls onToggleLayer with correct category when clicked', () => {
@@ -70,7 +87,7 @@ describe('GeoLayerToggles', () => {
 
   it('calls onToggleSources when sources checkbox is clicked', () => {
     const onToggleSources = vi.fn()
-    render(<GeoLayerToggles {...defaultProps} onToggleSources={onToggleSources} />)
+    render(<GeoLayerToggles {...defaultProps} onToggleSources={onToggleSources} isAdmin={true} />)
 
     const boxes = getCheckboxes()
     fireEvent.click(boxes[4] as HTMLElement)
@@ -88,33 +105,13 @@ describe('GeoLayerToggles', () => {
   })
 
   it('reflects showRegions and showSources state', () => {
-    render(<GeoLayerToggles {...defaultProps} showRegions={false} showSources={true} />)
+    render(
+      <GeoLayerToggles {...defaultProps} showRegions={false} showSources={true} isAdmin={true} />
+    )
 
     const boxes = getCheckboxes()
     expect(boxes[3]?.checked).toBe(false) // regions
     expect(boxes[4]?.checked).toBe(true) // sources
-  })
-
-  it('renders unmatched toggle when props are provided', () => {
-    const onToggleUnmatched = vi.fn()
-    render(
-      <GeoLayerToggles
-        {...defaultProps}
-        showUnmatched={false}
-        onToggleUnmatched={onToggleUnmatched}
-      />
-    )
-
-    expect(screen.getByText(/Unmatched sources/)).toBeInTheDocument()
-    // Now 6 checkboxes: 3 layers + regions + sources + unmatched
-    expect(getCheckboxes()).toHaveLength(6)
-  })
-
-  it('does not render unmatched toggle when props are omitted', () => {
-    render(<GeoLayerToggles {...defaultProps} />)
-
-    expect(screen.queryByText(/Unmatched sources/)).not.toBeInTheDocument()
-    expect(getCheckboxes()).toHaveLength(5)
   })
 
   it('calls onToggleUnmatched when unmatched checkbox is clicked', () => {
@@ -122,13 +119,32 @@ describe('GeoLayerToggles', () => {
     render(
       <GeoLayerToggles
         {...defaultProps}
+        isAdmin={true}
         showUnmatched={false}
         onToggleUnmatched={onToggleUnmatched}
       />
     )
 
     const boxes = getCheckboxes()
+    // 3 layers + region + sources + unmatched + gaps = index 5
     fireEvent.click(boxes[5] as HTMLElement)
     expect(onToggleUnmatched).toHaveBeenCalledOnce()
+  })
+
+  it('calls onToggleGaps when gaps checkbox is clicked', () => {
+    const onToggleGaps = vi.fn()
+    render(
+      <GeoLayerToggles
+        {...defaultProps}
+        isAdmin={true}
+        showGaps={false}
+        onToggleGaps={onToggleGaps}
+      />
+    )
+
+    const boxes = getCheckboxes()
+    // 3 layers + region + sources + unmatched + gaps = index 6
+    fireEvent.click(boxes[6] as HTMLElement)
+    expect(onToggleGaps).toHaveBeenCalledOnce()
   })
 })

@@ -194,6 +194,11 @@ func (n *NormalizeGeographicSync) Sync(ctx context.Context) error {
 		return fmt.Errorf("updating camper history: %w", err)
 	}
 
+	// Step 6b: Update persons.normalized_* columns for drilldown consistency
+	if err := n.updatePersonsNormalized(ctx, normalizedLookup, attendeeData, year); err != nil {
+		return fmt.Errorf("updating persons normalized: %w", err)
+	}
+
 	// Mark sync as successful before orphan deletion
 	n.SyncSuccessful = true
 
@@ -894,6 +899,101 @@ func (n *NormalizeGeographicSync) updateCamperHistoryNormalized(
 	}
 
 	n.DebugLog("Updated camper_history normalized fields", "count", updatedCount)
+	return nil
+}
+
+// updatePersonsNormalized updates the normalized_* columns on persons records
+// This enables the drilldown service to match on normalized values directly
+// instead of requiring separate normalized_mappings lookups.
+func (n *NormalizeGeographicSync) updatePersonsNormalized(
+	ctx context.Context,
+	lookup *normalizationLookup,
+	attendeeData []attendeeGeoData,
+	year int,
+) error {
+	// Build person PBID → raw congregation map from attendee data
+	// (congregation comes from person_custom_values, not persons table)
+	congregationByPerson := make(map[string]string)
+	for _, d := range attendeeData {
+		if d.Congregation != "" {
+			congregationByPerson[d.PersonPBID] = d.Congregation
+		}
+	}
+
+	filter := fmt.Sprintf("year = %d", year)
+	page := 1
+	perPage := 500
+	updatedCount := 0
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		records, err := n.App.FindRecordsByFilter(
+			"persons",
+			filter,
+			"-created",
+			perPage,
+			(page-1)*perPage,
+		)
+		if err != nil {
+			return fmt.Errorf("querying persons page %d: %w", page, err)
+		}
+
+		for _, record := range records {
+			needsUpdate := false
+
+			// City
+			if city := record.GetString("address_city"); city != "" {
+				if normalized, ok := lookup.city[city]; ok {
+					if record.GetString("normalized_city") != normalized {
+						record.Set("normalized_city", normalized)
+						needsUpdate = true
+					}
+				}
+			}
+
+			// School
+			if school := record.GetString("school"); school != "" {
+				if normalized, ok := lookup.school[school]; ok {
+					if record.GetString("normalized_school") != normalized {
+						record.Set("normalized_school", normalized)
+						needsUpdate = true
+					}
+				}
+			}
+
+			// Congregation (from person_custom_values via attendee data)
+			if rawCongregation, ok := congregationByPerson[record.Id]; ok {
+				if normalized, ok := lookup.congregation[rawCongregation]; ok {
+					if record.GetString("normalized_congregation") != normalized {
+						record.Set("normalized_congregation", normalized)
+						needsUpdate = true
+					}
+				}
+			}
+
+			if needsUpdate {
+				if err := n.App.Save(record); err != nil {
+					slog.Error("Error updating persons normalized fields",
+						"id", record.Id,
+						"error", err)
+					continue
+				}
+				updatedCount++
+			}
+		}
+
+		if len(records) < perPage {
+			break
+		}
+		page++
+	}
+
+	n.DebugLog("Updated persons normalized fields", "count", updatedCount)
 	return nil
 }
 

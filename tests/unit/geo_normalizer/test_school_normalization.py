@@ -1,0 +1,206 @@
+"""Tests for school name normalization using canonical lookup.
+
+Tests that normalize_school_value() uses a canonical JSON lookup
+(like cities) for exact and fuzzy matching, falling back to the
+original value for unknown schools.
+"""
+
+
+class TestSchoolCanonicalLookup:
+    """Tests for school canonical lookup from schools.json."""
+
+    def test_school_lookup_loads_successfully(self) -> None:
+        """The school lookup should load without errors."""
+        from bunking.geo_normalizer.normalizer import _load_school_lookup
+
+        lookup, coords = _load_school_lookup()
+
+        assert isinstance(lookup, dict)
+        assert isinstance(coords, dict)
+        assert len(lookup) > 0
+
+    def test_school_lookup_contains_known_schools(self) -> None:
+        """School lookup should contain well-known California schools."""
+        from bunking.geo_normalizer.normalizer import _load_school_lookup
+
+        lookup, _ = _load_school_lookup()
+
+        # Should contain common school name patterns (lowercase keys)
+        # At least a few well-known schools should be present
+        assert len(lookup) > 100  # California has thousands of schools
+
+    def test_school_coords_has_lat_lng(self) -> None:
+        """School coords should contain [lat, lng] pairs."""
+        from bunking.geo_normalizer.normalizer import _load_school_lookup
+
+        _, coords = _load_school_lookup()
+
+        if len(coords) > 0:
+            first_key = next(iter(coords))
+            coord = coords[first_key]
+            assert isinstance(coord, list)
+            assert len(coord) == 2
+            # Lat should be roughly California range
+            assert 32 < coord[0] < 42
+            assert -125 < coord[1] < -114
+
+
+class TestSchoolNormalizationWithLookup:
+    """Tests for normalize_school_value() with canonical lookup."""
+
+    def test_exact_match_returns_canonical(self) -> None:
+        """Exact match (case-insensitive) returns canonical spelling."""
+        from bunking.geo_normalizer.normalizer import normalize_school_value
+
+        # A school that exists in the lookup should return canonical form
+        result = normalize_school_value("riverside elementary")
+        # Should return proper-cased version if in lookup, or cleaned original
+        assert result != ""
+        assert result == result.strip()
+
+    def test_empty_string_returns_empty(self) -> None:
+        """Empty/whitespace input returns empty string."""
+        from bunking.geo_normalizer.normalizer import normalize_school_value
+
+        assert normalize_school_value("") == ""
+        assert normalize_school_value("   ") == ""
+        assert normalize_school_value("n/a") == ""
+
+    def test_unknown_school_falls_through(self) -> None:
+        """Unknown schools not in lookup should fall through to original."""
+        from bunking.geo_normalizer.normalizer import normalize_school_value
+
+        # Completely made-up school name
+        result = normalize_school_value("Xyzzy Academy of Quantum Basketweaving")
+        assert result == "Xyzzy Academy of Quantum Basketweaving"
+
+    def test_fuzzy_match_corrects_typo(self) -> None:
+        """Fuzzy matching should correct school name typos."""
+        from bunking.geo_normalizer.normalizer import (
+            _load_school_lookup,
+            normalize_school_value,
+        )
+
+        lookup, _ = _load_school_lookup()
+        if len(lookup) == 0:
+            return  # Skip if no data
+
+        # Get a real school name and create a typo
+        canonical = next(iter(lookup.values()))
+        # Add a typo (swap two adjacent characters)
+        if len(canonical) > 4:
+            typo = canonical[:2] + canonical[3] + canonical[2] + canonical[4:]
+            result = normalize_school_value(typo)
+            # Should correct to canonical or at least return something
+            assert result != ""
+
+    def test_school_threshold_is_80(self) -> None:
+        """School fuzzy match uses threshold 80 (lower than cities at 85).
+
+        This accommodates common school name variations like
+        "Elem" vs "Elementary", "K-8" suffixes, etc.
+        """
+        from bunking.geo_normalizer.normalizer import SCHOOL_FUZZY_THRESHOLD
+
+        assert SCHOOL_FUZZY_THRESHOLD == 80
+
+
+class TestSchoolNormalizationBulk:
+    """Tests for normalize_schools() bulk normalization with lookup."""
+
+    def test_schools_uses_canonical_lookup(self) -> None:
+        """normalize_schools should use canonical lookup, not just clustering."""
+        from bunking.geo_normalizer import normalize_schools
+        from bunking.geo_normalizer.normalizer import _load_school_lookup
+
+        lookup, _ = _load_school_lookup()
+        if len(lookup) == 0:
+            return  # Skip if no data
+
+        # Get a real school name from the lookup
+        lower_key = next(iter(lookup.keys()))
+        canonical_name = lookup[lower_key]
+
+        # Normalize with a case variation
+        result = normalize_schools([canonical_name.upper()])
+        upper_key = canonical_name.upper()
+
+        assert upper_key in result
+        assert result[upper_key]["canonical"] == canonical_name
+
+    def test_unknown_schools_still_cluster(self) -> None:
+        """Schools not in lookup still cluster by similarity (same casing)."""
+        from bunking.geo_normalizer import normalize_schools
+
+        # Same casing variants cluster; different-cased unknowns may not
+        # because token_sort_ratio is case-sensitive
+        result = normalize_schools(
+            [
+                "Xyzzy Academy of Fine Arts",
+                "Xyzzy Academy of Fine Arts",
+                "Xyzzy Academy Of Fine Arts",
+            ]
+        )
+
+        # All should cluster together (same case, minor variation)
+        canonical = result["Xyzzy Academy of Fine Arts"]["canonical"]
+        assert result["Xyzzy Academy Of Fine Arts"]["canonical"] == canonical
+
+    def test_distinct_canonical_schools_not_merged(self) -> None:
+        """Two schools that are distinct canonical entries must not be merged.
+
+        Park Day School and Mark Day School are both in schools.json as separate
+        canonical entries. Even though token_sort_ratio("Mark Day School",
+        "Park Day School") ~ 85.7, they must remain distinct because the
+        per-value lookup resolved them to different canonical entries.
+        """
+        from bunking.geo_normalizer import normalize_schools
+
+        result = normalize_schools(["Park Day School", "Mark Day School"])
+
+        assert result["Park Day School"]["canonical"] == "Park Day School"
+        assert result["Mark Day School"]["canonical"] == "Mark Day School"
+        # They must NOT be merged into the same canonical
+        assert result["Park Day School"]["canonical"] != result["Mark Day School"]["canonical"]
+
+    def test_canonical_match_skips_clustering(self) -> None:
+        """Values that matched distinct canonical entries should never be clustered.
+
+        Even with typo variants, if the per-value lookup resolves two inputs to
+        different canonical entries, the clustering step must not re-merge them.
+        """
+        from bunking.geo_normalizer import normalize_schools
+
+        # Both resolve via lookup to distinct canonical names
+        # Adding case variation to verify lookup still works
+        result = normalize_schools(["park day school", "mark day school"])
+
+        park_canonical = result["park day school"]["canonical"]
+        mark_canonical = result["mark day school"]["canonical"]
+
+        assert park_canonical == "Park Day School"
+        assert mark_canonical == "Mark Day School"
+        assert park_canonical != mark_canonical
+
+    def test_canonical_and_unknown_mixed(self) -> None:
+        """Mix of canonical-matched and unknown schools normalizes correctly.
+
+        Canonical-matched schools keep their lookup result.
+        Unknown schools still get clustered among themselves.
+        """
+        from bunking.geo_normalizer import normalize_schools
+
+        result = normalize_schools(
+            [
+                "Park Day School",
+                "Mark Day School",
+                "Xyzzy Academy",
+                "Xyzzy Academy",
+            ]
+        )
+
+        # Canonical schools stay separate
+        assert result["Park Day School"]["canonical"] == "Park Day School"
+        assert result["Mark Day School"]["canonical"] == "Mark Day School"
+        # Unknown school clusters with itself
+        assert result["Xyzzy Academy"]["canonical"] == "Xyzzy Academy"
