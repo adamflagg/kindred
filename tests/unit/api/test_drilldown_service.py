@@ -2118,3 +2118,116 @@ class TestWaitlistDrilldownEnrolledSessions:
 
         assert len(result) == 1
         assert result[0].enrolled_sessions == []
+
+
+# ============================================================================
+# Bug 4: Session drilldown only shows clicked session in "Waitlisted For"
+# ============================================================================
+
+
+class TestWaitlistDrilldownFullSessionsList:
+    """Bug: When drilling down on a specific session, the "Waitlisted For"
+    column only shows that session. It should show ALL sessions the person
+    is waitlisted for.
+
+    Root cause: waitlisted_groups is built from filtered attendees (after
+    _filter_by_session), so only the clicked session's records appear.
+    Fix: Build waitlisted_groups from ALL waitlisted attendees before filtering.
+    """
+
+    @pytest.fixture
+    def waitlist_sessions(self) -> dict[int, Mock]:
+        """Sessions for multi-session waitlist tests."""
+        return {
+            1001: create_mock_session(1001, "Session 1", 2026, "main", "2026-06-15", "2026-07-05"),
+            1002: create_mock_session(1002, "Session 2", 2026, "main", "2026-07-06", "2026-07-26"),
+            1003: create_mock_session(1003, "Session 2a", 2026, "embedded", "2026-07-06", "2026-07-19"),
+        }
+
+    @pytest.fixture
+    def waitlist_persons(self) -> dict[int, Mock]:
+        """Persons for multi-session waitlist tests."""
+        return {
+            101: create_mock_person(101, "Emma", "Johnson", "F", 5, years_at_camp=1),
+            102: create_mock_person(102, "Liam", "Garcia", "M", 6, years_at_camp=2),
+        }
+
+    @pytest.mark.asyncio
+    async def test_session_filtered_drilldown_shows_all_waitlisted_sessions(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        waitlist_sessions: dict[int, Mock],
+        waitlist_persons: dict[int, Mock],
+    ) -> None:
+        """Person waitlisted in S1 and S2, drilldown on S1 -> sessions shows both S1 and S2."""
+        session1 = waitlist_sessions[1001]
+        session2 = waitlist_sessions[1002]
+
+        # Emma waitlisted in BOTH Session 1 and Session 2
+        waitlisted = [
+            create_mock_attendee(101, session1, 2026, status="waitlisted"),
+            create_mock_attendee(101, session2, 2026, status="waitlisted"),
+        ]
+
+        mock_repository.fetch_sessions.return_value = waitlist_sessions
+        mock_repository.fetch_persons.return_value = waitlist_persons
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (waitlisted if status_filter == ["waitlisted"] else [])
+        )
+
+        # Drilldown filtered to Session 1 bar click
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="waitlist_total",
+            breakdown_value="1001",
+        )
+
+        # Emma should appear in results (she IS waitlisted for S1)
+        assert len(result) == 1
+        assert result[0].person_id == 101
+
+        # But her sessions list should show ALL waitlisted sessions, not just S1
+        assert len(result[0].sessions) == 2
+        session_ids = {s.session_cm_id for s in result[0].sessions}
+        assert session_ids == {1001, 1002}
+
+    @pytest.mark.asyncio
+    async def test_session_filtered_drilldown_no_enrollment(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        waitlist_sessions: dict[int, Mock],
+        waitlist_persons: dict[int, Mock],
+    ) -> None:
+        """waitlist_no_enrollment with session filter shows all waitlisted sessions per person."""
+        session1 = waitlist_sessions[1001]
+        session2 = waitlist_sessions[1002]
+
+        # Emma waitlisted in S1 and S2, not enrolled anywhere
+        waitlisted = [
+            create_mock_attendee(101, session1, 2026, status="waitlisted"),
+            create_mock_attendee(101, session2, 2026, status="waitlisted"),
+        ]
+
+        mock_repository.fetch_sessions.return_value = waitlist_sessions
+        mock_repository.fetch_persons.return_value = waitlist_persons
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (waitlisted if status_filter == ["waitlisted"] else [])
+        )
+
+        # Drilldown on waitlist_no_enrollment filtered to Session 1
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="waitlist_no_enrollment",
+            breakdown_value="true",
+            session_cm_id=1001,
+        )
+
+        assert len(result) == 1
+        assert result[0].person_id == 101
+
+        # Sessions should show all waitlisted sessions, not just S1
+        assert len(result[0].sessions) == 2
+        session_ids = {s.session_cm_id for s in result[0].sessions}
+        assert session_ids == {1001, 1002}
