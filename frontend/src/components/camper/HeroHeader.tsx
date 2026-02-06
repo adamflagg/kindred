@@ -18,6 +18,8 @@ interface HeroHeaderProps {
   location: string | null
   sessionShortName: string
   pronouns: string
+  /** Additional session short names for multi-session persons */
+  allSessionNames?: string[] | undefined
 }
 
 export function HeroHeader({
@@ -26,6 +28,7 @@ export function HeroHeader({
   location,
   sessionShortName,
   pronouns,
+  allSessionNames,
 }: HeroHeaderProps) {
   return (
     <div className="from-forest-700 via-forest-800 to-forest-900 shadow-lodge-lg overflow-hidden rounded-2xl bg-gradient-to-br">
@@ -113,7 +116,11 @@ export function HeroHeader({
           )}
           <div className="text-forest-100 flex items-center gap-2">
             <Calendar className="text-forest-300 h-4 w-4" />
-            <span className="text-sm">{sessionShortName}</span>
+            <span className="text-sm">
+              {allSessionNames && allSessionNames.length > 1
+                ? allSessionNames.join(', ')
+                : sessionShortName}
+            </span>
           </div>
         </div>
       </div>
