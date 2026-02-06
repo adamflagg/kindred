@@ -28,7 +28,7 @@ import { WaitlistBySessionChart } from '../../../components/metrics/WaitlistBySe
 import { buildSessionDateLookup, sortSessionDataByDate } from '../../../utils/sessionUtils'
 import type { WaitlistSessionBreakdown } from '../../../types/metrics'
 
-const DEFAULT_SESSION_TYPES = ['main', 'embedded', 'ag']
+const DEFAULT_SESSION_TYPES = ['main', 'embedded', 'ag', 'quest']
 
 export default function WaitlistAnalysis() {
   const { currentYear } = useCurrentYear()

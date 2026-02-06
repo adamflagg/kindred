@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Summer session types to include in analysis
-SUMMER_SESSION_TYPES = ("main", "embedded", "ag")
+SUMMER_SESSION_TYPES = ("main", "embedded", "ag", "quest")
 
 # Statuses that indicate a camper declined placement
 DECLINED_STATUSES = ["cancelled", "withdrawn", "dismissed"]

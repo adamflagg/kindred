@@ -638,7 +638,7 @@ async def get_retention_trends(
 async def get_waitlist_metrics(
     year: int = Query(..., description="Year to analyze"),
     session_types: str | None = Query(
-        "main,embedded,ag",
+        "main,embedded,ag,quest",
         description="Comma-separated session types to filter (default: summer camp sessions)",
     ),
     session_cm_id: int | None = Query(
