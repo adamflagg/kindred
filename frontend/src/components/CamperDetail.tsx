@@ -62,6 +62,7 @@ function getSessionShortName(
     | undefined
 ): string {
   if (!session) return 'Unknown'
+  if (session.session_type === 'quest') return session.name || 'Quest'
   if (session.session_type === 'ag') return session.name || 'AG'
   if (session.session_type === 'embedded') {
     const match = session.name?.match(/([23][ab])/i)

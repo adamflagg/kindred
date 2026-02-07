@@ -169,7 +169,7 @@ def merge_ag_into_parent_sessions(
 
     AG sessions have a parent_id field that points to their parent main session.
     This function combines AG session counts with their parent's counts so that
-    only main and embedded session types appear in the output.
+    only main, embedded, and quest session types appear in the output.
 
     Args:
         session_counts: Dictionary mapping session cm_id to count.
@@ -177,7 +177,7 @@ def merge_ag_into_parent_sessions(
 
     Returns:
         Dictionary with AG session counts merged into parent sessions.
-        Only main and embedded sessions are included.
+        Only main, embedded, and quest sessions are included.
     """
     # Build AG -> parent mapping (ensure int keys for consistent lookup)
     ag_parent_map: dict[int, int] = {}
@@ -198,11 +198,11 @@ def merge_ag_into_parent_sessions(
             # Not an AG session - keep as is
             merged_counts[sid] = merged_counts.get(sid, 0) + count
 
-    # Filter to only main and embedded sessions
+    # Filter to only main, embedded, and quest sessions
     return {
         sid: count
         for sid, count in merged_counts.items()
-        if sid in sessions and getattr(sessions.get(sid), "session_type", None) in ("main", "embedded")
+        if sid in sessions and getattr(sessions.get(sid), "session_type", None) in ("main", "embedded", "quest")
     }
 
 
@@ -221,7 +221,7 @@ def merge_ag_into_parent_retention_stats(
 
     Returns:
         Dictionary with AG session stats merged into parent sessions.
-        Only main and embedded sessions are included.
+        Only main, embedded, and quest sessions are included.
     """
     # Build AG -> parent mapping (ensure int keys for consistent lookup)
     ag_parent_map: dict[int, int] = {}
@@ -248,11 +248,11 @@ def merge_ag_into_parent_retention_stats(
             merged_stats[sid]["base"] += stats["base"]
             merged_stats[sid]["returned"] += stats["returned"]
 
-    # Filter to only main and embedded sessions
+    # Filter to only main, embedded, and quest sessions
     return {
         sid: stats
         for sid, stats in merged_stats.items()
-        if sid in sessions and getattr(sessions.get(sid), "session_type", None) in ("main", "embedded")
+        if sid in sessions and getattr(sessions.get(sid), "session_type", None) in ("main", "embedded", "quest")
     }
 
 
@@ -366,14 +366,14 @@ def compute_summer_metrics(
         if pid is None or pid not in person_ids:
             continue
 
-        # Filter to summer session types (main, embedded, ag)
+        # Filter to summer session types (main, embedded, ag, quest)
         expand = getattr(record, "expand", {}) or {}
         session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
         if not session:
             continue
 
         session_type = getattr(session, "session_type", None)
-        if session_type not in ("main", "embedded", "ag"):
+        if session_type not in ("main", "embedded", "ag", "quest"):
             continue
 
         if pid not in by_person:
@@ -460,7 +460,7 @@ async def get_retention_metrics(
 async def get_registration_metrics(
     year: int = Query(..., description="Year to get registration metrics for"),
     session_types: str | None = Query(
-        "main,embedded,ag",
+        "main,embedded,ag,quest",
         description="Comma-separated session types to filter (default: summer camp sessions)",
     ),
     statuses: str | None = Query(
@@ -507,7 +507,7 @@ async def get_comparison_metrics(
     year_a: int = Query(..., description="First year to compare"),
     year_b: int = Query(..., description="Second year to compare"),
     session_types: str | None = Query(
-        "main,embedded,ag",
+        "main,embedded,ag,quest",
         description="Comma-separated session types to filter (default: summer camp sessions)",
     ),
 ) -> ComparisonMetricsResponse:
@@ -543,7 +543,7 @@ async def get_comparison_metrics(
 @router.get("/historical", response_model=HistoricalTrendsResponse)
 async def get_historical_trends(
     years: str | None = Query(None, description="Comma-separated years (default: last 5 years from current year)"),
-    session_types: str | None = Query("main,ag,embedded", description="Comma-separated session types to filter"),
+    session_types: str | None = Query("main,ag,embedded,quest", description="Comma-separated session types to filter"),
     session_cm_id: int | None = Query(
         None,
         description="Filter to specific session by CampMinder ID. Uses name-matching across years.",
@@ -591,7 +591,7 @@ async def get_retention_trends(
     current_year: int = Query(..., description="Current year (e.g., 2026)"),
     num_years: int = Query(3, description="Number of years to include (default: 3)"),
     session_types: str | None = Query(
-        "main,embedded,ag",
+        "main,embedded,ag,quest",
         description="Comma-separated session types to filter (default: summer camp sessions)",
     ),
     session_cm_id: int | None = Query(
@@ -638,7 +638,7 @@ async def get_retention_trends(
 async def get_waitlist_metrics(
     year: int = Query(..., description="Year to analyze"),
     session_types: str | None = Query(
-        "main,embedded,ag",
+        "main,embedded,ag,quest",
         description="Comma-separated session types to filter (default: summer camp sessions)",
     ),
     session_cm_id: int | None = Query(

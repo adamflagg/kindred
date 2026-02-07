@@ -12,29 +12,29 @@ import { sortSessionsByDate } from '../utils/sessionUtils'
 export interface MetricsSession {
   cm_id: number
   name: string
-  session_type: 'main' | 'embedded'
+  session_type: 'main' | 'embedded' | 'quest'
   start_date: string
 }
 
 /**
- * Fetch sessions available for the retention metrics dropdown.
+ * Fetch sessions available for the metrics session dropdown.
  *
- * Only returns main and embedded session types (not ag, family, etc.)
- * since those are the primary summer camp sessions for retention analysis.
+ * Returns main, embedded, and quest session types (not ag, family, etc.)
+ * since those are the summer camp sessions for metrics analysis.
  */
 export function useMetricsSessions(year: number) {
   return useQuery({
     queryKey: queryKeys.metricsSessions(year),
     queryFn: async (): Promise<MetricsSession[]> => {
       const sessions = await pb.collection('camp_sessions').getFullList({
-        filter: `year = ${year} && (session_type = "main" || session_type = "embedded")`,
+        filter: `year = ${year} && (session_type = "main" || session_type = "embedded" || session_type = "quest")`,
         sort: 'start_date',
       })
 
       const mapped = sessions.map((s) => ({
         cm_id: s.cm_id as number,
         name: s.name as string,
-        session_type: s.session_type as 'main' | 'embedded',
+        session_type: s.session_type as 'main' | 'embedded' | 'quest',
         start_date: s.start_date as string,
       }))
       return sortSessionsByDate(mapped)

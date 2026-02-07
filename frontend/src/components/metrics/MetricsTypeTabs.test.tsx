@@ -143,8 +143,8 @@ describe('MetricsTypeTabs', () => {
     it('should render session selector on the right side', () => {
       renderWithRouter('/metrics/registration')
 
-      // Session selector should be present with "All Sessions" default
-      expect(screen.getByText('All Sessions')).toBeInTheDocument()
+      // Session selector should be present with "At Camp" default
+      expect(screen.getByText('At Camp')).toBeInTheDocument()
     })
 
     it('should render session selector with calendar icon', () => {

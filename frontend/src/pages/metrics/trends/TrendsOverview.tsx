@@ -15,14 +15,9 @@ import { TrendLineChart } from '../../../components/metrics/TrendLineChart'
 import { MetricCard } from '../../../components/metrics/MetricCard'
 import { Loader2, AlertCircle } from 'lucide-react'
 
-/** Default session types for summer camp metrics */
-const DEFAULT_SESSION_TYPES = ['main', 'embedded', 'ag']
-
 export default function TrendsOverview() {
-  const sessionTypesParam = DEFAULT_SESSION_TYPES.join(',')
-
   // Get session filter from context (unified selector is in MetricsTypeTabs)
-  const { selectedSessionCmId } = useMetricsSession()
+  const { selectedSessionCmId, sessionTypesParam } = useMetricsSession()
 
   const { data, isLoading, error } = useHistoricalTrends(
     undefined,

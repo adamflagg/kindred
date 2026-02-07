@@ -41,7 +41,7 @@ export default function MetricsSubNav({ items }: MetricsSubNavProps) {
           return (
             <Link
               key={item.id}
-              to={item.path}
+              to={item.path + location.search}
               className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200 ${
                 isActive
                   ? 'bg-primary text-primary-foreground shadow-lodge-sm'

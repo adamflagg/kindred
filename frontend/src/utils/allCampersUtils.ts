@@ -12,12 +12,12 @@ import { sortSessionsByDate } from './sessionUtils'
 // Export type alias for sessions with type information
 export type SessionWithType = Session
 
-// Session types that are valid for summer camp bunking
-const SUMMER_CAMP_SESSION_TYPES = ['main', 'ag', 'embedded'] as const
+// Session types that are valid for summer camp views
+const SUMMER_CAMP_SESSION_TYPES = ['main', 'ag', 'embedded', 'quest'] as const
 
 // Session types that should appear in the dropdown
 // (AG is excluded because it's grouped with parent main session)
-const DROPDOWN_SESSION_TYPES = ['main', 'embedded'] as const
+const DROPDOWN_SESSION_TYPES = ['main', 'embedded', 'quest'] as const
 
 /**
  * Filter bunks to only include those linked to summer camp sessions (main, ag, embedded)
@@ -53,9 +53,9 @@ export function filterSummerCampBunks(
 
 /**
  * Get sessions for the dropdown in AllCampers view
- * - Includes: main, embedded sessions (including Taste of Camp which is a main session)
- * - Excludes: AG (grouped with parent), family, quest, training, etc.
- * - Embedded sessions are independent entries (not grouped with main)
+ * - Includes: main, embedded, quest sessions
+ * - Excludes: AG (grouped with parent), family, training, etc.
+ * - Embedded and quest sessions are independent entries (not grouped with main)
  */
 export function getDropdownSessions(sessions: Session[]): Session[] {
   // Filter to only dropdown-eligible session types
@@ -109,6 +109,9 @@ export function getSessionRelationshipsForCamperView(
       }
     } else if (session.session_type === 'embedded') {
       // Embedded sessions are independent - only include themselves
+      relationships.set(session.id, [session.id])
+    } else if (session.session_type === 'quest') {
+      // Quest sessions are independent - only include themselves
       relationships.set(session.id, [session.id])
     }
   })

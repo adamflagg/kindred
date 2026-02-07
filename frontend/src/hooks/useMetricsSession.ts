@@ -6,6 +6,7 @@
  */
 import { useContext, createContext } from 'react'
 import type { MetricsSession } from './useMetricsSessions'
+import type { MetricsViewMode } from '../constants/sessionTypes'
 
 export interface MetricsSessionContextType {
   /** Currently selected session cm_id (null = all sessions) */
@@ -20,6 +21,18 @@ export interface MetricsSessionContextType {
   setSelectedSessionCmId: (cmId: number | null) => void
   /** Clear the session filter (show all sessions) */
   clearSession: () => void
+  /** Current view mode: 'sessions' (camp) or 'quests' */
+  viewMode: MetricsViewMode
+  /** Set the view mode and clear session selection */
+  setViewMode: (mode: MetricsViewMode) => void
+  /** Active session types derived from viewMode + selectedSessionCmId */
+  activeSessionTypes: readonly string[]
+  /** Comma-joined activeSessionTypes for API calls */
+  sessionTypesParam: string
+  /** Non-quest sessions, sorted by date */
+  campSessions: MetricsSession[]
+  /** Quest sessions only, sorted by date */
+  questSessions: MetricsSession[]
 }
 
 export const MetricsSessionContext = createContext<MetricsSessionContextType | undefined>(undefined)

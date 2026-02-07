@@ -51,6 +51,14 @@ function getSessionDisplay(a: DrilldownAttendee): string {
   return shortenSessionName(a.session_name)
 }
 
+/** Get enrolled sessions display: comma-joined or "—" if empty. */
+function getEnrolledDisplay(a: DrilldownAttendee): string {
+  if (a.enrolled_sessions && a.enrolled_sessions.length > 0) {
+    return a.enrolled_sessions.map((s) => shortenSessionName(s.session_name)).join(', ')
+  }
+  return '—'
+}
+
 interface DrillDownModalProps {
   year: number
   filter: DrilldownFilter | null
@@ -60,7 +68,7 @@ interface DrillDownModalProps {
   onClose: () => void
 }
 
-type SortField = 'name' | 'grade' | 'gender' | 'school' | 'city' | 'session' | 'years'
+type SortField = 'name' | 'grade' | 'gender' | 'school' | 'city' | 'session' | 'years' | 'enrolled'
 type SortDirection = 'asc' | 'desc'
 
 export function DrillDownModal({
@@ -74,6 +82,9 @@ export function DrillDownModal({
   const [searchTerm, setSearchTerm] = useState('')
   const [sortField, setSortField] = useState<SortField>('name')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+
+  const isWaitlistDrilldown =
+    (filter?.type?.startsWith('waitlist_') || filter?.waitlistContext) ?? false
 
   const {
     data: attendees = [],
@@ -111,12 +122,13 @@ export function DrillDownModal({
         a.first_name.toLowerCase().includes(term) ||
         a.last_name.toLowerCase().includes(term) ||
         (a.preferred_name?.toLowerCase().includes(term) ?? false) ||
-        (a.school?.toLowerCase().includes(term) ?? false) ||
+        (!isWaitlistDrilldown && (a.school?.toLowerCase().includes(term) ?? false)) ||
         (a.city?.toLowerCase().includes(term) ?? false) ||
         (a.state?.toLowerCase().includes(term) ?? false) ||
-        getSessionDisplay(a).toLowerCase().includes(term)
+        getSessionDisplay(a).toLowerCase().includes(term) ||
+        (isWaitlistDrilldown && getEnrolledDisplay(a).toLowerCase().includes(term))
     )
-  }, [attendees, searchTerm])
+  }, [attendees, searchTerm, isWaitlistDrilldown])
 
   // Sort attendees
   const sortedAttendees = useMemo(() => {
@@ -154,6 +166,10 @@ export function DrillDownModal({
           aVal = a.years_at_camp ?? 0
           bVal = b.years_at_camp ?? 0
           break
+        case 'enrolled':
+          aVal = getEnrolledDisplay(a).toLowerCase()
+          bVal = getEnrolledDisplay(b).toLowerCase()
+          break
       }
 
       if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1
@@ -173,35 +189,69 @@ export function DrillDownModal({
   }
 
   const downloadCsv = () => {
-    const headers = [
-      'CampMinder ID',
-      'Name',
-      'Grade',
-      'Gender',
-      'Age',
-      'School',
-      'City',
-      'State',
-      'Session',
-      'Years at Camp',
-      'Status',
-      'Returning',
-    ]
+    const headers = isWaitlistDrilldown
+      ? [
+          'CampMinder ID',
+          'Name',
+          'Grade',
+          'Gender',
+          'Age',
+          'School',
+          'City',
+          'State',
+          'Waitlisted For',
+          'Enrolled In',
+          'Years at Camp',
+          'Status',
+          'Returning',
+        ]
+      : [
+          'CampMinder ID',
+          'Name',
+          'Grade',
+          'Gender',
+          'Age',
+          'School',
+          'City',
+          'State',
+          'Session',
+          'Years at Camp',
+          'Status',
+          'Returning',
+        ]
 
-    const rows = sortedAttendees.map((a) => [
-      a.person_id,
-      `${a.preferred_name || a.first_name} ${a.last_name}`,
-      a.grade ?? '',
-      a.gender ?? '',
-      a.age ?? '',
-      a.school ?? '',
-      a.city ?? '',
-      a.state ?? '',
-      getSessionDisplay(a),
-      a.years_at_camp ?? '',
-      a.status,
-      a.is_returning ? 'Yes' : 'No',
-    ])
+    const rows = sortedAttendees.map((a) =>
+      isWaitlistDrilldown
+        ? [
+            a.person_id,
+            `${a.preferred_name || a.first_name} ${a.last_name}`,
+            a.grade ?? '',
+            a.gender ?? '',
+            a.age ?? '',
+            a.school ?? '',
+            a.city ?? '',
+            a.state ?? '',
+            getSessionDisplay(a),
+            getEnrolledDisplay(a),
+            a.years_at_camp ?? '',
+            a.status,
+            a.is_returning ? 'Yes' : 'No',
+          ]
+        : [
+            a.person_id,
+            `${a.preferred_name || a.first_name} ${a.last_name}`,
+            a.grade ?? '',
+            a.gender ?? '',
+            a.age ?? '',
+            a.school ?? '',
+            a.city ?? '',
+            a.state ?? '',
+            getSessionDisplay(a),
+            a.years_at_camp ?? '',
+            a.status,
+            a.is_returning ? 'Yes' : 'No',
+          ]
+    )
 
     const csv = [headers, ...rows]
       .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
@@ -237,11 +287,7 @@ export function DrillDownModal({
           <div>
             <h2 className="text-foreground text-lg font-semibold">
               {sortedAttendees.length} camper
-              {sortedAttendees.length !== 1 ? 's' : ''}{' '}
-              {filter.statusOverride?.includes('waitlisted') && filter.type === 'session'
-                ? 'waiting for'
-                : 'in'}{' '}
-              {filter.label}
+              {sortedAttendees.length !== 1 ? 's' : ''} in {filter.label}
             </h2>
             <p className="text-muted-foreground text-sm">
               {year} enrollment data
@@ -272,7 +318,11 @@ export function DrillDownModal({
             <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Search by name, school, city, session..."
+              placeholder={
+                isWaitlistDrilldown
+                  ? 'Search by name, city, session, enrolled...'
+                  : 'Search by name, school, city, session...'
+              }
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="bg-background border-input focus:ring-ring w-full rounded-md border py-2 pr-4 pl-10 text-sm focus:ring-2 focus:outline-none"
@@ -323,14 +373,16 @@ export function DrillDownModal({
                       Gender <SortIcon field="gender" />
                     </div>
                   </th>
-                  <th
-                    onClick={() => handleSort('school')}
-                    className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
-                  >
-                    <div className="flex items-center gap-1">
-                      School <SortIcon field="school" />
-                    </div>
-                  </th>
+                  {!isWaitlistDrilldown && (
+                    <th
+                      onClick={() => handleSort('school')}
+                      className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
+                    >
+                      <div className="flex items-center gap-1">
+                        School <SortIcon field="school" />
+                      </div>
+                    </th>
+                  )}
                   <th
                     onClick={() => handleSort('city')}
                     className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
@@ -344,9 +396,20 @@ export function DrillDownModal({
                     className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
                   >
                     <div className="flex items-center gap-1">
-                      Session <SortIcon field="session" />
+                      {isWaitlistDrilldown ? 'Waitlisted For' : 'Session'}{' '}
+                      <SortIcon field="session" />
                     </div>
                   </th>
+                  {isWaitlistDrilldown && (
+                    <th
+                      onClick={() => handleSort('enrolled')}
+                      className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
+                    >
+                      <div className="flex items-center gap-1">
+                        Enrolled In <SortIcon field="enrolled" />
+                      </div>
+                    </th>
+                  )}
                   <th
                     onClick={() => handleSort('years')}
                     className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-center font-medium"
@@ -387,12 +450,14 @@ export function DrillDownModal({
                     <td className="text-foreground px-4 py-3 text-center whitespace-nowrap">
                       {attendee.gender ?? '—'}
                     </td>
-                    <td
-                      className="text-foreground max-w-[160px] truncate px-4 py-3"
-                      title={attendee.school ?? undefined}
-                    >
-                      {attendee.school ?? '—'}
-                    </td>
+                    {!isWaitlistDrilldown && (
+                      <td
+                        className="text-foreground max-w-[160px] truncate px-4 py-3"
+                        title={attendee.school ?? undefined}
+                      >
+                        {attendee.school ?? '—'}
+                      </td>
+                    )}
                     <td
                       className="text-foreground max-w-[140px] truncate px-4 py-3"
                       title={
@@ -412,6 +477,14 @@ export function DrillDownModal({
                     <td className="text-foreground px-4 py-3 whitespace-nowrap">
                       {getSessionDisplay(attendee)}
                     </td>
+                    {isWaitlistDrilldown && (
+                      <td
+                        className="text-foreground max-w-[180px] truncate px-4 py-3"
+                        title={getEnrolledDisplay(attendee)}
+                      >
+                        {getEnrolledDisplay(attendee)}
+                      </td>
+                    )}
                     <td className="text-foreground px-4 py-3 text-center whitespace-nowrap">
                       {attendee.years_at_camp ?? '—'}
                     </td>

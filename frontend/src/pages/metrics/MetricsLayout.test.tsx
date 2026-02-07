@@ -136,13 +136,13 @@ describe('MetricsLayout', () => {
       renderWithRouter('/metrics/registration/overview')
 
       // The session selector should be rendered (via MetricsTypeTabs)
-      expect(screen.getByText('All Sessions')).toBeInTheDocument()
+      expect(screen.getByText('At Camp')).toBeInTheDocument()
     })
 
     it('session selector is present on all metric tabs', () => {
       // Test that it's present on registration
       renderWithRouter('/metrics/registration/overview')
-      expect(screen.getByText('All Sessions')).toBeInTheDocument()
+      expect(screen.getByText('At Camp')).toBeInTheDocument()
     })
   })
 })

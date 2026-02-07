@@ -20,8 +20,8 @@ import {
   LabelList,
 } from 'recharts'
 import type { WaitlistSessionBreakdown, DrilldownFilter } from '../../types/metrics'
-import type { SessionDateLookup } from '../../utils/sessionUtils'
-import { compareByDateThenName } from '../../utils/sessionUtils'
+import type { SessionDateLookup, SessionTypeLookup } from '../../utils/sessionUtils'
+import { compareByDateCampThenQuest } from '../../utils/sessionUtils'
 
 const NO_ENROLLMENT_COLOR = 'hsl(0, 70%, 50%)'
 
@@ -44,6 +44,8 @@ interface WaitlistBySessionChartProps {
   onBarClick?: (filter: DrilldownFilter) => void
   /** Lookup map for session dates (for chronological sorting of legend) */
   sessionDateLookup?: SessionDateLookup
+  /** Lookup map for session types (for camp-then-quest sorting of legend) */
+  sessionTypeLookup?: SessionTypeLookup
 }
 
 interface ChartDataItem {
@@ -60,6 +62,7 @@ export function WaitlistBySessionChart({
   height = 300,
   onBarClick,
   sessionDateLookup = {},
+  sessionTypeLookup = {},
 }: WaitlistBySessionChartProps) {
   if (data.length === 0) {
     return (
@@ -80,7 +83,7 @@ export function WaitlistBySessionChart({
     }
   }
   const enrolledSessionList = Array.from(enrolledSessions.entries()).sort((a, b) =>
-    compareByDateThenName(a[1], b[1], sessionDateLookup)
+    compareByDateCampThenQuest(a[1], b[1], sessionDateLookup, sessionTypeLookup)
   )
 
   // Transform data for stacked bar chart
@@ -155,10 +158,9 @@ export function WaitlistBySessionChart({
   const handleBarClick = (barData: ChartDataItem) => {
     if (!onBarClick || !barData) return
     onBarClick({
-      type: 'session',
+      type: 'waitlist_total',
       value: String(barData.session_cm_id),
       label: barData.name,
-      statusOverride: ['waitlisted'],
     })
   }
 

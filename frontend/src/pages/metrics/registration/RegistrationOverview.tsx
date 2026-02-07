@@ -20,7 +20,11 @@ import { BreakdownChart } from '../../../components/metrics/BreakdownChart'
 import { GenderByGradeChart } from '../../../components/metrics/GenderByGradeChart'
 import { SessionLengthBySessionChart } from '../../../components/metrics/SessionLengthBySessionChart'
 import { getSessionChartLabel } from '../../../utils/sessionDisplay'
-import { buildSessionDateLookup, sortSessionDataByDate } from '../../../utils/sessionUtils'
+import {
+  buildSessionDateLookup,
+  buildSessionTypeLookup,
+  sortSessionDataByCampThenQuest,
+} from '../../../utils/sessionUtils'
 import {
   transformGenderData,
   transformGradeData,
@@ -31,17 +35,13 @@ import {
 } from '../../../utils/metricsTransforms'
 import { Loader2, AlertCircle } from 'lucide-react'
 
-/** Default session types for summer camp metrics */
-const DEFAULT_SESSION_TYPES = ['main', 'embedded', 'ag']
-
 export default function RegistrationOverview() {
   const { currentYear } = useCurrentYear()
 
   // Get session filter from context (unified selector is in MetricsTypeTabs)
-  const { selectedSessionCmId, sessions } = useMetricsSession()
+  const { selectedSessionCmId, sessions, sessionTypesParam, activeSessionTypes } =
+    useMetricsSession()
 
-  // Build session types param string
-  const sessionTypesParam = DEFAULT_SESSION_TYPES.join(',')
   // Always use enrolled status only
   const statusesParam = 'enrolled'
 
@@ -49,12 +49,13 @@ export default function RegistrationOverview() {
   const { setFilter, DrilldownModal } = useDrilldown({
     year: currentYear,
     sessionCmId: selectedSessionCmId ?? undefined,
-    sessionTypes: DEFAULT_SESSION_TYPES,
+    sessionTypes: [...activeSessionTypes],
     statusFilter: [statusesParam],
   })
 
-  // Build session date lookup for date-aware sorting
+  // Build session lookups for date-aware and camp-then-quest sorting
   const sessionDateLookup = useMemo(() => buildSessionDateLookup(sessions), [sessions])
+  const sessionTypeLookup = useMemo(() => buildSessionTypeLookup(sessions), [sessions])
 
   // Fetch registration data with optional session filter
   const { data, isLoading, error } = useRegistrationMetrics(
@@ -93,7 +94,11 @@ export default function RegistrationOverview() {
   // Transform data for charts using utility functions
   const genderChartData = transformGenderData(data.by_gender)
   const gradeChartData = transformGradeData(data.by_grade)
-  const sessionChartData = transformSessionData(data.by_session, sessionDateLookup)
+  const sessionChartData = transformSessionData(
+    data.by_session,
+    sessionDateLookup,
+    sessionTypeLookup
+  )
   const summerYearsData = transformSummerYearsData(data.by_summer_years)
   const firstSummerYearData = transformFirstSummerYearData(data.by_first_summer_year)
   const newVsReturningData = transformNewVsReturningData(data.new_vs_returning)
@@ -109,15 +114,14 @@ export default function RegistrationOverview() {
         }))
 
   // Sort sessions for table (chart uses sorted version from transformSessionData)
-  const sortedBySession = sortSessionDataByDate(data.by_session, sessionDateLookup)
+  const sortedBySession = sortSessionDataByCampThenQuest(
+    data.by_session,
+    sessionDateLookup,
+    sessionTypeLookup
+  )
 
   return (
     <div className="space-y-6">
-      {/* Session filter indicator (selector is in MetricsTypeTabs) */}
-      {selectedSessionCmId && (
-        <div className="text-muted-foreground text-sm">Showing data for selected session only</div>
-      )}
-
       {/* Summary Cards */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
         <MetricCard
@@ -247,6 +251,7 @@ export default function RegistrationOverview() {
             title="Enrollment by Session Length"
             height={350}
             sessionDateLookup={sessionDateLookup}
+            sessionTypeLookup={sessionTypeLookup}
             onCategoryClick={(lengthCategory) =>
               setFilter({
                 type: 'session_length',

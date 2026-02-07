@@ -695,3 +695,397 @@ class TestEnrolledInBreakdown:
         session_1 = session_map[1001]
         assert session_1.no_enrollment == 1
         assert session_1.enrolled_in == []
+
+
+# ============================================================================
+# Bug A: Cross-type enrollment lookup
+# ============================================================================
+
+
+class TestCrossTypeEnrollment:
+    """Bug fix: Camper waitlisted for quest + enrolled in main session
+    should show has_enrollment with the main session in enrolled_in.
+
+    Previously, filtering enrolled attendees to only the selected session type
+    (e.g. "quest") would miss enrollments in other types (e.g. "main").
+    """
+
+    @pytest.mark.asyncio
+    async def test_quest_waitlist_sees_main_session_enrollment(
+        self,
+        waitlist_service: WaitlistService,
+        mock_repository: Mock,
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """Camper waitlisted for quest, enrolled in main session -> has_enrollment.
+
+        Bug: When filtering to 'quest' session types, fetch_sessions only returns quest
+        sessions. Enrolled attendees are then filtered against this subset, so enrollment
+        in a main session is invisible. The fix should fetch ALL session types for
+        enrollment lookup, using the type filter only for waitlist filtering.
+        """
+        # Create sessions: one main, one quest
+        main_session = create_mock_session(1001, "Session 1", 2026, "main")
+        quest_session = create_mock_session(2001, "Teen Quest", 2026, "quest", start_date="2026-06-10")
+        all_sessions = {1001: main_session, 2001: quest_session}
+
+        # Mock fetch_sessions to respect type filtering (this is how the real repo works)
+        async def mock_fetch_sessions(year: int, types: list[str]) -> dict[int, Mock]:
+            return {k: v for k, v in all_sessions.items() if v.session_type in types}
+
+        # Emma (101) waitlisted for quest, enrolled in main
+        waitlisted_attendees = [
+            create_mock_attendee(101, quest_session, status="waitlisted", status_id=8, is_active=False),
+        ]
+        enrolled_attendees = [
+            create_mock_attendee(101, main_session, status="enrolled", status_id=2, is_active=True),
+        ]
+
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (
+                waitlisted_attendees if status_filter == "waitlisted" else enrolled_attendees
+            )
+        )
+        mock_repository.fetch_sessions = AsyncMock(side_effect=mock_fetch_sessions)
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_status_history = AsyncMock(return_value=[])
+
+        # Filter to quest sessions only (simulating "All Quests" dropdown)
+        result = await waitlist_service.calculate_waitlist(year=2026, session_types=["quest"])
+
+        # Person should show as has_enrollment (enrolled in main, even though filter is quest)
+        assert result.waitlisted_has_enrollment == 1
+        assert result.waitlisted_no_enrollment == 0
+
+        # The session breakdown should show the main session in enrolled_in
+        session_map = {s.session_cm_id: s for s in result.by_session}
+        quest_breakdown = session_map[2001]
+        assert quest_breakdown.has_enrollment == 1
+        assert len(quest_breakdown.enrolled_in) == 1
+        assert quest_breakdown.enrolled_in[0].session_cm_id == 1001
+        assert quest_breakdown.enrolled_in[0].session_name == "Session 1"
+
+    @pytest.mark.asyncio
+    async def test_quest_waitlist_no_enrollment_anywhere(
+        self,
+        waitlist_service: WaitlistService,
+        mock_repository: Mock,
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """Camper waitlisted for quest with no enrollment anywhere -> no_enrollment."""
+        quest_session = create_mock_session(2001, "Teen Quest", 2026, "quest", start_date="2026-06-10")
+
+        async def mock_fetch_sessions(year: int, types: list[str]) -> dict[int, Mock]:
+            all_s = {2001: quest_session}
+            return {k: v for k, v in all_s.items() if v.session_type in types}
+
+        waitlisted_attendees = [
+            create_mock_attendee(101, quest_session, status="waitlisted", status_id=8, is_active=False),
+        ]
+
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (waitlisted_attendees if status_filter == "waitlisted" else [])
+        )
+        mock_repository.fetch_sessions = AsyncMock(side_effect=mock_fetch_sessions)
+        mock_repository.fetch_persons.return_value = {101: sample_persons[101]}
+        mock_repository.fetch_status_history = AsyncMock(return_value=[])
+
+        result = await waitlist_service.calculate_waitlist(year=2026, session_types=["quest"])
+
+        assert result.waitlisted_no_enrollment == 1
+        assert result.waitlisted_has_enrollment == 0
+
+
+# ============================================================================
+# Bug B: Per-session deduplication for breakdown
+# ============================================================================
+
+
+class TestPerSessionDedup:
+    """Bug fix: Person waitlisted in 2 sessions should contribute to BOTH
+    session breakdowns, not just the first one processed.
+
+    Previously, global dedup caused the second session to show 0 for both
+    no_enrollment and has_enrollment while total (waitlisted) was correct.
+    """
+
+    @pytest.mark.asyncio
+    async def test_person_waitlisted_two_sessions_both_show_counts(
+        self,
+        waitlist_service: WaitlistService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """Person waitlisted in Session 1 AND Session 2 -> both session breakdowns show no_enrollment."""
+        session1 = sample_sessions[1001]
+        session2 = sample_sessions[1002]
+
+        # Emma (101) waitlisted in BOTH sessions, not enrolled anywhere
+        waitlisted_attendees = [
+            create_mock_attendee(101, session1, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(101, session2, status="waitlisted", status_id=8, is_active=False),
+        ]
+
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (waitlisted_attendees if status_filter == "waitlisted" else [])
+        )
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_status_history = AsyncMock(return_value=[])
+
+        result = await waitlist_service.calculate_waitlist(year=2026)
+
+        session_map = {s.session_cm_id: s for s in result.by_session}
+
+        # BOTH sessions should show no_enrollment = 1
+        assert session_map[1001].no_enrollment == 1
+        assert session_map[1002].no_enrollment == 1
+
+        # Both should show waitlisted = 1
+        assert session_map[1001].waitlisted == 1
+        assert session_map[1002].waitlisted == 1
+
+        # Summary should still deduplicate: only 1 unique person
+        assert result.total_waitlisted == 1
+        assert result.waitlisted_no_enrollment == 1
+
+    @pytest.mark.asyncio
+    async def test_person_waitlisted_two_sessions_enrolled_in_third(
+        self,
+        waitlist_service: WaitlistService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """Person waitlisted in 2 sessions + enrolled in 3rd -> both show has_enrollment with enrolled_in."""
+        session1 = sample_sessions[1001]
+        session2 = sample_sessions[1002]
+        session2a = sample_sessions[1003]
+
+        # Liam (102) waitlisted in Session 1 and Session 2, enrolled in Session 2a
+        waitlisted_attendees = [
+            create_mock_attendee(102, session1, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(102, session2, status="waitlisted", status_id=8, is_active=False),
+        ]
+        enrolled_attendees = [
+            create_mock_attendee(102, session2a, status="enrolled", status_id=2, is_active=True),
+        ]
+
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (
+                waitlisted_attendees if status_filter == "waitlisted" else enrolled_attendees
+            )
+        )
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_status_history = AsyncMock(return_value=[])
+
+        result = await waitlist_service.calculate_waitlist(year=2026)
+
+        session_map = {s.session_cm_id: s for s in result.by_session}
+
+        # BOTH waitlisted sessions should show has_enrollment = 1
+        assert session_map[1001].has_enrollment == 1
+        assert session_map[1002].has_enrollment == 1
+
+        # BOTH should have enrolled_in referencing Session 2a
+        assert len(session_map[1001].enrolled_in) == 1
+        assert session_map[1001].enrolled_in[0].session_cm_id == 1003
+        assert len(session_map[1002].enrolled_in) == 1
+        assert session_map[1002].enrolled_in[0].session_cm_id == 1003
+
+        # Summary should still deduplicate: only 1 unique person
+        assert result.total_waitlisted == 1
+        assert result.waitlisted_has_enrollment == 1
+
+
+# ============================================================================
+# Bug 1: _filter_to_sessions lets everything through
+# ============================================================================
+
+
+class TestFilterToSessionsBug:
+    """Bug: _filter_to_sessions has `or session_cmid in sessions` which
+    lets ALL attendees through even when valid_session_ids is narrowed.
+
+    When session_cm_id is set, valid_session_ids is narrowed to just that
+    one session, but the `or sessions` clause matches everything in
+    filtered_sessions (which contains all type-filtered sessions).
+    """
+
+    @pytest.mark.asyncio
+    async def test_session_cm_id_filter_narrows_waitlist_counts(
+        self,
+        waitlist_service: WaitlistService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """Filtering to Session 1 should only count waitlisted attendees in Session 1."""
+        session1 = sample_sessions[1001]
+        session2 = sample_sessions[1002]
+
+        # Emma waitlisted in S1, Olivia waitlisted in S2
+        waitlisted_attendees = [
+            create_mock_attendee(101, session1, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(103, session2, status="waitlisted", status_id=8, is_active=False),
+        ]
+
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (waitlisted_attendees if status_filter == "waitlisted" else [])
+        )
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_status_history = AsyncMock(return_value=[])
+
+        # Filter to Session 1 only
+        result = await waitlist_service.calculate_waitlist(year=2026, session_cm_id=1001)
+
+        # Should only count Emma (S1), NOT Olivia (S2)
+        assert result.total_waitlisted == 1
+        assert result.waitlisted_no_enrollment == 1
+
+    @pytest.mark.asyncio
+    async def test_session_cm_id_filter_narrows_session_breakdown(
+        self,
+        waitlist_service: WaitlistService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """Session breakdown should only contain the filtered session."""
+        session1 = sample_sessions[1001]
+        session2 = sample_sessions[1002]
+
+        waitlisted_attendees = [
+            create_mock_attendee(101, session1, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(103, session2, status="waitlisted", status_id=8, is_active=False),
+        ]
+
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (waitlisted_attendees if status_filter == "waitlisted" else [])
+        )
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_status_history = AsyncMock(return_value=[])
+
+        result = await waitlist_service.calculate_waitlist(year=2026, session_cm_id=1001)
+
+        # by_session should only contain Session 1
+        assert len(result.by_session) == 1
+        assert result.by_session[0].session_cm_id == 1001
+
+
+# ============================================================================
+# Bug 2: Accepted/declined counts not session-filtered
+# ============================================================================
+
+
+class TestAcceptedDeclinedSessionFilter:
+    """Bug: Accepted/declined history records are counted globally without
+    checking valid_session_ids. When filtering to a specific session,
+    accepted/declined numbers should only count transitions for that session.
+    """
+
+    @pytest.mark.asyncio
+    async def test_accepted_filtered_by_session(
+        self,
+        waitlist_service: WaitlistService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """Accepted count should only include transitions for the filtered session."""
+        session1 = sample_sessions[1001]
+        session2 = sample_sessions[1002]
+
+        # Noah accepted from S1 waitlist, Ava accepted from S2 waitlist
+        accepted_history = [
+            create_mock_status_history(104, session1, sample_persons[104], "waitlisted", "enrolled"),
+            create_mock_status_history(105, session2, sample_persons[105], "waitlisted", "enrolled"),
+        ]
+
+        mock_repository.fetch_attendees = AsyncMock(return_value=[])
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_status_history = AsyncMock(
+            side_effect=lambda year, old_status, new_statuses: (
+                accepted_history if new_statuses == ["enrolled"] else []
+            )
+        )
+
+        # Filter to Session 1 only
+        result = await waitlist_service.calculate_waitlist(year=2026, session_cm_id=1001)
+
+        # Should only count Noah (S1), NOT Ava (S2)
+        assert result.total_accepted == 1
+
+    @pytest.mark.asyncio
+    async def test_declined_filtered_by_session(
+        self,
+        waitlist_service: WaitlistService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """Declined count should only include transitions for the filtered session."""
+        session1 = sample_sessions[1001]
+        session2 = sample_sessions[1002]
+
+        declined_history = [
+            create_mock_status_history(103, session1, sample_persons[103], "waitlisted", "cancelled"),
+            create_mock_status_history(101, session2, sample_persons[101], "waitlisted", "withdrawn"),
+        ]
+
+        declined_statuses = ["cancelled", "withdrawn", "dismissed"]
+        mock_repository.fetch_attendees = AsyncMock(return_value=[])
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_status_history = AsyncMock(
+            side_effect=lambda year, old_status, new_statuses: (
+                declined_history if new_statuses == declined_statuses else []
+            )
+        )
+
+        # Filter to Session 1 only
+        result = await waitlist_service.calculate_waitlist(year=2026, session_cm_id=1001)
+
+        # Should only count Olivia (S1), NOT Emma (S2)
+        assert result.total_declined == 1
+
+    @pytest.mark.asyncio
+    async def test_accepted_declined_session_breakdown_filtered(
+        self,
+        waitlist_service: WaitlistService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """Per-session accepted/declined breakdown should respect session filter."""
+        session1 = sample_sessions[1001]
+        session2 = sample_sessions[1002]
+
+        accepted_history = [
+            create_mock_status_history(104, session1, sample_persons[104], "waitlisted", "enrolled"),
+            create_mock_status_history(105, session2, sample_persons[105], "waitlisted", "enrolled"),
+        ]
+
+        mock_repository.fetch_attendees = AsyncMock(return_value=[])
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_status_history = AsyncMock(
+            side_effect=lambda year, old_status, new_statuses: (
+                accepted_history if new_statuses == ["enrolled"] else []
+            )
+        )
+
+        # Filter to Session 1 only
+        result = await waitlist_service.calculate_waitlist(year=2026, session_cm_id=1001)
+
+        # by_session should only have Session 1 with accepted=1
+        session_map = {s.session_cm_id: s for s in result.by_session}
+        assert 1001 in session_map
+        assert session_map[1001].accepted == 1
+        # Session 2 should NOT appear in breakdown
+        assert 1002 not in session_map

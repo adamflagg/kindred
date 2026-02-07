@@ -584,3 +584,6 @@ class DrilldownAttendee(BaseModel):
     sessions: list[DrilldownSession] = Field(
         default_factory=list, description="All sessions for this person (populated for person-level breakdowns)"
     )
+    enrolled_sessions: list[DrilldownSession] = Field(
+        default_factory=list, description="Enrolled sessions (for waitlist breakdowns)"
+    )

@@ -17,8 +17,8 @@ import {
   LabelList,
 } from 'recharts'
 import type { SessionLengthBySessionBreakdown } from '../../types/metrics'
-import type { SessionDateLookup } from '../../utils/sessionUtils'
-import { parseSessionName } from '../../utils/sessionUtils'
+import type { SessionDateLookup, SessionTypeLookup } from '../../utils/sessionUtils'
+import { compareByDateCampThenQuest } from '../../utils/sessionUtils'
 
 // Color palette for sessions (cycles if more than 8 sessions)
 const COLORS = [
@@ -41,37 +41,14 @@ interface SessionLengthBySessionChartProps {
   onCategoryClick?: (lengthCategory: string) => void
   /** Lookup map for session dates (for chronological sorting) */
   sessionDateLookup?: SessionDateLookup
+  /** Lookup map for session types (for camp-then-quest sorting) */
+  sessionTypeLookup?: SessionTypeLookup
 }
 
 interface ChartDataItem {
   name: string
   total: number
   [sessionKey: string]: string | number
-}
-
-/**
- * Compare two session names by date (primary) then by name (secondary).
- * Used for chronological sorting with embedded sessions after main.
- */
-function compareSessionsByDate(
-  nameA: string,
-  nameB: string,
-  dateLookup: SessionDateLookup
-): number {
-  const dateA = dateLookup[nameA]
-  const dateB = dateLookup[nameB]
-
-  // If both have dates, compare by date first
-  if (dateA && dateB) {
-    const dateCompare = dateA.localeCompare(dateB)
-    if (dateCompare !== 0) return dateCompare
-  }
-
-  // Fall back to name-based sorting (as tiebreaker or when dates unavailable)
-  const [numA, suffixA] = parseSessionName(nameA)
-  const [numB, suffixB] = parseSessionName(nameB)
-  if (numA !== numB) return numA - numB
-  return suffixA.localeCompare(suffixB)
 }
 
 export function SessionLengthBySessionChart({
@@ -81,6 +58,7 @@ export function SessionLengthBySessionChart({
   className = '',
   onCategoryClick,
   sessionDateLookup = {},
+  sessionTypeLookup = {},
 }: SessionLengthBySessionChartProps) {
   if (data.length === 0) {
     return (
@@ -100,9 +78,9 @@ export function SessionLengthBySessionChart({
       allSessions.set(session.session_cm_id, session.session_name)
     }
   }
-  // Sort sessions chronologically by date, with name-based fallback
+  // Sort sessions: camp first, then quests, chronological within each group
   const sessionList = Array.from(allSessions.entries()).sort((a, b) =>
-    compareSessionsByDate(a[1], b[1], sessionDateLookup)
+    compareByDateCampThenQuest(a[1], b[1], sessionDateLookup, sessionTypeLookup)
   )
 
   // Transform data for stacked bar chart

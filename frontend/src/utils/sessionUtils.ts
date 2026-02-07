@@ -220,3 +220,81 @@ export function sortPriorSessionDataByDate<T extends { prior_session: string }>(
     compareByDateThenName(a.prior_session, b.prior_session, dateLookup)
   )
 }
+
+// ============================================================================
+// Camp-then-Quest sorting utilities (for metrics view mode)
+// ============================================================================
+
+/**
+ * Lookup map from session name to session_type.
+ * Used for camp-then-quest sort ordering.
+ */
+export interface SessionTypeLookup {
+  [sessionName: string]: string
+}
+
+/**
+ * Build a lookup map from session name to session_type.
+ */
+export function buildSessionTypeLookup(
+  sessions: Array<{ name: string; session_type: string }>
+): SessionTypeLookup {
+  const lookup: SessionTypeLookup = {}
+  for (const session of sessions) {
+    lookup[session.name] = session.session_type
+  }
+  return lookup
+}
+
+/**
+ * Sort sessions: camp sessions first (chronologically), then quest sessions (chronologically).
+ * Camp = any session_type that is NOT 'quest' (main, embedded, ag).
+ */
+export function sortSessionsCampThenQuest<
+  T extends { name: string; session_type: string; start_date: string },
+>(sessions: T[]): T[] {
+  const camp = sessions.filter((s) => s.session_type !== 'quest')
+  const quest = sessions.filter((s) => s.session_type === 'quest')
+
+  const sortedCamp = sortSessionsByDate(camp)
+  const sortedQuest = sortSessionsByDate(quest)
+
+  return [...sortedCamp, ...sortedQuest]
+}
+
+/**
+ * Sort session data by camp-then-quest ordering.
+ * Camp sessions (main/embedded/ag) come first chronologically,
+ * then quest sessions chronologically.
+ * Works with API response types that have session_name field.
+ */
+export function sortSessionDataByCampThenQuest<T extends { session_name: string }>(
+  data: T[],
+  dateLookup: SessionDateLookup,
+  typeLookup: SessionTypeLookup
+): T[] {
+  return [...data].sort((a, b) =>
+    compareByDateCampThenQuest(a.session_name, b.session_name, dateLookup, typeLookup)
+  )
+}
+
+/**
+ * Compare two session names: camp sessions sort before quest sessions.
+ * Within each group, sort by date (primary) then name (secondary).
+ */
+export function compareByDateCampThenQuest(
+  nameA: string,
+  nameB: string,
+  dateLookup: SessionDateLookup,
+  typeLookup: SessionTypeLookup
+): number {
+  const isQuestA = typeLookup[nameA] === 'quest'
+  const isQuestB = typeLookup[nameB] === 'quest'
+
+  // Camp before quest
+  if (!isQuestA && isQuestB) return -1
+  if (isQuestA && !isQuestB) return 1
+
+  // Within same group, sort by date then name
+  return compareByDateThenName(nameA, nameB, dateLookup)
+}

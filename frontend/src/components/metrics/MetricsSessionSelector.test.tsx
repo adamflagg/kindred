@@ -35,6 +35,12 @@ vi.mock('../../hooks/useMetricsSessions', () => ({
         session_type: 'embedded',
         start_date: '2026-07-01',
       },
+      {
+        cm_id: 2001,
+        name: 'Teen Adventure Quest',
+        session_type: 'quest',
+        start_date: '2026-06-10',
+      },
     ],
     isLoading: false,
   })),
@@ -68,10 +74,10 @@ function createWrapper(initialPath: string = '/metrics/registration') {
 
 describe('MetricsSessionSelector', () => {
   describe('rendering', () => {
-    it('should render with "All Sessions" as default display', () => {
+    it('should render with "At Camp" as default display', () => {
       render(<MetricsSessionSelector />, { wrapper: createWrapper() })
 
-      expect(screen.getByText('All Sessions')).toBeInTheDocument()
+      expect(screen.getByText('At Camp')).toBeInTheDocument()
     })
 
     it('should render a calendar icon', () => {
@@ -103,14 +109,14 @@ describe('MetricsSessionSelector', () => {
       expect(screen.getByText('Session 2a')).toBeInTheDocument()
     })
 
-    it('should show "All Sessions" option in dropdown', () => {
+    it('should show "At Camp" option in dropdown', () => {
       render(<MetricsSessionSelector />, { wrapper: createWrapper() })
 
       const button = screen.getByRole('button')
       fireEvent.click(button)
 
-      // "All Sessions" should appear as an option
-      const allSessionsOptions = screen.getAllByText('All Sessions')
+      // "At Camp" should appear as an option
+      const allSessionsOptions = screen.getAllByText('At Camp')
       expect(allSessionsOptions.length).toBeGreaterThanOrEqual(1)
     })
   })
@@ -131,7 +137,7 @@ describe('MetricsSessionSelector', () => {
       expect(screen.getByRole('button')).toHaveTextContent('Session 2')
     })
 
-    it('should clear selection when "All Sessions" is selected', () => {
+    it('should clear selection when "At Camp" is selected', () => {
       render(<MetricsSessionSelector />, {
         wrapper: createWrapper('/metrics/registration?session=1001'),
       })
@@ -140,12 +146,12 @@ describe('MetricsSessionSelector', () => {
       const button = screen.getByRole('button')
       fireEvent.click(button)
 
-      // Select "All Sessions"
-      const allOption = screen.getByRole('option', { name: 'All Sessions' })
+      // Select "At Camp"
+      const allOption = screen.getByRole('option', { name: 'At Camp' })
       fireEvent.click(allOption)
 
-      // Button should now show "All Sessions"
-      expect(screen.getByRole('button')).toHaveTextContent('All Sessions')
+      // Button should now show "At Camp"
+      expect(screen.getByRole('button')).toHaveTextContent('At Camp')
     })
   })
 
@@ -177,8 +183,8 @@ describe('MetricsSessionSelector', () => {
         wrapper: createWrapper('/metrics/registration?session=9999'),
       })
 
-      // Should fall back to "All Sessions" display when cm_id not found
-      expect(screen.getByText('All Sessions')).toBeInTheDocument()
+      // Should fall back to "At Camp" display when cm_id not found
+      expect(screen.getByText('At Camp')).toBeInTheDocument()
     })
   })
 
@@ -197,6 +203,97 @@ describe('MetricsSessionSelector', () => {
 
       const options = screen.getAllByRole('option')
       expect(options.length).toBeGreaterThan(0)
+    })
+  })
+
+  describe('view mode (camp vs quest)', () => {
+    it('should show "Quests" option in dropdown', () => {
+      render(<MetricsSessionSelector />, { wrapper: createWrapper() })
+
+      const button = screen.getByRole('button')
+      fireEvent.click(button)
+
+      expect(screen.getByRole('option', { name: 'Quests' })).toBeInTheDocument()
+    })
+
+    it('should show "At Camp" as default button text', () => {
+      render(<MetricsSessionSelector />, { wrapper: createWrapper() })
+
+      expect(screen.getByRole('button')).toHaveTextContent('At Camp')
+    })
+
+    it('should show "Quests" as button text in quest view mode', () => {
+      render(<MetricsSessionSelector />, {
+        wrapper: createWrapper('/metrics/registration?view=quests'),
+      })
+
+      expect(screen.getByRole('button')).toHaveTextContent('Quests')
+    })
+
+    it('should show camp sessions and quest sessions as separate groups', () => {
+      render(<MetricsSessionSelector />, { wrapper: createWrapper() })
+
+      const button = screen.getByRole('button')
+      fireEvent.click(button)
+
+      // Camp sessions should be listed
+      expect(screen.getByRole('option', { name: 'Session 1' })).toBeInTheDocument()
+      expect(screen.getByRole('option', { name: 'Session 2' })).toBeInTheDocument()
+      expect(screen.getByRole('option', { name: 'Session 2a' })).toBeInTheDocument()
+
+      // Quest sessions should be listed
+      expect(screen.getByRole('option', { name: 'Teen Adventure Quest' })).toBeInTheDocument()
+    })
+
+    it('should switch to quest mode when "Quests" is selected', () => {
+      render(<MetricsSessionSelector />, { wrapper: createWrapper() })
+
+      const button = screen.getByRole('button')
+      fireEvent.click(button)
+
+      const allQuestsOption = screen.getByRole('option', { name: 'Quests' })
+      fireEvent.click(allQuestsOption)
+
+      expect(screen.getByRole('button')).toHaveTextContent('Quests')
+    })
+
+    it('should show specific session name when individual session selected', () => {
+      render(<MetricsSessionSelector />, {
+        wrapper: createWrapper('/metrics/registration?session=2001'),
+      })
+
+      expect(screen.getByRole('button')).toHaveTextContent('Teen Adventure Quest')
+    })
+  })
+
+  describe('all summer view mode', () => {
+    it('should show "All Summer" option in dropdown', () => {
+      render(<MetricsSessionSelector />, { wrapper: createWrapper() })
+
+      const button = screen.getByRole('button')
+      fireEvent.click(button)
+
+      expect(screen.getByRole('option', { name: 'All Summer' })).toBeInTheDocument()
+    })
+
+    it('should show "All Summer" as button text in all view mode', () => {
+      render(<MetricsSessionSelector />, {
+        wrapper: createWrapper('/metrics/registration?view=all'),
+      })
+
+      expect(screen.getByRole('button')).toHaveTextContent('All Summer')
+    })
+
+    it('should switch to all mode when "All Summer" is selected', () => {
+      render(<MetricsSessionSelector />, { wrapper: createWrapper() })
+
+      const button = screen.getByRole('button')
+      fireEvent.click(button)
+
+      const allSummerOption = screen.getByRole('option', { name: 'All Summer' })
+      fireEvent.click(allSummerOption)
+
+      expect(screen.getByRole('button')).toHaveTextContent('All Summer')
     })
   })
 })

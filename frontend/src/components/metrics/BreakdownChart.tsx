@@ -166,14 +166,14 @@ export function BreakdownChart({
               type="category"
               dataKey="name"
               className="text-xs"
-              width={80}
+              width={150}
               interval={0}
               tick={{
                 fill: 'hsl(var(--muted-foreground))',
                 style: { whiteSpace: 'nowrap' },
               }}
               tickFormatter={(value: string) =>
-                value.length > 12 ? `${value.slice(0, 10)}…` : value
+                value.length > 18 ? `${value.slice(0, 16)}…` : value
               }
             />
             <Tooltip content={<CustomTooltip />} />

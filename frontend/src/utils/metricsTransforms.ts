@@ -8,8 +8,10 @@
 import { getSessionChartLabel } from './sessionDisplay'
 import {
   sortSessionDataByDate,
+  sortSessionDataByCampThenQuest,
   sortPriorSessionDataByDate,
   type SessionDateLookup,
+  type SessionTypeLookup,
 } from './sessionUtils'
 
 // ============================================================================
@@ -78,10 +80,13 @@ export interface SessionBreakdown {
 
 export function transformSessionData(
   data: SessionBreakdown[] | undefined,
-  sessionDateLookup: SessionDateLookup
+  sessionDateLookup: SessionDateLookup,
+  sessionTypeLookup?: SessionTypeLookup
 ): ChartDataPoint[] {
   if (!data?.length) return []
-  const sorted = sortSessionDataByDate(data, sessionDateLookup)
+  const sorted = sessionTypeLookup
+    ? sortSessionDataByCampThenQuest(data, sessionDateLookup, sessionTypeLookup)
+    : sortSessionDataByDate(data, sessionDateLookup)
   return sorted.map((s) => ({
     name: getSessionChartLabel(s.session_name, undefined, sessionDateLookup),
     value: s.count,
