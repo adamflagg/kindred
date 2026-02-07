@@ -75,6 +75,47 @@ describe('WaitlistBySessionChart', () => {
       expect(screen.getByText('Session 2')).toBeInTheDocument()
       expect(screen.getByText('Session 3')).toBeInTheDocument()
     })
+
+    it('should use text-sm class for legend when 6 or fewer enrolled sessions', () => {
+      // mockData has 3 enrolled sessions + 1 "No Enrollment" = 4 legend items total
+      const { container } = render(<WaitlistBySessionChart data={mockData} />)
+      const legendLabels = container.querySelectorAll('[data-testid="legend-label"]')
+      for (const label of legendLabels) {
+        expect(label.className).toContain('text-sm')
+        expect(label.className).not.toContain('text-xs')
+      }
+    })
+
+    it('should use text-xs class for legend when more than 6 enrolled sessions', () => {
+      // Create data with 7+ unique enrolled sessions (plus "No Enrollment" = 8+ items)
+      const manySessionsData: WaitlistSessionBreakdown[] = [
+        {
+          session_cm_id: 2001,
+          session_name: 'Waitlisted Session',
+          waitlisted: 10,
+          no_enrollment: 1,
+          has_enrollment: 9,
+          accepted: 0,
+          declined: 0,
+          enrolled_in: [
+            { session_cm_id: 3001, session_name: 'Session A', count: 1 },
+            { session_cm_id: 3002, session_name: 'Session B', count: 1 },
+            { session_cm_id: 3003, session_name: 'Session C', count: 1 },
+            { session_cm_id: 3004, session_name: 'Session D', count: 1 },
+            { session_cm_id: 3005, session_name: 'Session E', count: 1 },
+            { session_cm_id: 3006, session_name: 'Session F', count: 2 },
+            { session_cm_id: 3007, session_name: 'Session G', count: 2 },
+          ],
+        },
+      ]
+      const { container } = render(<WaitlistBySessionChart data={manySessionsData} />)
+      const legendLabels = container.querySelectorAll('[data-testid="legend-label"]')
+      // 7 enrolled sessions + 1 "No Enrollment" = 8 legend items
+      expect(legendLabels.length).toBe(8)
+      for (const label of legendLabels) {
+        expect(label.className).toContain('text-xs')
+      }
+    })
   })
 
   describe('click handling', () => {
