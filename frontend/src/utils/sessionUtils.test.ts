@@ -595,12 +595,7 @@ describe('sortSessionsCampThenQuest', () => {
 
     const sorted = sortSessionsCampThenQuest(sessions)
 
-    expect(sorted.map((s) => s.name)).toEqual([
-      'Session 1',
-      'Session 2',
-      'Session 2a',
-      'Session 3',
-    ])
+    expect(sorted.map((s) => s.name)).toEqual(['Session 1', 'Session 2', 'Session 2a', 'Session 3'])
   })
 
   it('should sort quest sessions chronologically among themselves', () => {

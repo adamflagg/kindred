@@ -83,7 +83,8 @@ export function DrillDownModal({
   const [sortField, setSortField] = useState<SortField>('name')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
 
-  const isWaitlistDrilldown = (filter?.type?.startsWith('waitlist_') || filter?.waitlistContext) ?? false
+  const isWaitlistDrilldown =
+    (filter?.type?.startsWith('waitlist_') || filter?.waitlistContext) ?? false
 
   const {
     data: attendees = [],
