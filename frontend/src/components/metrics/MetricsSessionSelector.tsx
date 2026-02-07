@@ -5,8 +5,8 @@
  * across all metrics tabs (Registration, Retention, Trends).
  *
  * Dropdown structure:
- * - All Sessions (camp only)
- * - All Quests (quest only)
+ * - At Camp (camp only)
+ * - Quests (quest only)
  * - separator
  * - Camp sessions (chronological)
  * - separator (if quests exist)
@@ -39,8 +39,8 @@ export function MetricsSessionSelector() {
     : viewMode === 'all'
       ? 'All Summer'
       : viewMode === 'quests'
-        ? 'All Quests'
-        : 'All Sessions'
+        ? 'Quests'
+        : 'At Camp'
 
   // Determine current listbox value
   const currentValue = selectedSessionCmId
@@ -74,10 +74,10 @@ export function MetricsSessionSelector() {
           </ListboxButton>
           <ListboxOptions className="listbox-options w-auto min-w-[180px]">
             <ListboxOption value={ALL_SESSIONS_VALUE} className="listbox-option">
-              All Sessions
+              At Camp
             </ListboxOption>
             <ListboxOption value={ALL_QUESTS_VALUE} className="listbox-option">
-              All Quests
+              Quests
             </ListboxOption>
             <ListboxOption value={ALL_SUMMER_VALUE} className="listbox-option">
               All Summer
