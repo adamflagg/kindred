@@ -280,7 +280,9 @@ func (s *AttendeesSync) processEnrollment(
 	}
 
 	// Detect status changes for history tracking
-	if existing, ok := existingAttendees[key]; ok {
+	// Use year-scoped key to match PreloadCompositeRecords format: "{person}:{session}|{year}"
+	yearScopedKey := fmt.Sprintf("%s|%d", key, s.Client.GetSeasonID())
+	if existing, ok := existingAttendees[yearScopedKey]; ok {
 		oldStatus := existing.GetString("status")
 		if oldStatus != "" && oldStatus != status {
 			if err := s.logStatusChange(personCMID, sessionCMID, oldStatus, status, recordData); err != nil {
