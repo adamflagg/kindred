@@ -1280,42 +1280,54 @@ func personSessionMappingNeedsUpdate(existing, newMapping *testPersonSessionMapp
 	return confidenceChanged(existing.Confidence, newMapping.Confidence)
 }
 
-// TestEnrolledOnlyInNormalizedMappings verifies that only enrolled attendees
-// (status_id=2, is_active=1) are included in normalized_mappings
-func TestEnrolledOnlyInNormalizedMappings(t *testing.T) {
-	// Simulate attendees with different statuses
+// TestAllAttendeesForYearInNormalizedMappings verifies that all attendees for
+// a given year are included in normalized_mappings regardless of enrollment status.
+// Note: is_active is derived from status_id == 2, so it cannot be used as an
+// independent filter. Year is the only meaningful filter for normalization.
+// Normalization is cheap (local fuzzy matching) and benefits all attendees:
+// - Waitlisted campers get clean data for review and seamless enrollment transitions
+// - More data points improve canonical value selection via frequency-based clustering
+func TestAllAttendeesForYearInNormalizedMappings(t *testing.T) {
 	type testAttendee struct {
 		PersonID int
 		StatusID int
-		IsActive bool
+		Year     int
 	}
 
 	attendees := []testAttendee{
-		{PersonID: 101, StatusID: 2, IsActive: true},  // Enrolled - INCLUDE
-		{PersonID: 102, StatusID: 2, IsActive: true},  // Enrolled - INCLUDE
-		{PersonID: 103, StatusID: 3, IsActive: true},  // Waitlisted - EXCLUDE
-		{PersonID: 104, StatusID: 4, IsActive: true},  // Canceled - EXCLUDE
-		{PersonID: 105, StatusID: 2, IsActive: false}, // Enrolled but inactive - EXCLUDE
+		{PersonID: 101, StatusID: 2, Year: 2025}, // Enrolled
+		{PersonID: 102, StatusID: 2, Year: 2025}, // Enrolled
+		{PersonID: 103, StatusID: 3, Year: 2025}, // Waitlisted
+		{PersonID: 104, StatusID: 4, Year: 2025}, // Other status
+		{PersonID: 105, StatusID: 2, Year: 2024}, // Different year - EXCLUDE
 	}
 
-	// Filter to enrolled only (matches the sync query: is_active = 1 AND status_id = 2)
-	var enrolledPersonIDs []int
+	// Filter by year only (matches the sync query: year = YYYY)
+	targetYear := 2025
+	var includedPersonIDs []int
 	for _, a := range attendees {
-		if a.StatusID == 2 && a.IsActive {
-			enrolledPersonIDs = append(enrolledPersonIDs, a.PersonID)
+		if a.Year == targetYear {
+			includedPersonIDs = append(includedPersonIDs, a.PersonID)
 		}
 	}
 
-	// Should have exactly 2 enrolled persons
-	if len(enrolledPersonIDs) != 2 {
-		t.Errorf("expected 2 enrolled persons, got %d", len(enrolledPersonIDs))
+	// Should include all 4 attendees for 2025, regardless of status
+	if len(includedPersonIDs) != 4 {
+		t.Errorf("expected 4 attendees for year %d, got %d", targetYear, len(includedPersonIDs))
 	}
 
 	// Verify correct persons included
-	expected := map[int]bool{101: true, 102: true}
-	for _, pid := range enrolledPersonIDs {
+	expected := map[int]bool{101: true, 102: true, 103: true, 104: true}
+	for _, pid := range includedPersonIDs {
 		if !expected[pid] {
-			t.Errorf("unexpected person %d in enrolled list", pid)
+			t.Errorf("unexpected person %d in included list", pid)
+		}
+	}
+
+	// Verify different-year person excluded
+	for _, pid := range includedPersonIDs {
+		if pid == 105 {
+			t.Error("person 105 from year 2024 should be excluded")
 		}
 	}
 }

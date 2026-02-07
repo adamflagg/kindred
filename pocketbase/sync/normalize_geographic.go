@@ -245,8 +245,10 @@ func (n *NormalizeGeographicSync) loadAttendeeGeoData(ctx context.Context, year 
 		}
 	}
 
-	// Load enrolled attendees (status_id=2, is_active=1)
-	filter := fmt.Sprintf("year = %d && is_active = 1 && status_id = 2", year)
+	// Load all attendees for the year regardless of enrollment status.
+	// Normalization is cheap (local fuzzy matching) and benefits all attendees:
+	// waitlisted campers get clean data, and more data points improve clustering.
+	filter := fmt.Sprintf("year = %d", year)
 	page := 1
 	perPage := 500
 
