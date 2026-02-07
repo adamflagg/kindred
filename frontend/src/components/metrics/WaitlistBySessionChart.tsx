@@ -164,16 +164,44 @@ export function WaitlistBySessionChart({
     })
   }
 
+  const needsRotation = chartData.length > 3
+  // Legend item count: enrolled sessions + "No Enrollment"
+  const legendItemCount = enrolledSessionList.length + 1
+  const isCompactLegend = legendItemCount > 6
+
+  // Custom tick that renders rotated text entirely below the axis line
+  const RotatedTick = ({ x, y, payload }: { x: number; y: number; payload: { value: string } }) => (
+    <g transform={`translate(${x},${y})`}>
+      <text
+        x={0}
+        y={0}
+        dy={12}
+        textAnchor="end"
+        fill="hsl(var(--muted-foreground))"
+        fontSize={12}
+        transform="rotate(-40)"
+      >
+        {payload.value.length > 16 ? `${payload.value.slice(0, 14)}…` : payload.value}
+      </text>
+    </g>
+  )
+
   return (
     <div className="card-lodge p-4">
       <h3 className="text-foreground mb-4 text-sm font-semibold">{title}</h3>
       <ResponsiveContainer width="100%" height={height}>
-        <BarChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+        <BarChart data={chartData} margin={{ top: 20, right: 20, left: 0, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis
             dataKey="name"
             className="text-xs"
-            tick={{ fill: 'hsl(var(--muted-foreground))' }}
+            interval={0}
+            tick={
+              needsRotation
+                ? (RotatedTick as unknown as React.SVGProps<SVGTextElement>)
+                : { fill: 'hsl(var(--muted-foreground))' }
+            }
+            height={needsRotation ? 80 : 30}
           />
           <YAxis
             className="text-xs"
@@ -198,6 +226,7 @@ export function WaitlistBySessionChart({
               <LabelList
                 dataKey="total"
                 position="top"
+                offset={8}
                 className="text-xs"
                 fill="hsl(var(--muted-foreground))"
               />
@@ -224,6 +253,7 @@ export function WaitlistBySessionChart({
                   <LabelList
                     dataKey="total"
                     position="top"
+                    offset={8}
                     className="text-xs"
                     fill="hsl(var(--muted-foreground))"
                   />
@@ -234,15 +264,25 @@ export function WaitlistBySessionChart({
         </BarChart>
       </ResponsiveContainer>
       {/* Legend rendered outside ResponsiveContainer for test accessibility */}
-      <div className="mt-2 flex flex-wrap justify-center gap-4">
+      <div
+        className={`mt-2 flex flex-wrap justify-center ${isCompactLegend ? 'gap-x-6 gap-y-1' : 'gap-4'}`}
+      >
         <div className="flex items-center gap-1.5">
-          <div className="h-3 w-3 rounded-sm" style={{ backgroundColor: NO_ENROLLMENT_COLOR }} />
-          <span className="text-muted-foreground text-sm">No Enrollment</span>
+          <div
+            className="h-3 w-3 flex-shrink-0 rounded-sm"
+            style={{ backgroundColor: NO_ENROLLMENT_COLOR }}
+          />
+          <span
+            data-testid="legend-label"
+            className={`text-muted-foreground ${isCompactLegend ? 'text-xs' : 'text-sm'}`}
+          >
+            No Enrollment
+          </span>
         </div>
         {enrolledSessionList.map(([sessionId, sessionName], index) => (
           <div key={sessionId} className="flex items-center gap-1.5">
             <div
-              className="h-3 w-3 rounded-sm"
+              className="h-3 w-3 flex-shrink-0 rounded-sm"
               style={{
                 backgroundColor:
                   sessionColors.get(`session_${sessionId}`) ??
@@ -250,7 +290,12 @@ export function WaitlistBySessionChart({
                   '#00b36b',
               }}
             />
-            <span className="text-muted-foreground text-sm">{sessionName}</span>
+            <span
+              data-testid="legend-label"
+              className={`text-muted-foreground ${isCompactLegend ? 'text-xs' : 'text-sm'}`}
+            >
+              {sessionName}
+            </span>
           </div>
         ))}
       </div>

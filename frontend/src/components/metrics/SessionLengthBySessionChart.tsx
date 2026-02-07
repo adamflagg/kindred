@@ -13,7 +13,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend,
   LabelList,
 } from 'recharts'
 import type { SessionLengthBySessionBreakdown } from '../../types/metrics'
@@ -150,39 +149,45 @@ export function SessionLengthBySessionChart({
   const lastSessionKey =
     sessionList.length > 0 ? `session_${sessionList[sessionList.length - 1]?.[0]}` : null
 
+  const needsRotation = chartData.length > 3
+  const isCompactLegend = sessionList.length > 6
+
+  // Custom tick that renders rotated text entirely below the axis line
+  const RotatedTick = ({ x, y, payload }: { x: number; y: number; payload: { value: string } }) => (
+    <g transform={`translate(${x},${y})`}>
+      <text
+        x={0}
+        y={0}
+        dy={12}
+        textAnchor="end"
+        fill="hsl(var(--muted-foreground))"
+        fontSize={12}
+        transform="rotate(-40)"
+      >
+        {payload.value.length > 16 ? `${payload.value.slice(0, 14)}…` : payload.value}
+      </text>
+    </g>
+  )
+
   return (
     <div className={`card-lodge p-4 ${className}`}>
       <h3 className="text-foreground mb-4 text-sm font-semibold">{title}</h3>
-      <ResponsiveContainer width="100%" height={height}>
-        <BarChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+      <ResponsiveContainer width="100%" height={height - 30}>
+        <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis
             dataKey="name"
             className="text-xs"
-            tick={{ fill: 'hsl(var(--muted-foreground))' }}
+            interval={0}
+            tick={
+              needsRotation
+                ? (RotatedTick as unknown as React.SVGProps<SVGTextElement>)
+                : { fill: 'hsl(var(--muted-foreground))' }
+            }
+            height={needsRotation ? 80 : 30}
           />
           <YAxis className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
           <Tooltip content={<CustomTooltip />} />
-          <Legend
-            content={() => (
-              <div className="mt-2 flex flex-wrap justify-center gap-4">
-                {sessionList.map(([sessionId, sessionName], index) => (
-                  <div key={sessionId} className="flex items-center gap-1.5">
-                    <div
-                      className="h-3 w-3 rounded-sm"
-                      style={{
-                        backgroundColor:
-                          sessionColors.get(`session_${sessionId}`) ??
-                          COLORS[index % COLORS.length] ??
-                          '#00b36b',
-                      }}
-                    />
-                    <span className="text-muted-foreground text-sm">{sessionName}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          />
           {sessionList.map(([sessionId, sessionName], index) => {
             const dataKey = `session_${sessionId}`
             const isLast = index === sessionList.length - 1
@@ -205,6 +210,7 @@ export function SessionLengthBySessionChart({
                   <LabelList
                     dataKey="total"
                     position="top"
+                    offset={8}
                     className="text-xs"
                     fill="hsl(var(--muted-foreground))"
                   />
@@ -214,6 +220,30 @@ export function SessionLengthBySessionChart({
           })}
         </BarChart>
       </ResponsiveContainer>
+      {/* Legend outside ResponsiveContainer to preserve chart height */}
+      <div
+        className={`mt-2 flex flex-wrap justify-center ${isCompactLegend ? 'gap-x-6 gap-y-1' : 'gap-4'}`}
+      >
+        {sessionList.map(([sessionId, sessionName], index) => (
+          <div key={sessionId} className="flex items-center gap-1.5">
+            <div
+              className="h-3 w-3 flex-shrink-0 rounded-sm"
+              style={{
+                backgroundColor:
+                  sessionColors.get(`session_${sessionId}`) ??
+                  COLORS[index % COLORS.length] ??
+                  '#00b36b',
+              }}
+            />
+            <span
+              data-testid="legend-label"
+              className={`text-muted-foreground ${isCompactLegend ? 'text-xs' : 'text-sm'}`}
+            >
+              {sessionName}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
