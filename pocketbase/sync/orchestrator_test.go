@@ -2369,194 +2369,198 @@ func TestOrchestrator_GetChangedCollections(t *testing.T) {
 }
 
 // TestDailySyncDoesNotIncludeTransformPhase tests that daily sync excludes all transform jobs
-func TestDailySyncDoesNotIncludeTransformPhase(t *testing.T) {
-	// This test documents the expected behavior:
-	// Daily sync should NOT include any transform phase jobs
-	// because custom values are not included in daily sync (only weekly)
-	expectedExcludedJobs := []string{
-		"camper_history",
-		"family_camp_derived",
-		"staff_skills",
-		"financial_aid_applications",
-		"household_demographics",
-	}
+func TestUnifiedSyncAlwaysIncludesTransformPhase(t *testing.T) {
+	// Transform jobs should ALWAYS be included in unified sync,
+	// regardless of IncludeCustomValues setting.
+	// They run against existing custom values data (same as daily sync).
+	transformJobs := GetJobsForPhase(PhaseTransform)
 
-	t.Log("Daily sync excludes entire transform phase because:")
-	t.Log("- Custom values sync is expensive (1 API call per entity)")
-	t.Log("- Custom values only run weekly or on-demand")
-	t.Log("- 4 of 5 transform jobs depend on custom values data")
-	t.Log("- Running transform without fresh CV would produce incomplete results")
-	t.Log("")
-	t.Log("Transform jobs excluded from daily sync:")
-	for _, job := range expectedExcludedJobs {
-		t.Logf("  - %s", job)
-	}
+	t.Run("without custom values", func(t *testing.T) {
+		jobs := GetDefaultUnifiedSyncJobs(false)
+		jobSet := make(map[string]bool)
+		for _, j := range jobs {
+			jobSet[j] = true
+		}
+
+		for _, tj := range transformJobs {
+			if !jobSet[tj] {
+				t.Errorf("transform job %q missing from unified sync without CV", tj)
+			}
+		}
+	})
+
+	t.Run("with custom values", func(t *testing.T) {
+		jobs := GetDefaultUnifiedSyncJobs(true)
+		jobSet := make(map[string]bool)
+		for _, j := range jobs {
+			jobSet[j] = true
+		}
+
+		for _, tj := range transformJobs {
+			if !jobSet[tj] {
+				t.Errorf("transform job %q missing from unified sync with CV", tj)
+			}
+		}
+	})
 }
 
 // TestRunSyncWithOptionsPhaseOrdering tests that phase ordering is correct
 func TestRunSyncWithOptionsPhaseOrdering(t *testing.T) {
-	t.Run("with custom values - correct phase order", func(t *testing.T) {
-		// When IncludeCustomValues=true, phases should be: 1 → 2 → 3 → 4
-		// Source → Expensive → Transform → Process
+	t.Run("with custom values - CV before transform", func(t *testing.T) {
+		// When IncludeCustomValues=true, phases should be:
+		// Source → Expensive (CV) → Transform → (Process added separately)
+		jobs := GetDefaultUnifiedSyncJobs(true)
 
-		expectedPhaseOrder := []struct {
-			jobs  []string
-			phase Phase
-		}{
-			// Phase 1: Source
-			{[]string{"session_groups", "sessions", "attendees", "persons",
-				"bunks", "bunk_plans", "bunk_assignments", "staff", "financial_transactions"}, PhaseSource},
-			// Phase 2: Expensive (custom values)
-			{[]string{"person_custom_values", "household_custom_values"}, PhaseExpensive},
-			// Phase 3: Transform (only when CV included)
-			{[]string{"camper_history", "family_camp_derived", "staff_skills",
-				"financial_aid_applications", "household_demographics"}, PhaseTransform},
-			// Phase 4: Process (current year only)
-			{[]string{"bunk_requests", "process_requests"}, PhaseProcess},
+		// Find positions of CV and transform jobs
+		posMap := make(map[string]int)
+		for i, j := range jobs {
+			posMap[j] = i
 		}
 
-		t.Log("Expected phase execution order with IncludeCustomValues=true:")
-		for i, p := range expectedPhaseOrder {
-			t.Logf("Phase %d (%s): %v", i+1, getPhaseNameForTest(p.phase), p.jobs)
-		}
+		cvPos := posMap["household_custom_values"]
+		firstTransformPos := posMap["camper_history"]
 
-		// Verify custom values phase comes BEFORE transform phase
-		cvPhaseIndex := -1
-		transformPhaseIndex := -1
-		for i, p := range expectedPhaseOrder {
-			if p.phase == PhaseExpensive {
-				cvPhaseIndex = i
-			}
-			if p.phase == PhaseTransform {
-				transformPhaseIndex = i
-			}
-		}
-
-		if cvPhaseIndex >= transformPhaseIndex {
-			t.Error("Custom values phase must come BEFORE transform phase")
+		if cvPos >= firstTransformPos {
+			t.Errorf("custom values (pos %d) must come before transform jobs (pos %d)",
+				cvPos, firstTransformPos)
 		}
 	})
 
-	t.Run("without custom values - transform phase skipped", func(t *testing.T) {
-		// When IncludeCustomValues=false, transform phase should be SKIPPED entirely
-		expectedExcludedJobs := []string{
-			"person_custom_values",
-			"household_custom_values",
-			"camper_history",
-			"family_camp_derived",
-			"staff_skills",
-			"financial_aid_applications",
-			"household_demographics",
+	t.Run("without custom values - transform still runs after source", func(t *testing.T) {
+		// When IncludeCustomValues=false, transform jobs should still be present
+		// and come after source jobs
+		jobs := GetDefaultUnifiedSyncJobs(false)
+
+		posMap := make(map[string]int)
+		for i, j := range jobs {
+			posMap[j] = i
 		}
 
-		t.Log("When IncludeCustomValues=false, these jobs should be SKIPPED:")
-		for _, job := range expectedExcludedJobs {
-			phase := GetPhaseForJob(job)
-			phaseName := getPhaseNameForTest(phase)
-			t.Logf("  - %s (phase: %s)", job, phaseName)
+		// Last source job
+		lastSourcePos := posMap["financial_transactions"]
+		// First transform job
+		firstTransformPos := posMap["camper_history"]
+
+		if lastSourcePos >= firstTransformPos {
+			t.Errorf("source jobs (last at pos %d) must come before transform (pos %d)",
+				lastSourcePos, firstTransformPos)
 		}
 
-		t.Log("")
-		t.Log("Rationale:")
-		t.Log("- 4 of 5 transform jobs depend on custom values data")
-		t.Log("- Running transform without CV produces incomplete results")
-		t.Log("- Treat entire transform phase as a unit with CV phase")
+		// CV jobs should NOT be present
+		if _, found := posMap["person_custom_values"]; found {
+			t.Error("person_custom_values should not be present without IncludeCustomValues")
+		}
+		if _, found := posMap["household_custom_values"]; found {
+			t.Error("household_custom_values should not be present without IncludeCustomValues")
+		}
+	})
+
+	t.Run("order matches daily sync", func(t *testing.T) {
+		// The unified sync job order (without CV) should match the daily sync order
+		// for all shared jobs: source → transform
+		jobs := GetDefaultUnifiedSyncJobs(false)
+
+		expectedOrder := []string{
+			// Source phase
+			"session_groups", "sessions", "attendees", "persons",
+			"bunks", "bunk_plans", "bunk_assignments", "staff", "financial_transactions",
+			// Transform phase (same order as RunDailySync)
+			"camper_history", "family_camp_derived", "staff_skills",
+			"financial_aid_applications", "household_demographics",
+			"camper_dietary", "camper_transportation", "quest_registrations",
+			"staff_applications", "staff_vehicle_info", "normalize_geographic",
+		}
+
+		if len(jobs) != len(expectedOrder) {
+			t.Fatalf("expected %d jobs, got %d: %v", len(expectedOrder), len(jobs), jobs)
+		}
+
+		for i, expected := range expectedOrder {
+			if jobs[i] != expected {
+				t.Errorf("job[%d] = %q, want %q", i, jobs[i], expected)
+			}
+		}
 	})
 }
 
-// TestRunSyncWithOptionsTransformDependsOnCV tests transform phase dependency on custom values
-func TestRunSyncWithOptionsTransformDependsOnCV(t *testing.T) {
-	transformJobs := map[string]struct {
-		dependsOnCV  bool
-		dependencies string
-	}{
-		"camper_history": {
-			dependsOnCV:  false,
-			dependencies: "attendees, persons, sessions (CV-independent)",
-		},
-		"family_camp_derived": {
-			dependsOnCV:  true,
-			dependencies: "person_custom_values + household_custom_values",
-		},
-		"staff_skills": {
-			dependsOnCV:  true,
-			dependencies: "person_custom_values (Skills- fields)",
-		},
-		"financial_aid_applications": {
-			dependsOnCV:  true,
-			dependencies: "person_custom_values (FA- fields)",
-		},
-		"household_demographics": {
-			dependsOnCV:  true,
-			dependencies: "household_custom_values (HH- fields)",
-		},
+// TestUnifiedSyncCustomValuesOnlyAffectsCVJobs tests that IncludeCustomValues
+// only controls whether person_custom_values and household_custom_values run,
+// not whether transform phase runs.
+func TestUnifiedSyncCustomValuesOnlyAffectsCVJobs(t *testing.T) {
+	withCV := GetDefaultUnifiedSyncJobs(true)
+	withoutCV := GetDefaultUnifiedSyncJobs(false)
+
+	// The only difference should be the 2 CV jobs
+	withCVSet := make(map[string]bool)
+	for _, j := range withCV {
+		withCVSet[j] = true
+	}
+	withoutCVSet := make(map[string]bool)
+	for _, j := range withoutCV {
+		withoutCVSet[j] = true
 	}
 
-	t.Log("Transform job dependencies on custom values:")
-	cvDependentCount := 0
-	for job, info := range transformJobs {
-		if info.dependsOnCV {
-			cvDependentCount++
+	// Jobs in withCV but not withoutCV should be exactly the CV jobs
+	var onlyInCV []string
+	for _, j := range withCV {
+		if !withoutCVSet[j] {
+			onlyInCV = append(onlyInCV, j)
 		}
-		t.Logf("  %-30s CV-dependent: %-5t (%s)", job, info.dependsOnCV, info.dependencies)
 	}
 
-	if cvDependentCount != 4 {
-		t.Errorf("Expected 4 CV-dependent transform jobs, got %d", cvDependentCount)
+	expectedCVOnly := []string{"person_custom_values", "household_custom_values"}
+	if len(onlyInCV) != len(expectedCVOnly) {
+		t.Fatalf("expected %d CV-only jobs, got %d: %v", len(expectedCVOnly), len(onlyInCV), onlyInCV)
+	}
+	for i, j := range onlyInCV {
+		if j != expectedCVOnly[i] {
+			t.Errorf("CV-only job[%d] = %q, want %q", i, j, expectedCVOnly[i])
+		}
 	}
 
-	t.Log("")
-	t.Logf("Result: %d of %d transform jobs depend on custom values", cvDependentCount, len(transformJobs))
-	t.Log("Design decision: Run entire transform phase only when CV phase runs")
+	// Jobs in withoutCV but not withCV should be empty
+	var onlyInWithout []string
+	for _, j := range withoutCV {
+		if !withCVSet[j] {
+			onlyInWithout = append(onlyInWithout, j)
+		}
+	}
+	if len(onlyInWithout) != 0 {
+		t.Errorf("unexpected jobs only in without-CV list: %v", onlyInWithout)
+	}
 }
 
-// TestRunSyncWithOptionsHistoricalMode tests historical sync behavior
+// TestRunSyncWithOptionsHistoricalMode documents historical sync behavior.
+// Historical syncs always include transform phase (same as current year).
+// They skip process phase (bunk_requests, process_requests) since those are current-year only.
 func TestRunSyncWithOptionsHistoricalMode(t *testing.T) {
-	t.Run("historical sync skips process phase", func(t *testing.T) {
-		// Historical sync (opts.Year > 0) should skip:
-		// - bunk_requests
-		// - process_requests
-		// These are current-year-only jobs
+	t.Run("transform phase runs regardless of CV flag", func(t *testing.T) {
+		// Both with and without CV, transform jobs should be present
+		withCV := GetDefaultUnifiedSyncJobs(true)
+		withoutCV := GetDefaultUnifiedSyncJobs(false)
 
-		t.Log("Historical sync (Year > 0) skips process phase:")
-		t.Log("  - bunk_requests (CSV import for current year only)")
-		t.Log("  - process_requests (AI processing for current year only)")
+		transformJobs := GetJobsForPhase(PhaseTransform)
+		for _, tj := range transformJobs {
+			foundWith := false
+			foundWithout := false
+			for _, j := range withCV {
+				if j == tj {
+					foundWith = true
+				}
+			}
+			for _, j := range withoutCV {
+				if j == tj {
+					foundWithout = true
+				}
+			}
+			if !foundWith {
+				t.Errorf("transform job %q missing from list with CV", tj)
+			}
+			if !foundWithout {
+				t.Errorf("transform job %q missing from list without CV", tj)
+			}
+		}
 	})
-
-	t.Run("historical sync without CV skips transform phase", func(t *testing.T) {
-		// Historical sync without IncludeCustomValues should skip entire transform phase
-		t.Log("Historical sync without IncludeCustomValues=true skips:")
-		t.Log("  Phase 2: person_custom_values, household_custom_values")
-		t.Log("  Phase 3: all 5 transform jobs")
-		t.Log("  Phase 4: bunk_requests, process_requests (already skipped for historical)")
-	})
-
-	t.Run("historical sync with CV includes transform phase", func(t *testing.T) {
-		// Historical sync WITH IncludeCustomValues should include transform phase
-		t.Log("Historical sync WITH IncludeCustomValues=true includes:")
-		t.Log("  Phase 1: Source data")
-		t.Log("  Phase 2: Custom values")
-		t.Log("  Phase 3: Transform (all 5 jobs)")
-		t.Log("  Phase 5: Export")
-		t.Log("  (Phase 4 still skipped - process is current-year only)")
-	})
-}
-
-func getPhaseNameForTest(phase Phase) string {
-	switch phase {
-	case PhaseSource:
-		return "Source"
-	case PhaseExpensive:
-		return "Expensive (CV)"
-	case PhaseTransform:
-		return "Transform"
-	case PhaseProcess:
-		return "Process"
-	case PhaseExport:
-		return "Export"
-	default:
-		return "Unknown"
-	}
 }
 
 // =============================================================================

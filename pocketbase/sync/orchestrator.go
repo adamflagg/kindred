@@ -132,6 +132,41 @@ func GetPhaseForJob(jobID string) Phase {
 	return ""
 }
 
+// GetDefaultUnifiedSyncJobs returns the default job list for a unified sync
+// (when no specific services are requested). The includeCustomValues flag
+// controls whether expensive custom values API syncs are included.
+// Transform phase jobs always run using existing custom values data.
+func GetDefaultUnifiedSyncJobs(includeCustomValues bool) []string {
+	// Source phase: CampMinder API syncs
+	jobs := []string{
+		"session_groups",
+		"sessions",
+		"attendees",
+		"persons",
+		"bunks",
+		"bunk_plans",
+		"bunk_assignments",
+		"staff",
+		"financial_transactions",
+	}
+
+	// Expensive phase: Custom values (1 API call per entity)
+	if includeCustomValues {
+		jobs = append(jobs,
+			"person_custom_values", "household_custom_values")
+	}
+
+	// Transform phase: Always run using existing custom values data
+	// (same as daily sync behavior)
+	jobs = append(jobs,
+		"camper_history", "family_camp_derived", "staff_skills",
+		"financial_aid_applications", "household_demographics",
+		"camper_dietary", "camper_transportation", "quest_registrations",
+		"staff_applications", "staff_vehicle_info", "normalize_geographic")
+
+	return jobs
+}
+
 // Service defines the interface for sync services
 type Service interface {
 	Sync(ctx context.Context) error
@@ -978,46 +1013,9 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 	// Determine which services to run
 	servicesToRun := opts.Services
 	if len(servicesToRun) == 0 {
-		// Run all services in dependency order
-		// Note: person_tag_defs, custom_field_defs, and divisions are NOT included here -
-		// they run in the weekly sync since they're global definitions that rarely change.
-		// They can still be run explicitly via opts.Services if needed.
-		// Note: "persons" is a combined sync that populates persons and households
-		servicesToRun = []string{
-			"session_groups",
-			"sessions",
-			// Note: divisions is global (no year field) - runs in weekly sync
-			"attendees",
-			"persons", // Combined sync: persons + households
-			"bunks",
-			"bunk_plans",
-			"bunk_assignments",
-			"staff",                  // Staff sync: depends on divisions, bunks, persons
-			"financial_transactions", // Source data: depends on sessions, persons, households
-		}
-
-		// Include custom field values if requested (expensive API calls - 1 call per entity)
-		// These must run BEFORE transform phase since 4 of 5 transform jobs depend on custom values
-		if opts.IncludeCustomValues {
-			// Transform phase: Only run when custom values phase runs
-			// Most transform jobs depend on custom values data:
-			// - family_camp_derived: requires person_custom_values + household_custom_values
-			// - staff_skills: requires person_custom_values (Skills- fields)
-			// - financial_aid_applications: requires person_custom_values (FA- fields)
-			// - household_demographics: requires household_custom_values (HH- fields)
-			// - camper_dietary: requires person_custom_values (Family Medical-* fields)
-			// - camper_transportation: requires person_custom_values (BUS-* fields)
-			// - quest_registrations: requires person_custom_values (Quest-*/Q-* fields)
-			// - staff_applications: requires person_custom_values (App-* fields)
-			// - staff_vehicle_info: requires person_custom_values (SVI-* fields)
-			// Only camper_history is CV-independent, but we run entire phase as a unit
-			servicesToRun = append(servicesToRun,
-				"person_custom_values", "household_custom_values",
-				"camper_history", "family_camp_derived", "staff_skills",
-				"financial_aid_applications", "household_demographics",
-				"camper_dietary", "camper_transportation", "quest_registrations",
-				"staff_applications", "staff_vehicle_info", "normalize_geographic")
-		}
+		// Run all services in dependency order (source → [CV] → transform)
+		// Same order as RunDailySync, with optional CV phase inserted before transform
+		servicesToRun = GetDefaultUnifiedSyncJobs(opts.IncludeCustomValues)
 
 		// Only include bunk_requests and process_requests for current year syncs (not historical)
 		// Bunk requests are populated during the current year's processing
