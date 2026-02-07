@@ -2563,23 +2563,6 @@ func TestRunSyncWithOptionsHistoricalMode(t *testing.T) {
 	})
 }
 
-func getPhaseNameForTest(phase Phase) string {
-	switch phase {
-	case PhaseSource:
-		return "Source"
-	case PhaseExpensive:
-		return "Expensive (CV)"
-	case PhaseTransform:
-		return "Transform"
-	case PhaseProcess:
-		return "Process"
-	case PhaseExport:
-		return "Export"
-	default:
-		return "Unknown"
-	}
-}
-
 // =============================================================================
 // Debug Flag Propagation Tests
 // =============================================================================
