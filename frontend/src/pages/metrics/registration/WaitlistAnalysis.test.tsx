@@ -249,9 +249,8 @@ describe('WaitlistAnalysis', () => {
 
       expect(mockSetFilter).toHaveBeenCalledWith(
         expect.objectContaining({
-          type: 'status',
-          value: 'waitlisted',
-          statusOverride: ['waitlisted'],
+          type: 'waitlist_total',
+          value: 'all',
         })
       )
     })
