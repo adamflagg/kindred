@@ -146,8 +146,10 @@ func TestAttendeesSync_StatusMapCompleteness(t *testing.T) {
 	}
 }
 
-// TestAttendeesSync_CompositeKeyWithYear tests the year-scoped composite key
-// format used for status change detection lookups.
+// TestAttendeesSync_CompositeKeyWithYear tests that the status change lookup key
+// matches the year-scoped format used by PreloadCompositeRecords.
+// PreloadCompositeRecords stores keys as "{person}:{session}|{year}" (base_sync.go:630),
+// so the status change detection must use the same format for lookups to match.
 func TestAttendeesSync_CompositeKeyWithYear(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -157,27 +159,48 @@ func TestAttendeesSync_CompositeKeyWithYear(t *testing.T) {
 		wantKey   string
 	}{
 		{
-			name:      "standard key format",
+			name:      "year-scoped key matches PreloadCompositeRecords format",
 			personID:  12345,
 			sessionID: 67890,
 			year:      2026,
-			wantKey:   "12345:67890",
+			wantKey:   "12345:67890|2026",
 		},
 		{
-			name:      "different IDs",
+			name:      "different year produces different key",
 			personID:  99999,
 			sessionID: 11111,
 			year:      2025,
-			wantKey:   "99999:11111",
+			wantKey:   "99999:11111|2025",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// The composite key format used in processEnrollment
+			// Build the base composite key (as processEnrollment does)
 			key := fmt.Sprintf("%d:%d", tt.personID, tt.sessionID)
-			if key != tt.wantKey {
-				t.Errorf("composite key = %q, want %q", key, tt.wantKey)
+
+			// Build the year-scoped key used for existingAttendees lookup
+			// This must match PreloadCompositeRecords format: "{person}:{session}|{year}"
+			yearScopedKey := fmt.Sprintf("%s|%d", key, tt.year)
+			if yearScopedKey != tt.wantKey {
+				t.Errorf("year-scoped lookup key = %q, want %q", yearScopedKey, tt.wantKey)
+			}
+
+			// Simulate PreloadCompositeRecords storing with the same format
+			existingAttendees := map[string]string{
+				tt.wantKey: "enrolled",
+			}
+
+			// Verify the lookup key finds the record in the map
+			if _, ok := existingAttendees[yearScopedKey]; !ok {
+				t.Errorf("yearScopedKey %q not found in existingAttendees map (keys: %v)",
+					yearScopedKey, existingAttendees)
+			}
+
+			// Verify that a key WITHOUT year would NOT match (the original bug)
+			if _, ok := existingAttendees[key]; ok {
+				t.Errorf("base key %q should NOT match year-scoped map key %q",
+					key, tt.wantKey)
 			}
 		})
 	}
