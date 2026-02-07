@@ -104,6 +104,23 @@ class DrilldownService:
                 ag_session_ids=ag_session_ids,
             )
 
+        # Person-level breakdowns with waitlisted status need special handling
+        # to show all waitlisted sessions and enrolled sessions (like waitlist_total does)
+        if (
+            breakdown_type in PERSON_LEVEL_BREAKDOWNS
+            and breakdown_type not in WAITLIST_BREAKDOWNS
+            and status_filter == ["waitlisted"]
+        ):
+            return await self._handle_waitlist_person_breakdown(
+                year=year,
+                breakdown_type=breakdown_type,
+                breakdown_value=breakdown_value,
+                sessions=sessions,
+                session_cm_id=session_cm_id,
+                session_types=session_types,
+                ag_session_ids=ag_session_ids,
+            )
+
         # Fetch data in parallel
         attendees, persons = await asyncio.gather(
             self.repo.fetch_attendees(year, status_filter),
@@ -676,6 +693,82 @@ class DrilldownService:
 
         return self._build_response(
             matching_attendees,
+            persons,
+            sessions,
+            person_attendee_groups=all_waitlisted_groups,
+            enrolled_attendee_groups=enrolled_attendee_groups,
+        )
+
+    async def _handle_waitlist_person_breakdown(
+        self,
+        year: int,
+        breakdown_type: str,
+        breakdown_value: str,
+        sessions: dict[int, Any],
+        session_cm_id: int | None,
+        session_types: list[str] | None,
+        ag_session_ids: set[int],
+    ) -> list[DrilldownAttendee]:
+        """Handle person-level breakdowns (grade, gender, etc.) with waitlisted status.
+
+        The generic path only fetches waitlisted attendees and builds
+        person_attendee_groups from the session-filtered set, so "Waitlisted For"
+        only shows the filtered session and "Enrolled In" is always empty.
+
+        This method mirrors _handle_waitlist_enrollment_breakdown: it builds
+        all_waitlisted_groups BEFORE session filtering and also fetches enrolled
+        attendees for the enrolled_sessions column.
+        """
+        import asyncio
+
+        from api.services.waitlist_service import SUMMER_SESSION_TYPES
+
+        effective_types = session_types or list(SUMMER_SESSION_TYPES)
+
+        waitlisted_attendees, enrolled_attendees, persons = await asyncio.gather(
+            self.repo.fetch_attendees(year, ["waitlisted"]),
+            self.repo.fetch_attendees(year, ["enrolled"]),
+            self.repo.fetch_persons(year),
+        )
+
+        # Build waitlisted groups from ALL waitlisted attendees BEFORE session filtering
+        all_waitlisted_groups: dict[int, list[Any]] = {}
+        for att in waitlisted_attendees:
+            pid = int(getattr(att, "person_id", 0))
+            if pid:
+                all_waitlisted_groups.setdefault(pid, []).append(att)
+
+        # Filter waitlisted by session (controls which persons appear)
+        filtered_waitlisted = self._filter_by_session(
+            waitlisted_attendees, session_types, session_cm_id, ag_session_ids
+        )
+
+        # Filter by breakdown criteria (grade, gender, etc.)
+        filtered_waitlisted = self._filter_by_breakdown(
+            filtered_waitlisted, persons, sessions, breakdown_type, breakdown_value
+        )
+
+        # Deduplicate by person
+        seen_persons: set[int] = set()
+        deduped: list[Any] = []
+        for att in filtered_waitlisted:
+            pid = int(getattr(att, "person_id", 0))
+            if pid and pid not in seen_persons:
+                seen_persons.add(pid)
+                deduped.append(att)
+
+        # Build enrolled groups from enrolled attendees
+        enrolled_attendee_groups: dict[int, list[Any]] = {}
+        for att in enrolled_attendees:
+            enrolled_pid = getattr(att, "person_id", None)
+            session_info = self._get_session_from_record(att)
+            if enrolled_pid is not None and session_info:
+                session_type = getattr(session_info, "session_type", None)
+                if session_type in effective_types:
+                    enrolled_attendee_groups.setdefault(int(enrolled_pid), []).append(att)
+
+        return self._build_response(
+            deduped,
             persons,
             sessions,
             person_attendee_groups=all_waitlisted_groups,
