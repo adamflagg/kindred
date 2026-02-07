@@ -152,22 +152,38 @@ export function SessionLengthBySessionChart({
   const needsRotation = chartData.length > 3
   const isCompactLegend = sessionList.length > 6
 
+  // Custom tick that renders rotated text entirely below the axis line
+  const RotatedTick = ({ x, y, payload }: { x: number; y: number; payload: { value: string } }) => (
+    <g transform={`translate(${x},${y})`}>
+      <text
+        x={0}
+        y={0}
+        dy={12}
+        textAnchor="end"
+        fill="hsl(var(--muted-foreground))"
+        fontSize={12}
+        transform="rotate(-40)"
+      >
+        {payload.value.length > 16 ? `${payload.value.slice(0, 14)}…` : payload.value}
+      </text>
+    </g>
+  )
+
   return (
     <div className={`card-lodge p-4 ${className}`}>
       <h3 className="text-foreground mb-4 text-sm font-semibold">{title}</h3>
-      <ResponsiveContainer width="100%" height={height}>
-        <BarChart
-          data={chartData}
-          margin={{ top: 20, right: 30, left: 20, bottom: needsRotation ? 60 : 5 }}
-        >
+      <ResponsiveContainer width="100%" height={height - 30}>
+        <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis
             dataKey="name"
             className="text-xs"
             interval={0}
-            tick={{ fill: 'hsl(var(--muted-foreground))' }}
-            angle={needsRotation ? -35 : 0}
-            textAnchor={needsRotation ? 'end' : 'middle'}
+            tick={
+              needsRotation
+                ? (RotatedTick as unknown as React.SVGProps<SVGTextElement>)
+                : { fill: 'hsl(var(--muted-foreground))' }
+            }
             height={needsRotation ? 80 : 30}
           />
           <YAxis className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))' }} />

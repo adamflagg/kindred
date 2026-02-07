@@ -121,12 +121,14 @@ export function GenderByGradeChart({
     <div className={`card-lodge p-4 ${className}`}>
       <h3 className="text-foreground mb-4 text-sm font-semibold">{title}</h3>
       <ResponsiveContainer width="100%" height={height}>
-        <BarChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+        <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis
             dataKey="name"
             className="text-xs"
+            interval={0}
             tick={{ fill: 'hsl(var(--muted-foreground))' }}
+            tickFormatter={(value: string) => value.replace('Grade ', '')}
           />
           <YAxis className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
           <Tooltip content={<CustomTooltip />} />
@@ -158,6 +160,7 @@ export function GenderByGradeChart({
             <LabelList
               dataKey="total"
               position="top"
+              offset={8}
               className="text-xs"
               fill="hsl(var(--muted-foreground))"
             />
