@@ -132,6 +132,41 @@ func GetPhaseForJob(jobID string) Phase {
 	return ""
 }
 
+// GetDefaultUnifiedSyncJobs returns the default job list for a unified sync
+// (when no specific services are requested). The includeCustomValues flag
+// controls whether expensive custom values API syncs are included.
+// Transform phase jobs always run using existing custom values data.
+func GetDefaultUnifiedSyncJobs(includeCustomValues bool) []string {
+	// Source phase: CampMinder API syncs
+	jobs := []string{
+		"session_groups",
+		"sessions",
+		"attendees",
+		"persons",
+		"bunks",
+		"bunk_plans",
+		"bunk_assignments",
+		"staff",
+		"financial_transactions",
+	}
+
+	// Expensive phase: Custom values (1 API call per entity)
+	if includeCustomValues {
+		jobs = append(jobs,
+			"person_custom_values", "household_custom_values")
+	}
+
+	// Transform phase: Always run using existing custom values data
+	// (same as daily sync behavior)
+	jobs = append(jobs,
+		"camper_history", "family_camp_derived", "staff_skills",
+		"financial_aid_applications", "household_demographics",
+		"camper_dietary", "camper_transportation", "quest_registrations",
+		"staff_applications", "staff_vehicle_info", "normalize_geographic")
+
+	return jobs
+}
+
 // Service defines the interface for sync services
 type Service interface {
 	Sync(ctx context.Context) error
