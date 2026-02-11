@@ -40,8 +40,8 @@ migrate((app) => {
         name: "person_id",
         required: true,
         presentable: false,
-        min: 0,
-        max: 0,
+        min: null,
+        max: null,
         onlyInt: true
       },
       {
