@@ -204,3 +204,114 @@ class TestSchoolNormalizationBulk:
         assert result["Mark Day School"]["canonical"] == "Mark Day School"
         # Unknown school clusters with itself
         assert result["Xyzzy Academy"]["canonical"] == "Xyzzy Academy"
+
+
+class TestSchoolGradeAnnotationStripping:
+    """Tests for strip_school_grade_annotation() which removes grade info from school names.
+
+    Parents often write "Highland (2nd)" meaning "Highland school, 2nd grade".
+    The grade annotation must be stripped before matching to avoid false positives.
+    """
+
+    def test_parenthesized_ordinal_grade(self) -> None:
+        """Strip parenthesized ordinal grades like (2nd), (3rd)."""
+        from bunking.geo_normalizer.normalizer import strip_school_grade_annotation
+
+        assert strip_school_grade_annotation("Highland (2nd)") == "Highland"
+        assert strip_school_grade_annotation("Highland (3rd)") == "Highland"
+        assert strip_school_grade_annotation("Highland (1st)") == "Highland"
+        assert strip_school_grade_annotation("Highland (4th)") == "Highland"
+        assert strip_school_grade_annotation("Highland (5th)") == "Highland"
+        assert strip_school_grade_annotation("Highland (12th)") == "Highland"
+
+    def test_parenthesized_grade_with_word(self) -> None:
+        """Strip parenthesized grade annotations with 'grade' word."""
+        from bunking.geo_normalizer.normalizer import strip_school_grade_annotation
+
+        assert strip_school_grade_annotation("Highland (3rd grade)") == "Highland"
+        assert strip_school_grade_annotation("Highland (2nd grade)") == "Highland"
+
+    def test_parenthesized_kindergarten(self) -> None:
+        """Strip parenthesized kindergarten variants."""
+        from bunking.geo_normalizer.normalizer import strip_school_grade_annotation
+
+        assert strip_school_grade_annotation("Highland (K)") == "Highland"
+        assert strip_school_grade_annotation("Highland (Kindergarten)") == "Highland"
+        assert strip_school_grade_annotation("Highland (Pre-K)") == "Highland"
+        assert strip_school_grade_annotation("Highland (TK)") == "Highland"
+
+    def test_parenthesized_grade_range(self) -> None:
+        """Strip parenthesized grade ranges like (K-5), (3rd-5th)."""
+        from bunking.geo_normalizer.normalizer import strip_school_grade_annotation
+
+        assert strip_school_grade_annotation("Highland (K-5)") == "Highland"
+        assert strip_school_grade_annotation("Highland (3rd-5th)") == "Highland"
+
+    def test_suffix_grade_without_parens(self) -> None:
+        """Strip trailing grade suffixes without parentheses."""
+        from bunking.geo_normalizer.normalizer import strip_school_grade_annotation
+
+        assert strip_school_grade_annotation("Highland 2nd grade") == "Highland"
+        assert strip_school_grade_annotation("Highland 2nd") == "Highland"
+
+    def test_preserve_2nd_street_elementary(self) -> None:
+        """'2nd Street Elementary' must NOT be stripped - 2nd is part of the name."""
+        from bunking.geo_normalizer.normalizer import strip_school_grade_annotation
+
+        assert strip_school_grade_annotation("2nd Street Elementary") == "2nd Street Elementary"
+
+    def test_preserve_non_grade_parens(self) -> None:
+        """Non-grade parenthesized info must NOT be stripped."""
+        from bunking.geo_normalizer.normalizer import strip_school_grade_annotation
+
+        # Abbreviation in parens
+        assert strip_school_grade_annotation("Oakland School of Arts (OSA)") == "Oakland School of Arts (OSA)"
+
+    def test_no_change_when_no_annotation(self) -> None:
+        """School names without grade annotations are unchanged."""
+        from bunking.geo_normalizer.normalizer import strip_school_grade_annotation
+
+        assert strip_school_grade_annotation("Highland Elementary") == "Highland Elementary"
+        assert strip_school_grade_annotation("Leland High") == "Leland High"
+
+
+class TestSchoolNormalizationGradeAnnotation:
+    """End-to-end tests for grade annotation handling in normalize_school_value().
+
+    These tests verify the full pipeline: grade stripping + fuzzy matching
+    produces correct results and prevents false positives.
+    """
+
+    def test_highland_2nd_does_not_match_leland_high(self) -> None:
+        """'Highland (2nd)' must NOT fuzzy-match to 'Leland High'.
+
+        This is the original bug: grade annotation '(2nd)' was not stripped,
+        and after RapidFuzz processing, 'Highland' matched 'Leland High' at 84%.
+        """
+        from bunking.geo_normalizer.normalizer import normalize_school_value
+
+        result = normalize_school_value("Highland (2nd)")
+        assert result != "Leland High"
+
+    def test_highland_bare_does_not_match_leland_high(self) -> None:
+        """'Highland' alone must NOT fuzzy-match to 'Leland High'.
+
+        Even without grade annotation, single-word 'Highland' should not match
+        'Leland High' because they don't share a meaningful token.
+        """
+        from bunking.geo_normalizer.normalizer import normalize_school_value
+
+        result = normalize_school_value("Highland")
+        assert result != "Leland High"
+
+    def test_leland_high_still_matches(self) -> None:
+        """'Leland High' should still resolve to itself (exact match)."""
+        from bunking.geo_normalizer.normalizer import normalize_school_value
+
+        assert normalize_school_value("Leland High") == "Leland High"
+
+    def test_highland_elementary_still_matches(self) -> None:
+        """'Highland Elementary' should still resolve correctly."""
+        from bunking.geo_normalizer.normalizer import normalize_school_value
+
+        assert normalize_school_value("Highland Elementary") == "Highland Elementary"

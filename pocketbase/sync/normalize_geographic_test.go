@@ -2,6 +2,7 @@ package sync
 
 import (
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -146,6 +147,63 @@ func TestNormalizeCongregationValue(t *testing.T) {
 			result := normalizeCongregationValue(tt.input)
 			if result != tt.expected {
 				t.Errorf("normalizeCongregationValue(%q) = %q, want %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
+// ============================================================================
+// School Normalization Tests
+// ============================================================================
+
+// TestNormalizeSchoolGo tests school name normalization including grade annotation stripping
+func TestNormalizeSchoolGo(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		// Basic cases
+		{"empty string", "", ""},
+		{"simple school", "Highland Elementary", "Highland Elementary"},
+		{"preserve case", "Leland High", "Leland High"},
+		{"extra whitespace", "  Highland  Elementary  ", "Highland Elementary"},
+		{"n/a value", "N/A", ""},
+
+		// Grade annotation stripping - parenthesized ordinals
+		{"strip parenthesized 2nd", "Highland (2nd)", "Highland"},
+		{"strip parenthesized 3rd", "Highland (3rd)", "Highland"},
+		{"strip parenthesized 1st", "Highland (1st)", "Highland"},
+		{"strip parenthesized 5th", "Highland (5th)", "Highland"},
+
+		// Grade annotation stripping - parenthesized with grade word
+		{"strip parenthesized 3rd grade", "Highland (3rd grade)", "Highland"},
+		{"strip parenthesized 2nd grade", "Highland (2nd grade)", "Highland"},
+
+		// Grade annotation stripping - kindergarten variants
+		{"strip parenthesized K", "Highland (K)", "Highland"},
+		{"strip parenthesized Kindergarten", "Highland (Kindergarten)", "Highland"},
+		{"strip parenthesized Pre-K", "Highland (Pre-K)", "Highland"},
+		{"strip parenthesized TK", "Highland (TK)", "Highland"},
+
+		// Grade annotation stripping - grade ranges
+		{"strip parenthesized K-5", "Highland (K-5)", "Highland"},
+		{"strip parenthesized 3rd-5th", "Highland (3rd-5th)", "Highland"},
+
+		// Grade annotation stripping - suffix without parens
+		{"strip suffix 2nd grade", "Highland 2nd grade", "Highland"},
+		{"strip suffix 2nd", "Highland 2nd", "Highland"},
+
+		// Preservation cases - must NOT strip
+		{"preserve 2nd Street Elementary", "2nd Street Elementary", "2nd Street Elementary"},
+		{"preserve non-grade parens", "Oakland School of Arts (OSA)", "Oakland School of Arts (OSA)"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := normalizeSchoolValue(tt.input)
+			if result != tt.expected {
+				t.Errorf("normalizeSchoolValue(%q) = %q, want %q", tt.input, result, tt.expected)
 			}
 		})
 	}
@@ -936,6 +994,54 @@ func stringSimilarity(a, b string) int {
 
 	return (matchingPrefix * 100) / maxLen
 }
+
+// normalizeSchoolValue normalizes school names including grade annotation stripping
+func normalizeSchoolValue(school string) string {
+	school = preprocessGeographicValue(school)
+	if school == "" {
+		return ""
+	}
+
+	school = stripSchoolGradeAnnotationGo(school)
+
+	return school
+}
+
+// stripSchoolGradeAnnotationGo strips grade annotations from school names.
+// Handles parenthesized forms like "(2nd)", "(3rd grade)", "(K)", "(Pre-K)",
+// "(K-5)", "(3rd-5th)" and suffix forms like "2nd grade", "2nd".
+// Preserves names where the ordinal is part of the actual name (e.g., "2nd Street Elementary").
+func stripSchoolGradeAnnotationGo(school string) string {
+	// Strip parenthesized grade annotations
+	school = schoolGradeParenPatternGo.ReplaceAllString(school, "")
+	school = strings.TrimSpace(school)
+
+	// Strip suffix grade annotations (only when preceded by non-ordinal content)
+	if m := schoolGradeSuffixPatternGo.FindStringSubmatch(school); m != nil {
+		school = m[1]
+	}
+
+	return school
+}
+
+// schoolGradeParenPatternGo matches trailing parenthesized grade annotations
+// Examples: (2nd), (3rd grade), (K), (Kindergarten), (Pre-K), (TK), (K-5), (3rd-5th)
+var schoolGradeParenPatternGo = regexp.MustCompile(
+	`\s*\((?:` +
+		`\d{1,2}(?:st|nd|rd|th)(?:\s+grade)?` + // ordinals: 1st, 2nd, 3rd, 4th...12th
+		`|K(?:indergarten)?` + // K or Kindergarten
+		`|Pre-K|TK` + // Pre-K, TK
+		`|(?:\d{1,2}(?:st|nd|rd|th)|K)-(?:\d{1,2}(?:st|nd|rd|th)|\d)` + // ranges: K-5, 3rd-5th
+		`)\)$`,
+)
+
+// schoolGradeSuffixPatternGo matches trailing grade suffixes without parentheses.
+// Captures the school name prefix (group 1) so we can extract just the name.
+// Examples: "Highland 2nd grade" -> group 1 = "Highland"
+// Does NOT match: "2nd Street Elementary" (requires non-digit prefix before space+ordinal)
+var schoolGradeSuffixPatternGo = regexp.MustCompile(
+	`^(.+\S)\s+\d{1,2}(?:st|nd|rd|th)(?:\s+grade)?$`,
+)
 
 // isUpperAlpha checks if byte is uppercase A-Z
 func isUpperAlpha(b byte) bool {
