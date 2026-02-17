@@ -92,9 +92,10 @@ ENV VIRTUAL_ENV="/app/.venv"
 COPY --link --from=caddy:2 --chmod=755 /usr/bin/caddy /usr/local/bin/caddy
 COPY --link --from=go-builder --chmod=755 /build/pocketbase /usr/local/bin/pocketbase
 
-# Docker infrastructure (no --link: these target system dirs not in our RUN layer)
-COPY --chmod=644 docker/Caddyfile /etc/caddy/Caddyfile
-COPY --chmod=644 docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+# Docker infrastructure (no --link or --chmod for system dirs: --chmod applies to
+# auto-created parent dirs too, making /etc/caddy/ untraversable with 644)
+COPY docker/Caddyfile /etc/caddy/Caddyfile
+COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY --chmod=755 docker/combined-entrypoint.sh /entrypoint.sh
 
 # Application source (changes frequently, each independently cached via --link)
