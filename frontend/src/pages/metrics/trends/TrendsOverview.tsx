@@ -9,8 +9,10 @@
  * - Year-by-year summary table
  */
 
+import { useMemo } from 'react'
 import { useHistoricalTrends } from '../../../hooks/useMetrics'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
+import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { TrendLineChart } from '../../../components/metrics/TrendLineChart'
 import { MetricCard } from '../../../components/metrics/MetricCard'
 import { Loader2, AlertCircle } from 'lucide-react'
@@ -18,9 +20,15 @@ import { Loader2, AlertCircle } from 'lucide-react'
 export default function TrendsOverview() {
   // Get session filter from context (unified selector is in MetricsTypeTabs)
   const { selectedSessionCmId, sessionTypesParam } = useMetricsSession()
+  const { currentYear } = useCurrentYear()
+
+  // Build explicit years param from currentYear context (defense in depth)
+  const yearsParam = useMemo(() => {
+    return Array.from({ length: 5 }, (_, i) => currentYear - 4 + i).join(',')
+  }, [currentYear])
 
   const { data, isLoading, error } = useHistoricalTrends(
-    undefined,
+    yearsParam,
     sessionTypesParam,
     selectedSessionCmId ?? undefined
   )

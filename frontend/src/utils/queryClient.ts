@@ -99,6 +99,9 @@ export const invalidateSyncData = () => {
   queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
   queryClient.invalidateQueries({ queryKey: ['bunk-request-status'] })
 
+  // Metrics (depends on synced data)
+  queryClient.invalidateQueries({ queryKey: ['metrics'] })
+
   // Sync status
   queryClient.invalidateQueries({ queryKey: ['sync-status'] })
   queryClient.invalidateQueries({ queryKey: ['sync-status-api'] })
