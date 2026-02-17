@@ -552,7 +552,7 @@ async def get_historical_trends(
     """Get historical trends across multiple years.
 
     Returns aggregated metrics for each year to enable line chart visualization.
-    Default: last 5 years (2021-2025).
+    Default: last 5 years from current year (based on CAMPMINDER_SEASON_ID).
 
     When session_cm_id is provided, filters to sessions with the same NAME across years.
     This enables "Show Session 2's enrollment over 5 years" even though Session 2

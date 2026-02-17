@@ -7,6 +7,8 @@ testable service that uses the MetricsRepository for data access.
 from __future__ import annotations
 
 import asyncio
+import os
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from api.schemas.metrics import (
@@ -43,7 +45,7 @@ class HistoricalService:
         """Calculate historical trends across multiple years.
 
         Args:
-            years: List of years to analyze. Default: last 5 years from 2025.
+            years: List of years to analyze. Default: last 5 years from current year.
             session_types: Optional list of session types to filter.
             session_cm_id: Optional session CampMinder ID to filter by.
                 When provided, filters to sessions with the same NAME across years.
@@ -55,7 +57,8 @@ class HistoricalService:
         """
         # Default years if not provided
         if years is None:
-            current_year = 2025
+            season_id = os.environ.get("CAMPMINDER_SEASON_ID", "")
+            current_year = int(season_id) if season_id.isdigit() else datetime.now().year
             years = list(range(current_year - 4, current_year + 1))
 
         # If session_cm_id provided, get the session name to filter by
