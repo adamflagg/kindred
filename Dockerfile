@@ -71,57 +71,49 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Stage 4: Final runtime image - Combined Caddy + PocketBase + FastAPI
 # =============================================================================
 FROM python:3.14-slim
-# Use fixed UID/GID 1000 (standard first non-root user) for predictable volume permissions
-# Can be overridden via docker-compose user: directive with PUID/PGID env vars
-RUN groupadd -r -g 1000 kindred && useradd -r -g kindred -u 1000 kindred
-WORKDIR /app
-# hadolint ignore=DL3008
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    wget \
-    supervisor \
-    procps \
-    && rm -rf /var/lib/apt/lists/*
 
-# 1. PYTHON DEPS (copy venv from uv builder)
-COPY --from=python-builder /app/.venv /app/.venv
+# Single system-setup layer: user, packages, directories, ownership
+# hadolint ignore=DL3008
+RUN <<EOF
+  set -e
+  groupadd -r -g 1000 kindred && useradd -r -g kindred -u 1000 kindred
+  apt-get update && apt-get install -y --no-install-recommends \
+    curl wget supervisor procps \
+    && rm -rf /var/lib/apt/lists/*
+  mkdir -p /pb_data/bunk_requests /app/logs /app/csv_history /config \
+           /app/.config/caddy /app/.local/share/caddy \
+           /pb_public /pb_hooks /pb_migrations
+  chown -R kindred:kindred /pb_data /app /config /pb_public /pb_hooks /pb_migrations
+EOF
+WORKDIR /app
+
+# Stable binaries (--link = content-addressable, survives across code-only releases)
+COPY --link --from=python-builder /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
 ENV VIRTUAL_ENV="/app/.venv"
 
-# 2. STABLE CONFIG
-COPY --from=caddy:2 /usr/bin/caddy /usr/local/bin/caddy
-COPY docker/Caddyfile /etc/caddy/Caddyfile
-RUN chmod 644 /etc/caddy/Caddyfile && caddy validate --config /etc/caddy/Caddyfile
-COPY --chown=kindred:kindred config/ ./config/
-COPY --chown=kindred:kindred campminder/ ./campminder/
-RUN mkdir -p /pb_data/bunk_requests /app/logs /app/csv_history /config
+COPY --link --from=caddy:2 --chmod=755 /usr/bin/caddy /usr/local/bin/caddy
+COPY --link --from=go-builder --chmod=755 /build/pocketbase /usr/local/bin/pocketbase
 
-# 3. API + DOCKER
-COPY --chown=kindred:kindred api/ ./api/
-COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-COPY docker/combined-entrypoint.sh /entrypoint.sh
-RUN chmod 755 /entrypoint.sh
+# Docker infrastructure (rarely changes)
+COPY --link --chmod=644 docker/Caddyfile /etc/caddy/Caddyfile
+COPY --link --chmod=644 docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY --link --chmod=755 docker/combined-entrypoint.sh /entrypoint.sh
 
-# 4. BUNKING
-COPY --chown=kindred:kindred bunking/ ./bunking/
+# Application source (changes frequently, each independently cached via --link)
+COPY --link --chown=kindred:kindred config/ ./config/
+COPY --link --chown=kindred:kindred campminder/ ./campminder/
+COPY --link --chown=kindred:kindred api/ ./api/
+COPY --link --chown=kindred:kindred bunking/ ./bunking/
 
-# 5. POCKETBASE
-COPY --chown=kindred:kindred pocketbase/pb_hooks /pb_hooks
-COPY --chown=kindred:kindred pocketbase/pb_migrations /pb_migrations
-COPY --from=go-builder /build/pocketbase /usr/local/bin/pocketbase
-RUN chmod +x /usr/local/bin/pocketbase
+# PocketBase assets
+COPY --link --chown=kindred:kindred pocketbase/pb_hooks /pb_hooks
+COPY --link --chown=kindred:kindred pocketbase/pb_migrations /pb_migrations
 
-# 6. FRONTEND
-COPY --chown=kindred:kindred --from=frontend-builder /app/dist /pb_public
-# Copy local assets (logos) if present
-# For local builds: run scripts/build/docker-build.sh (resolves symlinks)
-# For CI: workflow copies files from kindred-local and creates local/assets/
-COPY --chown=kindred:kindred local/ /pb_public/local/
+# Frontend + local assets
+COPY --link --chown=kindred:kindred --from=frontend-builder /app/dist /pb_public
+COPY --link --chown=kindred:kindred local/ /pb_public/local/
 
-# Create Caddy config/data directories and set ownership for writable directories
-# (skip .venv - it's read-only)
-RUN mkdir -p /app/.config/caddy /app/.local/share/caddy && \
-    chown -R kindred:kindred /pb_data /app/logs /app/csv_history /app/.config /app/.local /config
 USER kindred
 
 EXPOSE 8080
@@ -141,7 +133,7 @@ ARG VERSION=latest
 ARG BUILD_DATE
 
 LABEL org.opencontainers.image.title="Kindred"
-LABEL org.opencontainers.image.description="Kindred cabin assignment system - Combined container (Caddy + PocketBase + FastAPI)"
+LABEL org.opencontainers.image.description="Kindred cabin assignment system"
 LABEL org.opencontainers.image.vendor="Kindred"
 LABEL org.opencontainers.image.version="${VERSION}"
 LABEL org.opencontainers.image.created="${BUILD_DATE}"
