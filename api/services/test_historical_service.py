@@ -263,19 +263,42 @@ class TestHistoricalServiceEdgeCases:
         assert year_metric.by_first_year[0].count == 2
 
     @pytest.mark.asyncio
-    async def test_default_years(self, mock_repository: MagicMock) -> None:
-        """Test default years when none provided."""
+    async def test_default_years_from_season_id(
+        self, mock_repository: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test default years derived from CAMPMINDER_SEASON_ID env var."""
         from api.services.historical_service import HistoricalService
 
+        monkeypatch.setenv("CAMPMINDER_SEASON_ID", "2026")
         mock_repository.fetch_camper_history = AsyncMock(return_value=[])
 
         service = HistoricalService(mock_repository)
         result = await service.calculate_historical_trends()
 
-        # Default should be 5 years from 2025: 2021, 2022, 2023, 2024, 2025
+        # Default should be 5 years ending at season ID year: 2022-2026
         assert len(result.years) == 5
         years = [y.year for y in result.years]
-        assert years == [2021, 2022, 2023, 2024, 2025]
+        assert years == [2022, 2023, 2024, 2025, 2026]
+
+    @pytest.mark.asyncio
+    async def test_default_years_fallback_without_season_id(
+        self, mock_repository: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test default years fall back to current year when CAMPMINDER_SEASON_ID is not set."""
+        from datetime import datetime
+
+        from api.services.historical_service import HistoricalService
+
+        monkeypatch.delenv("CAMPMINDER_SEASON_ID", raising=False)
+        mock_repository.fetch_camper_history = AsyncMock(return_value=[])
+
+        service = HistoricalService(mock_repository)
+        result = await service.calculate_historical_trends()
+
+        current_year = datetime.now().year
+        assert len(result.years) == 5
+        years = [y.year for y in result.years]
+        assert years == list(range(current_year - 4, current_year + 1))
 
 
 # ============================================================================
