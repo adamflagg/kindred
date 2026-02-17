@@ -74,17 +74,14 @@ FROM python:3.14-slim
 
 # Single system-setup layer: user, packages, directories, ownership
 # hadolint ignore=DL3008
-RUN <<EOF
-  set -e
-  groupadd -r -g 1000 kindred && useradd -r -g kindred -u 1000 kindred
-  apt-get update && apt-get install -y --no-install-recommends \
-    curl wget supervisor procps \
-    && rm -rf /var/lib/apt/lists/*
-  mkdir -p /pb_data/bunk_requests /app/logs /app/csv_history /config \
-           /app/.config/caddy /app/.local/share/caddy \
-           /pb_public /pb_hooks /pb_migrations
-  chown -R kindred:kindred /pb_data /app /config /pb_public /pb_hooks /pb_migrations
-EOF
+RUN groupadd -r -g 1000 kindred && useradd -r -g kindred -u 1000 kindred \
+    && apt-get update && apt-get install -y --no-install-recommends \
+       curl wget supervisor procps \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /pb_data/bunk_requests /app/logs /app/csv_history /config \
+               /app/.config/caddy /app/.local/share/caddy \
+               /pb_public /pb_hooks /pb_migrations \
+    && chown -R kindred:kindred /pb_data /app /config /pb_public /pb_hooks /pb_migrations
 WORKDIR /app
 
 # Stable binaries (--link = content-addressable, survives across code-only releases)
