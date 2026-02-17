@@ -98,18 +98,18 @@ COPY --link --chmod=644 docker/supervisord.conf /etc/supervisor/conf.d/superviso
 COPY --link --chmod=755 docker/combined-entrypoint.sh /entrypoint.sh
 
 # Application source (changes frequently, each independently cached via --link)
-COPY --link --chown=kindred:kindred config/ ./config/
-COPY --link --chown=kindred:kindred campminder/ ./campminder/
-COPY --link --chown=kindred:kindred api/ ./api/
-COPY --link --chown=kindred:kindred bunking/ ./bunking/
+COPY --link --chown=1000:1000 config/ ./config/
+COPY --link --chown=1000:1000 campminder/ ./campminder/
+COPY --link --chown=1000:1000 api/ ./api/
+COPY --link --chown=1000:1000 bunking/ ./bunking/
 
 # PocketBase assets
-COPY --link --chown=kindred:kindred pocketbase/pb_hooks /pb_hooks
-COPY --link --chown=kindred:kindred pocketbase/pb_migrations /pb_migrations
+COPY --link --chown=1000:1000 pocketbase/pb_hooks /pb_hooks
+COPY --link --chown=1000:1000 pocketbase/pb_migrations /pb_migrations
 
 # Frontend + local assets
-COPY --link --chown=kindred:kindred --from=frontend-builder /app/dist /pb_public
-COPY --link --chown=kindred:kindred local/ /pb_public/local/
+COPY --link --chown=1000:1000 --from=frontend-builder /app/dist /pb_public
+COPY --link --chown=1000:1000 local/ /pb_public/local/
 
 USER kindred
 
