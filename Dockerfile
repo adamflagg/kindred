@@ -92,24 +92,25 @@ ENV VIRTUAL_ENV="/app/.venv"
 COPY --link --from=caddy:2 --chmod=755 /usr/bin/caddy /usr/local/bin/caddy
 COPY --link --from=go-builder --chmod=755 /build/pocketbase /usr/local/bin/pocketbase
 
-# Docker infrastructure (rarely changes)
-COPY --link --chmod=644 docker/Caddyfile /etc/caddy/Caddyfile
-COPY --link --chmod=644 docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-COPY --link --chmod=755 docker/combined-entrypoint.sh /entrypoint.sh
+# Docker infrastructure (no --link or --chmod for system dirs: --chmod applies to
+# auto-created parent dirs too, making /etc/caddy/ untraversable with 644)
+COPY docker/Caddyfile /etc/caddy/Caddyfile
+COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY --chmod=755 docker/combined-entrypoint.sh /entrypoint.sh
 
 # Application source (changes frequently, each independently cached via --link)
-COPY --link --chown=kindred:kindred config/ ./config/
-COPY --link --chown=kindred:kindred campminder/ ./campminder/
-COPY --link --chown=kindred:kindred api/ ./api/
-COPY --link --chown=kindred:kindred bunking/ ./bunking/
+COPY --link --chown=1000:1000 config/ ./config/
+COPY --link --chown=1000:1000 campminder/ ./campminder/
+COPY --link --chown=1000:1000 api/ ./api/
+COPY --link --chown=1000:1000 bunking/ ./bunking/
 
 # PocketBase assets
-COPY --link --chown=kindred:kindred pocketbase/pb_hooks /pb_hooks
-COPY --link --chown=kindred:kindred pocketbase/pb_migrations /pb_migrations
+COPY --link --chown=1000:1000 pocketbase/pb_hooks /pb_hooks
+COPY --link --chown=1000:1000 pocketbase/pb_migrations /pb_migrations
 
 # Frontend + local assets
-COPY --link --chown=kindred:kindred --from=frontend-builder /app/dist /pb_public
-COPY --link --chown=kindred:kindred local/ /pb_public/local/
+COPY --link --chown=1000:1000 --from=frontend-builder /app/dist /pb_public
+COPY --link --chown=1000:1000 local/ /pb_public/local/
 
 USER kindred
 
