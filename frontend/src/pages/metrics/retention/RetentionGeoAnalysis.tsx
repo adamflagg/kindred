@@ -160,7 +160,10 @@ export default function RetentionGeoAnalysis() {
     sessionCmId: selectedSessionCmId ?? undefined,
   })
 
-  const enrollmentData = trendsData?.enrollment_by_year ?? []
+  const enrollmentData = useMemo(
+    () => trendsData?.enrollment_by_year ?? [],
+    [trendsData?.enrollment_by_year]
+  )
 
   const cityShifts = useMemo(
     () => computeNotableShifts(enrollmentData, 'by_city'),

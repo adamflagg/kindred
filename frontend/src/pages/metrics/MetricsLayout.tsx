@@ -31,6 +31,22 @@ const REGISTRATION_SUB_NAV: SubNavItem[] = [
   },
 ]
 
+/** Sub-nav items for retention section */
+const RETENTION_SUB_NAV: SubNavItem[] = [
+  {
+    id: 'overview',
+    label: 'Overview',
+    icon: LayoutDashboard,
+    path: '/metrics/retention/overview',
+  },
+  {
+    id: 'geo',
+    label: 'Geographic',
+    icon: Globe,
+    path: '/metrics/retention/geo',
+  },
+]
+
 export default function MetricsLayout() {
   const location = useLocation()
 
@@ -39,11 +55,28 @@ export default function MetricsLayout() {
     if (location.pathname.startsWith('/metrics/registration')) {
       return REGISTRATION_SUB_NAV
     }
-    // retention and trends don't have sub-pages yet
+    if (location.pathname.startsWith('/metrics/retention')) {
+      return RETENTION_SUB_NAV
+    }
     return []
   }
 
   const subNavItems = getSubNavItems()
+
+  // Dynamic header based on section
+  const getHeader = () => {
+    if (location.pathname.startsWith('/metrics/retention')) {
+      return { title: 'Retention Metrics', subtitle: 'Analyze camper retention and enrollment trends' }
+    }
+    if (location.pathname.startsWith('/metrics/trends')) {
+      return { title: 'Trend Analysis', subtitle: 'Long-term enrollment and registration trends' }
+    }
+    return {
+      title: 'Registration Metrics',
+      subtitle: 'Analyze registration data and enrollment patterns',
+    }
+  }
+  const header = getHeader()
 
   return (
     <MetricsSessionProvider>
@@ -51,10 +84,8 @@ export default function MetricsLayout() {
         <div className="mx-auto max-w-7xl px-4 pt-4 pb-8 sm:px-6 lg:px-8">
           {/* Header */}
           <div className="mb-6">
-            <h1 className="text-foreground text-2xl font-bold">Registration Metrics</h1>
-            <p className="text-muted-foreground mt-1">
-              Analyze registration data and retention trends
-            </p>
+            <h1 className="text-foreground text-2xl font-bold">{header.title}</h1>
+            <p className="text-muted-foreground mt-1">{header.subtitle}</p>
           </div>
 
           {/* Sticky Navigation */}

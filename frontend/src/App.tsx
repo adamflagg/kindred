@@ -38,6 +38,9 @@ const RegistrationOverview = lazy(() => import('./pages/metrics/registration/Reg
 const GeoAnalysis = lazy(() => import('./pages/metrics/registration/GeoAnalysis'))
 const WaitlistAnalysis = lazy(() => import('./pages/metrics/registration/WaitlistAnalysis'))
 const RetentionOverview = lazy(() => import('./pages/metrics/retention/RetentionOverview'))
+const RetentionGeoAnalysis = lazy(
+  () => import('./pages/metrics/retention/RetentionGeoAnalysis')
+)
 const TrendsOverview = lazy(() => import('./pages/metrics/trends/TrendsOverview'))
 
 // Loading skeleton component for route transitions
@@ -228,9 +231,21 @@ function App() {
                               {/* Retention section */}
                               <Route
                                 path="retention"
+                                element={<Navigate to="/metrics/retention/overview" replace />}
+                              />
+                              <Route
+                                path="retention/overview"
                                 element={
                                   <Suspense fallback={<PageSkeleton />}>
                                     <RetentionOverview />
+                                  </Suspense>
+                                }
+                              />
+                              <Route
+                                path="retention/geo"
+                                element={
+                                  <Suspense fallback={<PageSkeleton />}>
+                                    <RetentionGeoAnalysis />
                                   </Suspense>
                                 }
                               />
