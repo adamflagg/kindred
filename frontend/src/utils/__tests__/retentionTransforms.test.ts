@@ -60,7 +60,7 @@ describe('gradeToBarData', () => {
       { grade: null, base_count: 10, returned_count: 5, retention_rate: 0.5 },
     ]
     const result = gradeToBarData(input)
-    expect(result[0]!.name).toBe('Grade 3')
+    expect(result[0]!.name).toBe('3')
     expect(result[1]!.name).toBe('Unknown')
   })
 
@@ -242,13 +242,13 @@ describe('sortRetentionBarData', () => {
 
   it('handles grade labels naturally', () => {
     const gradeData: RetentionRateBarItem[] = [
-      { name: 'Grade 9', retentionRate: 0.6, baseCount: 40, returnedCount: 24 },
-      { name: 'Grade 3', retentionRate: 0.8, baseCount: 50, returnedCount: 40 },
-      { name: 'Grade 12', retentionRate: 0.5, baseCount: 30, returnedCount: 15 },
+      { name: '9', retentionRate: 0.6, baseCount: 40, returnedCount: 24 },
+      { name: '3', retentionRate: 0.8, baseCount: 50, returnedCount: 40 },
+      { name: '12', retentionRate: 0.5, baseCount: 30, returnedCount: 15 },
       { name: 'Unknown', retentionRate: 0.3, baseCount: 10, returnedCount: 3 },
     ]
     const result = sortRetentionBarData(gradeData, 'name')
-    expect(result.map((d) => d.name)).toEqual(['Grade 3', 'Grade 9', 'Grade 12', 'Unknown'])
+    expect(result.map((d) => d.name)).toEqual(['3', '9', '12', 'Unknown'])
   })
 
   it('handles year labels naturally', () => {
