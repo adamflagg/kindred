@@ -89,8 +89,8 @@ class RetentionService:
         # Get unique person IDs for base year, filtered by session
         person_ids_base, attendee_sessions = self._filter_base_attendees(attendees_base, session_types, session_cm_id)
 
-        # Get person IDs for compare year (no session filter needed)
-        person_ids_compare = {getattr(a, "person_id", None) for a in attendees_compare if getattr(a, "person_id", None)}
+        # Get person IDs for compare year, filtered by session type and cm_id (CampMinder reuses IDs across years)
+        person_ids_compare, _ = self._filter_base_attendees(attendees_compare, session_types, session_cm_id)
 
         # Calculate returned campers
         returned_ids = person_ids_base & person_ids_compare

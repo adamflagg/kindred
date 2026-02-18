@@ -10,7 +10,7 @@
  *
  * Pattern: Similar to CurrentYearContext - provider here, hook in useMetricsSession.ts
  */
-import React, { useCallback, useMemo } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { useCurrentYear } from '../hooks/useCurrentYear'
 import { useMetricsSessions } from '../hooks/useMetricsSessions'
@@ -49,6 +49,7 @@ function parseViewParam(param: string | null): MetricsViewMode {
 export function MetricsSessionProvider({ children }: { children: React.ReactNode }) {
   const [searchParams, setSearchParams] = useSearchParams()
   const { currentYear } = useCurrentYear()
+  const [expandedRetention, setExpandedRetention] = useState(false)
 
   // Fetch sessions for the current year
   const { data: sessions = [], isLoading } = useMetricsSessions(currentYear)
@@ -151,6 +152,8 @@ export function MetricsSessionProvider({ children }: { children: React.ReactNode
       sessionTypesParam,
       campSessions,
       questSessions,
+      expandedRetention,
+      setExpandedRetention,
     }),
     [
       selectedSessionCmId,
@@ -165,6 +168,7 @@ export function MetricsSessionProvider({ children }: { children: React.ReactNode
       sessionTypesParam,
       campSessions,
       questSessions,
+      expandedRetention,
     ]
   )
 

@@ -1,13 +1,10 @@
 /**
- * RetentionOverview - Display retention metrics with 3-year trend view.
+ * RetentionOverview - Multi-year enrollment comparison for retention.
  *
- * Wrapper component that uses the current year from context.
  * Shows:
- * - 3-year retention trends
- * - Session-specific filtering
- * - Gender and grade composition over time
- * - Cohort analysis
- * - Demographic breakdowns
+ * - Summary cards (base count, current count, returned, avg rate)
+ * - Multi-year trend charts (retention rate, gender, grade, summers, first year)
+ * - Legacy session retention table below a divider
  */
 
 import { useMemo } from 'react'
@@ -17,36 +14,35 @@ import { useRetentionMetrics } from '../../../hooks/useMetrics'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useDrilldown } from '../../../hooks/useDrilldown'
 import { MetricCard } from '../../../components/metrics/MetricCard'
-import { BreakdownChart } from '../../../components/metrics/BreakdownChart'
 import { RetentionRateLine } from '../../../components/metrics/RetentionRateLine'
 import { GenderStackedChart } from '../../../components/metrics/GenderStackedChart'
 import { GradeEnrollmentChart } from '../../../components/metrics/GradeEnrollmentChart'
-import { DemographicTable } from '../../../components/metrics/DemographicTable'
+import { MultiYearBreakdownChart } from '../../../components/metrics/MultiYearBreakdownChart'
 import { getSessionChartLabel } from '../../../utils/sessionDisplay'
 import { buildSessionDateLookup, sortSessionDataByDate } from '../../../utils/sessionUtils'
-import {
-  transformRetentionSessionData,
-  transformRetentionSummerYearsData,
-  transformRetentionFirstSummerYearData,
-  transformPriorSessionData,
-  transformDemographicTableData,
-  getTrendDirection,
-} from '../../../utils/metricsTransforms'
+import { getTrendDirection } from '../../../utils/metricsTransforms'
 import { Loader2, AlertCircle, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 
 export default function RetentionOverview() {
   const { currentYear } = useCurrentYear()
 
-  // Get session filter from context (unified selector is in MetricsTypeTabs)
-  const { selectedSessionCmId, sessions, sessionTypesParam, activeSessionTypes } =
-    useMetricsSession()
+  // Get session filter and expanded toggle from context
+  const {
+    selectedSessionCmId,
+    sessions,
+    sessionTypesParam,
+    activeSessionTypes,
+    expandedRetention,
+  } = useMetricsSession()
 
-  // Calculate base year (year before current year) for the primary view
-  const baseYear = currentYear - 1
+  const numYears = expandedRetention ? 5 : 3
 
-  // Drilldown state management (uses baseYear since retention shows who from baseYear returned)
-  const { setFilter, DrilldownModal } = useDrilldown({
-    year: baseYear,
+  // Calculate prior year for the primary view
+  const priorYear = currentYear - 1
+
+  // Drilldown state management (uses priorYear since retention shows who from priorYear returned)
+  const { DrilldownModal } = useDrilldown({
+    year: priorYear,
     sessionCmId: selectedSessionCmId ?? undefined,
     sessionTypes: [...activeSessionTypes],
     statusFilter: ['enrolled'],
@@ -55,20 +51,20 @@ export default function RetentionOverview() {
   // Build session date lookup for date-aware sorting
   const sessionDateLookup = useMemo(() => buildSessionDateLookup(sessions), [sessions])
 
-  // Fetch 3-year retention trends
+  // Fetch multi-year retention trends (3 or 5 years)
   const {
     data: trendsData,
     isLoading: trendsLoading,
     error: trendsError,
   } = useRetentionTrends(currentYear, {
-    numYears: 3,
+    numYears,
     sessionTypes: sessionTypesParam,
     sessionCmId: selectedSessionCmId ?? undefined,
   })
 
-  // Also fetch detailed retention data for the current year transition
+  // Detailed retention data for session table
   const { data: detailedData } = useRetentionMetrics(
-    baseYear,
+    priorYear,
     currentYear,
     sessionTypesParam,
     selectedSessionCmId ?? undefined
@@ -116,36 +112,29 @@ export default function RetentionOverview() {
     }
   }
 
-  // Transform data for charts using utility functions
-  const sessionChartData = transformRetentionSessionData(
-    detailedData?.by_session,
-    sessionDateLookup
-  )
-  const summerYearsChartData = transformRetentionSummerYearsData(detailedData?.by_summer_years)
-  const firstSummerYearChartData = transformRetentionFirstSummerYearData(
-    detailedData?.by_first_summer_year
-  )
-  const priorSessionChartData = transformPriorSessionData(
-    detailedData?.by_prior_session,
-    sessionDateLookup
-  )
-
-  // Demographics for tables using utility functions
-  const schoolTableData = transformDemographicTableData(detailedData?.by_school, 'school')
-  const cityTableData = transformDemographicTableData(detailedData?.by_city, 'city')
-  const synagogueTableData = transformDemographicTableData(detailedData?.by_synagogue, 'synagogue')
-
-  // Sorted sessions for table (needed separately from chart)
+  // Sorted sessions for legacy table
   const sortedBySession = sortSessionDataByDate(detailedData?.by_session ?? [], sessionDateLookup)
+
+  const enrollmentData = trendsData.enrollment_by_year ?? []
+
+  // Source year totals from enrollment data (already correctly filtered by session)
+  const currentYearEnrollment = enrollmentData.find((e) => e.year === currentYear)
+  const priorYearEnrollment = enrollmentData.find((e) => e.year === priorYear)
+
+  const summerYearsFormatter = (key: string | number) => {
+    const val = String(key)
+    return val === '1' ? '1 Summer' : `${val} Summers`
+  }
 
   return (
     <div className="space-y-6">
-      {/* Trend indicator (session selector is in MetricsTypeTabs) */}
+      {/* Trend indicator */}
       <div className="flex items-center justify-end">
         <div className="flex items-center gap-2 text-sm">
           {renderTrendIcon()}
           <span className="text-muted-foreground">
-            3-Year Trend: <span className="text-foreground font-medium">{trendInfo.label}</span>
+            {numYears}-Year Trend:{' '}
+            <span className="text-foreground font-medium">{trendInfo.label}</span>
           </span>
         </div>
       </div>
@@ -153,110 +142,91 @@ export default function RetentionOverview() {
       {/* Summary Cards */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         <MetricCard
-          title={`${baseYear} Total Campers`}
-          value={latestTransition?.base_count ?? 0}
-          subtitle={selectedSessionCmId ? 'In selected session' : 'Enrolled campers in base year'}
+          title={`${currentYear} Total Campers`}
+          value={currentYearEnrollment?.total ?? 0}
+          subtitle={
+            selectedSessionCmId ? 'In selected session' : 'Enrolled campers in current year'
+          }
         />
         <MetricCard
-          title={`${currentYear} Total Campers`}
-          value={detailedData?.compare_year_total ?? 0}
-          subtitle="Enrolled campers in current year"
+          title={`${priorYear} Total Campers`}
+          value={priorYearEnrollment?.total ?? 0}
+          subtitle="Enrolled campers in prior year"
         />
         <MetricCard
           title="Returned Campers"
           value={latestTransition?.returned_count ?? 0}
-          subtitle={`From ${baseYear} to ${currentYear}`}
+          subtitle={`From ${priorYear} to ${currentYear}`}
         />
         <MetricCard
           title="Avg Retention Rate"
           value={`${Math.round(trendsData.avg_retention_rate * 100)}%`}
-          subtitle="Average across 3-year period"
+          subtitle={`Average across ${numYears}-year period`}
           trend={trendsData.avg_retention_rate >= 0.5 ? 'up' : 'down'}
           trendValue={trendsData.avg_retention_rate >= 0.5 ? 'Good' : 'Low'}
         />
       </div>
 
-      {/* Trend Charts Row 1 */}
+      {/* Row 1: Retention Rate + Gender Composition */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <RetentionRateLine
           data={trendsData.years}
           title="Overall Retention Rate Trend"
           height={250}
         />
-        {trendsData.enrollment_by_year && trendsData.enrollment_by_year.length > 0 && (
+        {enrollmentData.length > 0 && (
           <GenderStackedChart
-            data={trendsData.enrollment_by_year}
-            title="Gender Composition (3-Year Comparison)"
+            data={enrollmentData}
+            title={`Gender Composition (${numYears}-Year Comparison)`}
             height={250}
           />
         )}
       </div>
 
-      {/* Trend Charts Row 2 */}
+      {/* Row 2: Grade Enrollment + Summers at Camp */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {trendsData.enrollment_by_year && trendsData.enrollment_by_year.length > 0 && (
+        {enrollmentData.length > 0 && (
           <GradeEnrollmentChart
-            data={trendsData.enrollment_by_year}
-            title="Enrollment by Grade (3-Year Comparison)"
+            data={enrollmentData}
+            title={`Enrollment by Grade (${numYears}-Year Comparison)`}
             height={300}
           />
         )}
-        <BreakdownChart
-          title={`Retention by Session (${baseYear}→${currentYear})`}
-          data={sessionChartData}
-          type="bar"
-          height={300}
-          breakdownType="session"
-          onSegmentClick={setFilter}
-        />
+        {enrollmentData.length > 0 && (
+          <MultiYearBreakdownChart
+            data={enrollmentData}
+            breakdownKey="by_summer_years"
+            labelKey="summer_years"
+            title={`Summers at Camp (${numYears}-Year Comparison)`}
+            nameFormatter={summerYearsFormatter}
+            height={300}
+          />
+        )}
       </div>
 
-      {/* Cohort Analysis Charts */}
-      {(summerYearsChartData.length > 0 ||
-        firstSummerYearChartData.length > 0 ||
-        priorSessionChartData.length > 0) && (
-        <div className="mt-8">
-          <h2 className="text-foreground mb-4 text-lg font-semibold">Cohort Analysis</h2>
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            {summerYearsChartData.length > 0 && (
-              <BreakdownChart
-                title="Retention by Summers Enrolled"
-                data={summerYearsChartData}
-                type="bar"
-                height={250}
-                breakdownType="years_at_camp"
-                onSegmentClick={setFilter}
-              />
-            )}
-            {firstSummerYearChartData.length > 0 && (
-              <BreakdownChart
-                title="Retention by First Summer Year"
-                data={firstSummerYearChartData}
-                type="bar"
-                height={250}
-                breakdownType="years_at_camp"
-                onSegmentClick={setFilter}
-              />
-            )}
-            {priorSessionChartData.length > 0 && (
-              <BreakdownChart
-                title={`Retention by ${baseYear - 1} Session`}
-                data={priorSessionChartData}
-                type="bar"
-                height={250}
-                breakdownType="session"
-                onSegmentClick={setFilter}
-              />
-            )}
-          </div>
-        </div>
+      {/* Row 3: First Summer Year */}
+      {enrollmentData.length > 0 && (
+        <MultiYearBreakdownChart
+          data={enrollmentData}
+          breakdownKey="by_first_summer_year"
+          labelKey="first_summer_year"
+          title={`First Summer Year (${numYears}-Year Comparison)`}
+          height={300}
+        />
       )}
 
-      {/* Detailed Session Table */}
+      {/* ─── Legacy Retention Data (for comparison) ─── */}
+      <div className="border-border relative my-8 border-t pt-6">
+        <span className="bg-background text-muted-foreground absolute -top-3 left-4 px-2 text-xs font-medium tracking-wide uppercase">
+          Legacy Retention Data (for comparison)
+        </span>
+      </div>
+
+      {/* Session Details Table */}
       <div className="card-lodge overflow-hidden">
         <div className="border-border border-b px-4 py-3">
           <h3 className="text-foreground text-sm font-semibold">
-            Retention Details by Session ({baseYear}→{currentYear})
+            Retention Details by Session ({priorYear}&rarr;{currentYear})
           </h3>
         </div>
         <div className="overflow-x-auto">
@@ -265,7 +235,7 @@ export default function RetentionOverview() {
               <tr className="border-border bg-muted/30 border-b">
                 <th className="text-muted-foreground px-4 py-3 text-left font-medium">Session</th>
                 <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                  {baseYear} Count
+                  {priorYear} Count
                 </th>
                 <th className="text-muted-foreground px-4 py-3 text-right font-medium">Returned</th>
                 <th className="text-muted-foreground px-4 py-3 text-right font-medium">
@@ -301,23 +271,6 @@ export default function RetentionOverview() {
           </table>
         </div>
       </div>
-
-      {/* Demographic Tables */}
-      {(schoolTableData.length > 0 ||
-        cityTableData.length > 0 ||
-        synagogueTableData.length > 0) && (
-        <div className="mt-8">
-          <h2 className="text-foreground mb-4 text-lg font-semibold">Demographics</h2>
-          <p className="text-muted-foreground mb-4 text-sm">
-            Full demographic data for data quality review. Search and sort to find patterns.
-          </p>
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-            <DemographicTable title="School" data={schoolTableData} />
-            <DemographicTable title="City" data={cityTableData} />
-            <DemographicTable title="Synagogue" data={synagogueTableData} />
-          </div>
-        </div>
-      )}
 
       {/* Drill-down Modal */}
       <DrilldownModal />

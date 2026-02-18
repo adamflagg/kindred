@@ -8,6 +8,7 @@
 import { Link, useLocation } from 'react-router'
 import { BarChart3, Users, TrendingUp, type LucideIcon } from 'lucide-react'
 import { MetricsSessionSelector } from './MetricsSessionSelector'
+import { useMetricsSession } from '../../hooks/useMetricsSession'
 
 interface MetricTypeTab {
   id: string
@@ -34,6 +35,7 @@ const METRIC_TYPES: MetricTypeTab[] = [
 
 export default function MetricsTypeTabs() {
   const location = useLocation()
+  const { expandedRetention, setExpandedRetention } = useMetricsSession()
 
   // Determine active tab based on current path
   const getActiveTab = () => {
@@ -72,8 +74,21 @@ export default function MetricsTypeTabs() {
           })}
         </div>
 
-        {/* Session Selector - Right side */}
-        <MetricsSessionSelector />
+        {/* Right side controls */}
+        <div className="flex items-center gap-3">
+          {activeTab === 'retention' && (
+            <label className="flex cursor-pointer items-center gap-1.5 text-sm">
+              <input
+                type="checkbox"
+                checked={expandedRetention}
+                onChange={(e) => setExpandedRetention(e.target.checked)}
+                className="accent-primary h-3.5 w-3.5 rounded"
+              />
+              <span className="text-muted-foreground whitespace-nowrap">Expanded analysis</span>
+            </label>
+          )}
+          <MetricsSessionSelector />
+        </div>
       </div>
     </nav>
   )
