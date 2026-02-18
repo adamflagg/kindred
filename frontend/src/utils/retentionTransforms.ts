@@ -61,7 +61,7 @@ export function genderToBarData(data: RetentionByGender[] | undefined): Retentio
 export function gradeToBarData(data: RetentionByGrade[] | undefined): RetentionRateBarItem[] {
   if (!data?.length) return []
   return data.map((d) => ({
-    name: d.grade !== null ? `Grade ${d.grade}` : 'Unknown',
+    name: d.grade !== null ? `${d.grade}` : 'Unknown',
     retentionRate: d.retention_rate,
     baseCount: d.base_count,
     returnedCount: d.returned_count,
