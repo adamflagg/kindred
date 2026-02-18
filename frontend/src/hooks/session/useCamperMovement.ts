@@ -304,7 +304,7 @@ export function useCamperMovement({
             bunkCmId = await getBunkCmId(bunkId)
           } catch (error) {
             console.error('Failed to get bunk:', error)
-            throw new Error(`Failed to get bunk with ID ${bunkId}`)
+            throw new Error(`Failed to get bunk with ID ${bunkId}`, { cause: error })
           }
         }
 

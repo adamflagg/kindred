@@ -96,11 +96,10 @@ describe('useSolverOperations', () => {
 
   describe('scenario mode', () => {
     it('should capture scenario ID before running solver', async () => {
-      let capturedScenarioId: string | null = null
       const currentScenarioId = 'scenario-123'
 
       // Before running solver, capture the scenario
-      capturedScenarioId = currentScenarioId
+      const capturedScenarioId = currentScenarioId
 
       expect(capturedScenarioId).toBe('scenario-123')
     })
