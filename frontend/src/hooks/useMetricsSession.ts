@@ -33,6 +33,10 @@ export interface MetricsSessionContextType {
   campSessions: MetricsSession[]
   /** Quest sessions only, sorted by date */
   questSessions: MetricsSession[]
+  /** Whether expanded retention analysis is enabled (5 years instead of 3) */
+  expandedRetention: boolean
+  /** Toggle expanded retention analysis */
+  setExpandedRetention: (v: boolean) => void
 }
 
 export const MetricsSessionContext = createContext<MetricsSessionContextType | undefined>(undefined)

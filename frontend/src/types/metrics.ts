@@ -282,11 +282,41 @@ export interface GradeEnrollment {
   count: number
 }
 
+export interface SummerYearsEnrollment {
+  summer_years: number
+  count: number
+}
+
+export interface FirstSummerYearEnrollment {
+  first_summer_year: number
+  count: number
+}
+
+export interface CityEnrollment {
+  city: string
+  count: number
+}
+
+export interface SchoolEnrollment {
+  school: string
+  count: number
+}
+
+export interface SynagogueEnrollment {
+  synagogue: string
+  count: number
+}
+
 export interface YearEnrollment {
   year: number
   total: number
   by_gender: GenderEnrollment[]
   by_grade: GradeEnrollment[]
+  by_summer_years?: SummerYearsEnrollment[]
+  by_first_summer_year?: FirstSummerYearEnrollment[]
+  by_city?: CityEnrollment[]
+  by_school?: SchoolEnrollment[]
+  by_synagogue?: SynagogueEnrollment[]
 }
 
 // Retention trends types (3-year view)
