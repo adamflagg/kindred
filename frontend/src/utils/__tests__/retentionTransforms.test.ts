@@ -12,6 +12,7 @@ import {
   sessionBunkToBarData,
   priorSessionToBarData,
   sortRetentionBarData,
+  sessionFlowToSankeyData,
 } from '../retentionTransforms'
 import type { RetentionRateBarItem } from '../../components/metrics/RetentionRateBarChart'
 import type {
@@ -26,6 +27,7 @@ import type {
   RetentionByFirstSummerYear,
   RetentionBySessionBunk,
   RetentionByPriorSession,
+  SessionFlowItem,
 } from '../../types/metrics'
 
 describe('genderToBarData', () => {
@@ -280,5 +282,78 @@ describe('sortRetentionBarData', () => {
     const result = sortRetentionBarData(unsortedData, 'none', 2)
     expect(result).toHaveLength(2)
     expect(result.map((d) => d.name)).toEqual(['3 years', '1 year'])
+  })
+})
+
+describe('sessionFlowToSankeyData', () => {
+  it('returns null for undefined input', () => {
+    expect(sessionFlowToSankeyData(undefined)).toBeNull()
+  })
+
+  it('returns null for empty array', () => {
+    expect(sessionFlowToSankeyData([])).toBeNull()
+  })
+
+  it('converts flow items to Sankey nodes and links', () => {
+    const input: SessionFlowItem[] = [
+      { source: 'Session 1', target: 'Session 1', value: 50 },
+      { source: 'Session 1', target: 'Session 2', value: 20 },
+      { source: 'Session 2', target: 'Session 1', value: 30 },
+    ]
+    const result = sessionFlowToSankeyData(input)
+    expect(result).not.toBeNull()
+
+    // 2 source nodes (Session 1, Session 2) + 2 target nodes (Session 1, Session 2)
+    expect(result!.nodes).toHaveLength(4)
+    expect(result!.links).toHaveLength(3)
+
+    // Verify node names include year-side disambiguation
+    const nodeNames = result!.nodes.map((n) => n.name)
+    expect(nodeNames).toContain('Session 1 (from)')
+    expect(nodeNames).toContain('Session 2 (from)')
+    expect(nodeNames).toContain('Session 1 (to)')
+    expect(nodeNames).toContain('Session 2 (to)')
+
+    // Verify link values
+    const linkValues = result!.links.map((l) => l.value)
+    expect(linkValues).toContain(50)
+    expect(linkValues).toContain(20)
+    expect(linkValues).toContain(30)
+  })
+
+  it('source nodes come before target nodes', () => {
+    const input: SessionFlowItem[] = [
+      { source: 'Session 1', target: 'Session 2', value: 10 },
+    ]
+    const result = sessionFlowToSankeyData(input)
+    expect(result).not.toBeNull()
+
+    // Source node should be index 0, target node should be index 1
+    expect(result!.nodes[0]!.name).toBe('Session 1 (from)')
+    expect(result!.nodes[1]!.name).toBe('Session 2 (to)')
+
+    // Link should reference these indices
+    expect(result!.links[0]).toEqual({ source: 0, target: 1, value: 10 })
+  })
+
+  it('Did Not Return is a target node', () => {
+    const input: SessionFlowItem[] = [
+      { source: 'Session 1', target: 'Did Not Return', value: 40 },
+      { source: 'Session 1', target: 'Session 1', value: 60 },
+    ]
+    const result = sessionFlowToSankeyData(input)
+    expect(result).not.toBeNull()
+
+    // "Did Not Return" should appear as a target node (no disambiguation suffix)
+    const nodeNames = result!.nodes.map((n) => n.name)
+    expect(nodeNames).toContain('Did Not Return')
+
+    // It should be after source nodes
+    const dnrIndex = result!.nodes.findIndex((n) => n.name === 'Did Not Return')
+    const sourceCount = input.reduce((acc, f) => {
+      acc.add(f.source)
+      return acc
+    }, new Set<string>()).size
+    expect(dnrIndex).toBeGreaterThanOrEqual(sourceCount)
   })
 })
