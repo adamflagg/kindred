@@ -490,12 +490,16 @@ class TestRetentionServiceCalculateRetention:
 
     @pytest.mark.asyncio
     async def test_calculate_retention_merges_ag_into_parent(self) -> None:
-        """calculate_retention merges AG session stats into parent sessions."""
+        """calculate_retention merges AG session stats into parent sessions.
+
+        by_session now shows compare year sessions. AG sessions in the compare
+        year should merge into their parent main session.
+        """
         from api.services.retention_service import RetentionService
 
         mock_repo = AsyncMock()
 
-        # Person 1 in main, person 2 in AG (parent is main)
+        # Person 1 in main, person 2 in AG (parent is main) - both years
         mock_repo.fetch_attendees.side_effect = [
             [
                 MockAttendee(
@@ -510,7 +514,16 @@ class TestRetentionServiceCalculateRetention:
                 ),
             ],
             [
-                MockAttendee(person_id=1, year=2026, expand={}),
+                MockAttendee(
+                    person_id=1,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=2000, name="Session 1", session_type="main")},
+                ),
+                MockAttendee(
+                    person_id=2,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=2001, name="AG Session", session_type="ag", parent_id=2000)},
+                ),
             ],
         ]
 
@@ -519,10 +532,18 @@ class TestRetentionServiceCalculateRetention:
             2: MockPerson(cm_id=2, gender="F"),
         }
 
-        mock_repo.fetch_sessions.return_value = {
-            1000: MockSession(cm_id=1000, name="Session 1", session_type="main"),
-            1001: MockSession(cm_id=1001, name="AG Session", session_type="ag", parent_id=1000),
-        }
+        async def mock_fetch_sessions(year: int, session_types: list[str] | None = None) -> dict:
+            if year == 2025:
+                return {
+                    1000: MockSession(cm_id=1000, name="Session 1", session_type="main"),
+                    1001: MockSession(cm_id=1001, name="AG Session", session_type="ag", parent_id=1000),
+                }
+            return {
+                2000: MockSession(cm_id=2000, name="Session 1", session_type="main"),
+                2001: MockSession(cm_id=2001, name="AG Session", session_type="ag", parent_id=2000),
+            }
+
+        mock_repo.fetch_sessions.side_effect = mock_fetch_sessions
         mock_repo.fetch_camper_history.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
         mock_repo.build_history_by_person = MagicMock(return_value={})
@@ -530,11 +551,312 @@ class TestRetentionServiceCalculateRetention:
         service = RetentionService(mock_repo)
         result = await service.calculate_retention(base_year=2025, compare_year=2026)
 
-        # Should only have one session breakdown (main), not AG
+        # by_session shows compare year sessions with AG merged into parent
         assert len(result.by_session) == 1
         assert result.by_session[0].session_name == "Session 1"
         # Both campers should be counted under the main session
         assert result.by_session[0].base_count == 2
+
+
+class TestRetentionSessionChartSemantics:
+    """Tests for correct session chart semantics.
+
+    Chart 1 (by_session): Shows compare year (2026) sessions.
+    base_count = total enrolled in that 2026 session.
+    returned_count = those who were also in base year (any session type, unfiltered).
+
+    Chart 2 (by_prior_session): Shows ALL base year (2025) sessions (unfiltered by dropdown).
+    base_count = total enrolled in that 2025 session.
+    returned_count = those in compare year matching the dropdown filter.
+    """
+
+    @pytest.mark.asyncio
+    async def test_by_session_shows_compare_year_sessions(self) -> None:
+        """by_session lists compare year (2026) sessions, not base year."""
+        from api.services.retention_service import RetentionService
+
+        mock_repo = AsyncMock()
+
+        # 2025: person 1 in quest, person 2 in main Session 1
+        # 2026: both in main Session 1
+        mock_repo.fetch_attendees.side_effect = [
+            [
+                MockAttendee(
+                    person_id=1,
+                    year=2025,
+                    expand={"session": MockSession(cm_id=1000, name="Quest", session_type="quest")},
+                ),
+                MockAttendee(
+                    person_id=2,
+                    year=2025,
+                    expand={"session": MockSession(cm_id=1001, name="Session 1", session_type="main")},
+                ),
+            ],
+            [
+                MockAttendee(
+                    person_id=1,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=2000, name="Session 1", session_type="main")},
+                ),
+                MockAttendee(
+                    person_id=2,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=2000, name="Session 1", session_type="main")},
+                ),
+            ],
+        ]
+
+        mock_repo.fetch_persons.return_value = {
+            1: MockPerson(cm_id=1, gender="M"),
+            2: MockPerson(cm_id=2, gender="F"),
+        }
+
+        async def mock_fetch_sessions(year: int, session_types: list[str] | None = None) -> dict:
+            if year == 2025:
+                return {
+                    1000: MockSession(cm_id=1000, name="Quest", session_type="quest"),
+                    1001: MockSession(cm_id=1001, name="Session 1", session_type="main"),
+                }
+            return {2000: MockSession(cm_id=2000, name="Session 1", session_type="main")}
+
+        mock_repo.fetch_sessions.side_effect = mock_fetch_sessions
+        mock_repo.fetch_camper_history.return_value = []
+        mock_repo.fetch_summer_enrollment_history.return_value = []
+        mock_repo.build_history_by_person = MagicMock(return_value={})
+
+        service = RetentionService(mock_repo)
+        result = await service.calculate_retention(base_year=2025, compare_year=2026)
+
+        # by_session should show 2026 Session 1, not 2025 sessions
+        assert len(result.by_session) == 1
+        assert result.by_session[0].session_name == "Session 1"
+        assert result.by_session[0].session_cm_id == 2000
+        # base_count = total in 2026 Session 1
+        assert result.by_session[0].base_count == 2
+        # returned_count = those who were in ANY 2025 session
+        assert result.by_session[0].returned_count == 2
+
+    @pytest.mark.asyncio
+    async def test_by_session_counts_returning_from_any_base_session_type(self) -> None:
+        """by_session returned count includes campers from any base year session type.
+
+        Even with "at camp" filter, a person who was in quest-only in 2025
+        should count as returning if they're in a 2026 main session.
+        """
+        from api.services.retention_service import RetentionService
+
+        mock_repo = AsyncMock()
+
+        # Person 1: quest-only in 2025, main in 2026
+        # Person 3: new in 2026 (not in 2025 at all)
+        mock_repo.fetch_attendees.side_effect = [
+            [
+                MockAttendee(
+                    person_id=1,
+                    year=2025,
+                    expand={"session": MockSession(cm_id=1000, name="Quest", session_type="quest")},
+                ),
+            ],
+            [
+                MockAttendee(
+                    person_id=1,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=2000, name="Session 1", session_type="main")},
+                ),
+                MockAttendee(
+                    person_id=3,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=2000, name="Session 1", session_type="main")},
+                ),
+            ],
+        ]
+
+        mock_repo.fetch_persons.return_value = {
+            1: MockPerson(cm_id=1, gender="M"),
+        }
+
+        # "at camp" filter: main/embedded/ag
+        async def mock_fetch_sessions(year: int, session_types: list[str] | None = None) -> dict:
+            all_sessions: dict[int, dict[int, MockSession]] = {
+                2025: {1000: MockSession(cm_id=1000, name="Quest", session_type="quest")},
+                2026: {2000: MockSession(cm_id=2000, name="Session 1", session_type="main")},
+            }
+            sessions = all_sessions.get(year, {})
+            if session_types:
+                return {k: v for k, v in sessions.items() if v.session_type in session_types}
+            return sessions
+
+        mock_repo.fetch_sessions.side_effect = mock_fetch_sessions
+        mock_repo.fetch_camper_history.return_value = []
+        mock_repo.fetch_summer_enrollment_history.return_value = []
+        mock_repo.build_history_by_person = MagicMock(return_value={})
+
+        service = RetentionService(mock_repo)
+        result = await service.calculate_retention(
+            base_year=2025,
+            compare_year=2026,
+            session_types=["main", "embedded", "ag"],
+        )
+
+        # by_session shows 2026 Session 1
+        assert len(result.by_session) == 1
+        # base_count = total in 2026 Session 1 (persons 1 and 3)
+        assert result.by_session[0].base_count == 2
+        # Person 1 was in quest in 2025 — still counts as returning
+        # Person 3 was NOT in 2025 at all — does not count
+        assert result.by_session[0].returned_count == 1
+
+    @pytest.mark.asyncio
+    async def test_by_prior_session_shows_all_base_year_sessions(self) -> None:
+        """by_prior_session includes all base year session types regardless of dropdown filter."""
+        from api.services.retention_service import RetentionService
+
+        mock_repo = AsyncMock()
+
+        # 2025: person 1 in quest, person 2 in main Session 1
+        # 2026: both in main Session 1
+        mock_repo.fetch_attendees.side_effect = [
+            [
+                MockAttendee(
+                    person_id=1,
+                    year=2025,
+                    expand={"session": MockSession(cm_id=1000, name="Quest", session_type="quest")},
+                ),
+                MockAttendee(
+                    person_id=2,
+                    year=2025,
+                    expand={"session": MockSession(cm_id=1001, name="Session 1", session_type="main")},
+                ),
+            ],
+            [
+                MockAttendee(
+                    person_id=1,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=2000, name="Session 1", session_type="main")},
+                ),
+                MockAttendee(
+                    person_id=2,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=2000, name="Session 1", session_type="main")},
+                ),
+            ],
+        ]
+
+        mock_repo.fetch_persons.return_value = {
+            1: MockPerson(cm_id=1, gender="M"),
+            2: MockPerson(cm_id=2, gender="F"),
+        }
+
+        # "at camp" filter — but by_prior_session should still show quest
+        async def mock_fetch_sessions(year: int, session_types: list[str] | None = None) -> dict:
+            all_sessions: dict[int, dict[int, MockSession]] = {
+                2025: {
+                    1000: MockSession(cm_id=1000, name="Quest", session_type="quest"),
+                    1001: MockSession(cm_id=1001, name="Session 1", session_type="main"),
+                },
+                2026: {2000: MockSession(cm_id=2000, name="Session 1", session_type="main")},
+            }
+            sessions = all_sessions.get(year, {})
+            if session_types:
+                return {k: v for k, v in sessions.items() if v.session_type in session_types}
+            return sessions
+
+        mock_repo.fetch_sessions.side_effect = mock_fetch_sessions
+        mock_repo.fetch_camper_history.return_value = []
+        mock_repo.fetch_summer_enrollment_history.return_value = []
+        mock_repo.build_history_by_person = MagicMock(return_value={})
+
+        service = RetentionService(mock_repo)
+        result = await service.calculate_retention(
+            base_year=2025,
+            compare_year=2026,
+            session_types=["main", "embedded", "ag"],  # "at camp" filter
+        )
+
+        # by_prior_session should include BOTH quest and main from 2025
+        session_names = {s.prior_session for s in result.by_prior_session}
+        assert "Quest" in session_names
+        assert "Session 1" in session_names
+
+    @pytest.mark.asyncio
+    async def test_by_prior_session_returned_filtered_by_dropdown(self) -> None:
+        """by_prior_session returned count reflects only compare year sessions matching dropdown.
+
+        2025 quest has 2 kids. Kid 1 returns to quest in 2026, kid 2 returns to
+        main in 2026. With "at camp" dropdown: quest shows 1 of 2 returned
+        (only kid 2 who went to main counts, since quest is not in the filter).
+        """
+        from api.services.retention_service import RetentionService
+
+        mock_repo = AsyncMock()
+
+        # 2025 quest: person 1 + person 2
+        # 2026: person 1 → quest, person 2 → main Session 2
+        mock_repo.fetch_attendees.side_effect = [
+            [
+                MockAttendee(
+                    person_id=1,
+                    year=2025,
+                    expand={"session": MockSession(cm_id=1000, name="Quest", session_type="quest")},
+                ),
+                MockAttendee(
+                    person_id=2,
+                    year=2025,
+                    expand={"session": MockSession(cm_id=1000, name="Quest", session_type="quest")},
+                ),
+            ],
+            [
+                MockAttendee(
+                    person_id=1,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=2100, name="Quest", session_type="quest")},
+                ),
+                MockAttendee(
+                    person_id=2,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=2000, name="Session 2", session_type="main")},
+                ),
+            ],
+        ]
+
+        mock_repo.fetch_persons.return_value = {
+            1: MockPerson(cm_id=1, gender="M"),
+            2: MockPerson(cm_id=2, gender="F"),
+        }
+
+        async def mock_fetch_sessions(year: int, session_types: list[str] | None = None) -> dict:
+            all_sessions: dict[int, dict[int, MockSession]] = {
+                2025: {1000: MockSession(cm_id=1000, name="Quest", session_type="quest")},
+                2026: {
+                    2000: MockSession(cm_id=2000, name="Session 2", session_type="main"),
+                    2100: MockSession(cm_id=2100, name="Quest", session_type="quest"),
+                },
+            }
+            sessions = all_sessions.get(year, {})
+            if session_types:
+                return {k: v for k, v in sessions.items() if v.session_type in session_types}
+            return sessions
+
+        mock_repo.fetch_sessions.side_effect = mock_fetch_sessions
+        mock_repo.fetch_camper_history.return_value = []
+        mock_repo.fetch_summer_enrollment_history.return_value = []
+        mock_repo.build_history_by_person = MagicMock(return_value={})
+
+        service = RetentionService(mock_repo)
+        # "At camp" filter: only main/embedded/ag
+        result = await service.calculate_retention(
+            base_year=2025,
+            compare_year=2026,
+            session_types=["main", "embedded", "ag"],
+        )
+
+        # by_prior_session should show Quest from 2025 with base=2
+        quest = next((s for s in result.by_prior_session if s.prior_session == "Quest"), None)
+        assert quest is not None
+        assert quest.base_count == 2
+        # With "at camp" filter: only person 2 returned to main session
+        # Person 1 returned to quest which is NOT in the "at camp" filter
+        assert quest.returned_count == 1
 
 
 class TestRetentionServiceComputeSummerMetrics:
