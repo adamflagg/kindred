@@ -270,4 +270,15 @@ describe('sortRetentionBarData', () => {
     sortRetentionBarData(unsortedData, 'name')
     expect(unsortedData).toEqual(original)
   })
+
+  it('preserves input order when sortBy is "none"', () => {
+    const result = sortRetentionBarData(unsortedData, 'none')
+    expect(result.map((d) => d.name)).toEqual(['3 years', '1 year', '10 years', '2 years'])
+  })
+
+  it('applies topN without sorting when sortBy is "none"', () => {
+    const result = sortRetentionBarData(unsortedData, 'none', 2)
+    expect(result).toHaveLength(2)
+    expect(result.map((d) => d.name)).toEqual(['3 years', '1 year'])
+  })
 })

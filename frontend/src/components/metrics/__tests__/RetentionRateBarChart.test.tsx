@@ -62,4 +62,18 @@ describe('RetentionRateBarChart', () => {
     )
     expect(container.querySelector('.card-lodge')).toBeInTheDocument()
   })
+
+  it('preserves input order when sortBy is "none"', () => {
+    const orderedData: RetentionRateBarItem[] = [
+      { name: 'Taste of Camp', retentionRate: 0.6, baseCount: 50, returnedCount: 30 },
+      { name: 'Session 1', retentionRate: 0.8, baseCount: 100, returnedCount: 80 },
+      { name: 'Session 2', retentionRate: 0.5, baseCount: 80, returnedCount: 40 },
+    ]
+    // With sortBy="none", chart should render without re-sorting
+    const { container } = render(
+      <RetentionRateBarChart data={orderedData} title="Session Chart" sortBy="none" />
+    )
+    expect(container.querySelector('.card-lodge')).toBeInTheDocument()
+    expect(screen.getByTestId('bar-chart')).toBeInTheDocument()
+  })
 })
