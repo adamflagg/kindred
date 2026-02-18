@@ -105,19 +105,21 @@ class TestRetentionTrendsServiceBasic:
             num_years=3,
         )
 
-        # With 3 years (2024, 2025, 2026), we get 2 transitions
-        assert len(result.years) == 2
-        assert result.years[0].from_year == 2024
-        assert result.years[0].to_year == 2025
-        assert result.years[1].from_year == 2025
-        assert result.years[1].to_year == 2026
+        # With num_years=3 we get 3 transitions from 4 years of data
+        assert len(result.years) == 3
+        assert result.years[0].from_year == 2023
+        assert result.years[0].to_year == 2024
+        assert result.years[1].from_year == 2024
+        assert result.years[1].to_year == 2025
+        assert result.years[2].from_year == 2025
+        assert result.years[2].to_year == 2026
 
         # Should have avg_retention_rate and trend_direction
         assert isinstance(result.avg_retention_rate, float)
         assert result.trend_direction in ("improving", "declining", "stable")
 
-        # Should have enrollment_by_year for all 3 years
-        assert len(result.enrollment_by_year) == 3
+        # Should have enrollment_by_year for all 4 years
+        assert len(result.enrollment_by_year) == 4
 
     @pytest.mark.asyncio
     async def test_response_shape_with_2_years(self, mock_repository: MagicMock) -> None:
@@ -134,11 +136,13 @@ class TestRetentionTrendsServiceBasic:
             num_years=2,
         )
 
-        # With 2 years (2025, 2026), we get 1 transition
-        assert len(result.years) == 1
-        assert result.years[0].from_year == 2025
-        assert result.years[0].to_year == 2026
-        assert len(result.enrollment_by_year) == 2
+        # With num_years=2 we get 2 transitions from 3 years of data
+        assert len(result.years) == 2
+        assert result.years[0].from_year == 2024
+        assert result.years[0].to_year == 2025
+        assert result.years[1].from_year == 2025
+        assert result.years[1].to_year == 2026
+        assert len(result.enrollment_by_year) == 3
 
     @pytest.mark.asyncio
     async def test_retention_rate_calculation(self, mock_repository: MagicMock) -> None:
@@ -166,7 +170,7 @@ class TestRetentionTrendsServiceBasic:
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(
             current_year=2025,
-            num_years=2,
+            num_years=1,
         )
 
         # 6 out of 10 returned = 60% retention
@@ -222,7 +226,7 @@ class TestRetentionTrendsServiceBreakdowns:
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(
             current_year=2025,
-            num_years=2,
+            num_years=1,
         )
 
         transition = result.years[0]
@@ -270,7 +274,7 @@ class TestRetentionTrendsServiceBreakdowns:
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(
             current_year=2025,
-            num_years=2,
+            num_years=1,
         )
 
         transition = result.years[0]
@@ -330,7 +334,7 @@ class TestRetentionTrendsServiceTrend:
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(
             current_year=2026,
-            num_years=3,
+            num_years=2,
         )
 
         # 2024→2025: 50%, 2025→2026: 80%, trend is improving
@@ -365,7 +369,7 @@ class TestRetentionTrendsServiceTrend:
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(
             current_year=2026,
-            num_years=3,
+            num_years=2,
         )
 
         # 2024→2025: 80%, 2025→2026: 50%, trend is declining
@@ -401,7 +405,7 @@ class TestRetentionTrendsServiceTrend:
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(
             current_year=2026,
-            num_years=3,
+            num_years=2,
         )
 
         # Both transitions are ~70%, trend is stable
@@ -461,7 +465,7 @@ class TestRetentionTrendsServiceFiltering:
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(
             current_year=2025,
-            num_years=2,
+            num_years=1,
             session_types=["main", "ag"],
         )
 
@@ -506,7 +510,7 @@ class TestRetentionTrendsServiceFiltering:
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(
             current_year=2025,
-            num_years=2,
+            num_years=1,
             session_cm_id=100,
         )
 
@@ -558,7 +562,7 @@ class TestRetentionTrendsServiceEnrollment:
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(
             current_year=2026,
-            num_years=3,
+            num_years=2,
         )
 
         assert len(result.enrollment_by_year) == 3
@@ -596,7 +600,7 @@ class TestRetentionTrendsServiceEnrollment:
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(
             current_year=2025,
-            num_years=2,
+            num_years=1,
         )
 
         year_2024 = next(e for e in result.enrollment_by_year if e.year == 2024)
@@ -632,7 +636,7 @@ class TestRetentionTrendsServiceEnrollment:
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(
             current_year=2025,
-            num_years=2,
+            num_years=1,
         )
 
         year_2024 = next(e for e in result.enrollment_by_year if e.year == 2024)
@@ -679,7 +683,7 @@ class TestRetentionTrendsServiceEdgeCases:
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(
             current_year=2025,
-            num_years=2,
+            num_years=1,
         )
 
         # With 0 base campers, retention rate should be 0
@@ -717,7 +721,7 @@ class TestRetentionTrendsServiceEdgeCases:
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(
             current_year=2026,
-            num_years=3,
+            num_years=2,
         )
 
         # (0.5 + 0.8) / 2 = 0.65
@@ -747,7 +751,7 @@ class TestRetentionTrendsServiceEdgeCases:
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(
             current_year=2025,
-            num_years=2,
+            num_years=1,
         )
 
         # With only 1 transition, we can't determine trend - should be stable
@@ -809,7 +813,7 @@ class TestRetentionTrendsServiceEnrollmentBreakdowns:
         mock_repository.fetch_summer_enrollment_history = AsyncMock(return_value=[])
 
         service = RetentionTrendsService(mock_repository)
-        result = await service.calculate_retention_trends(current_year=2026, num_years=2)
+        result = await service.calculate_retention_trends(current_year=2026, num_years=1)
 
         year_2025 = next(e for e in result.enrollment_by_year if e.year == 2025)
         assert len(year_2025.by_city) > 0
@@ -850,7 +854,7 @@ class TestRetentionTrendsServiceEnrollmentBreakdowns:
         mock_repository.fetch_summer_enrollment_history = AsyncMock(return_value=[])
 
         service = RetentionTrendsService(mock_repository)
-        result = await service.calculate_retention_trends(current_year=2026, num_years=2)
+        result = await service.calculate_retention_trends(current_year=2026, num_years=1)
 
         year_2025 = next(e for e in result.enrollment_by_year if e.year == 2025)
         assert len(year_2025.by_school) > 0
@@ -890,7 +894,7 @@ class TestRetentionTrendsServiceEnrollmentBreakdowns:
         mock_repository.fetch_summer_enrollment_history = AsyncMock(return_value=[])
 
         service = RetentionTrendsService(mock_repository)
-        result = await service.calculate_retention_trends(current_year=2026, num_years=2)
+        result = await service.calculate_retention_trends(current_year=2026, num_years=1)
 
         year_2025 = next(e for e in result.enrollment_by_year if e.year == 2025)
         assert len(year_2025.by_synagogue) > 0
@@ -941,7 +945,7 @@ class TestRetentionTrendsServiceEnrollmentBreakdowns:
         mock_repository.fetch_summer_enrollment_history = AsyncMock(return_value=enrollment_history)
 
         service = RetentionTrendsService(mock_repository)
-        result = await service.calculate_retention_trends(current_year=2026, num_years=2)
+        result = await service.calculate_retention_trends(current_year=2026, num_years=1)
 
         # For year 2025, summer_years should reflect history up to 2025
         year_2025 = next(e for e in result.enrollment_by_year if e.year == 2025)
@@ -992,7 +996,7 @@ class TestRetentionTrendsServiceEnrollmentBreakdowns:
         mock_repository.fetch_summer_enrollment_history = AsyncMock(return_value=enrollment_history)
 
         service = RetentionTrendsService(mock_repository)
-        result = await service.calculate_retention_trends(current_year=2026, num_years=2)
+        result = await service.calculate_retention_trends(current_year=2026, num_years=1)
 
         year_2025 = next(e for e in result.enrollment_by_year if e.year == 2025)
         assert len(year_2025.by_first_summer_year) > 0
@@ -1029,7 +1033,7 @@ class TestRetentionTrendsServiceEnrollmentBreakdowns:
         mock_repository.fetch_summer_enrollment_history = AsyncMock(return_value=[])
 
         service = RetentionTrendsService(mock_repository)
-        result = await service.calculate_retention_trends(current_year=2026, num_years=2)
+        result = await service.calculate_retention_trends(current_year=2026, num_years=1)
 
         year = result.enrollment_by_year[0]
         assert year.by_city[0].city == "San Francisco"
@@ -1051,7 +1055,7 @@ class TestRetentionTrendsServiceEnrollmentBreakdowns:
         mock_repository.fetch_summer_enrollment_history = AsyncMock(return_value=[])
 
         service = RetentionTrendsService(mock_repository)
-        result = await service.calculate_retention_trends(current_year=2026, num_years=2)
+        result = await service.calculate_retention_trends(current_year=2026, num_years=1)
 
         for enrollment in result.enrollment_by_year:
             assert enrollment.by_summer_years == []
@@ -1086,7 +1090,7 @@ class TestRetentionTrendsServiceEnrollmentBreakdowns:
         mock_repository.fetch_summer_enrollment_history = AsyncMock(return_value=enrollment_history)
 
         service = RetentionTrendsService(mock_repository)
-        result = await service.calculate_retention_trends(current_year=2026, num_years=2)
+        result = await service.calculate_retention_trends(current_year=2026, num_years=1)
 
         # For year 2025: person 1 has 2 summers (2024, 2025) — not 3
         year_2025 = next(e for e in result.enrollment_by_year if e.year == 2025)

@@ -391,26 +391,26 @@ class TestRetentionTrendsParameters:
     def test_num_years_parameter(self) -> None:
         """num_years parameter controls how many year transitions to include.
 
-        Default: 3 (means 2 transitions: Y-2→Y-1, Y-1→Y)
-        Custom: 5 (means 4 transitions: Y-4→Y-3, Y-3→Y-2, Y-2→Y-1, Y-1→Y)
+        Default: 3 (means 3 transitions: Y-3→Y-2, Y-2→Y-1, Y-1→Y)
+        Custom: 5 (means 5 transitions: Y-5→Y-4, ..., Y-1→Y)
         """
         current_year = 2026
         num_years = 3
 
         # Calculate year pairs
-        years = list(range(current_year - num_years + 1, current_year + 1))
+        years = list(range(current_year - num_years, current_year + 1))
         transitions = [(years[i], years[i + 1]) for i in range(len(years) - 1)]
 
-        assert years == [2024, 2025, 2026]
-        assert transitions == [(2024, 2025), (2025, 2026)]
+        assert years == [2023, 2024, 2025, 2026]
+        assert transitions == [(2023, 2024), (2024, 2025), (2025, 2026)]
 
         # With num_years=5
         num_years = 5
-        years = list(range(current_year - num_years + 1, current_year + 1))
+        years = list(range(current_year - num_years, current_year + 1))
         transitions = [(years[i], years[i + 1]) for i in range(len(years) - 1)]
 
-        assert years == [2022, 2023, 2024, 2025, 2026]
-        assert len(transitions) == 4
+        assert years == [2021, 2022, 2023, 2024, 2025, 2026]
+        assert len(transitions) == 5
 
     def test_session_types_filtering(self) -> None:
         """session_types parameter filters to specific session types."""
