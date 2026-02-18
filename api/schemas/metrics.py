@@ -436,6 +436,41 @@ class GradeEnrollment(BaseModel):
     count: int = Field(description="Number enrolled")
 
 
+class SummerYearsEnrollment(BaseModel):
+    """Summer years enrollment count for a single year."""
+
+    summer_years: int = Field(description="Number of summer years")
+    count: int = Field(description="Number of campers")
+
+
+class FirstSummerYearEnrollment(BaseModel):
+    """First summer year enrollment count for a single year."""
+
+    first_summer_year: int = Field(description="First summer year")
+    count: int = Field(description="Number of campers")
+
+
+class CityEnrollment(BaseModel):
+    """City enrollment count for a single year."""
+
+    city: str = Field(description="City name")
+    count: int = Field(description="Number of campers")
+
+
+class SchoolEnrollment(BaseModel):
+    """School enrollment count for a single year."""
+
+    school: str = Field(description="School name")
+    count: int = Field(description="Number of campers")
+
+
+class SynagogueEnrollment(BaseModel):
+    """Synagogue enrollment count for a single year."""
+
+    synagogue: str = Field(description="Synagogue name")
+    count: int = Field(description="Number of campers")
+
+
 class YearEnrollment(BaseModel):
     """Enrollment breakdown for a single year."""
 
@@ -443,6 +478,15 @@ class YearEnrollment(BaseModel):
     total: int = Field(description="Total enrolled")
     by_gender: list[GenderEnrollment] = Field(description="Enrollment by gender")
     by_grade: list[GradeEnrollment] = Field(description="Enrollment by grade")
+    by_summer_years: list[SummerYearsEnrollment] = Field(
+        default_factory=list, description="Enrollment by summers at camp"
+    )
+    by_first_summer_year: list[FirstSummerYearEnrollment] = Field(
+        default_factory=list, description="Enrollment by first summer year"
+    )
+    by_city: list[CityEnrollment] = Field(default_factory=list, description="Enrollment by city")
+    by_school: list[SchoolEnrollment] = Field(default_factory=list, description="Enrollment by school")
+    by_synagogue: list[SynagogueEnrollment] = Field(default_factory=list, description="Enrollment by synagogue")
 
 
 # ============================================================================

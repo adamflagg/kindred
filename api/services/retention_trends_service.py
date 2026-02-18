@@ -10,14 +10,20 @@ import asyncio
 from typing import TYPE_CHECKING, Any
 
 from api.schemas.metrics import (
+    CityEnrollment,
+    FirstSummerYearEnrollment,
     GenderEnrollment,
     GradeEnrollment,
     RetentionByGender,
     RetentionByGrade,
     RetentionTrendsResponse,
     RetentionTrendYear,
+    SchoolEnrollment,
+    SummerYearsEnrollment,
+    SynagogueEnrollment,
     YearEnrollment,
 )
+from api.utils.session_metrics import compute_summer_metrics
 
 from .breakdown_calculator import safe_rate
 
@@ -89,8 +95,15 @@ class RetentionTrendsService:
         # Determine trend direction
         trend_direction = self._calculate_trend_direction(rates)
 
+        # Fetch enrollment history for summer metrics (union of all person IDs)
+        all_person_ids: set[int] = set()
+        for year in years:
+            all_person_ids |= data_by_year[year]["person_ids"]
+
+        enrollment_history = await self.repo.fetch_summer_enrollment_history(all_person_ids, max_year=current_year)
+
         # Compute enrollment_by_year
-        enrollment_by_year = self._compute_enrollment_by_year(years, data_by_year)
+        enrollment_by_year = self._compute_enrollment_by_year(years, data_by_year, enrollment_history)
 
         return RetentionTrendsResponse(
             years=retention_years,
@@ -338,12 +351,14 @@ class RetentionTrendsService:
         self,
         years: list[int],
         data_by_year: dict[int, dict[str, Any]],
+        enrollment_history: list[Any] | None = None,
     ) -> list[YearEnrollment]:
         """Compute enrollment data for each year.
 
         Args:
             years: List of years.
             data_by_year: Data for each year.
+            enrollment_history: Optional enrollment history for summer metrics.
 
         Returns:
             List of YearEnrollment objects.
@@ -381,12 +396,91 @@ class RetentionTrendsService:
                 for g, c in sorted(grade_counts.items(), key=lambda x: (x[0] is None, x[0]))
             ]
 
+            # City breakdown
+            city_counts: dict[str, int] = {}
+            for pid in person_ids:
+                person = persons.get(pid)
+                if not person:
+                    continue
+                city = getattr(person, "normalized_city", None) or getattr(person, "address_city", "") or ""
+                if city:
+                    city_counts[city] = city_counts.get(city, 0) + 1
+
+            city_breakdown = [
+                CityEnrollment(city=c, count=cnt) for c, cnt in sorted(city_counts.items(), key=lambda x: -x[1])
+            ]
+
+            # School breakdown
+            school_counts: dict[str, int] = {}
+            for pid in person_ids:
+                person = persons.get(pid)
+                if not person:
+                    continue
+                school = getattr(person, "normalized_school", None) or getattr(person, "school", "") or ""
+                if school:
+                    school_counts[school] = school_counts.get(school, 0) + 1
+
+            school_breakdown = [
+                SchoolEnrollment(school=s, count=c) for s, c in sorted(school_counts.items(), key=lambda x: -x[1])
+            ]
+
+            # Synagogue breakdown
+            synagogue_counts: dict[str, int] = {}
+            for pid in person_ids:
+                person = persons.get(pid)
+                if not person:
+                    continue
+                synagogue = getattr(person, "normalized_congregation", None) or ""
+                if synagogue:
+                    synagogue_counts[synagogue] = synagogue_counts.get(synagogue, 0) + 1
+
+            synagogue_breakdown = [
+                SynagogueEnrollment(synagogue=s, count=c)
+                for s, c in sorted(synagogue_counts.items(), key=lambda x: -x[1])
+            ]
+
+            # Summer years + first summer year (from enrollment history)
+            summer_years_breakdown: list[SummerYearsEnrollment] = []
+            first_summer_year_breakdown: list[FirstSummerYearEnrollment] = []
+
+            if enrollment_history:
+                # Filter history to records up to this year for scoping
+                history_up_to_year = [r for r in enrollment_history if getattr(r, "year", 0) <= year]
+                summer_years_by_person, first_year_by_person = compute_summer_metrics(history_up_to_year, person_ids)
+
+                # Aggregate summer years
+                sy_counts: dict[int, int] = {}
+                for pid in person_ids:
+                    sy = summer_years_by_person.get(pid, 0)
+                    if sy > 0:
+                        sy_counts[sy] = sy_counts.get(sy, 0) + 1
+
+                summer_years_breakdown = [
+                    SummerYearsEnrollment(summer_years=sy, count=c) for sy, c in sorted(sy_counts.items())
+                ]
+
+                # Aggregate first summer year
+                fsy_counts: dict[int, int] = {}
+                for pid in person_ids:
+                    fsy = first_year_by_person.get(pid)
+                    if fsy is not None:
+                        fsy_counts[fsy] = fsy_counts.get(fsy, 0) + 1
+
+                first_summer_year_breakdown = [
+                    FirstSummerYearEnrollment(first_summer_year=y, count=c) for y, c in sorted(fsy_counts.items())
+                ]
+
             enrollment_by_year.append(
                 YearEnrollment(
                     year=year,
                     total=total,
                     by_gender=gender_breakdown,
                     by_grade=grade_breakdown,
+                    by_city=city_breakdown,
+                    by_school=school_breakdown,
+                    by_synagogue=synagogue_breakdown,
+                    by_summer_years=summer_years_breakdown,
+                    by_first_summer_year=first_summer_year_breakdown,
                 )
             )
 
