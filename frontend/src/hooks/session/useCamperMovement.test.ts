@@ -201,15 +201,16 @@ describe('camper movement scenarios', () => {
     })
 
     it('should clear pending move after execution', async () => {
-      let pendingMove: { camperId: string; bunkId: string | null } | null = {
+      const initialMove: { camperId: string; bunkId: string | null } = {
         camperId: '123:456',
         bunkId: 'bunk-1',
       }
 
       // Simulate execution
       await Promise.resolve() // mock move execution
-      pendingMove = null
+      const pendingMove: typeof initialMove | null = null
 
+      expect(initialMove).toBeTruthy()
       expect(pendingMove).toBeNull()
     })
   })

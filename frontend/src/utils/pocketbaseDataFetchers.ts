@@ -162,7 +162,7 @@ export async function fetchCampersForSession(
         person?: PersonsResponse
       }>
     | BunkAssignmentsDraftResponse<{ bunk?: BunksResponse }>
-  > = []
+  >
 
   if (scenarioId) {
     // Fetch draft assignments for scenario

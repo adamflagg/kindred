@@ -338,7 +338,7 @@ export default function CamperDetailsPanel({
       if (!person?.household_id || person.household_id === 0) return []
 
       const siblingFilter = `household_id = ${person.household_id} && cm_id != ${personCmId} && grade > 0 && year = ${currentYear}`
-      let siblingPersons: PersonsResponse[] = []
+      let siblingPersons: PersonsResponse[]
       try {
         siblingPersons = await pb.collection<PersonsResponse>('persons').getFullList({
           filter: siblingFilter,

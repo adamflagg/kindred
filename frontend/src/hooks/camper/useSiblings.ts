@@ -48,7 +48,7 @@ export function useSiblings(
       // Find other persons with same household_id who have a grade (excludes parents)
       const siblingFilter = `household_id = ${householdId} && cm_id != ${personCmId} && grade > 0 && year = ${currentYear}`
 
-      let siblingPersons: PersonsResponse[] = []
+      let siblingPersons: PersonsResponse[]
       try {
         siblingPersons = await pb.collection<PersonsResponse>('persons').getFullList({
           filter: siblingFilter,

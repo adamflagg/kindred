@@ -198,10 +198,7 @@ function BunkCard({
 
     let gradeDistribution = null
     let gradeRatioWarning = false
-    let tooManyGradesWarning = false
-
-    // Check if there are more than 2 different grades
-    tooManyGradesWarning = sortedGrades.length > 2
+    const tooManyGradesWarning = sortedGrades.length > 2
 
     if (sortedGrades.length === 1) {
       gradeDistribution = { single: sortedGrades[0] }
