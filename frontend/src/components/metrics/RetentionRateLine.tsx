@@ -102,11 +102,7 @@ export function RetentionRateLine({
           />
           <Tooltip content={<CustomTooltip />} />
           {/* Reference line at 50% */}
-          <ReferenceLine
-            y={50}
-            stroke="hsl(var(--muted-foreground))"
-            strokeDasharray="3 3"
-          />
+          <ReferenceLine y={50} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
           <Line
             type="monotone"
             dataKey="retentionRate"
