@@ -18,7 +18,7 @@ import type {
 } from '../types/metrics'
 import type { RetentionRateBarItem } from '../components/metrics/RetentionRateBarChart'
 
-export type RetentionSortBy = 'rate' | 'count' | 'name'
+export type RetentionSortBy = 'rate' | 'count' | 'name' | 'none'
 
 /**
  * Sort and optionally limit retention bar data.
@@ -42,6 +42,8 @@ export function sortRetentionBarData(
     case 'name':
       sorted.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
       break
+    case 'none':
+      break // preserve input order
   }
   return topN ? sorted.slice(0, topN) : sorted
 }

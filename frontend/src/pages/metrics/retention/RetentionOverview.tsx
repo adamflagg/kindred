@@ -7,6 +7,7 @@
  * - Geographic retention (city, school, synagogue) inline
  */
 
+import { useMemo } from 'react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useRetentionMetrics } from '../../../hooks/useMetrics'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
@@ -25,13 +26,21 @@ import {
   sessionBunkToBarData,
   priorSessionToBarData,
 } from '../../../utils/retentionTransforms'
+import {
+  buildSessionDateLookup,
+  sortSessionDataByDate,
+  sortPriorSessionDataByDate,
+} from '../../../utils/sessionUtils'
 import { Loader2, AlertCircle } from 'lucide-react'
 
 export default function RetentionOverview() {
   const { currentYear } = useCurrentYear()
-  const { selectedSessionCmId, sessionTypesParam } = useMetricsSession()
+  const { selectedSessionCmId, sessions, sessionTypesParam } = useMetricsSession()
 
   const priorYear = currentYear - 1
+
+  // Build date lookup for chronological session sorting (must be before early returns)
+  const sessionDateLookup = useMemo(() => buildSessionDateLookup(sessions), [sessions])
 
   const { data, isLoading, error } = useRetentionMetrics(
     priorYear,
@@ -68,13 +77,15 @@ export default function RetentionOverview() {
 
   const didNotReturn = data.base_year_total - data.returned_count
 
-  // Transform all breakdowns to chart data
+  // Pre-sort session data chronologically before converting to bar data
   const genderBars = genderToBarData(data.by_gender)
   const gradeBars = gradeToBarData(data.by_grade)
-  const sessionBars = sessionToBarData(data.by_session)
+  const sessionBars = sessionToBarData(sortSessionDataByDate(data.by_session ?? [], sessionDateLookup))
   const summerYearsBars = summerYearsToBarData(data.by_summer_years)
   const firstSummerYearBars = firstSummerYearToBarData(data.by_first_summer_year)
-  const priorSessionBars = priorSessionToBarData(data.by_prior_session)
+  const priorSessionBars = priorSessionToBarData(
+    sortPriorSessionDataByDate(data.by_prior_session ?? [], sessionDateLookup)
+  )
   const sessionBunkBars = sessionBunkToBarData(data.by_session_bunk)
   const cityBars = cityToBarData(data.by_city)
   const schoolBars = schoolToBarData(data.by_school)
@@ -108,54 +119,56 @@ export default function RetentionOverview() {
         />
       </div>
 
-      {/* Gender + Session side by side */}
+      {/* Row 1: Gender + Grade side by side */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {genderBars.length > 0 && (
           <RetentionRateBarChart data={genderBars} title="Retention by Gender" />
         )}
+        {gradeBars.length > 0 && (
+          <RetentionRateLineChart data={gradeBars} title="Retention by Grade" />
+        )}
+      </div>
+
+      {/* Row 2: Current Year Session + Prior Year Session */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {sessionBars.length > 0 && (
           <RetentionRateBarChart
             data={sessionBars}
             title={`Retention by ${currentYear} Session`}
+            sortBy="none"
           />
         )}
-      </div>
-
-      {/* Grade (line chart - numeric x-axis) */}
-      {gradeBars.length > 0 && (
-        <RetentionRateLineChart data={gradeBars} title="Retention by Grade" />
-      )}
-
-      {/* Prior Session + Session+Bunk */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {priorSessionBars.length > 0 && (
           <RetentionRateBarChart
             data={priorSessionBars}
             title={`Retention by ${priorYear} Session`}
-          />
-        )}
-        {sessionBunkBars.length > 0 && (
-          <RetentionRateBarChart
-            data={sessionBunkBars}
-            title={`${priorYear} Session + Bunk (Top 15)`}
-            topN={15}
-            sortBy="count"
+            sortBy="none"
           />
         )}
       </div>
 
-      {/* Summers at Camp (line chart - numeric x-axis) */}
-      {summerYearsBars.length > 0 && (
-        <RetentionRateLineChart data={summerYearsBars} title="Retention by Summers at Camp" />
-      )}
-
-      {/* First Summer Year (line chart - numeric x-axis) */}
-      {firstSummerYearBars.length > 0 && (
-        <RetentionRateLineChart
-          data={firstSummerYearBars}
-          title="Retention by First Summer Year"
+      {/* Row 3: Session+Bunk (full width) */}
+      {sessionBunkBars.length > 0 && (
+        <RetentionRateBarChart
+          data={sessionBunkBars}
+          title={`${priorYear} Session + Bunk (Top 15)`}
+          topN={15}
+          sortBy="count"
         />
       )}
+
+      {/* Row 4: Summers at Camp + First Summer Year side by side */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {summerYearsBars.length > 0 && (
+          <RetentionRateLineChart data={summerYearsBars} title="Retention by Summers at Camp" />
+        )}
+        {firstSummerYearBars.length > 0 && (
+          <RetentionRateLineChart
+            data={firstSummerYearBars}
+            title="Retention by First Summer Year"
+          />
+        )}
+      </div>
 
       {/* ─── Geographic Retention ─── */}
       <div className="border-border relative my-8 border-t pt-6">
@@ -164,7 +177,7 @@ export default function RetentionOverview() {
         </span>
       </div>
 
-      {/* City + School */}
+      {/* Row 5: City + School */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {cityBars.length > 0 && (
           <RetentionRateBarChart
@@ -184,7 +197,7 @@ export default function RetentionOverview() {
         )}
       </div>
 
-      {/* Synagogue */}
+      {/* Row 6: Synagogue */}
       {synagogueBars.length > 0 && (
         <RetentionRateBarChart
           data={synagogueBars}
