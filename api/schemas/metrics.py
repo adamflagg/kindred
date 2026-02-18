@@ -285,6 +285,18 @@ class RetentionByPriorSession(BaseModel):
     retention_rate: float = Field(description="Retention rate (0-1)")
 
 
+class SessionFlowItem(BaseModel):
+    """A single flow link for the session flow Sankey diagram.
+
+    Represents how many campers moved from a base year session
+    to a compare year session (or did not return).
+    """
+
+    source: str = Field(description="Base year session name")
+    target: str = Field(description="Compare year session name or 'Did Not Return'")
+    value: int = Field(description="Number of campers in this flow")
+
+
 class RetentionMetricsResponse(BaseModel):
     """Response model for retention metrics endpoint."""
 
@@ -318,6 +330,9 @@ class RetentionMetricsResponse(BaseModel):
     )
     by_prior_session: list[RetentionByPriorSession] = Field(
         default_factory=list, description="Retention by prior year session"
+    )
+    session_flow: list[SessionFlowItem] = Field(
+        default_factory=list, description="Session-to-session flow data for Sankey diagram"
     )
 
 

@@ -15,6 +15,7 @@ import type {
   RetentionByFirstSummerYear,
   RetentionBySessionBunk,
   RetentionByPriorSession,
+  SessionFlowItem,
 } from '../types/metrics'
 import type { RetentionRateBarItem } from '../components/metrics/RetentionRateBarChart'
 
@@ -176,6 +177,67 @@ export interface RetentionOutlier {
   baseCount: number
   returnedCount: number
   deviation: number // percentage points above/below overall rate
+}
+
+export interface SankeyNode {
+  name: string
+}
+
+export interface SankeyLink {
+  source: number
+  target: number
+  value: number
+}
+
+export interface SankeyData {
+  nodes: SankeyNode[]
+  links: SankeyLink[]
+}
+
+/**
+ * Convert SessionFlowItem[] from API to Recharts Sankey data format.
+ *
+ * Source nodes get "(from)" suffix, target nodes get "(to)" suffix
+ * to disambiguate when the same session name appears on both sides.
+ * "Did Not Return" is a special target that gets no suffix.
+ */
+export function sessionFlowToSankeyData(
+  data: SessionFlowItem[] | undefined
+): SankeyData | null {
+  if (!data?.length) return null
+
+  // Collect unique sources and targets
+  const sourceNames = new Set<string>()
+  const targetNames = new Set<string>()
+  for (const item of data) {
+    sourceNames.add(item.source)
+    targetNames.add(item.target)
+  }
+
+  // Build node list: sources first, then targets
+  const nodes: SankeyNode[] = []
+  const nodeIndexMap = new Map<string, number>()
+
+  for (const name of sourceNames) {
+    const displayName = `${name} (from)`
+    nodeIndexMap.set(`source:${name}`, nodes.length)
+    nodes.push({ name: displayName })
+  }
+
+  for (const name of targetNames) {
+    const displayName = name === 'Did Not Return' ? name : `${name} (to)`
+    nodeIndexMap.set(`target:${name}`, nodes.length)
+    nodes.push({ name: displayName })
+  }
+
+  // Build links
+  const links: SankeyLink[] = data.map((item) => ({
+    source: nodeIndexMap.get(`source:${item.source}`)!,
+    target: nodeIndexMap.get(`target:${item.target}`)!,
+    value: item.value,
+  }))
+
+  return { nodes, links }
 }
 
 export function computeRetentionOutliers(

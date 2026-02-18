@@ -24,15 +24,12 @@ import {
   summerYearsToBarData,
   firstSummerYearToBarData,
   sessionBunkToBarData,
-  priorSessionToBarData,
+  sessionFlowToSankeyData,
   computeRetentionOutliers,
 } from '../../../utils/retentionTransforms'
-import {
-  buildSessionDateLookup,
-  sortSessionDataByDate,
-  sortPriorSessionDataByDate,
-} from '../../../utils/sessionUtils'
+import { buildSessionDateLookup, sortSessionDataByDate } from '../../../utils/sessionUtils'
 import { RetentionNotableOutliers } from '../../../components/metrics/RetentionNotableOutliers'
+import { SessionFlowSankey } from '../../../components/metrics/SessionFlowSankey'
 import { Loader2, AlertCircle } from 'lucide-react'
 
 export default function RetentionOverview() {
@@ -85,9 +82,7 @@ export default function RetentionOverview() {
   const sessionBars = sessionToBarData(sortSessionDataByDate(data.by_session ?? [], sessionDateLookup))
   const summerYearsBars = summerYearsToBarData(data.by_summer_years)
   const firstSummerYearBars = firstSummerYearToBarData(data.by_first_summer_year)
-  const priorSessionBars = priorSessionToBarData(
-    sortPriorSessionDataByDate(data.by_prior_session ?? [], sessionDateLookup)
-  )
+  const sankeyData = sessionFlowToSankeyData(data.session_flow)
   const sessionBunkBars = sessionBunkToBarData(data.by_session_bunk)
   const cityBars = cityToBarData(data.by_city)
   const schoolBars = schoolToBarData(data.by_school)
@@ -135,25 +130,23 @@ export default function RetentionOverview() {
         )}
       </div>
 
-      {/* Row 2: Current Year Session + Prior Year Session */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {sessionBars.length > 0 && (
-          <RetentionRateBarChart
-            data={sessionBars}
-            title={`Retention by ${currentYear} Session`}
-            sortBy="none"
-            layout="vertical"
-          />
-        )}
-        {priorSessionBars.length > 0 && (
-          <RetentionRateBarChart
-            data={priorSessionBars}
-            title={`Retention by ${priorYear} Session`}
-            sortBy="none"
-            layout="vertical"
-          />
-        )}
-      </div>
+      {/* Row 2: Current Year Session */}
+      {sessionBars.length > 0 && (
+        <RetentionRateBarChart
+          data={sessionBars}
+          title={`Retention by ${currentYear} Session`}
+          sortBy="none"
+          layout="vertical"
+        />
+      )}
+
+      {/* Row 2b: Session Flow Sankey (full width) */}
+      {sankeyData && (
+        <SessionFlowSankey
+          data={sankeyData}
+          title={`Session Flow: ${priorYear} → ${currentYear}`}
+        />
+      )}
 
       {/* Row 3: Session+Bunk (full width) */}
       {sessionBunkBars.length > 0 && (

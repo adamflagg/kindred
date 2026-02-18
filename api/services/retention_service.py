@@ -22,6 +22,7 @@ from api.schemas.metrics import (
     RetentionBySynagogue,
     RetentionByYearsAtCamp,
     RetentionMetricsResponse,
+    SessionFlowItem,
 )
 from api.utils.session_metrics import DISPLAY_SESSION_TYPES, SUMMER_PROGRAM_SESSION_TYPES
 
@@ -79,6 +80,7 @@ class RetentionService:
             camper_history_base,
             sessions_base_all,
             sessions_compare_filtered,
+            sessions_compare_all,
         ) = await asyncio.gather(
             self.repo.fetch_attendees(base_year),
             self.repo.fetch_attendees(compare_year),
@@ -86,6 +88,7 @@ class RetentionService:
             self.repo.fetch_camper_history(base_year, session_types=session_types),
             self.repo.fetch_sessions(base_year, None),
             self.repo.fetch_sessions(compare_year, session_types),
+            self.repo.fetch_sessions(compare_year, None),
         )
 
         # Get unique person IDs for base year, filtered by session
@@ -94,10 +97,15 @@ class RetentionService:
         # Get person IDs for compare year, filtered by session type and cm_id (CampMinder reuses IDs across years)
         person_ids_compare, _ = self._filter_base_attendees(attendees_compare, session_types, session_cm_id)
 
-        # Unfiltered pools for session chart semantics
+        # Unfiltered pools for session chart semantics and session flow
         person_ids_base_unfiltered, _ = self._filter_base_attendees(attendees_base, None, None)
         person_ids_compare_filtered, _ = self._filter_base_attendees(attendees_compare, session_types, session_cm_id)
-        _, attendee_sessions_compare = self._filter_base_attendees(attendees_compare, None, None)
+        person_ids_compare_unfiltered, attendee_sessions_compare = self._filter_base_attendees(
+            attendees_compare, None, None
+        )
+
+        # Base year attendee sessions (filtered by session_types and session_cm_id) for session flow
+        _, attendee_sessions_base_filtered = self._filter_base_attendees(attendees_base, session_types, session_cm_id)
 
         # Calculate returned campers
         returned_ids = person_ids_base & person_ids_compare
@@ -197,6 +205,17 @@ class RetentionService:
             attendees_base, person_ids_compare_filtered, sessions_base_all
         )
 
+        # Session flow: Sankey diagram data showing session-to-session transitions
+        # Uses unfiltered compare-year data so destinations show all session types
+        session_flow = self._build_session_flow(
+            person_ids_base,
+            attendee_sessions_base_filtered,
+            attendee_sessions_compare,
+            person_ids_compare_unfiltered,
+            sessions_base_all,
+            sessions_compare_all,
+        )
+
         return RetentionMetricsResponse(
             base_year=base_year,
             compare_year=compare_year,
@@ -216,6 +235,7 @@ class RetentionService:
             by_summer_years=by_summer_years,
             by_first_summer_year=by_first_summer_year,
             by_prior_session=by_prior_session,
+            session_flow=session_flow,
         )
 
     def _filter_base_attendees(
@@ -463,6 +483,110 @@ class RetentionService:
                 )
             )
 
+        return result
+
+    def _build_session_flow(
+        self,
+        person_ids_base: set[int],
+        attendee_sessions_base: dict[int, list[int]],
+        compare_attendee_sessions: dict[int, list[int]],
+        person_ids_compare_unfiltered: set[int],
+        sessions_base: dict[int, Any],
+        sessions_compare: dict[int, Any],
+    ) -> list[SessionFlowItem]:
+        """Build session flow data for Sankey diagram.
+
+        Shows how campers flow from base year sessions to compare year sessions.
+        AG sessions are merged into their parent on both source and target sides.
+        Destinations are unfiltered (show all session types).
+
+        Args:
+            person_ids_base: Set of person IDs in base year (filtered).
+            attendee_sessions_base: Base year person_id -> session cm_ids (filtered).
+            compare_attendee_sessions: Compare year person_id -> session cm_ids (unfiltered).
+            person_ids_compare_unfiltered: All compare year person IDs (for detecting returns).
+            sessions_base: All base year sessions (for name lookup and AG merging).
+            sessions_compare: All compare year sessions (for name lookup and AG merging).
+
+        Returns:
+            List of SessionFlowItem sorted by value descending.
+        """
+        if not person_ids_base:
+            return []
+
+        # Build AG -> parent maps for both years
+        ag_parent_base: dict[int, int] = {}
+        for sid, session in sessions_base.items():
+            if getattr(session, "session_type", None) == "ag":
+                parent_id = getattr(session, "parent_id", None)
+                if parent_id:
+                    ag_parent_base[int(sid)] = int(parent_id)
+
+        ag_parent_compare: dict[int, int] = {}
+        for sid, session in sessions_compare.items():
+            if getattr(session, "session_type", None) == "ag":
+                parent_id = getattr(session, "parent_id", None)
+                if parent_id:
+                    ag_parent_compare[int(sid)] = int(parent_id)
+
+        # Count flows: (base_session_cm_id, compare_session_cm_id) -> count
+        # -1 sentinel represents "Did Not Return"
+        dnr = -1
+        flow_counts: dict[tuple[int, int], int] = {}
+
+        for pid in person_ids_base:
+            # Get base year sessions for this person (with AG merged)
+            base_sids = attendee_sessions_base.get(pid, [])
+            merged_base_sids = {ag_parent_base.get(sid, sid) for sid in base_sids}
+
+            if pid not in person_ids_compare_unfiltered:
+                # Person did not return - create "Did Not Return" flows
+                for base_sid in merged_base_sids:
+                    key = (base_sid, dnr)
+                    flow_counts[key] = flow_counts.get(key, 0) + 1
+            else:
+                # Person returned - create flows to compare year sessions
+                compare_sids = compare_attendee_sessions.get(pid, [])
+                merged_compare_sids = {ag_parent_compare.get(sid, sid) for sid in compare_sids}
+
+                for base_sid in merged_base_sids:
+                    if merged_compare_sids:
+                        for compare_sid in merged_compare_sids:
+                            key = (base_sid, compare_sid)
+                            flow_counts[key] = flow_counts.get(key, 0) + 1
+                    else:
+                        # Returned but no compare sessions found (edge case)
+                        key = (base_sid, dnr)
+                        flow_counts[key] = flow_counts.get(key, 0) + 1
+
+        # Convert to SessionFlowItem list with name lookups
+        result: list[SessionFlowItem] = []
+        for (base_sid, compare_sid), count in flow_counts.items():
+            # Look up source name
+            base_session = sessions_base.get(base_sid)
+            if not base_session:
+                continue
+            source_type = getattr(base_session, "session_type", None)
+            if source_type not in DISPLAY_SESSION_TYPES or source_type == "ag":
+                continue
+            source_name = getattr(base_session, "name", f"Session {base_sid}")
+
+            # Look up target name
+            if compare_sid == dnr:
+                target_name = "Did Not Return"
+            else:
+                compare_session = sessions_compare.get(compare_sid)
+                if not compare_session:
+                    continue
+                target_type = getattr(compare_session, "session_type", None)
+                if target_type not in DISPLAY_SESSION_TYPES or target_type == "ag":
+                    continue
+                target_name = getattr(compare_session, "name", f"Session {compare_sid}")
+
+            result.append(SessionFlowItem(source=source_name, target=target_name, value=count))
+
+        # Sort by value descending
+        result.sort(key=lambda x: -x.value)
         return result
 
     def _build_session_bunk_breakdown(

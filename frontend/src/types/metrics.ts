@@ -193,6 +193,12 @@ export interface RetentionByPriorSession {
   retention_rate: number
 }
 
+export interface SessionFlowItem {
+  source: string
+  target: string
+  value: number
+}
+
 export interface RetentionMetrics {
   base_year: number
   compare_year: number
@@ -214,6 +220,7 @@ export interface RetentionMetrics {
   by_summer_years?: RetentionBySummerYears[]
   by_first_summer_year?: RetentionByFirstSummerYear[]
   by_prior_session?: RetentionByPriorSession[]
+  session_flow?: SessionFlowItem[]
 }
 
 export interface RegistrationMetrics {
