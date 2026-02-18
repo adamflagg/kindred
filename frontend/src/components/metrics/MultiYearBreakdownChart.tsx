@@ -46,6 +46,8 @@ interface MultiYearBreakdownChartProps {
   topN?: number
   /** Custom formatter for category labels */
   nameFormatter?: (key: string | number) => string
+  /** When true, years on X-axis with category bars instead of categories on X-axis with year bars */
+  invertAxes?: boolean
   height?: number
   className?: string
 }
@@ -110,6 +112,62 @@ function transformData(
   return { chartData, years }
 }
 
+/**
+ * Inverted transform: years on X-axis, categories as grouped bars.
+ */
+function transformDataInverted(
+  data: YearEnrollment[],
+  breakdownKey: BreakdownKey,
+  labelKey: string,
+  topN: number,
+  nameFormatter?: (key: string | number) => string
+): { chartData: ChartDataItem[]; categories: string[] } {
+  const years = data.map((y) => y.year).sort((a, b) => a - b)
+
+  // Collect all categories and their totals (same logic as normal transform)
+  const categoryTotals = new Map<string, number>()
+
+  for (const yearData of data) {
+    const breakdown = yearData[breakdownKey] as Array<Record<string, unknown>> | undefined
+    if (!breakdown) continue
+
+    for (const item of breakdown) {
+      const rawKey = item[labelKey]
+      const key = rawKey != null ? String(rawKey) : ''
+      if (!key) continue
+      const count = (item['count'] as number) ?? 0
+      categoryTotals.set(key, (categoryTotals.get(key) ?? 0) + count)
+    }
+  }
+
+  // Sort by total desc, take topN
+  const topCategories = Array.from(categoryTotals.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, topN)
+    .map(([key]) => key)
+
+  // Display names for categories
+  const categoryDisplayNames = topCategories.map((key) =>
+    nameFormatter ? nameFormatter(key) : key
+  )
+
+  // Build chart data: each item is { name: "2024", "1 Summer": 15, "2 Summers": 22, ... }
+  const chartData: ChartDataItem[] = years.map((year) => {
+    const yearData = data.find((y) => y.year === year)
+    const breakdown = yearData?.[breakdownKey] as Array<Record<string, unknown>> | undefined
+    const item: ChartDataItem = { name: year.toString() }
+
+    topCategories.forEach((key, idx) => {
+      const match = breakdown?.find((b) => String(b[labelKey]) === key)
+      item[categoryDisplayNames[idx]!] = (match?.['count'] as number) ?? 0
+    })
+
+    return item
+  })
+
+  return { chartData, categories: categoryDisplayNames }
+}
+
 export function MultiYearBreakdownChart({
   data,
   breakdownKey,
@@ -117,6 +175,7 @@ export function MultiYearBreakdownChart({
   title = 'Multi-Year Comparison',
   topN = 15,
   nameFormatter,
+  invertAxes = false,
   height = 300,
   className = '',
 }: MultiYearBreakdownChartProps) {
@@ -136,7 +195,18 @@ export function MultiYearBreakdownChart({
     )
   }
 
-  const { chartData, years } = transformData(data, breakdownKey, labelKey, topN, nameFormatter)
+  // Choose normal or inverted transform
+  const normal = !invertAxes
+    ? transformData(data, breakdownKey, labelKey, topN, nameFormatter)
+    : null
+  const inverted = invertAxes
+    ? transformDataInverted(data, breakdownKey, labelKey, topN, nameFormatter)
+    : null
+
+  const chartData = normal?.chartData ?? inverted!.chartData
+  // Bar keys: years (normal) or category display names (inverted)
+  const barKeys = normal ? normal.years.map(String) : inverted!.categories
+  const barLabels = normal ? normal.years.map((y) => `Year ${y}`) : inverted!.categories
 
   const CustomTooltip = ({
     active,
@@ -153,7 +223,7 @@ export function MultiYearBreakdownChart({
           <p className="text-foreground mb-2 font-medium">{label}</p>
           {payload.map((p, idx) => (
             <p key={idx} className="text-muted-foreground text-sm">
-              <span style={{ color: p.color }}>Year {p.name}:</span>{' '}
+              <span style={{ color: p.color }}>{invertAxes ? p.name : `Year ${p.name}`}:</span>{' '}
               <span className="text-foreground font-semibold">{p.value}</span>
             </p>
           ))}
@@ -180,11 +250,11 @@ export function MultiYearBreakdownChart({
           <YAxis className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
           <Tooltip content={<CustomTooltip />} />
           <Legend />
-          {years.map((year, index) => (
+          {barKeys.map((key, index) => (
             <Bar
-              key={year}
-              dataKey={year.toString()}
-              name={year.toString()}
+              key={key}
+              dataKey={key}
+              name={barLabels[index] ?? key}
               fill={YEAR_COLORS[index % YEAR_COLORS.length] ?? 'hsl(0, 0%, 50%)'}
               radius={[4, 4, 0, 0]}
             />

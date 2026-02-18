@@ -115,7 +115,7 @@ export default function RetentionOverview() {
   // Sorted sessions for legacy table
   const sortedBySession = sortSessionDataByDate(detailedData?.by_session ?? [], sessionDateLookup)
 
-  const enrollmentData = trendsData.enrollment_by_year ?? []
+  const enrollmentData = (trendsData.enrollment_by_year ?? []).slice(-numYears)
 
   // Source year totals from enrollment data (already correctly filtered by session)
   const currentYearEnrollment = enrollmentData.find((e) => e.year === currentYear)
@@ -183,34 +183,36 @@ export default function RetentionOverview() {
         )}
       </div>
 
-      {/* Row 2: Grade Enrollment + Summers at Camp */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {enrollmentData.length > 0 && (
-          <GradeEnrollmentChart
-            data={enrollmentData}
-            title={`Enrollment by Grade (${numYears}-Year Comparison)`}
-            height={300}
-          />
-        )}
-        {enrollmentData.length > 0 && (
-          <MultiYearBreakdownChart
-            data={enrollmentData}
-            breakdownKey="by_summer_years"
-            labelKey="summer_years"
-            title={`Summers at Camp (${numYears}-Year Comparison)`}
-            nameFormatter={summerYearsFormatter}
-            height={300}
-          />
-        )}
-      </div>
+      {/* Row 2: Grade Enrollment (full width) */}
+      {enrollmentData.length > 0 && (
+        <GradeEnrollmentChart
+          data={enrollmentData}
+          title={`Enrollment by Grade (${numYears}-Year Comparison)`}
+          height={300}
+        />
+      )}
 
-      {/* Row 3: First Summer Year */}
+      {/* Row 3: Summers at Camp (full width, inverted axes) */}
+      {enrollmentData.length > 0 && (
+        <MultiYearBreakdownChart
+          data={enrollmentData}
+          breakdownKey="by_summer_years"
+          labelKey="summer_years"
+          title={`Summers at Camp (${numYears}-Year Comparison)`}
+          nameFormatter={summerYearsFormatter}
+          invertAxes
+          height={300}
+        />
+      )}
+
+      {/* Row 4: First Summer Year (full width, inverted axes) */}
       {enrollmentData.length > 0 && (
         <MultiYearBreakdownChart
           data={enrollmentData}
           breakdownKey="by_first_summer_year"
           labelKey="first_summer_year"
           title={`First Summer Year (${numYears}-Year Comparison)`}
+          invertAxes
           height={300}
         />
       )}
