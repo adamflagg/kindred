@@ -9,6 +9,8 @@ import MetricsTypeTabs from '../../components/metrics/MetricsTypeTabs'
 import MetricsSubNav, { type SubNavItem } from '../../components/metrics/MetricsSubNav'
 import { MetricsSessionProvider } from '../../contexts/MetricsSessionContext'
 
+// Note: Retention has no sub-nav (single page with all breakdowns inline)
+
 /** Sub-nav items for registration section */
 const REGISTRATION_SUB_NAV: SubNavItem[] = [
   {
@@ -31,21 +33,6 @@ const REGISTRATION_SUB_NAV: SubNavItem[] = [
   },
 ]
 
-/** Sub-nav items for retention section */
-const RETENTION_SUB_NAV: SubNavItem[] = [
-  {
-    id: 'overview',
-    label: 'Overview',
-    icon: LayoutDashboard,
-    path: '/metrics/retention/overview',
-  },
-  {
-    id: 'geo',
-    label: 'Geographic',
-    icon: Globe,
-    path: '/metrics/retention/geo',
-  },
-]
 
 export default function MetricsLayout() {
   const location = useLocation()
@@ -54,9 +41,6 @@ export default function MetricsLayout() {
   const getSubNavItems = (): SubNavItem[] => {
     if (location.pathname.startsWith('/metrics/registration')) {
       return REGISTRATION_SUB_NAV
-    }
-    if (location.pathname.startsWith('/metrics/retention')) {
-      return RETENTION_SUB_NAV
     }
     return []
   }
@@ -68,7 +52,7 @@ export default function MetricsLayout() {
     if (location.pathname.startsWith('/metrics/retention')) {
       return {
         title: 'Retention Metrics',
-        subtitle: 'Analyze camper retention and enrollment trends',
+        subtitle: 'Prior year → current year returning analysis',
       }
     }
     if (location.pathname.startsWith('/metrics/trends')) {

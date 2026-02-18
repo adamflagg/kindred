@@ -86,15 +86,15 @@ describe('MetricsLayout', () => {
     expect(screen.getByRole('link', { name: /waitlist/i })).toBeInTheDocument()
   })
 
-  it('renders sub-nav for retention routes', () => {
+  it('does not render sub-nav for retention routes (single page)', () => {
     renderWithRouter('/metrics/retention')
 
     // Primary tabs should still be visible
     expect(screen.getByRole('link', { name: /retention/i })).toBeInTheDocument()
 
-    // Sub-nav items for retention
-    expect(screen.getByRole('link', { name: /overview/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /geographic/i })).toBeInTheDocument()
+    // Retention has no sub-nav (all breakdowns inline on single page)
+    expect(screen.queryByRole('link', { name: /overview/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /geographic/i })).not.toBeInTheDocument()
   })
 
   it('does not render sub-nav for trends routes', () => {
@@ -115,7 +115,7 @@ describe('MetricsLayout', () => {
     renderWithRouter('/metrics/retention')
 
     expect(screen.getByText('Retention Metrics')).toBeInTheDocument()
-    expect(screen.getByText(/analyze camper retention/i)).toBeInTheDocument()
+    expect(screen.getByText(/prior year.*current year.*returning/i)).toBeInTheDocument()
   })
 
   it('renders sticky nav container', () => {

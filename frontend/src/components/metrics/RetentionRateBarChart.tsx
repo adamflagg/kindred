@@ -148,7 +148,7 @@ export function RetentionRateBarChart({
               position="right"
               className="text-xs"
               fill="hsl(var(--muted-foreground))"
-              formatter={(value: number) => `${value}%`}
+              formatter={(value) => `${value}%`}
             />
           </Bar>
         </BarChart>
