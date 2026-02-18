@@ -9,14 +9,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/pocketbase/pocketbase/core"
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
 )
 
 // serviceNameNormalizeGeographic is the canonical name for this sync service
@@ -29,21 +25,16 @@ const (
 	categoryCongregation = "congregation"
 )
 
-// Fuzzy matching threshold (0-100)
-const defaultFuzzyThreshold = 90
-
 // NormalizeGeographicSync normalizes geographic data from enrolled attendees
 // and stores mappings in normalized_mappings table with person+session keys.
 //
-// This is a pure Go implementation that:
-// 1. Loads enrolled attendees (status_id=2, is_active=1) with person+session data
-// 2. Gets school/city from persons table, congregation from person_custom_values
-// 3. Applies preprocessing (N/A filtering, whitespace normalization)
-// 4. Applies domain-specific normalization (city state suffix removal)
-// 5. Clusters similar values using fuzzy matching
-// 6. Upserts to normalized_mappings with (person, session, category) keys
-// 7. Updates camper_history.*_normalized columns for backwards compatibility
-// 8. Deletes orphaned mappings
+// Orchestrates normalization by:
+// 1. Loading attendees with person+session data
+// 2. Getting school/city from persons table, congregation from person_custom_values
+// 3. Calling Python geo_normalizer for fuzzy matching (RapidFuzz, static lookups)
+// 4. Upserting to normalized_mappings with (person, session, category) keys
+// 5. Updating camper_history.*_normalized columns for backwards compatibility
+// 6. Deleting orphaned mappings
 type NormalizeGeographicSync struct {
 	App            core.App
 	Year           int
@@ -155,7 +146,10 @@ func (n *NormalizeGeographicSync) Sync(ctx context.Context) error {
 	)
 
 	// Step 2: Build normalization lookup maps from all unique values
-	normalizedLookup := n.buildNormalizationLookup(attendeeData)
+	normalizedLookup, err := n.buildNormalizationLookup(attendeeData)
+	if err != nil {
+		return fmt.Errorf("building normalization lookup: %w", err)
+	}
 
 	// Step 3: Create person+session mappings
 	mappings := n.createPersonSessionMappings(attendeeData, normalizedLookup, year)
@@ -415,8 +409,7 @@ func buildPythonNormalizerCommand(category, valuesJSON string) (program string, 
 	return "uv", append([]string{"run", "python"}, moduleArgs...)
 }
 
-// normalizeWithPython calls the Python geo_normalizer CLI for advanced fuzzy matching
-// Falls back to Go implementation if Python call fails
+// normalizeWithPython calls the Python geo_normalizer CLI for fuzzy matching
 func (n *NormalizeGeographicSync) normalizeWithPython(values []string, category string) (map[string]string, error) {
 	if len(values) == 0 {
 		return make(map[string]string), nil
@@ -477,8 +470,8 @@ func (n *NormalizeGeographicSync) normalizeWithPython(values []string, category 
 }
 
 // buildNormalizationLookup builds lookup maps from unique values
-// Uses Python RapidFuzz for advanced fuzzy matching, with Go fallback
-func (n *NormalizeGeographicSync) buildNormalizationLookup(data []attendeeGeoData) *normalizationLookup {
+// Uses Python RapidFuzz for advanced fuzzy matching
+func (n *NormalizeGeographicSync) buildNormalizationLookup(data []attendeeGeoData) (*normalizationLookup, error) {
 	// Collect unique values per category
 	uniqueCities := make(map[string]bool)
 	uniqueSchools := make(map[string]bool)
@@ -509,52 +502,36 @@ func (n *NormalizeGeographicSync) buildNormalizationLookup(data []attendeeGeoDat
 		congregation: make(map[string]string),
 	}
 
-	// Try Python normalizer first for better fuzzy matching
-	// Fall back to Go implementation if Python fails
-	usePython := true
-
-	// Convert maps to slices for Python
+	// Convert maps to slices for Python normalizer
 	cityValues := mapKeysToSlice(uniqueCities)
 	schoolValues := mapKeysToSlice(uniqueSchools)
 	congregationValues := mapKeysToSlice(uniqueCongregations)
 
-	if usePython && len(cityValues) > 0 {
-		if result, err := n.normalizeWithPython(cityValues, categoryCity); err == nil {
-			lookup.city = result
-			slog.Debug("Used Python normalizer for cities", "count", len(result))
-		} else {
-			slog.Warn("Python normalizer failed for cities, using Go fallback", "error", err)
-			lookup.city = n.normalizeAndCluster(uniqueCities, categoryCity)
+	if len(cityValues) > 0 {
+		result, err := n.normalizeWithPython(cityValues, categoryCity)
+		if err != nil {
+			return nil, fmt.Errorf("normalizing cities: %w", err)
 		}
-	} else {
-		lookup.city = n.normalizeAndCluster(uniqueCities, categoryCity)
+		lookup.city = result
 	}
 
-	if usePython && len(schoolValues) > 0 {
-		if result, err := n.normalizeWithPython(schoolValues, categorySchool); err == nil {
-			lookup.school = result
-			slog.Debug("Used Python normalizer for schools", "count", len(result))
-		} else {
-			slog.Warn("Python normalizer failed for schools, using Go fallback", "error", err)
-			lookup.school = n.normalizeAndCluster(uniqueSchools, categorySchool)
+	if len(schoolValues) > 0 {
+		result, err := n.normalizeWithPython(schoolValues, categorySchool)
+		if err != nil {
+			return nil, fmt.Errorf("normalizing schools: %w", err)
 		}
-	} else {
-		lookup.school = n.normalizeAndCluster(uniqueSchools, categorySchool)
+		lookup.school = result
 	}
 
-	if usePython && len(congregationValues) > 0 {
-		if result, err := n.normalizeWithPython(congregationValues, categoryCongregation); err == nil {
-			lookup.congregation = result
-			slog.Debug("Used Python normalizer for congregations", "count", len(result))
-		} else {
-			slog.Warn("Python normalizer failed for congregations, using Go fallback", "error", err)
-			lookup.congregation = n.normalizeAndCluster(uniqueCongregations, categoryCongregation)
+	if len(congregationValues) > 0 {
+		result, err := n.normalizeWithPython(congregationValues, categoryCongregation)
+		if err != nil {
+			return nil, fmt.Errorf("normalizing congregations: %w", err)
 		}
-	} else {
-		lookup.congregation = n.normalizeAndCluster(uniqueCongregations, categoryCongregation)
+		lookup.congregation = result
 	}
 
-	return lookup
+	return lookup, nil
 }
 
 // mapKeysToSlice converts a map[string]bool to a []string
@@ -563,51 +540,6 @@ func mapKeysToSlice(m map[string]bool) []string {
 	for k := range m {
 		result = append(result, k)
 	}
-	return result
-}
-
-// normalizeAndCluster normalizes values and clusters similar ones
-func (n *NormalizeGeographicSync) normalizeAndCluster(unique map[string]bool, category string) map[string]string {
-	result := make(map[string]string)
-
-	// Preprocess each value
-	preprocessed := make(map[string]string) // original → preprocessed
-	for original := range unique {
-		var normalized string
-		switch category {
-		case categoryCity:
-			normalized = normalizeCityGo(original)
-		case categorySchool:
-			normalized = normalizeSchoolGo(original)
-		case categoryCongregation:
-			normalized = normalizeCongregationGo(original)
-		default:
-			normalized = preprocessGo(original)
-		}
-		if normalized != "" {
-			preprocessed[original] = normalized
-		}
-	}
-
-	// Sort values for deterministic clustering
-	normalizedValues := make([]string, 0, len(preprocessed))
-	for _, v := range preprocessed {
-		normalizedValues = append(normalizedValues, v)
-	}
-	sort.Strings(normalizedValues)
-
-	// Cluster similar values
-	clusters := clusterSimilarValuesGo(normalizedValues, defaultFuzzyThreshold)
-
-	// Build final lookup: original → canonical
-	for original, normalized := range preprocessed {
-		canonical := clusters[normalized]
-		if canonical == "" {
-			canonical = normalized
-		}
-		result[original] = canonical
-	}
-
 	return result
 }
 
@@ -1054,207 +986,4 @@ func (n *NormalizeGeographicSync) forceWALCheckpoint() error {
 	}
 
 	return nil
-}
-
-// ============================================================================
-// Normalization Helper Functions (Go implementations)
-// ============================================================================
-
-// N/A pattern - matches common "not applicable" representations
-var naPatternGo = regexp.MustCompile(`(?i)^(n/?a|none|null|na|-+|\.+|\s*)$`)
-
-// State suffix pattern - matches ", CA", ", CA 94102", ", CA 94102-1234"
-var stateSuffixPatternGo = regexp.MustCompile(`(?i),\s*[A-Z]{2}(\s+\d{5}(-\d{4})?)?$`)
-
-// schoolGradeParenPattern matches trailing parenthesized grade annotations
-// Examples: (2nd), (3rd grade), (K), (Kindergarten), (Pre-K), (TK), (K-5), (3rd-5th)
-var schoolGradeParenPattern = regexp.MustCompile(
-	`\s*\((?:` +
-		`\d{1,2}(?:st|nd|rd|th)(?:\s+grade)?` + // ordinals: 1st, 2nd, 3rd, 4th...12th
-		`|K(?:indergarten)?` + // K or Kindergarten
-		`|Pre-K|TK` + // Pre-K, TK
-		`|(?:\d{1,2}(?:st|nd|rd|th)|K)-(?:\d{1,2}(?:st|nd|rd|th)|\d)` + // ranges: K-5, 3rd-5th
-		`)\)$`,
-)
-
-// schoolGradeSuffixPattern matches trailing grade suffixes without parentheses.
-// Captures the school name prefix (group 1) so we can extract just the name.
-// Examples: "Highland 2nd grade" -> group 1 = "Highland"
-// Does NOT match: "2nd Street Elementary" (requires non-digit prefix before space+ordinal)
-var schoolGradeSuffixPattern = regexp.MustCompile(
-	`^(.+\S)\s+\d{1,2}(?:st|nd|rd|th)(?:\s+grade)?$`,
-)
-
-// preprocessGo performs basic preprocessing of input values
-func preprocessGo(value string) string {
-	if value == "" {
-		return ""
-	}
-
-	// Trim whitespace
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-
-	// Check for N/A patterns
-	if naPatternGo.MatchString(value) {
-		return ""
-	}
-
-	// Normalize internal whitespace (collapse multiple spaces/tabs to single space)
-	parts := strings.Fields(value)
-	return strings.Join(parts, " ")
-}
-
-// normalizeCityGo normalizes city names
-func normalizeCityGo(city string) string {
-	city = preprocessGo(city)
-	if city == "" {
-		return ""
-	}
-
-	// Remove state suffix (", CA", ", CA 94102", etc.)
-	city = stateSuffixPatternGo.ReplaceAllString(city, "")
-
-	// Standardize to title case
-	city = strings.TrimSpace(city)
-	caser := cases.Title(language.English)
-	city = caser.String(strings.ToLower(city))
-
-	return city
-}
-
-// stripSchoolGradeAnnotation strips grade annotations from school names.
-// Handles parenthesized forms like "(2nd)", "(3rd grade)", "(K)", "(Pre-K)",
-// "(K-5)", "(3rd-5th)" and suffix forms like "2nd grade", "2nd".
-// Preserves names where the ordinal is part of the actual name (e.g., "2nd Street Elementary").
-func stripSchoolGradeAnnotation(school string) string {
-	// Strip parenthesized grade annotations
-	school = schoolGradeParenPattern.ReplaceAllString(school, "")
-	school = strings.TrimSpace(school)
-
-	// Strip suffix grade annotations (only when preceded by non-ordinal content)
-	if m := schoolGradeSuffixPattern.FindStringSubmatch(school); m != nil {
-		school = m[1]
-	}
-
-	return school
-}
-
-// normalizeSchoolGo normalizes school names
-func normalizeSchoolGo(school string) string {
-	school = preprocessGo(school)
-	if school == "" {
-		return ""
-	}
-
-	school = stripSchoolGradeAnnotation(school)
-
-	return school
-}
-
-// normalizeCongregationGo normalizes congregation/synagogue names
-func normalizeCongregationGo(congregation string) string {
-	congregation = preprocessGo(congregation)
-	if congregation == "" {
-		return ""
-	}
-
-	// For congregations, just normalize whitespace - preserve original case
-	return congregation
-}
-
-// clusterSimilarValuesGo clusters similar values using simple string similarity
-// In production, this could use a more sophisticated fuzzy matching library
-func clusterSimilarValuesGo(values []string, threshold int) map[string]string {
-	if len(values) == 0 {
-		return map[string]string{}
-	}
-
-	// Deduplicate while preserving order
-	seen := make(map[string]bool)
-	unique := []string{}
-	for _, v := range values {
-		if v != "" && !seen[v] {
-			seen[v] = true
-			unique = append(unique, v)
-		}
-	}
-
-	if len(unique) == 0 {
-		return map[string]string{}
-	}
-
-	// Build clusters: first value encountered becomes canonical
-	result := make(map[string]string)
-	clusters := make(map[string][]string) // canonical → members
-
-	for _, v := range unique {
-		// Find best matching cluster
-		bestMatch := ""
-		bestScore := 0
-
-		for canonical := range clusters {
-			score := stringSimilarityGo(v, canonical)
-			if score >= threshold && score > bestScore {
-				bestMatch = canonical
-				bestScore = score
-			}
-		}
-
-		if bestMatch != "" {
-			// Add to existing cluster
-			clusters[bestMatch] = append(clusters[bestMatch], v)
-			result[v] = bestMatch
-		} else {
-			// Create new cluster
-			clusters[v] = []string{v}
-			result[v] = v
-		}
-	}
-
-	return result
-}
-
-// stringSimilarityGo returns a simple similarity score (0-100)
-// Uses a basic Levenshtein-inspired approach
-func stringSimilarityGo(a, b string) int {
-	if a == b {
-		return 100
-	}
-
-	lowerA := strings.ToLower(a)
-	lowerB := strings.ToLower(b)
-
-	if lowerA == lowerB {
-		return 95 // Case difference only
-	}
-
-	// Check if one contains the other (common with typos)
-	if strings.Contains(lowerA, lowerB) || strings.Contains(lowerB, lowerA) {
-		shorter := min(len(lowerA), len(lowerB))
-		longer := max(len(lowerA), len(lowerB))
-		return (shorter * 100) / longer
-	}
-
-	// Simple edit distance ratio
-	maxLen := max(len(lowerA), len(lowerB))
-
-	if maxLen == 0 {
-		return 100
-	}
-
-	// Count matching characters at same positions
-	minLen := min(len(lowerA), len(lowerB))
-
-	matches := 0
-	for i := 0; i < minLen; i++ {
-		if lowerA[i] == lowerB[i] {
-			matches++
-		}
-	}
-
-	// Score based on match ratio
-	return (matches * 100) / maxLen
 }
