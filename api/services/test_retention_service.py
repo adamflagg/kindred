@@ -532,7 +532,7 @@ class TestRetentionServiceCalculateRetention:
             2: MockPerson(cm_id=2, gender="F"),
         }
 
-        async def mock_fetch_sessions(year: int, session_types: list[str] | None = None) -> dict:
+        async def mock_fetch_sessions(year: int, session_types: list[str] | None = None) -> dict[int, MockSession]:
             if year == 2025:
                 return {
                     1000: MockSession(cm_id=1000, name="Session 1", session_type="main"),
@@ -611,7 +611,7 @@ class TestRetentionSessionChartSemantics:
             2: MockPerson(cm_id=2, gender="F"),
         }
 
-        async def mock_fetch_sessions(year: int, session_types: list[str] | None = None) -> dict:
+        async def mock_fetch_sessions(year: int, session_types: list[str] | None = None) -> dict[int, MockSession]:
             if year == 2025:
                 return {
                     1000: MockSession(cm_id=1000, name="Quest", session_type="quest"),
@@ -676,7 +676,7 @@ class TestRetentionSessionChartSemantics:
         }
 
         # "at camp" filter: main/embedded/ag
-        async def mock_fetch_sessions(year: int, session_types: list[str] | None = None) -> dict:
+        async def mock_fetch_sessions(year: int, session_types: list[str] | None = None) -> dict[int, MockSession]:
             all_sessions: dict[int, dict[int, MockSession]] = {
                 2025: {1000: MockSession(cm_id=1000, name="Quest", session_type="quest")},
                 2026: {2000: MockSession(cm_id=2000, name="Session 1", session_type="main")},
@@ -748,7 +748,7 @@ class TestRetentionSessionChartSemantics:
         }
 
         # "at camp" filter — but by_prior_session should still show quest
-        async def mock_fetch_sessions(year: int, session_types: list[str] | None = None) -> dict:
+        async def mock_fetch_sessions(year: int, session_types: list[str] | None = None) -> dict[int, MockSession]:
             all_sessions: dict[int, dict[int, MockSession]] = {
                 2025: {
                     1000: MockSession(cm_id=1000, name="Quest", session_type="quest"),
@@ -824,7 +824,7 @@ class TestRetentionSessionChartSemantics:
             2: MockPerson(cm_id=2, gender="F"),
         }
 
-        async def mock_fetch_sessions(year: int, session_types: list[str] | None = None) -> dict:
+        async def mock_fetch_sessions(year: int, session_types: list[str] | None = None) -> dict[int, MockSession]:
             all_sessions: dict[int, dict[int, MockSession]] = {
                 2025: {1000: MockSession(cm_id=1000, name="Quest", session_type="quest")},
                 2026: {

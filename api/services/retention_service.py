@@ -76,21 +76,28 @@ class RetentionService:
             attendees_base,
             attendees_compare,
             persons_base,
-            sessions_base,
             camper_history_base,
+            sessions_base_all,
+            sessions_compare_filtered,
         ) = await asyncio.gather(
             self.repo.fetch_attendees(base_year),
             self.repo.fetch_attendees(compare_year),
             self.repo.fetch_persons(base_year),
-            self.repo.fetch_sessions(base_year, session_types),
             self.repo.fetch_camper_history(base_year, session_types=session_types),
+            self.repo.fetch_sessions(base_year, None),
+            self.repo.fetch_sessions(compare_year, session_types),
         )
 
         # Get unique person IDs for base year, filtered by session
-        person_ids_base, attendee_sessions = self._filter_base_attendees(attendees_base, session_types, session_cm_id)
+        person_ids_base, _ = self._filter_base_attendees(attendees_base, session_types, session_cm_id)
 
         # Get person IDs for compare year, filtered by session type and cm_id (CampMinder reuses IDs across years)
         person_ids_compare, _ = self._filter_base_attendees(attendees_compare, session_types, session_cm_id)
+
+        # Unfiltered pools for session chart semantics
+        person_ids_base_unfiltered, _ = self._filter_base_attendees(attendees_base, None, None)
+        person_ids_compare_filtered, _ = self._filter_base_attendees(attendees_compare, session_types, session_cm_id)
+        _, attendee_sessions_compare = self._filter_base_attendees(attendees_compare, None, None)
 
         # Calculate returned campers
         returned_ids = person_ids_base & person_ids_compare
@@ -116,8 +123,10 @@ class RetentionService:
             sort_key=lambda x: (x.grade is None, x.grade),
         )
 
-        # Session breakdown with AG merging
-        by_session = self._build_session_breakdown(person_ids_base, returned_ids, attendee_sessions, sessions_base)
+        # Session breakdown: compare year sessions, returning = was in any base year session
+        by_session = self._build_compare_year_session_breakdown(
+            attendee_sessions_compare, person_ids_base_unfiltered, sessions_compare_filtered
+        )
 
         by_years_at_camp = self._build_retention_breakdown(
             person_ids_base, returned_ids, persons_base, extract_years_at_camp, RetentionByYearsAtCamp, "years"
@@ -174,11 +183,8 @@ class RetentionService:
 
         # Summer enrollment breakdowns (calculated from attendees history)
         enrollment_history = await self.repo.fetch_summer_enrollment_history(person_ids_base, base_year)
-        prior_year = base_year - 1
 
-        summer_years_by_person, first_year_by_person, prior_sessions_by_person = self._compute_summer_metrics(
-            enrollment_history, person_ids_base, prior_year
-        )
+        summer_years_by_person, first_year_by_person = self._compute_summer_metrics(enrollment_history, person_ids_base)
 
         by_summer_years = self._build_summer_years_breakdown(person_ids_base, returned_ids, summer_years_by_person)
 
@@ -186,7 +192,10 @@ class RetentionService:
             person_ids_base, returned_ids, first_year_by_person
         )
 
-        by_prior_session = self._build_prior_session_breakdown(person_ids_base, returned_ids, prior_sessions_by_person)
+        # Prior session: base year sessions (all types), returned filtered by dropdown
+        by_prior_session = self._build_base_year_session_breakdown(
+            attendees_base, person_ids_compare_filtered, sessions_base_all
+        )
 
         return RetentionMetricsResponse(
             base_year=base_year,
@@ -313,50 +322,54 @@ class RetentionService:
 
         return items
 
-    def _build_session_breakdown(
+    def _build_compare_year_session_breakdown(
         self,
-        person_ids: set[int],
-        returned_ids: set[int],
-        attendee_sessions: dict[int, list[int]],
-        sessions: dict[int, Any],
+        attendee_sessions_compare: dict[int, list[int]],
+        person_ids_base_unfiltered: set[int],
+        sessions_compare: dict[int, Any],
     ) -> list[RetentionBySession]:
-        """Build session breakdown with AG session merging.
+        """Build session breakdown for compare year (Chart 1: "Retention by 2026 Session").
+
+        Shows each compare year session's total enrollment and how many are
+        returning from ANY base year session (unfiltered).
 
         Args:
-            person_ids: Set of person IDs in base year.
-            returned_ids: Set of person IDs who returned.
-            attendee_sessions: Dict mapping person_id to session cm_ids.
-            sessions: Dict mapping session cm_id to session record.
+            attendee_sessions_compare: Dict mapping person_id to compare year session cm_ids.
+            person_ids_base_unfiltered: All base year person IDs (no type filter).
+            sessions_compare: Compare year sessions (filtered by dropdown).
 
         Returns:
             List of RetentionBySession models.
         """
-        # Build AG -> parent mapping
+        # Build AG -> parent mapping from compare year sessions
         ag_parent_map: dict[int, int] = {}
-        for sid, session in sessions.items():
+        for sid, session in sessions_compare.items():
             if getattr(session, "session_type", None) == "ag":
                 parent_id = getattr(session, "parent_id", None)
                 if parent_id:
                     ag_parent_map[int(sid)] = int(parent_id)
 
-        # Compute session stats
+        # Compute session stats from compare year attendees
         session_stats: dict[int, dict[str, int]] = {}
-        for pid in person_ids:
-            session_ids = attendee_sessions.get(pid, [])
+        for pid, session_ids in attendee_sessions_compare.items():
             for sid in session_ids:
+                # Only count sessions in the filtered compare set
+                if sid not in sessions_compare and sid not in ag_parent_map:
+                    continue
                 # Merge AG into parent
                 target_sid = ag_parent_map.get(sid, sid)
+                if target_sid not in sessions_compare:
+                    continue
                 if target_sid not in session_stats:
                     session_stats[target_sid] = {"base": 0, "returned": 0}
                 session_stats[target_sid]["base"] += 1
-                if pid in returned_ids:
+                if pid in person_ids_base_unfiltered:
                     session_stats[target_sid]["returned"] += 1
 
-        # Build response, filtering to display session types only (excludes quest)
-        # Quest sessions count toward summer metrics but don't appear in session breakdowns
+        # Build response, filtering to display session types
         result = []
         for sid, stats in sorted(session_stats.items()):
-            session = sessions.get(sid)
+            session = sessions_compare.get(sid)
             if not session:
                 continue
             session_type = getattr(session, "session_type", None)
@@ -370,6 +383,83 @@ class RetentionService:
                     base_count=stats["base"],
                     returned_count=stats["returned"],
                     retention_rate=safe_rate(stats["returned"], stats["base"]),
+                )
+            )
+
+        return result
+
+    def _build_base_year_session_breakdown(
+        self,
+        attendees_base: list[Any],
+        person_ids_compare_filtered: set[int],
+        sessions_base_all: dict[int, Any],
+    ) -> list[RetentionByPriorSession]:
+        """Build session breakdown for base year (Chart 2: "Retention by 2025 Session").
+
+        Shows each base year session's FULL enrollment and how many returned
+        to compare year sessions matching the dropdown filter.
+
+        Args:
+            attendees_base: Raw base year attendee records (all types, unfiltered).
+            person_ids_compare_filtered: Compare year person IDs filtered by dropdown.
+            sessions_base_all: All base year sessions (unfiltered).
+
+        Returns:
+            List of RetentionByPriorSession models.
+        """
+        # Build AG -> parent mapping from base year sessions
+        ag_parent_map: dict[int, int] = {}
+        for ag_sid, ag_session in sessions_base_all.items():
+            if getattr(ag_session, "session_type", None) == "ag":
+                parent_id = getattr(ag_session, "parent_id", None)
+                if parent_id:
+                    ag_parent_map[int(ag_sid)] = int(parent_id)
+
+        # Count per-session enrollment from raw attendees
+        session_stats: dict[int, dict[str, set[int]]] = {}
+        for a in attendees_base:
+            pid = getattr(a, "person_id", None)
+            if pid is None:
+                continue
+
+            expand = getattr(a, "expand", {}) or {}
+            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            if not session:
+                continue
+
+            raw_sid = getattr(session, "cm_id", None)
+            if raw_sid is None:
+                continue
+            sid = int(raw_sid)
+
+            # Merge AG into parent
+            target_sid = ag_parent_map.get(sid, sid)
+            if target_sid not in session_stats:
+                session_stats[target_sid] = {"base": set(), "returned": set()}
+            session_stats[target_sid]["base"].add(pid)
+            if pid in person_ids_compare_filtered:
+                session_stats[target_sid]["returned"].add(pid)
+
+        # Build response, filtering to display session types
+        result = []
+        for out_sid, pid_sets in sorted(session_stats.items()):
+            session = sessions_base_all.get(out_sid)
+            if not session:
+                continue
+            session_type = getattr(session, "session_type", None)
+            if session_type not in DISPLAY_SESSION_TYPES:
+                continue
+
+            base_count = len(pid_sets["base"])
+            returned_count = len(pid_sets["returned"])
+            session_name = getattr(session, "name", f"Session {out_sid}")
+
+            result.append(
+                RetentionByPriorSession(
+                    prior_session=session_name,
+                    base_count=base_count,
+                    returned_count=returned_count,
+                    retention_rate=safe_rate(returned_count, base_count),
                 )
             )
 
@@ -432,20 +522,17 @@ class RetentionService:
         self,
         enrollment_history: list[Any],
         person_ids: set[int],
-        prior_year: int,
-    ) -> tuple[dict[int, int], dict[int, int], dict[int, list[str]]]:
+    ) -> tuple[dict[int, int], dict[int, int]]:
         """Compute summer enrollment metrics from batch-fetched history.
 
         Args:
             enrollment_history: List of attendee records with session expansion.
             person_ids: Set of person_ids in the base year.
-            prior_year: Year before base year (for prior session analysis).
 
         Returns:
             Tuple of:
             - summer_years_by_person: person_id -> count of distinct summer years
             - first_year_by_person: person_id -> first summer enrollment year
-            - prior_sessions_by_person: person_id -> list of prior year session names
         """
         # Group records by person_id
         by_person: dict[int, list[Any]] = {}
@@ -471,7 +558,6 @@ class RetentionService:
         # Compute aggregations
         summer_years_by_person: dict[int, int] = {}
         first_year_by_person: dict[int, int] = {}
-        prior_sessions_by_person: dict[int, list[str]] = {}
 
         for pid, records in by_person.items():
             # Summer years: count distinct years
@@ -482,19 +568,7 @@ class RetentionService:
             if years:
                 first_year_by_person[pid] = min(years)
 
-            # Prior year sessions
-            prior_sessions = []
-            for r in records:
-                if getattr(r, "year", 0) == prior_year:
-                    expand = getattr(r, "expand", {}) or {}
-                    session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
-                    if session:
-                        session_name = getattr(session, "name", "")
-                        if session_name:
-                            prior_sessions.append(session_name)
-            prior_sessions_by_person[pid] = prior_sessions
-
-        return summer_years_by_person, first_year_by_person, prior_sessions_by_person
+        return summer_years_by_person, first_year_by_person
 
     def _build_summer_years_breakdown(
         self,
@@ -566,43 +640,4 @@ class RetentionService:
                 retention_rate=safe_rate(s["returned"], s["base"]),
             )
             for fy, s in sorted(stats.items())
-        ]
-
-    def _build_prior_session_breakdown(
-        self,
-        person_ids: set[int],
-        returned_ids: set[int],
-        prior_sessions_by_person: dict[int, list[str]],
-    ) -> list[RetentionByPriorSession]:
-        """Build prior session breakdown.
-
-        Args:
-            person_ids: Set of person IDs in base year.
-            returned_ids: Set of person IDs who returned.
-            prior_sessions_by_person: Dict mapping person_id to prior session names.
-
-        Returns:
-            List of RetentionByPriorSession models.
-        """
-        stats: dict[str, dict[str, int]] = {}
-        for pid in person_ids:
-            prior_sessions = prior_sessions_by_person.get(pid, [])
-            for session_name in prior_sessions:
-                if session_name not in stats:
-                    stats[session_name] = {"base": 0, "returned": 0}
-                stats[session_name]["base"] += 1
-                if pid in returned_ids:
-                    stats[session_name]["returned"] += 1
-
-        # Sort by base_count descending
-        sorted_items = sorted(stats.items(), key=lambda x: -x[1]["base"])
-
-        return [
-            RetentionByPriorSession(
-                prior_session=sess,
-                base_count=s["base"],
-                returned_count=s["returned"],
-                retention_rate=safe_rate(s["returned"], s["base"]),
-            )
-            for sess, s in sorted_items
         ]
