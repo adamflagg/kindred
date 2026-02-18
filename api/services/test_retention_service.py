@@ -238,10 +238,11 @@ class TestRetentionServiceCalculateRetention:
                     year=2026,
                     expand={"session": MockSession(cm_id=2000, name="Session 1", session_type="main")},
                 ),
+                # CampMinder reuses cm_ids across years
                 MockAttendee(
                     person_id=2,
                     year=2026,
-                    expand={"session": MockSession(cm_id=2000, name="Session 1", session_type="main")},
+                    expand={"session": MockSession(cm_id=1000, name="Session 1", session_type="main")},
                 ),
             ],
         ]
@@ -293,21 +294,22 @@ class TestRetentionServiceCalculateRetention:
             ],
             # Compare year: person 1 returned (main), person 3 new (main),
             # person 4 new (family camp - should be excluded)
+            # CampMinder reuses cm_ids across years
             [
                 MockAttendee(
                     person_id=1,
                     year=2026,
-                    expand={"session": MockSession(cm_id=2000, name="Session 1", session_type="main")},
+                    expand={"session": MockSession(cm_id=1000, name="Session 1", session_type="main")},
                 ),
                 MockAttendee(
                     person_id=3,
                     year=2026,
-                    expand={"session": MockSession(cm_id=2000, name="Session 1", session_type="main")},
+                    expand={"session": MockSession(cm_id=1000, name="Session 1", session_type="main")},
                 ),
                 MockAttendee(
                     person_id=4,
                     year=2026,
-                    expand={"session": MockSession(cm_id=2001, name="Family Camp", session_type="family")},
+                    expand={"session": MockSession(cm_id=1001, name="Family Camp", session_type="family")},
                 ),
             ],
         ]
@@ -357,16 +359,23 @@ class TestRetentionServiceCalculateRetention:
                     person_id=3, year=2025, expand={"session": MockSession(cm_id=1001, name="S2", session_type="main")}
                 ),
             ],
+            # CampMinder reuses cm_ids across years
             [
                 MockAttendee(
                     person_id=1,
                     year=2026,
-                    expand={"session": MockSession(cm_id=2000, name="Session 1", session_type="main")},
+                    expand={"session": MockSession(cm_id=1000, name="Session 1", session_type="main")},
                 ),
                 MockAttendee(
                     person_id=2,
                     year=2026,
-                    expand={"session": MockSession(cm_id=2000, name="Session 1", session_type="main")},
+                    expand={"session": MockSession(cm_id=1000, name="Session 1", session_type="main")},
+                ),
+                # Person 5 in a different session - should be filtered out by cm_id
+                MockAttendee(
+                    person_id=5,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=1001, name="Session 2", session_type="main")},
                 ),
             ],
         ]
@@ -392,9 +401,70 @@ class TestRetentionServiceCalculateRetention:
             session_cm_id=1000,  # Only Session 1
         )
 
-        # Only persons 1 and 2 should be counted
+        # Only persons 1 and 2 should be counted (base year)
         assert result.base_year_total == 2
+        # Compare year: person 5 excluded (different cm_id)
+        assert result.compare_year_total == 2
         assert result.returned_count == 2
+
+    @pytest.mark.asyncio
+    async def test_compare_year_filters_by_session_cm_id(self) -> None:
+        """Compare year attendees are filtered by session_cm_id (CampMinder reuses IDs across years)."""
+        from api.services.retention_service import RetentionService
+
+        mock_repo = AsyncMock()
+
+        # Base year: 2 campers in session cm_id=1000
+        mock_repo.fetch_attendees.side_effect = [
+            [
+                MockAttendee(
+                    person_id=1,
+                    year=2025,
+                    expand={"session": MockSession(cm_id=1000, name="Session 1", session_type="main")},
+                ),
+                MockAttendee(
+                    person_id=2,
+                    year=2025,
+                    expand={"session": MockSession(cm_id=1000, name="Session 1", session_type="main")},
+                ),
+            ],
+            # Compare year: person 1 in cm_id=1000 (returned), person 3 in cm_id=1001 (different session)
+            [
+                MockAttendee(
+                    person_id=1,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=1000, name="Session 1", session_type="main")},
+                ),
+                MockAttendee(
+                    person_id=3,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=1001, name="Session 2", session_type="main")},
+                ),
+            ],
+        ]
+
+        mock_repo.fetch_persons.return_value = {
+            1: MockPerson(cm_id=1, gender="M"),
+            2: MockPerson(cm_id=2, gender="F"),
+        }
+
+        mock_repo.fetch_sessions.return_value = {
+            1000: MockSession(cm_id=1000, name="Session 1", session_type="main"),
+        }
+        mock_repo.fetch_camper_history.return_value = []
+        mock_repo.fetch_summer_enrollment_history.return_value = []
+        mock_repo.build_history_by_person = MagicMock(return_value={})
+
+        service = RetentionService(mock_repo)
+        result = await service.calculate_retention(
+            base_year=2025,
+            compare_year=2026,
+            session_cm_id=1000,
+        )
+
+        # Compare year should only count person 1 (cm_id=1000), not person 3 (cm_id=1001)
+        assert result.compare_year_total == 1
+        assert result.returned_count == 1
 
     @pytest.mark.asyncio
     async def test_calculate_retention_handles_empty_base_year(self) -> None:
