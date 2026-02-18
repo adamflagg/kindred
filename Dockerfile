@@ -30,7 +30,7 @@ RUN npm run build
 # =============================================================================
 # Stage 2: Go build - compile custom PocketBase with sync service
 # =============================================================================
-FROM golang:1.25 AS go-builder
+FROM golang:1.26 AS go-builder
 
 # Using Debian-based image to match final python:3.13-slim (glibc compatibility)
 # hadolint ignore=DL3008
