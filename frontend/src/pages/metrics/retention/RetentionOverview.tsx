@@ -115,7 +115,7 @@ export default function RetentionOverview() {
           <RetentionRateBarChart data={genderBars} title="Retention by Gender" />
         )}
         {gradeBars.length > 0 && (
-          <RetentionRateBarChart data={gradeBars} title="Retention by Grade" sortBy="count" />
+          <RetentionRateBarChart data={gradeBars} title="Retention by Grade" sortBy="name" />
         )}
       </div>
 
@@ -148,16 +148,28 @@ export default function RetentionOverview() {
       {/* Row 4: Years at Camp + Summers at Camp */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {yearsAtCampBars.length > 0 && (
-          <RetentionRateBarChart data={yearsAtCampBars} title="Retention by Years at Camp" />
+          <RetentionRateBarChart
+            data={yearsAtCampBars}
+            title="Retention by Years at Camp"
+            sortBy="name"
+          />
         )}
         {summerYearsBars.length > 0 && (
-          <RetentionRateBarChart data={summerYearsBars} title="Retention by Summers at Camp" />
+          <RetentionRateBarChart
+            data={summerYearsBars}
+            title="Retention by Summers at Camp"
+            sortBy="name"
+          />
         )}
       </div>
 
       {/* Row 5: First Summer Year */}
       {firstSummerYearBars.length > 0 && (
-        <RetentionRateBarChart data={firstSummerYearBars} title="Retention by First Summer Year" />
+        <RetentionRateBarChart
+          data={firstSummerYearBars}
+          title="Retention by First Summer Year"
+          sortBy="name"
+        />
       )}
 
       {/* ─── Geographic Retention ─── */}

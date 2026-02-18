@@ -18,6 +18,34 @@ import type {
 } from '../types/metrics'
 import type { RetentionRateBarItem } from '../components/metrics/RetentionRateBarChart'
 
+export type RetentionSortBy = 'rate' | 'count' | 'name'
+
+/**
+ * Sort and optionally limit retention bar data.
+ * - 'rate': descending by retention rate (default)
+ * - 'count': descending by base count
+ * - 'name': ascending natural/numeric order (1 year < 2 years < 10 years)
+ */
+export function sortRetentionBarData(
+  data: RetentionRateBarItem[],
+  sortBy: RetentionSortBy = 'rate',
+  topN?: number
+): RetentionRateBarItem[] {
+  const sorted = [...data]
+  switch (sortBy) {
+    case 'rate':
+      sorted.sort((a, b) => b.retentionRate - a.retentionRate)
+      break
+    case 'count':
+      sorted.sort((a, b) => b.baseCount - a.baseCount)
+      break
+    case 'name':
+      sorted.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+      break
+  }
+  return topN ? sorted.slice(0, topN) : sorted
+}
+
 export function genderToBarData(data: RetentionByGender[] | undefined): RetentionRateBarItem[] {
   if (!data?.length) return []
   return data.map((d) => ({

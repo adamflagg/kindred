@@ -16,6 +16,7 @@ import {
   Cell,
   LabelList,
 } from 'recharts'
+import { sortRetentionBarData, type RetentionSortBy } from '../../utils/retentionTransforms'
 
 export interface RetentionRateBarItem {
   name: string
@@ -29,7 +30,7 @@ interface RetentionRateBarChartProps {
   title: string
   topN?: number
   height?: number
-  sortBy?: 'rate' | 'count'
+  sortBy?: RetentionSortBy
 }
 
 function getBarColor(rate: number): string {
@@ -63,16 +64,7 @@ export function RetentionRateBarChart({
     )
   }
 
-  // Sort and limit
-  let sorted = [...data]
-  if (sortBy === 'rate') {
-    sorted.sort((a, b) => b.retentionRate - a.retentionRate)
-  } else {
-    sorted.sort((a, b) => b.baseCount - a.baseCount)
-  }
-  if (topN) {
-    sorted = sorted.slice(0, topN)
-  }
+  const sorted = sortRetentionBarData(data, sortBy, topN)
 
   const chartData: ChartItem[] = sorted.map((d) => ({
     name: d.name,
