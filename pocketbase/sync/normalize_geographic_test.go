@@ -2,7 +2,6 @@ package sync
 
 import (
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -201,9 +200,9 @@ func TestNormalizeSchoolGo(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := normalizeSchoolValue(tt.input)
+			result := normalizeSchoolGo(tt.input)
 			if result != tt.expected {
-				t.Errorf("normalizeSchoolValue(%q) = %q, want %q", tt.input, result, tt.expected)
+				t.Errorf("normalizeSchoolGo(%q) = %q, want %q", tt.input, result, tt.expected)
 			}
 		})
 	}
@@ -994,54 +993,6 @@ func stringSimilarity(a, b string) int {
 
 	return (matchingPrefix * 100) / maxLen
 }
-
-// normalizeSchoolValue normalizes school names including grade annotation stripping
-func normalizeSchoolValue(school string) string {
-	school = preprocessGeographicValue(school)
-	if school == "" {
-		return ""
-	}
-
-	school = stripSchoolGradeAnnotationGo(school)
-
-	return school
-}
-
-// stripSchoolGradeAnnotationGo strips grade annotations from school names.
-// Handles parenthesized forms like "(2nd)", "(3rd grade)", "(K)", "(Pre-K)",
-// "(K-5)", "(3rd-5th)" and suffix forms like "2nd grade", "2nd".
-// Preserves names where the ordinal is part of the actual name (e.g., "2nd Street Elementary").
-func stripSchoolGradeAnnotationGo(school string) string {
-	// Strip parenthesized grade annotations
-	school = schoolGradeParenPatternGo.ReplaceAllString(school, "")
-	school = strings.TrimSpace(school)
-
-	// Strip suffix grade annotations (only when preceded by non-ordinal content)
-	if m := schoolGradeSuffixPatternGo.FindStringSubmatch(school); m != nil {
-		school = m[1]
-	}
-
-	return school
-}
-
-// schoolGradeParenPatternGo matches trailing parenthesized grade annotations
-// Examples: (2nd), (3rd grade), (K), (Kindergarten), (Pre-K), (TK), (K-5), (3rd-5th)
-var schoolGradeParenPatternGo = regexp.MustCompile(
-	`\s*\((?:` +
-		`\d{1,2}(?:st|nd|rd|th)(?:\s+grade)?` + // ordinals: 1st, 2nd, 3rd, 4th...12th
-		`|K(?:indergarten)?` + // K or Kindergarten
-		`|Pre-K|TK` + // Pre-K, TK
-		`|(?:\d{1,2}(?:st|nd|rd|th)|K)-(?:\d{1,2}(?:st|nd|rd|th)|\d)` + // ranges: K-5, 3rd-5th
-		`)\)$`,
-)
-
-// schoolGradeSuffixPatternGo matches trailing grade suffixes without parentheses.
-// Captures the school name prefix (group 1) so we can extract just the name.
-// Examples: "Highland 2nd grade" -> group 1 = "Highland"
-// Does NOT match: "2nd Street Elementary" (requires non-digit prefix before space+ordinal)
-var schoolGradeSuffixPatternGo = regexp.MustCompile(
-	`^(.+\S)\s+\d{1,2}(?:st|nd|rd|th)(?:\s+grade)?$`,
-)
 
 // isUpperAlpha checks if byte is uppercase A-Z
 func isUpperAlpha(b byte) bool {

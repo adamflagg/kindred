@@ -94,15 +94,16 @@ class TestSchoolNormalizationWithLookup:
             # Should correct to canonical or at least return something
             assert result != ""
 
-    def test_school_threshold_is_80(self) -> None:
-        """School fuzzy match uses threshold 80 (lower than cities at 85).
+    def test_school_threshold_is_85(self) -> None:
+        """School fuzzy match uses threshold 85 (same as cities).
 
-        This accommodates common school name variations like
-        "Elem" vs "Elementary", "K-8" suffixes, etc.
+        Token overlap filter prevents false positives, so 85 is safe
+        while still catching abbreviations like "Elem" vs "Elementary".
+        Manual typo mappings in schools.json handle edge cases.
         """
         from bunking.geo_normalizer.normalizer import SCHOOL_FUZZY_THRESHOLD
 
-        assert SCHOOL_FUZZY_THRESHOLD == 80
+        assert SCHOOL_FUZZY_THRESHOLD == 85
 
 
 class TestSchoolNormalizationBulk:

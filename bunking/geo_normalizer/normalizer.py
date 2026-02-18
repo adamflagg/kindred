@@ -27,8 +27,9 @@ DEFAULT_THRESHOLD = 90
 # Threshold for city typo correction (slightly lower to catch typos)
 CITY_FUZZY_THRESHOLD = 85
 
-# Threshold for school fuzzy match (lower than cities - school names vary more)
-SCHOOL_FUZZY_THRESHOLD = 80
+# Threshold for school fuzzy match (with token overlap filter, 85 prevents
+# false positives while still catching abbreviations like "Elem" vs "Elementary")
+SCHOOL_FUZZY_THRESHOLD = 85
 
 # Threshold for congregation fuzzy match
 CONGREGATION_FUZZY_THRESHOLD = 80
@@ -190,6 +191,50 @@ def normalize_city_value(city: str) -> str:
     return city.title()
 
 
+_SCHOOL_GRADE_PAREN_PATTERN = re.compile(
+    r"\s*\((?:"
+    r"\d{1,2}(?:st|nd|rd|th)(?:\s+grade)?"  # ordinals: 1st, 2nd, 3rd, 4th...12th
+    r"|K(?:indergarten)?"  # K or Kindergarten
+    r"|Pre-K|TK"  # Pre-K, TK
+    r"|(?:\d{1,2}(?:st|nd|rd|th)|K)-(?:\d{1,2}(?:st|nd|rd|th)|\d)"  # ranges: K-5, 3rd-5th
+    r")\)$"
+)
+
+_SCHOOL_GRADE_SUFFIX_PATTERN = re.compile(r"^(.+\S)\s+\d{1,2}(?:st|nd|rd|th)(?:\s+grade)?$")
+
+
+def strip_school_grade_annotation(school: str) -> str:
+    """Strip grade annotations from school names.
+
+    Handles parenthesized forms like "(2nd)", "(3rd grade)", "(K)", "(Pre-K)",
+    "(K-5)", "(3rd-5th)" and suffix forms like "2nd grade", "2nd".
+    Preserves names where the ordinal is part of the actual name
+    (e.g., "2nd Street Elementary").
+    """
+    # Strip parenthesized grade annotations
+    school = _SCHOOL_GRADE_PAREN_PATTERN.sub("", school)
+    school = school.strip()
+
+    # Strip suffix grade annotations (only when preceded by non-ordinal content)
+    m = _SCHOOL_GRADE_SUFFIX_PATTERN.match(school)
+    if m:
+        school = m.group(1)
+
+    return school
+
+
+def _school_match_has_token_overlap(query: str, candidate: str) -> bool:
+    """Check that a fuzzy match shares at least one exact token.
+
+    Prevents false positives like "Highland" matching "Leland High"
+    where token_sort_ratio gives a high score but the names share
+    no actual words.
+    """
+    query_tokens = set(query.lower().split())
+    candidate_tokens = set(candidate.lower().split())
+    return bool(query_tokens & candidate_tokens)
+
+
 def normalize_school_value(school: str) -> str:
     """Normalize a single school value using canonical lookup.
 
@@ -197,13 +242,21 @@ def normalize_school_value(school: str) -> str:
     names to canonical spelling. Falls back to the original value for
     unknown schools. Uses token_sort_ratio with threshold 80 to accommodate
     common variations like "Elem" vs "Elementary".
+
+    Grade annotations like "(2nd)" are stripped before matching to prevent
+    false positives (e.g., "Highland (2nd)" matching "Leland High").
     """
     school = preprocess_value(school)
     if not school:
         return ""
 
+    # Strip grade annotations before matching
+    stripped = strip_school_grade_annotation(school)
+    if not stripped:
+        return ""
+
     lookup, _ = _load_school_lookup()
-    lower = school.lower()
+    lower = stripped.lower()
 
     # Exact match (case-insensitive)
     if lower in lookup:
@@ -219,10 +272,13 @@ def normalize_school_value(school: str) -> str:
 
     if match:
         matched_key, _score, _ = match
-        return lookup[matched_key]
+        # Validate that the match shares meaningful tokens to prevent
+        # false positives like "Highland" -> "Leland High"
+        if _school_match_has_token_overlap(stripped, lookup[matched_key]):
+            return lookup[matched_key]
 
-    # No match - return original (preserves unknown schools)
-    return school
+    # No match - return stripped value (preserves unknown schools)
+    return stripped
 
 
 def normalize_congregation_value(congregation: str) -> str:
