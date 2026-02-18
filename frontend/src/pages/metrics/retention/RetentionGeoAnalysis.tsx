@@ -110,7 +110,7 @@ function NotableShiftsList({ shifts }: { shifts: NotableShift[] }) {
 
   return (
     <div className="mt-3">
-      <h4 className="text-muted-foreground mb-2 text-xs font-medium uppercase tracking-wide">
+      <h4 className="text-muted-foreground mb-2 text-xs font-medium tracking-wide uppercase">
         Notable Shifts
       </h4>
       <div className="space-y-1">

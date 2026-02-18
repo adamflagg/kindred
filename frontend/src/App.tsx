@@ -38,9 +38,7 @@ const RegistrationOverview = lazy(() => import('./pages/metrics/registration/Reg
 const GeoAnalysis = lazy(() => import('./pages/metrics/registration/GeoAnalysis'))
 const WaitlistAnalysis = lazy(() => import('./pages/metrics/registration/WaitlistAnalysis'))
 const RetentionOverview = lazy(() => import('./pages/metrics/retention/RetentionOverview'))
-const RetentionGeoAnalysis = lazy(
-  () => import('./pages/metrics/retention/RetentionGeoAnalysis')
-)
+const RetentionGeoAnalysis = lazy(() => import('./pages/metrics/retention/RetentionGeoAnalysis'))
 const TrendsOverview = lazy(() => import('./pages/metrics/trends/TrendsOverview'))
 
 // Loading skeleton component for route transitions

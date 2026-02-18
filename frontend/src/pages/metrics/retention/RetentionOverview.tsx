@@ -27,8 +27,13 @@ export default function RetentionOverview() {
   const { currentYear } = useCurrentYear()
 
   // Get session filter and expanded toggle from context
-  const { selectedSessionCmId, sessions, sessionTypesParam, activeSessionTypes, expandedRetention } =
-    useMetricsSession()
+  const {
+    selectedSessionCmId,
+    sessions,
+    sessionTypesParam,
+    activeSessionTypes,
+    expandedRetention,
+  } = useMetricsSession()
 
   const numYears = expandedRetention ? 5 : 3
 
@@ -113,8 +118,8 @@ export default function RetentionOverview() {
   const enrollmentData = trendsData.enrollment_by_year ?? []
 
   // Source year totals from enrollment data (already correctly filtered by session)
-  const currentYearEnrollment = enrollmentData.find(e => e.year === currentYear)
-  const priorYearEnrollment = enrollmentData.find(e => e.year === priorYear)
+  const currentYearEnrollment = enrollmentData.find((e) => e.year === currentYear)
+  const priorYearEnrollment = enrollmentData.find((e) => e.year === priorYear)
 
   const summerYearsFormatter = (key: string | number) => {
     const val = String(key)
@@ -139,7 +144,9 @@ export default function RetentionOverview() {
         <MetricCard
           title={`${currentYear} Total Campers`}
           value={currentYearEnrollment?.total ?? 0}
-          subtitle={selectedSessionCmId ? 'In selected session' : 'Enrolled campers in current year'}
+          subtitle={
+            selectedSessionCmId ? 'In selected session' : 'Enrolled campers in current year'
+          }
         />
         <MetricCard
           title={`${priorYear} Total Campers`}
@@ -210,7 +217,7 @@ export default function RetentionOverview() {
 
       {/* ─── Legacy Retention Data (for comparison) ─── */}
       <div className="border-border relative my-8 border-t pt-6">
-        <span className="bg-background text-muted-foreground absolute -top-3 left-4 px-2 text-xs font-medium uppercase tracking-wide">
+        <span className="bg-background text-muted-foreground absolute -top-3 left-4 px-2 text-xs font-medium tracking-wide uppercase">
           Legacy Retention Data (for comparison)
         </span>
       </div>

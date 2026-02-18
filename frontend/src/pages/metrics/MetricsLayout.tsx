@@ -66,7 +66,10 @@ export default function MetricsLayout() {
   // Dynamic header based on section
   const getHeader = () => {
     if (location.pathname.startsWith('/metrics/retention')) {
-      return { title: 'Retention Metrics', subtitle: 'Analyze camper retention and enrollment trends' }
+      return {
+        title: 'Retention Metrics',
+        subtitle: 'Analyze camper retention and enrollment trends',
+      }
     }
     if (location.pathname.startsWith('/metrics/trends')) {
       return { title: 'Trend Analysis', subtitle: 'Long-term enrollment and registration trends' }
