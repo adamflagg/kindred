@@ -11,7 +11,9 @@ import {
   firstSummerYearToBarData,
   sessionBunkToBarData,
   priorSessionToBarData,
+  sortRetentionBarData,
 } from '../retentionTransforms'
+import type { RetentionRateBarItem } from '../../components/metrics/RetentionRateBarChart'
 import type {
   RetentionByGender,
   RetentionByGrade,
@@ -201,5 +203,71 @@ describe('priorSessionToBarData', () => {
 
   it('returns empty array for undefined', () => {
     expect(priorSessionToBarData(undefined)).toEqual([])
+  })
+})
+
+describe('sortRetentionBarData', () => {
+  const unsortedData: RetentionRateBarItem[] = [
+    { name: '3 years', retentionRate: 0.9, baseCount: 30, returnedCount: 27 },
+    { name: '1 year', retentionRate: 0.5, baseCount: 100, returnedCount: 50 },
+    { name: '10 years', retentionRate: 0.8, baseCount: 10, returnedCount: 8 },
+    { name: '2 years', retentionRate: 0.7, baseCount: 60, returnedCount: 42 },
+  ]
+
+  it('sorts by name using natural/numeric order', () => {
+    const result = sortRetentionBarData(unsortedData, 'name')
+    expect(result.map((d) => d.name)).toEqual(['1 year', '2 years', '3 years', '10 years'])
+  })
+
+  it('sorts by retention rate descending', () => {
+    const result = sortRetentionBarData(unsortedData, 'rate')
+    expect(result.map((d) => d.name)).toEqual(['3 years', '10 years', '2 years', '1 year'])
+  })
+
+  it('sorts by base count descending', () => {
+    const result = sortRetentionBarData(unsortedData, 'count')
+    expect(result.map((d) => d.name)).toEqual(['1 year', '2 years', '3 years', '10 years'])
+  })
+
+  it('defaults to rate sort', () => {
+    const result = sortRetentionBarData(unsortedData)
+    expect(result.map((d) => d.name)).toEqual(['3 years', '10 years', '2 years', '1 year'])
+  })
+
+  it('applies topN after sorting', () => {
+    const result = sortRetentionBarData(unsortedData, 'name', 2)
+    expect(result).toHaveLength(2)
+    expect(result.map((d) => d.name)).toEqual(['1 year', '2 years'])
+  })
+
+  it('handles grade labels naturally', () => {
+    const gradeData: RetentionRateBarItem[] = [
+      { name: 'Grade 9', retentionRate: 0.6, baseCount: 40, returnedCount: 24 },
+      { name: 'Grade 3', retentionRate: 0.8, baseCount: 50, returnedCount: 40 },
+      { name: 'Grade 12', retentionRate: 0.5, baseCount: 30, returnedCount: 15 },
+      { name: 'Unknown', retentionRate: 0.3, baseCount: 10, returnedCount: 3 },
+    ]
+    const result = sortRetentionBarData(gradeData, 'name')
+    expect(result.map((d) => d.name)).toEqual(['Grade 3', 'Grade 9', 'Grade 12', 'Unknown'])
+  })
+
+  it('handles year labels naturally', () => {
+    const yearData: RetentionRateBarItem[] = [
+      { name: '2023', retentionRate: 0.7, baseCount: 50, returnedCount: 35 },
+      { name: '2019', retentionRate: 0.6, baseCount: 40, returnedCount: 24 },
+      { name: '2021', retentionRate: 0.8, baseCount: 60, returnedCount: 48 },
+    ]
+    const result = sortRetentionBarData(yearData, 'name')
+    expect(result.map((d) => d.name)).toEqual(['2019', '2021', '2023'])
+  })
+
+  it('returns empty array for empty input', () => {
+    expect(sortRetentionBarData([], 'name')).toEqual([])
+  })
+
+  it('does not mutate the original array', () => {
+    const original = [...unsortedData]
+    sortRetentionBarData(unsortedData, 'name')
+    expect(unsortedData).toEqual(original)
   })
 })
