@@ -7,8 +7,16 @@ vi.mock('recharts', () => ({
   ResponsiveContainer: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="responsive-container">{children}</div>
   ),
-  BarChart: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="bar-chart">{children}</div>
+  BarChart: ({
+    children,
+    layout,
+  }: {
+    children: React.ReactNode
+    layout?: string
+  }) => (
+    <div data-testid="bar-chart" data-layout={layout ?? 'default'}>
+      {children}
+    </div>
   ),
   Bar: () => null,
   XAxis: () => null,
@@ -74,6 +82,39 @@ describe('RetentionRateBarChart', () => {
       <RetentionRateBarChart data={orderedData} title="Session Chart" sortBy="none" />
     )
     expect(container.querySelector('.card-lodge')).toBeInTheDocument()
+    expect(screen.getByTestId('bar-chart')).toBeInTheDocument()
+  })
+
+  it('uses horizontal bars layout by default', () => {
+    render(<RetentionRateBarChart data={sampleData} title="Default Layout" />)
+    const barChart = screen.getByTestId('bar-chart')
+    // Default is horizontal bars, which uses layout="vertical" on BarChart
+    expect(barChart).toHaveAttribute('data-layout', 'vertical')
+  })
+
+  it('uses vertical bars layout when layout="vertical"', () => {
+    render(<RetentionRateBarChart data={sampleData} title="Vertical Layout" layout="vertical" />)
+    const barChart = screen.getByTestId('bar-chart')
+    // Vertical bars means no layout prop on BarChart (standard orientation)
+    expect(barChart).toHaveAttribute('data-layout', 'default')
+  })
+
+  it('renders title and chart container with vertical layout', () => {
+    const sessionData: RetentionRateBarItem[] = [
+      { name: 'Taste of Camp', retentionRate: 0.6, baseCount: 50, returnedCount: 30 },
+      { name: 'Session 1', retentionRate: 0.8, baseCount: 100, returnedCount: 80 },
+      { name: 'Session 2', retentionRate: 0.5, baseCount: 80, returnedCount: 40 },
+    ]
+    render(
+      <RetentionRateBarChart
+        data={sessionData}
+        title="Retention by 2026 Session"
+        sortBy="none"
+        layout="vertical"
+      />
+    )
+    expect(screen.getByText('Retention by 2026 Session')).toBeInTheDocument()
+    expect(screen.getByTestId('responsive-container')).toBeInTheDocument()
     expect(screen.getByTestId('bar-chart')).toBeInTheDocument()
   })
 })
