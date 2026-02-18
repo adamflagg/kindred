@@ -7,33 +7,63 @@
  * - New vs returning camper trends
  * - Gender distribution over time
  * - Year-by-year summary table
+ * - Retention rate trend line (from retention-trends endpoint)
+ * - Enrollment composition: gender, grade, summers at camp, first summer year
  */
 
 import { useMemo } from 'react'
 import { useHistoricalTrends } from '../../../hooks/useMetrics'
+import { useRetentionTrends } from '../../../hooks/useRetentionTrends'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { TrendLineChart } from '../../../components/metrics/TrendLineChart'
 import { MetricCard } from '../../../components/metrics/MetricCard'
+import { RetentionRateLine } from '../../../components/metrics/RetentionRateLine'
+import { GenderStackedChart } from '../../../components/metrics/GenderStackedChart'
+import { GradeEnrollmentChart } from '../../../components/metrics/GradeEnrollmentChart'
+import { MultiYearBreakdownChart } from '../../../components/metrics/MultiYearBreakdownChart'
 import { Loader2, AlertCircle } from 'lucide-react'
 
 export default function TrendsOverview() {
-  // Get session filter from context (unified selector is in MetricsTypeTabs)
-  const { selectedSessionCmId, sessionTypesParam } = useMetricsSession()
+  const { selectedSessionCmId, sessionTypesParam, expandedRetention } = useMetricsSession()
   const { currentYear } = useCurrentYear()
+
+  const numYearsDisplay = expandedRetention ? 5 : 3
 
   // Build explicit years param from currentYear context (defense in depth)
   const yearsParam = useMemo(() => {
     return Array.from({ length: 5 }, (_, i) => currentYear - 4 + i).join(',')
   }, [currentYear])
 
+  // Historical trends (enrollment, new vs returning, gender lines)
   const { data, isLoading, error } = useHistoricalTrends(
     yearsParam,
     sessionTypesParam,
     selectedSessionCmId ?? undefined
   )
 
-  if (isLoading) {
+  // Always fetch 5 years of retention trends for caching; slice when toggling
+  const {
+    data: trendsData,
+    isLoading: trendsLoading,
+    error: trendsError,
+  } = useRetentionTrends(currentYear, {
+    numYears: 5,
+    sessionTypes: sessionTypesParam,
+    sessionCmId: selectedSessionCmId ?? undefined,
+  })
+
+  // Slice enrollment data based on expanded toggle (3 or 5 years)
+  const enrollmentData = useMemo(() => {
+    return (trendsData?.enrollment_by_year ?? []).slice(-numYearsDisplay)
+  }, [trendsData?.enrollment_by_year, numYearsDisplay])
+
+  // Slice retention rate years to match display count
+  const retentionYears = useMemo(() => {
+    return (trendsData?.years ?? []).slice(-numYearsDisplay)
+  }, [trendsData?.years, numYearsDisplay])
+
+  if (isLoading || trendsLoading) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="text-primary h-8 w-8 animate-spin" />
@@ -42,11 +72,13 @@ export default function TrendsOverview() {
     )
   }
 
-  if (error) {
+  if (error || trendsError) {
     return (
       <div className="flex items-center justify-center py-12 text-red-600 dark:text-red-400">
         <AlertCircle className="mr-2 h-6 w-6" />
-        <span>Failed to load historical data: {error.message}</span>
+        <span>
+          Failed to load historical data: {(error ?? trendsError)?.message}
+        </span>
       </div>
     )
   }
@@ -72,6 +104,11 @@ export default function TrendsOverview() {
       : '0'
 
   const avgGrowth = data.years.length > 1 ? (totalChange / (data.years.length - 1)).toFixed(0) : '0'
+
+  const summerYearsFormatter = (key: string | number) => {
+    const val = String(key)
+    return val === '1' ? '1 Summer' : `${val} Summers`
+  }
 
   return (
     <div className="space-y-6">
@@ -182,6 +219,65 @@ export default function TrendsOverview() {
           </table>
         </div>
       </div>
+
+      {/* ─── Enrollment Composition (from retention-trends endpoint) ─── */}
+      <div className="border-border relative my-8 border-t pt-6">
+        <span className="bg-background text-muted-foreground absolute -top-3 left-4 px-2 text-xs font-medium tracking-wide uppercase">
+          Enrollment Composition ({numYearsDisplay}-Year Comparison)
+        </span>
+      </div>
+
+      {/* Retention Rate Trend Line */}
+      {retentionYears.length > 0 && (
+        <RetentionRateLine
+          data={retentionYears}
+          title="Overall Retention Rate Trend"
+          height={250}
+        />
+      )}
+
+      {/* Gender Composition */}
+      {enrollmentData.length > 0 && (
+        <GenderStackedChart
+          data={enrollmentData}
+          title={`Gender Composition (${numYearsDisplay}-Year Comparison)`}
+          height={250}
+        />
+      )}
+
+      {/* Grade Enrollment */}
+      {enrollmentData.length > 0 && (
+        <GradeEnrollmentChart
+          data={enrollmentData}
+          title={`Enrollment by Grade (${numYearsDisplay}-Year Comparison)`}
+          height={300}
+        />
+      )}
+
+      {/* Summers at Camp */}
+      {enrollmentData.length > 0 && (
+        <MultiYearBreakdownChart
+          data={enrollmentData}
+          breakdownKey="by_summer_years"
+          labelKey="summer_years"
+          title={`Summers at Camp (${numYearsDisplay}-Year Comparison)`}
+          nameFormatter={summerYearsFormatter}
+          invertAxes
+          height={300}
+        />
+      )}
+
+      {/* First Summer Year */}
+      {enrollmentData.length > 0 && (
+        <MultiYearBreakdownChart
+          data={enrollmentData}
+          breakdownKey="by_first_summer_year"
+          labelKey="first_summer_year"
+          title={`First Summer Year (${numYearsDisplay}-Year Comparison)`}
+          invertAxes
+          height={300}
+        />
+      )}
     </div>
   )
 }

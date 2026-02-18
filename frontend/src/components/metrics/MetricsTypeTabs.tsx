@@ -76,7 +76,7 @@ export default function MetricsTypeTabs() {
 
         {/* Right side controls */}
         <div className="flex items-center gap-3">
-          {activeTab === 'retention' && (
+          {activeTab === 'trends' && (
             <label className="flex cursor-pointer items-center gap-1.5 text-sm">
               <input
                 type="checkbox"

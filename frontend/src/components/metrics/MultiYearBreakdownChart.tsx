@@ -19,15 +19,7 @@ import {
   Legend,
 } from 'recharts'
 import type { YearEnrollment } from '../../types/metrics'
-
-// Year-specific colors matching GradeEnrollmentChart
-const YEAR_COLORS = [
-  'hsl(200, 70%, 50%)', // Blue (oldest)
-  'hsl(160, 100%, 35%)', // Green (middle)
-  'hsl(42, 92%, 50%)', // Gold (most recent)
-  'hsl(280, 60%, 50%)', // Purple
-  'hsl(350, 70%, 50%)', // Red
-]
+import { getYearColor, YEAR_PALETTE } from '../../utils/yearColors'
 
 type BreakdownKey =
   | 'by_summer_years'
@@ -250,15 +242,23 @@ export function MultiYearBreakdownChart({
           <YAxis className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
           <Tooltip content={<CustomTooltip />} />
           <Legend />
-          {barKeys.map((key, index) => (
-            <Bar
-              key={key}
-              dataKey={key}
-              name={barLabels[index] ?? key}
-              fill={YEAR_COLORS[index % YEAR_COLORS.length] ?? 'hsl(0, 0%, 50%)'}
-              radius={[4, 4, 0, 0]}
-            />
-          ))}
+          {barKeys.map((key, index) => {
+            // Normal mode: keys are year strings, use stable year-based colors
+            // Inverted mode: keys are category names, use palette by index
+            const maxYear = normal ? Math.max(...normal.years) : 0
+            const fill = normal
+              ? getYearColor(parseInt(key, 10), maxYear)
+              : (YEAR_PALETTE[index % YEAR_PALETTE.length] ?? 'hsl(0, 0%, 50%)')
+            return (
+              <Bar
+                key={key}
+                dataKey={key}
+                name={barLabels[index] ?? key}
+                fill={fill}
+                radius={[4, 4, 0, 0]}
+              />
+            )
+          })}
         </BarChart>
       </ResponsiveContainer>
     </div>
