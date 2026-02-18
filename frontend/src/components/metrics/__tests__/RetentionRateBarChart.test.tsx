@@ -2,18 +2,22 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { RetentionRateBarChart, type RetentionRateBarItem } from '../RetentionRateBarChart'
 
-// Mock recharts to avoid canvas/SVG rendering issues in jsdom
-vi.mock('recharts', () => {
-  const OriginalModule = vi.importActual('recharts')
-  return {
-    ...OriginalModule,
-    ResponsiveContainer: ({ children }: { children: React.ReactNode }) => (
-      <div data-testid="responsive-container" style={{ width: 500, height: 300 }}>
-        {children}
-      </div>
-    ),
-  }
-})
+// Mock recharts entirely to avoid canvas/SVG rendering issues in jsdom
+vi.mock('recharts', () => ({
+  ResponsiveContainer: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="responsive-container">{children}</div>
+  ),
+  BarChart: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="bar-chart">{children}</div>
+  ),
+  Bar: () => null,
+  XAxis: () => null,
+  YAxis: () => null,
+  CartesianGrid: () => null,
+  Tooltip: () => null,
+  Cell: () => null,
+  LabelList: () => null,
+}))
 
 const sampleData: RetentionRateBarItem[] = [
   { name: 'M', retentionRate: 0.75, baseCount: 100, returnedCount: 75 },
