@@ -86,15 +86,15 @@ describe('MetricsLayout', () => {
     expect(screen.getByRole('link', { name: /waitlist/i })).toBeInTheDocument()
   })
 
-  it('does not render sub-nav for retention routes', () => {
+  it('renders sub-nav for retention routes', () => {
     renderWithRouter('/metrics/retention')
 
     // Primary tabs should still be visible
     expect(screen.getByRole('link', { name: /retention/i })).toBeInTheDocument()
 
-    // Sub-nav items should NOT be present
-    expect(screen.queryByRole('link', { name: /overview/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: /geographic/i })).not.toBeInTheDocument()
+    // Sub-nav items for retention
+    expect(screen.getByRole('link', { name: /overview/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /geographic/i })).toBeInTheDocument()
   })
 
   it('does not render sub-nav for trends routes', () => {
@@ -104,11 +104,18 @@ describe('MetricsLayout', () => {
     expect(screen.queryByRole('link', { name: /overview/i })).not.toBeInTheDocument()
   })
 
-  it('renders page header with title', () => {
+  it('renders page header with title for registration', () => {
     renderWithRouter('/metrics/registration/overview')
 
     expect(screen.getByText('Registration Metrics')).toBeInTheDocument()
     expect(screen.getByText(/analyze registration data/i)).toBeInTheDocument()
+  })
+
+  it('renders page header with title for retention', () => {
+    renderWithRouter('/metrics/retention')
+
+    expect(screen.getByText('Retention Metrics')).toBeInTheDocument()
+    expect(screen.getByText(/analyze camper retention/i)).toBeInTheDocument()
   })
 
   it('renders sticky nav container', () => {
