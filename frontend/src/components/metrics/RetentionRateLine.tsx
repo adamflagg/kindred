@@ -106,11 +106,6 @@ export function RetentionRateLine({
             y={50}
             stroke="hsl(var(--muted-foreground))"
             strokeDasharray="3 3"
-            label={{
-              value: '50%',
-              position: 'left',
-              fill: 'hsl(var(--muted-foreground))',
-            }}
           />
           <Line
             type="monotone"

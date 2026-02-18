@@ -161,8 +161,8 @@ export default function RetentionGeoAnalysis() {
   })
 
   const enrollmentData = useMemo(
-    () => trendsData?.enrollment_by_year ?? [],
-    [trendsData?.enrollment_by_year]
+    () => (trendsData?.enrollment_by_year ?? []).slice(-numYears),
+    [trendsData?.enrollment_by_year, numYears]
   )
 
   const cityShifts = useMemo(
