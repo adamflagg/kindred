@@ -32,12 +32,12 @@ export default function RetentionOverview() {
 
   const numYears = expandedRetention ? 5 : 3
 
-  // Calculate base year (year before current year) for the primary view
-  const baseYear = currentYear - 1
+  // Calculate prior year for the primary view
+  const priorYear = currentYear - 1
 
-  // Drilldown state management (uses baseYear since retention shows who from baseYear returned)
+  // Drilldown state management (uses priorYear since retention shows who from priorYear returned)
   const { DrilldownModal } = useDrilldown({
-    year: baseYear,
+    year: priorYear,
     sessionCmId: selectedSessionCmId ?? undefined,
     sessionTypes: [...activeSessionTypes],
     statusFilter: ['enrolled'],
@@ -57,9 +57,9 @@ export default function RetentionOverview() {
     sessionCmId: selectedSessionCmId ?? undefined,
   })
 
-  // Detailed retention data for session table and compare_year_total
+  // Detailed retention data for session table
   const { data: detailedData } = useRetentionMetrics(
-    baseYear,
+    priorYear,
     currentYear,
     sessionTypesParam,
     selectedSessionCmId ?? undefined
@@ -112,6 +112,10 @@ export default function RetentionOverview() {
 
   const enrollmentData = trendsData.enrollment_by_year ?? []
 
+  // Source year totals from enrollment data (already correctly filtered by session)
+  const currentYearEnrollment = enrollmentData.find(e => e.year === currentYear)
+  const priorYearEnrollment = enrollmentData.find(e => e.year === priorYear)
+
   const summerYearsFormatter = (key: string | number) => {
     const val = String(key)
     return val === '1' ? '1 Summer' : `${val} Summers`
@@ -133,19 +137,19 @@ export default function RetentionOverview() {
       {/* Summary Cards */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         <MetricCard
-          title={`${baseYear} Total Campers`}
-          value={latestTransition?.base_count ?? 0}
-          subtitle={selectedSessionCmId ? 'In selected session' : 'Enrolled campers in base year'}
+          title={`${currentYear} Total Campers`}
+          value={currentYearEnrollment?.total ?? 0}
+          subtitle={selectedSessionCmId ? 'In selected session' : 'Enrolled campers in current year'}
         />
         <MetricCard
-          title={`${currentYear} Total Campers`}
-          value={detailedData?.compare_year_total ?? 0}
-          subtitle="Enrolled campers in current year"
+          title={`${priorYear} Total Campers`}
+          value={priorYearEnrollment?.total ?? 0}
+          subtitle="Enrolled campers in prior year"
         />
         <MetricCard
           title="Returned Campers"
           value={latestTransition?.returned_count ?? 0}
-          subtitle={`From ${baseYear} to ${currentYear}`}
+          subtitle={`From ${priorYear} to ${currentYear}`}
         />
         <MetricCard
           title="Avg Retention Rate"
@@ -215,7 +219,7 @@ export default function RetentionOverview() {
       <div className="card-lodge overflow-hidden">
         <div className="border-border border-b px-4 py-3">
           <h3 className="text-foreground text-sm font-semibold">
-            Retention Details by Session ({baseYear}&rarr;{currentYear})
+            Retention Details by Session ({priorYear}&rarr;{currentYear})
           </h3>
         </div>
         <div className="overflow-x-auto">
@@ -224,7 +228,7 @@ export default function RetentionOverview() {
               <tr className="border-border bg-muted/30 border-b">
                 <th className="text-muted-foreground px-4 py-3 text-left font-medium">Session</th>
                 <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                  {baseYear} Count
+                  {priorYear} Count
                 </th>
                 <th className="text-muted-foreground px-4 py-3 text-right font-medium">Returned</th>
                 <th className="text-muted-foreground px-4 py-3 text-right font-medium">
