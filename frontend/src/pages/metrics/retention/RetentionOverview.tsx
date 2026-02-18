@@ -12,6 +12,7 @@ import { useRetentionMetrics } from '../../../hooks/useMetrics'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { MetricCard } from '../../../components/metrics/MetricCard'
 import { RetentionRateBarChart } from '../../../components/metrics/RetentionRateBarChart'
+import { RetentionRateLineChart } from '../../../components/metrics/RetentionRateLineChart'
 import {
   genderToBarData,
   gradeToBarData,
@@ -19,7 +20,6 @@ import {
   cityToBarData,
   schoolToBarData,
   synagogueToBarData,
-  yearsAtCampToBarData,
   summerYearsToBarData,
   firstSummerYearToBarData,
   sessionBunkToBarData,
@@ -68,11 +68,10 @@ export default function RetentionOverview() {
 
   const didNotReturn = data.base_year_total - data.returned_count
 
-  // Transform all breakdowns to bar chart data
+  // Transform all breakdowns to chart data
   const genderBars = genderToBarData(data.by_gender)
   const gradeBars = gradeToBarData(data.by_grade)
   const sessionBars = sessionToBarData(data.by_session)
-  const yearsAtCampBars = yearsAtCampToBarData(data.by_years_at_camp)
   const summerYearsBars = summerYearsToBarData(data.by_summer_years)
   const firstSummerYearBars = firstSummerYearToBarData(data.by_first_summer_year)
   const priorSessionBars = priorSessionToBarData(data.by_prior_session)
@@ -109,66 +108,52 @@ export default function RetentionOverview() {
         />
       </div>
 
-      {/* Row 1: Gender + Grade */}
+      {/* Gender + Session side by side */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {genderBars.length > 0 && (
           <RetentionRateBarChart data={genderBars} title="Retention by Gender" />
         )}
-        {gradeBars.length > 0 && (
-          <RetentionRateBarChart data={gradeBars} title="Retention by Grade" sortBy="name" />
-        )}
-      </div>
-
-      {/* Row 2: Session + Prior Session */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {sessionBars.length > 0 && (
           <RetentionRateBarChart
             data={sessionBars}
             title={`Retention by ${currentYear} Session`}
           />
         )}
+      </div>
+
+      {/* Grade (line chart - numeric x-axis) */}
+      {gradeBars.length > 0 && (
+        <RetentionRateLineChart data={gradeBars} title="Retention by Grade" />
+      )}
+
+      {/* Prior Session + Session+Bunk */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {priorSessionBars.length > 0 && (
           <RetentionRateBarChart
             data={priorSessionBars}
             title={`Retention by ${priorYear} Session`}
           />
         )}
+        {sessionBunkBars.length > 0 && (
+          <RetentionRateBarChart
+            data={sessionBunkBars}
+            title={`${priorYear} Session + Bunk (Top 15)`}
+            topN={15}
+            sortBy="count"
+          />
+        )}
       </div>
 
-      {/* Row 3: Session+Bunk (top 15) */}
-      {sessionBunkBars.length > 0 && (
-        <RetentionRateBarChart
-          data={sessionBunkBars}
-          title={`Retention by ${priorYear} Session + Bunk (Top 15)`}
-          topN={15}
-          sortBy="count"
-        />
+      {/* Summers at Camp (line chart - numeric x-axis) */}
+      {summerYearsBars.length > 0 && (
+        <RetentionRateLineChart data={summerYearsBars} title="Retention by Summers at Camp" />
       )}
 
-      {/* Row 4: Years at Camp + Summers at Camp */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {yearsAtCampBars.length > 0 && (
-          <RetentionRateBarChart
-            data={yearsAtCampBars}
-            title="Retention by Years at Camp"
-            sortBy="name"
-          />
-        )}
-        {summerYearsBars.length > 0 && (
-          <RetentionRateBarChart
-            data={summerYearsBars}
-            title="Retention by Summers at Camp"
-            sortBy="name"
-          />
-        )}
-      </div>
-
-      {/* Row 5: First Summer Year */}
+      {/* First Summer Year (line chart - numeric x-axis) */}
       {firstSummerYearBars.length > 0 && (
-        <RetentionRateBarChart
+        <RetentionRateLineChart
           data={firstSummerYearBars}
           title="Retention by First Summer Year"
-          sortBy="name"
         />
       )}
 
@@ -179,7 +164,7 @@ export default function RetentionOverview() {
         </span>
       </div>
 
-      {/* Row 6: City + School */}
+      {/* City + School */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {cityBars.length > 0 && (
           <RetentionRateBarChart
@@ -199,7 +184,7 @@ export default function RetentionOverview() {
         )}
       </div>
 
-      {/* Row 7: Synagogue */}
+      {/* Synagogue */}
       {synagogueBars.length > 0 && (
         <RetentionRateBarChart
           data={synagogueBars}
