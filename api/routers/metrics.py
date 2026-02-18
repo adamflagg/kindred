@@ -589,7 +589,7 @@ async def get_historical_trends(
 @router.get("/retention-trends", response_model=RetentionTrendsResponse)
 async def get_retention_trends(
     current_year: int = Query(..., description="Current year (e.g., 2026)"),
-    num_years: int = Query(3, description="Number of years to include (default: 3)"),
+    num_years: int = Query(3, description="Number of year-to-year transitions (default: 3)"),
     session_types: str | None = Query(
         "main,embedded,ag,quest",
         description="Comma-separated session types to filter (default: summer camp sessions)",
@@ -601,8 +601,9 @@ async def get_retention_trends(
 ) -> RetentionTrendsResponse:
     """Get retention trends across multiple year transitions.
 
-    Returns retention data for num_years-1 year transitions. For example,
+    Returns retention data for num_years year transitions. For example,
     with num_years=3 and current_year=2026:
+    - 2023→2024 transition
     - 2024→2025 transition
     - 2025→2026 transition
 

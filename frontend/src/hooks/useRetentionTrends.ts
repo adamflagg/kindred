@@ -22,7 +22,7 @@ export interface UseRetentionTrendsOptions {
  * Fetch retention trends across multiple year transitions.
  *
  * For a currentYear of 2026 with numYears=3:
- * - Returns transitions: 2024→2025, 2025→2026
+ * - Returns transitions: 2023→2024, 2024→2025, 2025→2026
  * - Includes overall retention rates and breakdowns by gender/grade
  *
  * @param currentYear - The current/target year (e.g., 2026)

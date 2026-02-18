@@ -53,7 +53,7 @@ class RetentionTrendsService:
 
         Args:
             current_year: The current/most recent year.
-            num_years: Number of years to include (default: 3).
+            num_years: Number of year-to-year transitions to include (default: 3).
             session_types: Optional list of session types to filter.
             session_cm_id: Optional specific session ID to filter.
 
@@ -61,7 +61,7 @@ class RetentionTrendsService:
             RetentionTrendsResponse with trend data.
         """
         # Build list of years to analyze
-        years = list(range(current_year - num_years + 1, current_year + 1))
+        years = list(range(current_year - num_years, current_year + 1))
 
         # Fetch data for all years in parallel
         data_by_year = await self._fetch_all_years_data(years, session_types)
