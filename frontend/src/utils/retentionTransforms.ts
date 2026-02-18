@@ -169,3 +169,35 @@ export function priorSessionToBarData(
     returnedCount: d.returned_count,
   }))
 }
+
+export interface RetentionOutlier {
+  name: string
+  retentionRate: number
+  baseCount: number
+  returnedCount: number
+  deviation: number // percentage points above/below overall rate
+}
+
+export function computeRetentionOutliers(
+  data: RetentionRateBarItem[],
+  overallRate: number,
+  options?: { minBaseCount?: number; minDeviation?: number }
+): RetentionOutlier[] {
+  const minBaseCount = options?.minBaseCount ?? 8
+  const minDeviation = options?.minDeviation ?? 10
+
+  return data
+    .filter((d) => d.baseCount >= minBaseCount)
+    .map((d) => {
+      const deviation = Math.round(d.retentionRate * 100) - Math.round(overallRate * 100)
+      return {
+        name: d.name,
+        retentionRate: d.retentionRate,
+        baseCount: d.baseCount,
+        returnedCount: d.returnedCount,
+        deviation,
+      }
+    })
+    .filter((d) => Math.abs(d.deviation) >= minDeviation)
+    .sort((a, b) => Math.abs(b.deviation) - Math.abs(a.deviation))
+}

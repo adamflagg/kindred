@@ -32,6 +32,7 @@ interface RetentionRateBarChartProps {
   height?: number
   sortBy?: RetentionSortBy
   layout?: 'horizontal' | 'vertical' // 'horizontal' = horizontal bars (default), 'vertical' = vertical bars
+  showCounts?: boolean // When true, labels show "75% (30/40)" instead of "75%"
 }
 
 function getBarColor(rate: number): string {
@@ -43,6 +44,7 @@ function getBarColor(rate: number): string {
 interface ChartItem {
   name: string
   rate: number
+  rateLabel: string
   baseCount: number
   returnedCount: number
 }
@@ -78,6 +80,7 @@ export function RetentionRateBarChart({
   height,
   sortBy = 'rate',
   layout = 'horizontal',
+  showCounts = false,
 }: RetentionRateBarChartProps) {
   if (data.length === 0) {
     return (
@@ -92,12 +95,16 @@ export function RetentionRateBarChart({
 
   const sorted = sortRetentionBarData(data, sortBy, topN)
 
-  const chartData: ChartItem[] = sorted.map((d) => ({
-    name: d.name,
-    rate: Math.round(d.retentionRate * 100),
-    baseCount: d.baseCount,
-    returnedCount: d.returnedCount,
-  }))
+  const chartData: ChartItem[] = sorted.map((d) => {
+    const rate = Math.round(d.retentionRate * 100)
+    return {
+      name: d.name,
+      rate,
+      rateLabel: showCounts ? `${rate}% (${d.returnedCount}/${d.baseCount})` : `${rate}%`,
+      baseCount: d.baseCount,
+      returnedCount: d.returnedCount,
+    }
+  })
 
   const chartHeight =
     height ?? (layout === 'vertical' ? 300 : Math.max(200, chartData.length * 32 + 60))
@@ -152,11 +159,10 @@ export function RetentionRateBarChart({
                 <Cell key={index} fill={getBarColor(entry.rate / 100)} />
               ))}
               <LabelList
-                dataKey="rate"
+                dataKey="rateLabel"
                 position="top"
                 className="text-xs"
                 fill="hsl(var(--muted-foreground))"
-                formatter={(value) => `${value}%`}
               />
             </Bar>
           </BarChart>
@@ -172,7 +178,7 @@ export function RetentionRateBarChart({
         <BarChart
           data={chartData}
           layout="vertical"
-          margin={{ top: 5, right: 50, left: 0, bottom: 5 }}
+          margin={{ top: 5, right: showCounts ? 110 : 50, left: 0, bottom: 5 }}
         >
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis
@@ -202,11 +208,10 @@ export function RetentionRateBarChart({
               <Cell key={index} fill={getBarColor(entry.rate / 100)} />
             ))}
             <LabelList
-              dataKey="rate"
+              dataKey="rateLabel"
               position="right"
               className="text-xs"
               fill="hsl(var(--muted-foreground))"
-              formatter={(value) => `${value}%`}
             />
           </Bar>
         </BarChart>

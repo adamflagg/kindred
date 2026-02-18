@@ -25,12 +25,14 @@ import {
   firstSummerYearToBarData,
   sessionBunkToBarData,
   priorSessionToBarData,
+  computeRetentionOutliers,
 } from '../../../utils/retentionTransforms'
 import {
   buildSessionDateLookup,
   sortSessionDataByDate,
   sortPriorSessionDataByDate,
 } from '../../../utils/sessionUtils'
+import { RetentionNotableOutliers } from '../../../components/metrics/RetentionNotableOutliers'
 import { Loader2, AlertCircle } from 'lucide-react'
 
 export default function RetentionOverview() {
@@ -90,6 +92,10 @@ export default function RetentionOverview() {
   const cityBars = cityToBarData(data.by_city)
   const schoolBars = schoolToBarData(data.by_school)
   const synagogueBars = synagogueToBarData(data.by_synagogue)
+
+  const cityOutliers = computeRetentionOutliers(cityBars, data.overall_retention_rate)
+  const schoolOutliers = computeRetentionOutliers(schoolBars, data.overall_retention_rate)
+  const synagogueOutliers = computeRetentionOutliers(synagogueBars, data.overall_retention_rate)
 
   return (
     <div className="space-y-6">
@@ -187,6 +193,7 @@ export default function RetentionOverview() {
             title="Retention by City (Top 15)"
             topN={15}
             sortBy="count"
+            showCounts
           />
         )}
         {schoolBars.length > 0 && (
@@ -195,6 +202,7 @@ export default function RetentionOverview() {
             title="Retention by School (Top 15)"
             topN={15}
             sortBy="count"
+            showCounts
           />
         )}
       </div>
@@ -206,8 +214,16 @@ export default function RetentionOverview() {
           title="Retention by Synagogue (Top 15)"
           topN={15}
           sortBy="count"
+          showCounts
         />
       )}
+
+      {/* Notable Outliers */}
+      <RetentionNotableOutliers
+        cityOutliers={cityOutliers}
+        schoolOutliers={schoolOutliers}
+        synagogueOutliers={synagogueOutliers}
+      />
     </div>
   )
 }
