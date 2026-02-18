@@ -233,8 +233,16 @@ class TestRetentionServiceCalculateRetention:
                 ),
             ],
             [
-                MockAttendee(person_id=1, year=2026, expand={}),
-                MockAttendee(person_id=2, year=2026, expand={}),
+                MockAttendee(
+                    person_id=1,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=2000, name="Session 1", session_type="main")},
+                ),
+                MockAttendee(
+                    person_id=2,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=2000, name="Session 1", session_type="main")},
+                ),
             ],
         ]
 
@@ -263,6 +271,74 @@ class TestRetentionServiceCalculateRetention:
         assert result.returned_count == 1
 
     @pytest.mark.asyncio
+    async def test_compare_year_excludes_non_matching_session_types(self) -> None:
+        """compare_year_total excludes attendees whose session type doesn't match filter."""
+        from api.services.retention_service import RetentionService
+
+        mock_repo = AsyncMock()
+
+        # Base year: 2 campers in main sessions
+        mock_repo.fetch_attendees.side_effect = [
+            [
+                MockAttendee(
+                    person_id=1,
+                    year=2025,
+                    expand={"session": MockSession(cm_id=1000, name="Session 1", session_type="main")},
+                ),
+                MockAttendee(
+                    person_id=2,
+                    year=2025,
+                    expand={"session": MockSession(cm_id=1000, name="Session 1", session_type="main")},
+                ),
+            ],
+            # Compare year: person 1 returned (main), person 3 new (main),
+            # person 4 new (family camp - should be excluded)
+            [
+                MockAttendee(
+                    person_id=1,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=2000, name="Session 1", session_type="main")},
+                ),
+                MockAttendee(
+                    person_id=3,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=2000, name="Session 1", session_type="main")},
+                ),
+                MockAttendee(
+                    person_id=4,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=2001, name="Family Camp", session_type="family")},
+                ),
+            ],
+        ]
+
+        mock_repo.fetch_persons.return_value = {
+            1: MockPerson(cm_id=1, gender="M"),
+            2: MockPerson(cm_id=2, gender="F"),
+        }
+
+        mock_repo.fetch_sessions.return_value = {
+            1000: MockSession(cm_id=1000, name="Session 1", session_type="main"),
+        }
+        mock_repo.fetch_camper_history.return_value = []
+        mock_repo.fetch_summer_enrollment_history.return_value = []
+        mock_repo.build_history_by_person = MagicMock(return_value={})
+
+        service = RetentionService(mock_repo)
+        result = await service.calculate_retention(
+            base_year=2025,
+            compare_year=2026,
+            session_types=["main"],
+        )
+
+        # Base year: 2 campers in main sessions
+        assert result.base_year_total == 2
+        # Compare year: only 2 in main sessions (family camp excluded)
+        assert result.compare_year_total == 2
+        # Person 1 returned
+        assert result.returned_count == 1
+
+    @pytest.mark.asyncio
     async def test_calculate_retention_filters_by_session_cm_id(self) -> None:
         """calculate_retention filters attendees by specific session_cm_id."""
         from api.services.retention_service import RetentionService
@@ -282,8 +358,16 @@ class TestRetentionServiceCalculateRetention:
                 ),
             ],
             [
-                MockAttendee(person_id=1, year=2026, expand={}),
-                MockAttendee(person_id=2, year=2026, expand={}),
+                MockAttendee(
+                    person_id=1,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=2000, name="Session 1", session_type="main")},
+                ),
+                MockAttendee(
+                    person_id=2,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=2000, name="Session 1", session_type="main")},
+                ),
             ],
         ]
 
