@@ -136,6 +136,7 @@ export default function RetentionOverview() {
             data={sessionBars}
             title={`Retention by ${currentYear} Session`}
             sortBy="none"
+            layout="vertical"
           />
         )}
         {priorSessionBars.length > 0 && (
@@ -143,6 +144,7 @@ export default function RetentionOverview() {
             data={priorSessionBars}
             title={`Retention by ${priorYear} Session`}
             sortBy="none"
+            layout="vertical"
           />
         )}
       </div>

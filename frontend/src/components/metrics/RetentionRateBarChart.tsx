@@ -31,6 +31,7 @@ interface RetentionRateBarChartProps {
   topN?: number
   height?: number
   sortBy?: RetentionSortBy
+  layout?: 'horizontal' | 'vertical' // 'horizontal' = horizontal bars (default), 'vertical' = vertical bars
 }
 
 function getBarColor(rate: number): string {
@@ -46,12 +47,37 @@ interface ChartItem {
   returnedCount: number
 }
 
+const RotatedTick = ({
+  x,
+  y,
+  payload,
+}: {
+  x: string | number
+  y: string | number
+  payload: { value: string }
+}) => (
+  <g transform={`translate(${x},${y})`}>
+    <text
+      x={0}
+      y={0}
+      dy={12}
+      textAnchor="end"
+      fill="hsl(var(--muted-foreground))"
+      fontSize={12}
+      transform="rotate(-40)"
+    >
+      {payload.value.length > 16 ? `${payload.value.slice(0, 14)}…` : payload.value}
+    </text>
+  </g>
+)
+
 export function RetentionRateBarChart({
   data,
   title,
   topN,
   height,
   sortBy = 'rate',
+  layout = 'horizontal',
 }: RetentionRateBarChartProps) {
   if (data.length === 0) {
     return (
@@ -73,7 +99,8 @@ export function RetentionRateBarChart({
     returnedCount: d.returnedCount,
   }))
 
-  const chartHeight = height ?? Math.max(200, chartData.length * 32 + 60)
+  const chartHeight =
+    height ?? (layout === 'vertical' ? 300 : Math.max(200, chartData.length * 32 + 60))
 
   const CustomTooltip = ({
     active,
@@ -97,6 +124,45 @@ export function RetentionRateBarChart({
       )
     }
     return null
+  }
+
+  if (layout === 'vertical') {
+    return (
+      <div className="card-lodge p-4">
+        <h3 className="text-foreground mb-4 text-sm font-semibold">{title}</h3>
+        <ResponsiveContainer width="100%" height={chartHeight}>
+          <BarChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 60 }}>
+            <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+            <XAxis
+              dataKey="name"
+              className="text-xs"
+              interval={0}
+              tick={RotatedTick}
+            />
+            <YAxis
+              type="number"
+              domain={[0, 100]}
+              tickFormatter={(value) => `${value}%`}
+              className="text-xs"
+              tick={{ fill: 'hsl(var(--muted-foreground))' }}
+            />
+            <Tooltip content={<CustomTooltip />} />
+            <Bar dataKey="rate" radius={[4, 4, 0, 0]}>
+              {chartData.map((entry, index) => (
+                <Cell key={index} fill={getBarColor(entry.rate / 100)} />
+              ))}
+              <LabelList
+                dataKey="rate"
+                position="top"
+                className="text-xs"
+                fill="hsl(var(--muted-foreground))"
+                formatter={(value) => `${value}%`}
+              />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    )
   }
 
   return (
