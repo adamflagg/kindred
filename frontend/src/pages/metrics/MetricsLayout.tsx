@@ -4,10 +4,26 @@
  * Wraps content with MetricsSessionProvider for unified session filtering
  */
 import { Outlet, useLocation } from 'react-router'
-import { LayoutDashboard, Globe, Clock } from 'lucide-react'
+import { LayoutDashboard, Globe, Clock, GitBranch } from 'lucide-react'
 import MetricsTypeTabs from '../../components/metrics/MetricsTypeTabs'
 import MetricsSubNav, { type SubNavItem } from '../../components/metrics/MetricsSubNav'
 import { MetricsSessionProvider } from '../../contexts/MetricsSessionContext'
+
+/** Sub-nav items for retention section */
+const RETENTION_SUB_NAV: SubNavItem[] = [
+  {
+    id: 'overview',
+    label: 'Overview',
+    icon: LayoutDashboard,
+    path: '/metrics/retention',
+  },
+  {
+    id: 'flow',
+    label: 'Session Flow',
+    icon: GitBranch,
+    path: '/metrics/retention/flow',
+  },
+]
 
 /** Sub-nav items for registration section */
 const REGISTRATION_SUB_NAV: SubNavItem[] = [
@@ -28,22 +44,6 @@ const REGISTRATION_SUB_NAV: SubNavItem[] = [
     label: 'Waitlist',
     icon: Clock,
     path: '/metrics/registration/waitlist',
-  },
-]
-
-/** Sub-nav items for retention section */
-const RETENTION_SUB_NAV: SubNavItem[] = [
-  {
-    id: 'overview',
-    label: 'Overview',
-    icon: LayoutDashboard,
-    path: '/metrics/retention/overview',
-  },
-  {
-    id: 'geo',
-    label: 'Geographic',
-    icon: Globe,
-    path: '/metrics/retention/geo',
   },
 ]
 
@@ -68,7 +68,7 @@ export default function MetricsLayout() {
     if (location.pathname.startsWith('/metrics/retention')) {
       return {
         title: 'Retention Metrics',
-        subtitle: 'Analyze camper retention and enrollment trends',
+        subtitle: 'Prior year → current year returning analysis',
       }
     }
     if (location.pathname.startsWith('/metrics/trends')) {

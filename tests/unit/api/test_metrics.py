@@ -2202,6 +2202,150 @@ class TestRetentionBySessionBunk:
         fields = RetentionMetricsResponse.model_fields
         assert "by_session_bunk" in fields, "RetentionMetricsResponse should include by_session_bunk field"
 
+    def test_session_bunk_returns_all_combos_not_limited(self) -> None:
+        """Test that _build_session_bunk_breakdown returns ALL combos, not top 10.
+
+        The heatmap UI needs every session-bunk combo to render grouped sections.
+        Previously the method sliced to [:10] which lost data for sessions with
+        many bunks.
+        """
+        from api.services.retention_service import RetentionService
+
+        service = RetentionService(repository=Mock())
+
+        # Create 15 distinct session-bunk combos (more than old top-10 limit)
+        person_ids = set(range(1, 16))
+        returned_ids = {1, 3, 5, 7, 9, 11, 13, 15}
+        records = []
+        for pid in range(1, 16):
+            session_mock = Mock()
+            session_mock.name = f"Session {(pid - 1) // 3 + 1}"
+            session_mock.session_type = "main"
+            session_mock.parent_id = None
+
+            bunk_mock = Mock()
+            bunk_mock.name = f"B-{pid}"
+
+            person_mock = Mock()
+            person_mock.cm_id = pid
+
+            record = Mock()
+            record.expand = {"person": person_mock, "session": session_mock, "bunk": bunk_mock}
+            records.append(record)
+
+        sessions: dict[int, Any] = {}
+        result = service._build_session_bunk_breakdown(person_ids, returned_ids, records, sessions)
+        assert len(result) == 15, f"Expected all 15 combos, got {len(result)}"
+
+    def test_session_bunk_excludes_family_camp(self) -> None:
+        """Family camp bunk assignments should NOT appear in the heatmap.
+
+        Family camp sessions use the same B-*/G-* bunk naming but are a
+        separate adult-focused program that shouldn't pollute the heatmap.
+        """
+        from api.services.retention_service import RetentionService
+
+        service = RetentionService(repository=Mock())
+
+        person_ids = {101, 102}
+        returned_ids = {101}
+
+        records = []
+        # One main session assignment (should be included)
+        main_session = Mock()
+        main_session.name = "Session 2"
+        main_session.session_type = "main"
+        main_session.parent_id = None
+        main_bunk = Mock()
+        main_bunk.name = "B-1"
+        main_person = Mock()
+        main_person.cm_id = 101
+        main_record = Mock()
+        main_record.expand = {"person": main_person, "session": main_session, "bunk": main_bunk}
+        records.append(main_record)
+
+        # One family camp assignment (should be excluded)
+        family_session = Mock()
+        family_session.name = "Family Camp"
+        family_session.session_type = "family"
+        family_session.parent_id = None
+        family_bunk = Mock()
+        family_bunk.name = "B-5"
+        family_person = Mock()
+        family_person.cm_id = 102
+        family_record = Mock()
+        family_record.expand = {"person": family_person, "session": family_session, "bunk": family_bunk}
+        records.append(family_record)
+
+        sessions: dict[int, Any] = {}
+        result = service._build_session_bunk_breakdown(person_ids, returned_ids, records, sessions)
+
+        session_names = [r.session for r in result]
+        assert "Session 2" in session_names
+        assert "Family Camp" not in session_names
+        assert len(result) == 1
+
+    def test_session_bunk_excludes_quest_sessions(self) -> None:
+        """Quest session bunk assignments should NOT appear in the heatmap.
+
+        Quest is an adventure program without traditional cabin bunking.
+        It appears in session dropdowns but not in bunk heatmaps.
+        """
+        from api.services.retention_service import RetentionService
+
+        service = RetentionService(repository=Mock())
+
+        person_ids = {201}
+        returned_ids = set[int]()
+
+        quest_session = Mock()
+        quest_session.name = "Quest"
+        quest_session.session_type = "quest"
+        quest_session.parent_id = None
+        quest_bunk = Mock()
+        quest_bunk.name = "B-3"
+        quest_person = Mock()
+        quest_person.cm_id = 201
+        quest_record = Mock()
+        quest_record.expand = {"person": quest_person, "session": quest_session, "bunk": quest_bunk}
+
+        sessions: dict[int, Any] = {}
+        result = service._build_session_bunk_breakdown(person_ids, returned_ids, [quest_record], sessions)
+        assert len(result) == 0, "Quest sessions should be excluded from bunk heatmap"
+
+    def test_session_bunk_includes_main_and_embedded(self) -> None:
+        """Main and embedded session types should be included in the heatmap."""
+        from api.services.retention_service import RetentionService
+
+        service = RetentionService(repository=Mock())
+
+        person_ids = {301, 302}
+        returned_ids = {301}
+
+        records = []
+        for pid, sess_name, sess_type, bunk_name in [
+            (301, "Session 1", "main", "G-1"),
+            (302, "Session 2a", "embedded", "B-4"),
+        ]:
+            session_mock = Mock()
+            session_mock.name = sess_name
+            session_mock.session_type = sess_type
+            session_mock.parent_id = None
+            bunk_mock = Mock()
+            bunk_mock.name = bunk_name
+            person_mock = Mock()
+            person_mock.cm_id = pid
+            record = Mock()
+            record.expand = {"person": person_mock, "session": session_mock, "bunk": bunk_mock}
+            records.append(record)
+
+        sessions: dict[int, Any] = {}
+        result = service._build_session_bunk_breakdown(person_ids, returned_ids, records, sessions)
+        session_names = {r.session for r in result}
+        assert "Session 1" in session_names
+        assert "Session 2a" in session_names
+        assert len(result) == 2
+
 
 class TestRetentionBreakdownSchemas:
     """Tests verifying the Pydantic schemas exist for retention breakdowns."""
@@ -2253,16 +2397,16 @@ class TestRetentionBreakdownSchemas:
         assert instance.retention_rate == 0.75
 
     def test_retention_by_first_year_schema_exists(self) -> None:
-        """Test that RetentionByFirstYear schema exists with correct fields."""
-        from api.schemas.metrics import RetentionByFirstYear
+        """Test that RetentionByFirstSummerYear schema exists with correct fields."""
+        from api.schemas.metrics import RetentionByFirstSummerYear
 
-        instance = RetentionByFirstYear(
-            first_year=2022,
+        instance = RetentionByFirstSummerYear(
+            first_summer_year=2022,
             base_count=5,
             returned_count=4,
             retention_rate=0.8,
         )
-        assert instance.first_year == 2022
+        assert instance.first_summer_year == 2022
         assert instance.base_count == 5
         assert instance.returned_count == 4
         assert instance.retention_rate == 0.8

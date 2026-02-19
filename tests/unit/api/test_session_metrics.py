@@ -485,3 +485,59 @@ class TestSummerMetricsUsesAllTypes:
         assert "embedded" in SUMMER_PROGRAM_SESSION_TYPES
         assert "ag" in SUMMER_PROGRAM_SESSION_TYPES
         assert "quest" in SUMMER_PROGRAM_SESSION_TYPES
+
+
+# ============================================================================
+# BUNK_SESSION_TYPES Constant Tests
+# ============================================================================
+
+
+class TestBunkSessionTypesConstant:
+    """Tests for BUNK_SESSION_TYPES constant (used for bunk heatmap filtering).
+
+    This constant defines which session types have cabin/bunk assignments
+    relevant to the heatmap. Quest sessions don't have traditional bunking,
+    and family/training/tli are separate programs.
+    """
+
+    def test_bunk_types_includes_main(self) -> None:
+        """Main sessions have cabin assignments."""
+        from api.utils.session_metrics import BUNK_SESSION_TYPES
+
+        assert "main" in BUNK_SESSION_TYPES
+
+    def test_bunk_types_includes_embedded(self) -> None:
+        """Embedded sessions (2a, 2b, etc.) have cabin assignments."""
+        from api.utils.session_metrics import BUNK_SESSION_TYPES
+
+        assert "embedded" in BUNK_SESSION_TYPES
+
+    def test_bunk_types_includes_ag(self) -> None:
+        """AG sessions have cabin assignments (AG-* bunks)."""
+        from api.utils.session_metrics import BUNK_SESSION_TYPES
+
+        assert "ag" in BUNK_SESSION_TYPES
+
+    def test_bunk_types_excludes_quest(self) -> None:
+        """Quest is an adventure program without traditional cabin bunking."""
+        from api.utils.session_metrics import BUNK_SESSION_TYPES
+
+        assert "quest" not in BUNK_SESSION_TYPES
+
+    def test_bunk_types_excludes_family(self) -> None:
+        """Family camp should not appear in the bunk heatmap."""
+        from api.utils.session_metrics import BUNK_SESSION_TYPES
+
+        assert "family" not in BUNK_SESSION_TYPES
+
+    def test_bunk_types_excludes_training(self) -> None:
+        """Training sessions should not appear in the bunk heatmap."""
+        from api.utils.session_metrics import BUNK_SESSION_TYPES
+
+        assert "training" not in BUNK_SESSION_TYPES
+
+    def test_bunk_types_excludes_tli(self) -> None:
+        """TLI sessions should not appear in the bunk heatmap."""
+        from api.utils.session_metrics import BUNK_SESSION_TYPES
+
+        assert "tli" not in BUNK_SESSION_TYPES

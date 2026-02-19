@@ -115,6 +115,23 @@ class MetricsRepository:
         # Ensure int keys for consistent lookup
         return {int(getattr(s, "cm_id", 0)): s for s in sessions}
 
+    async def fetch_bunk_assignments(self, year: int) -> list[Any]:
+        """Fetch bunk_assignments with person, session, and bunk expansion.
+
+        Used for session-bunk retention breakdown. Each record represents
+        one camper's bunk assignment for a session.
+
+        Args:
+            year: The year to fetch assignments for.
+
+        Returns:
+            List of bunk_assignment records with person, session, bunk expansion.
+        """
+        return await asyncio.to_thread(
+            self.pb.collection("bunk_assignments").get_full_list,
+            query_params={"filter": f"year = {year}", "expand": "person,session,bunk"},
+        )
+
     async def fetch_camper_history(
         self,
         year: int,

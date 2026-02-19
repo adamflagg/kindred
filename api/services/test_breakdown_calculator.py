@@ -20,22 +20,11 @@ class MockPerson:
     gender: str | None = None
     grade: int | None = None
     school: str | None = None
-    city: str | None = None
-    synagogue: str | None = None
+    normalized_school: str | None = None
+    address_city: str | None = None
+    normalized_city: str | None = None
+    normalized_congregation: str | None = None
     years_at_camp: int | None = None
-
-
-@dataclass
-class MockCamperHistory:
-    """Mock camper history record for testing."""
-
-    person_id: int
-    first_year_attended: int | None = None
-    school: str | None = None
-    city: str | None = None
-    synagogue: str | None = None
-    sessions: str | None = None  # Comma-separated
-    bunks: str | None = None  # Comma-separated
 
 
 class TestBreakdownCalculator:
@@ -218,47 +207,61 @@ class TestExtractors:
         person = MockPerson(person_id=1, grade=None)
         assert extract_grade(person) is None
 
-    def test_extract_school_normal(self) -> None:
-        """extract_school returns school value."""
+    def test_extract_school_normalized(self) -> None:
+        """extract_school prefers normalized_school."""
         from api.services.extractors import extract_school
 
-        history = MockCamperHistory(person_id=1, school="Riverside Elementary")
-        assert extract_school(history) == "Riverside Elementary"
+        person = MockPerson(person_id=1, normalized_school="Riverside Elementary", school="riverside elem")
+        assert extract_school(person) == "Riverside Elementary"
+
+    def test_extract_school_fallback(self) -> None:
+        """extract_school falls back to school when normalized is absent."""
+        from api.services.extractors import extract_school
+
+        person = MockPerson(person_id=1, school="Riverside Elementary")
+        assert extract_school(person) == "Riverside Elementary"
 
     def test_extract_school_none(self) -> None:
         """extract_school returns empty string for None."""
         from api.services.extractors import extract_school
 
-        history = MockCamperHistory(person_id=1, school=None)
-        assert extract_school(history) == ""
+        person = MockPerson(person_id=1)
+        assert extract_school(person) == ""
 
-    def test_extract_city_normal(self) -> None:
-        """extract_city returns city value."""
+    def test_extract_city_normalized(self) -> None:
+        """extract_city prefers normalized_city."""
         from api.services.extractors import extract_city
 
-        history = MockCamperHistory(person_id=1, city="Oakland")
-        assert extract_city(history) == "Oakland"
+        person = MockPerson(person_id=1, normalized_city="Oakland", address_city="oakland")
+        assert extract_city(person) == "Oakland"
+
+    def test_extract_city_fallback(self) -> None:
+        """extract_city falls back to address_city when normalized is absent."""
+        from api.services.extractors import extract_city
+
+        person = MockPerson(person_id=1, address_city="Oakland")
+        assert extract_city(person) == "Oakland"
 
     def test_extract_city_none(self) -> None:
         """extract_city returns empty string for None."""
         from api.services.extractors import extract_city
 
-        history = MockCamperHistory(person_id=1, city=None)
-        assert extract_city(history) == ""
+        person = MockPerson(person_id=1)
+        assert extract_city(person) == ""
 
     def test_extract_synagogue_normal(self) -> None:
-        """extract_synagogue returns synagogue value."""
+        """extract_synagogue returns normalized_congregation."""
         from api.services.extractors import extract_synagogue
 
-        history = MockCamperHistory(person_id=1, synagogue="Temple Beth Sholom")
-        assert extract_synagogue(history) == "Temple Beth Sholom"
+        person = MockPerson(person_id=1, normalized_congregation="Temple Beth Sholom")
+        assert extract_synagogue(person) == "Temple Beth Sholom"
 
     def test_extract_synagogue_none(self) -> None:
         """extract_synagogue returns empty string for None."""
         from api.services.extractors import extract_synagogue
 
-        history = MockCamperHistory(person_id=1, synagogue=None)
-        assert extract_synagogue(history) == ""
+        person = MockPerson(person_id=1)
+        assert extract_synagogue(person) == ""
 
     def test_extract_years_at_camp_normal(self) -> None:
         """extract_years_at_camp returns years value."""
@@ -273,20 +276,6 @@ class TestExtractors:
 
         person = MockPerson(person_id=1, years_at_camp=None)
         assert extract_years_at_camp(person) == 0
-
-    def test_extract_first_year_attended_normal(self) -> None:
-        """extract_first_year_attended returns first year value."""
-        from api.services.extractors import extract_first_year_attended
-
-        history = MockCamperHistory(person_id=1, first_year_attended=2020)
-        assert extract_first_year_attended(history) == 2020
-
-    def test_extract_first_year_attended_none(self) -> None:
-        """extract_first_year_attended returns None for missing."""
-        from api.services.extractors import extract_first_year_attended
-
-        history = MockCamperHistory(person_id=1, first_year_attended=None)
-        assert extract_first_year_attended(history) is None
 
 
 class TestBreakdownStats:

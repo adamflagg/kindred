@@ -16,15 +16,7 @@ import {
   Legend,
 } from 'recharts'
 import type { YearEnrollment } from '../../types/metrics'
-
-// Year-specific colors for grouped bars
-const YEAR_COLORS = [
-  'hsl(200, 70%, 50%)', // Blue (oldest)
-  'hsl(160, 100%, 35%)', // Green (middle)
-  'hsl(42, 92%, 50%)', // Gold (most recent)
-  'hsl(280, 60%, 50%)', // Purple
-  'hsl(350, 70%, 50%)', // Red
-]
+import { getYearColor } from '../../utils/yearColors'
 
 interface GradeEnrollmentChartProps {
   data: YearEnrollment[]
@@ -142,12 +134,12 @@ export function GradeEnrollmentChart({
           <YAxis className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
           <Tooltip content={<CustomTooltip />} />
           <Legend />
-          {years.map((year, index) => (
+          {years.map((year) => (
             <Bar
               key={year}
               dataKey={year.toString()}
               name={year.toString()}
-              fill={YEAR_COLORS[index % YEAR_COLORS.length] ?? 'hsl(0, 0%, 50%)'}
+              fill={getYearColor(year, Math.max(...years))}
               radius={[4, 4, 0, 0]}
             />
           ))}

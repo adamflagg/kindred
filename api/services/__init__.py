@@ -18,7 +18,6 @@ from .breakdown_calculator import (
 )
 from .extractors import (
     extract_city,
-    extract_first_year_attended,
     extract_gender,
     extract_grade,
     extract_school,
@@ -50,5 +49,4 @@ __all__ = [
     "extract_city",
     "extract_synagogue",
     "extract_years_at_camp",
-    "extract_first_year_attended",
 ]
