@@ -24,17 +24,25 @@ type BunkAssignmentsSync struct {
 
 	// Bunk plan sessions: bunkPlanCMID -> list of sessionCMIDs
 	bunkPlanSessionsList map[int][]int
+
+	// Staff inclusion: resolve staff assignments to exact sessions
+	staffPersonCMIDs      map[int]bool   // person CM IDs where bunk_staff=true
+	bunkPlanBunkToSession map[string]int // "bunkPlanCMID:bunkCMID" → sessionCMID
+	bunkPBIDToCMID        map[string]int // bunk PB ID → bunk CM ID (reverse lookup)
 }
 
 // NewBunkAssignmentsSync creates a new bunk assignments sync service
 func NewBunkAssignmentsSync(app core.App, client *campminder.Client) *BunkAssignmentsSync {
 	return &BunkAssignmentsSync{
-		BaseSyncService:      NewBaseSyncService(app, client),
-		validPersonCMIDs:     make(map[int]bool),
-		validBunkCMIDs:       make(map[int]bool),
-		validSessionCMIDs:    make(map[int]bool),
-		personEnrollments:    make(map[int][]int),
-		bunkPlanSessionsList: make(map[int][]int),
+		BaseSyncService:       NewBaseSyncService(app, client),
+		validPersonCMIDs:      make(map[int]bool),
+		validBunkCMIDs:        make(map[int]bool),
+		validSessionCMIDs:     make(map[int]bool),
+		personEnrollments:     make(map[int][]int),
+		bunkPlanSessionsList:  make(map[int][]int),
+		staffPersonCMIDs:      make(map[int]bool),
+		bunkPlanBunkToSession: make(map[string]int),
+		bunkPBIDToCMID:        make(map[string]int),
 	}
 }
 
@@ -182,10 +190,19 @@ func (s *BunkAssignmentsSync) Sync(ctx context.Context) error {
 				personSessions := s.personEnrollments[personCMID]
 				sessionID := s.findMatchingSession(personSessions, bunkPlanSessions)
 				if sessionID == 0 {
-					// No intersection - person not enrolled in any session for this bunk plan
-					// (expected for family camp, staff, etc.)
-					s.Stats.Skipped++
-					continue
+					// Staff fallback: use (bunkPlan, bunk) → session lookup.
+					// Staff aren't in attendees, so enrollment intersection won't work.
+					// Each (bunkPlanCMID, bunkCMID) pair maps to exactly one session.
+					if s.staffPersonCMIDs[personCMID] {
+						key := fmt.Sprintf("%d:%d", bunkPlanID, bunkID)
+						if sid, ok := s.bunkPlanBunkToSession[key]; ok {
+							sessionID = sid
+						}
+					}
+					if sessionID == 0 {
+						s.Stats.Skipped++
+						continue
+					}
 				}
 
 				// Add BunkID, BunkPlanID, and SessionID to the assignment data
@@ -263,10 +280,11 @@ func (s *BunkAssignmentsSync) loadMappings() error {
 	}
 	slog.Info("Loaded enrolled persons with session mappings", "count", len(s.personEnrollments), "year", year)
 
-	// Load bunks
+	// Load bunks (also build PB ID → CM ID reverse lookup for bunkPlanBunkToSession)
 	if err := s.PaginateRecords("bunks", "", func(record *core.Record) error {
 		if cmID, ok := record.Get("cm_id").(float64); ok && cmID > 0 {
 			s.validBunkCMIDs[int(cmID)] = true
+			s.bunkPBIDToCMID[record.Id] = int(cmID)
 		}
 		return nil
 	}); err != nil {
@@ -286,6 +304,8 @@ func (s *BunkAssignmentsSync) loadMappings() error {
 
 	// Load bunk plan sessions: bunkPlanCMID -> list of sessionCMIDs
 	// A bunk plan can apply to multiple sessions (e.g., main + AG sessions)
+	// Also build bunkPlanBunkToSession: "bunkPlanCMID:bunkCMID" → sessionCMID
+	// for resolving staff assignments to exact sessions.
 	slog.Info("Loading bunk plan to sessions mapping")
 	bpFilter := fmt.Sprintf("year = %d", year)
 	if err := s.PaginateRecords("bunk_plans", bpFilter, func(record *core.Record) error {
@@ -312,11 +332,36 @@ func (s *BunkAssignmentsSync) loadMappings() error {
 			s.bunkPlanSessionsList[bpCMID] = append(s.bunkPlanSessionsList[bpCMID], sessionCMID)
 		}
 
+		// Build bunkPlanBunkToSession: each (bunkPlan, bunk) pair maps to exactly one session
+		if bunkPBID := record.GetString("bunk"); bunkPBID != "" {
+			if bunkCMID, ok := s.bunkPBIDToCMID[bunkPBID]; ok && bpCMID > 0 && sessionCMID > 0 {
+				key := fmt.Sprintf("%d:%d", bpCMID, bunkCMID)
+				s.bunkPlanBunkToSession[key] = sessionCMID
+			}
+		}
+
 		return nil
 	}); err != nil {
 		return fmt.Errorf("loading bunk plan sessions: %w", err)
 	}
-	slog.Info("Loaded bunk plans with session mappings", "count", len(s.bunkPlanSessionsList))
+	slog.Info("Loaded bunk plans with session mappings",
+		"bunkPlanSessions", len(s.bunkPlanSessionsList),
+		"bunkPlanBunkToSession", len(s.bunkPlanBunkToSession))
+
+	// Load bunk staff: person CM IDs for staff with bunk_staff=true
+	// These are added to validPersonCMIDs so processAssignment doesn't skip them.
+	staffFilter := fmt.Sprintf("bunk_staff = true && year = %d", year)
+	if err := s.PaginateRecords("staff", staffFilter, func(record *core.Record) error {
+		if personID, ok := record.Get("person_id").(float64); ok && personID > 0 {
+			personCMID := int(personID)
+			s.staffPersonCMIDs[personCMID] = true
+			s.validPersonCMIDs[personCMID] = true
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("loading bunk staff: %w", err)
+	}
+	slog.Info("Loaded bunk staff", "count", len(s.staffPersonCMIDs), "year", year)
 
 	return nil
 }
