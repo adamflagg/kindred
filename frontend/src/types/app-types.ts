@@ -92,57 +92,18 @@ export interface Camper {
   }
 }
 
-export interface Session {
-  id: string
-  name: string
-  start_date: string
-  end_date: string
-  session_type:
-    | 'main'
-    | 'embedded'
-    | 'ag'
-    | 'family'
-    | 'quest'
-    | 'training'
-    | 'bmitzvah'
-    | 'tli'
-    | 'adult'
-    | 'school'
-    | 'hebrew'
-    | 'teen'
-    | 'taste'
-    | 'other'
-  cm_id: number // CampMinder ID, used in queries
-  year: number
-  code?: string
-  persistent_id?: string
-  parent_id?: number // CampMinder ID of parent session
-  created: string
-  updated: string
-  // PocketBase fields for type compatibility
-  collectionId?: string
-  collectionName?: string
-}
+/**
+ * Session type — direct alias for PocketBase CampSessionsResponse.
+ * Replaces the hand-rolled Session interface that had phantom fields
+ * (code, persistent_id) which were always empty strings.
+ */
+export type Session = CampSessionsResponse
 
-export interface Bunk {
-  id: string
-  name: string
-  code?: string
-  capacity: number
-  session?: string // PocketBase relation ID
-  cm_id: number // CampMinder bunk ID, used in queries
-  gender?: string
-  year: number // Required in DB
-  created: string
-  updated: string
-  // PocketBase fields for type compatibility
-  collectionId?: string
-  collectionName?: string
-  // Expanded fields
-  expand?: {
-    session?: CampSessionsResponse
-  }
-}
+/**
+ * Bunk type — PocketBase BunksResponse plus computed capacity.
+ * capacity is computed from bunk_plans count, not stored in PB.
+ */
+export type Bunk = BunksResponse & { capacity?: number }
 
 export interface BunkRequest {
   id: string
@@ -255,7 +216,4 @@ export interface BunkWithCampers extends Bunk {
   campers: Camper[]
   occupancy: number
   utilization: number
-  // Additional fields from BunksResponse for compatibility - make optional to match Bunk interface
-  collectionId?: string
-  collectionName?: string
 }

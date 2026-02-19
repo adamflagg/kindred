@@ -11,7 +11,7 @@ import type {
   BunkRequestsResponse,
 } from '../types/pocketbase-types'
 import { BunkRequestsStatusOptions } from '../types/pocketbase-types'
-import type { Camper, Session, Bunk, BunkRequest } from '../types/app-types'
+import type { Camper, BunkRequest } from '../types/app-types'
 import { calculateAge } from './ageCalculator'
 
 /**
@@ -79,43 +79,6 @@ export function toAppCamper(
   }
 
   return camper
-}
-
-/**
- * Transform database response to app-level Session type
- */
-export function toAppSession(session: CampSessionsResponse): Session {
-  return {
-    id: session.id,
-    name: session.name,
-    start_date: session.start_date || '',
-    end_date: session.end_date || '',
-    session_type: (session.session_type as Session['session_type']) || 'main',
-    cm_id: session.cm_id,
-    year: session.year,
-    code: '', // persistent_id field doesn't exist in database
-    persistent_id: '', // persistent_id field doesn't exist in database
-    parent_id: session.parent_id,
-    created: session.created || new Date().toISOString(),
-    updated: session.updated || new Date().toISOString(),
-  }
-}
-
-/**
- * Transform database response to app-level Bunk type
- */
-export function toAppBunk(bunk: BunksResponse): Bunk {
-  return {
-    id: bunk.id,
-    name: bunk.name,
-    capacity: 0, // BunksResponse doesn't have capacity field
-    session: '', // This should be provided by the caller if needed
-    cm_id: bunk.cm_id,
-    gender: bunk.gender,
-    year: bunk.year,
-    created: bunk.created || new Date().toISOString(),
-    updated: bunk.updated || new Date().toISOString(),
-  }
 }
 
 /**

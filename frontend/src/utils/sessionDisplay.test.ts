@@ -10,9 +10,12 @@ import {
 import type { Session } from '../types/app-types'
 
 describe('sessionDisplay utilities', () => {
+  // Cast helper for partial session mocks (only fields relevant to test)
+  const s = (partial: Record<string, unknown>) => partial as Session
+
   // Mock sessions for testing parent relationships
   const mockAllSessions: Session[] = [
-    {
+    s({
       id: 'main-2',
       name: 'Session 2',
       session_type: 'main',
@@ -20,10 +23,8 @@ describe('sessionDisplay utilities', () => {
       end_date: '2025-06-14',
       cm_id: 200,
       year: 2025,
-      created: '',
-      updated: '',
-    },
-    {
+    }),
+    s({
       id: 'main-3',
       name: 'Session 3',
       session_type: 'main',
@@ -31,10 +32,8 @@ describe('sessionDisplay utilities', () => {
       end_date: '2025-06-28',
       cm_id: 300,
       year: 2025,
-      created: '',
-      updated: '',
-    },
-    {
+    }),
+    s({
       id: 'ag-2',
       name: 'All-Gender Cabin-Session 2 (7th - 9th grades)',
       session_type: 'ag',
@@ -43,9 +42,7 @@ describe('sessionDisplay utilities', () => {
       end_date: '2025-06-14',
       cm_id: 201,
       year: 2025,
-      created: '',
-      updated: '',
-    },
+    }),
   ]
 
   describe('getSessionDisplayName', () => {
@@ -62,79 +59,49 @@ describe('sessionDisplay utilities', () => {
     })
 
     it('should fallback to original name when allSessions not provided', () => {
-      const agSession: Session = {
+      const agSession = s({
         id: '1',
         name: 'All-Gender Cabin-Session 2',
         session_type: 'ag',
         parent_id: 200,
-        start_date: '2025-06-01',
-        end_date: '2025-06-14',
-        cm_id: 123,
-        year: 2025,
-        created: '',
-        updated: '',
-      }
+      })
       // Without allSessions, should return original name
       expect(getSessionDisplayName(agSession)).toBe('All-Gender Cabin-Session 2')
     })
 
     it('should handle embedded sessions', () => {
-      const embeddedSession: Session = {
+      const embeddedSession = s({
         id: '2',
         name: 'Session 2a',
         session_type: 'embedded',
-        start_date: '2025-06-01',
-        end_date: '2025-06-07',
-        cm_id: 123,
-        year: 2025,
-        created: '',
-        updated: '',
-      }
+      })
       expect(getSessionDisplayName(embeddedSession)).toBe('Session 2a')
     })
 
     it('should handle main sessions', () => {
-      const mainSession: Session = {
+      const mainSession = s({
         id: '3',
         name: 'Session 2',
         session_type: 'main',
-        start_date: '2025-06-01',
-        end_date: '2025-06-14',
-        cm_id: 123,
-        year: 2025,
-        created: '',
-        updated: '',
-      }
+      })
       expect(getSessionDisplayName(mainSession)).toBe('Session 2')
     })
 
-    it('should handle taste sessions', () => {
-      const tasteSession: Session = {
+    it('should handle taste-named sessions', () => {
+      const tasteSession = s({
         id: '4',
         name: 'Taste of Camp',
-        session_type: 'taste',
-        start_date: '2025-05-25',
-        end_date: '2025-05-28',
-        cm_id: 123,
-        year: 2025,
-        created: '',
-        updated: '',
-      }
+        session_type: 'other',
+      })
       expect(getSessionDisplayName(tasteSession)).toBe('Taste of Camp')
     })
 
     it('should fallback to original name for unknown types', () => {
-      const otherSession: Session = {
+      const otherSession = s({
         id: '5',
         name: 'Family Camp 1',
         session_type: 'family',
-        start_date: '2025-08-01',
-        end_date: '2025-08-07',
-        cm_id: 123,
-        year: 2025,
-        created: '',
-        updated: '',
-      }
+      })
       expect(getSessionDisplayName(otherSession)).toBe('Family Camp 1')
     })
   })
@@ -158,18 +125,13 @@ describe('sessionDisplay utilities', () => {
     })
 
     it('should return original ID if no parent found', () => {
-      const agSession: Session = {
+      const agSession = s({
         id: 'ag-99',
         name: 'All-Gender Cabin-Session 99',
         session_type: 'ag',
         parent_id: 9999, // No matching parent in allSessions
-        start_date: '2025-06-01',
-        end_date: '2025-06-14',
         cm_id: 123,
-        year: 2025,
-        created: '',
-        updated: '',
-      }
+      })
       expect(getParentSessionId(agSession, mockAllSessions)).toBe(123)
     })
   })
@@ -204,77 +166,43 @@ describe('sessionDisplay utilities', () => {
     })
 
     it('should return "Unknown Session" for session without name', () => {
-      const session: Session = {
-        id: '1',
-        name: '',
-        session_type: 'main',
-        cm_id: 123,
-        year: 2025,
-        start_date: '',
-        end_date: '',
-        created: '',
-        updated: '',
-      }
-      expect(getFormattedSessionName(session)).toBe('Unknown Session')
+      expect(getFormattedSessionName(s({ id: '1', name: '', session_type: 'main' }))).toBe(
+        'Unknown Session'
+      )
     })
 
     it('should return parent name for AG session when allSessions provided', () => {
-      const agSession: Session = {
+      const agSession = s({
         id: 'ag-2',
         name: 'All-Gender Cabin-Session 2',
         session_type: 'ag',
         parent_id: 200,
         cm_id: 201,
-        year: 2025,
-        start_date: '',
-        end_date: '',
-        created: '',
-        updated: '',
-      }
+      })
       const allSessions: Session[] = [
-        {
-          id: 'main-2',
-          name: 'Session 2',
-          session_type: 'main',
-          cm_id: 200,
-          year: 2025,
-          start_date: '',
-          end_date: '',
-          created: '',
-          updated: '',
-        },
+        s({ id: 'main-2', name: 'Session 2', session_type: 'main', cm_id: 200 }),
       ]
       expect(getFormattedSessionName(agSession, allSessions)).toBe('Session 2')
     })
 
     it('should return original name for AG session when parent not found', () => {
-      const agSession: Session = {
+      const agSession = s({
         id: 'ag-99',
         name: 'All-Gender Cabin-Session 99',
         session_type: 'ag',
         parent_id: 9999,
         cm_id: 201,
-        year: 2025,
-        start_date: '',
-        end_date: '',
-        created: '',
-        updated: '',
-      }
+      })
       expect(getFormattedSessionName(agSession, [])).toBe('All-Gender Cabin-Session 99')
     })
 
     it('should return original name for non-AG sessions', () => {
-      const mainSession: Session = {
+      const mainSession = s({
         id: 'main-2',
         name: 'Session 2',
         session_type: 'main',
         cm_id: 200,
-        year: 2025,
-        start_date: '',
-        end_date: '',
-        created: '',
-        updated: '',
-      }
+      })
       expect(getFormattedSessionName(mainSession)).toBe('Session 2')
     })
   })

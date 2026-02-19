@@ -25,7 +25,7 @@ export default function SessionStats({ bunks, campers }: SessionStatsProps) {
   const effectiveCapacity = bunks.reduce((sum, bunk) => {
     const assignedToBunk = campers.filter((c) => c.assigned_bunk === bunk.id).length
     // If bunk is overfull, use actual occupancy as capacity for that bunk
-    return sum + Math.max(bunk.capacity, assignedToBunk)
+    return sum + Math.max(bunk.capacity ?? 0, assignedToBunk)
   }, 0)
 
   const utilization = effectiveCapacity > 0 ? (assignedCampers.length / effectiveCapacity) * 100 : 0

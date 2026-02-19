@@ -2,12 +2,7 @@
  * Tests for transform utility functions
  */
 import { describe, it, expect, vi } from 'vitest'
-import {
-  toAppCamper,
-  buildCampersFromData,
-  createLookupMaps,
-  toAppBunkRequest,
-} from './transforms'
+import { toAppCamper, buildCampersFromData, createLookupMaps, toAppBunkRequest } from './transforms'
 import {
   Collections,
   CampSessionsSessionTypeOptions,

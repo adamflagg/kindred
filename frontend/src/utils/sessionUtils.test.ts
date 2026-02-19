@@ -81,8 +81,11 @@ describe('isNumericSessionId', () => {
 })
 
 describe('findSessionByUrlSegment', () => {
+  // Cast helper for partial session mocks
+  const s = (partial: Record<string, unknown>) => partial as Session
+
   const mockSessions: Session[] = [
-    {
+    s({
       id: 's1',
       name: 'Taste of Camp',
       cm_id: 1001,
@@ -90,12 +93,8 @@ describe('findSessionByUrlSegment', () => {
       end_date: '2025-06-07',
       session_type: 'main',
       year: 2025,
-      code: '',
-      persistent_id: '',
-      created: '',
-      updated: '',
-    },
-    {
+    }),
+    s({
       id: 's2',
       name: 'Session 2',
       cm_id: 1002,
@@ -103,12 +102,8 @@ describe('findSessionByUrlSegment', () => {
       end_date: '2025-07-01',
       session_type: 'main',
       year: 2025,
-      code: '',
-      persistent_id: '',
-      created: '',
-      updated: '',
-    },
-    {
+    }),
+    s({
       id: 's3',
       name: 'All-Gender Cabin',
       cm_id: 1003,
@@ -116,11 +111,7 @@ describe('findSessionByUrlSegment', () => {
       end_date: '2025-07-01',
       session_type: 'ag',
       year: 2025,
-      code: '',
-      persistent_id: '',
-      created: '',
-      updated: '',
-    },
+    }),
   ]
 
   it('should find session by known URL segment', () => {
