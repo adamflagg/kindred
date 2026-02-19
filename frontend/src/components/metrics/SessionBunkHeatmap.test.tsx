@@ -230,6 +230,19 @@ describe('SessionBunkHeatmap', () => {
     expect(agHeaders).toContain('AG-8')
   })
 
+  it('never renders an Other Cabins section', () => {
+    // Even if data contains bunks with non-standard prefixes, "Other Cabins"
+    // should not appear. The backend filters to main/embedded/ag sessions,
+    // and all valid bunks use B-*/G-*/AG-* naming.
+    const dataWithOddBunk: RetentionBySessionBunk[] = [
+      { session: 'Session 1', bunk: 'B-1', base_count: 10, returned_count: 8, retention_rate: 0.8 },
+      { session: 'Session 1', bunk: 'Staff-1', base_count: 5, returned_count: 3, retention_rate: 0.6 },
+    ]
+    render(<SessionBunkHeatmap data={dataWithOddBunk} />)
+
+    expect(screen.queryByText('Other Cabins')).not.toBeInTheDocument()
+  })
+
   it('omits AG section when no AG bunks', () => {
     // sampleData only has B-* and G-* bunks
     render(<SessionBunkHeatmap data={sampleData} />)
