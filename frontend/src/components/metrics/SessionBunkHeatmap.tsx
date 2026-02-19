@@ -37,6 +37,14 @@ function categorizeBunk(bunk: string): BunkCategory | null {
   return null
 }
 
+function bunkSortKey(bunk: string): number {
+  const level = bunk.replace(/^(AG-|[BG]-)/, '')
+  if (level === 'Aleph') return -2
+  if (level === 'Bet') return -1
+  const n = parseInt(level, 10)
+  return isNaN(n) ? 999 : n
+}
+
 interface BunkHeatmapTableProps {
   title: string
   sessions: string[]
@@ -112,50 +120,60 @@ interface SessionBunkHeatmapProps {
 }
 
 export function SessionBunkHeatmap({ data, sessionDateLookup = {} }: SessionBunkHeatmapProps) {
-  const { sessions, categoryBunks, lookup } = useMemo(() => {
+  const { categoryBunks, categorySessions, lookup } = useMemo(() => {
     if (!data.length)
       return {
-        sessions: [] as string[],
         categoryBunks: {} as Record<BunkCategory, string[]>,
+        categorySessions: {} as Record<BunkCategory, string[]>,
         lookup: new Map(),
       }
 
-    const sessionSet = new Set<string>()
     const bunksByCategory = new Map<BunkCategory, Set<string>>()
+    const sessionsByCategory = new Map<BunkCategory, Set<string>>()
     const map = new Map<string, RetentionBySessionBunk>()
 
     for (const item of data) {
       const cat = categorizeBunk(item.bunk)
       if (!cat) continue // skip bunks with non-standard prefixes
-      sessionSet.add(item.session)
-      let catSet = bunksByCategory.get(cat)
-      if (!catSet) {
-        catSet = new Set()
-        bunksByCategory.set(cat, catSet)
+
+      let bunkSet = bunksByCategory.get(cat)
+      if (!bunkSet) {
+        bunkSet = new Set()
+        bunksByCategory.set(cat, bunkSet)
       }
-      catSet.add(item.bunk)
+      bunkSet.add(item.bunk)
+
+      let sessSet = sessionsByCategory.get(cat)
+      if (!sessSet) {
+        sessSet = new Set()
+        sessionsByCategory.set(cat, sessSet)
+      }
+      sessSet.add(item.session)
+
       map.set(`${item.session}|${item.bunk}`, item)
     }
 
-    const sortedSessions = [...sessionSet].sort((a, b) =>
-      compareByDateThenName(a, b, sessionDateLookup),
-    )
-
     const catBunks: Record<string, string[]> = {}
     for (const [cat, bunkSet] of bunksByCategory) {
-      catBunks[cat] = [...bunkSet].sort((a, b) =>
-        a.localeCompare(b, undefined, { numeric: true }),
+      catBunks[cat] = [...bunkSet].sort((a, b) => bunkSortKey(a) - bunkSortKey(b))
+    }
+
+    const catSessions: Record<string, string[]> = {}
+    for (const [cat, sessSet] of sessionsByCategory) {
+      catSessions[cat] = [...sessSet].sort((a, b) =>
+        compareByDateThenName(a, b, sessionDateLookup),
       )
     }
 
     return {
-      sessions: sortedSessions,
       categoryBunks: catBunks as Record<BunkCategory, string[]>,
+      categorySessions: catSessions as Record<BunkCategory, string[]>,
       lookup: map,
     }
   }, [data, sessionDateLookup])
 
-  if (sessions.length === 0) return null
+  const hasData = CATEGORY_ORDER.some((cat) => categoryBunks[cat]?.length > 0)
+  if (!hasData) return null
 
   return (
     <div className="card-lodge p-4">
@@ -168,7 +186,7 @@ export function SessionBunkHeatmap({ data, sessionDateLookup = {} }: SessionBunk
           <BunkHeatmapTable
             key={cat}
             title={CATEGORY_LABELS[cat]}
-            sessions={sessions}
+            sessions={categorySessions[cat]}
             bunks={categoryBunks[cat]}
             lookup={lookup}
           />
