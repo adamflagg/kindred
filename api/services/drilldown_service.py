@@ -38,6 +38,15 @@ PERSON_LEVEL_BREAKDOWNS = frozenset(
     }
 )
 
+# Retention card breakdown types (top-level cards on retention overview)
+RETENTION_CARD_BREAKDOWNS = frozenset(
+    {
+        "retention_all",
+        "retention_returned",
+        "retention_not_returned",
+    }
+)
+
 # Waitlist breakdown types that need separate fetching logic
 WAITLIST_BREAKDOWNS = frozenset(
     {
@@ -95,6 +104,17 @@ class DrilldownService:
         # Fetch sessions first to find AG sessions with matching parent
         sessions = await self.repo.fetch_sessions(year, session_types)
         ag_session_ids = self._find_ag_sessions_for_parent(sessions, session_cm_id)
+
+        # Retention card breakdowns (top cards: all, returned, not_returned)
+        if breakdown_type in RETENTION_CARD_BREAKDOWNS and compare_year is not None:
+            return await self._handle_retention_card_breakdown(
+                year=year,
+                compare_year=compare_year,
+                card_type=breakdown_type,
+                sessions=sessions,
+                session_types=session_types,
+                status_filter=status_filter,
+            )
 
         # retention_session needs special handling - different from other breakdowns
         if breakdown_type == "retention_session" and compare_year is not None:
@@ -176,15 +196,20 @@ class DrilldownService:
             filtered_attendees = [g[0] for g in groups.values()]
             person_attendee_groups = groups
 
-        # When compare_year is set, compute returned_person_ids for is_returning
+        # When compare_year is set, compute returned_person_ids and enrolled_attendee_groups
         returned_person_ids: set[int] | None = None
+        enrolled_attendee_groups: dict[int, list[Any]] | None = None
         if compare_year is not None:
             compare_attendees = await self.repo.fetch_attendees(compare_year, ["enrolled"])
             returned_person_ids = set()
+            enrolled_attendee_groups = {}
             for a in compare_attendees:
                 pid = getattr(a, "person_id", None)
                 if pid is not None:
-                    returned_person_ids.add(int(pid))
+                    pid_int = int(pid)
+                    returned_person_ids.add(pid_int)
+                    if self._matches_session_types(a, session_types):
+                        enrolled_attendee_groups.setdefault(pid_int, []).append(a)
 
         # Build response
         return self._build_response(
@@ -192,8 +217,27 @@ class DrilldownService:
             persons,
             sessions,
             person_attendee_groups,
+            enrolled_attendee_groups=enrolled_attendee_groups,
             returned_person_ids=returned_person_ids,
         )
+
+    def _matches_session_types(self, attendee: Any, session_types: list[str] | None) -> bool:
+        """Check if an attendee's session matches the allowed session types.
+
+        Args:
+            attendee: Attendee record with expand.session.
+            session_types: Allowed session types, or None to match all.
+
+        Returns:
+            True if session type matches or no filter is applied.
+        """
+        if not session_types:
+            return True
+        expand = getattr(attendee, "expand", {}) or {}
+        session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+        if not session:
+            return False
+        return getattr(session, "session_type", None) in session_types
 
     def _find_ag_sessions_for_parent(self, sessions: dict[int, Any], session_cm_id: int | None) -> set[int]:
         """Find AG sessions that belong to a parent session.
@@ -442,12 +486,15 @@ class DrilldownService:
         # Find compare year person_ids enrolled in the target session
         target_person_ids: set[int] = set()
         returned_person_ids: set[int] = set()
+        enrolled_attendee_groups: dict[int, list[Any]] = {}
         for a in compare_attendees:
             pid = getattr(a, "person_id", None)
             if pid is None:
                 continue
             pid_int = int(pid)
             returned_person_ids.add(pid_int)
+            if self._matches_session_types(a, session_types):
+                enrolled_attendee_groups.setdefault(pid_int, []).append(a)
             expand = getattr(a, "expand", {}) or {}
             session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
             if session:
@@ -464,9 +511,10 @@ class DrilldownService:
             if pid is None:
                 continue
             pid_int = int(pid)
-            # Build groups for all base year attendees matching target
+            # Build groups for base year attendees matching target, filtered by session type
             if pid_int in target_person_ids:
-                person_attendee_groups.setdefault(pid_int, []).append(a)
+                if self._matches_session_types(a, session_types):
+                    person_attendee_groups.setdefault(pid_int, []).append(a)
                 if pid_int not in seen_persons:
                     seen_persons.add(pid_int)
                     filtered.append(a)
@@ -476,6 +524,83 @@ class DrilldownService:
             persons,
             sessions,
             person_attendee_groups,
+            enrolled_attendee_groups=enrolled_attendee_groups,
+            returned_person_ids=returned_person_ids,
+        )
+
+    async def _handle_retention_card_breakdown(
+        self,
+        year: int,
+        compare_year: int,
+        card_type: str,
+        sessions: dict[int, Any],
+        session_types: list[str] | None,
+        status_filter: list[str],
+    ) -> list[DrilldownAttendee]:
+        """Handle retention top-card drilldowns (all, returned, not_returned).
+
+        Args:
+            year: Base year.
+            compare_year: Compare year.
+            card_type: One of retention_all, retention_returned, retention_not_returned.
+            sessions: Base year sessions dict.
+            session_types: Session type filter.
+            status_filter: Status filter for attendees.
+
+        Returns:
+            List of DrilldownAttendee records from the base year.
+        """
+        import asyncio
+
+        base_attendees, compare_attendees, persons = await asyncio.gather(
+            self.repo.fetch_attendees(year, status_filter),
+            self.repo.fetch_attendees(compare_year, ["enrolled"]),
+            self.repo.fetch_persons(year),
+        )
+
+        # Build returned_person_ids and enrolled_attendee_groups from compare year
+        returned_person_ids: set[int] = set()
+        enrolled_attendee_groups: dict[int, list[Any]] = {}
+        for a in compare_attendees:
+            pid = getattr(a, "person_id", None)
+            if pid is not None:
+                pid_int = int(pid)
+                returned_person_ids.add(pid_int)
+                if self._matches_session_types(a, session_types):
+                    enrolled_attendee_groups.setdefault(pid_int, []).append(a)
+
+        # Deduplicate base year by person, build groups for sessions list
+        seen_persons: set[int] = set()
+        filtered: list[Any] = []
+        person_attendee_groups: dict[int, list[Any]] = {}
+        for a in base_attendees:
+            pid = getattr(a, "person_id", None)
+            if pid is None:
+                continue
+            pid_int = int(pid)
+            if self._matches_session_types(a, session_types):
+                person_attendee_groups.setdefault(pid_int, []).append(a)
+
+            if pid_int in seen_persons:
+                continue
+            seen_persons.add(pid_int)
+
+            # Filter based on card type
+            if card_type == "retention_all":
+                filtered.append(a)
+            elif card_type == "retention_returned":
+                if pid_int in returned_person_ids:
+                    filtered.append(a)
+            elif card_type == "retention_not_returned":
+                if pid_int not in returned_person_ids:
+                    filtered.append(a)
+
+        return self._build_response(
+            filtered,
+            persons,
+            sessions,
+            person_attendee_groups,
+            enrolled_attendee_groups=enrolled_attendee_groups,
             returned_person_ids=returned_person_ids,
         )
 

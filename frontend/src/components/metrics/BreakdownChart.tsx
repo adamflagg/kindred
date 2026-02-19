@@ -76,6 +76,7 @@ export function BreakdownChart({
       type: breakdownType,
       value,
       label: item.name,
+      ...(breakdownType === 'gender' ? { titleFormat: 'adjective' as const } : {}),
     })
   }
   if (data.length === 0) {

@@ -49,13 +49,26 @@ export function sortRetentionBarData(
   return topN ? sorted.slice(0, topN) : sorted
 }
 
+/** Map raw gender codes to readable display names. */
+export function getGenderDisplayName(raw: string): string {
+  switch (raw) {
+    case 'M':
+      return 'Male'
+    case 'F':
+      return 'Female'
+    default:
+      return raw
+  }
+}
+
 export function genderToBarData(data: RetentionByGender[] | undefined): RetentionRateBarItem[] {
   if (!data?.length) return []
   return data.map((d) => ({
-    name: d.gender,
+    name: getGenderDisplayName(d.gender),
     retentionRate: d.retention_rate,
     baseCount: d.base_count,
     returnedCount: d.returned_count,
+    id: d.gender,
   }))
 }
 

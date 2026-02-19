@@ -373,6 +373,9 @@ export interface DrilldownFilter {
     | 'session_length'
     | 'first_summer_year'
     | 'retention_session'
+    | 'retention_all'
+    | 'retention_returned'
+    | 'retention_not_returned'
     | 'waitlist_no_enrollment'
     | 'waitlist_has_enrollment'
     | 'waitlist_accepted'
@@ -380,6 +383,8 @@ export interface DrilldownFilter {
     | 'waitlist_total'
   value: string
   label: string // Display label for modal title
+  /** Title format: 'in' → "X campers in Label", 'adjective' → "X Label Camper(s)" */
+  titleFormat?: 'in' | 'adjective'
   /** Override status filter (for status cards like Waitlisted, Cancelled) */
   statusOverride?: string[]
   /** When true, drilldown from waitlist tab shows waitlist columns (Waitlisted For, Enrolled In) */

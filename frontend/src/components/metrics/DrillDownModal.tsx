@@ -68,7 +68,16 @@ interface DrillDownModalProps {
   onClose: () => void
 }
 
-type SortField = 'name' | 'grade' | 'gender' | 'school' | 'city' | 'session' | 'years' | 'enrolled'
+type SortField =
+  | 'name'
+  | 'grade'
+  | 'gender'
+  | 'school'
+  | 'city'
+  | 'session'
+  | 'years'
+  | 'enrolled'
+  | 'enrolled_current'
 type SortDirection = 'asc' | 'desc'
 
 export function DrillDownModal({
@@ -129,7 +138,8 @@ export function DrillDownModal({
         (a.city?.toLowerCase().includes(term) ?? false) ||
         (a.state?.toLowerCase().includes(term) ?? false) ||
         getSessionDisplay(a).toLowerCase().includes(term) ||
-        (isWaitlistDrilldown && getEnrolledDisplay(a).toLowerCase().includes(term))
+        (isWaitlistDrilldown && getEnrolledDisplay(a).toLowerCase().includes(term)) ||
+        (isRetentionDrilldown && getEnrolledDisplay(a).toLowerCase().includes(term))
     )
   }, [attendees, searchTerm, isWaitlistDrilldown, isRetentionDrilldown])
 
@@ -173,6 +183,10 @@ export function DrillDownModal({
           aVal = getEnrolledDisplay(a).toLowerCase()
           bVal = getEnrolledDisplay(b).toLowerCase()
           break
+        case 'enrolled_current':
+          aVal = getEnrolledDisplay(a).toLowerCase()
+          bVal = getEnrolledDisplay(b).toLowerCase()
+          break
       }
 
       if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1
@@ -208,20 +222,36 @@ export function DrillDownModal({
           'Status',
           'Returning',
         ]
-      : [
-          'CampMinder ID',
-          'Name',
-          'Grade',
-          'Gender',
-          'Age',
-          'School',
-          'City',
-          'State',
-          'Session',
-          'Years at Camp',
-          'Status',
-          'Returning',
-        ]
+      : isRetentionDrilldown
+        ? [
+            'CampMinder ID',
+            'Name',
+            'Grade',
+            'Gender',
+            'Age',
+            'School',
+            'City',
+            'State',
+            'Prior Session',
+            'Session',
+            'Years at Camp',
+            'Status',
+            'Returning',
+          ]
+        : [
+            'CampMinder ID',
+            'Name',
+            'Grade',
+            'Gender',
+            'Age',
+            'School',
+            'City',
+            'State',
+            'Session',
+            'Years at Camp',
+            'Status',
+            'Returning',
+          ]
 
     const rows = sortedAttendees.map((a) =>
       isWaitlistDrilldown
@@ -240,20 +270,36 @@ export function DrillDownModal({
             a.status,
             a.is_returning ? 'Yes' : 'No',
           ]
-        : [
-            a.person_id,
-            `${a.preferred_name || a.first_name} ${a.last_name}`,
-            a.grade ?? '',
-            a.gender ?? '',
-            a.age ?? '',
-            a.school ?? '',
-            a.city ?? '',
-            a.state ?? '',
-            getSessionDisplay(a),
-            a.years_at_camp ?? '',
-            a.status,
-            a.is_returning ? 'Yes' : 'No',
-          ]
+        : isRetentionDrilldown
+          ? [
+              a.person_id,
+              `${a.preferred_name || a.first_name} ${a.last_name}`,
+              a.grade ?? '',
+              a.gender ?? '',
+              a.age ?? '',
+              a.school ?? '',
+              a.city ?? '',
+              a.state ?? '',
+              getSessionDisplay(a),
+              getEnrolledDisplay(a),
+              a.years_at_camp ?? '',
+              a.status,
+              a.is_returning ? 'Yes' : 'DNR',
+            ]
+          : [
+              a.person_id,
+              `${a.preferred_name || a.first_name} ${a.last_name}`,
+              a.grade ?? '',
+              a.gender ?? '',
+              a.age ?? '',
+              a.school ?? '',
+              a.city ?? '',
+              a.state ?? '',
+              getSessionDisplay(a),
+              a.years_at_camp ?? '',
+              a.status,
+              a.is_returning ? 'Yes' : 'No',
+            ]
     )
 
     const csv = [headers, ...rows]
@@ -289,8 +335,9 @@ export function DrillDownModal({
         <div className="border-border flex items-center justify-between border-b px-6 py-4">
           <div>
             <h2 className="text-foreground text-lg font-semibold">
-              {sortedAttendees.length} camper
-              {sortedAttendees.length !== 1 ? 's' : ''} in {filter.label}
+              {filter.titleFormat === 'adjective'
+                ? `${sortedAttendees.length} ${filter.label} Camper${sortedAttendees.length !== 1 ? 's' : ''}`
+                : `${sortedAttendees.length} camper${sortedAttendees.length !== 1 ? 's' : ''} in ${filter.label}`}
             </h2>
             <p className="text-muted-foreground text-sm">
               {isRetentionDrilldown
@@ -392,7 +439,7 @@ export function DrillDownModal({
                     {isWaitlistDrilldown
                       ? 'Waitlisted For'
                       : isRetentionDrilldown
-                        ? "Last Year's Session(s)"
+                        ? 'Prior Session'
                         : 'Session'}{' '}
                     <SortIcon field="session" />
                   </div>
@@ -404,6 +451,16 @@ export function DrillDownModal({
                   >
                     <div className="flex items-center gap-1">
                       Enrolled In <SortIcon field="enrolled" />
+                    </div>
+                  </th>
+                )}
+                {isRetentionDrilldown && (
+                  <th
+                    onClick={() => handleSort('enrolled_current')}
+                    className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
+                  >
+                    <div className="flex items-center gap-1">
+                      Session <SortIcon field="enrolled_current" />
                     </div>
                   </th>
                 )}
@@ -502,6 +559,16 @@ export function DrillDownModal({
                         title={getEnrolledDisplay(attendee)}
                       >
                         {getEnrolledDisplay(attendee)}
+                      </td>
+                    )}
+                    {isRetentionDrilldown && (
+                      <td className="text-foreground px-4 py-3 whitespace-nowrap">
+                        {getEnrolledDisplay(attendee) !== '—' ? getEnrolledDisplay(attendee) : '—'}
+                        {!attendee.is_returning && (
+                          <span className="ml-1.5 rounded bg-amber-100 px-1 py-0.5 text-xs text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+                            DNR
+                          </span>
+                        )}
                       </td>
                     )}
                     <td className="text-foreground px-4 py-3 text-center whitespace-nowrap">
