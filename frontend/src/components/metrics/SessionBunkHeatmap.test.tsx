@@ -105,12 +105,12 @@ describe('SessionBunkHeatmap', () => {
     expect(session2Text.filter((t) => t === '—').length).toBe(2) // B-2 and G-1 missing
   })
 
-  it('renders tooltip text with counts', () => {
+  it('renders tooltip with counts via title attribute', () => {
     render(<SessionBunkHeatmap data={sampleData} />)
 
-    // Tooltip shows "X of Y returned (Z%)"
-    expect(screen.getByText('8 of 10 returned (80%)')).toBeInTheDocument()
-    expect(screen.getByText('3 of 12 returned (25%)')).toBeInTheDocument()
+    // Tooltip via title attribute: "X of Y returned (Z%)"
+    expect(screen.getByTitle('8 of 10 returned (80%)')).toBeInTheDocument()
+    expect(screen.getByTitle('3 of 12 returned (25%)')).toBeInTheDocument()
   })
 
   it('renders nothing when data is empty', () => {
