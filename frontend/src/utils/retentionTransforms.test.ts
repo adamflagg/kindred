@@ -131,4 +131,68 @@ describe('computeRetentionOutliers', () => {
 
     expect(outliers[0]!.deviation).toBe(-25)
   })
+
+  // Impact-weighted scoring tests
+  it('should include impact score on outliers', () => {
+    const data: RetentionRateBarItem[] = [
+      makeItem('Springfield', 0.51, 238), // -14pp, impact = 14 * 238 / 100 = 33.32
+    ]
+    const overallRate = 0.65
+
+    const outliers = computeRetentionOutliers(data, overallRate)
+
+    expect(outliers[0]!.impact).toBeCloseTo(14 * 238 / 100, 0)
+  })
+
+  it('should include expectedCount on outliers', () => {
+    const data: RetentionRateBarItem[] = [
+      makeItem('Springfield', 0.51, 238), // expected = 0.65 * 238 = 155
+    ]
+    const overallRate = 0.65
+
+    const outliers = computeRetentionOutliers(data, overallRate)
+
+    expect(outliers[0]!.expectedCount).toBe(Math.round(0.65 * 238))
+  })
+
+  it('should sort by impact descending, not raw deviation', () => {
+    const data: RetentionRateBarItem[] = [
+      makeItem('Moraga', 0.22, 9), // -43pp, impact = 43 * 9 / 100 = 3.87
+      makeItem('Springfield', 0.51, 238), // -14pp, impact = 14 * 238 / 100 = 33.32
+    ]
+    const overallRate = 0.65
+
+    const outliers = computeRetentionOutliers(data, overallRate)
+
+    // Springfield should rank first due to higher impact despite lower deviation
+    expect(outliers[0]!.name).toBe('Springfield')
+    expect(outliers[1]!.name).toBe('Moraga')
+  })
+
+  it('should filter out outliers below impact threshold of 3.0', () => {
+    const data: RetentionRateBarItem[] = [
+      makeItem('Tiny Town', 0.25, 8), // -40pp but impact = 40 * 8 / 100 = 3.2 (barely above)
+      makeItem('Micro City', 0.53, 8), // -12pp, impact = 12 * 8 / 100 = 0.96 (below 3.0)
+    ]
+    const overallRate = 0.65
+
+    const outliers = computeRetentionOutliers(data, overallRate)
+
+    // Micro City filtered out (impact < 3.0), Tiny Town barely passes
+    expect(outliers.length).toBe(1)
+    expect(outliers[0]!.name).toBe('Tiny Town')
+  })
+
+  it('should always include zero-retention groups with sufficient base count', () => {
+    const data: RetentionRateBarItem[] = [
+      makeItem('Ghost Town', 0.0, 8), // 0% retention, impact = 65 * 8 / 100 = 5.2
+    ]
+    const overallRate = 0.65
+
+    const outliers = computeRetentionOutliers(data, overallRate)
+
+    // Zero retention with baseCount >= 8 should always be included
+    expect(outliers.length).toBe(1)
+    expect(outliers[0]!.name).toBe('Ghost Town')
+  })
 })
