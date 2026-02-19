@@ -90,8 +90,20 @@ describe('transformGradeData', () => {
 describe('transformSessionData', () => {
   it('transforms session breakdown to chart data with utilization', () => {
     const input = [
-      { session_cm_id: 1001, session_name: 'Session 2', count: 100, capacity: 120, utilization: 85.5 },
-      { session_cm_id: 1002, session_name: 'Session 3', count: 120, capacity: 130, utilization: 90.0 },
+      {
+        session_cm_id: 1001,
+        session_name: 'Session 2',
+        count: 100,
+        capacity: 120,
+        utilization: 85.5,
+      },
+      {
+        session_cm_id: 1002,
+        session_name: 'Session 3',
+        count: 120,
+        capacity: 130,
+        utilization: 90.0,
+      },
     ]
 
     const dateLookup = {
@@ -108,7 +120,15 @@ describe('transformSessionData', () => {
   })
 
   it('handles null utilization as 0', () => {
-    const input = [{ session_cm_id: 1000, session_name: 'Session 1', count: 50, capacity: null, utilization: null }]
+    const input = [
+      {
+        session_cm_id: 1000,
+        session_name: 'Session 1',
+        count: 50,
+        capacity: null,
+        utilization: null,
+      },
+    ]
     const dateLookup = { 'Session 1': '2026-06-01' }
 
     const result = transformSessionData(input as any, dateLookup)
@@ -122,9 +142,27 @@ describe('transformSessionData', () => {
 
   it('sorts sessions by date and differentiates Taste of Camp sessions', () => {
     const input = [
-      { session_cm_id: 1001, session_name: 'Session 2', count: 100, capacity: 120, utilization: 85 },
-      { session_cm_id: 1002, session_name: 'Taste of Camp 2', count: 30, capacity: 40, utilization: 80 },
-      { session_cm_id: 1003, session_name: 'Taste of Camp 1', count: 25, capacity: 35, utilization: 75 },
+      {
+        session_cm_id: 1001,
+        session_name: 'Session 2',
+        count: 100,
+        capacity: 120,
+        utilization: 85,
+      },
+      {
+        session_cm_id: 1002,
+        session_name: 'Taste of Camp 2',
+        count: 30,
+        capacity: 40,
+        utilization: 80,
+      },
+      {
+        session_cm_id: 1003,
+        session_name: 'Taste of Camp 1',
+        count: 25,
+        capacity: 35,
+        utilization: 75,
+      },
     ]
 
     const dateLookup = {

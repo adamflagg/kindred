@@ -119,9 +119,7 @@ export function transformFirstSummerYearData(
   }))
 }
 
-export function transformNewVsReturningData(
-  data: NewVsReturning | undefined
-): ChartDataPoint[] {
+export function transformNewVsReturningData(data: NewVsReturning | undefined): ChartDataPoint[] {
   if (!data) return []
   return [
     {

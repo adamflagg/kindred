@@ -499,7 +499,7 @@ class TestRegistrationMetrics:
         - Session 2, 3 main (21 days) = 3-week
         - Session 4 (14 days) = 2-week
         """
-        from api.services.registration_service import get_session_length_category
+        from api.utils.session_metrics import get_session_length_category
 
         # Create sessions with realistic dates
         sessions_with_dates = [
@@ -709,7 +709,7 @@ class TestDynamicSessionLengthCalculation:
 
     def test_one_to_four_days_is_one_week(self) -> None:
         """Test 1-4 day sessions are categorized as 1-week (Taste of Camp)."""
-        from api.services.registration_service import get_session_length_category
+        from api.utils.session_metrics import get_session_length_category
 
         # 4 days (e.g., Taste of Camp: May 25-28)
         assert get_session_length_category("2025-05-25", "2025-05-28") == "1-week"
@@ -720,7 +720,7 @@ class TestDynamicSessionLengthCalculation:
 
     def test_five_to_seven_days_is_one_week(self) -> None:
         """Test 5-7 day sessions are categorized as 1-week."""
-        from api.services.registration_service import get_session_length_category
+        from api.utils.session_metrics import get_session_length_category
 
         # 5 days
         assert get_session_length_category("2025-06-01", "2025-06-05") == "1-week"
@@ -729,7 +729,7 @@ class TestDynamicSessionLengthCalculation:
 
     def test_eight_to_fourteen_days_is_two_week(self) -> None:
         """Test 8-14 day sessions are categorized as 2-week."""
-        from api.services.registration_service import get_session_length_category
+        from api.utils.session_metrics import get_session_length_category
 
         # 8 days
         assert get_session_length_category("2025-06-01", "2025-06-08") == "2-week"
@@ -740,7 +740,7 @@ class TestDynamicSessionLengthCalculation:
 
     def test_fifteen_to_twenty_one_days_is_three_week(self) -> None:
         """Test 15-21 day sessions are categorized as 3-week."""
-        from api.services.registration_service import get_session_length_category
+        from api.utils.session_metrics import get_session_length_category
 
         # 15 days
         assert get_session_length_category("2025-06-01", "2025-06-15") == "3-week"
@@ -751,7 +751,7 @@ class TestDynamicSessionLengthCalculation:
 
     def test_twenty_two_plus_days_is_four_week_plus(self) -> None:
         """Test 22+ day sessions are categorized as 4-week+."""
-        from api.services.registration_service import get_session_length_category
+        from api.utils.session_metrics import get_session_length_category
 
         # 22 days
         assert get_session_length_category("2025-06-01", "2025-06-22") == "4-week+"
@@ -762,7 +762,7 @@ class TestDynamicSessionLengthCalculation:
 
     def test_missing_or_invalid_dates_return_unknown(self) -> None:
         """Test missing or invalid dates return 'unknown'."""
-        from api.services.registration_service import get_session_length_category
+        from api.utils.session_metrics import get_session_length_category
 
         # Empty strings
         assert get_session_length_category("", "") == "unknown"
@@ -775,7 +775,7 @@ class TestDynamicSessionLengthCalculation:
 
     def test_handles_datetime_with_time_and_timezone(self) -> None:
         """Test parsing dates with time and timezone components."""
-        from api.services.registration_service import get_session_length_category
+        from api.utils.session_metrics import get_session_length_category
 
         # Full ISO format with time and Z suffix (common from APIs)
         assert get_session_length_category("2025-06-01 00:00:00Z", "2025-06-14 23:59:59Z") == "2-week"
