@@ -39,31 +39,6 @@ export async function authenticateBypassMode(): Promise<boolean> {
   }
 }
 
-export interface AdminSetting extends RecordModel {
-  key: string
-  value: unknown
-  description?: string
-}
-
-export interface SavedScenario extends RecordModel {
-  name: string
-  created_by: string
-  session: string // PocketBase relation ID
-  year: number // Year for filtering (matches session year)
-  is_active?: boolean
-  description?: string
-  assignments_data?: unknown
-  metadata?: unknown
-  expand?: {
-    session?: {
-      id: string
-      cm_id: number
-      name: string
-      [key: string]: unknown
-    }
-  }
-}
-
 // Get available auth methods
 export async function getAuthMethods() {
   try {

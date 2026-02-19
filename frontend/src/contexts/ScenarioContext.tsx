@@ -4,7 +4,7 @@ import { ScenarioContext, type Scenario, type ScenarioContextType } from '../hoo
 import { useSavedScenarios } from '../hooks/useSavedScenarios'
 import { useCreateScenario, useDeleteScenario } from '../hooks/useSavedScenariosMutation'
 import { useUpdateScenario, useClearScenario } from '../hooks/useScenarioOperations'
-import { type SavedScenario } from '../lib/pocketbase'
+import type { SavedScenario } from '../types/app-types'
 import { useYear } from '../hooks/useCurrentYear'
 
 interface ScenarioProviderProps {
@@ -20,9 +20,8 @@ function savedScenarioToScenario(saved: SavedScenario): Scenario {
     id: saved.id,
     name: saved.name,
     session_cm_id: sessionCmId,
-    created_by: saved.created_by,
-    created: saved['created'],
-    updated: saved['updated'],
+    created: saved.created,
+    updated: saved.updated,
     is_active: saved.is_active ?? true,
     description: saved.description || '',
   }

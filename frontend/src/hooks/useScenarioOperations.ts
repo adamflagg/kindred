@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { pb, type SavedScenario } from '../lib/pocketbase'
+import { pb } from '../lib/pocketbase'
+import type { SavedScenario } from '../types/app-types'
 
 interface UpdateScenarioParams {
   scenarioId: string

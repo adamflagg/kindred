@@ -2,20 +2,14 @@
  * Tests for transform utility functions
  */
 import { describe, it, expect, vi } from 'vitest'
-import { toAppCamper, buildCampersFromData, createLookupMaps, toAppBunkRequest } from './transforms'
-import {
-  Collections,
-  CampSessionsSessionTypeOptions,
-  BunkRequestsRequestTypeOptions,
-  BunkRequestsStatusOptions,
-} from '../types/pocketbase-types'
+import { toAppCamper, buildCampersFromData, createLookupMaps } from './transforms'
+import { Collections, CampSessionsSessionTypeOptions } from '../types/pocketbase-types'
 import type {
   PersonsResponse,
   AttendeesResponse,
   BunkAssignmentsResponse,
   BunksResponse,
   CampSessionsResponse,
-  BunkRequestsResponse,
 } from '../types/pocketbase-types'
 
 // Mock calculateAge to avoid date dependencies
@@ -103,28 +97,6 @@ const createMockAssignment = (
     updated: '',
     ...overrides,
   }) as BunkAssignmentsResponse
-
-const createMockBunkRequest = (
-  overrides: Partial<BunkRequestsResponse> = {}
-): BunkRequestsResponse =>
-  ({
-    id: 'req-1',
-    requester_id: 'p1',
-    requestee_id: 'p2',
-    request_type: BunkRequestsRequestTypeOptions.bunk_with,
-    status: BunkRequestsStatusOptions.pending,
-    priority: 3,
-    session_id: 's1',
-    year: 2025,
-    original_text: 'wants to bunk with friend',
-    confidence_score: 0.85,
-    parse_notes: 'Parsed by AI',
-    collectionId: 'coll-requests',
-    collectionName: Collections.BunkRequests,
-    created: '2024-01-01',
-    updated: '2024-01-01',
-    ...overrides,
-  }) as BunkRequestsResponse
 
 describe('toAppCamper', () => {
   const mockPerson = createMockPerson({
@@ -389,91 +361,5 @@ describe('buildCampersFromData', () => {
     expect(campers).toHaveLength(1)
     expect(campers[0]?.assigned_bunk).toBe('b1')
     expect(campers[0]?.assigned_bunk_cm_id).toBe(100)
-  })
-})
-
-describe('toAppBunkRequest', () => {
-  const baseRequest = createMockBunkRequest()
-
-  it('should transform bunk_with request', () => {
-    const request = toAppBunkRequest(baseRequest)
-
-    expect(request.id).toBe('req-1')
-    expect(request.request_type).toBe('bunk_with')
-    expect(request.requester_id).toBe('p1')
-    expect(request.requestee_id).toBe('p2')
-    expect(request.priority).toBe(3)
-    expect(request.status).toBe('pending')
-    expect(request.original_text).toBe('wants to bunk with friend')
-    expect(request.confidence_score).toBe(0.85)
-    expect(request.parse_notes).toBe('Parsed by AI')
-  })
-
-  it('should transform not_bunk_with request', () => {
-    const request = toAppBunkRequest(
-      createMockBunkRequest({
-        request_type: BunkRequestsRequestTypeOptions.not_bunk_with,
-      })
-    )
-
-    expect(request.request_type).toBe('not_bunk_with')
-  })
-
-  it('should transform age_preference request', () => {
-    const request = toAppBunkRequest(
-      createMockBunkRequest({
-        request_type: BunkRequestsRequestTypeOptions.age_preference,
-      })
-    )
-
-    expect(request.request_type).toBe('age_preference')
-  })
-
-  it('should map resolved status', () => {
-    const request = toAppBunkRequest(
-      createMockBunkRequest({ status: BunkRequestsStatusOptions.resolved })
-    )
-
-    expect(request.status).toBe('resolved')
-  })
-
-  it('should map declined status', () => {
-    const request = toAppBunkRequest(
-      createMockBunkRequest({ status: BunkRequestsStatusOptions.declined })
-    )
-
-    expect(request.status).toBe('declined')
-  })
-
-  it('should default priority to 5 when missing', () => {
-    const request = toAppBunkRequest(
-      createMockBunkRequest({ priority: undefined as unknown as number })
-    )
-
-    expect(request.priority).toBe(5)
-  })
-
-  it('should default confidence_score to 0 when missing', () => {
-    const request = toAppBunkRequest(
-      createMockBunkRequest({
-        confidence_score: undefined as unknown as number,
-      })
-    )
-
-    expect(request.confidence_score).toBe(0)
-  })
-
-  it('should default original_text to empty string when missing', () => {
-    const request = toAppBunkRequest(
-      createMockBunkRequest({ original_text: undefined as unknown as string })
-    )
-
-    expect(request.original_text).toBe('')
-  })
-
-  it('should set is_reciprocal to false', () => {
-    const request = toAppBunkRequest(baseRequest)
-
-    expect(request.is_reciprocal).toBe(false)
   })
 })

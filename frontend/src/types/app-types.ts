@@ -1,9 +1,14 @@
 /**
  * Application-specific types for UI components and transformations
- * These types compose or extend the auto-generated PocketBase types
+ * These types compose, extend, or alias the auto-generated PocketBase types
  */
 
-import type { BunksResponse, CampSessionsResponse, AttendeesResponse } from './pocketbase-types'
+import type {
+  BunksResponse,
+  CampSessionsResponse,
+  AttendeesResponse,
+  SavedScenariosResponse,
+} from './pocketbase-types'
 
 /**
  * UI representation of a camper that combines data from multiple tables
@@ -171,6 +176,17 @@ export interface Constraint {
   }
 }
 
+/**
+ * SavedScenario — PB SavedScenariosResponse with typed session expand.
+ * Not a composite UI type; direct alias for the PB collection.
+ */
+export type SavedScenario = SavedScenariosResponse<unknown, { session?: CampSessionsResponse }>
+
+/**
+ * SolverRun — FastAPI response type, NOT a PocketBase collection.
+ * Uses 'completed'/'failed' status (not PB's 'success'/'error' enum).
+ * Kept in app-types because it represents a solver API response shape.
+ */
 export interface SolverRun {
   id: string
   session: string
