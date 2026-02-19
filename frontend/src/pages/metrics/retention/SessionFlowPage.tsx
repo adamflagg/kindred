@@ -17,7 +17,7 @@ import { Loader2, AlertCircle } from 'lucide-react'
 
 export default function SessionFlowPage() {
   const { currentYear } = useCurrentYear()
-  const { selectedSessionCmId, sessionTypesParam, viewMode, sessions } = useMetricsSession()
+  const { selectedSessionCmId, sessionTypesParam, viewMode, campSessions } = useMetricsSession()
 
   const priorYear = currentYear - 1
 
@@ -28,7 +28,7 @@ export default function SessionFlowPage() {
     selectedSessionCmId ?? undefined
   )
 
-  const sessionDateLookup = useMemo(() => buildSessionDateLookup(sessions), [sessions])
+  const sessionDateLookup = useMemo(() => buildSessionDateLookup(campSessions), [campSessions])
 
   if (isLoading) {
     return (

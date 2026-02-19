@@ -20,22 +20,21 @@ function getCellColor(rate: number): string {
   return 'bg-red-600/80 text-white'
 }
 
-type BunkCategory = 'boys' | 'girls' | 'ag' | 'other'
+type BunkCategory = 'boys' | 'girls' | 'ag'
 
 const CATEGORY_LABELS: Record<BunkCategory, string> = {
   boys: 'Boys Cabins',
   girls: 'Girls Cabins',
   ag: 'All-Gender Cabins',
-  other: 'Other Cabins',
 }
 
-const CATEGORY_ORDER: BunkCategory[] = ['boys', 'girls', 'ag', 'other']
+const CATEGORY_ORDER: BunkCategory[] = ['boys', 'girls', 'ag']
 
-function categorizeBunk(bunk: string): BunkCategory {
+function categorizeBunk(bunk: string): BunkCategory | null {
   if (bunk.startsWith('AG-')) return 'ag'
   if (bunk.startsWith('B-')) return 'boys'
   if (bunk.startsWith('G-')) return 'girls'
-  return 'other'
+  return null
 }
 
 interface BunkHeatmapTableProps {
@@ -126,8 +125,9 @@ export function SessionBunkHeatmap({ data, sessionDateLookup = {} }: SessionBunk
     const map = new Map<string, RetentionBySessionBunk>()
 
     for (const item of data) {
-      sessionSet.add(item.session)
       const cat = categorizeBunk(item.bunk)
+      if (!cat) continue // skip bunks with non-standard prefixes
+      sessionSet.add(item.session)
       let catSet = bunksByCategory.get(cat)
       if (!catSet) {
         catSet = new Set()

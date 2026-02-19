@@ -23,6 +23,22 @@ from typing import Any
 # - tli: Teen Leadership Initiative (different program)
 DISPLAY_SESSION_TYPES = ("main", "embedded", "ag", "quest")
 
+# Session types that have cabin/bunk assignments relevant to the heatmap.
+# Used for filtering _build_session_bunk_breakdown to prevent family camp,
+# quest, training, and TLI sessions from appearing in the bunk heatmap.
+#
+# Includes:
+# - main: Standard sessions (Session 1, 2, 3, 4) with B-*/G-* bunks
+# - embedded: Standalone partial sessions (2a, 2b, 3a, etc.)
+# - ag: All-Gender sessions with AG-* bunks
+#
+# Excludes:
+# - quest: Adventure program (no traditional cabin bunking)
+# - family: Family camp (adult-focused, same bunk names but separate program)
+# - training: Staff training sessions
+# - tli: Teen Leadership Initiative
+BUNK_SESSION_TYPES = ("main", "embedded", "ag")
+
 # Session types that count toward "summers at camp" / "years as camper"
 # Used for metrics calculations: "Summers at Camp", "First Summer Year".
 # Quest counts toward camper history to match CampMinder's years_at_camp.

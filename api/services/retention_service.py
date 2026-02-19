@@ -23,7 +23,11 @@ from api.schemas.metrics import (
     RetentionMetricsResponse,
     SessionFlowItem,
 )
-from api.utils.session_metrics import DISPLAY_SESSION_TYPES, SUMMER_PROGRAM_SESSION_TYPES
+from api.utils.session_metrics import (
+    BUNK_SESSION_TYPES,
+    DISPLAY_SESSION_TYPES,
+    SUMMER_PROGRAM_SESSION_TYPES,
+)
 
 from .breakdown_calculator import compute_breakdown, safe_rate
 from .extractors import (
@@ -615,6 +619,10 @@ class RetentionService:
                 continue
             session_name = getattr(session_data, "name", "") or ""
             session_type = getattr(session_data, "session_type", None)
+
+            # Filter to bunk-relevant session types only
+            if session_type not in BUNK_SESSION_TYPES:
+                continue
 
             # AG merging: use parent session name
             if session_type == "ag":
