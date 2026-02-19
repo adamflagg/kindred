@@ -563,9 +563,7 @@ export function DrillDownModal({
                     )}
                     {isRetentionDrilldown && (
                       <td className="text-foreground px-4 py-3 whitespace-nowrap">
-                        {getEnrolledDisplay(attendee) !== '—'
-                          ? getEnrolledDisplay(attendee)
-                          : '—'}
+                        {getEnrolledDisplay(attendee) !== '—' ? getEnrolledDisplay(attendee) : '—'}
                         {!attendee.is_returning && (
                           <span className="ml-1.5 rounded bg-amber-100 px-1 py-0.5 text-xs text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
                             DNR
