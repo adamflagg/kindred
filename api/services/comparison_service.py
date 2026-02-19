@@ -17,7 +17,8 @@ from api.schemas.metrics import (
     YearSummary,
 )
 
-from .breakdown_calculator import calculate_percentage
+from .breakdown_calculator import calculate_percentage, compute_registration_breakdown
+from .extractors import extract_gender, extract_grade
 
 if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository
@@ -133,40 +134,16 @@ class ComparisonService:
         """
         total = len(person_ids)
 
-        # Gender breakdown
-        gender_counts: dict[str, int] = {}
-        for pid in person_ids:
-            person = persons.get(pid)
-            if not person:
-                continue
-            gender = getattr(person, "gender", "Unknown") or "Unknown"
-            gender_counts[gender] = gender_counts.get(gender, 0) + 1
-
+        gender_stats = compute_registration_breakdown(person_ids, persons, extract_gender)
         by_gender = [
-            GenderBreakdown(
-                gender=g,
-                count=c,
-                percentage=calculate_percentage(c, total),
-            )
-            for g, c in sorted(gender_counts.items())
+            GenderBreakdown(gender=g, count=s.count, percentage=calculate_percentage(s.count, total))
+            for g, s in sorted(gender_stats.items())
         ]
 
-        # Grade breakdown
-        grade_counts: dict[int | None, int] = {}
-        for pid in person_ids:
-            person = persons.get(pid)
-            if not person:
-                continue
-            grade = getattr(person, "grade", None)
-            grade_counts[grade] = grade_counts.get(grade, 0) + 1
-
+        grade_stats = compute_registration_breakdown(person_ids, persons, extract_grade)
         by_grade = [
-            GradeBreakdown(
-                grade=g,
-                count=c,
-                percentage=calculate_percentage(c, total),
-            )
-            for g, c in sorted(grade_counts.items(), key=lambda x: (x[0] is None, x[0]))
+            GradeBreakdown(grade=g, count=s.count, percentage=calculate_percentage(s.count, total))
+            for g, s in sorted(grade_stats.items(), key=lambda x: (x[0] is None, x[0]))
         ]
 
         return YearSummary(

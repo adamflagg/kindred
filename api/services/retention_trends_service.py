@@ -25,7 +25,14 @@ from api.schemas.metrics import (
 )
 from api.utils.session_metrics import compute_summer_metrics
 
-from .breakdown_calculator import safe_rate
+from .breakdown_calculator import compute_breakdown, compute_registration_breakdown, safe_rate
+from .extractors import (
+    extract_city,
+    extract_gender,
+    extract_grade,
+    extract_school,
+    extract_synagogue,
+)
 
 if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository
@@ -251,37 +258,13 @@ class RetentionTrendsService:
         returned_ids: set[int],
         persons: dict[int, Any],
     ) -> list[RetentionByGender]:
-        """Compute gender breakdown for retention.
-
-        Args:
-            base_person_ids: Person IDs in base year.
-            returned_ids: Person IDs who returned.
-            persons: Person lookup dictionary.
-
-        Returns:
-            List of RetentionByGender objects.
-        """
-        gender_stats: dict[str, dict[str, int]] = {}
-
-        for pid in base_person_ids:
-            person = persons.get(pid)
-            if not person:
-                continue
-            gender = getattr(person, "gender", "Unknown") or "Unknown"
-            if gender not in gender_stats:
-                gender_stats[gender] = {"base": 0, "returned": 0}
-            gender_stats[gender]["base"] += 1
-            if pid in returned_ids:
-                gender_stats[gender]["returned"] += 1
-
+        """Compute gender breakdown for retention."""
+        stats = compute_breakdown(base_person_ids, returned_ids, persons, extract_gender)
         return [
             RetentionByGender(
-                gender=g,
-                base_count=stats["base"],
-                returned_count=stats["returned"],
-                retention_rate=safe_rate(stats["returned"], stats["base"]),
+                gender=g, base_count=s.base_count, returned_count=s.returned_count, retention_rate=s.retention_rate
             )
-            for g, stats in sorted(gender_stats.items())
+            for g, s in sorted(stats.items())
         ]
 
     def _compute_grade_breakdown(
@@ -290,37 +273,13 @@ class RetentionTrendsService:
         returned_ids: set[int],
         persons: dict[int, Any],
     ) -> list[RetentionByGrade]:
-        """Compute grade breakdown for retention.
-
-        Args:
-            base_person_ids: Person IDs in base year.
-            returned_ids: Person IDs who returned.
-            persons: Person lookup dictionary.
-
-        Returns:
-            List of RetentionByGrade objects.
-        """
-        grade_stats: dict[int | None, dict[str, int]] = {}
-
-        for pid in base_person_ids:
-            person = persons.get(pid)
-            if not person:
-                continue
-            grade = getattr(person, "grade", None)
-            if grade not in grade_stats:
-                grade_stats[grade] = {"base": 0, "returned": 0}
-            grade_stats[grade]["base"] += 1
-            if pid in returned_ids:
-                grade_stats[grade]["returned"] += 1
-
+        """Compute grade breakdown for retention."""
+        stats = compute_breakdown(base_person_ids, returned_ids, persons, extract_grade)
         return [
             RetentionByGrade(
-                grade=g,
-                base_count=stats["base"],
-                returned_count=stats["returned"],
-                retention_rate=safe_rate(stats["returned"], stats["base"]),
+                grade=g, base_count=s.base_count, returned_count=s.returned_count, retention_rate=s.retention_rate
             )
-            for g, stats in sorted(grade_stats.items(), key=lambda x: (x[0] is None, x[0]))
+            for g, s in sorted(stats.items(), key=lambda x: (x[0] is None, x[0]))
         ]
 
     def _calculate_trend_direction(self, rates: list[float]) -> str:
@@ -371,72 +330,32 @@ class RetentionTrendsService:
             persons = year_data["persons"]
             total = len(person_ids)
 
-            # Gender breakdown
-            gender_counts: dict[str, int] = {}
-            for pid in person_ids:
-                person = persons.get(pid)
-                if not person:
-                    continue
-                gender = getattr(person, "gender", "Unknown") or "Unknown"
-                gender_counts[gender] = gender_counts.get(gender, 0) + 1
+            # Demographic breakdowns using generic calculator
+            gender_stats = compute_registration_breakdown(person_ids, persons, extract_gender)
+            gender_breakdown = [GenderEnrollment(gender=g, count=s.count) for g, s in sorted(gender_stats.items())]
 
-            gender_breakdown = [GenderEnrollment(gender=g, count=c) for g, c in sorted(gender_counts.items())]
-
-            # Grade breakdown
-            grade_counts: dict[int | None, int] = {}
-            for pid in person_ids:
-                person = persons.get(pid)
-                if not person:
-                    continue
-                grade = getattr(person, "grade", None)
-                grade_counts[grade] = grade_counts.get(grade, 0) + 1
-
+            grade_stats = compute_registration_breakdown(person_ids, persons, extract_grade)
             grade_breakdown = [
-                GradeEnrollment(grade=g, count=c)
-                for g, c in sorted(grade_counts.items(), key=lambda x: (x[0] is None, x[0]))
+                GradeEnrollment(grade=g, count=s.count)
+                for g, s in sorted(grade_stats.items(), key=lambda x: (x[0] is None, x[0]))
             ]
 
-            # City breakdown
-            city_counts: dict[str, int] = {}
-            for pid in person_ids:
-                person = persons.get(pid)
-                if not person:
-                    continue
-                city = getattr(person, "normalized_city", None) or getattr(person, "address_city", "") or ""
-                if city:
-                    city_counts[city] = city_counts.get(city, 0) + 1
-
+            city_stats = compute_registration_breakdown(person_ids, persons, extract_city)
             city_breakdown = [
-                CityEnrollment(city=c, count=cnt) for c, cnt in sorted(city_counts.items(), key=lambda x: -x[1])
+                CityEnrollment(city=c, count=s.count)
+                for c, s in sorted(((k, v) for k, v in city_stats.items() if k), key=lambda x: -x[1].count)
             ]
 
-            # School breakdown
-            school_counts: dict[str, int] = {}
-            for pid in person_ids:
-                person = persons.get(pid)
-                if not person:
-                    continue
-                school = getattr(person, "normalized_school", None) or getattr(person, "school", "") or ""
-                if school:
-                    school_counts[school] = school_counts.get(school, 0) + 1
-
+            school_stats = compute_registration_breakdown(person_ids, persons, extract_school)
             school_breakdown = [
-                SchoolEnrollment(school=s, count=c) for s, c in sorted(school_counts.items(), key=lambda x: -x[1])
+                SchoolEnrollment(school=s, count=st.count)
+                for s, st in sorted(((k, v) for k, v in school_stats.items() if k), key=lambda x: -x[1].count)
             ]
 
-            # Synagogue breakdown
-            synagogue_counts: dict[str, int] = {}
-            for pid in person_ids:
-                person = persons.get(pid)
-                if not person:
-                    continue
-                synagogue = getattr(person, "normalized_congregation", None) or ""
-                if synagogue:
-                    synagogue_counts[synagogue] = synagogue_counts.get(synagogue, 0) + 1
-
+            synagogue_stats = compute_registration_breakdown(person_ids, persons, extract_synagogue)
             synagogue_breakdown = [
-                SynagogueEnrollment(synagogue=s, count=c)
-                for s, c in sorted(synagogue_counts.items(), key=lambda x: -x[1])
+                SynagogueEnrollment(synagogue=s, count=st.count)
+                for s, st in sorted(((k, v) for k, v in synagogue_stats.items() if k), key=lambda x: -x[1].count)
             ]
 
             # Summer years + first summer year (from enrollment history)

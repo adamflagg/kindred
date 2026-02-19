@@ -35,7 +35,15 @@ from api.utils.session_metrics import (
     get_session_length_category,
 )
 
-from .breakdown_calculator import calculate_percentage
+from .breakdown_calculator import calculate_percentage, compute_registration_breakdown
+from .extractors import (
+    extract_city,
+    extract_gender,
+    extract_grade,
+    extract_school,
+    extract_synagogue,
+    extract_years_at_camp,
+)
 
 if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository
@@ -190,42 +198,20 @@ class RegistrationService:
         self, person_ids: set[int], persons: dict[int, Any], total: int
     ) -> list[GenderBreakdown]:
         """Compute gender breakdown."""
-        gender_counts: dict[str, int] = {}
-        for pid in person_ids:
-            person = persons.get(pid)
-            if not person:
-                continue
-            gender = getattr(person, "gender", "Unknown") or "Unknown"
-            gender_counts[gender] = gender_counts.get(gender, 0) + 1
-
+        stats = compute_registration_breakdown(person_ids, persons, extract_gender)
         return [
-            GenderBreakdown(
-                gender=g,
-                count=c,
-                percentage=calculate_percentage(c, total),
-            )
-            for g, c in sorted(gender_counts.items())
+            GenderBreakdown(gender=g, count=s.count, percentage=calculate_percentage(s.count, total))
+            for g, s in sorted(stats.items())
         ]
 
     def _compute_grade_breakdown(
         self, person_ids: set[int], persons: dict[int, Any], total: int
     ) -> list[GradeBreakdown]:
         """Compute grade breakdown."""
-        grade_counts: dict[int | None, int] = {}
-        for pid in person_ids:
-            person = persons.get(pid)
-            if not person:
-                continue
-            grade = getattr(person, "grade", None)
-            grade_counts[grade] = grade_counts.get(grade, 0) + 1
-
+        stats = compute_registration_breakdown(person_ids, persons, extract_grade)
         return [
-            GradeBreakdown(
-                grade=g,
-                count=c,
-                percentage=calculate_percentage(c, total),
-            )
-            for g, c in sorted(grade_counts.items(), key=lambda x: (x[0] is None, x[0]))
+            GradeBreakdown(grade=g, count=s.count, percentage=calculate_percentage(s.count, total))
+            for g, s in sorted(stats.items(), key=lambda x: (x[0] is None, x[0]))
         ]
 
     def _compute_session_breakdown(
@@ -451,21 +437,10 @@ class RegistrationService:
         self, person_ids: set[int], persons: dict[int, Any], total: int
     ) -> list[YearsAtCampBreakdown]:
         """Compute years at camp breakdown."""
-        years_counts: dict[int, int] = {}
-        for pid in person_ids:
-            person = persons.get(pid)
-            if not person:
-                continue
-            years = getattr(person, "years_at_camp", 0) or 0
-            years_counts[years] = years_counts.get(years, 0) + 1
-
+        stats = compute_registration_breakdown(person_ids, persons, extract_years_at_camp)
         return [
-            YearsAtCampBreakdown(
-                years=y,
-                count=c,
-                percentage=calculate_percentage(c, total),
-            )
-            for y, c in sorted(years_counts.items())
+            YearsAtCampBreakdown(years=y, count=s.count, percentage=calculate_percentage(s.count, total))
+            for y, s in sorted(stats.items())
         ]
 
     def _compute_new_vs_returning(self, person_ids: set[int], persons: dict[int, Any], total: int) -> NewVsReturning:
@@ -480,23 +455,6 @@ class RegistrationService:
             returning_percentage=calculate_percentage(returning_count, total),
         )
 
-    def _compute_school_breakdown(self, camper_history: list[Any], total: int) -> list[SchoolBreakdown]:
-        """Compute school breakdown from camper history."""
-        school_counts: dict[str, int] = {}
-        for record in camper_history:
-            school = getattr(record, "school", "") or ""
-            if school:
-                school_counts[school] = school_counts.get(school, 0) + 1
-
-        return [
-            SchoolBreakdown(
-                school=s,
-                count=c,
-                percentage=calculate_percentage(c, total),
-            )
-            for s, c in sorted(school_counts.items(), key=lambda x: -x[1])
-        ]
-
     def _compute_school_breakdown_from_persons(
         self, person_ids: set[int], persons: dict[int, Any], total: int
     ) -> list[SchoolBreakdown]:
@@ -507,22 +465,10 @@ class RegistrationService:
         instead of per-session rows from normalized_mappings.
         Returns all schools sorted by count (descending).
         """
-        school_counts: dict[str, int] = {}
-        for pid in person_ids:
-            person = persons.get(pid)
-            if not person:
-                continue
-            school = getattr(person, "normalized_school", None) or getattr(person, "school", "") or ""
-            if school:
-                school_counts[school] = school_counts.get(school, 0) + 1
-
+        stats = compute_registration_breakdown(person_ids, persons, extract_school)
         return [
-            SchoolBreakdown(
-                school=s,
-                count=c,
-                percentage=calculate_percentage(c, total),
-            )
-            for s, c in sorted(school_counts.items(), key=lambda x: -x[1])
+            SchoolBreakdown(school=s, count=st.count, percentage=calculate_percentage(st.count, total))
+            for s, st in sorted(((k, v) for k, v in stats.items() if k), key=lambda x: -x[1].count)
         ]
 
     def _compute_city_breakdown_from_persons(
@@ -535,22 +481,10 @@ class RegistrationService:
         persons instead of per-session rows from normalized_mappings.
         Returns all cities sorted by count (descending).
         """
-        city_counts: dict[str, int] = {}
-        for pid in person_ids:
-            person = persons.get(pid)
-            if not person:
-                continue
-            city = getattr(person, "normalized_city", None) or getattr(person, "address_city", "") or ""
-            if city:
-                city_counts[city] = city_counts.get(city, 0) + 1
-
+        stats = compute_registration_breakdown(person_ids, persons, extract_city)
         return [
-            CityBreakdown(
-                city=c,
-                count=cnt,
-                percentage=calculate_percentage(cnt, total),
-            )
-            for c, cnt in sorted(city_counts.items(), key=lambda x: -x[1])
+            CityBreakdown(city=c, count=st.count, percentage=calculate_percentage(st.count, total))
+            for c, st in sorted(((k, v) for k, v in stats.items() if k), key=lambda x: -x[1].count)
         ]
 
     def _compute_synagogue_breakdown_from_persons(
@@ -566,22 +500,10 @@ class RegistrationService:
         normalized_mappings.
         Returns all synagogues sorted by count (descending).
         """
-        synagogue_counts: dict[str, int] = {}
-        for pid in person_ids:
-            person = persons.get(pid)
-            if not person:
-                continue
-            synagogue = getattr(person, "normalized_congregation", None) or ""
-            if synagogue:
-                synagogue_counts[synagogue] = synagogue_counts.get(synagogue, 0) + 1
-
+        stats = compute_registration_breakdown(person_ids, persons, extract_synagogue)
         return [
-            SynagogueBreakdown(
-                synagogue=s,
-                count=c,
-                percentage=calculate_percentage(c, total),
-            )
-            for s, c in sorted(synagogue_counts.items(), key=lambda x: -x[1])
+            SynagogueBreakdown(synagogue=s, count=st.count, percentage=calculate_percentage(st.count, total))
+            for s, st in sorted(((k, v) for k, v in stats.items() if k), key=lambda x: -x[1].count)
         ]
 
     def _compute_first_year_breakdown(self, camper_history: list[Any], total: int) -> list[FirstYearBreakdown]:

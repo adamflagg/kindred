@@ -20,6 +20,8 @@ from api.schemas.metrics import (
     WaitlistMetricsResponse,
     WaitlistSessionBreakdown,
 )
+from api.services.breakdown_calculator import calculate_percentage, compute_registration_breakdown
+from api.services.extractors import extract_gender, extract_grade
 from api.utils.session_metrics import get_session_from_expand
 
 if TYPE_CHECKING:
@@ -247,32 +249,16 @@ class WaitlistService:
         if total == 0:
             return [], []
 
-        grade_counts: dict[int | None, int] = defaultdict(int)
-        gender_counts: dict[str, int] = defaultdict(int)
-
-        for pid in person_ids:
-            person = persons.get(pid)
-            if person:
-                grade = getattr(person, "grade", None)
-                gender = getattr(person, "gender", None) or "Unknown"
-                grade_counts[grade] += 1
-                gender_counts[gender] += 1
-
+        grade_stats = compute_registration_breakdown(person_ids, persons, extract_grade)
         by_grade = [
-            GradeBreakdown(
-                grade=g,
-                count=c,
-                percentage=round(c / total * 100, 1) if total > 0 else 0.0,
-            )
-            for g, c in sorted(grade_counts.items(), key=lambda x: (x[0] is None, x[0]))
+            GradeBreakdown(grade=g, count=s.count, percentage=calculate_percentage(s.count, total))
+            for g, s in sorted(grade_stats.items(), key=lambda x: (x[0] is None, x[0]))
         ]
+
+        gender_stats = compute_registration_breakdown(person_ids, persons, extract_gender)
         by_gender = [
-            GenderBreakdown(
-                gender=g,
-                count=c,
-                percentage=round(c / total * 100, 1) if total > 0 else 0.0,
-            )
-            for g, c in sorted(gender_counts.items())
+            GenderBreakdown(gender=g, count=s.count, percentage=calculate_percentage(s.count, total))
+            for g, s in sorted(gender_stats.items())
         ]
 
         return by_grade, by_gender

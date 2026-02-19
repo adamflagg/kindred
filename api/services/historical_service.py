@@ -19,7 +19,8 @@ from api.schemas.metrics import (
     YearMetrics,
 )
 
-from .breakdown_calculator import calculate_percentage
+from .breakdown_calculator import calculate_percentage, compute_registration_breakdown
+from .extractors import extract_gender
 
 if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository
@@ -124,19 +125,12 @@ class HistoricalService:
         """
         total_enrolled = len(history)
 
-        # Gender breakdown
-        gender_counts: dict[str, int] = {}
-        for record in history:
-            gender = getattr(record, "gender", "Unknown") or "Unknown"
-            gender_counts[gender] = gender_counts.get(gender, 0) + 1
-
+        # Gender breakdown (use records as pseudo-persons dict)
+        records_by_idx = dict(enumerate(history))
+        gender_stats = compute_registration_breakdown(set(records_by_idx.keys()), records_by_idx, extract_gender)
         by_gender = [
-            GenderBreakdown(
-                gender=g,
-                count=c,
-                percentage=calculate_percentage(c, total_enrolled),
-            )
-            for g, c in sorted(gender_counts.items())
+            GenderBreakdown(gender=g, count=s.count, percentage=calculate_percentage(s.count, total_enrolled))
+            for g, s in sorted(gender_stats.items())
         ]
 
         # New vs returning
