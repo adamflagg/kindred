@@ -1,8 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
-import type { RecordModel } from 'pocketbase'
 
-export interface SyncStatus extends RecordModel {
+export interface SyncStatus {
   sync_type: 'daily' | 'historical' | 'refresh-bunking' | 'import-requests'
   session_id?: number
   year?: number

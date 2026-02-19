@@ -1,14 +1,7 @@
 import { useState, useEffect } from 'react'
 import { pb } from '../lib/pocketbase'
 import { Users as UsersIcon, Mail, Calendar, Shield } from 'lucide-react'
-import type { RecordModel } from 'pocketbase'
-
-interface User extends RecordModel {
-  email: string
-  name: string
-  avatar?: string
-  created: string
-}
+import type { UsersResponse } from '../types/pocketbase-types'
 
 // Generate consistent color from string (for avatar backgrounds)
 function getAvatarColor(str: string): string {
@@ -49,7 +42,7 @@ function formatRelativeTime(dateStr: string): string {
 }
 
 export default function Users() {
-  const [users, setUsers] = useState<User[]>([])
+  const [users, setUsers] = useState<UsersResponse[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -62,7 +55,7 @@ export default function Users() {
       setIsLoading(true)
       setError(null)
 
-      const result = await pb.collection('users').getList<User>(1, 1000, {
+      const result = await pb.collection('users').getList<UsersResponse>(1, 1000, {
         sort: '-created',
         requestKey: null,
       })

@@ -33,7 +33,7 @@ describe('useBunkStaff', () => {
       const sourceContent = await import('./useBunkStaff?raw')
       const source = sourceContent.default
 
-      expect(source).toContain("pb.collection('staff')")
+      expect(source).toContain(".collection('staff')")
       expect(source).toContain('bunk_staff')
     })
 
