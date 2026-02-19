@@ -52,6 +52,7 @@ const renderWithRouter = (initialPath: string, childText = 'Child Content') => {
             <Route path="/metrics/*" element={<MetricsLayout />}>
               <Route path="registration/*" element={<TestChild text={childText} />} />
               <Route path="retention" element={<TestChild text="Retention" />} />
+              <Route path="retention/flow" element={<TestChild text="Session Flow" />} />
               <Route path="trends" element={<TestChild text="Trends" />} />
             </Route>
           </Routes>
@@ -86,15 +87,32 @@ describe('MetricsLayout', () => {
     expect(screen.getByRole('link', { name: /waitlist/i })).toBeInTheDocument()
   })
 
-  it('does not render sub-nav for retention routes (single page)', () => {
+  it('renders sub-nav with Overview and Session Flow links for retention routes', () => {
     renderWithRouter('/metrics/retention')
 
-    // Primary tabs should still be visible
-    expect(screen.getByRole('link', { name: /retention/i })).toBeInTheDocument()
+    // Retention sub-nav should show Overview and Session Flow
+    expect(screen.getByRole('link', { name: /overview/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /session flow/i })).toBeInTheDocument()
+  })
 
-    // Retention has no sub-nav (all breakdowns inline on single page)
-    expect(screen.queryByRole('link', { name: /overview/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: /geographic/i })).not.toBeInTheDocument()
+  it('highlights Overview sub-nav on /metrics/retention', () => {
+    renderWithRouter('/metrics/retention')
+
+    const overviewLink = screen.getByRole('link', { name: /overview/i })
+    const sessionFlowLink = screen.getByRole('link', { name: /session flow/i })
+
+    expect(overviewLink).toHaveClass('bg-primary')
+    expect(sessionFlowLink).not.toHaveClass('bg-primary')
+  })
+
+  it('highlights Session Flow sub-nav on /metrics/retention/flow', () => {
+    renderWithRouter('/metrics/retention/flow')
+
+    const overviewLink = screen.getByRole('link', { name: /overview/i })
+    const sessionFlowLink = screen.getByRole('link', { name: /session flow/i })
+
+    expect(sessionFlowLink).toHaveClass('bg-primary')
+    expect(overviewLink).not.toHaveClass('bg-primary')
   })
 
   it('does not render sub-nav for trends routes', () => {
