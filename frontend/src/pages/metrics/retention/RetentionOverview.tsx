@@ -30,7 +30,7 @@ import {
   computeRetentionOutliers,
 } from '../../../utils/retentionTransforms'
 import { buildSessionDateLookup, sortSessionDataByDate } from '../../../utils/sessionUtils'
-import { RetentionNotableOutliers } from '../../../components/metrics/RetentionNotableOutliers'
+import { OutlierSection } from '../../../components/metrics/RetentionNotableOutliers'
 import { SectionDivider } from '../../../components/metrics/SectionDivider'
 import type { DrilldownFilter } from '../../../types/metrics'
 import { Loader2, AlertCircle } from 'lucide-react'
@@ -201,48 +201,56 @@ export default function RetentionOverview() {
 
       <SectionDivider label="Geographic Retention" />
 
-      {/* Row 5: City + School */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {cityBars.length > 0 && (
-          <RetentionRateBarChart
-            data={cityBars}
-            title="Retention by City (Top 15)"
-            topN={15}
-            sortBy="count"
-            showCounts
-            onBarClick={(item) => setFilter(makeRetentionFilter('city', item))}
-          />
-        )}
-        {schoolBars.length > 0 && (
-          <RetentionRateBarChart
-            data={schoolBars}
-            title="Retention by School (Top 15)"
-            topN={15}
-            sortBy="count"
-            showCounts
-            onBarClick={(item) => setFilter(makeRetentionFilter('school', item))}
-          />
-        )}
-      </div>
-
-      {/* Row 6: Synagogue */}
-      {synagogueBars.length > 0 && (
-        <RetentionRateBarChart
-          data={synagogueBars}
-          title="Retention by Synagogue (Top 15)"
-          topN={15}
-          sortBy="count"
-          showCounts
-          onBarClick={(item) => setFilter(makeRetentionFilter('synagogue', item))}
-        />
+      {/* Row 5: City chart + outliers */}
+      {cityBars.length > 0 && (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className={cityOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
+            <RetentionRateBarChart
+              data={cityBars}
+              title="Retention by City (Top 15)"
+              topN={15}
+              sortBy="count"
+              layout="vertical"
+              onBarClick={(item) => setFilter(makeRetentionFilter('city', item))}
+            />
+          </div>
+          <OutlierSection outliers={cityOutliers} max={5} />
+        </div>
       )}
 
-      {/* Notable Outliers */}
-      <RetentionNotableOutliers
-        cityOutliers={cityOutliers}
-        schoolOutliers={schoolOutliers}
-        synagogueOutliers={synagogueOutliers}
-      />
+      {/* Row 6: School chart + outliers */}
+      {schoolBars.length > 0 && (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className={schoolOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
+            <RetentionRateBarChart
+              data={schoolBars}
+              title="Retention by School (Top 15)"
+              topN={15}
+              sortBy="count"
+              layout="vertical"
+              onBarClick={(item) => setFilter(makeRetentionFilter('school', item))}
+            />
+          </div>
+          <OutlierSection outliers={schoolOutliers} max={5} />
+        </div>
+      )}
+
+      {/* Row 7: Synagogue chart + outliers */}
+      {synagogueBars.length > 0 && (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className={synagogueOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
+            <RetentionRateBarChart
+              data={synagogueBars}
+              title="Retention by Synagogue (Top 15)"
+              topN={15}
+              sortBy="count"
+              layout="vertical"
+              onBarClick={(item) => setFilter(makeRetentionFilter('synagogue', item))}
+            />
+          </div>
+          <OutlierSection outliers={synagogueOutliers} max={5} />
+        </div>
+      )}
 
       {/* Drilldown Modal */}
       <DrilldownModal />
