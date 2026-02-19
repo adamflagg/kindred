@@ -2,9 +2,10 @@
  * SessionFlowSankey - Sankey flow diagram showing session-to-session transitions.
  *
  * Visualizes how campers flow from base year sessions to compare year sessions
- * (or "Did Not Return"), replacing the flat "Retention by Prior Session" bar chart.
+ * (or "Did Not Return"). Links are colored by source session with hover interaction.
  */
 
+import { useState, useMemo } from 'react'
 import { Sankey, Tooltip, ResponsiveContainer } from 'recharts'
 import type { SankeyData } from '../../utils/retentionTransforms'
 
@@ -58,14 +59,40 @@ function SankeyTooltip({ active, payload, sankeyData }: CustomTooltipProps) {
   )
 }
 
+/** Props passed by Recharts to custom link renderer */
+interface SankeyLinkProps {
+  sourceX: number
+  sourceY: number
+  sourceControlX: number
+  targetX: number
+  targetY: number
+  targetControlX: number
+  linkWidth: number
+  index: number
+  payload: { source: number; target: number; value: number }
+}
+
 interface SessionFlowSankeyProps {
   data: SankeyData
   title: string
 }
 
 export function SessionFlowSankey({ data, title }: SessionFlowSankeyProps) {
+  const [hoveredLinkIndex, setHoveredLinkIndex] = useState<number | null>(null)
+
   const sourceCount = new Set(data.links.map((l) => l.source)).size
-  const height = Math.max(350, sourceCount * 60)
+  const height = Math.max(500, sourceCount * 100)
+
+  // Map source node indices to their colors
+  const sourceColorMap = useMemo(() => {
+    const map = new Map<number, string>()
+    const sourceIndices = [...new Set(data.links.map((l) => l.source))]
+    sourceIndices.forEach((idx) => {
+      const name = data.nodes[idx]?.name ?? ''
+      map.set(idx, getNodeColor(name, idx, sourceCount))
+    })
+    return map
+  }, [data, sourceCount])
 
   return (
     <div className="card-lodge p-4">
@@ -76,7 +103,32 @@ export function SessionFlowSankey({ data, title }: SessionFlowSankeyProps) {
           nodeWidth={14}
           nodePadding={24}
           margin={{ top: 10, right: 160, bottom: 10, left: 160 }}
-          link={{ stroke: '#d1d5db', strokeOpacity: 0.5 }}
+          link={
+            // Recharts Sankey passes link geometry props that don't match its own types
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ((props: any) => {
+              const { sourceX, sourceY, sourceControlX, targetX, targetY, targetControlX, linkWidth, index, payload } = props as SankeyLinkProps
+              const strokeColor = sourceColorMap.get(payload.source) ?? '#d1d5db'
+
+              let opacity = 0.3
+              if (hoveredLinkIndex !== null) {
+                opacity = index === hoveredLinkIndex ? 0.7 : 0.1
+              }
+
+              return (
+                <path
+                  d={`M${sourceX},${sourceY} C${sourceControlX},${sourceY} ${targetControlX},${targetY} ${targetX},${targetY}`}
+                  fill="none"
+                  stroke={strokeColor}
+                  strokeWidth={linkWidth}
+                  strokeOpacity={opacity}
+                  style={{ transition: 'stroke-opacity 0.15s ease' }}
+                  onMouseEnter={() => setHoveredLinkIndex(index)}
+                  onMouseLeave={() => setHoveredLinkIndex(null)}
+                />
+              )
+            }) as any
+          }
           node={({ x, y, width, height: h, index }: {
             x: number
             y: number
