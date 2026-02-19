@@ -1,5 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { pb, type AdminSetting } from '../lib/pocketbase'
+import { pb } from '../lib/pocketbase'
+import { queryKeys } from '../utils/queryKeys'
+import type { AdminSetting } from './useAdminSettings'
 
 interface UpdateAdminSettingParams {
   key: string
@@ -32,7 +34,7 @@ export function useUpdateAdminSetting() {
     },
     onSuccess: () => {
       // Invalidate admin settings query to refetch
-      queryClient.invalidateQueries({ queryKey: ['admin-settings'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminSettings() })
     },
   })
 }

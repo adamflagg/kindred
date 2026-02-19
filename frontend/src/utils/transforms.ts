@@ -8,10 +8,8 @@ import type {
   BunkAssignmentsResponse,
   BunksResponse,
   CampSessionsResponse,
-  BunkRequestsResponse,
 } from '../types/pocketbase-types'
-import { BunkRequestsStatusOptions } from '../types/pocketbase-types'
-import type { Camper, BunkRequest } from '../types/app-types'
+import type { Camper } from '../types/app-types'
 import { calculateAge } from './ageCalculator'
 
 /**
@@ -178,44 +176,4 @@ export function createLookupMaps(data: {
   }
 
   return maps
-}
-
-/**
- * Transform database response to app-level BunkRequest type
- */
-export function toAppBunkRequest(request: BunkRequestsResponse): BunkRequest {
-  // Map DB request_type to app type
-  let requestType: 'bunk_with' | 'not_bunk_with' | 'age_preference' = 'bunk_with'
-  if (request.request_type === 'not_bunk_with') {
-    requestType = 'not_bunk_with'
-  } else if (request.request_type === 'age_preference') {
-    requestType = 'age_preference'
-  }
-
-  // Map DB status to app status - DB only has resolved, pending, declined
-  let status: 'resolved' | 'pending' | 'declined' = 'pending'
-  if (request.status === BunkRequestsStatusOptions.resolved) {
-    status = 'resolved'
-  } else if (request.status === BunkRequestsStatusOptions.declined) {
-    status = 'declined'
-  } else if (request.status === BunkRequestsStatusOptions.pending) {
-    status = 'pending'
-  }
-
-  return {
-    id: request.id,
-    request_type: requestType,
-    requester_id: request.requester_id,
-    requestee_id: request.requestee_id,
-    priority: request.priority || 5,
-    status: status,
-    session_id: request.session_id,
-    year: request.year,
-    original_text: request.original_text || '',
-    confidence_score: request.confidence_score || 0,
-    parse_notes: request.parse_notes,
-    is_reciprocal: false, // Not in DB type
-    created: new Date().toISOString(),
-    updated: new Date().toISOString(),
-  }
 }

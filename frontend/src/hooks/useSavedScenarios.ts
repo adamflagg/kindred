@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { pb, type SavedScenario } from '../lib/pocketbase'
+import { pb } from '../lib/pocketbase'
+import type { SavedScenario } from '../types/app-types'
 import { useAuth } from '../contexts/AuthContext'
 import { queryKeys, userDataOptions } from '../utils/queryKeys'
 

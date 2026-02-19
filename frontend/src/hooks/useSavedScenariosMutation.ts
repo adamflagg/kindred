@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { pb, type SavedScenario } from '../lib/pocketbase'
-import { getCurrentUser } from '../lib/pocketbase'
+import { pb, getCurrentUser } from '../lib/pocketbase'
+import type { SavedScenario } from '../types/app-types'
 
 interface CreateScenarioParams {
   name: string
@@ -35,7 +35,6 @@ export function useCreateScenario() {
         name: params.name,
         session: sessions[0]?.id || '', // Use the PocketBase relation ID
         year: params.year, // Store year for filtering
-        created_by: user.id,
         is_active: true,
         ...(params.description && { description: params.description }),
       }
