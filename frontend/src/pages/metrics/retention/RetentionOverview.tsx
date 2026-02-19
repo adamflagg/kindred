@@ -37,18 +37,18 @@ import { Loader2, AlertCircle } from 'lucide-react'
 
 export default function RetentionOverview() {
   const { currentYear } = useCurrentYear()
-  const { selectedSessionCmId, sessions, sessionTypesParam } = useMetricsSession()
+  const { selectedSessionCmId, sessions, sessionTypesParam, activeSessionTypes } =
+    useMetricsSession()
 
   const priorYear = currentYear - 1
 
   // Build date lookup for chronological session sorting (must be before early returns)
   const sessionDateLookup = useMemo(() => buildSessionDateLookup(sessions), [sessions])
 
-  const sessionTypes = useMemo(() => sessionTypesParam?.split(',') ?? [], [sessionTypesParam])
   const { setFilter, DrilldownModal } = useDrilldown({
     year: priorYear,
     sessionCmId: selectedSessionCmId ?? undefined,
-    sessionTypes,
+    sessionTypes: [...activeSessionTypes],
     statusFilter: ['enrolled'],
   })
 

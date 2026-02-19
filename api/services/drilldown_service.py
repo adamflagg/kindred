@@ -208,7 +208,8 @@ class DrilldownService:
                 if pid is not None:
                     pid_int = int(pid)
                     returned_person_ids.add(pid_int)
-                    enrolled_attendee_groups.setdefault(pid_int, []).append(a)
+                    if self._matches_session_types(a, session_types):
+                        enrolled_attendee_groups.setdefault(pid_int, []).append(a)
 
         # Build response
         return self._build_response(
@@ -219,6 +220,24 @@ class DrilldownService:
             enrolled_attendee_groups=enrolled_attendee_groups,
             returned_person_ids=returned_person_ids,
         )
+
+    def _matches_session_types(self, attendee: Any, session_types: list[str] | None) -> bool:
+        """Check if an attendee's session matches the allowed session types.
+
+        Args:
+            attendee: Attendee record with expand.session.
+            session_types: Allowed session types, or None to match all.
+
+        Returns:
+            True if session type matches or no filter is applied.
+        """
+        if not session_types:
+            return True
+        expand = getattr(attendee, "expand", {}) or {}
+        session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+        if not session:
+            return False
+        return getattr(session, "session_type", None) in session_types
 
     def _find_ag_sessions_for_parent(self, sessions: dict[int, Any], session_cm_id: int | None) -> set[int]:
         """Find AG sessions that belong to a parent session.
@@ -474,7 +493,8 @@ class DrilldownService:
                 continue
             pid_int = int(pid)
             returned_person_ids.add(pid_int)
-            enrolled_attendee_groups.setdefault(pid_int, []).append(a)
+            if self._matches_session_types(a, session_types):
+                enrolled_attendee_groups.setdefault(pid_int, []).append(a)
             expand = getattr(a, "expand", {}) or {}
             session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
             if session:
@@ -491,9 +511,10 @@ class DrilldownService:
             if pid is None:
                 continue
             pid_int = int(pid)
-            # Build groups for all base year attendees matching target
+            # Build groups for base year attendees matching target, filtered by session type
             if pid_int in target_person_ids:
-                person_attendee_groups.setdefault(pid_int, []).append(a)
+                if self._matches_session_types(a, session_types):
+                    person_attendee_groups.setdefault(pid_int, []).append(a)
                 if pid_int not in seen_persons:
                     seen_persons.add(pid_int)
                     filtered.append(a)
@@ -545,7 +566,8 @@ class DrilldownService:
             if pid is not None:
                 pid_int = int(pid)
                 returned_person_ids.add(pid_int)
-                enrolled_attendee_groups.setdefault(pid_int, []).append(a)
+                if self._matches_session_types(a, session_types):
+                    enrolled_attendee_groups.setdefault(pid_int, []).append(a)
 
         # Deduplicate base year by person, build groups for sessions list
         seen_persons: set[int] = set()
@@ -556,7 +578,8 @@ class DrilldownService:
             if pid is None:
                 continue
             pid_int = int(pid)
-            person_attendee_groups.setdefault(pid_int, []).append(a)
+            if self._matches_session_types(a, session_types):
+                person_attendee_groups.setdefault(pid_int, []).append(a)
 
             if pid_int in seen_persons:
                 continue
