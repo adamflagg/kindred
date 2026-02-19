@@ -9,6 +9,7 @@
  * - Year-by-year summary table
  * - Retention rate trend line (from retention-trends endpoint)
  * - Enrollment composition: gender, grade, summers at camp, first summer year
+ * - Geographic distribution: city, school, synagogue (top 15 per category)
  */
 
 import { useMemo } from 'react'
@@ -271,6 +272,45 @@ export default function TrendsOverview() {
           title={`First Summer Year (${numYearsDisplay}-Year Comparison)`}
           invertAxes
           height={300}
+        />
+      )}
+
+      {/* ─── Geographic Distribution (from retention-trends endpoint) ─── */}
+      <SectionDivider label={`Geographic Distribution (${numYearsDisplay}-Year Comparison)`} />
+
+      {/* City Distribution */}
+      {enrollmentData.some((y) => (y.by_city?.length ?? 0) > 0) && (
+        <MultiYearBreakdownChart
+          data={enrollmentData}
+          breakdownKey="by_city"
+          labelKey="city"
+          title={`City Distribution (Top 15, ${numYearsDisplay}-Year Comparison)`}
+          topN={15}
+          height={350}
+        />
+      )}
+
+      {/* School Distribution */}
+      {enrollmentData.some((y) => (y.by_school?.length ?? 0) > 0) && (
+        <MultiYearBreakdownChart
+          data={enrollmentData}
+          breakdownKey="by_school"
+          labelKey="school"
+          title={`School Distribution (Top 15, ${numYearsDisplay}-Year Comparison)`}
+          topN={15}
+          height={350}
+        />
+      )}
+
+      {/* Synagogue Distribution */}
+      {enrollmentData.some((y) => (y.by_synagogue?.length ?? 0) > 0) && (
+        <MultiYearBreakdownChart
+          data={enrollmentData}
+          breakdownKey="by_synagogue"
+          labelKey="synagogue"
+          title={`Synagogue Distribution (Top 15, ${numYearsDisplay}-Year Comparison)`}
+          topN={15}
+          height={350}
         />
       )}
     </div>
