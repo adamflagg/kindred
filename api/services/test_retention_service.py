@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -21,6 +21,11 @@ class MockPerson:
     gender: str | None = None
     grade: int | None = None
     years_at_camp: int | None = None
+    normalized_school: str | None = None
+    school: str | None = None
+    normalized_city: str | None = None
+    address_city: str | None = None
+    normalized_congregation: str | None = None
 
 
 @dataclass
@@ -55,6 +60,45 @@ class MockCamperHistory:
     first_year_attended: int | None = None
     sessions: str | None = None
     bunks: str | None = None
+
+
+@dataclass
+class MockBunk:
+    """Mock bunk object for testing."""
+
+    name: str
+    gender: str | None = None
+
+
+@dataclass
+class MockBunkAssignment:
+    """Mock bunk_assignment record with expand pattern."""
+
+    person_id: int
+    year: int
+    expand: dict[str, Any] | None = None
+
+
+def _make_bunk_assignment(
+    person_id: int,
+    year: int,
+    session: MockSession,
+    bunk: MockBunk,
+    person_cm_id: int | None = None,
+) -> MockBunkAssignment:
+    """Helper to create a bunk assignment with proper expand structure."""
+    person = MockPerson(cm_id=person_cm_id if person_cm_id is not None else person_id)
+    return MockBunkAssignment(
+        person_id=person_id,
+        year=year,
+        expand={"person": person, "session": session, "bunk": bunk},
+    )
+
+
+def _setup_mock_repo_no_camper_history(mock_repo: AsyncMock) -> None:
+    """Configure mock repo without camper_history (common setup after migration)."""
+    mock_repo.fetch_bunk_assignments.return_value = []
+    mock_repo.fetch_summer_enrollment_history.return_value = []
 
 
 class TestRetentionServiceCalculateRetention:
@@ -120,10 +164,8 @@ class TestRetentionServiceCalculateRetention:
             1001: MockSession(cm_id=1001, name="Session 2", session_type="main"),
         }
 
-        mock_repo.fetch_camper_history.return_value = []
+        mock_repo.fetch_bunk_assignments.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
-        # build_history_by_person is a sync method, use MagicMock return
-        mock_repo.build_history_by_person = MagicMock(return_value={})
 
         service = RetentionService(mock_repo)
         result = await service.calculate_retention(
@@ -189,9 +231,8 @@ class TestRetentionServiceCalculateRetention:
         mock_repo.fetch_sessions.return_value = {
             1000: MockSession(cm_id=1000, name="Session 1", session_type="main"),
         }
-        mock_repo.fetch_camper_history.return_value = []
+        mock_repo.fetch_bunk_assignments.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
-        mock_repo.build_history_by_person = MagicMock(return_value={})
 
         service = RetentionService(mock_repo)
         result = await service.calculate_retention(base_year=2025, compare_year=2026)
@@ -256,9 +297,8 @@ class TestRetentionServiceCalculateRetention:
         mock_repo.fetch_sessions.return_value = {
             1000: MockSession(cm_id=1000, name="Session 1", session_type="main"),
         }
-        mock_repo.fetch_camper_history.return_value = []
+        mock_repo.fetch_bunk_assignments.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
-        mock_repo.build_history_by_person = MagicMock(return_value={})
 
         service = RetentionService(mock_repo)
         result = await service.calculate_retention(
@@ -322,9 +362,8 @@ class TestRetentionServiceCalculateRetention:
         mock_repo.fetch_sessions.return_value = {
             1000: MockSession(cm_id=1000, name="Session 1", session_type="main"),
         }
-        mock_repo.fetch_camper_history.return_value = []
+        mock_repo.fetch_bunk_assignments.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
-        mock_repo.build_history_by_person = MagicMock(return_value={})
 
         service = RetentionService(mock_repo)
         result = await service.calculate_retention(
@@ -390,9 +429,8 @@ class TestRetentionServiceCalculateRetention:
             1000: MockSession(cm_id=1000, name="Session 1", session_type="main"),
             1001: MockSession(cm_id=1001, name="Session 2", session_type="main"),
         }
-        mock_repo.fetch_camper_history.return_value = []
+        mock_repo.fetch_bunk_assignments.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
-        mock_repo.build_history_by_person = MagicMock(return_value={})
 
         service = RetentionService(mock_repo)
         result = await service.calculate_retention(
@@ -451,9 +489,8 @@ class TestRetentionServiceCalculateRetention:
         mock_repo.fetch_sessions.return_value = {
             1000: MockSession(cm_id=1000, name="Session 1", session_type="main"),
         }
-        mock_repo.fetch_camper_history.return_value = []
+        mock_repo.fetch_bunk_assignments.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
-        mock_repo.build_history_by_person = MagicMock(return_value={})
 
         service = RetentionService(mock_repo)
         result = await service.calculate_retention(
@@ -475,9 +512,8 @@ class TestRetentionServiceCalculateRetention:
         mock_repo.fetch_attendees.side_effect = [[], []]  # No attendees
         mock_repo.fetch_persons.return_value = {}
         mock_repo.fetch_sessions.return_value = {}
-        mock_repo.fetch_camper_history.return_value = []
+        mock_repo.fetch_bunk_assignments.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
-        mock_repo.build_history_by_person = MagicMock(return_value={})
 
         service = RetentionService(mock_repo)
         result = await service.calculate_retention(base_year=2025, compare_year=2026)
@@ -544,9 +580,8 @@ class TestRetentionServiceCalculateRetention:
             }
 
         mock_repo.fetch_sessions.side_effect = mock_fetch_sessions
-        mock_repo.fetch_camper_history.return_value = []
+        mock_repo.fetch_bunk_assignments.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
-        mock_repo.build_history_by_person = MagicMock(return_value={})
 
         service = RetentionService(mock_repo)
         result = await service.calculate_retention(base_year=2025, compare_year=2026)
@@ -620,9 +655,8 @@ class TestRetentionSessionChartSemantics:
             return {2000: MockSession(cm_id=2000, name="Session 1", session_type="main")}
 
         mock_repo.fetch_sessions.side_effect = mock_fetch_sessions
-        mock_repo.fetch_camper_history.return_value = []
+        mock_repo.fetch_bunk_assignments.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
-        mock_repo.build_history_by_person = MagicMock(return_value={})
 
         service = RetentionService(mock_repo)
         result = await service.calculate_retention(base_year=2025, compare_year=2026)
@@ -687,9 +721,8 @@ class TestRetentionSessionChartSemantics:
             return sessions
 
         mock_repo.fetch_sessions.side_effect = mock_fetch_sessions
-        mock_repo.fetch_camper_history.return_value = []
+        mock_repo.fetch_bunk_assignments.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
-        mock_repo.build_history_by_person = MagicMock(return_value={})
 
         service = RetentionService(mock_repo)
         result = await service.calculate_retention(
@@ -762,9 +795,8 @@ class TestRetentionSessionChartSemantics:
             return sessions
 
         mock_repo.fetch_sessions.side_effect = mock_fetch_sessions
-        mock_repo.fetch_camper_history.return_value = []
+        mock_repo.fetch_bunk_assignments.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
-        mock_repo.build_history_by_person = MagicMock(return_value={})
 
         service = RetentionService(mock_repo)
         result = await service.calculate_retention(
@@ -838,9 +870,8 @@ class TestRetentionSessionChartSemantics:
             return sessions
 
         mock_repo.fetch_sessions.side_effect = mock_fetch_sessions
-        mock_repo.fetch_camper_history.return_value = []
+        mock_repo.fetch_bunk_assignments.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
-        mock_repo.build_history_by_person = MagicMock(return_value={})
 
         service = RetentionService(mock_repo)
         # "At camp" filter: only main/embedded/ag
@@ -893,7 +924,7 @@ class TestRetentionServiceComputeSummerMetrics:
         mock_repo.fetch_sessions.return_value = {
             1000: MockSession(cm_id=1000, name="Session 1", session_type="main"),
         }
-        mock_repo.fetch_camper_history.return_value = []
+        mock_repo.fetch_bunk_assignments.return_value = []
 
         # Summer enrollment history
         mock_repo.fetch_summer_enrollment_history.return_value = [
@@ -910,8 +941,6 @@ class TestRetentionServiceComputeSummerMetrics:
                 person_id=2, year=2025, expand={"session": MockSession(cm_id=1000, name="S1-2025", session_type="main")}
             ),
         ]
-        mock_repo.build_history_by_person = MagicMock(return_value={})
-
         service = RetentionService(mock_repo)
         result = await service.calculate_retention(base_year=2025, compare_year=2026)
 
@@ -999,9 +1028,8 @@ class TestRetentionSessionFlow:
             }
 
         mock_repo.fetch_sessions.side_effect = mock_fetch_sessions
-        mock_repo.fetch_camper_history.return_value = []
+        mock_repo.fetch_bunk_assignments.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
-        mock_repo.build_history_by_person = MagicMock(return_value={})
 
         service = RetentionService(mock_repo)
         result = await service.calculate_retention(base_year=2025, compare_year=2026)
@@ -1060,9 +1088,8 @@ class TestRetentionSessionFlow:
             return {2000: MockSession(cm_id=2000, name="Session 1", session_type="main")}
 
         mock_repo.fetch_sessions.side_effect = mock_fetch_sessions
-        mock_repo.fetch_camper_history.return_value = []
+        mock_repo.fetch_bunk_assignments.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
-        mock_repo.build_history_by_person = MagicMock(return_value={})
 
         service = RetentionService(mock_repo)
         result = await service.calculate_retention(base_year=2025, compare_year=2026)
@@ -1128,9 +1155,8 @@ class TestRetentionSessionFlow:
             }
 
         mock_repo.fetch_sessions.side_effect = mock_fetch_sessions
-        mock_repo.fetch_camper_history.return_value = []
+        mock_repo.fetch_bunk_assignments.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
-        mock_repo.build_history_by_person = MagicMock(return_value={})
 
         service = RetentionService(mock_repo)
         result = await service.calculate_retention(base_year=2025, compare_year=2026)
@@ -1191,9 +1217,8 @@ class TestRetentionSessionFlow:
             }
 
         mock_repo.fetch_sessions.side_effect = mock_fetch_sessions
-        mock_repo.fetch_camper_history.return_value = []
+        mock_repo.fetch_bunk_assignments.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
-        mock_repo.build_history_by_person = MagicMock(return_value={})
 
         service = RetentionService(mock_repo)
         result = await service.calculate_retention(base_year=2025, compare_year=2026)
@@ -1259,9 +1284,8 @@ class TestRetentionSessionFlow:
             return sessions
 
         mock_repo.fetch_sessions.side_effect = mock_fetch_sessions
-        mock_repo.fetch_camper_history.return_value = []
+        mock_repo.fetch_bunk_assignments.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
-        mock_repo.build_history_by_person = MagicMock(return_value={})
 
         service = RetentionService(mock_repo)
         # Filter to "at camp" (main only) — but destinations should show all
@@ -1287,9 +1311,8 @@ class TestRetentionSessionFlow:
         mock_repo.fetch_attendees.side_effect = [[], []]
         mock_repo.fetch_persons.return_value = {}
         mock_repo.fetch_sessions.return_value = {}
-        mock_repo.fetch_camper_history.return_value = []
+        mock_repo.fetch_bunk_assignments.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
-        mock_repo.build_history_by_person = MagicMock(return_value={})
 
         service = RetentionService(mock_repo)
         result = await service.calculate_retention(base_year=2025, compare_year=2026)
@@ -1346,9 +1369,8 @@ class TestRetentionSessionFlow:
             return {2000: MockSession(cm_id=2000, name="Session 1", session_type="main")}
 
         mock_repo.fetch_sessions.side_effect = mock_fetch_sessions
-        mock_repo.fetch_camper_history.return_value = []
+        mock_repo.fetch_bunk_assignments.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
-        mock_repo.build_history_by_person = MagicMock(return_value={})
 
         service = RetentionService(mock_repo)
         # Filter to Session 1 only
@@ -1364,3 +1386,327 @@ class TestRetentionSessionFlow:
 
         flow_map = {(f.source, f.target): f.value for f in result.session_flow}
         assert flow_map.get(("Session 1", "Session 1")) == 1
+
+
+class TestSessionBunkBreakdownFromBunkAssignments:
+    """Tests for _build_session_bunk_breakdown using bunk_assignments data.
+
+    After migration, session-bunk breakdown comes from bunk_assignments
+    (with expand: person, session, bunk) instead of camper_history.
+    AG sessions should merge into their parent session.
+    """
+
+    @pytest.mark.asyncio
+    async def test_basic_session_bunk_breakdown(self) -> None:
+        """Session-bunk breakdown counts persons from bunk_assignments."""
+        from api.services.retention_service import RetentionService
+
+        mock_repo = AsyncMock()
+
+        session1 = MockSession(cm_id=1000, name="Session 1", session_type="main")
+        bunk_b1 = MockBunk(name="B-1")
+        bunk_g1 = MockBunk(name="G-1")
+
+        # 3 campers in base year, 2 returned
+        mock_repo.fetch_attendees.side_effect = [
+            [
+                MockAttendee(person_id=1, year=2025, expand={"session": session1}),
+                MockAttendee(person_id=2, year=2025, expand={"session": session1}),
+                MockAttendee(person_id=3, year=2025, expand={"session": session1}),
+            ],
+            [
+                MockAttendee(person_id=1, year=2026, expand={}),
+                MockAttendee(person_id=2, year=2026, expand={}),
+            ],
+        ]
+
+        mock_repo.fetch_persons.return_value = {
+            1: MockPerson(cm_id=1, gender="M"),
+            2: MockPerson(cm_id=2, gender="F"),
+            3: MockPerson(cm_id=3, gender="M"),
+        }
+
+        mock_repo.fetch_sessions.return_value = {
+            1000: session1,
+        }
+
+        # Bunk assignments: person 1+2 in B-1, person 3 in G-1
+        mock_repo.fetch_bunk_assignments.return_value = [
+            _make_bunk_assignment(1, 2025, session1, bunk_b1),
+            _make_bunk_assignment(2, 2025, session1, bunk_b1),
+            _make_bunk_assignment(3, 2025, session1, bunk_g1),
+        ]
+        mock_repo.fetch_summer_enrollment_history.return_value = []
+
+        service = RetentionService(mock_repo)
+        result = await service.calculate_retention(base_year=2025, compare_year=2026)
+
+        # B-1: 2 base, 2 returned (persons 1+2)
+        b1 = next((x for x in result.by_session_bunk if x.bunk == "B-1"), None)
+        assert b1 is not None
+        assert b1.session == "Session 1"
+        assert b1.base_count == 2
+        assert b1.returned_count == 2
+        assert b1.retention_rate == 1.0
+
+        # G-1: 1 base, 0 returned (person 3 didn't return)
+        g1 = next((x for x in result.by_session_bunk if x.bunk == "G-1"), None)
+        assert g1 is not None
+        assert g1.base_count == 1
+        assert g1.returned_count == 0
+        assert g1.retention_rate == 0.0
+
+    @pytest.mark.asyncio
+    async def test_ag_bunks_merge_into_parent_session(self) -> None:
+        """AG session bunk assignments merge into parent session name."""
+        from api.services.retention_service import RetentionService
+
+        mock_repo = AsyncMock()
+
+        session_main = MockSession(cm_id=1000, name="Session 1", session_type="main")
+        session_ag = MockSession(cm_id=1001, name="AG Session", session_type="ag", parent_id=1000)
+        bunk_b1 = MockBunk(name="B-1")
+        bunk_ag8 = MockBunk(name="AG-8")
+
+        mock_repo.fetch_attendees.side_effect = [
+            [
+                MockAttendee(person_id=1, year=2025, expand={"session": session_main}),
+                MockAttendee(person_id=2, year=2025, expand={"session": session_ag}),
+            ],
+            [
+                MockAttendee(person_id=1, year=2026, expand={}),
+            ],
+        ]
+
+        mock_repo.fetch_persons.return_value = {
+            1: MockPerson(cm_id=1, gender="M"),
+            2: MockPerson(cm_id=2, gender="F"),
+        }
+
+        mock_repo.fetch_sessions.return_value = {
+            1000: session_main,
+            1001: session_ag,
+        }
+
+        mock_repo.fetch_bunk_assignments.return_value = [
+            _make_bunk_assignment(1, 2025, session_main, bunk_b1),
+            _make_bunk_assignment(2, 2025, session_ag, bunk_ag8),
+        ]
+        mock_repo.fetch_summer_enrollment_history.return_value = []
+
+        service = RetentionService(mock_repo)
+        result = await service.calculate_retention(base_year=2025, compare_year=2026)
+
+        # AG-8 should appear under "Session 1" (parent), not "AG Session"
+        ag8 = next((x for x in result.by_session_bunk if x.bunk == "AG-8"), None)
+        assert ag8 is not None
+        assert ag8.session == "Session 1"  # Merged into parent
+
+        # No entries should have "AG Session" as session name
+        ag_sessions = [x for x in result.by_session_bunk if x.session == "AG Session"]
+        assert len(ag_sessions) == 0
+
+    @pytest.mark.asyncio
+    async def test_empty_bunk_assignments(self) -> None:
+        """No bunk assignments produces empty by_session_bunk list."""
+        from api.services.retention_service import RetentionService
+
+        mock_repo = AsyncMock()
+
+        mock_repo.fetch_attendees.side_effect = [
+            [MockAttendee(person_id=1, year=2025, expand={})],
+            [MockAttendee(person_id=1, year=2026, expand={})],
+        ]
+        mock_repo.fetch_persons.return_value = {1: MockPerson(cm_id=1)}
+        mock_repo.fetch_sessions.return_value = {}
+        mock_repo.fetch_bunk_assignments.return_value = []
+        mock_repo.fetch_summer_enrollment_history.return_value = []
+
+        service = RetentionService(mock_repo)
+        result = await service.calculate_retention(base_year=2025, compare_year=2026)
+
+        assert result.by_session_bunk == []
+
+
+class TestDemographicBreakdownsFromPersons:
+    """Tests for demographic breakdowns (school, city, synagogue) using persons data.
+
+    After migration, these come from persons' normalized fields instead of
+    camper_history. The extractors should use normalized_school, normalized_city,
+    normalized_congregation from persons.
+    """
+
+    @pytest.mark.asyncio
+    async def test_school_breakdown_uses_normalized_school(self) -> None:
+        """School breakdown reads normalized_school from persons."""
+        from api.services.retention_service import RetentionService
+
+        mock_repo = AsyncMock()
+
+        mock_repo.fetch_attendees.side_effect = [
+            [
+                MockAttendee(
+                    person_id=1,
+                    year=2025,
+                    expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")},
+                ),
+                MockAttendee(
+                    person_id=2,
+                    year=2025,
+                    expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")},
+                ),
+            ],
+            [MockAttendee(person_id=1, year=2026, expand={})],
+        ]
+
+        mock_repo.fetch_persons.return_value = {
+            1: MockPerson(cm_id=1, gender="M", normalized_school="Riverside Elementary", school="riverside elem"),
+            2: MockPerson(cm_id=2, gender="F", normalized_school="Riverside Elementary", school="riverside elem"),
+        }
+
+        mock_repo.fetch_sessions.return_value = {
+            1000: MockSession(cm_id=1000, name="Session 1", session_type="main"),
+        }
+        mock_repo.fetch_bunk_assignments.return_value = []
+        mock_repo.fetch_summer_enrollment_history.return_value = []
+
+        service = RetentionService(mock_repo)
+        result = await service.calculate_retention(base_year=2025, compare_year=2026)
+
+        assert len(result.by_school) == 1
+        assert result.by_school[0].school == "Riverside Elementary"
+        assert result.by_school[0].base_count == 2
+        assert result.by_school[0].returned_count == 1
+
+    @pytest.mark.asyncio
+    async def test_school_falls_back_to_raw_school(self) -> None:
+        """When normalized_school is None, falls back to raw school field."""
+        from api.services.retention_service import RetentionService
+
+        mock_repo = AsyncMock()
+
+        mock_repo.fetch_attendees.side_effect = [
+            [
+                MockAttendee(
+                    person_id=1,
+                    year=2025,
+                    expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")},
+                ),
+            ],
+            [],
+        ]
+
+        mock_repo.fetch_persons.return_value = {
+            1: MockPerson(cm_id=1, gender="M", normalized_school=None, school="Oak Valley Middle"),
+        }
+
+        mock_repo.fetch_sessions.return_value = {
+            1000: MockSession(cm_id=1000, name="Session 1", session_type="main"),
+        }
+        mock_repo.fetch_bunk_assignments.return_value = []
+        mock_repo.fetch_summer_enrollment_history.return_value = []
+
+        service = RetentionService(mock_repo)
+        result = await service.calculate_retention(base_year=2025, compare_year=2026)
+
+        assert len(result.by_school) == 1
+        assert result.by_school[0].school == "Oak Valley Middle"
+
+    @pytest.mark.asyncio
+    async def test_city_breakdown_uses_normalized_city(self) -> None:
+        """City breakdown reads normalized_city from persons, falls back to address_city."""
+        from api.services.retention_service import RetentionService
+
+        mock_repo = AsyncMock()
+
+        mock_repo.fetch_attendees.side_effect = [
+            [
+                MockAttendee(
+                    person_id=1,
+                    year=2025,
+                    expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")},
+                ),
+                MockAttendee(
+                    person_id=2,
+                    year=2025,
+                    expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")},
+                ),
+            ],
+            [MockAttendee(person_id=1, year=2026, expand={})],
+        ]
+
+        mock_repo.fetch_persons.return_value = {
+            1: MockPerson(cm_id=1, gender="M", normalized_city="San Francisco", address_city="SF"),
+            2: MockPerson(cm_id=2, gender="F", normalized_city=None, address_city="Oakland"),
+        }
+
+        mock_repo.fetch_sessions.return_value = {
+            1000: MockSession(cm_id=1000, name="Session 1", session_type="main"),
+        }
+        mock_repo.fetch_bunk_assignments.return_value = []
+        mock_repo.fetch_summer_enrollment_history.return_value = []
+
+        service = RetentionService(mock_repo)
+        result = await service.calculate_retention(base_year=2025, compare_year=2026)
+
+        cities = {c.city for c in result.by_city}
+        assert "San Francisco" in cities
+        assert "Oakland" in cities
+
+    @pytest.mark.asyncio
+    async def test_synagogue_breakdown_uses_normalized_congregation(self) -> None:
+        """Synagogue breakdown reads normalized_congregation from persons."""
+        from api.services.retention_service import RetentionService
+
+        mock_repo = AsyncMock()
+
+        mock_repo.fetch_attendees.side_effect = [
+            [
+                MockAttendee(
+                    person_id=1,
+                    year=2025,
+                    expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")},
+                ),
+                MockAttendee(
+                    person_id=2,
+                    year=2025,
+                    expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")},
+                ),
+            ],
+            [MockAttendee(person_id=1, year=2026, expand={})],
+        ]
+
+        mock_repo.fetch_persons.return_value = {
+            1: MockPerson(cm_id=1, gender="M", normalized_congregation="Temple Beth El"),
+            2: MockPerson(cm_id=2, gender="F", normalized_congregation="Congregation Emanu-El"),
+        }
+
+        mock_repo.fetch_sessions.return_value = {
+            1000: MockSession(cm_id=1000, name="Session 1", session_type="main"),
+        }
+        mock_repo.fetch_bunk_assignments.return_value = []
+        mock_repo.fetch_summer_enrollment_history.return_value = []
+
+        service = RetentionService(mock_repo)
+        result = await service.calculate_retention(base_year=2025, compare_year=2026)
+
+        synagogues = {s.synagogue for s in result.by_synagogue}
+        assert "Temple Beth El" in synagogues
+        assert "Congregation Emanu-El" in synagogues
+
+    @pytest.mark.asyncio
+    async def test_response_has_no_by_first_year(self) -> None:
+        """RetentionMetricsResponse should not have by_first_year field."""
+        from api.services.retention_service import RetentionService
+
+        mock_repo = AsyncMock()
+        mock_repo.fetch_attendees.side_effect = [[], []]
+        mock_repo.fetch_persons.return_value = {}
+        mock_repo.fetch_sessions.return_value = {}
+        mock_repo.fetch_bunk_assignments.return_value = []
+        mock_repo.fetch_summer_enrollment_history.return_value = []
+
+        service = RetentionService(mock_repo)
+        result = await service.calculate_retention(base_year=2025, compare_year=2026)
+
+        assert not hasattr(result, "by_first_year")
