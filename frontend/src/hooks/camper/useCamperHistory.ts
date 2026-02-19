@@ -5,9 +5,13 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../../lib/pocketbase'
-import { VALID_SUMMER_SESSION_TYPES } from '../../constants/sessionTypes'
+import { isValidSummerSession } from '../../constants/sessionTypes'
 import type { Camper } from '../../types/app-types'
-import type { BunkAssignmentsResponse } from '../../types/pocketbase-types'
+import type {
+  BunkAssignmentsResponse,
+  CampSessionsResponse,
+  BunksResponse,
+} from '../../types/pocketbase-types'
 import type { HistoricalRecord } from './types'
 
 export interface UseCamperHistoryResult {
@@ -51,10 +55,8 @@ export function useCamperHistory(
 
         for (const enrolled of enrollments) {
           if (enrolled.expand?.session) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const session = enrolled.expand.session as any
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const assignedBunk = enrolled.expand?.assigned_bunk as any
+            const session = enrolled.expand.session
+            const assignedBunk = enrolled.expand?.assigned_bunk
             allHistory.push({
               year: currentYear,
               sessionName: session.name || 'Unknown',
@@ -71,8 +73,10 @@ export function useCamperHistory(
         // (Person records are created per-year to preserve historical school info)
         const historicalFilter = `person.cm_id = ${personCmId} && year < ${currentYear}`
         const historicalAssignments = await pb
-          .collection<BunkAssignmentsResponse>('bunk_assignments')
-          .getFullList({
+          .collection('bunk_assignments')
+          .getFullList<
+            BunkAssignmentsResponse<{ session?: CampSessionsResponse; bunk?: BunksResponse }>
+          >({
             filter: historicalFilter,
             expand: 'session,bunk',
             sort: '-year',
@@ -83,12 +87,10 @@ export function useCamperHistory(
         const yearMap = new Map<number, HistoricalRecord>()
 
         for (const assignment of historicalAssignments) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const session = (assignment.expand as any)?.session
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const bunk = (assignment.expand as any)?.bunk
+          const session = assignment.expand?.session
+          const bunk = assignment.expand?.bunk
 
-          if (session && VALID_SUMMER_SESSION_TYPES.includes(session.session_type)) {
+          if (session && isValidSummerSession(session.session_type)) {
             const year = assignment.year
 
             // Format session name based on type
@@ -129,10 +131,8 @@ export function useCamperHistory(
         const fallback: HistoricalRecord[] = []
         for (const enrolled of fallbackEnrollments) {
           if (enrolled.expand?.session) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const session = enrolled.expand.session as any
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const assignedBunk = enrolled.expand?.assigned_bunk as any
+            const session = enrolled.expand.session
+            const assignedBunk = enrolled.expand?.assigned_bunk
             fallback.push({
               year: currentYear,
               sessionName: session.name || 'Unknown',

@@ -225,12 +225,10 @@ export default function CamperDetail() {
     person?.address_state
   )
   const pronouns = formatPronouns(camper)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sessionShortName = getSessionShortName(camper.expand?.session as any)
+  const sessionShortName = getSessionShortName(camper.expand?.session ?? undefined)
   const allSessionNames =
     enrolledCampers.length > 1
-      ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        enrolledCampers.map((c) => getSessionShortName(c.expand?.session as any))
+      ? enrolledCampers.map((c) => getSessionShortName(c.expand?.session ?? undefined))
       : undefined
   const agePreferenceRequests = allBunkRequests.filter((r) => r.request_type === 'age_preference')
 
