@@ -4,7 +4,7 @@
  * Shows:
  * - Summary cards (prior year total, returned, did not return, overall rate)
  * - Retention rate bar charts for all CEO-requested breakdowns
- * - Geographic retention (city, school, synagogue) inline
+ * - Geographic retention (city, school, synagogue)
  */
 
 import { useMemo } from 'react'
@@ -152,13 +152,6 @@ export default function RetentionOverview() {
             title="Retention by First Summer Year"
           />
         )}
-      </div>
-
-      {/* ─── Geographic Retention ─── */}
-      <div className="border-border relative my-8 border-t pt-6">
-        <span className="bg-background text-muted-foreground absolute -top-3 left-4 px-2 text-xs font-medium tracking-wide uppercase">
-          Geographic Retention
-        </span>
       </div>
 
       {/* Row 5: City + School */}
