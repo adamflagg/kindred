@@ -22,6 +22,7 @@ import { RetentionRateLine } from '../../../components/metrics/RetentionRateLine
 import { GenderStackedChart } from '../../../components/metrics/GenderStackedChart'
 import { GradeEnrollmentChart } from '../../../components/metrics/GradeEnrollmentChart'
 import { MultiYearBreakdownChart } from '../../../components/metrics/MultiYearBreakdownChart'
+import { SectionDivider } from '../../../components/metrics/SectionDivider'
 import { Loader2, AlertCircle } from 'lucide-react'
 
 export default function TrendsOverview() {
@@ -165,7 +166,7 @@ export default function TrendsOverview() {
       {/* Data Table */}
       <div className="card-lodge overflow-hidden">
         <div className="border-border border-b px-4 py-3">
-          <h3 className="text-foreground text-sm font-semibold">Year-by-Year Summary</h3>
+          <h3 className="text-foreground text-base font-semibold">Year-by-Year Summary</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -219,11 +220,7 @@ export default function TrendsOverview() {
       </div>
 
       {/* ─── Enrollment Composition (from retention-trends endpoint) ─── */}
-      <div className="border-border relative my-8 border-t pt-6">
-        <span className="bg-background text-muted-foreground absolute -top-3 left-4 px-2 text-xs font-medium tracking-wide uppercase">
-          Enrollment Composition ({numYearsDisplay}-Year Comparison)
-        </span>
-      </div>
+      <SectionDivider label={`Enrollment Composition (${numYearsDisplay}-Year Comparison)`} />
 
       {/* Retention Rate Trend Line */}
       {retentionYears.length > 0 && (

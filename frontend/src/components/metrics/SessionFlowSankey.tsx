@@ -96,7 +96,7 @@ export function SessionFlowSankey({ data, title }: SessionFlowSankeyProps) {
 
   return (
     <div className="card-lodge p-4">
-      <h3 className="text-foreground mb-4 text-sm font-medium">{title}</h3>
+      <h3 className="text-foreground mb-4 text-base font-semibold">{title}</h3>
       <ResponsiveContainer width="100%" height={height}>
         <Sankey
           data={data}

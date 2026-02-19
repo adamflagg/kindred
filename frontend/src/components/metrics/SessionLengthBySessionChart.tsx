@@ -62,7 +62,7 @@ export function SessionLengthBySessionChart({
   if (data.length === 0) {
     return (
       <div className={`card-lodge p-4 ${className}`}>
-        <h3 className="text-foreground mb-4 text-sm font-semibold">{title}</h3>
+        <h3 className="text-foreground mb-4 text-base font-semibold">{title}</h3>
         <div className="text-muted-foreground flex h-[200px] items-center justify-center">
           No data available
         </div>
@@ -171,7 +171,7 @@ export function SessionLengthBySessionChart({
 
   return (
     <div className={`card-lodge p-4 ${className}`}>
-      <h3 className="text-foreground mb-4 text-sm font-semibold">{title}</h3>
+      <h3 className="text-foreground mb-4 text-base font-semibold">{title}</h3>
       <ResponsiveContainer width="100%" height={height - 30}>
         <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />

@@ -84,7 +84,7 @@ export function GenderStackedChart({
   if (data.length === 0 || !hasGenderData) {
     return (
       <div className={`card-lodge p-4 ${className}`}>
-        <h3 className="text-foreground mb-4 text-sm font-semibold">{title}</h3>
+        <h3 className="text-foreground mb-4 text-base font-semibold">{title}</h3>
         <div className="text-muted-foreground flex h-[200px] items-center justify-center">
           No data available
         </div>
@@ -135,7 +135,7 @@ export function GenderStackedChart({
 
   return (
     <div className={`card-lodge p-4 ${className}`}>
-      <h3 className="text-foreground mb-4 text-sm font-semibold">{title}</h3>
+      <h3 className="text-foreground mb-4 text-base font-semibold">{title}</h3>
       <ResponsiveContainer width="100%" height={height}>
         <BarChart
           data={chartData}
