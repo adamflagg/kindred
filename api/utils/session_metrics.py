@@ -56,6 +56,140 @@ BUNK_SESSION_TYPES = ("main", "embedded", "ag")
 SUMMER_PROGRAM_SESSION_TYPES = ("main", "embedded", "ag", "quest")
 
 
+def get_session_from_expand(record: Any) -> Any:
+    """Extract session from a record's PocketBase expand dict.
+
+    Handles both dict-style and object-style expand attributes.
+
+    Args:
+        record: A PocketBase record with an expand attribute.
+
+    Returns:
+        The session object, or None if not found.
+    """
+    expand = getattr(record, "expand", {}) or {}
+    if isinstance(expand, dict):
+        return expand.get("session")
+    return getattr(expand, "session", None)
+
+
+def build_ag_parent_map(sessions: dict[int, Any]) -> dict[int, int]:
+    """Build mapping from AG session cm_ids to their parent main session cm_ids.
+
+    Args:
+        sessions: Dictionary mapping session cm_id to session record.
+
+    Returns:
+        Dictionary mapping AG session cm_id to parent session cm_id.
+    """
+    ag_parent_map: dict[int, int] = {}
+    for sid, session in sessions.items():
+        if getattr(session, "session_type", None) == "ag":
+            parent_id = getattr(session, "parent_id", None)
+            if parent_id:
+                ag_parent_map[int(sid)] = int(parent_id)
+    return ag_parent_map
+
+
+def find_ag_sessions_for_parent(sessions: dict[int, Any], session_cm_id: int | None) -> set[int]:
+    """Find AG sessions that belong to a parent session.
+
+    Args:
+        sessions: Dictionary of sessions by cm_id.
+        session_cm_id: The parent session cm_id to find AG children for.
+
+    Returns:
+        Set of AG session cm_ids that have the given parent.
+    """
+    if session_cm_id is None:
+        return set()
+
+    ag_session_ids: set[int] = set()
+    for sid, session in sessions.items():
+        if getattr(session, "session_type", None) == "ag":
+            parent_id = getattr(session, "parent_id", None)
+            if parent_id == session_cm_id:
+                ag_session_ids.add(sid)
+    return ag_session_ids
+
+
+def filter_attendees_by_session(
+    attendees: list[Any],
+    session_types: list[str] | None,
+    session_cm_id: int | None = None,
+    ag_session_ids: set[int] | None = None,
+) -> list[Any]:
+    """Filter attendees by session type and/or session cm_id.
+
+    Args:
+        attendees: List of attendee records with session expand.
+        session_types: Session types to include (None = all).
+        session_cm_id: Specific session to filter to (None = all).
+        ag_session_ids: AG sessions that belong to the parent session.
+
+    Returns:
+        Filtered list of attendees.
+    """
+    if ag_session_ids is None:
+        ag_session_ids = set()
+
+    filtered = []
+    for a in attendees:
+        session = get_session_from_expand(a)
+        if not session:
+            continue
+
+        session_type = getattr(session, "session_type", None)
+        attendee_session_cm_id = getattr(session, "cm_id", None)
+
+        # Apply session type filter
+        if session_types and session_type not in session_types:
+            continue
+
+        # Apply session_cm_id filter if specified
+        if session_cm_id is not None:
+            if attendee_session_cm_id != session_cm_id and attendee_session_cm_id not in ag_session_ids:
+                continue
+
+        filtered.append(a)
+    return filtered
+
+
+def get_session_length_category(start_date: str, end_date: str) -> str:
+    """Calculate session length category from actual dates.
+
+    Categories:
+    - 1-week: 1-7 days
+    - 2-week: 8-14 days
+    - 3-week: 15-21 days
+    - 4-week+: 22+ days
+    - unknown: missing or invalid dates
+    """
+    from datetime import datetime
+
+    if not start_date or not end_date:
+        return "unknown"
+
+    try:
+        start_str = start_date.split(" ")[0].split("T")[0]
+        end_str = end_date.split(" ")[0].split("T")[0]
+
+        start = datetime.strptime(start_str, "%Y-%m-%d")
+        end = datetime.strptime(end_str, "%Y-%m-%d")
+        days = (end - start).days + 1
+
+        if days <= 7:
+            return "1-week"
+        elif days <= 14:
+            return "2-week"
+        elif days <= 21:
+            return "3-week"
+        else:
+            return "4-week+"
+    except (ValueError, AttributeError):
+        return "unknown"
+
+
 def compute_summer_metrics(
     enrollment_history: list[Any],
     person_ids: set[int],

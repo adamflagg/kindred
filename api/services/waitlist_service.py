@@ -20,6 +20,7 @@ from api.schemas.metrics import (
     WaitlistMetricsResponse,
     WaitlistSessionBreakdown,
 )
+from api.utils.session_metrics import get_session_from_expand
 
 if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository
@@ -83,7 +84,7 @@ class WaitlistService:
         for att in enrolled_attendees:
             pid = getattr(att, "person_id", None)
             if pid is not None:
-                session_info = self._get_session_from_attendee(att)
+                session_info = get_session_from_expand(att)
                 if session_info:
                     cmid = int(getattr(session_info, "cm_id", 0))
                     name = getattr(session_info, "name", f"Session {cmid}")
@@ -105,7 +106,7 @@ class WaitlistService:
         seen_for_summary: set[int] = set()
         for att in waitlisted_attendees:
             pid = int(getattr(att, "person_id", 0))
-            session_info = self._get_session_from_attendee(att)
+            session_info = get_session_from_expand(att)
             session_cmid = getattr(session_info, "cm_id", 0) if session_info else 0
 
             if session_cmid:
@@ -146,7 +147,7 @@ class WaitlistService:
             pid = int(getattr(record, "person_id", 0))
             if not pid:
                 continue
-            session_info = self._get_session_from_history(record)
+            session_info = get_session_from_expand(record)
             session_cmid = int(getattr(session_info, "cm_id", 0)) if session_info else 0
             if session_cmid and session_cmid not in valid_session_ids:
                 continue
@@ -159,7 +160,7 @@ class WaitlistService:
             pid = int(getattr(record, "person_id", 0))
             if not pid:
                 continue
-            session_info = self._get_session_from_history(record)
+            session_info = get_session_from_expand(record)
             session_cmid = int(getattr(session_info, "cm_id", 0)) if session_info else 0
             if session_cmid and session_cmid not in valid_session_ids:
                 continue
@@ -229,26 +230,12 @@ class WaitlistService:
         """Filter attendees to only those in valid sessions."""
         result = []
         for att in attendees:
-            session = self._get_session_from_attendee(att)
+            session = get_session_from_expand(att)
             if session:
                 session_cmid = int(getattr(session, "cm_id", 0))
                 if session_cmid in valid_session_ids:
                     result.append(att)
         return result
-
-    def _get_session_from_attendee(self, attendee: Any) -> Any:
-        """Extract session from attendee's expand dict."""
-        expand = getattr(attendee, "expand", {}) or {}
-        if isinstance(expand, dict):
-            return expand.get("session")
-        return getattr(expand, "session", None)
-
-    def _get_session_from_history(self, record: Any) -> Any:
-        """Extract session from status history record's expand dict."""
-        expand = getattr(record, "expand", {}) or {}
-        if isinstance(expand, dict):
-            return expand.get("session")
-        return getattr(expand, "session", None)
 
     def _compute_demographics(
         self,
