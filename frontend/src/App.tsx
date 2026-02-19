@@ -248,10 +248,6 @@ function App() {
                                 path="retention/overview"
                                 element={<Navigate to="/metrics/retention" replace />}
                               />
-                              <Route
-                                path="retention/geo"
-                                element={<Navigate to="/metrics/retention" replace />}
-                              />
 
                               {/* Trends section */}
                               <Route
