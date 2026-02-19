@@ -16,7 +16,6 @@ describe('sessionDisplay utilities', () => {
       id: 'main-2',
       name: 'Session 2',
       session_type: 'main',
-      persistent_id: 'main2',
       start_date: '2025-06-01',
       end_date: '2025-06-14',
       cm_id: 200,
@@ -28,7 +27,6 @@ describe('sessionDisplay utilities', () => {
       id: 'main-3',
       name: 'Session 3',
       session_type: 'main',
-      persistent_id: 'main3',
       start_date: '2025-06-15',
       end_date: '2025-06-28',
       cm_id: 300,
@@ -40,7 +38,6 @@ describe('sessionDisplay utilities', () => {
       id: 'ag-2',
       name: 'All-Gender Cabin-Session 2 (7th - 9th grades)',
       session_type: 'ag',
-      persistent_id: 'ag2',
       parent_id: 200, // Points to Session 2
       start_date: '2025-06-01',
       end_date: '2025-06-14',
@@ -69,7 +66,6 @@ describe('sessionDisplay utilities', () => {
         id: '1',
         name: 'All-Gender Cabin-Session 2',
         session_type: 'ag',
-        persistent_id: 'ag2',
         parent_id: 200,
         start_date: '2025-06-01',
         end_date: '2025-06-14',
@@ -87,8 +83,6 @@ describe('sessionDisplay utilities', () => {
         id: '2',
         name: 'Session 2a',
         session_type: 'embedded',
-        code: '2a',
-        persistent_id: '2a',
         start_date: '2025-06-01',
         end_date: '2025-06-07',
         cm_id: 123,
@@ -104,7 +98,6 @@ describe('sessionDisplay utilities', () => {
         id: '3',
         name: 'Session 2',
         session_type: 'main',
-        persistent_id: 'main2',
         start_date: '2025-06-01',
         end_date: '2025-06-14',
         cm_id: 123,
@@ -120,7 +113,6 @@ describe('sessionDisplay utilities', () => {
         id: '4',
         name: 'Taste of Camp',
         session_type: 'taste',
-        persistent_id: 'taste',
         start_date: '2025-05-25',
         end_date: '2025-05-28',
         cm_id: 123,
@@ -136,7 +128,6 @@ describe('sessionDisplay utilities', () => {
         id: '5',
         name: 'Family Camp 1',
         session_type: 'family',
-        persistent_id: 'family1',
         start_date: '2025-08-01',
         end_date: '2025-08-07',
         cm_id: 123,
@@ -145,21 +136,6 @@ describe('sessionDisplay utilities', () => {
         updated: '',
       }
       expect(getSessionDisplayName(otherSession)).toBe('Family Camp 1')
-    })
-
-    it('should handle missing persistent_id', () => {
-      const session: Session = {
-        id: '6',
-        name: 'Some Session',
-        session_type: 'ag',
-        start_date: '2025-06-01',
-        end_date: '2025-06-14',
-        cm_id: 123,
-        year: 2025,
-        created: '',
-        updated: '',
-      }
-      expect(getSessionDisplayName(session)).toBe('Some Session')
     })
   })
 
@@ -186,7 +162,7 @@ describe('sessionDisplay utilities', () => {
         id: 'ag-99',
         name: 'All-Gender Cabin-Session 99',
         session_type: 'ag',
-        persistent_id: 'ag99',
+        parent_id: 9999, // No matching parent in allSessions
         start_date: '2025-06-01',
         end_date: '2025-06-14',
         cm_id: 123,
@@ -195,23 +171,6 @@ describe('sessionDisplay utilities', () => {
         updated: '',
       }
       expect(getParentSessionId(agSession, mockAllSessions)).toBe(123)
-    })
-
-    it('should handle different persistent_id formats', () => {
-      const agSession: Session = {
-        id: 'ag-3',
-        name: 'All-Gender Cabin-Session 3',
-        session_type: 'ag',
-        persistent_id: 'ag_main3',
-        start_date: '2025-06-15',
-        end_date: '2025-06-28',
-        cm_id: 123,
-        year: 2025,
-        created: '',
-        updated: '',
-      }
-      // Should return parent session's cm_id (main3 has cm_id 300), not the AG session's cm_id
-      expect(getParentSessionId(agSession, mockAllSessions)).toBe(300)
     })
   })
 
