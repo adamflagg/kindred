@@ -125,16 +125,40 @@ export default function RetentionOverview() {
           title={`${priorYear} Total Campers`}
           value={data.base_year_total}
           subtitle="Enrolled in prior year"
+          onClick={() =>
+            setFilter({
+              type: 'retention_all',
+              value: 'all',
+              label: `${priorYear} Enrolled Campers`,
+              retentionContext: { baseYear: priorYear, compareYear: currentYear },
+            })
+          }
         />
         <MetricCard
           title={`Returned to ${currentYear}`}
           value={data.returned_count}
           subtitle={`${Math.round(data.overall_retention_rate * 100)}% retention rate`}
+          onClick={() =>
+            setFilter({
+              type: 'retention_returned',
+              value: 'all',
+              label: `Returned to ${currentYear}`,
+              retentionContext: { baseYear: priorYear, compareYear: currentYear },
+            })
+          }
         />
         <MetricCard
           title="Did Not Return"
           value={didNotReturn}
           subtitle={`${data.base_year_total > 0 ? Math.round((didNotReturn / data.base_year_total) * 100) : 0}% attrition`}
+          onClick={() =>
+            setFilter({
+              type: 'retention_not_returned',
+              value: 'all',
+              label: `Did Not Return to ${currentYear}`,
+              retentionContext: { baseYear: priorYear, compareYear: currentYear },
+            })
+          }
         />
         <MetricCard
           title="Overall Retention Rate"
@@ -153,7 +177,9 @@ export default function RetentionOverview() {
           <RetentionRateBarChart
             data={genderBars}
             title="Retention by Gender"
-            onBarClick={(item) => setFilter(makeRetentionFilter('gender', item))}
+            onBarClick={(item) =>
+              setFilter({ ...makeRetentionFilter('gender', item), titleFormat: 'adjective' })
+            }
           />
         )}
         {gradeBars.length > 0 && (
