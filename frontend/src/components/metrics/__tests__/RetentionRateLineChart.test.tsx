@@ -1,7 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { RetentionRateLineChart } from '../RetentionRateLineChart'
 import type { RetentionRateBarItem } from '../RetentionRateBarChart'
+
+// Capture activeDot click handler
+let capturedActiveDotClick: ((props: unknown) => void) | undefined
 
 // Mock recharts to avoid canvas/SVG rendering in jsdom
 vi.mock('recharts', () => ({
@@ -11,7 +14,19 @@ vi.mock('recharts', () => ({
   LineChart: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="line-chart">{children}</div>
   ),
-  Line: () => null,
+  Line: ({ activeDot }: { activeDot?: { onClick?: (props: unknown) => void } }) => {
+    capturedActiveDotClick = activeDot?.onClick
+    return activeDot?.onClick ? (
+      <div
+        data-testid="line-dot-clickable"
+        onClick={() =>
+          activeDot.onClick!({ payload: { name: 'Grade 5', rate: 75, baseCount: 80, returnedCount: 60 } })
+        }
+      />
+    ) : (
+      <div data-testid="line-dot" />
+    )
+  },
   XAxis: () => null,
   YAxis: () => null,
   CartesianGrid: () => null,
@@ -52,5 +67,26 @@ describe('RetentionRateLineChart', () => {
   it('renders responsive container', () => {
     render(<RetentionRateLineChart data={sampleData} title="Responsive" />)
     expect(screen.getByTestId('responsive-container')).toBeInTheDocument()
+  })
+
+  describe('onDotClick', () => {
+    it('passes activeDot onClick to Line when onDotClick is provided', () => {
+      capturedActiveDotClick = undefined
+      const onDotClick = vi.fn()
+      render(
+        <RetentionRateLineChart data={sampleData} title="Clickable Line" onDotClick={onDotClick} />
+      )
+
+      // When onDotClick is provided, the Line should have activeDot.onClick
+      expect(capturedActiveDotClick).toBeDefined()
+    })
+
+    it('does not set activeDot click handler when onDotClick is not provided', () => {
+      capturedActiveDotClick = undefined
+      render(<RetentionRateLineChart data={sampleData} title="Non-Clickable" />)
+
+      // When no onDotClick, the Line should not have activeDot.onClick
+      expect(capturedActiveDotClick).toBeUndefined()
+    })
   })
 })
