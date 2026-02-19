@@ -2,14 +2,7 @@
  * Tests for transform utility functions
  */
 import { describe, it, expect, vi } from 'vitest'
-import {
-  toAppCamper,
-  toAppSession,
-  toAppBunk,
-  buildCampersFromData,
-  createLookupMaps,
-  toAppBunkRequest,
-} from './transforms'
+import { toAppCamper, buildCampersFromData, createLookupMaps, toAppBunkRequest } from './transforms'
 import {
   Collections,
   CampSessionsSessionTypeOptions,
@@ -247,77 +240,6 @@ describe('toAppCamper', () => {
       const camper = toAppCamper(person, createMockAttendee())
       expect(camper.school).toBeUndefined()
     })
-  })
-})
-
-describe('toAppSession', () => {
-  it('should transform CampSessionsResponse to Session', () => {
-    const dbSession = createMockSession({ parent_id: 1000 })
-
-    const session = toAppSession(dbSession)
-
-    expect(session.id).toBe('session-1')
-    expect(session.name).toBe('Session 2')
-    expect(session.session_type).toBe('main')
-    expect(session.start_date).toBe('2025-06-15')
-    expect(session.end_date).toBe('2025-07-01')
-    expect(session.cm_id).toBe(1001)
-    expect(session.year).toBe(2025)
-    expect(session.parent_id).toBe(1000)
-  })
-
-  it('should handle missing optional fields', () => {
-    // Cast to override the session_type to undefined for testing default behavior
-    const minimalSession = {
-      ...createMockSession({
-        id: 'session-2',
-        cm_id: 1002,
-        name: 'Test',
-        start_date: '',
-        end_date: '',
-      }),
-      session_type: undefined,
-    } as unknown as CampSessionsResponse
-
-    const session = toAppSession(minimalSession)
-
-    expect(session.start_date).toBe('')
-    expect(session.end_date).toBe('')
-    expect(session.session_type).toBe('main')
-    expect(session.code).toBe('')
-    expect(session.persistent_id).toBe('')
-  })
-})
-
-describe('toAppBunk', () => {
-  it('should transform BunksResponse to Bunk', () => {
-    const dbBunk = createMockBunk()
-
-    const bunk = toAppBunk(dbBunk)
-
-    expect(bunk.id).toBe('bunk-1')
-    expect(bunk.name).toBe('B-1')
-    expect(bunk.cm_id).toBe(100)
-    expect(bunk.gender).toBe('M')
-    expect(bunk.year).toBe(2025)
-    expect(bunk.capacity).toBe(0)
-    expect(bunk.session).toBe('')
-  })
-
-  it('should handle missing dates', () => {
-    const minimalBunk = createMockBunk({
-      id: 'bunk-2',
-      cm_id: 101,
-      name: 'G-1',
-      created: '',
-      updated: '',
-    })
-
-    const bunk = toAppBunk(minimalBunk)
-
-    // Should use current date for missing created/updated
-    expect(bunk.created).toBeTruthy()
-    expect(bunk.updated).toBeTruthy()
   })
 })
 

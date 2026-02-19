@@ -7,34 +7,26 @@ import { describe, it, expect } from 'vitest'
 import { getSubSessions, getAgSessions, shouldShowAgArea } from './useSessionHierarchy'
 import type { Session } from '../../types/app-types'
 
-// Mock sessions for testing
+// Mock sessions for testing — cast partial objects as Session
 const createMockSession = (
   id: string,
   name: string,
   cmId: number,
-  sessionType: 'main' | 'embedded' | 'ag' = 'main',
+  sessionType: string = 'main',
   parentId?: number
-): Session => {
-  const baseSession = {
+): Session =>
+  ({
     id,
     name,
     cm_id: cmId,
     session_type: sessionType,
     year: 2025,
-    collectionId: 'sessions',
-    collectionName: 'camp_sessions',
     start_date: '2025-06-01',
     end_date: '2025-06-14',
     created: new Date().toISOString(),
     updated: new Date().toISOString(),
-  }
-
-  // Only include parent_id if defined (for exactOptionalPropertyTypes)
-  if (parentId !== undefined) {
-    return { ...baseSession, parent_id: parentId }
-  }
-  return baseSession
-}
+    ...(parentId !== undefined && { parent_id: parentId }),
+  }) as Session
 
 describe('getSubSessions', () => {
   it('should return empty array when parent session is null', () => {

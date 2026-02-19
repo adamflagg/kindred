@@ -51,23 +51,6 @@ export function getSessionDisplayName(
     return session.name || 'Quest'
   }
 
-  // For embedded sessions, show the code (2a, 2b, 3a, 3b)
-  if (session.session_type === 'embedded' && session.code) {
-    return `Session ${session.code}`
-  }
-
-  // For main sessions, extract the number
-  if (session.session_type === 'main' && session.persistent_id) {
-    // main1 -> Session 1, main2 -> Session 2, etc.
-    const match = session.persistent_id.match(/main(\d+)/)
-    if (match) return `Session ${match[1]}`
-  }
-
-  // For taste, just show "Taste of Camp"
-  if (session.session_type === 'taste') {
-    return 'Taste of Camp'
-  }
-
   // Fallback to original name
   return session.name || 'Unknown Session'
 }
@@ -80,20 +63,10 @@ export function getSessionDisplayName(
  * @returns The parent session ID or the original session ID
  */
 export function getParentSessionId(session: Session, allSessions: Session[]): string | number {
-  // Only transform AG sessions
-  if (session.session_type === 'ag' && session.persistent_id) {
-    // Extract the session number from AG persistent_id
-    const match = session.persistent_id.match(/ag_?(?:main)?(\d+)/)
-    if (match) {
-      const sessionNumber = match[1]
-      // Find the corresponding main session
-      const parentSession = allSessions.find(
-        (s) =>
-          s.session_type === 'main' &&
-          (s.persistent_id === sessionNumber || s.persistent_id === `main${sessionNumber}`)
-      )
-      if (parentSession) return parentSession.cm_id
-    }
+  // AG sessions map to their parent main session via parent_id
+  if (session.session_type === 'ag' && session.parent_id) {
+    const parentSession = allSessions.find((s) => s.cm_id === session.parent_id)
+    if (parentSession) return parentSession.cm_id
   }
 
   // Return original CampMinder ID for all other session types
@@ -160,7 +133,7 @@ export function getSessionChartLabel(
   }
 
   // Handle Taste of Camp - return session name as-is (e.g., "Taste of Camp 2")
-  if (sessionType === 'taste' || sessionName.toLowerCase().includes('taste')) {
+  if (sessionName.toLowerCase().includes('taste')) {
     return sessionName
   }
 
@@ -223,7 +196,7 @@ export function getSessionShorthand(sessionName: string, sessionType?: string): 
   }
 
   // Handle Taste of Camp
-  if (sessionType === 'taste' || sessionName.toLowerCase().includes('taste')) {
+  if (sessionName.toLowerCase().includes('taste')) {
     return 'Taste'
   }
 

@@ -9,26 +9,24 @@ import type { BunksResponse, BunkPlansResponse } from '../types/pocketbase-types
 import type { Session } from '../types/app-types'
 import { expectDefined } from '../test/testUtils'
 
-// Mock data helper - accepts partial overrides and required fields
-function createMockSession(
-  overrides: Partial<Session> & {
-    name: string
-    session_type: Session['session_type']
-  }
-): Session {
-  const id = overrides.id ?? `session-${overrides.name.replace(/\s/g, '-').toLowerCase()}`
+// Mock data helper — cast partial session objects as Session
+function createMockSession(overrides: {
+  name: string
+  session_type: string
+  [key: string]: unknown
+}): Session {
+  const id =
+    (overrides['id'] as string) ?? `session-${overrides.name.replace(/\s/g, '-').toLowerCase()}`
   return {
     id,
-    collectionId: 'sessions',
-    collectionName: 'camp_sessions',
+    cm_id: Math.floor(Math.random() * 10000),
+    year: 2025,
+    start_date: '2025-06-01',
+    end_date: '2025-06-14',
     created: '',
     updated: '',
-    cm_id: overrides.cm_id ?? Math.floor(Math.random() * 10000),
-    year: overrides.year ?? 2025,
-    start_date: overrides.start_date ?? '2025-06-01',
-    end_date: overrides.end_date ?? '2025-06-14',
     ...overrides,
-  }
+  } as Session
 }
 
 function createMockBunk(name: string, gender: 'M' | 'F' | 'Mixed' = 'M'): BunksResponse {
