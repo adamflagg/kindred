@@ -2202,6 +2202,31 @@ class TestRetentionBySessionBunk:
         fields = RetentionMetricsResponse.model_fields
         assert "by_session_bunk" in fields, "RetentionMetricsResponse should include by_session_bunk field"
 
+    def test_session_bunk_returns_all_combos_not_limited(self) -> None:
+        """Test that _build_session_bunk_breakdown returns ALL combos, not top 10.
+
+        The heatmap UI needs every session-bunk combo to render grouped sections.
+        Previously the method sliced to [:10] which lost data for sessions with
+        many bunks.
+        """
+        from api.services.retention_service import RetentionService
+
+        service = RetentionService(repository=Mock())
+
+        # Create 15 distinct session-bunk combos (more than old top-10 limit)
+        person_ids = set(range(1, 16))
+        returned_ids = {1, 3, 5, 7, 9, 11, 13, 15}
+        records = []
+        for pid in range(1, 16):
+            record = Mock()
+            record.person_id = pid
+            record.session_name = f"Session {(pid - 1) // 3 + 1}"
+            record.bunk_name = f"B-{pid}"
+            records.append(record)
+
+        result = service._build_session_bunk_breakdown(person_ids, returned_ids, records)
+        assert len(result) == 15, f"Expected all 15 combos, got {len(result)}"
+
 
 class TestRetentionBreakdownSchemas:
     """Tests verifying the Pydantic schemas exist for retention breakdowns."""
