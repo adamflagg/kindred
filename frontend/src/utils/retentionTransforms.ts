@@ -203,9 +203,7 @@ export interface SankeyData {
  * to disambiguate when the same session name appears on both sides.
  * "Did Not Return" is a special target that gets no suffix.
  */
-export function sessionFlowToSankeyData(
-  data: SessionFlowItem[] | undefined
-): SankeyData | null {
+export function sessionFlowToSankeyData(data: SessionFlowItem[] | undefined): SankeyData | null {
   if (!data?.length) return null
 
   // Collect unique sources and targets

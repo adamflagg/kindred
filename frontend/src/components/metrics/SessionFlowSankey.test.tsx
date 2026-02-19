@@ -40,9 +40,7 @@ describe('SessionFlowSankey', () => {
   })
 
   it('renders without crashing with valid data', () => {
-    const { container } = render(
-      <SessionFlowSankey data={sampleData} title="Session Flow" />
-    )
+    const { container } = render(<SessionFlowSankey data={sampleData} title="Session Flow" />)
 
     // Should render a card container
     expect(container.querySelector('.card-lodge')).toBeInTheDocument()
@@ -50,9 +48,7 @@ describe('SessionFlowSankey', () => {
 
   it('uses increased height for the dedicated tab (min 500px)', () => {
     // With 2 source nodes, height should be max(500, 2 * 100) = 500
-    const { container } = render(
-      <SessionFlowSankey data={sampleData} title="Test" />
-    )
+    const { container } = render(<SessionFlowSankey data={sampleData} title="Test" />)
 
     // ResponsiveContainer sets height on its wrapper
     const responsiveContainer = container.querySelector('[style*="height"]')
@@ -69,9 +65,7 @@ describe('SessionFlowSankey', () => {
   it('renders with empty links gracefully', () => {
     const emptyData: SankeyData = { nodes: [], links: [] }
     // Should not crash
-    const { container } = render(
-      <SessionFlowSankey data={emptyData} title="Empty" />
-    )
+    const { container } = render(<SessionFlowSankey data={emptyData} title="Empty" />)
 
     expect(container.querySelector('.card-lodge')).toBeInTheDocument()
   })

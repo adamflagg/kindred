@@ -92,7 +92,7 @@ describe('SessionBunkHeatmap', () => {
 
     // Session 1 row in boys table: B-1=80%, B-2=25%
     const session1Row = rows.find(
-      (row) => within(row).queryByRole('rowheader')?.textContent === 'Session 1',
+      (row) => within(row).queryByRole('rowheader')?.textContent === 'Session 1'
     )
     expect(session1Row).toBeDefined()
 
@@ -110,14 +110,14 @@ describe('SessionBunkHeatmap', () => {
 
     // Session 1 doesn't have G-2, Session 2 doesn't have G-1
     const session1Row = rows.find(
-      (row) => within(row).queryByRole('rowheader')?.textContent === 'Session 1',
+      (row) => within(row).queryByRole('rowheader')?.textContent === 'Session 1'
     )
     expect(session1Row).toBeDefined()
     const session1Cells = within(session1Row!).getAllByRole('cell')
     expect(session1Cells.map((c) => c.textContent)).toContain('—')
 
     const session2Row = rows.find(
-      (row) => within(row).queryByRole('rowheader')?.textContent === 'Session 2',
+      (row) => within(row).queryByRole('rowheader')?.textContent === 'Session 2'
     )
     expect(session2Row).toBeDefined()
     const session2Cells = within(session2Row!).getAllByRole('cell')
@@ -201,7 +201,13 @@ describe('SessionBunkHeatmap', () => {
     const data: RetentionBySessionBunk[] = [
       { session: 'Session 1', bunk: 'B-1', base_count: 10, returned_count: 8, retention_rate: 0.8 },
       { session: 'Session 1', bunk: 'G-1', base_count: 10, returned_count: 5, retention_rate: 0.5 },
-      { session: 'Session 1', bunk: 'AG-8', base_count: 10, returned_count: 7, retention_rate: 0.7 },
+      {
+        session: 'Session 1',
+        bunk: 'AG-8',
+        base_count: 10,
+        returned_count: 7,
+        retention_rate: 0.7,
+      },
     ]
     render(<SessionBunkHeatmap data={data} />)
 
@@ -236,7 +242,13 @@ describe('SessionBunkHeatmap', () => {
     // and all valid bunks use B-*/G-*/AG-* naming.
     const dataWithOddBunk: RetentionBySessionBunk[] = [
       { session: 'Session 1', bunk: 'B-1', base_count: 10, returned_count: 8, retention_rate: 0.8 },
-      { session: 'Session 1', bunk: 'Staff-1', base_count: 5, returned_count: 3, retention_rate: 0.6 },
+      {
+        session: 'Session 1',
+        bunk: 'Staff-1',
+        base_count: 5,
+        returned_count: 3,
+        retention_rate: 0.6,
+      },
     ]
     render(<SessionBunkHeatmap data={dataWithOddBunk} />)
 
@@ -294,9 +306,27 @@ describe('SessionBunkHeatmap', () => {
     const data: RetentionBySessionBunk[] = [
       { session: 'Session 1', bunk: 'B-1', base_count: 10, returned_count: 8, retention_rate: 0.8 },
       { session: 'Session 2', bunk: 'B-1', base_count: 8, returned_count: 6, retention_rate: 0.75 },
-      { session: 'Session 2', bunk: 'AG-8', base_count: 6, returned_count: 4, retention_rate: 0.67 },
-      { session: 'Session 4', bunk: 'AG-8', base_count: 7, returned_count: 5, retention_rate: 0.71 },
-      { session: 'Session 4', bunk: 'AG-10', base_count: 5, returned_count: 3, retention_rate: 0.6 },
+      {
+        session: 'Session 2',
+        bunk: 'AG-8',
+        base_count: 6,
+        returned_count: 4,
+        retention_rate: 0.67,
+      },
+      {
+        session: 'Session 4',
+        bunk: 'AG-8',
+        base_count: 7,
+        returned_count: 5,
+        retention_rate: 0.71,
+      },
+      {
+        session: 'Session 4',
+        bunk: 'AG-10',
+        base_count: 5,
+        returned_count: 3,
+        retention_rate: 0.6,
+      },
     ]
     render(<SessionBunkHeatmap data={data} />)
 
@@ -315,7 +345,13 @@ describe('SessionBunkHeatmap', () => {
   it('sorts Aleph before numbered bunks', () => {
     const data: RetentionBySessionBunk[] = [
       { session: 'Session 1', bunk: 'B-1', base_count: 5, returned_count: 3, retention_rate: 0.6 },
-      { session: 'Session 1', bunk: 'B-Aleph', base_count: 5, returned_count: 4, retention_rate: 0.8 },
+      {
+        session: 'Session 1',
+        bunk: 'B-Aleph',
+        base_count: 5,
+        returned_count: 4,
+        retention_rate: 0.8,
+      },
       { session: 'Session 1', bunk: 'B-2', base_count: 5, returned_count: 2, retention_rate: 0.4 },
     ]
     render(<SessionBunkHeatmap data={data} />)
@@ -328,9 +364,21 @@ describe('SessionBunkHeatmap', () => {
   it('sorts Bet after Aleph but before numbers', () => {
     const data: RetentionBySessionBunk[] = [
       { session: 'Session 1', bunk: 'G-3', base_count: 5, returned_count: 3, retention_rate: 0.6 },
-      { session: 'Session 1', bunk: 'G-Bet', base_count: 5, returned_count: 4, retention_rate: 0.8 },
+      {
+        session: 'Session 1',
+        bunk: 'G-Bet',
+        base_count: 5,
+        returned_count: 4,
+        retention_rate: 0.8,
+      },
       { session: 'Session 1', bunk: 'G-1', base_count: 5, returned_count: 2, retention_rate: 0.4 },
-      { session: 'Session 1', bunk: 'G-Aleph', base_count: 5, returned_count: 3, retention_rate: 0.6 },
+      {
+        session: 'Session 1',
+        bunk: 'G-Aleph',
+        base_count: 5,
+        returned_count: 3,
+        retention_rate: 0.6,
+      },
     ]
     render(<SessionBunkHeatmap data={data} />)
 

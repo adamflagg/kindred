@@ -47,7 +47,6 @@ const REGISTRATION_SUB_NAV: SubNavItem[] = [
   },
 ]
 
-
 export default function MetricsLayout() {
   const location = useLocation()
 

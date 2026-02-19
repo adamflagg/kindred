@@ -7,13 +7,7 @@ vi.mock('recharts', () => ({
   ResponsiveContainer: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="responsive-container">{children}</div>
   ),
-  BarChart: ({
-    children,
-    layout,
-  }: {
-    children: React.ReactNode
-    layout?: string
-  }) => (
+  BarChart: ({ children, layout }: { children: React.ReactNode; layout?: string }) => (
     <div data-testid="bar-chart" data-layout={layout ?? 'default'}>
       {children}
     </div>
@@ -65,9 +59,7 @@ describe('RetentionRateBarChart', () => {
   })
 
   it('wraps in card-lodge styling', () => {
-    const { container } = render(
-      <RetentionRateBarChart data={sampleData} title="Styled Chart" />
-    )
+    const { container } = render(<RetentionRateBarChart data={sampleData} title="Styled Chart" />)
     expect(container.querySelector('.card-lodge')).toBeInTheDocument()
   })
 

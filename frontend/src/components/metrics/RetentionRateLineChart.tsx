@@ -32,11 +32,7 @@ interface ChartItem {
   returnedCount: number
 }
 
-export function RetentionRateLineChart({
-  data,
-  title,
-  height = 250,
-}: RetentionRateLineChartProps) {
+export function RetentionRateLineChart({ data, title, height = 250 }: RetentionRateLineChartProps) {
   if (data.length === 0) {
     return (
       <div className="card-lodge p-4">

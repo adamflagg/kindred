@@ -62,10 +62,7 @@ function BunkHeatmapTable({ title, sessions, bunks, lookup }: BunkHeatmapTablePr
             <tr>
               <th className="bg-muted/50 text-muted-foreground sticky left-0 z-10 px-3 py-2 text-left font-medium" />
               {bunks.map((bunk) => (
-                <th
-                  key={bunk}
-                  className="text-muted-foreground px-2 py-2 text-center font-medium"
-                >
+                <th key={bunk} className="text-muted-foreground px-2 py-2 text-center font-medium">
                   {bunk}
                 </th>
               ))}
@@ -76,7 +73,7 @@ function BunkHeatmapTable({ title, sessions, bunks, lookup }: BunkHeatmapTablePr
               <tr key={session}>
                 <th
                   scope="row"
-                  className="bg-muted/50 text-foreground sticky left-0 z-10 whitespace-nowrap px-3 py-2 text-left text-xs font-semibold"
+                  className="bg-muted/50 text-foreground sticky left-0 z-10 px-3 py-2 text-left text-xs font-semibold whitespace-nowrap"
                 >
                   {session}
                 </th>
@@ -160,9 +157,7 @@ export function SessionBunkHeatmap({ data, sessionDateLookup = {} }: SessionBunk
 
     const catSessions: Record<string, string[]> = {}
     for (const [cat, sessSet] of sessionsByCategory) {
-      catSessions[cat] = [...sessSet].sort((a, b) =>
-        compareByDateThenName(a, b, sessionDateLookup),
-      )
+      catSessions[cat] = [...sessSet].sort((a, b) => compareByDateThenName(a, b, sessionDateLookup))
     }
 
     return {
@@ -177,9 +172,7 @@ export function SessionBunkHeatmap({ data, sessionDateLookup = {} }: SessionBunk
 
   return (
     <div className="card-lodge p-4">
-      <h3 className="text-foreground mb-4 text-sm font-medium">
-        Retention by Session + Bunk
-      </h3>
+      <h3 className="text-foreground mb-4 text-sm font-medium">Retention by Session + Bunk</h3>
 
       <div className="space-y-6">
         {CATEGORY_ORDER.filter((cat) => categoryBunks[cat]?.length > 0).map((cat) => (

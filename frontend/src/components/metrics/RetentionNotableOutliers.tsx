@@ -25,9 +25,7 @@ function OutlierSection({
 
   return (
     <div className="space-y-1">
-      <h4 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
-        {label}
-      </h4>
+      <h4 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">{label}</h4>
       <ul className="space-y-0.5">
         {outliers.slice(0, max).map((o) => {
           const rate = Math.round(o.retentionRate * 100)
@@ -38,7 +36,13 @@ function OutlierSection({
               <span className="text-muted-foreground">
                 {rate}% ({o.returnedCount}/{o.baseCount})
               </span>{' '}
-              <span className={isAbove ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}>
+              <span
+                className={
+                  isAbove
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : 'text-red-600 dark:text-red-400'
+                }
+              >
                 {isAbove ? '+' : ''}
                 {o.deviation}pp {isAbove ? 'above' : 'below'} avg
               </span>
@@ -65,11 +69,7 @@ export function RetentionNotableOutliers({
   synagogueOutliers,
   maxPerCategory = 5,
 }: RetentionNotableOutliersProps) {
-  if (
-    cityOutliers.length === 0 &&
-    schoolOutliers.length === 0 &&
-    synagogueOutliers.length === 0
-  ) {
+  if (cityOutliers.length === 0 && schoolOutliers.length === 0 && synagogueOutliers.length === 0) {
     return null
   }
 

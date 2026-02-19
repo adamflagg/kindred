@@ -76,7 +76,9 @@ export default function RetentionOverview() {
   // Pre-sort session data chronologically before converting to bar data
   const genderBars = genderToBarData(data.by_gender)
   const gradeBars = gradeToBarData(data.by_grade)
-  const sessionBars = sessionToBarData(sortSessionDataByDate(data.by_session ?? [], sessionDateLookup))
+  const sessionBars = sessionToBarData(
+    sortSessionDataByDate(data.by_session ?? [], sessionDateLookup)
+  )
   const summerYearsBars = summerYearsToBarData(data.by_summer_years)
   const firstSummerYearBars = firstSummerYearToBarData(data.by_first_summer_year)
   const cityBars = cityToBarData(data.by_city)

@@ -140,12 +140,7 @@ export function RetentionRateBarChart({
         <ResponsiveContainer width="100%" height={chartHeight}>
           <BarChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 60 }}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-            <XAxis
-              dataKey="name"
-              className="text-xs"
-              interval={0}
-              tick={RotatedTick}
-            />
+            <XAxis dataKey="name" className="text-xs" interval={0} tick={RotatedTick} />
             <YAxis
               type="number"
               domain={[0, 100]}

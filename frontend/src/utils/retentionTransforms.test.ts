@@ -39,7 +39,7 @@ describe('computeRetentionOutliers', () => {
   it('should filter out categories below minBaseCount', () => {
     const data: RetentionRateBarItem[] = [
       makeItem('Riverside', 0.95, 4), // high rate but only 4 campers (below default 8)
-      makeItem('Oak Valley', 0.90, 20), // +25pp, 20 campers
+      makeItem('Oak Valley', 0.9, 20), // +25pp, 20 campers
     ]
     const overallRate = 0.65
 
@@ -51,8 +51,8 @@ describe('computeRetentionOutliers', () => {
 
   it('should sort by impact descending (deviation * volume)', () => {
     const data: RetentionRateBarItem[] = [
-      makeItem('Riverside', 0.80, 20), // +15pp, impact = 15*20/100 = 3.0
-      makeItem('Hillcrest', 0.30, 15), // -35pp, impact = 35*15/100 = 5.25
+      makeItem('Riverside', 0.8, 20), // +15pp, impact = 15*20/100 = 3.0
+      makeItem('Hillcrest', 0.3, 15), // -35pp, impact = 35*15/100 = 5.25
     ]
     const overallRate = 0.65
 
@@ -80,8 +80,8 @@ describe('computeRetentionOutliers', () => {
 
   it('should respect custom minBaseCount option', () => {
     const data: RetentionRateBarItem[] = [
-      makeItem('Riverside', 0.90, 15), // 15 campers, +25pp, impact = 25*15/100 = 3.75
-      makeItem('Oak Valley', 0.90, 20), // 20 campers, +25pp, impact = 25*20/100 = 5.0
+      makeItem('Riverside', 0.9, 15), // 15 campers, +25pp, impact = 25*15/100 = 3.75
+      makeItem('Oak Valley', 0.9, 20), // 20 campers, +25pp, impact = 25*20/100 = 5.0
     ]
     const overallRate = 0.65
 
@@ -97,7 +97,7 @@ describe('computeRetentionOutliers', () => {
 
   it('should respect custom minDeviation option', () => {
     const data: RetentionRateBarItem[] = [
-      makeItem('Riverside', 0.80, 20), // +15pp, impact = 15*20/100 = 3.0
+      makeItem('Riverside', 0.8, 20), // +15pp, impact = 15*20/100 = 3.0
       makeItem('Oak Valley', 0.72, 50), // +7pp, impact = 7*50/100 = 3.5
     ]
     const overallRate = 0.65
@@ -124,7 +124,7 @@ describe('computeRetentionOutliers', () => {
 
   it('should produce negative deviation for below-average outliers', () => {
     const data: RetentionRateBarItem[] = [
-      makeItem('Hillcrest', 0.40, 15), // 40% - 65% = -25pp
+      makeItem('Hillcrest', 0.4, 15), // 40% - 65% = -25pp
     ]
     const overallRate = 0.65
 
@@ -142,7 +142,7 @@ describe('computeRetentionOutliers', () => {
 
     const outliers = computeRetentionOutliers(data, overallRate)
 
-    expect(outliers[0]!.impact).toBeCloseTo(14 * 238 / 100, 0)
+    expect(outliers[0]!.impact).toBeCloseTo((14 * 238) / 100, 0)
   })
 
   it('should include expectedCount on outliers', () => {

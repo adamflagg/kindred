@@ -74,7 +74,13 @@ describe('gradeToBarData', () => {
 describe('sessionToBarData', () => {
   it('maps session breakdown to bar data', () => {
     const input: RetentionBySession[] = [
-      { session_cm_id: 1001, session_name: 'Session 1', base_count: 80, returned_count: 60, retention_rate: 0.75 },
+      {
+        session_cm_id: 1001,
+        session_name: 'Session 1',
+        base_count: 80,
+        returned_count: 60,
+        retention_rate: 0.75,
+      },
     ]
     const result = sessionToBarData(input)
     expect(result[0]).toEqual({
@@ -183,7 +189,13 @@ describe('firstSummerYearToBarData', () => {
 describe('sessionBunkToBarData', () => {
   it('maps session+bunk breakdown to bar data', () => {
     const input: RetentionBySessionBunk[] = [
-      { session: 'Session 1', bunk: 'B-1', base_count: 12, returned_count: 9, retention_rate: 0.75 },
+      {
+        session: 'Session 1',
+        bunk: 'B-1',
+        base_count: 12,
+        returned_count: 9,
+        retention_rate: 0.75,
+      },
     ]
     const result = sessionBunkToBarData(input)
     expect(result[0]!.name).toBe('Session 1 / B-1')
@@ -322,9 +334,7 @@ describe('sessionFlowToSankeyData', () => {
   })
 
   it('source nodes come before target nodes', () => {
-    const input: SessionFlowItem[] = [
-      { source: 'Session 1', target: 'Session 2', value: 10 },
-    ]
+    const input: SessionFlowItem[] = [{ source: 'Session 1', target: 'Session 2', value: 10 }]
     const result = sessionFlowToSankeyData(input)
     expect(result).not.toBeNull()
 

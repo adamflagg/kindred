@@ -107,7 +107,17 @@ export function SessionFlowSankey({ data, title }: SessionFlowSankeyProps) {
             // Recharts Sankey passes link geometry props that don't match its own types
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             ((props: any) => {
-              const { sourceX, sourceY, sourceControlX, targetX, targetY, targetControlX, linkWidth, index, payload } = props as SankeyLinkProps
+              const {
+                sourceX,
+                sourceY,
+                sourceControlX,
+                targetX,
+                targetY,
+                targetControlX,
+                linkWidth,
+                index,
+                payload,
+              } = props as SankeyLinkProps
               const strokeColor = sourceColorMap.get(payload.source) ?? '#d1d5db'
 
               let opacity = 0.3
@@ -129,7 +139,13 @@ export function SessionFlowSankey({ data, title }: SessionFlowSankeyProps) {
               )
             }) as any
           }
-          node={({ x, y, width, height: h, index }: {
+          node={({
+            x,
+            y,
+            width,
+            height: h,
+            index,
+          }: {
             x: number
             y: number
             width: number

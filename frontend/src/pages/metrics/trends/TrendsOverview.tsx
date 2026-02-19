@@ -76,9 +76,7 @@ export default function TrendsOverview() {
     return (
       <div className="flex items-center justify-center py-12 text-red-600 dark:text-red-400">
         <AlertCircle className="mr-2 h-6 w-6" />
-        <span>
-          Failed to load historical data: {(error ?? trendsError)?.message}
-        </span>
+        <span>Failed to load historical data: {(error ?? trendsError)?.message}</span>
       </div>
     )
   }

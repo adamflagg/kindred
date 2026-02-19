@@ -7,10 +7,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import {
-  RetentionRateBarChart,
-  type RetentionRateBarItem,
-} from './RetentionRateBarChart'
+import { RetentionRateBarChart, type RetentionRateBarItem } from './RetentionRateBarChart'
 
 const sampleData: RetentionRateBarItem[] = [
   { name: 'Riverside', retentionRate: 0.75, baseCount: 40, returnedCount: 30 },

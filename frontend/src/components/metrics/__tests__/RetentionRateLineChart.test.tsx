@@ -45,9 +45,7 @@ describe('RetentionRateLineChart', () => {
   })
 
   it('wraps in card-lodge styling', () => {
-    const { container } = render(
-      <RetentionRateLineChart data={sampleData} title="Styled Chart" />
-    )
+    const { container } = render(<RetentionRateLineChart data={sampleData} title="Styled Chart" />)
     expect(container.querySelector('.card-lodge')).toBeInTheDocument()
   })
 
