@@ -32,10 +32,10 @@ describe('GeoLayerToggles', () => {
     expect(getCheckboxes()).toHaveLength(4)
   })
 
-  it('renders all 7 checkboxes when isAdmin is true', () => {
+  it('renders all 6 checkboxes when isAdmin is true', () => {
     render(<GeoLayerToggles {...defaultProps} isAdmin={true} />)
-    // 3 layers + 1 region + 3 admin (sources, unmatched, gaps) = 7
-    expect(getCheckboxes()).toHaveLength(7)
+    // 3 layers + 1 region + 2 admin (sources, gaps) = 6
+    expect(getCheckboxes()).toHaveLength(6)
   })
 
   it('renders layer labels with counts', () => {
@@ -54,7 +54,6 @@ describe('GeoLayerToggles', () => {
 
     expect(screen.getByText(/Region zones/)).toBeInTheDocument()
     expect(screen.queryByText(/Show sources/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/Unmatched sources/)).not.toBeInTheDocument()
     expect(screen.queryByText(/Show gaps/)).not.toBeInTheDocument()
   })
 
@@ -62,7 +61,6 @@ describe('GeoLayerToggles', () => {
     render(<GeoLayerToggles {...defaultProps} isAdmin={true} />)
 
     expect(screen.getByText(/Show sources/)).toBeInTheDocument()
-    expect(screen.getByText(/Unmatched sources/)).toBeInTheDocument()
     expect(screen.getByText(/Show gaps/)).toBeInTheDocument()
   })
 
@@ -114,23 +112,6 @@ describe('GeoLayerToggles', () => {
     expect(boxes[4]?.checked).toBe(true) // sources
   })
 
-  it('calls onToggleUnmatched when unmatched checkbox is clicked', () => {
-    const onToggleUnmatched = vi.fn()
-    render(
-      <GeoLayerToggles
-        {...defaultProps}
-        isAdmin={true}
-        showUnmatched={false}
-        onToggleUnmatched={onToggleUnmatched}
-      />
-    )
-
-    const boxes = getCheckboxes()
-    // 3 layers + region + sources + unmatched + gaps = index 5
-    fireEvent.click(boxes[5] as HTMLElement)
-    expect(onToggleUnmatched).toHaveBeenCalledOnce()
-  })
-
   it('calls onToggleGaps when gaps checkbox is clicked', () => {
     const onToggleGaps = vi.fn()
     render(
@@ -143,8 +124,8 @@ describe('GeoLayerToggles', () => {
     )
 
     const boxes = getCheckboxes()
-    // 3 layers + region + sources + unmatched + gaps = index 6
-    fireEvent.click(boxes[6] as HTMLElement)
+    // 3 layers + region + sources + gaps = index 5
+    fireEvent.click(boxes[5] as HTMLElement)
     expect(onToggleGaps).toHaveBeenCalledOnce()
   })
 })

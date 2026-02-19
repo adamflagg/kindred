@@ -11,7 +11,8 @@ import type { GeoDataItem } from './GeoMap'
 import type { GeoCategory } from './GeoCategoryTabs'
 import type { DrilldownFilter } from '../../../types/metrics'
 import type { SourceMapping } from '../../../hooks/useNormalizedMappings'
-import { US_CITY_COORDS, US_CITY_STATES } from '../../../data/cityGeo'
+import { US_CITY_STATES } from '../../../data/cityGeo'
+import { getLocationCoords } from '../../../data/geoCoords'
 
 interface GeoDetailListProps {
   data: GeoDataItem[]
@@ -26,8 +27,8 @@ interface GeoDetailListProps {
   showSources?: boolean
   /** Source mappings from normalized_mappings table (grouped by normalized_value) */
   sourceMappings?: Map<string, SourceMapping[]> | undefined
-  /** Whether to show unmatched (non-canonical) indicators for cities */
-  showUnmatched?: boolean
+  /** Whether to show gap indicators for items without coordinates */
+  showGaps?: boolean
 }
 
 const CATEGORY_LABELS: Record<GeoCategory, string> = {
@@ -51,7 +52,7 @@ export function GeoDetailList({
   initialLimit = 15,
   showSources = false,
   sourceMappings,
-  showUnmatched = false,
+  showGaps = false,
 }: GeoDetailListProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [showAll, setShowAll] = useState(false)
@@ -150,7 +151,7 @@ export function GeoDetailList({
                                 </span>
                               )}
                             </span>
-                            {showUnmatched && category === 'city' && !US_CITY_COORDS[item.name] && (
+                            {showGaps && !getLocationCoords(category, item.name) && (
                               <span
                                 data-unmatched
                                 className="h-2 w-2 rounded-full bg-amber-400"

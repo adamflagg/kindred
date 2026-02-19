@@ -55,40 +55,64 @@ describe('GeoDetailList', () => {
     expect(screen.queryByText(/Riverside Elementary,/)).not.toBeInTheDocument()
   })
 
-  it('shows unmatched indicator for cities not in US_CITY_COORDS when showUnmatched is true', () => {
-    const itemsWithUnmatched: GeoDataItem[] = [
+  it('shows gap indicator for cities without coords when showGaps is true', () => {
+    const itemsWithGaps: GeoDataItem[] = [
       { name: 'San Francisco', count: 25, percentage: 30 },
-      { name: 'Harduf', count: 2, percentage: 2 }, // International, not in US cities
+      { name: 'Harduf', count: 2, percentage: 2 }, // International, not in coord lookup
     ]
 
-    render(<GeoDetailList data={itemsWithUnmatched} category="city" showUnmatched={true} />)
+    render(<GeoDetailList data={itemsWithGaps} category="city" showGaps={true} />)
 
     fireEvent.click(screen.getByText('Cities'))
 
-    // Harduf should have an unmatched indicator (amber dot or similar)
+    // Harduf should have a gap indicator (amber dot)
     // San Francisco should not
     const rows = screen.getAllByRole('row')
-    // Find the Harduf row - it should contain the unmatched indicator
-    const londonRow = rows.find((row) => row.textContent?.includes('Harduf'))
-    expect(londonRow).toBeDefined()
-    expect(londonRow?.querySelector('[data-unmatched]')).toBeTruthy()
+    const hardufRow = rows.find((row) => row.textContent?.includes('Harduf'))
+    expect(hardufRow).toBeDefined()
+    expect(hardufRow?.querySelector('[data-unmatched]')).toBeTruthy()
 
-    // San Francisco row should NOT have the unmatched indicator
     const sfRow = rows.find((row) => row.textContent?.includes('San Francisco'))
     expect(sfRow).toBeDefined()
     expect(sfRow?.querySelector('[data-unmatched]')).toBeFalsy()
   })
 
-  it('does not show unmatched indicator when showUnmatched is false', () => {
-    const itemsWithUnmatched: GeoDataItem[] = [{ name: 'Harduf', count: 2, percentage: 2 }]
+  it('does not show gap indicator when showGaps is false', () => {
+    const itemsWithGaps: GeoDataItem[] = [{ name: 'Harduf', count: 2, percentage: 2 }]
 
-    render(<GeoDetailList data={itemsWithUnmatched} category="city" showUnmatched={false} />)
+    render(<GeoDetailList data={itemsWithGaps} category="city" showGaps={false} />)
 
     fireEvent.click(screen.getByText('Cities'))
 
     const rows = screen.getAllByRole('row')
-    const londonRow = rows.find((row) => row.textContent?.includes('Harduf'))
-    expect(londonRow?.querySelector('[data-unmatched]')).toBeFalsy()
+    const hardufRow = rows.find((row) => row.textContent?.includes('Harduf'))
+    expect(hardufRow?.querySelector('[data-unmatched]')).toBeFalsy()
+  })
+
+  it('shows gap indicator for schools without coords when showGaps is true', () => {
+    const schoolItems: GeoDataItem[] = [{ name: 'Unmapped Academy', count: 5, percentage: 10 }]
+
+    render(<GeoDetailList data={schoolItems} category="school" showGaps={true} />)
+
+    fireEvent.click(screen.getByText('Schools'))
+
+    const rows = screen.getAllByRole('row')
+    const row = rows.find((row) => row.textContent?.includes('Unmapped Academy'))
+    expect(row).toBeDefined()
+    expect(row?.querySelector('[data-unmatched]')).toBeTruthy()
+  })
+
+  it('shows gap indicator for synagogues without coords when showGaps is true', () => {
+    const synItems: GeoDataItem[] = [{ name: 'Unmapped Temple', count: 3, percentage: 8 }]
+
+    render(<GeoDetailList data={synItems} category="synagogue" showGaps={true} />)
+
+    fireEvent.click(screen.getByText('Synagogues'))
+
+    const rows = screen.getAllByRole('row')
+    const row = rows.find((row) => row.textContent?.includes('Unmapped Temple'))
+    expect(row).toBeDefined()
+    expect(row?.querySelector('[data-unmatched]')).toBeTruthy()
   })
 
   it('triggers drilldown on row click', () => {

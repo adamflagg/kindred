@@ -48,7 +48,6 @@ export default function GeoAnalysis() {
   )
   const [showRegions, setShowRegions] = useState(true)
   const [showSources, setShowSources] = useState(false)
-  const [showUnmatched, setShowUnmatched] = useState(false)
   const [showGaps, setShowGaps] = useState(false)
   const [selectedItem, setSelectedItem] = useState<string | null>(null)
 
@@ -247,8 +246,6 @@ export default function GeoAnalysis() {
             onToggleRegions={() => setShowRegions((v) => !v)}
             showSources={showSources}
             onToggleSources={() => setShowSources((v) => !v)}
-            showUnmatched={showUnmatched}
-            onToggleUnmatched={() => setShowUnmatched((v) => !v)}
             showGaps={showGaps}
             onToggleGaps={() => setShowGaps((v) => !v)}
             isAdmin={isAdmin}
@@ -277,7 +274,7 @@ export default function GeoAnalysis() {
                 onDrilldown={setFilter}
                 showSources={showSources}
                 sourceMappings={sourceMappingsFor.city}
-                showUnmatched={showUnmatched}
+                showGaps={showGaps}
               />
             )}
             {activeLayers.has('school') && geoData.school.length > 0 && (
@@ -289,6 +286,7 @@ export default function GeoAnalysis() {
                 onDrilldown={setFilter}
                 showSources={showSources}
                 sourceMappings={sourceMappingsFor.school}
+                showGaps={showGaps}
               />
             )}
             {activeLayers.has('synagogue') && geoData.synagogue.length > 0 && (
@@ -300,6 +298,7 @@ export default function GeoAnalysis() {
                 onDrilldown={setFilter}
                 showSources={showSources}
                 sourceMappings={sourceMappingsFor.synagogue}
+                showGaps={showGaps}
               />
             )}
           </div>
