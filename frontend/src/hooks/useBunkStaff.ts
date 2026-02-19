@@ -11,34 +11,17 @@
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
 import { queryKeys, syncDataOptions } from '../utils/queryKeys'
+import type {
+  StaffResponse,
+  PersonsResponse,
+  BunkAssignmentsResponse,
+  CampSessionsResponse,
+  BunksResponse,
+} from '../types/pocketbase-types'
 
 export interface BunkStaffInfo {
   name: string
   personId: string
-}
-
-interface ExpandedPerson {
-  preferred_name?: string
-  first_name?: string
-  last_name?: string
-  cm_id?: number
-}
-
-interface StaffExpand {
-  person?: ExpandedPerson
-}
-
-interface AssignmentExpandedSession {
-  name?: string
-}
-
-interface AssignmentExpandedBunk {
-  name?: string
-}
-
-interface AssignmentExpand {
-  session?: AssignmentExpandedSession
-  bunk?: AssignmentExpandedBunk
 }
 
 export function useBunkStaff(year: number) {
@@ -46,17 +29,19 @@ export function useBunkStaff(year: number) {
     queryKey: queryKeys.bunkStaff(year),
     queryFn: async () => {
       // Step 1: Fetch bunk staff with expanded person for display names
-      const staffRecords = await pb.collection('staff').getFullList({
-        filter: `bunk_staff = true && year = ${year}`,
-        expand: 'person',
-      })
+      const staffRecords = await pb
+        .collection('staff')
+        .getFullList<StaffResponse<{ person?: PersonsResponse }>>({
+          filter: `bunk_staff = true && year = ${year}`,
+          expand: 'person',
+        })
 
       // Build person PB ID → display name + CM ID
       const personPBIDToInfo = new Map<string, { name: string; cmId: string }>()
       const staffPersonPBIDs: string[] = []
 
       for (const record of staffRecords) {
-        const expanded = record.expand as StaffExpand | undefined
+        const expanded = record.expand
         if (!expanded?.person) continue
 
         const person = expanded.person
@@ -64,7 +49,7 @@ export function useBunkStaff(year: number) {
           `${person.preferred_name || person.first_name || ''} ${person.last_name || ''}`.trim()
         if (!displayName) continue
 
-        const personPBID = record['person'] as string
+        const personPBID = record.person
         staffPersonPBIDs.push(personPBID)
         personPBIDToInfo.set(personPBID, {
           name: displayName,
@@ -79,19 +64,23 @@ export function useBunkStaff(year: number) {
       // Step 2: Fetch bunk_assignments for those staff persons
       // Build filter: year = X && (person = "id1" || person = "id2" || ...)
       const personFilter = staffPersonPBIDs.map((id) => `person = "${id}"`).join(' || ')
-      const assignmentRecords = await pb.collection('bunk_assignments').getFullList({
-        filter: `year = ${year} && (${personFilter})`,
-        expand: 'session,bunk',
-      })
+      const assignmentRecords = await pb
+        .collection('bunk_assignments')
+        .getFullList<
+          BunkAssignmentsResponse<{ session?: CampSessionsResponse; bunk?: BunksResponse }>
+        >({
+          filter: `year = ${year} && (${personFilter})`,
+          expand: 'session,bunk',
+        })
 
       // Step 3: Build Map<"sessionName|bunkName", BunkStaffInfo[]>
       const bunkStaffMap = new Map<string, BunkStaffInfo[]>()
 
       for (const assignment of assignmentRecords) {
-        const expanded = assignment.expand as AssignmentExpand | undefined
+        const expanded = assignment.expand
         const sessionName = expanded?.session?.name
         const bunkName = expanded?.bunk?.name
-        const personPBID = assignment['person'] as string
+        const personPBID = assignment.person
 
         if (!sessionName || !bunkName) continue
 

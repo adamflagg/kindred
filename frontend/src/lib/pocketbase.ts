@@ -39,18 +39,6 @@ export async function authenticateBypassMode(): Promise<boolean> {
   }
 }
 
-// Define specific collection types for better typing
-export interface SolverConfig extends RecordModel {
-  config_key: string
-  config_value: unknown
-  description?: string
-  category?: string
-  data_type?: string
-  min_value?: number
-  max_value?: number
-  default_value?: unknown
-}
-
 export interface AdminSetting extends RecordModel {
   key: string
   value: unknown

@@ -12,6 +12,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../../lib/pocketbase'
+import type { OriginalBunkRequestsResponse, PersonsResponse } from '../../types/pocketbase-types'
 import type { OriginalBunkData } from './types'
 
 export interface UseOriginalBunkDataResult {
@@ -38,10 +39,12 @@ export function useOriginalBunkData(
       try {
         // Filter by relation field and year
         const filter = `requester.cm_id = ${personCmId} && year = ${currentYear}`
-        const records = await pb.collection('original_bunk_requests').getList(1, 100, {
-          filter,
-          expand: 'requester',
-        })
+        const records = await pb
+          .collection('original_bunk_requests')
+          .getList<OriginalBunkRequestsResponse<{ requester?: PersonsResponse }>>(1, 100, {
+            filter,
+            expand: 'requester',
+          })
 
         if (records.items.length === 0) {
           return null
@@ -53,10 +56,10 @@ export function useOriginalBunkData(
         }
 
         for (const record of records.items) {
-          const fieldName = record.field as string
-          const content = record.content as string
-          const updated = record.updated as string | undefined
-          const processed = record.processed as string | undefined
+          const fieldName = record.field
+          const content = record.content
+          const updated = record.updated
+          const processed = record.processed
 
           switch (fieldName) {
             case 'bunk_with':
@@ -89,10 +92,7 @@ export function useOriginalBunkData(
 
         // Get first/last name from expanded requester if available
         const firstRecord = records.items[0]
-        const expandData = firstRecord?.expand as Record<string, unknown> | undefined
-        const requester = expandData?.['requester'] as
-          | { first_name?: string; last_name?: string }
-          | undefined
+        const requester = firstRecord?.expand?.requester
         if (requester?.first_name) {
           result.first_name = requester.first_name
         }

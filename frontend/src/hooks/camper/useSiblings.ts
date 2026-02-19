@@ -13,14 +13,6 @@ import type {
   BunksResponse,
   CampSessionsResponse,
 } from '../../types/pocketbase-types'
-
-interface AttendeeExpand {
-  session?: CampSessionsResponse
-}
-
-interface AssignmentExpand {
-  bunk?: BunksResponse
-}
 import type { SiblingWithEnrollment } from './types'
 
 export interface UseSiblingsResult {
@@ -71,11 +63,13 @@ export function useSiblings(
           const enrollmentFilter = `person_id = ${siblingPerson.cm_id} && year = ${currentYear} && status = "enrolled" && (${sessionTypeFilter})`
 
           try {
-            const attendees = await pb.collection<AttendeesResponse>('attendees').getFullList({
-              filter: enrollmentFilter,
-              expand: 'session',
-              $autoCancel: false,
-            })
+            const attendees = await pb
+              .collection('attendees')
+              .getFullList<AttendeesResponse<{ session?: CampSessionsResponse }>>({
+                filter: enrollmentFilter,
+                expand: 'session',
+                $autoCancel: false,
+              })
 
             if (attendees.length === 0) {
               return null // Not enrolled
@@ -83,11 +77,9 @@ export function useSiblings(
 
             // Get the first valid enrollment (prefer main session)
             const sortedAttendees = attendees.sort((a, b) => {
-              const aType =
-                (a.expand as AttendeeExpand | undefined)?.session?.session_type || 'unknown'
+              const aType = a.expand?.session?.session_type || 'unknown'
 
-              const bType =
-                (b.expand as AttendeeExpand | undefined)?.session?.session_type || 'unknown'
+              const bType = b.expand?.session?.session_type || 'unknown'
               const typeOrder: Record<string, number> = {
                 main: 1,
                 embedded: 2,
@@ -100,23 +92,22 @@ export function useSiblings(
             if (!primaryAttendee) {
               return null
             }
-            const session = (primaryAttendee.expand as AttendeeExpand | undefined)?.session
+            const session = primaryAttendee.expand?.session
 
             // Try to get bunk assignment
             let bunkName: string | null = null
             if (session) {
               try {
                 const assignments = await pb
-                  .collection<BunkAssignmentsResponse>('bunk_assignments')
-                  .getFullList({
+                  .collection('bunk_assignments')
+                  .getFullList<BunkAssignmentsResponse<{ bunk?: BunksResponse }>>({
                     filter: `person = "${siblingPerson?.id || ''}" && session = "${session?.id || ''}" && year = ${currentYear}`,
                     expand: 'bunk',
                     $autoCancel: false,
                   })
 
                 if (assignments.length > 0 && assignments[0]) {
-                  bunkName =
-                    (assignments[0].expand as AssignmentExpand | undefined)?.bunk?.name || null
+                  bunkName = assignments[0].expand?.bunk?.name || null
                 }
               } catch {
                 // Assignment fetch failed, continue without bunk
