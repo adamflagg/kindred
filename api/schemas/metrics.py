@@ -227,15 +227,6 @@ class RetentionBySynagogue(BaseModel):
     retention_rate: float = Field(description="Retention rate (0-1)")
 
 
-class RetentionByFirstYear(BaseModel):
-    """Retention metrics by first year attended."""
-
-    first_year: int = Field(description="Year camper first attended camp")
-    base_count: int = Field(description="Count in base year")
-    returned_count: int = Field(description="Count that returned in compare year")
-    retention_rate: float = Field(description="Retention rate (0-1)")
-
-
 class RetentionBySessionBunk(BaseModel):
     """Retention metrics by session+bunk combination."""
 
@@ -311,13 +302,9 @@ class RetentionMetricsResponse(BaseModel):
     by_grade: list[RetentionByGrade] = Field(description="Retention by grade")
     by_session: list[RetentionBySession] = Field(description="Retention by base year session")
     by_years_at_camp: list[RetentionByYearsAtCamp] = Field(description="Retention by years at camp")
-    # New demographic breakdowns (from camper_history)
     by_school: list[RetentionBySchool] = Field(default_factory=list, description="Retention by school")
     by_city: list[RetentionByCity] = Field(default_factory=list, description="Retention by city")
     by_synagogue: list[RetentionBySynagogue] = Field(default_factory=list, description="Retention by synagogue")
-    by_first_year: list[RetentionByFirstYear] = Field(
-        default_factory=list, description="Retention by first year attended"
-    )
     by_session_bunk: list[RetentionBySessionBunk] = Field(
         default_factory=list, description="Retention by session+bunk combination"
     )

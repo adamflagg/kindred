@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Any
 from api.schemas.metrics import (
     RetentionByCity,
     RetentionByFirstSummerYear,
-    RetentionByFirstYear,
     RetentionByGender,
     RetentionByGrade,
     RetentionByPriorSession,
@@ -29,7 +28,6 @@ from api.utils.session_metrics import DISPLAY_SESSION_TYPES, SUMMER_PROGRAM_SESS
 from .breakdown_calculator import compute_breakdown, safe_rate
 from .extractors import (
     extract_city,
-    extract_first_year_attended,
     extract_gender,
     extract_grade,
     extract_school,
@@ -77,7 +75,7 @@ class RetentionService:
             attendees_base,
             attendees_compare,
             persons_base,
-            camper_history_base,
+            bunk_assignments_base,
             sessions_base_all,
             sessions_compare_filtered,
             sessions_compare_all,
@@ -85,7 +83,7 @@ class RetentionService:
             self.repo.fetch_attendees(base_year),
             self.repo.fetch_attendees(compare_year),
             self.repo.fetch_persons(base_year),
-            self.repo.fetch_camper_history(base_year, session_types=session_types),
+            self.repo.fetch_bunk_assignments(base_year),
             self.repo.fetch_sessions(base_year, None),
             self.repo.fetch_sessions(compare_year, session_types),
             self.repo.fetch_sessions(compare_year, None),
@@ -140,13 +138,11 @@ class RetentionService:
             person_ids_base, returned_ids, persons_base, extract_years_at_camp, RetentionByYearsAtCamp, "years"
         )
 
-        # Demographic breakdowns from camper_history
-        history_by_person = self.repo.build_history_by_person(camper_history_base)
-
+        # Demographic breakdowns from persons' normalized fields
         by_school = self._build_retention_breakdown(
             person_ids_base,
             returned_ids,
-            history_by_person,
+            persons_base,
             extract_school,
             RetentionBySchool,
             "school",
@@ -157,7 +153,7 @@ class RetentionService:
         by_city = self._build_retention_breakdown(
             person_ids_base,
             returned_ids,
-            history_by_person,
+            persons_base,
             extract_city,
             RetentionByCity,
             "city",
@@ -168,7 +164,7 @@ class RetentionService:
         by_synagogue = self._build_retention_breakdown(
             person_ids_base,
             returned_ids,
-            history_by_person,
+            persons_base,
             extract_synagogue,
             RetentionBySynagogue,
             "synagogue",
@@ -176,18 +172,10 @@ class RetentionService:
             filter_empty=True,
         )
 
-        by_first_year = self._build_retention_breakdown(
-            person_ids_base,
-            returned_ids,
-            history_by_person,
-            extract_first_year_attended,
-            RetentionByFirstYear,
-            "first_year",
-            filter_none=True,
+        # Session-bunk breakdown from bunk_assignments
+        by_session_bunk = self._build_session_bunk_breakdown(
+            person_ids_base, returned_ids, bunk_assignments_base, sessions_base_all
         )
-
-        # V2: Pass raw records for session-bunk breakdown (one record per session)
-        by_session_bunk = self._build_session_bunk_breakdown(person_ids_base, returned_ids, camper_history_base)
 
         # Summer enrollment breakdowns (calculated from attendees history)
         enrollment_history = await self.repo.fetch_summer_enrollment_history(person_ids_base, base_year)
@@ -230,7 +218,6 @@ class RetentionService:
             by_school=by_school,
             by_city=by_city,
             by_synagogue=by_synagogue,
-            by_first_year=by_first_year,
             by_session_bunk=by_session_bunk,
             by_summer_years=by_summer_years,
             by_first_summer_year=by_first_summer_year,
@@ -593,35 +580,56 @@ class RetentionService:
         self,
         person_ids: set[int],
         returned_ids: set[int],
-        camper_history_records: list[Any],
+        bunk_assignments: list[Any],
+        sessions: dict[int, Any],
     ) -> list[RetentionBySessionBunk]:
-        """Build session+bunk breakdown from camper_history records.
+        """Build session+bunk breakdown from bunk_assignments records.
 
-        V2: Each record has single session_name and bunk_name (no comma parsing).
-        Iterate over all records to count session-bunk combinations.
+        Each bunk_assignment has expand with person, session, bunk.
+        AG sessions are merged into their parent session name.
 
         Args:
             person_ids: Set of person IDs in base year.
             returned_ids: Set of person IDs who returned.
-            camper_history_records: List of camper_history records.
+            bunk_assignments: List of bunk_assignment records with expansion.
+            sessions: Dict of sessions keyed by cm_id for AG parent lookup.
 
         Returns:
             List of all RetentionBySessionBunk models sorted by base count descending.
         """
         session_bunk_stats: dict[tuple[str, str], dict[str, int]] = {}
 
-        for record in camper_history_records:
-            pid = getattr(record, "person_id", None)
+        for record in bunk_assignments:
+            expand = getattr(record, "expand", {}) or {}
+
+            # Extract person cm_id
+            person_data = expand.get("person") if isinstance(expand, dict) else getattr(expand, "person", None)
+            pid = getattr(person_data, "cm_id", None) if person_data else None
             if pid is None or int(pid) not in person_ids:
                 continue
             pid = int(pid)
 
-            # V2: Direct field access (single values per record)
-            session = getattr(record, "session_name", "") or ""
-            bunk = getattr(record, "bunk_name", "") or ""
+            # Extract session info
+            session_data = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            if not session_data:
+                continue
+            session_name = getattr(session_data, "name", "") or ""
+            session_type = getattr(session_data, "session_type", None)
 
-            if session and bunk:
-                key = (session, bunk)
+            # AG merging: use parent session name
+            if session_type == "ag":
+                parent_id = getattr(session_data, "parent_id", None)
+                if parent_id:
+                    parent_session = sessions.get(int(parent_id))
+                    if parent_session:
+                        session_name = getattr(parent_session, "name", session_name)
+
+            # Extract bunk name
+            bunk_data = expand.get("bunk") if isinstance(expand, dict) else getattr(expand, "bunk", None)
+            bunk_name = getattr(bunk_data, "name", "") if bunk_data else ""
+
+            if session_name and bunk_name:
+                key = (session_name, bunk_name)
                 if key not in session_bunk_stats:
                     session_bunk_stats[key] = {"base": 0, "returned": 0}
                 session_bunk_stats[key]["base"] += 1
