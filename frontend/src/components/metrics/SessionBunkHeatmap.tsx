@@ -6,12 +6,15 @@
  * Cells show retention percentages, color-coded:
  * Green (>=60%), amber (40-60%), red (<40%).
  * Missing session-bunk combos show "—" with neutral background.
+ * Hovering any data cell shows retention stats; cells with staff also show counselors.
  */
 
-import { useMemo } from 'react'
+import { useMemo, useState, useCallback } from 'react'
 import type { RetentionBySessionBunk } from '../../types/metrics'
 import type { SessionDateLookup } from '../../utils/sessionUtils'
 import { compareByDateThenName } from '../../utils/sessionUtils'
+import type { BunkStaffInfo } from '../../hooks/useBunkStaff'
+import { BunkCellTooltip } from './BunkStaffTooltip'
 
 function getCellColor(rate: number): string {
   const pct = Math.round(rate * 100)
@@ -50,9 +53,36 @@ interface BunkHeatmapTableProps {
   sessions: string[]
   bunks: string[]
   lookup: Map<string, RetentionBySessionBunk>
+  bunkStaff?: Map<string, BunkStaffInfo[]> | undefined
 }
 
-function BunkHeatmapTable({ title, sessions, bunks, lookup }: BunkHeatmapTableProps) {
+function BunkHeatmapTable({ title, sessions, bunks, lookup, bunkStaff }: BunkHeatmapTableProps) {
+  const [hoveredCell, setHoveredCell] = useState<{ session: string; bunk: string } | null>(null)
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
+
+  const staffMap = bunkStaff instanceof Map ? bunkStaff : undefined
+
+  const handleMouseEnter = useCallback((session: string, bunk: string, e: React.MouseEvent) => {
+    setHoveredCell({ session, bunk })
+    setTooltipPos({ x: e.clientX + 10, y: e.clientY + 10 })
+  }, [])
+
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (!hoveredCell) return
+      setTooltipPos({ x: e.clientX + 10, y: e.clientY + 10 })
+    },
+    [hoveredCell]
+  )
+
+  const handleMouseLeave = useCallback(() => {
+    setHoveredCell(null)
+  }, [])
+
+  const hoveredItem = hoveredCell ? lookup.get(`${hoveredCell.session}|${hoveredCell.bunk}`) : null
+  const hoveredStaff =
+    hoveredCell && staffMap ? staffMap.get(`${hoveredCell.session}|${hoveredCell.bunk}`) : undefined
+
   return (
     <div data-section>
       <h4 className="text-muted-foreground mb-2 text-sm font-semibold">{title}</h4>
@@ -79,6 +109,7 @@ function BunkHeatmapTable({ title, sessions, bunks, lookup }: BunkHeatmapTablePr
                 </th>
                 {bunks.map((bunk) => {
                   const item = lookup.get(`${session}|${bunk}`)
+                  const hasStaff = staffMap?.has(`${session}|${bunk}`)
                   if (!item) {
                     return (
                       <td
@@ -91,12 +122,19 @@ function BunkHeatmapTable({ title, sessions, bunks, lookup }: BunkHeatmapTablePr
                     )
                   }
                   const pct = Math.round(item.retention_rate * 100)
+                  const cellClass = [
+                    'px-2 py-2 text-center font-medium',
+                    getCellColor(item.retention_rate),
+                    hasStaff ? 'cursor-help' : 'cursor-default',
+                  ].join(' ')
                   return (
                     <td
                       key={bunk}
                       role="cell"
-                      title={`${item.returned_count} of ${item.base_count} returned (${pct}%)`}
-                      className={`px-2 py-2 text-center font-medium ${getCellColor(item.retention_rate)}`}
+                      className={cellClass}
+                      onMouseEnter={(e) => handleMouseEnter(session, bunk, e)}
+                      onMouseMove={handleMouseMove}
+                      onMouseLeave={handleMouseLeave}
                     >
                       {pct}%
                     </td>
@@ -107,6 +145,19 @@ function BunkHeatmapTable({ title, sessions, bunks, lookup }: BunkHeatmapTablePr
           </tbody>
         </table>
       </div>
+      {hoveredCell && hoveredItem && (
+        <BunkCellTooltip
+          bunkName={hoveredCell.bunk}
+          retention={{
+            returnedCount: hoveredItem.returned_count,
+            baseCount: hoveredItem.base_count,
+            rate: hoveredItem.retention_rate,
+          }}
+          staff={hoveredStaff}
+          isVisible={true}
+          position={tooltipPos}
+        />
+      )}
     </div>
   )
 }
@@ -114,9 +165,14 @@ function BunkHeatmapTable({ title, sessions, bunks, lookup }: BunkHeatmapTablePr
 interface SessionBunkHeatmapProps {
   data: RetentionBySessionBunk[]
   sessionDateLookup?: SessionDateLookup
+  bunkStaff?: Map<string, BunkStaffInfo[]> | undefined
 }
 
-export function SessionBunkHeatmap({ data, sessionDateLookup = {} }: SessionBunkHeatmapProps) {
+export function SessionBunkHeatmap({
+  data,
+  sessionDateLookup = {},
+  bunkStaff,
+}: SessionBunkHeatmapProps) {
   const { categoryBunks, categorySessions, lookup } = useMemo(() => {
     if (!data.length)
       return {
@@ -182,6 +238,7 @@ export function SessionBunkHeatmap({ data, sessionDateLookup = {} }: SessionBunk
             sessions={categorySessions[cat]}
             bunks={categoryBunks[cat]}
             lookup={lookup}
+            bunkStaff={bunkStaff}
           />
         ))}
       </div>

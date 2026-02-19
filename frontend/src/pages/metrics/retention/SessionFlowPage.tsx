@@ -9,6 +9,7 @@ import { useMemo } from 'react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useRetentionMetrics } from '../../../hooks/useMetrics'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
+import { useBunkStaff } from '../../../hooks/useBunkStaff'
 import { sessionFlowToSankeyData } from '../../../utils/retentionTransforms'
 import { buildSessionDateLookup } from '../../../utils/sessionUtils'
 import { SessionFlowSankey } from '../../../components/metrics/SessionFlowSankey'
@@ -28,6 +29,7 @@ export default function SessionFlowPage() {
     selectedSessionCmId ?? undefined
   )
 
+  const { data: bunkStaffData } = useBunkStaff(priorYear)
   const sessionDateLookup = useMemo(() => buildSessionDateLookup(campSessions), [campSessions])
 
   if (isLoading) {
@@ -70,7 +72,11 @@ export default function SessionFlowPage() {
 
       {/* Bunk heatmap (hidden in quest mode - quests don't have bunks) */}
       {viewMode !== 'quests' && data.by_session_bunk && (
-        <SessionBunkHeatmap data={data.by_session_bunk} sessionDateLookup={sessionDateLookup} />
+        <SessionBunkHeatmap
+          data={data.by_session_bunk}
+          sessionDateLookup={sessionDateLookup}
+          bunkStaff={bunkStaffData}
+        />
       )}
     </div>
   )
