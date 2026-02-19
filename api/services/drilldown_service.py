@@ -304,7 +304,7 @@ class DrilldownService:
                 try:
                     target_session_id = int(breakdown_value)
                     # Also match AG sessions that have this as parent
-                    ag_ids = self._find_ag_sessions_for_session(sessions, target_session_id)
+                    ag_ids = find_ag_sessions_for_parent(sessions, target_session_id)
                     if attendee_session_cm_id == target_session_id or attendee_session_cm_id in ag_ids:
                         filtered.append(a)
                 except ValueError:
@@ -376,24 +376,6 @@ class DrilldownService:
                         filtered.append(a)
 
         return filtered
-
-    def _find_ag_sessions_for_session(self, sessions: dict[int, Any], session_cm_id: int) -> set[int]:
-        """Find AG sessions that have the given session as parent.
-
-        Args:
-            sessions: Dictionary of sessions by cm_id.
-            session_cm_id: The session cm_id to find AG children for.
-
-        Returns:
-            Set of AG session cm_ids.
-        """
-        ag_ids: set[int] = set()
-        for sid, session in sessions.items():
-            if getattr(session, "session_type", None) == "ag":
-                parent_id = getattr(session, "parent_id", None)
-                if parent_id == session_cm_id:
-                    ag_ids.add(sid)
-        return ag_ids
 
     async def _handle_retention_session_breakdown(
         self,

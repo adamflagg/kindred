@@ -251,13 +251,13 @@ class WaitlistService:
 
         grade_stats = compute_registration_breakdown(person_ids, persons, extract_grade)
         by_grade = [
-            GradeBreakdown(grade=g, count=s.count, percentage=calculate_percentage(s.count, total))
+            GradeBreakdown(grade=g, count=s.count, percentage=round(calculate_percentage(s.count, total), 1))
             for g, s in sorted(grade_stats.items(), key=lambda x: (x[0] is None, x[0]))
         ]
 
         gender_stats = compute_registration_breakdown(person_ids, persons, extract_gender)
         by_gender = [
-            GenderBreakdown(gender=g, count=s.count, percentage=calculate_percentage(s.count, total))
+            GenderBreakdown(gender=g, count=s.count, percentage=round(calculate_percentage(s.count, total), 1))
             for g, s in sorted(gender_stats.items())
         ]
 
