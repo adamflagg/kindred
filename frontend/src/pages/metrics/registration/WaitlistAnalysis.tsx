@@ -9,15 +9,7 @@
  */
 
 import { useMemo } from 'react'
-import {
-  Loader2,
-  AlertCircle,
-  AlertTriangle,
-  CheckCircle,
-  XCircle,
-  Users,
-  Clock,
-} from 'lucide-react'
+import { AlertTriangle, CheckCircle, XCircle, Users, Clock } from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useWaitlistMetrics } from '../../../hooks/useMetrics'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
@@ -31,6 +23,7 @@ import {
   sortSessionDataByCampThenQuest,
 } from '../../../utils/sessionUtils'
 import type { WaitlistSessionBreakdown } from '../../../types/metrics'
+import { MetricsQueryGuard } from '../../../components/metrics/MetricsQueryGuard'
 
 export default function WaitlistAnalysis() {
   const { currentYear } = useCurrentYear()
@@ -52,41 +45,16 @@ export default function WaitlistAnalysis() {
     statusFilter: ['waitlisted'],
   })
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="text-primary h-8 w-8 animate-spin" />
-        <span className="text-muted-foreground ml-2">Loading waitlist data...</span>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center py-12 text-red-600 dark:text-red-400">
-        <AlertCircle className="mr-2 h-6 w-6" />
-        <span>Failed to load waitlist data: {error.message}</span>
-      </div>
-    )
-  }
-
-  if (!data) {
-    return (
-      <div className="text-muted-foreground flex items-center justify-center py-12">
-        No data available
-      </div>
-    )
-  }
-
-  // Transform grade data for chart
-  const gradeChartData = (data.by_grade || []).map((g) => ({
-    name: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
-    value: g.count,
-    percentage: g.percentage,
-    id: g.grade !== null ? String(g.grade) : 'null',
-  }))
-
   return (
+    <MetricsQueryGuard isLoading={isLoading} error={error} data={data} label="waitlist">
+      {(data) => {
+        const gradeChartData = (data.by_grade || []).map((g) => ({
+          name: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
+          value: g.count,
+          percentage: g.percentage,
+          id: g.grade !== null ? String(g.grade) : 'null',
+        }))
+        return (
     <div className="space-y-6">
       {/* Summary Cards */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
@@ -280,5 +248,8 @@ export default function WaitlistAnalysis() {
 
       <DrilldownModal />
     </div>
+        )
+      }}
+    </MetricsQueryGuard>
   )
 }
