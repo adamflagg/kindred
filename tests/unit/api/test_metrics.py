@@ -499,7 +499,7 @@ class TestRegistrationMetrics:
         - Session 2, 3 main (21 days) = 3-week
         - Session 4 (14 days) = 2-week
         """
-        from api.routers.metrics import get_session_length_category
+        from api.services.registration_service import get_session_length_category
 
         # Create sessions with realistic dates
         sessions_with_dates = [
@@ -709,7 +709,7 @@ class TestDynamicSessionLengthCalculation:
 
     def test_one_to_four_days_is_one_week(self) -> None:
         """Test 1-4 day sessions are categorized as 1-week (Taste of Camp)."""
-        from api.routers.metrics import get_session_length_category
+        from api.services.registration_service import get_session_length_category
 
         # 4 days (e.g., Taste of Camp: May 25-28)
         assert get_session_length_category("2025-05-25", "2025-05-28") == "1-week"
@@ -720,7 +720,7 @@ class TestDynamicSessionLengthCalculation:
 
     def test_five_to_seven_days_is_one_week(self) -> None:
         """Test 5-7 day sessions are categorized as 1-week."""
-        from api.routers.metrics import get_session_length_category
+        from api.services.registration_service import get_session_length_category
 
         # 5 days
         assert get_session_length_category("2025-06-01", "2025-06-05") == "1-week"
@@ -729,7 +729,7 @@ class TestDynamicSessionLengthCalculation:
 
     def test_eight_to_fourteen_days_is_two_week(self) -> None:
         """Test 8-14 day sessions are categorized as 2-week."""
-        from api.routers.metrics import get_session_length_category
+        from api.services.registration_service import get_session_length_category
 
         # 8 days
         assert get_session_length_category("2025-06-01", "2025-06-08") == "2-week"
@@ -740,7 +740,7 @@ class TestDynamicSessionLengthCalculation:
 
     def test_fifteen_to_twenty_one_days_is_three_week(self) -> None:
         """Test 15-21 day sessions are categorized as 3-week."""
-        from api.routers.metrics import get_session_length_category
+        from api.services.registration_service import get_session_length_category
 
         # 15 days
         assert get_session_length_category("2025-06-01", "2025-06-15") == "3-week"
@@ -751,7 +751,7 @@ class TestDynamicSessionLengthCalculation:
 
     def test_twenty_two_plus_days_is_four_week_plus(self) -> None:
         """Test 22+ day sessions are categorized as 4-week+."""
-        from api.routers.metrics import get_session_length_category
+        from api.services.registration_service import get_session_length_category
 
         # 22 days
         assert get_session_length_category("2025-06-01", "2025-06-22") == "4-week+"
@@ -762,7 +762,7 @@ class TestDynamicSessionLengthCalculation:
 
     def test_missing_or_invalid_dates_return_unknown(self) -> None:
         """Test missing or invalid dates return 'unknown'."""
-        from api.routers.metrics import get_session_length_category
+        from api.services.registration_service import get_session_length_category
 
         # Empty strings
         assert get_session_length_category("", "") == "unknown"
@@ -775,7 +775,7 @@ class TestDynamicSessionLengthCalculation:
 
     def test_handles_datetime_with_time_and_timezone(self) -> None:
         """Test parsing dates with time and timezone components."""
-        from api.routers.metrics import get_session_length_category
+        from api.services.registration_service import get_session_length_category
 
         # Full ISO format with time and Z suffix (common from APIs)
         assert get_session_length_category("2025-06-01 00:00:00Z", "2025-06-14 23:59:59Z") == "2-week"
@@ -1444,26 +1444,23 @@ class TestFetchCamperHistoryNoStatusFilter:
     """
 
     def test_fetch_camper_history_has_no_status_parameter(self) -> None:
-        """Verify fetch_camper_history_for_year signature has no status_filter.
+        """Verify MetricsRepository.fetch_camper_history signature has no status_filter.
 
-        The function should only accept year and session_types parameters.
+        The method should only accept year and session_types parameters.
         Status filtering is wrong at this level because demographics
         should include everyone associated with summer sessions.
         """
         import inspect
 
-        from api.routers.metrics import fetch_camper_history_for_year
+        from api.services.metrics_repository import MetricsRepository
 
-        sig = inspect.signature(fetch_camper_history_for_year)
+        sig = inspect.signature(MetricsRepository.fetch_camper_history)
         param_names = list(sig.parameters.keys())
 
         # Should have year and session_types, but NOT status_filter
         assert "year" in param_names
         assert "session_types" in param_names
-        # This test will FAIL until we remove status_filter parameter
-        assert "status_filter" not in param_names, (
-            "status_filter parameter should be removed from fetch_camper_history_for_year"
-        )
+        assert "status_filter" not in param_names, "status_filter parameter should be removed from fetch_camper_history"
 
 
 # ============================================================================
@@ -1650,47 +1647,35 @@ class TestFetchAttendeesForYearDynamicStatuses:
     """
 
     def test_fetch_attendees_accepts_status_list(self) -> None:
-        """Test that fetch_attendees_for_year can accept a list of statuses.
+        """Test that MetricsRepository.fetch_attendees can accept a list of statuses.
 
-        The function signature should support:
-        fetch_attendees_for_year(year, status_filter=["enrolled", "applied"])
+        The method signature should support:
+        fetch_attendees(year, status_filter=["enrolled", "applied"])
         """
         import inspect
 
-        from api.routers.metrics import fetch_attendees_for_year
+        from api.services.metrics_repository import MetricsRepository
 
-        sig = inspect.signature(fetch_attendees_for_year)
+        sig = inspect.signature(MetricsRepository.fetch_attendees)
         params = sig.parameters
 
         # status_filter parameter should exist
-        assert "status_filter" in params, "fetch_attendees_for_year should have status_filter parameter"
-
-        # Check the type hint allows list (str | list[str] | None)
-        # Note: This is a design test - implementation can use str | list[str] | None
+        assert "status_filter" in params, "MetricsRepository.fetch_attendees should have status_filter parameter"
 
     def test_fetch_attendees_builds_correct_filter_for_applied(self) -> None:
-        """Test that fetch_attendees_for_year builds correct filter for 'applied' status.
+        """Test that MetricsRepository.fetch_attendees builds correct filter for 'applied' status.
 
-        Currently the function only has explicit handling for enrolled/waitlisted/cancelled.
-        Other statuses like 'applied' fall through to the default (enrolled) behavior.
-
-        This test will FAIL until we implement dynamic status filtering.
+        The method should build a dynamic filter for any status, not just 3 hardcoded ones.
         """
         import inspect
 
-        from api.routers.metrics import fetch_attendees_for_year
+        from api.services.metrics_repository import MetricsRepository
 
-        # Inspect the function source to verify it handles 'applied'
+        source = inspect.getsource(MetricsRepository.fetch_attendees)
 
-        source = inspect.getsource(fetch_attendees_for_year)
-
-        # The function should build a dynamic filter for any status, not just 3 hardcoded ones
-        # Currently it has: if status_filter == "waitlisted": ... elif status_filter == "cancelled": ... else: (enrolled)
-        # It should handle 'applied', 'dismissed', 'inquiry', 'withdrawn', 'incomplete', 'unknown'
-
-        # This test verifies the function explicitly handles 'applied' status
+        # This test verifies the method explicitly handles 'applied' status
         assert '"applied"' in source or "applied" in source, (
-            "fetch_attendees_for_year should explicitly handle 'applied' status, not fall through to enrolled default"
+            "MetricsRepository.fetch_attendees should explicitly handle 'applied' status"
         )
 
     def test_registration_endpoint_dynamically_filters_by_requested_statuses(self) -> None:
