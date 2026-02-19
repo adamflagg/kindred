@@ -133,7 +133,7 @@ export function getSessionChartLabel(
   }
 
   // Handle Taste of Camp - return session name as-is (e.g., "Taste of Camp 2")
-  if (sessionType === 'taste' || sessionName.toLowerCase().includes('taste')) {
+  if (sessionName.toLowerCase().includes('taste')) {
     return sessionName
   }
 
@@ -196,7 +196,7 @@ export function getSessionShorthand(sessionName: string, sessionType?: string): 
   }
 
   // Handle Taste of Camp
-  if (sessionType === 'taste' || sessionName.toLowerCase().includes('taste')) {
+  if (sessionName.toLowerCase().includes('taste')) {
     return 'Taste'
   }
 

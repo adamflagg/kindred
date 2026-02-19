@@ -127,7 +127,7 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
         ...bunk,
         campers: assignedCampers,
         occupancy: assignedCampers.length,
-        utilization: (assignedCampers.length / ((bunk.capacity ?? 0) || 1)) * 100,
+        utilization: (assignedCampers.length / (bunk.capacity || defaultCapacity)) * 100,
       }
 
       // Categorize by bunk name prefix
@@ -412,7 +412,7 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
           toast.error('Target bunk has reached maximum capacity (14 campers)')
           return
         }
-      } else if (targetBunk && targetBunk.occupancy >= (targetBunk.capacity ?? 0)) {
+      } else if (targetBunk && targetBunk.occupancy >= (targetBunk.capacity || defaultCapacity)) {
         // Still allow move but show warning
         const sourceCamper = campers.find((c) => c.id === camperId)
         if (sourceCamper?.assigned_bunk !== targetBunkId) {

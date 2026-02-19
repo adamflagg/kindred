@@ -5,9 +5,10 @@ import type { Bunk, Camper } from '../types/app-types'
 interface SessionStatsProps {
   bunks: Bunk[]
   campers: Camper[]
+  defaultCapacity?: number
 }
 
-export default function SessionStats({ bunks, campers }: SessionStatsProps) {
+export default function SessionStats({ bunks, campers, defaultCapacity = 12 }: SessionStatsProps) {
   const assignedCampers = campers.filter((c) => c.assigned_bunk)
   const unassignedCampers = campers.filter((c) => !c.assigned_bunk)
 
@@ -25,7 +26,7 @@ export default function SessionStats({ bunks, campers }: SessionStatsProps) {
   const effectiveCapacity = bunks.reduce((sum, bunk) => {
     const assignedToBunk = campers.filter((c) => c.assigned_bunk === bunk.id).length
     // If bunk is overfull, use actual occupancy as capacity for that bunk
-    return sum + Math.max(bunk.capacity ?? 0, assignedToBunk)
+    return sum + Math.max(bunk.capacity || defaultCapacity, assignedToBunk)
   }, 0)
 
   const utilization = effectiveCapacity > 0 ? (assignedCampers.length / effectiveCapacity) * 100 : 0
