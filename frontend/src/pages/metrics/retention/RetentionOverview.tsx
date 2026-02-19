@@ -123,7 +123,11 @@ export default function RetentionOverview() {
           <RetentionRateBarChart data={genderBars} title="Retention by Gender" />
         )}
         {gradeBars.length > 0 && (
-          <RetentionRateLineChart data={gradeBars} title="Retention by Grade" />
+          <RetentionRateLineChart
+            data={gradeBars}
+            title="Retention by Grade"
+            tooltipLabelPrefix="Grade "
+          />
         )}
       </div>
 
