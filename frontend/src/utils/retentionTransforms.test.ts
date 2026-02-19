@@ -49,18 +49,16 @@ describe('computeRetentionOutliers', () => {
     expect(outliers[0]!.name).toBe('Oak Valley')
   })
 
-  it('should sort by absolute deviation descending', () => {
+  it('should sort by impact descending (deviation * volume)', () => {
     const data: RetentionRateBarItem[] = [
-      makeItem('Riverside', 0.80, 20), // +15pp
-      makeItem('Hillcrest', 0.30, 15), // -35pp
-      makeItem('Maple Grove', 0.90, 10), // +25pp
+      makeItem('Riverside', 0.80, 20), // +15pp, impact = 15*20/100 = 3.0
+      makeItem('Hillcrest', 0.30, 15), // -35pp, impact = 35*15/100 = 5.25
     ]
     const overallRate = 0.65
 
     const outliers = computeRetentionOutliers(data, overallRate)
 
-    expect(outliers.map((o) => o.name)).toEqual(['Hillcrest', 'Maple Grove', 'Riverside'])
-    expect(outliers.map((o) => Math.abs(o.deviation))).toEqual([35, 25, 15])
+    expect(outliers.map((o) => o.name)).toEqual(['Hillcrest', 'Riverside'])
   })
 
   it('should return empty array when no outliers qualify', () => {
@@ -82,26 +80,29 @@ describe('computeRetentionOutliers', () => {
 
   it('should respect custom minBaseCount option', () => {
     const data: RetentionRateBarItem[] = [
-      makeItem('Riverside', 0.90, 5), // 5 campers, default filter removes it
-      makeItem('Oak Valley', 0.90, 10),
+      makeItem('Riverside', 0.90, 15), // 15 campers, +25pp, impact = 25*15/100 = 3.75
+      makeItem('Oak Valley', 0.90, 20), // 20 campers, +25pp, impact = 25*20/100 = 5.0
     ]
     const overallRate = 0.65
 
-    // With lower threshold, Riverside should now be included
-    const outliers = computeRetentionOutliers(data, overallRate, { minBaseCount: 3 })
-
+    // Both pass impact gate; without custom minBaseCount both pass (>= 8)
+    const outliers = computeRetentionOutliers(data, overallRate)
     expect(outliers.length).toBe(2)
-    expect(outliers.map((o) => o.name)).toContain('Riverside')
+
+    // With higher minBaseCount, Riverside (15) still passes but test different threshold
+    const filtered = computeRetentionOutliers(data, overallRate, { minBaseCount: 18 })
+    expect(filtered.length).toBe(1)
+    expect(filtered[0]!.name).toBe('Oak Valley')
   })
 
   it('should respect custom minDeviation option', () => {
     const data: RetentionRateBarItem[] = [
-      makeItem('Riverside', 0.80, 20), // +15pp
-      makeItem('Oak Valley', 0.72, 15), // +7pp
+      makeItem('Riverside', 0.80, 20), // +15pp, impact = 15*20/100 = 3.0
+      makeItem('Oak Valley', 0.72, 50), // +7pp, impact = 7*50/100 = 3.5
     ]
     const overallRate = 0.65
 
-    // With lower deviation threshold, Oak Valley should now qualify
+    // Oak Valley has 7pp deviation (below default 10pp threshold) but passes with minDeviation: 5
     const outliers = computeRetentionOutliers(data, overallRate, { minDeviation: 5 })
 
     expect(outliers.length).toBe(2)

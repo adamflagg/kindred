@@ -42,6 +42,15 @@ function OutlierSection({
                 {isAbove ? '+' : ''}
                 {o.deviation}pp {isAbove ? 'above' : 'below'} avg
               </span>
+              {(() => {
+                const diff = Math.abs(o.returnedCount - o.expectedCount)
+                if (diff === 0) return null
+                return (
+                  <span className="text-muted-foreground ml-1 text-xs">
+                    (~{diff} {isAbove ? 'more' : 'fewer'} than expected)
+                  </span>
+                )
+              })()}
             </li>
           )
         })}

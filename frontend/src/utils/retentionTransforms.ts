@@ -177,6 +177,8 @@ export interface RetentionOutlier {
   baseCount: number
   returnedCount: number
   deviation: number // percentage points above/below overall rate
+  impact: number // abs(deviation_pp) * baseCount / 100
+  expectedCount: number // Math.round(overallRate * baseCount)
 }
 
 export interface SankeyNode {
@@ -247,19 +249,31 @@ export function computeRetentionOutliers(
 ): RetentionOutlier[] {
   const minBaseCount = options?.minBaseCount ?? 8
   const minDeviation = options?.minDeviation ?? 10
+  const minImpact = 3.0
 
   return data
     .filter((d) => d.baseCount >= minBaseCount)
     .map((d) => {
       const deviation = Math.round(d.retentionRate * 100) - Math.round(overallRate * 100)
+      const impact = (Math.abs(deviation) * d.baseCount) / 100
+      const expectedCount = Math.round(overallRate * d.baseCount)
       return {
         name: d.name,
         retentionRate: d.retentionRate,
         baseCount: d.baseCount,
         returnedCount: d.returnedCount,
         deviation,
+        impact,
+        expectedCount,
       }
     })
-    .filter((d) => Math.abs(d.deviation) >= minDeviation)
-    .sort((a, b) => Math.abs(b.deviation) - Math.abs(a.deviation))
+    .filter((d) => {
+      // Must have meaningful deviation
+      if (Math.abs(d.deviation) < minDeviation) return false
+      // Zero retention always notable if base count qualifies
+      if (d.retentionRate === 0) return true
+      // Must have meaningful impact
+      return d.impact >= minImpact
+    })
+    .sort((a, b) => b.impact - a.impact)
 }
