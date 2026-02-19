@@ -53,7 +53,6 @@ export interface NewVsReturning {
   returning_percentage: number
 }
 
-// New demographic breakdowns (from camper_history)
 export interface SchoolBreakdown {
   school: string
   count: number
@@ -134,7 +133,6 @@ export interface RetentionByYearsAtCamp {
   retention_rate: number
 }
 
-// New retention breakdown types (from camper_history)
 export interface RetentionBySchool {
   school: string
   base_count: number
@@ -151,13 +149,6 @@ export interface RetentionByCity {
 
 export interface RetentionBySynagogue {
   synagogue: string
-  base_count: number
-  returned_count: number
-  retention_rate: number
-}
-
-export interface RetentionByFirstYear {
-  first_year: number
   base_count: number
   returned_count: number
   retention_rate: number
@@ -210,11 +201,10 @@ export interface RetentionMetrics {
   by_grade: RetentionByGrade[]
   by_session: RetentionBySession[]
   by_years_at_camp: RetentionByYearsAtCamp[]
-  // Demographic breakdowns (from camper_history)
+  // Demographic breakdowns
   by_school?: RetentionBySchool[]
   by_city?: RetentionByCity[]
   by_synagogue?: RetentionBySynagogue[]
-  by_first_year?: RetentionByFirstYear[]
   by_session_bunk?: RetentionBySessionBunk[]
   // New breakdowns for retention tab redesign (calculated from attendees)
   by_summer_years?: RetentionBySummerYears[]
