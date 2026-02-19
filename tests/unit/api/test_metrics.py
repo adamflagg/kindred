@@ -2397,16 +2397,16 @@ class TestRetentionBreakdownSchemas:
         assert instance.retention_rate == 0.75
 
     def test_retention_by_first_year_schema_exists(self) -> None:
-        """Test that RetentionByFirstYear schema exists with correct fields."""
-        from api.schemas.metrics import RetentionByFirstYear
+        """Test that RetentionByFirstSummerYear schema exists with correct fields."""
+        from api.schemas.metrics import RetentionByFirstSummerYear
 
-        instance = RetentionByFirstYear(
-            first_year=2022,
+        instance = RetentionByFirstSummerYear(
+            first_summer_year=2022,
             base_count=5,
             returned_count=4,
             retention_rate=0.8,
         )
-        assert instance.first_year == 2022
+        assert instance.first_summer_year == 2022
         assert instance.base_count == 5
         assert instance.returned_count == 4
         assert instance.retention_rate == 0.8

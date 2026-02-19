@@ -6,7 +6,7 @@ testable service that uses the MetricsRepository for data access.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from api.schemas.metrics import (
     RetentionByCity,
@@ -75,15 +75,7 @@ class RetentionService:
         # Fetch data in parallel
         import asyncio
 
-        (
-            attendees_base,
-            attendees_compare,
-            persons_base,
-            bunk_assignments_base,
-            sessions_base_all,
-            sessions_compare_filtered,
-            sessions_compare_all,
-        ) = await asyncio.gather(
+        _results = await asyncio.gather(
             self.repo.fetch_attendees(base_year),
             self.repo.fetch_attendees(compare_year),
             self.repo.fetch_persons(base_year),
@@ -92,6 +84,13 @@ class RetentionService:
             self.repo.fetch_sessions(compare_year, session_types),
             self.repo.fetch_sessions(compare_year, None),
         )
+        attendees_base = cast(list[Any], _results[0])
+        attendees_compare = cast(list[Any], _results[1])
+        persons_base = cast(dict[int, Any], _results[2])
+        bunk_assignments_base = cast(list[Any], _results[3])
+        sessions_base_all = cast(dict[int, Any], _results[4])
+        sessions_compare_filtered = cast(dict[int, Any], _results[5])
+        sessions_compare_all = cast(dict[int, Any], _results[6])
 
         # Get unique person IDs for base year, filtered by session
         person_ids_base, _ = self._filter_base_attendees(attendees_base, session_types, session_cm_id)
