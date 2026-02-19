@@ -268,7 +268,7 @@ describe('SessionBunkHeatmap', () => {
     expect(tables).toHaveLength(1)
   })
 
-  it('shows all sessions in every sub-table', () => {
+  it('only shows sessions that have data in each section', () => {
     // Session 1 has boys and girls bunks, Session 2 only has boys
     const data: RetentionBySessionBunk[] = [
       { session: 'Session 1', bunk: 'B-1', base_count: 10, returned_count: 8, retention_rate: 0.8 },
@@ -277,19 +277,65 @@ describe('SessionBunkHeatmap', () => {
     ]
     render(<SessionBunkHeatmap data={data} />)
 
-    // Girls table should show both sessions, even though Session 2 has no girls data
+    // Boys table should show both sessions (both have boys data)
+    const boysTable = getTableInSection('Boys Cabins')
+    const boysRowHeaders = getRowHeaders(boysTable)
+    expect(boysRowHeaders).toContain('Session 1')
+    expect(boysRowHeaders).toContain('Session 2')
+
+    // Girls table should only show Session 1 (Session 2 has no girls data)
     const girlsTable = getTableInSection('Girls Cabins')
     const girlsRowHeaders = getRowHeaders(girlsTable)
     expect(girlsRowHeaders).toContain('Session 1')
-    expect(girlsRowHeaders).toContain('Session 2')
+    expect(girlsRowHeaders).not.toContain('Session 2')
+  })
 
-    // Session 2 in girls table should show dashes
-    const girlsRows = within(girlsTable).getAllByRole('row')
-    const session2Row = girlsRows.find(
-      (row) => within(row).queryByRole('rowheader')?.textContent === 'Session 2',
-    )
-    expect(session2Row).toBeDefined()
-    const cells = within(session2Row!).getAllByRole('cell')
-    expect(cells.map((c) => c.textContent)).toEqual(['—'])
+  it('AG section shows only sessions with AG bunks', () => {
+    const data: RetentionBySessionBunk[] = [
+      { session: 'Session 1', bunk: 'B-1', base_count: 10, returned_count: 8, retention_rate: 0.8 },
+      { session: 'Session 2', bunk: 'B-1', base_count: 8, returned_count: 6, retention_rate: 0.75 },
+      { session: 'Session 2', bunk: 'AG-8', base_count: 6, returned_count: 4, retention_rate: 0.67 },
+      { session: 'Session 4', bunk: 'AG-8', base_count: 7, returned_count: 5, retention_rate: 0.71 },
+      { session: 'Session 4', bunk: 'AG-10', base_count: 5, returned_count: 3, retention_rate: 0.6 },
+    ]
+    render(<SessionBunkHeatmap data={data} />)
+
+    // AG section should only have Session 2 and Session 4 (not Session 1)
+    const agTable = getTableInSection('All-Gender Cabins')
+    const agRowHeaders = getRowHeaders(agTable)
+    expect(agRowHeaders).toContain('Session 2')
+    expect(agRowHeaders).toContain('Session 4')
+    expect(agRowHeaders).not.toContain('Session 1')
+  })
+
+  // ============================================================================
+  // Bunk column sort: Aleph/Bet before numbers
+  // ============================================================================
+
+  it('sorts Aleph before numbered bunks', () => {
+    const data: RetentionBySessionBunk[] = [
+      { session: 'Session 1', bunk: 'B-1', base_count: 5, returned_count: 3, retention_rate: 0.6 },
+      { session: 'Session 1', bunk: 'B-Aleph', base_count: 5, returned_count: 4, retention_rate: 0.8 },
+      { session: 'Session 1', bunk: 'B-2', base_count: 5, returned_count: 2, retention_rate: 0.4 },
+    ]
+    render(<SessionBunkHeatmap data={data} />)
+
+    const boysTable = getTableInSection('Boys Cabins')
+    const bunkHeaders = getColumnHeaders(boysTable).filter((h) => h.startsWith('B-'))
+    expect(bunkHeaders).toEqual(['B-Aleph', 'B-1', 'B-2'])
+  })
+
+  it('sorts Bet after Aleph but before numbers', () => {
+    const data: RetentionBySessionBunk[] = [
+      { session: 'Session 1', bunk: 'G-3', base_count: 5, returned_count: 3, retention_rate: 0.6 },
+      { session: 'Session 1', bunk: 'G-Bet', base_count: 5, returned_count: 4, retention_rate: 0.8 },
+      { session: 'Session 1', bunk: 'G-1', base_count: 5, returned_count: 2, retention_rate: 0.4 },
+      { session: 'Session 1', bunk: 'G-Aleph', base_count: 5, returned_count: 3, retention_rate: 0.6 },
+    ]
+    render(<SessionBunkHeatmap data={data} />)
+
+    const girlsTable = getTableInSection('Girls Cabins')
+    const bunkHeaders = getColumnHeaders(girlsTable).filter((h) => h.startsWith('G-'))
+    expect(bunkHeaders).toEqual(['G-Aleph', 'G-Bet', 'G-1', 'G-3'])
   })
 })
