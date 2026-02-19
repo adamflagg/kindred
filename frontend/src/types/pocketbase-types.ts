@@ -11,27 +11,61 @@ export enum Collections {
   Mfas = '_mfas',
   Otps = '_otps',
   Superusers = '_superusers',
+  AttendeeStatusHistory = 'attendee_status_history',
   Attendees = 'attendees',
   BunkAssignments = 'bunk_assignments',
   BunkAssignmentsDraft = 'bunk_assignments_draft',
   BunkPlans = 'bunk_plans',
+  BunkRequestSources = 'bunk_request_sources',
   BunkRequests = 'bunk_requests',
   Bunks = 'bunks',
   CampSessions = 'camp_sessions',
+  CamperDietary = 'camper_dietary',
+  CamperHistory = 'camper_history',
+  CamperTransportation = 'camper_transportation',
   Config = 'config',
   ConfigSections = 'config_sections',
+  CustomFieldDefs = 'custom_field_defs',
+  DebugParseResults = 'debug_parse_results',
+  Divisions = 'divisions',
+  FamilyCampAdults = 'family_camp_adults',
+  FamilyCampMedical = 'family_camp_medical',
+  FamilyCampRegistrations = 'family_camp_registrations',
+  FinancialAidApplications = 'financial_aid_applications',
+  FinancialCategories = 'financial_categories',
+  FinancialTransactions = 'financial_transactions',
+  GeoAliases = 'geo_aliases',
+  HouseholdCustomValues = 'household_custom_values',
+  HouseholdDemographics = 'household_demographics',
+  Households = 'households',
   LockedGroupMembers = 'locked_group_members',
   LockedGroups = 'locked_groups',
+  NormalizedMappings = 'normalized_mappings',
   OriginalBunkRequests = 'original_bunk_requests',
+  PaymentMethods = 'payment_methods',
+  PersonCustomValues = 'person_custom_values',
+  PersonTagDefs = 'person_tag_defs',
   Persons = 'persons',
+  QuestRegistrations = 'quest_registrations',
   SavedScenarios = 'saved_scenarios',
+  SessionGroups = 'session_groups',
+  SheetsWorkbooks = 'sheets_workbooks',
   SolverRuns = 'solver_runs',
+  Staff = 'staff',
+  StaffApplications = 'staff_applications',
+  StaffOrgCategories = 'staff_org_categories',
+  StaffPositions = 'staff_positions',
+  StaffProgramAreas = 'staff_program_areas',
+  StaffSkills = 'staff_skills',
+  StaffVehicleInfo = 'staff_vehicle_info',
   Users = 'users',
 }
 
 // Alias types for improved usability
 export type IsoDateString = string
+export type IsoAutoDateString = string
 export type RecordIdString = string
+export type FileNameString = string
 export type HTMLString = string
 
 type ExpandType<T> = unknown extends T
@@ -56,56 +90,57 @@ export type AuthSystemFields<T = unknown> = {
 
 // Record types for each collection
 
-export interface AuthoriginsRecord {
+export type AuthoriginsRecord = {
   collectionRef: string
-  created?: IsoDateString
+  created: IsoAutoDateString
   fingerprint: string
   id: string
   recordRef: string
-  updated?: IsoDateString
+  updated: IsoAutoDateString
 }
 
-export interface ExternalauthsRecord {
+export type ExternalauthsRecord = {
   collectionRef: string
-  created?: IsoDateString
+  created: IsoAutoDateString
   id: string
   provider: string
   providerId: string
   recordRef: string
-  updated?: IsoDateString
+  updated: IsoAutoDateString
 }
 
-export interface MfasRecord {
+export type MfasRecord = {
   collectionRef: string
-  created?: IsoDateString
+  created: IsoAutoDateString
   id: string
   method: string
   recordRef: string
-  updated?: IsoDateString
+  updated: IsoAutoDateString
 }
 
-export interface OtpsRecord {
+export type OtpsRecord = {
   collectionRef: string
-  created?: IsoDateString
+  created: IsoAutoDateString
   id: string
   password: string
   recordRef: string
   sentTo?: string
-  updated?: IsoDateString
+  updated: IsoAutoDateString
 }
 
-export interface SuperusersRecord {
-  created?: IsoDateString
+export type SuperusersRecord = {
+  created: IsoAutoDateString
   email: string
   emailVisibility?: boolean
   id: string
   password: string
   tokenKey: string
-  updated?: IsoDateString
+  updated: IsoAutoDateString
   verified?: boolean
 }
 
-export enum AttendeesStatusOptions {
+export enum AttendeeStatusHistoryOldStatusOptions {
+  'none' = 'none',
   'enrolled' = 'enrolled',
   'applied' = 'applied',
   'waitlisted' = 'waitlisted',
@@ -117,8 +152,46 @@ export enum AttendeesStatusOptions {
   'incomplete' = 'incomplete',
   'unknown' = 'unknown',
 }
-export interface AttendeesRecord {
-  created?: IsoDateString
+
+export enum AttendeeStatusHistoryNewStatusOptions {
+  'none' = 'none',
+  'enrolled' = 'enrolled',
+  'applied' = 'applied',
+  'waitlisted' = 'waitlisted',
+  'left_early' = 'left_early',
+  'cancelled' = 'cancelled',
+  'dismissed' = 'dismissed',
+  'inquiry' = 'inquiry',
+  'withdrawn' = 'withdrawn',
+  'incomplete' = 'incomplete',
+  'unknown' = 'unknown',
+}
+export type AttendeeStatusHistoryRecord = {
+  detected_at: IsoDateString
+  id: string
+  new_status: AttendeeStatusHistoryNewStatusOptions
+  old_status: AttendeeStatusHistoryOldStatusOptions
+  person?: RecordIdString
+  person_id: number
+  session: RecordIdString
+  year: number
+}
+
+export enum AttendeesStatusOptions {
+  'none' = 'none',
+  'enrolled' = 'enrolled',
+  'applied' = 'applied',
+  'waitlisted' = 'waitlisted',
+  'left_early' = 'left_early',
+  'cancelled' = 'cancelled',
+  'dismissed' = 'dismissed',
+  'inquiry' = 'inquiry',
+  'withdrawn' = 'withdrawn',
+  'incomplete' = 'incomplete',
+  'unknown' = 'unknown',
+}
+export type AttendeesRecord = {
+  created: IsoAutoDateString
   enrollment_date?: IsoDateString
   id: string
   is_active?: boolean
@@ -127,45 +200,57 @@ export interface AttendeesRecord {
   session: RecordIdString
   status?: AttendeesStatusOptions
   status_id?: number
-  updated?: IsoDateString
+  updated: IsoAutoDateString
   year: number
 }
 
-export interface BunkAssignmentsRecord {
-  bunk?: RecordIdString
+export type BunkAssignmentsRecord = {
+  bunk: RecordIdString
   bunk_plan?: RecordIdString
   cm_id?: number
-  created?: IsoDateString
+  created: IsoAutoDateString
   id: string
-  person?: RecordIdString
-  session?: RecordIdString
-  updated?: IsoDateString
+  is_deleted?: boolean
+  person: RecordIdString
+  session: RecordIdString
+  updated: IsoAutoDateString
   year: number
 }
 
-export interface BunkAssignmentsDraftRecord {
+export type BunkAssignmentsDraftRecord = {
   assignment_locked?: boolean
   bunk?: RecordIdString
   bunk_plan?: RecordIdString
-  created?: IsoDateString
+  created: IsoAutoDateString
   id: string
   person?: RecordIdString
   scenario?: RecordIdString
   session?: RecordIdString
-  updated?: IsoDateString
+  updated: IsoAutoDateString
   year: number
 }
 
-export interface BunkPlansRecord {
+export type BunkPlansRecord = {
   bunk: RecordIdString
   cm_id: number
   code?: string
-  created?: IsoDateString
+  created: IsoAutoDateString
   id: string
+  is_active?: boolean
   name: string
   session: RecordIdString
-  updated?: IsoDateString
+  updated: IsoAutoDateString
   year: number
+}
+
+export type BunkRequestSourcesRecord = {
+  bunk_request: RecordIdString
+  created: IsoAutoDateString
+  id: string
+  is_primary?: boolean
+  original_request: RecordIdString
+  parse_notes?: string
+  source_field?: string
 }
 
 export enum BunkRequestsRequestTypeOptions {
@@ -185,13 +270,14 @@ export enum BunkRequestsSourceOptions {
   'staff' = 'staff',
   'notes' = 'notes',
 }
-export interface BunkRequestsRecord<
+export type BunkRequestsRecord<
   Tai_p1_reasoning = unknown,
   Tai_p3_reasoning = unknown,
   Tconfidence_explanation = unknown,
   Tkeywords_found = unknown,
   Tmetadata = unknown,
-> {
+  Tsource_fields = string[],
+> = {
   age_preference_target?: string
   ai_p1_reasoning?: null | Tai_p1_reasoning
   ai_p3_reasoning?: null | Tai_p3_reasoning
@@ -201,7 +287,7 @@ export interface BunkRequestsRecord<
   confidence_level?: string
   confidence_score?: number
   conflict_group_id?: string
-  created?: IsoDateString
+  created: IsoAutoDateString
   csv_position?: number
   id: string
   is_active?: boolean
@@ -209,15 +295,15 @@ export interface BunkRequestsRecord<
   is_reciprocal?: boolean
   keywords_found?: null | Tkeywords_found
   manual_review_reason?: string
-  merged_into?: string
+  merged_into?: RecordIdString
   metadata?: null | Tmetadata
   original_text?: string
   parse_notes?: string
   priority?: number
   request_locked?: boolean
   request_type: BunkRequestsRequestTypeOptions
-  requestee_id?: number
   requested_person_name?: string
+  requestee_id?: number
   requester_id: number
   requires_family_decision?: boolean
   requires_manual_review?: boolean
@@ -225,21 +311,24 @@ export interface BunkRequestsRecord<
   session_id: number
   source?: BunkRequestsSourceOptions
   source_detail?: string
-  source_field?: string
-  source_fields?: string[]
+  source_field: string
+  source_fields?: null | Tsource_fields
   status: BunkRequestsStatusOptions
-  updated?: IsoDateString
+  updated: IsoAutoDateString
   was_dropped_for_spread?: boolean
   year: number
 }
 
-export interface BunksRecord {
+export type BunksRecord = {
+  area_id?: number
   cm_id: number
-  created?: IsoDateString
+  created: IsoAutoDateString
   gender?: string
   id: string
+  is_active?: boolean
   name: string
-  updated?: IsoDateString
+  sort_order?: number
+  updated: IsoAutoDateString
   year: number
 }
 
@@ -258,54 +347,482 @@ export enum CampSessionsSessionTypeOptions {
   'teen' = 'teen',
   'other' = 'other',
 }
-export interface CampSessionsRecord {
+export type CampSessionsRecord = {
   cm_id: number
-  created?: IsoDateString
+  created: IsoAutoDateString
+  description?: string
   end_date: IsoDateString
+  end_grade_id?: number
+  gender_id?: number
   id: string
+  is_active?: boolean
+  is_day?: boolean
+  is_for_adults?: boolean
+  is_for_children?: boolean
+  is_residential?: boolean
   name: string
   parent_id?: number
+  session_group?: RecordIdString
   session_type: CampSessionsSessionTypeOptions
+  sort_order?: number
   start_date: IsoDateString
-  updated?: IsoDateString
+  start_grade_id?: number
+  updated: IsoAutoDateString
   year: number
 }
 
-export interface ConfigRecord<Tmetadata = unknown, Tvalue = unknown> {
+export type CamperDietaryRecord = {
+  additional_medical?: string
+  allergy_info?: string
+  attendee: RecordIdString
+  created: IsoAutoDateString
+  dietary_explanation?: string
+  has_allergies?: boolean
+  has_dietary_needs?: boolean
+  id: string
+  person_id: number
+  updated: IsoAutoDateString
+  year: number
+}
+
+export enum CamperHistorySessionTypeOptions {
+  'main' = 'main',
+  'embedded' = 'embedded',
+  'ag' = 'ag',
+  'family' = 'family',
+  'quest' = 'quest',
+  'training' = 'training',
+  'bmitzvah' = 'bmitzvah',
+  'tli' = 'tli',
+  'adult' = 'adult',
+  'school' = 'school',
+  'hebrew' = 'hebrew',
+  'teen' = 'teen',
+  'other' = 'other',
+}
+export type CamperHistoryRecord = {
+  age?: number
+  bunk_cm_id?: number
+  bunk_name?: string
+  city?: string
+  city_normalized?: string
+  congregation_normalized?: string
+  created: IsoAutoDateString
+  division_name?: string
+  enrollment_date?: string
+  first_name?: string
+  gender?: string
+  grade?: number
+  household_id?: number
+  id: string
+  is_returning_family?: boolean
+  is_returning_summer?: boolean
+  last_name?: string
+  person?: RecordIdString
+  person_id: number
+  school?: string
+  school_normalized?: string
+  session?: RecordIdString
+  session_cm_id: number
+  session_name?: string
+  session_type?: CamperHistorySessionTypeOptions
+  state?: string
+  status?: string
+  synagogue?: string
+  updated: IsoAutoDateString
+  year: number
+  years_at_camp?: number
+}
+
+export type CamperTransportationRecord = {
+  alt_pickup_1_name?: string
+  alt_pickup_1_phone?: string
+  alt_pickup_1_relationship?: string
+  alt_pickup_2_name?: string
+  alt_pickup_2_phone?: string
+  attendee: RecordIdString
+  created: IsoAutoDateString
+  dropoff_name?: string
+  dropoff_phone?: string
+  dropoff_relationship?: string
+  from_camp_method?: string
+  id: string
+  person_id: number
+  pickup_name?: string
+  pickup_phone?: string
+  pickup_relationship?: string
+  session_id: number
+  to_camp_method?: string
+  updated: IsoAutoDateString
+  used_legacy_fields?: boolean
+  year: number
+}
+
+export type ConfigRecord<Tmetadata = unknown, Tvalue = unknown> = {
   category: string
   config_key: string
-  created?: IsoDateString
+  created: IsoAutoDateString
   description?: string
   id: string
   metadata?: null | Tmetadata
   subcategory?: string
-  updated?: IsoDateString
+  updated: IsoAutoDateString
   value: null | Tvalue
 }
 
-export interface ConfigSectionsRecord {
-  created?: IsoDateString
+export type ConfigSectionsRecord = {
+  created: IsoAutoDateString
   description?: string
   display_order: number
   expanded_by_default?: boolean
   id: string
   section_key: string
   title: string
-  updated?: IsoDateString
+  updated: IsoAutoDateString
 }
 
-export interface LockedGroupMembersRecord {
+export enum CustomFieldDefsDataTypeOptions {
+  'None' = 'None',
+  'String' = 'String',
+  'Integer' = 'Integer',
+  'Decimal' = 'Decimal',
+  'Date' = 'Date',
+  'Time' = 'Time',
+  'DateTime' = 'DateTime',
+  'Boolean' = 'Boolean',
+}
+
+export enum CustomFieldDefsPartitionOptions {
+  'None' = 'None',
+  'Family' = 'Family',
+  'Alumnus' = 'Alumnus',
+  'Staff' = 'Staff',
+  'Camper' = 'Camper',
+  'Parent' = 'Parent',
+  'Adult' = 'Adult',
+}
+export type CustomFieldDefsRecord = {
+  cm_id: number
+  created: IsoAutoDateString
+  data_type?: CustomFieldDefsDataTypeOptions
+  id: string
+  is_active?: boolean
+  is_array?: boolean
+  is_seasonal?: boolean
+  name: string
+  partition?: CustomFieldDefsPartitionOptions[]
+  updated: IsoAutoDateString
+}
+
+export type DebugParseResultsRecord<Tai_raw_response = unknown, Tparsed_intents = unknown> = {
+  ai_raw_response?: null | Tai_raw_response
+  created: IsoAutoDateString
+  error_message?: string
+  id: string
+  is_valid?: boolean
+  original_request: RecordIdString
+  parsed_intents?: null | Tparsed_intents
+  processing_time_ms?: number
+  prompt_version?: string
+  session?: RecordIdString
+  token_count?: number
+  updated: IsoAutoDateString
+}
+
+export type DivisionsRecord = {
+  assign_on_enrollment?: boolean
+  capacity?: number
+  cm_id: number
+  created: IsoAutoDateString
+  description?: string
+  end_grade_id?: number
+  gender_id?: number
+  id: string
+  name: string
+  parent_division?: RecordIdString
+  staff_only?: boolean
+  start_grade_id?: number
+  updated: IsoAutoDateString
+}
+
+export type FamilyCampAdultsRecord = {
+  adult_number: number
+  created: IsoAutoDateString
+  date_of_birth?: string
+  email?: string
+  first_name?: string
+  gender?: string
+  household: RecordIdString
+  id: string
+  last_name?: string
+  name?: string
+  pronouns?: string
+  relationship_to_camper?: string
+  updated: IsoAutoDateString
+  year: number
+}
+
+export type FamilyCampMedicalRecord = {
+  additional_info?: string
+  allergy_info?: string
+  cpap_info?: string
+  created: IsoAutoDateString
+  dietary_info?: string
+  household: RecordIdString
+  id: string
+  physician_info?: string
+  special_needs_info?: string
+  updated: IsoAutoDateString
+  year: number
+}
+
+export type FamilyCampRegistrationsRecord = {
+  arrival_eta?: string
+  cabin_assignment?: string
+  created: IsoAutoDateString
+  goals?: string
+  household: RecordIdString
+  id: string
+  needs_accommodation?: boolean
+  notes?: string
+  opt_out_vip?: boolean
+  share_cabin_preference?: string
+  shared_cabin_with?: string
+  special_occasions?: string
+  updated: IsoAutoDateString
+  year: number
+}
+
+export type FinancialAidApplicationsRecord = {
+  affiliated_jcc?: boolean
+  amount_awarded?: number
+  amount_confirmed?: boolean
+  amount_requested?: number
+  applicant_signature?: string
+  camper_name?: string
+  child_affiliated_synagogue?: string
+  children_jewish_day_school?: string
+  contact_address?: string
+  contact_city?: string
+  contact_country?: string
+  contact_email?: string
+  contact_first_name?: string
+  contact_jewish?: string
+  contact_last_name?: string
+  contact_marital_status?: string
+  contact_phone?: string
+  contact_state?: string
+  contact_zip?: string
+  covid_childcare?: boolean
+  covid_childcare_amount?: number
+  covid_expenses?: string
+  covid_expenses_additional?: string
+  covid_expenses_amount?: number
+  created: IsoAutoDateString
+  deposit_paid?: number
+  deposit_paid_adult?: number
+  donation_other?: string
+  donation_preference?: string
+  expected_gross_income?: number
+  fc_amount_requested?: number
+  fc_program?: string
+  financial_support?: string
+  fire?: string
+  fire_affected?: boolean
+  fire_detail?: string
+  gov_subsidies?: boolean
+  gov_subsidies_detail?: string
+  household?: RecordIdString
+  id: string
+  income_confirmed?: boolean
+  interest_expressed?: boolean
+  non_retirement_savings?: number
+  num_children?: number
+  num_programs?: number
+  num_sessions?: number
+  one_happy_camper?: string
+  other_financial_support?: string
+  other_support_amount?: number
+  other_support_expectations?: string
+  owns_home?: boolean
+  parent_2_jewish?: string
+  parent_2_marital_status?: string
+  parent_2_name?: string
+  person: RecordIdString
+  person_id: number
+  retirement_accounts?: number
+  russian_speaking?: boolean
+  single_parent?: boolean
+  special_circumstances?: string
+  still_unemployed?: boolean
+  student_debt?: number
+  summer_amount_requested?: number
+  summer_program?: string
+  synagogue_grant?: string
+  tbm_amount_requested?: number
+  tbm_program?: string
+  total_adjusted_income?: number
+  total_edu_expenses?: number
+  total_exemptions?: number
+  total_gross_income?: number
+  total_housing_expenses?: number
+  total_medical_expenses?: number
+  total_rent?: number
+  unemployment?: boolean
+  updated: IsoAutoDateString
+  year: number
+}
+
+export type FinancialCategoriesRecord = {
+  cm_id: number
+  created: IsoAutoDateString
+  id: string
+  is_archived?: boolean
+  name?: string
+  updated: IsoAutoDateString
+}
+
+export type FinancialTransactionsRecord = {
+  amount?: number
+  cm_id: number
+  created: IsoAutoDateString
+  deferral_gl_account_id?: string
+  description?: string
+  division?: RecordIdString
+  effective_date?: IsoDateString
+  financial_category?: RecordIdString
+  gl_account_note?: string
+  household?: RecordIdString
+  id: string
+  is_reversed?: boolean
+  payment_method?: RecordIdString
+  person?: RecordIdString
+  post_date?: IsoDateString
+  program_id?: number
+  quantity?: number
+  recognition_gl_account_id?: string
+  reversal_date?: IsoDateString
+  service_end_date?: IsoDateString
+  service_start_date?: IsoDateString
+  session?: RecordIdString
+  session_group?: RecordIdString
+  transaction_note?: string
+  transaction_number?: number
+  unit_amount?: number
+  updated: IsoAutoDateString
+  year: number
+}
+
+export enum GeoAliasesCategoryOptions {
+  'city' = 'city',
+  'school' = 'school',
+  'congregation' = 'congregation',
+}
+export type GeoAliasesRecord = {
+  alias: string
+  canonical: string
+  category: GeoAliasesCategoryOptions
+  created: IsoAutoDateString
+  id: string
+  note?: string
+  updated: IsoAutoDateString
+}
+
+export type HouseholdCustomValuesRecord = {
+  created: IsoAutoDateString
+  field_definition?: RecordIdString
+  household?: RecordIdString
+  id: string
+  last_updated?: string
+  updated: IsoAutoDateString
+  value?: string
+  year: number
+}
+
+export type HouseholdDemographicsRecord = {
+  away_during_camp?: boolean
+  away_from_date?: string
+  away_location?: string
+  away_phone?: string
+  away_return_date?: string
+  board_member?: boolean
+  congregation_family?: string
+  congregation_summer?: string
+  created: IsoAutoDateString
+  custody_family?: string
+  custody_summer?: string
+  family_description?: string
+  family_description_other?: string
+  form_filler?: string
+  has_custody_considerations?: boolean
+  household: RecordIdString
+  id: string
+  jcc_family?: string
+  jcc_summer?: string
+  jewish_affiliation?: string
+  jewish_affiliation_other?: string
+  jewish_identities?: string
+  military_family?: boolean
+  parent_immigrant?: boolean
+  parent_immigrant_origin?: string
+  updated: IsoAutoDateString
+  year: number
+}
+
+export type HouseholdsRecord = {
+  alternate_mailing_title?: string
+  billing_address1?: string
+  billing_address2?: string
+  billing_city?: string
+  billing_country?: string
+  billing_mailing_title?: string
+  billing_postal_code?: string
+  billing_state?: string
+  cm_id: number
+  created: IsoAutoDateString
+  greeting?: string
+  household_phone?: string
+  id: string
+  mailing_title?: string
+  updated: IsoAutoDateString
+  year: number
+}
+
+export type LockedGroupMembersRecord = {
   added_by?: string
-  attendee: string // relation to attendees
-  group: string // relation to locked_groups
+  attendee: RecordIdString
+  group: RecordIdString
+  id: string
 }
 
-export interface LockedGroupsRecord {
+export type LockedGroupsRecord = {
   color: string
+  created: IsoAutoDateString
   created_by?: string
-  name?: string // optional friendly name for the group
-  scenario: string // relation to saved_scenarios
-  session: string // relation to camp_sessions
+  id: string
+  name?: string
+  scenario: RecordIdString
+  session: RecordIdString
+  updated: IsoAutoDateString
+  year: number
+}
+
+export enum NormalizedMappingsCategoryOptions {
+  'city' = 'city',
+  'school' = 'school',
+  'congregation' = 'congregation',
+}
+export type NormalizedMappingsRecord = {
+  category: NormalizedMappingsCategoryOptions
+  confidence?: number
+  created: IsoAutoDateString
+  id: string
+  normalized_value: string
+  occurrence_count?: number
+  original_value: string
+  person?: RecordIdString
+  session?: RecordIdString
+  updated: IsoAutoDateString
   year: number
 }
 
@@ -316,24 +833,57 @@ export enum OriginalBunkRequestsFieldOptions {
   'internal_notes' = 'internal_notes',
   'socialize_with' = 'socialize_with',
 }
-export interface OriginalBunkRequestsRecord {
+export type OriginalBunkRequestsRecord = {
   content: string
-  created?: IsoDateString
+  content_hash?: string
+  created: IsoAutoDateString
   field: OriginalBunkRequestsFieldOptions
   id: string
   processed?: IsoDateString
   requester: RecordIdString
-  updated?: IsoDateString
+  updated: IsoAutoDateString
   year: number
 }
 
-export interface PersonsRecord<Traw_data = unknown> {
+export type PaymentMethodsRecord = {
+  cm_id: number
+  created: IsoAutoDateString
+  id: string
+  name?: string
+  updated: IsoAutoDateString
+}
+
+export type PersonCustomValuesRecord = {
+  created: IsoAutoDateString
+  field_definition?: RecordIdString
+  id: string
+  last_updated?: string
+  person?: RecordIdString
+  updated: IsoAutoDateString
+  value?: string
+  year: number
+}
+
+export type PersonTagDefsRecord = {
+  created: IsoAutoDateString
+  id: string
+  is_hidden?: boolean
+  is_seasonal?: boolean
+  last_updated_utc?: string
+  name: string
+  updated: IsoAutoDateString
+}
+
+export type PersonsRecord<Tparent_names = unknown, Traw_data = unknown> = {
   address_city?: string
   address_state?: string
   age?: number
+  alternate_childhood_household?: RecordIdString
   birthdate?: string
   cm_id: number
-  created?: IsoDateString
+  cm_lead_date?: string
+  created: IsoAutoDateString
+  division?: RecordIdString
   first_name: string
   gender?: string
   gender_identity_id?: number
@@ -343,34 +893,136 @@ export interface PersonsRecord<Traw_data = unknown> {
   gender_pronoun_name?: string
   gender_pronoun_write_in?: string
   grade?: number
+  household?: RecordIdString
   household_id?: number
   id: string
   is_camper?: boolean
   last_name: string
   last_year_attended?: number
-  preferred_name?: string
-  primary_email?: string
-  secondary_email?: string
+  lead_date?: string
   normalized_city?: string
   normalized_congregation?: string
   normalized_school?: string
+  parent_names?: null | Tparent_names
+  partition_id?: number
+  preferred_name?: string
+  primary_childhood_household?: RecordIdString
+  primary_email?: string
   raw_data?: null | Traw_data
   school?: string
-  updated?: IsoDateString
+  secondary_email?: string
+  tags?: RecordIdString[]
+  tshirt_size?: string
+  updated: IsoAutoDateString
   year: number
   years_at_camp?: number
 }
 
-export interface SavedScenariosRecord<Tmetadata = unknown> {
-  created?: IsoDateString
+export type QuestRegistrationsRecord = {
+  any_medications?: string
+  anything_else?: string
+  attendee: RecordIdString
+  away_before?: string
+  away_explain?: string
+  backpack_info?: string
+  bad_camp_experiences?: string
+  bar_mitzvah_month?: string
+  bar_mitzvah_where?: string
+  bar_mitzvah_year?: boolean
+  biggest_accomplishment?: string
+  biggest_concern?: string
+  biggest_disappointment?: string
+  biggest_hope?: string
+  bus_alt_phone?: string
+  bus_alt_pickup?: string
+  bus_pickup_name?: string
+  bus_pickup_phone?: string
+  bus_pickup_relationship?: string
+  change_since_last_year?: string
+  child_matured?: string
+  concerns_for_child?: string
+  cook_chores?: string
+  cook_chores_explain?: string
+  cooperates_with_limits?: string
+  created: IsoAutoDateString
+  decision_attend?: string
+  express_frustration?: string
+  extracurricular?: string
+  fears_anxieties?: string
+  has_quester_before?: string
+  how_can_help?: string
+  how_much_child?: string
+  id: string
+  if_returning?: string
+  least_looking_forward?: string
+  make_friends_ease?: string
+  make_friends_explain?: string
+  most_looking_forward?: string
+  parent_signature?: string
+  person_id: number
+  physical_limit_explain?: string
+  physical_limitations?: string
+  preferred_name?: string
+  quester_signature?: string
+  separation_explain?: string
+  separation_reaction?: string
+  situations_transitions?: string
+  special_needs?: string
+  techniques_limits?: string
+  updated: IsoAutoDateString
+  what_makes_angry?: string
+  whose_decision?: string
+  why_come?: string
+  year: number
+}
+
+export type SavedScenariosRecord<Tmetadata = unknown> = {
+  created: IsoAutoDateString
   description?: string
   id: string
   is_active?: boolean
   metadata?: null | Tmetadata
   name: string
   session: RecordIdString
+  updated: IsoAutoDateString
   year: number
-  updated?: IsoDateString
+}
+
+export type SessionGroupsRecord = {
+  cm_id: number
+  created: IsoAutoDateString
+  description?: string
+  id: string
+  is_active?: boolean
+  name: string
+  sort_order?: number
+  updated: IsoAutoDateString
+  year: number
+}
+
+export enum SheetsWorkbooksWorkbookTypeOptions {
+  'globals' = 'globals',
+  'year' = 'year',
+}
+
+export enum SheetsWorkbooksStatusOptions {
+  'ok' = 'ok',
+  'error' = 'error',
+  'syncing' = 'syncing',
+}
+export type SheetsWorkbooksRecord = {
+  created: IsoAutoDateString
+  error_message?: string
+  id: string
+  last_sync: IsoAutoDateString
+  spreadsheet_id: string
+  status?: SheetsWorkbooksStatusOptions
+  tab_count?: number
+  title: string
+  total_records?: number
+  url?: string
+  workbook_type: SheetsWorkbooksWorkbookTypeOptions
+  year?: number
 }
 
 export enum SolverRunsStatusOptions {
@@ -380,7 +1032,7 @@ export enum SolverRunsStatusOptions {
   'failed' = 'failed',
   'error' = 'error',
 }
-export interface SolverRunsRecord<
+export type SolverRunsRecord<
   Tassignment_counts = unknown,
   Tdetails = unknown,
   Terror = unknown,
@@ -388,10 +1040,10 @@ export interface SolverRunsRecord<
   Trequest_data = unknown,
   Tresult = unknown,
   Tstats = unknown,
-> {
+> = {
   assignment_counts?: null | Tassignment_counts
   completed_at?: IsoDateString
-  created?: IsoDateString
+  created: IsoAutoDateString
   details?: null | Tdetails
   error?: null | Terror
   id: string
@@ -401,26 +1053,172 @@ export interface SolverRunsRecord<
   result?: null | Tresult
   run_id: string
   run_type?: string
-  scenario?: RecordIdString // Relation to saved_scenarios
+  scenario?: RecordIdString
   session: string
   session_id?: number
   started_at?: IsoDateString
   stats?: null | Tstats
   status?: SolverRunsStatusOptions
   triggered_by?: string
-  updated?: IsoDateString
+  updated: IsoAutoDateString
 }
 
-export interface UsersRecord {
-  avatar?: string
-  created?: IsoDateString
+export enum StaffStatusOptions {
+  'active' = 'active',
+  'resigned' = 'resigned',
+  'dismissed' = 'dismissed',
+  'cancelled' = 'cancelled',
+}
+
+export enum StaffInternationalOptions {
+  'domestic' = 'domestic',
+  'international' = 'international',
+}
+export type StaffRecord = {
+  bunk_staff?: boolean
+  bunks?: RecordIdString[]
+  contract_due_date?: IsoDateString
+  contract_in_date?: IsoDateString
+  contract_out_date?: IsoDateString
+  created: IsoAutoDateString
+  division?: RecordIdString
+  employment_end_date?: IsoDateString
+  employment_start_date?: IsoDateString
+  hire_date?: IsoDateString
+  id: string
+  international?: StaffInternationalOptions
+  organizational_category?: RecordIdString
+  person?: RecordIdString
+  person_id?: number
+  position1?: RecordIdString
+  position2?: RecordIdString
+  salary?: number
+  status?: StaffStatusOptions
+  status_id?: number
+  updated: IsoAutoDateString
+  year: number
+  years?: number
+}
+
+export type StaffApplicationsRecord = {
+  activity_program?: string
+  advice_would_give?: string
+  autobiography?: string
+  can_work_dates?: string
+  cant_work_explain?: string
+  closest_friend?: string
+  community_means?: string
+  created: IsoAutoDateString
+  dietary_needs?: string
+  dietary_needs_other?: string
+  favorite_camper_moment?: string
+  how_look_at_camp?: string
+  id: string
+  jewish_community?: string
+  languages?: string
+  last_summer_learned?: string
+  over_21?: boolean
+  person_id: number
+  position_pref_1?: string
+  position_pref_2?: string
+  position_pref_3?: string
+  qualification_changes?: string
+  qualifications?: string
+  ref_1_email?: string
+  ref_1_name?: string
+  ref_1_phone?: string
+  ref_1_relationship?: string
+  ref_1_years?: string
+  since_camp?: string
+  someone_admire?: string
+  spiritual_moment?: string
+  staff: RecordIdString
+  stress_response?: string
+  stress_situation?: string
+  tawonga_makes_think?: string
+  three_rules?: string
+  updated: IsoAutoDateString
+  why_tawonga?: string
+  why_work_again?: string
+  wish_knew?: string
+  work_dates_driver?: string
+  work_dates_supervisor?: string
+  work_dates_wild?: string
+  work_expectations?: string
+  working_across_differences?: string
+  year: number
+}
+
+export type StaffOrgCategoriesRecord = {
+  cm_id: number
+  created: IsoAutoDateString
+  id: string
+  name: string
+  updated: IsoAutoDateString
+}
+
+export type StaffPositionsRecord = {
+  cm_id: number
+  created: IsoAutoDateString
+  id: string
+  name: string
+  program_area?: RecordIdString
+  updated: IsoAutoDateString
+}
+
+export type StaffProgramAreasRecord = {
+  cm_id: number
+  created: IsoAutoDateString
+  id: string
+  name: string
+  updated: IsoAutoDateString
+}
+
+export type StaffSkillsRecord = {
+  can_teach?: boolean
+  created: IsoAutoDateString
+  first_name?: string
+  id: string
+  is_certified?: boolean
+  is_experienced?: boolean
+  is_intermediate?: boolean
+  last_name?: string
+  person?: RecordIdString
+  person_id: number
+  raw_value?: string
+  skill_cm_id: number
+  skill_name: string
+  updated: IsoAutoDateString
+  year: number
+}
+
+export type StaffVehicleInfoRecord = {
+  can_bring_others?: boolean
+  created: IsoAutoDateString
+  driver_name?: string
+  driving_to_camp?: boolean
+  how_getting_to_camp?: string
+  id: string
+  license_plate?: string
+  person_id: number
+  staff: RecordIdString
+  updated: IsoAutoDateString
+  vehicle_make?: string
+  vehicle_model?: string
+  which_friend?: string
+  year: number
+}
+
+export type UsersRecord = {
+  avatar?: FileNameString
+  created: IsoAutoDateString
   email: string
   emailVisibility?: boolean
   id: string
   name?: string
   password: string
   tokenKey: string
-  updated?: IsoDateString
+  updated: IsoAutoDateString
   verified?: boolean
 }
 
@@ -433,6 +1231,8 @@ export type MfasResponse<Texpand = unknown> = Required<MfasRecord> & BaseSystemF
 export type OtpsResponse<Texpand = unknown> = Required<OtpsRecord> & BaseSystemFields<Texpand>
 export type SuperusersResponse<Texpand = unknown> = Required<SuperusersRecord> &
   AuthSystemFields<Texpand>
+export type AttendeeStatusHistoryResponse<Texpand = unknown> =
+  Required<AttendeeStatusHistoryRecord> & BaseSystemFields<Texpand>
 export type AttendeesResponse<Texpand = unknown> = Required<AttendeesRecord> &
   BaseSystemFields<Texpand>
 export type BunkAssignmentsResponse<Texpand = unknown> = Required<BunkAssignmentsRecord> &
@@ -441,12 +1241,15 @@ export type BunkAssignmentsDraftResponse<Texpand = unknown> = Required<BunkAssig
   BaseSystemFields<Texpand>
 export type BunkPlansResponse<Texpand = unknown> = Required<BunkPlansRecord> &
   BaseSystemFields<Texpand>
+export type BunkRequestSourcesResponse<Texpand = unknown> = Required<BunkRequestSourcesRecord> &
+  BaseSystemFields<Texpand>
 export type BunkRequestsResponse<
   Tai_p1_reasoning = unknown,
   Tai_p3_reasoning = unknown,
   Tconfidence_explanation = unknown,
   Tkeywords_found = unknown,
   Tmetadata = unknown,
+  Tsource_fields = string[],
   Texpand = unknown,
 > = Required<
   BunkRequestsRecord<
@@ -454,12 +1257,19 @@ export type BunkRequestsResponse<
     Tai_p3_reasoning,
     Tconfidence_explanation,
     Tkeywords_found,
-    Tmetadata
+    Tmetadata,
+    Tsource_fields
   >
 > &
   BaseSystemFields<Texpand>
 export type BunksResponse<Texpand = unknown> = Required<BunksRecord> & BaseSystemFields<Texpand>
 export type CampSessionsResponse<Texpand = unknown> = Required<CampSessionsRecord> &
+  BaseSystemFields<Texpand>
+export type CamperDietaryResponse<Texpand = unknown> = Required<CamperDietaryRecord> &
+  BaseSystemFields<Texpand>
+export type CamperHistoryResponse<Texpand = unknown> = Required<CamperHistoryRecord> &
+  BaseSystemFields<Texpand>
+export type CamperTransportationResponse<Texpand = unknown> = Required<CamperTransportationRecord> &
   BaseSystemFields<Texpand>
 export type ConfigResponse<Tmetadata = unknown, Tvalue = unknown, Texpand = unknown> = Required<
   ConfigRecord<Tmetadata, Tvalue>
@@ -467,19 +1277,63 @@ export type ConfigResponse<Tmetadata = unknown, Tvalue = unknown, Texpand = unkn
   BaseSystemFields<Texpand>
 export type ConfigSectionsResponse<Texpand = unknown> = Required<ConfigSectionsRecord> &
   BaseSystemFields<Texpand>
+export type CustomFieldDefsResponse<Texpand = unknown> = Required<CustomFieldDefsRecord> &
+  BaseSystemFields<Texpand>
+export type DebugParseResultsResponse<
+  Tai_raw_response = unknown,
+  Tparsed_intents = unknown,
+  Texpand = unknown,
+> = Required<DebugParseResultsRecord<Tai_raw_response, Tparsed_intents>> & BaseSystemFields<Texpand>
+export type DivisionsResponse<Texpand = unknown> = Required<DivisionsRecord> &
+  BaseSystemFields<Texpand>
+export type FamilyCampAdultsResponse<Texpand = unknown> = Required<FamilyCampAdultsRecord> &
+  BaseSystemFields<Texpand>
+export type FamilyCampMedicalResponse<Texpand = unknown> = Required<FamilyCampMedicalRecord> &
+  BaseSystemFields<Texpand>
+export type FamilyCampRegistrationsResponse<Texpand = unknown> =
+  Required<FamilyCampRegistrationsRecord> & BaseSystemFields<Texpand>
+export type FinancialAidApplicationsResponse<Texpand = unknown> =
+  Required<FinancialAidApplicationsRecord> & BaseSystemFields<Texpand>
+export type FinancialCategoriesResponse<Texpand = unknown> = Required<FinancialCategoriesRecord> &
+  BaseSystemFields<Texpand>
+export type FinancialTransactionsResponse<Texpand = unknown> =
+  Required<FinancialTransactionsRecord> & BaseSystemFields<Texpand>
+export type GeoAliasesResponse<Texpand = unknown> = Required<GeoAliasesRecord> &
+  BaseSystemFields<Texpand>
+export type HouseholdCustomValuesResponse<Texpand = unknown> =
+  Required<HouseholdCustomValuesRecord> & BaseSystemFields<Texpand>
+export type HouseholdDemographicsResponse<Texpand = unknown> =
+  Required<HouseholdDemographicsRecord> & BaseSystemFields<Texpand>
+export type HouseholdsResponse<Texpand = unknown> = Required<HouseholdsRecord> &
+  BaseSystemFields<Texpand>
 export type LockedGroupMembersResponse<Texpand = unknown> = Required<LockedGroupMembersRecord> &
   BaseSystemFields<Texpand>
 export type LockedGroupsResponse<Texpand = unknown> = Required<LockedGroupsRecord> &
   BaseSystemFields<Texpand>
+export type NormalizedMappingsResponse<Texpand = unknown> = Required<NormalizedMappingsRecord> &
+  BaseSystemFields<Texpand>
 export type OriginalBunkRequestsResponse<Texpand = unknown> = Required<OriginalBunkRequestsRecord> &
   BaseSystemFields<Texpand>
-export type PersonsResponse<Traw_data = unknown, Texpand = unknown> = Required<
-  PersonsRecord<Traw_data>
-> &
+export type PaymentMethodsResponse<Texpand = unknown> = Required<PaymentMethodsRecord> &
+  BaseSystemFields<Texpand>
+export type PersonCustomValuesResponse<Texpand = unknown> = Required<PersonCustomValuesRecord> &
+  BaseSystemFields<Texpand>
+export type PersonTagDefsResponse<Texpand = unknown> = Required<PersonTagDefsRecord> &
+  BaseSystemFields<Texpand>
+export type PersonsResponse<
+  Tparent_names = unknown,
+  Traw_data = unknown,
+  Texpand = unknown,
+> = Required<PersonsRecord<Tparent_names, Traw_data>> & BaseSystemFields<Texpand>
+export type QuestRegistrationsResponse<Texpand = unknown> = Required<QuestRegistrationsRecord> &
   BaseSystemFields<Texpand>
 export type SavedScenariosResponse<Tmetadata = unknown, Texpand = unknown> = Required<
   SavedScenariosRecord<Tmetadata>
 > &
+  BaseSystemFields<Texpand>
+export type SessionGroupsResponse<Texpand = unknown> = Required<SessionGroupsRecord> &
+  BaseSystemFields<Texpand>
+export type SheetsWorkbooksResponse<Texpand = unknown> = Required<SheetsWorkbooksRecord> &
   BaseSystemFields<Texpand>
 export type SolverRunsResponse<
   Tassignment_counts = unknown,
@@ -494,81 +1348,200 @@ export type SolverRunsResponse<
   SolverRunsRecord<Tassignment_counts, Tdetails, Terror, Tlogs, Trequest_data, Tresult, Tstats>
 > &
   BaseSystemFields<Texpand>
+export type StaffResponse<Texpand = unknown> = Required<StaffRecord> & BaseSystemFields<Texpand>
+export type StaffApplicationsResponse<Texpand = unknown> = Required<StaffApplicationsRecord> &
+  BaseSystemFields<Texpand>
+export type StaffOrgCategoriesResponse<Texpand = unknown> = Required<StaffOrgCategoriesRecord> &
+  BaseSystemFields<Texpand>
+export type StaffPositionsResponse<Texpand = unknown> = Required<StaffPositionsRecord> &
+  BaseSystemFields<Texpand>
+export type StaffProgramAreasResponse<Texpand = unknown> = Required<StaffProgramAreasRecord> &
+  BaseSystemFields<Texpand>
+export type StaffSkillsResponse<Texpand = unknown> = Required<StaffSkillsRecord> &
+  BaseSystemFields<Texpand>
+export type StaffVehicleInfoResponse<Texpand = unknown> = Required<StaffVehicleInfoRecord> &
+  BaseSystemFields<Texpand>
 export type UsersResponse<Texpand = unknown> = Required<UsersRecord> & AuthSystemFields<Texpand>
 
 // Types containing all Records and Responses, useful for creating typing helper functions
 
-export interface CollectionRecords {
+export type CollectionRecords = {
   _authOrigins: AuthoriginsRecord
   _externalAuths: ExternalauthsRecord
   _mfas: MfasRecord
   _otps: OtpsRecord
   _superusers: SuperusersRecord
+  attendee_status_history: AttendeeStatusHistoryRecord
   attendees: AttendeesRecord
   bunk_assignments: BunkAssignmentsRecord
   bunk_assignments_draft: BunkAssignmentsDraftRecord
   bunk_plans: BunkPlansRecord
+  bunk_request_sources: BunkRequestSourcesRecord
   bunk_requests: BunkRequestsRecord
   bunks: BunksRecord
   camp_sessions: CampSessionsRecord
+  camper_dietary: CamperDietaryRecord
+  camper_history: CamperHistoryRecord
+  camper_transportation: CamperTransportationRecord
   config: ConfigRecord
   config_sections: ConfigSectionsRecord
+  custom_field_defs: CustomFieldDefsRecord
+  debug_parse_results: DebugParseResultsRecord
+  divisions: DivisionsRecord
+  family_camp_adults: FamilyCampAdultsRecord
+  family_camp_medical: FamilyCampMedicalRecord
+  family_camp_registrations: FamilyCampRegistrationsRecord
+  financial_aid_applications: FinancialAidApplicationsRecord
+  financial_categories: FinancialCategoriesRecord
+  financial_transactions: FinancialTransactionsRecord
+  geo_aliases: GeoAliasesRecord
+  household_custom_values: HouseholdCustomValuesRecord
+  household_demographics: HouseholdDemographicsRecord
+  households: HouseholdsRecord
   locked_group_members: LockedGroupMembersRecord
   locked_groups: LockedGroupsRecord
+  normalized_mappings: NormalizedMappingsRecord
   original_bunk_requests: OriginalBunkRequestsRecord
+  payment_methods: PaymentMethodsRecord
+  person_custom_values: PersonCustomValuesRecord
+  person_tag_defs: PersonTagDefsRecord
   persons: PersonsRecord
+  quest_registrations: QuestRegistrationsRecord
   saved_scenarios: SavedScenariosRecord
+  session_groups: SessionGroupsRecord
+  sheets_workbooks: SheetsWorkbooksRecord
   solver_runs: SolverRunsRecord
+  staff: StaffRecord
+  staff_applications: StaffApplicationsRecord
+  staff_org_categories: StaffOrgCategoriesRecord
+  staff_positions: StaffPositionsRecord
+  staff_program_areas: StaffProgramAreasRecord
+  staff_skills: StaffSkillsRecord
+  staff_vehicle_info: StaffVehicleInfoRecord
   users: UsersRecord
 }
 
-export interface CollectionResponses {
+export type CollectionResponses = {
   _authOrigins: AuthoriginsResponse
   _externalAuths: ExternalauthsResponse
   _mfas: MfasResponse
   _otps: OtpsResponse
   _superusers: SuperusersResponse
+  attendee_status_history: AttendeeStatusHistoryResponse
   attendees: AttendeesResponse
   bunk_assignments: BunkAssignmentsResponse
   bunk_assignments_draft: BunkAssignmentsDraftResponse
   bunk_plans: BunkPlansResponse
+  bunk_request_sources: BunkRequestSourcesResponse
   bunk_requests: BunkRequestsResponse
   bunks: BunksResponse
   camp_sessions: CampSessionsResponse
+  camper_dietary: CamperDietaryResponse
+  camper_history: CamperHistoryResponse
+  camper_transportation: CamperTransportationResponse
   config: ConfigResponse
   config_sections: ConfigSectionsResponse
+  custom_field_defs: CustomFieldDefsResponse
+  debug_parse_results: DebugParseResultsResponse
+  divisions: DivisionsResponse
+  family_camp_adults: FamilyCampAdultsResponse
+  family_camp_medical: FamilyCampMedicalResponse
+  family_camp_registrations: FamilyCampRegistrationsResponse
+  financial_aid_applications: FinancialAidApplicationsResponse
+  financial_categories: FinancialCategoriesResponse
+  financial_transactions: FinancialTransactionsResponse
+  geo_aliases: GeoAliasesResponse
+  household_custom_values: HouseholdCustomValuesResponse
+  household_demographics: HouseholdDemographicsResponse
+  households: HouseholdsResponse
   locked_group_members: LockedGroupMembersResponse
   locked_groups: LockedGroupsResponse
+  normalized_mappings: NormalizedMappingsResponse
   original_bunk_requests: OriginalBunkRequestsResponse
+  payment_methods: PaymentMethodsResponse
+  person_custom_values: PersonCustomValuesResponse
+  person_tag_defs: PersonTagDefsResponse
   persons: PersonsResponse
+  quest_registrations: QuestRegistrationsResponse
   saved_scenarios: SavedScenariosResponse
+  session_groups: SessionGroupsResponse
+  sheets_workbooks: SheetsWorkbooksResponse
   solver_runs: SolverRunsResponse
+  staff: StaffResponse
+  staff_applications: StaffApplicationsResponse
+  staff_org_categories: StaffOrgCategoriesResponse
+  staff_positions: StaffPositionsResponse
+  staff_program_areas: StaffProgramAreasResponse
+  staff_skills: StaffSkillsResponse
+  staff_vehicle_info: StaffVehicleInfoResponse
   users: UsersResponse
 }
+
+// Utility types for create/update operations
+
+type ProcessCreateAndUpdateFields<T> = Omit<
+  {
+    // Omit AutoDate fields
+    [K in keyof T as Extract<T[K], IsoAutoDateString> extends never
+      ? K
+      : never]: T[K] extends infer U // Convert FileNameString to File
+      ? U extends FileNameString | FileNameString[]
+        ? U extends any[]
+          ? File[]
+          : File
+        : U
+      : never
+  },
+  'id'
+>
+
+// Create type for Auth collections
+export type CreateAuth<T> = {
+  id?: RecordIdString
+  email: string
+  emailVisibility?: boolean
+  password: string
+  passwordConfirm: string
+  verified?: boolean
+} & ProcessCreateAndUpdateFields<T>
+
+// Create type for Base collections
+export type CreateBase<T> = {
+  id?: RecordIdString
+} & ProcessCreateAndUpdateFields<T>
+
+// Update type for Auth collections
+export type UpdateAuth<T> = Partial<
+  Omit<ProcessCreateAndUpdateFields<T>, keyof AuthSystemFields>
+> & {
+  email?: string
+  emailVisibility?: boolean
+  oldPassword?: string
+  password?: string
+  passwordConfirm?: string
+  verified?: boolean
+}
+
+// Update type for Base collections
+export type UpdateBase<T> = Partial<Omit<ProcessCreateAndUpdateFields<T>, keyof BaseSystemFields>>
+
+// Get the correct create type for any collection
+export type Create<T extends keyof CollectionResponses> =
+  CollectionResponses[T] extends AuthSystemFields
+    ? CreateAuth<CollectionRecords[T]>
+    : CreateBase<CollectionRecords[T]>
+
+// Get the correct update type for any collection
+export type Update<T extends keyof CollectionResponses> =
+  CollectionResponses[T] extends AuthSystemFields
+    ? UpdateAuth<CollectionRecords[T]>
+    : UpdateBase<CollectionRecords[T]>
 
 // Type for usage with type asserted PocketBase instance
 // https://github.com/pocketbase/js-sdk#specify-typescript-definitions
 
-export type TypedPocketBase = PocketBase & {
-  collection(idOrName: '_authOrigins'): RecordService<AuthoriginsResponse>
-  collection(idOrName: '_externalAuths'): RecordService<ExternalauthsResponse>
-  collection(idOrName: '_mfas'): RecordService<MfasResponse>
-  collection(idOrName: '_otps'): RecordService<OtpsResponse>
-  collection(idOrName: '_superusers'): RecordService<SuperusersResponse>
-  collection(idOrName: 'attendees'): RecordService<AttendeesResponse>
-  collection(idOrName: 'bunk_assignments'): RecordService<BunkAssignmentsResponse>
-  collection(idOrName: 'bunk_assignments_draft'): RecordService<BunkAssignmentsDraftResponse>
-  collection(idOrName: 'bunk_plans'): RecordService<BunkPlansResponse>
-  collection(idOrName: 'bunk_requests'): RecordService<BunkRequestsResponse>
-  collection(idOrName: 'bunks'): RecordService<BunksResponse>
-  collection(idOrName: 'camp_sessions'): RecordService<CampSessionsResponse>
-  collection(idOrName: 'config'): RecordService<ConfigResponse>
-  collection(idOrName: 'config_sections'): RecordService<ConfigSectionsResponse>
-  collection(idOrName: 'locked_group_members'): RecordService<LockedGroupMembersResponse>
-  collection(idOrName: 'locked_groups'): RecordService<LockedGroupsResponse>
-  collection(idOrName: 'original_bunk_requests'): RecordService<OriginalBunkRequestsResponse>
-  collection(idOrName: 'persons'): RecordService<PersonsResponse>
-  collection(idOrName: 'saved_scenarios'): RecordService<SavedScenariosResponse>
-  collection(idOrName: 'solver_runs'): RecordService<SolverRunsResponse>
-  collection(idOrName: 'users'): RecordService<UsersResponse>
-}
+export type TypedPocketBase = {
+  collection<T extends keyof CollectionResponses>(
+    idOrName: T
+  ): RecordService<CollectionResponses[T]>
+} & PocketBase
