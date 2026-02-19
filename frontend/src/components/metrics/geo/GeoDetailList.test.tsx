@@ -90,9 +90,7 @@ describe('GeoDetailList', () => {
   })
 
   it('shows gap indicator for schools without coords when showGaps is true', () => {
-    const schoolItems: GeoDataItem[] = [
-      { name: 'Unmapped Academy', count: 5, percentage: 10 },
-    ]
+    const schoolItems: GeoDataItem[] = [{ name: 'Unmapped Academy', count: 5, percentage: 10 }]
 
     render(<GeoDetailList data={schoolItems} category="school" showGaps={true} />)
 
@@ -105,9 +103,7 @@ describe('GeoDetailList', () => {
   })
 
   it('shows gap indicator for synagogues without coords when showGaps is true', () => {
-    const synItems: GeoDataItem[] = [
-      { name: 'Unmapped Temple', count: 3, percentage: 8 },
-    ]
+    const synItems: GeoDataItem[] = [{ name: 'Unmapped Temple', count: 3, percentage: 8 }]
 
     render(<GeoDetailList data={synItems} category="synagogue" showGaps={true} />)
 
