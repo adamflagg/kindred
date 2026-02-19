@@ -541,3 +541,247 @@ class TestBunkSessionTypesConstant:
         from api.utils.session_metrics import BUNK_SESSION_TYPES
 
         assert "tli" not in BUNK_SESSION_TYPES
+
+
+# ============================================================================
+# Shared Utility Function Tests (Phase 2 extraction)
+# ============================================================================
+
+
+class TestGetSessionFromExpand:
+    """Tests for get_session_from_expand() utility function."""
+
+    def test_extracts_session_from_dict_expand(self) -> None:
+        """Should extract session from a dict-style expand."""
+        from api.utils.session_metrics import get_session_from_expand
+
+        session = Mock(cm_id=1001, session_type="main")
+        record = Mock(expand={"session": session})
+        assert get_session_from_expand(record) is session
+
+    def test_extracts_session_from_object_expand(self) -> None:
+        """Should extract session from an object-style expand."""
+        from api.utils.session_metrics import get_session_from_expand
+
+        session = Mock(cm_id=1001, session_type="main")
+        expand = Mock(session=session)
+        # Make expand not behave as a dict
+        expand.__contains__ = Mock(side_effect=TypeError)
+        record = Mock(expand=expand)
+        result = get_session_from_expand(record)
+        assert result is session
+
+    def test_returns_none_for_empty_expand(self) -> None:
+        """Should return None when expand is empty dict."""
+        from api.utils.session_metrics import get_session_from_expand
+
+        record = Mock(expand={})
+        assert get_session_from_expand(record) is None
+
+    def test_returns_none_for_none_expand(self) -> None:
+        """Should return None when expand is None."""
+        from api.utils.session_metrics import get_session_from_expand
+
+        record = Mock(expand=None)
+        assert get_session_from_expand(record) is None
+
+    def test_returns_none_for_missing_expand(self) -> None:
+        """Should return None when record has no expand attribute."""
+        from api.utils.session_metrics import get_session_from_expand
+
+        record = Mock(spec=[])  # No attributes
+        assert get_session_from_expand(record) is None
+
+
+class TestBuildAgParentMap:
+    """Tests for build_ag_parent_map() utility function."""
+
+    def test_builds_map_from_ag_sessions(self) -> None:
+        """Should map AG session IDs to their parent IDs."""
+        from api.utils.session_metrics import build_ag_parent_map
+
+        sessions = {
+            1001: Mock(session_type="main", parent_id=None),
+            1002: Mock(session_type="ag", parent_id=1001),
+            1003: Mock(session_type="embedded", parent_id=None),
+        }
+        result = build_ag_parent_map(sessions)
+        assert result == {1002: 1001}
+
+    def test_empty_sessions(self) -> None:
+        """Should return empty dict for no sessions."""
+        from api.utils.session_metrics import build_ag_parent_map
+
+        assert build_ag_parent_map({}) == {}
+
+    def test_no_ag_sessions(self) -> None:
+        """Should return empty dict when no AG sessions exist."""
+        from api.utils.session_metrics import build_ag_parent_map
+
+        sessions = {
+            1001: Mock(session_type="main", parent_id=None),
+            1002: Mock(session_type="embedded", parent_id=None),
+        }
+        assert build_ag_parent_map(sessions) == {}
+
+    def test_multiple_ag_sessions(self) -> None:
+        """Should map all AG sessions to their parents."""
+        from api.utils.session_metrics import build_ag_parent_map
+
+        sessions = {
+            1001: Mock(session_type="main", parent_id=None),
+            1002: Mock(session_type="main", parent_id=None),
+            2001: Mock(session_type="ag", parent_id=1001),
+            2002: Mock(session_type="ag", parent_id=1002),
+        }
+        result = build_ag_parent_map(sessions)
+        assert result == {2001: 1001, 2002: 1002}
+
+    def test_ag_without_parent_id_skipped(self) -> None:
+        """AG sessions without parent_id should be skipped."""
+        from api.utils.session_metrics import build_ag_parent_map
+
+        sessions = {
+            1001: Mock(session_type="ag", parent_id=None),
+        }
+        assert build_ag_parent_map(sessions) == {}
+
+
+class TestFindAgSessionsForParent:
+    """Tests for find_ag_sessions_for_parent() utility function."""
+
+    def test_finds_ag_sessions_for_parent(self) -> None:
+        """Should find AG session IDs matching a parent."""
+        from api.utils.session_metrics import find_ag_sessions_for_parent
+
+        sessions = {
+            1001: Mock(session_type="main", parent_id=None),
+            2001: Mock(session_type="ag", parent_id=1001),
+            2002: Mock(session_type="ag", parent_id=1001),
+            2003: Mock(session_type="ag", parent_id=9999),
+        }
+        result = find_ag_sessions_for_parent(sessions, 1001)
+        assert result == {2001, 2002}
+
+    def test_returns_empty_for_none_session_cm_id(self) -> None:
+        """Should return empty set when session_cm_id is None."""
+        from api.utils.session_metrics import find_ag_sessions_for_parent
+
+        sessions = {2001: Mock(session_type="ag", parent_id=1001)}
+        result = find_ag_sessions_for_parent(sessions, None)
+        assert result == set()
+
+    def test_returns_empty_when_no_ag_children(self) -> None:
+        """Should return empty set when no AG sessions match."""
+        from api.utils.session_metrics import find_ag_sessions_for_parent
+
+        sessions = {1001: Mock(session_type="main", parent_id=None)}
+        result = find_ag_sessions_for_parent(sessions, 1001)
+        assert result == set()
+
+
+class TestFilterAttendeesBySession:
+    """Tests for filter_attendees_by_session() utility function."""
+
+    def _make_attendee(self, session_type: str, session_cm_id: int) -> Mock:
+        """Helper to create an attendee with session expand."""
+        session = Mock(session_type=session_type, cm_id=session_cm_id)
+        return Mock(expand={"session": session})
+
+    def test_filters_by_session_type(self) -> None:
+        """Should filter attendees to matching session types."""
+        from api.utils.session_metrics import filter_attendees_by_session
+
+        attendees = [
+            self._make_attendee("main", 1001),
+            self._make_attendee("ag", 2001),
+            self._make_attendee("family", 3001),
+        ]
+        result = filter_attendees_by_session(attendees, ["main", "ag"])
+        assert len(result) == 2
+
+    def test_no_session_type_filter_returns_all(self) -> None:
+        """Should return all attendees when session_types is None."""
+        from api.utils.session_metrics import filter_attendees_by_session
+
+        attendees = [
+            self._make_attendee("main", 1001),
+            self._make_attendee("family", 3001),
+        ]
+        result = filter_attendees_by_session(attendees, None)
+        assert len(result) == 2
+
+    def test_filters_by_session_cm_id(self) -> None:
+        """Should filter to specific session cm_id."""
+        from api.utils.session_metrics import filter_attendees_by_session
+
+        attendees = [
+            self._make_attendee("main", 1001),
+            self._make_attendee("main", 1002),
+        ]
+        result = filter_attendees_by_session(attendees, None, session_cm_id=1001)
+        assert len(result) == 1
+
+    def test_includes_ag_session_ids(self) -> None:
+        """Should include attendees in AG sessions matching parent."""
+        from api.utils.session_metrics import filter_attendees_by_session
+
+        attendees = [
+            self._make_attendee("main", 1001),
+            self._make_attendee("ag", 2001),
+            self._make_attendee("main", 1002),
+        ]
+        result = filter_attendees_by_session(attendees, None, session_cm_id=1001, ag_session_ids={2001})
+        assert len(result) == 2  # 1001 + AG 2001
+
+    def test_skips_attendees_without_session_expand(self) -> None:
+        """Should skip attendees with missing session expand."""
+        from api.utils.session_metrics import filter_attendees_by_session
+
+        attendees = [
+            self._make_attendee("main", 1001),
+            Mock(expand={}),  # No session
+            Mock(expand=None),  # None expand
+        ]
+        result = filter_attendees_by_session(attendees, ["main"])
+        assert len(result) == 1
+
+
+class TestGetSessionLengthCategory:
+    """Tests for get_session_length_category in session_metrics (shared location)."""
+
+    def test_function_exists_in_shared_module(self) -> None:
+        """get_session_length_category should be importable from session_metrics."""
+        from api.utils.session_metrics import get_session_length_category
+
+        assert callable(get_session_length_category)
+
+    def test_one_week_category(self) -> None:
+        """4-day session should be 1-week."""
+        from api.utils.session_metrics import get_session_length_category
+
+        assert get_session_length_category("2025-06-01", "2025-06-04") == "1-week"
+
+    def test_two_week_category(self) -> None:
+        """14-day session should be 2-week."""
+        from api.utils.session_metrics import get_session_length_category
+
+        assert get_session_length_category("2025-06-01", "2025-06-14") == "2-week"
+
+    def test_three_week_category(self) -> None:
+        """21-day session should be 3-week."""
+        from api.utils.session_metrics import get_session_length_category
+
+        assert get_session_length_category("2025-06-01", "2025-06-21") == "3-week"
+
+    def test_four_week_plus_category(self) -> None:
+        """28-day session should be 4-week+."""
+        from api.utils.session_metrics import get_session_length_category
+
+        assert get_session_length_category("2025-06-01", "2025-06-28") == "4-week+"
+
+    def test_unknown_for_empty_dates(self) -> None:
+        """Empty dates should return unknown."""
+        from api.utils.session_metrics import get_session_length_category
+
+        assert get_session_length_category("", "") == "unknown"

@@ -922,7 +922,7 @@ class TestSessionLengthBySessionBreakdown:
         - 4-week+: 22+ days
         - unknown: missing or invalid dates
         """
-        from api.services.registration_service import get_session_length_category
+        from api.utils.session_metrics import get_session_length_category
 
         # 1-week (4 days: June 20-23 inclusive = 4 days)
         assert get_session_length_category("2026-06-20", "2026-06-23") == "1-week"
@@ -968,7 +968,7 @@ class TestSessionLengthBySessionBreakdown:
         Expected:
         - "3-week" category: 8 total (4+2+2 from Sessions 2, 3, 4)
         """
-        from api.services.registration_service import get_session_length_category
+        from api.utils.session_metrics import get_session_length_category
 
         # Verify session lengths from fixtures
         session_2, session_3, session_4, taste, ag_session = sample_sessions_2026

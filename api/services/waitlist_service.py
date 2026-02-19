@@ -20,6 +20,9 @@ from api.schemas.metrics import (
     WaitlistMetricsResponse,
     WaitlistSessionBreakdown,
 )
+from api.services.breakdown_calculator import calculate_percentage, compute_registration_breakdown
+from api.services.extractors import extract_gender, extract_grade
+from api.utils.session_metrics import get_session_from_expand
 
 if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository
@@ -83,7 +86,7 @@ class WaitlistService:
         for att in enrolled_attendees:
             pid = getattr(att, "person_id", None)
             if pid is not None:
-                session_info = self._get_session_from_attendee(att)
+                session_info = get_session_from_expand(att)
                 if session_info:
                     cmid = int(getattr(session_info, "cm_id", 0))
                     name = getattr(session_info, "name", f"Session {cmid}")
@@ -105,7 +108,7 @@ class WaitlistService:
         seen_for_summary: set[int] = set()
         for att in waitlisted_attendees:
             pid = int(getattr(att, "person_id", 0))
-            session_info = self._get_session_from_attendee(att)
+            session_info = get_session_from_expand(att)
             session_cmid = getattr(session_info, "cm_id", 0) if session_info else 0
 
             if session_cmid:
@@ -146,7 +149,7 @@ class WaitlistService:
             pid = int(getattr(record, "person_id", 0))
             if not pid:
                 continue
-            session_info = self._get_session_from_history(record)
+            session_info = get_session_from_expand(record)
             session_cmid = int(getattr(session_info, "cm_id", 0)) if session_info else 0
             if session_cmid and session_cmid not in valid_session_ids:
                 continue
@@ -159,7 +162,7 @@ class WaitlistService:
             pid = int(getattr(record, "person_id", 0))
             if not pid:
                 continue
-            session_info = self._get_session_from_history(record)
+            session_info = get_session_from_expand(record)
             session_cmid = int(getattr(session_info, "cm_id", 0)) if session_info else 0
             if session_cmid and session_cmid not in valid_session_ids:
                 continue
@@ -229,26 +232,12 @@ class WaitlistService:
         """Filter attendees to only those in valid sessions."""
         result = []
         for att in attendees:
-            session = self._get_session_from_attendee(att)
+            session = get_session_from_expand(att)
             if session:
                 session_cmid = int(getattr(session, "cm_id", 0))
                 if session_cmid in valid_session_ids:
                     result.append(att)
         return result
-
-    def _get_session_from_attendee(self, attendee: Any) -> Any:
-        """Extract session from attendee's expand dict."""
-        expand = getattr(attendee, "expand", {}) or {}
-        if isinstance(expand, dict):
-            return expand.get("session")
-        return getattr(expand, "session", None)
-
-    def _get_session_from_history(self, record: Any) -> Any:
-        """Extract session from status history record's expand dict."""
-        expand = getattr(record, "expand", {}) or {}
-        if isinstance(expand, dict):
-            return expand.get("session")
-        return getattr(expand, "session", None)
 
     def _compute_demographics(
         self,
@@ -260,32 +249,16 @@ class WaitlistService:
         if total == 0:
             return [], []
 
-        grade_counts: dict[int | None, int] = defaultdict(int)
-        gender_counts: dict[str, int] = defaultdict(int)
-
-        for pid in person_ids:
-            person = persons.get(pid)
-            if person:
-                grade = getattr(person, "grade", None)
-                gender = getattr(person, "gender", None) or "Unknown"
-                grade_counts[grade] += 1
-                gender_counts[gender] += 1
-
+        grade_stats = compute_registration_breakdown(person_ids, persons, extract_grade)
         by_grade = [
-            GradeBreakdown(
-                grade=g,
-                count=c,
-                percentage=round(c / total * 100, 1) if total > 0 else 0.0,
-            )
-            for g, c in sorted(grade_counts.items(), key=lambda x: (x[0] is None, x[0]))
+            GradeBreakdown(grade=g, count=s.count, percentage=round(calculate_percentage(s.count, total), 1))
+            for g, s in sorted(grade_stats.items(), key=lambda x: (x[0] is None, x[0]))
         ]
+
+        gender_stats = compute_registration_breakdown(person_ids, persons, extract_gender)
         by_gender = [
-            GenderBreakdown(
-                gender=g,
-                count=c,
-                percentage=round(c / total * 100, 1) if total > 0 else 0.0,
-            )
-            for g, c in sorted(gender_counts.items())
+            GenderBreakdown(gender=g, count=s.count, percentage=round(calculate_percentage(s.count, total), 1))
+            for g, s in sorted(gender_stats.items())
         ]
 
         return by_grade, by_gender

@@ -10,8 +10,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from api.schemas.metrics import DrilldownAttendee, DrilldownSession
-from api.services.registration_service import get_session_length_category
-from api.utils.session_metrics import compute_summer_metrics
+from api.utils.session_metrics import (
+    compute_summer_metrics,
+    filter_attendees_by_session,
+    find_ag_sessions_for_parent,
+    get_session_from_expand,
+    get_session_length_category,
+)
 
 if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository
@@ -103,7 +108,7 @@ class DrilldownService:
 
         # Fetch sessions first to find AG sessions with matching parent
         sessions = await self.repo.fetch_sessions(year, session_types)
-        ag_session_ids = self._find_ag_sessions_for_parent(sessions, session_cm_id)
+        ag_session_ids = find_ag_sessions_for_parent(sessions, session_cm_id)
 
         # Retention card breakdowns (top cards: all, returned, not_returned)
         if breakdown_type in RETENTION_CARD_BREAKDOWNS and compare_year is not None:
@@ -163,7 +168,7 @@ class DrilldownService:
         )
 
         # Filter by session type and/or session_cm_id
-        filtered_attendees = self._filter_by_session(attendees, session_types, session_cm_id, ag_session_ids)
+        filtered_attendees = filter_attendees_by_session(attendees, session_types, session_cm_id, ag_session_ids)
 
         # For first_summer_year or summer_years breakdown, pre-compute metrics
         first_year_by_person: dict[int, int] = {}
@@ -239,68 +244,6 @@ class DrilldownService:
             return False
         return getattr(session, "session_type", None) in session_types
 
-    def _find_ag_sessions_for_parent(self, sessions: dict[int, Any], session_cm_id: int | None) -> set[int]:
-        """Find AG sessions that belong to a parent session.
-
-        Args:
-            sessions: Dictionary of sessions by cm_id.
-            session_cm_id: The parent session cm_id to find AG children for.
-
-        Returns:
-            Set of AG session cm_ids that have the given parent.
-        """
-        if session_cm_id is None:
-            return set()
-
-        ag_session_ids: set[int] = set()
-        for sid, session in sessions.items():
-            if getattr(session, "session_type", None) == "ag":
-                parent_id = getattr(session, "parent_id", None)
-                if parent_id == session_cm_id:
-                    ag_session_ids.add(sid)
-        return ag_session_ids
-
-    def _filter_by_session(
-        self,
-        attendees: list[Any],
-        session_types: list[str] | None,
-        session_cm_id: int | None,
-        ag_session_ids: set[int],
-    ) -> list[Any]:
-        """Filter attendees by session type and/or session cm_id.
-
-        Args:
-            attendees: List of attendee records.
-            session_types: Session types to include.
-            session_cm_id: Specific session to filter to.
-            ag_session_ids: AG sessions that belong to the parent session.
-
-        Returns:
-            Filtered list of attendees.
-        """
-        filtered = []
-        for a in attendees:
-            expand = getattr(a, "expand", {}) or {}
-            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
-            if not session:
-                continue
-
-            session_type = getattr(session, "session_type", None)
-            attendee_session_cm_id = getattr(session, "cm_id", None)
-
-            # Apply session type filter
-            if session_types and session_type not in session_types:
-                continue
-
-            # Apply session_cm_id filter if specified
-            if session_cm_id is not None:
-                # Include if matches directly or is an AG session with matching parent
-                if attendee_session_cm_id != session_cm_id and attendee_session_cm_id not in ag_session_ids:
-                    continue
-
-            filtered.append(a)
-        return filtered
-
     def _filter_by_breakdown(
         self,
         attendees: list[Any],
@@ -361,7 +304,7 @@ class DrilldownService:
                 try:
                     target_session_id = int(breakdown_value)
                     # Also match AG sessions that have this as parent
-                    ag_ids = self._find_ag_sessions_for_session(sessions, target_session_id)
+                    ag_ids = find_ag_sessions_for_parent(sessions, target_session_id)
                     if attendee_session_cm_id == target_session_id or attendee_session_cm_id in ag_ids:
                         filtered.append(a)
                 except ValueError:
@@ -433,24 +376,6 @@ class DrilldownService:
                         filtered.append(a)
 
         return filtered
-
-    def _find_ag_sessions_for_session(self, sessions: dict[int, Any], session_cm_id: int) -> set[int]:
-        """Find AG sessions that have the given session as parent.
-
-        Args:
-            sessions: Dictionary of sessions by cm_id.
-            session_cm_id: The session cm_id to find AG children for.
-
-        Returns:
-            Set of AG session cm_ids.
-        """
-        ag_ids: set[int] = set()
-        for sid, session in sessions.items():
-            if getattr(session, "session_type", None) == "ag":
-                parent_id = getattr(session, "parent_id", None)
-                if parent_id == session_cm_id:
-                    ag_ids.add(sid)
-        return ag_ids
 
     async def _handle_retention_session_breakdown(
         self,
@@ -781,7 +706,7 @@ class DrilldownService:
         enrolled_attendee_groups: dict[int, list[Any]] = {}
         for att in enrolled_attendees:
             pid = getattr(att, "person_id", None)
-            session_info = self._get_session_from_record(att)
+            session_info = get_session_from_expand(att)
             if pid is not None and session_info:
                 session_type = getattr(session_info, "session_type", None)
                 if session_type in effective_types:
@@ -800,7 +725,7 @@ class DrilldownService:
                 continue
 
             # Apply session filter
-            session_info = self._get_session_from_record(record)
+            session_info = get_session_from_expand(record)
             if session_cm_id is not None and session_info:
                 record_sid = int(getattr(session_info, "cm_id", 0))
                 if record_sid != session_cm_id and record_sid not in ag_session_ids:
@@ -900,7 +825,7 @@ class DrilldownService:
                 all_waitlisted_groups.setdefault(pid, []).append(att)
 
         # Filter waitlisted by session (controls which persons appear in results)
-        waitlisted_attendees = self._filter_by_session(
+        waitlisted_attendees = filter_attendees_by_session(
             waitlisted_attendees, session_types, effective_session_cm_id, ag_session_ids
         )
 
@@ -909,7 +834,7 @@ class DrilldownService:
         enrolled_attendee_groups: dict[int, list[Any]] = {}
         for att in enrolled_attendees:
             enrolled_pid = getattr(att, "person_id", None)
-            session_info = self._get_session_from_record(att)
+            session_info = get_session_from_expand(att)
             if enrolled_pid is not None and session_info:
                 session_type = getattr(session_info, "session_type", None)
                 if session_type in effective_types:
@@ -986,7 +911,7 @@ class DrilldownService:
                 all_waitlisted_groups.setdefault(pid, []).append(att)
 
         # Filter waitlisted by session (controls which persons appear)
-        filtered_waitlisted = self._filter_by_session(
+        filtered_waitlisted = filter_attendees_by_session(
             waitlisted_attendees, session_types, session_cm_id, ag_session_ids
         )
 
@@ -1008,7 +933,7 @@ class DrilldownService:
         enrolled_attendee_groups: dict[int, list[Any]] = {}
         for att in enrolled_attendees:
             enrolled_pid = getattr(att, "person_id", None)
-            session_info = self._get_session_from_record(att)
+            session_info = get_session_from_expand(att)
             if enrolled_pid is not None and session_info:
                 session_type = getattr(session_info, "session_type", None)
                 if session_type in effective_types:
@@ -1021,10 +946,3 @@ class DrilldownService:
             person_attendee_groups=all_waitlisted_groups,
             enrolled_attendee_groups=enrolled_attendee_groups,
         )
-
-    def _get_session_from_record(self, record: Any) -> Any:
-        """Extract session from a record's expand dict."""
-        expand = getattr(record, "expand", {}) or {}
-        if isinstance(expand, dict):
-            return expand.get("session")
-        return getattr(expand, "session", None)

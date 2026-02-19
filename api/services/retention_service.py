@@ -26,7 +26,7 @@ from api.schemas.metrics import (
 from api.utils.session_metrics import (
     BUNK_SESSION_TYPES,
     DISPLAY_SESSION_TYPES,
-    SUMMER_PROGRAM_SESSION_TYPES,
+    compute_summer_metrics,
 )
 
 from .breakdown_calculator import compute_breakdown, safe_rate
@@ -183,7 +183,7 @@ class RetentionService:
         # Summer enrollment breakdowns (calculated from attendees history)
         enrollment_history = await self.repo.fetch_summer_enrollment_history(person_ids_base, base_year)
 
-        summer_years_by_person, first_year_by_person = self._compute_summer_metrics(enrollment_history, person_ids_base)
+        summer_years_by_person, first_year_by_person = compute_summer_metrics(enrollment_history, person_ids_base)
 
         by_summer_years = self._build_summer_years_breakdown(person_ids_base, returned_ids, summer_years_by_person)
 
@@ -656,58 +656,6 @@ class RetentionService:
             )
             for (sess, bunk), stats in sorted_items
         ]
-
-    def _compute_summer_metrics(
-        self,
-        enrollment_history: list[Any],
-        person_ids: set[int],
-    ) -> tuple[dict[int, int], dict[int, int]]:
-        """Compute summer enrollment metrics from batch-fetched history.
-
-        Args:
-            enrollment_history: List of attendee records with session expansion.
-            person_ids: Set of person_ids in the base year.
-
-        Returns:
-            Tuple of:
-            - summer_years_by_person: person_id -> count of distinct summer years
-            - first_year_by_person: person_id -> first summer enrollment year
-        """
-        # Group records by person_id
-        by_person: dict[int, list[Any]] = {}
-        for record in enrollment_history:
-            pid = getattr(record, "person_id", None)
-            if pid is None or pid not in person_ids:
-                continue
-
-            # Filter to summer session types
-            expand = getattr(record, "expand", {}) or {}
-            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
-            if not session:
-                continue
-
-            session_type = getattr(session, "session_type", None)
-            if session_type not in SUMMER_PROGRAM_SESSION_TYPES:
-                continue
-
-            if pid not in by_person:
-                by_person[pid] = []
-            by_person[pid].append(record)
-
-        # Compute aggregations
-        summer_years_by_person: dict[int, int] = {}
-        first_year_by_person: dict[int, int] = {}
-
-        for pid, records in by_person.items():
-            # Summer years: count distinct years
-            years = {getattr(r, "year", 0) for r in records}
-            summer_years_by_person[pid] = len(years)
-
-            # First summer year: min year
-            if years:
-                first_year_by_person[pid] = min(years)
-
-        return summer_years_by_person, first_year_by_person
 
     def _build_summer_years_breakdown(
         self,

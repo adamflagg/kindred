@@ -5,6 +5,15 @@
  * testing and reduce component complexity.
  */
 
+import type {
+  FirstSummerYearBreakdown,
+  GenderBreakdown,
+  GradeBreakdown,
+  NewVsReturning,
+  SessionBreakdown,
+  SessionLengthBreakdown,
+  SummerYearsBreakdown,
+} from '../types/metrics'
 import { getSessionChartLabel } from './sessionDisplay'
 import {
   sortSessionDataByDate,
@@ -38,14 +47,8 @@ export interface TrendDisplay {
 }
 
 // ============================================================================
-// Registration transforms
+// Registration transforms (types from types/metrics.ts)
 // ============================================================================
-
-export interface GenderBreakdown {
-  gender: string | null
-  count: number
-  percentage: number
-}
 
 export function transformGenderData(data: GenderBreakdown[] | undefined): ChartDataPoint[] {
   if (!data?.length) return []
@@ -56,12 +59,6 @@ export function transformGenderData(data: GenderBreakdown[] | undefined): ChartD
   }))
 }
 
-export interface GradeBreakdown {
-  grade: number | null
-  count: number
-  percentage: number
-}
-
 export function transformGradeData(data: GradeBreakdown[] | undefined): ChartDataPoint[] {
   if (!data?.length) return []
   return data.map((g) => ({
@@ -70,12 +67,6 @@ export function transformGradeData(data: GradeBreakdown[] | undefined): ChartDat
     percentage: g.percentage,
     id: g.grade !== null ? g.grade : 'null',
   }))
-}
-
-export interface SessionBreakdown {
-  session_name: string
-  count: number
-  utilization: number | null
 }
 
 export function transformSessionData(
@@ -94,12 +85,6 @@ export function transformSessionData(
   }))
 }
 
-export interface SessionLengthBreakdown {
-  length_category: string
-  count: number
-  percentage: number
-}
-
 export function transformSessionLengthData(
   data: SessionLengthBreakdown[] | undefined
 ): ChartDataPoint[] {
@@ -109,12 +94,6 @@ export function transformSessionLengthData(
     value: s.count,
     percentage: s.percentage,
   }))
-}
-
-export interface SummerYearsBreakdown {
-  summer_years: number
-  count: number
-  percentage: number
 }
 
 export function transformSummerYearsData(
@@ -129,12 +108,6 @@ export function transformSummerYearsData(
   }))
 }
 
-export interface FirstSummerYearBreakdown {
-  first_summer_year: number
-  count: number
-  percentage: number
-}
-
 export function transformFirstSummerYearData(
   data: FirstSummerYearBreakdown[] | undefined
 ): ChartDataPoint[] {
@@ -146,16 +119,7 @@ export function transformFirstSummerYearData(
   }))
 }
 
-export interface NewVsReturningData {
-  new_count: number
-  returning_count: number
-  new_percentage: number
-  returning_percentage: number
-}
-
-export function transformNewVsReturningData(
-  data: NewVsReturningData | undefined
-): ChartDataPoint[] {
+export function transformNewVsReturningData(data: NewVsReturning | undefined): ChartDataPoint[] {
   if (!data) return []
   return [
     {
