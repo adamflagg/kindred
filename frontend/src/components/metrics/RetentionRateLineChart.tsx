@@ -23,6 +23,7 @@ interface RetentionRateLineChartProps {
   data: RetentionRateBarItem[]
   title: string
   height?: number
+  tooltipLabelPrefix?: string
 }
 
 interface ChartItem {
@@ -32,7 +33,12 @@ interface ChartItem {
   returnedCount: number
 }
 
-export function RetentionRateLineChart({ data, title, height = 250 }: RetentionRateLineChartProps) {
+export function RetentionRateLineChart({
+  data,
+  title,
+  height = 250,
+  tooltipLabelPrefix,
+}: RetentionRateLineChartProps) {
   if (data.length === 0) {
     return (
       <div className="card-lodge p-4">
@@ -65,7 +71,9 @@ export function RetentionRateLineChart({ data, title, height = 250 }: RetentionR
       const item = payload[0].payload
       return (
         <div className="bg-card border-border rounded-lg border p-3 shadow-lg">
-          <p className="text-foreground font-medium">{item.name}</p>
+          <p className="text-foreground font-medium">
+            {tooltipLabelPrefix ? `${tooltipLabelPrefix}${item.name}` : item.name}
+          </p>
           <p className="text-muted-foreground text-sm">
             Retention: <span className="text-primary font-semibold">{item.rate}%</span>
           </p>
