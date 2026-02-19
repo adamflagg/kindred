@@ -156,6 +156,9 @@ export const queryKeys = {
       compareYear,
     ] as const,
 
+  // Staff (Tier 1 - sync data)
+  bunkStaff: (year: number) => ['bunk-staff', year] as const,
+
   // Normalized mappings for geographic source tracking
   normalizedMappings: (year: number, category: string, sessionCmId?: number) =>
     sessionCmId !== undefined

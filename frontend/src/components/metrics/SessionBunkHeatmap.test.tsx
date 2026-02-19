@@ -125,12 +125,21 @@ describe('SessionBunkHeatmap', () => {
     expect(session2Cells.map((c) => c.textContent)).toContain('—')
   })
 
-  it('renders tooltip with counts via title attribute', () => {
+  it('shows retention stats in tooltip on cell hover', () => {
     render(<SessionBunkHeatmap data={sampleData} />)
 
-    // Tooltip via title attribute: "X of Y returned (Z%)"
-    expect(screen.getByTitle('8 of 10 returned (80%)')).toBeInTheDocument()
-    expect(screen.getByTitle('3 of 12 returned (25%)')).toBeInTheDocument()
+    const boysTable = getTableInSection('Boys Cabins')
+    const rows = within(boysTable).getAllByRole('row')
+    const session1Row = rows.find(
+      (row) => within(row).queryByRole('rowheader')?.textContent === 'Session 1'
+    )
+    const cells = within(session1Row!).getAllByRole('cell')
+    const b1Cell = cells.find((c) => c.textContent === '80%')
+
+    fireEvent.mouseEnter(b1Cell!)
+
+    // Portal tooltip shows retention stats
+    expect(screen.getByText(/8 of 10 returned/)).toBeInTheDocument()
   })
 
   it('renders nothing when data is empty', () => {
@@ -432,7 +441,7 @@ describe('SessionBunkHeatmap', () => {
     expect(b2Cell!.className).not.toContain('cursor-help')
   })
 
-  it('shows tooltip on cell hover when staff data exists', () => {
+  it('shows tooltip with staff on cell hover when staff data exists', () => {
     const staffMap = new Map<string, BunkStaffInfo[]>()
     staffMap.set('Session 1|B-1', [
       { name: 'Emma Johnson', personId: '12345' },
@@ -449,19 +458,16 @@ describe('SessionBunkHeatmap', () => {
     const cells = within(session1Row!).getAllByRole('cell')
     const b1Cell = cells.find((c) => c.textContent === '80%')
 
-    // Hover the cell
     fireEvent.mouseEnter(b1Cell!)
 
-    // Tooltip should show staff names (rendered via portal to document.body)
+    // Tooltip should show retention stats AND staff names
+    expect(screen.getByText(/8 of 10 returned/)).toBeInTheDocument()
     expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
     expect(screen.getByText('Liam Garcia')).toBeInTheDocument()
   })
 
   it('hides tooltip when mouse leaves cell', () => {
-    const staffMap = new Map<string, BunkStaffInfo[]>()
-    staffMap.set('Session 1|B-1', [{ name: 'Emma Johnson', personId: '12345' }])
-
-    render(<SessionBunkHeatmap data={sampleData} bunkStaff={staffMap} />)
+    render(<SessionBunkHeatmap data={sampleData} />)
 
     const boysTable = getTableInSection('Boys Cabins')
     const rows = within(boysTable).getAllByRole('row')
@@ -471,15 +477,14 @@ describe('SessionBunkHeatmap', () => {
     const cells = within(session1Row!).getAllByRole('cell')
     const b1Cell = cells.find((c) => c.textContent === '80%')
 
-    // Hover then leave
     fireEvent.mouseEnter(b1Cell!)
-    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+    expect(screen.getByText(/8 of 10 returned/)).toBeInTheDocument()
 
     fireEvent.mouseLeave(b1Cell!)
-    expect(screen.queryByText('Emma Johnson')).not.toBeInTheDocument()
+    expect(screen.queryByText(/8 of 10 returned/)).not.toBeInTheDocument()
   })
 
-  it('does not show tooltip when hovering cell without staff', () => {
+  it('shows retention-only tooltip on cells without staff', () => {
     const staffMap = new Map<string, BunkStaffInfo[]>()
     staffMap.set('Session 1|B-1', [{ name: 'Emma Johnson', personId: '12345' }])
 
@@ -495,8 +500,9 @@ describe('SessionBunkHeatmap', () => {
 
     fireEvent.mouseEnter(b2Cell!)
 
-    // No tooltip should appear
+    // Retention stats shown, but no staff section
+    expect(screen.getByText(/3 of 12 returned/)).toBeInTheDocument()
     expect(screen.queryByText('Emma Johnson')).not.toBeInTheDocument()
-    expect(screen.queryByText(/no staff assigned/i)).not.toBeInTheDocument()
+    expect(screen.queryByText('Staff')).not.toBeInTheDocument()
   })
 })
