@@ -24,6 +24,7 @@ interface RetentionRateLineChartProps {
   title: string
   height?: number
   tooltipLabelPrefix?: string
+  onDotClick?: (item: RetentionRateBarItem) => void
 }
 
 interface ChartItem {
@@ -31,6 +32,7 @@ interface ChartItem {
   rate: number
   baseCount: number
   returnedCount: number
+  id?: string | number | undefined
 }
 
 export function RetentionRateLineChart({
@@ -38,6 +40,7 @@ export function RetentionRateLineChart({
   title,
   height = 250,
   tooltipLabelPrefix,
+  onDotClick,
 }: RetentionRateLineChartProps) {
   if (data.length === 0) {
     return (
@@ -58,7 +61,17 @@ export function RetentionRateLineChart({
     rate: Math.round(d.retentionRate * 100),
     baseCount: d.baseCount,
     returnedCount: d.returnedCount,
+    id: d.id,
   }))
+
+  // Handle activeDot click: map chart item back to original RetentionRateBarItem
+  const handleDotClick = onDotClick
+    ? (props: { payload?: ChartItem }) => {
+        if (!props.payload) return
+        const original = sorted.find((d) => d.name === props.payload!.name)
+        if (original) onDotClick(original)
+      }
+    : undefined
 
   const CustomTooltip = ({
     active,
@@ -112,7 +125,11 @@ export function RetentionRateLineChart({
             stroke="hsl(160, 100%, 35%)"
             strokeWidth={2.5}
             dot={{ fill: 'hsl(160, 100%, 35%)', r: 5 }}
-            activeDot={{ r: 7 }}
+            activeDot={
+              handleDotClick
+                ? { r: 7, onClick: handleDotClick, style: { cursor: 'pointer' } }
+                : { r: 7 }
+            }
           >
             <LabelList
               dataKey="rate"

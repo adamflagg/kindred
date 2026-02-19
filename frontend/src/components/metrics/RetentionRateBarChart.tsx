@@ -23,6 +23,7 @@ export interface RetentionRateBarItem {
   retentionRate: number // 0-1
   baseCount: number
   returnedCount: number
+  id?: string | number // Optional identifier for drilldown (e.g., session_cm_id, grade number)
 }
 
 interface RetentionRateBarChartProps {
@@ -33,6 +34,7 @@ interface RetentionRateBarChartProps {
   sortBy?: RetentionSortBy
   layout?: 'horizontal' | 'vertical' // 'horizontal' = horizontal bars (default), 'vertical' = vertical bars
   showCounts?: boolean // When true, labels show "75% (30/40)" instead of "75%"
+  onBarClick?: (item: RetentionRateBarItem) => void
 }
 
 function getBarColor(rate: number): string {
@@ -47,6 +49,7 @@ interface ChartItem {
   rateLabel: string
   baseCount: number
   returnedCount: number
+  id?: string | number | undefined
 }
 
 const RotatedTick = ({
@@ -81,6 +84,7 @@ export function RetentionRateBarChart({
   sortBy = 'rate',
   layout = 'horizontal',
   showCounts = false,
+  onBarClick,
 }: RetentionRateBarChartProps) {
   if (data.length === 0) {
     return (
@@ -103,8 +107,21 @@ export function RetentionRateBarChart({
       rateLabel: showCounts ? `${rate}% (${d.returnedCount}/${d.baseCount})` : `${rate}%`,
       baseCount: d.baseCount,
       returnedCount: d.returnedCount,
+      id: d.id,
     }
   })
+
+  // Map chart items back to original RetentionRateBarItem for click callback
+  const barClickProps = onBarClick
+    ? {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        onClick: (chartItem: any) => {
+          const original = sorted.find((d: RetentionRateBarItem) => d.name === chartItem.name)
+          if (original) onBarClick(original)
+        },
+        style: { cursor: 'pointer' as const },
+      }
+    : {}
 
   const chartHeight =
     height ?? (layout === 'vertical' ? 300 : Math.max(200, chartData.length * 32 + 60))
@@ -149,7 +166,7 @@ export function RetentionRateBarChart({
               tick={{ fill: 'hsl(var(--muted-foreground))' }}
             />
             <Tooltip content={<CustomTooltip />} />
-            <Bar dataKey="rate" radius={[4, 4, 0, 0]}>
+            <Bar dataKey="rate" radius={[4, 4, 0, 0]} {...barClickProps}>
               {chartData.map((entry, index) => (
                 <Cell key={index} fill={getBarColor(entry.rate / 100)} />
               ))}
@@ -198,7 +215,7 @@ export function RetentionRateBarChart({
             }
           />
           <Tooltip content={<CustomTooltip />} />
-          <Bar dataKey="rate" radius={[0, 4, 4, 0]}>
+          <Bar dataKey="rate" radius={[0, 4, 4, 0]} {...barClickProps}>
             {chartData.map((entry, index) => (
               <Cell key={index} fill={getBarColor(entry.rate / 100)} />
             ))}

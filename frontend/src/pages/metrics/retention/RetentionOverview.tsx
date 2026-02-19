@@ -7,12 +7,16 @@
  * - Geographic retention (city, school, synagogue)
  */
 
-import { useMemo } from 'react'
+import { useMemo, useCallback } from 'react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useRetentionMetrics } from '../../../hooks/useMetrics'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
+import { useDrilldown } from '../../../hooks/useDrilldown'
 import { MetricCard } from '../../../components/metrics/MetricCard'
-import { RetentionRateBarChart } from '../../../components/metrics/RetentionRateBarChart'
+import {
+  RetentionRateBarChart,
+  type RetentionRateBarItem,
+} from '../../../components/metrics/RetentionRateBarChart'
 import { RetentionRateLineChart } from '../../../components/metrics/RetentionRateLineChart'
 import {
   genderToBarData,
@@ -28,6 +32,7 @@ import {
 import { buildSessionDateLookup, sortSessionDataByDate } from '../../../utils/sessionUtils'
 import { RetentionNotableOutliers } from '../../../components/metrics/RetentionNotableOutliers'
 import { SectionDivider } from '../../../components/metrics/SectionDivider'
+import type { DrilldownFilter } from '../../../types/metrics'
 import { Loader2, AlertCircle } from 'lucide-react'
 
 export default function RetentionOverview() {
@@ -38,6 +43,28 @@ export default function RetentionOverview() {
 
   // Build date lookup for chronological session sorting (must be before early returns)
   const sessionDateLookup = useMemo(() => buildSessionDateLookup(sessions), [sessions])
+
+  const sessionTypes = useMemo(() => sessionTypesParam?.split(',') ?? [], [sessionTypesParam])
+  const { setFilter, DrilldownModal } = useDrilldown({
+    year: priorYear,
+    sessionCmId: selectedSessionCmId ?? undefined,
+    sessionTypes,
+    statusFilter: ['enrolled'],
+  })
+
+  const makeRetentionFilter = useCallback(
+    (
+      type: DrilldownFilter['type'],
+      item: RetentionRateBarItem,
+      labelPrefix?: string
+    ): DrilldownFilter => ({
+      type,
+      value: item.id !== undefined ? String(item.id) : item.name,
+      label: labelPrefix ? `${labelPrefix}${item.name}` : item.name,
+      retentionContext: { baseYear: priorYear, compareYear: currentYear },
+    }),
+    [priorYear, currentYear]
+  )
 
   const { data, isLoading, error } = useRetentionMetrics(
     priorYear,
@@ -123,13 +150,18 @@ export default function RetentionOverview() {
       {/* Row 1: Gender + Grade side by side */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {genderBars.length > 0 && (
-          <RetentionRateBarChart data={genderBars} title="Retention by Gender" />
+          <RetentionRateBarChart
+            data={genderBars}
+            title="Retention by Gender"
+            onBarClick={(item) => setFilter(makeRetentionFilter('gender', item))}
+          />
         )}
         {gradeBars.length > 0 && (
           <RetentionRateLineChart
             data={gradeBars}
             title="Retention by Grade"
             tooltipLabelPrefix="Grade "
+            onDotClick={(item) => setFilter(makeRetentionFilter('grade', item, 'Grade '))}
           />
         )}
       </div>
@@ -143,6 +175,7 @@ export default function RetentionOverview() {
           title={`Retention by ${currentYear} Session`}
           sortBy="none"
           layout="vertical"
+          onBarClick={(item) => setFilter(makeRetentionFilter('retention_session', item))}
         />
       )}
 
@@ -151,12 +184,17 @@ export default function RetentionOverview() {
       {/* Row 3: Summers at Camp + First Summer Year side by side */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {summerYearsBars.length > 0 && (
-          <RetentionRateLineChart data={summerYearsBars} title="Retention by Summers at Camp" />
+          <RetentionRateLineChart
+            data={summerYearsBars}
+            title="Retention by Summers at Camp"
+            onDotClick={(item) => setFilter(makeRetentionFilter('summer_years', item))}
+          />
         )}
         {firstSummerYearBars.length > 0 && (
           <RetentionRateLineChart
             data={firstSummerYearBars}
             title="Retention by First Summer Year"
+            onDotClick={(item) => setFilter(makeRetentionFilter('first_summer_year', item))}
           />
         )}
       </div>
@@ -172,6 +210,7 @@ export default function RetentionOverview() {
             topN={15}
             sortBy="count"
             showCounts
+            onBarClick={(item) => setFilter(makeRetentionFilter('city', item))}
           />
         )}
         {schoolBars.length > 0 && (
@@ -181,6 +220,7 @@ export default function RetentionOverview() {
             topN={15}
             sortBy="count"
             showCounts
+            onBarClick={(item) => setFilter(makeRetentionFilter('school', item))}
           />
         )}
       </div>
@@ -193,6 +233,7 @@ export default function RetentionOverview() {
           topN={15}
           sortBy="count"
           showCounts
+          onBarClick={(item) => setFilter(makeRetentionFilter('synagogue', item))}
         />
       )}
 
@@ -202,6 +243,9 @@ export default function RetentionOverview() {
         schoolOutliers={schoolOutliers}
         synagogueOutliers={synagogueOutliers}
       />
+
+      {/* Drilldown Modal */}
+      <DrilldownModal />
     </div>
   )
 }

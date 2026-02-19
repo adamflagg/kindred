@@ -367,10 +367,12 @@ export interface DrilldownFilter {
     | 'city'
     | 'synagogue'
     | 'years_at_camp'
+    | 'summer_years'
     | 'status'
     | 'returning_status'
     | 'session_length'
     | 'first_summer_year'
+    | 'retention_session'
     | 'waitlist_no_enrollment'
     | 'waitlist_has_enrollment'
     | 'waitlist_accepted'
@@ -382,6 +384,8 @@ export interface DrilldownFilter {
   statusOverride?: string[]
   /** When true, drilldown from waitlist tab shows waitlist columns (Waitlisted For, Enrolled In) */
   waitlistContext?: boolean
+  /** Retention context: base year and compare year for retention drilldowns */
+  retentionContext?: { baseYear: number; compareYear: number }
 }
 
 export interface DrilldownAttendee {

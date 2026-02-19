@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { RetentionRateLineChart } from '../RetentionRateLineChart'
 import type { RetentionRateBarItem } from '../RetentionRateBarChart'
 
@@ -20,7 +20,9 @@ vi.mock('recharts', () => ({
       <div
         data-testid="line-dot-clickable"
         onClick={() =>
-          activeDot.onClick!({ payload: { name: 'Grade 5', rate: 75, baseCount: 80, returnedCount: 60 } })
+          activeDot.onClick!({
+            payload: { name: 'Grade 5', rate: 75, baseCount: 80, returnedCount: 60 },
+          })
         }
       />
     ) : (

@@ -88,6 +88,7 @@ describe('sessionToBarData', () => {
       retentionRate: 0.75,
       baseCount: 80,
       returnedCount: 60,
+      id: 1001,
     })
   })
 

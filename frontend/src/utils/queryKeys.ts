@@ -141,7 +141,8 @@ export const queryKeys = {
     breakdownValue?: string,
     sessionCmId?: number,
     sessionTypes?: string,
-    statusFilter?: string
+    statusFilter?: string,
+    compareYear?: number
   ) =>
     [
       'metrics',
@@ -152,6 +153,7 @@ export const queryKeys = {
       sessionCmId,
       sessionTypes,
       statusFilter,
+      compareYear,
     ] as const,
 
   // Normalized mappings for geographic source tracking
