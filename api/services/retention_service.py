@@ -606,7 +606,7 @@ class RetentionService:
             camper_history_records: List of camper_history records.
 
         Returns:
-            List of top 10 RetentionBySessionBunk models.
+            List of all RetentionBySessionBunk models sorted by base count descending.
         """
         session_bunk_stats: dict[tuple[str, str], dict[str, int]] = {}
 
@@ -628,8 +628,8 @@ class RetentionService:
                 if pid in returned_ids:
                     session_bunk_stats[key]["returned"] += 1
 
-        # Sort by base_count descending, take top 10
-        sorted_items = sorted(session_bunk_stats.items(), key=lambda x: -x[1]["base"])[:10]
+        # Sort by base_count descending
+        sorted_items = sorted(session_bunk_stats.items(), key=lambda x: -x[1]["base"])
 
         return [
             RetentionBySessionBunk(
