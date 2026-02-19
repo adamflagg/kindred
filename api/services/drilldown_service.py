@@ -29,6 +29,7 @@ PERSON_LEVEL_BREAKDOWNS = frozenset(
         "synagogue",
         "status",
         "first_summer_year",
+        "summer_years",
         "waitlist_no_enrollment",
         "waitlist_has_enrollment",
         "waitlist_accepted",
@@ -68,6 +69,7 @@ class DrilldownService:
         session_cm_id: int | None = None,
         session_types: list[str] | None = None,
         status_filter: list[str] | None = None,
+        compare_year: int | None = None,
     ) -> list[DrilldownAttendee]:
         """Get attendees matching a specific breakdown criteria.
 
@@ -78,6 +80,8 @@ class DrilldownService:
             session_cm_id: Optional specific session ID to filter.
             session_types: Optional list of session types to filter.
             status_filter: Optional status filter (default: enrolled).
+            compare_year: Optional compare year for retention drilldowns. When set,
+                is_returning is based on whether the person returned to the compare year.
 
         Returns:
             List of DrilldownAttendee records matching the criteria.
@@ -91,6 +95,17 @@ class DrilldownService:
         # Fetch sessions first to find AG sessions with matching parent
         sessions = await self.repo.fetch_sessions(year, session_types)
         ag_session_ids = self._find_ag_sessions_for_parent(sessions, session_cm_id)
+
+        # retention_session needs special handling - different from other breakdowns
+        if breakdown_type == "retention_session" and compare_year is not None:
+            return await self._handle_retention_session_breakdown(
+                year=year,
+                compare_year=compare_year,
+                target_session_cm_id=int(breakdown_value),
+                sessions=sessions,
+                session_types=session_types,
+                status_filter=status_filter,
+            )
 
         # Waitlist breakdown types need separate fetching logic
         if breakdown_type in WAITLIST_BREAKDOWNS:
@@ -130,13 +145,14 @@ class DrilldownService:
         # Filter by session type and/or session_cm_id
         filtered_attendees = self._filter_by_session(attendees, session_types, session_cm_id, ag_session_ids)
 
-        # For first_summer_year breakdown, pre-compute first year for each person
+        # For first_summer_year or summer_years breakdown, pre-compute metrics
         first_year_by_person: dict[int, int] = {}
-        if breakdown_type == "first_summer_year":
+        summer_years_by_person: dict[int, int] = {}
+        if breakdown_type in ("first_summer_year", "summer_years"):
             person_ids = {pid for a in filtered_attendees if (pid := getattr(a, "person_id", None)) is not None}
             if person_ids:
                 enrollment_history = await self.repo.fetch_summer_enrollment_history(person_ids, year)
-                _, first_year_by_person = compute_summer_metrics(enrollment_history, person_ids)
+                summer_years_by_person, first_year_by_person = compute_summer_metrics(enrollment_history, person_ids)
 
         # Filter by breakdown criteria
         filtered_attendees = self._filter_by_breakdown(
@@ -146,6 +162,7 @@ class DrilldownService:
             breakdown_type,
             breakdown_value,
             first_year_by_person,
+            summer_years_by_person,
         )
 
         # Deduplicate for person-level breakdowns
@@ -159,8 +176,24 @@ class DrilldownService:
             filtered_attendees = [g[0] for g in groups.values()]
             person_attendee_groups = groups
 
+        # When compare_year is set, compute returned_person_ids for is_returning
+        returned_person_ids: set[int] | None = None
+        if compare_year is not None:
+            compare_attendees = await self.repo.fetch_attendees(compare_year, ["enrolled"])
+            returned_person_ids = set()
+            for a in compare_attendees:
+                pid = getattr(a, "person_id", None)
+                if pid is not None:
+                    returned_person_ids.add(int(pid))
+
         # Build response
-        return self._build_response(filtered_attendees, persons, sessions, person_attendee_groups)
+        return self._build_response(
+            filtered_attendees,
+            persons,
+            sessions,
+            person_attendee_groups,
+            returned_person_ids=returned_person_ids,
+        )
 
     def _find_ag_sessions_for_parent(self, sessions: dict[int, Any], session_cm_id: int | None) -> set[int]:
         """Find AG sessions that belong to a parent session.
@@ -232,6 +265,7 @@ class DrilldownService:
         breakdown_type: str,
         breakdown_value: str,
         first_year_by_person: dict[int, int] | None = None,
+        summer_years_by_person: dict[int, int] | None = None,
     ) -> list[Any]:
         """Filter attendees by the specific breakdown criteria.
 
@@ -243,12 +277,16 @@ class DrilldownService:
             breakdown_value: Value to match.
             first_year_by_person: Pre-computed first summer year by person_id
                 (only populated for first_summer_year breakdown).
+            summer_years_by_person: Pre-computed summer years count by person_id
+                (only populated for summer_years breakdown).
 
         Returns:
             Filtered list of attendees.
         """
         if first_year_by_person is None:
             first_year_by_person = {}
+        if summer_years_by_person is None:
+            summer_years_by_person = {}
         filtered = []
         for a in attendees:
             person_id = getattr(a, "person_id", None)
@@ -343,6 +381,13 @@ class DrilldownService:
                     if first_year is not None and str(first_year) == breakdown_value:
                         filtered.append(a)
 
+            elif breakdown_type == "summer_years":
+                pid = int(person_id) if person_id is not None else None
+                if pid is not None:
+                    sy = summer_years_by_person.get(pid)
+                    if sy is not None and str(sy) == breakdown_value:
+                        filtered.append(a)
+
         return filtered
 
     def _find_ag_sessions_for_session(self, sessions: dict[int, Any], session_cm_id: int) -> set[int]:
@@ -363,6 +408,77 @@ class DrilldownService:
                     ag_ids.add(sid)
         return ag_ids
 
+    async def _handle_retention_session_breakdown(
+        self,
+        year: int,
+        compare_year: int,
+        target_session_cm_id: int,
+        sessions: dict[int, Any],
+        session_types: list[str] | None,
+        status_filter: list[str],
+    ) -> list[DrilldownAttendee]:
+        """Handle retention_session breakdown - find base year campers who returned to a specific compare year session.
+
+        Args:
+            year: Base year (the year whose attendees we return).
+            compare_year: Compare year (where we look for returnees).
+            target_session_cm_id: The compare year session cm_id to filter by.
+            sessions: Base year sessions dict.
+            session_types: Session type filter.
+            status_filter: Status filter for attendees.
+
+        Returns:
+            List of DrilldownAttendee records from the base year.
+        """
+        import asyncio
+
+        # Fetch base year + compare year attendees and persons in parallel
+        base_attendees, compare_attendees, persons = await asyncio.gather(
+            self.repo.fetch_attendees(year, status_filter),
+            self.repo.fetch_attendees(compare_year, ["enrolled"]),
+            self.repo.fetch_persons(year),
+        )
+
+        # Find compare year person_ids enrolled in the target session
+        target_person_ids: set[int] = set()
+        returned_person_ids: set[int] = set()
+        for a in compare_attendees:
+            pid = getattr(a, "person_id", None)
+            if pid is None:
+                continue
+            pid_int = int(pid)
+            returned_person_ids.add(pid_int)
+            expand = getattr(a, "expand", {}) or {}
+            session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+            if session:
+                sid = getattr(session, "cm_id", None)
+                if sid is not None and int(sid) == target_session_cm_id:
+                    target_person_ids.add(pid_int)
+
+        # Filter base year attendees to those who returned to the target session
+        filtered: list[Any] = []
+        seen_persons: set[int] = set()
+        person_attendee_groups: dict[int, list[Any]] = {}
+        for a in base_attendees:
+            pid = getattr(a, "person_id", None)
+            if pid is None:
+                continue
+            pid_int = int(pid)
+            # Build groups for all base year attendees matching target
+            if pid_int in target_person_ids:
+                person_attendee_groups.setdefault(pid_int, []).append(a)
+                if pid_int not in seen_persons:
+                    seen_persons.add(pid_int)
+                    filtered.append(a)
+
+        return self._build_response(
+            filtered,
+            persons,
+            sessions,
+            person_attendee_groups,
+            returned_person_ids=returned_person_ids,
+        )
+
     def _build_response(
         self,
         attendees: list[Any],
@@ -370,6 +486,7 @@ class DrilldownService:
         _sessions: dict[int, Any],
         person_attendee_groups: dict[int, list[Any]] | None = None,
         enrolled_attendee_groups: dict[int, list[Any]] | None = None,
+        returned_person_ids: set[int] | None = None,
     ) -> list[DrilldownAttendee]:
         """Build the response list from filtered attendees.
 
@@ -381,6 +498,8 @@ class DrilldownService:
                 attendee records (for building multi-session lists).
             enrolled_attendee_groups: If provided, maps person_id to their
                 enrolled attendee records (for populating enrolled_sessions).
+            returned_person_ids: If provided, determines is_returning based on
+                membership in this set instead of years_at_camp > 1.
 
         Returns:
             List of DrilldownAttendee records.
@@ -404,7 +523,10 @@ class DrilldownService:
             session_name = str(getattr(session, "name", "Unknown"))
 
             years_at_camp = getattr(person, "years_at_camp", None)
-            is_returning = years_at_camp is not None and years_at_camp > 1
+            if returned_person_ids is not None:
+                is_returning = person_id in returned_person_ids
+            else:
+                is_returning = years_at_camp is not None and years_at_camp > 1
 
             # Read city and state from discrete columns (address_city, address_state)
             city = getattr(person, "address_city", None) or None

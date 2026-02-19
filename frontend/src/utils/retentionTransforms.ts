@@ -66,6 +66,7 @@ export function gradeToBarData(data: RetentionByGrade[] | undefined): RetentionR
     retentionRate: d.retention_rate,
     baseCount: d.base_count,
     returnedCount: d.returned_count,
+    id: d.grade !== null ? d.grade : 'null',
   }))
 }
 
@@ -76,6 +77,7 @@ export function sessionToBarData(data: RetentionBySession[] | undefined): Retent
     retentionRate: d.retention_rate,
     baseCount: d.base_count,
     returnedCount: d.returned_count,
+    id: d.session_cm_id,
   }))
 }
 
@@ -132,6 +134,7 @@ export function summerYearsToBarData(
     retentionRate: d.retention_rate,
     baseCount: d.base_count,
     returnedCount: d.returned_count,
+    id: d.summer_years,
   }))
 }
 
@@ -144,6 +147,7 @@ export function firstSummerYearToBarData(
     retentionRate: d.retention_rate,
     baseCount: d.base_count,
     returnedCount: d.returned_count,
+    id: d.first_summer_year,
   }))
 }
 

@@ -2422,3 +2422,452 @@ class TestWaitlistPersonBreakdowns:
 
         assert len(result) == 1
         assert result[0].person_id == 101
+
+
+# ============================================================================
+# Tests for summer_years breakdown type
+# ============================================================================
+
+
+class TestSummerYearsBreakdown:
+    """Tests for filtering by summer_years (computed from enrollment history)."""
+
+    @pytest.mark.asyncio
+    async def test_filter_by_summer_years(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """Filter for campers with a specific number of summers."""
+        attendees_2026 = [
+            create_mock_attendee(101, sample_sessions[1001], 2026),
+            create_mock_attendee(102, sample_sessions[1002], 2026),
+            create_mock_attendee(103, sample_sessions[1003], 2026),
+        ]
+
+        history_sessions = {
+            901: create_mock_session(901, "Session 2", 2024, "main", "2024-06-15", "2024-07-05"),
+            902: create_mock_session(902, "Session 3", 2025, "main", "2025-06-15", "2025-07-05"),
+        }
+
+        # Emma (101): 1 summer (2026 only)
+        # Liam (102): 2 summers (2025, 2026)
+        # Olivia (103): 3 summers (2024, 2025, 2026)
+        enrollment_history = [
+            create_mock_attendee(101, sample_sessions[1001], 2026),
+            create_mock_attendee(102, sample_sessions[1002], 2026),
+            create_mock_attendee(103, sample_sessions[1003], 2026),
+            create_mock_attendee(102, history_sessions[902], 2025),
+            create_mock_attendee(103, history_sessions[902], 2025),
+            create_mock_attendee(103, history_sessions[901], 2024),
+        ]
+
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_attendees.return_value = attendees_2026
+        mock_repository.fetch_summer_enrollment_history.return_value = enrollment_history
+
+        # Filter for campers with 2 summers
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="summer_years",
+            breakdown_value="2",
+        )
+
+        # Should return only Liam (102) who has 2 summers
+        assert len(result) == 1
+        assert result[0].person_id == 102
+
+    @pytest.mark.asyncio
+    async def test_filter_by_summer_years_one_summer(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """Filter for campers with exactly 1 summer (first-timers)."""
+        attendees_2026 = [
+            create_mock_attendee(101, sample_sessions[1001], 2026),
+            create_mock_attendee(102, sample_sessions[1002], 2026),
+        ]
+
+        # Only 2026 enrollment for both campers
+        enrollment_history = [
+            create_mock_attendee(101, sample_sessions[1001], 2026),
+            create_mock_attendee(102, sample_sessions[1002], 2026),
+        ]
+
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_attendees.return_value = attendees_2026
+        mock_repository.fetch_summer_enrollment_history.return_value = enrollment_history
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="summer_years",
+            breakdown_value="1",
+        )
+
+        # Both Emma and Liam only have 1 summer in history
+        assert len(result) == 2
+        person_ids = {r.person_id for r in result}
+        assert person_ids == {101, 102}
+
+    @pytest.mark.asyncio
+    async def test_filter_by_summer_years_is_person_level(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """summer_years is a person-level breakdown, so multi-session campers are deduped."""
+        # Olivia in two sessions in 2026
+        attendees_2026 = [
+            create_mock_attendee(103, sample_sessions[1001], 2026),
+            create_mock_attendee(103, sample_sessions[1003], 2026),
+        ]
+
+        enrollment_history = [
+            create_mock_attendee(103, sample_sessions[1001], 2026),
+            create_mock_attendee(103, sample_sessions[1003], 2026),
+        ]
+
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_attendees.return_value = attendees_2026
+        mock_repository.fetch_summer_enrollment_history.return_value = enrollment_history
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="summer_years",
+            breakdown_value="1",
+        )
+
+        # Olivia should appear only once despite two attendee records
+        assert len(result) == 1
+        assert result[0].person_id == 103
+        # Multi-session should show in sessions list
+        assert len(result[0].sessions) == 2
+
+    @pytest.mark.asyncio
+    async def test_filter_by_summer_years_no_match(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """Filter for a number of summers with no matching campers returns empty."""
+        attendees_2026 = [
+            create_mock_attendee(101, sample_sessions[1001], 2026),
+        ]
+
+        enrollment_history = [
+            create_mock_attendee(101, sample_sessions[1001], 2026),
+        ]
+
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_attendees.return_value = attendees_2026
+        mock_repository.fetch_summer_enrollment_history.return_value = enrollment_history
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="summer_years",
+            breakdown_value="10",
+        )
+
+        assert len(result) == 0
+
+
+# ============================================================================
+# Tests for retention_session breakdown type
+# ============================================================================
+
+
+class TestRetentionSessionBreakdown:
+    """Tests for retention_session breakdown.
+
+    Filters base year campers who returned to a specific compare year session.
+    """
+
+    @pytest.fixture
+    def compare_year_sessions(self) -> dict[int, Mock]:
+        """Sessions for 2026 (compare year)."""
+        return {
+            2001: create_mock_session(2001, "Session 1", 2026, "main", "2026-06-15", "2026-07-05"),
+            2002: create_mock_session(2002, "Session 2", 2026, "main", "2026-07-06", "2026-07-26"),
+            2003: create_mock_session(2003, "AG Session 1", 2026, "ag", "2026-06-15", "2026-07-05", parent_id=2001),
+        }
+
+    @pytest.fixture
+    def base_year_sessions(self) -> dict[int, Mock]:
+        """Sessions for 2025 (base year)."""
+        return {
+            1001: create_mock_session(1001, "Session 1", 2025, "main", "2025-06-15", "2025-07-05"),
+            1002: create_mock_session(1002, "Session 2", 2025, "main", "2025-07-06", "2025-07-26"),
+        }
+
+    @pytest.mark.asyncio
+    async def test_retention_session_filters_base_year_campers(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        base_year_sessions: dict[int, Mock],
+        compare_year_sessions: dict[int, Mock],
+    ) -> None:
+        """retention_session returns base year attendees who returned to a specific compare year session."""
+        persons = {
+            101: create_mock_person(101, "Emma", "Johnson", "F", 5, years_at_camp=2),
+            102: create_mock_person(102, "Liam", "Garcia", "M", 6, years_at_camp=3),
+            103: create_mock_person(103, "Olivia", "Chen", "F", 6, years_at_camp=1),
+        }
+
+        base_attendees = [
+            create_mock_attendee(101, base_year_sessions[1001], 2025),
+            create_mock_attendee(102, base_year_sessions[1002], 2025),
+            create_mock_attendee(103, base_year_sessions[1001], 2025),
+        ]
+
+        # Emma and Liam returned, Olivia did not
+        compare_attendees = [
+            create_mock_attendee(101, compare_year_sessions[2001], 2026),
+            create_mock_attendee(102, compare_year_sessions[2002], 2026),
+        ]
+
+        mock_repository.fetch_sessions.return_value = base_year_sessions
+        mock_repository.fetch_persons.return_value = persons
+
+        async def fetch_attendees_side_effect(year: int, status_filter: list[str] | None = None) -> list[Mock]:
+            if year == 2025:
+                return base_attendees
+            if year == 2026:
+                return compare_attendees
+            return []
+
+        mock_repository.fetch_attendees.side_effect = fetch_attendees_side_effect
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2025,
+            breakdown_type="retention_session",
+            breakdown_value="2001",
+            compare_year=2026,
+        )
+
+        # Only Emma returned to Session 1 in 2026
+        assert len(result) == 1
+        assert result[0].person_id == 101
+
+    @pytest.mark.asyncio
+    async def test_retention_session_no_returnees(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        base_year_sessions: dict[int, Mock],
+    ) -> None:
+        """retention_session returns empty when no base year campers returned to that session."""
+        persons = {
+            101: create_mock_person(101, "Emma", "Johnson", "F", 5, years_at_camp=1),
+        }
+
+        base_attendees = [
+            create_mock_attendee(101, base_year_sessions[1001], 2025),
+        ]
+
+        async def fetch_attendees_side_effect(year: int, status_filter: list[str] | None = None) -> list[Mock]:
+            if year == 2025:
+                return base_attendees
+            return []
+
+        mock_repository.fetch_sessions.return_value = base_year_sessions
+        mock_repository.fetch_persons.return_value = persons
+        mock_repository.fetch_attendees.side_effect = fetch_attendees_side_effect
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2025,
+            breakdown_type="retention_session",
+            breakdown_value="2001",
+            compare_year=2026,
+        )
+
+        assert len(result) == 0
+
+    @pytest.mark.asyncio
+    async def test_retention_session_multiple_returnees(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        base_year_sessions: dict[int, Mock],
+        compare_year_sessions: dict[int, Mock],
+    ) -> None:
+        """retention_session returns all base year campers who returned to the target session."""
+        persons = {
+            101: create_mock_person(101, "Emma", "Johnson", "F", 5, years_at_camp=2),
+            102: create_mock_person(102, "Liam", "Garcia", "M", 6, years_at_camp=3),
+            103: create_mock_person(103, "Olivia", "Chen", "F", 6, years_at_camp=2),
+        }
+
+        base_attendees = [
+            create_mock_attendee(101, base_year_sessions[1001], 2025),
+            create_mock_attendee(102, base_year_sessions[1002], 2025),
+            create_mock_attendee(103, base_year_sessions[1001], 2025),
+        ]
+
+        # Emma and Olivia returned to Session 2 in 2026
+        compare_attendees = [
+            create_mock_attendee(101, compare_year_sessions[2002], 2026),
+            create_mock_attendee(103, compare_year_sessions[2002], 2026),
+        ]
+
+        async def fetch_attendees_side_effect(year: int, status_filter: list[str] | None = None) -> list[Mock]:
+            if year == 2025:
+                return base_attendees
+            if year == 2026:
+                return compare_attendees
+            return []
+
+        mock_repository.fetch_sessions.return_value = base_year_sessions
+        mock_repository.fetch_persons.return_value = persons
+        mock_repository.fetch_attendees.side_effect = fetch_attendees_side_effect
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2025,
+            breakdown_type="retention_session",
+            breakdown_value="2002",
+            compare_year=2026,
+        )
+
+        assert len(result) == 2
+        person_ids = {r.person_id for r in result}
+        assert person_ids == {101, 103}
+
+
+# ============================================================================
+# Tests for compare_year affecting is_returning
+# ============================================================================
+
+
+class TestCompareYearIsReturning:
+    """Tests for compare_year parameter changing is_returning logic.
+
+    When compare_year is set, is_returning should be based on whether the person
+    actually returned to the compare year (not just years_at_camp > 1).
+    """
+
+    @pytest.mark.asyncio
+    async def test_compare_year_sets_is_returning_true_for_returnees(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+    ) -> None:
+        """With compare_year, campers who returned should have is_returning=True."""
+        persons = {
+            101: create_mock_person(101, "Emma", "Johnson", "F", 5, years_at_camp=2),
+            102: create_mock_person(102, "Liam", "Garcia", "M", 6, years_at_camp=3),
+        }
+
+        base_attendees = [
+            create_mock_attendee(101, sample_sessions[1001], 2025),
+            create_mock_attendee(102, sample_sessions[1002], 2025),
+        ]
+
+        compare_sessions = {
+            2001: create_mock_session(2001, "Session 1", 2026, "main"),
+        }
+        compare_attendees = [
+            create_mock_attendee(101, compare_sessions[2001], 2026),
+            # Liam did NOT return
+        ]
+
+        async def fetch_attendees_side_effect(year: int, status_filter: list[str] | None = None) -> list[Mock]:
+            if year == 2025:
+                return base_attendees
+            if year == 2026:
+                return compare_attendees
+            return []
+
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = persons
+        mock_repository.fetch_attendees.side_effect = fetch_attendees_side_effect
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2025,
+            breakdown_type="gender",
+            breakdown_value="F",
+            compare_year=2026,
+        )
+
+        # Emma is female and returned -> is_returning=True
+        assert len(result) == 1
+        assert result[0].person_id == 101
+        assert result[0].is_returning is True
+
+    @pytest.mark.asyncio
+    async def test_compare_year_sets_is_returning_false_for_non_returnees(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+    ) -> None:
+        """With compare_year, non-returnees have is_returning=False even with years_at_camp > 1."""
+        persons = {
+            # Liam has years_at_camp=3 (would be is_returning=True without compare_year)
+            102: create_mock_person(102, "Liam", "Garcia", "M", 6, years_at_camp=3),
+        }
+
+        base_attendees = [
+            create_mock_attendee(102, sample_sessions[1002], 2025),
+        ]
+
+        async def fetch_attendees_side_effect(year: int, status_filter: list[str] | None = None) -> list[Mock]:
+            if year == 2025:
+                return base_attendees
+            return []  # Liam did not return
+
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = persons
+        mock_repository.fetch_attendees.side_effect = fetch_attendees_side_effect
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2025,
+            breakdown_type="gender",
+            breakdown_value="M",
+            compare_year=2026,
+        )
+
+        # Liam is male but did NOT return -> is_returning=False despite years_at_camp=3
+        assert len(result) == 1
+        assert result[0].person_id == 102
+        assert result[0].is_returning is False
+
+    @pytest.mark.asyncio
+    async def test_without_compare_year_uses_years_at_camp(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        sample_persons: dict[int, Mock],
+        sample_attendees: list[Mock],
+    ) -> None:
+        """Without compare_year, is_returning is based on years_at_camp > 1 (default)."""
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_attendees.return_value = sample_attendees
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="gender",
+            breakdown_value="M",
+            # No compare_year
+        )
+
+        # Liam (102): years_at_camp=1 -> is_returning=False
+        # Noah (104): years_at_camp=3 -> is_returning=True
+        result_map = {r.person_id: r.is_returning for r in result}
+        assert result_map[102] is False
+        assert result_map[104] is True

@@ -703,6 +703,11 @@ async def get_drilldown_attendees(
         None,
         description="Comma-separated statuses to include (default: enrolled)",
     ),
+    compare_year: int | None = Query(
+        None,
+        description="Compare year for retention drilldowns. When set, is_returning reflects "
+        "whether camper returned to the compare year instead of years_at_camp > 1.",
+    ),
 ) -> list[DrilldownAttendee]:
     """Get attendee list for a specific breakdown value.
 
@@ -726,6 +731,7 @@ async def get_drilldown_attendees(
             session_cm_id=session_cm_id,
             session_types=session_types_list,
             status_filter=status_list,
+            compare_year=compare_year,
         )
 
     except Exception as e:

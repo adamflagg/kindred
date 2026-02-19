@@ -30,6 +30,7 @@ export function useDrilldownAttendees({
   // Use statusOverride from filter if present, otherwise use default statusFilter
   const effectiveStatusFilter = filter?.statusOverride ?? statusFilter
   const statusFilterParam = effectiveStatusFilter?.join(',')
+  const compareYear = filter?.retentionContext?.compareYear
 
   return useQuery({
     queryKey: queryKeys.drilldown(
@@ -38,7 +39,8 @@ export function useDrilldownAttendees({
       filter?.value,
       sessionCmId,
       sessionTypesParam,
-      statusFilterParam
+      statusFilterParam,
+      compareYear
     ),
     queryFn: async (): Promise<DrilldownAttendee[]> => {
       if (!filter) {
@@ -59,6 +61,9 @@ export function useDrilldownAttendees({
       }
       if (statusFilterParam) {
         params.set('status_filter', statusFilterParam)
+      }
+      if (compareYear) {
+        params.set('compare_year', String(compareYear))
       }
 
       const res = await fetchWithAuth(`/api/metrics/drilldown?${params}`)

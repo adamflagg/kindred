@@ -102,4 +102,36 @@ describe('DrillDownModal', () => {
       expect(onClose).toHaveBeenCalledTimes(1)
     })
   })
+
+  describe('retention mode', () => {
+    const retentionFilter = {
+      type: 'gender' as const,
+      value: 'F',
+      label: 'Female',
+      retentionContext: { baseYear: 2025, compareYear: 2026 },
+    }
+
+    it('shows retention subtitle when retentionContext is present', () => {
+      renderWithClient(<DrillDownModal {...defaultProps} year={2025} filter={retentionFilter} />)
+
+      // Should show retention-specific subtitle instead of generic enrollment
+      expect(screen.getByText(/retention data/i)).toBeInTheDocument()
+    })
+
+    it('hides School column in retention mode', () => {
+      renderWithClient(<DrillDownModal {...defaultProps} year={2025} filter={retentionFilter} />)
+
+      // In retention mode, School column should not appear in table headers
+      const headers = screen.queryAllByRole('columnheader')
+      const schoolHeader = headers.find((h) => h.textContent?.includes('School'))
+      expect(schoolHeader).toBeUndefined()
+    })
+
+    it('shows "Last Year\'s Session(s)" column in retention mode', () => {
+      renderWithClient(<DrillDownModal {...defaultProps} year={2025} filter={retentionFilter} />)
+
+      // Should show renamed session column
+      expect(screen.getByText(/Last Year/)).toBeInTheDocument()
+    })
+  })
 })

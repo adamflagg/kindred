@@ -85,6 +85,7 @@ export function DrillDownModal({
 
   const isWaitlistDrilldown =
     (filter?.type?.startsWith('waitlist_') || filter?.waitlistContext) ?? false
+  const isRetentionDrilldown = !!filter?.retentionContext
 
   const {
     data: attendees = [],
@@ -122,13 +123,15 @@ export function DrillDownModal({
         a.first_name.toLowerCase().includes(term) ||
         a.last_name.toLowerCase().includes(term) ||
         (a.preferred_name?.toLowerCase().includes(term) ?? false) ||
-        (!isWaitlistDrilldown && (a.school?.toLowerCase().includes(term) ?? false)) ||
+        (!isWaitlistDrilldown &&
+          !isRetentionDrilldown &&
+          (a.school?.toLowerCase().includes(term) ?? false)) ||
         (a.city?.toLowerCase().includes(term) ?? false) ||
         (a.state?.toLowerCase().includes(term) ?? false) ||
         getSessionDisplay(a).toLowerCase().includes(term) ||
         (isWaitlistDrilldown && getEnrolledDisplay(a).toLowerCase().includes(term))
     )
-  }, [attendees, searchTerm, isWaitlistDrilldown])
+  }, [attendees, searchTerm, isWaitlistDrilldown, isRetentionDrilldown])
 
   // Sort attendees
   const sortedAttendees = useMemo(() => {
@@ -290,7 +293,9 @@ export function DrillDownModal({
               {sortedAttendees.length !== 1 ? 's' : ''} in {filter.label}
             </h2>
             <p className="text-muted-foreground text-sm">
-              {year} enrollment data
+              {isRetentionDrilldown
+                ? `${filter.retentionContext!.baseYear} → ${filter.retentionContext!.compareYear} retention data`
+                : `${year} enrollment data`}
               {searchTerm && ` (filtered from ${attendees.length})`}
             </p>
           </div>
@@ -321,7 +326,9 @@ export function DrillDownModal({
               placeholder={
                 isWaitlistDrilldown
                   ? 'Search by name, city, session, enrolled...'
-                  : 'Search by name, school, city, session...'
+                  : isRetentionDrilldown
+                    ? 'Search by name, city, session...'
+                    : 'Search by name, school, city, session...'
               }
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -332,96 +339,108 @@ export function DrillDownModal({
 
         {/* Table */}
         <div className="flex-1 overflow-auto">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="text-primary h-6 w-6 animate-spin" />
-              <span className="text-muted-foreground ml-2">Loading campers...</span>
-            </div>
-          ) : error ? (
-            <div className="flex items-center justify-center py-12 text-red-600">
-              Failed to load data: {error.message}
-            </div>
-          ) : sortedAttendees.length === 0 ? (
-            <div className="text-muted-foreground flex items-center justify-center py-12">
-              {searchTerm ? 'No campers match your search' : 'No campers found'}
-            </div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead className="bg-muted sticky top-0">
+          <table className="w-full text-sm">
+            <thead className="bg-muted sticky top-0">
+              <tr>
+                <th
+                  onClick={() => handleSort('name')}
+                  className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
+                >
+                  <div className="flex items-center gap-1">
+                    Name <SortIcon field="name" />
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort('grade')}
+                  className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-center font-medium"
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    Grade <SortIcon field="grade" />
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort('gender')}
+                  className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-center font-medium"
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    Gender <SortIcon field="gender" />
+                  </div>
+                </th>
+                {!isWaitlistDrilldown && !isRetentionDrilldown && (
+                  <th
+                    onClick={() => handleSort('school')}
+                    className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
+                  >
+                    <div className="flex items-center gap-1">
+                      School <SortIcon field="school" />
+                    </div>
+                  </th>
+                )}
+                <th
+                  onClick={() => handleSort('city')}
+                  className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
+                >
+                  <div className="flex items-center gap-1">
+                    City <SortIcon field="city" />
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort('session')}
+                  className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
+                >
+                  <div className="flex items-center gap-1">
+                    {isWaitlistDrilldown
+                      ? 'Waitlisted For'
+                      : isRetentionDrilldown
+                        ? "Last Year's Session(s)"
+                        : 'Session'}{' '}
+                    <SortIcon field="session" />
+                  </div>
+                </th>
+                {isWaitlistDrilldown && (
+                  <th
+                    onClick={() => handleSort('enrolled')}
+                    className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
+                  >
+                    <div className="flex items-center gap-1">
+                      Enrolled In <SortIcon field="enrolled" />
+                    </div>
+                  </th>
+                )}
+                <th
+                  onClick={() => handleSort('years')}
+                  className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-center font-medium"
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    Years <SortIcon field="years" />
+                  </div>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading ? (
                 <tr>
-                  <th
-                    onClick={() => handleSort('name')}
-                    className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
-                  >
-                    <div className="flex items-center gap-1">
-                      Name <SortIcon field="name" />
+                  <td colSpan={99} className="py-12 text-center">
+                    <div className="flex items-center justify-center">
+                      <Loader2 className="text-primary h-6 w-6 animate-spin" />
+                      <span className="text-muted-foreground ml-2">Loading campers...</span>
                     </div>
-                  </th>
-                  <th
-                    onClick={() => handleSort('grade')}
-                    className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-center font-medium"
-                  >
-                    <div className="flex items-center justify-center gap-1">
-                      Grade <SortIcon field="grade" />
-                    </div>
-                  </th>
-                  <th
-                    onClick={() => handleSort('gender')}
-                    className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-center font-medium"
-                  >
-                    <div className="flex items-center justify-center gap-1">
-                      Gender <SortIcon field="gender" />
-                    </div>
-                  </th>
-                  {!isWaitlistDrilldown && (
-                    <th
-                      onClick={() => handleSort('school')}
-                      className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
-                    >
-                      <div className="flex items-center gap-1">
-                        School <SortIcon field="school" />
-                      </div>
-                    </th>
-                  )}
-                  <th
-                    onClick={() => handleSort('city')}
-                    className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
-                  >
-                    <div className="flex items-center gap-1">
-                      City <SortIcon field="city" />
-                    </div>
-                  </th>
-                  <th
-                    onClick={() => handleSort('session')}
-                    className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
-                  >
-                    <div className="flex items-center gap-1">
-                      {isWaitlistDrilldown ? 'Waitlisted For' : 'Session'}{' '}
-                      <SortIcon field="session" />
-                    </div>
-                  </th>
-                  {isWaitlistDrilldown && (
-                    <th
-                      onClick={() => handleSort('enrolled')}
-                      className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
-                    >
-                      <div className="flex items-center gap-1">
-                        Enrolled In <SortIcon field="enrolled" />
-                      </div>
-                    </th>
-                  )}
-                  <th
-                    onClick={() => handleSort('years')}
-                    className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-center font-medium"
-                  >
-                    <div className="flex items-center justify-center gap-1">
-                      Years <SortIcon field="years" />
-                    </div>
-                  </th>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {sortedAttendees.map((attendee, index) => (
+              ) : error ? (
+                <tr>
+                  <td colSpan={99} className="py-12 text-center text-red-600">
+                    Failed to load data: {error.message}
+                  </td>
+                </tr>
+              ) : sortedAttendees.length === 0 ? (
+                <tr>
+                  <td colSpan={99} className="text-muted-foreground py-12 text-center">
+                    {searchTerm ? 'No campers match your search' : 'No campers found'}
+                  </td>
+                </tr>
+              ) : (
+                sortedAttendees.map((attendee, index) => (
                   <tr
                     key={`${attendee.person_id}-${attendee.session_cm_id}-${index}`}
                     className="border-border hover:bg-muted/30 border-b transition-colors last:border-0"
@@ -450,7 +469,7 @@ export function DrillDownModal({
                     <td className="text-foreground px-4 py-3 text-center whitespace-nowrap">
                       {attendee.gender ?? '—'}
                     </td>
-                    {!isWaitlistDrilldown && (
+                    {!isWaitlistDrilldown && !isRetentionDrilldown && (
                       <td
                         className="text-foreground max-w-[160px] truncate px-4 py-3"
                         title={attendee.school ?? undefined}
@@ -489,10 +508,10 @@ export function DrillDownModal({
                       {attendee.years_at_camp ?? '—'}
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

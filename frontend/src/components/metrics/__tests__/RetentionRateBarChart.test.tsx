@@ -2,6 +2,9 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { RetentionRateBarChart, type RetentionRateBarItem } from '../RetentionRateBarChart'
 
+// Capture onClick handlers from Bar components
+let capturedBarOnClick: ((data: unknown, index: number) => void) | undefined
+
 // Mock recharts entirely to avoid canvas/SVG rendering issues in jsdom
 vi.mock('recharts', () => ({
   ResponsiveContainer: ({ children }: { children: React.ReactNode }) => (
@@ -12,7 +15,14 @@ vi.mock('recharts', () => ({
       {children}
     </div>
   ),
-  Bar: () => null,
+  Bar: ({ onClick }: { onClick?: (data: unknown, index: number) => void }) => {
+    capturedBarOnClick = onClick
+    return onClick ? (
+      <div data-testid="bar-clickable" onClick={() => onClick({ name: 'M', rate: 75 }, 0)} />
+    ) : (
+      <div data-testid="bar" />
+    )
+  },
   XAxis: () => null,
   YAxis: () => null,
   CartesianGrid: () => null,
@@ -108,5 +118,26 @@ describe('RetentionRateBarChart', () => {
     expect(screen.getByText('Retention by 2026 Session')).toBeInTheDocument()
     expect(screen.getByTestId('responsive-container')).toBeInTheDocument()
     expect(screen.getByTestId('bar-chart')).toBeInTheDocument()
+  })
+
+  describe('onBarClick', () => {
+    it('passes onClick to Bar when onBarClick is provided', () => {
+      capturedBarOnClick = undefined
+      const onBarClick = vi.fn()
+      render(
+        <RetentionRateBarChart data={sampleData} title="Clickable Chart" onBarClick={onBarClick} />
+      )
+
+      // When onBarClick is provided, the Bar component should receive an onClick handler
+      expect(capturedBarOnClick).toBeDefined()
+    })
+
+    it('does not pass onClick to Bar when onBarClick is not provided', () => {
+      capturedBarOnClick = undefined
+      render(<RetentionRateBarChart data={sampleData} title="Non-Clickable" />)
+
+      // When no onBarClick, the Bar should not have onClick
+      expect(capturedBarOnClick).toBeUndefined()
+    })
   })
 })
