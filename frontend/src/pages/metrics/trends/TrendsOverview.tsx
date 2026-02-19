@@ -23,8 +23,8 @@ import { RetentionRateLine } from '../../../components/metrics/RetentionRateLine
 import { GenderStackedChart } from '../../../components/metrics/GenderStackedChart'
 import { GradeEnrollmentChart } from '../../../components/metrics/GradeEnrollmentChart'
 import { MultiYearBreakdownChart } from '../../../components/metrics/MultiYearBreakdownChart'
-import { SectionDivider } from '../../../components/metrics/SectionDivider'
-import { Loader2, AlertCircle } from 'lucide-react'
+import { SectionHeader } from '../../../components/metrics/SectionHeader'
+import { Loader2, AlertCircle, PieChart, Globe } from 'lucide-react'
 
 export default function TrendsOverview() {
   const { selectedSessionCmId, sessionTypesParam, expandedRetention } = useMetricsSession()
@@ -221,7 +221,11 @@ export default function TrendsOverview() {
       </div>
 
       {/* ─── Enrollment Composition (from retention-trends endpoint) ─── */}
-      <SectionDivider label={`Enrollment Composition (${numYearsDisplay}-Year Comparison)`} />
+      <SectionHeader
+        icon={PieChart}
+        title="Enrollment Composition"
+        description={`Gender, grade, and tenure trends over ${numYearsDisplay} years`}
+      />
 
       {/* Retention Rate Trend Line */}
       {retentionYears.length > 0 && (
@@ -276,7 +280,11 @@ export default function TrendsOverview() {
       )}
 
       {/* ─── Geographic Distribution (from retention-trends endpoint) ─── */}
-      <SectionDivider label={`Geographic Distribution (${numYearsDisplay}-Year Comparison)`} />
+      <SectionHeader
+        icon={Globe}
+        title="Geographic Distribution"
+        description={`City, school, and synagogue trends over ${numYearsDisplay} years`}
+      />
 
       {/* City Distribution */}
       {enrollmentData.some((y) => (y.by_city?.length ?? 0) > 0) && (
