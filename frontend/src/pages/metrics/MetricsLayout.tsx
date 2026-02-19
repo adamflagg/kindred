@@ -4,12 +4,26 @@
  * Wraps content with MetricsSessionProvider for unified session filtering
  */
 import { Outlet, useLocation } from 'react-router'
-import { LayoutDashboard, Globe, Clock } from 'lucide-react'
+import { LayoutDashboard, Globe, Clock, GitBranch } from 'lucide-react'
 import MetricsTypeTabs from '../../components/metrics/MetricsTypeTabs'
 import MetricsSubNav, { type SubNavItem } from '../../components/metrics/MetricsSubNav'
 import { MetricsSessionProvider } from '../../contexts/MetricsSessionContext'
 
-// Note: Retention has no sub-nav (single page with all breakdowns inline)
+/** Sub-nav items for retention section */
+const RETENTION_SUB_NAV: SubNavItem[] = [
+  {
+    id: 'overview',
+    label: 'Overview',
+    icon: LayoutDashboard,
+    path: '/metrics/retention',
+  },
+  {
+    id: 'flow',
+    label: 'Session Flow',
+    icon: GitBranch,
+    path: '/metrics/retention/flow',
+  },
+]
 
 /** Sub-nav items for registration section */
 const REGISTRATION_SUB_NAV: SubNavItem[] = [
@@ -41,6 +55,9 @@ export default function MetricsLayout() {
   const getSubNavItems = (): SubNavItem[] => {
     if (location.pathname.startsWith('/metrics/registration')) {
       return REGISTRATION_SUB_NAV
+    }
+    if (location.pathname.startsWith('/metrics/retention')) {
+      return RETENTION_SUB_NAV
     }
     return []
   }
