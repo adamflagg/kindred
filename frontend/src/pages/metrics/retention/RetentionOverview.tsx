@@ -23,13 +23,10 @@ import {
   synagogueToBarData,
   summerYearsToBarData,
   firstSummerYearToBarData,
-  sessionBunkToBarData,
-  sessionFlowToSankeyData,
   computeRetentionOutliers,
 } from '../../../utils/retentionTransforms'
 import { buildSessionDateLookup, sortSessionDataByDate } from '../../../utils/sessionUtils'
 import { RetentionNotableOutliers } from '../../../components/metrics/RetentionNotableOutliers'
-import { SessionFlowSankey } from '../../../components/metrics/SessionFlowSankey'
 import { Loader2, AlertCircle } from 'lucide-react'
 
 export default function RetentionOverview() {
@@ -82,8 +79,6 @@ export default function RetentionOverview() {
   const sessionBars = sessionToBarData(sortSessionDataByDate(data.by_session ?? [], sessionDateLookup))
   const summerYearsBars = summerYearsToBarData(data.by_summer_years)
   const firstSummerYearBars = firstSummerYearToBarData(data.by_first_summer_year)
-  const sankeyData = sessionFlowToSankeyData(data.session_flow)
-  const sessionBunkBars = sessionBunkToBarData(data.by_session_bunk)
   const cityBars = cityToBarData(data.by_city)
   const schoolBars = schoolToBarData(data.by_school)
   const synagogueBars = synagogueToBarData(data.by_synagogue)
@@ -140,25 +135,7 @@ export default function RetentionOverview() {
         />
       )}
 
-      {/* Row 2b: Session Flow Sankey (full width) */}
-      {sankeyData && (
-        <SessionFlowSankey
-          data={sankeyData}
-          title={`Session Flow: ${priorYear} → ${currentYear}`}
-        />
-      )}
-
-      {/* Row 3: Session+Bunk (full width) */}
-      {sessionBunkBars.length > 0 && (
-        <RetentionRateBarChart
-          data={sessionBunkBars}
-          title={`${priorYear} Session + Bunk (Top 15)`}
-          topN={15}
-          sortBy="count"
-        />
-      )}
-
-      {/* Row 4: Summers at Camp + First Summer Year side by side */}
+      {/* Row 3: Summers at Camp + First Summer Year side by side */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {summerYearsBars.length > 0 && (
           <RetentionRateLineChart data={summerYearsBars} title="Retention by Summers at Camp" />
