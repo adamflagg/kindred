@@ -5,17 +5,19 @@
  * and retention rates by session+bunk combination.
  */
 
+import { useMemo } from 'react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useRetentionMetrics } from '../../../hooks/useMetrics'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { sessionFlowToSankeyData } from '../../../utils/retentionTransforms'
+import { buildSessionDateLookup } from '../../../utils/sessionUtils'
 import { SessionFlowSankey } from '../../../components/metrics/SessionFlowSankey'
 import { SessionBunkHeatmap } from '../../../components/metrics/SessionBunkHeatmap'
 import { Loader2, AlertCircle } from 'lucide-react'
 
 export default function SessionFlowPage() {
   const { currentYear } = useCurrentYear()
-  const { selectedSessionCmId, sessionTypesParam, viewMode } = useMetricsSession()
+  const { selectedSessionCmId, sessionTypesParam, viewMode, sessions } = useMetricsSession()
 
   const priorYear = currentYear - 1
 
@@ -25,6 +27,8 @@ export default function SessionFlowPage() {
     sessionTypesParam,
     selectedSessionCmId ?? undefined
   )
+
+  const sessionDateLookup = useMemo(() => buildSessionDateLookup(sessions), [sessions])
 
   if (isLoading) {
     return (
@@ -66,7 +70,7 @@ export default function SessionFlowPage() {
 
       {/* Bunk heatmap (hidden in quest mode - quests don't have bunks) */}
       {viewMode !== 'quests' && data.by_session_bunk && (
-        <SessionBunkHeatmap data={data.by_session_bunk} />
+        <SessionBunkHeatmap data={data.by_session_bunk} sessionDateLookup={sessionDateLookup} />
       )}
     </div>
   )
