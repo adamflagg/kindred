@@ -56,7 +56,7 @@ export function ComparisonTable({
   return (
     <div className={`card-lodge overflow-hidden ${className}`}>
       <div className="border-border border-b px-4 py-3">
-        <h3 className="text-foreground text-sm font-semibold">{title}</h3>
+        <h3 className="text-foreground text-base font-semibold">{title}</h3>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">

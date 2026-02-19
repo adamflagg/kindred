@@ -75,7 +75,7 @@ export function RetentionNotableOutliers({
 
   return (
     <div className="card-lodge p-4">
-      <h3 className="text-foreground mb-3 text-sm font-semibold">Notable Outliers</h3>
+      <h3 className="text-foreground mb-3 text-base font-semibold">Notable Outliers</h3>
       <div className="space-y-3">
         <OutlierSection label="City" outliers={cityOutliers} max={maxPerCategory} />
         <OutlierSection label="School" outliers={schoolOutliers} max={maxPerCategory} />

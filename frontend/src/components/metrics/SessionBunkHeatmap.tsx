@@ -55,7 +55,7 @@ interface BunkHeatmapTableProps {
 function BunkHeatmapTable({ title, sessions, bunks, lookup }: BunkHeatmapTableProps) {
   return (
     <div data-section>
-      <h4 className="text-muted-foreground mb-2 text-xs font-semibold">{title}</h4>
+      <h4 className="text-muted-foreground mb-2 text-sm font-semibold">{title}</h4>
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-xs">
           <thead>
@@ -172,7 +172,7 @@ export function SessionBunkHeatmap({ data, sessionDateLookup = {} }: SessionBunk
 
   return (
     <div className="card-lodge p-4">
-      <h3 className="text-foreground mb-4 text-sm font-medium">Retention by Session + Bunk</h3>
+      <h3 className="text-foreground mb-4 text-base font-semibold">Retention by Session + Bunk</h3>
 
       <div className="space-y-6">
         {CATEGORY_ORDER.filter((cat) => categoryBunks[cat]?.length > 0).map((cat) => (

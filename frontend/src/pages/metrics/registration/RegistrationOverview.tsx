@@ -33,6 +33,7 @@ import {
   transformFirstSummerYearData,
   transformNewVsReturningData,
 } from '../../../utils/metricsTransforms'
+import { SectionDivider } from '../../../components/metrics/SectionDivider'
 import { Loader2, AlertCircle } from 'lucide-react'
 
 export default function RegistrationOverview() {
@@ -190,6 +191,8 @@ export default function RegistrationOverview() {
         />
       </div>
 
+      <SectionDivider label="Demographics" />
+
       {/* Charts Row 1: Gender */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <BreakdownChart
@@ -209,6 +212,8 @@ export default function RegistrationOverview() {
           onBarClick={setFilter}
         />
       </div>
+
+      <SectionDivider label="Camper Mix" />
 
       {/* Charts Row 2: New vs Returning, Grade */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -234,6 +239,8 @@ export default function RegistrationOverview() {
           onSegmentClick={setFilter}
         />
       </div>
+
+      <SectionDivider label="Session Enrollment" />
 
       {/* Charts Row 3: Session, Session Length (hidden when single session selected) */}
       {!selectedSessionCmId && (
@@ -262,6 +269,8 @@ export default function RegistrationOverview() {
           />
         </div>
       )}
+
+      <SectionDivider label="Camper History" />
 
       {/* Charts Row 4: Years at Camp, First Summer Year */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -299,7 +308,7 @@ export default function RegistrationOverview() {
       {/* Session Details Table */}
       <div className="card-lodge overflow-hidden">
         <div className="border-border border-b px-4 py-3">
-          <h3 className="text-foreground text-sm font-semibold">Session Details</h3>
+          <h3 className="text-foreground text-base font-semibold">Session Details</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">

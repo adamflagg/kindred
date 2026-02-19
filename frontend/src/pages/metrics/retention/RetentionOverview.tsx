@@ -27,6 +27,7 @@ import {
 } from '../../../utils/retentionTransforms'
 import { buildSessionDateLookup, sortSessionDataByDate } from '../../../utils/sessionUtils'
 import { RetentionNotableOutliers } from '../../../components/metrics/RetentionNotableOutliers'
+import { SectionDivider } from '../../../components/metrics/SectionDivider'
 import { Loader2, AlertCircle } from 'lucide-react'
 
 export default function RetentionOverview() {
@@ -117,6 +118,8 @@ export default function RetentionOverview() {
         />
       </div>
 
+      <SectionDivider label="Camper Demographics" />
+
       {/* Row 1: Gender + Grade side by side */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {genderBars.length > 0 && (
@@ -131,6 +134,8 @@ export default function RetentionOverview() {
         )}
       </div>
 
+      <SectionDivider label="Session Analysis" />
+
       {/* Row 2: Current Year Session */}
       {sessionBars.length > 0 && (
         <RetentionRateBarChart
@@ -140,6 +145,8 @@ export default function RetentionOverview() {
           layout="vertical"
         />
       )}
+
+      <SectionDivider label="Camper Tenure" />
 
       {/* Row 3: Summers at Camp + First Summer Year side by side */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -153,6 +160,8 @@ export default function RetentionOverview() {
           />
         )}
       </div>
+
+      <SectionDivider label="Geographic Retention" />
 
       {/* Row 5: City + School */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

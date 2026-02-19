@@ -74,7 +74,7 @@ export function ComparisonBreakdownChart({
   if (data.length === 0) {
     return (
       <div className={`card-lodge p-4 ${className}`}>
-        <h3 className="text-foreground mb-4 text-sm font-semibold">{title}</h3>
+        <h3 className="text-foreground mb-4 text-base font-semibold">{title}</h3>
         <div className="text-muted-foreground flex h-[200px] items-center justify-center">
           No data available
         </div>
@@ -139,7 +139,7 @@ export function ComparisonBreakdownChart({
   return (
     <div className={`card-lodge p-4 ${className}`}>
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-foreground text-sm font-semibold">{title}</h3>
+        <h3 className="text-foreground text-base font-semibold">{title}</h3>
         {availableComparisonYears.length > 0 && (
           <select
             value={activeComparisonYear ?? ''}
