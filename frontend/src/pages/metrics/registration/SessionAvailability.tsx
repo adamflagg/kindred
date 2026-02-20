@@ -103,21 +103,21 @@ function Legend() {
   return (
     <div className="flex flex-wrap items-center gap-4 text-sm">
       <div className="flex items-center gap-2">
-        <div className="h-5 w-5 rounded border border-border/50 bg-emerald-100 dark:bg-emerald-900/40" />
+        <div className="border-border/50 h-5 w-5 rounded border bg-emerald-100 dark:bg-emerald-900/40" />
         <span>Open Space</span>
       </div>
       <div className="flex items-center gap-2">
-        <div className="h-5 w-5 rounded border border-border/50 bg-amber-200 dark:bg-amber-800/50" />
+        <div className="border-border/50 h-5 w-5 rounded border bg-amber-200 dark:bg-amber-800/50" />
         <span>Limited Space</span>
       </div>
       <div className="flex items-center gap-2">
-        <div className="flex h-5 w-5 items-center justify-center rounded border border-border/50 bg-red-200 text-[10px] font-bold dark:bg-red-900/50">
+        <div className="border-border/50 flex h-5 w-5 items-center justify-center rounded border bg-red-200 text-[10px] font-bold dark:bg-red-900/50">
           WL
         </div>
         <span>Waitlist</span>
       </div>
       <div className="flex items-center gap-2">
-        <div className="h-5 w-5 rounded border border-border/50 bg-neutral-800 dark:bg-neutral-900" />
+        <div className="border-border/50 h-5 w-5 rounded border bg-neutral-800 dark:bg-neutral-900" />
         <span>N/A</span>
       </div>
     </div>
@@ -161,25 +161,25 @@ export default function SessionAvailability() {
       <Legend />
 
       {/* Main sessions matrix */}
-      <div className="overflow-x-auto rounded-xl border border-border">
+      <div className="border-border overflow-x-auto rounded-xl border">
         <table className="w-auto border-collapse">
           <thead>
             <tr>
               <th
                 rowSpan={2}
-                className="bg-muted/50 sticky left-0 z-10 border-b border-r border-border px-4 py-2 text-left text-sm font-semibold"
+                className="bg-muted/50 border-border sticky left-0 z-10 border-r border-b px-4 py-2 text-left text-sm font-semibold"
               >
                 Session
               </th>
               <th
                 colSpan={GRADES.length}
-                className="border-b border-r border-border bg-pink-50 px-2 py-1.5 text-center text-sm font-semibold dark:bg-pink-950/30"
+                className="border-border border-r border-b bg-pink-50 px-2 py-1.5 text-center text-sm font-semibold dark:bg-pink-950/30"
               >
                 Girls' Availability
               </th>
               <th
                 colSpan={GRADES.length}
-                className="border-b border-border bg-blue-50 px-2 py-1.5 text-center text-sm font-semibold dark:bg-blue-950/30"
+                className="border-border border-b bg-blue-50 px-2 py-1.5 text-center text-sm font-semibold dark:bg-blue-950/30"
               >
                 Boys' Availability
               </th>
@@ -189,7 +189,7 @@ export default function SessionAvailability() {
               {GRADES.map((g) => (
                 <th
                   key={`g-${g}`}
-                  className="border-b border-r border-border bg-pink-50/50 px-1 py-1 text-center text-xs font-medium dark:bg-pink-950/20"
+                  className="border-border border-r border-b bg-pink-50/50 px-1 py-1 text-center text-xs font-medium dark:bg-pink-950/20"
                 >
                   {gradeLabel(g)}
                 </th>
@@ -198,7 +198,7 @@ export default function SessionAvailability() {
               {GRADES.map((g) => (
                 <th
                   key={`b-${g}`}
-                  className="border-b border-border bg-blue-50/50 px-1 py-1 text-center text-xs font-medium dark:bg-blue-950/20"
+                  className="border-border border-b bg-blue-50/50 px-1 py-1 text-center text-xs font-medium dark:bg-blue-950/20"
                 >
                   {gradeLabel(g)}
                 </th>
@@ -207,8 +207,8 @@ export default function SessionAvailability() {
           </thead>
           <tbody>
             {sessions.map((session) => (
-              <tr key={session.session_cm_id} className="border-b border-border last:border-b-0">
-                <td className="bg-card sticky left-0 z-10 border-r border-border px-4 py-2 text-sm font-medium whitespace-nowrap">
+              <tr key={session.session_cm_id} className="border-border border-b last:border-b-0">
+                <td className="bg-card border-border sticky left-0 z-10 border-r px-4 py-2 text-sm font-medium whitespace-nowrap">
                   {session.session_name}
                 </td>
                 <SessionRow session={session} gender="girls" />
@@ -225,17 +225,17 @@ export default function SessionAvailability() {
           <h3 className="text-muted-foreground mb-3 text-sm font-semibold uppercase">
             AG Sessions
           </h3>
-          <div className="overflow-x-auto rounded-xl border border-border">
+          <div className="border-border overflow-x-auto rounded-xl border">
             <table className="w-auto border-collapse">
               <thead>
                 <tr>
-                  <th className="bg-muted/50 sticky left-0 z-10 border-b border-r border-border px-4 py-2 text-left text-sm font-semibold">
+                  <th className="bg-muted/50 border-border sticky left-0 z-10 border-r border-b px-4 py-2 text-left text-sm font-semibold">
                     Session
                   </th>
                   {GRADES.map((g) => (
                     <th
                       key={g}
-                      className="border-b border-border bg-purple-50/50 px-1 py-1 text-center text-xs font-medium dark:bg-purple-950/20"
+                      className="border-border border-b bg-purple-50/50 px-1 py-1 text-center text-xs font-medium dark:bg-purple-950/20"
                     >
                       {gradeLabel(g)}
                     </th>
@@ -246,9 +246,9 @@ export default function SessionAvailability() {
                 {ag_sessions.map((session) => (
                   <tr
                     key={session.session_cm_id}
-                    className="border-b border-border last:border-b-0"
+                    className="border-border border-b last:border-b-0"
                   >
-                    <td className="bg-card sticky left-0 z-10 border-r border-border px-4 py-2 text-sm font-medium whitespace-nowrap">
+                    <td className="bg-card border-border sticky left-0 z-10 border-r px-4 py-2 text-sm font-medium whitespace-nowrap">
                       {session.session_name}
                     </td>
                     <AGSessionRow session={session} />

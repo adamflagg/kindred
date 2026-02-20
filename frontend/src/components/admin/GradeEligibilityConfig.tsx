@@ -169,7 +169,11 @@ export function GradeEligibilityConfig() {
     )
   }
 
-  const handleAgChange = (cmId: number, field: 'min_grade' | 'max_grade' | 'capacity_override', value: string) => {
+  const handleAgChange = (
+    cmId: number,
+    field: 'min_grade' | 'max_grade' | 'capacity_override',
+    value: string
+  ) => {
     setAgRows((prev) =>
       prev.map((r) =>
         r.cm_id === cmId ? { ...r, [field]: value === '' ? null : Number(value) } : r
@@ -263,7 +267,9 @@ export function GradeEligibilityConfig() {
     return (
       <div className="flex items-center justify-center py-8">
         <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
-        <span className="text-muted-foreground ml-2 text-sm">Loading session availability config...</span>
+        <span className="text-muted-foreground ml-2 text-sm">
+          Loading session availability config...
+        </span>
       </div>
     )
   }
@@ -359,7 +365,9 @@ export function GradeEligibilityConfig() {
                     type="number"
                     min={0}
                     value={row.config.capacity_override ?? ''}
-                    onChange={(e) => handleMainChange(row.cm_id, 'capacity_override', e.target.value)}
+                    onChange={(e) =>
+                      handleMainChange(row.cm_id, 'capacity_override', e.target.value)
+                    }
                     className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
                   />
                 </td>
@@ -372,7 +380,9 @@ export function GradeEligibilityConfig() {
       {/* AG Sessions */}
       {agRows.length > 0 && (
         <div className="mt-6">
-          <h4 className="text-muted-foreground mb-3 text-sm font-semibold uppercase">AG Sessions</h4>
+          <h4 className="text-muted-foreground mb-3 text-sm font-semibold uppercase">
+            AG Sessions
+          </h4>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -412,7 +422,9 @@ export function GradeEligibilityConfig() {
                         type="number"
                         min={0}
                         value={row.capacity_override ?? ''}
-                        onChange={(e) => handleAgChange(row.cm_id, 'capacity_override', e.target.value)}
+                        onChange={(e) =>
+                          handleAgChange(row.cm_id, 'capacity_override', e.target.value)
+                        }
                         className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
                       />
                     </td>
