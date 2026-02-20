@@ -76,6 +76,19 @@ def create_app() -> FastAPI:
             status_code=403, content={"detail": str(exc.detail) if hasattr(exc, "detail") else "Forbidden"}
         )
 
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        """Catch unhandled exceptions and return a generic error to clients.
+
+        Logs full error details server-side for debugging while preventing
+        internal error messages from leaking to the frontend.
+        """
+        logger.error(f"Unhandled error on {request.method} {request.url.path}: {exc}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error"},
+        )
+
     # Load settings
     settings = get_settings()
 

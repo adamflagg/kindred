@@ -333,6 +333,16 @@ For CLI API testing with auth tokens, see `/docs/reference/cli-commands.md`.
 
 **Technologies**: React 19, TypeScript 5.8+, Vite, Tailwind CSS, React Query, @dnd-kit, Cytoscape.js
 
+### Error Handling Conventions
+
+**Frontend:**
+- **Page-level `<ErrorBoundary>`**: Every lazy-loaded route in `App.tsx` is wrapped with `<ErrorBoundary>` around `<Suspense>`. This isolates crashes to the affected page — nav and other routes remain functional. New routes MUST follow this pattern.
+- **`<QueryGuard>`** (`components/QueryGuard.tsx`): Render-prop component that handles loading/error/empty/success states for React Query data. Use it in new data-fetching pages to avoid hand-rolling the same if/isLoading/if/error pattern. Existing pages use inline patterns — don't refactor them unless already touching that code.
+- **All 4 states must be handled**: loading, error, empty, success. Never render a data-dependent component without checking the query state first.
+
+**Backend:**
+- **Global exception handler** in `api/main.py` catches unhandled exceptions and returns `{"detail": "Internal server error"}` (generic). Full error details are logged server-side with `exc_info=True`. Never use `raise HTTPException(status_code=500, detail=str(e))` — let the global handler catch it instead.
+
 ## Configuration Locations
 
 | File | Purpose |
