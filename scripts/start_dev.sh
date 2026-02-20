@@ -110,11 +110,13 @@ else
     echo -e "${GREEN}PocketBase already initialized, skipping admin creation${NC}"
 fi
 
-# Check if frontend dependencies are installed
-if [ ! -d "$PROJECT_ROOT/frontend/node_modules" ]; then
+# Install frontend dependencies if needed (missing or outdated)
+cd "$PROJECT_ROOT/frontend"
+if [ ! -d "node_modules" ] || [ "package-lock.json" -nt "node_modules/.package-lock.json" ]; then
     echo -e "${YELLOW}Installing frontend dependencies...${NC}"
-    cd "$PROJECT_ROOT/frontend"
     npm install
+else
+    echo -e "${GREEN}Frontend dependencies up to date${NC}"
 fi
 
 # Install Python dependencies using uv (creates .venv automatically, smart caching)
