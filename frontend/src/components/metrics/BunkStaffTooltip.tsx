@@ -19,6 +19,7 @@ interface BunkCellTooltipProps {
   bunkName: string
   retention: RetentionInfo
   staff?: BunkStaffInfo[] | undefined
+  staffLabel?: string
   isVisible: boolean
   position: { x: number; y: number }
 }
@@ -27,6 +28,7 @@ export function BunkCellTooltip({
   bunkName,
   retention,
   staff,
+  staffLabel = 'Staff',
   isVisible,
   position,
 }: BunkCellTooltipProps) {
@@ -78,7 +80,7 @@ export function BunkCellTooltip({
         <>
           <hr className="border-border my-1.5" />
           <p className="text-muted-foreground mb-0.5 text-[10px] font-medium tracking-wide uppercase">
-            Staff
+            {staffLabel}
           </p>
           <ul className="space-y-0.5">
             {staff.map((s) => (
