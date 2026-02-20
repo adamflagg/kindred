@@ -16,8 +16,9 @@ const DID_NOT_RETURN_COLOR = '#9ca3af'
 
 function getNodeColor(name: string, index: number, sourceCount: number): string {
   if (name === 'Did Not Return') return DID_NOT_RETURN_COLOR
-  if (index < sourceCount) return SOURCE_COLORS[index % SOURCE_COLORS.length]!
-  return TARGET_COLORS[(index - sourceCount) % TARGET_COLORS.length]!
+  if (index < sourceCount)
+    return SOURCE_COLORS[index % SOURCE_COLORS.length] ?? DID_NOT_RETURN_COLOR
+  return TARGET_COLORS[(index - sourceCount) % TARGET_COLORS.length] ?? DID_NOT_RETURN_COLOR
 }
 
 function stripSuffix(name: string): string {
@@ -137,6 +138,7 @@ export function SessionFlowSankey({ data, title }: SessionFlowSankeyProps) {
                   onMouseLeave={() => setHoveredLinkIndex(null)}
                 />
               )
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
             }) as any
           }
           node={({

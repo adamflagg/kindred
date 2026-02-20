@@ -151,7 +151,7 @@ function transformDataInverted(
 
     topCategories.forEach((key, idx) => {
       const match = breakdown?.find((b) => String(b[labelKey]) === key)
-      item[categoryDisplayNames[idx]!] = (match?.['count'] as number) ?? 0
+      item[categoryDisplayNames[idx] ?? ''] = (match?.['count'] as number) ?? 0
     })
 
     return item
@@ -172,7 +172,7 @@ export function MultiYearBreakdownChart({
   className = '',
 }: MultiYearBreakdownChartProps) {
   const hasData = data.some((y) => {
-    const breakdown = y[breakdownKey] as Array<unknown> | undefined
+    const breakdown = y[breakdownKey] as unknown[] | undefined
     return breakdown && breakdown.length > 0
   })
 
@@ -188,17 +188,21 @@ export function MultiYearBreakdownChart({
   }
 
   // Choose normal or inverted transform
-  const normal = !invertAxes
-    ? transformData(data, breakdownKey, labelKey, topN, nameFormatter)
-    : null
-  const inverted = invertAxes
-    ? transformDataInverted(data, breakdownKey, labelKey, topN, nameFormatter)
-    : null
+  let chartData: ChartDataItem[]
+  let barKeys: string[]
+  let barLabels: string[]
 
-  const chartData = normal?.chartData ?? inverted!.chartData
-  // Bar keys: years (normal) or category display names (inverted)
-  const barKeys = normal ? normal.years.map(String) : inverted!.categories
-  const barLabels = normal ? normal.years.map((y) => `Year ${y}`) : inverted!.categories
+  if (invertAxes) {
+    const result = transformDataInverted(data, breakdownKey, labelKey, topN, nameFormatter)
+    chartData = result.chartData
+    barKeys = result.categories
+    barLabels = result.categories
+  } else {
+    const result = transformData(data, breakdownKey, labelKey, topN, nameFormatter)
+    chartData = result.chartData
+    barKeys = result.years.map(String)
+    barLabels = result.years.map((y) => `Year ${y}`)
+  }
 
   const CustomTooltip = ({
     active,
@@ -245,9 +249,8 @@ export function MultiYearBreakdownChart({
           {barKeys.map((key, index) => {
             // Normal mode: keys are year strings, use stable year-based colors
             // Inverted mode: keys are category names, use palette by index
-            const maxYear = normal ? Math.max(...normal.years) : 0
-            const fill = normal
-              ? getYearColor(parseInt(key, 10), maxYear)
+            const fill = !invertAxes
+              ? getYearColor(parseInt(key, 10), Math.max(...barKeys.map(Number)))
               : (YEAR_PALETTE[index % YEAR_PALETTE.length] ?? 'hsl(0, 0%, 50%)')
             return (
               <Bar

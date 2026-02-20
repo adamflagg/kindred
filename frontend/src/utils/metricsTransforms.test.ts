@@ -44,6 +44,7 @@ describe('transformGenderData', () => {
   it('handles null gender as Unknown', () => {
     const input = [{ gender: null, count: 10, percentage: 100 }]
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- testing null edge case
     const result = transformGenderData(input as any)
 
     expect(result[0]!.name).toBe('Unknown')
@@ -131,6 +132,7 @@ describe('transformSessionData', () => {
     ]
     const dateLookup = { 'Session 1': '2026-06-01' }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- testing null edge case
     const result = transformSessionData(input as any, dateLookup)
 
     expect(result[0]!.percentage).toBe(0)
@@ -536,6 +538,7 @@ describe('getTrendDirection', () => {
   })
 
   it('returns stable data for unknown trend', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- testing unknown input
     const result = getTrendDirection('unknown' as any)
 
     expect(result.label).toBe('Stable')
