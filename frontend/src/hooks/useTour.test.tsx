@@ -125,6 +125,35 @@ describe('useTour', () => {
     expect(mockDrive).toHaveBeenCalled()
   })
 
+  it('does not start tour when isReady() never returns true', async () => {
+    const neverReadyDef: TourDefinition = {
+      ...mockTourDefinition,
+      isReady: () => false,
+    }
+    vi.mocked(tourRegistry.loadTourDefinition).mockResolvedValue(neverReadyDef)
+
+    renderHook(() => useTour())
+
+    // Advance well past the maximum retry window (~5.3s with 25 retries × 200ms + 300ms delay)
+    await flushAndAdvance(6000)
+
+    expect(mockDrive).not.toHaveBeenCalled()
+  })
+
+  it('destroys driver instance when isReady() timeout is exhausted', async () => {
+    const neverReadyDef: TourDefinition = {
+      ...mockTourDefinition,
+      isReady: () => false,
+    }
+    vi.mocked(tourRegistry.loadTourDefinition).mockResolvedValue(neverReadyDef)
+
+    renderHook(() => useTour())
+
+    await flushAndAdvance(6000)
+
+    expect(mockDestroy).toHaveBeenCalled()
+  })
+
   it('cleans up driver instance on unmount', async () => {
     const { unmount } = renderHook(() => useTour())
 

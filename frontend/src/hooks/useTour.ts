@@ -10,8 +10,8 @@ import type { HintDefinition, TourDefinition, TourId } from '../tours/types'
 /** Delay before auto-starting a tour or checking isReady() (ms), to let page content render */
 const AUTO_START_DELAY = 300
 
-/** Max retries waiting for isReady() to return true. After exhausting retries, the tour force-starts anyway. */
-const MAX_READY_RETRIES = 10
+/** Max retries waiting for isReady() to return true. After exhausting retries, the tour silently aborts. */
+const MAX_READY_RETRIES = 25
 
 /** Interval between isReady() checks (ms) */
 const READY_CHECK_INTERVAL = 200
@@ -80,8 +80,13 @@ export function useTour() {
     // Wait for page elements to be ready
     let retries = 0
     const checkReady = () => {
-      if (def.isReady() || retries >= MAX_READY_RETRIES) {
+      if (def.isReady()) {
         d.drive()
+        return
+      }
+      if (retries >= MAX_READY_RETRIES) {
+        d.destroy()
+        driverRef.current = null
         return
       }
       retries++
