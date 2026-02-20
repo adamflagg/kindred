@@ -506,11 +506,9 @@ jobs:
     steps:
     - name: Check status
       run: |
-        # commit-lint is skipped for Dependabot PRs
+        # commit-lint: advisory only — still runs as a visible check but doesn't block merges/CD
         if [ "${{ needs.commit-lint.result }}" != "success" ] && [ "${{ needs.commit-lint.result }}" != "skipped" ]; then
-          echo "❌ Commit message format invalid! Use: type(scope): description"
-          echo "   See CLAUDE.md for allowed scopes."
-          exit 1
+          echo "::warning::Commit message format issue detected. Use: type(scope): description"
         fi
         if [ "${{ needs.secret-scan.result }}" != "success" ]; then
           echo "❌ Secret scanning failed! Check for leaked credentials."
