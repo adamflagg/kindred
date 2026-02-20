@@ -93,16 +93,23 @@ class RetentionService:
         sessions_compare_filtered = cast(dict[int, Any], _results[5])
         sessions_compare_all = cast(dict[int, Any], _results[6])
 
+        # Default to summer session types when no filter specified, so non-summer
+        # enrollments (TLI, family, training) don't count toward retention.
+        summer_types = list(DISPLAY_SESSION_TYPES)
+        effective_types = session_types if session_types is not None else summer_types
+
         # Get unique person IDs for base year, filtered by session
-        person_ids_base, _ = self._filter_base_attendees(attendees_base, session_types, session_cm_id)
+        person_ids_base, _ = self._filter_base_attendees(attendees_base, effective_types, session_cm_id)
 
-        # Get person IDs for compare year, filtered by session type and cm_id (CampMinder reuses IDs across years)
-        person_ids_compare, _ = self._filter_base_attendees(attendees_compare, session_types, session_cm_id)
+        # Get person IDs for compare year, filtered by session type and cm_id
+        person_ids_compare, _ = self._filter_base_attendees(attendees_compare, effective_types, session_cm_id)
 
-        # Unfiltered pools for session chart semantics and session flow
-        person_ids_base_unfiltered, _ = self._filter_base_attendees(attendees_base, None, None)
+        # "Unfiltered" pools for session chart semantics and session flow.
+        # Still filtered to summer types (no session_cm_id filter) so non-summer
+        # enrollments don't inflate "returned" counts in heatmap/Sankey/prior-session.
+        person_ids_base_unfiltered, _ = self._filter_base_attendees(attendees_base, summer_types, None)
         person_ids_compare_unfiltered, attendee_sessions_compare = self._filter_base_attendees(
-            attendees_compare, None, None
+            attendees_compare, summer_types, None
         )
 
         # Exclude aged-out persons (grade >= 10) from retention base pools.

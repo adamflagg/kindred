@@ -13,7 +13,8 @@ from __future__ import annotations
 from typing import Any
 
 # Grade at or above which campers are excluded from retention analysis.
-# 10th graders have no eligible session to return to (camp ends at 9th grade),
+# All summer sessions (camp and quest) have a maximum grade of 10th.
+# 10th graders have no eligible summer session to return to the following year,
 # so counting them as "did not return" would unfairly penalize retention metrics.
 RETENTION_AGED_OUT_GRADE = 10
 
