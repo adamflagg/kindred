@@ -97,6 +97,120 @@ describe('ComparisonSummaryTable', () => {
     expect(screen.getByText('No data to compare')).toBeInTheDocument()
   })
 
+  describe('sentiment prop', () => {
+    it('should use green for positive change by default', () => {
+      const { container } = render(
+        <ComparisonSummaryTable
+          title="Test"
+          primaryYear={2025}
+          compareYear={2024}
+          primaryData={[{ name: 'Total', value: 50 }]}
+          compareData={[{ name: 'Total', value: 40 }]}
+        />
+      )
+
+      // Positive change cell should have emerald color
+      const changeCells = container.querySelectorAll('td')
+      const changeCell = Array.from(changeCells).find(
+        (td) => td.textContent?.includes('+10')
+      )
+      expect(changeCell).toHaveClass('text-emerald-600')
+    })
+
+    it('should swap colors with sentiment="inverse" — positive becomes red', () => {
+      const { container } = render(
+        <ComparisonSummaryTable
+          title="Cancellations"
+          primaryYear={2025}
+          compareYear={2024}
+          primaryData={[{ name: 'Total', value: 50 }]}
+          compareData={[{ name: 'Total', value: 40 }]}
+          sentiment="inverse"
+        />
+      )
+
+      const changeCells = container.querySelectorAll('td')
+      const changeCell = Array.from(changeCells).find(
+        (td) => td.textContent?.includes('+10')
+      )
+      expect(changeCell).toHaveClass('text-red-600')
+    })
+
+    it('should swap colors with sentiment="inverse" — negative becomes green', () => {
+      const { container } = render(
+        <ComparisonSummaryTable
+          title="Cancellations"
+          primaryYear={2025}
+          compareYear={2024}
+          primaryData={[{ name: 'Total', value: 30 }]}
+          compareData={[{ name: 'Total', value: 40 }]}
+          sentiment="inverse"
+        />
+      )
+
+      const changeCells = container.querySelectorAll('td')
+      const changeCell = Array.from(changeCells).find(
+        (td) => td.textContent?.includes('-10')
+      )
+      expect(changeCell).toHaveClass('text-emerald-600')
+    })
+
+    it('should use blue color with sentiment="neutral"', () => {
+      const { container } = render(
+        <ComparisonSummaryTable
+          title="New Campers"
+          primaryYear={2025}
+          compareYear={2024}
+          primaryData={[{ name: 'Total', value: 50 }]}
+          compareData={[{ name: 'Total', value: 40 }]}
+          sentiment="neutral"
+        />
+      )
+
+      const changeCells = container.querySelectorAll('td')
+      const changeCell = Array.from(changeCells).find(
+        (td) => td.textContent?.includes('+10')
+      )
+      expect(changeCell).toHaveClass('text-blue-600')
+    })
+  })
+
+  describe('compareName display', () => {
+    it('should show "(was: X)" when compareName is set via matchKey merge', () => {
+      render(
+        <ComparisonSummaryTable
+          title="Session Enrollment"
+          primaryYear={2026}
+          compareYear={2025}
+          primaryData={[{ name: 'Taste of Camp 1', value: 50, id: '1000001' }]}
+          compareData={[{ name: 'Taste of Camp', value: 45, id: '1000001' }]}
+          matchKey="id"
+        />
+      )
+
+      // Primary name should be shown
+      expect(screen.getByText('Taste of Camp 1')).toBeInTheDocument()
+      // Should show the compare year's different name
+      expect(screen.getByText('(was: Taste of Camp)')).toBeInTheDocument()
+    })
+
+    it('should NOT show "(was: X)" when names are the same', () => {
+      render(
+        <ComparisonSummaryTable
+          title="Session Enrollment"
+          primaryYear={2026}
+          compareYear={2025}
+          primaryData={[{ name: 'Session 2', value: 80, id: '1000002' }]}
+          compareData={[{ name: 'Session 2', value: 75, id: '1000002' }]}
+          matchKey="id"
+        />
+      )
+
+      expect(screen.getByText('Session 2')).toBeInTheDocument()
+      expect(screen.queryByText(/was:/)).not.toBeInTheDocument()
+    })
+  })
+
   it('merges by matchKey when names differ between years', () => {
     render(
       <ComparisonSummaryTable

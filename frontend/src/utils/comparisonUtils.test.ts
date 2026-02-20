@@ -155,6 +155,49 @@ describe('mergeDataForComparison', () => {
     expect(goneItem?.compareValue).toBe(20)
   })
 
+  it('sets compareName when matchKey merges items with different names', () => {
+    const primary = [{ name: 'Taste of Camp 1', value: 50, id: '1000001' }]
+    const compare = [{ name: 'Taste of Camp', value: 45, id: '1000001' }]
+
+    const result = mergeDataForComparison(primary, compare, 'name', 'id')
+    expect(result).toHaveLength(1)
+    expect(result[0]?.name).toBe('Taste of Camp 1')
+    expect(result[0]?.compareName).toBe('Taste of Camp')
+  })
+
+  it('does NOT set compareName when names are identical', () => {
+    const primary = [{ name: 'Session 2', value: 80, id: '1000002' }]
+    const compare = [{ name: 'Session 2', value: 75, id: '1000002' }]
+
+    const result = mergeDataForComparison(primary, compare, 'name', 'id')
+    expect(result).toHaveLength(1)
+    expect(result[0]?.compareName).toBeUndefined()
+  })
+
+  it('does NOT set compareName for items only in primary', () => {
+    const primary = [{ name: 'New Session', value: 30, id: '1000003' }]
+    const compare: { name: string; value: number; id: string }[] = []
+
+    const result = mergeDataForComparison(primary, compare, 'name', 'id')
+    expect(result[0]?.compareName).toBeUndefined()
+  })
+
+  it('does NOT set compareName for items only in compare', () => {
+    const primary: { name: string; value: number; id: string }[] = []
+    const compare = [{ name: 'Old Session', value: 20, id: '1000004' }]
+
+    const result = mergeDataForComparison(primary, compare, 'name', 'id')
+    expect(result[0]?.compareName).toBeUndefined()
+  })
+
+  it('does NOT set compareName when no matchKey (name-based merge)', () => {
+    const primary = [{ name: 'Grade 5', value: 10 }]
+    const compare = [{ name: 'Grade 5', value: 8 }]
+
+    const result = mergeDataForComparison(primary, compare)
+    expect(result[0]?.compareName).toBeUndefined()
+  })
+
   it('matchKey defaults to nameKey when not provided', () => {
     const primary = [{ name: 'Grade 5', value: 10 }]
     const compare = [{ name: 'Grade 5', value: 8 }]

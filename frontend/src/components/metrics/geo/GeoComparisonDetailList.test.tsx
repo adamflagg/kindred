@@ -3,8 +3,8 @@
  *
  * TDD: Tests written first to define comparison table behavior for geo data.
  */
-import { render, screen } from '@testing-library/react'
-import { describe, it, expect } from 'vitest'
+import { render, screen, fireEvent } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
 import { GeoComparisonDetailList } from './GeoComparisonDetailList'
 
 describe('GeoComparisonDetailList', () => {
@@ -126,6 +126,122 @@ describe('GeoComparisonDetailList', () => {
 
     expect(screen.getByText(/synagogues/i)).toBeInTheDocument()
     expect(screen.getByText('Temple Beth')).toBeInTheDocument()
+  })
+
+  describe('collapse behavior', () => {
+    it('starts collapsed by default', () => {
+      render(
+        <GeoComparisonDetailList
+          category="city"
+          primaryData={primaryData}
+          compareData={compareData}
+          primaryYear={2025}
+          compareYear={2024}
+        />
+      )
+
+      // Header should be visible
+      expect(screen.getByText(/cities/i)).toBeInTheDocument()
+      // Table content should NOT be visible (collapsed)
+      expect(screen.queryByText('Oakland')).not.toBeInTheDocument()
+    })
+
+    it('expands when header is clicked', () => {
+      render(
+        <GeoComparisonDetailList
+          category="city"
+          primaryData={primaryData}
+          compareData={compareData}
+          primaryYear={2025}
+          compareYear={2024}
+        />
+      )
+
+      fireEvent.click(screen.getByText(/cities/i))
+
+      // Should now show table content
+      expect(screen.getByText('Oakland')).toBeInTheDocument()
+      expect(screen.getByText('2025')).toBeInTheDocument()
+      expect(screen.getByText('2024')).toBeInTheDocument()
+    })
+
+    it('collapses when header is clicked again', () => {
+      render(
+        <GeoComparisonDetailList
+          category="city"
+          primaryData={primaryData}
+          compareData={compareData}
+          primaryYear={2025}
+          compareYear={2024}
+        />
+      )
+
+      // Expand
+      fireEvent.click(screen.getByText(/cities/i))
+      expect(screen.getByText('Oakland')).toBeInTheDocument()
+
+      // Collapse
+      fireEvent.click(screen.getByText(/cities/i))
+      expect(screen.queryByText('Oakland')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('controlled mode', () => {
+    it('uses isOpen prop when provided', () => {
+      render(
+        <GeoComparisonDetailList
+          category="city"
+          primaryData={primaryData}
+          compareData={compareData}
+          primaryYear={2025}
+          compareYear={2024}
+          isOpen={true}
+        />
+      )
+
+      // Should be expanded because isOpen=true
+      expect(screen.getByText('Oakland')).toBeInTheDocument()
+    })
+
+    it('stays collapsed when isOpen=false', () => {
+      const onToggle = vi.fn()
+      render(
+        <GeoComparisonDetailList
+          category="city"
+          primaryData={primaryData}
+          compareData={compareData}
+          primaryYear={2025}
+          compareYear={2024}
+          isOpen={false}
+          onToggle={onToggle}
+        />
+      )
+
+      expect(screen.queryByText('Oakland')).not.toBeInTheDocument()
+
+      // Click header — calls onToggle but stays collapsed (controlled)
+      fireEvent.click(screen.getByText(/cities/i))
+      expect(onToggle).toHaveBeenCalledTimes(1)
+      expect(screen.queryByText('Oakland')).not.toBeInTheDocument()
+    })
+
+    it('calls onToggle on header click in controlled mode', () => {
+      const onToggle = vi.fn()
+      render(
+        <GeoComparisonDetailList
+          category="city"
+          primaryData={primaryData}
+          compareData={compareData}
+          primaryYear={2025}
+          compareYear={2024}
+          isOpen={true}
+          onToggle={onToggle}
+        />
+      )
+
+      fireEvent.click(screen.getByText(/cities/i))
+      expect(onToggle).toHaveBeenCalledTimes(1)
+    })
   })
 
   it('renders empty state when no data', () => {
