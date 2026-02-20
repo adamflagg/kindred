@@ -212,6 +212,7 @@ export interface RetentionMetrics {
   by_first_summer_year?: RetentionByFirstSummerYear[]
   by_prior_session?: RetentionByPriorSession[]
   session_flow?: SessionFlowItem[]
+  aged_out_count?: number
 }
 
 export interface RegistrationMetrics {
@@ -342,6 +343,7 @@ export interface RetentionTrendYear {
   returned_count: number
   by_gender: RetentionByGender[]
   by_grade: RetentionByGrade[]
+  aged_out_count?: number
 }
 
 export interface RetentionTrendsResponse {

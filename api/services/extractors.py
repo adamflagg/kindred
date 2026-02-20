@@ -12,6 +12,11 @@ from __future__ import annotations
 
 from typing import Any
 
+# Grade at or above which campers are excluded from retention analysis.
+# 10th graders have no eligible session to return to (camp ends at 9th grade),
+# so counting them as "did not return" would unfairly penalize retention metrics.
+RETENTION_AGED_OUT_GRADE = 10
+
 
 def extract_gender(person: Any) -> str:
     """Extract gender from person, returning 'Unknown' for None/empty."""
@@ -43,3 +48,40 @@ def extract_years_at_camp(person: Any) -> int:
     """Extract years_at_camp from person, returning 0 for None."""
     years = getattr(person, "years_at_camp", None)
     return years if years is not None else 0
+
+
+def exclude_aged_out_persons(person_ids: set[int], persons: dict[int, Any]) -> set[int]:
+    """Remove persons whose grade >= RETENTION_AGED_OUT_GRADE from the set.
+
+    Persons not found in the persons dict or with None grade are kept.
+    """
+    result: set[int] = set()
+    for pid in person_ids:
+        if pid not in persons:
+            result.add(pid)
+            continue
+        grade = getattr(persons[pid], "grade", None)
+        if grade is None or int(grade) < RETENTION_AGED_OUT_GRADE:
+            result.add(pid)
+    return result
+
+
+def filter_aged_out_attendees(attendees: list[Any], persons: dict[int, Any]) -> list[Any]:
+    """Remove attendees whose person's grade >= RETENTION_AGED_OUT_GRADE.
+
+    Attendees without a person_id or not found in persons dict are kept.
+    """
+    result = []
+    for a in attendees:
+        pid = getattr(a, "person_id", None)
+        if pid is None:
+            result.append(a)
+            continue
+        person = persons.get(pid)
+        if person is None:
+            result.append(a)
+            continue
+        grade = getattr(person, "grade", None)
+        if grade is None or int(grade) < RETENTION_AGED_OUT_GRADE:
+            result.append(a)
+    return result

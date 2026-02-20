@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from api.schemas.metrics import DrilldownAttendee, DrilldownSession
+from api.services.extractors import filter_aged_out_attendees
 from api.utils.session_metrics import (
     compute_summer_metrics,
     filter_attendees_by_session,
@@ -166,6 +167,10 @@ class DrilldownService:
             self.repo.fetch_attendees(year, status_filter),
             self.repo.fetch_persons(year),
         )
+
+        # Exclude aged-out persons when in retention context
+        if compare_year is not None:
+            attendees = filter_aged_out_attendees(attendees, persons)
 
         # Filter by session type and/or session_cm_id
         filtered_attendees = filter_attendees_by_session(attendees, session_types, session_cm_id, ag_session_ids)
@@ -408,6 +413,9 @@ class DrilldownService:
             self.repo.fetch_persons(year),
         )
 
+        # Exclude aged-out persons from retention drilldowns
+        base_attendees = filter_aged_out_attendees(base_attendees, persons)
+
         # Find compare year person_ids enrolled in the target session
         target_person_ids: set[int] = set()
         returned_person_ids: set[int] = set()
@@ -482,6 +490,9 @@ class DrilldownService:
             self.repo.fetch_attendees(compare_year, ["enrolled"]),
             self.repo.fetch_persons(year),
         )
+
+        # Exclude aged-out persons from retention drilldowns
+        base_attendees = filter_aged_out_attendees(base_attendees, persons)
 
         # Build returned_person_ids and enrolled_attendee_groups from compare year
         returned_person_ids: set[int] = set()

@@ -31,6 +31,7 @@ from api.utils.session_metrics import (
 
 from .breakdown_calculator import compute_breakdown, safe_rate
 from .extractors import (
+    exclude_aged_out_persons,
     extract_city,
     extract_gender,
     extract_grade,
@@ -103,6 +104,23 @@ class RetentionService:
         person_ids_compare_unfiltered, attendee_sessions_compare = self._filter_base_attendees(
             attendees_compare, None, None
         )
+
+        # Exclude aged-out persons (grade >= 10) from retention base pools.
+        # These campers have no eligible session to return to, so counting them
+        # as "did not return" unfairly penalizes retention metrics.
+        pre_filter_count = len(person_ids_base)
+        person_ids_base = exclude_aged_out_persons(person_ids_base, persons_base)
+        aged_out_count = pre_filter_count - len(person_ids_base)
+        person_ids_base_unfiltered = exclude_aged_out_persons(person_ids_base_unfiltered, persons_base)
+        # Build set of aged-out person IDs for methods that iterate attendees directly
+        from .extractors import RETENTION_AGED_OUT_GRADE
+
+        aged_out_person_ids = {
+            pid
+            for pid, person in persons_base.items()
+            if getattr(person, "grade", None) is not None
+            and int(getattr(person, "grade", 0)) >= RETENTION_AGED_OUT_GRADE
+        }
 
         # Base year attendee sessions (filtered by session_types and session_cm_id) for session flow
         _, attendee_sessions_base_filtered = self._filter_base_attendees(attendees_base, session_types, session_cm_id)
@@ -199,6 +217,7 @@ class RetentionService:
             sessions_base_all,
             session_types,
             session_cm_id,
+            aged_out_person_ids=aged_out_person_ids,
         )
 
         # Session flow: Sankey diagram data showing session-to-session transitions
@@ -231,6 +250,7 @@ class RetentionService:
             by_first_summer_year=by_first_summer_year,
             by_prior_session=by_prior_session,
             session_flow=session_flow,
+            aged_out_count=aged_out_count,
         )
 
     def _filter_base_attendees(
@@ -410,6 +430,7 @@ class RetentionService:
         sessions_base_all: dict[int, Any],
         session_types: list[str] | None = None,
         session_cm_id: int | None = None,
+        aged_out_person_ids: set[int] | None = None,
     ) -> list[RetentionByPriorSession]:
         """Build session breakdown for base year (Chart 2: "Retention by 2025 Session").
 
@@ -423,6 +444,7 @@ class RetentionService:
             sessions_base_all: All base year sessions (unfiltered).
             session_types: If set, only show prior sessions matching these types.
             session_cm_id: If set, only show the prior session with this cm_id.
+            aged_out_person_ids: Person IDs to exclude (aged out of eligible sessions).
 
         Returns:
             List of RetentionByPriorSession models.
@@ -436,10 +458,11 @@ class RetentionService:
                     ag_parent_map[int(ag_sid)] = int(parent_id)
 
         # Count per-session enrollment from raw attendees
+        _aged_out = aged_out_person_ids or set()
         session_stats: dict[int, dict[str, set[int]]] = {}
         for a in attendees_base:
             pid = getattr(a, "person_id", None)
-            if pid is None:
+            if pid is None or pid in _aged_out:
                 continue
 
             expand = getattr(a, "expand", {}) or {}

@@ -322,6 +322,7 @@ class RetentionMetricsResponse(BaseModel):
     session_flow: list[SessionFlowItem] = Field(
         default_factory=list, description="Session-to-session flow data for Sankey diagram"
     )
+    aged_out_count: int = Field(0, description="Base year campers excluded (aged out of all eligible sessions)")
 
 
 # ============================================================================
@@ -529,6 +530,7 @@ class RetentionTrendYear(BaseModel):
     returned_count: int = Field(description="Campers who returned")
     by_gender: list[RetentionByGender] = Field(default_factory=list, description="Retention by gender")
     by_grade: list[RetentionByGrade] = Field(default_factory=list, description="Retention by grade")
+    aged_out_count: int = Field(0, description="Base year campers excluded (aged out of all eligible sessions)")
 
 
 class RetentionTrendsResponse(BaseModel):

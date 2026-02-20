@@ -27,6 +27,7 @@ from api.utils.session_metrics import compute_summer_metrics
 
 from .breakdown_calculator import compute_breakdown, compute_registration_breakdown, safe_rate
 from .extractors import (
+    exclude_aged_out_persons,
     extract_city,
     extract_gender,
     extract_grade,
@@ -229,6 +230,11 @@ class RetentionTrendsService:
             compare_person_ids = compare_data["person_ids"]
             persons_base = base_data["persons"]
 
+            # Exclude aged-out persons from retention base (not from enrollment)
+            pre_filter_count = len(base_person_ids)
+            base_person_ids = exclude_aged_out_persons(base_person_ids, persons_base)
+            aged_out_count = pre_filter_count - len(base_person_ids)
+
             returned_ids = base_person_ids & compare_person_ids
             base_count = len(base_person_ids)
             returned_count = len(returned_ids)
@@ -247,6 +253,7 @@ class RetentionTrendsService:
                     returned_count=returned_count,
                     by_gender=by_gender,
                     by_grade=by_grade,
+                    aged_out_count=aged_out_count,
                 )
             )
 
