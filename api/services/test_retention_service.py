@@ -1200,13 +1200,18 @@ class TestRetentionSessionFlow:
 
     @pytest.mark.asyncio
     async def test_session_flow_basic(self) -> None:
-        """Basic flow: 3 campers across 2 sessions produce correct flow items."""
+        """Basic flow: 3 campers across 2 sessions produce correct flow items.
+
+        CampMinder reuses session cm_ids across years, so Session 1 has cm_id=1000
+        in both 2025 and 2026.
+        """
         from api.services.retention_service import RetentionService
 
         mock_repo = AsyncMock()
 
-        # 2025: person 1+2 in Session 1, person 3 in Session 2
-        # 2026: person 1 in Session 1, person 2 in Session 2, person 3 in Session 1
+        # 2025: person 1+2 in Session 1 (cm_id=1000), person 3 in Session 2 (cm_id=1001)
+        # 2026: person 1 in Session 1 (cm_id=1000), person 2 in Session 2 (cm_id=1001),
+        #        person 3 in Session 1 (cm_id=1000)
         mock_repo.fetch_attendees.side_effect = [
             [
                 MockAttendee(
@@ -1229,17 +1234,17 @@ class TestRetentionSessionFlow:
                 MockAttendee(
                     person_id=1,
                     year=2026,
-                    expand={"session": MockSession(cm_id=2000, name="Session 1", session_type="main")},
+                    expand={"session": MockSession(cm_id=1000, name="Session 1", session_type="main")},
                 ),
                 MockAttendee(
                     person_id=2,
                     year=2026,
-                    expand={"session": MockSession(cm_id=2001, name="Session 2", session_type="main")},
+                    expand={"session": MockSession(cm_id=1001, name="Session 2", session_type="main")},
                 ),
                 MockAttendee(
                     person_id=3,
                     year=2026,
-                    expand={"session": MockSession(cm_id=2000, name="Session 1", session_type="main")},
+                    expand={"session": MockSession(cm_id=1000, name="Session 1", session_type="main")},
                 ),
             ],
         ]
@@ -1257,8 +1262,8 @@ class TestRetentionSessionFlow:
                     1001: MockSession(cm_id=1001, name="Session 2", session_type="main"),
                 }
             return {
-                2000: MockSession(cm_id=2000, name="Session 1", session_type="main"),
-                2001: MockSession(cm_id=2001, name="Session 2", session_type="main"),
+                1000: MockSession(cm_id=1000, name="Session 1", session_type="main"),
+                1001: MockSession(cm_id=1001, name="Session 2", session_type="main"),
             }
 
         mock_repo.fetch_sessions.side_effect = mock_fetch_sessions
@@ -1270,25 +1275,39 @@ class TestRetentionSessionFlow:
 
         assert len(result.session_flow) > 0
 
-        # Build lookup: (source, target) -> value
-        flow_map = {(f.source, f.target): f.value for f in result.session_flow}
+        # Build lookup: (source, target) -> flow item
+        flow_map = {(f.source, f.target): f for f in result.session_flow}
 
         # Session 1 -> Session 1: person 1
-        assert flow_map.get(("Session 1", "Session 1")) == 1
+        s1_to_s1 = flow_map.get(("Session 1", "Session 1"))
+        assert s1_to_s1 is not None
+        assert s1_to_s1.value == 1
+        assert s1_to_s1.source_cm_id == 1000
+        assert s1_to_s1.target_cm_id == 1000
+
         # Session 1 -> Session 2: person 2
-        assert flow_map.get(("Session 1", "Session 2")) == 1
+        s1_to_s2 = flow_map.get(("Session 1", "Session 2"))
+        assert s1_to_s2 is not None
+        assert s1_to_s2.value == 1
+        assert s1_to_s2.source_cm_id == 1000
+        assert s1_to_s2.target_cm_id == 1001
+
         # Session 2 -> Session 1: person 3
-        assert flow_map.get(("Session 2", "Session 1")) == 1
+        s2_to_s1 = flow_map.get(("Session 2", "Session 1"))
+        assert s2_to_s1 is not None
+        assert s2_to_s1.value == 1
+        assert s2_to_s1.source_cm_id == 1001
+        assert s2_to_s1.target_cm_id == 1000
 
     @pytest.mark.asyncio
     async def test_session_flow_did_not_return(self) -> None:
-        """Non-returned campers generate 'Did Not Return' flow entries."""
+        """Non-returned campers generate 'Did Not Return' flow entries with target_cm_id=None."""
         from api.services.retention_service import RetentionService
 
         mock_repo = AsyncMock()
 
-        # 2025: person 1+2 in Session 1
-        # 2026: only person 1 returns
+        # 2025: person 1+2 in Session 1 (cm_id=1000)
+        # 2026: only person 1 returns to Session 1 (cm_id=1000)
         mock_repo.fetch_attendees.side_effect = [
             [
                 MockAttendee(
@@ -1306,7 +1325,7 @@ class TestRetentionSessionFlow:
                 MockAttendee(
                     person_id=1,
                     year=2026,
-                    expand={"session": MockSession(cm_id=2000, name="Session 1", session_type="main")},
+                    expand={"session": MockSession(cm_id=1000, name="Session 1", session_type="main")},
                 ),
             ],
         ]
@@ -1319,7 +1338,7 @@ class TestRetentionSessionFlow:
         async def mock_fetch_sessions(year: int, session_types: list[str] | None = None) -> dict[int, MockSession]:
             if year == 2025:
                 return {1000: MockSession(cm_id=1000, name="Session 1", session_type="main")}
-            return {2000: MockSession(cm_id=2000, name="Session 1", session_type="main")}
+            return {1000: MockSession(cm_id=1000, name="Session 1", session_type="main")}
 
         mock_repo.fetch_sessions.side_effect = mock_fetch_sessions
         mock_repo.fetch_bunk_assignments.return_value = []
@@ -1328,28 +1347,40 @@ class TestRetentionSessionFlow:
         service = RetentionService(mock_repo)
         result = await service.calculate_retention(base_year=2025, compare_year=2026)
 
-        flow_map = {(f.source, f.target): f.value for f in result.session_flow}
+        flow_map = {(f.source, f.target): f for f in result.session_flow}
 
         # Person 1: Session 1 -> Session 1
-        assert flow_map.get(("Session 1", "Session 1")) == 1
+        s1_to_s1 = flow_map.get(("Session 1", "Session 1"))
+        assert s1_to_s1 is not None
+        assert s1_to_s1.value == 1
+        assert s1_to_s1.source_cm_id == 1000
+        assert s1_to_s1.target_cm_id == 1000
+
         # Person 2: Session 1 -> Did Not Return
-        assert flow_map.get(("Session 1", "Did Not Return")) == 1
+        s1_to_dnr = flow_map.get(("Session 1", "Did Not Return"))
+        assert s1_to_dnr is not None
+        assert s1_to_dnr.value == 1
+        assert s1_to_dnr.source_cm_id == 1000
+        assert s1_to_dnr.target_cm_id is None
 
     @pytest.mark.asyncio
     async def test_session_flow_ag_merged(self) -> None:
-        """AG sessions collapse into parent session on both source and target sides."""
+        """AG sessions collapse into parent session on both source and target sides.
+
+        AG merges into parent, so source_cm_id/target_cm_id reflect the parent's cm_id.
+        """
         from api.services.retention_service import RetentionService
 
         mock_repo = AsyncMock()
 
-        # 2025: person 1 in AG (parent=Session 1), person 2 in Session 1
-        # 2026: person 1 in Session 2, person 2 in AG (parent=Session 1)
+        # 2025: person 1 in AG (parent=Session 1, cm_id=1000), person 2 in Session 1
+        # 2026: person 1 in Session 2 (cm_id=1001), person 2 in AG (parent=Session 1, cm_id=1000)
         mock_repo.fetch_attendees.side_effect = [
             [
                 MockAttendee(
                     person_id=1,
                     year=2025,
-                    expand={"session": MockSession(cm_id=1001, name="AG Session", session_type="ag", parent_id=1000)},
+                    expand={"session": MockSession(cm_id=1002, name="AG Session", session_type="ag", parent_id=1000)},
                 ),
                 MockAttendee(
                     person_id=2,
@@ -1361,12 +1392,12 @@ class TestRetentionSessionFlow:
                 MockAttendee(
                     person_id=1,
                     year=2026,
-                    expand={"session": MockSession(cm_id=2001, name="Session 2", session_type="main")},
+                    expand={"session": MockSession(cm_id=1001, name="Session 2", session_type="main")},
                 ),
                 MockAttendee(
                     person_id=2,
                     year=2026,
-                    expand={"session": MockSession(cm_id=2002, name="AG Session", session_type="ag", parent_id=2000)},
+                    expand={"session": MockSession(cm_id=1003, name="AG Session", session_type="ag", parent_id=1000)},
                 ),
             ],
         ]
@@ -1380,12 +1411,12 @@ class TestRetentionSessionFlow:
             if year == 2025:
                 return {
                     1000: MockSession(cm_id=1000, name="Session 1", session_type="main"),
-                    1001: MockSession(cm_id=1001, name="AG Session", session_type="ag", parent_id=1000),
+                    1002: MockSession(cm_id=1002, name="AG Session", session_type="ag", parent_id=1000),
                 }
             return {
-                2000: MockSession(cm_id=2000, name="Session 1", session_type="main"),
-                2001: MockSession(cm_id=2001, name="Session 2", session_type="main"),
-                2002: MockSession(cm_id=2002, name="AG Session", session_type="ag", parent_id=2000),
+                1000: MockSession(cm_id=1000, name="Session 1", session_type="main"),
+                1001: MockSession(cm_id=1001, name="Session 2", session_type="main"),
+                1003: MockSession(cm_id=1003, name="AG Session", session_type="ag", parent_id=1000),
             }
 
         mock_repo.fetch_sessions.side_effect = mock_fetch_sessions
@@ -1395,13 +1426,22 @@ class TestRetentionSessionFlow:
         service = RetentionService(mock_repo)
         result = await service.calculate_retention(base_year=2025, compare_year=2026)
 
-        flow_map = {(f.source, f.target): f.value for f in result.session_flow}
+        flow_map = {(f.source, f.target): f for f in result.session_flow}
 
         # Both persons should show as "Session 1" source (AG merged)
         # Person 1: Session 1 -> Session 2
-        assert flow_map.get(("Session 1", "Session 2")) == 1
+        s1_to_s2 = flow_map.get(("Session 1", "Session 2"))
+        assert s1_to_s2 is not None
+        assert s1_to_s2.value == 1
+        assert s1_to_s2.source_cm_id == 1000  # AG parent cm_id
+        assert s1_to_s2.target_cm_id == 1001
+
         # Person 2: Session 1 -> Session 1 (AG target merged to parent)
-        assert flow_map.get(("Session 1", "Session 1")) == 1
+        s1_to_s1 = flow_map.get(("Session 1", "Session 1"))
+        assert s1_to_s1 is not None
+        assert s1_to_s1.value == 1
+        assert s1_to_s1.source_cm_id == 1000
+        assert s1_to_s1.target_cm_id == 1000  # AG target merged to parent cm_id
 
         # No AG entries should appear
         ag_entries = [f for f in result.session_flow if "AG" in f.source or "AG" in f.target]
@@ -1409,13 +1449,16 @@ class TestRetentionSessionFlow:
 
     @pytest.mark.asyncio
     async def test_session_flow_multi_session_camper(self) -> None:
-        """Camper in multiple compare-year sessions produces multiple flow links."""
+        """Camper in multiple compare-year sessions produces multiple flow links.
+
+        CampMinder reuses cm_ids across years.
+        """
         from api.services.retention_service import RetentionService
 
         mock_repo = AsyncMock()
 
-        # 2025: person 1 in Session 1
-        # 2026: person 1 in Session 1 AND Session 2 (multi-session camper)
+        # 2025: person 1 in Session 1 (cm_id=1000)
+        # 2026: person 1 in Session 1 (cm_id=1000) AND Session 2 (cm_id=1001)
         mock_repo.fetch_attendees.side_effect = [
             [
                 MockAttendee(
@@ -1428,12 +1471,12 @@ class TestRetentionSessionFlow:
                 MockAttendee(
                     person_id=1,
                     year=2026,
-                    expand={"session": MockSession(cm_id=2000, name="Session 1", session_type="main")},
+                    expand={"session": MockSession(cm_id=1000, name="Session 1", session_type="main")},
                 ),
                 MockAttendee(
                     person_id=1,
                     year=2026,
-                    expand={"session": MockSession(cm_id=2001, name="Session 2", session_type="main")},
+                    expand={"session": MockSession(cm_id=1001, name="Session 2", session_type="main")},
                 ),
             ],
         ]
@@ -1446,8 +1489,8 @@ class TestRetentionSessionFlow:
             if year == 2025:
                 return {1000: MockSession(cm_id=1000, name="Session 1", session_type="main")}
             return {
-                2000: MockSession(cm_id=2000, name="Session 1", session_type="main"),
-                2001: MockSession(cm_id=2001, name="Session 2", session_type="main"),
+                1000: MockSession(cm_id=1000, name="Session 1", session_type="main"),
+                1001: MockSession(cm_id=1001, name="Session 2", session_type="main"),
             }
 
         mock_repo.fetch_sessions.side_effect = mock_fetch_sessions
@@ -1457,21 +1500,33 @@ class TestRetentionSessionFlow:
         service = RetentionService(mock_repo)
         result = await service.calculate_retention(base_year=2025, compare_year=2026)
 
-        flow_map = {(f.source, f.target): f.value for f in result.session_flow}
+        flow_map = {(f.source, f.target): f for f in result.session_flow}
 
         # Person 1 goes from Session 1 to both Session 1 and Session 2
-        assert flow_map.get(("Session 1", "Session 1")) == 1
-        assert flow_map.get(("Session 1", "Session 2")) == 1
+        s1_to_s1 = flow_map.get(("Session 1", "Session 1"))
+        assert s1_to_s1 is not None
+        assert s1_to_s1.value == 1
+        assert s1_to_s1.source_cm_id == 1000
+        assert s1_to_s1.target_cm_id == 1000  # Same cm_id across years
+
+        s1_to_s2 = flow_map.get(("Session 1", "Session 2"))
+        assert s1_to_s2 is not None
+        assert s1_to_s2.value == 1
+        assert s1_to_s2.source_cm_id == 1000
+        assert s1_to_s2.target_cm_id == 1001
 
     @pytest.mark.asyncio
     async def test_session_flow_unfiltered_destinations(self) -> None:
-        """Even when session_types filter is set, destinations show ALL session types."""
+        """Even when session_types filter is set, destinations show ALL session types.
+
+        CampMinder reuses cm_ids across years. Quest has its own cm_id (2100).
+        """
         from api.services.retention_service import RetentionService
 
         mock_repo = AsyncMock()
 
-        # 2025: person 1 in Session 1 (main), person 2 in Session 1 (main)
-        # 2026: person 1 -> Quest, person 2 -> Session 1 (main)
+        # 2025: person 1+2 in Session 1 (cm_id=1000, main)
+        # 2026: person 1 -> Quest (cm_id=2100), person 2 -> Session 1 (cm_id=1000, main)
         mock_repo.fetch_attendees.side_effect = [
             [
                 MockAttendee(
@@ -1494,7 +1549,7 @@ class TestRetentionSessionFlow:
                 MockAttendee(
                     person_id=2,
                     year=2026,
-                    expand={"session": MockSession(cm_id=2000, name="Session 1", session_type="main")},
+                    expand={"session": MockSession(cm_id=1000, name="Session 1", session_type="main")},
                 ),
             ],
         ]
@@ -1508,7 +1563,7 @@ class TestRetentionSessionFlow:
             all_sessions: dict[int, dict[int, MockSession]] = {
                 2025: {1000: MockSession(cm_id=1000, name="Session 1", session_type="main")},
                 2026: {
-                    2000: MockSession(cm_id=2000, name="Session 1", session_type="main"),
+                    1000: MockSession(cm_id=1000, name="Session 1", session_type="main"),
                     2100: MockSession(cm_id=2100, name="Quest", session_type="quest"),
                 },
             }
@@ -1529,12 +1584,21 @@ class TestRetentionSessionFlow:
             session_types=["main", "embedded", "ag"],
         )
 
-        flow_map = {(f.source, f.target): f.value for f in result.session_flow}
+        flow_map = {(f.source, f.target): f for f in result.session_flow}
 
         # Person 1 went to Quest — should still appear in flow
-        assert flow_map.get(("Session 1", "Quest")) == 1
+        s1_to_quest = flow_map.get(("Session 1", "Quest"))
+        assert s1_to_quest is not None
+        assert s1_to_quest.value == 1
+        assert s1_to_quest.source_cm_id == 1000
+        assert s1_to_quest.target_cm_id == 2100
+
         # Person 2 went to main Session 1
-        assert flow_map.get(("Session 1", "Session 1")) == 1
+        s1_to_s1 = flow_map.get(("Session 1", "Session 1"))
+        assert s1_to_s1 is not None
+        assert s1_to_s1.value == 1
+        assert s1_to_s1.source_cm_id == 1000
+        assert s1_to_s1.target_cm_id == 1000
 
     @pytest.mark.asyncio
     async def test_session_flow_empty(self) -> None:
@@ -1555,13 +1619,16 @@ class TestRetentionSessionFlow:
 
     @pytest.mark.asyncio
     async def test_session_flow_filtered_by_session_cm_id(self) -> None:
-        """Only the filtered base-year session appears as a source."""
+        """Only the filtered base-year session appears as a source.
+
+        CampMinder reuses cm_ids across years.
+        """
         from api.services.retention_service import RetentionService
 
         mock_repo = AsyncMock()
 
-        # 2025: person 1 in Session 1, person 2 in Session 2
-        # 2026: both return to Session 1
+        # 2025: person 1 in Session 1 (cm_id=1000), person 2 in Session 2 (cm_id=1001)
+        # 2026: both return to Session 1 (cm_id=1000)
         mock_repo.fetch_attendees.side_effect = [
             [
                 MockAttendee(
@@ -1579,12 +1646,12 @@ class TestRetentionSessionFlow:
                 MockAttendee(
                     person_id=1,
                     year=2026,
-                    expand={"session": MockSession(cm_id=2000, name="Session 1", session_type="main")},
+                    expand={"session": MockSession(cm_id=1000, name="Session 1", session_type="main")},
                 ),
                 MockAttendee(
                     person_id=2,
                     year=2026,
-                    expand={"session": MockSession(cm_id=2000, name="Session 1", session_type="main")},
+                    expand={"session": MockSession(cm_id=1000, name="Session 1", session_type="main")},
                 ),
             ],
         ]
@@ -1600,7 +1667,7 @@ class TestRetentionSessionFlow:
                     1000: MockSession(cm_id=1000, name="Session 1", session_type="main"),
                     1001: MockSession(cm_id=1001, name="Session 2", session_type="main"),
                 }
-            return {2000: MockSession(cm_id=2000, name="Session 1", session_type="main")}
+            return {1000: MockSession(cm_id=1000, name="Session 1", session_type="main")}
 
         mock_repo.fetch_sessions.side_effect = mock_fetch_sessions
         mock_repo.fetch_bunk_assignments.return_value = []
@@ -1618,8 +1685,12 @@ class TestRetentionSessionFlow:
         sources = {f.source for f in result.session_flow}
         assert sources == {"Session 1"}
 
-        flow_map = {(f.source, f.target): f.value for f in result.session_flow}
-        assert flow_map.get(("Session 1", "Session 1")) == 1
+        flow_map = {(f.source, f.target): f for f in result.session_flow}
+        s1_to_s1 = flow_map.get(("Session 1", "Session 1"))
+        assert s1_to_s1 is not None
+        assert s1_to_s1.value == 1
+        assert s1_to_s1.source_cm_id == 1000
+        assert s1_to_s1.target_cm_id == 1000
 
 
 class TestSessionBunkBreakdownFromBunkAssignments:

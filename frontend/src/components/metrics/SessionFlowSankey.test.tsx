@@ -16,11 +16,11 @@ import type { SankeyData } from '../../utils/retentionTransforms'
 
 const sampleData: SankeyData = {
   nodes: [
-    { name: 'Session 1 (from)' },
-    { name: 'Session 2 (from)' },
-    { name: 'Session 1 (to)' },
-    { name: 'Session 2 (to)' },
-    { name: 'Did Not Return' },
+    { name: 'Session 1 (from)', cmId: 1000 },
+    { name: 'Session 2 (from)', cmId: 1001 },
+    { name: 'Session 1 (to)', cmId: 1000 },
+    { name: 'Session 2 (to)', cmId: 1001 },
+    { name: 'Did Not Return', cmId: null },
   ],
   links: [
     { source: 0, target: 2, value: 30 },

@@ -611,7 +611,15 @@ class RetentionService:
                     continue
                 target_name = getattr(compare_session, "name", f"Session {compare_sid}")
 
-            result.append(SessionFlowItem(source=source_name, target=target_name, value=count))
+            result.append(
+                SessionFlowItem(
+                    source=source_name,
+                    target=target_name,
+                    value=count,
+                    source_cm_id=base_sid,
+                    target_cm_id=compare_sid if compare_sid != dnr else None,
+                )
+            )
 
         # Sort by value descending
         result.sort(key=lambda x: -x.value)

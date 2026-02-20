@@ -200,6 +200,7 @@ export interface RetentionOutlier {
 
 export interface SankeyNode {
   name: string
+  cmId: number | null
 }
 
 export interface SankeyLink {
@@ -229,28 +230,30 @@ function getNodeIndex(map: Map<string, number>, key: string): number {
 export function sessionFlowToSankeyData(data: SessionFlowItem[] | undefined): SankeyData | null {
   if (!data?.length) return null
 
-  // Collect unique sources and targets
-  const sourceNames = new Set<string>()
-  const targetNames = new Set<string>()
+  // Collect unique sources and targets with their cm_ids
+  const sourceCmIds = new Map<string, number>()
+  const targetCmIds = new Map<string, number | null>()
   for (const item of data) {
-    sourceNames.add(item.source)
-    targetNames.add(item.target)
+    sourceCmIds.set(item.source, item.source_cm_id)
+    if (!targetCmIds.has(item.target)) {
+      targetCmIds.set(item.target, item.target_cm_id)
+    }
   }
 
   // Build node list: sources first, then targets
   const nodes: SankeyNode[] = []
   const nodeIndexMap = new Map<string, number>()
 
-  for (const name of sourceNames) {
+  for (const [name, cmId] of sourceCmIds) {
     const displayName = `${name} (from)`
     nodeIndexMap.set(`source:${name}`, nodes.length)
-    nodes.push({ name: displayName })
+    nodes.push({ name: displayName, cmId })
   }
 
-  for (const name of targetNames) {
+  for (const [name, cmId] of targetCmIds) {
     const displayName = name === 'Did Not Return' ? name : `${name} (to)`
     nodeIndexMap.set(`target:${name}`, nodes.length)
-    nodes.push({ name: displayName })
+    nodes.push({ name: displayName, cmId: cmId ?? null })
   }
 
   // Build links
