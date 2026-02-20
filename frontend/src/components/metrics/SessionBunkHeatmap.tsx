@@ -61,14 +61,6 @@ function BunkHeatmapTable({ title, sessions, bunks, lookup, bunkStaff }: BunkHea
     setTooltipPos({ x: e.clientX + 10, y: e.clientY + 10 })
   }, [])
 
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent) => {
-      if (!hoveredCell) return
-      setTooltipPos({ x: e.clientX + 10, y: e.clientY + 10 })
-    },
-    [hoveredCell]
-  )
-
   const handleMouseLeave = useCallback(() => {
     setHoveredCell(null)
   }, [])
@@ -127,7 +119,6 @@ function BunkHeatmapTable({ title, sessions, bunks, lookup, bunkStaff }: BunkHea
                       role="cell"
                       className={cellClass}
                       onMouseEnter={(e) => handleMouseEnter(session, bunk, e)}
-                      onMouseMove={handleMouseMove}
                       onMouseLeave={handleMouseLeave}
                     >
                       {pct}%
