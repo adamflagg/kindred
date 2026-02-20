@@ -75,8 +75,10 @@ export default function MetricsTypeTabs() {
           })}
         </div>
 
-        {/* Right side controls — hidden on bunk retention tab (unfiltered data) */}
-        {location.pathname !== RETENTION_SUB_NAV.find((item) => item.id === 'bunks')?.path && (
+        {/* Right side controls — hidden on tabs that use unfiltered data */}
+        {!RETENTION_SUB_NAV.filter((item) => item.id === 'bunks' || item.id === 'staff').some(
+          (item) => item.path === location.pathname
+        ) && (
           <div className="flex items-center gap-3">
             {activeTab === 'trends' && (
               <label className="flex cursor-pointer items-center gap-1.5 text-sm">
