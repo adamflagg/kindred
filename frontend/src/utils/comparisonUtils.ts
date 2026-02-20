@@ -32,7 +32,8 @@ export function mergeDataForComparison<T extends Record<string, unknown>>(
   primaryData: T[],
   compareData: T[],
   nameKey: string = 'name',
-  matchKey?: string
+  matchKey?: string,
+  aliasMap?: Record<string, string>
 ): ComparisonMergedItem[] {
   const mk = matchKey ?? nameKey
 
@@ -47,7 +48,8 @@ export function mergeDataForComparison<T extends Record<string, unknown>>(
   }
 
   for (const item of compareData) {
-    const key = String(item[mk] ?? '')
+    let key = String(item[mk] ?? '')
+    if (aliasMap) key = aliasMap[key] ?? key
     const displayName = String(item[nameKey] ?? '')
     compareMap.set(key, { displayName, value: (item['value'] as number) ?? 0 })
   }
@@ -77,9 +79,7 @@ export function mergeDataForComparison<T extends Record<string, unknown>>(
     // else cv===0, pv>0 → null (can't calculate percent from zero base)
 
     const compareName =
-      pEntry && cEntry && pEntry.displayName !== cEntry.displayName
-        ? cEntry.displayName
-        : undefined
+      pEntry && cEntry && pEntry.displayName !== cEntry.displayName ? cEntry.displayName : undefined
 
     result.push({
       name: displayName,

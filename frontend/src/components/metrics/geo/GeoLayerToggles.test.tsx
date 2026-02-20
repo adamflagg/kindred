@@ -151,25 +151,13 @@ describe('GeoLayerToggles', () => {
   })
 
   it('shows hint text when isComparing disables admin toggles', () => {
-    render(
-      <GeoLayerToggles
-        {...defaultProps}
-        isAdmin={true}
-        isComparing={true}
-      />
-    )
+    render(<GeoLayerToggles {...defaultProps} isAdmin={true} isComparing={true} />)
 
     expect(screen.getByText(/single-year mode/i)).toBeInTheDocument()
   })
 
   it('does not disable admin toggles when isComparing is false', () => {
-    render(
-      <GeoLayerToggles
-        {...defaultProps}
-        isAdmin={true}
-        isComparing={false}
-      />
-    )
+    render(<GeoLayerToggles {...defaultProps} isAdmin={true} isComparing={false} />)
 
     const boxes = getCheckboxes()
     // Sources and gaps should be enabled

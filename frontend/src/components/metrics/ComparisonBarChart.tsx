@@ -61,8 +61,7 @@ export function ComparisonBarChart({
   }
 
   // Merge datasets by matchKey (or name)
-  const getKey = (d: ChartDataItem) =>
-    matchKey ? String(d[matchKey] ?? d.name) : d.name
+  const getKey = (d: ChartDataItem) => (matchKey ? String(d[matchKey] ?? d.name) : d.name)
   const compareMap = new Map(comparisonData.map((d) => [getKey(d), d.value]))
   const allKeys = new Set([
     ...primaryData.map((d) => getKey(d)),

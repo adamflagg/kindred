@@ -249,7 +249,7 @@ describe('mergeDataForComparison', () => {
       const result = mergeDataForComparison(primary, compare, 'name', undefined, aliasMap)
 
       expect(result).toHaveLength(1)
-      expect(result[0].compareName).toBe('Taste of Camp')
+      expect(result[0]?.compareName).toBe('Taste of Camp')
     })
 
     it('does not set compareName when names already match', () => {
@@ -259,7 +259,7 @@ describe('mergeDataForComparison', () => {
       const result = mergeDataForComparison(primary, compare, 'name', undefined, aliasMap)
 
       expect(result).toHaveLength(1)
-      expect(result[0].compareName).toBeUndefined()
+      expect(result[0]?.compareName).toBeUndefined()
     })
 
     it('still handles non-aliased sessions normally alongside aliased ones', () => {
@@ -278,13 +278,13 @@ describe('mergeDataForComparison', () => {
 
       expect(result).toHaveLength(3)
       expect(result[0]).toMatchObject({ name: 'Session 2', primaryValue: 100, compareValue: 90 })
-      expect(result[0].compareName).toBeUndefined()
+      expect(result[0]?.compareName).toBeUndefined()
       expect(result[2]).toMatchObject({
         name: 'Taste of Camp 1',
         primaryValue: 120,
         compareValue: 100,
       })
-      expect(result[2].compareName).toBe('Taste of Camp')
+      expect(result[2]?.compareName).toBe('Taste of Camp')
     })
 
     it('handles compare-only aliased items when no primary match exists', () => {

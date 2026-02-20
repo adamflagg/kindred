@@ -18,6 +18,7 @@ import { MetricCard } from '../../../components/metrics/MetricCard'
 import { BreakdownChart } from '../../../components/metrics/BreakdownChart'
 import { WaitlistBySessionChart } from '../../../components/metrics/WaitlistBySessionChart'
 import { transformGenderData } from '../../../utils/metricsTransforms'
+import { SESSION_NAME_ALIASES, resolveSessionAlias } from '../../../utils/sessionAliases'
 import { ComparisonSummaryTable } from '../../../components/metrics/ComparisonSummaryTable'
 import {
   buildSessionDateLookup,
@@ -187,7 +188,6 @@ export default function WaitlistAnalysis() {
                       ).map((s) => ({
                         name: s.session_name,
                         value: s.waitlisted,
-                        id: String(s.session_cm_id),
                       }))}
                       compareData={sortSessionDataByCampThenQuest(
                         compData.by_session,
@@ -196,9 +196,9 @@ export default function WaitlistAnalysis() {
                       ).map((s) => ({
                         name: s.session_name,
                         value: s.waitlisted,
-                        id: String(s.session_cm_id),
                       }))}
-                      matchKey="id"
+                      aliasMap={SESSION_NAME_ALIASES}
+                      categoryLabel="Session"
                     />
                   </>
                 ) : (
@@ -396,7 +396,9 @@ export default function WaitlistAnalysis() {
                               compData &&
                               (() => {
                                 const compSession = compData.by_session.find(
-                                  (s) => s.session_cm_id === session.session_cm_id
+                                  (s) =>
+                                    resolveSessionAlias(s.session_name) ===
+                                    resolveSessionAlias(session.session_name)
                                 )
                                 return compSession &&
                                   compSession.session_name !== session.session_name ? (
@@ -429,7 +431,9 @@ export default function WaitlistAnalysis() {
                             compData &&
                             (() => {
                               const compSession = compData.by_session.find(
-                                (s) => s.session_cm_id === session.session_cm_id
+                                (s) =>
+                                  resolveSessionAlias(s.session_name) ===
+                                  resolveSessionAlias(session.session_name)
                               )
                               const delta = compSession
                                 ? session.waitlisted - compSession.waitlisted

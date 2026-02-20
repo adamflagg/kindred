@@ -25,6 +25,7 @@ import { BreakdownChart } from '../../../components/metrics/BreakdownChart'
 import { GenderByGradeChart } from '../../../components/metrics/GenderByGradeChart'
 import { SessionLengthBySessionChart } from '../../../components/metrics/SessionLengthBySessionChart'
 import { getSessionChartLabel } from '../../../utils/sessionDisplay'
+import { SESSION_NAME_ALIASES, resolveSessionAlias } from '../../../utils/sessionAliases'
 import {
   buildSessionDateLookup,
   buildSessionTypeLookup,
@@ -393,7 +394,8 @@ export default function RegistrationOverview() {
                   sessionDateLookup,
                   sessionTypeLookup
                 )}
-                matchKey="id"
+                aliasMap={SESSION_NAME_ALIASES}
+                categoryLabel="Session"
               />
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 <SessionLengthBySessionChart
@@ -596,10 +598,11 @@ export default function RegistrationOverview() {
                       compData &&
                       (() => {
                         const compSession = compData.by_session.find(
-                          (s) => s.session_cm_id === session.session_cm_id
+                          (s) =>
+                            resolveSessionAlias(s.session_name) ===
+                            resolveSessionAlias(session.session_name)
                         )
-                        return compSession &&
-                          compSession.session_name !== session.session_name ? (
+                        return compSession && compSession.session_name !== session.session_name ? (
                           <span className="text-muted-foreground ml-1 text-xs">
                             (was: {compSession.session_name})
                           </span>
@@ -631,7 +634,9 @@ export default function RegistrationOverview() {
                     compData &&
                     (() => {
                       const compSession = compData.by_session.find(
-                        (s) => s.session_cm_id === session.session_cm_id
+                        (s) =>
+                          resolveSessionAlias(s.session_name) ===
+                          resolveSessionAlias(session.session_name)
                       )
                       const delta = compSession ? session.count - compSession.count : null
                       return (

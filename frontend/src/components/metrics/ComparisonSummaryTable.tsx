@@ -28,6 +28,10 @@ interface ComparisonSummaryTableProps {
   matchKey?: string
   /** Color semantics for change direction */
   sentiment?: 'default' | 'inverse' | 'neutral' | undefined
+  /** Alias map for resolving renamed items across years */
+  aliasMap?: Record<string, string>
+  /** Label for the first column header (default: 'Category') */
+  categoryLabel?: string
 }
 
 export function ComparisonSummaryTable({
@@ -40,8 +44,10 @@ export function ComparisonSummaryTable({
   nameKey = 'name',
   matchKey,
   sentiment,
+  aliasMap,
+  categoryLabel = 'Category',
 }: ComparisonSummaryTableProps) {
-  const merged = mergeDataForComparison(primaryData, compareData, nameKey, matchKey)
+  const merged = mergeDataForComparison(primaryData, compareData, nameKey, matchKey, aliasMap)
 
   if (merged.length === 0) {
     return (
@@ -63,7 +69,9 @@ export function ComparisonSummaryTable({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-border bg-muted/30 border-b">
-              <th className="text-muted-foreground px-4 py-3 text-left font-medium">Category</th>
+              <th className="text-muted-foreground px-4 py-3 text-left font-medium">
+                {categoryLabel}
+              </th>
               <th className="text-muted-foreground px-4 py-3 text-right font-medium">
                 {primaryYear}
               </th>
@@ -116,14 +124,8 @@ export function ComparisonSummaryTable({
                       </span>
                     )}
                   </td>
-                  <td className="text-foreground px-4 py-3 text-right">
-                    {row.primaryValue}
-                    {isGone && <span className="text-muted-foreground ml-1 text-xs">(0)</span>}
-                  </td>
-                  <td className="text-foreground px-4 py-3 text-right">
-                    {row.compareValue}
-                    {isNew && <span className="text-muted-foreground ml-1 text-xs">(0)</span>}
-                  </td>
+                  <td className="text-foreground px-4 py-3 text-right">{row.primaryValue}</td>
+                  <td className="text-foreground px-4 py-3 text-right">{row.compareValue}</td>
                   <td className={`px-4 py-3 text-right ${changeClass}`}>
                     <span className="flex items-center justify-end gap-1">
                       {isNew ? (

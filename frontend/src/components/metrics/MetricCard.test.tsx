@@ -129,7 +129,9 @@ describe('MetricCard onClick functionality', () => {
 
   describe('sentiment prop', () => {
     it('should use green for up and red for down by default (no sentiment prop)', () => {
-      render(<MetricCard title="Total Enrolled" value={150} compareValue={140} compareYear={2025} />)
+      render(
+        <MetricCard title="Total Enrolled" value={150} compareValue={140} compareYear={2025} />
+      )
 
       const trendSpan = screen.getByText(/\+10/).closest('span')
       expect(trendSpan).toHaveClass('text-emerald-600')
