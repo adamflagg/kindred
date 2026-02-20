@@ -33,8 +33,7 @@ import {
   transformFirstSummerYearData,
   transformNewVsReturningData,
 } from '../../../utils/metricsTransforms'
-import { SectionHeader } from '../../../components/metrics/SectionHeader'
-import { Loader2, AlertCircle, Users, UserPlus, Calendar, Clock } from 'lucide-react'
+import { Loader2, AlertCircle } from 'lucide-react'
 
 export default function RegistrationOverview() {
   const { currentYear } = useCurrentYear()
@@ -191,12 +190,6 @@ export default function RegistrationOverview() {
         />
       </div>
 
-      <SectionHeader
-        icon={Users}
-        title="Demographics"
-        description="Gender and grade distribution"
-      />
-
       {/* Charts Row 1: Gender */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <BreakdownChart
@@ -216,12 +209,6 @@ export default function RegistrationOverview() {
           onBarClick={setFilter}
         />
       </div>
-
-      <SectionHeader
-        icon={UserPlus}
-        title="Camper Mix"
-        description="New vs returning enrollment breakdown"
-      />
 
       {/* Charts Row 2: New vs Returning, Grade */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -247,12 +234,6 @@ export default function RegistrationOverview() {
           onSegmentClick={setFilter}
         />
       </div>
-
-      <SectionHeader
-        icon={Calendar}
-        title="Session Enrollment"
-        description="Enrollment across sessions and lengths"
-      />
 
       {/* Charts Row 3: Session, Session Length (hidden when single session selected) */}
       {!selectedSessionCmId && (
@@ -281,12 +262,6 @@ export default function RegistrationOverview() {
           />
         </div>
       )}
-
-      <SectionHeader
-        icon={Clock}
-        title="Camper History"
-        description="Summers at camp and tenure analysis"
-      />
 
       {/* Charts Row 4: Years at Camp, First Summer Year */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
