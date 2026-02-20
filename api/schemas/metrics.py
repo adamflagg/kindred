@@ -287,6 +287,10 @@ class SessionFlowItem(BaseModel):
     source: str = Field(description="Base year session name")
     target: str = Field(description="Compare year session name or 'Did Not Return'")
     value: int = Field(description="Number of campers in this flow")
+    source_cm_id: int = Field(description="CampMinder session ID for the source (base year)")
+    target_cm_id: int | None = Field(
+        default=None, description="CampMinder session ID for the target, None for 'Did Not Return'"
+    )
 
 
 class RetentionMetricsResponse(BaseModel):
