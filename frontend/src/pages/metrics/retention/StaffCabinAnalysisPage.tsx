@@ -85,6 +85,15 @@ export default function StaffCabinAnalysisPage() {
     []
   )
 
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (hoveredCell) {
+        setTooltipPos({ x: e.clientX + 10, y: e.clientY + 10 })
+      }
+    },
+    [hoveredCell]
+  )
+
   const handleMouseLeave = useCallback(() => {
     setHoveredCell(null)
   }, [])
@@ -220,6 +229,7 @@ export default function StaffCabinAnalysisPage() {
                             onMouseEnter={(e) =>
                               handleMouseEnter(e, row.personId, session, data.bunkName)
                             }
+                            onMouseMove={handleMouseMove}
                             onMouseLeave={handleMouseLeave}
                           >
                             <div className="text-[10px] leading-tight opacity-80">
@@ -234,6 +244,7 @@ export default function StaffCabinAnalysisPage() {
                         onMouseEnter={(e) =>
                           handleMouseEnter(e, row.personId, '__overall__', 'Overall')
                         }
+                        onMouseMove={handleMouseMove}
                         onMouseLeave={handleMouseLeave}
                       >
                         {Math.round(row.overallRetention * 100)}%
