@@ -158,6 +158,8 @@ export const queryKeys = {
 
   // Registration Config (Tier 2 - user data)
   registrationDatesConfig: (year: number) => ['registration-dates-config', year] as const,
+  gradeEligibilityConfig: (year: number) => ['grade-eligibility-config', year] as const,
+  sessionAvailability: (year: number) => ['session-availability', year] as const,
 
   // Staff (Tier 1 - sync data)
   bunkStaff: (year: number) => ['bunk-staff', year] as const,

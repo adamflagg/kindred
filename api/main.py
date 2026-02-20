@@ -115,6 +115,7 @@ def create_app() -> FastAPI:
         metrics,
         requests,
         scenarios,
+        session_availability,
         social_graph,
         solver,
         validation,
@@ -127,6 +128,7 @@ def create_app() -> FastAPI:
     app.include_router(requests.router)
     app.include_router(debug.router)
     app.include_router(metrics.router)
+    app.include_router(session_availability.router)
 
     # Core endpoints (not in a router)
     @app.get("/health")

@@ -2,7 +2,7 @@
  * Shared navigation configuration for metrics module.
  * Single source of truth for sub-nav items used by MetricsLayout and MetricsTypeTabs.
  */
-import { LayoutDashboard, Globe, Clock, GitBranch, Grid2x2, Users } from 'lucide-react'
+import { LayoutDashboard, Globe, Clock, GitBranch, Grid2x2, Users, Table } from 'lucide-react'
 import type { SubNavItem } from '../../components/metrics/MetricsSubNav'
 
 /** Sub-nav items for retention section */
@@ -52,5 +52,11 @@ export const REGISTRATION_SUB_NAV: SubNavItem[] = [
     label: 'Waitlist',
     icon: Clock,
     path: '/metrics/registration/waitlist',
+  },
+  {
+    id: 'availability',
+    label: 'Availability',
+    icon: Table,
+    path: '/metrics/registration/availability',
   },
 ]
