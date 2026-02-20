@@ -15,6 +15,8 @@ class GenderBreakdown(BaseModel):
     gender: str = Field(description="Gender (M, F, or other)")
     count: int = Field(description="Number of campers")
     percentage: float = Field(description="Percentage of total")
+    no_enrollment: int = Field(default=0, description="Waitlisted with no other enrollment")
+    has_enrollment: int = Field(default=0, description="Waitlisted but enrolled in other session")
 
 
 class GradeBreakdown(BaseModel):
@@ -23,6 +25,8 @@ class GradeBreakdown(BaseModel):
     grade: int | None = Field(description="Grade level (None if unknown)")
     count: int = Field(description="Number of campers")
     percentage: float = Field(description="Percentage of total")
+    no_enrollment: int = Field(default=0, description="Waitlisted with no other enrollment")
+    has_enrollment: int = Field(default=0, description="Waitlisted but enrolled in other session")
 
 
 class SessionBreakdown(BaseModel):
@@ -575,8 +579,8 @@ class WaitlistSessionBreakdown(BaseModel):
     session_cm_id: int = Field(description="Session CampMinder ID")
     session_name: str = Field(description="Session name")
     waitlisted: int = Field(description="Currently waitlisted count")
-    no_enrollment: int = Field(0, description="Waitlisted with no other enrollment")
-    has_enrollment: int = Field(0, description="Waitlisted but enrolled in other session")
+    no_enrollment: int = Field(default=0, description="Waitlisted with no other enrollment")
+    has_enrollment: int = Field(default=0, description="Waitlisted but enrolled in other session")
     accepted: int = Field(0, description="Previously waitlisted, now enrolled")
     declined: int = Field(0, description="Previously waitlisted, cancelled/withdrawn/dismissed")
     enrolled_in: list[WaitlistEnrolledSessionCount] = Field(

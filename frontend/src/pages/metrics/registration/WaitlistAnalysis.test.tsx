@@ -183,7 +183,8 @@ describe('WaitlistAnalysis', () => {
       renderWithClient()
 
       expect(screen.getByText(/total waitlisted/i)).toBeInTheDocument()
-      expect(screen.getByText(/no other sessions/i)).toBeInTheDocument()
+      // "No Other Sessions" / "Has Other Sessions" appear in both summary cards and chart legends
+      expect(screen.getAllByText(/no other sessions/i).length).toBeGreaterThanOrEqual(1)
       // "Accepted" and "Declined" appear in both summary cards and table headers
       expect(screen.getAllByText(/accepted/i).length).toBeGreaterThanOrEqual(1)
       expect(screen.getAllByText(/declined/i).length).toBeGreaterThanOrEqual(1)
@@ -264,9 +265,14 @@ describe('WaitlistAnalysis', () => {
     it('calls setFilter when No Other Sessions card is clicked', () => {
       renderWithClient()
 
-      const card = screen.getByText(/no other sessions/i).closest('[role="button"]')
-      expect(card).toBeTruthy()
-      if (card) fireEvent.click(card)
+      // "No Other Sessions" appears in both summary card and chart legend — find the card one
+      const matches = screen.getAllByText(/no other sessions/i)
+      const cardTitle = matches.find((el) => el.closest('[role="button"]'))
+      expect(cardTitle).toBeTruthy()
+      if (cardTitle) {
+        const card = cardTitle.closest('[role="button"]')!
+        fireEvent.click(card)
+      }
 
       expect(mockSetFilter).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -279,9 +285,14 @@ describe('WaitlistAnalysis', () => {
     it('calls setFilter when Has Other Sessions card is clicked', () => {
       renderWithClient()
 
-      const card = screen.getByText(/has other sessions/i).closest('[role="button"]')
-      expect(card).toBeTruthy()
-      if (card) fireEvent.click(card)
+      // "Has Other Sessions" appears in both summary card and chart legend — find the card one
+      const matches = screen.getAllByText(/has other sessions/i)
+      const cardTitle = matches.find((el) => el.closest('[role="button"]'))
+      expect(cardTitle).toBeTruthy()
+      if (cardTitle) {
+        const card = cardTitle.closest('[role="button"]')!
+        fireEvent.click(card)
+      }
 
       expect(mockSetFilter).toHaveBeenCalledWith(
         expect.objectContaining({

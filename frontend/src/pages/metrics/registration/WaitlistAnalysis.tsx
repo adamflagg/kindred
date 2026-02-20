@@ -15,8 +15,9 @@ import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useDrilldown } from '../../../hooks/useDrilldown'
 import { useComparisonWaitlistData } from '../../../hooks/useComparisonWaitlistData'
 import { MetricCard } from '../../../components/metrics/MetricCard'
-import { BreakdownChart } from '../../../components/metrics/BreakdownChart'
 import { WaitlistBySessionChart } from '../../../components/metrics/WaitlistBySessionChart'
+import { WaitlistGradeChart } from '../../../components/metrics/WaitlistGradeChart'
+import { WaitlistGenderChart } from '../../../components/metrics/WaitlistGenderChart'
 import { transformGenderData } from '../../../utils/metricsTransforms'
 import { SESSION_NAME_ALIASES, resolveSessionAlias } from '../../../utils/sessionAliases'
 import { ComparisonSummaryTable } from '../../../components/metrics/ComparisonSummaryTable'
@@ -60,13 +61,6 @@ export default function WaitlistAnalysis() {
   return (
     <MetricsQueryGuard isLoading={isLoading} error={error} data={data} label="waitlist">
       {(data) => {
-        const gradeChartData = (data.by_grade || []).map((g) => ({
-          name: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
-          value: g.count,
-          percentage: g.percentage,
-          id: g.grade !== null ? String(g.grade) : 'null',
-        }))
-        const genderChartData = transformGenderData(data.by_gender)
         return (
           <div className="space-y-6">
             {/* Summary Cards */}
@@ -217,43 +211,31 @@ export default function WaitlistAnalysis() {
             )}
 
             {/* Grade + Gender Charts Row */}
-            {(gradeChartData.length > 0 || genderChartData.length > 0) && (
+            {((data.by_grade || []).length > 0 || (data.by_gender || []).length > 0) && (
               <>
                 {isComparing && compData ? (
                   <>
-                    {gradeChartData.length > 0 && (
+                    {(data.by_grade || []).length > 0 && (
                       <>
                         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                          <BreakdownChart
-                            data={gradeChartData}
+                          <WaitlistGradeChart
+                            data={data.by_grade}
+                            onBarClick={setFilter}
                             title={`${currentYear} Grade Distribution`}
-                            type="bar"
-                            height={300}
-                            breakdownType="grade"
-                            onSegmentClick={(filter) =>
-                              setFilter({
-                                ...filter,
-                                statusOverride: ['waitlisted'],
-                                waitlistContext: true,
-                              })
-                            }
                           />
-                          <BreakdownChart
-                            data={(compData.by_grade || []).map((g) => ({
-                              name: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
-                              value: g.count,
-                              percentage: g.percentage,
-                            }))}
+                          <WaitlistGradeChart
+                            data={compData.by_grade || []}
                             title={`${compareYear} Grade Distribution`}
-                            type="bar"
-                            height={300}
                           />
                         </div>
                         <ComparisonSummaryTable
                           title="Grade Distribution Comparison"
                           primaryYear={currentYear}
                           compareYear={compareYear!}
-                          primaryData={gradeChartData}
+                          primaryData={(data.by_grade || []).map((g) => ({
+                            name: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
+                            value: g.count,
+                          }))}
                           compareData={(compData.by_grade || []).map((g) => ({
                             name: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
                             value: g.count,
@@ -261,37 +243,24 @@ export default function WaitlistAnalysis() {
                         />
                       </>
                     )}
-                    {genderChartData.length > 0 && (
+                    {(data.by_gender || []).length > 0 && (
                       <>
                         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                          <BreakdownChart
-                            data={genderChartData}
+                          <WaitlistGenderChart
+                            data={data.by_gender}
+                            onSegmentClick={setFilter}
                             title={`${currentYear} Gender Distribution`}
-                            type="pie"
-                            height={300}
-                            showPercentage
-                            breakdownType="gender"
-                            onSegmentClick={(filter) =>
-                              setFilter({
-                                ...filter,
-                                statusOverride: ['waitlisted'],
-                                waitlistContext: true,
-                              })
-                            }
                           />
-                          <BreakdownChart
-                            data={transformGenderData(compData.by_gender)}
+                          <WaitlistGenderChart
+                            data={compData.by_gender || []}
                             title={`${compareYear} Gender Distribution`}
-                            type="pie"
-                            height={300}
-                            showPercentage
                           />
                         </div>
                         <ComparisonSummaryTable
                           title="Gender Distribution Comparison"
                           primaryYear={currentYear}
                           compareYear={compareYear!}
-                          primaryData={genderChartData}
+                          primaryData={transformGenderData(data.by_gender)}
                           compareData={transformGenderData(compData.by_gender)}
                         />
                       </>
@@ -299,38 +268,11 @@ export default function WaitlistAnalysis() {
                   </>
                 ) : (
                   <div className="grid gap-6 lg:grid-cols-2">
-                    {gradeChartData.length > 0 && (
-                      <BreakdownChart
-                        data={gradeChartData}
-                        title="Grade Distribution"
-                        type="bar"
-                        height={300}
-                        breakdownType="grade"
-                        onSegmentClick={(filter) =>
-                          setFilter({
-                            ...filter,
-                            statusOverride: ['waitlisted'],
-                            waitlistContext: true,
-                          })
-                        }
-                      />
+                    {(data.by_grade || []).length > 0 && (
+                      <WaitlistGradeChart data={data.by_grade} onBarClick={setFilter} />
                     )}
-                    {genderChartData.length > 0 && (
-                      <BreakdownChart
-                        data={genderChartData}
-                        title="Gender Distribution"
-                        type="pie"
-                        height={300}
-                        showPercentage
-                        breakdownType="gender"
-                        onSegmentClick={(filter) =>
-                          setFilter({
-                            ...filter,
-                            statusOverride: ['waitlisted'],
-                            waitlistContext: true,
-                          })
-                        }
-                      />
+                    {(data.by_gender || []).length > 0 && (
+                      <WaitlistGenderChart data={data.by_gender} onSegmentClick={setFilter} />
                     )}
                   </div>
                 )}
