@@ -231,10 +231,10 @@ describe('SessionBudgetConfig', () => {
     const updateCall = mockUpdate.mock.calls[0]!
     expect(updateCall[0]).toBe('budget1') // existing record id
     const payload = updateCall[1] as Record<string, unknown>
-    expect(payload.category).toBe('budget')
-    expect(payload.subcategory).toBe('2026')
-    expect(payload.config_key).toBe('session_1001')
-    const value = payload.value as { participant_goal: number; session_fee: number }
+    expect(payload['category']).toBe('budget')
+    expect(payload['subcategory']).toBe('2026')
+    expect(payload['config_key']).toBe('session_1001')
+    const value = payload['value'] as { participant_goal: number; session_fee: number }
     expect(value.participant_goal).toBe(175)
     expect(value.session_fee).toBe(3500)
   })
@@ -294,8 +294,8 @@ describe('SessionBudgetConfig', () => {
     renderWithProviders(<SessionBudgetConfig />)
 
     await waitFor(() => {
-      expect(screen.getByText(/session budget/i)).toBeInTheDocument()
-      expect(screen.getByText(/participant goal/i)).toBeInTheDocument()
+      expect(screen.getByText(/session budget config/i)).toBeInTheDocument()
+      expect(screen.getByText(/revenue forecasting/i)).toBeInTheDocument()
     })
   })
 

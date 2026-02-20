@@ -161,6 +161,7 @@ export const queryKeys = {
   gradeEligibilityConfig: (year: number) => ['grade-eligibility-config', year] as const,
   sessionAvailability: (year: number, sessionTypes?: string, sessionCmId?: number) =>
     ['session-availability', year, sessionTypes, sessionCmId] as const,
+  sessionBudgetConfig: (year: number) => ['session-budget-config', year] as const,
 
   // Staff (Tier 1 - sync data)
   bunkStaff: (year: number) => ['bunk-staff', year] as const,
