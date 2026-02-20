@@ -125,41 +125,51 @@ function App() {
                             <Route
                               path="sessions"
                               element={
-                                <Suspense fallback={<PageSkeleton />}>
-                                  <SessionList />
-                                </Suspense>
+                                <ErrorBoundary>
+                                  <Suspense fallback={<PageSkeleton />}>
+                                    <SessionList />
+                                  </Suspense>
+                                </ErrorBoundary>
                               }
                             />
                             <Route
                               path="session/:sessionId/*"
                               element={
-                                <Suspense fallback={<PageSkeleton />}>
-                                  <SessionView />
-                                </Suspense>
+                                <ErrorBoundary>
+                                  <Suspense fallback={<PageSkeleton />}>
+                                    <SessionView />
+                                  </Suspense>
+                                </ErrorBoundary>
                               }
                             />
                             <Route
                               path="session/:sessionId/compare"
                               element={
-                                <Suspense fallback={<PageSkeleton />}>
-                                  <ScenarioComparisonPage />
-                                </Suspense>
+                                <ErrorBoundary>
+                                  <Suspense fallback={<PageSkeleton />}>
+                                    <ScenarioComparisonPage />
+                                  </Suspense>
+                                </ErrorBoundary>
                               }
                             />
                             <Route
                               path="campers"
                               element={
-                                <Suspense fallback={<PageSkeleton />}>
-                                  <AllCampersView />
-                                </Suspense>
+                                <ErrorBoundary>
+                                  <Suspense fallback={<PageSkeleton />}>
+                                    <AllCampersView />
+                                  </Suspense>
+                                </ErrorBoundary>
                               }
                             />
                             <Route
                               path="camper/:camperId"
                               element={
-                                <Suspense fallback={<PageSkeleton />}>
-                                  <CamperDetail />
-                                </Suspense>
+                                <ErrorBoundary>
+                                  <Suspense fallback={<PageSkeleton />}>
+                                    <CamperDetail />
+                                  </Suspense>
+                                </ErrorBoundary>
                               }
                             />
                             <Route path="user" element={<User />} />
@@ -167,18 +177,22 @@ function App() {
                             <Route
                               path="admin"
                               element={
-                                <Suspense fallback={<PageSkeleton />}>
-                                  <AdminConfig />
-                                </Suspense>
+                                <ErrorBoundary>
+                                  <Suspense fallback={<PageSkeleton />}>
+                                    <AdminConfig />
+                                  </Suspense>
+                                </ErrorBoundary>
                               }
                             />
                             <Route
                               path="debug"
                               element={
                                 <AdminRoute>
-                                  <Suspense fallback={<PageSkeleton />}>
-                                    <DebugPage />
-                                  </Suspense>
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <DebugPage />
+                                    </Suspense>
+                                  </ErrorBoundary>
                                 </AdminRoute>
                               }
                             />
@@ -195,9 +209,11 @@ function App() {
                             {/* Metrics layout with nested routes */}
                             <Route
                               element={
-                                <Suspense fallback={<PageSkeleton />}>
-                                  <MetricsLayout />
-                                </Suspense>
+                                <ErrorBoundary>
+                                  <Suspense fallback={<PageSkeleton />}>
+                                    <MetricsLayout />
+                                  </Suspense>
+                                </ErrorBoundary>
                               }
                             >
                               {/* Registration section */}
@@ -208,25 +224,31 @@ function App() {
                               <Route
                                 path="registration/overview"
                                 element={
-                                  <Suspense fallback={<PageSkeleton />}>
-                                    <RegistrationOverview />
-                                  </Suspense>
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <RegistrationOverview />
+                                    </Suspense>
+                                  </ErrorBoundary>
                                 }
                               />
                               <Route
                                 path="registration/geo"
                                 element={
-                                  <Suspense fallback={<PageSkeleton />}>
-                                    <GeoAnalysis />
-                                  </Suspense>
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <GeoAnalysis />
+                                    </Suspense>
+                                  </ErrorBoundary>
                                 }
                               />
                               <Route
                                 path="registration/waitlist"
                                 element={
-                                  <Suspense fallback={<PageSkeleton />}>
-                                    <WaitlistAnalysis />
-                                  </Suspense>
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <WaitlistAnalysis />
+                                    </Suspense>
+                                  </ErrorBoundary>
                                 }
                               />
 
@@ -234,33 +256,41 @@ function App() {
                               <Route
                                 path="retention"
                                 element={
-                                  <Suspense fallback={<PageSkeleton />}>
-                                    <RetentionOverview />
-                                  </Suspense>
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <RetentionOverview />
+                                    </Suspense>
+                                  </ErrorBoundary>
                                 }
                               />
                               <Route
                                 path="retention/flow"
                                 element={
-                                  <Suspense fallback={<PageSkeleton />}>
-                                    <SessionFlowPage />
-                                  </Suspense>
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <SessionFlowPage />
+                                    </Suspense>
+                                  </ErrorBoundary>
                                 }
                               />
                               <Route
                                 path="retention/bunks"
                                 element={
-                                  <Suspense fallback={<PageSkeleton />}>
-                                    <BunkRetentionPage />
-                                  </Suspense>
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <BunkRetentionPage />
+                                    </Suspense>
+                                  </ErrorBoundary>
                                 }
                               />
                               <Route
                                 path="retention/staff"
                                 element={
-                                  <Suspense fallback={<PageSkeleton />}>
-                                    <StaffCabinAnalysisPage />
-                                  </Suspense>
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <StaffCabinAnalysisPage />
+                                    </Suspense>
+                                  </ErrorBoundary>
                                 }
                               />
                               {/* Redirect old retention sub-routes */}
@@ -273,9 +303,11 @@ function App() {
                               <Route
                                 path="trends"
                                 element={
-                                  <Suspense fallback={<PageSkeleton />}>
-                                    <TrendsOverview />
-                                  </Suspense>
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <TrendsOverview />
+                                    </Suspense>
+                                  </ErrorBoundary>
                                 }
                               />
                             </Route>
@@ -289,9 +321,11 @@ function App() {
                             <Route
                               index
                               element={
-                                <Suspense fallback={<PageSkeleton />}>
-                                  <FamilyCampDashboard />
-                                </Suspense>
+                                <ErrorBoundary>
+                                  <Suspense fallback={<PageSkeleton />}>
+                                    <FamilyCampDashboard />
+                                  </Suspense>
+                                </ErrorBoundary>
                               }
                             />
                             <Route path="user" element={<User />} />
