@@ -131,4 +131,32 @@ describe('BunkCellTooltip', () => {
     const style = tooltip.style
     expect(style.position).toBe('fixed')
   })
+
+  it('renders custom staffLabel when provided', () => {
+    render(
+      <BunkCellTooltip
+        bunkName="B-1"
+        retention={sampleRetention}
+        staff={sampleStaff}
+        staffLabel="Co-Staff"
+        isVisible={true}
+        position={{ x: 100, y: 100 }}
+      />
+    )
+    expect(screen.getByText('Co-Staff')).toBeInTheDocument()
+    expect(screen.queryByText('Staff')).not.toBeInTheDocument()
+  })
+
+  it('does not render staffLabel when no staff provided', () => {
+    render(
+      <BunkCellTooltip
+        bunkName="B-1"
+        retention={sampleRetention}
+        staffLabel="Co-Staff"
+        isVisible={true}
+        position={{ x: 100, y: 100 }}
+      />
+    )
+    expect(screen.queryByText('Co-Staff')).not.toBeInTheDocument()
+  })
 })

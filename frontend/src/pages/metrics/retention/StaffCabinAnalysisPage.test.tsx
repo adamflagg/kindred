@@ -3,22 +3,30 @@
  *
  * Tests written FIRST before implementation (TDD).
  * Verifies the staff-centric retention table renders correctly
- * with sorting, color coding, and proper loading/error/empty states.
+ * with sorting, color coding, portal tooltips with co-staff,
+ * chronological session ordering, and proper loading/error/empty states.
  */
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router'
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { CurrentYearContext, type CurrentYearContextType } from '../../../hooks/useCurrentYear'
 
-// Mock the custom hook
+// Mock the custom hooks
 vi.mock('../../../hooks/useStaffRetentionData', () => ({
   useStaffRetentionData: vi.fn(),
 }))
 
+vi.mock('../../../hooks/useMetricsSession', () => ({
+  useMetricsSession: vi.fn(() => ({
+    campSessions: [],
+  })),
+}))
+
 import { useStaffRetentionData } from '../../../hooks/useStaffRetentionData'
 import type { StaffRetentionRow } from '../../../hooks/useStaffRetentionData'
+import { useMetricsSession } from '../../../hooks/useMetricsSession'
 
 // Import the component under test
 import StaffCabinAnalysisPage from './StaffCabinAnalysisPage'
@@ -70,6 +78,7 @@ describe('StaffCabinAnalysisPage', () => {
       ;(useStaffRetentionData as Mock).mockReturnValue({
         staffRows: [],
         sessions: [],
+        bunkStaff: new Map(),
         isLoading: true,
         error: null,
       })
@@ -83,6 +92,7 @@ describe('StaffCabinAnalysisPage', () => {
       ;(useStaffRetentionData as Mock).mockReturnValue({
         staffRows: [],
         sessions: [],
+        bunkStaff: new Map(),
         isLoading: false,
         error: new Error('Network error'),
       })
@@ -96,6 +106,7 @@ describe('StaffCabinAnalysisPage', () => {
       ;(useStaffRetentionData as Mock).mockReturnValue({
         staffRows: [],
         sessions: [],
+        bunkStaff: new Map(),
         isLoading: false,
         error: null,
       })
@@ -125,6 +136,7 @@ describe('StaffCabinAnalysisPage', () => {
           }),
         ],
         sessions: ['Session 1'],
+        bunkStaff: new Map(),
         isLoading: false,
         error: null,
       })
@@ -166,6 +178,7 @@ describe('StaffCabinAnalysisPage', () => {
       ;(useStaffRetentionData as Mock).mockReturnValue({
         staffRows: mockStaffRows,
         sessions: ['Session 1', 'Session 2'],
+        bunkStaff: new Map(),
         isLoading: false,
         error: null,
       })
@@ -222,12 +235,27 @@ describe('StaffCabinAnalysisPage', () => {
       expect(screen.getByText('---')).toBeInTheDocument()
     })
 
-    it('shows title tooltip with return counts on data cells', () => {
+    it('shows portal tooltip on session cell hover', () => {
       renderWithData()
 
-      // Find cells with title attributes containing return info
-      const cellWithTooltip = screen.getByTitle('8 of 10 returned')
-      expect(cellWithTooltip).toBeInTheDocument()
+      // Find Emma Johnson's row, get Session 1 cell (B-3, 80%)
+      const table = screen.getByRole('table')
+      const rows = within(table).getAllByRole('row')
+      const emmaRow = rows.find((r) => within(r).queryByText('Emma Johnson'))!
+      const cells = within(emmaRow).getAllByRole('cell')
+      // First cell is Session 1 (B-3, 80%)
+      const session1Cell = cells.find((c) => c.textContent?.includes('B-3'))!
+
+      fireEvent.mouseEnter(session1Cell)
+
+      // Portal tooltip shows retention stats
+      expect(screen.getByText(/8 of 10 returned/)).toBeInTheDocument()
+    })
+
+    it('does not have title attributes on data cells', () => {
+      renderWithData()
+
+      expect(screen.queryByTitle(/returned/)).not.toBeInTheDocument()
     })
   })
 
@@ -254,14 +282,19 @@ describe('StaffCabinAnalysisPage', () => {
           }),
         ],
         sessions: ['Session 1', 'Session 2'],
+        bunkStaff: new Map(),
         isLoading: false,
         error: null,
       })
 
       renderPage()
 
-      // The overall cell has unique return counts (aggregated across sessions)
-      const overallCell = screen.getByTitle('21 of 30 returned')
+      // Find the overall cell - last cell in Emma's row (sticky right)
+      const table = screen.getByRole('table')
+      const rows = within(table).getAllByRole('row')
+      const emmaRow = rows.find((r) => within(r).queryByText('Emma Johnson'))!
+      const cells = within(emmaRow).getAllByRole('cell')
+      const overallCell = cells[cells.length - 1]!
       expect(overallCell.className).toMatch(/emerald/)
     })
 
@@ -287,13 +320,19 @@ describe('StaffCabinAnalysisPage', () => {
           }),
         ],
         sessions: ['Session 1', 'Session 2'],
+        bunkStaff: new Map(),
         isLoading: false,
         error: null,
       })
 
       renderPage()
 
-      const overallCell = screen.getByTitle('9 of 30 returned')
+      // Find the overall cell - last cell in Liam's row
+      const table = screen.getByRole('table')
+      const rows = within(table).getAllByRole('row')
+      const liamRow = rows.find((r) => within(r).queryByText('Liam Garcia'))!
+      const cells = within(liamRow).getAllByRole('cell')
+      const overallCell = cells[cells.length - 1]!
       expect(overallCell.className).toMatch(/red/)
     })
   })
@@ -326,6 +365,7 @@ describe('StaffCabinAnalysisPage', () => {
       ;(useStaffRetentionData as Mock).mockReturnValue({
         staffRows: sortableRows,
         sessions: ['Session 1'],
+        bunkStaff: new Map(),
         isLoading: false,
         error: null,
       })
@@ -343,6 +383,7 @@ describe('StaffCabinAnalysisPage', () => {
       ;(useStaffRetentionData as Mock).mockReturnValue({
         staffRows: sortableRows,
         sessions: ['Session 1'],
+        bunkStaff: new Map(),
         isLoading: false,
         error: null,
       })
@@ -365,6 +406,7 @@ describe('StaffCabinAnalysisPage', () => {
       ;(useStaffRetentionData as Mock).mockReturnValue({
         staffRows: sortableRows,
         sessions: ['Session 1'],
+        bunkStaff: new Map(),
         isLoading: false,
         error: null,
       })
@@ -403,6 +445,7 @@ describe('StaffCabinAnalysisPage', () => {
           }),
         ],
         sessions: ['Session 1'],
+        bunkStaff: new Map(),
         isLoading: false,
         error: null,
       })
@@ -413,6 +456,174 @@ describe('StaffCabinAnalysisPage', () => {
       expect(screen.getByText(/Low \(/)).toBeInTheDocument()
       expect(screen.getByText(/Mid \(/)).toBeInTheDocument()
       expect(screen.getByText(/High \(/)).toBeInTheDocument()
+    })
+  })
+
+  describe('portal tooltips and co-staff', () => {
+    const bunkStaffMap = new Map([
+      [
+        'Session 1|B-3',
+        [
+          { name: 'Emma Johnson', personId: '101' },
+          { name: 'Olivia Chen', personId: '103' },
+        ],
+      ],
+      ['Session 2|B-5', [{ name: 'Emma Johnson', personId: '101' }]],
+      ['Session 1|G-1', [{ name: 'Liam Garcia', personId: '102' }]],
+    ])
+
+    const staffRows: StaffRetentionRow[] = [
+      makeRow({
+        personId: '101',
+        name: 'Emma Johnson',
+        overallRetention: 0.7,
+        totalBaseCount: 20,
+        totalReturnedCount: 14,
+        sessionData: new Map([
+          ['Session 1', { bunkName: 'B-3', baseCount: 10, returnedCount: 8, retentionRate: 0.8 }],
+          ['Session 2', { bunkName: 'B-5', baseCount: 10, returnedCount: 6, retentionRate: 0.6 }],
+        ]),
+      }),
+      makeRow({
+        personId: '102',
+        name: 'Liam Garcia',
+        overallRetention: 0.3,
+        totalBaseCount: 10,
+        totalReturnedCount: 3,
+        sessionData: new Map([
+          ['Session 1', { bunkName: 'G-1', baseCount: 10, returnedCount: 3, retentionRate: 0.3 }],
+        ]),
+      }),
+    ]
+
+    function renderWithCoStaff() {
+      ;(useStaffRetentionData as Mock).mockReturnValue({
+        staffRows,
+        sessions: ['Session 1', 'Session 2'],
+        bunkStaff: bunkStaffMap,
+        isLoading: false,
+        error: null,
+      })
+      return renderPage()
+    }
+
+    it('shows co-staff in tooltip when other staff share the bunk', () => {
+      renderWithCoStaff()
+
+      // Hover Emma's Session 1 cell (B-3) where Olivia is co-staff
+      const table = screen.getByRole('table')
+      const rows = within(table).getAllByRole('row')
+      const emmaRow = rows.find((r) => within(r).queryByText('Emma Johnson'))!
+      const cells = within(emmaRow).getAllByRole('cell')
+      const session1Cell = cells.find((c) => c.textContent?.includes('B-3'))!
+
+      fireEvent.mouseEnter(session1Cell)
+
+      expect(screen.getByText('Co-Staff')).toBeInTheDocument()
+      expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
+    })
+
+    it('hides co-staff section when staff member is sole staff on bunk', () => {
+      renderWithCoStaff()
+
+      // Hover Emma's Session 2 cell (B-5) where she's the only staff
+      const table = screen.getByRole('table')
+      const rows = within(table).getAllByRole('row')
+      const emmaRow = rows.find((r) => within(r).queryByText('Emma Johnson'))!
+      const cells = within(emmaRow).getAllByRole('cell')
+      const session2Cell = cells.find((c) => c.textContent?.includes('B-5'))!
+
+      fireEvent.mouseEnter(session2Cell)
+
+      // Retention stats should show
+      expect(screen.getByText(/6 of 10 returned/)).toBeInTheDocument()
+      // But no co-staff section
+      expect(screen.queryByText('Co-Staff')).not.toBeInTheDocument()
+    })
+
+    it('hides tooltip on mouse leave', () => {
+      renderWithCoStaff()
+
+      const table = screen.getByRole('table')
+      const rows = within(table).getAllByRole('row')
+      const emmaRow = rows.find((r) => within(r).queryByText('Emma Johnson'))!
+      const cells = within(emmaRow).getAllByRole('cell')
+      const session1Cell = cells.find((c) => c.textContent?.includes('B-3'))!
+
+      fireEvent.mouseEnter(session1Cell)
+      expect(screen.getByText(/8 of 10 returned/)).toBeInTheDocument()
+
+      fireEvent.mouseLeave(session1Cell)
+      expect(screen.queryByText(/8 of 10 returned/)).not.toBeInTheDocument()
+    })
+
+    it('shows tooltip on overall cell hover', () => {
+      renderWithCoStaff()
+
+      const table = screen.getByRole('table')
+      const rows = within(table).getAllByRole('row')
+      const emmaRow = rows.find((r) => within(r).queryByText('Emma Johnson'))!
+      const cells = within(emmaRow).getAllByRole('cell')
+      // Overall cell is the last cell in the row
+      const overallCell = cells[cells.length - 1]!
+
+      fireEvent.mouseEnter(overallCell)
+
+      expect(screen.getByText(/14 of 20 returned/)).toBeInTheDocument()
+    })
+  })
+
+  describe('session column order', () => {
+    it('orders session columns chronologically using campSessions dates', () => {
+      // Mock campSessions with dates that differ from alphabetical order
+      ;(useMetricsSession as Mock).mockReturnValue({
+        campSessions: [
+          { name: 'Taste of Camp', start_date: '2025-06-01' },
+          { name: 'Session 1', start_date: '2025-06-15' },
+          { name: 'Session 2', start_date: '2025-07-01' },
+        ],
+      })
+      ;(useStaffRetentionData as Mock).mockReturnValue({
+        staffRows: [
+          makeRow({
+            personId: '101',
+            name: 'Emma Johnson',
+            overallRetention: 0.7,
+            totalBaseCount: 30,
+            totalReturnedCount: 21,
+            sessionData: new Map([
+              [
+                'Session 2',
+                { bunkName: 'B-1', baseCount: 10, returnedCount: 7, retentionRate: 0.7 },
+              ],
+              [
+                'Taste of Camp',
+                { bunkName: 'B-2', baseCount: 10, returnedCount: 7, retentionRate: 0.7 },
+              ],
+              [
+                'Session 1',
+                { bunkName: 'B-3', baseCount: 10, returnedCount: 7, retentionRate: 0.7 },
+              ],
+            ]),
+          }),
+        ],
+        // Hook returns alphabetical order
+        sessions: ['Session 1', 'Session 2', 'Taste of Camp'],
+        bunkStaff: new Map(),
+        isLoading: false,
+        error: null,
+      })
+
+      renderPage()
+
+      // Get session column headers (exclude Staff and Overall)
+      const headers = screen.getAllByRole('columnheader')
+      const sessionHeaders = headers.filter((h) => !h.textContent?.match(/staff|overall/i))
+
+      // Should be chronological: Taste of Camp, Session 1, Session 2
+      expect(sessionHeaders[0]!.textContent).toBe('Taste of Camp')
+      expect(sessionHeaders[1]!.textContent).toBe('Session 1')
+      expect(sessionHeaders[2]!.textContent).toBe('Session 2')
     })
   })
 })
