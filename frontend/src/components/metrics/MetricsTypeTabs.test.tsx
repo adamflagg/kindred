@@ -162,5 +162,19 @@ describe('MetricsTypeTabs', () => {
       // The nav should have justify-between class for proper layout
       expect(nav.querySelector('.justify-between')).toBeInTheDocument()
     })
+
+    it('hides session selector on bunk analysis route', () => {
+      renderWithRouter('/metrics/retention/bunks')
+
+      // Session selector should NOT be visible — bunk analysis uses unfiltered data
+      expect(screen.queryByText('At Camp')).not.toBeInTheDocument()
+    })
+
+    it('shows session selector on other retention routes', () => {
+      renderWithRouter('/metrics/retention/flow')
+
+      // Session selector should be present on non-bunk retention routes
+      expect(screen.getByText('At Camp')).toBeInTheDocument()
+    })
   })
 })

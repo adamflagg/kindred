@@ -110,4 +110,17 @@ describe('BunkRetentionPage', () => {
 
     expect(screen.getByText(/no.*data/i)).toBeInTheDocument()
   })
+
+  it('shows empty message when data exists but by_session_bunk is missing', () => {
+    ;(useRetentionMetrics as Mock).mockReturnValue({
+      data: { overall: { base_count: 100, returned_count: 80, retention_rate: 0.8 } },
+      isLoading: false,
+      error: null,
+    })
+
+    renderPage()
+
+    // Data exists but by_session_bunk is undefined — should show empty message, not blank
+    expect(screen.getByText('No bunk retention data available')).toBeInTheDocument()
+  })
 })
