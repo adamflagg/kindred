@@ -24,6 +24,7 @@ interface ChartDataItem {
   name: string
   value: number
   percentage?: number
+  [key: string]: string | number | undefined
 }
 
 interface ComparisonBarChartProps {
@@ -34,6 +35,8 @@ interface ComparisonBarChartProps {
   compareYear: number
   height?: number
   className?: string
+  /** Separate key for matching items between datasets (default: match by 'name') */
+  matchKey?: string
 }
 
 export function ComparisonBarChart({
@@ -44,6 +47,7 @@ export function ComparisonBarChart({
   compareYear,
   height = 300,
   className = '',
+  matchKey,
 }: ComparisonBarChartProps) {
   if (primaryData.length === 0 && comparisonData.length === 0) {
     return (
@@ -56,19 +60,24 @@ export function ComparisonBarChart({
     )
   }
 
-  // Merge datasets by name
-  const compareMap = new Map(comparisonData.map((d) => [d.name, d.value]))
-  const allNames = new Set([
-    ...primaryData.map((d) => d.name),
-    ...comparisonData.map((d) => d.name),
+  // Merge datasets by matchKey (or name)
+  const getKey = (d: ChartDataItem) =>
+    matchKey ? String(d[matchKey] ?? d.name) : d.name
+  const compareMap = new Map(comparisonData.map((d) => [getKey(d), d.value]))
+  const allKeys = new Set([
+    ...primaryData.map((d) => getKey(d)),
+    ...comparisonData.map((d) => getKey(d)),
   ])
 
-  const mergedData = Array.from(allNames).map((name) => {
-    const primary = primaryData.find((d) => d.name === name)
+  const mergedData = Array.from(allKeys).map((key) => {
+    const primary = primaryData.find((d) => getKey(d) === key)
+    const comp = comparisonData.find((d) => getKey(d) === key)
+    // Display name: primary year wins, fall back to compare
+    const displayName = primary?.name ?? comp?.name ?? key
     return {
-      name,
+      name: displayName,
       [String(primaryYear)]: primary?.value ?? 0,
-      [String(compareYear)]: compareMap.get(name) ?? 0,
+      [String(compareYear)]: compareMap.get(key) ?? 0,
     }
   })
 

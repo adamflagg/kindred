@@ -82,6 +82,7 @@ export function transformSessionData(
     name: getSessionChartLabel(s.session_name, undefined, sessionDateLookup),
     value: s.count,
     percentage: s.utilization ?? 0,
+    id: String(s.session_cm_id),
   }))
 }
 

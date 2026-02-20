@@ -29,31 +29,41 @@ export interface DeltaResult {
 export function mergeDataForComparison<T extends Record<string, unknown>>(
   primaryData: T[],
   compareData: T[],
-  nameKey: string = 'name'
+  nameKey: string = 'name',
+  matchKey?: string
 ): ComparisonMergedItem[] {
-  const primaryMap = new Map<string, number>()
-  const compareMap = new Map<string, number>()
+  const mk = matchKey ?? nameKey
+
+  // Map: matchKeyValue → { displayName, value }
+  const primaryMap = new Map<string, { displayName: string; value: number }>()
+  const compareMap = new Map<string, { displayName: string; value: number }>()
 
   for (const item of primaryData) {
-    const name = String(item[nameKey] ?? '')
-    primaryMap.set(name, (item['value'] as number) ?? 0)
+    const key = String(item[mk] ?? '')
+    const displayName = String(item[nameKey] ?? '')
+    primaryMap.set(key, { displayName, value: (item['value'] as number) ?? 0 })
   }
 
   for (const item of compareData) {
-    const name = String(item[nameKey] ?? '')
-    compareMap.set(name, (item['value'] as number) ?? 0)
+    const key = String(item[mk] ?? '')
+    const displayName = String(item[nameKey] ?? '')
+    compareMap.set(key, { displayName, value: (item['value'] as number) ?? 0 })
   }
 
-  // Collect all unique names, primary first then compare-only
-  const allNames = new Set<string>()
-  for (const name of primaryMap.keys()) allNames.add(name)
-  for (const name of compareMap.keys()) allNames.add(name)
+  // Collect all unique match keys, primary first then compare-only
+  const allKeys = new Set<string>()
+  for (const key of primaryMap.keys()) allKeys.add(key)
+  for (const key of compareMap.keys()) allKeys.add(key)
 
   const result: ComparisonMergedItem[] = []
-  for (const name of allNames) {
-    const pv = primaryMap.get(name) ?? 0
-    const cv = compareMap.get(name) ?? 0
+  for (const key of allKeys) {
+    const pEntry = primaryMap.get(key)
+    const cEntry = compareMap.get(key)
+    const pv = pEntry?.value ?? 0
+    const cv = cEntry?.value ?? 0
     const change = pv - cv
+    // Primary year's display name wins; fall back to compare's
+    const displayName = pEntry?.displayName ?? cEntry?.displayName ?? key
 
     let changePercent: number | null = null
     if (cv !== 0) {
@@ -64,7 +74,7 @@ export function mergeDataForComparison<T extends Record<string, unknown>>(
     }
     // else cv===0, pv>0 → null (can't calculate percent from zero base)
 
-    result.push({ name, primaryValue: pv, compareValue: cv, change, changePercent })
+    result.push({ name: displayName, primaryValue: pv, compareValue: cv, change, changePercent })
   }
 
   return result

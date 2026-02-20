@@ -214,165 +214,345 @@ export default function RegistrationOverview() {
         />
       </div>
 
-      {/* Charts Row 1: Gender */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <BreakdownChart
-          title="Enrollment by Gender"
-          data={genderChartData}
-          type="pie"
-          showPercentage
-          height={250}
-          breakdownType="gender"
-          onSegmentClick={setFilter}
-        />
-        {/* Gender by Grade stacked bar chart */}
-        <GenderByGradeChart
-          data={data.by_gender_grade ?? []}
-          title="Gender by Grade"
-          height={250}
-          onBarClick={setFilter}
-        />
-      </div>
-
-      {/* Gender Comparison Table */}
-      {isComparing && compData && (
-        <ComparisonSummaryTable
-          title="Gender Comparison"
-          primaryYear={currentYear}
-          compareYear={compareYear!}
-          primaryData={genderChartData}
-          compareData={transformGenderData(compData.by_gender)}
-        />
-      )}
-
-      {/* Charts Row 2: New vs Returning, Grade */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <BreakdownChart
-          title="New vs Returning Campers"
-          data={newVsReturningData}
-          type="pie"
-          showPercentage
-          height={250}
-          breakdownType="returning_status"
-          onSegmentClick={(filter) => {
-            // Map display labels to breakdown values
-            const value = filter.label === 'New Campers' ? 'new' : 'returning'
-            setFilter({ ...filter, type: 'returning_status', value })
-          }}
-        />
-        <BreakdownChart
-          title="Enrollment by Grade"
-          data={gradeChartData}
-          type="bar"
-          height={300}
-          breakdownType="grade"
-          onSegmentClick={setFilter}
-        />
-      </div>
-
-      {/* Grade Comparison Table */}
-      {isComparing && compData && (
-        <ComparisonSummaryTable
-          title="Grade Comparison"
-          primaryYear={currentYear}
-          compareYear={compareYear!}
-          primaryData={gradeChartData}
-          compareData={transformGradeData(compData.by_grade)}
-        />
-      )}
-
-      {/* Charts Row 3: Session, Session Length (hidden when single session selected) */}
-      {!selectedSessionCmId && (
+      {/* Charts Row 1: Gender + Gender by Grade */}
+      {isComparing && compData ? (
+        <>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <BreakdownChart
+              title={`${currentYear} Gender`}
+              data={genderChartData}
+              type="pie"
+              showPercentage
+              height={250}
+              breakdownType="gender"
+              onSegmentClick={setFilter}
+            />
+            <BreakdownChart
+              title={`${compareYear} Gender`}
+              data={transformGenderData(compData.by_gender)}
+              type="pie"
+              showPercentage
+              height={250}
+            />
+          </div>
+          <ComparisonSummaryTable
+            title="Gender Comparison"
+            primaryYear={currentYear}
+            compareYear={compareYear!}
+            primaryData={genderChartData}
+            compareData={transformGenderData(compData.by_gender)}
+          />
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <GenderByGradeChart
+              data={data.by_gender_grade ?? []}
+              title={`${currentYear} Gender by Grade`}
+              height={250}
+              onBarClick={setFilter}
+            />
+            <GenderByGradeChart
+              data={compData.by_gender_grade ?? []}
+              title={`${compareYear} Gender by Grade`}
+              height={250}
+            />
+          </div>
+        </>
+      ) : (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <BreakdownChart
-            title="Enrollment by Session"
-            data={sessionChartData}
-            type="bar"
-            height={350}
-            breakdownType="session"
+            title="Enrollment by Gender"
+            data={genderChartData}
+            type="pie"
+            showPercentage
+            height={250}
+            breakdownType="gender"
             onSegmentClick={setFilter}
           />
-          <SessionLengthBySessionChart
-            data={data.by_session_length_by_session ?? []}
-            title="Enrollment by Session Length"
-            height={350}
-            sessionDateLookup={sessionDateLookup}
-            sessionTypeLookup={sessionTypeLookup}
-            onCategoryClick={(lengthCategory) =>
-              setFilter({
-                type: 'session_length',
-                value: lengthCategory,
-                label: `${lengthCategory} Sessions`,
-              })
-            }
+          <GenderByGradeChart
+            data={data.by_gender_grade ?? []}
+            title="Gender by Grade"
+            height={250}
+            onBarClick={setFilter}
           />
         </div>
       )}
 
-      {/* Session Enrollment Comparison Table */}
-      {isComparing && compData && (
-        <ComparisonSummaryTable
-          title="Session Enrollment Comparison"
-          primaryYear={currentYear}
-          compareYear={compareYear!}
-          primaryData={sessionChartData}
-          compareData={transformSessionData(
-            compData.by_session,
-            sessionDateLookup,
-            sessionTypeLookup
-          )}
-        />
-      )}
-
-      {/* Charts Row 4: Years at Camp, First Summer Year */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <BreakdownChart
-          title={
-            summerYearsData.length > 0
-              ? 'Enrollment by Summers at Camp'
-              : 'Enrollment by Years at Camp'
-          }
-          data={yearsChartData}
-          type="bar"
-          height={300}
-          breakdownType="years_at_camp"
-          onSegmentClick={setFilter}
-        />
-        {firstSummerYearData.length > 0 && (
+      {/* Charts Row 2: New vs Returning + Grade */}
+      {isComparing && compData ? (
+        <>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <BreakdownChart
+              title={`${currentYear} New vs Returning`}
+              data={newVsReturningData}
+              type="pie"
+              showPercentage
+              height={250}
+              breakdownType="returning_status"
+              onSegmentClick={(filter) => {
+                const value = filter.label === 'New Campers' ? 'new' : 'returning'
+                setFilter({ ...filter, type: 'returning_status', value })
+              }}
+            />
+            <BreakdownChart
+              title={`${compareYear} New vs Returning`}
+              data={transformNewVsReturningData(compData.new_vs_returning)}
+              type="pie"
+              showPercentage
+              height={250}
+            />
+          </div>
+          <ComparisonSummaryTable
+            title="New vs Returning Comparison"
+            primaryYear={currentYear}
+            compareYear={compareYear!}
+            primaryData={newVsReturningData}
+            compareData={transformNewVsReturningData(compData.new_vs_returning)}
+          />
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <BreakdownChart
+              title={`${currentYear} Grade`}
+              data={gradeChartData}
+              type="bar"
+              height={300}
+              breakdownType="grade"
+              onSegmentClick={setFilter}
+            />
+            <BreakdownChart
+              title={`${compareYear} Grade`}
+              data={transformGradeData(compData.by_grade)}
+              type="bar"
+              height={300}
+            />
+          </div>
+          <ComparisonSummaryTable
+            title="Grade Comparison"
+            primaryYear={currentYear}
+            compareYear={compareYear!}
+            primaryData={gradeChartData}
+            compareData={transformGradeData(compData.by_grade)}
+          />
+        </>
+      ) : (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <BreakdownChart
-            title="Enrollment by First Summer Year"
-            data={firstSummerYearData}
-            type="bar"
-            height={300}
-            breakdownType="first_summer_year"
+            title="New vs Returning Campers"
+            data={newVsReturningData}
+            type="pie"
+            showPercentage
+            height={250}
+            breakdownType="returning_status"
             onSegmentClick={(filter) => {
-              setFilter({
-                type: 'first_summer_year',
-                value: filter.value,
-                label: `First Summer ${filter.value}`,
-              })
+              const value = filter.label === 'New Campers' ? 'new' : 'returning'
+              setFilter({ ...filter, type: 'returning_status', value })
             }}
           />
-        )}
-      </div>
+          <BreakdownChart
+            title="Enrollment by Grade"
+            data={gradeChartData}
+            type="bar"
+            height={300}
+            breakdownType="grade"
+            onSegmentClick={setFilter}
+          />
+        </div>
+      )}
 
-      {/* Summers at Camp Comparison Table */}
-      {isComparing && compData && (
-        <ComparisonSummaryTable
-          title="Summers at Camp Comparison"
-          primaryYear={currentYear}
-          compareYear={compareYear!}
-          primaryData={yearsChartData}
-          compareData={
-            (compData.by_summer_years?.length ?? 0) > 0
-              ? transformSummerYearsData(compData.by_summer_years ?? [])
-              : compData.by_years_at_camp.map((y) => ({
-                  name: y.years === 1 ? '1 year' : `${y.years} years`,
-                  value: y.count,
-                  percentage: y.percentage,
-                }))
-          }
-        />
+      {/* Charts Row 3: Session + Session Length (hidden when single session selected) */}
+      {!selectedSessionCmId && (
+        <>
+          {isComparing && compData ? (
+            <>
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <BreakdownChart
+                  title={`${currentYear} Session`}
+                  data={sessionChartData}
+                  type="bar"
+                  height={350}
+                  breakdownType="session"
+                  onSegmentClick={setFilter}
+                />
+                <BreakdownChart
+                  title={`${compareYear} Session`}
+                  data={transformSessionData(
+                    compData.by_session,
+                    sessionDateLookup,
+                    sessionTypeLookup
+                  )}
+                  type="bar"
+                  height={350}
+                />
+              </div>
+              <ComparisonSummaryTable
+                title="Session Enrollment Comparison"
+                primaryYear={currentYear}
+                compareYear={compareYear!}
+                primaryData={sessionChartData}
+                compareData={transformSessionData(
+                  compData.by_session,
+                  sessionDateLookup,
+                  sessionTypeLookup
+                )}
+                matchKey="id"
+              />
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <SessionLengthBySessionChart
+                  data={data.by_session_length_by_session ?? []}
+                  title={`${currentYear} Session Length`}
+                  height={350}
+                  sessionDateLookup={sessionDateLookup}
+                  sessionTypeLookup={sessionTypeLookup}
+                  onCategoryClick={(lengthCategory) =>
+                    setFilter({
+                      type: 'session_length',
+                      value: lengthCategory,
+                      label: `${lengthCategory} Sessions`,
+                    })
+                  }
+                />
+                <SessionLengthBySessionChart
+                  data={compData.by_session_length_by_session ?? []}
+                  title={`${compareYear} Session Length`}
+                  height={350}
+                  sessionDateLookup={sessionDateLookup}
+                  sessionTypeLookup={sessionTypeLookup}
+                />
+              </div>
+            </>
+          ) : (
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <BreakdownChart
+                title="Enrollment by Session"
+                data={sessionChartData}
+                type="bar"
+                height={350}
+                breakdownType="session"
+                onSegmentClick={setFilter}
+              />
+              <SessionLengthBySessionChart
+                data={data.by_session_length_by_session ?? []}
+                title="Enrollment by Session Length"
+                height={350}
+                sessionDateLookup={sessionDateLookup}
+                sessionTypeLookup={sessionTypeLookup}
+                onCategoryClick={(lengthCategory) =>
+                  setFilter({
+                    type: 'session_length',
+                    value: lengthCategory,
+                    label: `${lengthCategory} Sessions`,
+                  })
+                }
+              />
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Charts Row 4: Years at Camp + First Summer Year */}
+      {isComparing && compData ? (
+        <>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <BreakdownChart
+              title={`${currentYear} ${summerYearsData.length > 0 ? 'Summers at Camp' : 'Years at Camp'}`}
+              data={yearsChartData}
+              type="bar"
+              height={300}
+              breakdownType="years_at_camp"
+              onSegmentClick={setFilter}
+            />
+            <BreakdownChart
+              title={`${compareYear} ${(compData.by_summer_years?.length ?? 0) > 0 ? 'Summers at Camp' : 'Years at Camp'}`}
+              data={
+                (compData.by_summer_years?.length ?? 0) > 0
+                  ? transformSummerYearsData(compData.by_summer_years ?? [])
+                  : compData.by_years_at_camp.map((y) => ({
+                      name: y.years === 1 ? '1 year' : `${y.years} years`,
+                      value: y.count,
+                      percentage: y.percentage,
+                    }))
+              }
+              type="bar"
+              height={300}
+            />
+          </div>
+          <ComparisonSummaryTable
+            title="Summers at Camp Comparison"
+            primaryYear={currentYear}
+            compareYear={compareYear!}
+            primaryData={yearsChartData}
+            compareData={
+              (compData.by_summer_years?.length ?? 0) > 0
+                ? transformSummerYearsData(compData.by_summer_years ?? [])
+                : compData.by_years_at_camp.map((y) => ({
+                    name: y.years === 1 ? '1 year' : `${y.years} years`,
+                    value: y.count,
+                    percentage: y.percentage,
+                  }))
+            }
+          />
+          {firstSummerYearData.length > 0 && (
+            <>
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <BreakdownChart
+                  title={`${currentYear} First Summer Year`}
+                  data={firstSummerYearData}
+                  type="bar"
+                  height={300}
+                  breakdownType="first_summer_year"
+                  onSegmentClick={(filter) => {
+                    setFilter({
+                      type: 'first_summer_year',
+                      value: filter.value,
+                      label: `First Summer ${filter.value}`,
+                    })
+                  }}
+                />
+                <BreakdownChart
+                  title={`${compareYear} First Summer Year`}
+                  data={transformFirstSummerYearData(compData.by_first_summer_year)}
+                  type="bar"
+                  height={300}
+                />
+              </div>
+              <ComparisonSummaryTable
+                title="First Summer Year Comparison"
+                primaryYear={currentYear}
+                compareYear={compareYear!}
+                primaryData={firstSummerYearData}
+                compareData={transformFirstSummerYearData(compData.by_first_summer_year)}
+              />
+            </>
+          )}
+        </>
+      ) : (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <BreakdownChart
+            title={
+              summerYearsData.length > 0
+                ? 'Enrollment by Summers at Camp'
+                : 'Enrollment by Years at Camp'
+            }
+            data={yearsChartData}
+            type="bar"
+            height={300}
+            breakdownType="years_at_camp"
+            onSegmentClick={setFilter}
+          />
+          {firstSummerYearData.length > 0 && (
+            <BreakdownChart
+              title="Enrollment by First Summer Year"
+              data={firstSummerYearData}
+              type="bar"
+              height={300}
+              breakdownType="first_summer_year"
+              onSegmentClick={(filter) => {
+                setFilter({
+                  type: 'first_summer_year',
+                  value: filter.value,
+                  label: `First Summer ${filter.value}`,
+                })
+              }}
+            />
+          )}
+        </div>
       )}
 
       {/* Session Details Table */}
@@ -436,7 +616,7 @@ export default function RegistrationOverview() {
                     compData &&
                     (() => {
                       const compSession = compData.by_session.find(
-                        (s) => s.session_name === session.session_name
+                        (s) => s.session_cm_id === session.session_cm_id
                       )
                       const delta = compSession ? session.count - compSession.count : null
                       return (

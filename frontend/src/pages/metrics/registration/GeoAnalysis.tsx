@@ -9,7 +9,7 @@
  * GeoComparisonDetailList tables when compareYear is active.
  */
 
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { Globe, Loader2, AlertCircle } from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useComparisonRegistrationData } from '../../../hooks/useComparisonRegistrationData'
@@ -60,6 +60,14 @@ export default function GeoAnalysis() {
   // Get session filter from context (unified selector is in MetricsTypeTabs)
   const { selectedSessionCmId, sessionTypesParam, activeSessionTypes, compareYear, isComparing } =
     useMetricsSession()
+
+  // Force sources/gaps off when entering compare mode
+  useEffect(() => {
+    if (isComparing) {
+      setShowSources(false)
+      setShowGaps(false)
+    }
+  }, [isComparing])
 
   // Drilldown hook for modal functionality
   const { setFilter, DrilldownModal } = useDrilldown({
@@ -291,6 +299,7 @@ export default function GeoAnalysis() {
             showGaps={showGaps}
             onToggleGaps={() => setShowGaps((v) => !v)}
             isAdmin={isAdmin}
+            isComparing={isComparing}
           />
 
           {/* Map - hidden in comparison mode */}
@@ -315,7 +324,7 @@ export default function GeoAnalysis() {
 
           {/* Detail Lists - comparison or single year */}
           {isComparing && compGeoData ? (
-            <div className="space-y-3">
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
               {activeLayers.has('city') &&
                 (geoData.city.length > 0 || compGeoData.city.length > 0) && (
                   <GeoComparisonDetailList
@@ -358,7 +367,7 @@ export default function GeoAnalysis() {
                 )}
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
               {activeLayers.has('city') && geoData.city.length > 0 && (
                 <GeoDetailList
                   data={geoData.city}

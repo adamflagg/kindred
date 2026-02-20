@@ -147,71 +147,193 @@ export default function WaitlistAnalysis() {
               />
             </div>
 
-            {/* Session Chart (full width) */}
+            {/* Session Chart */}
             {data.by_session.length > 0 && (
-              <WaitlistBySessionChart
-                data={sortSessionDataByCampThenQuest(
-                  data.by_session,
-                  sessionDateLookup,
-                  sessionTypeLookup
+              <>
+                {isComparing && compData ? (
+                  <>
+                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                      <WaitlistBySessionChart
+                        data={sortSessionDataByCampThenQuest(
+                          data.by_session,
+                          sessionDateLookup,
+                          sessionTypeLookup
+                        )}
+                        onBarClick={setFilter}
+                        sessionDateLookup={sessionDateLookup}
+                        sessionTypeLookup={sessionTypeLookup}
+                        title={`${currentYear} Waitlist by Session`}
+                      />
+                      <WaitlistBySessionChart
+                        data={sortSessionDataByCampThenQuest(
+                          compData.by_session,
+                          sessionDateLookup,
+                          sessionTypeLookup
+                        )}
+                        sessionDateLookup={sessionDateLookup}
+                        sessionTypeLookup={sessionTypeLookup}
+                        title={`${compareYear} Waitlist by Session`}
+                      />
+                    </div>
+                    <ComparisonSummaryTable
+                      title="Waitlist by Session Comparison"
+                      primaryYear={currentYear}
+                      compareYear={compareYear!}
+                      primaryData={sortSessionDataByCampThenQuest(
+                        data.by_session,
+                        sessionDateLookup,
+                        sessionTypeLookup
+                      ).map((s) => ({
+                        name: s.session_name,
+                        value: s.waitlisted,
+                        id: String(s.session_cm_id),
+                      }))}
+                      compareData={sortSessionDataByCampThenQuest(
+                        compData.by_session,
+                        sessionDateLookup,
+                        sessionTypeLookup
+                      ).map((s) => ({
+                        name: s.session_name,
+                        value: s.waitlisted,
+                        id: String(s.session_cm_id),
+                      }))}
+                      matchKey="id"
+                    />
+                  </>
+                ) : (
+                  <WaitlistBySessionChart
+                    data={sortSessionDataByCampThenQuest(
+                      data.by_session,
+                      sessionDateLookup,
+                      sessionTypeLookup
+                    )}
+                    onBarClick={setFilter}
+                    sessionDateLookup={sessionDateLookup}
+                    sessionTypeLookup={sessionTypeLookup}
+                  />
                 )}
-                onBarClick={setFilter}
-                sessionDateLookup={sessionDateLookup}
-                sessionTypeLookup={sessionTypeLookup}
-              />
+              </>
             )}
 
             {/* Grade + Gender Charts Row */}
             {(gradeChartData.length > 0 || genderChartData.length > 0) && (
-              <div className="grid gap-6 lg:grid-cols-2">
-                {gradeChartData.length > 0 && (
-                  <BreakdownChart
-                    data={gradeChartData}
-                    title="Grade Distribution"
-                    type="bar"
-                    height={300}
-                    breakdownType="grade"
-                    onSegmentClick={(filter) =>
-                      setFilter({
-                        ...filter,
-                        statusOverride: ['waitlisted'],
-                        waitlistContext: true,
-                      })
-                    }
-                  />
+              <>
+                {isComparing && compData ? (
+                  <>
+                    {gradeChartData.length > 0 && (
+                      <>
+                        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                          <BreakdownChart
+                            data={gradeChartData}
+                            title={`${currentYear} Grade Distribution`}
+                            type="bar"
+                            height={300}
+                            breakdownType="grade"
+                            onSegmentClick={(filter) =>
+                              setFilter({
+                                ...filter,
+                                statusOverride: ['waitlisted'],
+                                waitlistContext: true,
+                              })
+                            }
+                          />
+                          <BreakdownChart
+                            data={(compData.by_grade || []).map((g) => ({
+                              name: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
+                              value: g.count,
+                              percentage: g.percentage,
+                            }))}
+                            title={`${compareYear} Grade Distribution`}
+                            type="bar"
+                            height={300}
+                          />
+                        </div>
+                        <ComparisonSummaryTable
+                          title="Grade Distribution Comparison"
+                          primaryYear={currentYear}
+                          compareYear={compareYear!}
+                          primaryData={gradeChartData}
+                          compareData={(compData.by_grade || []).map((g) => ({
+                            name: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
+                            value: g.count,
+                          }))}
+                        />
+                      </>
+                    )}
+                    {genderChartData.length > 0 && (
+                      <>
+                        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                          <BreakdownChart
+                            data={genderChartData}
+                            title={`${currentYear} Gender Distribution`}
+                            type="pie"
+                            height={300}
+                            showPercentage
+                            breakdownType="gender"
+                            onSegmentClick={(filter) =>
+                              setFilter({
+                                ...filter,
+                                statusOverride: ['waitlisted'],
+                                waitlistContext: true,
+                              })
+                            }
+                          />
+                          <BreakdownChart
+                            data={transformGenderData(compData.by_gender)}
+                            title={`${compareYear} Gender Distribution`}
+                            type="pie"
+                            height={300}
+                            showPercentage
+                          />
+                        </div>
+                        <ComparisonSummaryTable
+                          title="Gender Distribution Comparison"
+                          primaryYear={currentYear}
+                          compareYear={compareYear!}
+                          primaryData={genderChartData}
+                          compareData={transformGenderData(compData.by_gender)}
+                        />
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <div className="grid gap-6 lg:grid-cols-2">
+                    {gradeChartData.length > 0 && (
+                      <BreakdownChart
+                        data={gradeChartData}
+                        title="Grade Distribution"
+                        type="bar"
+                        height={300}
+                        breakdownType="grade"
+                        onSegmentClick={(filter) =>
+                          setFilter({
+                            ...filter,
+                            statusOverride: ['waitlisted'],
+                            waitlistContext: true,
+                          })
+                        }
+                      />
+                    )}
+                    {genderChartData.length > 0 && (
+                      <BreakdownChart
+                        data={genderChartData}
+                        title="Gender Distribution"
+                        type="pie"
+                        height={300}
+                        showPercentage
+                        breakdownType="gender"
+                        onSegmentClick={(filter) =>
+                          setFilter({
+                            ...filter,
+                            statusOverride: ['waitlisted'],
+                            waitlistContext: true,
+                          })
+                        }
+                      />
+                    )}
+                  </div>
                 )}
-                {genderChartData.length > 0 && (
-                  <BreakdownChart
-                    data={genderChartData}
-                    title="Gender Distribution"
-                    type="pie"
-                    height={300}
-                    showPercentage
-                    breakdownType="gender"
-                    onSegmentClick={(filter) =>
-                      setFilter({
-                        ...filter,
-                        statusOverride: ['waitlisted'],
-                        waitlistContext: true,
-                      })
-                    }
-                  />
-                )}
-              </div>
-            )}
-
-            {/* Grade Comparison Table */}
-            {isComparing && compData && (
-              <ComparisonSummaryTable
-                title="Grade Distribution Comparison"
-                primaryYear={currentYear}
-                compareYear={compareYear!}
-                primaryData={gradeChartData}
-                compareData={(compData.by_grade || []).map((g) => ({
-                  name: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
-                  value: g.count,
-                }))}
-              />
+              </>
             )}
 
             {/* Session Details Table */}
@@ -291,7 +413,7 @@ export default function WaitlistAnalysis() {
                             compData &&
                             (() => {
                               const compSession = compData.by_session.find(
-                                (s) => s.session_name === session.session_name
+                                (s) => s.session_cm_id === session.session_cm_id
                               )
                               const delta = compSession
                                 ? session.waitlisted - compSession.waitlisted

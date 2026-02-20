@@ -22,8 +22,10 @@ interface ComparisonSummaryTableProps {
   primaryData: DataItem[]
   compareData: DataItem[]
   className?: string
-  /** Key to use for matching items between datasets (default: 'name') */
+  /** Key to use for display name lookup (default: 'name') */
   nameKey?: string
+  /** Separate key for matching items between datasets (default: nameKey) */
+  matchKey?: string
 }
 
 export function ComparisonSummaryTable({
@@ -34,8 +36,9 @@ export function ComparisonSummaryTable({
   compareData,
   className = '',
   nameKey = 'name',
+  matchKey,
 }: ComparisonSummaryTableProps) {
-  const merged = mergeDataForComparison(primaryData, compareData, nameKey)
+  const merged = mergeDataForComparison(primaryData, compareData, nameKey, matchKey)
 
   if (merged.length === 0) {
     return (
