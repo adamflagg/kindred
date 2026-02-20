@@ -21,7 +21,13 @@ describe('buildStaffRetentionData', () => {
     it('should return empty when bunkStaff is empty', () => {
       const bunkStaff = new Map<string, BunkStaffInfo[]>()
       const retention: RetentionBySessionBunk[] = [
-        { session: 'Session 1', bunk: 'B-1', base_count: 10, returned_count: 6, retention_rate: 0.6 },
+        {
+          session: 'Session 1',
+          bunk: 'B-1',
+          base_count: 10,
+          returned_count: 6,
+          retention_rate: 0.6,
+        },
       ]
 
       const result = buildStaffRetentionData(bunkStaff, retention)
@@ -47,7 +53,13 @@ describe('buildStaffRetentionData', () => {
         ['Session 1|B-1', [{ name: 'Emma Johnson', personId: '101' }]],
       ])
       const retention: RetentionBySessionBunk[] = [
-        { session: 'Session 1', bunk: 'B-1', base_count: 10, returned_count: 7, retention_rate: 0.7 },
+        {
+          session: 'Session 1',
+          bunk: 'B-1',
+          base_count: 10,
+          returned_count: 7,
+          retention_rate: 0.7,
+        },
       ]
 
       const result = buildStaffRetentionData(bunkStaff, retention)
@@ -65,7 +77,13 @@ describe('buildStaffRetentionData', () => {
         ['Session 1|B-1', [{ name: 'Emma Johnson', personId: '101' }]],
       ])
       const retention: RetentionBySessionBunk[] = [
-        { session: 'Session 1', bunk: 'B-1', base_count: 10, returned_count: 7, retention_rate: 0.7 },
+        {
+          session: 'Session 1',
+          bunk: 'B-1',
+          base_count: 10,
+          returned_count: 7,
+          retention_rate: 0.7,
+        },
       ]
 
       const result = buildStaffRetentionData(bunkStaff, retention)
@@ -86,8 +104,20 @@ describe('buildStaffRetentionData', () => {
         ['Session 2|B-5', [{ name: 'Liam Garcia', personId: '102' }]],
       ])
       const retention: RetentionBySessionBunk[] = [
-        { session: 'Session 1', bunk: 'B-3', base_count: 10, returned_count: 8, retention_rate: 0.8 },
-        { session: 'Session 2', bunk: 'B-5', base_count: 20, returned_count: 10, retention_rate: 0.5 },
+        {
+          session: 'Session 1',
+          bunk: 'B-3',
+          base_count: 10,
+          returned_count: 8,
+          retention_rate: 0.8,
+        },
+        {
+          session: 'Session 2',
+          bunk: 'B-5',
+          base_count: 20,
+          returned_count: 10,
+          retention_rate: 0.5,
+        },
       ]
 
       const result = buildStaffRetentionData(bunkStaff, retention)
@@ -106,8 +136,20 @@ describe('buildStaffRetentionData', () => {
         ['Session 3|G-4', [{ name: 'Olivia Chen', personId: '103' }]],
       ])
       const retention: RetentionBySessionBunk[] = [
-        { session: 'Session 1', bunk: 'G-2', base_count: 12, returned_count: 9, retention_rate: 0.75 },
-        { session: 'Session 3', bunk: 'G-4', base_count: 8, returned_count: 2, retention_rate: 0.25 },
+        {
+          session: 'Session 1',
+          bunk: 'G-2',
+          base_count: 12,
+          returned_count: 9,
+          retention_rate: 0.75,
+        },
+        {
+          session: 'Session 3',
+          bunk: 'G-4',
+          base_count: 8,
+          returned_count: 2,
+          retention_rate: 0.25,
+        },
       ]
 
       const result = buildStaffRetentionData(bunkStaff, retention)
@@ -126,8 +168,20 @@ describe('buildStaffRetentionData', () => {
         ['Session 1|G-1', [{ name: 'Olivia Chen', personId: '103' }]],
       ])
       const retention: RetentionBySessionBunk[] = [
-        { session: 'Session 1', bunk: 'B-1', base_count: 10, returned_count: 7, retention_rate: 0.7 },
-        { session: 'Session 1', bunk: 'G-1', base_count: 12, returned_count: 6, retention_rate: 0.5 },
+        {
+          session: 'Session 1',
+          bunk: 'B-1',
+          base_count: 10,
+          returned_count: 7,
+          retention_rate: 0.7,
+        },
+        {
+          session: 'Session 1',
+          bunk: 'G-1',
+          base_count: 12,
+          returned_count: 6,
+          retention_rate: 0.5,
+        },
       ]
 
       const result = buildStaffRetentionData(bunkStaff, retention)
@@ -148,7 +202,13 @@ describe('buildStaffRetentionData', () => {
         ],
       ])
       const retention: RetentionBySessionBunk[] = [
-        { session: 'Session 1', bunk: 'B-1', base_count: 10, returned_count: 7, retention_rate: 0.7 },
+        {
+          session: 'Session 1',
+          bunk: 'B-1',
+          base_count: 10,
+          returned_count: 7,
+          retention_rate: 0.7,
+        },
       ]
 
       const result = buildStaffRetentionData(bunkStaff, retention)
@@ -169,7 +229,13 @@ describe('buildStaffRetentionData', () => {
         ['Session 1 AG|AG-8', [{ name: 'Noah Williams', personId: '104' }]],
       ])
       const retention: RetentionBySessionBunk[] = [
-        { session: 'Session 1', bunk: 'AG-8', base_count: 6, returned_count: 4, retention_rate: 0.667 },
+        {
+          session: 'Session 1',
+          bunk: 'AG-8',
+          base_count: 6,
+          returned_count: 4,
+          retention_rate: 0.667,
+        },
       ]
 
       const result = buildStaffRetentionData(bunkStaff, retention)
@@ -194,7 +260,13 @@ describe('buildStaffRetentionData', () => {
           returned_count: 4,
           retention_rate: 0.667,
         },
-        { session: 'Session 1', bunk: 'AG-8', base_count: 10, returned_count: 5, retention_rate: 0.5 },
+        {
+          session: 'Session 1',
+          bunk: 'AG-8',
+          base_count: 10,
+          returned_count: 5,
+          retention_rate: 0.5,
+        },
       ]
 
       const result = buildStaffRetentionData(bunkStaff, retention)
@@ -213,9 +285,27 @@ describe('buildStaffRetentionData', () => {
         ['Session 2|G-1', [{ name: 'Olivia Chen', personId: '103' }]],
       ])
       const retention: RetentionBySessionBunk[] = [
-        { session: 'Session 3', bunk: 'B-1', base_count: 10, returned_count: 6, retention_rate: 0.6 },
-        { session: 'Session 1', bunk: 'B-2', base_count: 10, returned_count: 8, retention_rate: 0.8 },
-        { session: 'Session 2', bunk: 'G-1', base_count: 10, returned_count: 5, retention_rate: 0.5 },
+        {
+          session: 'Session 3',
+          bunk: 'B-1',
+          base_count: 10,
+          returned_count: 6,
+          retention_rate: 0.6,
+        },
+        {
+          session: 'Session 1',
+          bunk: 'B-2',
+          base_count: 10,
+          returned_count: 8,
+          retention_rate: 0.8,
+        },
+        {
+          session: 'Session 2',
+          bunk: 'G-1',
+          base_count: 10,
+          returned_count: 5,
+          retention_rate: 0.5,
+        },
       ]
 
       const result = buildStaffRetentionData(bunkStaff, retention)
@@ -229,8 +319,20 @@ describe('buildStaffRetentionData', () => {
         ['Session 1 AG|AG-8', [{ name: 'Noah Williams', personId: '104' }]],
       ])
       const retention: RetentionBySessionBunk[] = [
-        { session: 'Session 1', bunk: 'B-1', base_count: 10, returned_count: 6, retention_rate: 0.6 },
-        { session: 'Session 1', bunk: 'AG-8', base_count: 6, returned_count: 4, retention_rate: 0.667 },
+        {
+          session: 'Session 1',
+          bunk: 'B-1',
+          base_count: 10,
+          returned_count: 6,
+          retention_rate: 0.6,
+        },
+        {
+          session: 'Session 1',
+          bunk: 'AG-8',
+          base_count: 6,
+          returned_count: 4,
+          retention_rate: 0.667,
+        },
       ]
 
       const result = buildStaffRetentionData(bunkStaff, retention)
@@ -247,7 +349,13 @@ describe('buildStaffRetentionData', () => {
         ['Session 1|B-99', [{ name: 'Liam Garcia', personId: '102' }]], // no retention data for B-99
       ])
       const retention: RetentionBySessionBunk[] = [
-        { session: 'Session 1', bunk: 'B-1', base_count: 10, returned_count: 6, retention_rate: 0.6 },
+        {
+          session: 'Session 1',
+          bunk: 'B-1',
+          base_count: 10,
+          returned_count: 6,
+          retention_rate: 0.6,
+        },
       ]
 
       const result = buildStaffRetentionData(bunkStaff, retention)

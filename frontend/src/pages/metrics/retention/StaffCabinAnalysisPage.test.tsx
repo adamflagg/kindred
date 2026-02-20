@@ -48,7 +48,9 @@ function renderPage() {
   )
 }
 
-function makeRow(overrides: Partial<StaffRetentionRow> & { personId: string; name: string }): StaffRetentionRow {
+function makeRow(
+  overrides: Partial<StaffRetentionRow> & { personId: string; name: string }
+): StaffRetentionRow {
   return {
     sessionData: new Map(),
     overallRetention: 0,
@@ -115,7 +117,10 @@ describe('StaffCabinAnalysisPage', () => {
             totalBaseCount: 10,
             totalReturnedCount: 7,
             sessionData: new Map([
-              ['Session 1', { bunkName: 'B-1', baseCount: 10, returnedCount: 7, retentionRate: 0.7 }],
+              [
+                'Session 1',
+                { bunkName: 'B-1', baseCount: 10, returnedCount: 7, retentionRate: 0.7 },
+              ],
             ]),
           }),
         ],
@@ -234,22 +239,29 @@ describe('StaffCabinAnalysisPage', () => {
             personId: '101',
             name: 'Emma Johnson',
             overallRetention: 0.7,
-            totalBaseCount: 10,
-            totalReturnedCount: 7,
+            totalBaseCount: 30,
+            totalReturnedCount: 21,
             sessionData: new Map([
-              ['Session 1', { bunkName: 'B-1', baseCount: 10, returnedCount: 7, retentionRate: 0.7 }],
+              [
+                'Session 1',
+                { bunkName: 'B-1', baseCount: 10, returnedCount: 7, retentionRate: 0.7 },
+              ],
+              [
+                'Session 2',
+                { bunkName: 'B-3', baseCount: 20, returnedCount: 14, retentionRate: 0.7 },
+              ],
             ]),
           }),
         ],
-        sessions: ['Session 1'],
+        sessions: ['Session 1', 'Session 2'],
         isLoading: false,
         error: null,
       })
 
       renderPage()
 
-      // The "Overall" cell for 70% should have emerald/green styling
-      const overallCell = screen.getByText('70%')
+      // The overall cell has unique return counts (aggregated across sessions)
+      const overallCell = screen.getByTitle('21 of 30 returned')
       expect(overallCell.className).toMatch(/emerald/)
     })
 
@@ -260,21 +272,28 @@ describe('StaffCabinAnalysisPage', () => {
             personId: '102',
             name: 'Liam Garcia',
             overallRetention: 0.3,
-            totalBaseCount: 10,
-            totalReturnedCount: 3,
+            totalBaseCount: 30,
+            totalReturnedCount: 9,
             sessionData: new Map([
-              ['Session 1', { bunkName: 'G-1', baseCount: 10, returnedCount: 3, retentionRate: 0.3 }],
+              [
+                'Session 1',
+                { bunkName: 'G-1', baseCount: 10, returnedCount: 3, retentionRate: 0.3 },
+              ],
+              [
+                'Session 2',
+                { bunkName: 'G-3', baseCount: 20, returnedCount: 6, retentionRate: 0.3 },
+              ],
             ]),
           }),
         ],
-        sessions: ['Session 1'],
+        sessions: ['Session 1', 'Session 2'],
         isLoading: false,
         error: null,
       })
 
       renderPage()
 
-      const overallCell = screen.getByText('30%')
+      const overallCell = screen.getByTitle('9 of 30 returned')
       expect(overallCell.className).toMatch(/red/)
     })
   })
@@ -376,7 +395,10 @@ describe('StaffCabinAnalysisPage', () => {
             totalBaseCount: 10,
             totalReturnedCount: 7,
             sessionData: new Map([
-              ['Session 1', { bunkName: 'B-1', baseCount: 10, returnedCount: 7, retentionRate: 0.7 }],
+              [
+                'Session 1',
+                { bunkName: 'B-1', baseCount: 10, returnedCount: 7, retentionRate: 0.7 },
+              ],
             ]),
           }),
         ],
@@ -387,10 +409,10 @@ describe('StaffCabinAnalysisPage', () => {
 
       renderPage()
 
-      expect(screen.getByText(/retention/i)).toBeInTheDocument()
-      expect(screen.getByText(/low/i)).toBeInTheDocument()
-      expect(screen.getByText(/mid/i)).toBeInTheDocument()
-      expect(screen.getByText(/high/i)).toBeInTheDocument()
+      expect(screen.getByText('Retention:')).toBeInTheDocument()
+      expect(screen.getByText(/Low \(/)).toBeInTheDocument()
+      expect(screen.getByText(/Mid \(/)).toBeInTheDocument()
+      expect(screen.getByText(/High \(/)).toBeInTheDocument()
     })
   })
 })

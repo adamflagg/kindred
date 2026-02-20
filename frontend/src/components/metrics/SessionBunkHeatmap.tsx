@@ -15,13 +15,7 @@ import type { SessionDateLookup } from '../../utils/sessionUtils'
 import { compareByDateThenName } from '../../utils/sessionUtils'
 import type { BunkStaffInfo } from '../../hooks/useBunkStaff'
 import { BunkCellTooltip } from './BunkStaffTooltip'
-
-function getCellColor(rate: number): string {
-  const pct = Math.round(rate * 100)
-  if (pct >= 60) return 'bg-emerald-600/80 text-white'
-  if (pct >= 40) return 'bg-amber-500/80 text-white'
-  return 'bg-red-600/80 text-white'
-}
+import { getRetentionCellColor as getCellColor } from '../../utils/retentionColors'
 
 type BunkCategory = 'boys' | 'girls' | 'ag'
 

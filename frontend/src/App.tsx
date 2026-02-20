@@ -40,6 +40,9 @@ const WaitlistAnalysis = lazy(() => import('./pages/metrics/registration/Waitlis
 const RetentionOverview = lazy(() => import('./pages/metrics/retention/RetentionOverview'))
 const SessionFlowPage = lazy(() => import('./pages/metrics/retention/SessionFlowPage'))
 const BunkRetentionPage = lazy(() => import('./pages/metrics/retention/BunkRetentionPage'))
+const StaffCabinAnalysisPage = lazy(
+  () => import('./pages/metrics/retention/StaffCabinAnalysisPage')
+)
 const TrendsOverview = lazy(() => import('./pages/metrics/trends/TrendsOverview'))
 
 // Loading skeleton component for route transitions
@@ -249,6 +252,14 @@ function App() {
                                 element={
                                   <Suspense fallback={<PageSkeleton />}>
                                     <BunkRetentionPage />
+                                  </Suspense>
+                                }
+                              />
+                              <Route
+                                path="retention/staff"
+                                element={
+                                  <Suspense fallback={<PageSkeleton />}>
+                                    <StaffCabinAnalysisPage />
                                   </Suspense>
                                 }
                               />
