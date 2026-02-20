@@ -1,6 +1,6 @@
 /**
- * WaitlistBySessionChart - Stacked bar chart showing enrollment breakdown
- * for waitlisted campers per session.
+ * WaitlistBySessionChart - Horizontal stacked bar chart showing enrollment
+ * breakdown for waitlisted campers per session.
  *
  * Each bar represents a waitlisted session. Segments show:
  * - "No Enrollment" (red) - waitlisted with no other enrolled sessions
@@ -164,49 +164,36 @@ export function WaitlistBySessionChart({
     })
   }
 
-  const needsRotation = chartData.length > 3
   // Legend item count: enrolled sessions + "No Enrollment"
   const legendItemCount = enrolledSessionList.length + 1
   const isCompactLegend = legendItemCount > 6
 
-  // Custom tick that renders rotated text entirely below the axis line
-  const RotatedTick = ({ x, y, payload }: { x: number; y: number; payload: { value: string } }) => (
-    <g transform={`translate(${x},${y})`}>
-      <text
-        x={0}
-        y={0}
-        dy={12}
-        textAnchor="end"
-        fill="hsl(var(--muted-foreground))"
-        fontSize={12}
-        transform="rotate(-40)"
-      >
-        {payload.value.length > 16 ? `${payload.value.slice(0, 14)}…` : payload.value}
-      </text>
-    </g>
-  )
+  // Dynamic height: scale with number of sessions so bars aren't cramped
+  const dynamicHeight = Math.max(height, chartData.length * 45)
 
   return (
     <div className="card-lodge p-4">
       <h3 className="text-foreground mb-4 text-base font-semibold">{title}</h3>
-      <ResponsiveContainer width="100%" height={height}>
-        <BarChart data={chartData} margin={{ top: 20, right: 20, left: 0, bottom: 5 }}>
+      <ResponsiveContainer width="100%" height={dynamicHeight}>
+        <BarChart
+          data={chartData}
+          layout="vertical"
+          margin={{ top: 5, right: 40, left: 10, bottom: 5 }}
+        >
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis
-            dataKey="name"
-            className="text-xs"
-            interval={0}
-            tick={
-              needsRotation
-                ? (RotatedTick as unknown as React.SVGProps<SVGTextElement>)
-                : { fill: 'hsl(var(--muted-foreground))' }
-            }
-            height={needsRotation ? 80 : 30}
-          />
-          <YAxis
+            type="number"
             className="text-xs"
             tick={{ fill: 'hsl(var(--muted-foreground))' }}
             allowDecimals={false}
+          />
+          <YAxis
+            type="category"
+            dataKey="name"
+            className="text-xs"
+            tick={{ fill: 'hsl(var(--muted-foreground))' }}
+            width={140}
+            interval={0}
           />
           <Tooltip content={<CustomTooltip />} />
           {/* No Enrollment segment (always first, red) */}
@@ -215,17 +202,17 @@ export function WaitlistBySessionChart({
             name="No Enrollment"
             stackId="waitlist"
             fill={NO_ENROLLMENT_COLOR}
-            radius={!hasEnrolledSessions ? [4, 4, 0, 0] : [0, 0, 0, 0]}
+            radius={!hasEnrolledSessions ? [0, 4, 4, 0] : [0, 0, 0, 0]}
             cursor={onBarClick ? 'pointer' : undefined}
             onClick={(data) => {
               if (data) handleBarClick(data as unknown as ChartDataItem)
             }}
           >
-            {/* Show label on top if no enrolled sessions */}
+            {/* Show label to the right if no enrolled sessions */}
             {!hasEnrolledSessions && (
               <LabelList
                 dataKey="total"
-                position="top"
+                position="right"
                 offset={8}
                 className="text-xs"
                 fill="hsl(var(--muted-foreground))"
@@ -243,7 +230,7 @@ export function WaitlistBySessionChart({
                 name={sessionName}
                 stackId="waitlist"
                 fill={sessionColors.get(dataKey)}
-                radius={isLast ? [4, 4, 0, 0] : [0, 0, 0, 0]}
+                radius={isLast ? [0, 4, 4, 0] : [0, 0, 0, 0]}
                 cursor={onBarClick ? 'pointer' : undefined}
                 onClick={(data) => {
                   if (data) handleBarClick(data as unknown as ChartDataItem)
@@ -252,7 +239,7 @@ export function WaitlistBySessionChart({
                 {isLast && lastEnrolledKey && (
                   <LabelList
                     dataKey="total"
-                    position="top"
+                    position="right"
                     offset={8}
                     className="text-xs"
                     fill="hsl(var(--muted-foreground))"
