@@ -1050,6 +1050,79 @@ class TestRetentionSessionChartSemantics:
         assert result.by_prior_session[0].base_count == 1
         assert result.by_prior_session[0].returned_count == 1
 
+    @pytest.mark.asyncio
+    async def test_by_prior_session_includes_start_date(self) -> None:
+        """by_prior_session includes start_date from the session for frontend sorting."""
+        from api.services.retention_service import RetentionService
+
+        mock_repo = AsyncMock()
+
+        mock_repo.fetch_attendees.side_effect = [
+            [
+                MockAttendee(
+                    person_id=1,
+                    year=2025,
+                    expand={
+                        "session": MockSession(
+                            cm_id=1001,
+                            name="Session 1",
+                            session_type="main",
+                            start_date="2025-06-15",
+                        )
+                    },
+                ),
+                MockAttendee(
+                    person_id=2,
+                    year=2025,
+                    expand={
+                        "session": MockSession(
+                            cm_id=1002,
+                            name="Session 2",
+                            session_type="main",
+                            start_date="2025-07-10",
+                        )
+                    },
+                ),
+            ],
+            [
+                MockAttendee(
+                    person_id=1,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=2001, name="Session 1", session_type="main")},
+                ),
+            ],
+        ]
+
+        mock_repo.fetch_persons.return_value = {
+            1: MockPerson(cm_id=1, gender="M"),
+            2: MockPerson(cm_id=2, gender="F"),
+        }
+
+        async def mock_fetch_sessions(year: int, session_types: list[str] | None = None) -> dict[int, MockSession]:
+            all_sessions: dict[int, dict[int, MockSession]] = {
+                2025: {
+                    1001: MockSession(cm_id=1001, name="Session 1", session_type="main", start_date="2025-06-15"),
+                    1002: MockSession(cm_id=1002, name="Session 2", session_type="main", start_date="2025-07-10"),
+                },
+                2026: {2001: MockSession(cm_id=2001, name="Session 1", session_type="main")},
+            }
+            sessions = all_sessions.get(year, {})
+            if session_types:
+                return {k: v for k, v in sessions.items() if v.session_type in session_types}
+            return sessions
+
+        mock_repo.fetch_sessions.side_effect = mock_fetch_sessions
+        mock_repo.fetch_bunk_assignments.return_value = []
+        mock_repo.fetch_summer_enrollment_history.return_value = []
+
+        service = RetentionService(mock_repo)
+        result = await service.calculate_retention(base_year=2025, compare_year=2026)
+
+        # Both prior sessions should have start_date populated
+        by_name = {s.prior_session: s for s in result.by_prior_session}
+        assert by_name["Session 1"].start_date == "2025-06-15"
+        assert by_name["Session 2"].start_date == "2025-07-10"
+
 
 class TestRetentionServiceComputeSummerMetrics:
     """Tests for summer enrollment metrics computation."""
