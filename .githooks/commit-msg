@@ -9,8 +9,8 @@ set -e
 COMMIT_MSG_FILE="$1"
 COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
 
-# Skip merge commits and fixup/squash commits
-if [[ "$COMMIT_MSG" =~ ^(Merge|fixup!|squash!) ]]; then
+# Skip merge commits, fixup/squash commits, and GitHub revert commits
+if [[ "$COMMIT_MSG" =~ ^(Merge|Revert|fixup!|squash!) ]]; then
     exit 0
 fi
 

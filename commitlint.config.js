@@ -3,6 +3,8 @@
 
 module.exports = {
   extends: ['@commitlint/config-conventional'],
+  // GitHub's auto-generated revert format ("Revert ...") has no scope — skip linting for those
+  ignores: [(message) => message.startsWith('Revert ')],
   rules: {
     // Require a scope for all commits
     'scope-empty': [2, 'never'],
