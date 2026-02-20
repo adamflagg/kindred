@@ -172,9 +172,9 @@ async def get_historical_trends(
     Returns aggregated metrics for each year to enable line chart visualization.
     Default: last 5 years from current year (based on CAMPMINDER_SEASON_ID).
 
-    When session_cm_id is provided, filters to sessions with the same NAME across years.
-    This enables "Show Session 2's enrollment over 5 years" even though Session 2
-    has different cm_ids each year.
+    When session_cm_id is provided, resolves to the session name and filters by name
+    across years. CampMinder often reuses cm_ids year-over-year, but names can change
+    (e.g., "Session 2a" → "Taste of Camp 2"), so name-matching handles both cases.
     """
     from api.services.historical_service import HistoricalService
     from api.services.metrics_repository import MetricsRepository

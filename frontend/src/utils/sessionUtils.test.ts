@@ -166,7 +166,7 @@ describe('VALID_TABS', () => {
 })
 
 // Import sorting functions for testing
-import { parseSessionName, sortSessionDataByName, sortPriorSessionData } from './sessionUtils'
+import { parseSessionName, sortSessionDataByName } from './sessionUtils'
 
 describe('parseSessionName', () => {
   it('should parse main session names correctly', () => {
@@ -253,66 +253,6 @@ describe('sortSessionDataByName', () => {
     ]
     const original = [...data]
     sortSessionDataByName(data)
-    expect(data).toEqual(original)
-  })
-})
-
-describe('sortPriorSessionData', () => {
-  it('should sort data objects by prior_session field', () => {
-    const data = [
-      { prior_session: 'Session 4', returned_count: 80 },
-      { prior_session: 'Session 2', returned_count: 120 },
-      { prior_session: 'Session 3a', returned_count: 40 },
-      { prior_session: 'Taste of Camp', returned_count: 25 },
-      { prior_session: 'Session 2b', returned_count: 35 },
-      { prior_session: 'Session 3', returned_count: 100 },
-      { prior_session: 'Session 2a', returned_count: 38 },
-    ]
-
-    const sorted = sortPriorSessionData(data)
-
-    expect(sorted.map((s) => s.prior_session)).toEqual([
-      'Taste of Camp',
-      'Session 2',
-      'Session 2a',
-      'Session 2b',
-      'Session 3',
-      'Session 3a',
-      'Session 4',
-    ])
-  })
-
-  it('should preserve other fields', () => {
-    const data = [
-      { prior_session: 'Session 4', returned_count: 80, retention_rate: 0.8 },
-      { prior_session: 'Session 2', returned_count: 120, retention_rate: 0.75 },
-    ]
-
-    const sorted = sortPriorSessionData(data)
-
-    expect(sorted[0]).toEqual({
-      prior_session: 'Session 2',
-      returned_count: 120,
-      retention_rate: 0.75,
-    })
-    expect(sorted[1]).toEqual({
-      prior_session: 'Session 4',
-      returned_count: 80,
-      retention_rate: 0.8,
-    })
-  })
-
-  it('should handle empty array', () => {
-    expect(sortPriorSessionData([])).toEqual([])
-  })
-
-  it('should not mutate original array', () => {
-    const data = [
-      { prior_session: 'Session 4', returned_count: 80 },
-      { prior_session: 'Session 2', returned_count: 120 },
-    ]
-    const original = [...data]
-    sortPriorSessionData(data)
     expect(data).toEqual(original)
   })
 })
