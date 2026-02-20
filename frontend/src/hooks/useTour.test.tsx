@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useTour } from './useTour'
 import * as tourStorage from '../tours/tourStorage'
@@ -34,8 +34,25 @@ const mockTourDefinition: TourDefinition = {
   isReady: () => true,
 }
 
+/** Flush microtasks (resolved promises) and advance fake timers */
+async function flushAndAdvance(ms: number) {
+  // Flush microtasks first (promise resolutions)
+  await act(async () => {
+    await Promise.resolve()
+  })
+  // Advance fake timers
+  await act(async () => {
+    vi.advanceTimersByTime(ms)
+  })
+  // Flush any remaining microtasks
+  await act(async () => {
+    await Promise.resolve()
+  })
+}
+
 describe('useTour', () => {
   beforeEach(() => {
+    vi.useFakeTimers()
     vi.mocked(tourRegistry.getTourIdForRoute).mockReturnValue('debug')
     vi.mocked(tourRegistry.loadTourDefinition).mockResolvedValue(mockTourDefinition)
     vi.mocked(tourStorage.isTourCompleted).mockReturnValue(false)
@@ -44,13 +61,14 @@ describe('useTour', () => {
     mockDestroy.mockClear()
   })
 
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('returns tourId when a tour exists for the current route', async () => {
     const { result } = renderHook(() => useTour())
 
-    // Wait for async tour loading
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 0))
-    })
+    await flushAndAdvance(0)
 
     expect(result.current.tourId).toBe('debug')
   })
@@ -60,9 +78,7 @@ describe('useTour', () => {
 
     const { result } = renderHook(() => useTour())
 
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 0))
-    })
+    await flushAndAdvance(0)
 
     expect(result.current.tourId).toBeNull()
   })
@@ -72,9 +88,8 @@ describe('useTour', () => {
 
     renderHook(() => useTour())
 
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 100))
-    })
+    // Flush promise resolution + advance past all delays
+    await flushAndAdvance(1000)
 
     expect(mockDrive).toHaveBeenCalled()
   })
@@ -84,9 +99,7 @@ describe('useTour', () => {
 
     renderHook(() => useTour())
 
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 100))
-    })
+    await flushAndAdvance(1000)
 
     expect(mockDrive).not.toHaveBeenCalled()
   })
@@ -96,17 +109,18 @@ describe('useTour', () => {
 
     const { result } = renderHook(() => useTour())
 
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 0))
-    })
+    // Let the definition load
+    await flushAndAdvance(1000)
 
+    // Tour should NOT have auto-started (completed)
+    expect(mockDrive).not.toHaveBeenCalled()
+
+    // Now replay
     act(() => {
       result.current.replay()
     })
 
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 100))
-    })
+    await flushAndAdvance(1000)
 
     expect(mockDrive).toHaveBeenCalled()
   })
@@ -114,9 +128,8 @@ describe('useTour', () => {
   it('cleans up driver instance on unmount', async () => {
     const { unmount } = renderHook(() => useTour())
 
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 100))
-    })
+    // Let tour auto-start so driver instance is created
+    await flushAndAdvance(1000)
 
     unmount()
 
@@ -128,9 +141,7 @@ describe('useTour', () => {
 
     renderHook(() => useTour())
 
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 100))
-    })
+    await flushAndAdvance(1000)
 
     expect(mockDrive).not.toHaveBeenCalled()
   })

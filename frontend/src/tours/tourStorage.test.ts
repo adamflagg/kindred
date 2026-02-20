@@ -112,8 +112,10 @@ describe('tourStorage', () => {
       // Mark a hypothetical second tour (using 'debug' again since it's the only TourId)
       markTourCompleted('debug', 2)
 
-      const setCall = vi.mocked(localStorage.setItem).mock.calls[0]
-      const savedData = JSON.parse(setCall[1])
+      const calls = vi.mocked(localStorage.setItem).mock.calls
+      expect(calls).toHaveLength(1)
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const savedData = JSON.parse(calls[0]![1])
       expect(savedData.completed.debug.completedVersion).toBe(2)
     })
   })
@@ -129,8 +131,10 @@ describe('tourStorage', () => {
 
       resetTour('debug')
 
-      const setCall = vi.mocked(localStorage.setItem).mock.calls[0]
-      const savedData = JSON.parse(setCall[1])
+      const calls = vi.mocked(localStorage.setItem).mock.calls
+      expect(calls).toHaveLength(1)
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const savedData = JSON.parse(calls[0]![1])
       expect(savedData.completed.debug).toBeUndefined()
     })
   })

@@ -1,0 +1,119 @@
+/* ============================================
+   GUIDED TOUR - Lodge Theme Overrides
+   Customizes driver.js popover to match
+   the Sierra Lodge design system
+   ============================================ */
+
+/* Overlay backdrop */
+.driver-overlay {
+  background-color: hsl(var(--shadow-color) / 0.5) !important;
+}
+
+/* Popover container */
+.driver-popover {
+  background-color: hsl(var(--card)) !important;
+  color: hsl(var(--card-foreground)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: 1rem !important;
+  box-shadow:
+    0 8px 32px hsl(var(--shadow-color) / 0.15),
+    0 2px 8px hsl(var(--shadow-color) / 0.1) !important;
+  padding: 1.25rem !important;
+  max-width: 360px !important;
+  font-family:
+    'DM Sans',
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif !important;
+}
+
+/* Arrow */
+.driver-popover-arrow {
+  border-color: hsl(var(--card)) !important;
+}
+
+.driver-popover-arrow-side-left,
+.driver-popover-arrow-side-right,
+.driver-popover-arrow-side-top,
+.driver-popover-arrow-side-bottom {
+  border-color: hsl(var(--card)) !important;
+}
+
+/* Title */
+.driver-popover-title {
+  font-family: 'Fraunces', Georgia, serif !important;
+  font-size: 1.125rem !important;
+  font-weight: 600 !important;
+  color: hsl(var(--foreground)) !important;
+  letter-spacing: -0.015em !important;
+  margin-bottom: 0.5rem !important;
+}
+
+/* Description text */
+.driver-popover-description {
+  font-size: 0.875rem !important;
+  line-height: 1.6 !important;
+  color: hsl(var(--muted-foreground)) !important;
+}
+
+/* Progress text (e.g. "1 of 4") */
+.driver-popover-progress-text {
+  font-size: 0.75rem !important;
+  color: hsl(var(--muted-foreground)) !important;
+  font-weight: 500 !important;
+}
+
+/* Button bar */
+.driver-popover-footer {
+  margin-top: 1rem !important;
+}
+
+/* All buttons - lodge style */
+.driver-popover-footer button {
+  border-radius: 0.75rem !important;
+  font-size: 0.8125rem !important;
+  font-weight: 600 !important;
+  padding: 0.5rem 1rem !important;
+  transition: all 0.15s ease !important;
+  cursor: pointer !important;
+  border: none !important;
+  text-shadow: none !important;
+}
+
+/* Next / Done button - primary forest */
+.driver-popover-next-btn {
+  background-color: hsl(var(--primary)) !important;
+  color: hsl(var(--primary-foreground)) !important;
+}
+
+.driver-popover-next-btn:hover {
+  opacity: 0.9 !important;
+}
+
+/* Previous button - subtle */
+.driver-popover-prev-btn {
+  background-color: hsl(var(--muted)) !important;
+  color: hsl(var(--muted-foreground)) !important;
+}
+
+.driver-popover-prev-btn:hover {
+  background-color: hsl(var(--border)) !important;
+}
+
+/* Close button */
+.driver-popover-close-btn {
+  color: hsl(var(--muted-foreground)) !important;
+  width: 2rem !important;
+  height: 2rem !important;
+  font-size: 1.25rem !important;
+}
+
+.driver-popover-close-btn:hover {
+  color: hsl(var(--foreground)) !important;
+}
+
+/* Highlighted element ring */
+.driver-active-element {
+  box-shadow: 0 0 0 4px hsl(var(--primary) / 0.2) !important;
+  border-radius: 0.75rem !important;
+}
