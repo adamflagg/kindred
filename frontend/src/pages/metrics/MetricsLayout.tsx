@@ -4,48 +4,11 @@
  * Wraps content with MetricsSessionProvider for unified session filtering
  */
 import { Outlet, useLocation } from 'react-router'
-import { LayoutDashboard, Globe, Clock, GitBranch } from 'lucide-react'
 import MetricsTypeTabs from '../../components/metrics/MetricsTypeTabs'
-import MetricsSubNav, { type SubNavItem } from '../../components/metrics/MetricsSubNav'
+import MetricsSubNav from '../../components/metrics/MetricsSubNav'
+import type { SubNavItem } from '../../components/metrics/MetricsSubNav'
 import { MetricsSessionProvider } from '../../contexts/MetricsSessionContext'
-
-/** Sub-nav items for retention section */
-const RETENTION_SUB_NAV: SubNavItem[] = [
-  {
-    id: 'overview',
-    label: 'Overview',
-    icon: LayoutDashboard,
-    path: '/metrics/retention',
-  },
-  {
-    id: 'flow',
-    label: 'Session Flow',
-    icon: GitBranch,
-    path: '/metrics/retention/flow',
-  },
-]
-
-/** Sub-nav items for registration section */
-const REGISTRATION_SUB_NAV: SubNavItem[] = [
-  {
-    id: 'overview',
-    label: 'Overview',
-    icon: LayoutDashboard,
-    path: '/metrics/registration/overview',
-  },
-  {
-    id: 'geo',
-    label: 'Geographic',
-    icon: Globe,
-    path: '/metrics/registration/geo',
-  },
-  {
-    id: 'waitlist',
-    label: 'Waitlist',
-    icon: Clock,
-    path: '/metrics/registration/waitlist',
-  },
-]
+import { RETENTION_SUB_NAV, REGISTRATION_SUB_NAV } from './metricsNav'
 
 export default function MetricsLayout() {
   const location = useLocation()

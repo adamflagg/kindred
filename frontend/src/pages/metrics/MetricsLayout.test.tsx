@@ -53,6 +53,7 @@ const renderWithRouter = (initialPath: string, childText = 'Child Content') => {
               <Route path="registration/*" element={<TestChild text={childText} />} />
               <Route path="retention" element={<TestChild text="Retention" />} />
               <Route path="retention/flow" element={<TestChild text="Session Flow" />} />
+              <Route path="retention/bunks" element={<TestChild text="Bunk Analysis" />} />
               <Route path="trends" element={<TestChild text="Trends" />} />
             </Route>
           </Routes>
@@ -87,12 +88,13 @@ describe('MetricsLayout', () => {
     expect(screen.getByRole('link', { name: /waitlist/i })).toBeInTheDocument()
   })
 
-  it('renders sub-nav with Overview and Session Flow links for retention routes', () => {
+  it('renders sub-nav with Overview, Session Flow, and Bunk Analysis links for retention routes', () => {
     renderWithRouter('/metrics/retention')
 
-    // Retention sub-nav should show Overview and Session Flow
+    // Retention sub-nav should show Overview, Session Flow, and Bunk Analysis
     expect(screen.getByRole('link', { name: /overview/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /session flow/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /bunk analysis/i })).toBeInTheDocument()
   })
 
   it('highlights Overview sub-nav on /metrics/retention', () => {
@@ -113,6 +115,18 @@ describe('MetricsLayout', () => {
 
     expect(sessionFlowLink).toHaveClass('bg-primary')
     expect(overviewLink).not.toHaveClass('bg-primary')
+  })
+
+  it('highlights Bunk Analysis sub-nav on /metrics/retention/bunks', () => {
+    renderWithRouter('/metrics/retention/bunks')
+
+    const bunkRetentionLink = screen.getByRole('link', { name: /bunk analysis/i })
+    const overviewLink = screen.getByRole('link', { name: /overview/i })
+    const sessionFlowLink = screen.getByRole('link', { name: /session flow/i })
+
+    expect(bunkRetentionLink).toHaveClass('bg-primary')
+    expect(overviewLink).not.toHaveClass('bg-primary')
+    expect(sessionFlowLink).not.toHaveClass('bg-primary')
   })
 
   it('does not render sub-nav for trends routes', () => {
@@ -147,7 +161,7 @@ describe('MetricsLayout', () => {
   it('highlights correct primary tab based on route', () => {
     renderWithRouter('/metrics/retention')
 
-    const retentionLink = screen.getByRole('link', { name: /retention/i })
+    const retentionLink = screen.getByRole('link', { name: /^retention$/i })
     const registrationLink = screen.getByRole('link', {
       name: /registration/i,
     })

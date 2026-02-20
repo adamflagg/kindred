@@ -3,12 +3,13 @@
  * Pattern: SessionTabs.tsx - rounded pills with icons, route-based
  *
  * Includes a unified session selector on the right side that applies
- * across all metrics tabs (Registration, Retention, Trends).
+ * across most metrics tabs (hidden on Bunk Analysis tab which uses unfiltered data).
  */
 import { Link, useLocation } from 'react-router'
 import { BarChart3, Users, TrendingUp, type LucideIcon } from 'lucide-react'
 import { MetricsSessionSelector } from './MetricsSessionSelector'
 import { useMetricsSession } from '../../hooks/useMetricsSession'
+import { RETENTION_SUB_NAV } from '../../pages/metrics/metricsNav'
 
 interface MetricTypeTab {
   id: string
@@ -74,21 +75,23 @@ export default function MetricsTypeTabs() {
           })}
         </div>
 
-        {/* Right side controls */}
-        <div className="flex items-center gap-3">
-          {activeTab === 'trends' && (
-            <label className="flex cursor-pointer items-center gap-1.5 text-sm">
-              <input
-                type="checkbox"
-                checked={expandedRetention}
-                onChange={(e) => setExpandedRetention(e.target.checked)}
-                className="accent-primary h-3.5 w-3.5 rounded"
-              />
-              <span className="text-muted-foreground whitespace-nowrap">Expanded analysis</span>
-            </label>
-          )}
-          <MetricsSessionSelector />
-        </div>
+        {/* Right side controls — hidden on bunk retention tab (unfiltered data) */}
+        {location.pathname !== RETENTION_SUB_NAV.find((item) => item.id === 'bunks')?.path && (
+          <div className="flex items-center gap-3">
+            {activeTab === 'trends' && (
+              <label className="flex cursor-pointer items-center gap-1.5 text-sm">
+                <input
+                  type="checkbox"
+                  checked={expandedRetention}
+                  onChange={(e) => setExpandedRetention(e.target.checked)}
+                  className="accent-primary h-3.5 w-3.5 rounded"
+                />
+                <span className="text-muted-foreground whitespace-nowrap">Expanded analysis</span>
+              </label>
+            )}
+            <MetricsSessionSelector />
+          </div>
+        )}
       </div>
     </nav>
   )

@@ -1710,3 +1710,157 @@ class TestDemographicBreakdownsFromPersons:
         result = await service.calculate_retention(base_year=2025, compare_year=2026)
 
         assert not hasattr(result, "by_first_year")
+
+
+class TestSessionBunkUsesUnfilteredPools:
+    """Tests that by_session_bunk always uses unfiltered person pools.
+
+    The heatmap should show the true picture: "of campers in last year's
+    B-8, how many came back to camp at all?" — not just "how many came
+    back to this specific session." This prevents unfairly penalizing
+    bunk counselor performance when a session filter is active.
+    """
+
+    @pytest.mark.asyncio
+    async def test_by_session_bunk_unfiltered_when_session_cm_id_filter_active(self) -> None:
+        """by_session_bunk counts campers as returned even if they went to a different session.
+
+        Scenario: Session 1 B-1 had persons 1 and 2.
+        Person 1 returns to Session 1 (matches filter).
+        Person 2 returns to Session 3 (doesn't match filter).
+        With session_cm_id filter on Session 1, the heatmap should still
+        show B-1 as 2/2 returned (100%), not 1/2 (50%).
+        """
+        from api.services.retention_service import RetentionService
+
+        mock_repo = AsyncMock()
+
+        session1 = MockSession(cm_id=1000, name="Session 1", session_type="main")
+        bunk_b1 = MockBunk(name="B-1")
+
+        # Base year: persons 1 and 2 both in Session 1
+        mock_repo.fetch_attendees.side_effect = [
+            [
+                MockAttendee(person_id=1, year=2025, expand={"session": session1}),
+                MockAttendee(person_id=2, year=2025, expand={"session": session1}),
+            ],
+            # Compare year: person 1 in Session 1, person 2 in Session 3
+            [
+                MockAttendee(
+                    person_id=1,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=2000, name="Session 1", session_type="main")},
+                ),
+                MockAttendee(
+                    person_id=2,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=2002, name="Session 3", session_type="main")},
+                ),
+            ],
+        ]
+
+        mock_repo.fetch_persons.return_value = {
+            1: MockPerson(cm_id=1, gender="M"),
+            2: MockPerson(cm_id=2, gender="F"),
+        }
+
+        async def mock_fetch_sessions(year: int, session_types: list[str] | None = None) -> dict[int, MockSession]:
+            if year == 2025:
+                return {
+                    1000: MockSession(cm_id=1000, name="Session 1", session_type="main"),
+                    1002: MockSession(cm_id=1002, name="Session 3", session_type="main"),
+                }
+            return {
+                2000: MockSession(cm_id=2000, name="Session 1", session_type="main"),
+                2002: MockSession(cm_id=2002, name="Session 3", session_type="main"),
+            }
+
+        mock_repo.fetch_sessions.side_effect = mock_fetch_sessions
+
+        # Both persons assigned to B-1 in Session 1 during base year
+        mock_repo.fetch_bunk_assignments.return_value = [
+            _make_bunk_assignment(1, 2025, session1, bunk_b1),
+            _make_bunk_assignment(2, 2025, session1, bunk_b1),
+        ]
+        mock_repo.fetch_summer_enrollment_history.return_value = []
+
+        service = RetentionService(mock_repo)
+        # Filter to Session 1 only — but heatmap should use unfiltered pools
+        result = await service.calculate_retention(
+            base_year=2025,
+            compare_year=2026,
+            session_cm_id=1000,
+        )
+
+        b1 = next((x for x in result.by_session_bunk if x.bunk == "B-1"), None)
+        assert b1 is not None
+        assert b1.base_count == 2
+        # Both returned to camp (person 2 to Session 3) — should be 2, not 1
+        assert b1.returned_count == 2
+        assert b1.retention_rate == 1.0
+
+    @pytest.mark.asyncio
+    async def test_by_session_bunk_unfiltered_when_session_types_filter_active(self) -> None:
+        """by_session_bunk counts returns from any session type, not just filtered ones.
+
+        Scenario: Session 1 B-1 had person 1 (main session).
+        Person 1 returns to Quest only (not main) in compare year.
+        With session_types=["main"] filter, heatmap should still show
+        B-1 as 1/1 returned because person came back to camp.
+        """
+        from api.services.retention_service import RetentionService
+
+        mock_repo = AsyncMock()
+
+        session1 = MockSession(cm_id=1000, name="Session 1", session_type="main")
+        bunk_b1 = MockBunk(name="B-1")
+
+        mock_repo.fetch_attendees.side_effect = [
+            [MockAttendee(person_id=1, year=2025, expand={"session": session1})],
+            # Person returns to Quest only
+            [
+                MockAttendee(
+                    person_id=1,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=2100, name="Quest", session_type="quest")},
+                ),
+            ],
+        ]
+
+        mock_repo.fetch_persons.return_value = {
+            1: MockPerson(cm_id=1, gender="M"),
+        }
+
+        async def mock_fetch_sessions(year: int, session_types: list[str] | None = None) -> dict[int, MockSession]:
+            all_sessions: dict[int, dict[int, MockSession]] = {
+                2025: {1000: MockSession(cm_id=1000, name="Session 1", session_type="main")},
+                2026: {
+                    2000: MockSession(cm_id=2000, name="Session 1", session_type="main"),
+                    2100: MockSession(cm_id=2100, name="Quest", session_type="quest"),
+                },
+            }
+            sessions = all_sessions.get(year, {})
+            if session_types:
+                return {k: v for k, v in sessions.items() if v.session_type in session_types}
+            return sessions
+
+        mock_repo.fetch_sessions.side_effect = mock_fetch_sessions
+
+        mock_repo.fetch_bunk_assignments.return_value = [
+            _make_bunk_assignment(1, 2025, session1, bunk_b1),
+        ]
+        mock_repo.fetch_summer_enrollment_history.return_value = []
+
+        service = RetentionService(mock_repo)
+        result = await service.calculate_retention(
+            base_year=2025,
+            compare_year=2026,
+            session_types=["main", "embedded", "ag"],
+        )
+
+        b1 = next((x for x in result.by_session_bunk if x.bunk == "B-1"), None)
+        assert b1 is not None
+        assert b1.base_count == 1
+        # Person returned to Quest — still counts as returned for heatmap
+        assert b1.returned_count == 1
+        assert b1.retention_rate == 1.0
