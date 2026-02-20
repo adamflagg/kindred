@@ -3,8 +3,8 @@
  */
 import { describe, it, expect } from 'vitest'
 
-// Will be created as default export
 import retentionOverviewTour from './retentionOverviewTour'
+import type { HintDefinition } from '../types'
 
 describe('retentionOverviewTour', () => {
   it('has correct tour id', () => {
@@ -21,7 +21,15 @@ describe('retentionOverviewTour', () => {
 
   it('has hints defined', () => {
     expect(retentionOverviewTour.hints).toBeDefined()
-    expect(retentionOverviewTour.hints!.length).toBe(3)
+    expect(retentionOverviewTour.hints!.length).toBe(1)
+  })
+
+  it('has session-selector hint only (not duplicating tour steps)', () => {
+    const hintElements = retentionOverviewTour.hints!.map((h: HintDefinition) => h.element)
+    expect(hintElements).toContain('[data-tour="retention-session-selector"]')
+    // Should NOT have hints on elements that are already tour steps
+    expect(hintElements).not.toContain('[data-tour="retention-summary-cards"]')
+    expect(hintElements).not.toContain('[data-tour="retention-demographics"]')
   })
 
   it('uses data-tour selectors in steps', () => {

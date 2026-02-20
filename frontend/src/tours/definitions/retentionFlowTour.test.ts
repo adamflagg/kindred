@@ -23,6 +23,10 @@ describe('retentionFlowTour', () => {
     expect(retentionFlowTour.hints!.length).toBe(1)
   })
 
+  it('has session-selector hint (not duplicating tour steps)', () => {
+    expect(retentionFlowTour.hints![0].element).toBe('[data-tour="retention-session-selector"]')
+  })
+
   it('uses data-tour selectors in steps', () => {
     for (const step of retentionFlowTour.steps) {
       if (step.element) {

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useTour } from './useTour'
+import { useTour, useTourHints } from './useTour'
 import * as tourStorage from '../tours/tourStorage'
 import * as tourRegistry from '../tours/tourRegistry'
 import type { TourDefinition, HintDefinition } from '../tours/types'
@@ -169,5 +169,47 @@ describe('useTour', () => {
     await flushAndAdvance(1000)
 
     expect(result.current.hints).toEqual(mockHints)
+  })
+})
+
+describe('useTourHints', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.mocked(tourRegistry.getTourIdForRoute).mockReturnValue('debug')
+    vi.mocked(tourRegistry.loadTourDefinition).mockResolvedValue(mockTourDefinition)
+    vi.mocked(tourStorage.isTourCompleted).mockReturnValue(false)
+    mockDrive.mockClear()
+    mockDestroy.mockClear()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('returns hints without auto-starting tour', async () => {
+    const mockHints: HintDefinition[] = [
+      { element: '[data-tour="test"]', title: 'Test', description: 'desc' },
+    ]
+    vi.mocked(tourRegistry.loadTourDefinition).mockResolvedValue({
+      ...mockTourDefinition,
+      hints: mockHints,
+    })
+
+    const { result } = renderHook(() => useTourHints())
+
+    await flushAndAdvance(1000)
+
+    expect(result.current).toEqual(mockHints)
+    expect(mockDrive).not.toHaveBeenCalled()
+  })
+
+  it('returns empty array when no tour exists for route', async () => {
+    vi.mocked(tourRegistry.getTourIdForRoute).mockReturnValue(null)
+
+    const { result } = renderHook(() => useTourHints())
+
+    await flushAndAdvance(0)
+
+    expect(result.current).toEqual([])
   })
 })
