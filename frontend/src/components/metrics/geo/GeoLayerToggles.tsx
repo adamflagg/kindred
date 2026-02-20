@@ -21,6 +21,8 @@ export interface GeoLayerTogglesProps {
   onToggleGaps?: () => void
   /** When true, shows sources and gaps toggles. Defaults to false. */
   isAdmin?: boolean
+  /** When true, disables sources/gaps toggles (not available in compare mode). */
+  isComparing?: boolean
 }
 
 const LAYERS: Array<{
@@ -46,6 +48,7 @@ export function GeoLayerToggles({
   showGaps = false,
   onToggleGaps,
   isAdmin = false,
+  isComparing = false,
 }: GeoLayerTogglesProps) {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -87,25 +90,37 @@ export function GeoLayerToggles({
       {/* Admin-only toggles */}
       {isAdmin && (
         <>
-          <label className="flex cursor-pointer items-center gap-1.5 text-sm">
+          <label
+            className={`flex items-center gap-1.5 text-sm ${isComparing ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+          >
             <input
               type="checkbox"
               checked={showSources}
               onChange={onToggleSources}
+              disabled={isComparing}
               className="text-primary focus:ring-primary h-4 w-4 rounded border-gray-300"
             />
             <span className="text-muted-foreground">Show sources</span>
           </label>
 
-          <label className="flex cursor-pointer items-center gap-1.5 text-sm">
+          <label
+            className={`flex items-center gap-1.5 text-sm ${isComparing ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+          >
             <input
               type="checkbox"
               checked={showGaps}
               onChange={onToggleGaps}
+              disabled={isComparing}
               className="text-primary focus:ring-primary h-4 w-4 rounded border-gray-300"
             />
             <span className="text-muted-foreground">Show gaps</span>
           </label>
+
+          {isComparing && (
+            <span className="text-muted-foreground text-xs italic">
+              Available in single-year mode
+            </span>
+          )}
         </>
       )}
     </div>

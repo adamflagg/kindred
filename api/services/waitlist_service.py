@@ -22,7 +22,7 @@ from api.schemas.metrics import (
 )
 from api.services.breakdown_calculator import calculate_percentage, compute_registration_breakdown
 from api.services.extractors import extract_gender, extract_grade
-from api.utils.session_metrics import get_session_from_expand
+from api.utils.session_metrics import build_ag_parent_map, get_session_from_expand
 
 if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository
@@ -170,14 +170,35 @@ class WaitlistService:
             if session_cmid:
                 waitlisted_by_session[session_cmid]["declined"] += 1
 
+        # --- Merge AG session counts into parent main sessions ---
+        ag_parent_map = build_ag_parent_map(filtered_sessions)
+        merged_by_session: dict[int, dict[str, int]] = {}
+        merged_enrolled_in: dict[int, dict[int, int]] = defaultdict(lambda: defaultdict(int))
+
+        for sid, counts in waitlisted_by_session.items():
+            target_sid = ag_parent_map.get(sid, sid)
+            if target_sid not in merged_by_session:
+                merged_by_session[target_sid] = {
+                    "waitlisted": 0,
+                    "no_enrollment": 0,
+                    "has_enrollment": 0,
+                    "accepted": 0,
+                    "declined": 0,
+                }
+            for key in ("waitlisted", "no_enrollment", "has_enrollment", "accepted", "declined"):
+                merged_by_session[target_sid][key] += counts[key]
+            # Merge enrolled_in counts
+            for enrolled_sid, enrolled_count in enrolled_in_counts.get(sid, {}).items():
+                merged_enrolled_in[target_sid][enrolled_sid] += enrolled_count
+
         # --- Build per-session breakdown ---
         by_session: list[WaitlistSessionBreakdown] = []
-        for sid, counts in sorted(waitlisted_by_session.items()):
+        for sid, counts in sorted(merged_by_session.items()):
             session = filtered_sessions.get(sid)
             if session:
                 # Build enrolled_in list for this waitlist session
                 enrolled_in_list: list[WaitlistEnrolledSessionCount] = []
-                for enrolled_sid, enrolled_count in sorted(enrolled_in_counts.get(sid, {}).items()):
+                for enrolled_sid, enrolled_count in sorted(merged_enrolled_in.get(sid, {}).items()):
                     enrolled_session = all_sessions.get(enrolled_sid)
                     enrolled_name = (
                         getattr(enrolled_session, "name", f"Session {enrolled_sid}")

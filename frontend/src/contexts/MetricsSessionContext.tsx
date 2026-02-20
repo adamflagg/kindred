@@ -25,6 +25,7 @@ import { sortSessionsByDate } from '../utils/sessionUtils'
 
 const SESSION_PARAM = 'session'
 const VIEW_PARAM = 'view'
+const COMPARE_PARAM = 'compare'
 
 /**
  * Parse session param from URL
@@ -63,6 +64,13 @@ export function MetricsSessionProvider({ children }: { children: React.ReactNode
   const viewMode = useMemo(() => {
     return parseViewParam(searchParams.get(VIEW_PARAM))
   }, [searchParams])
+
+  // Get compare year from URL param
+  const compareYear = useMemo(() => {
+    return parseSessionParam(searchParams.get(COMPARE_PARAM))
+  }, [searchParams])
+
+  const isComparing = compareYear !== null
 
   // Find the selected session object
   const selectedSession = useMemo(() => {
@@ -133,6 +141,25 @@ export function MetricsSessionProvider({ children }: { children: React.ReactNode
     [setSearchParams]
   )
 
+  // Set comparison year (null to disable)
+  const setCompareYear = useCallback(
+    (year: number | null) => {
+      setSearchParams(
+        (prev) => {
+          const newParams = new URLSearchParams(prev)
+          if (year === null) {
+            newParams.delete(COMPARE_PARAM)
+          } else {
+            newParams.set(COMPARE_PARAM, year.toString())
+          }
+          return newParams
+        },
+        { replace: true }
+      )
+    },
+    [setSearchParams]
+  )
+
   // Clear session filter
   const clearSession = useCallback(() => {
     setSelectedSessionCmId(null)
@@ -154,6 +181,9 @@ export function MetricsSessionProvider({ children }: { children: React.ReactNode
       questSessions,
       expandedRetention,
       setExpandedRetention,
+      compareYear,
+      setCompareYear,
+      isComparing,
     }),
     [
       selectedSessionCmId,
@@ -169,6 +199,9 @@ export function MetricsSessionProvider({ children }: { children: React.ReactNode
       campSessions,
       questSessions,
       expandedRetention,
+      compareYear,
+      setCompareYear,
+      isComparing,
     ]
   )
 

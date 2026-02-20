@@ -115,6 +115,52 @@ describe('GeoDetailList', () => {
     expect(row?.querySelector('[data-unmatched]')).toBeTruthy()
   })
 
+  describe('controlled expand mode', () => {
+    it('uses isOpen prop to control expand state when provided', () => {
+      render(<GeoDetailList data={cityItems} category="city" isOpen={true} />)
+
+      // Should be expanded because isOpen=true
+      expect(screen.getByText('San Francisco')).toBeInTheDocument()
+    })
+
+    it('stays collapsed when isOpen=false even after header click', () => {
+      const onToggle = vi.fn()
+      render(<GeoDetailList data={cityItems} category="city" isOpen={false} onToggle={onToggle} />)
+
+      // Should be collapsed
+      expect(screen.queryByText('San Francisco')).not.toBeInTheDocument()
+
+      // Click header — should call onToggle but NOT expand (controlled mode)
+      fireEvent.click(screen.getByText('Cities'))
+      expect(onToggle).toHaveBeenCalledTimes(1)
+      // Still collapsed because isOpen is still false (controlled by parent)
+      expect(screen.queryByText('San Francisco')).not.toBeInTheDocument()
+    })
+
+    it('calls onToggle when header is clicked in controlled mode', () => {
+      const onToggle = vi.fn()
+      render(<GeoDetailList data={cityItems} category="city" isOpen={true} onToggle={onToggle} />)
+
+      fireEvent.click(screen.getByText('Cities'))
+      expect(onToggle).toHaveBeenCalledTimes(1)
+    })
+
+    it('works in uncontrolled mode when isOpen is not provided', () => {
+      render(<GeoDetailList data={cityItems} category="city" />)
+
+      // Initially collapsed
+      expect(screen.queryByText('San Francisco')).not.toBeInTheDocument()
+
+      // Click to expand
+      fireEvent.click(screen.getByText('Cities'))
+      expect(screen.getByText('San Francisco')).toBeInTheDocument()
+
+      // Click to collapse
+      fireEvent.click(screen.getByText('Cities'))
+      expect(screen.queryByText('San Francisco')).not.toBeInTheDocument()
+    })
+  })
+
   it('triggers drilldown on row click', () => {
     const onDrilldown = vi.fn()
     render(<GeoDetailList data={cityItems} category="city" onDrilldown={onDrilldown} />)

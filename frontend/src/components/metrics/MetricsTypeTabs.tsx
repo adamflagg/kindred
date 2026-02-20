@@ -8,9 +8,11 @@
 import { Link, useLocation } from 'react-router'
 import { BarChart3, Users, TrendingUp, type LucideIcon } from 'lucide-react'
 import { MetricsSessionSelector } from './MetricsSessionSelector'
+import { CompareYearSelector } from './CompareYearSelector'
 import { useMetricsSession } from '../../hooks/useMetricsSession'
 import { useTourHints } from '../../hooks/useTour'
 import { HintDot } from '../tour'
+import { useCurrentYear } from '../../hooks/useCurrentYear'
 import { RETENTION_SUB_NAV } from '../../pages/metrics/metricsNav'
 
 interface MetricTypeTab {
@@ -38,8 +40,10 @@ const METRIC_TYPES: MetricTypeTab[] = [
 
 export default function MetricsTypeTabs() {
   const location = useLocation()
-  const { expandedRetention, setExpandedRetention } = useMetricsSession()
+  const { expandedRetention, setExpandedRetention, compareYear, setCompareYear } =
+    useMetricsSession()
   const hints = useTourHints()
+  const { currentYear, availableYears } = useCurrentYear()
 
   // Determine active tab based on current path
   const getActiveTab = () => {
@@ -83,6 +87,15 @@ export default function MetricsTypeTabs() {
           (item) => item.path === location.pathname
         ) && (
           <div className="flex items-center gap-3">
+            {activeTab === 'registration' && (
+              <CompareYearSelector
+                primaryYear={currentYear}
+                compareYear={compareYear}
+                onCompareYearChange={setCompareYear}
+                onClear={() => setCompareYear(null)}
+                availableYears={availableYears}
+              />
+            )}
             {activeTab === 'trends' && (
               <label className="flex cursor-pointer items-center gap-1.5 text-sm">
                 <input

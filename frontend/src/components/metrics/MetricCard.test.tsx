@@ -127,6 +127,95 @@ describe('MetricCard onClick functionality', () => {
     })
   })
 
+  describe('sentiment prop', () => {
+    it('should use green for up and red for down by default (no sentiment prop)', () => {
+      render(
+        <MetricCard title="Total Enrolled" value={150} compareValue={140} compareYear={2025} />
+      )
+
+      const trendSpan = screen.getByText(/\+10/).closest('span')
+      expect(trendSpan).toHaveClass('text-emerald-600')
+    })
+
+    it('should use green for up and red for down with sentiment="default"', () => {
+      render(
+        <MetricCard
+          title="Total Enrolled"
+          value={150}
+          compareValue={140}
+          compareYear={2025}
+          sentiment="default"
+        />
+      )
+
+      const trendSpan = screen.getByText(/\+10/).closest('span')
+      expect(trendSpan).toHaveClass('text-emerald-600')
+    })
+
+    it('should swap colors with sentiment="inverse" — up becomes red', () => {
+      render(
+        <MetricCard
+          title="Total Cancelled"
+          value={20}
+          compareValue={15}
+          compareYear={2025}
+          sentiment="inverse"
+        />
+      )
+
+      // Value went up (20 > 15) but with inverse sentiment, up should show red
+      const trendSpan = screen.getByText(/\+5/).closest('span')
+      expect(trendSpan).toHaveClass('text-red-600')
+    })
+
+    it('should swap colors with sentiment="inverse" — down becomes green', () => {
+      render(
+        <MetricCard
+          title="Total Cancelled"
+          value={10}
+          compareValue={15}
+          compareYear={2025}
+          sentiment="inverse"
+        />
+      )
+
+      // Value went down (10 < 15) but with inverse sentiment, down should show green
+      const trendSpan = screen.getByText(/-5/).closest('span')
+      expect(trendSpan).toHaveClass('text-emerald-600')
+    })
+
+    it('should use blue color for both up and down with sentiment="neutral"', () => {
+      render(
+        <MetricCard
+          title="New Campers"
+          value={50}
+          compareValue={40}
+          compareYear={2025}
+          sentiment="neutral"
+        />
+      )
+
+      // Value went up but with neutral sentiment, should show blue
+      const trendSpan = screen.getByText(/\+10/).closest('span')
+      expect(trendSpan).toHaveClass('text-blue-600')
+    })
+
+    it('should use blue color for down direction with sentiment="neutral"', () => {
+      render(
+        <MetricCard
+          title="New Campers"
+          value={30}
+          compareValue={40}
+          compareYear={2025}
+          sentiment="neutral"
+        />
+      )
+
+      const trendSpan = screen.getByText(/-10/).closest('span')
+      expect(trendSpan).toHaveClass('text-blue-600')
+    })
+  })
+
   describe('existing functionality preserved', () => {
     it('should still display trend indicators when provided', () => {
       render(<MetricCard title="Total Enrolled" value={150} trend="up" trendValue="+15%" />)

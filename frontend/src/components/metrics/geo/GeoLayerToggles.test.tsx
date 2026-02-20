@@ -129,4 +129,39 @@ describe('GeoLayerToggles', () => {
     fireEvent.click(boxes[6] as HTMLElement)
     expect(onToggleGaps).toHaveBeenCalledOnce()
   })
+
+  it('disables sources and gaps toggles when isComparing is true', () => {
+    render(
+      <GeoLayerToggles
+        {...defaultProps}
+        isAdmin={true}
+        showSources={false}
+        showGaps={false}
+        isComparing={true}
+      />
+    )
+
+    const boxes = getCheckboxes()
+    // Sources (index 5) and gaps (index 6) should be disabled
+    expect(boxes[5]?.disabled).toBe(true)
+    expect(boxes[6]?.disabled).toBe(true)
+    // Other checkboxes should NOT be disabled
+    expect(boxes[0]?.disabled).toBe(false)
+    expect(boxes[4]?.disabled).toBe(false)
+  })
+
+  it('shows hint text when isComparing disables admin toggles', () => {
+    render(<GeoLayerToggles {...defaultProps} isAdmin={true} isComparing={true} />)
+
+    expect(screen.getByText(/single-year mode/i)).toBeInTheDocument()
+  })
+
+  it('does not disable admin toggles when isComparing is false', () => {
+    render(<GeoLayerToggles {...defaultProps} isAdmin={true} isComparing={false} />)
+
+    const boxes = getCheckboxes()
+    // Sources and gaps should be enabled
+    expect(boxes[5]?.disabled).toBe(false)
+    expect(boxes[6]?.disabled).toBe(false)
+  })
 })
