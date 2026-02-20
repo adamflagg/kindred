@@ -120,17 +120,19 @@ export function GeoDetailList({
                   return (
                     <Fragment key={item.name}>
                       <tr
-                        onClick={() => {
-                          onItemClick?.(item.name)
-                          if (category !== 'region') {
-                            onDrilldown?.({
-                              type: category,
-                              value: item.name,
-                              label: item.name,
-                            })
-                          }
-                        }}
-                        className={`border-border cursor-pointer border-t transition-colors ${isSelected ? 'bg-primary/10' : 'hover:bg-muted/30'} `}
+                        onClick={
+                          category !== 'region'
+                            ? () => {
+                                onItemClick?.(item.name)
+                                onDrilldown?.({
+                                  type: category,
+                                  value: item.name,
+                                  label: item.name,
+                                })
+                              }
+                            : undefined
+                        }
+                        className={`border-border border-t transition-colors ${category !== 'region' ? 'cursor-pointer' : ''} ${isSelected ? 'bg-primary/10' : category !== 'region' ? 'hover:bg-muted/30' : ''} `}
                       >
                         <td className="text-foreground px-4 py-2">
                           <div className="flex items-center gap-2">
