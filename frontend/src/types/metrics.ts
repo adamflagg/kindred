@@ -189,6 +189,8 @@ export interface SessionFlowItem {
   source: string
   target: string
   value: number
+  source_cm_id: number
+  target_cm_id: number | null
 }
 
 export interface RetentionMetrics {

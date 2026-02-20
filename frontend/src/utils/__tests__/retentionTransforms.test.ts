@@ -347,9 +347,9 @@ describe('sessionFlowToSankeyData', () => {
 
   it('converts flow items to Sankey nodes and links', () => {
     const input: SessionFlowItem[] = [
-      { source: 'Session 1', target: 'Session 1', value: 50 },
-      { source: 'Session 1', target: 'Session 2', value: 20 },
-      { source: 'Session 2', target: 'Session 1', value: 30 },
+      { source: 'Session 1', target: 'Session 1', value: 50, source_cm_id: 1000, target_cm_id: 1000 },
+      { source: 'Session 1', target: 'Session 2', value: 20, source_cm_id: 1000, target_cm_id: 1001 },
+      { source: 'Session 2', target: 'Session 1', value: 30, source_cm_id: 1001, target_cm_id: 1000 },
     ]
     const result = sessionFlowToSankeyData(input)
     expect(result).not.toBeNull()
@@ -372,8 +372,44 @@ describe('sessionFlowToSankeyData', () => {
     expect(linkValues).toContain(30)
   })
 
+  it('propagates cmId from flow items to nodes', () => {
+    const input: SessionFlowItem[] = [
+      { source: 'Session 1', target: 'Session 1', value: 50, source_cm_id: 1000, target_cm_id: 1000 },
+      { source: 'Session 1', target: 'Session 2', value: 20, source_cm_id: 1000, target_cm_id: 1001 },
+      { source: 'Session 2', target: 'Session 1', value: 30, source_cm_id: 1001, target_cm_id: 1000 },
+    ]
+    const result = sessionFlowToSankeyData(input)
+    expect(result).not.toBeNull()
+
+    // Source nodes should have cmId from source_cm_id
+    const s1From = result!.nodes.find((n) => n.name === 'Session 1 (from)')
+    expect(s1From!.cmId).toBe(1000)
+    const s2From = result!.nodes.find((n) => n.name === 'Session 2 (from)')
+    expect(s2From!.cmId).toBe(1001)
+
+    // Target nodes should have cmId from target_cm_id
+    const s1To = result!.nodes.find((n) => n.name === 'Session 1 (to)')
+    expect(s1To!.cmId).toBe(1000)
+    const s2To = result!.nodes.find((n) => n.name === 'Session 2 (to)')
+    expect(s2To!.cmId).toBe(1001)
+  })
+
+  it('matching cm_ids across source and target produce same cmId on nodes', () => {
+    const input: SessionFlowItem[] = [
+      { source: 'Session 1', target: 'Session 1', value: 50, source_cm_id: 1000, target_cm_id: 1000 },
+    ]
+    const result = sessionFlowToSankeyData(input)
+    expect(result).not.toBeNull()
+
+    const sourceNode = result!.nodes.find((n) => n.name === 'Session 1 (from)')
+    const targetNode = result!.nodes.find((n) => n.name === 'Session 1 (to)')
+    expect(sourceNode!.cmId).toBe(targetNode!.cmId)
+  })
+
   it('source nodes come before target nodes', () => {
-    const input: SessionFlowItem[] = [{ source: 'Session 1', target: 'Session 2', value: 10 }]
+    const input: SessionFlowItem[] = [
+      { source: 'Session 1', target: 'Session 2', value: 10, source_cm_id: 1000, target_cm_id: 1001 },
+    ]
     const result = sessionFlowToSankeyData(input)
     expect(result).not.toBeNull()
 
@@ -385,10 +421,10 @@ describe('sessionFlowToSankeyData', () => {
     expect(result!.links[0]).toEqual({ source: 0, target: 1, value: 10 })
   })
 
-  it('Did Not Return is a target node', () => {
+  it('Did Not Return node has cmId null', () => {
     const input: SessionFlowItem[] = [
-      { source: 'Session 1', target: 'Did Not Return', value: 40 },
-      { source: 'Session 1', target: 'Session 1', value: 60 },
+      { source: 'Session 1', target: 'Did Not Return', value: 40, source_cm_id: 1000, target_cm_id: null },
+      { source: 'Session 1', target: 'Session 1', value: 60, source_cm_id: 1000, target_cm_id: 1000 },
     ]
     const result = sessionFlowToSankeyData(input)
     expect(result).not.toBeNull()
@@ -396,6 +432,10 @@ describe('sessionFlowToSankeyData', () => {
     // "Did Not Return" should appear as a target node (no disambiguation suffix)
     const nodeNames = result!.nodes.map((n) => n.name)
     expect(nodeNames).toContain('Did Not Return')
+
+    // "Did Not Return" node should have cmId null
+    const dnrNode = result!.nodes.find((n) => n.name === 'Did Not Return')
+    expect(dnrNode!.cmId).toBeNull()
 
     // It should be after source nodes
     const dnrIndex = result!.nodes.findIndex((n) => n.name === 'Did Not Return')
