@@ -28,8 +28,10 @@ import {
   synagogueToBarData,
   summerYearsToBarData,
   firstSummerYearToBarData,
+  regionToBarData,
   computeRetentionOutliers,
 } from '../../../utils/retentionTransforms'
+import { aggregateCityRetentionByRegion, REGION_DISPLAY_NAMES } from '../../../utils/regionUtils'
 import {
   buildSessionDateLookup,
   sortSessionDataByDate,
@@ -128,10 +130,16 @@ export default function RetentionOverview() {
   const cityBars = cityToBarData(data.by_city)
   const schoolBars = schoolToBarData(data.by_school)
   const synagogueBars = synagogueToBarData(data.by_synagogue)
+  const regionRetention = aggregateCityRetentionByRegion(data.by_city ?? [])
+  const regionBars = regionToBarData(regionRetention).map((b) => ({
+    ...b,
+    name: REGION_DISPLAY_NAMES[b.name] ?? b.name,
+  }))
 
   const cityOutliers = computeRetentionOutliers(cityBars, data.overall_retention_rate)
   const schoolOutliers = computeRetentionOutliers(schoolBars, data.overall_retention_rate)
   const synagogueOutliers = computeRetentionOutliers(synagogueBars, data.overall_retention_rate)
+  const regionOutliers = computeRetentionOutliers(regionBars, data.overall_retention_rate)
 
   return (
     <div className="space-y-6">
@@ -300,6 +308,21 @@ export default function RetentionOverview() {
             />
           </div>
           <OutlierSection outliers={synagogueOutliers} max={5} />
+        </div>
+      )}
+
+      {/* Row 8: Region chart + outliers */}
+      {regionBars.length > 0 && (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className={regionOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
+            <RetentionRateBarChart
+              data={regionBars}
+              title="Retention by Region"
+              sortBy="count"
+              layout="vertical"
+            />
+          </div>
+          <OutlierSection outliers={regionOutliers} max={5} />
         </div>
       )}
 

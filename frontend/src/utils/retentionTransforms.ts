@@ -190,7 +190,7 @@ export function priorSessionToBarData(
 
 export function regionToBarData(
   data:
-    | { region: string; base_count: number; returned_count: number; retention_rate: number }[]
+    | Array<{ region: string; base_count: number; returned_count: number; retention_rate: number }>
     | undefined
 ): RetentionRateBarItem[] {
   if (!data?.length) return []

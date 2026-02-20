@@ -62,7 +62,7 @@ export function classifyCity(city: string): string {
  */
 export function aggregateCityCountsByRegion(
   byCity: CityBreakdown[]
-): { region: string; count: number; percentage: number }[] {
+): Array<{ region: string; count: number; percentage: number }> {
   if (byCity.length === 0) return []
 
   const regionCounts = new Map<string, number>()
@@ -88,7 +88,7 @@ export function aggregateCityCountsByRegion(
  */
 export function aggregateCityRetentionByRegion(
   byCity: RetentionByCity[]
-): { region: string; base_count: number; returned_count: number; retention_rate: number }[] {
+): Array<{ region: string; base_count: number; returned_count: number; retention_rate: number }> {
   if (byCity.length === 0) return []
 
   const regionData = new Map<string, { base: number; returned: number }>()
@@ -114,8 +114,8 @@ export function aggregateCityRetentionByRegion(
  * Aggregate city enrollment data by region for trends charts.
  */
 export function aggregateCityEnrollmentByRegion(
-  byCity: { city: string; count: number }[]
-): { region: string; count: number }[] {
+  byCity: Array<{ city: string; count: number }>
+): Array<{ region: string; count: number }> {
   if (byCity.length === 0) return []
 
   const regionCounts = new Map<string, number>()
