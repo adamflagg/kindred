@@ -19,7 +19,6 @@ os.environ["SKIP_PB_AUTH"] = "true"
 
 from api.services.retention_trends_service import RetentionTrendsService
 
-
 # ============================================================================
 # Helpers
 # ============================================================================
