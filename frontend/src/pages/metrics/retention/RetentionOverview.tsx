@@ -43,7 +43,6 @@ export default function RetentionOverview() {
   const { currentYear } = useCurrentYear()
   const { selectedSessionCmId, sessions, sessionTypesParam, activeSessionTypes } =
     useMetricsSession()
-
   const priorYear = currentYear - 1
 
   // Build date lookups for chronological session sorting (must be before early returns)
@@ -136,7 +135,10 @@ export default function RetentionOverview() {
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div
+        className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4"
+        data-tour="retention-summary-cards"
+      >
         <MetricCard
           title={`${priorYear} Total Campers`}
           value={data.base_year_total}
@@ -193,7 +195,7 @@ export default function RetentionOverview() {
       )}
 
       {/* Row 1: Gender + Grade side by side */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2" data-tour="retention-demographics">
         {genderBars.length > 0 && (
           <RetentionRateBarChart
             data={genderBars}
@@ -254,7 +256,7 @@ export default function RetentionOverview() {
 
       {/* Row 5: City chart + outliers */}
       {cityBars.length > 0 && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3" data-tour="retention-geographic">
           <div className={cityOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
             <RetentionRateBarChart
               data={cityBars}

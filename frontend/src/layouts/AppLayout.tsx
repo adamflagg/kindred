@@ -34,6 +34,8 @@ import { useProgram } from '../contexts/ProgramContext'
 import { getProgramFromPath } from '../utils/programUrls'
 import { pb } from '../lib/pocketbase'
 import { VersionInfo } from '../components/VersionInfo'
+import { useTour } from '../hooks/useTour'
+import { TourReplayButton } from '../components/tour'
 
 export const AppLayout = () => {
   const location = useLocation()
@@ -50,6 +52,7 @@ export const AppLayout = () => {
   const programMenuRef = useRef<HTMLDivElement>(null)
   const userMenuRef = useRef<HTMLDivElement>(null)
   const { data: syncStatus } = useSyncStatusAPI()
+  const { tourId, replay } = useTour()
 
   // Determine current program from URL if not set
   const urlProgram = getProgramFromPath(location.pathname)
@@ -592,6 +595,7 @@ export const AppLayout = () => {
                   Year
                 </span>
                 <YearSelector />
+                <TourReplayButton tourId={tourId} onReplay={replay} />
               </div>
               {activeProgram === 'summer' &&
                 (syncStatus?.bunk_assignments?.end_time || syncStatus?.bunk_requests?.end_time) && (

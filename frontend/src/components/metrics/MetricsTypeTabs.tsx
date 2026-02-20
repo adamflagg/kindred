@@ -9,6 +9,8 @@ import { Link, useLocation } from 'react-router'
 import { BarChart3, Users, TrendingUp, type LucideIcon } from 'lucide-react'
 import { MetricsSessionSelector } from './MetricsSessionSelector'
 import { useMetricsSession } from '../../hooks/useMetricsSession'
+import { useTourHints } from '../../hooks/useTour'
+import { HintDot } from '../tour'
 import { RETENTION_SUB_NAV } from '../../pages/metrics/metricsNav'
 
 interface MetricTypeTab {
@@ -37,6 +39,7 @@ const METRIC_TYPES: MetricTypeTab[] = [
 export default function MetricsTypeTabs() {
   const location = useLocation()
   const { expandedRetention, setExpandedRetention } = useMetricsSession()
+  const hints = useTourHints()
 
   // Determine active tab based on current path
   const getActiveTab = () => {
@@ -92,6 +95,11 @@ export default function MetricsTypeTabs() {
               </label>
             )}
             <MetricsSessionSelector />
+            {hints
+              .filter((h) => h.element === '[data-tour="retention-session-selector"]')
+              .map((h) => (
+                <HintDot key={h.element} hint={h} />
+              ))}
           </div>
         )}
       </div>

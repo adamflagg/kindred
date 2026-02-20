@@ -236,7 +236,7 @@ export function SessionBunkHeatmap({
       </div>
 
       {/* Legend */}
-      <div className="mt-4 flex items-center gap-3 text-xs">
+      <div className="mt-4 flex items-center gap-3 text-xs" data-tour="retention-bunks-legend">
         <span className="text-muted-foreground">Retention:</span>
         <span className="flex items-center gap-1">
           <span className="inline-block h-3 w-3 rounded bg-red-600/80" />
