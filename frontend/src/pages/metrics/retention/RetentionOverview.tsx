@@ -36,9 +36,8 @@ import {
   sortPriorSessionDataByDate,
 } from '../../../utils/sessionUtils'
 import { OutlierSection } from '../../../components/metrics/RetentionNotableOutliers'
-import { SectionHeader } from '../../../components/metrics/SectionHeader'
 import type { DrilldownFilter } from '../../../types/metrics'
-import { Loader2, AlertCircle, Users, Calendar, Clock, MapPin } from 'lucide-react'
+import { Loader2, AlertCircle } from 'lucide-react'
 
 export default function RetentionOverview() {
   const { currentYear } = useCurrentYear()
@@ -193,12 +192,6 @@ export default function RetentionOverview() {
         </p>
       )}
 
-      <SectionHeader
-        icon={Users}
-        title="Camper Demographics"
-        description="Retention rates by gender and grade"
-      />
-
       {/* Row 1: Gender + Grade side by side */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {genderBars.length > 0 && (
@@ -219,12 +212,6 @@ export default function RetentionOverview() {
           />
         )}
       </div>
-
-      <SectionHeader
-        icon={Calendar}
-        title="Session Analysis"
-        description="How retention varies across sessions"
-      />
 
       {/* Row 2: Session charts side by side */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -247,12 +234,6 @@ export default function RetentionOverview() {
         )}
       </div>
 
-      <SectionHeader
-        icon={Clock}
-        title="Camper Tenure"
-        description="Retention by camp experience level"
-      />
-
       {/* Row 3: Summers at Camp + First Summer Year side by side */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {summerYearsBars.length > 0 && (
@@ -270,12 +251,6 @@ export default function RetentionOverview() {
           />
         )}
       </div>
-
-      <SectionHeader
-        icon={MapPin}
-        title="Geographic Retention"
-        description="Retention patterns by location"
-      />
 
       {/* Row 5: City chart + outliers */}
       {cityBars.length > 0 && (
