@@ -175,9 +175,11 @@ class RetentionService:
             filter_empty=True,
         )
 
-        # Session-bunk breakdown from bunk_assignments
+        # Session-bunk breakdown from bunk_assignments (always unfiltered)
+        # Heatmap should show "did camper return to camp at all?" regardless of session filter
+        returned_ids_unfiltered = person_ids_base_unfiltered & person_ids_compare_unfiltered
         by_session_bunk = self._build_session_bunk_breakdown(
-            person_ids_base, returned_ids, bunk_assignments_base, sessions_base_all
+            person_ids_base_unfiltered, returned_ids_unfiltered, bunk_assignments_base, sessions_base_all
         )
 
         # Summer enrollment breakdowns (calculated from attendees history)

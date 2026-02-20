@@ -4,7 +4,7 @@
  * Wraps content with MetricsSessionProvider for unified session filtering
  */
 import { Outlet, useLocation } from 'react-router'
-import { LayoutDashboard, Globe, Clock, GitBranch } from 'lucide-react'
+import { LayoutDashboard, Globe, Clock, GitBranch, Grid2x2 } from 'lucide-react'
 import MetricsTypeTabs from '../../components/metrics/MetricsTypeTabs'
 import MetricsSubNav, { type SubNavItem } from '../../components/metrics/MetricsSubNav'
 import { MetricsSessionProvider } from '../../contexts/MetricsSessionContext'
@@ -22,6 +22,12 @@ const RETENTION_SUB_NAV: SubNavItem[] = [
     label: 'Session Flow',
     icon: GitBranch,
     path: '/metrics/retention/flow',
+  },
+  {
+    id: 'bunks',
+    label: 'Bunk Retention',
+    icon: Grid2x2,
+    path: '/metrics/retention/bunks',
   },
 ]
 

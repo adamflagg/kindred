@@ -161,7 +161,7 @@ describe('MetricsLayout', () => {
   it('highlights correct primary tab based on route', () => {
     renderWithRouter('/metrics/retention')
 
-    const retentionLink = screen.getByRole('link', { name: /retention/i })
+    const retentionLink = screen.getByRole('link', { name: /^retention$/i })
     const registrationLink = screen.getByRole('link', {
       name: /registration/i,
     })
