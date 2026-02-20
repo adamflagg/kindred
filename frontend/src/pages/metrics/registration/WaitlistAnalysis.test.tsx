@@ -203,6 +203,12 @@ describe('WaitlistAnalysis', () => {
       // Should show grade distribution section header
       expect(screen.getByText(/grade distribution/i)).toBeInTheDocument()
     })
+
+    it('renders gender distribution chart', () => {
+      renderWithClient()
+
+      expect(screen.getByText('Gender Distribution')).toBeInTheDocument()
+    })
   })
 
   describe('with zero waitlisted', () => {
