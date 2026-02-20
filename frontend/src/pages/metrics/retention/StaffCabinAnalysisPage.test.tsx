@@ -583,7 +583,6 @@ describe('StaffCabinAnalysisPage', () => {
           { name: 'Session 2', start_date: '2025-07-01' },
         ],
       })
-
       ;(useStaffRetentionData as Mock).mockReturnValue({
         staffRows: [
           makeRow({
@@ -619,9 +618,7 @@ describe('StaffCabinAnalysisPage', () => {
 
       // Get session column headers (exclude Staff and Overall)
       const headers = screen.getAllByRole('columnheader')
-      const sessionHeaders = headers.filter(
-        (h) => !h.textContent?.match(/staff|overall/i)
-      )
+      const sessionHeaders = headers.filter((h) => !h.textContent?.match(/staff|overall/i))
 
       // Should be chronological: Taste of Camp, Session 1, Session 2
       expect(sessionHeaders[0]!.textContent).toBe('Taste of Camp')

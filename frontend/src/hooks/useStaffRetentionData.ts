@@ -138,7 +138,7 @@ export function useStaffRetentionData(priorYear: number, currentYear: number) {
   } = useBunkStaff(priorYear)
 
   const result = useMemo(() => {
-    if (!bunkStaffData || !retentionData?.by_session_bunk) {
+    if (!(bunkStaffData instanceof Map) || !retentionData?.by_session_bunk) {
       return { staffRows: [], sessions: [] }
     }
     return buildStaffRetentionData(bunkStaffData, retentionData.by_session_bunk)
@@ -146,6 +146,7 @@ export function useStaffRetentionData(priorYear: number, currentYear: number) {
 
   return {
     ...result,
+    bunkStaff: bunkStaffData ?? new Map(),
     isLoading: retLoading || staffLoading,
     error: retError || staffError,
   }

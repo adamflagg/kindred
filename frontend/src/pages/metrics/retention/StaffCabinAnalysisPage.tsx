@@ -4,18 +4,30 @@
  * Table layout: rows = staff members, columns = sessions, cells = bunk name + retention %.
  * Overall column shows weighted average retention across all sessions.
  * Sortable by staff name or overall retention.
+ * Portal-based tooltips with co-staff info on hover.
+ * Session columns sorted chronologically.
  */
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { Users, ArrowUp, ArrowDown } from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useStaffRetentionData } from '../../../hooks/useStaffRetentionData'
 import type { StaffRetentionRow } from '../../../hooks/useStaffRetentionData'
+import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { MetricsQueryGuard } from '../../../components/metrics/MetricsQueryGuard'
+import { BunkCellTooltip } from '../../../components/metrics/BunkStaffTooltip'
+import type { BunkStaffInfo } from '../../../hooks/useBunkStaff'
 import { getRetentionCellColor } from '../../../utils/retentionColors'
+import { buildSessionDateLookup, compareByDateThenName } from '../../../utils/sessionUtils'
 
 type SortField = 'name' | 'overall'
 type SortDir = 'asc' | 'desc'
+
+interface HoveredCell {
+  rowPersonId: string
+  session: string // session name or '__overall__'
+  bunkName: string
+}
 
 function sortRows(rows: StaffRetentionRow[], field: SortField, dir: SortDir): StaffRetentionRow[] {
   return [...rows].sort((a, b) => {
@@ -33,10 +45,23 @@ export default function StaffCabinAnalysisPage() {
   const { currentYear } = useCurrentYear()
   const priorYear = currentYear - 1
 
-  const { staffRows, sessions, isLoading, error } = useStaffRetentionData(priorYear, currentYear)
+  const { staffRows, sessions, bunkStaff, isLoading, error } = useStaffRetentionData(
+    priorYear,
+    currentYear
+  )
+  const { campSessions } = useMetricsSession()
 
   const [sortField, setSortField] = useState<SortField>('name')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
+  const [hoveredCell, setHoveredCell] = useState<HoveredCell | null>(null)
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
+
+  // Sort sessions chronologically
+  const sessionDateLookup = useMemo(() => buildSessionDateLookup(campSessions), [campSessions])
+  const sortedSessions = useMemo(
+    () => [...sessions].sort((a, b) => compareByDateThenName(a, b, sessionDateLookup)),
+    [sessions, sessionDateLookup]
+  )
 
   const sortedRows = useMemo(
     () => sortRows(staffRows, sortField, sortDir),
@@ -51,6 +76,66 @@ export default function StaffCabinAnalysisPage() {
       setSortDir(field === 'overall' ? 'desc' : 'asc')
     }
   }
+
+  const handleMouseEnter = useCallback(
+    (e: React.MouseEvent, rowPersonId: string, session: string, bunkName: string) => {
+      setHoveredCell({ rowPersonId, session, bunkName })
+      setTooltipPos({ x: e.clientX + 10, y: e.clientY + 10 })
+    },
+    []
+  )
+
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (hoveredCell) {
+        setTooltipPos({ x: e.clientX + 10, y: e.clientY + 10 })
+      }
+    },
+    [hoveredCell]
+  )
+
+  const handleMouseLeave = useCallback(() => {
+    setHoveredCell(null)
+  }, [])
+
+  // Compute tooltip data from hovered cell
+  const tooltipData = useMemo(() => {
+    if (!hoveredCell) return null
+
+    const row = staffRows.find((r) => r.personId === hoveredCell.rowPersonId)
+    if (!row) return null
+
+    if (hoveredCell.session === '__overall__') {
+      return {
+        bunkName: 'Overall',
+        retention: {
+          returnedCount: row.totalReturnedCount,
+          baseCount: row.totalBaseCount,
+          rate: row.overallRetention,
+        },
+        staff: undefined as BunkStaffInfo[] | undefined,
+      }
+    }
+
+    const sessionData = row.sessionData.get(hoveredCell.session)
+    if (!sessionData) return null
+
+    // Look up co-staff from bunkStaff map, filtering out current row's person
+    const key = `${hoveredCell.session}|${hoveredCell.bunkName}`
+    const allStaff = bunkStaff.get(key)
+    const coStaff = allStaff?.filter((s: BunkStaffInfo) => s.personId !== hoveredCell.rowPersonId)
+    const staffList = coStaff && coStaff.length > 0 ? coStaff : undefined
+
+    return {
+      bunkName: hoveredCell.bunkName,
+      retention: {
+        returnedCount: sessionData.returnedCount,
+        baseCount: sessionData.baseCount,
+        rate: sessionData.retentionRate,
+      },
+      staff: staffList,
+    }
+  }, [hoveredCell, staffRows, bunkStaff])
 
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field) return null
@@ -97,7 +182,7 @@ export default function StaffCabinAnalysisPage() {
                     >
                       Staff <SortIcon field="name" />
                     </th>
-                    {sessions.map((session) => (
+                    {sortedSessions.map((session) => (
                       <th
                         key={session}
                         role="columnheader"
@@ -124,7 +209,7 @@ export default function StaffCabinAnalysisPage() {
                       >
                         {row.name}
                       </th>
-                      {sessions.map((session) => {
+                      {sortedSessions.map((session) => {
                         const data = row.sessionData.get(session)
                         if (!data) {
                           return (
@@ -140,8 +225,12 @@ export default function StaffCabinAnalysisPage() {
                         return (
                           <td
                             key={session}
-                            className={`px-2 py-2 text-center ${getRetentionCellColor(data.retentionRate)}`}
-                            title={`${data.returnedCount} of ${data.baseCount} returned`}
+                            className={`cursor-help px-2 py-2 text-center ${getRetentionCellColor(data.retentionRate)}`}
+                            onMouseEnter={(e) =>
+                              handleMouseEnter(e, row.personId, session, data.bunkName)
+                            }
+                            onMouseMove={handleMouseMove}
+                            onMouseLeave={handleMouseLeave}
                           >
                             <div className="text-[10px] leading-tight opacity-80">
                               {data.bunkName}
@@ -151,8 +240,12 @@ export default function StaffCabinAnalysisPage() {
                         )
                       })}
                       <td
-                        className={`sticky right-0 z-10 px-3 py-2 text-center font-bold ${getRetentionCellColor(row.overallRetention)}`}
-                        title={`${row.totalReturnedCount} of ${row.totalBaseCount} returned`}
+                        className={`sticky right-0 z-10 cursor-help px-3 py-2 text-center font-bold ${getRetentionCellColor(row.overallRetention)}`}
+                        onMouseEnter={(e) =>
+                          handleMouseEnter(e, row.personId, '__overall__', 'Overall')
+                        }
+                        onMouseMove={handleMouseMove}
+                        onMouseLeave={handleMouseLeave}
                       >
                         {Math.round(row.overallRetention * 100)}%
                       </td>
@@ -178,6 +271,15 @@ export default function StaffCabinAnalysisPage() {
                 High (&ge;60%)
               </span>
             </div>
+
+            <BunkCellTooltip
+              bunkName={tooltipData?.bunkName ?? ''}
+              retention={tooltipData?.retention ?? { returnedCount: 0, baseCount: 0, rate: 0 }}
+              staff={tooltipData?.staff}
+              staffLabel="Co-Staff"
+              isVisible={!!tooltipData}
+              position={tooltipPos}
+            />
           </div>
         )}
       </MetricsQueryGuard>
