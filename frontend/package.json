@@ -50,6 +50,7 @@
     "cytoscape-fcose": "^2.2.0",
     "cytoscape-popper": "^4.0.1",
     "date-fns": "^4.1.0",
+    "driver.js": "^1.4.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.574.0",
     "pocketbase": "^0.26.8",
