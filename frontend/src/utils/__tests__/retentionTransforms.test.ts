@@ -347,9 +347,27 @@ describe('sessionFlowToSankeyData', () => {
 
   it('converts flow items to Sankey nodes and links', () => {
     const input: SessionFlowItem[] = [
-      { source: 'Session 1', target: 'Session 1', value: 50, source_cm_id: 1000, target_cm_id: 1000 },
-      { source: 'Session 1', target: 'Session 2', value: 20, source_cm_id: 1000, target_cm_id: 1001 },
-      { source: 'Session 2', target: 'Session 1', value: 30, source_cm_id: 1001, target_cm_id: 1000 },
+      {
+        source: 'Session 1',
+        target: 'Session 1',
+        value: 50,
+        source_cm_id: 1000,
+        target_cm_id: 1000,
+      },
+      {
+        source: 'Session 1',
+        target: 'Session 2',
+        value: 20,
+        source_cm_id: 1000,
+        target_cm_id: 1001,
+      },
+      {
+        source: 'Session 2',
+        target: 'Session 1',
+        value: 30,
+        source_cm_id: 1001,
+        target_cm_id: 1000,
+      },
     ]
     const result = sessionFlowToSankeyData(input)
     expect(result).not.toBeNull()
@@ -374,9 +392,27 @@ describe('sessionFlowToSankeyData', () => {
 
   it('propagates cmId from flow items to nodes', () => {
     const input: SessionFlowItem[] = [
-      { source: 'Session 1', target: 'Session 1', value: 50, source_cm_id: 1000, target_cm_id: 1000 },
-      { source: 'Session 1', target: 'Session 2', value: 20, source_cm_id: 1000, target_cm_id: 1001 },
-      { source: 'Session 2', target: 'Session 1', value: 30, source_cm_id: 1001, target_cm_id: 1000 },
+      {
+        source: 'Session 1',
+        target: 'Session 1',
+        value: 50,
+        source_cm_id: 1000,
+        target_cm_id: 1000,
+      },
+      {
+        source: 'Session 1',
+        target: 'Session 2',
+        value: 20,
+        source_cm_id: 1000,
+        target_cm_id: 1001,
+      },
+      {
+        source: 'Session 2',
+        target: 'Session 1',
+        value: 30,
+        source_cm_id: 1001,
+        target_cm_id: 1000,
+      },
     ]
     const result = sessionFlowToSankeyData(input)
     expect(result).not.toBeNull()
@@ -396,7 +432,13 @@ describe('sessionFlowToSankeyData', () => {
 
   it('matching cm_ids across source and target produce same cmId on nodes', () => {
     const input: SessionFlowItem[] = [
-      { source: 'Session 1', target: 'Session 1', value: 50, source_cm_id: 1000, target_cm_id: 1000 },
+      {
+        source: 'Session 1',
+        target: 'Session 1',
+        value: 50,
+        source_cm_id: 1000,
+        target_cm_id: 1000,
+      },
     ]
     const result = sessionFlowToSankeyData(input)
     expect(result).not.toBeNull()
@@ -408,7 +450,13 @@ describe('sessionFlowToSankeyData', () => {
 
   it('source nodes come before target nodes', () => {
     const input: SessionFlowItem[] = [
-      { source: 'Session 1', target: 'Session 2', value: 10, source_cm_id: 1000, target_cm_id: 1001 },
+      {
+        source: 'Session 1',
+        target: 'Session 2',
+        value: 10,
+        source_cm_id: 1000,
+        target_cm_id: 1001,
+      },
     ]
     const result = sessionFlowToSankeyData(input)
     expect(result).not.toBeNull()
@@ -423,8 +471,20 @@ describe('sessionFlowToSankeyData', () => {
 
   it('Did Not Return node has cmId null', () => {
     const input: SessionFlowItem[] = [
-      { source: 'Session 1', target: 'Did Not Return', value: 40, source_cm_id: 1000, target_cm_id: null },
-      { source: 'Session 1', target: 'Session 1', value: 60, source_cm_id: 1000, target_cm_id: 1000 },
+      {
+        source: 'Session 1',
+        target: 'Did Not Return',
+        value: 40,
+        source_cm_id: 1000,
+        target_cm_id: null,
+      },
+      {
+        source: 'Session 1',
+        target: 'Session 1',
+        value: 60,
+        source_cm_id: 1000,
+        target_cm_id: 1000,
+      },
     ]
     const result = sessionFlowToSankeyData(input)
     expect(result).not.toBeNull()
