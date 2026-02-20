@@ -18,6 +18,7 @@ import { useUpdateSolverConfig, useResetSolverConfig } from '../../hooks/useSolv
 import { SectionCard } from './SectionCard'
 import { ScaleGuideSidebar } from './ScaleGuideSidebar'
 import { RegistrationDatesConfig } from './RegistrationDatesConfig'
+import { GradeEligibilityConfig } from './GradeEligibilityConfig'
 
 // Category definitions - these IDs match the business_category values in config metadata
 interface CategoryDef {
@@ -284,7 +285,10 @@ export function ConfigTab() {
 
         {/* Sections */}
         {activeCategory === 'registration' ? (
-          <RegistrationDatesConfig />
+          <>
+            <RegistrationDatesConfig />
+            <GradeEligibilityConfig />
+          </>
         ) : (
           <div className="space-y-4">
             {filteredSections.map((section, index) => (

@@ -171,8 +171,8 @@ describe('GradeEligibilityConfig', () => {
 
     // Change a value
     const inputs = screen.getAllByRole('spinbutton')
-    await user.clear(inputs[0])
-    await user.type(inputs[0], '3')
+    await user.clear(inputs[0]!)
+    await user.type(inputs[0]!, '3')
 
     // Save button should appear
     expect(screen.getByText(/save/i)).toBeInTheDocument()
@@ -196,8 +196,8 @@ describe('GradeEligibilityConfig', () => {
 
     // Make a change
     const inputs = screen.getAllByRole('spinbutton')
-    await user.clear(inputs[0])
-    await user.type(inputs[0], '3')
+    await user.clear(inputs[0]!)
+    await user.type(inputs[0]!, '3')
 
     // Click save
     const saveButton = screen.getByText(/save/i)
