@@ -87,7 +87,7 @@ class TestDrilldownRetentionCardAgedOut:
 
     @pytest.fixture
     def compare_session(self) -> Mock:
-        return _make_session(2001, "Session 2", start_date="2026-06-15")
+        return _make_session(2001, "Session 2")
 
     @pytest.mark.asyncio
     async def test_retention_all_excludes_10th_graders(
