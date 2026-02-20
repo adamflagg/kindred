@@ -71,14 +71,14 @@ class TestRetentionTrendsAgedOutExclusion:
     ) -> None:
         """Wire up mock repository with multi-year data."""
 
-        async def fetch_attendees(year: int, *args: Any, **kwargs: Any) -> list[Mock]:
-            return data_by_year.get(year, {}).get("attendees", [])
+        async def fetch_attendees(year: int, *args: Any, **kwargs: Any) -> list[Any]:
+            return data_by_year.get(year, {}).get("attendees", [])  # type: ignore[no-any-return]
 
-        async def fetch_persons(year: int) -> dict[int, Mock]:
-            return data_by_year.get(year, {}).get("persons", {})
+        async def fetch_persons(year: int) -> dict[int, Any]:
+            return data_by_year.get(year, {}).get("persons", {})  # type: ignore[no-any-return]
 
-        async def fetch_sessions(year: int, types: Any) -> dict[int, Mock]:
-            return data_by_year.get(year, {}).get("sessions", {})
+        async def fetch_sessions(year: int, types: Any) -> dict[int, Any]:
+            return data_by_year.get(year, {}).get("sessions", {})  # type: ignore[no-any-return]
 
         repo.fetch_attendees = AsyncMock(side_effect=fetch_attendees)
         repo.fetch_persons = AsyncMock(side_effect=fetch_persons)
