@@ -5,7 +5,7 @@ import 'driver.js/dist/driver.css'
 import '../styles/tour.css'
 import { getTourIdForRoute, loadTourDefinition } from '../tours/tourRegistry'
 import { isTourCompleted, markTourCompleted } from '../tours/tourStorage'
-import type { TourDefinition, TourId } from '../tours/types'
+import type { HintDefinition, TourDefinition, TourId } from '../tours/types'
 
 /** Delay before auto-starting a tour or checking isReady() (ms), to let page content render */
 const AUTO_START_DELAY = 300
@@ -19,6 +19,7 @@ const READY_CHECK_INTERVAL = 200
 export function useTour() {
   const { pathname } = useLocation()
   const [tourId, setTourId] = useState<TourId | null>(null)
+  const [hints, setHints] = useState<HintDefinition[]>([])
   const driverRef = useRef<Driver | null>(null)
   const definitionRef = useRef<TourDefinition | null>(null)
   const pendingTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
@@ -40,15 +41,18 @@ export function useTour() {
 
     if (!id) {
       definitionRef.current = null
+      setHints([])
       return
     }
 
     loadTourDefinition(id)
       .then((def) => {
         definitionRef.current = def
+        setHints(def.hints ?? [])
       })
       .catch(() => {
         definitionRef.current = null
+        setHints([])
       })
   }, [pathname])
 
@@ -121,5 +125,5 @@ export function useTour() {
     startTour()
   }, [startTour])
 
-  return { tourId, replay }
+  return { tourId, replay, hints }
 }

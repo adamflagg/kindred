@@ -19,6 +19,8 @@ import { BunkCellTooltip } from '../../../components/metrics/BunkStaffTooltip'
 import type { BunkStaffInfo } from '../../../hooks/useBunkStaff'
 import { getRetentionCellColor } from '../../../utils/retentionColors'
 import { buildSessionDateLookup, compareByDateThenName } from '../../../utils/sessionUtils'
+import { useTour } from '../../../hooks/useTour'
+import { TourReplayButton, HintDot } from '../../../components/tour'
 
 type SortField = 'name' | 'overall'
 type SortDir = 'asc' | 'desc'
@@ -50,6 +52,7 @@ export default function StaffCabinAnalysisPage() {
     currentYear
   )
   const { campSessions } = useMetricsSession()
+  const { tourId, replay, hints } = useTour()
 
   const [sortField, setSortField] = useState<SortField>('name')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
@@ -152,14 +155,17 @@ export default function StaffCabinAnalysisPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-foreground flex items-center gap-2 text-2xl font-bold">
-          <Users className="text-primary h-6 w-6" />
-          Staff Cabin Analysis ({priorYear})
-        </h1>
-        <p className="text-muted-foreground mt-1">
-          Retention rates by staff member across their cabin assignments
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-foreground flex items-center gap-2 text-2xl font-bold">
+            <Users className="text-primary h-6 w-6" />
+            Staff Cabin Analysis ({priorYear})
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Retention rates by staff member across their cabin assignments
+          </p>
+        </div>
+        <TourReplayButton tourId={tourId} onReplay={replay} />
       </div>
 
       <MetricsQueryGuard
@@ -170,7 +176,7 @@ export default function StaffCabinAnalysisPage() {
         emptyMessage="No staff retention data available"
       >
         {() => (
-          <div className="card-lodge p-4">
+          <div className="card-lodge p-4" data-tour="retention-staff-table">
             <div className="overflow-x-auto">
               <table className="w-full border-collapse text-xs" role="table">
                 <thead>
@@ -179,8 +185,14 @@ export default function StaffCabinAnalysisPage() {
                       role="columnheader"
                       className="bg-muted/50 text-muted-foreground sticky left-0 z-10 cursor-pointer px-3 py-2 text-left font-medium select-none"
                       onClick={() => handleSort('name')}
+                      data-tour="retention-staff-sort-name"
                     >
                       Staff <SortIcon field="name" />
+                      {hints
+                        .filter((h) => h.element === '[data-tour="retention-staff-sort-name"]')
+                        .map((h) => (
+                          <HintDot key={h.element} hint={h} className="ml-1" />
+                        ))}
                     </th>
                     {sortedSessions.map((session) => (
                       <th
@@ -195,8 +207,14 @@ export default function StaffCabinAnalysisPage() {
                       role="columnheader"
                       className="bg-muted/50 text-muted-foreground sticky right-0 z-10 cursor-pointer px-3 py-2 text-center font-medium select-none"
                       onClick={() => handleSort('overall')}
+                      data-tour="retention-staff-sort-overall"
                     >
                       Overall <SortIcon field="overall" />
+                      {hints
+                        .filter((h) => h.element === '[data-tour="retention-staff-sort-overall"]')
+                        .map((h) => (
+                          <HintDot key={h.element} hint={h} className="ml-1" />
+                        ))}
                     </th>
                   </tr>
                 </thead>
@@ -256,7 +274,10 @@ export default function StaffCabinAnalysisPage() {
             </div>
 
             {/* Legend */}
-            <div className="mt-4 flex items-center gap-3 text-xs">
+            <div
+              className="mt-4 flex items-center gap-3 text-xs"
+              data-tour="retention-staff-legend"
+            >
               <span className="text-muted-foreground">Retention:</span>
               <span className="flex items-center gap-1">
                 <span className="inline-block h-3 w-3 rounded bg-red-600/80" />

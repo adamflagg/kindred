@@ -38,11 +38,14 @@ import {
 import { OutlierSection } from '../../../components/metrics/RetentionNotableOutliers'
 import type { DrilldownFilter } from '../../../types/metrics'
 import { Loader2, AlertCircle } from 'lucide-react'
+import { useTour } from '../../../hooks/useTour'
+import { TourReplayButton, HintDot } from '../../../components/tour'
 
 export default function RetentionOverview() {
   const { currentYear } = useCurrentYear()
   const { selectedSessionCmId, sessions, sessionTypesParam, activeSessionTypes } =
     useMetricsSession()
+  const { tourId, replay, hints } = useTour()
 
   const priorYear = currentYear - 1
 
@@ -135,8 +138,21 @@ export default function RetentionOverview() {
 
   return (
     <div className="space-y-6">
+      {/* Tour replay button + summary cards hint */}
+      <div className="flex items-center justify-end gap-2">
+        {hints
+          .filter((h) => h.element === '[data-tour="retention-summary-cards"]')
+          .map((h) => (
+            <HintDot key={h.element} hint={h} />
+          ))}
+        <TourReplayButton tourId={tourId} onReplay={replay} />
+      </div>
+
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div
+        className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4"
+        data-tour="retention-summary-cards"
+      >
         <MetricCard
           title={`${priorYear} Total Campers`}
           value={data.base_year_total}
@@ -193,7 +209,7 @@ export default function RetentionOverview() {
       )}
 
       {/* Row 1: Gender + Grade side by side */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2" data-tour="retention-demographics">
         {genderBars.length > 0 && (
           <RetentionRateBarChart
             data={genderBars}
@@ -254,7 +270,7 @@ export default function RetentionOverview() {
 
       {/* Row 5: City chart + outliers */}
       {cityBars.length > 0 && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3" data-tour="retention-geographic">
           <div className={cityOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
             <RetentionRateBarChart
               data={cityBars}

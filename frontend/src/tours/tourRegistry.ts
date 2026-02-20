@@ -3,6 +3,10 @@ import type { TourId, TourDefinition } from './types'
 /** Map route patterns to tour IDs */
 const routeToTour: Record<string, TourId> = {
   '/summer/debug': 'debug',
+  '/metrics/retention': 'retention-overview',
+  '/metrics/retention/flow': 'retention-flow',
+  '/metrics/retention/bunks': 'retention-bunks',
+  '/metrics/retention/staff': 'retention-staff',
 }
 
 /** Look up the tour ID for a given route pathname */
@@ -16,6 +20,10 @@ export function getTourIdForRoute(pathname: string): TourId | null {
 export async function loadTourDefinition(tourId: TourId): Promise<TourDefinition> {
   const loaders: Record<TourId, () => Promise<{ default: TourDefinition }>> = {
     debug: () => import('./definitions/debugTour'),
+    'retention-overview': () => import('./definitions/retentionOverviewTour'),
+    'retention-flow': () => import('./definitions/retentionFlowTour'),
+    'retention-bunks': () => import('./definitions/retentionBunksTour'),
+    'retention-staff': () => import('./definitions/retentionStaffTour'),
   }
 
   const loader = loaders[tourId]

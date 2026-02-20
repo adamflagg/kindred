@@ -33,7 +33,7 @@ export function resetTour(tourId: TourId): void {
   const storage = getTourStorage()
   const completed: TourStorageData['completed'] = {}
   for (const key of Object.keys(storage.completed) as TourId[]) {
-    if (key !== tourId) {
+    if (key !== tourId && storage.completed[key]) {
       completed[key] = storage.completed[key]
     }
   }
