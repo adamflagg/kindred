@@ -40,12 +40,12 @@ const mockWaitlistData = {
     },
   ],
   by_grade: [
-    { grade: 5, count: 2, percentage: 40.0 },
-    { grade: 6, count: 3, percentage: 60.0 },
+    { grade: 5, count: 2, percentage: 40.0, no_enrollment: 1, has_enrollment: 1 },
+    { grade: 6, count: 3, percentage: 60.0, no_enrollment: 1, has_enrollment: 2 },
   ],
   by_gender: [
-    { gender: 'F', count: 3, percentage: 60.0 },
-    { gender: 'M', count: 2, percentage: 40.0 },
+    { gender: 'F', count: 3, percentage: 60.0, no_enrollment: 2, has_enrollment: 1 },
+    { gender: 'M', count: 2, percentage: 40.0, no_enrollment: 0, has_enrollment: 2 },
   ],
 }
 

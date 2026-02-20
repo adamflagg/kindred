@@ -1126,3 +1126,241 @@ class TestAcceptedDeclinedSessionFilter:
         assert session_map[1001].accepted == 1
         # Session 2 should NOT appear in breakdown
         assert 1002 not in session_map
+
+
+# ============================================================================
+# Demographic Enrollment Split (grade/gender with no_enrollment/has_enrollment)
+# ============================================================================
+
+
+class TestDemographicEnrollmentSplit:
+    """Test that grade and gender breakdowns include no_enrollment/has_enrollment counts.
+
+    The _compute_demographics method should split each grade/gender bucket into
+    persons who have other enrolled sessions vs those who don't.
+    """
+
+    @pytest.mark.asyncio
+    async def test_grade_breakdown_includes_enrollment_split(
+        self,
+        waitlist_service: WaitlistService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """Grade breakdown should have no_enrollment and has_enrollment counts."""
+        session1 = sample_sessions[1001]
+        session2 = sample_sessions[1002]
+        # Emma (101, grade 5) waitlisted in S1, no enrollment
+        # Liam (102, grade 6) waitlisted in S1, enrolled in S2
+        waitlisted_attendees = [
+            create_mock_attendee(101, session1, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(102, session1, status="waitlisted", status_id=8, is_active=False),
+        ]
+        enrolled_attendees = [
+            create_mock_attendee(102, session2, status="enrolled", status_id=2, is_active=True),
+        ]
+
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (
+                waitlisted_attendees if status_filter == "waitlisted" else enrolled_attendees
+            )
+        )
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+
+        result = await waitlist_service.calculate_waitlist(year=2026)
+
+        grade_map = {g.grade: g for g in result.by_grade}
+        # Emma: grade 5, no enrollment
+        assert grade_map[5].no_enrollment == 1
+        assert grade_map[5].has_enrollment == 0
+        assert grade_map[5].count == 1
+        # Liam: grade 6, has enrollment
+        assert grade_map[6].no_enrollment == 0
+        assert grade_map[6].has_enrollment == 1
+        assert grade_map[6].count == 1
+
+    @pytest.mark.asyncio
+    async def test_gender_breakdown_includes_enrollment_split(
+        self,
+        waitlist_service: WaitlistService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """Gender breakdown should have no_enrollment and has_enrollment counts."""
+        session1 = sample_sessions[1001]
+        session2 = sample_sessions[1002]
+        # Emma (101, F) waitlisted in S1, no enrollment
+        # Liam (102, M) waitlisted in S1, enrolled in S2
+        waitlisted_attendees = [
+            create_mock_attendee(101, session1, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(102, session1, status="waitlisted", status_id=8, is_active=False),
+        ]
+        enrolled_attendees = [
+            create_mock_attendee(102, session2, status="enrolled", status_id=2, is_active=True),
+        ]
+
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (
+                waitlisted_attendees if status_filter == "waitlisted" else enrolled_attendees
+            )
+        )
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+
+        result = await waitlist_service.calculate_waitlist(year=2026)
+
+        gender_map = {g.gender: g for g in result.by_gender}
+        # Emma: F, no enrollment
+        assert gender_map["F"].no_enrollment == 1
+        assert gender_map["F"].has_enrollment == 0
+        assert gender_map["F"].count == 1
+        # Liam: M, has enrollment
+        assert gender_map["M"].no_enrollment == 0
+        assert gender_map["M"].has_enrollment == 1
+        assert gender_map["M"].count == 1
+
+    @pytest.mark.asyncio
+    async def test_mixed_enrollment_within_same_grade(
+        self,
+        waitlist_service: WaitlistService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """Same grade has both enrolled and non-enrolled persons."""
+        session1 = sample_sessions[1001]
+        session2 = sample_sessions[1002]
+        # Liam (102, grade 6) waitlisted, enrolled in S2
+        # Ava (105, grade 6) waitlisted, no enrollment
+        waitlisted_attendees = [
+            create_mock_attendee(102, session1, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(105, session1, status="waitlisted", status_id=8, is_active=False),
+        ]
+        enrolled_attendees = [
+            create_mock_attendee(102, session2, status="enrolled", status_id=2, is_active=True),
+        ]
+
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (
+                waitlisted_attendees if status_filter == "waitlisted" else enrolled_attendees
+            )
+        )
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+
+        result = await waitlist_service.calculate_waitlist(year=2026)
+
+        grade_map = {g.grade: g for g in result.by_grade}
+        # Grade 6: Liam has enrollment, Ava does not
+        assert grade_map[6].count == 2
+        assert grade_map[6].no_enrollment == 1
+        assert grade_map[6].has_enrollment == 1
+
+    @pytest.mark.asyncio
+    async def test_all_enrolled_edge_case(
+        self,
+        waitlist_service: WaitlistService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """All waitlisted persons have enrollment -> no_enrollment is 0 for all."""
+        session1 = sample_sessions[1001]
+        session2 = sample_sessions[1002]
+        # Emma (101) and Liam (102) both waitlisted in S1, both enrolled in S2
+        waitlisted_attendees = [
+            create_mock_attendee(101, session1, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(102, session1, status="waitlisted", status_id=8, is_active=False),
+        ]
+        enrolled_attendees = [
+            create_mock_attendee(101, session2, status="enrolled", status_id=2, is_active=True),
+            create_mock_attendee(102, session2, status="enrolled", status_id=2, is_active=True),
+        ]
+
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (
+                waitlisted_attendees if status_filter == "waitlisted" else enrolled_attendees
+            )
+        )
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+
+        result = await waitlist_service.calculate_waitlist(year=2026)
+
+        for grade in result.by_grade:
+            assert grade.no_enrollment == 0
+            assert grade.has_enrollment == grade.count
+        for gender in result.by_gender:
+            assert gender.no_enrollment == 0
+            assert gender.has_enrollment == gender.count
+
+    @pytest.mark.asyncio
+    async def test_none_enrolled_edge_case(
+        self,
+        waitlist_service: WaitlistService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """No waitlisted persons have enrollment -> has_enrollment is 0 for all."""
+        session1 = sample_sessions[1001]
+        # Emma (101) and Liam (102) both waitlisted, neither enrolled
+        waitlisted_attendees = [
+            create_mock_attendee(101, session1, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(102, session1, status="waitlisted", status_id=8, is_active=False),
+        ]
+
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (waitlisted_attendees if status_filter == "waitlisted" else [])
+        )
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+
+        result = await waitlist_service.calculate_waitlist(year=2026)
+
+        for grade in result.by_grade:
+            assert grade.has_enrollment == 0
+            assert grade.no_enrollment == grade.count
+        for gender in result.by_gender:
+            assert gender.has_enrollment == 0
+            assert gender.no_enrollment == gender.count
+
+    @pytest.mark.asyncio
+    async def test_percentages_relative_to_total(
+        self,
+        waitlist_service: WaitlistService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """Percentages should be relative to total waitlisted, not enrollment split."""
+        session1 = sample_sessions[1001]
+        session2 = sample_sessions[1002]
+        # 3 waitlisted: Emma (grade 5), Liam (grade 6), Ava (grade 6)
+        waitlisted_attendees = [
+            create_mock_attendee(101, session1, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(102, session1, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(105, session1, status="waitlisted", status_id=8, is_active=False),
+        ]
+        enrolled_attendees = [
+            create_mock_attendee(102, session2, status="enrolled", status_id=2, is_active=True),
+        ]
+
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (
+                waitlisted_attendees if status_filter == "waitlisted" else enrolled_attendees
+            )
+        )
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+
+        result = await waitlist_service.calculate_waitlist(year=2026)
+
+        grade_map = {g.grade: g for g in result.by_grade}
+        # Grade 5: 1/3 = 33.3%
+        assert grade_map[5].percentage == pytest.approx(33.3, abs=0.1)
+        # Grade 6: 2/3 = 66.7%
+        assert grade_map[6].percentage == pytest.approx(66.7, abs=0.1)
