@@ -1,0 +1,247 @@
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { GradeEligibilityConfig } from './GradeEligibilityConfig'
+
+// Mock pocketbase client
+const mockGetFullList = vi.fn()
+const mockUpdate = vi.fn()
+const mockCreate = vi.fn()
+vi.mock('../../lib/pocketbase', () => ({
+  pb: {
+    collection: () => ({
+      getFullList: mockGetFullList,
+      update: mockUpdate,
+      create: mockCreate,
+    }),
+  },
+}))
+
+// Mock useCurrentYear
+vi.mock('../../hooks/useCurrentYear', () => ({
+  useCurrentYear: () => ({ currentYear: 2026 }),
+}))
+
+// Helper to create a QueryClient for tests
+function createTestQueryClient() {
+  return new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  })
+}
+
+function renderWithProviders(ui: React.ReactElement) {
+  const queryClient = createTestQueryClient()
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>)
+}
+
+// Sample session data
+const mockSessions = [
+  {
+    cm_id: 1001,
+    name: 'Taste of Camp',
+    session_type: 'main',
+    start_date: '2026-06-10',
+    year: 2026,
+    parent_id: null,
+  },
+  {
+    cm_id: 1002,
+    name: 'Session 2',
+    session_type: 'main',
+    start_date: '2026-06-15',
+    year: 2026,
+    parent_id: null,
+  },
+  {
+    cm_id: 1003,
+    name: 'Session 2a',
+    session_type: 'embedded',
+    start_date: '2026-06-15',
+    year: 2026,
+    parent_id: null,
+  },
+  {
+    cm_id: 2001,
+    name: 'AG Session 2',
+    session_type: 'ag',
+    start_date: '2026-06-15',
+    year: 2026,
+    parent_id: 1002,
+  },
+]
+
+// Sample existing config records
+const mockConfigRecords = [
+  {
+    id: 'cfg1',
+    category: 'session_availability',
+    subcategory: '2026',
+    config_key: '1001',
+    value: {
+      girls_min_grade: 2,
+      girls_max_grade: 6,
+      boys_min_grade: 2,
+      boys_max_grade: 6,
+      capacity_override: null,
+    },
+  },
+]
+
+describe('GradeEligibilityConfig', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('renders loading state initially', () => {
+    // Sessions and config both loading
+    mockGetFullList.mockReturnValue(new Promise(() => {}))
+    renderWithProviders(<GradeEligibilityConfig />)
+    expect(screen.getByText(/loading/i)).toBeInTheDocument()
+  })
+
+  it('renders session rows after data loads', async () => {
+    // First call: sessions, second call: config records, third call: threshold config
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions) // sessions
+      .mockResolvedValueOnce(mockConfigRecords) // config records
+      .mockResolvedValueOnce([]) // threshold
+
+    renderWithProviders(<GradeEligibilityConfig />)
+
+    await waitFor(() => {
+      // Main sessions should appear (not AG sessions — they get a separate section)
+      expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+      expect(screen.getByText('Session 2')).toBeInTheDocument()
+      expect(screen.getByText('Session 2a')).toBeInTheDocument()
+    })
+  })
+
+  it('renders AG sessions in a separate section', async () => {
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions)
+      .mockResolvedValueOnce(mockConfigRecords)
+      .mockResolvedValueOnce([])
+
+    renderWithProviders(<GradeEligibilityConfig />)
+
+    await waitFor(() => {
+      expect(screen.getByText('AG Session 2')).toBeInTheDocument()
+    })
+    // AG section should have its own header
+    expect(screen.getByText(/ag sessions/i)).toBeInTheDocument()
+  })
+
+  it('populates inputs from existing config', async () => {
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions)
+      .mockResolvedValueOnce(mockConfigRecords)
+      .mockResolvedValueOnce([])
+
+    renderWithProviders(<GradeEligibilityConfig />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+    })
+
+    // The Taste of Camp row has config with girls_min_grade=2, girls_max_grade=6
+    const inputs = screen.getAllByRole('spinbutton')
+    // Find an input with value "2" for the configured session
+    const hasValue2 = inputs.some((input) => (input as HTMLInputElement).value === '2')
+    const hasValue6 = inputs.some((input) => (input as HTMLInputElement).value === '6')
+    expect(hasValue2).toBe(true)
+    expect(hasValue6).toBe(true)
+  })
+
+  it('shows save button only when changes are made', async () => {
+    const user = userEvent.setup()
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions)
+      .mockResolvedValueOnce(mockConfigRecords)
+      .mockResolvedValueOnce([])
+
+    renderWithProviders(<GradeEligibilityConfig />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+    })
+
+    // Save button should not be visible initially
+    expect(screen.queryByText(/save/i)).not.toBeInTheDocument()
+
+    // Change a value
+    const inputs = screen.getAllByRole('spinbutton')
+    await user.clear(inputs[0])
+    await user.type(inputs[0], '3')
+
+    // Save button should appear
+    expect(screen.getByText(/save/i)).toBeInTheDocument()
+  })
+
+  it('saves config on button click', async () => {
+    const user = userEvent.setup()
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions)
+      .mockResolvedValueOnce(mockConfigRecords)
+      .mockResolvedValueOnce([])
+
+    mockUpdate.mockResolvedValue({})
+    mockCreate.mockResolvedValue({})
+
+    renderWithProviders(<GradeEligibilityConfig />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+    })
+
+    // Make a change
+    const inputs = screen.getAllByRole('spinbutton')
+    await user.clear(inputs[0])
+    await user.type(inputs[0], '3')
+
+    // Click save
+    const saveButton = screen.getByText(/save/i)
+    await user.click(saveButton)
+
+    // Should have called create or update
+    await waitFor(() => {
+      const totalCalls = mockUpdate.mock.calls.length + mockCreate.mock.calls.length
+      expect(totalCalls).toBeGreaterThan(0)
+    })
+  })
+
+  it('renders header and description', async () => {
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions)
+      .mockResolvedValueOnce(mockConfigRecords)
+      .mockResolvedValueOnce([])
+
+    renderWithProviders(<GradeEligibilityConfig />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/session availability config/i)).toBeInTheDocument()
+      expect(screen.getByText(/grade ranges/i)).toBeInTheDocument()
+    })
+  })
+
+  it('renders threshold input', async () => {
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions)
+      .mockResolvedValueOnce(mockConfigRecords)
+      .mockResolvedValueOnce([
+        {
+          id: 'thr1',
+          category: 'session_availability',
+          subcategory: '2026',
+          config_key: 'limited_threshold',
+          value: 80,
+        },
+      ])
+
+    renderWithProviders(<GradeEligibilityConfig />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/limited.*threshold/i)).toBeInTheDocument()
+    })
+  })
+})
