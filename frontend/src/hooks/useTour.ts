@@ -7,10 +7,10 @@ import { getTourIdForRoute, loadTourDefinition } from '../tours/tourRegistry'
 import { isTourCompleted, markTourCompleted } from '../tours/tourStorage'
 import type { TourDefinition, TourId } from '../tours/types'
 
-/** Delay before auto-starting a tour (ms) to let page content render */
+/** Delay before auto-starting a tour or checking isReady() (ms), to let page content render */
 const AUTO_START_DELAY = 300
 
-/** Max retries waiting for isReady() to return true */
+/** Max retries waiting for isReady() to return true. After exhausting retries, the tour force-starts anyway. */
 const MAX_READY_RETRIES = 10
 
 /** Interval between isReady() checks (ms) */
@@ -21,8 +21,19 @@ export function useTour() {
   const [tourId, setTourId] = useState<TourId | null>(null)
   const driverRef = useRef<Driver | null>(null)
   const definitionRef = useRef<TourDefinition | null>(null)
+  const pendingTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
 
-  // Resolve tour ID from the current route
+  /** Track a timeout so it can be cancelled on unmount */
+  const scheduleTimeout = useCallback((fn: () => void, ms: number) => {
+    const id = setTimeout(() => {
+      pendingTimersRef.current.delete(id)
+      fn()
+    }, ms)
+    pendingTimersRef.current.add(id)
+    return id
+  }, [])
+
+  // Resolve tour ID and load definition from the current route
   useEffect(() => {
     const id = getTourIdForRoute(pathname)
     setTourId(id)
@@ -32,9 +43,13 @@ export function useTour() {
       return
     }
 
-    loadTourDefinition(id).then((def) => {
-      definitionRef.current = def
-    })
+    loadTourDefinition(id)
+      .then((def) => {
+        definitionRef.current = def
+      })
+      .catch(() => {
+        definitionRef.current = null
+      })
   }, [pathname])
 
   const startTour = useCallback(() => {
@@ -66,33 +81,39 @@ export function useTour() {
         return
       }
       retries++
-      setTimeout(checkReady, READY_CHECK_INTERVAL)
+      scheduleTimeout(checkReady, READY_CHECK_INTERVAL)
     }
 
-    setTimeout(checkReady, AUTO_START_DELAY)
-  }, [])
+    scheduleTimeout(checkReady, AUTO_START_DELAY)
+  }, [scheduleTimeout])
 
-  // Auto-start on route change if tour not yet completed
+  // Auto-start on route change: wait for definition to load, then check completion
   useEffect(() => {
     if (!tourId) return
 
-    // Wait for definition to load then check completion
-    const timer = setTimeout(() => {
-      const def = definitionRef.current
-      if (!def) return
-      if (isTourCompleted(def.id, def.version)) return
-      startTour()
-    }, AUTO_START_DELAY)
-
-    return () => clearTimeout(timer)
+    // Chain auto-start off the definition promise to avoid racing with the async import
+    loadTourDefinition(tourId)
+      .then((def) => {
+        definitionRef.current = def
+        if (isTourCompleted(def.id, def.version)) return
+        startTour()
+      })
+      .catch(() => {
+        // Definition failed to load — gracefully skip auto-start
+      })
   }, [tourId, startTour])
 
-  // Cleanup on unmount
+  // Cleanup on unmount: destroy driver and cancel pending timers
   useEffect(() => {
+    const timers = pendingTimersRef.current
     return () => {
       if (driverRef.current) {
         driverRef.current.destroy()
       }
+      for (const id of timers) {
+        clearTimeout(id)
+      }
+      timers.clear()
     }
   }, [])
 

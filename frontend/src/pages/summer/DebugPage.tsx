@@ -12,7 +12,7 @@ import { useState } from 'react'
 import { Bug, FileCode, Sparkles, Trees } from 'lucide-react'
 import { ParseAnalysisTab, PromptEditorTab } from '../../components/debug'
 import { useTour } from '../../hooks/useTour'
-import { TourReplayButton } from '../../components/tour/TourReplayButton'
+import { TourReplayButton } from '../../components/tour'
 
 type TabId = 'parse-analysis' | 'prompt-editor'
 

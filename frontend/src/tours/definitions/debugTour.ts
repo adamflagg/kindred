@@ -38,7 +38,7 @@ const debugTour: TourDefinition = {
       popover: {
         title: 'Pro Tip: Page Tours',
         description:
-          'Every page with a guided tour has a "Tour" button in the header. Click it anytime to replay the tour. Tours auto-run once on your first visit and re-trigger when features change.',
+          'Every page with a guided tour has a "Tour" button in the header. Click it anytime to replay the tour. Tours auto-run once on your first visit and re-trigger when the tour is updated.',
       },
     },
   ],
