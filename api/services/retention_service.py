@@ -100,7 +100,6 @@ class RetentionService:
 
         # Unfiltered pools for session chart semantics and session flow
         person_ids_base_unfiltered, _ = self._filter_base_attendees(attendees_base, None, None)
-        person_ids_compare_filtered, _ = self._filter_base_attendees(attendees_compare, session_types, session_cm_id)
         person_ids_compare_unfiltered, attendee_sessions_compare = self._filter_base_attendees(
             attendees_compare, None, None
         )
@@ -193,9 +192,13 @@ class RetentionService:
             person_ids_base, returned_ids, first_year_by_person
         )
 
-        # Prior session: base year sessions (all types), returned filtered by dropdown
+        # Prior session: base year sessions filtered by dropdown, returned = any compare year
         by_prior_session = self._build_base_year_session_breakdown(
-            attendees_base, person_ids_compare_filtered, sessions_base_all
+            attendees_base,
+            person_ids_compare_unfiltered,
+            sessions_base_all,
+            session_types,
+            session_cm_id,
         )
 
         # Session flow: Sankey diagram data showing session-to-session transitions
@@ -403,18 +406,23 @@ class RetentionService:
     def _build_base_year_session_breakdown(
         self,
         attendees_base: list[Any],
-        person_ids_compare_filtered: set[int],
+        person_ids_compare: set[int],
         sessions_base_all: dict[int, Any],
+        session_types: list[str] | None = None,
+        session_cm_id: int | None = None,
     ) -> list[RetentionByPriorSession]:
         """Build session breakdown for base year (Chart 2: "Retention by 2025 Session").
 
         Shows each base year session's FULL enrollment and how many returned
-        to compare year sessions matching the dropdown filter.
+        to ANY compare year session (unfiltered). The dropdown controls which
+        prior sessions are SHOWN, not what counts as "returned".
 
         Args:
             attendees_base: Raw base year attendee records (all types, unfiltered).
-            person_ids_compare_filtered: Compare year person IDs filtered by dropdown.
+            person_ids_compare: Compare year person IDs (unfiltered).
             sessions_base_all: All base year sessions (unfiltered).
+            session_types: If set, only show prior sessions matching these types.
+            session_cm_id: If set, only show the prior session with this cm_id.
 
         Returns:
             List of RetentionByPriorSession models.
@@ -449,10 +457,10 @@ class RetentionService:
             if target_sid not in session_stats:
                 session_stats[target_sid] = {"base": set(), "returned": set()}
             session_stats[target_sid]["base"].add(pid)
-            if pid in person_ids_compare_filtered:
+            if pid in person_ids_compare:
                 session_stats[target_sid]["returned"].add(pid)
 
-        # Build response, filtering to display session types
+        # Build response, filtering to display session types and dropdown params
         result = []
         for out_sid, pid_sets in sorted(session_stats.items()):
             session = sessions_base_all.get(out_sid)
@@ -460,6 +468,10 @@ class RetentionService:
                 continue
             session_type = getattr(session, "session_type", None)
             if session_type not in DISPLAY_SESSION_TYPES:
+                continue
+            if session_types and session_type not in session_types:
+                continue
+            if session_cm_id is not None and out_sid != session_cm_id:
                 continue
 
             base_count = len(pid_sets["base"])
@@ -469,6 +481,7 @@ class RetentionService:
             result.append(
                 RetentionByPriorSession(
                     prior_session=session_name,
+                    start_date=getattr(session, "start_date", None),
                     base_count=base_count,
                     returned_count=returned_count,
                     retention_rate=safe_rate(returned_count, base_count),
