@@ -53,12 +53,7 @@ const createWrapper = (year = 2026) => {
 }
 
 // Helper to build config records matching PocketBase shape
-const makeConfigRecord = (
-  year: number,
-  key: string,
-  value: string,
-  id = `rec_${year}_${key}`
-) => ({
+const makeConfigRecord = (year: number, key: string, value: string, id = `rec_${year}_${key}`) => ({
   id,
   category: 'registration',
   subcategory: String(year),
@@ -159,9 +154,12 @@ describe('RegistrationDatesConfig', () => {
     await user.click(saveButton)
 
     await waitFor(() => {
-      expect(mockUpdate).toHaveBeenCalledWith('existing_1', expect.objectContaining({
-        value: '2025-11-09',
-      }))
+      expect(mockUpdate).toHaveBeenCalledWith(
+        'existing_1',
+        expect.objectContaining({
+          value: '2025-11-09',
+        })
+      )
     })
   })
 

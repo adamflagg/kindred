@@ -156,6 +156,9 @@ export const queryKeys = {
       compareYear,
     ] as const,
 
+  // Registration Config (Tier 2 - user data)
+  registrationDatesConfig: (year: number) => ['registration-dates-config', year] as const,
+
   // Staff (Tier 1 - sync data)
   bunkStaff: (year: number) => ['bunk-staff', year] as const,
 

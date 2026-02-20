@@ -10,12 +10,14 @@ import {
   Sliders,
   Database,
   Workflow,
+  CalendarDays,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useSolverConfig, type ConfigSection } from '../../hooks/useSolverConfig'
 import { useUpdateSolverConfig, useResetSolverConfig } from '../../hooks/useSolverConfigMutation'
 import { SectionCard } from './SectionCard'
 import { ScaleGuideSidebar } from './ScaleGuideSidebar'
+import { RegistrationDatesConfig } from './RegistrationDatesConfig'
 
 // Category definitions - these IDs match the business_category values in config metadata
 interface CategoryDef {
@@ -45,6 +47,12 @@ export const CATEGORIES: CategoryDef[] = [
     icon: Database,
     description: 'Historical context & tracking',
   },
+  {
+    id: 'registration',
+    name: 'Registration',
+    icon: CalendarDays,
+    description: 'Registration phase dates',
+  },
 ]
 
 export function ConfigTab() {
@@ -64,6 +72,7 @@ export function ConfigTab() {
       solver: [],
       processing: [],
       history: [],
+      registration: [],
     }
 
     sections.forEach((section) => {
@@ -274,24 +283,28 @@ export function ConfigTab() {
         </div>
 
         {/* Sections */}
-        <div className="space-y-4">
-          {filteredSections.map((section, index) => (
-            <SectionCard
-              key={section.id}
-              section={section}
-              editedValues={editedValues}
-              onValueChange={handleValueChange}
-              defaultExpanded={index < 3}
-            />
-          ))}
+        {activeCategory === 'registration' ? (
+          <RegistrationDatesConfig />
+        ) : (
+          <div className="space-y-4">
+            {filteredSections.map((section, index) => (
+              <SectionCard
+                key={section.id}
+                section={section}
+                editedValues={editedValues}
+                onValueChange={handleValueChange}
+                defaultExpanded={index < 3}
+              />
+            ))}
 
-          {filteredSections.length === 0 && (
-            <div className="text-muted-foreground py-12 text-center">
-              <Search className="mx-auto mb-3 h-10 w-10 opacity-50" />
-              <p className="text-base">No settings found</p>
-            </div>
-          )}
-        </div>
+            {filteredSections.length === 0 && (
+              <div className="text-muted-foreground py-12 text-center">
+                <Search className="mx-auto mb-3 h-10 w-10 opacity-50" />
+                <p className="text-base">No settings found</p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Floating Action Buttons */}
