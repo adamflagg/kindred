@@ -188,6 +188,20 @@ export function priorSessionToBarData(
   }))
 }
 
+export function regionToBarData(
+  data:
+    | Array<{ region: string; base_count: number; returned_count: number; retention_rate: number }>
+    | undefined
+): RetentionRateBarItem[] {
+  if (!data?.length) return []
+  return data.map((d) => ({
+    name: d.region,
+    retentionRate: d.retention_rate,
+    baseCount: d.base_count,
+    returnedCount: d.returned_count,
+  }))
+}
+
 export interface RetentionOutlier {
   name: string
   retentionRate: number

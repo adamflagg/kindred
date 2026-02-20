@@ -25,10 +25,12 @@ import {
   GeoLayerToggles,
   GeoGapsList,
   type GeoCategory,
+  type GeoCategoryExtended,
   type GeoDataItem,
   type GeoMapLayer,
 } from '../../../components/metrics/geo'
 import { getLocationCoords } from '../../../data/geoCoords'
+import { aggregateCityCountsByRegion, REGION_DISPLAY_NAMES } from '../../../utils/regionUtils'
 
 /** Default status filter for enrolled campers */
 const DEFAULT_STATUS_FILTER = ['enrolled']
@@ -43,8 +45,8 @@ const categoryToDbCategory: Record<GeoCategory, NormalizedCategory> = {
 export default function GeoAnalysis() {
   const { currentYear } = useCurrentYear()
   const isAdmin = useIsAdmin()
-  const [activeLayers, setActiveLayers] = useState<Set<GeoCategory>>(
-    new Set(['city', 'school', 'synagogue'])
+  const [activeLayers, setActiveLayers] = useState<Set<GeoCategoryExtended>>(
+    new Set(['city', 'school', 'synagogue', 'region'])
   )
   const [showRegions, setShowRegions] = useState(true)
   const [showSources, setShowSources] = useState(false)
@@ -97,10 +99,17 @@ export default function GeoAnalysis() {
         city: [] as GeoDataItem[],
         school: [] as GeoDataItem[],
         synagogue: [] as GeoDataItem[],
+        region: [] as GeoDataItem[],
       }
     }
 
     const sortByCount = (a: GeoDataItem, b: GeoDataItem) => b.count - a.count
+
+    const regionData = aggregateCityCountsByRegion(data.by_city ?? []).map((r) => ({
+      name: REGION_DISPLAY_NAMES[r.region] ?? r.region,
+      count: r.count,
+      percentage: r.percentage,
+    }))
 
     return {
       city: (data.by_city ?? [])
@@ -124,6 +133,7 @@ export default function GeoAnalysis() {
           percentage: s.percentage,
         }))
         .sort(sortByCount),
+      region: regionData,
     }
   }, [data])
 
@@ -144,7 +154,7 @@ export default function GeoAnalysis() {
   }, [geoData])
 
   // Toggle a data layer on/off
-  const handleToggleLayer = useCallback((category: GeoCategory) => {
+  const handleToggleLayer = useCallback((category: GeoCategoryExtended) => {
     setActiveLayers((prev) => {
       const next = new Set(prev)
       if (next.has(category)) {
@@ -241,6 +251,7 @@ export default function GeoAnalysis() {
               city: geoData.city.length,
               school: geoData.school.length,
               synagogue: geoData.synagogue.length,
+              region: geoData.region.length,
             }}
             showRegions={showRegions}
             onToggleRegions={() => setShowRegions((v) => !v)}
@@ -300,6 +311,9 @@ export default function GeoAnalysis() {
                 sourceMappings={sourceMappingsFor.synagogue}
                 showGaps={showGaps}
               />
+            )}
+            {activeLayers.has('region') && geoData.region.length > 0 && (
+              <GeoDetailList data={geoData.region} category="region" />
             )}
           </div>
 

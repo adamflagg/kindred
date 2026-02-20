@@ -6,7 +6,7 @@ export { GeoMap } from './GeoMap'
 export type { GeoMapProps, GeoMapLayer, GeoDataItem } from './GeoMap'
 
 export { GeoCategoryTabs } from './GeoCategoryTabs'
-export type { GeoCategory } from './GeoCategoryTabs'
+export type { GeoCategory, GeoCategoryExtended } from './GeoCategoryTabs'
 
 export { GeoSummaryCards } from './GeoSummaryCards'
 

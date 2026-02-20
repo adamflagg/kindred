@@ -24,6 +24,7 @@ import { GenderStackedChart } from '../../../components/metrics/GenderStackedCha
 import { GradeEnrollmentChart } from '../../../components/metrics/GradeEnrollmentChart'
 import { MultiYearBreakdownChart } from '../../../components/metrics/MultiYearBreakdownChart'
 import { Loader2, AlertCircle } from 'lucide-react'
+import { aggregateCityEnrollmentByRegion, REGION_DISPLAY_NAMES } from '../../../utils/regionUtils'
 
 export default function TrendsOverview() {
   const { selectedSessionCmId, sessionTypesParam, expandedRetention } = useMetricsSession()
@@ -58,6 +59,14 @@ export default function TrendsOverview() {
   const enrollmentData = useMemo(() => {
     return (trendsData?.enrollment_by_year ?? []).slice(-numYearsDisplay)
   }, [trendsData?.enrollment_by_year, numYearsDisplay])
+
+  // Augment enrollment data with by_region computed from by_city
+  const enrollmentDataWithRegions = useMemo(() => {
+    return enrollmentData.map((yearData) => ({
+      ...yearData,
+      by_region: aggregateCityEnrollmentByRegion(yearData.by_city ?? []),
+    }))
+  }, [enrollmentData])
 
   // Slice retention rate years to match display count
   const retentionYears = useMemo(() => {
@@ -303,6 +312,18 @@ export default function TrendsOverview() {
           labelKey="synagogue"
           title={`Synagogue Distribution (Top 15, ${numYearsDisplay}-Year Comparison)`}
           topN={15}
+          height={350}
+        />
+      )}
+
+      {/* Region Distribution */}
+      {enrollmentDataWithRegions.some((y) => (y.by_region?.length ?? 0) > 0) && (
+        <MultiYearBreakdownChart
+          data={enrollmentDataWithRegions}
+          breakdownKey="by_region"
+          labelKey="region"
+          title={`Region Distribution (${numYearsDisplay}-Year Comparison)`}
+          nameFormatter={(key) => REGION_DISPLAY_NAMES[String(key)] ?? String(key)}
           height={350}
         />
       )}

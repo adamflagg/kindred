@@ -6,7 +6,7 @@
  * from the overall average.
  */
 import { describe, it, expect } from 'vitest'
-import { computeRetentionOutliers } from './retentionTransforms'
+import { computeRetentionOutliers, regionToBarData } from './retentionTransforms'
 import type { RetentionRateBarItem } from '../components/metrics/RetentionRateBarChart'
 
 const makeItem = (
@@ -195,5 +195,38 @@ describe('computeRetentionOutliers', () => {
     // Zero retention with baseCount >= 8 should always be included
     expect(outliers.length).toBe(1)
     expect(outliers[0]!.name).toBe('Ghost Town')
+  })
+})
+
+describe('regionToBarData', () => {
+  it('should convert region retention data to bar chart items', () => {
+    const data = [
+      { region: 'eastBay', base_count: 50, returned_count: 40, retention_rate: 0.8 },
+      { region: 'sf', base_count: 30, returned_count: 20, retention_rate: 0.667 },
+    ]
+
+    const result = regionToBarData(data)
+
+    expect(result).toHaveLength(2)
+    expect(result[0]).toEqual({
+      name: 'eastBay',
+      retentionRate: 0.8,
+      baseCount: 50,
+      returnedCount: 40,
+    })
+    expect(result[1]).toEqual({
+      name: 'sf',
+      retentionRate: 0.667,
+      baseCount: 30,
+      returnedCount: 20,
+    })
+  })
+
+  it('should return empty array for undefined input', () => {
+    expect(regionToBarData(undefined)).toEqual([])
+  })
+
+  it('should return empty array for empty input', () => {
+    expect(regionToBarData([])).toEqual([])
   })
 })

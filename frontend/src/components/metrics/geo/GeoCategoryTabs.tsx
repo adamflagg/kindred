@@ -7,6 +7,9 @@ import { MapPin, Building2, Heart } from 'lucide-react'
 
 export type GeoCategory = 'city' | 'school' | 'synagogue'
 
+/** Extended category type that includes region for detail lists and layer toggles */
+export type GeoCategoryExtended = GeoCategory | 'region'
+
 interface GeoCategoryTabsProps {
   activeCategory: GeoCategory
   onCategoryChange: (category: GeoCategory) => void
