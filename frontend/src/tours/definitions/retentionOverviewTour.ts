@@ -36,19 +36,9 @@ const retentionOverviewTour: TourDefinition = {
   ],
   hints: [
     {
-      element: '[data-tour="retention-summary-cards"]',
-      title: 'Clickable Cards',
-      description: 'Click any card to drill down to the camper list.',
-    },
-    {
-      element: '[data-tour="retention-demographics"]',
-      title: 'Interactive Charts',
-      description: 'Click any bar or dot to see the specific campers.',
-    },
-    {
       element: '[data-tour="retention-session-selector"]',
       title: 'Session Filter',
-      description: 'Filter data by specific session.',
+      description: 'Filter all charts by a specific session.',
     },
   ],
   isReady: () => {

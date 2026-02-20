@@ -19,8 +19,8 @@ import { BunkCellTooltip } from '../../../components/metrics/BunkStaffTooltip'
 import type { BunkStaffInfo } from '../../../hooks/useBunkStaff'
 import { getRetentionCellColor } from '../../../utils/retentionColors'
 import { buildSessionDateLookup, compareByDateThenName } from '../../../utils/sessionUtils'
-import { useTour } from '../../../hooks/useTour'
-import { TourReplayButton, HintDot } from '../../../components/tour'
+import { useTourHints } from '../../../hooks/useTour'
+import { HintDot } from '../../../components/tour'
 
 type SortField = 'name' | 'overall'
 type SortDir = 'asc' | 'desc'
@@ -52,7 +52,7 @@ export default function StaffCabinAnalysisPage() {
     currentYear
   )
   const { campSessions } = useMetricsSession()
-  const { tourId, replay, hints } = useTour()
+  const hints = useTourHints()
 
   const [sortField, setSortField] = useState<SortField>('name')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
@@ -165,7 +165,13 @@ export default function StaffCabinAnalysisPage() {
             Retention rates by staff member across their cabin assignments
           </p>
         </div>
-        <TourReplayButton tourId={tourId} onReplay={replay} />
+        <div className="flex items-center gap-2">
+          {hints
+            .filter((h) => h.element === '[data-tour="retention-staff-table"]')
+            .map((h) => (
+              <HintDot key={h.element} hint={h} />
+            ))}
+        </div>
       </div>
 
       <MetricsQueryGuard
@@ -188,11 +194,6 @@ export default function StaffCabinAnalysisPage() {
                       data-tour="retention-staff-sort-name"
                     >
                       Staff <SortIcon field="name" />
-                      {hints
-                        .filter((h) => h.element === '[data-tour="retention-staff-sort-name"]')
-                        .map((h) => (
-                          <HintDot key={h.element} hint={h} className="ml-1" />
-                        ))}
                     </th>
                     {sortedSessions.map((session) => (
                       <th

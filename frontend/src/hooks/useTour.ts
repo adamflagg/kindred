@@ -127,3 +127,35 @@ export function useTour() {
 
   return { tourId, replay, hints }
 }
+
+/**
+ * Lightweight hook that returns only the hints for the current route's tour.
+ * Does NOT auto-play or manage the driver instance — use this in pages/components
+ * that need hint data without triggering the tour lifecycle.
+ */
+export function useTourHints(): HintDefinition[] {
+  const { pathname } = useLocation()
+  const [hints, setHints] = useState<HintDefinition[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    const id = getTourIdForRoute(pathname)
+    if (!id) {
+      // Reset via functional approach — no direct setState in effect body
+      setHints((prev) => (prev.length === 0 ? prev : []))
+      return
+    }
+    loadTourDefinition(id)
+      .then((def) => {
+        if (!cancelled) setHints(def.hints ?? [])
+      })
+      .catch(() => {
+        if (!cancelled) setHints([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [pathname])
+
+  return hints
+}

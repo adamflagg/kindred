@@ -15,13 +15,13 @@ import { useBunkStaff } from '../../../hooks/useBunkStaff'
 import { buildSessionDateLookup } from '../../../utils/sessionUtils'
 import { SessionBunkHeatmap } from '../../../components/metrics/SessionBunkHeatmap'
 import { MetricsQueryGuard } from '../../../components/metrics/MetricsQueryGuard'
-import { useTour } from '../../../hooks/useTour'
-import { TourReplayButton, HintDot } from '../../../components/tour'
+import { useTourHints } from '../../../hooks/useTour'
+import { HintDot } from '../../../components/tour'
 
 export default function BunkRetentionPage() {
   const { currentYear } = useCurrentYear()
   const { campSessions } = useMetricsSession()
-  const { tourId, replay, hints } = useTour()
+  const hints = useTourHints()
 
   const priorYear = currentYear - 1
 
@@ -50,7 +50,6 @@ export default function BunkRetentionPage() {
             .map((h) => (
               <HintDot key={h.element} hint={h} />
             ))}
-          <TourReplayButton tourId={tourId} onReplay={replay} />
         </div>
       </div>
 

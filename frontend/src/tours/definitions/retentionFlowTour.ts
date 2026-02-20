@@ -24,9 +24,9 @@ const retentionFlowTour: TourDefinition = {
   ],
   hints: [
     {
-      element: '[data-tour="retention-flow-sankey"]',
-      title: 'Flow Bands',
-      description: 'Hover any band for transition details.',
+      element: '[data-tour="retention-session-selector"]',
+      title: 'Session Filter',
+      description: 'Filter the flow diagram by a specific session.',
     },
   ],
   isReady: () => {

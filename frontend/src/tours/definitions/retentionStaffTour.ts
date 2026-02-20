@@ -35,11 +35,6 @@ const retentionStaffTour: TourDefinition = {
   ],
   hints: [
     {
-      element: '[data-tour="retention-staff-sort-name"]',
-      title: 'Sort by Name',
-      description: 'Click to sort by name.',
-    },
-    {
       element: '[data-tour="retention-staff-sort-overall"]',
       title: 'Sort by Retention',
       description: 'Click to sort by retention rate.',

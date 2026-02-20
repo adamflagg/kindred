@@ -38,15 +38,11 @@ import {
 import { OutlierSection } from '../../../components/metrics/RetentionNotableOutliers'
 import type { DrilldownFilter } from '../../../types/metrics'
 import { Loader2, AlertCircle } from 'lucide-react'
-import { useTour } from '../../../hooks/useTour'
-import { TourReplayButton, HintDot } from '../../../components/tour'
 
 export default function RetentionOverview() {
   const { currentYear } = useCurrentYear()
   const { selectedSessionCmId, sessions, sessionTypesParam, activeSessionTypes } =
     useMetricsSession()
-  const { tourId, replay, hints } = useTour()
-
   const priorYear = currentYear - 1
 
   // Build date lookups for chronological session sorting (must be before early returns)
@@ -138,16 +134,6 @@ export default function RetentionOverview() {
 
   return (
     <div className="space-y-6">
-      {/* Tour replay button + summary cards hint */}
-      <div className="flex items-center justify-end gap-2">
-        {hints
-          .filter((h) => h.element === '[data-tour="retention-summary-cards"]')
-          .map((h) => (
-            <HintDot key={h.element} hint={h} />
-          ))}
-        <TourReplayButton tourId={tourId} onReplay={replay} />
-      </div>
-
       {/* Summary Cards */}
       <div
         className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4"
