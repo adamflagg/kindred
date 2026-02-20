@@ -1,5 +1,6 @@
 import { Loader2 } from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
+import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import {
   useSessionAvailability,
   type SessionAvailabilityData,
@@ -126,7 +127,12 @@ function Legend() {
 
 export default function SessionAvailability() {
   const { currentYear } = useCurrentYear()
-  const { data, isLoading, error } = useSessionAvailability(currentYear)
+  const { selectedSessionCmId, sessionTypesParam } = useMetricsSession()
+  const { data, isLoading, error } = useSessionAvailability(
+    currentYear,
+    sessionTypesParam,
+    selectedSessionCmId ?? undefined
+  )
 
   if (isLoading) {
     return (

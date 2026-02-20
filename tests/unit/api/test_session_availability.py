@@ -458,7 +458,9 @@ class TestResponseStructure:
     async def test_ag_sessions_separate_list(self, service, mock_repository, sample_sessions):
         """AG sessions should be in the ag_sessions list."""
         mock_repository.fetch_sessions.return_value = sample_sessions
-        mock_repository.fetch_bunk_plans.return_value = []
+        mock_repository.fetch_bunk_plans.return_value = [
+            create_mock_bunk_plan("pb_2001", "Mixed"),
+        ]
         mock_repository.fetch_capacity_config.return_value = 12
         mock_repository.fetch_attendees_with_persons.return_value = []
 
@@ -593,7 +595,9 @@ class TestSessionCmIdFiltering:
     async def test_no_filter_returns_all(self, service, mock_repository, sample_sessions):
         """Without session_cm_id, all sessions should be returned."""
         mock_repository.fetch_sessions.return_value = sample_sessions
-        mock_repository.fetch_bunk_plans.return_value = []
+        mock_repository.fetch_bunk_plans.return_value = [
+            create_mock_bunk_plan("pb_2001", "Mixed"),
+        ]
         mock_repository.fetch_capacity_config.return_value = 12
         mock_repository.fetch_attendees_with_persons.return_value = []
 

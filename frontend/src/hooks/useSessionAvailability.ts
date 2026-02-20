@@ -38,13 +38,17 @@ export interface SessionAvailabilityResponse {
   limited_threshold: number
 }
 
-export function useSessionAvailability(year: number) {
+export function useSessionAvailability(year: number, sessionTypes?: string, sessionCmId?: number) {
   return useQuery({
-    queryKey: queryKeys.sessionAvailability(year),
+    queryKey: queryKeys.sessionAvailability(year, sessionTypes, sessionCmId),
     ...userDataOptions,
     queryFn: async (): Promise<SessionAvailabilityResponse> => {
+      const params = new URLSearchParams({ year: String(year) })
+      if (sessionTypes) params.set('session_types', sessionTypes)
+      if (sessionCmId != null) params.set('session_cm_id', String(sessionCmId))
+
       const token = pb.authStore.token
-      const response = await fetch(`/api/metrics/session-availability?year=${year}`, {
+      const response = await fetch(`/api/metrics/session-availability?${params}`, {
         headers: { Authorization: token },
       })
       if (!response.ok) {
