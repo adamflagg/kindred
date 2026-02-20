@@ -25,7 +25,7 @@ const RETENTION_SUB_NAV: SubNavItem[] = [
   },
   {
     id: 'bunks',
-    label: 'Bunk Retention',
+    label: 'Bunk Analysis',
     icon: Grid2x2,
     path: '/metrics/retention/bunks',
   },

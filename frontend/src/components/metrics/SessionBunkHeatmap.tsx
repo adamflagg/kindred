@@ -228,8 +228,6 @@ export function SessionBunkHeatmap({
 
   return (
     <div className="card-lodge p-4">
-      <h3 className="text-foreground mb-4 text-base font-semibold">Retention by Session + Bunk</h3>
-
       <div className="space-y-6">
         {CATEGORY_ORDER.filter((cat) => categoryBunks[cat]?.length > 0).map((cat) => (
           <BunkHeatmapTable

@@ -1736,7 +1736,6 @@ class TestSessionBunkUsesUnfilteredPools:
         mock_repo = AsyncMock()
 
         session1 = MockSession(cm_id=1000, name="Session 1", session_type="main")
-        session3 = MockSession(cm_id=1002, name="Session 3", session_type="main")
         bunk_b1 = MockBunk(name="B-1")
 
         # Base year: persons 1 and 2 both in Session 1

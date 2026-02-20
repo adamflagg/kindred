@@ -74,21 +74,23 @@ export default function MetricsTypeTabs() {
           })}
         </div>
 
-        {/* Right side controls */}
-        <div className="flex items-center gap-3">
-          {activeTab === 'trends' && (
-            <label className="flex cursor-pointer items-center gap-1.5 text-sm">
-              <input
-                type="checkbox"
-                checked={expandedRetention}
-                onChange={(e) => setExpandedRetention(e.target.checked)}
-                className="accent-primary h-3.5 w-3.5 rounded"
-              />
-              <span className="text-muted-foreground whitespace-nowrap">Expanded analysis</span>
-            </label>
-          )}
-          <MetricsSessionSelector />
-        </div>
+        {/* Right side controls — hidden on bunk retention tab (unfiltered data) */}
+        {!location.pathname.endsWith('/retention/bunks') && (
+          <div className="flex items-center gap-3">
+            {activeTab === 'trends' && (
+              <label className="flex cursor-pointer items-center gap-1.5 text-sm">
+                <input
+                  type="checkbox"
+                  checked={expandedRetention}
+                  onChange={(e) => setExpandedRetention(e.target.checked)}
+                  className="accent-primary h-3.5 w-3.5 rounded"
+                />
+                <span className="text-muted-foreground whitespace-nowrap">Expanded analysis</span>
+              </label>
+            )}
+            <MetricsSessionSelector />
+          </div>
+        )}
       </div>
     </nav>
   )
