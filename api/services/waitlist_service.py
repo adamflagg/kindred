@@ -229,7 +229,7 @@ class WaitlistService:
         # --- Build grade/gender breakdowns from waitlisted persons ---
         persons = await self.repository.fetch_persons(year)
         all_waitlisted_pids = seen_for_summary
-        by_grade, by_gender = self._compute_demographics(all_waitlisted_pids, persons)
+        by_grade, by_gender = self._compute_demographics(all_waitlisted_pids, persons, enrolled_person_ids)
 
         total_waitlisted = len(seen_for_summary)
 
@@ -264,21 +264,56 @@ class WaitlistService:
         self,
         person_ids: set[int],
         persons: dict[int, Any],
+        enrolled_person_ids: set[int] | None = None,
     ) -> tuple[list[GradeBreakdown], list[GenderBreakdown]]:
-        """Compute grade and gender breakdowns for a set of person IDs."""
+        """Compute grade and gender breakdowns for a set of person IDs.
+
+        When enrolled_person_ids is provided, each bucket is split into
+        no_enrollment / has_enrollment counts for waitlist visualization.
+        """
         total = len(person_ids)
         if total == 0:
             return [], []
 
+        # Build per-category enrollment splits
+        grade_enrollment: dict[int | None, tuple[int, int]] = {}
+        gender_enrollment: dict[str, tuple[int, int]] = {}
+        if enrolled_person_ids is not None:
+            for pid in person_ids:
+                person = persons.get(pid)
+                if not person:
+                    continue
+                grade = extract_grade(person)
+                gender = extract_gender(person)
+                has_enroll = pid in enrolled_person_ids
+
+                g_no, g_has = grade_enrollment.get(grade, (0, 0))
+                grade_enrollment[grade] = (g_no + (0 if has_enroll else 1), g_has + (1 if has_enroll else 0))
+
+                gn_no, gn_has = gender_enrollment.get(gender, (0, 0))
+                gender_enrollment[gender] = (gn_no + (0 if has_enroll else 1), gn_has + (1 if has_enroll else 0))
+
         grade_stats = compute_registration_breakdown(person_ids, persons, extract_grade)
         by_grade = [
-            GradeBreakdown(grade=g, count=s.count, percentage=round(calculate_percentage(s.count, total), 1))
+            GradeBreakdown(
+                grade=g,
+                count=s.count,
+                percentage=round(calculate_percentage(s.count, total), 1),
+                no_enrollment=grade_enrollment.get(g, (0, 0))[0],
+                has_enrollment=grade_enrollment.get(g, (0, 0))[1],
+            )
             for g, s in sorted(grade_stats.items(), key=lambda x: (x[0] is None, x[0]))
         ]
 
         gender_stats = compute_registration_breakdown(person_ids, persons, extract_gender)
         by_gender = [
-            GenderBreakdown(gender=g, count=s.count, percentage=round(calculate_percentage(s.count, total), 1))
+            GenderBreakdown(
+                gender=g,
+                count=s.count,
+                percentage=round(calculate_percentage(s.count, total), 1),
+                no_enrollment=gender_enrollment.get(g, (0, 0))[0],
+                has_enrollment=gender_enrollment.get(g, (0, 0))[1],
+            )
             for g, s in sorted(gender_stats.items())
         ]
 

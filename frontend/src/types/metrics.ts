@@ -6,12 +6,16 @@ export interface GenderBreakdown {
   gender: string
   count: number
   percentage: number
+  no_enrollment?: number
+  has_enrollment?: number
 }
 
 export interface GradeBreakdown {
   grade: number | null
   count: number
   percentage: number
+  no_enrollment?: number
+  has_enrollment?: number
 }
 
 export interface SessionBreakdown {
