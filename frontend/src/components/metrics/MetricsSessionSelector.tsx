@@ -64,7 +64,7 @@ export function MetricsSessionSelector() {
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2" data-tour="retention-session-selector">
       <CalendarDays className="text-muted-foreground h-4 w-4" />
       <Listbox value={currentValue} onChange={handleChange} disabled={isLoading}>
         <div className="relative">

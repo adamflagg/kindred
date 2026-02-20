@@ -5,7 +5,7 @@ import 'driver.js/dist/driver.css'
 import '../styles/tour.css'
 import { getTourIdForRoute, loadTourDefinition } from '../tours/tourRegistry'
 import { isTourCompleted, markTourCompleted } from '../tours/tourStorage'
-import type { TourDefinition, TourId } from '../tours/types'
+import type { HintDefinition, TourDefinition, TourId } from '../tours/types'
 
 /** Delay before auto-starting a tour or checking isReady() (ms), to let page content render */
 const AUTO_START_DELAY = 300
@@ -19,6 +19,7 @@ const READY_CHECK_INTERVAL = 200
 export function useTour() {
   const { pathname } = useLocation()
   const [tourId, setTourId] = useState<TourId | null>(null)
+  const [hints, setHints] = useState<HintDefinition[]>([])
   const driverRef = useRef<Driver | null>(null)
   const definitionRef = useRef<TourDefinition | null>(null)
   const pendingTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
@@ -40,15 +41,18 @@ export function useTour() {
 
     if (!id) {
       definitionRef.current = null
+      setHints([])
       return
     }
 
     loadTourDefinition(id)
       .then((def) => {
         definitionRef.current = def
+        setHints(def.hints ?? [])
       })
       .catch(() => {
         definitionRef.current = null
+        setHints([])
       })
   }, [pathname])
 
@@ -121,5 +125,37 @@ export function useTour() {
     startTour()
   }, [startTour])
 
-  return { tourId, replay }
+  return { tourId, replay, hints }
+}
+
+/**
+ * Lightweight hook that returns only the hints for the current route's tour.
+ * Does NOT auto-play or manage the driver instance — use this in pages/components
+ * that need hint data without triggering the tour lifecycle.
+ */
+export function useTourHints(): HintDefinition[] {
+  const { pathname } = useLocation()
+  const [hints, setHints] = useState<HintDefinition[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    const id = getTourIdForRoute(pathname)
+    if (!id) {
+      // Reset via functional approach — no direct setState in effect body
+      setHints((prev) => (prev.length === 0 ? prev : []))
+      return
+    }
+    loadTourDefinition(id)
+      .then((def) => {
+        if (!cancelled) setHints(def.hints ?? [])
+      })
+      .catch(() => {
+        if (!cancelled) setHints([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [pathname])
+
+  return hints
 }

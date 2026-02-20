@@ -343,6 +343,15 @@ For CLI API testing with auth tokens, see `/docs/reference/cli-commands.md`.
 **Backend:**
 - **Global exception handler** in `api/main.py` catches unhandled exceptions and returns `{"detail": "Internal server error"}` (generic). Full error details are logged server-side with `exc_info=True`. Never use `raise HTTPException(status_code=500, detail=str(e))` — let the global handler catch it instead.
 
+### Tour & Hint Maintenance
+When modifying page layout, features, or `data-tour` attributes on a toured page,
+review and update the corresponding tour definition in `frontend/src/tours/definitions/`.
+Checklist:
+- [ ] data-tour attributes still reference correct elements
+- [ ] isReady() still checks the right element
+- [ ] Step/hint descriptions match current behavior
+- [ ] Bump `version` if steps changed (triggers re-play for returning users)
+
 ## Configuration Locations
 
 | File | Purpose |

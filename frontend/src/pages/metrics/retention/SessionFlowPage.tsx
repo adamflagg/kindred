@@ -15,7 +15,6 @@ import { MetricsQueryGuard } from '../../../components/metrics/MetricsQueryGuard
 export default function SessionFlowPage() {
   const { currentYear } = useCurrentYear()
   const { selectedSessionCmId, sessionTypesParam } = useMetricsSession()
-
   const priorYear = currentYear - 1
 
   const { data, isLoading, error } = useRetentionMetrics(
@@ -26,22 +25,26 @@ export default function SessionFlowPage() {
   )
 
   return (
-    <MetricsQueryGuard
-      isLoading={isLoading}
-      error={error}
-      data={data}
-      label="session flow"
-      emptyMessage="No session flow data available"
-    >
-      {(data) => {
-        const sankeyData = sessionFlowToSankeyData(data.session_flow)
-        return sankeyData ? (
-          <SessionFlowSankey
-            data={sankeyData}
-            title={`Session Flow: ${priorYear} → ${currentYear}`}
-          />
-        ) : null
-      }}
-    </MetricsQueryGuard>
+    <div className="space-y-4">
+      <MetricsQueryGuard
+        isLoading={isLoading}
+        error={error}
+        data={data}
+        label="session flow"
+        emptyMessage="No session flow data available"
+      >
+        {(data) => {
+          const sankeyData = sessionFlowToSankeyData(data.session_flow)
+          return sankeyData ? (
+            <div data-tour="retention-flow-sankey">
+              <SessionFlowSankey
+                data={sankeyData}
+                title={`Session Flow: ${priorYear} → ${currentYear}`}
+              />
+            </div>
+          ) : null
+        }}
+      </MetricsQueryGuard>
+    </div>
   )
 }
