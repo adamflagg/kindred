@@ -484,3 +484,208 @@ class TestResponseStructure:
 
         names = [s.session_name for s in result.sessions]
         assert names == ["Session 1", "Session 2", "Session 3"]
+
+
+# ============================================================================
+# Session Type Filtering Tests
+# ============================================================================
+
+
+class TestSessionTypeFiltering:
+    """Test session_types parameter filtering."""
+
+    @pytest.mark.asyncio
+    async def test_default_session_types_passed_to_repository(self, service, mock_repository):
+        """When session_types is None, default summer types should be passed."""
+        mock_repository.fetch_sessions.return_value = {}
+        mock_repository.fetch_bunk_plans.return_value = []
+        mock_repository.fetch_capacity_config.return_value = 12
+        mock_repository.fetch_attendees_with_persons.return_value = []
+
+        await service.calculate_availability(year=2026)
+
+        # fetch_sessions should be called with default summer types
+        mock_repository.fetch_sessions.assert_called_once_with(2026, session_types=["main", "embedded", "ag", "quest"])
+
+    @pytest.mark.asyncio
+    async def test_custom_session_types_passed_to_repository(self, service, mock_repository):
+        """When session_types is provided, it should be passed to repository."""
+        mock_repository.fetch_sessions.return_value = {}
+        mock_repository.fetch_bunk_plans.return_value = []
+        mock_repository.fetch_capacity_config.return_value = 12
+        mock_repository.fetch_attendees_with_persons.return_value = []
+
+        await service.calculate_availability(year=2026, session_types=["main", "embedded"])
+
+        mock_repository.fetch_sessions.assert_called_once_with(2026, session_types=["main", "embedded"])
+
+    @pytest.mark.asyncio
+    async def test_explicit_none_uses_defaults(self, service, mock_repository):
+        """Passing session_types=None explicitly should use default summer types."""
+        mock_repository.fetch_sessions.return_value = {}
+        mock_repository.fetch_bunk_plans.return_value = []
+        mock_repository.fetch_capacity_config.return_value = 12
+        mock_repository.fetch_attendees_with_persons.return_value = []
+
+        await service.calculate_availability(year=2026, session_types=None)
+
+        mock_repository.fetch_sessions.assert_called_once_with(2026, session_types=["main", "embedded", "ag", "quest"])
+
+
+# ============================================================================
+# Session CM ID Filtering Tests
+# ============================================================================
+
+
+class TestSessionCmIdFiltering:
+    """Test session_cm_id parameter filtering."""
+
+    @pytest.mark.asyncio
+    async def test_filter_to_specific_session(self, service, mock_repository, sample_sessions):
+        """When session_cm_id is set, only that session should appear in results."""
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_bunk_plans.return_value = []
+        mock_repository.fetch_capacity_config.return_value = 12
+        mock_repository.fetch_attendees_with_persons.return_value = []
+
+        result = await service.calculate_availability(year=2026, session_cm_id=1001)
+
+        # Only Session 1 in sessions list
+        assert len(result.sessions) == 1
+        assert result.sessions[0].session_cm_id == 1001
+
+    @pytest.mark.asyncio
+    async def test_filter_includes_ag_children(self, service, mock_repository, sample_sessions):
+        """Filtering by session_cm_id should include AG sessions whose parent_id matches."""
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_bunk_plans.return_value = [
+            create_mock_bunk_plan("pb_2001", "Mixed"),
+        ]
+        mock_repository.fetch_capacity_config.return_value = 12
+        mock_repository.fetch_attendees_with_persons.return_value = []
+
+        # Filter to Session 1 (cm_id=1001), AG Session 1 has parent_id=1001
+        result = await service.calculate_availability(year=2026, session_cm_id=1001)
+
+        assert len(result.sessions) == 1
+        assert result.sessions[0].session_cm_id == 1001
+        # AG child should be included
+        assert len(result.ag_sessions) == 1
+        assert result.ag_sessions[0].session_cm_id == 2001
+
+    @pytest.mark.asyncio
+    async def test_filter_excludes_unrelated_sessions(self, service, mock_repository, sample_sessions):
+        """Filtering by session_cm_id should exclude unrelated sessions."""
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_bunk_plans.return_value = []
+        mock_repository.fetch_capacity_config.return_value = 12
+        mock_repository.fetch_attendees_with_persons.return_value = []
+
+        # Filter to Session 2 (cm_id=1002), which has no AG children
+        result = await service.calculate_availability(year=2026, session_cm_id=1002)
+
+        assert len(result.sessions) == 1
+        assert result.sessions[0].session_cm_id == 1002
+        # AG Session 1 has parent_id=1001, not 1002
+        assert len(result.ag_sessions) == 0
+
+    @pytest.mark.asyncio
+    async def test_no_filter_returns_all(self, service, mock_repository, sample_sessions):
+        """Without session_cm_id, all sessions should be returned."""
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_bunk_plans.return_value = []
+        mock_repository.fetch_capacity_config.return_value = 12
+        mock_repository.fetch_attendees_with_persons.return_value = []
+
+        result = await service.calculate_availability(year=2026)
+
+        # 3 non-AG sessions + 1 AG session
+        assert len(result.sessions) == 3
+        assert len(result.ag_sessions) == 1
+
+
+# ============================================================================
+# Defunct AG Session Hiding Tests
+# ============================================================================
+
+
+class TestDefunctAGHiding:
+    """Test that defunct AG sessions (no capacity, no enrollment) are hidden."""
+
+    @pytest.mark.asyncio
+    async def test_defunct_ag_hidden(self, service, mock_repository):
+        """AG session with no bunk plans and no enrollment should be hidden."""
+        sessions = {
+            1001: create_mock_session(1001, "Session 1", session_type="main"),
+            2001: create_mock_session(2001, "Active AG", session_type="ag", parent_id=1001),
+            2002: create_mock_session(2002, "Defunct AG", session_type="ag", parent_id=1001),
+        }
+        mock_repository.fetch_sessions.return_value = sessions
+        # Only active AG has bunk plans
+        mock_repository.fetch_bunk_plans.return_value = [
+            create_mock_bunk_plan("pb_2001", "Mixed"),
+        ]
+        mock_repository.fetch_capacity_config.return_value = 12
+        mock_repository.fetch_attendees_with_persons.return_value = []
+
+        result = await service.calculate_availability(year=2026)
+
+        ag_ids = {a.session_cm_id for a in result.ag_sessions}
+        assert 2001 in ag_ids  # Active AG with bunk plan
+        assert 2002 not in ag_ids  # Defunct AG hidden
+
+    @pytest.mark.asyncio
+    async def test_ag_with_enrollment_but_no_capacity_kept(self, service, mock_repository):
+        """AG session with enrollment but no bunk plans should still be shown."""
+        sessions = {
+            1001: create_mock_session(1001, "Session 1", session_type="main"),
+            2001: create_mock_session(2001, "AG with enrollees", session_type="ag", parent_id=1001),
+        }
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_bunk_plans.return_value = []  # No bunk plans
+        mock_repository.fetch_capacity_config.return_value = 12
+        # But has enrolled attendees
+        mock_repository.fetch_attendees_with_persons.return_value = [
+            create_mock_attendee(101, 2001, "M", status="enrolled"),
+        ]
+
+        result = await service.calculate_availability(year=2026)
+
+        assert len(result.ag_sessions) == 1
+        assert result.ag_sessions[0].session_cm_id == 2001
+
+    @pytest.mark.asyncio
+    async def test_ag_with_waitlisted_but_no_capacity_kept(self, service, mock_repository):
+        """AG session with waitlisted campers but no capacity should be shown."""
+        sessions = {
+            1001: create_mock_session(1001, "Session 1", session_type="main"),
+            2001: create_mock_session(2001, "AG with waitlist", session_type="ag", parent_id=1001),
+        }
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_bunk_plans.return_value = []
+        mock_repository.fetch_capacity_config.return_value = 12
+        mock_repository.fetch_attendees_with_persons.return_value = [
+            create_mock_attendee(101, 2001, "F", status="waitlisted"),
+        ]
+
+        result = await service.calculate_availability(year=2026)
+
+        assert len(result.ag_sessions) == 1
+
+    @pytest.mark.asyncio
+    async def test_ag_with_capacity_but_no_enrollment_kept(self, service, mock_repository):
+        """AG session with bunk plans but no enrollment should still be shown."""
+        sessions = {
+            1001: create_mock_session(1001, "Session 1", session_type="main"),
+            2001: create_mock_session(2001, "AG empty but valid", session_type="ag", parent_id=1001),
+        }
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_bunk_plans.return_value = [
+            create_mock_bunk_plan("pb_2001", "Mixed"),
+        ]
+        mock_repository.fetch_capacity_config.return_value = 12
+        mock_repository.fetch_attendees_with_persons.return_value = []
+
+        result = await service.calculate_availability(year=2026)
+
+        assert len(result.ag_sessions) == 1
