@@ -211,6 +211,94 @@ describe('ComparisonSummaryTable', () => {
     })
   })
 
+  describe('categoryLabel prop', () => {
+    it('renders "Category" as default column header', () => {
+      render(
+        <ComparisonSummaryTable
+          title="Test Table"
+          primaryYear={2026}
+          compareYear={2025}
+          primaryData={[{ name: 'Item A', value: 10 }]}
+          compareData={[{ name: 'Item A', value: 8 }]}
+        />
+      )
+
+      expect(screen.getByText('Category')).toBeInTheDocument()
+    })
+
+    it('renders custom categoryLabel as column header', () => {
+      render(
+        <ComparisonSummaryTable
+          title="Session Enrollment Comparison"
+          primaryYear={2026}
+          compareYear={2025}
+          primaryData={[{ name: 'Session 2', value: 100 }]}
+          compareData={[{ name: 'Session 2', value: 90 }]}
+          categoryLabel="Session"
+        />
+      )
+
+      expect(screen.getByText('Session')).toBeInTheDocument()
+      expect(screen.queryByText('Category')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('NEW/GONE (0) annotations removed', () => {
+    it('does NOT render (0) annotation on NEW rows', () => {
+      render(
+        <ComparisonSummaryTable
+          title="Test"
+          primaryYear={2026}
+          compareYear={2025}
+          primaryData={[{ name: 'New Item', value: 50 }]}
+          compareData={[]}
+        />
+      )
+
+      expect(screen.getByText('NEW')).toBeInTheDocument()
+      expect(screen.queryByText('(0)')).not.toBeInTheDocument()
+    })
+
+    it('does NOT render (0) annotation on GONE rows', () => {
+      render(
+        <ComparisonSummaryTable
+          title="Test"
+          primaryYear={2026}
+          compareYear={2025}
+          primaryData={[]}
+          compareData={[{ name: 'Gone Item', value: 50 }]}
+        />
+      )
+
+      expect(screen.getByText('GONE')).toBeInTheDocument()
+      expect(screen.queryByText('(0)')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('aliasMap prop', () => {
+    it('passes aliasMap to merge logic so aliased names are matched', () => {
+      const aliasMap = { 'Old Name': 'New Name' }
+
+      render(
+        <ComparisonSummaryTable
+          title="Test"
+          primaryYear={2026}
+          compareYear={2025}
+          primaryData={[{ name: 'New Name', value: 100 }]}
+          compareData={[{ name: 'Old Name', value: 80 }]}
+          aliasMap={aliasMap}
+        />
+      )
+
+      // Should merge the rows (not show NEW/GONE)
+      expect(screen.queryByText('NEW')).not.toBeInTheDocument()
+      expect(screen.queryByText('GONE')).not.toBeInTheDocument()
+      // Should show the merged row with the primary name and "(was: Old Name)"
+      expect(screen.getByText('New Name')).toBeInTheDocument()
+      expect(screen.getByText('(was: Old Name)')).toBeInTheDocument()
+    })
+  })
+
   it('merges by matchKey when names differ between years', () => {
     render(
       <ComparisonSummaryTable

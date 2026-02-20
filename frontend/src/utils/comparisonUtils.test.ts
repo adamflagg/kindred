@@ -210,6 +210,93 @@ describe('mergeDataForComparison', () => {
     expect(result[0]?.primaryValue).toBe(10)
     expect(result[0]?.compareValue).toBe(8)
   })
+
+  describe('aliasMap parameter', () => {
+    const aliasMap: Record<string, string> = {
+      'Taste of Camp': 'Taste of Camp 1',
+      'Session 2b': 'Taste of Camp 2',
+    }
+
+    it('matches aliased compare names to primary names', () => {
+      const primary = [
+        { name: 'Taste of Camp 1', value: 120 },
+        { name: 'Taste of Camp 2', value: 80 },
+      ]
+      const compare = [
+        { name: 'Taste of Camp', value: 100 },
+        { name: 'Session 2b', value: 70 },
+      ]
+
+      const result = mergeDataForComparison(primary, compare, 'name', undefined, aliasMap)
+
+      expect(result).toHaveLength(2)
+      expect(result[0]).toMatchObject({
+        name: 'Taste of Camp 1',
+        primaryValue: 120,
+        compareValue: 100,
+      })
+      expect(result[1]).toMatchObject({
+        name: 'Taste of Camp 2',
+        primaryValue: 80,
+        compareValue: 70,
+      })
+    })
+
+    it('sets compareName when aliased name differs from primary name', () => {
+      const primary = [{ name: 'Taste of Camp 1', value: 120 }]
+      const compare = [{ name: 'Taste of Camp', value: 100 }]
+
+      const result = mergeDataForComparison(primary, compare, 'name', undefined, aliasMap)
+
+      expect(result).toHaveLength(1)
+      expect(result[0].compareName).toBe('Taste of Camp')
+    })
+
+    it('does not set compareName when names already match', () => {
+      const primary = [{ name: 'Session 2', value: 100 }]
+      const compare = [{ name: 'Session 2', value: 90 }]
+
+      const result = mergeDataForComparison(primary, compare, 'name', undefined, aliasMap)
+
+      expect(result).toHaveLength(1)
+      expect(result[0].compareName).toBeUndefined()
+    })
+
+    it('still handles non-aliased sessions normally alongside aliased ones', () => {
+      const primary = [
+        { name: 'Session 2', value: 100 },
+        { name: 'Session 3', value: 80 },
+        { name: 'Taste of Camp 1', value: 120 },
+      ]
+      const compare = [
+        { name: 'Session 2', value: 90 },
+        { name: 'Session 3', value: 75 },
+        { name: 'Taste of Camp', value: 100 },
+      ]
+
+      const result = mergeDataForComparison(primary, compare, 'name', undefined, aliasMap)
+
+      expect(result).toHaveLength(3)
+      expect(result[0]).toMatchObject({ name: 'Session 2', primaryValue: 100, compareValue: 90 })
+      expect(result[0].compareName).toBeUndefined()
+      expect(result[2]).toMatchObject({
+        name: 'Taste of Camp 1',
+        primaryValue: 120,
+        compareValue: 100,
+      })
+      expect(result[2].compareName).toBe('Taste of Camp')
+    })
+
+    it('handles compare-only aliased items when no primary match exists', () => {
+      const primary: { name: string; value: number }[] = []
+      const compare = [{ name: 'Taste of Camp', value: 100 }]
+
+      const result = mergeDataForComparison(primary, compare, 'name', undefined, aliasMap)
+
+      expect(result).toHaveLength(1)
+      expect(result[0]).toMatchObject({ primaryValue: 0, compareValue: 100 })
+    })
+  })
 })
 
 describe('calculateDelta', () => {
