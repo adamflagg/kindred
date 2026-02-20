@@ -17,6 +17,7 @@ import { useDrilldown } from '../../../hooks/useDrilldown'
 import { MetricCard } from '../../../components/metrics/MetricCard'
 import { BreakdownChart } from '../../../components/metrics/BreakdownChart'
 import { WaitlistBySessionChart } from '../../../components/metrics/WaitlistBySessionChart'
+import { transformGenderData } from '../../../utils/metricsTransforms'
 import {
   buildSessionDateLookup,
   buildSessionTypeLookup,
@@ -54,6 +55,7 @@ export default function WaitlistAnalysis() {
           percentage: g.percentage,
           id: g.grade !== null ? String(g.grade) : 'null',
         }))
+        const genderChartData = transformGenderData(data.by_gender)
         return (
           <div className="space-y-6">
             {/* Summary Cards */}
@@ -125,28 +127,47 @@ export default function WaitlistAnalysis() {
               />
             </div>
 
-            {/* Charts Row */}
-            {(data.by_session.length > 0 || gradeChartData.length > 0) && (
-              <div className="grid gap-6 lg:grid-cols-2">
-                {data.by_session.length > 0 && (
-                  <WaitlistBySessionChart
-                    data={sortSessionDataByCampThenQuest(
-                      data.by_session,
-                      sessionDateLookup,
-                      sessionTypeLookup
-                    )}
-                    onBarClick={setFilter}
-                    sessionDateLookup={sessionDateLookup}
-                    sessionTypeLookup={sessionTypeLookup}
-                  />
+            {/* Session Chart (full width) */}
+            {data.by_session.length > 0 && (
+              <WaitlistBySessionChart
+                data={sortSessionDataByCampThenQuest(
+                  data.by_session,
+                  sessionDateLookup,
+                  sessionTypeLookup
                 )}
+                onBarClick={setFilter}
+                sessionDateLookup={sessionDateLookup}
+                sessionTypeLookup={sessionTypeLookup}
+              />
+            )}
+
+            {/* Grade + Gender Charts Row */}
+            {(gradeChartData.length > 0 || genderChartData.length > 0) && (
+              <div className="grid gap-6 lg:grid-cols-2">
                 {gradeChartData.length > 0 && (
                   <BreakdownChart
                     data={gradeChartData}
                     title="Grade Distribution"
                     type="bar"
-                    height={360}
+                    height={300}
                     breakdownType="grade"
+                    onSegmentClick={(filter) =>
+                      setFilter({
+                        ...filter,
+                        statusOverride: ['waitlisted'],
+                        waitlistContext: true,
+                      })
+                    }
+                  />
+                )}
+                {genderChartData.length > 0 && (
+                  <BreakdownChart
+                    data={genderChartData}
+                    title="Gender Distribution"
+                    type="pie"
+                    height={300}
+                    showPercentage
+                    breakdownType="gender"
                     onSegmentClick={(filter) =>
                       setFilter({
                         ...filter,
