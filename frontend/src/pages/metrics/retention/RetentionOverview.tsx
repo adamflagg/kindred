@@ -22,6 +22,7 @@ import {
   genderToBarData,
   gradeToBarData,
   sessionToBarData,
+  priorSessionToBarData,
   cityToBarData,
   schoolToBarData,
   synagogueToBarData,
@@ -29,7 +30,11 @@ import {
   firstSummerYearToBarData,
   computeRetentionOutliers,
 } from '../../../utils/retentionTransforms'
-import { buildSessionDateLookup, sortSessionDataByDate } from '../../../utils/sessionUtils'
+import {
+  buildSessionDateLookup,
+  sortSessionDataByDate,
+  sortPriorSessionDataByDate,
+} from '../../../utils/sessionUtils'
 import { OutlierSection } from '../../../components/metrics/RetentionNotableOutliers'
 import { SectionHeader } from '../../../components/metrics/SectionHeader'
 import type { DrilldownFilter } from '../../../types/metrics'
@@ -42,7 +47,7 @@ export default function RetentionOverview() {
 
   const priorYear = currentYear - 1
 
-  // Build date lookup for chronological session sorting (must be before early returns)
+  // Build date lookups for chronological session sorting (must be before early returns)
   const sessionDateLookup = useMemo(() => buildSessionDateLookup(sessions), [sessions])
 
   const { setFilter, DrilldownModal } = useDrilldown({
@@ -72,6 +77,15 @@ export default function RetentionOverview() {
     sessionTypesParam,
     selectedSessionCmId ?? undefined
   )
+
+  // Build date lookup from API response (prior year sessions have start_date)
+  const priorSessionDateLookup = useMemo(() => {
+    const lookup: Record<string, string> = {}
+    for (const s of data?.by_prior_session ?? []) {
+      if (s.start_date) lookup[s.prior_session] = s.start_date
+    }
+    return lookup
+  }, [data?.by_prior_session])
 
   if (isLoading) {
     return (
@@ -106,6 +120,9 @@ export default function RetentionOverview() {
   const gradeBars = gradeToBarData(data.by_grade)
   const sessionBars = sessionToBarData(
     sortSessionDataByDate(data.by_session ?? [], sessionDateLookup)
+  )
+  const priorSessionBars = priorSessionToBarData(
+    sortPriorSessionDataByDate(data.by_prior_session ?? [], priorSessionDateLookup)
   )
   const summerYearsBars = summerYearsToBarData(data.by_summer_years)
   const firstSummerYearBars = firstSummerYearToBarData(data.by_first_summer_year)
@@ -202,16 +219,26 @@ export default function RetentionOverview() {
         description="How retention varies across sessions"
       />
 
-      {/* Row 2: Current Year Session */}
-      {sessionBars.length > 0 && (
-        <RetentionRateBarChart
-          data={sessionBars}
-          title={`Retention by ${currentYear} Session`}
-          sortBy="none"
-          layout="vertical"
-          onBarClick={(item) => setFilter(makeRetentionFilter('retention_session', item))}
-        />
-      )}
+      {/* Row 2: Session charts side by side */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {sessionBars.length > 0 && (
+          <RetentionRateBarChart
+            data={sessionBars}
+            title={`Retention by ${currentYear} Session`}
+            sortBy="none"
+            layout="vertical"
+            onBarClick={(item) => setFilter(makeRetentionFilter('retention_session', item))}
+          />
+        )}
+        {priorSessionBars.length > 0 && (
+          <RetentionRateBarChart
+            data={priorSessionBars}
+            title={`Retention by ${priorYear} Session`}
+            sortBy="none"
+            layout="vertical"
+          />
+        )}
+      </div>
 
       <SectionHeader
         icon={Clock}

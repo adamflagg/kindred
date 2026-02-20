@@ -271,8 +271,9 @@ class RetentionByPriorSession(BaseModel):
     """
 
     prior_session: str = Field(description="Session name from prior year")
+    start_date: str | None = Field(default=None, description="Session start date for sorting")
     base_count: int = Field(description="Count in base year")
-    returned_count: int = Field(description="Count that returned in compare year")
+    returned_count: int = Field(description="Count that returned in compare year (any session)")
     retention_rate: float = Field(description="Retention rate (0-1)")
 
 

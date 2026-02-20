@@ -179,6 +179,7 @@ export interface RetentionByFirstSummerYear {
 
 export interface RetentionByPriorSession {
   prior_session: string
+  start_date?: string | null
   base_count: number
   returned_count: number
   retention_rate: number

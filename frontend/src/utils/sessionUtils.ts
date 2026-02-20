@@ -136,19 +136,6 @@ export function sortSessionDataByName<T extends { session_name: string }>(data: 
 }
 
 /**
- * Sort prior session data in logical order by prior_session field.
- * Works with retention API response that has prior_session field.
- */
-export function sortPriorSessionData<T extends { prior_session: string }>(data: T[]): T[] {
-  return [...data].sort((a, b) => {
-    const [numA, suffixA] = parseSessionName(a.prior_session)
-    const [numB, suffixB] = parseSessionName(b.prior_session)
-    if (numA !== numB) return numA - numB
-    return suffixA.localeCompare(suffixB)
-  })
-}
-
-/**
  * Lookup map from session name to start date string (ISO format).
  * Used for date-aware sorting in metrics charts.
  */
