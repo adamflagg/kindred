@@ -3,7 +3,7 @@ import { renderHook, act } from '@testing-library/react'
 import { useTour } from './useTour'
 import * as tourStorage from '../tours/tourStorage'
 import * as tourRegistry from '../tours/tourRegistry'
-import type { TourDefinition } from '../tours/types'
+import type { TourDefinition, HintDefinition } from '../tours/types'
 
 // Mock the modules
 vi.mock('../tours/tourStorage')
@@ -144,5 +144,30 @@ describe('useTour', () => {
     await flushAndAdvance(1000)
 
     expect(mockDrive).not.toHaveBeenCalled()
+  })
+
+  it('returns empty hints array when definition has no hints', async () => {
+    const { result } = renderHook(() => useTour())
+
+    await flushAndAdvance(1000)
+
+    expect(result.current.hints).toEqual([])
+  })
+
+  it('returns hints from tour definition when available', async () => {
+    const mockHints: HintDefinition[] = [
+      { element: '[data-tour="test"]', title: 'Test Hint', description: 'A hint' },
+    ]
+    const defWithHints: TourDefinition = {
+      ...mockTourDefinition,
+      hints: mockHints,
+    }
+    vi.mocked(tourRegistry.loadTourDefinition).mockResolvedValue(defWithHints)
+
+    const { result } = renderHook(() => useTour())
+
+    await flushAndAdvance(1000)
+
+    expect(result.current.hints).toEqual(mockHints)
   })
 })
