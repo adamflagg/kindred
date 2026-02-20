@@ -62,7 +62,7 @@ describe('BAY_AREA_REGION_POLYGONS', () => {
       // Multi-polygon: array of rings; single polygon: array of [lat,lng]
       const isMulti = Array.isArray(poly.polygon[0]?.[0])
       if (isMulti) {
-        for (const ring of poly.polygon as [number, number][][]) {
+        for (const ring of poly.polygon as Array<Array<[number, number]>>) {
           expect(ring.length).toBeGreaterThanOrEqual(3)
         }
       } else {
@@ -91,11 +91,11 @@ describe('BAY_AREA_REGION_POLYGONS', () => {
       const poly: RegionPolygon = BAY_AREA_REGION_POLYGONS[key]
       const isMulti = Array.isArray(poly.polygon[0]?.[0])
       if (isMulti) {
-        for (const ring of poly.polygon as [number, number][][]) {
+        for (const ring of poly.polygon as Array<Array<[number, number]>>) {
           for (const pt of ring) checkPoint(pt)
         }
       } else {
-        for (const pt of poly.polygon as [number, number][]) checkPoint(pt)
+        for (const pt of poly.polygon as Array<[number, number]>) checkPoint(pt)
       }
     }
   })

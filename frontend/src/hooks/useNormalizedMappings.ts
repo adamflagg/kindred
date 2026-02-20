@@ -62,11 +62,11 @@ export function useNormalizedMappings(
         const originalValue = record['original_value'] as string
         const confidence = (record['confidence'] as number) ?? 1.0
 
-        if (!byNormalized.has(normalizedValue)) {
-          byNormalized.set(normalizedValue, new Map())
+        let originals = byNormalized.get(normalizedValue)
+        if (!originals) {
+          originals = new Map()
+          byNormalized.set(normalizedValue, originals)
         }
-
-        const originals = byNormalized.get(normalizedValue)!
         const existing = originals.get(originalValue)
 
         if (existing) {

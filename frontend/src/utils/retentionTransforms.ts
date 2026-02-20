@@ -213,6 +213,12 @@ export interface SankeyData {
   links: SankeyLink[]
 }
 
+function getNodeIndex(map: Map<string, number>, key: string): number {
+  const idx = map.get(key)
+  if (idx === undefined) throw new Error(`Missing node index for ${key}`)
+  return idx
+}
+
 /**
  * Convert SessionFlowItem[] from API to Recharts Sankey data format.
  *
@@ -249,8 +255,8 @@ export function sessionFlowToSankeyData(data: SessionFlowItem[] | undefined): Sa
 
   // Build links
   const links: SankeyLink[] = data.map((item) => ({
-    source: nodeIndexMap.get(`source:${item.source}`)!,
-    target: nodeIndexMap.get(`target:${item.target}`)!,
+    source: getNodeIndex(nodeIndexMap, `source:${item.source}`),
+    target: getNodeIndex(nodeIndexMap, `target:${item.target}`),
     value: item.value,
   }))
 

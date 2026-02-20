@@ -341,7 +341,7 @@ export function DrillDownModal({
             </h2>
             <p className="text-muted-foreground text-sm">
               {isRetentionDrilldown
-                ? `${filter.retentionContext!.baseYear} → ${filter.retentionContext!.compareYear} retention data`
+                ? `${filter.retentionContext?.baseYear} → ${filter.retentionContext?.compareYear} retention data`
                 : `${year} enrollment data`}
               {searchTerm && ` (filtered from ${attendees.length})`}
             </p>

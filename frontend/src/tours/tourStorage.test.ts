@@ -114,7 +114,6 @@ describe('tourStorage', () => {
 
       const calls = vi.mocked(localStorage.setItem).mock.calls
       expect(calls).toHaveLength(1)
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       const savedData = JSON.parse(calls[0]![1])
       expect(savedData.completed.debug.completedVersion).toBe(2)
     })
@@ -133,7 +132,6 @@ describe('tourStorage', () => {
 
       const calls = vi.mocked(localStorage.setItem).mock.calls
       expect(calls).toHaveLength(1)
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       const savedData = JSON.parse(calls[0]![1])
       expect(savedData.completed.debug).toBeUndefined()
     })
