@@ -187,9 +187,9 @@ export default function RetentionOverview() {
       </div>
 
       {data.aged_out_count != null && data.aged_out_count > 0 && (
-        <p className="text-xs text-muted-foreground">
-          Excluding {data.aged_out_count} 10th grader{data.aged_out_count !== 1 ? 's' : ''} who
-          aged out of eligible sessions
+        <p className="text-muted-foreground text-xs">
+          Excluding {data.aged_out_count} 10th grader{data.aged_out_count !== 1 ? 's' : ''} who aged
+          out of eligible sessions
         </p>
       )}
 
