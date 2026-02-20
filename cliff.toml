@@ -22,6 +22,9 @@ commit_parsers = [
     # Skip merge commits (both "Merge pull request" and "Merge branch" styles)
     { message = "^Merge", skip = true },
 
+    # Reverts - catch these before the type they reference
+    { message = "^Revert", group = "Reverts" },
+
     # All conventional commits by type
     { message = "^feat", group = "Features" },
     { message = "^fix", group = "Bug Fixes" },
