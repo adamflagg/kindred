@@ -32,8 +32,8 @@ describe('classifyCity', () => {
     expect(classifyCity('Denver')).toBe('Rest of US')
   })
 
-  it('should classify London as International', () => {
-    expect(classifyCity('London')).toBe('International')
+  it('should classify Tokyo as International', () => {
+    expect(classifyCity('Tokyo')).toBe('International')
   })
 
   it('should classify empty string as International', () => {

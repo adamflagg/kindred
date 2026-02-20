@@ -8,12 +8,12 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { GeoLayerToggles } from './GeoLayerToggles'
-import type { GeoCategory } from './GeoCategoryTabs'
+import type { GeoCategoryExtended } from './GeoCategoryTabs'
 
 const defaultProps = {
-  activeLayers: new Set<GeoCategory>(['city', 'school', 'synagogue']),
+  activeLayers: new Set<GeoCategoryExtended>(['city', 'school', 'synagogue', 'region']),
   onToggleLayer: vi.fn(),
-  counts: { city: 42, school: 38, synagogue: 15 },
+  counts: { city: 42, school: 38, synagogue: 15, region: 9 },
   showRegions: true,
   onToggleRegions: vi.fn(),
   showSources: false,
@@ -31,8 +31,8 @@ describe('GeoLayerToggles admin gating', () => {
   it('hides sources and gaps toggles when isAdmin is false', () => {
     render(<GeoLayerToggles {...defaultProps} isAdmin={false} />)
 
-    // Should have 3 layer toggles + 1 region toggle = 4 checkboxes
-    expect(getCheckboxes()).toHaveLength(4)
+    // Should have 4 layer toggles + 1 region zones toggle = 5 checkboxes
+    expect(getCheckboxes()).toHaveLength(5)
     expect(screen.queryByText(/Show sources/)).not.toBeInTheDocument()
     expect(screen.queryByText(/Show gaps/)).not.toBeInTheDocument()
   })
@@ -40,8 +40,8 @@ describe('GeoLayerToggles admin gating', () => {
   it('shows sources and gaps toggles when isAdmin is true', () => {
     render(<GeoLayerToggles {...defaultProps} isAdmin={true} />)
 
-    // Should have 3 layers + 1 region + 2 admin toggles = 6 checkboxes
-    expect(getCheckboxes()).toHaveLength(6)
+    // Should have 4 layers + 1 region zones + 2 admin toggles = 7 checkboxes
+    expect(getCheckboxes()).toHaveLength(7)
     expect(screen.getByText(/Show sources/)).toBeInTheDocument()
     expect(screen.getByText(/Show gaps/)).toBeInTheDocument()
   })

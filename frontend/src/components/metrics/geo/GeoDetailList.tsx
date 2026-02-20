@@ -8,7 +8,7 @@
 import { Fragment, useState } from 'react'
 import { ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react'
 import type { GeoDataItem } from './GeoMap'
-import type { GeoCategory } from './GeoCategoryTabs'
+import type { GeoCategoryExtended } from './GeoCategoryTabs'
 import type { DrilldownFilter } from '../../../types/metrics'
 import type { SourceMapping } from '../../../hooks/useNormalizedMappings'
 import { US_CITY_STATES } from '../../../data/cityGeo'
@@ -16,7 +16,7 @@ import { getLocationCoords } from '../../../data/geoCoords'
 
 interface GeoDetailListProps {
   data: GeoDataItem[]
-  category: GeoCategory
+  category: GeoCategoryExtended
   selectedItem?: string | null
   onItemClick?: (name: string) => void
   /** Callback for drilldown when row is clicked */
@@ -31,16 +31,18 @@ interface GeoDetailListProps {
   showGaps?: boolean
 }
 
-const CATEGORY_LABELS: Record<GeoCategory, string> = {
+const CATEGORY_LABELS: Record<GeoCategoryExtended, string> = {
   city: 'City',
   school: 'School',
   synagogue: 'Synagogue',
+  region: 'Region',
 }
 
-const CATEGORY_PLURALS: Record<GeoCategory, string> = {
+const CATEGORY_PLURALS: Record<GeoCategoryExtended, string> = {
   city: 'Cities',
   school: 'Schools',
   synagogue: 'Synagogues',
+  region: 'Regions',
 }
 
 export function GeoDetailList({
@@ -120,11 +122,13 @@ export function GeoDetailList({
                       <tr
                         onClick={() => {
                           onItemClick?.(item.name)
-                          onDrilldown?.({
-                            type: category,
-                            value: item.name,
-                            label: item.name,
-                          })
+                          if (category !== 'region') {
+                            onDrilldown?.({
+                              type: category,
+                              value: item.name,
+                              label: item.name,
+                            })
+                          }
                         }}
                         className={`border-border cursor-pointer border-t transition-colors ${isSelected ? 'bg-primary/10' : 'hover:bg-muted/30'} `}
                       >

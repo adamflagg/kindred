@@ -6,13 +6,13 @@
  * Admin-only toggles: source strings and gap tracking.
  */
 
-import { MapPin, Building2, Heart } from 'lucide-react'
-import type { GeoCategory } from './GeoCategoryTabs'
+import { MapPin, Building2, Heart, Map } from 'lucide-react'
+import type { GeoCategoryExtended } from './GeoCategoryTabs'
 
 export interface GeoLayerTogglesProps {
-  activeLayers: Set<GeoCategory>
-  onToggleLayer: (category: GeoCategory) => void
-  counts: Record<GeoCategory, number>
+  activeLayers: Set<GeoCategoryExtended>
+  onToggleLayer: (category: GeoCategoryExtended) => void
+  counts: Record<GeoCategoryExtended, number>
   showRegions: boolean
   onToggleRegions: () => void
   showSources: boolean
@@ -24,7 +24,7 @@ export interface GeoLayerTogglesProps {
 }
 
 const LAYERS: Array<{
-  id: GeoCategory
+  id: GeoCategoryExtended
   label: string
   icon: typeof MapPin
   accent: string
@@ -32,6 +32,7 @@ const LAYERS: Array<{
   { id: 'city', label: 'Cities', icon: MapPin, accent: 'text-blue-500' },
   { id: 'school', label: 'Schools', icon: Building2, accent: 'text-emerald-500' },
   { id: 'synagogue', label: 'Synagogues', icon: Heart, accent: 'text-amber-500' },
+  { id: 'region', label: 'Regions', icon: Map, accent: 'text-violet-500' },
 ]
 
 export function GeoLayerToggles({

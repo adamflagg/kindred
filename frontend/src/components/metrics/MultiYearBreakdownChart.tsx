@@ -27,6 +27,7 @@ type BreakdownKey =
   | 'by_city'
   | 'by_school'
   | 'by_synagogue'
+  | 'by_region'
 
 interface MultiYearBreakdownChartProps {
   data: YearEnrollment[]

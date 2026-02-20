@@ -308,6 +308,11 @@ export interface SynagogueEnrollment {
   count: number
 }
 
+export interface RegionEnrollment {
+  region: string
+  count: number
+}
+
 export interface YearEnrollment {
   year: number
   total: number
@@ -318,6 +323,7 @@ export interface YearEnrollment {
   by_city?: CityEnrollment[]
   by_school?: SchoolEnrollment[]
   by_synagogue?: SynagogueEnrollment[]
+  by_region?: RegionEnrollment[]
 }
 
 // Retention trends types (3-year view)
