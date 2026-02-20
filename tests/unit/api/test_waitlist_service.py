@@ -442,6 +442,43 @@ class TestSessionFiltering:
         # Both should be counted (AG sessions are included in summer)
         assert result.total_waitlisted == 2
 
+    @pytest.mark.asyncio
+    async def test_ag_session_waitlist_merges_into_parent_in_by_session(
+        self,
+        waitlist_service: WaitlistService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """AG session waitlist counts should merge into parent main session in by_session.
+
+        Person waitlisted in AG Session 1 (parent=1001) should appear under
+        Session 1 in the by_session breakdown, not as a separate AG entry.
+        """
+        ag_session = sample_sessions[1004]  # AG Session 1, parent_id=1001
+        main_session = sample_sessions[1001]
+        waitlisted_attendees = [
+            create_mock_attendee(101, main_session, status="waitlisted", status_id=8, is_active=False),
+            create_mock_attendee(102, ag_session, status="waitlisted", status_id=8, is_active=False),
+        ]
+
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (waitlisted_attendees if status_filter == "waitlisted" else [])
+        )
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_status_history = AsyncMock(return_value=[])
+
+        result = await waitlist_service.calculate_waitlist(year=2026)
+
+        # AG session should NOT appear as a separate entry in by_session
+        session_ids = {s.session_cm_id for s in result.by_session}
+        assert 1004 not in session_ids, "AG session should be merged into parent, not shown separately"
+
+        # Parent main session should have combined count (1 from main + 1 from AG)
+        session_map = {s.session_cm_id: s for s in result.by_session}
+        assert session_map[1001].waitlisted == 2
+
 
 # ============================================================================
 # Empty State
