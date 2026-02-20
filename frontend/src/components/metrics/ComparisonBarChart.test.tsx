@@ -9,7 +9,9 @@ import { ComparisonBarChart } from './ComparisonBarChart'
 
 // Mock Recharts to avoid canvas/SVG issues in tests
 vi.mock('recharts', () => ({
-  BarChart: ({ children }: { children: React.ReactNode }) => <div data-testid="bar-chart">{children}</div>,
+  BarChart: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="bar-chart">{children}</div>
+  ),
   Bar: () => null,
   XAxis: () => null,
   YAxis: () => null,

@@ -4,11 +4,7 @@
  * TDD: Tests written first to define merging and delta calculation behavior.
  */
 import { describe, it, expect } from 'vitest'
-import {
-  mergeDataForComparison,
-  calculateDelta,
-  type ComparisonMergedItem,
-} from './comparisonUtils'
+import { mergeDataForComparison, calculateDelta } from './comparisonUtils'
 
 describe('mergeDataForComparison', () => {
   it('merges two datasets by name key', () => {

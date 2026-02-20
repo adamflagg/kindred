@@ -37,6 +37,12 @@ export interface MetricsSessionContextType {
   expandedRetention: boolean
   /** Toggle expanded retention analysis */
   setExpandedRetention: (v: boolean) => void
+  /** Year to compare against (null = comparison mode off) */
+  compareYear: number | null
+  /** Set the comparison year (null to disable comparison) */
+  setCompareYear: (year: number | null) => void
+  /** Whether comparison mode is active */
+  isComparing: boolean
 }
 
 export const MetricsSessionContext = createContext<MetricsSessionContextType | undefined>(undefined)

@@ -11,13 +11,14 @@
 import { useMemo } from 'react'
 import { AlertTriangle, CheckCircle, XCircle, Users, Clock } from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
-import { useWaitlistMetrics } from '../../../hooks/useMetrics'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useDrilldown } from '../../../hooks/useDrilldown'
+import { useComparisonWaitlistData } from '../../../hooks/useComparisonWaitlistData'
 import { MetricCard } from '../../../components/metrics/MetricCard'
 import { BreakdownChart } from '../../../components/metrics/BreakdownChart'
 import { WaitlistBySessionChart } from '../../../components/metrics/WaitlistBySessionChart'
 import { transformGenderData } from '../../../utils/metricsTransforms'
+import { ComparisonSummaryTable } from '../../../components/metrics/ComparisonSummaryTable'
 import {
   buildSessionDateLookup,
   buildSessionTypeLookup,
@@ -28,16 +29,25 @@ import { MetricsQueryGuard } from '../../../components/metrics/MetricsQueryGuard
 
 export default function WaitlistAnalysis() {
   const { currentYear } = useCurrentYear()
-  const { selectedSessionCmId, sessions, sessionTypesParam, activeSessionTypes } =
-    useMetricsSession()
+  const {
+    selectedSessionCmId,
+    sessions,
+    sessionTypesParam,
+    activeSessionTypes,
+    compareYear,
+    isComparing,
+  } = useMetricsSession()
   const sessionDateLookup = useMemo(() => buildSessionDateLookup(sessions), [sessions])
   const sessionTypeLookup = useMemo(() => buildSessionTypeLookup(sessions), [sessions])
 
-  const { data, isLoading, error } = useWaitlistMetrics(
+  const { primary, comparison } = useComparisonWaitlistData(
     currentYear,
+    compareYear,
     sessionTypesParam,
     selectedSessionCmId ?? undefined
   )
+  const { data, isLoading, error } = primary
+  const compData = comparison?.data
 
   const { setFilter, DrilldownModal } = useDrilldown({
     year: currentYear,
@@ -64,6 +74,8 @@ export default function WaitlistAnalysis() {
                 title="Total Waitlisted"
                 value={data.total_waitlisted}
                 className="border-amber-200 dark:border-amber-800"
+                compareValue={compData?.total_waitlisted}
+                compareYear={compareYear ?? undefined}
                 onClick={() =>
                   setFilter({
                     type: 'waitlist_total',
@@ -81,6 +93,8 @@ export default function WaitlistAnalysis() {
                     ? 'border-red-300 bg-red-50/50 dark:border-red-800 dark:bg-red-950/30'
                     : ''
                 }
+                compareValue={compData?.waitlisted_no_enrollment}
+                compareYear={compareYear ?? undefined}
                 onClick={() =>
                   setFilter({
                     type: 'waitlist_no_enrollment',
@@ -93,6 +107,8 @@ export default function WaitlistAnalysis() {
                 title="Has Other Sessions"
                 value={data.waitlisted_has_enrollment}
                 subtitle="Enrolled elsewhere"
+                compareValue={compData?.waitlisted_has_enrollment}
+                compareYear={compareYear ?? undefined}
                 onClick={() =>
                   setFilter({
                     type: 'waitlist_has_enrollment',
@@ -105,6 +121,8 @@ export default function WaitlistAnalysis() {
                 title="Accepted"
                 value={data.total_accepted}
                 subtitle="From waitlist"
+                compareValue={compData?.total_accepted}
+                compareYear={compareYear ?? undefined}
                 onClick={() =>
                   setFilter({
                     type: 'waitlist_accepted',
@@ -117,6 +135,8 @@ export default function WaitlistAnalysis() {
                 title="Declined"
                 value={data.total_declined}
                 subtitle="From waitlist"
+                compareValue={compData?.total_declined}
+                compareYear={compareYear ?? undefined}
                 onClick={() =>
                   setFilter({
                     type: 'waitlist_declined',
@@ -180,6 +200,20 @@ export default function WaitlistAnalysis() {
               </div>
             )}
 
+            {/* Grade Comparison Table */}
+            {isComparing && compData && (
+              <ComparisonSummaryTable
+                title="Grade Distribution Comparison"
+                primaryYear={currentYear}
+                compareYear={compareYear!}
+                primaryData={gradeChartData}
+                compareData={(compData.by_grade || []).map((g) => ({
+                  name: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
+                  value: g.count,
+                }))}
+              />
+            )}
+
             {/* Session Details Table */}
             {data.by_session.length > 0 && (
               <div className="card-lodge overflow-hidden">
@@ -216,6 +250,14 @@ export default function WaitlistAnalysis() {
                           </span>
                         </th>
                         <th className="px-4 py-2 text-right font-medium">Total</th>
+                        {isComparing && compData && (
+                          <>
+                            <th className="px-4 py-2 text-right font-medium">
+                              {compareYear} Total
+                            </th>
+                            <th className="px-4 py-2 text-right font-medium">Delta</th>
+                          </>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
@@ -245,6 +287,28 @@ export default function WaitlistAnalysis() {
                             {session.declined}
                           </td>
                           <td className="px-4 py-2 text-right font-medium">{session.waitlisted}</td>
+                          {isComparing &&
+                            compData &&
+                            (() => {
+                              const compSession = compData.by_session.find(
+                                (s) => s.session_name === session.session_name
+                              )
+                              const delta = compSession
+                                ? session.waitlisted - compSession.waitlisted
+                                : null
+                              return (
+                                <>
+                                  <td className="px-4 py-2 text-right">
+                                    {compSession?.waitlisted ?? '\u2014'}
+                                  </td>
+                                  <td
+                                    className={`px-4 py-2 text-right ${delta && delta > 0 ? 'text-emerald-600 dark:text-emerald-400' : delta && delta < 0 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}
+                                  >
+                                    {delta !== null ? (delta > 0 ? `+${delta}` : delta) : '\u2014'}
+                                  </td>
+                                </>
+                              )
+                            })()}
                         </tr>
                       ))}
                     </tbody>
