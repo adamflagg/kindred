@@ -55,7 +55,11 @@ export default function BunkRetentionPage() {
               sessionDateLookup={sessionDateLookup}
               bunkStaff={bunkStaffData}
             />
-          ) : null
+          ) : (
+            <p className="text-muted-foreground py-8 text-center">
+              No bunk retention data available
+            </p>
+          )
         }
       </MetricsQueryGuard>
     </div>

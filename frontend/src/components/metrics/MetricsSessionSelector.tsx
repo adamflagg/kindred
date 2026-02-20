@@ -2,7 +2,7 @@
  * MetricsSessionSelector - Unified session dropdown for metrics module
  *
  * Consumes MetricsSessionContext to provide a session filter that applies
- * across all metrics tabs (Registration, Retention, Trends).
+ * across most metrics tabs (hidden on Bunk Analysis tab which uses unfiltered data).
  *
  * Dropdown structure:
  * - At Camp (camp only)
