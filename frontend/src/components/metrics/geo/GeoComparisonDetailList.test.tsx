@@ -45,6 +45,7 @@ describe('GeoComparisonDetailList', () => {
       />
     )
 
+    fireEvent.click(screen.getByText(/cities/i))
     expect(screen.getByText('2025')).toBeInTheDocument()
     expect(screen.getByText('2024')).toBeInTheDocument()
     expect(screen.getByText('Change')).toBeInTheDocument()
@@ -61,6 +62,7 @@ describe('GeoComparisonDetailList', () => {
       />
     )
 
+    fireEvent.click(screen.getByText(/cities/i))
     // Common items
     expect(screen.getByText('Oakland')).toBeInTheDocument()
     expect(screen.getByText('San Francisco')).toBeInTheDocument()
@@ -77,6 +79,7 @@ describe('GeoComparisonDetailList', () => {
       />
     )
 
+    fireEvent.click(screen.getByText(/cities/i))
     // Berkeley is only in primary
     expect(screen.getByText('Berkeley')).toBeInTheDocument()
     expect(screen.getByText('NEW')).toBeInTheDocument()
@@ -93,6 +96,7 @@ describe('GeoComparisonDetailList', () => {
       />
     )
 
+    fireEvent.click(screen.getByText(/cities/i))
     // Los Angeles is only in compare
     expect(screen.getByText('Los Angeles')).toBeInTheDocument()
     expect(screen.getByText('GONE')).toBeInTheDocument()
@@ -109,7 +113,7 @@ describe('GeoComparisonDetailList', () => {
       />
     )
 
-    expect(screen.getByText(/schools/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByText(/schools/i))
     expect(screen.getByText('Riverside Elementary')).toBeInTheDocument()
   })
 
@@ -124,7 +128,7 @@ describe('GeoComparisonDetailList', () => {
       />
     )
 
-    expect(screen.getByText(/synagogues/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByText(/synagogues/i))
     expect(screen.getByText('Temple Beth')).toBeInTheDocument()
   })
 

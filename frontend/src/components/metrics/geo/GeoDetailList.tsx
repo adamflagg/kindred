@@ -29,6 +29,10 @@ interface GeoDetailListProps {
   sourceMappings?: Map<string, SourceMapping[]> | undefined
   /** Whether to show gap indicators for items without coordinates */
   showGaps?: boolean
+  /** Externally controlled expand state */
+  isOpen?: boolean | undefined
+  /** Callback when header is clicked (for controlled mode) */
+  onToggle?: (() => void) | undefined
 }
 
 const CATEGORY_LABELS: Record<GeoCategoryExtended, string> = {
@@ -55,8 +59,11 @@ export function GeoDetailList({
   showSources = false,
   sourceMappings,
   showGaps = false,
+  isOpen,
+  onToggle,
 }: GeoDetailListProps) {
-  const [isExpanded, setIsExpanded] = useState(false)
+  const [internalExpanded, setInternalExpanded] = useState(false)
+  const isExpanded = isOpen ?? internalExpanded
   const [showAll, setShowAll] = useState(false)
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
 
@@ -80,7 +87,10 @@ export function GeoDetailList({
     <div className="card-lodge overflow-hidden">
       {/* Header */}
       <button
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={() => {
+          onToggle?.()
+          if (isOpen === undefined) setInternalExpanded(!internalExpanded)
+        }}
         className="hover:bg-muted/50 flex w-full items-center justify-between px-4 py-3 transition-colors"
       >
         <div className="flex items-center gap-2">

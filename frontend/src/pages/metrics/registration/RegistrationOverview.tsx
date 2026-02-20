@@ -174,6 +174,7 @@ export default function RegistrationOverview() {
           value={data.total_cancelled}
           compareValue={compData?.total_cancelled}
           compareYear={compareYear ?? undefined}
+          sentiment="inverse"
           subtitle="Cancellations"
           onClick={() =>
             setFilter({
@@ -189,6 +190,7 @@ export default function RegistrationOverview() {
           value={data.new_vs_returning.new_count}
           compareValue={compData?.new_vs_returning.new_count}
           compareYear={compareYear ?? undefined}
+          sentiment="neutral"
           subtitle={`${data.new_vs_returning.new_percentage.toFixed(1)}% of enrolled`}
           onClick={() =>
             setFilter({
@@ -590,6 +592,19 @@ export default function RegistrationOverview() {
                 >
                   <td className="text-foreground px-4 py-3 font-medium">
                     {getSessionChartLabel(session.session_name, undefined, sessionDateLookup)}
+                    {isComparing &&
+                      compData &&
+                      (() => {
+                        const compSession = compData.by_session.find(
+                          (s) => s.session_cm_id === session.session_cm_id
+                        )
+                        return compSession &&
+                          compSession.session_name !== session.session_name ? (
+                          <span className="text-muted-foreground ml-1 text-xs">
+                            (was: {compSession.session_name})
+                          </span>
+                        ) : null
+                      })()}
                   </td>
                   <td className="text-foreground px-4 py-3 text-right">{session.count}</td>
                   <td className="text-foreground px-4 py-3 text-right">

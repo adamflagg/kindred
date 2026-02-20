@@ -135,6 +135,7 @@ export default function WaitlistAnalysis() {
                 title="Declined"
                 value={data.total_declined}
                 subtitle="From waitlist"
+                sentiment="inverse"
                 compareValue={compData?.total_declined}
                 compareYear={compareYear ?? undefined}
                 onClick={() =>
@@ -389,7 +390,22 @@ export default function WaitlistAnalysis() {
                         sessionTypeLookup
                       ).map((session: WaitlistSessionBreakdown) => (
                         <tr key={session.session_cm_id} className="border-border/50 border-b">
-                          <td className="px-4 py-2 font-medium">{session.session_name}</td>
+                          <td className="px-4 py-2 font-medium">
+                            {session.session_name}
+                            {isComparing &&
+                              compData &&
+                              (() => {
+                                const compSession = compData.by_session.find(
+                                  (s) => s.session_cm_id === session.session_cm_id
+                                )
+                                return compSession &&
+                                  compSession.session_name !== session.session_name ? (
+                                  <span className="text-muted-foreground ml-1 text-xs">
+                                    (was: {compSession.session_name})
+                                  </span>
+                                ) : null
+                              })()}
+                          </td>
                           <td className="px-4 py-2 text-right">
                             <span
                               className={

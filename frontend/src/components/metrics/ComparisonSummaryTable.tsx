@@ -26,6 +26,8 @@ interface ComparisonSummaryTableProps {
   nameKey?: string
   /** Separate key for matching items between datasets (default: nameKey) */
   matchKey?: string
+  /** Color semantics for change direction */
+  sentiment?: 'default' | 'inverse' | 'neutral' | undefined
 }
 
 export function ComparisonSummaryTable({
@@ -37,6 +39,7 @@ export function ComparisonSummaryTable({
   className = '',
   nameKey = 'name',
   matchKey,
+  sentiment,
 }: ComparisonSummaryTableProps) {
   const merged = mergeDataForComparison(primaryData, compareData, nameKey, matchKey)
 
@@ -77,12 +80,27 @@ export function ComparisonSummaryTable({
 
               let changeClass = 'text-muted-foreground'
               let Icon = Minus
-              if (row.change > 0) {
-                changeClass = 'text-emerald-600 dark:text-emerald-400'
-                Icon = TrendingUp
-              } else if (row.change < 0) {
-                changeClass = 'text-red-600 dark:text-red-400'
-                Icon = TrendingDown
+              if (sentiment === 'neutral') {
+                if (row.change !== 0) {
+                  changeClass = 'text-blue-600 dark:text-blue-400'
+                  Icon = row.change > 0 ? TrendingUp : TrendingDown
+                }
+              } else if (sentiment === 'inverse') {
+                if (row.change > 0) {
+                  changeClass = 'text-red-600 dark:text-red-400'
+                  Icon = TrendingUp
+                } else if (row.change < 0) {
+                  changeClass = 'text-emerald-600 dark:text-emerald-400'
+                  Icon = TrendingDown
+                }
+              } else {
+                if (row.change > 0) {
+                  changeClass = 'text-emerald-600 dark:text-emerald-400'
+                  Icon = TrendingUp
+                } else if (row.change < 0) {
+                  changeClass = 'text-red-600 dark:text-red-400'
+                  Icon = TrendingDown
+                }
               }
 
               return (
@@ -90,7 +108,14 @@ export function ComparisonSummaryTable({
                   key={row.name}
                   className="border-border hover:bg-muted/20 border-b transition-colors last:border-0"
                 >
-                  <td className="text-foreground px-4 py-3 font-medium">{row.name}</td>
+                  <td className="text-foreground px-4 py-3 font-medium">
+                    {row.name}
+                    {row.compareName && (
+                      <span className="text-muted-foreground ml-1 text-xs">
+                        (was: {row.compareName})
+                      </span>
+                    )}
+                  </td>
                   <td className="text-foreground px-4 py-3 text-right">
                     {row.primaryValue}
                     {isGone && <span className="text-muted-foreground ml-1 text-xs">(0)</span>}

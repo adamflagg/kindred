@@ -7,6 +7,8 @@
 
 export interface ComparisonMergedItem {
   name: string
+  /** Set when compare year had a different display name (matched by matchKey) */
+  compareName?: string | undefined
   primaryValue: number
   compareValue: number
   change: number
@@ -74,7 +76,19 @@ export function mergeDataForComparison<T extends Record<string, unknown>>(
     }
     // else cv===0, pv>0 → null (can't calculate percent from zero base)
 
-    result.push({ name: displayName, primaryValue: pv, compareValue: cv, change, changePercent })
+    const compareName =
+      pEntry && cEntry && pEntry.displayName !== cEntry.displayName
+        ? cEntry.displayName
+        : undefined
+
+    result.push({
+      name: displayName,
+      compareName,
+      primaryValue: pv,
+      compareValue: cv,
+      change,
+      changePercent,
+    })
   }
 
   return result

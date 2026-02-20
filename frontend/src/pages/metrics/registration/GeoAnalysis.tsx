@@ -56,6 +56,7 @@ export default function GeoAnalysis() {
   const [showSources, setShowSources] = useState(false)
   const [showGaps, setShowGaps] = useState(false)
   const [selectedItem, setSelectedItem] = useState<string | null>(null)
+  const [expandedCategories, setExpandedCategories] = useState<Set<GeoCategoryExtended>>(new Set())
 
   // Get session filter from context (unified selector is in MetricsTypeTabs)
   const { selectedSessionCmId, sessionTypesParam, activeSessionTypes, compareYear, isComparing } =
@@ -191,6 +192,45 @@ export default function GeoAnalysis() {
 
     return allItems.reduce((max, item) => (item.count > max.count ? item : max))
   }, [geoData])
+
+  // Compute visible categories for row-pair expand sync
+  const visibleCategories = useMemo(
+    () =>
+      (['city', 'school', 'synagogue', 'region'] as const).filter(
+        (cat) => activeLayers.has(cat) && geoData[cat].length > 0
+      ),
+    [activeLayers, geoData]
+  )
+
+  // Find row partner (items at index 0,1 share row 1; items at 2,3 share row 2)
+  const getRowPartner = useCallback(
+    (cat: GeoCategoryExtended): GeoCategoryExtended | undefined => {
+      const idx = visibleCategories.indexOf(cat)
+      if (idx === -1) return undefined
+      const partnerIdx = idx % 2 === 0 ? idx + 1 : idx - 1
+      return visibleCategories[partnerIdx]
+    },
+    [visibleCategories]
+  )
+
+  const handleDetailToggle = useCallback(
+    (category: GeoCategoryExtended) => {
+      setExpandedCategories((prev) => {
+        const next = new Set(prev)
+        const partner = getRowPartner(category)
+        const isOpening = !prev.has(category)
+        if (isOpening) {
+          next.add(category)
+          if (partner) next.add(partner)
+        } else {
+          next.delete(category)
+          if (partner) next.delete(partner)
+        }
+        return next
+      })
+    },
+    [getRowPartner]
+  )
 
   // Toggle a data layer on/off
   const handleToggleLayer = useCallback((category: GeoCategoryExtended) => {
@@ -333,6 +373,8 @@ export default function GeoAnalysis() {
                     compareData={compGeoData.city}
                     primaryYear={currentYear}
                     compareYear={compareYear!}
+                    isOpen={expandedCategories.has('city')}
+                    onToggle={() => handleDetailToggle('city')}
                   />
                 )}
               {activeLayers.has('school') &&
@@ -343,6 +385,8 @@ export default function GeoAnalysis() {
                     compareData={compGeoData.school}
                     primaryYear={currentYear}
                     compareYear={compareYear!}
+                    isOpen={expandedCategories.has('school')}
+                    onToggle={() => handleDetailToggle('school')}
                   />
                 )}
               {activeLayers.has('synagogue') &&
@@ -353,6 +397,8 @@ export default function GeoAnalysis() {
                     compareData={compGeoData.synagogue}
                     primaryYear={currentYear}
                     compareYear={compareYear!}
+                    isOpen={expandedCategories.has('synagogue')}
+                    onToggle={() => handleDetailToggle('synagogue')}
                   />
                 )}
               {activeLayers.has('region') &&
@@ -363,6 +409,8 @@ export default function GeoAnalysis() {
                     compareData={compGeoData.region}
                     primaryYear={currentYear}
                     compareYear={compareYear!}
+                    isOpen={expandedCategories.has('region')}
+                    onToggle={() => handleDetailToggle('region')}
                   />
                 )}
             </div>
@@ -378,6 +426,8 @@ export default function GeoAnalysis() {
                   showSources={showSources}
                   sourceMappings={sourceMappingsFor.city}
                   showGaps={showGaps}
+                  isOpen={expandedCategories.has('city')}
+                  onToggle={() => handleDetailToggle('city')}
                 />
               )}
               {activeLayers.has('school') && geoData.school.length > 0 && (
@@ -390,6 +440,8 @@ export default function GeoAnalysis() {
                   showSources={showSources}
                   sourceMappings={sourceMappingsFor.school}
                   showGaps={showGaps}
+                  isOpen={expandedCategories.has('school')}
+                  onToggle={() => handleDetailToggle('school')}
                 />
               )}
               {activeLayers.has('synagogue') && geoData.synagogue.length > 0 && (
@@ -402,10 +454,17 @@ export default function GeoAnalysis() {
                   showSources={showSources}
                   sourceMappings={sourceMappingsFor.synagogue}
                   showGaps={showGaps}
+                  isOpen={expandedCategories.has('synagogue')}
+                  onToggle={() => handleDetailToggle('synagogue')}
                 />
               )}
               {activeLayers.has('region') && geoData.region.length > 0 && (
-                <GeoDetailList data={geoData.region} category="region" />
+                <GeoDetailList
+                  data={geoData.region}
+                  category="region"
+                  isOpen={expandedCategories.has('region')}
+                  onToggle={() => handleDetailToggle('region')}
+                />
               )}
             </div>
           )}

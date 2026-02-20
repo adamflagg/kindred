@@ -21,6 +21,8 @@ interface MetricCardProps {
   /** Year for comparison label (e.g., "vs 2024") */
   compareYear?: number | undefined
   className?: string | undefined
+  /** Color semantics for trend direction */
+  sentiment?: 'default' | 'inverse' | 'neutral' | undefined
   /** Click handler for drilldown functionality */
   onClick?: (() => void) | undefined
 }
@@ -34,13 +36,21 @@ export function MetricCard({
   compareValue,
   compareYear,
   className = '',
+  sentiment,
   onClick,
 }: MetricCardProps) {
-  const trendColors = {
-    up: 'text-emerald-600 dark:text-emerald-400',
-    down: 'text-red-600 dark:text-red-400',
-    neutral: 'text-muted-foreground',
-  }
+  const trendColors =
+    sentiment === 'neutral'
+      ? {
+          up: 'text-blue-600 dark:text-blue-400',
+          down: 'text-blue-600 dark:text-blue-400',
+          neutral: 'text-muted-foreground',
+        }
+      : {
+          up: 'text-emerald-600 dark:text-emerald-400',
+          down: 'text-red-600 dark:text-red-400',
+          neutral: 'text-muted-foreground',
+        }
 
   const TrendIcon = {
     up: TrendingUp,
@@ -69,8 +79,18 @@ export function MetricCard({
     }
   }
 
+  // Apply sentiment inversion
+  const resolvedTrend =
+    sentiment === 'inverse' && autoTrend
+      ? autoTrend === 'up'
+        ? 'down'
+        : autoTrend === 'down'
+          ? 'up'
+          : 'neutral'
+      : autoTrend
+
   // Use manual values if provided, otherwise use auto-calculated
-  const displayTrend = trend ?? autoTrend
+  const displayTrend = trend ?? resolvedTrend
   const displayTrendValue = trendValue ?? autoTrendValue
 
   // Handle keyboard events for accessibility

@@ -125,6 +125,7 @@ describe('mergeDataForComparison', () => {
     // Should use primary year's display name
     expect(result[0]).toEqual({
       name: '2026 Taste of Camp 1',
+      compareName: '2025 Taste of Camp',
       primaryValue: 50,
       compareValue: 45,
       change: 5,
@@ -132,6 +133,7 @@ describe('mergeDataForComparison', () => {
     })
     expect(result[1]).toEqual({
       name: '2026 Session 2',
+      compareName: '2025 Session 2',
       primaryValue: 80,
       compareValue: 75,
       change: 5,
