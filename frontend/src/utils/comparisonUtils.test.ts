@@ -108,6 +108,63 @@ describe('mergeDataForComparison', () => {
     // primaryValue=0, compareValue=10 → change=-10 → percent=-100
     expect(result[0]?.changePercent).toBe(-100)
   })
+
+  it('merges by matchKey when names differ between years', () => {
+    // Session names include the year, so names differ but cm_id is the same
+    const primary = [
+      { name: '2026 Taste of Camp 1', value: 50, id: '1000001' },
+      { name: '2026 Session 2', value: 80, id: '1000002' },
+    ]
+    const compare = [
+      { name: '2025 Taste of Camp', value: 45, id: '1000001' },
+      { name: '2025 Session 2', value: 75, id: '1000002' },
+    ]
+
+    const result = mergeDataForComparison(primary, compare, 'name', 'id')
+    expect(result).toHaveLength(2)
+    // Should use primary year's display name
+    expect(result[0]).toEqual({
+      name: '2026 Taste of Camp 1',
+      primaryValue: 50,
+      compareValue: 45,
+      change: 5,
+      changePercent: 11.1,
+    })
+    expect(result[1]).toEqual({
+      name: '2026 Session 2',
+      primaryValue: 80,
+      compareValue: 75,
+      change: 5,
+      changePercent: 6.7,
+    })
+  })
+
+  it('matchKey handles items only in one dataset', () => {
+    const primary = [{ name: '2026 New Session', value: 30, id: '1000003' }]
+    const compare = [{ name: '2025 Old Session', value: 20, id: '1000004' }]
+
+    const result = mergeDataForComparison(primary, compare, 'name', 'id')
+    expect(result).toHaveLength(2)
+
+    const newItem = result.find((r) => r.name === '2026 New Session')
+    expect(newItem?.primaryValue).toBe(30)
+    expect(newItem?.compareValue).toBe(0)
+
+    const goneItem = result.find((r) => r.name === '2025 Old Session')
+    expect(goneItem?.primaryValue).toBe(0)
+    expect(goneItem?.compareValue).toBe(20)
+  })
+
+  it('matchKey defaults to nameKey when not provided', () => {
+    const primary = [{ name: 'Grade 5', value: 10 }]
+    const compare = [{ name: 'Grade 5', value: 8 }]
+
+    // No matchKey → should behave identically to original
+    const result = mergeDataForComparison(primary, compare, 'name')
+    expect(result).toHaveLength(1)
+    expect(result[0]?.primaryValue).toBe(10)
+    expect(result[0]?.compareValue).toBe(8)
+  })
 })
 
 describe('calculateDelta', () => {

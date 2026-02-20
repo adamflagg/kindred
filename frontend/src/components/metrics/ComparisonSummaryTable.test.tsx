@@ -96,4 +96,32 @@ describe('ComparisonSummaryTable', () => {
 
     expect(screen.getByText('No data to compare')).toBeInTheDocument()
   })
+
+  it('merges by matchKey when names differ between years', () => {
+    render(
+      <ComparisonSummaryTable
+        title="Session Enrollment"
+        primaryYear={2026}
+        compareYear={2025}
+        primaryData={[
+          { name: '2026 Taste of Camp 1', value: 50, id: '1000001' },
+          { name: '2026 Session 2', value: 80, id: '1000002' },
+        ]}
+        compareData={[
+          { name: '2025 Taste of Camp', value: 45, id: '1000001' },
+          { name: '2025 Session 2', value: 75, id: '1000002' },
+        ]}
+        matchKey="id"
+      />
+    )
+
+    // Should display primary year's name
+    expect(screen.getByText('2026 Taste of Camp 1')).toBeInTheDocument()
+    expect(screen.getByText('2026 Session 2')).toBeInTheDocument()
+    // Should NOT show compare year's different name as a separate row
+    expect(screen.queryByText('2025 Taste of Camp')).not.toBeInTheDocument()
+    // Values should be present
+    expect(screen.getByText('50')).toBeInTheDocument()
+    expect(screen.getByText('45')).toBeInTheDocument()
+  })
 })
