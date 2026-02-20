@@ -29,9 +29,7 @@ describe('QueryGuard', () => {
       </QueryGuard>
     )
 
-    expect(
-      screen.getByText('Failed to load campers data: Connection refused')
-    ).toBeInTheDocument()
+    expect(screen.getByText('Failed to load campers data: Connection refused')).toBeInTheDocument()
     expect(screen.queryByText('Content')).not.toBeInTheDocument()
   })
 
