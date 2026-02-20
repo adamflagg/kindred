@@ -140,9 +140,7 @@ def sample_sessions() -> dict[int, Mock]:
         1001: create_mock_session(1001, "Session 1", session_type="main"),
         1002: create_mock_session(1002, "Session 2", session_type="main"),
         1003: create_mock_session(1003, "Session 2a", session_type="embedded"),
-        2001: create_mock_session(
-            2001, "AG Session 1", session_type="ag", parent_id=1001
-        ),
+        2001: create_mock_session(2001, "AG Session 1", session_type="ag", parent_id=1001),
     }
 
 
@@ -188,9 +186,7 @@ class TestCapacityCalculation:
     """Test per-gender capacity calculation from bunk plans."""
 
     @pytest.mark.asyncio
-    async def test_boys_girls_capacity_from_bunk_plans(
-        self, service, mock_repository, sample_sessions
-    ):
+    async def test_boys_girls_capacity_from_bunk_plans(self, service, mock_repository, sample_sessions):
         """Capacity should be split by bunk gender (M/F)."""
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_bunk_plans.return_value = [
@@ -211,9 +207,7 @@ class TestCapacityCalculation:
         assert session1.girls.capacity == 24  # 2 bunks * 12
 
     @pytest.mark.asyncio
-    async def test_ag_capacity_from_mixed_bunks(
-        self, service, mock_repository, sample_sessions
-    ):
+    async def test_ag_capacity_from_mixed_bunks(self, service, mock_repository, sample_sessions):
         """AG sessions use Mixed-gender bunks for capacity."""
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_bunk_plans.return_value = [
@@ -229,9 +223,7 @@ class TestCapacityCalculation:
         assert ag.capacity == 24  # 2 bunks * 12
 
     @pytest.mark.asyncio
-    async def test_capacity_override_from_config(
-        self, service, mock_repository, sample_sessions
-    ):
+    async def test_capacity_override_from_config(self, service, mock_repository, sample_sessions):
         """When config has capacity_override, use that instead of bunk_plans."""
         mock_repository.fetch_sessions.return_value = {
             1001: sample_sessions[1001],
@@ -253,9 +245,7 @@ class TestCapacityCalculation:
                 },
             ),
         ]
-        mock_repository.pb.collection.return_value.get_full_list.return_value = (
-            config_records
-        )
+        mock_repository.pb.collection.return_value.get_full_list.return_value = config_records
 
         result = await service.calculate_availability(year=2026)
 
@@ -274,9 +264,7 @@ class TestEnrollmentCounting:
     """Test per-gender enrollment counting."""
 
     @pytest.mark.asyncio
-    async def test_enrolled_count_by_gender(
-        self, service, mock_repository, sample_sessions
-    ):
+    async def test_enrolled_count_by_gender(self, service, mock_repository, sample_sessions):
         """Enrollment counts should be split by person gender."""
         mock_repository.fetch_sessions.return_value = {
             1001: sample_sessions[1001],
@@ -303,9 +291,7 @@ class TestEnrollmentCounting:
         assert session1.girls.enrolled == 2
 
     @pytest.mark.asyncio
-    async def test_waitlisted_count_by_gender(
-        self, service, mock_repository, sample_sessions
-    ):
+    async def test_waitlisted_count_by_gender(self, service, mock_repository, sample_sessions):
         """Waitlisted counts tracked separately from enrolled."""
         mock_repository.fetch_sessions.return_value = {
             1001: sample_sessions[1001],
@@ -327,9 +313,7 @@ class TestEnrollmentCounting:
         assert session1.girls.waitlisted == 1
 
     @pytest.mark.asyncio
-    async def test_ag_enrollment_separate(
-        self, service, mock_repository, sample_sessions
-    ):
+    async def test_ag_enrollment_separate(self, service, mock_repository, sample_sessions):
         """AG session enrollment counted separately."""
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_bunk_plans.return_value = [
@@ -357,9 +341,7 @@ class TestGradeEligibility:
     """Test grade range from config records."""
 
     @pytest.mark.asyncio
-    async def test_grade_range_from_config(
-        self, service, mock_repository, sample_sessions
-    ):
+    async def test_grade_range_from_config(self, service, mock_repository, sample_sessions):
         """Grade ranges should come from session_availability config."""
         mock_repository.fetch_sessions.return_value = {
             1001: sample_sessions[1001],
@@ -380,9 +362,7 @@ class TestGradeEligibility:
                 },
             ),
         ]
-        mock_repository.pb.collection.return_value.get_full_list.return_value = (
-            config_records
-        )
+        mock_repository.pb.collection.return_value.get_full_list.return_value = config_records
 
         result = await service.calculate_availability(year=2026)
 
@@ -393,9 +373,7 @@ class TestGradeEligibility:
         assert session1.boys.max_grade == 10
 
     @pytest.mark.asyncio
-    async def test_no_config_returns_none_grades(
-        self, service, mock_repository, sample_sessions
-    ):
+    async def test_no_config_returns_none_grades(self, service, mock_repository, sample_sessions):
         """Sessions without config should have None grade ranges."""
         mock_repository.fetch_sessions.return_value = {
             1001: sample_sessions[1001],
@@ -420,9 +398,7 @@ class TestThreshold:
     """Test limited_threshold config."""
 
     @pytest.mark.asyncio
-    async def test_default_threshold_80(
-        self, service, mock_repository, sample_sessions
-    ):
+    async def test_default_threshold_80(self, service, mock_repository, sample_sessions):
         """Default threshold should be 80 if not configured."""
         mock_repository.fetch_sessions.return_value = {
             1001: sample_sessions[1001],
@@ -438,9 +414,7 @@ class TestThreshold:
         assert result.limited_threshold == 80
 
     @pytest.mark.asyncio
-    async def test_custom_threshold(
-        self, service, mock_repository, sample_sessions
-    ):
+    async def test_custom_threshold(self, service, mock_repository, sample_sessions):
         """Custom threshold from config should be used."""
         mock_repository.fetch_sessions.return_value = {
             1001: sample_sessions[1001],
@@ -452,9 +426,7 @@ class TestThreshold:
         config_records = [
             create_mock_config("limited_threshold", 90, record_id="thr1"),
         ]
-        mock_repository.pb.collection.return_value.get_full_list.return_value = (
-            config_records
-        )
+        mock_repository.pb.collection.return_value.get_full_list.return_value = config_records
 
         result = await service.calculate_availability(year=2026)
 
@@ -470,9 +442,7 @@ class TestResponseStructure:
     """Test response schema shape."""
 
     @pytest.mark.asyncio
-    async def test_sessions_exclude_ag(
-        self, service, mock_repository, sample_sessions
-    ):
+    async def test_sessions_exclude_ag(self, service, mock_repository, sample_sessions):
         """The sessions list should not include AG sessions."""
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_bunk_plans.return_value = []
@@ -485,9 +455,7 @@ class TestResponseStructure:
         assert "ag" not in session_types
 
     @pytest.mark.asyncio
-    async def test_ag_sessions_separate_list(
-        self, service, mock_repository, sample_sessions
-    ):
+    async def test_ag_sessions_separate_list(self, service, mock_repository, sample_sessions):
         """AG sessions should be in the ag_sessions list."""
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_bunk_plans.return_value = []
@@ -500,9 +468,7 @@ class TestResponseStructure:
         assert result.ag_sessions[0].session_cm_id == 2001
 
     @pytest.mark.asyncio
-    async def test_session_sort_order(
-        self, service, mock_repository
-    ):
+    async def test_session_sort_order(self, service, mock_repository):
         """Sessions should be sorted by start_date."""
         sessions = {
             1002: create_mock_session(1002, "Session 2", start_date="2026-07-01"),

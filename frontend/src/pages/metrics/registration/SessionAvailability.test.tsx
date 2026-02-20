@@ -136,9 +136,9 @@ describe('SessionAvailability', () => {
       expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
     })
 
-    // Should show grade headers (2nd through 10th)
-    expect(screen.getByText('2nd')).toBeInTheDocument()
-    expect(screen.getByText('10th')).toBeInTheDocument()
+    // Grade headers appear twice (girls + boys columns)
+    expect(screen.getAllByText('2nd').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getAllByText('10th').length).toBeGreaterThanOrEqual(2)
   })
 
   it('renders gender section headers', async () => {
@@ -215,10 +215,11 @@ describe('SessionAvailability', () => {
       expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
     })
 
-    // Should show legend items
-    expect(screen.getByText(/open/i)).toBeInTheDocument()
-    expect(screen.getByText(/limited/i)).toBeInTheDocument()
-    expect(screen.getByText(/waitlist/i)).toBeInTheDocument()
-    expect(screen.getByText(/n\/a/i)).toBeInTheDocument()
+    // Legend items — use exact text unique to the legend
+    expect(screen.getByText('Open Space')).toBeInTheDocument()
+    expect(screen.getByText('Limited Space')).toBeInTheDocument()
+    // "WL" appears in legend and cells, "N/A" appears in legend and sr-only cells
+    expect(screen.getAllByText('WL').length).toBeGreaterThanOrEqual(2) // legend + cells
+    expect(screen.getAllByText('N/A').length).toBeGreaterThanOrEqual(1)
   })
 })
