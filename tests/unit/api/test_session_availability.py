@@ -95,7 +95,7 @@ def create_mock_bunk_plan(
 
 def create_mock_config(
     config_key: str,
-    value: dict | int,
+    value: dict[str, object] | int,
     record_id: str = "cfg1",
 ) -> Mock:
     """Create a mock config record."""
