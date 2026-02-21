@@ -127,10 +127,10 @@ function Legend() {
 
 export default function SessionAvailability() {
   const { currentYear } = useCurrentYear()
-  const { selectedSessionCmId, sessionTypesParam } = useMetricsSession()
+  const { selectedSessionCmId } = useMetricsSession()
   const { data, isLoading, error } = useSessionAvailability(
     currentYear,
-    sessionTypesParam,
+    undefined,
     selectedSessionCmId ?? undefined
   )
 
