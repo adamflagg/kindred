@@ -135,6 +135,12 @@ export const queryKeys = {
       : sessionTypes
         ? (['metrics', 'waitlist', year, sessionTypes] as const)
         : (['metrics', 'waitlist', year] as const),
+  cancellations: (year: number, sessionTypes?: string, sessionCmId?: number) =>
+    sessionCmId
+      ? (['metrics', 'cancellations', year, sessionTypes, sessionCmId] as const)
+      : sessionTypes
+        ? (['metrics', 'cancellations', year, sessionTypes] as const)
+        : (['metrics', 'cancellations', year] as const),
   drilldown: (
     year: number,
     breakdownType?: string,

@@ -12,6 +12,7 @@ import {
   Table,
   Target,
   Zap,
+  XCircle,
 } from 'lucide-react'
 import type { SubNavItem } from '../../components/metrics/MetricsSubNav'
 
@@ -74,6 +75,12 @@ export const REGISTRATION_SUB_NAV: SubNavItem[] = [
     label: 'Forecast',
     icon: Target,
     path: '/metrics/registration/forecast',
+  },
+  {
+    id: 'cancellations',
+    label: 'Cancellations',
+    icon: XCircle,
+    path: '/metrics/registration/cancellations',
   },
 ]
 
