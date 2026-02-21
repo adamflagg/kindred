@@ -775,10 +775,13 @@ cd frontend && npm run lint    # Frontend linting
 ### Version Tags
 - Semantic versioning: `v0.1.0`, `v0.2.0`, `v1.0.0`
 - Only `v*` tags trigger CD workflow
-- Deploy: `git tag -a v0.1.1 -m "message" && git push --tags`
 
 ### Release Workflow
-Use `./scripts/release.sh` to create releases (run `--help` for options). Uses git-cliff for changelog generation.
+Release via GitHub Actions: **Actions → Release → Run workflow**. Leave version empty for auto-bump (git-cliff), or enter a version to override. The workflow creates the tag and GitHub release, which triggers CD automatically.
+
+Requires `RELEASE_TOKEN` repo secret (fine-grained PAT with `contents: write`).
+
+`scripts/release.sh` is retained for re-releases only.
 
 ### GitHub Repository Rules (Branch Protection)
 
@@ -801,7 +804,7 @@ The `main` branch is protected by a GitHub **Ruleset** (not legacy branch protec
 2. Push and create PR: `gh pr create`
 3. Wait for CI to pass
 4. Merge via GitHub UI (squash merge)
-5. Create release tag: `./scripts/release.sh --version X.Y.Z`
+5. GitHub → Actions → Release → Run workflow (auto-bump or enter version)
 
 ## 🚨 CRITICAL: Test-Driven Development (TDD) Requirements
 
