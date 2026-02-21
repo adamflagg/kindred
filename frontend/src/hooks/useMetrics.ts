@@ -197,11 +197,7 @@ export function useWaitlistMetrics(year: number, sessionTypes?: string, sessionC
 /**
  * Fetch cancellation analysis metrics for a single year.
  */
-export function useCancellationMetrics(
-  year: number,
-  sessionTypes?: string,
-  sessionCmId?: number
-) {
+export function useCancellationMetrics(year: number, sessionTypes?: string, sessionCmId?: number) {
   const { fetchWithAuth } = useApiWithAuth()
 
   return useQuery({
