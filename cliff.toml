@@ -15,7 +15,7 @@ repo = "kindred"
 
 [git]
 conventional_commits = true
-filter_unconventional = true
+filter_unconventional = false
 # Parser order matters - first match wins.
 # Include all conventional commits - works for squash merge, rebase merge, and direct commits.
 commit_parsers = [
@@ -39,6 +39,10 @@ commit_parsers = [
     # Always skip these
     { message = "^chore", skip = true },
     { message = "^ci", skip = true },
+
+    # Catch-all for non-conventional commits (safety net so they appear under "Other"
+    # instead of being silently dropped from changelog)
+    { message = ".*", group = "Other" },
 ]
 tag_pattern = "v[0-9].*"
 

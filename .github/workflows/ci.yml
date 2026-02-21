@@ -63,6 +63,55 @@ jobs:
           fi
         fi
 
+  # Validate PR title follows conventional commit format
+  # This is the actual gate that matters since squash merge uses the PR title
+  pr-title-lint:
+    name: PR Title Lint
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+    - uses: amannn/action-semantic-pull-request@v5
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        types: |
+          feat
+          fix
+          perf
+          refactor
+          docs
+          style
+          test
+          build
+          config
+          chore
+          ci
+          revert
+        scopes: |
+          frontend
+          api
+          sync
+          pb
+          solver
+          docker
+          ci
+          auth
+          google
+          security
+          logging
+          release
+          config
+          deps
+          tests
+          scripts
+          docs
+          metrics
+          graph
+          data
+        requireScope: true
+        subjectPattern: ^.+$
+        subjectPatternError: "PR title must follow: type(scope): description"
+
   # Detect what changed to optimize CI runs
   detect-changes:
     name: Detect Changed Files
@@ -500,15 +549,21 @@ jobs:
   # Summary job - gate for PR merges
   summary:
     name: CI Summary
-    needs: [commit-lint, detect-changes, secret-scan, python-lint, go-lint, frontend-lint, docker-lint, tests, dependency-submission]
+    needs: [commit-lint, pr-title-lint, detect-changes, secret-scan, python-lint, go-lint, frontend-lint, docker-lint, tests, dependency-submission]
     if: always()
     runs-on: ubuntu-latest
     steps:
     - name: Check status
       run: |
-        # commit-lint: advisory only — still runs as a visible check but doesn't block merges/CD
+        # commit-lint: blocking — non-conventional commits break changelog generation
         if [ "${{ needs.commit-lint.result }}" != "success" ] && [ "${{ needs.commit-lint.result }}" != "skipped" ]; then
-          echo "::warning::Commit message format issue detected. Use: type(scope): description"
+          echo "::error::Commit message format issue detected. Use: type(scope): description"
+          exit 1
+        fi
+        # pr-title-lint: blocking — squash merge uses PR title as commit message on main
+        if [ "${{ needs.pr-title-lint.result }}" != "success" ] && [ "${{ needs.pr-title-lint.result }}" != "skipped" ]; then
+          echo "::error::PR title must follow conventional commit format: type(scope): description"
+          exit 1
         fi
         if [ "${{ needs.secret-scan.result }}" != "success" ]; then
           echo "❌ Secret scanning failed! Check for leaked credentials."
