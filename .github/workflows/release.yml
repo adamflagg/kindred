@@ -21,6 +21,11 @@ jobs:
         fetch-depth: 0
         token: ${{ secrets.RELEASE_TOKEN }}
 
+    - name: Configure git identity
+      run: |
+        git config user.name "adamflagg"
+        git config user.email "115844481+adamflagg@users.noreply.github.com"
+
     - uses: kenji-miyake/setup-git-cliff@v2
 
     - name: Calculate version
