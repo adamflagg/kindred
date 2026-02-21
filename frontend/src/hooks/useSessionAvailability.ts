@@ -1,6 +1,6 @@
-import { useQuery } from '@tanstack/react-query'
-import { pb } from '../lib/pocketbase'
-import { queryKeys, userDataOptions } from '../utils/queryKeys'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
+import { useApiWithAuth } from './useApiWithAuth'
+import { queryKeys, syncDataOptions } from '../utils/queryKeys'
 
 interface GenderAvailability {
   min_grade: number | null
@@ -39,23 +39,24 @@ export interface SessionAvailabilityResponse {
 }
 
 export function useSessionAvailability(year: number, sessionTypes?: string, sessionCmId?: number) {
+  const { fetchWithAuth } = useApiWithAuth()
+
   return useQuery({
     queryKey: queryKeys.sessionAvailability(year, sessionTypes, sessionCmId),
-    ...userDataOptions,
     queryFn: async (): Promise<SessionAvailabilityResponse> => {
       const params = new URLSearchParams({ year: String(year) })
       if (sessionTypes) params.set('session_types', sessionTypes)
       if (sessionCmId != null) params.set('session_cm_id', String(sessionCmId))
 
-      const token = pb.authStore.token
-      const response = await fetch(`/api/metrics/session-availability?${params}`, {
-        headers: { Authorization: token },
-      })
+      const response = await fetchWithAuth(`/api/metrics/session-availability?${params}`)
       if (!response.ok) {
-        throw new Error(`Failed to fetch session availability: ${response.status}`)
+        const error = await response.json().catch(() => ({}))
+        throw new Error(error.detail || 'Failed to fetch session availability')
       }
       return response.json()
     },
     enabled: year > 0,
+    placeholderData: keepPreviousData,
+    ...syncDataOptions,
   })
 }
