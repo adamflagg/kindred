@@ -1,5 +1,8 @@
 #!/bin/bash
-# Release orchestration script for kindred project
+# DEPRECATED: Use the GitHub Actions "Release" workflow instead.
+# GitHub → Actions → Release → Run workflow
+#
+# This script is retained for re-releases and edge cases only.
 # Uses git-cliff for changelog generation and semver recommendations
 
 set -e

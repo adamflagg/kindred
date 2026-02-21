@@ -1,0 +1,83 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version override (leave empty for auto-bump from git-cliff)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.RELEASE_TOKEN }}
+
+    - uses: kenji-miyake/setup-git-cliff@v2
+
+    - name: Calculate version
+      id: version
+      run: |
+        # Get last tag
+        LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
+        if [ -n "${{ inputs.version }}" ]; then
+          # Custom version — normalize v prefix
+          VER="${{ inputs.version }}"
+          [[ "$VER" != v* ]] && VER="v$VER"
+        else
+          # Auto-bump via git-cliff
+          VER=$(git cliff --bumped-version 2>/dev/null | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          [[ -z "$VER" ]] && { echo "::error::git-cliff could not determine version"; exit 1; }
+          [[ "$VER" != v* ]] && VER="v$VER"
+        fi
+
+        # Check tag doesn't already exist
+        if git rev-parse "$VER" &>/dev/null; then
+          echo "::error::Tag $VER already exists"
+          exit 1
+        fi
+
+        # Check for release-worthy commits (skip if only docs/test/refactor)
+        if [ -z "${{ inputs.version }}" ]; then
+          RANGE="${LAST_TAG:+$LAST_TAG..HEAD}"
+          RANGE="${RANGE:-HEAD}"
+          WORTHY=$(git log $RANGE --oneline | grep -cE '^[a-f0-9]+ (feat|fix|perf)(\(.+\))?(!)?:' || true)
+          if [ "$WORTHY" -eq 0 ]; then
+            echo "::error::No release-worthy commits (feat/fix/perf) since $LAST_TAG. Use version override to force."
+            exit 1
+          fi
+        fi
+
+        echo "version=$VER" >> "$GITHUB_OUTPUT"
+        echo "### Version: $VER" >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Generate changelog
+      id: changelog
+      run: |
+        git cliff --latest --strip header > RELEASE_NOTES.md
+        echo "### Release Notes" >> "$GITHUB_STEP_SUMMARY"
+        echo '```' >> "$GITHUB_STEP_SUMMARY"
+        cat RELEASE_NOTES.md >> "$GITHUB_STEP_SUMMARY"
+        echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Create tag and release
+      env:
+        GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+
+        # Create annotated tag
+        git tag -a "$VERSION" -m "$(cat RELEASE_NOTES.md)"
+        git push origin "$VERSION"
+
+        # Create GitHub release
+        gh release create "$VERSION" --title "$VERSION" --notes-file RELEASE_NOTES.md
