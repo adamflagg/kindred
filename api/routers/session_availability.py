@@ -17,6 +17,14 @@ router = APIRouter(prefix="/api/metrics", tags=["metrics"])
 @router.get("/session-availability", response_model=SessionAvailabilityResponse)
 async def get_session_availability(
     year: int = Query(..., description="Year to get availability for"),
+    session_types: str | None = Query(
+        "main,embedded,ag,quest",
+        description="Comma-separated session types to filter (default: summer camp sessions)",
+    ),
+    session_cm_id: int | None = Query(
+        None,
+        description="Filter to specific session by CampMinder ID. AG sessions with matching parent_id are included.",
+    ),
 ) -> SessionAvailabilityResponse:
     """Get session availability matrix.
 
@@ -27,9 +35,14 @@ async def get_session_availability(
     from api.services.session_availability_service import SessionAvailabilityService
 
     try:
+        type_filter = session_types.split(",") if session_types else None
         repository = MetricsRepository(pb)
         service = SessionAvailabilityService(repository)
-        return await service.calculate_availability(year=year)
+        return await service.calculate_availability(
+            year=year,
+            session_types=type_filter,
+            session_cm_id=session_cm_id,
+        )
     except Exception as e:
         logger.error(f"Error calculating session availability: {e}", exc_info=True)
         raise HTTPException(

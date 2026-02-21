@@ -49,13 +49,19 @@ class SessionAvailabilityService:
             return "limited"
         return "open"
 
+    _DEFAULT_SESSION_TYPES = ["main", "embedded", "ag", "quest"]
+
     async def calculate_availability(
         self,
         year: int,
+        session_types: list[str] | None = None,
+        session_cm_id: int | None = None,
     ) -> SessionAvailabilityResponse:
         """Calculate session availability matrix for a year."""
+        effective_types = session_types if session_types is not None else self._DEFAULT_SESSION_TYPES
+
         # Fetch all required data in parallel
-        sessions_task = self.repository.fetch_sessions(year)
+        sessions_task = self.repository.fetch_sessions(year, session_types=effective_types)
         bunk_plans_task = self.repository.fetch_bunk_plans(year)
         capacity_config_task = self.repository.fetch_capacity_config()
 
@@ -106,6 +112,10 @@ class SessionAvailabilityService:
                 ag_enrolled = enrollment.get(cm_id, {}).get("enrolled_total", 0)
                 ag_waitlisted = enrollment.get(cm_id, {}).get("waitlisted_total", 0)
 
+                # Hide defunct AG sessions: no capacity AND no enrollment
+                if ag_cap is None and ag_enrolled == 0 and ag_waitlisted == 0:
+                    continue
+
                 result_ag.append(
                     AGSessionAvailability(
                         session_cm_id=cm_id,
@@ -155,6 +165,16 @@ class SessionAvailabilityService:
                         ),
                     )
                 )
+
+        # Filter by specific session if requested
+        if session_cm_id is not None:
+            result_sessions = [s for s in result_sessions if s.session_cm_id == session_cm_id]
+            result_ag = [
+                a
+                for a in result_ag
+                if a.session_cm_id == session_cm_id
+                or getattr(sessions.get(a.session_cm_id), "parent_id", None) == session_cm_id
+            ]
 
         return SessionAvailabilityResponse(
             sessions=result_sessions,

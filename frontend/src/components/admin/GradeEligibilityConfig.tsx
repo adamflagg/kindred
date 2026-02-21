@@ -46,7 +46,7 @@ function useSessions(year: number) {
     queryKey: ['grade-eligibility-sessions', year],
     queryFn: async () => {
       return await pb.collection('camp_sessions').getFullList({
-        filter: `year = ${year}`,
+        filter: `year = ${year} && (session_type = "main" || session_type = "embedded" || session_type = "ag" || session_type = "quest")`,
         sort: 'start_date',
       })
     },

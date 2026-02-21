@@ -1,10 +1,13 @@
+import { useMemo } from 'react'
 import { Loader2 } from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
+import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import {
   useSessionAvailability,
   type SessionAvailabilityData,
   type AGSessionAvailabilityData,
 } from '../../../hooks/useSessionAvailability'
+import { splitCampAndQuest } from '../../../utils/sessionUtils'
 
 const GRADES = [2, 3, 4, 5, 6, 7, 8, 9, 10]
 
@@ -124,9 +127,79 @@ function Legend() {
   )
 }
 
+function SessionsTable({ sessions }: { sessions: SessionAvailabilityData[] }) {
+  return (
+    <div className="border-border overflow-x-auto rounded-xl border">
+      <table className="w-auto border-collapse">
+        <thead>
+          <tr>
+            <th
+              rowSpan={2}
+              className="bg-muted/50 border-border sticky left-0 z-10 border-r border-b px-4 py-2 text-left text-sm font-semibold"
+            >
+              Session
+            </th>
+            <th
+              colSpan={GRADES.length}
+              className="border-border border-r border-b bg-pink-50 px-2 py-1.5 text-center text-sm font-semibold dark:bg-pink-950/30"
+            >
+              Girls' Availability
+            </th>
+            <th
+              colSpan={GRADES.length}
+              className="border-border border-b bg-blue-50 px-2 py-1.5 text-center text-sm font-semibold dark:bg-blue-950/30"
+            >
+              Boys' Availability
+            </th>
+          </tr>
+          <tr>
+            {GRADES.map((g) => (
+              <th
+                key={`g-${g}`}
+                className="border-border border-r border-b bg-pink-50/50 px-1 py-1 text-center text-xs font-medium dark:bg-pink-950/20"
+              >
+                {gradeLabel(g)}
+              </th>
+            ))}
+            {GRADES.map((g) => (
+              <th
+                key={`b-${g}`}
+                className="border-border border-b bg-blue-50/50 px-1 py-1 text-center text-xs font-medium dark:bg-blue-950/20"
+              >
+                {gradeLabel(g)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {sessions.map((session) => (
+            <tr key={session.session_cm_id} className="border-border border-b last:border-b-0">
+              <td className="bg-card border-border sticky left-0 z-10 border-r px-4 py-2 text-sm font-medium whitespace-nowrap">
+                {session.session_name}
+              </td>
+              <SessionRow session={session} gender="girls" />
+              <SessionRow session={session} gender="boys" />
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 export default function SessionAvailability() {
   const { currentYear } = useCurrentYear()
-  const { data, isLoading, error } = useSessionAvailability(currentYear)
+  const { selectedSessionCmId, sessionTypesParam } = useMetricsSession()
+  const { data, isLoading, error } = useSessionAvailability(
+    currentYear,
+    sessionTypesParam,
+    selectedSessionCmId ?? undefined
+  )
+
+  const { camp: campSessions, quest: questSessions } = useMemo(
+    () => splitCampAndQuest(data?.sessions ?? []),
+    [data?.sessions]
+  )
 
   if (isLoading) {
     return (
@@ -147,7 +220,7 @@ export default function SessionAvailability() {
 
   if (!data) return null
 
-  const { sessions, ag_sessions } = data
+  const { ag_sessions } = data
 
   return (
     <div className="space-y-6">
@@ -160,64 +233,8 @@ export default function SessionAvailability() {
 
       <Legend />
 
-      {/* Main sessions matrix */}
-      <div className="border-border overflow-x-auto rounded-xl border">
-        <table className="w-auto border-collapse">
-          <thead>
-            <tr>
-              <th
-                rowSpan={2}
-                className="bg-muted/50 border-border sticky left-0 z-10 border-r border-b px-4 py-2 text-left text-sm font-semibold"
-              >
-                Session
-              </th>
-              <th
-                colSpan={GRADES.length}
-                className="border-border border-r border-b bg-pink-50 px-2 py-1.5 text-center text-sm font-semibold dark:bg-pink-950/30"
-              >
-                Girls' Availability
-              </th>
-              <th
-                colSpan={GRADES.length}
-                className="border-border border-b bg-blue-50 px-2 py-1.5 text-center text-sm font-semibold dark:bg-blue-950/30"
-              >
-                Boys' Availability
-              </th>
-            </tr>
-            <tr>
-              {/* Girls grade headers */}
-              {GRADES.map((g) => (
-                <th
-                  key={`g-${g}`}
-                  className="border-border border-r border-b bg-pink-50/50 px-1 py-1 text-center text-xs font-medium dark:bg-pink-950/20"
-                >
-                  {gradeLabel(g)}
-                </th>
-              ))}
-              {/* Boys grade headers */}
-              {GRADES.map((g) => (
-                <th
-                  key={`b-${g}`}
-                  className="border-border border-b bg-blue-50/50 px-1 py-1 text-center text-xs font-medium dark:bg-blue-950/20"
-                >
-                  {gradeLabel(g)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {sessions.map((session) => (
-              <tr key={session.session_cm_id} className="border-border border-b last:border-b-0">
-                <td className="bg-card border-border sticky left-0 z-10 border-r px-4 py-2 text-sm font-medium whitespace-nowrap">
-                  {session.session_name}
-                </td>
-                <SessionRow session={session} gender="girls" />
-                <SessionRow session={session} gender="boys" />
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {/* Camp sessions matrix (main + embedded) */}
+      {campSessions.length > 0 && <SessionsTable sessions={campSessions} />}
 
       {/* AG Sessions */}
       {ag_sessions.length > 0 && (
@@ -257,6 +274,14 @@ export default function SessionAvailability() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* Quest sessions */}
+      {questSessions.length > 0 && (
+        <div>
+          <h3 className="text-muted-foreground mb-3 text-sm font-semibold uppercase">Quests</h3>
+          <SessionsTable sessions={questSessions} />
         </div>
       )}
     </div>

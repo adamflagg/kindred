@@ -12,6 +12,12 @@ vi.mock('../../../hooks/useCurrentYear', () => ({
   useCurrentYear: () => ({ currentYear: 2026 }),
 }))
 
+// Mock useMetricsSession
+const mockUseMetricsSession = vi.fn()
+vi.mock('../../../hooks/useMetricsSession', () => ({
+  useMetricsSession: () => mockUseMetricsSession(),
+}))
+
 // Mock pocketbase
 vi.mock('../../../lib/pocketbase', () => ({
   pb: { authStore: { token: 'test-token' } },
@@ -102,6 +108,11 @@ const { default: SessionAvailability } = await import('./SessionAvailability')
 describe('SessionAvailability', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Default mock: all sessions view
+    mockUseMetricsSession.mockReturnValue({
+      selectedSessionCmId: null,
+      sessionTypesParam: 'main,embedded,ag,quest',
+    })
   })
 
   it('renders loading state initially', () => {
@@ -221,5 +232,68 @@ describe('SessionAvailability', () => {
     // "WL" appears in legend and cells, "N/A" appears in legend and sr-only cells
     expect(screen.getAllByText('WL').length).toBeGreaterThanOrEqual(2) // legend + cells
     expect(screen.getAllByText('N/A').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('passes session_types from metrics session context to API', async () => {
+    mockUseMetricsSession.mockReturnValue({
+      selectedSessionCmId: null,
+      sessionTypesParam: 'main,embedded,ag',
+    })
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockAvailabilityResponse,
+    })
+
+    renderWithProviders(<SessionAvailability />)
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalled()
+    })
+
+    const fetchUrl = mockFetch.mock.calls[0]![0] as string
+    expect(fetchUrl).toContain('session_types=main%2Cembedded%2Cag')
+  })
+
+  it('passes session_cm_id from metrics session context to API', async () => {
+    mockUseMetricsSession.mockReturnValue({
+      selectedSessionCmId: 1001,
+      sessionTypesParam: 'main,embedded,ag,quest',
+    })
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockAvailabilityResponse,
+    })
+
+    renderWithProviders(<SessionAvailability />)
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalled()
+    })
+
+    const fetchUrl = mockFetch.mock.calls[0]![0] as string
+    expect(fetchUrl).toContain('session_cm_id=1001')
+  })
+
+  it('does not include session_cm_id when null', async () => {
+    mockUseMetricsSession.mockReturnValue({
+      selectedSessionCmId: null,
+      sessionTypesParam: 'main,embedded,ag,quest',
+    })
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockAvailabilityResponse,
+    })
+
+    renderWithProviders(<SessionAvailability />)
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalled()
+    })
+
+    const fetchUrl = mockFetch.mock.calls[0]![0] as string
+    expect(fetchUrl).not.toContain('session_cm_id')
   })
 })
