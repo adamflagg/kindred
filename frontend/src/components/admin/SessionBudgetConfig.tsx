@@ -221,7 +221,7 @@ export function SessionBudgetConfig() {
             ))}
             {rows.some((r) => r.session_type === 'quest') && (
               <tr>
-                <td colSpan={3} className="text-muted-foreground pt-4 pb-2 text-xs font-semibold uppercase">
+                <td colSpan={3} className="text-muted-foreground pt-4 pb-2 text-sm font-semibold uppercase">
                   Quests
                 </td>
               </tr>
