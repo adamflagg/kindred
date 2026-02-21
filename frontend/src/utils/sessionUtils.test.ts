@@ -10,6 +10,7 @@ import {
   findSessionByUrlSegment,
   isValidTab,
   VALID_TABS,
+  splitCampAndQuest,
 } from './sessionUtils'
 import type { Session } from '../types/app-types'
 
@@ -789,5 +790,85 @@ describe('sortSessionDataByCampThenQuest', () => {
 
     const sorted = sortSessionDataByCampThenQuest(data, dateLookup, typeLookup)
     expect(sorted.map((s) => s.session_name)).toEqual(['Teen Quest', 'Quest B'])
+  })
+})
+
+// ============================================================================
+// splitCampAndQuest tests
+// ============================================================================
+
+describe('splitCampAndQuest', () => {
+  it('should split items into camp and quest groups', () => {
+    const items = [
+      { session_type: 'main', name: 'Session 1' },
+      { session_type: 'quest', name: 'Teen Quest' },
+      { session_type: 'embedded', name: 'Session 2a' },
+      { session_type: 'quest', name: 'Quest B' },
+      { session_type: 'ag', name: 'AG Session 1' },
+    ]
+
+    const { camp, quest } = splitCampAndQuest(items)
+
+    expect(camp.map((s) => s.name)).toEqual(['Session 1', 'Session 2a', 'AG Session 1'])
+    expect(quest.map((s) => s.name)).toEqual(['Teen Quest', 'Quest B'])
+  })
+
+  it('should return empty quest array when no quests', () => {
+    const items = [
+      { session_type: 'main', name: 'Session 1' },
+      { session_type: 'embedded', name: 'Session 2a' },
+    ]
+
+    const { camp, quest } = splitCampAndQuest(items)
+
+    expect(camp).toHaveLength(2)
+    expect(quest).toHaveLength(0)
+  })
+
+  it('should return empty camp array when only quests', () => {
+    const items = [
+      { session_type: 'quest', name: 'Teen Quest' },
+      { session_type: 'quest', name: 'Quest B' },
+    ]
+
+    const { camp, quest } = splitCampAndQuest(items)
+
+    expect(camp).toHaveLength(0)
+    expect(quest).toHaveLength(2)
+  })
+
+  it('should handle empty input', () => {
+    const { camp, quest } = splitCampAndQuest([])
+
+    expect(camp).toHaveLength(0)
+    expect(quest).toHaveLength(0)
+  })
+
+  it('should preserve original order within each group', () => {
+    const items = [
+      { session_type: 'quest', name: 'Quest A' },
+      { session_type: 'main', name: 'Session 2' },
+      { session_type: 'quest', name: 'Quest B' },
+      { session_type: 'main', name: 'Session 1' },
+    ]
+
+    const { camp, quest } = splitCampAndQuest(items)
+
+    // Preserves insertion order, doesn't re-sort
+    expect(camp.map((s) => s.name)).toEqual(['Session 2', 'Session 1'])
+    expect(quest.map((s) => s.name)).toEqual(['Quest A', 'Quest B'])
+  })
+
+  it('should work with a custom type accessor', () => {
+    const items = [
+      { kind: 'main', label: 'A' },
+      { kind: 'quest', label: 'B' },
+      { kind: 'embedded', label: 'C' },
+    ]
+
+    const { camp, quest } = splitCampAndQuest(items, (item) => item.kind)
+
+    expect(camp.map((s) => s.label)).toEqual(['A', 'C'])
+    expect(quest.map((s) => s.label)).toEqual(['B'])
   })
 })

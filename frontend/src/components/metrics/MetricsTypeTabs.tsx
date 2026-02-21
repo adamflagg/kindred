@@ -87,15 +87,16 @@ export default function MetricsTypeTabs() {
           (item) => item.path === location.pathname
         ) && (
           <div className="flex items-center gap-3">
-            {activeTab === 'registration' && (
-              <CompareYearSelector
-                primaryYear={currentYear}
-                compareYear={compareYear}
-                onCompareYearChange={setCompareYear}
-                onClear={() => setCompareYear(null)}
-                availableYears={availableYears}
-              />
-            )}
+            {activeTab === 'registration' &&
+              location.pathname !== '/metrics/registration/availability' && (
+                <CompareYearSelector
+                  primaryYear={currentYear}
+                  compareYear={compareYear}
+                  onCompareYearChange={setCompareYear}
+                  onClear={() => setCompareYear(null)}
+                  availableYears={availableYears}
+                />
+              )}
             {activeTab === 'trends' && (
               <label className="flex cursor-pointer items-center gap-1.5 text-sm">
                 <input

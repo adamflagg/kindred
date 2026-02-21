@@ -266,6 +266,26 @@ export function sortSessionDataByCampThenQuest<T extends { session_name: string 
 }
 
 /**
+ * Split items into camp (non-quest) and quest groups, preserving order within each.
+ * By default reads `session_type` from each item; pass a custom accessor for other shapes.
+ */
+export function splitCampAndQuest<T>(
+  items: T[],
+  getType: (item: T) => string = (item) => (item as Record<string, string>)['session_type'] ?? ''
+): { camp: T[]; quest: T[] } {
+  const camp: T[] = []
+  const quest: T[] = []
+  for (const item of items) {
+    if (getType(item) === 'quest') {
+      quest.push(item)
+    } else {
+      camp.push(item)
+    }
+  }
+  return { camp, quest }
+}
+
+/**
  * Compare two session names: camp sessions sort before quest sessions.
  * Within each group, sort by date (primary) then name (secondary).
  */
