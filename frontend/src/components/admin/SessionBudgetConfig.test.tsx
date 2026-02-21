@@ -269,7 +269,7 @@ describe('SessionBudgetConfig', () => {
     expect(mockUpdate).not.toHaveBeenCalled()
   })
 
-  it('does not show AG sessions as separate rows', async () => {
+  it('shows AG sessions in a separate section', async () => {
     mockGetFullList
       .mockResolvedValueOnce(mockSessions) // sessions
       .mockResolvedValueOnce([]) // budget config
@@ -281,8 +281,9 @@ describe('SessionBudgetConfig', () => {
       expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
     })
 
-    // AG sessions should not appear in the budget config table
-    expect(screen.queryByText('AG Session 2')).not.toBeInTheDocument()
+    // AG sessions should appear in their own section
+    expect(screen.getByText('AG Session 2')).toBeInTheDocument()
+    expect(screen.getByText('AG Sessions')).toBeInTheDocument()
   })
 
   it('renders header and description', async () => {
