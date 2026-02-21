@@ -19,6 +19,8 @@ class GenderBreakdown(BaseModel):
     has_enrollment: int = Field(default=0, description="Waitlisted but enrolled in other session")
     was_enrolled: int = Field(default=0, description="Cancelled after being enrolled")
     was_waitlisted: int = Field(default=0, description="Cancelled after being waitlisted")
+    was_applied: int = Field(default=0, description="Cancelled after applying")
+    other_prior_status: int = Field(default=0, description="Cancelled from other prior status")
 
 
 class GradeBreakdown(BaseModel):
@@ -31,6 +33,8 @@ class GradeBreakdown(BaseModel):
     has_enrollment: int = Field(default=0, description="Waitlisted but enrolled in other session")
     was_enrolled: int = Field(default=0, description="Cancelled after being enrolled")
     was_waitlisted: int = Field(default=0, description="Cancelled after being waitlisted")
+    was_applied: int = Field(default=0, description="Cancelled after applying")
+    other_prior_status: int = Field(default=0, description="Cancelled from other prior status")
 
 
 class SessionBreakdown(BaseModel):

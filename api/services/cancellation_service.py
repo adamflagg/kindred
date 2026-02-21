@@ -275,17 +275,15 @@ class CancellationService:
         persons: dict[int, Any],
         prior_status_persons: dict[str, set[int]],
     ) -> tuple[list[GradeBreakdown], list[GenderBreakdown]]:
-        """Compute grade and gender breakdowns with was_enrolled/was_waitlisted splits."""
+        """Compute grade and gender breakdowns with prior status splits."""
         total = len(person_ids)
         if total == 0:
             return [], []
 
-        # Build per-category enrollment splits
-        grade_split: dict[int | None, tuple[int, int]] = {}
-        gender_split: dict[str, tuple[int, int]] = {}
-
-        was_enrolled_persons = prior_status_persons["enrolled"]
-        was_waitlisted_persons = prior_status_persons["waitlisted"]
+        # Build per-category prior status splits
+        _zero = {"enrolled": 0, "waitlisted": 0, "applied": 0, "other": 0}
+        grade_split: dict[int | None, dict[str, int]] = {}
+        gender_split: dict[str, dict[str, int]] = {}
 
         for pid in person_ids:
             person = persons.get(pid)
@@ -293,20 +291,16 @@ class CancellationService:
                 continue
             grade = extract_grade(person)
             gender = extract_gender(person)
-            is_was_enrolled = pid in was_enrolled_persons
-            is_was_waitlisted = pid in was_waitlisted_persons
 
-            g_enrolled, g_waitlisted = grade_split.get(grade, (0, 0))
-            grade_split[grade] = (
-                g_enrolled + (1 if is_was_enrolled else 0),
-                g_waitlisted + (1 if is_was_waitlisted else 0),
-            )
+            if grade not in grade_split:
+                grade_split[grade] = {**_zero}
+            if gender not in gender_split:
+                gender_split[gender] = {**_zero}
 
-            gn_enrolled, gn_waitlisted = gender_split.get(gender, (0, 0))
-            gender_split[gender] = (
-                gn_enrolled + (1 if is_was_enrolled else 0),
-                gn_waitlisted + (1 if is_was_waitlisted else 0),
-            )
+            for cat in ("enrolled", "waitlisted", "applied", "other"):
+                if pid in prior_status_persons[cat]:
+                    grade_split[grade][cat] += 1
+                    gender_split[gender][cat] += 1
 
         grade_stats = compute_registration_breakdown(person_ids, persons, extract_grade)
         by_grade = [
@@ -314,8 +308,10 @@ class CancellationService:
                 grade=g,
                 count=s.count,
                 percentage=round(calculate_percentage(s.count, total), 1),
-                was_enrolled=grade_split.get(g, (0, 0))[0],
-                was_waitlisted=grade_split.get(g, (0, 0))[1],
+                was_enrolled=grade_split.get(g, _zero)["enrolled"],
+                was_waitlisted=grade_split.get(g, _zero)["waitlisted"],
+                was_applied=grade_split.get(g, _zero)["applied"],
+                other_prior_status=grade_split.get(g, _zero)["other"],
             )
             for g, s in sorted(grade_stats.items(), key=lambda x: (x[0] is None, x[0]))
         ]
@@ -326,8 +322,10 @@ class CancellationService:
                 gender=g,
                 count=s.count,
                 percentage=round(calculate_percentage(s.count, total), 1),
-                was_enrolled=gender_split.get(g, (0, 0))[0],
-                was_waitlisted=gender_split.get(g, (0, 0))[1],
+                was_enrolled=gender_split.get(g, _zero)["enrolled"],
+                was_waitlisted=gender_split.get(g, _zero)["waitlisted"],
+                was_applied=gender_split.get(g, _zero)["applied"],
+                other_prior_status=gender_split.get(g, _zero)["other"],
             )
             for g, s in sorted(gender_stats.items())
         ]
