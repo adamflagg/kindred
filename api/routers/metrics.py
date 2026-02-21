@@ -12,6 +12,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Query
 
 from ..dependencies import pb
+from ..schemas.forecast import ForecastResponse
 from ..schemas.metrics import (
     ComparisonMetricsResponse,
     DrilldownAttendee,
@@ -21,6 +22,7 @@ from ..schemas.metrics import (
     RetentionTrendsResponse,
     WaitlistMetricsResponse,
 )
+from ..schemas.velocity import VelocityResponse
 
 logger = logging.getLogger(__name__)
 
@@ -355,3 +357,61 @@ async def get_drilldown_attendees(
     except Exception as e:
         logger.error(f"Error getting drilldown attendees: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error getting drilldown attendees: {str(e)}")
+
+
+# ============================================================================
+# Velocity Endpoint
+# ============================================================================
+
+
+@router.get("/velocity", response_model=VelocityResponse)
+async def get_velocity(
+    year: int = Query(..., description="Year to analyze"),
+    compare_years: str | None = Query(None, description="Comma-separated prior years to overlay"),
+    session_cm_id: int | None = Query(None, description="Filter to specific session"),
+    session_types: str | None = Query("main,embedded,ag", description="Session types"),
+) -> VelocityResponse:
+    """Get registration velocity curves with week-over-week enrollment data."""
+    from api.services.metrics_repository import MetricsRepository
+    from api.services.velocity_service import VelocityService
+
+    try:
+        compare_year_list = [int(y.strip()) for y in compare_years.split(",")] if compare_years else None
+        type_filter = session_types.split(",") if session_types else None
+
+        repository = MetricsRepository(pb)
+        service = VelocityService(repository)
+        return await service.get_velocity(
+            year=year,
+            session_cm_id=session_cm_id,
+            compare_years=compare_year_list,
+            session_types=type_filter,
+        )
+    except Exception as e:
+        logger.error(f"Error calculating velocity: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error calculating velocity: {str(e)}")
+
+
+# ============================================================================
+# Forecast Endpoint
+# ============================================================================
+
+
+@router.get("/forecast", response_model=ForecastResponse)
+async def get_forecast(
+    year: int = Query(..., description="Year to forecast"),
+    session_types: str | None = Query("main,embedded,ag", description="Session types"),
+    session_cm_id: int | None = Query(None, description="Filter to specific session"),
+) -> ForecastResponse:
+    """Get registration forecast with budget goals, capacity, and revenue projections."""
+    from api.services.forecast_service import ForecastService
+    from api.services.metrics_repository import MetricsRepository
+
+    try:
+        type_filter = session_types.split(",") if session_types else None
+        repository = MetricsRepository(pb)
+        service = ForecastService(repository)
+        return await service.calculate_forecast(year=year, session_types=type_filter, session_cm_id=session_cm_id)
+    except Exception as e:
+        logger.error(f"Error calculating forecast: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error calculating forecast: {str(e)}")

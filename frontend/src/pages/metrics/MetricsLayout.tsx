@@ -8,7 +8,7 @@ import MetricsTypeTabs from '../../components/metrics/MetricsTypeTabs'
 import MetricsSubNav from '../../components/metrics/MetricsSubNav'
 import type { SubNavItem } from '../../components/metrics/MetricsSubNav'
 import { MetricsSessionProvider } from '../../contexts/MetricsSessionContext'
-import { RETENTION_SUB_NAV, REGISTRATION_SUB_NAV } from './metricsNav'
+import { RETENTION_SUB_NAV, REGISTRATION_SUB_NAV, TRENDS_SUB_NAV } from './metricsNav'
 
 export default function MetricsLayout() {
   const location = useLocation()
@@ -20,6 +20,9 @@ export default function MetricsLayout() {
     }
     if (location.pathname.startsWith('/metrics/retention')) {
       return RETENTION_SUB_NAV
+    }
+    if (location.pathname.startsWith('/metrics/trends')) {
+      return TRENDS_SUB_NAV
     }
     return []
   }
