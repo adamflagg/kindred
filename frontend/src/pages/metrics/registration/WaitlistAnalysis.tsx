@@ -302,7 +302,7 @@ export default function WaitlistAnalysis() {
                             Has Enrollment
                           </span>
                         </th>
-                        <th className="px-4 py-2 text-right font-medium">
+                        <th className="border-border border-l px-4 py-2 text-right font-medium">
                           <span className="inline-flex items-center gap-1">
                             <CheckCircle className="h-3 w-3 text-emerald-500" />
                             Accepted
@@ -314,7 +314,7 @@ export default function WaitlistAnalysis() {
                             Declined
                           </span>
                         </th>
-                        <th className="px-4 py-2 text-right font-medium">Total</th>
+                        <th className="border-border border-l px-4 py-2 text-right font-medium">Total</th>
                         {isComparing && compData && (
                           <>
                             <th className="px-4 py-2 text-right font-medium">
@@ -362,13 +362,13 @@ export default function WaitlistAnalysis() {
                             </span>
                           </td>
                           <td className="px-4 py-2 text-right">{session.has_enrollment}</td>
-                          <td className="px-4 py-2 text-right text-emerald-600 dark:text-emerald-400">
+                          <td className="border-border border-l px-4 py-2 text-right text-emerald-600 dark:text-emerald-400">
                             {session.accepted}
                           </td>
                           <td className="px-4 py-2 text-right text-red-600 dark:text-red-400">
                             {session.declined}
                           </td>
-                          <td className="px-4 py-2 text-right font-medium">{session.waitlisted}</td>
+                          <td className="border-border border-l px-4 py-2 text-right font-medium">{session.waitlisted}</td>
                           {isComparing &&
                             compData &&
                             (() => {

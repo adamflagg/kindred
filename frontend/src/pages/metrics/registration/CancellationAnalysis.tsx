@@ -364,7 +364,7 @@ export default function CancellationAnalysis() {
                             No Other
                           </span>
                         </th>
-                        <th className="px-4 py-2 text-right font-medium">Total</th>
+                        <th className="border-border border-l px-4 py-2 text-right font-medium">Total</th>
                         {isComparing && compData && (
                           <>
                             <th className="px-4 py-2 text-right font-medium">
@@ -429,7 +429,7 @@ export default function CancellationAnalysis() {
                               {session.no_other_sessions}
                             </span>
                           </td>
-                          <td className="px-4 py-2 text-right font-medium">
+                          <td className="border-border border-l px-4 py-2 text-right font-medium">
                             {session.total_cancelled}
                           </td>
                           {isComparing &&
