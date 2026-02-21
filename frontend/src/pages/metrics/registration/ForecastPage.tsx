@@ -116,23 +116,23 @@ function SessionRow({ session, isTotal }: { session: SessionForecast; isTotal?: 
         {fmtPct(session.utilization_pct)}
       </td>
       <td className="hidden px-3 py-2 text-right text-sm lg:table-cell">
-        {isTotal ? '---' : fmtCurrency(session.session_fee)}
+        {fmtCurrency(session.session_fee)}
       </td>
       <td className="hidden px-3 py-2 text-right text-sm lg:table-cell">
-        {isTotal ? '---' : fmtCurrency(session.budget_revenue)}
+        {fmtCurrency(session.budget_revenue)}
       </td>
       <td className="hidden px-3 py-2 text-right text-sm lg:table-cell">
-        {isTotal ? '---' : fmtCurrency(session.actual_revenue)}
+        {fmtCurrency(session.actual_revenue)}
       </td>
       <td
         className={`hidden px-3 py-2 text-right text-sm lg:table-cell ${deltaColor(session.revenue_delta)}`}
       >
-        {isTotal ? '---' : fmtSignedCurrency(session.revenue_delta)}
+        {fmtSignedCurrency(session.revenue_delta)}
       </td>
       <td
         className={`hidden px-3 py-2 text-right text-sm lg:table-cell ${pctColor(session.revenue_pct)}`}
       >
-        {isTotal ? '---' : fmtPct(session.revenue_pct)}
+        {fmtPct(session.revenue_pct)}
       </td>
     </tr>
   )
