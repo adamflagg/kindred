@@ -227,11 +227,15 @@ class TestForecastWithBudgetConfig:
         assert s1.budget_revenue == 250000.0  # 100 * 2500
         assert s1.actual_revenue == 125000.0  # 50 * 2500
         assert s1.revenue_pct == 50.0  # 125000 / 250000 * 100
+        assert s1.participants_vs_budget == -50  # 50 - 100
+        assert s1.revenue_delta == -125000.0  # 125000 - 250000
 
         s2 = next(s for s in result.sessions if s.session_cm_id == 1002)
         assert s2.pct_of_goal == 50.0  # 40/80 * 100
         assert s2.budget_revenue == 240000.0  # 80 * 3000
         assert s2.actual_revenue == 120000.0  # 40 * 3000
+        assert s2.participants_vs_budget == -40  # 40 - 80
+        assert s2.revenue_delta == -120000.0  # 120000 - 240000
 
     @pytest.mark.asyncio
     async def test_forecast_partial_budget(self, service, mock_repository):
@@ -454,10 +458,12 @@ class TestForecastPriorYear:
         s1 = next(s for s in result.sessions if s.session_cm_id == 1001)
         assert s1.prior_year_count == 20  # 10..30 = 20 attendees
         assert s1.two_year_prior_count == 18  # 50..68 = 18 attendees
+        assert s1.participants_vs_prior_year == -19  # 1 - 20
 
         s2 = next(s for s in result.sessions if s.session_cm_id == 1002)
         assert s2.prior_year_count == 15  # 30..45 = 15 attendees
         assert s2.two_year_prior_count == 12  # 68..80 = 12 attendees
+        assert s2.participants_vs_prior_year == -14  # 1 - 15
 
 
 # ============================================================================
@@ -555,6 +561,10 @@ class TestForecastGrandTotal:
         assert gt.actual_revenue is None
         assert gt.revenue_pct is None
 
+        # Delta fields also None when no budget config
+        assert gt.participants_vs_budget is None
+        assert gt.revenue_delta is None
+
 
 # ============================================================================
 # Session Filter Tests
@@ -599,3 +609,266 @@ class TestForecastSessionFilter:
 
         # Grand total matches the single session
         assert result.grand_total.enrolled == 13
+
+
+# ============================================================================
+# Session Alias Matching Tests
+# ============================================================================
+
+
+class TestForecastSessionAliasMatching:
+    """Test that prior year matching uses session alias resolution."""
+
+    @pytest.mark.asyncio
+    async def test_alias_resolves_renamed_session(self, service, mock_repository):
+        """Prior year has 'Taste of Camp' (old name), current year has 'Taste of Camp 1'.
+
+        Alias resolution should bridge these so prior_year_count is populated.
+        """
+        current_sessions = {
+            1001: create_mock_session(1001, "Taste of Camp 1", year=2026),
+            1002: create_mock_session(1002, "Session 2", year=2026),
+        }
+
+        prior_sessions = {
+            9001: create_mock_session(9001, "Taste of Camp", year=2025),
+            9002: create_mock_session(9002, "Session 2", year=2025),
+        }
+
+        current_enrolled = [
+            create_mock_attendee(101, 1001, year=2026),
+            create_mock_attendee(102, 1002, year=2026),
+        ]
+
+        prior_enrolled = [
+            *[create_mock_attendee(i, 9001, year=2025) for i in range(10, 25)],
+            *[create_mock_attendee(i, 9002, year=2025) for i in range(30, 40)],
+        ]
+
+        async def fetch_sessions_side_effect(year, session_types=None):
+            if year == 2026:
+                return current_sessions
+            if year == 2025:
+                return prior_sessions
+            return {}
+
+        async def fetch_attendees_side_effect(year, status_filter=None):
+            if status_filter == "waitlisted":
+                return []
+            if year == 2026:
+                return current_enrolled
+            if year == 2025:
+                return prior_enrolled
+            return []
+
+        mock_repository.fetch_sessions.side_effect = fetch_sessions_side_effect
+        mock_repository.fetch_attendees.side_effect = fetch_attendees_side_effect
+
+        result = await service.calculate_forecast(year=2026)
+
+        # "Taste of Camp" → "Taste of Camp 1" via alias
+        s1 = next(s for s in result.sessions if s.session_cm_id == 1001)
+        assert s1.prior_year_count == 15  # 10..25 = 15 attendees
+
+        # "Session 2" unchanged, should still match
+        s2 = next(s for s in result.sessions if s.session_cm_id == 1002)
+        assert s2.prior_year_count == 10  # 30..40 = 10 attendees
+
+    @pytest.mark.asyncio
+    async def test_alias_resolves_session_2b(self, service, mock_repository):
+        """Prior year 'Session 2b' should match current year 'Taste of Camp 2'."""
+        current_sessions = {
+            1001: create_mock_session(1001, "Taste of Camp 2", year=2026),
+        }
+
+        prior_sessions = {
+            9001: create_mock_session(9001, "Session 2b", year=2025),
+        }
+
+        current_enrolled = [create_mock_attendee(101, 1001, year=2026)]
+        prior_enrolled = [
+            *[create_mock_attendee(i, 9001, year=2025) for i in range(10, 18)],
+        ]
+
+        async def fetch_sessions_side_effect(year, session_types=None):
+            if year == 2026:
+                return current_sessions
+            if year == 2025:
+                return prior_sessions
+            return {}
+
+        async def fetch_attendees_side_effect(year, status_filter=None):
+            if status_filter == "waitlisted":
+                return []
+            if year == 2026:
+                return current_enrolled
+            if year == 2025:
+                return prior_enrolled
+            return []
+
+        mock_repository.fetch_sessions.side_effect = fetch_sessions_side_effect
+        mock_repository.fetch_attendees.side_effect = fetch_attendees_side_effect
+
+        result = await service.calculate_forecast(year=2026)
+
+        s1 = next(s for s in result.sessions if s.session_cm_id == 1001)
+        assert s1.prior_year_count == 8  # 10..18 = 8 attendees
+
+
+# ============================================================================
+# Delta Field Tests
+# ============================================================================
+
+
+class TestForecastDeltaFields:
+    """Test the 3 new delta fields: participants_vs_budget, participants_vs_prior_year, revenue_delta."""
+
+    @pytest.mark.asyncio
+    async def test_delta_fields_with_budget(self, service, mock_repository):
+        """participants_vs_budget = enrolled - goal, revenue_delta = actual - budget."""
+        sessions = {
+            1001: create_mock_session(1001, "Session 1"),
+        }
+        mock_repository.fetch_sessions.return_value = sessions
+
+        budget = dict([create_mock_budget_config(1001, participant_goal=100, session_fee=2500.0)])
+        mock_repository.fetch_budget_config.return_value = budget
+
+        enrolled = [create_mock_attendee(i, 1001) for i in range(50)]
+
+        async def fetch_attendees_side_effect(year, status_filter=None):
+            if status_filter == "waitlisted":
+                return []
+            if year == 2026:
+                return enrolled
+            return []
+
+        mock_repository.fetch_attendees.side_effect = fetch_attendees_side_effect
+
+        result = await service.calculate_forecast(year=2026)
+
+        s1 = next(s for s in result.sessions if s.session_cm_id == 1001)
+        assert s1.participants_vs_budget == -50  # 50 - 100
+        assert s1.revenue_delta == -125000.0  # (50*2500) - (100*2500)
+
+    @pytest.mark.asyncio
+    async def test_delta_fields_with_prior_year(self, service, mock_repository):
+        """participants_vs_prior_year = enrolled - prior_year_count."""
+        current_sessions = {
+            1001: create_mock_session(1001, "Session 1", year=2026),
+        }
+        prior_sessions = {
+            9001: create_mock_session(9001, "Session 1", year=2025),
+        }
+
+        current_enrolled = [create_mock_attendee(i, 1001, year=2026) for i in range(30)]
+        prior_enrolled = [create_mock_attendee(i, 9001, year=2025) for i in range(10, 35)]
+
+        async def fetch_sessions_side_effect(year, session_types=None):
+            if year == 2026:
+                return current_sessions
+            if year == 2025:
+                return prior_sessions
+            return {}
+
+        async def fetch_attendees_side_effect(year, status_filter=None):
+            if status_filter == "waitlisted":
+                return []
+            if year == 2026:
+                return current_enrolled
+            if year == 2025:
+                return prior_enrolled
+            return []
+
+        mock_repository.fetch_sessions.side_effect = fetch_sessions_side_effect
+        mock_repository.fetch_attendees.side_effect = fetch_attendees_side_effect
+
+        result = await service.calculate_forecast(year=2026)
+
+        s1 = next(s for s in result.sessions if s.session_cm_id == 1001)
+        assert s1.participants_vs_prior_year == 5  # 30 - 25
+
+    @pytest.mark.asyncio
+    async def test_delta_fields_none_without_config(self, service, mock_repository):
+        """Delta fields are None when inputs are missing."""
+        sessions = {1001: create_mock_session(1001, "Session 1")}
+        mock_repository.fetch_sessions.return_value = sessions
+
+        enrolled = [create_mock_attendee(i, 1001) for i in range(10)]
+
+        async def fetch_attendees_side_effect(year, status_filter=None):
+            if status_filter == "waitlisted":
+                return []
+            if year == 2026:
+                return enrolled
+            return []
+
+        mock_repository.fetch_attendees.side_effect = fetch_attendees_side_effect
+
+        result = await service.calculate_forecast(year=2026)
+
+        s1 = next(s for s in result.sessions if s.session_cm_id == 1001)
+        assert s1.participants_vs_budget is None  # no goal configured
+        assert s1.participants_vs_prior_year is None  # no prior year data
+        assert s1.revenue_delta is None  # no fee configured
+
+    @pytest.mark.asyncio
+    async def test_grand_total_delta_fields(self, service, mock_repository):
+        """Grand total should compute delta fields from totals."""
+        sessions = {
+            1001: create_mock_session(1001, "Session 1"),
+            1002: create_mock_session(1002, "Session 2"),
+        }
+        mock_repository.fetch_sessions.return_value = sessions
+
+        budget = dict(
+            [
+                create_mock_budget_config(1001, participant_goal=100, session_fee=2500.0),
+                create_mock_budget_config(1002, participant_goal=80, session_fee=3000.0),
+            ]
+        )
+        mock_repository.fetch_budget_config.return_value = budget
+
+        prior_sessions = {
+            9001: create_mock_session(9001, "Session 1", year=2025),
+            9002: create_mock_session(9002, "Session 2", year=2025),
+        }
+
+        enrolled = [
+            *[create_mock_attendee(i, 1001) for i in range(50)],
+            *[create_mock_attendee(i + 100, 1002) for i in range(40)],
+        ]
+        prior_enrolled = [
+            *[create_mock_attendee(i, 9001, year=2025) for i in range(10, 55)],
+            *[create_mock_attendee(i, 9002, year=2025) for i in range(60, 95)],
+        ]
+
+        async def fetch_sessions_side_effect(year, session_types=None):
+            if year == 2026:
+                return sessions
+            if year == 2025:
+                return prior_sessions
+            return {}
+
+        async def fetch_attendees_side_effect(year, status_filter=None):
+            if status_filter == "waitlisted":
+                return []
+            if year == 2026:
+                return enrolled
+            if year == 2025:
+                return prior_enrolled
+            return []
+
+        mock_repository.fetch_sessions.side_effect = fetch_sessions_side_effect
+        mock_repository.fetch_attendees.side_effect = fetch_attendees_side_effect
+
+        result = await service.calculate_forecast(year=2026)
+
+        gt = result.grand_total
+        # Total enrolled: 50 + 40 = 90, total goal: 100 + 80 = 180
+        assert gt.participants_vs_budget == -90  # 90 - 180
+        # Total prior: 45 + 35 = 80
+        assert gt.participants_vs_prior_year == 10  # 90 - 80
+        # Total budget rev: 100*2500 + 80*3000 = 490000
+        # Total actual rev: 50*2500 + 40*3000 = 245000
+        assert gt.revenue_delta == -245000.0  # 245000 - 490000
