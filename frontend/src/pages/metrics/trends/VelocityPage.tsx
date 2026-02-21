@@ -118,7 +118,9 @@ export default function VelocityPage() {
     .map((marker) => {
       const weekIdx = data.combined.weekly.findIndex((w) => w.week_start >= marker.date)
       if (weekIdx < 0) return null
-      return { ...marker, weekLabel: data.combined.weekly[weekIdx].week_label }
+      const week = data.combined.weekly[weekIdx]
+      if (!week) return null
+      return { ...marker, weekLabel: week.week_label }
     })
     .filter(Boolean)
 
@@ -225,7 +227,7 @@ export default function VelocityPage() {
                 type="monotone"
                 dataKey={`enrolled_${py.year}`}
                 name={String(py.year)}
-                stroke={PRIOR_YEAR_COLORS[i % PRIOR_YEAR_COLORS.length]}
+                stroke={PRIOR_YEAR_COLORS[i % PRIOR_YEAR_COLORS.length] ?? 'hsl(220, 60%, 65%)'}
                 strokeWidth={2}
                 strokeDasharray="5 5"
                 dot={false}
