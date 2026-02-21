@@ -3737,3 +3737,248 @@ class TestRetentionSessionTypeFiltering:
         assert len(result[0].sessions) == 2
         session_cm_ids = {s.session_cm_id for s in result[0].sessions}
         assert session_cm_ids == {1001, 1002}
+
+
+# ============================================================================
+# Tests for enrollment_date population in drilldown responses
+# ============================================================================
+
+
+class TestEnrollmentDatePopulation:
+    """Tests for enrollment_date field in DrilldownAttendee responses.
+
+    The enrollment_date field is used by waitlist drilldowns to sort
+    campers by registration date (earliest first).
+    """
+
+    @pytest.mark.asyncio
+    async def test_build_response_includes_enrollment_date(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """_build_response populates enrollment_date from attendee records."""
+        session = sample_sessions[1001]
+        attendee = create_mock_attendee(101, session, 2026)
+        attendee.enrollment_date = "2025-12-01 10:30:00.000Z"
+
+        result = drilldown_service._build_response(
+            attendees=[attendee],
+            persons=sample_persons,
+            _sessions=sample_sessions,
+        )
+
+        assert len(result) == 1
+        assert result[0].enrollment_date == "2025-12-01 10:30:00.000Z"
+
+    @pytest.mark.asyncio
+    async def test_build_response_enrollment_date_none_when_missing(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """_build_response sets enrollment_date to None when not on attendee."""
+        session = sample_sessions[1001]
+        attendee = create_mock_attendee(101, session, 2026)
+        # Remove enrollment_date attr so getattr returns None
+        del attendee.enrollment_date
+
+        result = drilldown_service._build_response(
+            attendees=[attendee],
+            persons=sample_persons,
+            _sessions=sample_sessions,
+        )
+
+        assert len(result) == 1
+        assert result[0].enrollment_date is None
+
+    @pytest.mark.asyncio
+    async def test_enrollment_date_flows_through_standard_drilldown(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """enrollment_date passes through the standard get_attendees_for_breakdown path."""
+        attendee_m = create_mock_attendee(104, sample_sessions[1004], 2026)
+        attendee_m.enrollment_date = "2025-10-01 08:00:00.000Z"
+
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_attendees.return_value = [attendee_m]
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="gender",
+            breakdown_value="M",
+        )
+
+        assert len(result) == 1
+        assert result[0].enrollment_date == "2025-10-01 08:00:00.000Z"
+
+    @pytest.mark.asyncio
+    async def test_waitlist_accepted_includes_enrollment_date(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+    ) -> None:
+        """UC3 (waitlist_accepted) path populates enrollment_date from attendee lookup."""
+        sessions = {
+            1001: create_mock_session(1001, "Session 1", 2026, "main", "2026-06-15", "2026-07-05"),
+        }
+        persons = {
+            101: create_mock_person(101, "Emma", "Johnson", "F", 5, years_at_camp=1),
+        }
+        session1 = sessions[1001]
+
+        # Status history: Emma was waitlisted, then accepted (enrolled)
+        history = [
+            create_mock_status_history(
+                101, session1, persons[101], old_status="waitlisted", new_status="enrolled"
+            ),
+        ]
+
+        # Attendee record with enrollment_date
+        attendee_with_date = create_mock_attendee(101, session1, 2026, status="enrolled")
+        attendee_with_date.enrollment_date = "2025-12-15 14:30:00.000Z"
+
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_persons.return_value = persons
+        mock_repository.fetch_status_history = AsyncMock(return_value=history)
+        mock_repository.fetch_attendees = AsyncMock(return_value=[attendee_with_date])
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="waitlist_accepted",
+            breakdown_value="true",
+        )
+
+        assert len(result) == 1
+        assert result[0].person_id == 101
+        assert result[0].enrollment_date == "2025-12-15 14:30:00.000Z"
+
+    @pytest.mark.asyncio
+    async def test_waitlist_declined_includes_enrollment_date(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+    ) -> None:
+        """UC4 (waitlist_declined) path populates enrollment_date from attendee lookup."""
+        sessions = {
+            1001: create_mock_session(1001, "Session 1", 2026, "main", "2026-06-15", "2026-07-05"),
+        }
+        persons = {
+            102: create_mock_person(102, "Liam", "Garcia", "M", 6, years_at_camp=2),
+        }
+        session1 = sessions[1001]
+
+        # Status history: Liam was waitlisted, then cancelled
+        history = [
+            create_mock_status_history(
+                102, session1, persons[102], old_status="waitlisted", new_status="cancelled"
+            ),
+        ]
+
+        # Attendee record with enrollment_date
+        attendee_with_date = create_mock_attendee(102, session1, 2026, status="cancelled")
+        attendee_with_date.enrollment_date = "2025-11-01 10:00:00.000Z"
+
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_persons.return_value = persons
+        mock_repository.fetch_status_history = AsyncMock(return_value=history)
+        mock_repository.fetch_attendees = AsyncMock(return_value=[attendee_with_date])
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="waitlist_declined",
+            breakdown_value="true",
+        )
+
+        assert len(result) == 1
+        assert result[0].person_id == 102
+        assert result[0].enrollment_date == "2025-11-01 10:00:00.000Z"
+
+    @pytest.mark.asyncio
+    async def test_waitlist_accepted_enrollment_date_none_when_no_attendee(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+    ) -> None:
+        """UC3 path sets enrollment_date to None when no attendee record found."""
+        sessions = {
+            1001: create_mock_session(1001, "Session 1", 2026, "main", "2026-06-15", "2026-07-05"),
+        }
+        persons = {
+            103: create_mock_person(103, "Olivia", "Chen", "F", 7, years_at_camp=1),
+        }
+        session1 = sessions[1001]
+
+        history = [
+            create_mock_status_history(
+                103, session1, persons[103], old_status="waitlisted", new_status="enrolled"
+            ),
+        ]
+
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_persons.return_value = persons
+        mock_repository.fetch_status_history = AsyncMock(return_value=history)
+        # No attendee records available
+        mock_repository.fetch_attendees = AsyncMock(return_value=[])
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="waitlist_accepted",
+            breakdown_value="true",
+        )
+
+        assert len(result) == 1
+        assert result[0].person_id == 103
+        assert result[0].enrollment_date is None
+
+    @pytest.mark.asyncio
+    async def test_waitlist_accepted_uses_earliest_enrollment_date(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+    ) -> None:
+        """UC3 path uses earliest enrollment_date when person has multiple attendee records."""
+        sessions = {
+            1001: create_mock_session(1001, "Session 1", 2026, "main", "2026-06-15", "2026-07-05"),
+            1002: create_mock_session(1002, "Session 2", 2026, "main", "2026-07-06", "2026-07-26"),
+        }
+        persons = {
+            101: create_mock_person(101, "Emma", "Johnson", "F", 5, years_at_camp=1),
+        }
+        session1 = sessions[1001]
+        session2 = sessions[1002]
+
+        history = [
+            create_mock_status_history(
+                101, session1, persons[101], old_status="waitlisted", new_status="enrolled"
+            ),
+        ]
+
+        # Two attendee records with different enrollment dates
+        att1 = create_mock_attendee(101, session1, 2026, status="enrolled")
+        att1.enrollment_date = "2025-12-15 14:30:00.000Z"  # Later
+        att2 = create_mock_attendee(101, session2, 2026, status="enrolled")
+        att2.enrollment_date = "2025-11-01 09:00:00.000Z"  # Earlier
+
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_persons.return_value = persons
+        mock_repository.fetch_status_history = AsyncMock(return_value=history)
+        mock_repository.fetch_attendees = AsyncMock(return_value=[att1, att2])
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="waitlist_accepted",
+            breakdown_value="true",
+        )
+
+        assert len(result) == 1
+        assert result[0].enrollment_date == "2025-11-01 09:00:00.000Z"  # Earliest
