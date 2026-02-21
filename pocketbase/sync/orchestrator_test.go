@@ -2469,6 +2469,7 @@ func TestRunSyncWithOptionsPhaseOrdering(t *testing.T) {
 			"financial_aid_applications", "household_demographics",
 			"camper_dietary", "camper_transportation", "quest_registrations",
 			"staff_applications", "staff_vehicle_info", "normalize_geographic",
+			"enrollment_snapshots",
 		}
 
 		if len(jobs) != len(expectedOrder) {

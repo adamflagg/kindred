@@ -63,6 +63,7 @@ var SyncJobToCollections = map[string][]string{
 	"staff_applications":         {"staff_applications"},
 	"staff_vehicle_info":         {"staff_vehicle_info"},
 	"normalize_geographic":       {"normalized_mappings"},
+	"enrollment_snapshots":       {"enrollment_snapshots"},
 	// Global syncs
 	"person_tag_defs":   {"person_tag_defs"},
 	"custom_field_defs": {"custom_field_defs"},

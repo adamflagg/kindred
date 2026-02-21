@@ -394,3 +394,75 @@ class MetricsRepository:
         except Exception as e:
             logger.warning(f"Error fetching synagogue custom values: {e}")
             return {}
+
+    async def fetch_enrollment_snapshots(self, year: int, session_cm_id: int | None = None) -> list[Any]:
+        """Fetch enrollment snapshots for a year, optionally filtered by session."""
+        filter_str = f"year = {year}"
+        if session_cm_id is not None:
+            filter_str += f" && session_cm_id = {session_cm_id}"
+        return await asyncio.to_thread(
+            self.pb.collection("enrollment_snapshots").get_full_list,
+            query_params={"filter": filter_str, "sort": "snapshot_date"},
+        )
+
+    async def fetch_attendees_with_dates(self, year: int, session_cm_id: int | None = None) -> list[Any]:
+        """Fetch attendees that have enrollment_date set, for velocity reconstruction."""
+        filter_str = f"year = {year} && enrollment_date != ''"
+        if session_cm_id is not None:
+            filter_str += f" && session_cm_id = {session_cm_id}"
+        return await asyncio.to_thread(
+            self.pb.collection("attendees").get_full_list,
+            query_params={"filter": filter_str, "expand": "session"},
+        )
+
+    async def fetch_status_transitions(self, year: int, to_statuses: list[str]) -> list[Any]:
+        """Fetch status history entries where status changed TO specific statuses."""
+        status_filter = " || ".join(f'new_status = "{s}"' for s in to_statuses)
+        filter_str = f"year = {year} && ({status_filter})"
+        return await asyncio.to_thread(
+            self.pb.collection("attendee_status_history").get_full_list,
+            query_params={"filter": filter_str},
+        )
+
+    async def fetch_budget_config(self, year: int) -> dict[int, dict[str, Any]]:
+        """Fetch budget config for all sessions.
+
+        Returns:
+            Dictionary mapping session_cm_id to config dict with
+            participant_goal and session_fee.
+        """
+        try:
+            records = await asyncio.to_thread(
+                self.pb.collection("config").get_full_list,
+                query_params={
+                    "filter": f'category = "budget" && subcategory = "{year}"',
+                },
+            )
+            result: dict[int, dict[str, Any]] = {}
+            for r in records:
+                key = getattr(r, "config_key", "")
+                if key.startswith("session_"):
+                    try:
+                        cm_id = int(key.replace("session_", ""))
+                        value = getattr(r, "value", {})
+                        if isinstance(value, dict):
+                            result[cm_id] = value
+                    except (ValueError, TypeError):
+                        pass
+            return result
+        except Exception as e:
+            logger.warning(f"Could not fetch budget config for year {year}: {e}")
+            return {}
+
+    async def fetch_registration_dates(self, year: int) -> dict[str, str]:
+        """Fetch registration phase dates from config table."""
+        try:
+            records = await asyncio.to_thread(
+                self.pb.collection("config").get_full_list,
+                query_params={
+                    "filter": f'category = "registration" && subcategory = "{year}"',
+                },
+            )
+            return {getattr(r, "config_key", ""): getattr(r, "value", "") for r in records}
+        except Exception:
+            return {}

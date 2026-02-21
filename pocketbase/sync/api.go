@@ -402,6 +402,12 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 		return handleIndividualSync(e, scheduler, "normalize_geographic")
 	}))
 
+	// Enrollment snapshots sync
+	// Captures daily enrollment counts per session
+	e.Router.POST("/api/custom/sync/enrollment-snapshots", requireAuth(func(e *core.RequestEvent) error {
+		return handleIndividualSync(e, scheduler, "enrollment_snapshots")
+	}))
+
 	return nil
 }
 

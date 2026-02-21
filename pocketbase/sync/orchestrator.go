@@ -86,6 +86,7 @@ var syncJobMeta = []JobMeta{
 	{"staff_applications", PhaseTransform, "Extract staff application info from custom values"},
 	{"staff_vehicle_info", PhaseTransform, "Extract staff vehicle info from custom values"},
 	{"normalize_geographic", PhaseTransform, "Normalize geographic data (cities, schools, congregations)"},
+	{"enrollment_snapshots", PhaseTransform, "Capture daily enrollment counts per session"},
 
 	// Process phase - CSV + AI
 	{"bunk_requests", PhaseProcess, "Import bunk request CSV"},
@@ -162,7 +163,8 @@ func GetDefaultUnifiedSyncJobs(includeCustomValues bool) []string {
 		"camper_history", "family_camp_derived", "staff_skills",
 		"financial_aid_applications", "household_demographics",
 		"camper_dietary", "camper_transportation", "quest_registrations",
-		"staff_applications", "staff_vehicle_info", "normalize_geographic")
+		"staff_applications", "staff_vehicle_info", "normalize_geographic",
+		"enrollment_snapshots")
 
 	return jobs
 }
@@ -637,6 +639,7 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 		"staff_applications",
 		"staff_vehicle_info",
 		"normalize_geographic",
+		"enrollment_snapshots",
 		"bunk_requests", // CSV import, depends on persons
 	}
 
@@ -1157,6 +1160,11 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		normalizeGeographicSync := NewNormalizeGeographicSync(o.app)
 		normalizeGeographicSync.Year = opts.Year
 		o.RegisterService("normalize_geographic", normalizeGeographicSync)
+
+		// Enrollment snapshots (captures daily enrollment counts per session)
+		enrollmentSnapshotsSync := NewEnrollmentSnapshotsSync(o.app)
+		enrollmentSnapshotsSync.Year = opts.Year
+		o.RegisterService("enrollment_snapshots", enrollmentSnapshotsSync)
 
 		// Custom value services for historical sync support
 		// These use GetSeasonID() to determine the year, so they need year-specific client
@@ -1685,6 +1693,9 @@ func (o *Orchestrator) InitializeSyncServices() error {
 
 	// Geographic normalization (computes from camper_history)
 	o.RegisterService("normalize_geographic", NewNormalizeGeographicSync(o.app))
+
+	// Enrollment snapshots (captures daily enrollment counts per session)
+	o.RegisterService("enrollment_snapshots", NewEnrollmentSnapshotsSync(o.app))
 
 	slog.Info("All sync services registered")
 	return nil

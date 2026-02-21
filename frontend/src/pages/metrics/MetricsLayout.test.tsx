@@ -129,11 +129,12 @@ describe('MetricsLayout', () => {
     expect(sessionFlowLink).not.toHaveClass('bg-primary')
   })
 
-  it('does not render sub-nav for trends routes', () => {
+  it('renders sub-nav for trends routes', () => {
     renderWithRouter('/metrics/trends')
 
     expect(screen.getByRole('link', { name: /trends/i })).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: /overview/i })).not.toBeInTheDocument()
+    // Trends now has its own sub-nav with Overview
+    expect(screen.getByRole('link', { name: /overview/i })).toBeInTheDocument()
   })
 
   it('renders page header with title for registration', () => {

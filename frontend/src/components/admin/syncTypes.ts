@@ -28,6 +28,7 @@ import {
   Mountain,
   Car,
   MapPin,
+  Camera,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -267,6 +268,13 @@ export const YEAR_SYNC_TYPES = [
     name: 'Normalize Geo',
     icon: MapPin,
     color: 'text-emerald-500',
+    phase: 'transform' as SyncPhase,
+  },
+  {
+    id: 'enrollment_snapshots',
+    name: 'Enrollment Snapshots',
+    icon: Camera,
+    color: 'text-teal-500',
     phase: 'transform' as SyncPhase,
   },
   // Process phase - CSV + AI (current year only)

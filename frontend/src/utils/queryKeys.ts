@@ -161,6 +161,15 @@ export const queryKeys = {
   gradeEligibilityConfig: (year: number) => ['grade-eligibility-config', year] as const,
   sessionAvailability: (year: number, sessionTypes?: string, sessionCmId?: number) =>
     ['session-availability', year, sessionTypes, sessionCmId] as const,
+  sessionBudgetConfig: (year: number) => ['session-budget-config', year] as const,
+
+  // Forecast (Tier 1 - sync data)
+  forecast: (year: number, sessionTypes?: string, sessionCmId?: number) =>
+    sessionCmId
+      ? (['metrics', 'forecast', year, sessionTypes, sessionCmId] as const)
+      : sessionTypes
+        ? (['metrics', 'forecast', year, sessionTypes] as const)
+        : (['metrics', 'forecast', year] as const),
 
   // Staff (Tier 1 - sync data)
   bunkStaff: (year: number) => ['bunk-staff', year] as const,
@@ -170,6 +179,10 @@ export const queryKeys = {
     sessionCmId !== undefined
       ? (['normalized-mappings', year, category, sessionCmId] as const)
       : (['normalized-mappings', year, category] as const),
+
+  // Velocity (Tier 1 - sync data, historical analysis)
+  velocity: (year: number, sessionCmId?: number, compareYears?: string, sessionTypes?: string) =>
+    ['metrics', 'velocity', year, sessionCmId, compareYears, sessionTypes] as const,
 }
 
 /**

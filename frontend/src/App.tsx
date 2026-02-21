@@ -38,6 +38,7 @@ const RegistrationOverview = lazy(() => import('./pages/metrics/registration/Reg
 const GeoAnalysis = lazy(() => import('./pages/metrics/registration/GeoAnalysis'))
 const WaitlistAnalysis = lazy(() => import('./pages/metrics/registration/WaitlistAnalysis'))
 const SessionAvailability = lazy(() => import('./pages/metrics/registration/SessionAvailability'))
+const ForecastPage = lazy(() => import('./pages/metrics/registration/ForecastPage'))
 const RetentionOverview = lazy(() => import('./pages/metrics/retention/RetentionOverview'))
 const SessionFlowPage = lazy(() => import('./pages/metrics/retention/SessionFlowPage'))
 const BunkRetentionPage = lazy(() => import('./pages/metrics/retention/BunkRetentionPage'))
@@ -45,6 +46,7 @@ const StaffCabinAnalysisPage = lazy(
   () => import('./pages/metrics/retention/StaffCabinAnalysisPage')
 )
 const TrendsOverview = lazy(() => import('./pages/metrics/trends/TrendsOverview'))
+const VelocityPage = lazy(() => import('./pages/metrics/trends/VelocityPage'))
 
 // Loading skeleton component for route transitions
 function PageSkeleton() {
@@ -262,6 +264,16 @@ function App() {
                                   </ErrorBoundary>
                                 }
                               />
+                              <Route
+                                path="registration/forecast"
+                                element={
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <ForecastPage />
+                                    </Suspense>
+                                  </ErrorBoundary>
+                                }
+                              />
 
                               {/* Retention section */}
                               <Route
@@ -317,6 +329,16 @@ function App() {
                                   <ErrorBoundary>
                                     <Suspense fallback={<PageSkeleton />}>
                                       <TrendsOverview />
+                                    </Suspense>
+                                  </ErrorBoundary>
+                                }
+                              />
+                              <Route
+                                path="trends/velocity"
+                                element={
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <VelocityPage />
                                     </Suspense>
                                   </ErrorBoundary>
                                 }

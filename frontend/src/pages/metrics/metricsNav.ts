@@ -2,7 +2,17 @@
  * Shared navigation configuration for metrics module.
  * Single source of truth for sub-nav items used by MetricsLayout and MetricsTypeTabs.
  */
-import { LayoutDashboard, Globe, Clock, GitBranch, Grid2x2, Users, Table } from 'lucide-react'
+import {
+  LayoutDashboard,
+  Globe,
+  Clock,
+  GitBranch,
+  Grid2x2,
+  Users,
+  Table,
+  Target,
+  Zap,
+} from 'lucide-react'
 import type { SubNavItem } from '../../components/metrics/MetricsSubNav'
 
 /** Sub-nav items for retention section */
@@ -58,5 +68,27 @@ export const REGISTRATION_SUB_NAV: SubNavItem[] = [
     label: 'Availability',
     icon: Table,
     path: '/metrics/registration/availability',
+  },
+  {
+    id: 'forecast',
+    label: 'Forecast',
+    icon: Target,
+    path: '/metrics/registration/forecast',
+  },
+]
+
+/** Sub-nav items for trends section */
+export const TRENDS_SUB_NAV: SubNavItem[] = [
+  {
+    id: 'overview',
+    label: 'Overview',
+    icon: LayoutDashboard,
+    path: '/metrics/trends',
+  },
+  {
+    id: 'velocity',
+    label: 'Velocity',
+    icon: Zap,
+    path: '/metrics/trends/velocity',
   },
 ]

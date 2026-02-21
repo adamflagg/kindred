@@ -19,6 +19,7 @@ import { SectionCard } from './SectionCard'
 import { ScaleGuideSidebar } from './ScaleGuideSidebar'
 import { RegistrationDatesConfig } from './RegistrationDatesConfig'
 import { GradeEligibilityConfig } from './GradeEligibilityConfig'
+import { SessionBudgetConfig } from './SessionBudgetConfig'
 
 // Category definitions - these IDs match the business_category values in config metadata
 interface CategoryDef {
@@ -52,7 +53,7 @@ export const CATEGORIES: CategoryDef[] = [
     id: 'registration',
     name: 'Registration',
     icon: CalendarDays,
-    description: 'Registration phase dates',
+    description: 'Registration dates & budgets',
   },
 ]
 
@@ -288,6 +289,7 @@ export function ConfigTab() {
           <>
             <RegistrationDatesConfig />
             <GradeEligibilityConfig />
+            <SessionBudgetConfig />
           </>
         ) : (
           <div className="space-y-4">
