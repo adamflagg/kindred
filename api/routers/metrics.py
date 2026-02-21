@@ -400,7 +400,7 @@ async def get_velocity(
 @router.get("/forecast", response_model=ForecastResponse)
 async def get_forecast(
     year: int = Query(..., description="Year to forecast"),
-    session_types: str | None = Query("main,embedded,ag", description="Session types"),
+    session_types: str | None = Query("main,embedded,ag,quest", description="Session types"),
     session_cm_id: int | None = Query(None, description="Filter to specific session"),
 ) -> ForecastResponse:
     """Get registration forecast with budget goals, capacity, and revenue projections."""

@@ -51,6 +51,52 @@ function useBudgetConfig(year: number) {
   })
 }
 
+function BudgetRow({
+  row,
+  onChange,
+}: {
+  row: SessionBudgetRow
+  onChange: (cmId: number, field: 'participant_goal' | 'session_fee', value: string) => void
+}) {
+  return (
+    <tr key={row.cm_id} className="border-border border-b">
+      <td className="py-2 pr-4 font-medium">{row.name}</td>
+      <td className="px-2 py-2">
+        <input
+          type="number"
+          min={0}
+          value={row.participant_goal ?? ''}
+          onChange={(e) => onChange(row.cm_id, 'participant_goal', e.target.value)}
+          className="bg-muted/30 dark:bg-muted/50 border-border w-24 rounded border px-2 py-1 text-center text-sm"
+        />
+      </td>
+      <td className="px-2 py-2">
+        <div className="flex items-center justify-center gap-1">
+          <span className="text-muted-foreground text-sm">$</span>
+          <input
+            type="number"
+            min={0}
+            step={0.01}
+            value={row.session_fee ?? ''}
+            onChange={(e) => onChange(row.cm_id, 'session_fee', e.target.value)}
+            className="bg-muted/30 dark:bg-muted/50 border-border w-24 rounded border px-2 py-1 text-center text-sm"
+          />
+        </div>
+      </td>
+    </tr>
+  )
+}
+
+function SectionHeader({ label, colSpan }: { label: string; colSpan: number }) {
+  return (
+    <tr>
+      <td colSpan={colSpan} className="text-muted-foreground pt-4 pb-2 text-sm font-semibold uppercase">
+        {label}
+      </td>
+    </tr>
+  )
+}
+
 export function SessionBudgetConfig() {
   const { currentYear } = useCurrentYear()
   const queryClient = useQueryClient()
@@ -72,9 +118,6 @@ export function SessionBudgetConfig() {
       for (const s of sessionData) {
         const rec = s as Record<string, unknown>
         const sType = rec['session_type'] as string
-
-        // Skip AG sessions - their enrollment folds into parent main session
-        if (sType === 'ag') continue
 
         const cmId = rec['cm_id'] as number
         const name = rec['name'] as string
@@ -192,66 +235,20 @@ export function SessionBudgetConfig() {
             </tr>
           </thead>
           <tbody>
-            {rows.filter((r) => r.session_type !== 'quest').map((row) => (
-              <tr key={row.cm_id} className="border-border border-b">
-                <td className="py-2 pr-4 font-medium">{row.name}</td>
-                <td className="px-2 py-2">
-                  <input
-                    type="number"
-                    min={0}
-                    value={row.participant_goal ?? ''}
-                    onChange={(e) => handleChange(row.cm_id, 'participant_goal', e.target.value)}
-                    className="bg-muted/30 dark:bg-muted/50 border-border w-24 rounded border px-2 py-1 text-center text-sm"
-                  />
-                </td>
-                <td className="px-2 py-2">
-                  <div className="flex items-center justify-center gap-1">
-                    <span className="text-muted-foreground text-sm">$</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step={0.01}
-                      value={row.session_fee ?? ''}
-                      onChange={(e) => handleChange(row.cm_id, 'session_fee', e.target.value)}
-                      className="bg-muted/30 dark:bg-muted/50 border-border w-24 rounded border px-2 py-1 text-center text-sm"
-                    />
-                  </div>
-                </td>
-              </tr>
+            {rows.filter((r) => r.session_type === 'main' || r.session_type === 'embedded').map((row) => (
+              <BudgetRow key={row.cm_id} row={row} onChange={handleChange} />
+            ))}
+            {rows.some((r) => r.session_type === 'ag') && (
+              <SectionHeader label="AG Sessions" colSpan={3} />
+            )}
+            {rows.filter((r) => r.session_type === 'ag').map((row) => (
+              <BudgetRow key={row.cm_id} row={row} onChange={handleChange} />
             ))}
             {rows.some((r) => r.session_type === 'quest') && (
-              <tr>
-                <td colSpan={3} className="text-muted-foreground pt-4 pb-2 text-sm font-semibold uppercase">
-                  Quests
-                </td>
-              </tr>
+              <SectionHeader label="Quests" colSpan={3} />
             )}
             {rows.filter((r) => r.session_type === 'quest').map((row) => (
-              <tr key={row.cm_id} className="border-border border-b">
-                <td className="py-2 pr-4 font-medium">{row.name}</td>
-                <td className="px-2 py-2">
-                  <input
-                    type="number"
-                    min={0}
-                    value={row.participant_goal ?? ''}
-                    onChange={(e) => handleChange(row.cm_id, 'participant_goal', e.target.value)}
-                    className="bg-muted/30 dark:bg-muted/50 border-border w-24 rounded border px-2 py-1 text-center text-sm"
-                  />
-                </td>
-                <td className="px-2 py-2">
-                  <div className="flex items-center justify-center gap-1">
-                    <span className="text-muted-foreground text-sm">$</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step={0.01}
-                      value={row.session_fee ?? ''}
-                      onChange={(e) => handleChange(row.cm_id, 'session_fee', e.target.value)}
-                      className="bg-muted/30 dark:bg-muted/50 border-border w-24 rounded border px-2 py-1 text-center text-sm"
-                    />
-                  </div>
-                </td>
-              </tr>
+              <BudgetRow key={row.cm_id} row={row} onChange={handleChange} />
             ))}
           </tbody>
         </table>

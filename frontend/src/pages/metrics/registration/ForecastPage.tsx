@@ -52,6 +52,31 @@ function fmtPct(value: number | null): string {
   return `${value.toFixed(1)}%`
 }
 
+function ForecastTableHeader() {
+  return (
+    <thead>
+      <tr className="bg-muted/50">
+        <th className="px-3 py-2 text-left text-xs font-semibold">Session</th>
+        <th className="px-3 py-2 text-right text-xs font-semibold">Goal</th>
+        <th className="px-3 py-2 text-right text-xs font-semibold">Enrolled</th>
+        <th className="px-3 py-2 text-right text-xs font-semibold">WL</th>
+        <th className="px-3 py-2 text-right text-xs font-semibold">% Goal</th>
+        <th className="px-3 py-2 text-right text-xs font-semibold">vs Budget</th>
+        <th className="px-3 py-2 text-right text-xs font-semibold">Prior Yr</th>
+        <th className="px-3 py-2 text-right text-xs font-semibold">vs Prior</th>
+        <th className="px-3 py-2 text-right text-xs font-semibold">2yr Prior</th>
+        <th className="px-3 py-2 text-right text-xs font-semibold">Capacity</th>
+        <th className="px-3 py-2 text-right text-xs font-semibold">Util%</th>
+        <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">Fee</th>
+        <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">Budget Rev</th>
+        <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">Actual Rev</th>
+        <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">Delta $</th>
+        <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">Rev%</th>
+      </tr>
+    </thead>
+  )
+}
+
 function SessionRow({ session, isTotal }: { session: SessionForecast; isTotal?: boolean }) {
   const rowClass = isTotal ? 'font-bold bg-muted/30' : 'border-border border-b last:border-b-0'
 
@@ -109,9 +134,19 @@ export default function ForecastPage() {
   const typeLookup = useMemo(() => buildSessionTypeLookup(metricsSessions), [metricsSessions])
 
   // Sort sessions: camp chronologically, then quests chronologically
-  const sessions = useMemo(
+  const allSessions = useMemo(
     () => (data ? sortSessionDataByCampThenQuest(data.sessions, dateLookup, typeLookup) : []),
     [data, dateLookup, typeLookup]
+  )
+
+  // Split into camp (main + embedded + ag) and quest tables
+  const campSessions = useMemo(
+    () => allSessions.filter((s) => s.session_type !== 'quest'),
+    [allSessions]
+  )
+  const questSessions = useMemo(
+    () => allSessions.filter((s) => s.session_type === 'quest'),
+    [allSessions]
   )
 
   if (isLoading) {
@@ -160,7 +195,7 @@ export default function ForecastPage() {
         <MetricCard
           title="Total Capacity"
           value={grand_total.capacity !== null ? grand_total.capacity.toLocaleString() : 'N/A'}
-          subtitle={grand_total.capacity !== null ? `${sessions.length} sessions` : 'No bunk plans'}
+          subtitle={grand_total.capacity !== null ? `${allSessions.length} sessions` : 'No bunk plans'}
         />
         <MetricCard
           title="Overall Utilization"
@@ -169,31 +204,12 @@ export default function ForecastPage() {
         />
       </div>
 
-      {/* Session table */}
+      {/* Camp sessions table (main + embedded + AG) */}
       <div className="border-border overflow-x-auto rounded-xl border">
         <table className="w-full border-collapse">
-          <thead>
-            <tr className="bg-muted/50">
-              <th className="px-3 py-2 text-left text-xs font-semibold">Session</th>
-              <th className="px-3 py-2 text-right text-xs font-semibold">Goal</th>
-              <th className="px-3 py-2 text-right text-xs font-semibold">Enrolled</th>
-              <th className="px-3 py-2 text-right text-xs font-semibold">WL</th>
-              <th className="px-3 py-2 text-right text-xs font-semibold">% Goal</th>
-              <th className="px-3 py-2 text-right text-xs font-semibold">vs Budget</th>
-              <th className="px-3 py-2 text-right text-xs font-semibold">Prior Yr</th>
-              <th className="px-3 py-2 text-right text-xs font-semibold">vs Prior</th>
-              <th className="px-3 py-2 text-right text-xs font-semibold">2yr Prior</th>
-              <th className="px-3 py-2 text-right text-xs font-semibold">Capacity</th>
-              <th className="px-3 py-2 text-right text-xs font-semibold">Util%</th>
-              <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">Fee</th>
-              <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">Budget Rev</th>
-              <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">Actual Rev</th>
-              <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">Delta $</th>
-              <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">Rev%</th>
-            </tr>
-          </thead>
+          <ForecastTableHeader />
           <tbody>
-            {sessions.map((session) => (
+            {campSessions.map((session) => (
               <SessionRow key={session.session_cm_id} session={session} />
             ))}
           </tbody>
@@ -202,6 +218,23 @@ export default function ForecastPage() {
           </tfoot>
         </table>
       </div>
+
+      {/* Quest sessions table */}
+      {questSessions.length > 0 && (
+        <>
+          <h3 className="text-muted-foreground text-sm font-semibold uppercase">Quests</h3>
+          <div className="border-border overflow-x-auto rounded-xl border">
+            <table className="w-full border-collapse">
+              <ForecastTableHeader />
+              <tbody>
+                {questSessions.map((session) => (
+                  <SessionRow key={session.session_cm_id} session={session} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   )
 }

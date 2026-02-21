@@ -14,7 +14,6 @@ from api.schemas.forecast import ForecastResponse, SessionForecast
 from api.utils.session_aliases import resolve_session_alias
 from api.utils.session_metrics import (
     build_ag_parent_map,
-    find_ag_sessions_for_parent,
     get_session_from_expand,
 )
 
@@ -47,7 +46,7 @@ class ForecastService:
             ForecastResponse with per-session and grand total data.
         """
         if session_types is None:
-            session_types = ["main", "embedded", "ag"]
+            session_types = ["main", "embedded", "ag", "quest"]
 
         # Fetch current year sessions
         sessions = await self.repository.fetch_sessions(year, session_types)
@@ -75,44 +74,35 @@ class ForecastService:
             self.repository.fetch_attendees(year - 2),
         )
 
-        # Build prior year AG maps
-        prior_ag_map = build_ag_parent_map(prior_sessions)
-        two_year_ag_map = build_ag_parent_map(two_year_sessions)
-
         # Build name-to-count maps for prior years
-        prior_counts = self._count_by_session_name(prior_sessions, prior_attendees, prior_ag_map)
-        two_year_counts = self._count_by_session_name(two_year_sessions, two_year_attendees, two_year_ag_map)
+        prior_counts = self._count_by_session_name(prior_sessions, prior_attendees)
+        two_year_counts = self._count_by_session_name(two_year_sessions, two_year_attendees)
 
-        # Build per-session forecasts (skip AG sessions - they merge into parent)
+        # Build AG parent map for session_cm_id filtering
+        ag_parent_map = build_ag_parent_map(sessions)
+
+        # Build per-session forecasts (AG sessions as separate rows)
         session_forecasts: list[SessionForecast] = []
         for sid, session in sessions.items():
             session_type = getattr(session, "session_type", "")
-            if session_type == "ag":
-                continue  # AG merges into parent
 
-            # If filtering to specific session, skip others
-            if session_cm_id is not None and sid != session_cm_id:
-                continue
+            # If filtering to specific session, include it + its AG children
+            if session_cm_id is not None:
+                if session_type == "ag":
+                    parent_id = ag_parent_map.get(sid)
+                    if parent_id != session_cm_id:
+                        continue
+                elif sid != session_cm_id:
+                    continue
 
-            ag_children = find_ag_sessions_for_parent(sessions, sid)
+            # Each session counts only its own attendees (no AG merging)
+            enrolled = self._count_attendees_for_session(enrolled_attendees, sid, set())
+            waitlisted = self._count_attendees_for_session(waitlisted_attendees, sid, set())
 
-            # Count enrolled and waitlisted
-            enrolled = self._count_attendees_for_session(enrolled_attendees, sid, ag_children)
-            waitlisted = self._count_attendees_for_session(waitlisted_attendees, sid, ag_children)
-
-            # Count bunk plans for this session's PB id (and AG children)
+            # Count bunk plans for this session only (no AG merging)
             session_pb_id = getattr(session, "id", None)
-            ag_pb_ids = set()
-            for ag_id in ag_children:
-                ag_session = sessions.get(ag_id)
-                if ag_session:
-                    ag_pb_ids.add(getattr(ag_session, "id", None))
 
-            bunk_plan_count = sum(
-                1
-                for bp in bunk_plans
-                if getattr(bp, "session", None) == session_pb_id or getattr(bp, "session", None) in ag_pb_ids
-            )
+            bunk_plan_count = sum(1 for bp in bunk_plans if getattr(bp, "session", None) == session_pb_id)
             capacity = bunk_plan_count * default_capacity if bunk_plan_count > 0 else None
 
             # Budget config
@@ -201,18 +191,11 @@ class ForecastService:
         self,
         sessions: dict[int, Any],
         attendees: list[Any],
-        ag_parent_map: dict[int, int],
     ) -> dict[str, int]:
-        """Count enrolled attendees by session name, merging AG into parent."""
+        """Count enrolled attendees by session name (each session uses its own name)."""
         cm_id_to_name: dict[int, str] = {}
         for sid, session in sessions.items():
-            session_type = getattr(session, "session_type", "")
-            if session_type == "ag":
-                parent_id = ag_parent_map.get(sid)
-                if parent_id and parent_id in sessions:
-                    cm_id_to_name[sid] = resolve_session_alias(getattr(sessions[parent_id], "name", ""))
-            else:
-                cm_id_to_name[sid] = resolve_session_alias(getattr(session, "name", ""))
+            cm_id_to_name[sid] = resolve_session_alias(getattr(session, "name", ""))
 
         counts: dict[str, int] = {}
         for a in attendees:

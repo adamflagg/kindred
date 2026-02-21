@@ -88,7 +88,8 @@ export default function MetricsTypeTabs() {
         ) && (
           <div className="flex items-center gap-3">
             {activeTab === 'registration' &&
-              location.pathname !== '/metrics/registration/availability' && (
+              !location.pathname.endsWith('/forecast') &&
+              !location.pathname.endsWith('/availability') && (
                 <CompareYearSelector
                   primaryYear={currentYear}
                   compareYear={compareYear}
