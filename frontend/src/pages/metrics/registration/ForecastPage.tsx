@@ -1,8 +1,14 @@
+import { useMemo } from 'react'
 import { Loader2, AlertCircle } from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useForecast } from '../../../hooks/useForecast'
 import { MetricCard } from '../../../components/metrics/MetricCard'
+import {
+  buildSessionDateLookup,
+  buildSessionTypeLookup,
+  sortSessionDataByCampThenQuest,
+} from '../../../utils/sessionUtils'
 import type { SessionForecast } from '../../../types/forecast'
 
 function pctColor(pct: number | null): string {
@@ -91,12 +97,22 @@ function SessionRow({ session, isTotal }: { session: SessionForecast; isTotal?: 
 
 export default function ForecastPage() {
   const { currentYear } = useCurrentYear()
-  const { selectedSessionCmId, sessionTypesParam } = useMetricsSession()
+  const { selectedSessionCmId, sessionTypesParam, sessions: metricsSessions } = useMetricsSession()
 
   const { data, isLoading, error } = useForecast(currentYear, {
     sessionCmId: selectedSessionCmId,
     sessionTypes: sessionTypesParam,
   })
+
+  // Build lookups for camp-then-quest sorting from the session context
+  const dateLookup = useMemo(() => buildSessionDateLookup(metricsSessions), [metricsSessions])
+  const typeLookup = useMemo(() => buildSessionTypeLookup(metricsSessions), [metricsSessions])
+
+  // Sort sessions: camp chronologically, then quests chronologically
+  const sessions = useMemo(
+    () => (data ? sortSessionDataByCampThenQuest(data.sessions, dateLookup, typeLookup) : []),
+    [data, dateLookup, typeLookup]
+  )
 
   if (isLoading) {
     return (
@@ -118,7 +134,7 @@ export default function ForecastPage() {
 
   if (!data) return null
 
-  const { sessions, grand_total } = data
+  const { grand_total } = data
 
   return (
     <div className="space-y-6">

@@ -21,13 +21,16 @@ interface SessionBudgetRow {
   session_fee: number | null
 }
 
+const SUMMER_TYPES = ['main', 'embedded', 'ag', 'quest']
+
 function useSessions(year: number) {
   return useQuery({
     queryKey: ['session-budget-sessions', year],
     queryFn: async () => {
+      const typeFilter = SUMMER_TYPES.map((t) => `session_type = "${t}"`).join(' || ')
       return await pb.collection('camp_sessions').getFullList({
-        filter: `year = ${year}`,
-        sort: 'sort_order',
+        filter: `year = ${year} && (${typeFilter})`,
+        sort: 'start_date',
       })
     },
     enabled: year > 0,

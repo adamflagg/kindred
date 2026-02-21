@@ -41,12 +41,15 @@ const DEFAULT_CONFIG: GradeConfig = {
   capacity_override: null,
 }
 
+const SUMMER_TYPES = ['main', 'embedded', 'ag', 'quest']
+
 function useSessions(year: number) {
   return useQuery({
     queryKey: ['grade-eligibility-sessions', year],
     queryFn: async () => {
+      const typeFilter = SUMMER_TYPES.map((t) => `session_type = "${t}"`).join(' || ')
       return await pb.collection('camp_sessions').getFullList({
-        filter: `year = ${year} && (session_type = "main" || session_type = "embedded" || session_type = "ag" || session_type = "quest")`,
+        filter: `year = ${year} && (${typeFilter})`,
         sort: 'start_date',
       })
     },
