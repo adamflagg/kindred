@@ -553,3 +553,220 @@ class TestDeduplication:
         assert len(result.by_session) == 2
         assert result.by_session[0].total_cancelled == 1
         assert result.by_session[1].total_cancelled == 1
+
+
+# ============================================================================
+# Prior status: was_applied + other_prior_status
+# ============================================================================
+
+
+class TestPriorStatusClassification:
+    """Tests for classifying all prior statuses (enrolled, waitlisted, applied, other)."""
+
+    @pytest.mark.asyncio
+    async def test_was_applied_summary(self, service: Any, mock_repo: AsyncMock) -> None:
+        """Persons with applied->cancelled should be counted as was_applied."""
+        sessions = {1001: _make_session(1001, "Session 1")}
+        mock_repo.fetch_sessions.return_value = sessions
+
+        cancelled = [
+            _make_attendee(101, 1001, "Session 1", "cancelled"),
+            _make_attendee(102, 1001, "Session 1", "cancelled"),
+        ]
+
+        async def fetch_attendees_side_effect(year: int, status_filter: Any = None) -> list[Any]:
+            if isinstance(status_filter, list) and "cancelled" in status_filter:
+                return cancelled
+            return []
+
+        mock_repo.fetch_attendees.side_effect = fetch_attendees_side_effect
+
+        all_to_cancelled = [
+            _make_history_record(101, 1001, "Session 1", "applied", "cancelled"),
+            _make_history_record(102, 1001, "Session 1", "enrolled", "cancelled"),
+        ]
+
+        async def fetch_history_side_effect(
+            year: int, old_status: str | None = None, new_statuses: list[str] | None = None
+        ) -> list[Any]:
+            if old_status is None:
+                return all_to_cancelled
+            return []
+
+        mock_repo.fetch_status_history.side_effect = fetch_history_side_effect
+        mock_repo.fetch_persons.return_value = {
+            101: _make_person(101),
+            102: _make_person(102),
+        }
+
+        result = await service.calculate_cancellations(year=2025)
+        assert result.was_applied == 1
+        assert result.was_enrolled == 1
+
+    @pytest.mark.asyncio
+    async def test_was_applied_per_session(self, service: Any, mock_repo: AsyncMock) -> None:
+        """was_applied should be tracked per session in by_session breakdown."""
+        sessions = {
+            1001: _make_session(1001, "Session 1"),
+            1002: _make_session(1002, "Session 2"),
+        }
+        mock_repo.fetch_sessions.return_value = sessions
+
+        cancelled = [
+            _make_attendee(101, 1001, "Session 1", "cancelled"),
+            _make_attendee(102, 1002, "Session 2", "cancelled"),
+        ]
+
+        async def fetch_attendees_side_effect(year: int, status_filter: Any = None) -> list[Any]:
+            if isinstance(status_filter, list) and "cancelled" in status_filter:
+                return cancelled
+            return []
+
+        mock_repo.fetch_attendees.side_effect = fetch_attendees_side_effect
+
+        all_to_cancelled = [
+            _make_history_record(101, 1001, "Session 1", "applied", "cancelled"),
+            _make_history_record(102, 1002, "Session 2", "enrolled", "cancelled"),
+        ]
+
+        async def fetch_history_side_effect(
+            year: int, old_status: str | None = None, new_statuses: list[str] | None = None
+        ) -> list[Any]:
+            if old_status is None:
+                return all_to_cancelled
+            return []
+
+        mock_repo.fetch_status_history.side_effect = fetch_history_side_effect
+        mock_repo.fetch_persons.return_value = {
+            101: _make_person(101),
+            102: _make_person(102),
+        }
+
+        result = await service.calculate_cancellations(year=2025)
+        s1 = next(s for s in result.by_session if s.session_cm_id == 1001)
+        assert s1.was_applied == 1
+        assert s1.was_enrolled == 0
+
+        s2 = next(s for s in result.by_session if s.session_cm_id == 1002)
+        assert s2.was_applied == 0
+        assert s2.was_enrolled == 1
+
+    @pytest.mark.asyncio
+    async def test_other_prior_status_groups_minor_statuses(self, service: Any, mock_repo: AsyncMock) -> None:
+        """inquiry, incomplete, none, left_early should be grouped as other_prior_status."""
+        sessions = {1001: _make_session(1001, "Session 1")}
+        mock_repo.fetch_sessions.return_value = sessions
+
+        cancelled = [
+            _make_attendee(101, 1001, "Session 1", "cancelled"),
+            _make_attendee(102, 1001, "Session 1", "cancelled"),
+            _make_attendee(103, 1001, "Session 1", "cancelled"),
+            _make_attendee(104, 1001, "Session 1", "cancelled"),
+        ]
+
+        async def fetch_attendees_side_effect(year: int, status_filter: Any = None) -> list[Any]:
+            if isinstance(status_filter, list) and "cancelled" in status_filter:
+                return cancelled
+            return []
+
+        mock_repo.fetch_attendees.side_effect = fetch_attendees_side_effect
+
+        all_to_cancelled = [
+            _make_history_record(101, 1001, "Session 1", "inquiry", "cancelled"),
+            _make_history_record(102, 1001, "Session 1", "incomplete", "cancelled"),
+            _make_history_record(103, 1001, "Session 1", "none", "cancelled"),
+            _make_history_record(104, 1001, "Session 1", "left_early", "cancelled"),
+        ]
+
+        async def fetch_history_side_effect(
+            year: int, old_status: str | None = None, new_statuses: list[str] | None = None
+        ) -> list[Any]:
+            if old_status is None:
+                return all_to_cancelled
+            return []
+
+        mock_repo.fetch_status_history.side_effect = fetch_history_side_effect
+        mock_repo.fetch_persons.return_value = {
+            101: _make_person(101),
+            102: _make_person(102),
+            103: _make_person(103),
+            104: _make_person(104),
+        }
+
+        result = await service.calculate_cancellations(year=2025)
+        assert result.other_prior_status == 4
+        assert result.was_enrolled == 0
+        assert result.was_waitlisted == 0
+        assert result.was_applied == 0
+
+        # Per-session too
+        s1 = result.by_session[0]
+        assert s1.other_prior_status == 4
+
+    @pytest.mark.asyncio
+    async def test_all_prior_statuses_together(self, service: Any, mock_repo: AsyncMock) -> None:
+        """All four prior status categories should work together in one response."""
+        sessions = {1001: _make_session(1001, "Session 1")}
+        mock_repo.fetch_sessions.return_value = sessions
+
+        cancelled = [
+            _make_attendee(101, 1001, "Session 1", "cancelled"),
+            _make_attendee(102, 1001, "Session 1", "cancelled"),
+            _make_attendee(103, 1001, "Session 1", "cancelled"),
+            _make_attendee(104, 1001, "Session 1", "cancelled"),
+            _make_attendee(105, 1001, "Session 1", "cancelled"),  # no history
+        ]
+
+        async def fetch_attendees_side_effect(year: int, status_filter: Any = None) -> list[Any]:
+            if isinstance(status_filter, list) and "cancelled" in status_filter:
+                return cancelled
+            return []
+
+        mock_repo.fetch_attendees.side_effect = fetch_attendees_side_effect
+
+        all_to_cancelled = [
+            _make_history_record(101, 1001, "Session 1", "enrolled", "cancelled"),
+            _make_history_record(102, 1001, "Session 1", "waitlisted", "cancelled"),
+            _make_history_record(103, 1001, "Session 1", "applied", "cancelled"),
+            _make_history_record(104, 1001, "Session 1", "inquiry", "cancelled"),
+            # person 105 has no status history (pre-launch cancellation)
+        ]
+
+        async def fetch_history_side_effect(
+            year: int, old_status: str | None = None, new_statuses: list[str] | None = None
+        ) -> list[Any]:
+            if old_status is None:
+                return all_to_cancelled
+            return []
+
+        mock_repo.fetch_status_history.side_effect = fetch_history_side_effect
+        mock_repo.fetch_persons.return_value = {
+            101: _make_person(101),
+            102: _make_person(102),
+            103: _make_person(103),
+            104: _make_person(104),
+            105: _make_person(105),
+        }
+
+        result = await service.calculate_cancellations(year=2025)
+        assert result.total_cancelled == 5
+        assert result.was_enrolled == 1
+        assert result.was_waitlisted == 1
+        assert result.was_applied == 1
+        assert result.other_prior_status == 1
+        # person 105 has no history - not counted in any prior status bucket
+
+        # Per-session breakdown
+        s1 = result.by_session[0]
+        assert s1.total_cancelled == 5
+        assert s1.was_enrolled == 1
+        assert s1.was_waitlisted == 1
+        assert s1.was_applied == 1
+        assert s1.other_prior_status == 1
+
+    @pytest.mark.asyncio
+    async def test_empty_data_includes_new_fields(self, service: Any, mock_repo: AsyncMock) -> None:
+        """Empty response should have was_applied=0 and other_prior_status=0."""
+        result = await service.calculate_cancellations(year=2025)
+        assert result.was_applied == 0
+        assert result.other_prior_status == 0
