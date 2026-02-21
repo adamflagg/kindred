@@ -65,6 +65,12 @@ WAITLIST_BREAKDOWNS = frozenset(
 )
 
 
+def _get_str_attr(obj: Any, attr: str) -> str | None:
+    """Get a string attribute, returning None for empty/non-string values."""
+    val = getattr(obj, attr, None)
+    return val if isinstance(val, str) and val else None
+
+
 class DrilldownService:
     """Business logic for drilldown - fully testable with mocked repository."""
 
@@ -640,6 +646,7 @@ class DrilldownService:
                     city=getattr(person, "normalized_city", None) or city,
                     state=state,
                     years_at_camp=years_at_camp,
+                    enrollment_date=_get_str_attr(a, "enrollment_date"),
                     session_name=session_name,
                     session_cm_id=session_cm_id,
                     status=getattr(a, "status", "enrolled"),
@@ -708,10 +715,23 @@ class DrilldownService:
 
         effective_types = session_types or list(SUMMER_SESSION_TYPES)
 
-        history, enrolled_attendees = await asyncio.gather(
+        all_relevant_statuses = list(DECLINED_STATUSES) + ["enrolled", "waitlisted"]
+
+        history, enrolled_attendees, all_attendees = await asyncio.gather(
             self.repo.fetch_status_history(year, old_status="waitlisted", new_statuses=new_statuses),
             self.repo.fetch_attendees(year, ["enrolled"]),
+            self.repo.fetch_attendees(year, all_relevant_statuses),
         )
+
+        # Build person_id -> earliest enrollment_date lookup
+        enrollment_date_lookup: dict[int, str] = {}
+        for att in all_attendees:
+            pid = getattr(att, "person_id", None)
+            edate = _get_str_attr(att, "enrollment_date")
+            if pid is not None and edate:
+                pid_int = int(pid)
+                if pid_int not in enrollment_date_lookup or edate < enrollment_date_lookup[pid_int]:
+                    enrollment_date_lookup[pid_int] = edate
 
         # Build enrolled groups for enrolled_sessions population
         enrolled_attendee_groups: dict[int, list[Any]] = {}
@@ -780,6 +800,7 @@ class DrilldownService:
                     city=getattr(person, "normalized_city", None) or city,
                     state=state,
                     years_at_camp=years_at_camp,
+                    enrollment_date=enrollment_date_lookup.get(pid),
                     session_name=session_name,
                     session_cm_id=session_cmid,
                     status=getattr(record, "new_status", "unknown"),

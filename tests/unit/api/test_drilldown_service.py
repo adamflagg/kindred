@@ -3838,9 +3838,7 @@ class TestEnrollmentDatePopulation:
 
         # Status history: Emma was waitlisted, then accepted (enrolled)
         history = [
-            create_mock_status_history(
-                101, session1, persons[101], old_status="waitlisted", new_status="enrolled"
-            ),
+            create_mock_status_history(101, session1, persons[101], old_status="waitlisted", new_status="enrolled"),
         ]
 
         # Attendee record with enrollment_date
@@ -3879,9 +3877,7 @@ class TestEnrollmentDatePopulation:
 
         # Status history: Liam was waitlisted, then cancelled
         history = [
-            create_mock_status_history(
-                102, session1, persons[102], old_status="waitlisted", new_status="cancelled"
-            ),
+            create_mock_status_history(102, session1, persons[102], old_status="waitlisted", new_status="cancelled"),
         ]
 
         # Attendee record with enrollment_date
@@ -3919,9 +3915,7 @@ class TestEnrollmentDatePopulation:
         session1 = sessions[1001]
 
         history = [
-            create_mock_status_history(
-                103, session1, persons[103], old_status="waitlisted", new_status="enrolled"
-            ),
+            create_mock_status_history(103, session1, persons[103], old_status="waitlisted", new_status="enrolled"),
         ]
 
         mock_repository.fetch_sessions.return_value = sessions
@@ -3958,9 +3952,7 @@ class TestEnrollmentDatePopulation:
         session2 = sessions[1002]
 
         history = [
-            create_mock_status_history(
-                101, session1, persons[101], old_status="waitlisted", new_status="enrolled"
-            ),
+            create_mock_status_history(101, session1, persons[101], old_status="waitlisted", new_status="enrolled"),
         ]
 
         # Two attendee records with different enrollment dates

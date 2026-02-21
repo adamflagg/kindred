@@ -634,6 +634,7 @@ class DrilldownAttendee(BaseModel):
     city: str | None = Field(None, description="City (parsed from address)")
     state: str | None = Field(None, description="State abbreviation (parsed from address)")
     years_at_camp: int | None = Field(None, description="Years at camp")
+    enrollment_date: str | None = Field(None, description="Enrollment date for waitlist ordering")
     session_name: str = Field(description="Session name")
     session_cm_id: int = Field(description="Session CampMinder ID")
     status: str = Field(description="Enrollment status")
