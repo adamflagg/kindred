@@ -78,6 +78,7 @@ type SortField =
   | 'years'
   | 'enrolled'
   | 'enrolled_current'
+  | 'registration'
 type SortDirection = 'asc' | 'desc'
 
 export function DrillDownModal({
@@ -88,12 +89,14 @@ export function DrillDownModal({
   statusFilter,
   onClose,
 }: DrillDownModalProps) {
-  const [searchTerm, setSearchTerm] = useState('')
-  const [sortField, setSortField] = useState<SortField>('name')
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
-
   const isWaitlistDrilldown =
     (filter?.type?.startsWith('waitlist_') || filter?.waitlistContext) ?? false
+
+  const [searchTerm, setSearchTerm] = useState('')
+  const [sortField, setSortField] = useState<SortField>(
+    isWaitlistDrilldown ? 'registration' : 'name'
+  )
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const isRetentionDrilldown = !!filter?.retentionContext
 
   const {
@@ -187,8 +190,18 @@ export function DrillDownModal({
           aVal = getEnrolledDisplay(a).toLowerCase()
           bVal = getEnrolledDisplay(b).toLowerCase()
           break
+        case 'registration':
+          aVal = a.enrollment_date ?? ''
+          bVal = b.enrollment_date ?? ''
+          break
       }
 
+      // Nulls/empty last for registration sort
+      if (sortField === 'registration') {
+        if (!aVal && bVal) return 1
+        if (aVal && !bVal) return -1
+      }
+      if (aVal == null || bVal == null) return 0
       if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1
       if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1
       return 0
@@ -218,6 +231,7 @@ export function DrillDownModal({
           'State',
           'Waitlisted For',
           'Enrolled In',
+          'Registered',
           'Years at Camp',
           'Status',
           'Returning',
@@ -266,6 +280,7 @@ export function DrillDownModal({
             a.state ?? '',
             getSessionDisplay(a),
             getEnrolledDisplay(a),
+            a.enrollment_date ? new Date(a.enrollment_date).toLocaleDateString() : '',
             a.years_at_camp ?? '',
             a.status,
             a.is_returning ? 'Yes' : 'No',
@@ -454,6 +469,16 @@ export function DrillDownModal({
                     </div>
                   </th>
                 )}
+                {isWaitlistDrilldown && (
+                  <th
+                    onClick={() => handleSort('registration')}
+                    className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
+                  >
+                    <div className="flex items-center gap-1">
+                      Registered <SortIcon field="registration" />
+                    </div>
+                  </th>
+                )}
                 {isRetentionDrilldown && (
                   <th
                     onClick={() => handleSort('enrolled_current')}
@@ -559,6 +584,13 @@ export function DrillDownModal({
                         title={getEnrolledDisplay(attendee)}
                       >
                         {getEnrolledDisplay(attendee)}
+                      </td>
+                    )}
+                    {isWaitlistDrilldown && (
+                      <td className="text-foreground px-4 py-3 whitespace-nowrap">
+                        {attendee.enrollment_date
+                          ? new Date(attendee.enrollment_date).toLocaleDateString()
+                          : '—'}
                       </td>
                     )}
                     {isRetentionDrilldown && (
