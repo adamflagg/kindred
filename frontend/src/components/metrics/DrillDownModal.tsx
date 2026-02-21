@@ -12,36 +12,8 @@ import { useState, useMemo, useEffect } from 'react'
 import { Link } from 'react-router'
 import { X, Download, Search, ArrowUpDown, ArrowUp, ArrowDown, Loader2 } from 'lucide-react'
 import { useDrilldownAttendees } from '../../hooks/useDrilldownAttendees'
+import { shortenSessionName } from '../../utils/sessionDisplay'
 import type { DrilldownAttendee, DrilldownFilter } from '../../types/metrics'
-
-/**
- * Shorten AG session names for compact display.
- * Detects AG sessions by "gender" keyword (present in all historical variants 2017-2026)
- * or "AG " prefix, extracts session identifier + grade range.
- *
- * Examples (recent format, 2022+):
- *   "All-Gender Cabin-Session 4 (4th - 6th grades)"       → "AG 4 (4-6)"
- *   "All-Gender Cabin-Session 2 (9th & 10th grades)"      → "AG 2 (9-10)"
- *   "All-Gender Cabin-Session 2 (7th - 9th grades)"       → "AG 2 (7-9)"
- * Older formats:
- *   "Session 4 (All-Gender Cabin)-6th & 7th grades"       → "AG 4 (6-7)"
- *   "Session B (All-Gender Cabins)"                       → "AG B"
- *   "Session 2" (non-AG)                                  → "Session 2" (unchanged)
- */
-function shortenSessionName(name: string): string {
-  const lower = name.toLowerCase()
-  if (!lower.includes('gender') && !/\bag[\s-]/i.test(name)) return name
-
-  // Extract session identifier (number or letter)
-  const sessionMatch = name.match(/session\s*(\w+)/i)
-  const sessionId = sessionMatch?.[1] ?? ''
-
-  // Extract grade range — "(4th - 6th grades)", "(9th & 10th grades)", etc.
-  const grades = name.match(/(\d+)\w*\s*[-–&]\s*(\d+)\w*\s*grades?\b/i)
-  const gradeRange = grades ? ` (${grades[1]}-${grades[2]})` : ''
-
-  return sessionId ? `AG ${sessionId}${gradeRange}` : `AG${gradeRange}`
-}
 
 /** Get display session name: comma-joined if multi-session, fallback to single session_name. */
 function getSessionDisplay(a: DrilldownAttendee): string {
