@@ -330,18 +330,12 @@ describe('sessionDisplay utilities', () => {
     })
 
     it('should shorten current-format AG names with grade ranges', () => {
-      expect(shortenSessionName('All-Gender Cabin-Session 2 (7th - 9th grades)')).toBe(
-        'AG 2 (7-9)'
-      )
-      expect(shortenSessionName('All-Gender Cabin-Session 4 (4th - 6th grades)')).toBe(
-        'AG 4 (4-6)'
-      )
+      expect(shortenSessionName('All-Gender Cabin-Session 2 (7th - 9th grades)')).toBe('AG 2 (7-9)')
+      expect(shortenSessionName('All-Gender Cabin-Session 4 (4th - 6th grades)')).toBe('AG 4 (4-6)')
     })
 
     it('should shorten older-format AG names with grade ranges', () => {
-      expect(shortenSessionName('Session 4 (All-Gender Cabin)-6th & 7th grades')).toBe(
-        'AG 4 (6-7)'
-      )
+      expect(shortenSessionName('Session 4 (All-Gender Cabin)-6th & 7th grades')).toBe('AG 4 (6-7)')
     })
 
     it('should shorten AG names without grade ranges', () => {
