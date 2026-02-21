@@ -23,6 +23,14 @@ vi.mock('../../../lib/pocketbase', () => ({
   pb: { authStore: { token: 'test-token' } },
 }))
 
+// Mock useApiWithAuth (useSessionAvailability uses fetchWithAuth which calls fetch internally)
+vi.mock('../../../hooks/useApiWithAuth', () => ({
+  useApiWithAuth: () => ({
+    fetchWithAuth: mockFetch,
+    isAuthenticated: true,
+  }),
+}))
+
 function createTestQueryClient() {
   return new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
