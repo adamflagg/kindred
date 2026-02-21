@@ -621,6 +621,10 @@ class CancellationSessionBreakdown(BaseModel):
     total_cancelled: int = Field(description="Total cancelled in this session")
     was_enrolled: int = Field(default=0, description="Cancelled after being enrolled")
     was_waitlisted: int = Field(default=0, description="Cancelled after being waitlisted")
+    was_applied: int = Field(default=0, description="Cancelled after applying")
+    other_prior_status: int = Field(
+        default=0, description="Cancelled from other prior status (inquiry, incomplete, etc.)"
+    )
     has_other_sessions: int = Field(default=0, description="Cancelled but enrolled in other session")
     no_other_sessions: int = Field(default=0, description="Cancelled with no remaining enrollment")
 
@@ -632,6 +636,10 @@ class CancellationMetricsResponse(BaseModel):
     total_cancelled: int = Field(description="Total cancelled (unique persons)")
     was_enrolled: int = Field(description="Cancelled after being enrolled")
     was_waitlisted: int = Field(description="Cancelled after being waitlisted")
+    was_applied: int = Field(default=0, description="Cancelled after applying")
+    other_prior_status: int = Field(
+        default=0, description="Cancelled from other prior status (inquiry, incomplete, etc.)"
+    )
     has_other_sessions: int = Field(description="Cancelled but enrolled in other session")
     no_other_sessions: int = Field(description="Cancelled with no remaining enrollment")
     total_re_enrolled: int = Field(default=0, description="Cancelled then later re-enrolled (recovery)")

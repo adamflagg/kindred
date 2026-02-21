@@ -321,22 +321,27 @@ class MetricsRepository:
     async def fetch_status_history(
         self,
         year: int,
-        old_status: str,
-        new_statuses: list[str],
+        old_status: str | None = None,
+        new_statuses: list[str] | None = None,
     ) -> list[Any]:
         """Fetch attendee status history records for transition analysis.
 
         Args:
             year: The year to fetch history for.
-            old_status: The previous status to filter on (e.g., 'waitlisted').
+            old_status: The previous status to filter on. None = all old statuses.
             new_statuses: List of new statuses to include (e.g., ['enrolled']).
 
         Returns:
             List of attendee_status_history records with session/person expansion.
         """
         try:
-            new_status_filter = " || ".join(f'new_status = "{s}"' for s in new_statuses)
-            filter_str = f'year = {year} && old_status = "{old_status}" && ({new_status_filter})'
+            filters = [f"year = {year}"]
+            if old_status is not None:
+                filters.append(f'old_status = "{old_status}"')
+            if new_statuses:
+                new_status_filter = " || ".join(f'new_status = "{s}"' for s in new_statuses)
+                filters.append(f"({new_status_filter})")
+            filter_str = " && ".join(filters)
 
             return await asyncio.to_thread(
                 self.pb.collection("attendee_status_history").get_full_list,

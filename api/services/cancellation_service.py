@@ -1,10 +1,10 @@
 """Cancellation service - business logic for cancellation analysis metrics.
 
 Analyzes cancelled/withdrawn/dismissed attendees to understand:
-- Whether they were enrolled or waitlisted before cancelling
+- Prior status before cancellation (enrolled, waitlisted, applied, other)
 - Whether they still attend camp in other sessions
 - Recovery rate (re-enrolled after cancellation)
-- Demographics breakdowns with was_enrolled/was_waitlisted splits
+- Demographics breakdowns with prior status splits
 """
 
 from __future__ import annotations
@@ -33,6 +33,12 @@ SUMMER_SESSION_TYPES = ("main", "embedded", "ag", "quest")
 
 # Statuses that indicate cancellation
 CANCELLED_STATUSES = ["cancelled", "withdrawn", "dismissed"]
+
+# Prior statuses grouped into categories
+_ENROLLED_STATUS = "enrolled"
+_WAITLISTED_STATUS = "waitlisted"
+_APPLIED_STATUS = "applied"
+# Everything else (inquiry, incomplete, none, left_early) → other_prior_status
 
 
 class CancellationService:
@@ -87,39 +93,37 @@ class CancellationService:
             if pid is not None:
                 enrolled_person_ids.add(int(pid))
 
-        # --- Fetch status history for was_enrolled / was_waitlisted ---
-        enrolled_to_cancelled = await self.repository.fetch_status_history(
-            year, old_status="enrolled", new_statuses=CANCELLED_STATUSES
-        )
-        waitlisted_to_cancelled = await self.repository.fetch_status_history(
-            year, old_status="waitlisted", new_statuses=CANCELLED_STATUSES
+        # --- Fetch ALL status transitions to cancelled in a single call ---
+        all_to_cancelled = await self.repository.fetch_status_history(
+            year, old_status=None, new_statuses=CANCELLED_STATUSES
         )
 
-        # Build per-person and per-session lookup for was_enrolled / was_waitlisted
-        was_enrolled_persons: set[int] = set()
-        was_waitlisted_persons: set[int] = set()
-        was_enrolled_by_session: dict[int, set[int]] = defaultdict(set)
-        was_waitlisted_by_session: dict[int, set[int]] = defaultdict(set)
+        # Build per-person and per-session lookups for all prior statuses
+        prior_status_persons: dict[str, set[int]] = {
+            "enrolled": set(),
+            "waitlisted": set(),
+            "applied": set(),
+            "other": set(),
+        }
+        prior_status_by_session: dict[str, dict[int, set[int]]] = {
+            "enrolled": defaultdict(set),
+            "waitlisted": defaultdict(set),
+            "applied": defaultdict(set),
+            "other": defaultdict(set),
+        }
 
-        for record in enrolled_to_cancelled:
+        for record in all_to_cancelled:
             pid = int(getattr(record, "person_id", 0))
             if not pid:
                 continue
+            old_status = getattr(record, "old_status", "") or ""
             session_info = get_session_from_expand(record)
             session_cmid = int(getattr(session_info, "cm_id", 0)) if session_info else 0
-            was_enrolled_persons.add(pid)
-            if session_cmid:
-                was_enrolled_by_session[session_cmid].add(pid)
 
-        for record in waitlisted_to_cancelled:
-            pid = int(getattr(record, "person_id", 0))
-            if not pid:
-                continue
-            session_info = get_session_from_expand(record)
-            session_cmid = int(getattr(session_info, "cm_id", 0)) if session_info else 0
-            was_waitlisted_persons.add(pid)
+            category = self._classify_prior_status(old_status)
+            prior_status_persons[category].add(pid)
             if session_cmid:
-                was_waitlisted_by_session[session_cmid].add(pid)
+                prior_status_by_session[category][session_cmid].add(pid)
 
         # --- Fetch re-enrolled (cancelled -> enrolled) ---
         re_enrolled_history = await self.repository.fetch_status_history(
@@ -132,15 +136,16 @@ class CancellationService:
                 re_enrolled_persons.add(pid)
 
         # --- Partition cancelled persons ---
-        cancelled_by_session: dict[int, dict[str, int]] = defaultdict(
-            lambda: {
-                "total_cancelled": 0,
-                "was_enrolled": 0,
-                "was_waitlisted": 0,
-                "has_other_sessions": 0,
-                "no_other_sessions": 0,
-            }
+        session_keys = (
+            "total_cancelled",
+            "was_enrolled",
+            "was_waitlisted",
+            "was_applied",
+            "other_prior_status",
+            "has_other_sessions",
+            "no_other_sessions",
         )
+        cancelled_by_session: dict[int, dict[str, int]] = defaultdict(lambda: {k: 0 for k in session_keys})
 
         seen_per_session: dict[int, set[int]] = defaultdict(set)
         seen_for_summary: set[int] = set()
@@ -158,10 +163,15 @@ class CancellationService:
                     seen_per_session[session_cmid].add(pid)
                     cancelled_by_session[session_cmid]["total_cancelled"] += 1
 
-                    if pid in was_enrolled_by_session.get(session_cmid, set()):
+                    # Classify prior status for this session
+                    if pid in prior_status_by_session["enrolled"].get(session_cmid, set()):
                         cancelled_by_session[session_cmid]["was_enrolled"] += 1
-                    elif pid in was_waitlisted_by_session.get(session_cmid, set()):
+                    elif pid in prior_status_by_session["waitlisted"].get(session_cmid, set()):
                         cancelled_by_session[session_cmid]["was_waitlisted"] += 1
+                    elif pid in prior_status_by_session["applied"].get(session_cmid, set()):
+                        cancelled_by_session[session_cmid]["was_applied"] += 1
+                    elif pid in prior_status_by_session["other"].get(session_cmid, set()):
+                        cancelled_by_session[session_cmid]["other_prior_status"] += 1
 
                     if pid in enrolled_person_ids:
                         cancelled_by_session[session_cmid]["has_other_sessions"] += 1
@@ -185,20 +195,8 @@ class CancellationService:
         for sid, counts in cancelled_by_session.items():
             target_sid = ag_parent_map.get(sid, sid)
             if target_sid not in merged_by_session:
-                merged_by_session[target_sid] = {
-                    "total_cancelled": 0,
-                    "was_enrolled": 0,
-                    "was_waitlisted": 0,
-                    "has_other_sessions": 0,
-                    "no_other_sessions": 0,
-                }
-            for key in (
-                "total_cancelled",
-                "was_enrolled",
-                "was_waitlisted",
-                "has_other_sessions",
-                "no_other_sessions",
-            ):
+                merged_by_session[target_sid] = {k: 0 for k in session_keys}
+            for key in session_keys:
                 merged_by_session[target_sid][key] += counts[key]
 
         # --- Build per-session breakdown ---
@@ -213,6 +211,8 @@ class CancellationService:
                         total_cancelled=counts["total_cancelled"],
                         was_enrolled=counts["was_enrolled"],
                         was_waitlisted=counts["was_waitlisted"],
+                        was_applied=counts["was_applied"],
+                        other_prior_status=counts["other_prior_status"],
                         has_other_sessions=counts["has_other_sessions"],
                         no_other_sessions=counts["no_other_sessions"],
                     )
@@ -220,19 +220,21 @@ class CancellationService:
 
         # --- Build demographics ---
         persons = await self.repository.fetch_persons(year)
-        by_grade, by_gender = self._compute_demographics(
-            seen_for_summary, persons, was_enrolled_persons, was_waitlisted_persons
-        )
+        by_grade, by_gender = self._compute_demographics(seen_for_summary, persons, prior_status_persons)
 
-        # Summary counts for was_enrolled/was_waitlisted (unique persons)
-        summary_was_enrolled = len(was_enrolled_persons & seen_for_summary)
-        summary_was_waitlisted = len(was_waitlisted_persons & seen_for_summary)
+        # Summary counts (unique persons intersected with cancelled persons)
+        summary_was_enrolled = len(prior_status_persons["enrolled"] & seen_for_summary)
+        summary_was_waitlisted = len(prior_status_persons["waitlisted"] & seen_for_summary)
+        summary_was_applied = len(prior_status_persons["applied"] & seen_for_summary)
+        summary_other_prior = len(prior_status_persons["other"] & seen_for_summary)
 
         return CancellationMetricsResponse(
             year=year,
             total_cancelled=len(seen_for_summary),
             was_enrolled=summary_was_enrolled,
             was_waitlisted=summary_was_waitlisted,
+            was_applied=summary_was_applied,
+            other_prior_status=summary_other_prior,
             has_other_sessions=summary_has_other,
             no_other_sessions=summary_no_other,
             total_re_enrolled=len(re_enrolled_persons),
@@ -240,6 +242,17 @@ class CancellationService:
             by_grade=by_grade,
             by_gender=by_gender,
         )
+
+    @staticmethod
+    def _classify_prior_status(old_status: str) -> str:
+        """Classify an old_status into one of the four prior status categories."""
+        if old_status == _ENROLLED_STATUS:
+            return "enrolled"
+        if old_status == _WAITLISTED_STATUS:
+            return "waitlisted"
+        if old_status == _APPLIED_STATUS:
+            return "applied"
+        return "other"
 
     def _filter_to_sessions(
         self,
@@ -260,8 +273,7 @@ class CancellationService:
         self,
         person_ids: set[int],
         persons: dict[int, Any],
-        was_enrolled_persons: set[int],
-        was_waitlisted_persons: set[int],
+        prior_status_persons: dict[str, set[int]],
     ) -> tuple[list[GradeBreakdown], list[GenderBreakdown]]:
         """Compute grade and gender breakdowns with was_enrolled/was_waitlisted splits."""
         total = len(person_ids)
@@ -271,6 +283,9 @@ class CancellationService:
         # Build per-category enrollment splits
         grade_split: dict[int | None, tuple[int, int]] = {}
         gender_split: dict[str, tuple[int, int]] = {}
+
+        was_enrolled_persons = prior_status_persons["enrolled"]
+        was_waitlisted_persons = prior_status_persons["waitlisted"]
 
         for pid in person_ids:
             person = persons.get(pid)

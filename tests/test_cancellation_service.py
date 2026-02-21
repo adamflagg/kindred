@@ -170,22 +170,19 @@ class TestCancellationCounts:
 
         mock_repo.fetch_attendees.side_effect = fetch_attendees_side_effect
 
-        # Status history: person 101 was enrolled before cancelling,
-        # person 102 was waitlisted, person 103 was enrolled
-        history_enrolled_to_cancelled = [
+        # Status history: all transitions to cancelled in single call
+        all_to_cancelled = [
             _make_history_record(101, 1001, "Session 1", "enrolled", "cancelled"),
             _make_history_record(103, 1002, "Session 2", "enrolled", "dismissed"),
-        ]
-        history_waitlisted_to_cancelled = [
             _make_history_record(102, 1001, "Session 1", "waitlisted", "withdrawn"),
         ]
 
-        async def fetch_history_side_effect(year: int, old_status: str, new_statuses: list[str]) -> list[Any]:
-            if old_status == "enrolled":
-                return history_enrolled_to_cancelled
-            if old_status == "waitlisted":
-                return history_waitlisted_to_cancelled
-            if old_status == "cancelled" and "enrolled" in new_statuses:
+        async def fetch_history_side_effect(
+            year: int, old_status: str | None = None, new_statuses: list[str] | None = None
+        ) -> list[Any]:
+            if old_status is None:
+                return all_to_cancelled
+            if old_status == "cancelled" and new_statuses and "enrolled" in new_statuses:
                 return []  # no re-enrollments
             return []
 
@@ -255,8 +252,10 @@ class TestReEnrolled:
             _make_history_record(202, 1001, "Session 1", "cancelled", "enrolled"),
         ]
 
-        async def fetch_history_side_effect(year: int, old_status: str, new_statuses: list[str]) -> list[Any]:
-            if old_status == "cancelled" and "enrolled" in new_statuses:
+        async def fetch_history_side_effect(
+            year: int, old_status: str | None = None, new_statuses: list[str] | None = None
+        ) -> list[Any]:
+            if old_status == "cancelled" and new_statuses and "enrolled" in new_statuses:
                 return re_enrolled_history
             return []
 
@@ -279,8 +278,10 @@ class TestReEnrolled:
             _make_history_record(201, 1001, "Session 1", "cancelled", "enrolled"),
         ]
 
-        async def fetch_history_side_effect(year: int, old_status: str, new_statuses: list[str]) -> list[Any]:
-            if old_status == "cancelled" and "enrolled" in new_statuses:
+        async def fetch_history_side_effect(
+            year: int, old_status: str | None = None, new_statuses: list[str] | None = None
+        ) -> list[Any]:
+            if old_status == "cancelled" and new_statuses and "enrolled" in new_statuses:
                 return re_enrolled_history
             return []
 
@@ -324,11 +325,16 @@ class TestSessionBreakdown:
         mock_repo.fetch_attendees.side_effect = fetch_attendees_side_effect
 
         # Person 101: enrolled -> cancelled, Person 102: waitlisted -> cancelled
-        async def fetch_history_side_effect(year: int, old_status: str, new_statuses: list[str]) -> list[Any]:
-            if old_status == "enrolled":
-                return [_make_history_record(101, 1001, "Session 1", "enrolled", "cancelled")]
-            if old_status == "waitlisted":
-                return [_make_history_record(102, 1001, "Session 1", "waitlisted", "cancelled")]
+        all_to_cancelled = [
+            _make_history_record(101, 1001, "Session 1", "enrolled", "cancelled"),
+            _make_history_record(102, 1001, "Session 1", "waitlisted", "cancelled"),
+        ]
+
+        async def fetch_history_side_effect(
+            year: int, old_status: str | None = None, new_statuses: list[str] | None = None
+        ) -> list[Any]:
+            if old_status is None:
+                return all_to_cancelled
             return []
 
         mock_repo.fetch_status_history.side_effect = fetch_history_side_effect
@@ -464,16 +470,17 @@ class TestDemographics:
         mock_repo.fetch_attendees.side_effect = fetch_attendees_side_effect
 
         # 101,103 were enrolled before cancelling, 102 was waitlisted
-        async def fetch_history_side_effect(year: int, old_status: str, new_statuses: list[str]) -> list[Any]:
-            if old_status == "enrolled":
-                return [
-                    _make_history_record(101, 1001, "Session 1", "enrolled", "cancelled"),
-                    _make_history_record(103, 1001, "Session 1", "enrolled", "cancelled"),
-                ]
-            if old_status == "waitlisted":
-                return [
-                    _make_history_record(102, 1001, "Session 1", "waitlisted", "cancelled"),
-                ]
+        all_to_cancelled = [
+            _make_history_record(101, 1001, "Session 1", "enrolled", "cancelled"),
+            _make_history_record(103, 1001, "Session 1", "enrolled", "cancelled"),
+            _make_history_record(102, 1001, "Session 1", "waitlisted", "cancelled"),
+        ]
+
+        async def fetch_history_side_effect(
+            year: int, old_status: str | None = None, new_statuses: list[str] | None = None
+        ) -> list[Any]:
+            if old_status is None:
+                return all_to_cancelled
             return []
 
         mock_repo.fetch_status_history.side_effect = fetch_history_side_effect
