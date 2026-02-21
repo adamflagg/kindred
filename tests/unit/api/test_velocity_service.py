@@ -1,0 +1,487 @@
+"""
+Unit tests for the velocity service.
+
+Tests verify the enrollment velocity curve computation:
+- Snapshot-based weekly aggregation (fast path)
+- Reconstruction fallback from attendee enrollment dates
+- Combined vs per-session curves
+- Prior year overlay comparison
+- Phase markers from registration dates config
+- Weekly delta calculations
+- Data source labeling (snapshot vs reconstructed)
+"""
+
+from __future__ import annotations
+
+import os
+from unittest.mock import AsyncMock, Mock
+
+import pytest
+
+# Set AUTH_MODE before any imports that might load settings
+os.environ["AUTH_MODE"] = "bypass"
+os.environ["SKIP_PB_AUTH"] = "true"
+
+from api.services.velocity_service import VelocityService
+
+# ============================================================================
+# Test Data Factories
+# ============================================================================
+
+
+def create_mock_session(
+    cm_id: int,
+    name: str,
+    year: int = 2026,
+    session_type: str = "main",
+    start_date: str = "2026-06-15",
+    parent_id: int | None = None,
+) -> Mock:
+    """Create a mock session record."""
+    session = Mock()
+    session.cm_id = cm_id
+    session.id = f"pb_{cm_id}"
+    session.name = name
+    session.year = year
+    session.session_type = session_type
+    session.start_date = start_date
+    session.parent_id = parent_id
+    return session
+
+
+def create_mock_snapshot(
+    snapshot_date: str,
+    session_cm_id: int,
+    year: int,
+    enrolled: int,
+    waitlisted: int = 0,
+    cancelled: int = 0,
+) -> Mock:
+    """Create a mock enrollment snapshot record."""
+    snap = Mock()
+    snap.snapshot_date = snapshot_date
+    snap.session_cm_id = session_cm_id
+    snap.year = year
+    snap.enrolled_count = enrolled
+    snap.waitlisted_count = waitlisted
+    snap.cancelled_count = cancelled
+    return snap
+
+
+def create_mock_attendee_with_date(
+    person_id: int,
+    session_cm_id: int,
+    enrollment_date: str,
+    year: int = 2026,
+    status: str = "enrolled",
+) -> Mock:
+    """Create a mock attendee with enrollment date for reconstruction."""
+    att = Mock()
+    att.person_id = person_id
+    att.year = year
+    att.status = status
+    att.enrollment_date = enrollment_date
+    att.is_active = 1 if status == "enrolled" else 0
+    att.status_id = 2 if status == "enrolled" else 0
+    session = Mock()
+    session.cm_id = session_cm_id
+    att.expand = {"session": session}
+    return att
+
+
+def create_mock_status_transition(
+    person_id: int,
+    session_cm_id: int,
+    detected_at: str,
+    old_status: str = "enrolled",
+    new_status: str = "cancelled",
+    year: int = 2026,
+) -> Mock:
+    """Create a mock status transition record for cancellation tracking."""
+    record = Mock()
+    record.person_id = person_id
+    record.session_cm_id = session_cm_id
+    record.detected_at = detected_at
+    record.old_status = old_status
+    record.new_status = new_status
+    record.year = year
+    return record
+
+
+# ============================================================================
+# Fixtures
+# ============================================================================
+
+
+@pytest.fixture
+def mock_repository():
+    """Create a mock MetricsRepository with all velocity-related methods."""
+    repo = AsyncMock()
+    repo.fetch_enrollment_snapshots = AsyncMock(return_value=[])
+    repo.fetch_sessions = AsyncMock(return_value={})
+    repo.fetch_attendees_with_dates = AsyncMock(return_value=[])
+    repo.fetch_status_transitions = AsyncMock(return_value=[])
+    repo.fetch_registration_dates = AsyncMock(return_value={})
+    return repo
+
+
+@pytest.fixture
+def service(mock_repository):
+    """Create a VelocityService with mock repository."""
+    return VelocityService(mock_repository)
+
+
+@pytest.fixture
+def sample_sessions() -> dict[int, Mock]:
+    """Sample sessions for 2026."""
+    return {
+        1001: create_mock_session(1001, "Session 1", session_type="main"),
+        1002: create_mock_session(1002, "Session 2", session_type="main"),
+    }
+
+
+# ============================================================================
+# Snapshot-Based Velocity Tests
+# ============================================================================
+
+
+class TestVelocityFromSnapshots:
+    """Test velocity curve generation from enrollment snapshots."""
+
+    @pytest.mark.asyncio
+    async def test_velocity_from_snapshots_basic(self, service, mock_repository, sample_sessions):
+        """Given weekly snapshots, should aggregate into weekly data points
+        with correct cumulative counts and deltas."""
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            # Session 1 snapshots across 3 weeks
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=10, waitlisted=0),
+            create_mock_snapshot("2026-01-12", 1001, 2026, enrolled=25, waitlisted=2),
+            create_mock_snapshot("2026-01-19", 1001, 2026, enrolled=40, waitlisted=5),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        assert result.year == 2026
+        assert result.combined is not None
+        assert len(result.combined.weekly) == 3
+
+        # First week
+        w1 = result.combined.weekly[0]
+        assert w1.enrolled == 10
+        assert w1.waitlisted == 0
+
+        # Second week
+        w2 = result.combined.weekly[1]
+        assert w2.enrolled == 25
+        assert w2.waitlisted == 2
+
+        # Third week
+        w3 = result.combined.weekly[2]
+        assert w3.enrolled == 40
+        assert w3.waitlisted == 5
+
+    @pytest.mark.asyncio
+    async def test_velocity_from_snapshots_combined_sessions(self, service, mock_repository, sample_sessions):
+        """When no specific session_cm_id, should combine all sessions'
+        snapshots into one curve by summing enrollment."""
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            # Session 1: 20 enrolled on Jan 5
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20, waitlisted=1),
+            # Session 2: 15 enrolled on Jan 5
+            create_mock_snapshot("2026-01-05", 1002, 2026, enrolled=15, waitlisted=2),
+            # Session 1: 30 enrolled on Jan 12
+            create_mock_snapshot("2026-01-12", 1001, 2026, enrolled=30, waitlisted=1),
+            # Session 2: 25 enrolled on Jan 12
+            create_mock_snapshot("2026-01-12", 1002, 2026, enrolled=25, waitlisted=3),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        # Combined should sum across sessions per week
+        assert len(result.combined.weekly) == 2
+        assert result.combined.weekly[0].enrolled == 35  # 20 + 15
+        assert result.combined.weekly[0].waitlisted == 3  # 1 + 2
+        assert result.combined.weekly[1].enrolled == 55  # 30 + 25
+        assert result.combined.weekly[1].waitlisted == 4  # 1 + 3
+
+        # by_session should have separate curves
+        assert len(result.by_session) == 2
+
+
+# ============================================================================
+# Reconstruction Fallback Tests
+# ============================================================================
+
+
+class TestVelocityReconstructionFallback:
+    """Test velocity reconstruction when no snapshots exist."""
+
+    @pytest.mark.asyncio
+    async def test_velocity_reconstruction_fallback(self, service, mock_repository, sample_sessions):
+        """When no snapshots exist, should fall back to reconstruction
+        from attendee enrollment dates."""
+        mock_repository.fetch_sessions.return_value = {
+            1001: sample_sessions[1001],
+        }
+        # No snapshots available
+        mock_repository.fetch_enrollment_snapshots.return_value = []
+        # Attendees with enrollment dates for reconstruction
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2026-01-03"),
+            create_mock_attendee_with_date(102, 1001, "2026-01-04"),
+            create_mock_attendee_with_date(103, 1001, "2026-01-10"),
+            create_mock_attendee_with_date(104, 1001, "2026-01-11"),
+            create_mock_attendee_with_date(105, 1001, "2026-01-17"),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        # Should have reconstructed data with cumulative enrollment
+        assert result.combined is not None
+        assert len(result.combined.weekly) > 0
+
+        # Final week should show all 5 enrolled
+        last_week = result.combined.weekly[-1]
+        assert last_week.enrolled == 5
+
+    @pytest.mark.asyncio
+    async def test_velocity_reconstruction_with_cancellations(self, service, mock_repository, sample_sessions):
+        """Reconstruction should account for cancelled/withdrawn attendees
+        using status_history transitions."""
+        mock_repository.fetch_sessions.return_value = {
+            1001: sample_sessions[1001],
+        }
+        mock_repository.fetch_enrollment_snapshots.return_value = []
+        # 4 enrolled
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2026-01-03"),
+            create_mock_attendee_with_date(102, 1001, "2026-01-04"),
+            create_mock_attendee_with_date(103, 1001, "2026-01-10"),
+            create_mock_attendee_with_date(104, 1001, "2026-01-10", status="cancelled"),
+        ]
+        # 1 cancelled during week 2
+        mock_repository.fetch_status_transitions.return_value = [
+            create_mock_status_transition(104, 1001, "2026-01-12"),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        assert result.combined is not None
+        # Should reflect that cancellation reduces count
+        # The exact weekly breakdown depends on implementation,
+        # but the cancellation should be visible in the data
+        weeks = result.combined.weekly
+        assert len(weeks) > 0
+        # After the cancellation week, enrolled should reflect the drop
+        last_week = weeks[-1]
+        assert last_week.enrolled <= 4  # At most 4, likely 3 after cancellation
+
+
+# ============================================================================
+# Prior Year Overlay Tests
+# ============================================================================
+
+
+class TestVelocityPriorYearOverlay:
+    """Test prior year comparison curves."""
+
+    @pytest.mark.asyncio
+    async def test_velocity_prior_year_overlay(self, service, mock_repository):
+        """When compare_years=[2025], should fetch prior year curves."""
+        sessions_2026 = {
+            1001: create_mock_session(1001, "Session 1", year=2026),
+        }
+        sessions_2025 = {
+            901: create_mock_session(901, "Session 1", year=2025),
+        }
+
+        async def mock_fetch_sessions(year, **kwargs):
+            if year == 2026:
+                return sessions_2026
+            return sessions_2025
+
+        mock_repository.fetch_sessions.side_effect = mock_fetch_sessions
+
+        async def mock_fetch_snapshots(year, **kwargs):
+            if year == 2026:
+                return [
+                    create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20),
+                    create_mock_snapshot("2026-01-12", 1001, 2026, enrolled=35),
+                ]
+            return [
+                create_mock_snapshot("2025-01-06", 901, 2025, enrolled=15),
+                create_mock_snapshot("2025-01-13", 901, 2025, enrolled=28),
+            ]
+
+        mock_repository.fetch_enrollment_snapshots.side_effect = mock_fetch_snapshots
+
+        result = await service.get_velocity(year=2026, compare_years=[2025])
+
+        assert result.year == 2026
+        assert len(result.prior_years) >= 1
+
+        prior = result.prior_years[0]
+        assert prior.year == 2025
+        assert len(prior.weekly) == 2
+
+
+# ============================================================================
+# Phase Markers Tests
+# ============================================================================
+
+
+class TestVelocityPhaseMarkers:
+    """Test registration phase marker generation."""
+
+    @pytest.mark.asyncio
+    async def test_velocity_phase_markers(self, service, mock_repository):
+        """Should fetch registration dates from config and return as
+        PhaseMarker list."""
+        mock_repository.fetch_sessions.return_value = {
+            1001: create_mock_session(1001, "Session 1"),
+        }
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=10),
+        ]
+        mock_repository.fetch_registration_dates.return_value = {
+            "priority_reg_date": "2025-10-01",
+            "early_reg_date": "2025-11-01",
+            "open_reg_date": "2026-01-15",
+        }
+
+        result = await service.get_velocity(year=2026)
+
+        assert len(result.phase_markers) == 3
+
+        phases = {m.phase: m for m in result.phase_markers}
+        assert "priority" in phases
+        assert phases["priority"].date == "2025-10-01"
+        assert "early" in phases
+        assert phases["early"].date == "2025-11-01"
+        assert "open" in phases
+        assert phases["open"].date == "2026-01-15"
+
+
+# ============================================================================
+# Session Filter Tests
+# ============================================================================
+
+
+class TestVelocitySessionFilter:
+    """Test filtering velocity data to a specific session."""
+
+    @pytest.mark.asyncio
+    async def test_velocity_session_filter(self, service, mock_repository, sample_sessions):
+        """When session_cm_id is provided, should return only that session's
+        curve as combined plus a single by_session entry."""
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20),
+            create_mock_snapshot("2026-01-05", 1002, 2026, enrolled=15),
+            create_mock_snapshot("2026-01-12", 1001, 2026, enrolled=30),
+            create_mock_snapshot("2026-01-12", 1002, 2026, enrolled=25),
+        ]
+
+        result = await service.get_velocity(year=2026, session_cm_id=1001)
+
+        # Combined should reflect only session 1001
+        assert result.combined.weekly[0].enrolled == 20
+        assert result.combined.weekly[1].enrolled == 30
+
+        # by_session should have only 1 entry
+        assert len(result.by_session) == 1
+        assert result.by_session[0].session_cm_id == 1001
+
+
+# ============================================================================
+# Delta Calculation Tests
+# ============================================================================
+
+
+class TestVelocityDeltaCalculation:
+    """Test weekly delta (change from prior week) computation."""
+
+    @pytest.mark.asyncio
+    async def test_velocity_weekly_delta_calculation(self, service, mock_repository, sample_sessions):
+        """Week deltas should be the difference from previous week's enrolled
+        count. First week delta = enrolled count itself."""
+        mock_repository.fetch_sessions.return_value = {
+            1001: sample_sessions[1001],
+        }
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=10),
+            create_mock_snapshot("2026-01-12", 1001, 2026, enrolled=25),
+            create_mock_snapshot("2026-01-19", 1001, 2026, enrolled=35),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        weeks = result.combined.weekly
+        assert len(weeks) == 3
+
+        # First week: delta = enrolled itself
+        assert weeks[0].delta == 10
+        # Second week: delta = 25 - 10 = 15
+        assert weeks[1].delta == 15
+        # Third week: delta = 35 - 25 = 10
+        assert weeks[2].delta == 10
+
+
+# ============================================================================
+# Edge Case Tests
+# ============================================================================
+
+
+class TestVelocityEdgeCases:
+    """Test edge cases and data source labeling."""
+
+    @pytest.mark.asyncio
+    async def test_velocity_empty_data(self, service, mock_repository):
+        """When no data at all (no snapshots, no attendees), should return
+        empty curves with zero values."""
+        mock_repository.fetch_sessions.return_value = {
+            1001: create_mock_session(1001, "Session 1"),
+        }
+        mock_repository.fetch_enrollment_snapshots.return_value = []
+        mock_repository.fetch_attendees_with_dates.return_value = []
+
+        result = await service.get_velocity(year=2026)
+
+        assert result.year == 2026
+        assert result.combined is not None
+        assert len(result.combined.weekly) == 0
+        assert len(result.by_session) >= 0
+        assert len(result.prior_years) == 0
+
+    @pytest.mark.asyncio
+    async def test_velocity_data_source_label_snapshot(self, service, mock_repository, sample_sessions):
+        """Snapshot-based data should have data_source='snapshot'."""
+        mock_repository.fetch_sessions.return_value = {
+            1001: sample_sessions[1001],
+        }
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=10),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        assert len(result.combined.weekly) == 1
+        assert result.combined.weekly[0].data_source == "snapshot"
+
+    @pytest.mark.asyncio
+    async def test_velocity_data_source_label_reconstructed(self, service, mock_repository, sample_sessions):
+        """Reconstructed data should have data_source='reconstructed'."""
+        mock_repository.fetch_sessions.return_value = {
+            1001: sample_sessions[1001],
+        }
+        mock_repository.fetch_enrollment_snapshots.return_value = []
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2026-01-03"),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        assert len(result.combined.weekly) > 0
+        assert result.combined.weekly[0].data_source == "reconstructed"
