@@ -232,15 +232,13 @@ class TestCapacityCalculation:
         mock_repository.fetch_capacity_config.return_value = 12
         mock_repository.fetch_attendees_with_persons.return_value = []
 
-        # Config specifies capacity override
+        # Config specifies capacity override with unified grade range
         config_records = [
             create_mock_config(
                 "1001",
                 {
-                    "girls_min_grade": 2,
-                    "girls_max_grade": 10,
-                    "boys_min_grade": 2,
-                    "boys_max_grade": 10,
+                    "min_grade": 2,
+                    "max_grade": 10,
                     "capacity_override": 30,
                 },
             ),
@@ -342,7 +340,7 @@ class TestGradeEligibility:
 
     @pytest.mark.asyncio
     async def test_grade_range_from_config(self, service, mock_repository, sample_sessions):
-        """Grade ranges should come from session_availability config."""
+        """Grade ranges should come from unified min_grade/max_grade config."""
         mock_repository.fetch_sessions.return_value = {
             1001: sample_sessions[1001],
         }
@@ -354,10 +352,8 @@ class TestGradeEligibility:
             create_mock_config(
                 "1001",
                 {
-                    "girls_min_grade": 3,
-                    "girls_max_grade": 8,
-                    "boys_min_grade": 2,
-                    "boys_max_grade": 10,
+                    "min_grade": 3,
+                    "max_grade": 8,
                     "capacity_override": None,
                 },
             ),
@@ -367,10 +363,11 @@ class TestGradeEligibility:
         result = await service.calculate_availability(year=2026)
 
         session1 = next(s for s in result.sessions if s.session_cm_id == 1001)
+        # Both genders get the same unified grade range
         assert session1.girls.min_grade == 3
         assert session1.girls.max_grade == 8
-        assert session1.boys.min_grade == 2
-        assert session1.boys.max_grade == 10
+        assert session1.boys.min_grade == 3
+        assert session1.boys.max_grade == 8
 
     @pytest.mark.asyncio
     async def test_no_config_returns_none_grades(self, service, mock_repository, sample_sessions):
