@@ -139,11 +139,12 @@ export default function ForecastPage() {
     [data, dateLookup, typeLookup]
   )
 
-  // Split into camp (main + embedded + ag) and quest tables
-  const campSessions = useMemo(
-    () => allSessions.filter((s) => s.session_type !== 'quest'),
-    [allSessions]
-  )
+  // Split into camp table: main/embedded first (by date), then AG at bottom (by date)
+  const campSessions = useMemo(() => {
+    const mainEmbedded = allSessions.filter((s) => s.session_type === 'main' || s.session_type === 'embedded')
+    const ag = allSessions.filter((s) => s.session_type === 'ag')
+    return [...mainEmbedded, ...ag]
+  }, [allSessions])
   const questSessions = useMemo(
     () => allSessions.filter((s) => s.session_type === 'quest'),
     [allSessions]
