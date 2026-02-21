@@ -300,14 +300,14 @@ class TestForecastWithBudgetConfig:
 # ============================================================================
 
 
-class TestForecastAGMerging:
-    """Test that AG session attendees merge into parent main session."""
+class TestForecastAGSeparateRows:
+    """Test that AG sessions appear as separate rows with own counts."""
 
     @pytest.mark.asyncio
-    async def test_forecast_ag_merged_into_parent(self, service, mock_repository):
-        """AG session attendees counted under the parent main session.
+    async def test_forecast_ag_as_separate_row(self, service, mock_repository):
+        """AG session appears as its own row, not merged into parent.
 
-        AG should not appear as a separate row in sessions.
+        Each session counts only its own attendees.
         """
         sessions = {
             1001: create_mock_session(1001, "Session 1", session_type="main"),
@@ -333,14 +333,19 @@ class TestForecastAGMerging:
 
         result = await service.calculate_forecast(year=2026)
 
-        # AG should NOT appear as separate session
+        # AG SHOULD appear as separate session
         session_types = {s.session_type for s in result.sessions}
-        assert "ag" not in session_types
+        assert "ag" in session_types
 
-        # All 4 attendees (2 main + 2 AG) counted under Session 1
+        # Main session counts only its own 2 attendees
         s1 = next(s for s in result.sessions if s.session_cm_id == 1001)
-        assert s1.enrolled == 4
+        assert s1.enrolled == 2
 
+        # AG session counts its own 2 attendees
+        ag = next(s for s in result.sessions if s.session_cm_id == 2001)
+        assert ag.enrolled == 2
+
+        # Grand total is still 4
         assert result.grand_total.enrolled == 4
 
 
@@ -576,7 +581,7 @@ class TestForecastSessionFilter:
 
     @pytest.mark.asyncio
     async def test_forecast_session_filter(self, service, mock_repository):
-        """When session_cm_id provided, return only that session plus AG children."""
+        """When session_cm_id provided, return that session plus AG children as separate rows."""
         sessions = {
             1001: create_mock_session(1001, "Session 1", session_type="main"),
             1002: create_mock_session(1002, "Session 2", session_type="main"),
@@ -601,13 +606,16 @@ class TestForecastSessionFilter:
 
         result = await service.calculate_forecast(year=2026, session_cm_id=1001)
 
-        # Only session 1001 should be returned (AG merged in)
-        assert len(result.sessions) == 1
-        s1 = result.sessions[0]
-        assert s1.session_cm_id == 1001
-        assert s1.enrolled == 13  # 10 main + 3 AG
+        # Session 1001 and its AG child both returned as separate rows
+        assert len(result.sessions) == 2
 
-        # Grand total matches the single session
+        s1 = next(s for s in result.sessions if s.session_cm_id == 1001)
+        assert s1.enrolled == 10  # Only main attendees
+
+        ag = next(s for s in result.sessions if s.session_cm_id == 2001)
+        assert ag.enrolled == 3  # Only AG attendees
+
+        # Grand total includes both
         assert result.grand_total.enrolled == 13
 
 
