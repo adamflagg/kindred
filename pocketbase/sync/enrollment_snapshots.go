@@ -80,7 +80,8 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 	snapshotDateStr := snapshotDate.Format("2006-01-02 15:04:05.000Z")
 
 	// Fetch all sessions for the year
-	sessionFilter := fmt.Sprintf("year = %d && (session_type = 'main' || session_type = 'embedded' || session_type = 'ag')", year)
+	sessionFilter := fmt.Sprintf(
+		"year = %d && (session_type = 'main' || session_type = 'embedded' || session_type = 'ag')", year)
 	sessions, err := s.App.FindRecordsByFilter("camp_sessions", sessionFilter, "", 0, 0)
 	if err != nil {
 		return fmt.Errorf("loading sessions: %w", err)
@@ -135,22 +136,22 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 		}
 		waitlistedCount := len(waitlistedRecords)
 
-		// Count cancelled
-		cancelledFilter := fmt.Sprintf("year = %d && session = '%s' && status = 'cancelled'", year, sessionPBID)
-		cancelledRecords, err := s.App.FindRecordsByFilter("attendees", cancelledFilter, "", 0, 0)
+		// Count canceled
+		canceledFilter := fmt.Sprintf("year = %d && session = '%s' && status = 'canceled'", year, sessionPBID)
+		canceledRecords, err := s.App.FindRecordsByFilter("attendees", canceledFilter, "", 0, 0)
 		if err != nil {
-			slog.Error("Error counting cancelled attendees", "session", sessionCMID, "error", err)
+			slog.Error("Error counting canceled attendees", "session", sessionCMID, "error", err)
 			s.Stats.Errors++
 			continue
 		}
-		cancelledCount := len(cancelledRecords)
+		canceledCount := len(canceledRecords)
 
 		if s.Debug {
 			slog.Info("Enrollment counts",
 				"session_cm_id", sessionCMID,
 				"enrolled", enrolledCount,
 				"waitlisted", waitlistedCount,
-				"cancelled", cancelledCount,
+				"canceled", canceledCount,
 			)
 		}
 
@@ -170,7 +171,7 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 			// Update existing record
 			existing.Set("enrolled_count", enrolledCount)
 			existing.Set("waitlisted_count", waitlistedCount)
-			existing.Set("cancelled_count", cancelledCount)
+			existing.Set("canceled_count", canceledCount)
 			existing.Set("session", sessionPBID)
 
 			if err := s.App.Save(existing); err != nil {
@@ -191,7 +192,7 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 			record.Set("session", sessionPBID)
 			record.Set("enrolled_count", enrolledCount)
 			record.Set("waitlisted_count", waitlistedCount)
-			record.Set("cancelled_count", cancelledCount)
+			record.Set("canceled_count", canceledCount)
 
 			if err := s.App.Save(record); err != nil {
 				slog.Error("Error creating enrollment snapshot",
