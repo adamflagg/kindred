@@ -350,6 +350,9 @@ export default function CancellationAnalysis() {
                           Other
                         </th>
                         <th className="px-4 py-2 text-right font-medium">
+                          Unknown
+                        </th>
+                        <th className="border-border border-l px-4 py-2 text-right font-medium">
                           <span className="inline-flex items-center gap-1">
                             <Users className="h-3 w-3 text-emerald-500" />
                             Has Other
@@ -409,7 +412,10 @@ export default function CancellationAnalysis() {
                           <td className="text-muted-foreground px-4 py-2 text-right">
                             {session.other_prior_status}
                           </td>
-                          <td className="px-4 py-2 text-right text-emerald-600 dark:text-emerald-400">
+                          <td className="text-muted-foreground px-4 py-2 text-right">
+                            {session.total_cancelled - session.was_enrolled - session.was_waitlisted - session.was_applied - session.other_prior_status}
+                          </td>
+                          <td className="border-border border-l px-4 py-2 text-right text-emerald-600 dark:text-emerald-400">
                             {session.has_other_sessions}
                           </td>
                           <td className="px-4 py-2 text-right">
