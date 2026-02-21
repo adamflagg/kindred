@@ -23,7 +23,12 @@ function getGenderColor(gender: string): string {
 }
 
 // Prior status color variants derived from gender base color
-type PriorStatus = 'was_enrolled' | 'was_waitlisted' | 'was_applied' | 'other_prior_status' | 'unknown'
+type PriorStatus =
+  | 'was_enrolled'
+  | 'was_waitlisted'
+  | 'was_applied'
+  | 'other_prior_status'
+  | 'unknown'
 
 const PRIOR_STATUS_LABELS: Record<PriorStatus, string> = {
   was_enrolled: 'Was Enrolled',
@@ -182,7 +187,13 @@ export function CancellationGenderChart({
 
   // Prior status legend items (only show those present in data)
   const priorStatusLegend: Array<{ label: string; color: string }> = []
-  const legendStatuses: PriorStatus[] = ['was_enrolled', 'was_waitlisted', 'was_applied', 'other_prior_status', 'unknown']
+  const legendStatuses: PriorStatus[] = [
+    'was_enrolled',
+    'was_waitlisted',
+    'was_applied',
+    'other_prior_status',
+    'unknown',
+  ]
   for (const status of legendStatuses) {
     if (activePriorStatuses.has(status)) {
       // Use a neutral representative color for the legend
@@ -227,10 +238,7 @@ export function CancellationGenderChart({
             style={{ cursor: onSegmentClick ? 'pointer' : undefined }}
           >
             {outerData.map((d, i) => (
-              <Cell
-                key={`outer-${i}`}
-                fill={getPriorStatusColor(d.gender, d.priorStatus)}
-              />
+              <Cell key={`outer-${i}`} fill={getPriorStatusColor(d.gender, d.priorStatus)} />
             ))}
           </Pie>
           <Tooltip content={<CustomTooltip />} />

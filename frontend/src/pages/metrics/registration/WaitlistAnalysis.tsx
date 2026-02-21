@@ -314,7 +314,9 @@ export default function WaitlistAnalysis() {
                             Declined
                           </span>
                         </th>
-                        <th className="border-border border-l px-4 py-2 text-right font-medium">Total</th>
+                        <th className="border-border border-l px-4 py-2 text-right font-medium">
+                          Total
+                        </th>
                         {isComparing && compData && (
                           <>
                             <th className="px-4 py-2 text-right font-medium">
@@ -368,7 +370,9 @@ export default function WaitlistAnalysis() {
                           <td className="px-4 py-2 text-right text-red-600 dark:text-red-400">
                             {session.declined}
                           </td>
-                          <td className="border-border border-l px-4 py-2 text-right font-medium">{session.waitlisted}</td>
+                          <td className="border-border border-l px-4 py-2 text-right font-medium">
+                            {session.waitlisted}
+                          </td>
                           {isComparing &&
                             compData &&
                             (() => {

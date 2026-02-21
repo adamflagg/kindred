@@ -85,7 +85,7 @@ export function CancellationBySessionChart({
 
   // Determine which segments have data (any item with non-zero value)
   const activeSegments = SEGMENTS.filter((seg) =>
-    chartData.some((d) => d[seg.key as keyof ChartDataItem] as number > 0)
+    chartData.some((d) => (d[seg.key as keyof ChartDataItem] as number) > 0)
   )
 
   const CustomTooltip = ({

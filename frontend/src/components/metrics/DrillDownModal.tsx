@@ -101,8 +101,7 @@ export function DrillDownModal({
   const isCancellationDrilldown = filter?.type?.startsWith('cancellation_') ?? false
   // These cancellation types use default layout (School + Session columns)
   const isCancellationDefaultLayout =
-    filter?.type === 'cancellation_no_other_sessions' ||
-    filter?.type === 'cancellation_re_enrolled'
+    filter?.type === 'cancellation_no_other_sessions' || filter?.type === 'cancellation_re_enrolled'
   // Show special cancellation columns (Cancelled Session + Current Session)
   const isCancellationSpecial = isCancellationDrilldown && !isCancellationDefaultLayout
 
