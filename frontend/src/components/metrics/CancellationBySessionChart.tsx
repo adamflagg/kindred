@@ -1,6 +1,6 @@
 /**
  * CancellationBySessionChart - Horizontal stacked bar chart showing
- * was_enrolled vs was_waitlisted breakdown for cancelled campers per session.
+ * prior status breakdown for cancelled campers per session.
  */
 
 import {
@@ -17,6 +17,9 @@ import type { CancellationSessionBreakdown, DrilldownFilter } from '../../types/
 
 const WAS_ENROLLED_COLOR = 'hsl(200, 70%, 50%)' // Blue
 const WAS_WAITLISTED_COLOR = 'hsl(42, 92%, 50%)' // Amber
+const WAS_APPLIED_COLOR = 'hsl(280, 60%, 55%)' // Purple
+const OTHER_PRIOR_COLOR = 'hsl(200, 15%, 55%)' // Gray-blue
+const UNKNOWN_COLOR = 'hsl(0, 0%, 75%)' // Light gray
 
 interface CancellationBySessionChartProps {
   data: CancellationSessionBreakdown[]
@@ -31,7 +34,19 @@ interface ChartDataItem {
   total: number
   was_enrolled: number
   was_waitlisted: number
+  was_applied: number
+  other_prior_status: number
+  unknown: number
 }
+
+// Segment definitions in render order (first = leftmost in stacked bar)
+const SEGMENTS = [
+  { key: 'was_enrolled', label: 'Was Enrolled', color: WAS_ENROLLED_COLOR },
+  { key: 'was_waitlisted', label: 'Was Waitlisted', color: WAS_WAITLISTED_COLOR },
+  { key: 'was_applied', label: 'Was Applied', color: WAS_APPLIED_COLOR },
+  { key: 'other_prior_status', label: 'Other Prior Status', color: OTHER_PRIOR_COLOR },
+  { key: 'unknown', label: 'Unknown', color: UNKNOWN_COLOR },
+] as const
 
 export function CancellationBySessionChart({
   data,
@@ -50,13 +65,28 @@ export function CancellationBySessionChart({
     )
   }
 
-  const chartData: ChartDataItem[] = data.map((item) => ({
-    name: item.session_name,
-    session_cm_id: item.session_cm_id,
-    total: item.total_cancelled,
-    was_enrolled: item.was_enrolled,
-    was_waitlisted: item.was_waitlisted,
-  }))
+  const chartData: ChartDataItem[] = data.map((item) => {
+    const known =
+      item.was_enrolled +
+      item.was_waitlisted +
+      (item.was_applied ?? 0) +
+      (item.other_prior_status ?? 0)
+    return {
+      name: item.session_name,
+      session_cm_id: item.session_cm_id,
+      total: item.total_cancelled,
+      was_enrolled: item.was_enrolled,
+      was_waitlisted: item.was_waitlisted,
+      was_applied: item.was_applied ?? 0,
+      other_prior_status: item.other_prior_status ?? 0,
+      unknown: Math.max(0, item.total_cancelled - known),
+    }
+  })
+
+  // Determine which segments have data (any item with non-zero value)
+  const activeSegments = SEGMENTS.filter((seg) =>
+    chartData.some((d) => d[seg.key as keyof ChartDataItem] as number > 0)
+  )
 
   const CustomTooltip = ({
     active,
@@ -69,6 +99,7 @@ export function CancellationBySessionChart({
       value: number
       color: string
       dataKey: string
+      payload: ChartDataItem
     }>
     label?: string
   }) => {
@@ -76,7 +107,7 @@ export function CancellationBySessionChart({
       const nonZero = payload.filter((p) => p.value > 0).sort((a, b) => b.value - a.value)
       if (nonZero.length === 0) return null
 
-      const total = nonZero.reduce((sum, p) => sum + (p.value || 0), 0)
+      const total = nonZero[0]?.payload?.total ?? 0
       return (
         <div className="bg-card border-border rounded-lg border p-3 shadow-lg">
           <p className="text-foreground mb-2 font-medium">{label}</p>
@@ -133,52 +164,45 @@ export function CancellationBySessionChart({
             interval={0}
           />
           <Tooltip content={<CustomTooltip />} />
-          <Bar
-            dataKey="was_enrolled"
-            name="Was Enrolled"
-            stackId="cancellation"
-            fill={WAS_ENROLLED_COLOR}
-            cursor={onBarClick ? 'pointer' : undefined}
-            onClick={(data) => {
-              if (data) handleBarClick(data as unknown as ChartDataItem)
-            }}
-          />
-          <Bar
-            dataKey="was_waitlisted"
-            name="Was Waitlisted"
-            stackId="cancellation"
-            fill={WAS_WAITLISTED_COLOR}
-            radius={[0, 4, 4, 0]}
-            cursor={onBarClick ? 'pointer' : undefined}
-            onClick={(data) => {
-              if (data) handleBarClick(data as unknown as ChartDataItem)
-            }}
-          >
-            <LabelList
-              dataKey="total"
-              position="right"
-              offset={8}
-              className="text-xs"
-              fill="hsl(var(--muted-foreground))"
-            />
-          </Bar>
+          {activeSegments.map((seg, idx) => {
+            const isLast = idx === activeSegments.length - 1
+            return (
+              <Bar
+                key={seg.key}
+                dataKey={seg.key}
+                name={seg.label}
+                stackId="cancellation"
+                fill={seg.color}
+                {...(isLast ? { radius: [0, 4, 4, 0] as [number, number, number, number] } : {})}
+                cursor={onBarClick ? 'pointer' : undefined}
+                onClick={(data) => {
+                  if (data) handleBarClick(data as unknown as ChartDataItem)
+                }}
+              >
+                {isLast && (
+                  <LabelList
+                    dataKey="total"
+                    position="right"
+                    offset={8}
+                    className="text-xs"
+                    fill="hsl(var(--muted-foreground))"
+                  />
+                )}
+              </Bar>
+            )
+          })}
         </BarChart>
       </ResponsiveContainer>
       <div className="mt-2 flex flex-wrap justify-center gap-4">
-        <div className="flex items-center gap-1.5">
-          <div
-            className="h-3 w-3 flex-shrink-0 rounded-sm"
-            style={{ backgroundColor: WAS_ENROLLED_COLOR }}
-          />
-          <span className="text-muted-foreground text-sm">Was Enrolled</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div
-            className="h-3 w-3 flex-shrink-0 rounded-sm"
-            style={{ backgroundColor: WAS_WAITLISTED_COLOR }}
-          />
-          <span className="text-muted-foreground text-sm">Was Waitlisted</span>
-        </div>
+        {activeSegments.map((seg) => (
+          <div key={seg.key} className="flex items-center gap-1.5">
+            <div
+              className="h-3 w-3 flex-shrink-0 rounded-sm"
+              style={{ backgroundColor: seg.color }}
+            />
+            <span className="text-muted-foreground text-sm">{seg.label}</span>
+          </div>
+        ))}
       </div>
     </div>
   )

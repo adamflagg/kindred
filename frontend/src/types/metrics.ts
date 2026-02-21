@@ -476,6 +476,8 @@ export interface CancellationSessionBreakdown {
   total_cancelled: number
   was_enrolled: number
   was_waitlisted: number
+  was_applied: number
+  other_prior_status: number
   has_other_sessions: number
   no_other_sessions: number
 }
@@ -485,6 +487,8 @@ export interface CancellationMetrics {
   total_cancelled: number
   was_enrolled: number
   was_waitlisted: number
+  was_applied: number
+  other_prior_status: number
   has_other_sessions: number
   no_other_sessions: number
   total_re_enrolled: number
