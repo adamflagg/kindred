@@ -189,10 +189,10 @@ function SessionsTable({ sessions }: { sessions: SessionAvailabilityData[] }) {
 
 export default function SessionAvailability() {
   const { currentYear } = useCurrentYear()
-  const { selectedSessionCmId } = useMetricsSession()
+  const { selectedSessionCmId, sessionTypesParam } = useMetricsSession()
   const { data, isLoading, error } = useSessionAvailability(
     currentYear,
-    undefined,
+    sessionTypesParam,
     selectedSessionCmId ?? undefined
   )
 

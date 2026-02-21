@@ -234,7 +234,7 @@ describe('SessionAvailability', () => {
     expect(screen.getAllByText('N/A').length).toBeGreaterThanOrEqual(1)
   })
 
-  it('does not pass session_types to API (uses server default for all summer types)', async () => {
+  it('passes session_types from metrics session context to API', async () => {
     mockUseMetricsSession.mockReturnValue({
       selectedSessionCmId: null,
       sessionTypesParam: 'main,embedded,ag',
@@ -252,8 +252,7 @@ describe('SessionAvailability', () => {
     })
 
     const fetchUrl = mockFetch.mock.calls[0]![0] as string
-    // Session availability always shows all summer types via API default
-    expect(fetchUrl).not.toContain('session_types')
+    expect(fetchUrl).toContain('session_types=main%2Cembedded%2Cag')
   })
 
   it('passes session_cm_id from metrics session context to API', async () => {
