@@ -192,7 +192,41 @@ export function SessionBudgetConfig() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {rows.filter((r) => r.session_type !== 'quest').map((row) => (
+              <tr key={row.cm_id} className="border-border border-b">
+                <td className="py-2 pr-4 font-medium">{row.name}</td>
+                <td className="px-2 py-2">
+                  <input
+                    type="number"
+                    min={0}
+                    value={row.participant_goal ?? ''}
+                    onChange={(e) => handleChange(row.cm_id, 'participant_goal', e.target.value)}
+                    className="bg-muted/30 dark:bg-muted/50 border-border w-24 rounded border px-2 py-1 text-center text-sm"
+                  />
+                </td>
+                <td className="px-2 py-2">
+                  <div className="flex items-center justify-center gap-1">
+                    <span className="text-muted-foreground text-sm">$</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      value={row.session_fee ?? ''}
+                      onChange={(e) => handleChange(row.cm_id, 'session_fee', e.target.value)}
+                      className="bg-muted/30 dark:bg-muted/50 border-border w-24 rounded border px-2 py-1 text-center text-sm"
+                    />
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {rows.some((r) => r.session_type === 'quest') && (
+              <tr>
+                <td colSpan={3} className="text-muted-foreground pt-4 pb-2 text-xs font-semibold uppercase">
+                  Quests
+                </td>
+              </tr>
+            )}
+            {rows.filter((r) => r.session_type === 'quest').map((row) => (
               <tr key={row.cm_id} className="border-border border-b">
                 <td className="py-2 pr-4 font-medium">{row.name}</td>
                 <td className="px-2 py-2">
