@@ -88,9 +88,9 @@ def create_mock_budget_config(
     session_cm_id: int,
     participant_goal: int | None = None,
     session_fee: float | None = None,
-) -> tuple[int, dict]:
+) -> tuple[int, dict[str, int | float]]:
     """Return (session_cm_id, config_dict) for budget config."""
-    config: dict = {}
+    config: dict[str, int | float] = {}
     if participant_goal is not None:
         config["participant_goal"] = participant_goal
     if session_fee is not None:
