@@ -118,6 +118,26 @@ export default function CancellationAnalysis() {
                   })
                 }
               />
+              {data.was_applied > 0 && (
+                <MetricCard
+                  title="Was Applied"
+                  value={data.was_applied}
+                  subtitle="Left after applying"
+                  compareValue={compData?.was_applied}
+                  compareYear={compareYear ?? undefined}
+                  sentiment="inverse"
+                />
+              )}
+              {data.other_prior_status > 0 && (
+                <MetricCard
+                  title="Other Prior"
+                  value={data.other_prior_status}
+                  subtitle="Inquiry, incomplete, etc."
+                  compareValue={compData?.other_prior_status}
+                  compareYear={compareYear ?? undefined}
+                  sentiment="inverse"
+                />
+              )}
               <MetricCard
                 title="Has Other Sessions"
                 value={data.has_other_sessions}
@@ -324,6 +344,12 @@ export default function CancellationAnalysis() {
                           </span>
                         </th>
                         <th className="px-4 py-2 text-right font-medium">
+                          Was Applied
+                        </th>
+                        <th className="px-4 py-2 text-right font-medium">
+                          Other
+                        </th>
+                        <th className="px-4 py-2 text-right font-medium">
                           <span className="inline-flex items-center gap-1">
                             <Users className="h-3 w-3 text-emerald-500" />
                             Has Other
@@ -376,6 +402,12 @@ export default function CancellationAnalysis() {
                           </td>
                           <td className="px-4 py-2 text-right text-amber-600 dark:text-amber-400">
                             {session.was_waitlisted}
+                          </td>
+                          <td className="px-4 py-2 text-right text-purple-600 dark:text-purple-400">
+                            {session.was_applied}
+                          </td>
+                          <td className="text-muted-foreground px-4 py-2 text-right">
+                            {session.other_prior_status}
                           </td>
                           <td className="px-4 py-2 text-right text-emerald-600 dark:text-emerald-400">
                             {session.has_other_sessions}

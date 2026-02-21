@@ -10,6 +10,8 @@ export interface GenderBreakdown {
   has_enrollment?: number
   was_enrolled?: number
   was_waitlisted?: number
+  was_applied?: number
+  other_prior_status?: number
 }
 
 export interface GradeBreakdown {
@@ -20,6 +22,8 @@ export interface GradeBreakdown {
   has_enrollment?: number
   was_enrolled?: number
   was_waitlisted?: number
+  was_applied?: number
+  other_prior_status?: number
 }
 
 export interface SessionBreakdown {

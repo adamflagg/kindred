@@ -1,9 +1,9 @@
 /**
  * CancellationGenderChart - Nested donut chart showing gender breakdown
- * with was_enrolled / was_waitlisted split for cancelled campers.
+ * with prior status split for cancelled campers.
  *
  * Inner ring: Gender totals (M, F, Unknown) using app gender colors.
- * Outer ring: Each gender split into Was Enrolled / Was Waitlisted.
+ * Outer ring: Each gender split into prior status segments.
  */
 
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
@@ -22,17 +22,30 @@ function getGenderColor(gender: string): string {
   return GENDER_COLORS[gender] ?? FALLBACK_COLOR
 }
 
-/** Darker variant for "Was Enrolled" */
-function getWasEnrolledColor(gender: string): string {
-  const base = getGenderColor(gender)
-  return base.replace(/(\d+)%\)$/, (_, l) => `${Math.max(Number(l) - 15, 20)}%)`)
+// Prior status color variants derived from gender base color
+type PriorStatus = 'was_enrolled' | 'was_waitlisted' | 'was_applied' | 'other_prior_status' | 'unknown'
+
+const PRIOR_STATUS_LABELS: Record<PriorStatus, string> = {
+  was_enrolled: 'Was Enrolled',
+  was_waitlisted: 'Was Waitlisted',
+  was_applied: 'Was Applied',
+  other_prior_status: 'Other Prior Status',
+  unknown: 'Unknown Status',
 }
 
-/** Lighter variant for "Was Waitlisted" */
-function getWasWaitlistedColor(gender: string): string {
+/** Lightness offsets for each prior status to create visual distinction */
+function getPriorStatusColor(gender: string, priorStatus: PriorStatus): string {
   const base = getGenderColor(gender)
+  const adjustments: Record<PriorStatus, { satDelta: number; lightDelta: number }> = {
+    was_enrolled: { satDelta: 0, lightDelta: -15 },
+    was_waitlisted: { satDelta: -25, lightDelta: 20 },
+    was_applied: { satDelta: -15, lightDelta: 5 },
+    other_prior_status: { satDelta: -35, lightDelta: 25 },
+    unknown: { satDelta: -45, lightDelta: 30 },
+  }
+  const adj = adjustments[priorStatus]
   return base.replace(/(\d+),\s*(\d+)%,\s*(\d+)%\)/, (_, h, s, l) => {
-    return `${h}, ${Math.max(Number(s) - 25, 10)}%, ${Math.min(Number(l) + 20, 85)}%)`
+    return `${h}, ${Math.max(Number(s) + adj.satDelta, 10)}%, ${Math.min(Math.max(Number(l) + adj.lightDelta, 20), 85)}%)`
   })
 }
 
@@ -53,7 +66,7 @@ interface OuterDatum {
   name: string
   value: number
   gender: string
-  priorStatus: 'was_enrolled' | 'was_waitlisted'
+  priorStatus: PriorStatus
 }
 
 export function CancellationGenderChart({
@@ -80,39 +93,54 @@ export function CancellationGenderChart({
     gender: g.gender,
   }))
 
-  // Outer ring: each gender split into was_enrolled / was_waitlisted
+  // Outer ring: each gender split by prior status
   const outerData: OuterDatum[] = []
+  const priorStatusKeys: Array<{ field: keyof GenderBreakdown; status: PriorStatus }> = [
+    { field: 'was_enrolled', status: 'was_enrolled' },
+    { field: 'was_waitlisted', status: 'was_waitlisted' },
+    { field: 'was_applied', status: 'was_applied' },
+    { field: 'other_prior_status', status: 'other_prior_status' },
+  ]
+
   for (const g of data) {
-    const wasEnrolled = g.was_enrolled ?? 0
-    const wasWaitlisted = g.was_waitlisted ?? 0
-    if (wasEnrolled > 0) {
+    let knownTotal = 0
+    for (const { field, status } of priorStatusKeys) {
+      const val = (g[field] as number | undefined) ?? 0
+      if (val > 0) {
+        outerData.push({
+          name: `${g.gender} - ${PRIOR_STATUS_LABELS[status]}`,
+          value: val,
+          gender: g.gender,
+          priorStatus: status,
+        })
+        knownTotal += val
+      }
+    }
+    // Unknown: count minus all known prior statuses
+    const unknownCount = g.count - knownTotal
+    if (unknownCount > 0) {
       outerData.push({
-        name: `${g.gender} - Was Enrolled`,
-        value: wasEnrolled,
+        name: `${g.gender} - Unknown Status`,
+        value: unknownCount,
         gender: g.gender,
-        priorStatus: 'was_enrolled',
+        priorStatus: 'unknown',
       })
     }
-    if (wasWaitlisted > 0) {
+    // If all zeros and count > 0 but no unknowns calculated, show as unknown
+    if (knownTotal === 0 && g.count > 0 && unknownCount <= 0) {
       outerData.push({
-        name: `${g.gender} - Was Waitlisted`,
-        value: wasWaitlisted,
-        gender: g.gender,
-        priorStatus: 'was_waitlisted',
-      })
-    }
-    // If both are 0 but count > 0, show total as was_enrolled
-    if (wasEnrolled === 0 && wasWaitlisted === 0 && g.count > 0) {
-      outerData.push({
-        name: `${g.gender} - Was Enrolled`,
+        name: `${g.gender} - Unknown Status`,
         value: g.count,
         gender: g.gender,
-        priorStatus: 'was_enrolled',
+        priorStatus: 'unknown',
       })
     }
   }
 
   const total = data.reduce((sum, g) => sum + g.count, 0)
+
+  // Track which prior statuses appear in the data for the legend
+  const activePriorStatuses = new Set(outerData.map((d) => d.priorStatus))
 
   const CustomTooltip = ({
     active,
@@ -152,6 +180,19 @@ export function CancellationGenderChart({
     })
   }
 
+  // Prior status legend items (only show those present in data)
+  const priorStatusLegend: Array<{ label: string; color: string }> = []
+  const legendStatuses: PriorStatus[] = ['was_enrolled', 'was_waitlisted', 'was_applied', 'other_prior_status', 'unknown']
+  for (const status of legendStatuses) {
+    if (activePriorStatuses.has(status)) {
+      // Use a neutral representative color for the legend
+      priorStatusLegend.push({
+        label: PRIOR_STATUS_LABELS[status],
+        color: getPriorStatusColor('M', status),
+      })
+    }
+  }
+
   return (
     <div className="card-lodge p-4">
       <h3 className="text-foreground mb-4 text-base font-semibold">{title}</h3>
@@ -173,7 +214,7 @@ export function CancellationGenderChart({
               <Cell key={`inner-${i}`} fill={getGenderColor(d.gender)} />
             ))}
           </Pie>
-          {/* Outer ring: was_enrolled / was_waitlisted split */}
+          {/* Outer ring: prior status split */}
           <Pie
             data={outerData}
             dataKey="value"
@@ -188,11 +229,7 @@ export function CancellationGenderChart({
             {outerData.map((d, i) => (
               <Cell
                 key={`outer-${i}`}
-                fill={
-                  d.priorStatus === 'was_enrolled'
-                    ? getWasEnrolledColor(d.gender)
-                    : getWasWaitlistedColor(d.gender)
-                }
+                fill={getPriorStatusColor(d.gender, d.priorStatus)}
               />
             ))}
           </Pie>
@@ -210,20 +247,15 @@ export function CancellationGenderChart({
             <span className="text-muted-foreground text-sm">{g.gender}</span>
           </div>
         ))}
-        <div className="flex items-center gap-1.5">
-          <div
-            className="h-3 w-3 flex-shrink-0 rounded-sm"
-            style={{ backgroundColor: 'hsl(200, 70%, 35%)' }}
-          />
-          <span className="text-muted-foreground text-sm">Was Enrolled</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div
-            className="h-3 w-3 flex-shrink-0 rounded-sm"
-            style={{ backgroundColor: 'hsl(42, 67%, 70%)' }}
-          />
-          <span className="text-muted-foreground text-sm">Was Waitlisted</span>
-        </div>
+        {priorStatusLegend.map((item) => (
+          <div key={item.label} className="flex items-center gap-1.5">
+            <div
+              className="h-3 w-3 flex-shrink-0 rounded-sm"
+              style={{ backgroundColor: item.color }}
+            />
+            <span className="text-muted-foreground text-sm">{item.label}</span>
+          </div>
+        ))}
       </div>
     </div>
   )
