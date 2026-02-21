@@ -251,7 +251,7 @@ describe('SessionAvailability', () => {
       expect(mockFetch).toHaveBeenCalled()
     })
 
-    const fetchUrl = mockFetch.mock.calls[0][0] as string
+    const fetchUrl = mockFetch.mock.calls[0]![0] as string
     expect(fetchUrl).toContain('session_types=main%2Cembedded')
   })
 
@@ -272,7 +272,7 @@ describe('SessionAvailability', () => {
       expect(mockFetch).toHaveBeenCalled()
     })
 
-    const fetchUrl = mockFetch.mock.calls[0][0] as string
+    const fetchUrl = mockFetch.mock.calls[0]![0] as string
     expect(fetchUrl).toContain('session_cm_id=1001')
   })
 
@@ -293,7 +293,7 @@ describe('SessionAvailability', () => {
       expect(mockFetch).toHaveBeenCalled()
     })
 
-    const fetchUrl = mockFetch.mock.calls[0][0] as string
+    const fetchUrl = mockFetch.mock.calls[0]![0] as string
     expect(fetchUrl).not.toContain('session_cm_id')
   })
 })
