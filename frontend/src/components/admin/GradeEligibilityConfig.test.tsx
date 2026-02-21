@@ -79,10 +79,8 @@ const mockConfigRecords = [
     subcategory: '2026',
     config_key: '1001',
     value: {
-      girls_min_grade: 2,
-      girls_max_grade: 6,
-      boys_min_grade: 2,
-      boys_max_grade: 6,
+      min_grade: 2,
+      max_grade: 6,
       capacity_override: null,
     },
   },
@@ -144,7 +142,7 @@ describe('GradeEligibilityConfig', () => {
       expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
     })
 
-    // The Taste of Camp row has config with girls_min_grade=2, girls_max_grade=6
+    // The Taste of Camp row has config with min_grade=2, max_grade=6
     const inputs = screen.getAllByRole('spinbutton')
     // Find an input with value "2" for the configured session
     const hasValue2 = inputs.some((input) => (input as HTMLInputElement).value === '2')
