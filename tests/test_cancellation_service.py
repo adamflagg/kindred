@@ -19,7 +19,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import pytest_asyncio
 
-
 # ============================================================================
 # Helpers
 # ============================================================================
@@ -48,9 +47,7 @@ def _make_attendee(person_id: int, session_cm_id: int, session_name: str, status
     return att
 
 
-def _make_person(
-    cm_id: int, gender: str = "M", grade: int | None = 5, years_at_camp: int = 1
-) -> MagicMock:
+def _make_person(cm_id: int, gender: str = "M", grade: int | None = 5, years_at_camp: int = 1) -> MagicMock:
     """Create a mock person record."""
     p = MagicMock()
     p.cm_id = cm_id
@@ -183,9 +180,7 @@ class TestCancellationCounts:
             _make_history_record(102, 1001, "Session 1", "waitlisted", "withdrawn"),
         ]
 
-        async def fetch_history_side_effect(
-            year: int, old_status: str, new_statuses: list[str]
-        ) -> list[Any]:
+        async def fetch_history_side_effect(year: int, old_status: str, new_statuses: list[str]) -> list[Any]:
             if old_status == "enrolled":
                 return history_enrolled_to_cancelled
             if old_status == "waitlisted":
@@ -260,9 +255,7 @@ class TestReEnrolled:
             _make_history_record(202, 1001, "Session 1", "cancelled", "enrolled"),
         ]
 
-        async def fetch_history_side_effect(
-            year: int, old_status: str, new_statuses: list[str]
-        ) -> list[Any]:
+        async def fetch_history_side_effect(year: int, old_status: str, new_statuses: list[str]) -> list[Any]:
             if old_status == "cancelled" and "enrolled" in new_statuses:
                 return re_enrolled_history
             return []
@@ -273,9 +266,7 @@ class TestReEnrolled:
         assert result.total_re_enrolled == 2
 
     @pytest.mark.asyncio
-    async def test_re_enrolled_deduplicates_by_person(
-        self, service: Any, mock_repo: AsyncMock
-    ) -> None:
+    async def test_re_enrolled_deduplicates_by_person(self, service: Any, mock_repo: AsyncMock) -> None:
         """Re-enrolled should be unique by person, not by record."""
         sessions = {1001: _make_session(1001, "Session 1")}
         mock_repo.fetch_sessions.return_value = sessions
@@ -288,9 +279,7 @@ class TestReEnrolled:
             _make_history_record(201, 1001, "Session 1", "cancelled", "enrolled"),
         ]
 
-        async def fetch_history_side_effect(
-            year: int, old_status: str, new_statuses: list[str]
-        ) -> list[Any]:
+        async def fetch_history_side_effect(year: int, old_status: str, new_statuses: list[str]) -> list[Any]:
             if old_status == "cancelled" and "enrolled" in new_statuses:
                 return re_enrolled_history
             return []
@@ -335,9 +324,7 @@ class TestSessionBreakdown:
         mock_repo.fetch_attendees.side_effect = fetch_attendees_side_effect
 
         # Person 101: enrolled -> cancelled, Person 102: waitlisted -> cancelled
-        async def fetch_history_side_effect(
-            year: int, old_status: str, new_statuses: list[str]
-        ) -> list[Any]:
+        async def fetch_history_side_effect(year: int, old_status: str, new_statuses: list[str]) -> list[Any]:
             if old_status == "enrolled":
                 return [_make_history_record(101, 1001, "Session 1", "enrolled", "cancelled")]
             if old_status == "waitlisted":
@@ -372,9 +359,7 @@ class TestAGMerging:
     """Tests for AG session counts merging into parent."""
 
     @pytest.mark.asyncio
-    async def test_ag_sessions_merge_into_parent(
-        self, service: Any, mock_repo: AsyncMock
-    ) -> None:
+    async def test_ag_sessions_merge_into_parent(self, service: Any, mock_repo: AsyncMock) -> None:
         """AG session cancellation counts should merge into parent main session."""
         sessions = {
             1001: _make_session(1001, "Session 1", "main"),
@@ -479,9 +464,7 @@ class TestDemographics:
         mock_repo.fetch_attendees.side_effect = fetch_attendees_side_effect
 
         # 101,103 were enrolled before cancelling, 102 was waitlisted
-        async def fetch_history_side_effect(
-            year: int, old_status: str, new_statuses: list[str]
-        ) -> list[Any]:
+        async def fetch_history_side_effect(year: int, old_status: str, new_statuses: list[str]) -> list[Any]:
             if old_status == "enrolled":
                 return [
                     _make_history_record(101, 1001, "Session 1", "enrolled", "cancelled"),
@@ -503,9 +486,7 @@ class TestDemographics:
         mock_repo.fetch_persons.return_value = persons
 
     @pytest.mark.asyncio
-    async def test_grade_breakdown_with_splits(
-        self, service: Any, setup_demographics: None
-    ) -> None:
+    async def test_grade_breakdown_with_splits(self, service: Any, setup_demographics: None) -> None:
         """Grade breakdown should include was_enrolled/was_waitlisted splits."""
         result = await service.calculate_cancellations(year=2025)
 
@@ -517,9 +498,7 @@ class TestDemographics:
         assert grade_5.was_waitlisted == 1  # person 102
 
     @pytest.mark.asyncio
-    async def test_gender_breakdown_with_splits(
-        self, service: Any, setup_demographics: None
-    ) -> None:
+    async def test_gender_breakdown_with_splits(self, service: Any, setup_demographics: None) -> None:
         """Gender breakdown should include was_enrolled/was_waitlisted splits."""
         result = await service.calculate_cancellations(year=2025)
 
@@ -544,9 +523,7 @@ class TestDeduplication:
     """Tests for person deduplication across sessions."""
 
     @pytest.mark.asyncio
-    async def test_person_cancelled_in_multiple_sessions(
-        self, service: Any, mock_repo: AsyncMock
-    ) -> None:
+    async def test_person_cancelled_in_multiple_sessions(self, service: Any, mock_repo: AsyncMock) -> None:
         """A person cancelled in 2 sessions should count as 1 in summary."""
         sessions = {
             1001: _make_session(1001, "Session 1"),

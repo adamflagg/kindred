@@ -73,16 +73,12 @@ class CancellationService:
             valid_session_ids = {sid for sid in valid_session_ids if sid == session_cm_id}
 
         # --- Fetch cancelled and enrolled attendees ---
-        cancelled_attendees = await self.repository.fetch_attendees(
-            year, status_filter=CANCELLED_STATUSES
-        )
+        cancelled_attendees = await self.repository.fetch_attendees(year, status_filter=CANCELLED_STATUSES)
         enrolled_attendees = await self.repository.fetch_attendees(year, status_filter="enrolled")
 
         # Filter cancelled to selected sessions, enrolled to ALL session types
         cancelled_attendees = self._filter_to_sessions(cancelled_attendees, valid_session_ids)
-        enrolled_attendees = self._filter_to_sessions(
-            enrolled_attendees, set(all_sessions.keys())
-        )
+        enrolled_attendees = self._filter_to_sessions(enrolled_attendees, set(all_sessions.keys()))
 
         # Build enrolled person set
         enrolled_person_ids: set[int] = set()

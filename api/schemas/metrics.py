@@ -634,18 +634,12 @@ class CancellationMetricsResponse(BaseModel):
     was_waitlisted: int = Field(description="Cancelled after being waitlisted")
     has_other_sessions: int = Field(description="Cancelled but enrolled in other session")
     no_other_sessions: int = Field(description="Cancelled with no remaining enrollment")
-    total_re_enrolled: int = Field(
-        default=0, description="Cancelled then later re-enrolled (recovery)"
-    )
+    total_re_enrolled: int = Field(default=0, description="Cancelled then later re-enrolled (recovery)")
     by_session: list[CancellationSessionBreakdown] = Field(
         default_factory=list, description="Per-session cancellation breakdown"
     )
-    by_grade: list[GradeBreakdown] = Field(
-        default_factory=list, description="Cancellations by grade"
-    )
-    by_gender: list[GenderBreakdown] = Field(
-        default_factory=list, description="Cancellations by gender"
-    )
+    by_grade: list[GradeBreakdown] = Field(default_factory=list, description="Cancellations by grade")
+    by_gender: list[GenderBreakdown] = Field(default_factory=list, description="Cancellations by gender")
 
 
 # ============================================================================

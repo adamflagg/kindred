@@ -335,9 +335,7 @@ async def get_cancellation_metrics(
 
     except Exception as e:
         logger.error(f"Error calculating cancellation metrics: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500, detail=f"Error calculating cancellation metrics: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error calculating cancellation metrics: {str(e)}")
 
 
 # ============================================================================

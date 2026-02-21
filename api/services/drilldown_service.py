@@ -1086,15 +1086,13 @@ class DrilldownService:
                 continue
             seen_persons.add(pid)
 
-            if breakdown_type == "cancellation_total":
-                matching.append(att)
-            elif breakdown_type == "cancellation_was_enrolled" and pid in was_enrolled_persons:
-                matching.append(att)
-            elif breakdown_type == "cancellation_was_waitlisted" and pid in was_waitlisted_persons:
-                matching.append(att)
-            elif breakdown_type == "cancellation_has_other_sessions" and pid in enrolled_person_ids:
-                matching.append(att)
-            elif breakdown_type == "cancellation_no_other_sessions" and pid not in enrolled_person_ids:
+            if (
+                breakdown_type == "cancellation_total"
+                or (breakdown_type == "cancellation_was_enrolled" and pid in was_enrolled_persons)
+                or (breakdown_type == "cancellation_was_waitlisted" and pid in was_waitlisted_persons)
+                or (breakdown_type == "cancellation_has_other_sessions" and pid in enrolled_person_ids)
+                or (breakdown_type == "cancellation_no_other_sessions" and pid not in enrolled_person_ids)
+            ):
                 matching.append(att)
 
         return self._build_response(
