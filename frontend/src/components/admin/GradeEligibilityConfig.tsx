@@ -7,11 +7,9 @@ import { useCurrentYear } from '../../hooks/useCurrentYear'
 import { queryKeys, userDataOptions } from '../../utils/queryKeys'
 import type { ConfigRecord } from '../../types/pocketbase-types'
 
-interface GradeConfig {
-  girls_min_grade: number | null
-  girls_max_grade: number | null
-  boys_min_grade: number | null
-  boys_max_grade: number | null
+interface SessionConfig {
+  min_grade: number | null
+  max_grade: number | null
   capacity_override: number | null
 }
 
@@ -20,24 +18,12 @@ interface SessionRow {
   name: string
   session_type: string
   configId: string | undefined
-  config: GradeConfig
+  config: SessionConfig
 }
 
-interface AGSessionRow {
-  cm_id: number
-  name: string
-  parent_id: number | null
-  configId: string | undefined
-  min_grade: number | null
-  max_grade: number | null
-  capacity_override: number | null
-}
-
-const DEFAULT_CONFIG: GradeConfig = {
-  girls_min_grade: null,
-  girls_max_grade: null,
-  boys_min_grade: null,
-  boys_max_grade: null,
+const DEFAULT_CONFIG: SessionConfig = {
+  min_grade: null,
+  max_grade: null,
   capacity_override: null,
 }
 
@@ -91,61 +77,47 @@ export function GradeEligibilityConfig() {
   const { data: thresholdRecords, isLoading: thresholdLoading } = useThresholdConfig(currentYear)
 
   const [rows, setRows] = useState<SessionRow[]>([])
-  const [agRows, setAgRows] = useState<AGSessionRow[]>([])
   const [threshold, setThreshold] = useState<number>(80)
   const [thresholdId, setThresholdId] = useState<string | undefined>()
   const [isSaving, setIsSaving] = useState(false)
 
   const buildRows = useCallback(
-    (
-      sessionData: typeof sessions,
-      configData: typeof configRecords
-    ): { main: SessionRow[]; ag: AGSessionRow[] } => {
-      if (!sessionData) return { main: [], ag: [] }
+    (sessionData: typeof sessions, configData: typeof configRecords): SessionRow[] => {
+      if (!sessionData) return []
 
-      const mainRows: SessionRow[] = []
-      const agRowList: AGSessionRow[] = []
+      const result: SessionRow[] = []
 
       for (const s of sessionData) {
         const rec = s as Record<string, unknown>
         const sType = rec['session_type'] as string
         const cmId = rec['cm_id'] as number
         const name = rec['name'] as string
-        const parentId = rec['parent_id'] as number | null
 
         const existing = configData?.find((r) => r.config_key === String(cmId))
-        const val = existing?.value as GradeConfig | null
+        const val = existing?.value as SessionConfig | null
 
-        if (sType === 'ag') {
-          agRowList.push({
-            cm_id: cmId,
-            name,
-            parent_id: parentId,
-            configId: existing?.id,
-            min_grade: val?.girls_min_grade ?? null,
-            max_grade: val?.girls_max_grade ?? null,
-            capacity_override: val?.capacity_override ?? null,
-          })
-        } else {
-          mainRows.push({
-            cm_id: cmId,
-            name,
-            session_type: sType,
-            configId: existing?.id,
-            config: val ?? { ...DEFAULT_CONFIG },
-          })
-        }
+        result.push({
+          cm_id: cmId,
+          name,
+          session_type: sType,
+          configId: existing?.id,
+          config: val
+            ? {
+                min_grade: val.min_grade ?? null,
+                max_grade: val.max_grade ?? null,
+                capacity_override: val.capacity_override ?? null,
+              }
+            : { ...DEFAULT_CONFIG },
+        })
       }
 
-      return { main: mainRows, ag: agRowList }
+      return result
     },
     []
   )
 
   useEffect(() => {
-    const { main, ag } = buildRows(sessions, configRecords)
-    setRows(main)
-    setAgRows(ag)
+    setRows(buildRows(sessions, configRecords))
   }, [sessions, configRecords, buildRows])
 
   useEffect(() => {
@@ -156,7 +128,7 @@ export function GradeEligibilityConfig() {
     }
   }, [thresholdRecords])
 
-  const handleMainChange = (cmId: number, field: keyof GradeConfig, value: string) => {
+  const handleChange = (cmId: number, field: keyof SessionConfig, value: string) => {
     setRows((prev) =>
       prev.map((r) =>
         r.cm_id === cmId
@@ -172,68 +144,26 @@ export function GradeEligibilityConfig() {
     )
   }
 
-  const handleAgChange = (
-    cmId: number,
-    field: 'min_grade' | 'max_grade' | 'capacity_override',
-    value: string
-  ) => {
-    setAgRows((prev) =>
-      prev.map((r) =>
-        r.cm_id === cmId ? { ...r, [field]: value === '' ? null : Number(value) } : r
-      )
-    )
-  }
-
   const hasChanges = (() => {
-    const { main: origMain, ag: origAg } = buildRows(sessions, configRecords)
-    const mainChanged = rows.some((r) => {
-      const orig = origMain.find((o) => o.cm_id === r.cm_id)
+    const origRows = buildRows(sessions, configRecords)
+    const rowsChanged = rows.some((r) => {
+      const orig = origRows.find((o) => o.cm_id === r.cm_id)
       return JSON.stringify(r.config) !== JSON.stringify(orig?.config)
-    })
-    const agChanged = agRows.some((r) => {
-      const orig = origAg.find((o) => o.cm_id === r.cm_id)
-      return (
-        r.min_grade !== orig?.min_grade ||
-        r.max_grade !== orig?.max_grade ||
-        r.capacity_override !== orig?.capacity_override
-      )
     })
     const origThreshold = thresholdRecords?.[0]?.value as number | undefined
     const thresholdChanged = threshold !== (origThreshold ?? 80)
-    return mainChanged || agChanged || thresholdChanged
+    return rowsChanged || thresholdChanged
   })()
 
   const handleSave = async () => {
     setIsSaving(true)
     try {
-      // Save main session configs
       for (const row of rows) {
         const payload = {
           category: 'session_availability',
           subcategory: String(currentYear),
           config_key: String(row.cm_id),
           value: row.config,
-        }
-        if (row.configId) {
-          await pb.collection('config').update(row.configId, payload)
-        } else {
-          await pb.collection('config').create(payload)
-        }
-      }
-
-      // Save AG session configs
-      for (const row of agRows) {
-        const payload = {
-          category: 'session_availability',
-          subcategory: String(currentYear),
-          config_key: String(row.cm_id),
-          value: {
-            girls_min_grade: row.min_grade,
-            girls_max_grade: row.max_grade,
-            boys_min_grade: row.min_grade,
-            boys_max_grade: row.max_grade,
-            capacity_override: row.capacity_override,
-          },
         }
         if (row.configId) {
           await pb.collection('config').update(row.configId, payload)
@@ -277,6 +207,45 @@ export function GradeEligibilityConfig() {
     )
   }
 
+  const mainRows = rows.filter((r) => r.session_type !== 'quest' && r.session_type !== 'ag')
+  const questRows = rows.filter((r) => r.session_type === 'quest')
+  const agRows = rows.filter((r) => r.session_type === 'ag')
+
+  const renderRow = (row: SessionRow) => (
+    <tr key={row.cm_id} className="border-border border-b">
+      <td className="py-2 pr-4 font-medium">{row.name}</td>
+      <td className="px-2 py-2">
+        <input
+          type="number"
+          min={0}
+          max={12}
+          value={row.config.min_grade ?? ''}
+          onChange={(e) => handleChange(row.cm_id, 'min_grade', e.target.value)}
+          className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
+        />
+      </td>
+      <td className="px-2 py-2">
+        <input
+          type="number"
+          min={0}
+          max={12}
+          value={row.config.max_grade ?? ''}
+          onChange={(e) => handleChange(row.cm_id, 'max_grade', e.target.value)}
+          className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
+        />
+      </td>
+      <td className="px-2 py-2">
+        <input
+          type="number"
+          min={0}
+          value={row.config.capacity_override ?? ''}
+          onChange={(e) => handleChange(row.cm_id, 'capacity_override', e.target.value)}
+          className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
+        />
+      </td>
+    </tr>
+  )
+
   return (
     <div className="border-border mt-6 rounded-xl border p-4 sm:p-6">
       <div className="mb-4 flex items-center gap-3">
@@ -306,224 +275,44 @@ export function GradeEligibilityConfig() {
         />
       </div>
 
-      {/* Main + Embedded sessions table */}
+      {/* Sessions table */}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-border border-b">
               <th className="py-2 pr-4 text-left font-medium">Session</th>
-              <th className="px-2 py-2 text-center font-medium">Girls Min</th>
-              <th className="px-2 py-2 text-center font-medium">Girls Max</th>
-              <th className="px-2 py-2 text-center font-medium">Boys Min</th>
-              <th className="px-2 py-2 text-center font-medium">Boys Max</th>
+              <th className="px-2 py-2 text-center font-medium">Min Grade</th>
+              <th className="px-2 py-2 text-center font-medium">Max Grade</th>
               <th className="px-2 py-2 text-center font-medium">Cap. Override</th>
             </tr>
           </thead>
           <tbody>
-            {rows
-              .filter((r) => r.session_type !== 'quest')
-              .map((row) => (
-                <tr key={row.cm_id} className="border-border border-b">
-                  <td className="py-2 pr-4 font-medium">{row.name}</td>
-                  <td className="px-2 py-2">
-                    <input
-                      type="number"
-                      min={0}
-                      max={12}
-                      value={row.config.girls_min_grade ?? ''}
-                      onChange={(e) =>
-                        handleMainChange(row.cm_id, 'girls_min_grade', e.target.value)
-                      }
-                      className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
-                    />
-                  </td>
-                  <td className="px-2 py-2">
-                    <input
-                      type="number"
-                      min={0}
-                      max={12}
-                      value={row.config.girls_max_grade ?? ''}
-                      onChange={(e) =>
-                        handleMainChange(row.cm_id, 'girls_max_grade', e.target.value)
-                      }
-                      className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
-                    />
-                  </td>
-                  <td className="px-2 py-2">
-                    <input
-                      type="number"
-                      min={0}
-                      max={12}
-                      value={row.config.boys_min_grade ?? ''}
-                      onChange={(e) =>
-                        handleMainChange(row.cm_id, 'boys_min_grade', e.target.value)
-                      }
-                      className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
-                    />
-                  </td>
-                  <td className="px-2 py-2">
-                    <input
-                      type="number"
-                      min={0}
-                      max={12}
-                      value={row.config.boys_max_grade ?? ''}
-                      onChange={(e) =>
-                        handleMainChange(row.cm_id, 'boys_max_grade', e.target.value)
-                      }
-                      className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
-                    />
-                  </td>
-                  <td className="px-2 py-2">
-                    <input
-                      type="number"
-                      min={0}
-                      value={row.config.capacity_override ?? ''}
-                      onChange={(e) =>
-                        handleMainChange(row.cm_id, 'capacity_override', e.target.value)
-                      }
-                      className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
-                    />
-                  </td>
-                </tr>
-              ))}
-            {rows.some((r) => r.session_type === 'quest') && (
+            {mainRows.map(renderRow)}
+            {questRows.length > 0 && (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={4}
                   className="text-muted-foreground pt-4 pb-2 text-sm font-semibold uppercase"
                 >
                   Quests
                 </td>
               </tr>
             )}
-            {rows
-              .filter((r) => r.session_type === 'quest')
-              .map((row) => (
-                <tr key={row.cm_id} className="border-border border-b">
-                  <td className="py-2 pr-4 font-medium">{row.name}</td>
-                  <td className="px-2 py-2">
-                    <input
-                      type="number"
-                      min={0}
-                      max={12}
-                      value={row.config.girls_min_grade ?? ''}
-                      onChange={(e) =>
-                        handleMainChange(row.cm_id, 'girls_min_grade', e.target.value)
-                      }
-                      className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
-                    />
-                  </td>
-                  <td className="px-2 py-2">
-                    <input
-                      type="number"
-                      min={0}
-                      max={12}
-                      value={row.config.girls_max_grade ?? ''}
-                      onChange={(e) =>
-                        handleMainChange(row.cm_id, 'girls_max_grade', e.target.value)
-                      }
-                      className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
-                    />
-                  </td>
-                  <td className="px-2 py-2">
-                    <input
-                      type="number"
-                      min={0}
-                      max={12}
-                      value={row.config.boys_min_grade ?? ''}
-                      onChange={(e) =>
-                        handleMainChange(row.cm_id, 'boys_min_grade', e.target.value)
-                      }
-                      className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
-                    />
-                  </td>
-                  <td className="px-2 py-2">
-                    <input
-                      type="number"
-                      min={0}
-                      max={12}
-                      value={row.config.boys_max_grade ?? ''}
-                      onChange={(e) =>
-                        handleMainChange(row.cm_id, 'boys_max_grade', e.target.value)
-                      }
-                      className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
-                    />
-                  </td>
-                  <td className="px-2 py-2">
-                    <input
-                      type="number"
-                      min={0}
-                      value={row.config.capacity_override ?? ''}
-                      onChange={(e) =>
-                        handleMainChange(row.cm_id, 'capacity_override', e.target.value)
-                      }
-                      className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
-                    />
-                  </td>
-                </tr>
-              ))}
+            {questRows.map(renderRow)}
+            {agRows.length > 0 && (
+              <tr>
+                <td
+                  colSpan={4}
+                  className="text-muted-foreground pt-4 pb-2 text-sm font-semibold uppercase"
+                >
+                  AG Sessions
+                </td>
+              </tr>
+            )}
+            {agRows.map(renderRow)}
           </tbody>
         </table>
       </div>
-
-      {/* AG Sessions */}
-      {agRows.length > 0 && (
-        <div className="mt-6">
-          <h4 className="text-muted-foreground mb-3 text-sm font-semibold uppercase">
-            AG Sessions
-          </h4>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-border border-b">
-                  <th className="py-2 pr-4 text-left font-medium">Session</th>
-                  <th className="px-2 py-2 text-center font-medium">Min Grade</th>
-                  <th className="px-2 py-2 text-center font-medium">Max Grade</th>
-                  <th className="px-2 py-2 text-center font-medium">Cap. Override</th>
-                </tr>
-              </thead>
-              <tbody>
-                {agRows.map((row) => (
-                  <tr key={row.cm_id} className="border-border border-b">
-                    <td className="py-2 pr-4 font-medium">{row.name}</td>
-                    <td className="px-2 py-2">
-                      <input
-                        type="number"
-                        min={0}
-                        max={12}
-                        value={row.min_grade ?? ''}
-                        onChange={(e) => handleAgChange(row.cm_id, 'min_grade', e.target.value)}
-                        className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <input
-                        type="number"
-                        min={0}
-                        max={12}
-                        value={row.max_grade ?? ''}
-                        onChange={(e) => handleAgChange(row.cm_id, 'max_grade', e.target.value)}
-                        className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <input
-                        type="number"
-                        min={0}
-                        value={row.capacity_override ?? ''}
-                        onChange={(e) =>
-                          handleAgChange(row.cm_id, 'capacity_override', e.target.value)
-                        }
-                        className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
       {hasChanges && (
         <div className="mt-4 flex justify-end">

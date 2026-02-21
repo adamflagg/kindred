@@ -54,7 +54,7 @@ function cellClass(status: Status): string {
     case 'waitlist':
       return `${base} bg-red-200 dark:bg-red-900/50 flex items-center justify-center`
     case 'na':
-      return `${base} bg-neutral-800 dark:bg-neutral-900`
+      return `${base} bg-neutral-200 dark:bg-neutral-700`
   }
 }
 
@@ -120,7 +120,7 @@ function Legend() {
         <span>Waitlist</span>
       </div>
       <div className="flex items-center gap-2">
-        <div className="border-border/50 h-5 w-5 rounded border bg-neutral-800 dark:bg-neutral-900" />
+        <div className="border-border/50 h-5 w-5 rounded border bg-neutral-200 dark:bg-neutral-700" />
         <span>N/A</span>
       </div>
     </div>
@@ -145,6 +145,7 @@ function SessionsTable({ sessions }: { sessions: SessionAvailabilityData[] }) {
             >
               Girls' Availability
             </th>
+            <th rowSpan={2} className="w-3 border-b" aria-hidden="true" />
             <th
               colSpan={GRADES.length}
               className="border-border border-b bg-blue-50 px-2 py-1.5 text-center text-sm font-semibold dark:bg-blue-950/30"
@@ -178,6 +179,7 @@ function SessionsTable({ sessions }: { sessions: SessionAvailabilityData[] }) {
                 {session.session_name}
               </td>
               <SessionRow session={session} gender="girls" />
+              <td className="w-3" aria-hidden="true" />
               <SessionRow session={session} gender="boys" />
             </tr>
           ))}
