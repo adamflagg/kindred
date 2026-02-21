@@ -777,3 +777,65 @@ class TestPriorStatusClassification:
         result = await service.calculate_cancellations(year=2025)
         assert result.was_applied == 0
         assert result.other_prior_status == 0
+
+    @pytest.mark.asyncio
+    async def test_demographics_include_all_prior_statuses(self, service: Any, mock_repo: AsyncMock) -> None:
+        """Grade and gender breakdowns should include was_applied and other_prior_status splits."""
+        sessions = {1001: _make_session(1001, "Session 1")}
+        mock_repo.fetch_sessions.return_value = sessions
+
+        cancelled = [
+            _make_attendee(101, 1001, "Session 1", "cancelled"),
+            _make_attendee(102, 1001, "Session 1", "cancelled"),
+            _make_attendee(103, 1001, "Session 1", "cancelled"),
+            _make_attendee(104, 1001, "Session 1", "cancelled"),
+        ]
+
+        async def fetch_attendees_side_effect(year: int, status_filter: Any = None) -> list[Any]:
+            if isinstance(status_filter, list) and "cancelled" in status_filter:
+                return cancelled
+            return []
+
+        mock_repo.fetch_attendees.side_effect = fetch_attendees_side_effect
+
+        all_to_cancelled = [
+            _make_history_record(101, 1001, "Session 1", "enrolled", "cancelled"),
+            _make_history_record(102, 1001, "Session 1", "waitlisted", "cancelled"),
+            _make_history_record(103, 1001, "Session 1", "applied", "cancelled"),
+            _make_history_record(104, 1001, "Session 1", "inquiry", "cancelled"),
+        ]
+
+        async def fetch_history_side_effect(
+            year: int, old_status: str | None = None, new_statuses: list[str] | None = None
+        ) -> list[Any]:
+            if old_status is None:
+                return all_to_cancelled
+            return []
+
+        mock_repo.fetch_status_history.side_effect = fetch_history_side_effect
+
+        # All same grade and gender so we can check the splits simply
+        mock_repo.fetch_persons.return_value = {
+            101: _make_person(101, "F", 5),
+            102: _make_person(102, "F", 5),
+            103: _make_person(103, "F", 5),
+            104: _make_person(104, "F", 5),
+        }
+
+        result = await service.calculate_cancellations(year=2025)
+
+        # Grade breakdown
+        grade_5 = next(g for g in result.by_grade if g.grade == 5)
+        assert grade_5.count == 4
+        assert grade_5.was_enrolled == 1
+        assert grade_5.was_waitlisted == 1
+        assert grade_5.was_applied == 1
+        assert grade_5.other_prior_status == 1
+
+        # Gender breakdown
+        female = next(g for g in result.by_gender if g.gender == "F")
+        assert female.count == 4
+        assert female.was_enrolled == 1
+        assert female.was_waitlisted == 1
+        assert female.was_applied == 1
+        assert female.other_prior_status == 1
