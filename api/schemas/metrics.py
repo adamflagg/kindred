@@ -17,6 +17,8 @@ class GenderBreakdown(BaseModel):
     percentage: float = Field(description="Percentage of total")
     no_enrollment: int = Field(default=0, description="Waitlisted with no other enrollment")
     has_enrollment: int = Field(default=0, description="Waitlisted but enrolled in other session")
+    was_enrolled: int = Field(default=0, description="Cancelled after being enrolled")
+    was_waitlisted: int = Field(default=0, description="Cancelled after being waitlisted")
 
 
 class GradeBreakdown(BaseModel):
@@ -27,6 +29,8 @@ class GradeBreakdown(BaseModel):
     percentage: float = Field(description="Percentage of total")
     no_enrollment: int = Field(default=0, description="Waitlisted with no other enrollment")
     has_enrollment: int = Field(default=0, description="Waitlisted but enrolled in other session")
+    was_enrolled: int = Field(default=0, description="Cancelled after being enrolled")
+    was_waitlisted: int = Field(default=0, description="Cancelled after being waitlisted")
 
 
 class SessionBreakdown(BaseModel):
@@ -602,6 +606,46 @@ class WaitlistMetricsResponse(BaseModel):
     )
     by_grade: list[GradeBreakdown] = Field(default_factory=list, description="Waitlisted by grade")
     by_gender: list[GenderBreakdown] = Field(default_factory=list, description="Waitlisted by gender")
+
+
+# ============================================================================
+# Cancellation Analysis
+# ============================================================================
+
+
+class CancellationSessionBreakdown(BaseModel):
+    """Per-session cancellation breakdown."""
+
+    session_cm_id: int = Field(description="Session CampMinder ID")
+    session_name: str = Field(description="Session name")
+    total_cancelled: int = Field(description="Total cancelled in this session")
+    was_enrolled: int = Field(default=0, description="Cancelled after being enrolled")
+    was_waitlisted: int = Field(default=0, description="Cancelled after being waitlisted")
+    has_other_sessions: int = Field(default=0, description="Cancelled but enrolled in other session")
+    no_other_sessions: int = Field(default=0, description="Cancelled with no remaining enrollment")
+
+
+class CancellationMetricsResponse(BaseModel):
+    """Response model for cancellation analysis endpoint."""
+
+    year: int = Field(description="Year for metrics")
+    total_cancelled: int = Field(description="Total cancelled (unique persons)")
+    was_enrolled: int = Field(description="Cancelled after being enrolled")
+    was_waitlisted: int = Field(description="Cancelled after being waitlisted")
+    has_other_sessions: int = Field(description="Cancelled but enrolled in other session")
+    no_other_sessions: int = Field(description="Cancelled with no remaining enrollment")
+    total_re_enrolled: int = Field(
+        default=0, description="Cancelled then later re-enrolled (recovery)"
+    )
+    by_session: list[CancellationSessionBreakdown] = Field(
+        default_factory=list, description="Per-session cancellation breakdown"
+    )
+    by_grade: list[GradeBreakdown] = Field(
+        default_factory=list, description="Cancellations by grade"
+    )
+    by_gender: list[GenderBreakdown] = Field(
+        default_factory=list, description="Cancellations by gender"
+    )
 
 
 # ============================================================================
