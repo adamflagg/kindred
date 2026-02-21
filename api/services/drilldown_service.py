@@ -41,6 +41,12 @@ PERSON_LEVEL_BREAKDOWNS = frozenset(
         "waitlist_accepted",
         "waitlist_declined",
         "waitlist_total",
+        "cancellation_total",
+        "cancellation_was_enrolled",
+        "cancellation_was_waitlisted",
+        "cancellation_has_other_sessions",
+        "cancellation_no_other_sessions",
+        "cancellation_re_enrolled",
     }
 )
 
@@ -61,6 +67,18 @@ WAITLIST_BREAKDOWNS = frozenset(
         "waitlist_accepted",
         "waitlist_declined",
         "waitlist_total",
+    }
+)
+
+# Cancellation breakdown types that need separate fetching logic
+CANCELLATION_BREAKDOWNS = frozenset(
+    {
+        "cancellation_total",
+        "cancellation_was_enrolled",
+        "cancellation_was_waitlisted",
+        "cancellation_has_other_sessions",
+        "cancellation_no_other_sessions",
+        "cancellation_re_enrolled",
     }
 )
 
@@ -137,6 +155,18 @@ class DrilldownService:
                 sessions=sessions,
                 session_types=session_types,
                 status_filter=status_filter,
+            )
+
+        # Cancellation breakdown types need separate fetching logic
+        if breakdown_type in CANCELLATION_BREAKDOWNS:
+            return await self._handle_cancellation_breakdown(
+                year=year,
+                breakdown_type=breakdown_type,
+                breakdown_value=breakdown_value,
+                sessions=sessions,
+                session_cm_id=session_cm_id,
+                session_types=session_types,
+                ag_session_ids=ag_session_ids,
             )
 
         # Waitlist breakdown types need separate fetching logic
@@ -977,4 +1007,186 @@ class DrilldownService:
             sessions,
             person_attendee_groups=all_waitlisted_groups,
             enrolled_attendee_groups=enrolled_attendee_groups,
+        )
+
+    async def _handle_cancellation_breakdown(
+        self,
+        year: int,
+        breakdown_type: str,
+        breakdown_value: str,
+        sessions: dict[int, Any],
+        session_cm_id: int | None,
+        session_types: list[str] | None,
+        ag_session_ids: set[int],
+    ) -> list[DrilldownAttendee]:
+        """Handle cancellation-specific breakdown types.
+
+        Fetches cancelled attendees and cross-references with status history
+        and enrolled attendees to partition by cancellation category.
+        """
+        import asyncio
+
+        from api.services.cancellation_service import CANCELLED_STATUSES, SUMMER_SESSION_TYPES
+
+        effective_types = session_types or list(SUMMER_SESSION_TYPES)
+
+        # Re-enrolled is a special case: these are currently enrolled campers
+        # who have a cancelled->enrolled status history transition
+        if breakdown_type == "cancellation_re_enrolled":
+            return await self._handle_cancellation_re_enrolled(
+                year=year,
+                sessions=sessions,
+                session_cm_id=session_cm_id,
+                session_types=session_types,
+                ag_session_ids=ag_session_ids,
+                effective_types=effective_types,
+            )
+
+        cancelled_attendees, enrolled_attendees, persons = await asyncio.gather(
+            self.repo.fetch_attendees(year, CANCELLED_STATUSES),
+            self.repo.fetch_attendees(year, ["enrolled"]),
+            self.repo.fetch_persons(year),
+        )
+
+        # Filter cancelled by session
+        cancelled_attendees = filter_attendees_by_session(
+            cancelled_attendees, session_types, session_cm_id, ag_session_ids
+        )
+
+        # Build enrolled person set
+        enrolled_person_ids: set[int] = set()
+        enrolled_attendee_groups: dict[int, list[Any]] = {}
+        for att in enrolled_attendees:
+            pid = getattr(att, "person_id", None)
+            session_info = get_session_from_expand(att)
+            if pid is not None and session_info:
+                session_type = getattr(session_info, "session_type", None)
+                if session_type in effective_types:
+                    pid_int = int(pid)
+                    enrolled_person_ids.add(pid_int)
+                    enrolled_attendee_groups.setdefault(pid_int, []).append(att)
+
+        # Build was_enrolled / was_waitlisted person sets from status history
+        enrolled_to_cancelled, waitlisted_to_cancelled = await asyncio.gather(
+            self.repo.fetch_status_history(year, old_status="enrolled", new_statuses=CANCELLED_STATUSES),
+            self.repo.fetch_status_history(year, old_status="waitlisted", new_statuses=CANCELLED_STATUSES),
+        )
+
+        was_enrolled_persons: set[int] = set()
+        for record in enrolled_to_cancelled:
+            pid = int(getattr(record, "person_id", 0))
+            if pid:
+                was_enrolled_persons.add(pid)
+
+        was_waitlisted_persons: set[int] = set()
+        for record in waitlisted_to_cancelled:
+            pid = int(getattr(record, "person_id", 0))
+            if pid:
+                was_waitlisted_persons.add(pid)
+
+        # Deduplicate cancelled by person, filter by breakdown type
+        seen_persons: set[int] = set()
+        matching: list[Any] = []
+        # Build cancelled groups for all sessions
+        cancelled_groups: dict[int, list[Any]] = {}
+        for att in cancelled_attendees:
+            pid = int(getattr(att, "person_id", 0))
+            if pid:
+                cancelled_groups.setdefault(pid, []).append(att)
+
+        for att in cancelled_attendees:
+            pid = int(getattr(att, "person_id", 0))
+            if not pid or pid in seen_persons:
+                continue
+            seen_persons.add(pid)
+
+            if (
+                breakdown_type == "cancellation_total"
+                or (breakdown_type == "cancellation_was_enrolled" and pid in was_enrolled_persons)
+                or (breakdown_type == "cancellation_was_waitlisted" and pid in was_waitlisted_persons)
+                or (breakdown_type == "cancellation_has_other_sessions" and pid in enrolled_person_ids)
+                or (breakdown_type == "cancellation_no_other_sessions" and pid not in enrolled_person_ids)
+            ):
+                matching.append(att)
+
+        return self._build_response(
+            matching,
+            persons,
+            sessions,
+            person_attendee_groups=cancelled_groups,
+            enrolled_attendee_groups=enrolled_attendee_groups,
+        )
+
+    async def _handle_cancellation_re_enrolled(
+        self,
+        year: int,
+        sessions: dict[int, Any],
+        session_cm_id: int | None,
+        session_types: list[str] | None,
+        ag_session_ids: set[int],
+        effective_types: list[str],
+    ) -> list[DrilldownAttendee]:
+        """Handle cancellation_re_enrolled breakdown.
+
+        Re-enrolled campers are currently enrolled and have a status history
+        transition from a cancelled status back to enrolled.
+        """
+        import asyncio
+
+        from api.services.cancellation_service import CANCELLED_STATUSES
+
+        # Fetch enrolled attendees, persons, and status history for each cancelled status
+        enrolled_attendees: list[Any]
+        persons: dict[int, Any]
+        enrolled_attendees, persons = await asyncio.gather(
+            self.repo.fetch_attendees(year, ["enrolled"]),
+            self.repo.fetch_persons(year),
+        )
+
+        history_tasks = [
+            self.repo.fetch_status_history(year, old_status=status, new_statuses=["enrolled"])
+            for status in CANCELLED_STATUSES
+        ]
+        history_lists: list[list[Any]] = await asyncio.gather(*history_tasks)
+
+        # Find person IDs with cancelled->enrolled transitions
+        re_enrolled_person_ids: set[int] = set()
+        for history in history_lists:
+            for record in history:
+                pid = int(getattr(record, "person_id", 0))
+                if pid:
+                    re_enrolled_person_ids.add(pid)
+
+        # Filter enrolled attendees by session
+        filtered_enrolled = filter_attendees_by_session(
+            enrolled_attendees, session_types, session_cm_id, ag_session_ids
+        )
+
+        # Build person groups for enrolled sessions display
+        enrolled_groups: dict[int, list[Any]] = {}
+        for att in filtered_enrolled:
+            pid = int(getattr(att, "person_id", 0))
+            if pid:
+                session_info = get_session_from_expand(att)
+                if session_info:
+                    session_type = getattr(session_info, "session_type", None)
+                    if session_type in effective_types:
+                        enrolled_groups.setdefault(pid, []).append(att)
+
+        # Deduplicate by person, filter to re-enrolled only
+        seen_persons: set[int] = set()
+        matching: list[Any] = []
+        for att in filtered_enrolled:
+            pid = int(getattr(att, "person_id", 0))
+            if not pid or pid in seen_persons:
+                continue
+            seen_persons.add(pid)
+            if pid in re_enrolled_person_ids:
+                matching.append(att)
+
+        return self._build_response(
+            matching,
+            persons,
+            sessions,
+            person_attendee_groups=enrolled_groups,
         )

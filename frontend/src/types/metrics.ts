@@ -8,6 +8,10 @@ export interface GenderBreakdown {
   percentage: number
   no_enrollment?: number
   has_enrollment?: number
+  was_enrolled?: number
+  was_waitlisted?: number
+  was_applied?: number
+  other_prior_status?: number
 }
 
 export interface GradeBreakdown {
@@ -16,6 +20,10 @@ export interface GradeBreakdown {
   percentage: number
   no_enrollment?: number
   has_enrollment?: number
+  was_enrolled?: number
+  was_waitlisted?: number
+  was_applied?: number
+  other_prior_status?: number
 }
 
 export interface SessionBreakdown {
@@ -396,6 +404,12 @@ export interface DrilldownFilter {
     | 'waitlist_accepted'
     | 'waitlist_declined'
     | 'waitlist_total'
+    | 'cancellation_total'
+    | 'cancellation_was_enrolled'
+    | 'cancellation_was_waitlisted'
+    | 'cancellation_has_other_sessions'
+    | 'cancellation_no_other_sessions'
+    | 'cancellation_re_enrolled'
   value: string
   label: string // Display label for modal title
   /** Title format: 'in' → "X campers in Label", 'adjective' → "X Label Camper(s)" */
@@ -455,6 +469,34 @@ export interface WaitlistMetrics {
   total_accepted: number
   total_declined: number
   by_session: WaitlistSessionBreakdown[]
+  by_grade: GradeBreakdown[]
+  by_gender: GenderBreakdown[]
+}
+
+// Cancellation analysis types
+export interface CancellationSessionBreakdown {
+  session_cm_id: number
+  session_name: string
+  total_cancelled: number
+  was_enrolled: number
+  was_waitlisted: number
+  was_applied: number
+  other_prior_status: number
+  has_other_sessions: number
+  no_other_sessions: number
+}
+
+export interface CancellationMetrics {
+  year: number
+  total_cancelled: number
+  was_enrolled: number
+  was_waitlisted: number
+  was_applied: number
+  other_prior_status: number
+  has_other_sessions: number
+  no_other_sessions: number
+  total_re_enrolled: number
+  by_session: CancellationSessionBreakdown[]
   by_grade: GradeBreakdown[]
   by_gender: GenderBreakdown[]
 }

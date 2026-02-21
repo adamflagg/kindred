@@ -1,23 +1,24 @@
 /**
- * WaitlistAnalysis - Waitlist-focused registration analysis.
+ * CancellationAnalysis - Cancellation-focused registration analysis.
  *
- * Four use cases:
- * 1. Currently waitlisted with no other enrolled sessions (highest priority)
- * 2. Currently waitlisted but enrolled in another session
- * 3. Previously waitlisted, now accepted (enrolled)
- * 4. Previously waitlisted, declined (cancelled/withdrawn/dismissed)
+ * Analyzes cancelled/withdrawn/dismissed attendees:
+ * 1. Was Enrolled - cancelled after being enrolled (lost confirmed spot)
+ * 2. Was Waitlisted - cancelled after being waitlisted (left the waitlist)
+ * 3. Has Other Sessions - cancelled but still enrolled elsewhere
+ * 4. No Other Sessions - cancelled with no remaining enrollment
+ * 5. Re-enrolled - cancelled then later re-enrolled (recovery)
  */
 
 import { useMemo } from 'react'
-import { AlertTriangle, CheckCircle, XCircle, Users, Clock } from 'lucide-react'
+import { XCircle, Users, UserMinus, AlertTriangle, Clock } from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useDrilldown } from '../../../hooks/useDrilldown'
-import { useComparisonWaitlistData } from '../../../hooks/useComparisonWaitlistData'
+import { useComparisonCancellationData } from '../../../hooks/useComparisonCancellationData'
 import { MetricCard } from '../../../components/metrics/MetricCard'
-import { WaitlistBySessionChart } from '../../../components/metrics/WaitlistBySessionChart'
-import { WaitlistGradeChart } from '../../../components/metrics/WaitlistGradeChart'
-import { WaitlistGenderChart } from '../../../components/metrics/WaitlistGenderChart'
+import { CancellationBySessionChart } from '../../../components/metrics/CancellationBySessionChart'
+import { CancellationGradeChart } from '../../../components/metrics/CancellationGradeChart'
+import { CancellationGenderChart } from '../../../components/metrics/CancellationGenderChart'
 import { transformGenderData } from '../../../utils/metricsTransforms'
 import { SESSION_NAME_ALIASES, resolveSessionAlias } from '../../../utils/sessionAliases'
 import { ComparisonSummaryTable } from '../../../components/metrics/ComparisonSummaryTable'
@@ -26,10 +27,10 @@ import {
   buildSessionTypeLookup,
   sortSessionDataByCampThenQuest,
 } from '../../../utils/sessionUtils'
-import type { WaitlistSessionBreakdown } from '../../../types/metrics'
+import type { CancellationSessionBreakdown } from '../../../types/metrics'
 import { MetricsQueryGuard } from '../../../components/metrics/MetricsQueryGuard'
 
-export default function WaitlistAnalysis() {
+export default function CancellationAnalysis() {
   const { currentYear } = useCurrentYear()
   const {
     selectedSessionCmId,
@@ -42,7 +43,7 @@ export default function WaitlistAnalysis() {
   const sessionDateLookup = useMemo(() => buildSessionDateLookup(sessions), [sessions])
   const sessionTypeLookup = useMemo(() => buildSessionTypeLookup(sessions), [sessions])
 
-  const { primary, comparison } = useComparisonWaitlistData(
+  const { primary, comparison } = useComparisonCancellationData(
     currentYear,
     compareYear,
     sessionTypesParam,
@@ -55,89 +56,135 @@ export default function WaitlistAnalysis() {
     year: currentYear,
     sessionCmId: selectedSessionCmId ?? undefined,
     sessionTypes: [...activeSessionTypes],
-    statusFilter: ['waitlisted'],
+    statusFilter: ['cancelled', 'withdrawn', 'dismissed'],
   })
 
   return (
-    <MetricsQueryGuard isLoading={isLoading} error={error} data={data} label="waitlist">
+    <MetricsQueryGuard isLoading={isLoading} error={error} data={data} label="cancellations">
       {(data) => {
         return (
           <div className="space-y-6">
             {/* Summary Cards */}
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
               <MetricCard
-                title="Total Waitlisted"
-                value={data.total_waitlisted}
-                className="border-amber-200 dark:border-amber-800"
-                compareValue={compData?.total_waitlisted}
+                title="Total Cancelled"
+                value={data.total_cancelled}
+                className="border-red-200 dark:border-red-800"
+                compareValue={compData?.total_cancelled}
                 compareYear={compareYear ?? undefined}
+                sentiment="inverse"
                 onClick={() =>
                   setFilter({
-                    type: 'waitlist_total',
+                    type: 'cancellation_total',
                     value: 'all',
-                    label: 'Total Waitlisted',
+                    label: 'Total Cancelled',
                   })
                 }
               />
               <MetricCard
-                title="No Other Sessions"
-                value={data.waitlisted_no_enrollment}
-                subtitle="May not attend camp"
+                title="Was Enrolled"
+                value={data.was_enrolled}
+                subtitle="Lost confirmed spot"
                 className={
-                  data.waitlisted_no_enrollment > 0
+                  data.was_enrolled > 0
                     ? 'border-red-300 bg-red-50/50 dark:border-red-800 dark:bg-red-950/30'
                     : ''
                 }
-                compareValue={compData?.waitlisted_no_enrollment}
+                compareValue={compData?.was_enrolled}
                 compareYear={compareYear ?? undefined}
+                sentiment="inverse"
                 onClick={() =>
                   setFilter({
-                    type: 'waitlist_no_enrollment',
+                    type: 'cancellation_was_enrolled',
                     value: 'true',
-                    label: 'No Other Sessions',
+                    label: 'Was Enrolled',
+                    titleFormat: 'adjective',
                   })
                 }
               />
               <MetricCard
+                title="Was Waitlisted"
+                value={data.was_waitlisted}
+                subtitle="Left the waitlist"
+                compareValue={compData?.was_waitlisted}
+                compareYear={compareYear ?? undefined}
+                sentiment="inverse"
+                onClick={() =>
+                  setFilter({
+                    type: 'cancellation_was_waitlisted',
+                    value: 'true',
+                    label: 'Was Waitlisted',
+                    titleFormat: 'adjective',
+                  })
+                }
+              />
+              {data.was_applied > 0 && (
+                <MetricCard
+                  title="Was Applied"
+                  value={data.was_applied}
+                  subtitle="Left after applying"
+                  compareValue={compData?.was_applied}
+                  compareYear={compareYear ?? undefined}
+                  sentiment="inverse"
+                />
+              )}
+              {data.other_prior_status > 0 && (
+                <MetricCard
+                  title="Other Prior"
+                  value={data.other_prior_status}
+                  subtitle="Inquiry, incomplete, etc."
+                  compareValue={compData?.other_prior_status}
+                  compareYear={compareYear ?? undefined}
+                  sentiment="inverse"
+                />
+              )}
+              <MetricCard
                 title="Has Other Sessions"
-                value={data.waitlisted_has_enrollment}
-                subtitle="Enrolled elsewhere"
-                compareValue={compData?.waitlisted_has_enrollment}
+                value={data.has_other_sessions}
+                subtitle="Still attending"
+                compareValue={compData?.has_other_sessions}
                 compareYear={compareYear ?? undefined}
                 onClick={() =>
                   setFilter({
-                    type: 'waitlist_has_enrollment',
+                    type: 'cancellation_has_other_sessions',
                     value: 'true',
                     label: 'Has Other Sessions',
                   })
                 }
               />
               <MetricCard
-                title="Accepted"
-                value={data.total_accepted}
-                subtitle="From waitlist"
-                compareValue={compData?.total_accepted}
+                title="No Other Sessions"
+                value={data.no_other_sessions}
+                subtitle="Fully lost to camp"
+                className={
+                  data.no_other_sessions > 0
+                    ? 'border-red-300 bg-red-50/50 dark:border-red-800 dark:bg-red-950/30'
+                    : ''
+                }
+                compareValue={compData?.no_other_sessions}
                 compareYear={compareYear ?? undefined}
+                sentiment="inverse"
                 onClick={() =>
                   setFilter({
-                    type: 'waitlist_accepted',
+                    type: 'cancellation_no_other_sessions',
                     value: 'true',
-                    label: 'Accepted from Waitlist',
+                    label: 'No Other Sessions',
                   })
                 }
               />
               <MetricCard
-                title="Declined"
-                value={data.total_declined}
-                subtitle="From waitlist"
-                sentiment="inverse"
-                compareValue={compData?.total_declined}
+                title="Re-enrolled"
+                value={data.total_re_enrolled}
+                subtitle="Recovery rate"
+                compareValue={compData?.total_re_enrolled}
                 compareYear={compareYear ?? undefined}
                 onClick={() =>
                   setFilter({
-                    type: 'waitlist_declined',
+                    type: 'cancellation_re_enrolled',
                     value: 'true',
-                    label: 'Declined from Waitlist',
+                    label: 'Re-enrolled',
+                    titleFormat: 'adjective',
+                    statusOverride: ['enrolled'],
                   })
                 }
               />
@@ -149,30 +196,26 @@ export default function WaitlistAnalysis() {
                 {isComparing && compData ? (
                   <>
                     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                      <WaitlistBySessionChart
+                      <CancellationBySessionChart
                         data={sortSessionDataByCampThenQuest(
                           data.by_session,
                           sessionDateLookup,
                           sessionTypeLookup
                         )}
                         onBarClick={setFilter}
-                        sessionDateLookup={sessionDateLookup}
-                        sessionTypeLookup={sessionTypeLookup}
-                        title={`${currentYear} Waitlist by Session`}
+                        title={`${currentYear} Cancellations by Session`}
                       />
-                      <WaitlistBySessionChart
+                      <CancellationBySessionChart
                         data={sortSessionDataByCampThenQuest(
                           compData.by_session,
                           sessionDateLookup,
                           sessionTypeLookup
                         )}
-                        sessionDateLookup={sessionDateLookup}
-                        sessionTypeLookup={sessionTypeLookup}
-                        title={`${compareYear} Waitlist by Session`}
+                        title={`${compareYear} Cancellations by Session`}
                       />
                     </div>
                     <ComparisonSummaryTable
-                      title="Waitlist by Session Comparison"
+                      title="Cancellations by Session Comparison"
                       primaryYear={currentYear}
                       compareYear={compareYear!}
                       primaryData={sortSessionDataByCampThenQuest(
@@ -181,7 +224,7 @@ export default function WaitlistAnalysis() {
                         sessionTypeLookup
                       ).map((s) => ({
                         name: s.session_name,
-                        value: s.waitlisted,
+                        value: s.total_cancelled,
                       }))}
                       compareData={sortSessionDataByCampThenQuest(
                         compData.by_session,
@@ -189,22 +232,20 @@ export default function WaitlistAnalysis() {
                         sessionTypeLookup
                       ).map((s) => ({
                         name: s.session_name,
-                        value: s.waitlisted,
+                        value: s.total_cancelled,
                       }))}
                       aliasMap={SESSION_NAME_ALIASES}
                       categoryLabel="Session"
                     />
                   </>
                 ) : (
-                  <WaitlistBySessionChart
+                  <CancellationBySessionChart
                     data={sortSessionDataByCampThenQuest(
                       data.by_session,
                       sessionDateLookup,
                       sessionTypeLookup
                     )}
                     onBarClick={setFilter}
-                    sessionDateLookup={sessionDateLookup}
-                    sessionTypeLookup={sessionTypeLookup}
                   />
                 )}
               </>
@@ -218,12 +259,12 @@ export default function WaitlistAnalysis() {
                     {(data.by_grade || []).length > 0 && (
                       <>
                         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                          <WaitlistGradeChart
+                          <CancellationGradeChart
                             data={data.by_grade}
                             onBarClick={setFilter}
                             title={`${currentYear} Grade Distribution`}
                           />
-                          <WaitlistGradeChart
+                          <CancellationGradeChart
                             data={compData.by_grade || []}
                             title={`${compareYear} Grade Distribution`}
                           />
@@ -246,12 +287,12 @@ export default function WaitlistAnalysis() {
                     {(data.by_gender || []).length > 0 && (
                       <>
                         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                          <WaitlistGenderChart
+                          <CancellationGenderChart
                             data={data.by_gender}
                             onSegmentClick={setFilter}
                             title={`${currentYear} Gender Distribution`}
                           />
-                          <WaitlistGenderChart
+                          <CancellationGenderChart
                             data={compData.by_gender || []}
                             title={`${compareYear} Gender Distribution`}
                           />
@@ -269,10 +310,10 @@ export default function WaitlistAnalysis() {
                 ) : (
                   <div className="grid gap-6 lg:grid-cols-2">
                     {(data.by_grade || []).length > 0 && (
-                      <WaitlistGradeChart data={data.by_grade} onBarClick={setFilter} />
+                      <CancellationGradeChart data={data.by_grade} onBarClick={setFilter} />
                     )}
                     {(data.by_gender || []).length > 0 && (
-                      <WaitlistGenderChart data={data.by_gender} onSegmentClick={setFilter} />
+                      <CancellationGenderChart data={data.by_gender} onSegmentClick={setFilter} />
                     )}
                   </div>
                 )}
@@ -292,26 +333,29 @@ export default function WaitlistAnalysis() {
                         <th className="px-4 py-2 text-left font-medium">Session</th>
                         <th className="px-4 py-2 text-right font-medium">
                           <span className="inline-flex items-center gap-1">
-                            <AlertTriangle className="h-3 w-3 text-red-500" />
-                            No Enrollment
+                            <UserMinus className="h-3 w-3 text-blue-500" />
+                            Was Enrolled
                           </span>
                         </th>
                         <th className="px-4 py-2 text-right font-medium">
                           <span className="inline-flex items-center gap-1">
-                            <Users className="h-3 w-3 text-amber-500" />
-                            Has Enrollment
+                            <AlertTriangle className="h-3 w-3 text-amber-500" />
+                            Was Waitlisted
                           </span>
                         </th>
+                        <th className="px-4 py-2 text-right font-medium">Was Applied</th>
+                        <th className="px-4 py-2 text-right font-medium">Other</th>
+                        <th className="px-4 py-2 text-right font-medium">Unknown</th>
                         <th className="border-border border-l px-4 py-2 text-right font-medium">
                           <span className="inline-flex items-center gap-1">
-                            <CheckCircle className="h-3 w-3 text-emerald-500" />
-                            Accepted
+                            <Users className="h-3 w-3 text-emerald-500" />
+                            Has Other
                           </span>
                         </th>
                         <th className="px-4 py-2 text-right font-medium">
                           <span className="inline-flex items-center gap-1">
                             <XCircle className="h-3 w-3 text-red-500" />
-                            Declined
+                            No Other
                           </span>
                         </th>
                         <th className="border-border border-l px-4 py-2 text-right font-medium">
@@ -332,7 +376,7 @@ export default function WaitlistAnalysis() {
                         data.by_session,
                         sessionDateLookup,
                         sessionTypeLookup
-                      ).map((session: WaitlistSessionBreakdown) => (
+                      ).map((session: CancellationSessionBreakdown) => (
                         <tr key={session.session_cm_id} className="border-border/50 border-b">
                           <td className="px-4 py-2 font-medium">
                             {session.session_name}
@@ -352,26 +396,41 @@ export default function WaitlistAnalysis() {
                                 ) : null
                               })()}
                           </td>
+                          <td className="px-4 py-2 text-right text-blue-600 dark:text-blue-400">
+                            {session.was_enrolled}
+                          </td>
+                          <td className="px-4 py-2 text-right text-amber-600 dark:text-amber-400">
+                            {session.was_waitlisted}
+                          </td>
+                          <td className="px-4 py-2 text-right text-purple-600 dark:text-purple-400">
+                            {session.was_applied}
+                          </td>
+                          <td className="text-muted-foreground px-4 py-2 text-right">
+                            {session.other_prior_status}
+                          </td>
+                          <td className="text-muted-foreground px-4 py-2 text-right">
+                            {session.total_cancelled -
+                              session.was_enrolled -
+                              session.was_waitlisted -
+                              session.was_applied -
+                              session.other_prior_status}
+                          </td>
+                          <td className="border-border border-l px-4 py-2 text-right text-emerald-600 dark:text-emerald-400">
+                            {session.has_other_sessions}
+                          </td>
                           <td className="px-4 py-2 text-right">
                             <span
                               className={
-                                session.no_enrollment > 0
+                                session.no_other_sessions > 0
                                   ? 'font-semibold text-red-600 dark:text-red-400'
                                   : ''
                               }
                             >
-                              {session.no_enrollment}
+                              {session.no_other_sessions}
                             </span>
                           </td>
-                          <td className="px-4 py-2 text-right">{session.has_enrollment}</td>
-                          <td className="border-border border-l px-4 py-2 text-right text-emerald-600 dark:text-emerald-400">
-                            {session.accepted}
-                          </td>
-                          <td className="px-4 py-2 text-right text-red-600 dark:text-red-400">
-                            {session.declined}
-                          </td>
                           <td className="border-border border-l px-4 py-2 text-right font-medium">
-                            {session.waitlisted}
+                            {session.total_cancelled}
                           </td>
                           {isComparing &&
                             compData &&
@@ -382,15 +441,15 @@ export default function WaitlistAnalysis() {
                                   resolveSessionAlias(session.session_name)
                               )
                               const delta = compSession
-                                ? session.waitlisted - compSession.waitlisted
+                                ? session.total_cancelled - compSession.total_cancelled
                                 : null
                               return (
                                 <>
                                   <td className="px-4 py-2 text-right">
-                                    {compSession?.waitlisted ?? '\u2014'}
+                                    {compSession?.total_cancelled ?? '\u2014'}
                                   </td>
                                   <td
-                                    className={`px-4 py-2 text-right ${delta && delta > 0 ? 'text-emerald-600 dark:text-emerald-400' : delta && delta < 0 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}
+                                    className={`px-4 py-2 text-right ${delta && delta > 0 ? 'text-red-600 dark:text-red-400' : delta && delta < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}
                                   >
                                     {delta !== null ? (delta > 0 ? `+${delta}` : delta) : '\u2014'}
                                   </td>
@@ -405,22 +464,20 @@ export default function WaitlistAnalysis() {
               </div>
             )}
 
-            {/* Historical note when no history data */}
-            {data.total_accepted === 0 &&
-              data.total_declined === 0 &&
-              data.total_waitlisted > 0 && (
-                <div className="card-lodge flex items-start gap-3 p-4">
-                  <Clock className="text-muted-foreground mt-0.5 h-5 w-5 flex-shrink-0" />
-                  <div>
-                    <p className="text-foreground text-sm font-medium">Status History Tracking</p>
-                    <p className="text-muted-foreground mt-1 text-sm">
-                      Status transitions are tracked each time the attendee sync runs. Historical
-                      accepted/declined data will accumulate over time as waitlisted campers change
-                      status.
-                    </p>
-                  </div>
+            {/* Status history note */}
+            {data.total_cancelled === 0 && (
+              <div className="card-lodge flex items-start gap-3 p-4">
+                <Clock className="text-muted-foreground mt-0.5 h-5 w-5 flex-shrink-0" />
+                <div>
+                  <p className="text-foreground text-sm font-medium">Status History Tracking</p>
+                  <p className="text-muted-foreground mt-1 text-sm">
+                    Cancellation data is tracked from the attendee sync. Prior status (enrolled vs
+                    waitlisted) is determined from status history transitions detected during sync
+                    runs.
+                  </p>
                 </div>
-              )}
+              </div>
+            )}
 
             <DrilldownModal />
           </div>

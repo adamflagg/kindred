@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, Query
 from ..dependencies import pb
 from ..schemas.forecast import ForecastResponse
 from ..schemas.metrics import (
+    CancellationMetricsResponse,
     ComparisonMetricsResponse,
     DrilldownAttendee,
     HistoricalTrendsResponse,
@@ -292,6 +293,49 @@ async def get_waitlist_metrics(
     except Exception as e:
         logger.error(f"Error calculating waitlist metrics: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error calculating waitlist metrics: {str(e)}")
+
+
+# ============================================================================
+# Cancellation Analysis Endpoint
+# ============================================================================
+
+
+@router.get("/cancellations", response_model=CancellationMetricsResponse)
+async def get_cancellation_metrics(
+    year: int = Query(..., description="Year to analyze"),
+    session_types: str | None = Query(
+        "main,embedded,ag,quest",
+        description="Comma-separated session types to filter (default: summer camp sessions)",
+    ),
+    session_cm_id: int | None = Query(
+        None,
+        description="Filter to specific session by CampMinder ID",
+    ),
+) -> CancellationMetricsResponse:
+    """Get cancellation analysis metrics.
+
+    Returns cancellation data categorized by:
+    - Was enrolled vs was waitlisted before cancelling
+    - Has other sessions vs no other sessions remaining
+    - Re-enrolled (cancelled then returned)
+    """
+    from api.services.cancellation_service import CancellationService
+    from api.services.metrics_repository import MetricsRepository
+
+    try:
+        type_filter = session_types.split(",") if session_types else None
+
+        repository = MetricsRepository(pb)
+        service = CancellationService(repository)
+        return await service.calculate_cancellations(
+            year=year,
+            session_types=type_filter,
+            session_cm_id=session_cm_id,
+        )
+
+    except Exception as e:
+        logger.error(f"Error calculating cancellation metrics: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error calculating cancellation metrics: {str(e)}")
 
 
 # ============================================================================

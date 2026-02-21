@@ -3974,3 +3974,154 @@ class TestEnrollmentDatePopulation:
 
         assert len(result) == 1
         assert result[0].enrollment_date == "2025-11-01 09:00:00.000Z"  # Earliest
+
+
+class TestCancellationReEnrolledDrilldown:
+    """Tests for cancellation_re_enrolled drilldown breakdown.
+
+    Re-enrolled campers are those who were cancelled then later re-enrolled.
+    They are currently enrolled (not cancelled), so the drilldown returns
+    enrolled attendees filtered to those with a cancelled->enrolled status
+    history transition.
+    """
+
+    @pytest.fixture
+    def re_enrolled_sessions(self) -> dict[int, Mock]:
+        """Sessions for re-enrolled tests."""
+        return {
+            1001: create_mock_session(1001, "Session 1", 2026, "main"),
+            1002: create_mock_session(1002, "Session 2", 2026, "main"),
+        }
+
+    @pytest.fixture
+    def re_enrolled_persons(self) -> dict[int, Mock]:
+        """Persons for re-enrolled tests.
+
+        - 101 Emma: was cancelled then re-enrolled
+        - 102 Liam: was cancelled then re-enrolled (different session)
+        - 103 Olivia: never cancelled, just enrolled normally
+        """
+        return {
+            101: create_mock_person(101, "Emma", "Johnson", gender="F", grade=6),
+            102: create_mock_person(102, "Liam", "Garcia", gender="M", grade=7),
+            103: create_mock_person(103, "Olivia", "Chen", gender="F", grade=5),
+        }
+
+    @pytest.mark.asyncio
+    async def test_re_enrolled_returns_currently_enrolled_with_history(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        re_enrolled_sessions: dict[int, Mock],
+        re_enrolled_persons: dict[int, Mock],
+    ) -> None:
+        """cancellation_re_enrolled returns enrolled campers who have a cancelled->enrolled transition."""
+        session1 = re_enrolled_sessions[1001]
+        session2 = re_enrolled_sessions[1002]
+
+        # Status history: Emma and Liam were cancelled then re-enrolled
+        history = [
+            create_mock_status_history(
+                101, session1, re_enrolled_persons[101], old_status="cancelled", new_status="enrolled"
+            ),
+            create_mock_status_history(
+                102, session2, re_enrolled_persons[102], old_status="withdrawn", new_status="enrolled"
+            ),
+        ]
+
+        # Currently enrolled attendees: Emma, Liam, and Olivia
+        enrolled_attendees = [
+            create_mock_attendee(101, session1, 2026, status="enrolled"),
+            create_mock_attendee(102, session2, 2026, status="enrolled"),
+            create_mock_attendee(103, session1, 2026, status="enrolled"),
+        ]
+
+        mock_repository.fetch_sessions.return_value = re_enrolled_sessions
+        mock_repository.fetch_persons.return_value = re_enrolled_persons
+        mock_repository.fetch_attendees = AsyncMock(return_value=enrolled_attendees)
+        mock_repository.fetch_status_history = AsyncMock(return_value=history)
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="cancellation_re_enrolled",
+            breakdown_value="true",
+            status_filter=["enrolled"],
+        )
+
+        # Only Emma and Liam should be returned (they have cancel->enrolled history)
+        assert len(result) == 2
+        person_ids = {r.person_id for r in result}
+        assert person_ids == {101, 102}
+        # They should show as enrolled status
+        for r in result:
+            assert r.status == "enrolled"
+
+    @pytest.mark.asyncio
+    async def test_re_enrolled_empty_when_no_transitions(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        re_enrolled_sessions: dict[int, Mock],
+        re_enrolled_persons: dict[int, Mock],
+    ) -> None:
+        """cancellation_re_enrolled returns empty when no cancel->enrolled transitions exist."""
+        session1 = re_enrolled_sessions[1001]
+
+        enrolled_attendees = [
+            create_mock_attendee(103, session1, 2026, status="enrolled"),
+        ]
+
+        mock_repository.fetch_sessions.return_value = re_enrolled_sessions
+        mock_repository.fetch_persons.return_value = re_enrolled_persons
+        mock_repository.fetch_attendees = AsyncMock(return_value=enrolled_attendees)
+        mock_repository.fetch_status_history = AsyncMock(return_value=[])
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="cancellation_re_enrolled",
+            breakdown_value="true",
+            status_filter=["enrolled"],
+        )
+
+        assert len(result) == 0
+
+    @pytest.mark.asyncio
+    async def test_re_enrolled_deduplicates_by_person(
+        self,
+        drilldown_service: DrilldownService,
+        mock_repository: Mock,
+        re_enrolled_sessions: dict[int, Mock],
+        re_enrolled_persons: dict[int, Mock],
+    ) -> None:
+        """cancellation_re_enrolled deduplicates when a person is enrolled in multiple sessions."""
+        session1 = re_enrolled_sessions[1001]
+        session2 = re_enrolled_sessions[1002]
+
+        history = [
+            create_mock_status_history(
+                101, session1, re_enrolled_persons[101], old_status="cancelled", new_status="enrolled"
+            ),
+        ]
+
+        # Emma enrolled in both sessions
+        enrolled_attendees = [
+            create_mock_attendee(101, session1, 2026, status="enrolled"),
+            create_mock_attendee(101, session2, 2026, status="enrolled"),
+        ]
+
+        mock_repository.fetch_sessions.return_value = re_enrolled_sessions
+        mock_repository.fetch_persons.return_value = re_enrolled_persons
+        mock_repository.fetch_attendees = AsyncMock(return_value=enrolled_attendees)
+        mock_repository.fetch_status_history = AsyncMock(return_value=history)
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="cancellation_re_enrolled",
+            breakdown_value="true",
+            status_filter=["enrolled"],
+        )
+
+        # Only one entry for Emma, but with both sessions listed
+        assert len(result) == 1
+        assert result[0].person_id == 101
+        assert len(result[0].sessions) == 2

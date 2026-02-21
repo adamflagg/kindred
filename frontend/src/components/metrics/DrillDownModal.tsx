@@ -98,6 +98,12 @@ export function DrillDownModal({
   )
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const isRetentionDrilldown = !!filter?.retentionContext
+  const isCancellationDrilldown = filter?.type?.startsWith('cancellation_') ?? false
+  // These cancellation types use default layout (School + Session columns)
+  const isCancellationDefaultLayout =
+    filter?.type === 'cancellation_no_other_sessions' || filter?.type === 'cancellation_re_enrolled'
+  // Show special cancellation columns (Cancelled Session + Current Session)
+  const isCancellationSpecial = isCancellationDrilldown && !isCancellationDefaultLayout
 
   const {
     data: attendees = [],
@@ -137,14 +143,16 @@ export function DrillDownModal({
         (a.preferred_name?.toLowerCase().includes(term) ?? false) ||
         (!isWaitlistDrilldown &&
           !isRetentionDrilldown &&
+          !isCancellationSpecial &&
           (a.school?.toLowerCase().includes(term) ?? false)) ||
         (a.city?.toLowerCase().includes(term) ?? false) ||
         (a.state?.toLowerCase().includes(term) ?? false) ||
         getSessionDisplay(a).toLowerCase().includes(term) ||
         (isWaitlistDrilldown && getEnrolledDisplay(a).toLowerCase().includes(term)) ||
-        (isRetentionDrilldown && getEnrolledDisplay(a).toLowerCase().includes(term))
+        (isRetentionDrilldown && getEnrolledDisplay(a).toLowerCase().includes(term)) ||
+        (isCancellationSpecial && getEnrolledDisplay(a).toLowerCase().includes(term))
     )
-  }, [attendees, searchTerm, isWaitlistDrilldown, isRetentionDrilldown])
+  }, [attendees, searchTerm, isWaitlistDrilldown, isRetentionDrilldown, isCancellationSpecial])
 
   // Sort attendees
   const sortedAttendees = useMemo(() => {
@@ -252,20 +260,36 @@ export function DrillDownModal({
             'Status',
             'Returning',
           ]
-        : [
-            'CampMinder ID',
-            'Name',
-            'Grade',
-            'Gender',
-            'Age',
-            'School',
-            'City',
-            'State',
-            'Session',
-            'Years at Camp',
-            'Status',
-            'Returning',
-          ]
+        : isCancellationSpecial
+          ? [
+              'CampMinder ID',
+              'Name',
+              'Grade',
+              'Gender',
+              'Age',
+              'School',
+              'City',
+              'State',
+              'Cancelled Session',
+              'Current Session',
+              'Years at Camp',
+              'Status',
+              'Returning',
+            ]
+          : [
+              'CampMinder ID',
+              'Name',
+              'Grade',
+              'Gender',
+              'Age',
+              'School',
+              'City',
+              'State',
+              'Session',
+              'Years at Camp',
+              'Status',
+              'Returning',
+            ]
 
     const rows = sortedAttendees.map((a) =>
       isWaitlistDrilldown
@@ -301,20 +325,36 @@ export function DrillDownModal({
               a.status,
               a.is_returning ? 'Yes' : 'DNR',
             ]
-          : [
-              a.person_id,
-              `${a.preferred_name || a.first_name} ${a.last_name}`,
-              a.grade ?? '',
-              a.gender ?? '',
-              a.age ?? '',
-              a.school ?? '',
-              a.city ?? '',
-              a.state ?? '',
-              getSessionDisplay(a),
-              a.years_at_camp ?? '',
-              a.status,
-              a.is_returning ? 'Yes' : 'No',
-            ]
+          : isCancellationSpecial
+            ? [
+                a.person_id,
+                `${a.preferred_name || a.first_name} ${a.last_name}`,
+                a.grade ?? '',
+                a.gender ?? '',
+                a.age ?? '',
+                a.school ?? '',
+                a.city ?? '',
+                a.state ?? '',
+                getSessionDisplay(a),
+                getEnrolledDisplay(a),
+                a.years_at_camp ?? '',
+                a.status,
+                a.is_returning ? 'Yes' : 'No',
+              ]
+            : [
+                a.person_id,
+                `${a.preferred_name || a.first_name} ${a.last_name}`,
+                a.grade ?? '',
+                a.gender ?? '',
+                a.age ?? '',
+                a.school ?? '',
+                a.city ?? '',
+                a.state ?? '',
+                getSessionDisplay(a),
+                a.years_at_camp ?? '',
+                a.status,
+                a.is_returning ? 'Yes' : 'No',
+              ]
     )
 
     const csv = [headers, ...rows]
@@ -390,7 +430,9 @@ export function DrillDownModal({
                   ? 'Search by name, city, session, enrolled...'
                   : isRetentionDrilldown
                     ? 'Search by name, city, session...'
-                    : 'Search by name, school, city, session...'
+                    : isCancellationSpecial
+                      ? 'Search by name, city, session...'
+                      : 'Search by name, school, city, session...'
               }
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -428,7 +470,7 @@ export function DrillDownModal({
                     Gender <SortIcon field="gender" />
                   </div>
                 </th>
-                {!isWaitlistDrilldown && !isRetentionDrilldown && (
+                {!isWaitlistDrilldown && !isRetentionDrilldown && !isCancellationSpecial && (
                   <th
                     onClick={() => handleSort('school')}
                     className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
@@ -455,7 +497,9 @@ export function DrillDownModal({
                       ? 'Waitlisted For'
                       : isRetentionDrilldown
                         ? 'Prior Session'
-                        : 'Session'}{' '}
+                        : isCancellationSpecial
+                          ? 'Cancelled Session'
+                          : 'Session'}{' '}
                     <SortIcon field="session" />
                   </div>
                 </th>
@@ -486,6 +530,16 @@ export function DrillDownModal({
                   >
                     <div className="flex items-center gap-1">
                       Session <SortIcon field="enrolled_current" />
+                    </div>
+                  </th>
+                )}
+                {isCancellationSpecial && (
+                  <th
+                    onClick={() => handleSort('enrolled')}
+                    className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
+                  >
+                    <div className="flex items-center gap-1">
+                      Current Session <SortIcon field="enrolled" />
                     </div>
                   </th>
                 )}
@@ -551,7 +605,7 @@ export function DrillDownModal({
                     <td className="text-foreground px-4 py-3 text-center whitespace-nowrap">
                       {attendee.gender ?? '—'}
                     </td>
-                    {!isWaitlistDrilldown && !isRetentionDrilldown && (
+                    {!isWaitlistDrilldown && !isRetentionDrilldown && !isCancellationSpecial && (
                       <td
                         className="text-foreground max-w-[160px] truncate px-4 py-3"
                         title={attendee.school ?? undefined}
@@ -601,6 +655,14 @@ export function DrillDownModal({
                             DNR
                           </span>
                         )}
+                      </td>
+                    )}
+                    {isCancellationSpecial && (
+                      <td
+                        className="text-foreground max-w-[180px] truncate px-4 py-3"
+                        title={getEnrolledDisplay(attendee)}
+                      >
+                        {getEnrolledDisplay(attendee)}
                       </td>
                     )}
                     <td className="text-foreground px-4 py-3 text-center whitespace-nowrap">
