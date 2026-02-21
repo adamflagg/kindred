@@ -68,7 +68,7 @@ jobs:
     - name: Generate changelog
       id: changelog
       run: |
-        git cliff --latest --strip header > RELEASE_NOTES.md
+        git cliff --unreleased --strip header > RELEASE_NOTES.md
         echo "### Release Notes" >> "$GITHUB_STEP_SUMMARY"
         echo '```' >> "$GITHUB_STEP_SUMMARY"
         cat RELEASE_NOTES.md >> "$GITHUB_STEP_SUMMARY"
