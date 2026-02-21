@@ -90,7 +90,10 @@ function BudgetRow({
 function SectionHeader({ label, colSpan }: { label: string; colSpan: number }) {
   return (
     <tr>
-      <td colSpan={colSpan} className="text-muted-foreground pt-4 pb-2 text-sm font-semibold uppercase">
+      <td
+        colSpan={colSpan}
+        className="text-muted-foreground pt-4 pb-2 text-sm font-semibold uppercase"
+      >
         {label}
       </td>
     </tr>
@@ -107,10 +110,7 @@ export function SessionBudgetConfig() {
   const [isSaving, setIsSaving] = useState(false)
 
   const buildRows = useCallback(
-    (
-      sessionData: typeof sessions,
-      configData: typeof configRecords
-    ): SessionBudgetRow[] => {
+    (sessionData: typeof sessions, configData: typeof configRecords): SessionBudgetRow[] => {
       if (!sessionData) return []
 
       const result: SessionBudgetRow[] = []
@@ -144,16 +144,10 @@ export function SessionBudgetConfig() {
     setRows(buildRows(sessions, configRecords))
   }, [sessions, configRecords, buildRows])
 
-  const handleChange = (
-    cmId: number,
-    field: 'participant_goal' | 'session_fee',
-    value: string
-  ) => {
+  const handleChange = (cmId: number, field: 'participant_goal' | 'session_fee', value: string) => {
     setRows((prev) =>
       prev.map((r) =>
-        r.cm_id === cmId
-          ? { ...r, [field]: value === '' ? null : Number(value) }
-          : r
+        r.cm_id === cmId ? { ...r, [field]: value === '' ? null : Number(value) } : r
       )
     )
   }
@@ -162,10 +156,7 @@ export function SessionBudgetConfig() {
     const origRows = buildRows(sessions, configRecords)
     return rows.some((r) => {
       const orig = origRows.find((o) => o.cm_id === r.cm_id)
-      return (
-        r.participant_goal !== orig?.participant_goal ||
-        r.session_fee !== orig?.session_fee
-      )
+      return r.participant_goal !== orig?.participant_goal || r.session_fee !== orig?.session_fee
     })
   })()
 
@@ -235,21 +226,27 @@ export function SessionBudgetConfig() {
             </tr>
           </thead>
           <tbody>
-            {rows.filter((r) => r.session_type === 'main' || r.session_type === 'embedded').map((row) => (
-              <BudgetRow key={row.cm_id} row={row} onChange={handleChange} />
-            ))}
+            {rows
+              .filter((r) => r.session_type === 'main' || r.session_type === 'embedded')
+              .map((row) => (
+                <BudgetRow key={row.cm_id} row={row} onChange={handleChange} />
+              ))}
             {rows.some((r) => r.session_type === 'ag') && (
               <SectionHeader label="AG Sessions" colSpan={3} />
             )}
-            {rows.filter((r) => r.session_type === 'ag').map((row) => (
-              <BudgetRow key={row.cm_id} row={row} onChange={handleChange} />
-            ))}
+            {rows
+              .filter((r) => r.session_type === 'ag')
+              .map((row) => (
+                <BudgetRow key={row.cm_id} row={row} onChange={handleChange} />
+              ))}
             {rows.some((r) => r.session_type === 'quest') && (
               <SectionHeader label="Quests" colSpan={3} />
             )}
-            {rows.filter((r) => r.session_type === 'quest').map((row) => (
-              <BudgetRow key={row.cm_id} row={row} onChange={handleChange} />
-            ))}
+            {rows
+              .filter((r) => r.session_type === 'quest')
+              .map((row) => (
+                <BudgetRow key={row.cm_id} row={row} onChange={handleChange} />
+              ))}
           </tbody>
         </table>
       </div>

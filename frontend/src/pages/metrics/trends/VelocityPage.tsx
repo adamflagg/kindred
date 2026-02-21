@@ -25,11 +25,7 @@ import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import type { WeeklyDataPoint } from '../../../types/velocity'
 
-const PRIOR_YEAR_COLORS = [
-  'hsl(220, 60%, 65%)',
-  'hsl(280, 50%, 60%)',
-  'hsl(35, 70%, 55%)',
-]
+const PRIOR_YEAR_COLORS = ['hsl(220, 60%, 65%)', 'hsl(280, 50%, 60%)', 'hsl(35, 70%, 55%)']
 
 const PHASE_COLORS: Record<string, string> = {
   priority: 'hsl(270, 60%, 55%)',
@@ -246,9 +242,7 @@ export default function VelocityPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-border bg-muted/30 border-b">
-                  <th className="text-muted-foreground px-4 py-3 text-left font-medium">
-                    Session
-                  </th>
+                  <th className="text-muted-foreground px-4 py-3 text-left font-medium">Session</th>
                   <th className="text-muted-foreground px-4 py-3 text-right font-medium">
                     Latest Enrolled
                   </th>

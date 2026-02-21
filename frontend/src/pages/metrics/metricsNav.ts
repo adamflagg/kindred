@@ -2,7 +2,17 @@
  * Shared navigation configuration for metrics module.
  * Single source of truth for sub-nav items used by MetricsLayout and MetricsTypeTabs.
  */
-import { LayoutDashboard, Globe, Clock, GitBranch, Grid2x2, Users, Table, Target, Zap } from 'lucide-react'
+import {
+  LayoutDashboard,
+  Globe,
+  Clock,
+  GitBranch,
+  Grid2x2,
+  Users,
+  Table,
+  Target,
+  Zap,
+} from 'lucide-react'
 import type { SubNavItem } from '../../components/metrics/MetricsSubNav'
 
 /** Sub-nav items for retention section */

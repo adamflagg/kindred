@@ -36,7 +36,10 @@ function fmtSigned(value: number | null): string {
 
 function fmtSignedCurrency(value: number | null): string {
   if (value === null) return '---'
-  const abs = Math.abs(value).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+  const abs = Math.abs(value).toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  })
   if (value > 0) return `+$${abs}`
   if (value < 0) return `-$${abs}`
   return `$${abs}`
@@ -68,8 +71,12 @@ function ForecastTableHeader() {
         <th className="px-3 py-2 text-right text-xs font-semibold">Capacity</th>
         <th className="px-3 py-2 text-right text-xs font-semibold">Util%</th>
         <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">Fee</th>
-        <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">Budget Rev</th>
-        <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">Actual Rev</th>
+        <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">
+          Budget Rev
+        </th>
+        <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">
+          Actual Rev
+        </th>
         <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">Delta $</th>
         <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">Rev%</th>
       </tr>
@@ -84,7 +91,9 @@ function SessionRow({ session, isTotal }: { session: SessionForecast; isTotal?: 
     <tr className={rowClass}>
       <td className="px-3 py-2 text-sm whitespace-nowrap">{session.session_name}</td>
       <td className="px-3 py-2 text-right text-sm">{fmt(session.participant_goal)}</td>
-      <td className="px-3 py-2 text-right text-sm font-medium">{session.enrolled.toLocaleString()}</td>
+      <td className="px-3 py-2 text-right text-sm font-medium">
+        {session.enrolled.toLocaleString()}
+      </td>
       <td className="px-3 py-2 text-right text-sm">{session.waitlisted.toLocaleString()}</td>
       <td className={`px-3 py-2 text-right text-sm font-medium ${pctColor(session.pct_of_goal)}`}>
         {fmtPct(session.pct_of_goal)}
@@ -93,7 +102,9 @@ function SessionRow({ session, isTotal }: { session: SessionForecast; isTotal?: 
         {fmtSigned(session.participants_vs_budget)}
       </td>
       <td className="px-3 py-2 text-right text-sm">{fmt(session.prior_year_count)}</td>
-      <td className={`px-3 py-2 text-right text-sm ${deltaColor(session.participants_vs_prior_year)}`}>
+      <td
+        className={`px-3 py-2 text-right text-sm ${deltaColor(session.participants_vs_prior_year)}`}
+      >
         {fmtSigned(session.participants_vs_prior_year)}
       </td>
       <td className="px-3 py-2 text-right text-sm">{fmt(session.two_year_prior_count)}</td>
@@ -110,10 +121,14 @@ function SessionRow({ session, isTotal }: { session: SessionForecast; isTotal?: 
       <td className="hidden px-3 py-2 text-right text-sm lg:table-cell">
         {isTotal ? '---' : fmtCurrency(session.actual_revenue)}
       </td>
-      <td className={`hidden px-3 py-2 text-right text-sm lg:table-cell ${deltaColor(session.revenue_delta)}`}>
+      <td
+        className={`hidden px-3 py-2 text-right text-sm lg:table-cell ${deltaColor(session.revenue_delta)}`}
+      >
         {isTotal ? '---' : fmtSignedCurrency(session.revenue_delta)}
       </td>
-      <td className={`hidden px-3 py-2 text-right text-sm lg:table-cell ${pctColor(session.revenue_pct)}`}>
+      <td
+        className={`hidden px-3 py-2 text-right text-sm lg:table-cell ${pctColor(session.revenue_pct)}`}
+      >
         {isTotal ? '---' : fmtPct(session.revenue_pct)}
       </td>
     </tr>
@@ -141,7 +156,9 @@ export default function ForecastPage() {
 
   // Split into camp table: main/embedded first (by date), then AG at bottom (by date)
   const campSessions = useMemo(() => {
-    const mainEmbedded = allSessions.filter((s) => s.session_type === 'main' || s.session_type === 'embedded')
+    const mainEmbedded = allSessions.filter(
+      (s) => s.session_type === 'main' || s.session_type === 'embedded'
+    )
     const ag = allSessions.filter((s) => s.session_type === 'ag')
     return [...mainEmbedded, ...ag]
   }, [allSessions])
@@ -186,22 +203,42 @@ export default function ForecastPage() {
         <MetricCard
           title="Total Enrolled vs Goal"
           value={grand_total.enrolled}
-          subtitle={grand_total.participant_goal !== null ? `Goal: ${grand_total.participant_goal.toLocaleString()}` : 'No goal set'}
+          subtitle={
+            grand_total.participant_goal !== null
+              ? `Goal: ${grand_total.participant_goal.toLocaleString()}`
+              : 'No goal set'
+          }
         />
         <MetricCard
           title="Overall % of Goal"
-          value={grand_total.pct_of_goal !== null ? `${grand_total.pct_of_goal.toFixed(1)}%` : 'N/A'}
-          subtitle={grand_total.pct_of_goal !== null ? `${grand_total.enrolled} / ${grand_total.participant_goal}` : 'No budget configured'}
+          value={
+            grand_total.pct_of_goal !== null ? `${grand_total.pct_of_goal.toFixed(1)}%` : 'N/A'
+          }
+          subtitle={
+            grand_total.pct_of_goal !== null
+              ? `${grand_total.enrolled} / ${grand_total.participant_goal}`
+              : 'No budget configured'
+          }
         />
         <MetricCard
           title="Total Capacity"
           value={grand_total.capacity !== null ? grand_total.capacity.toLocaleString() : 'N/A'}
-          subtitle={grand_total.capacity !== null ? `${allSessions.length} sessions` : 'No bunk plans'}
+          subtitle={
+            grand_total.capacity !== null ? `${allSessions.length} sessions` : 'No bunk plans'
+          }
         />
         <MetricCard
           title="Overall Utilization"
-          value={grand_total.utilization_pct !== null ? `${grand_total.utilization_pct.toFixed(1)}%` : 'N/A'}
-          subtitle={grand_total.capacity !== null ? `${grand_total.enrolled} / ${grand_total.capacity}` : 'No capacity data'}
+          value={
+            grand_total.utilization_pct !== null
+              ? `${grand_total.utilization_pct.toFixed(1)}%`
+              : 'N/A'
+          }
+          subtitle={
+            grand_total.capacity !== null
+              ? `${grand_total.enrolled} / ${grand_total.capacity}`
+              : 'No capacity data'
+          }
         />
       </div>
 

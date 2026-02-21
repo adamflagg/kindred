@@ -320,125 +320,148 @@ export function GradeEligibilityConfig() {
             </tr>
           </thead>
           <tbody>
-            {rows.filter((r) => r.session_type !== 'quest').map((row) => (
-              <tr key={row.cm_id} className="border-border border-b">
-                <td className="py-2 pr-4 font-medium">{row.name}</td>
-                <td className="px-2 py-2">
-                  <input
-                    type="number"
-                    min={0}
-                    max={12}
-                    value={row.config.girls_min_grade ?? ''}
-                    onChange={(e) => handleMainChange(row.cm_id, 'girls_min_grade', e.target.value)}
-                    className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
-                  />
-                </td>
-                <td className="px-2 py-2">
-                  <input
-                    type="number"
-                    min={0}
-                    max={12}
-                    value={row.config.girls_max_grade ?? ''}
-                    onChange={(e) => handleMainChange(row.cm_id, 'girls_max_grade', e.target.value)}
-                    className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
-                  />
-                </td>
-                <td className="px-2 py-2">
-                  <input
-                    type="number"
-                    min={0}
-                    max={12}
-                    value={row.config.boys_min_grade ?? ''}
-                    onChange={(e) => handleMainChange(row.cm_id, 'boys_min_grade', e.target.value)}
-                    className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
-                  />
-                </td>
-                <td className="px-2 py-2">
-                  <input
-                    type="number"
-                    min={0}
-                    max={12}
-                    value={row.config.boys_max_grade ?? ''}
-                    onChange={(e) => handleMainChange(row.cm_id, 'boys_max_grade', e.target.value)}
-                    className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
-                  />
-                </td>
-                <td className="px-2 py-2">
-                  <input
-                    type="number"
-                    min={0}
-                    value={row.config.capacity_override ?? ''}
-                    onChange={(e) =>
-                      handleMainChange(row.cm_id, 'capacity_override', e.target.value)
-                    }
-                    className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
-                  />
-                </td>
-              </tr>
-            ))}
+            {rows
+              .filter((r) => r.session_type !== 'quest')
+              .map((row) => (
+                <tr key={row.cm_id} className="border-border border-b">
+                  <td className="py-2 pr-4 font-medium">{row.name}</td>
+                  <td className="px-2 py-2">
+                    <input
+                      type="number"
+                      min={0}
+                      max={12}
+                      value={row.config.girls_min_grade ?? ''}
+                      onChange={(e) =>
+                        handleMainChange(row.cm_id, 'girls_min_grade', e.target.value)
+                      }
+                      className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
+                    />
+                  </td>
+                  <td className="px-2 py-2">
+                    <input
+                      type="number"
+                      min={0}
+                      max={12}
+                      value={row.config.girls_max_grade ?? ''}
+                      onChange={(e) =>
+                        handleMainChange(row.cm_id, 'girls_max_grade', e.target.value)
+                      }
+                      className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
+                    />
+                  </td>
+                  <td className="px-2 py-2">
+                    <input
+                      type="number"
+                      min={0}
+                      max={12}
+                      value={row.config.boys_min_grade ?? ''}
+                      onChange={(e) =>
+                        handleMainChange(row.cm_id, 'boys_min_grade', e.target.value)
+                      }
+                      className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
+                    />
+                  </td>
+                  <td className="px-2 py-2">
+                    <input
+                      type="number"
+                      min={0}
+                      max={12}
+                      value={row.config.boys_max_grade ?? ''}
+                      onChange={(e) =>
+                        handleMainChange(row.cm_id, 'boys_max_grade', e.target.value)
+                      }
+                      className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
+                    />
+                  </td>
+                  <td className="px-2 py-2">
+                    <input
+                      type="number"
+                      min={0}
+                      value={row.config.capacity_override ?? ''}
+                      onChange={(e) =>
+                        handleMainChange(row.cm_id, 'capacity_override', e.target.value)
+                      }
+                      className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
+                    />
+                  </td>
+                </tr>
+              ))}
             {rows.some((r) => r.session_type === 'quest') && (
               <tr>
-                <td colSpan={6} className="text-muted-foreground pt-4 pb-2 text-sm font-semibold uppercase">
+                <td
+                  colSpan={6}
+                  className="text-muted-foreground pt-4 pb-2 text-sm font-semibold uppercase"
+                >
                   Quests
                 </td>
               </tr>
             )}
-            {rows.filter((r) => r.session_type === 'quest').map((row) => (
-              <tr key={row.cm_id} className="border-border border-b">
-                <td className="py-2 pr-4 font-medium">{row.name}</td>
-                <td className="px-2 py-2">
-                  <input
-                    type="number"
-                    min={0}
-                    max={12}
-                    value={row.config.girls_min_grade ?? ''}
-                    onChange={(e) => handleMainChange(row.cm_id, 'girls_min_grade', e.target.value)}
-                    className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
-                  />
-                </td>
-                <td className="px-2 py-2">
-                  <input
-                    type="number"
-                    min={0}
-                    max={12}
-                    value={row.config.girls_max_grade ?? ''}
-                    onChange={(e) => handleMainChange(row.cm_id, 'girls_max_grade', e.target.value)}
-                    className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
-                  />
-                </td>
-                <td className="px-2 py-2">
-                  <input
-                    type="number"
-                    min={0}
-                    max={12}
-                    value={row.config.boys_min_grade ?? ''}
-                    onChange={(e) => handleMainChange(row.cm_id, 'boys_min_grade', e.target.value)}
-                    className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
-                  />
-                </td>
-                <td className="px-2 py-2">
-                  <input
-                    type="number"
-                    min={0}
-                    max={12}
-                    value={row.config.boys_max_grade ?? ''}
-                    onChange={(e) => handleMainChange(row.cm_id, 'boys_max_grade', e.target.value)}
-                    className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
-                  />
-                </td>
-                <td className="px-2 py-2">
-                  <input
-                    type="number"
-                    min={0}
-                    value={row.config.capacity_override ?? ''}
-                    onChange={(e) =>
-                      handleMainChange(row.cm_id, 'capacity_override', e.target.value)
-                    }
-                    className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
-                  />
-                </td>
-              </tr>
-            ))}
+            {rows
+              .filter((r) => r.session_type === 'quest')
+              .map((row) => (
+                <tr key={row.cm_id} className="border-border border-b">
+                  <td className="py-2 pr-4 font-medium">{row.name}</td>
+                  <td className="px-2 py-2">
+                    <input
+                      type="number"
+                      min={0}
+                      max={12}
+                      value={row.config.girls_min_grade ?? ''}
+                      onChange={(e) =>
+                        handleMainChange(row.cm_id, 'girls_min_grade', e.target.value)
+                      }
+                      className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
+                    />
+                  </td>
+                  <td className="px-2 py-2">
+                    <input
+                      type="number"
+                      min={0}
+                      max={12}
+                      value={row.config.girls_max_grade ?? ''}
+                      onChange={(e) =>
+                        handleMainChange(row.cm_id, 'girls_max_grade', e.target.value)
+                      }
+                      className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
+                    />
+                  </td>
+                  <td className="px-2 py-2">
+                    <input
+                      type="number"
+                      min={0}
+                      max={12}
+                      value={row.config.boys_min_grade ?? ''}
+                      onChange={(e) =>
+                        handleMainChange(row.cm_id, 'boys_min_grade', e.target.value)
+                      }
+                      className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
+                    />
+                  </td>
+                  <td className="px-2 py-2">
+                    <input
+                      type="number"
+                      min={0}
+                      max={12}
+                      value={row.config.boys_max_grade ?? ''}
+                      onChange={(e) =>
+                        handleMainChange(row.cm_id, 'boys_max_grade', e.target.value)
+                      }
+                      className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
+                    />
+                  </td>
+                  <td className="px-2 py-2">
+                    <input
+                      type="number"
+                      min={0}
+                      value={row.config.capacity_override ?? ''}
+                      onChange={(e) =>
+                        handleMainChange(row.cm_id, 'capacity_override', e.target.value)
+                      }
+                      className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
+                    />
+                  </td>
+                </tr>
+              ))}
           </tbody>
         </table>
       </div>
