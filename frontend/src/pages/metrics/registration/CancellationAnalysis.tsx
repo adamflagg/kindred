@@ -158,6 +158,15 @@ export default function CancellationAnalysis() {
                 subtitle="Recovery rate"
                 compareValue={compData?.total_re_enrolled}
                 compareYear={compareYear ?? undefined}
+                onClick={() =>
+                  setFilter({
+                    type: 'cancellation_re_enrolled',
+                    value: 'true',
+                    label: 'Re-enrolled',
+                    titleFormat: 'adjective',
+                    statusOverride: ['enrolled'],
+                  })
+                }
               />
             </div>
 

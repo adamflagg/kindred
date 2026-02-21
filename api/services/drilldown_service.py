@@ -46,6 +46,7 @@ PERSON_LEVEL_BREAKDOWNS = frozenset(
         "cancellation_was_waitlisted",
         "cancellation_has_other_sessions",
         "cancellation_no_other_sessions",
+        "cancellation_re_enrolled",
     }
 )
 
@@ -77,6 +78,7 @@ CANCELLATION_BREAKDOWNS = frozenset(
         "cancellation_was_waitlisted",
         "cancellation_has_other_sessions",
         "cancellation_no_other_sessions",
+        "cancellation_re_enrolled",
     }
 )
 
@@ -1028,6 +1030,18 @@ class DrilldownService:
 
         effective_types = session_types or list(SUMMER_SESSION_TYPES)
 
+        # Re-enrolled is a special case: these are currently enrolled campers
+        # who have a cancelled->enrolled status history transition
+        if breakdown_type == "cancellation_re_enrolled":
+            return await self._handle_cancellation_re_enrolled(
+                year=year,
+                sessions=sessions,
+                session_cm_id=session_cm_id,
+                session_types=session_types,
+                ag_session_ids=ag_session_ids,
+                effective_types=effective_types,
+            )
+
         cancelled_attendees, enrolled_attendees, persons = await asyncio.gather(
             self.repo.fetch_attendees(year, CANCELLED_STATUSES),
             self.repo.fetch_attendees(year, ["enrolled"]),
@@ -1101,4 +1115,78 @@ class DrilldownService:
             sessions,
             person_attendee_groups=cancelled_groups,
             enrolled_attendee_groups=enrolled_attendee_groups,
+        )
+
+    async def _handle_cancellation_re_enrolled(
+        self,
+        year: int,
+        sessions: dict[int, Any],
+        session_cm_id: int | None,
+        session_types: list[str] | None,
+        ag_session_ids: set[int],
+        effective_types: list[str],
+    ) -> list[DrilldownAttendee]:
+        """Handle cancellation_re_enrolled breakdown.
+
+        Re-enrolled campers are currently enrolled and have a status history
+        transition from a cancelled status back to enrolled.
+        """
+        import asyncio
+
+        from api.services.cancellation_service import CANCELLED_STATUSES
+
+        # Fetch enrolled attendees, persons, and status history for each cancelled status
+        enrolled_attendees: list[Any]
+        persons: dict[int, Any]
+        enrolled_attendees, persons = await asyncio.gather(
+            self.repo.fetch_attendees(year, ["enrolled"]),
+            self.repo.fetch_persons(year),
+        )
+
+        history_tasks = [
+            self.repo.fetch_status_history(year, old_status=status, new_statuses=["enrolled"])
+            for status in CANCELLED_STATUSES
+        ]
+        history_lists: list[list[Any]] = await asyncio.gather(*history_tasks)
+
+        # Find person IDs with cancelled->enrolled transitions
+        re_enrolled_person_ids: set[int] = set()
+        for history in history_lists:
+            for record in history:
+                pid = int(getattr(record, "person_id", 0))
+                if pid:
+                    re_enrolled_person_ids.add(pid)
+
+        # Filter enrolled attendees by session
+        filtered_enrolled = filter_attendees_by_session(
+            enrolled_attendees, session_types, session_cm_id, ag_session_ids
+        )
+
+        # Build person groups for enrolled sessions display
+        enrolled_groups: dict[int, list[Any]] = {}
+        for att in filtered_enrolled:
+            pid = int(getattr(att, "person_id", 0))
+            if pid:
+                session_info = get_session_from_expand(att)
+                if session_info:
+                    session_type = getattr(session_info, "session_type", None)
+                    if session_type in effective_types:
+                        enrolled_groups.setdefault(pid, []).append(att)
+
+        # Deduplicate by person, filter to re-enrolled only
+        seen_persons: set[int] = set()
+        matching: list[Any] = []
+        for att in filtered_enrolled:
+            pid = int(getattr(att, "person_id", 0))
+            if not pid or pid in seen_persons:
+                continue
+            seen_persons.add(pid)
+            if pid in re_enrolled_person_ids:
+                matching.append(att)
+
+        return self._build_response(
+            matching,
+            persons,
+            sessions,
+            person_attendee_groups=enrolled_groups,
         )
