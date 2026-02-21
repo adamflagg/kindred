@@ -38,6 +38,7 @@ const RegistrationOverview = lazy(() => import('./pages/metrics/registration/Reg
 const GeoAnalysis = lazy(() => import('./pages/metrics/registration/GeoAnalysis'))
 const WaitlistAnalysis = lazy(() => import('./pages/metrics/registration/WaitlistAnalysis'))
 const SessionAvailability = lazy(() => import('./pages/metrics/registration/SessionAvailability'))
+const ForecastPage = lazy(() => import('./pages/metrics/registration/ForecastPage'))
 const RetentionOverview = lazy(() => import('./pages/metrics/retention/RetentionOverview'))
 const SessionFlowPage = lazy(() => import('./pages/metrics/retention/SessionFlowPage'))
 const BunkRetentionPage = lazy(() => import('./pages/metrics/retention/BunkRetentionPage'))
@@ -259,6 +260,16 @@ function App() {
                                   <ErrorBoundary>
                                     <Suspense fallback={<PageSkeleton />}>
                                       <SessionAvailability />
+                                    </Suspense>
+                                  </ErrorBoundary>
+                                }
+                              />
+                              <Route
+                                path="registration/forecast"
+                                element={
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <ForecastPage />
                                     </Suspense>
                                   </ErrorBoundary>
                                 }
