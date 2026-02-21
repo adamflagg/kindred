@@ -9,6 +9,7 @@ import {
   buildSessionTypeLookup,
   sortSessionDataByCampThenQuest,
 } from '../../../utils/sessionUtils'
+import { shortenSessionName } from '../../../utils/sessionDisplay'
 import type { SessionForecast } from '../../../types/forecast'
 
 function pctColor(pct: number | null): string {
@@ -89,7 +90,7 @@ function SessionRow({ session, isTotal }: { session: SessionForecast; isTotal?: 
 
   return (
     <tr className={rowClass}>
-      <td className="px-3 py-2 text-sm whitespace-nowrap">{session.session_name}</td>
+      <td className="px-3 py-2 text-sm whitespace-nowrap">{shortenSessionName(session.session_name)}</td>
       <td className="px-3 py-2 text-right text-sm">{fmt(session.participant_goal)}</td>
       <td className="px-3 py-2 text-right text-sm font-medium">
         {session.enrolled.toLocaleString()}

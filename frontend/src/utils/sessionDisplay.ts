@@ -2,6 +2,30 @@ import type { Session } from '../types/app-types'
 import type { SessionDateLookup } from './sessionUtils'
 
 /**
+ * Shorten AG session names for compact display.
+ *
+ * Examples:
+ *   "All-Gender Cabin-Session 2 (7th - 9th grades)"       → "AG 2 (7-9)"
+ *   "Session 4 (All-Gender Cabin)-6th & 7th grades"       → "AG 4 (6-7)"
+ *   "Session B (All-Gender Cabins)"                       → "AG B"
+ *   "Session 2" (non-AG)                                  → "Session 2" (unchanged)
+ */
+export function shortenSessionName(name: string): string {
+  const lower = name.toLowerCase()
+  if (!lower.includes('gender') && !/\bag[\s-]/i.test(name)) return name
+
+  // Extract session identifier (number or letter)
+  const sessionMatch = name.match(/session\s*(\w+)/i)
+  const sessionId = sessionMatch?.[1] ?? ''
+
+  // Extract grade range — "(4th - 6th grades)", "(9th & 10th grades)", etc.
+  const grades = name.match(/(\d+)\w*\s*[-–&]\s*(\d+)\w*\s*grades?\b/i)
+  const gradeRange = grades ? ` (${grades[1]}-${grades[2]})` : ''
+
+  return sessionId ? `AG ${sessionId}${gradeRange}` : `AG${gradeRange}`
+}
+
+/**
  * Get the properly formatted session name for display
  * @param session The session to format
  * @param allSessions Optional array of all sessions for parent lookup
