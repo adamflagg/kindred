@@ -11,6 +11,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from api.schemas.forecast import ForecastResponse, SessionForecast
+from api.utils.session_aliases import resolve_session_alias
 from api.utils.session_metrics import (
     build_ag_parent_map,
     find_ag_sessions_for_parent,
@@ -131,15 +132,21 @@ class ForecastService:
             budget_revenue = None
             actual_revenue = None
             revenue_pct = None
+            revenue_delta = None
             if participant_goal is not None and session_fee is not None:
                 budget_revenue = participant_goal * session_fee
                 actual_revenue = enrolled * session_fee
+                revenue_delta = actual_revenue - budget_revenue
                 if budget_revenue > 0:
                     revenue_pct = round(actual_revenue / budget_revenue * 100, 1)
 
+            participants_vs_budget = enrolled - participant_goal if participant_goal is not None else None
+
             session_name = getattr(session, "name", "")
-            prior_year_count = prior_counts.get(session_name)
-            two_year_prior_count = two_year_counts.get(session_name)
+            canonical_name = resolve_session_alias(session_name)
+            prior_year_count = prior_counts.get(canonical_name)
+            two_year_prior_count = two_year_counts.get(canonical_name)
+            participants_vs_prior_year = enrolled - prior_year_count if prior_year_count is not None else None
 
             session_forecasts.append(
                 SessionForecast(
@@ -155,8 +162,11 @@ class ForecastService:
                     two_year_prior_count=two_year_prior_count,
                     capacity=capacity,
                     utilization_pct=utilization_pct,
+                    participants_vs_budget=participants_vs_budget,
+                    participants_vs_prior_year=participants_vs_prior_year,
                     budget_revenue=budget_revenue,
                     actual_revenue=actual_revenue,
+                    revenue_delta=revenue_delta,
                     revenue_pct=revenue_pct,
                 )
             )
@@ -200,9 +210,9 @@ class ForecastService:
             if session_type == "ag":
                 parent_id = ag_parent_map.get(sid)
                 if parent_id and parent_id in sessions:
-                    cm_id_to_name[sid] = getattr(sessions[parent_id], "name", "")
+                    cm_id_to_name[sid] = resolve_session_alias(getattr(sessions[parent_id], "name", ""))
             else:
-                cm_id_to_name[sid] = getattr(session, "name", "")
+                cm_id_to_name[sid] = resolve_session_alias(getattr(session, "name", ""))
 
         counts: dict[str, int] = {}
         for a in attendees:
@@ -237,6 +247,18 @@ class ForecastService:
         if has_capacity and total_capacity > 0:
             utilization_pct = round(total_enrolled / total_capacity * 100, 1)
 
+        # Delta fields from totals
+        participants_vs_budget = total_enrolled - total_goal if has_goal else None
+        participants_vs_prior_year = total_enrolled - total_prior if has_prior else None
+
+        total_budget_rev = sum(s.budget_revenue or 0 for s in session_forecasts)
+        total_actual_rev = sum(s.actual_revenue or 0 for s in session_forecasts)
+        has_revenue = any(s.budget_revenue is not None for s in session_forecasts)
+        revenue_delta = total_actual_rev - total_budget_rev if has_revenue else None
+        revenue_pct = None
+        if has_revenue and total_budget_rev > 0:
+            revenue_pct = round(total_actual_rev / total_budget_rev * 100, 1)
+
         return SessionForecast(
             session_cm_id=0,
             session_name="Grand Total",
@@ -250,7 +272,10 @@ class ForecastService:
             two_year_prior_count=total_two_year if has_two_year else None,
             capacity=total_capacity if has_capacity else None,
             utilization_pct=utilization_pct,
-            budget_revenue=None,
-            actual_revenue=None,
-            revenue_pct=None,
+            participants_vs_budget=participants_vs_budget,
+            participants_vs_prior_year=participants_vs_prior_year,
+            budget_revenue=total_budget_rev if has_revenue else None,
+            actual_revenue=total_actual_rev if has_revenue else None,
+            revenue_delta=revenue_delta,
+            revenue_pct=revenue_pct,
         )

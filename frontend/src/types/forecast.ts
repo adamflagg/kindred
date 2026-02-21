@@ -12,8 +12,11 @@ export interface SessionForecast {
   two_year_prior_count: number | null
   capacity: number | null
   utilization_pct: number | null
+  participants_vs_budget: number | null
+  participants_vs_prior_year: number | null
   budget_revenue: number | null
   actual_revenue: number | null
+  revenue_delta: number | null
   revenue_pct: number | null
 }
 

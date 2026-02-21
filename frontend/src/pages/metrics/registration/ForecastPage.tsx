@@ -17,6 +17,25 @@ function fmt(value: number | null, suffix = ''): string {
   return `${value.toLocaleString()}${suffix}`
 }
 
+function deltaColor(value: number | null): string {
+  if (value === null || value === 0) return 'text-muted-foreground'
+  return value > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+}
+
+function fmtSigned(value: number | null): string {
+  if (value === null) return '---'
+  const prefix = value > 0 ? '+' : ''
+  return `${prefix}${value.toLocaleString()}`
+}
+
+function fmtSignedCurrency(value: number | null): string {
+  if (value === null) return '---'
+  const abs = Math.abs(value).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+  if (value > 0) return `+$${abs}`
+  if (value < 0) return `-$${abs}`
+  return `$${abs}`
+}
+
 function fmtCurrency(value: number | null): string {
   if (value === null) return '---'
   return `$${value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
@@ -39,7 +58,13 @@ function SessionRow({ session, isTotal }: { session: SessionForecast; isTotal?: 
       <td className={`px-3 py-2 text-right text-sm font-medium ${pctColor(session.pct_of_goal)}`}>
         {fmtPct(session.pct_of_goal)}
       </td>
+      <td className={`px-3 py-2 text-right text-sm ${deltaColor(session.participants_vs_budget)}`}>
+        {fmtSigned(session.participants_vs_budget)}
+      </td>
       <td className="px-3 py-2 text-right text-sm">{fmt(session.prior_year_count)}</td>
+      <td className={`px-3 py-2 text-right text-sm ${deltaColor(session.participants_vs_prior_year)}`}>
+        {fmtSigned(session.participants_vs_prior_year)}
+      </td>
       <td className="px-3 py-2 text-right text-sm">{fmt(session.two_year_prior_count)}</td>
       <td className="px-3 py-2 text-right text-sm">{fmt(session.capacity)}</td>
       <td className={`px-3 py-2 text-right text-sm ${pctColor(session.utilization_pct)}`}>
@@ -53,6 +78,9 @@ function SessionRow({ session, isTotal }: { session: SessionForecast; isTotal?: 
       </td>
       <td className="hidden px-3 py-2 text-right text-sm lg:table-cell">
         {isTotal ? '---' : fmtCurrency(session.actual_revenue)}
+      </td>
+      <td className={`hidden px-3 py-2 text-right text-sm lg:table-cell ${deltaColor(session.revenue_delta)}`}>
+        {isTotal ? '---' : fmtSignedCurrency(session.revenue_delta)}
       </td>
       <td className={`hidden px-3 py-2 text-right text-sm lg:table-cell ${pctColor(session.revenue_pct)}`}>
         {isTotal ? '---' : fmtPct(session.revenue_pct)}
@@ -135,13 +163,16 @@ export default function ForecastPage() {
               <th className="px-3 py-2 text-right text-xs font-semibold">Enrolled</th>
               <th className="px-3 py-2 text-right text-xs font-semibold">WL</th>
               <th className="px-3 py-2 text-right text-xs font-semibold">% Goal</th>
+              <th className="px-3 py-2 text-right text-xs font-semibold">vs Budget</th>
               <th className="px-3 py-2 text-right text-xs font-semibold">Prior Yr</th>
+              <th className="px-3 py-2 text-right text-xs font-semibold">vs Prior</th>
               <th className="px-3 py-2 text-right text-xs font-semibold">2yr Prior</th>
               <th className="px-3 py-2 text-right text-xs font-semibold">Capacity</th>
               <th className="px-3 py-2 text-right text-xs font-semibold">Util%</th>
               <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">Fee</th>
               <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">Budget Rev</th>
               <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">Actual Rev</th>
+              <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">Delta $</th>
               <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">Rev%</th>
             </tr>
           </thead>

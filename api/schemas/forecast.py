@@ -18,8 +18,11 @@ class SessionForecast(BaseModel):
     two_year_prior_count: int | None = Field(None, description="Same session name, year-2")
     capacity: int | None = Field(None, description="bunk_plans count * defaultCapacity")
     utilization_pct: float | None = Field(None, description="enrolled / capacity * 100")
+    participants_vs_budget: int | None = Field(None, description="enrolled - participant_goal")
+    participants_vs_prior_year: int | None = Field(None, description="enrolled - prior_year_count")
     budget_revenue: float | None = Field(None, description="goal * fee")
     actual_revenue: float | None = Field(None, description="enrolled * fee")
+    revenue_delta: float | None = Field(None, description="actual_revenue - budget_revenue")
     revenue_pct: float | None = Field(None, description="actual / budget * 100")
 
 
