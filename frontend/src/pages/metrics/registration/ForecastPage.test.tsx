@@ -1,0 +1,395 @@
+import { render, screen, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { MemoryRouter } from 'react-router'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import type { SessionForecast, ForecastResponse } from '../../../types/forecast'
+
+// Mock fetch for API call
+const mockFetch = vi.fn()
+globalThis.fetch = mockFetch
+
+// Mock useCurrentYear
+vi.mock('../../../hooks/useCurrentYear', () => ({
+  useCurrentYear: () => ({ currentYear: 2026 }),
+}))
+
+// Mock useMetricsSession
+const mockUseMetricsSession = vi.fn()
+vi.mock('../../../hooks/useMetricsSession', () => ({
+  useMetricsSession: () => mockUseMetricsSession(),
+}))
+
+// Mock pocketbase
+vi.mock('../../../lib/pocketbase', () => ({
+  pb: { authStore: { token: 'test-token' } },
+}))
+
+// Mock useApiWithAuth
+vi.mock('../../../hooks/useApiWithAuth', () => ({
+  useApiWithAuth: () => ({
+    fetchWithAuth: mockFetch,
+    isAuthenticated: true,
+  }),
+}))
+
+function createTestQueryClient() {
+  return new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  })
+}
+
+function renderWithProviders(ui: React.ReactElement) {
+  const queryClient = createTestQueryClient()
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>{ui}</MemoryRouter>
+    </QueryClientProvider>
+  )
+}
+
+// ---------- helpers ----------
+
+function session(overrides: Partial<SessionForecast> = {}): SessionForecast {
+  return {
+    session_cm_id: 1001,
+    session_name: 'Session 1',
+    session_type: 'main',
+    participant_goal: 100,
+    session_fee: 5000,
+    enrolled: 80,
+    waitlisted: 3,
+    pct_of_goal: 80.0,
+    prior_year_count: 75,
+    two_year_prior_count: 70,
+    capacity: 100,
+    utilization_pct: 80.0,
+    participants_vs_budget: -20,
+    participants_vs_prior_year: 5,
+    budget_revenue: 500000,
+    actual_revenue: 400000,
+    revenue_delta: -100000,
+    revenue_pct: 80.0,
+    ...overrides,
+  }
+}
+
+function grandTotal(overrides: Partial<SessionForecast> = {}): SessionForecast {
+  return session({
+    session_cm_id: 0,
+    session_name: 'Grand Total',
+    session_type: 'total',
+    session_fee: null,
+    ...overrides,
+  })
+}
+
+function mockResponse(
+  sessions: SessionForecast[],
+  grand_total_overrides: Partial<SessionForecast> = {}
+): ForecastResponse {
+  return {
+    year: 2026,
+    sessions,
+    grand_total: grandTotal(grand_total_overrides),
+  }
+}
+
+function setupMockFetch(response: ForecastResponse) {
+  mockFetch.mockResolvedValue({
+    ok: true,
+    json: async () => response,
+  })
+}
+
+// Default metrics session state: all sessions view
+function defaultMetricsSession() {
+  return {
+    selectedSessionCmId: null,
+    selectedSession: undefined,
+    sessions: [],
+    isLoading: false,
+    setSelectedSessionCmId: vi.fn(),
+    clearSession: vi.fn(),
+    viewMode: 'all' as const,
+    setViewMode: vi.fn(),
+    activeSessionTypes: ['main', 'embedded', 'ag', 'quest'],
+    sessionTypesParam: 'main,embedded,ag,quest',
+    campSessions: [],
+    questSessions: [],
+    expandedRetention: false,
+    setExpandedRetention: vi.fn(),
+    compareYear: null,
+    setCompareYear: vi.fn(),
+    isComparing: false,
+  }
+}
+
+// Lazy-load the component after mocks are set up
+const { default: ForecastPage } = await import('./ForecastPage')
+
+describe('ForecastPage', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockUseMetricsSession.mockReturnValue(defaultMetricsSession())
+  })
+
+  // ---------- section headings ----------
+
+  it('shows section headings when both camp and quest sessions present', async () => {
+    const campSession = session({
+      session_cm_id: 1001,
+      session_name: 'Session 1',
+      session_type: 'main',
+    })
+    const questSession = session({
+      session_cm_id: 2001,
+      session_name: 'Teen Quests',
+      session_type: 'quest',
+    })
+    setupMockFetch(mockResponse([campSession, questSession]))
+
+    renderWithProviders(<ForecastPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText('At Camp')).toBeInTheDocument()
+      expect(screen.getByText('Quests')).toBeInTheDocument()
+    })
+  })
+
+  it('hides section headings when only camp sessions present', async () => {
+    const campSession = session({
+      session_cm_id: 1001,
+      session_name: 'Session 1',
+      session_type: 'main',
+    })
+    setupMockFetch(mockResponse([campSession]))
+
+    renderWithProviders(<ForecastPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Session 1')).toBeInTheDocument()
+    })
+
+    expect(screen.queryByText('At Camp')).not.toBeInTheDocument()
+    expect(screen.queryByText('Quests')).not.toBeInTheDocument()
+  })
+
+  it('hides section headings when only quest sessions present', async () => {
+    const questSession = session({
+      session_cm_id: 2001,
+      session_name: 'Teen Quests',
+      session_type: 'quest',
+    })
+    setupMockFetch(mockResponse([questSession]))
+
+    renderWithProviders(<ForecastPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Teen Quests')).toBeInTheDocument()
+    })
+
+    expect(screen.queryByText('At Camp')).not.toBeInTheDocument()
+    // "Quests" as a heading should not appear when it's the only section
+    // (check there's no heading element — the session name itself will exist in the row)
+    const questHeadings = screen.queryAllByText('Quests')
+    // With one section, no section heading should exist
+    expect(questHeadings).toHaveLength(0)
+  })
+
+  // ---------- empty sections ----------
+
+  it('does not render a table for an empty section', async () => {
+    const campSession = session({
+      session_cm_id: 1001,
+      session_name: 'Session 1',
+      session_type: 'main',
+    })
+    setupMockFetch(mockResponse([campSession]))
+
+    renderWithProviders(<ForecastPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Session 1')).toBeInTheDocument()
+    })
+
+    // Only one table should be rendered (camp)
+    const tables = screen.getAllByRole('table')
+    expect(tables).toHaveLength(1)
+  })
+
+  // ---------- section totals ----------
+
+  it('shows section total when section has 2+ rows', async () => {
+    const s1 = session({
+      session_cm_id: 1001,
+      session_name: 'Session 1',
+      session_type: 'main',
+      enrolled: 50,
+    })
+    const s2 = session({
+      session_cm_id: 1002,
+      session_name: 'Session 2',
+      session_type: 'main',
+      enrolled: 80,
+    })
+    setupMockFetch(mockResponse([s1, s2]))
+
+    renderWithProviders(<ForecastPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Session 1')).toBeInTheDocument()
+      expect(screen.getByText('Session 2')).toBeInTheDocument()
+    })
+
+    // The section total label should appear
+    expect(screen.getByText('At Camp')).toBeInTheDocument()
+  })
+
+  it('hides section total when section has only 1 row', async () => {
+    const s1 = session({ session_cm_id: 1001, session_name: 'Session 1', session_type: 'main' })
+    setupMockFetch(mockResponse([s1]))
+
+    renderWithProviders(<ForecastPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Session 1')).toBeInTheDocument()
+    })
+
+    // With a single section and single row, no total row should appear
+    // tfoot should not be present
+    const tables = screen.getAllByRole('table')
+    for (const table of tables) {
+      const tfoot = table.querySelector('tfoot')
+      expect(tfoot).toBeNull()
+    }
+  })
+
+  // ---------- single session selected ----------
+
+  it('hides all totals when single session is selected', async () => {
+    mockUseMetricsSession.mockReturnValue({
+      ...defaultMetricsSession(),
+      selectedSessionCmId: 1001,
+    })
+
+    const s1 = session({ session_cm_id: 1001, session_name: 'Session 1', session_type: 'main' })
+    setupMockFetch(mockResponse([s1]))
+
+    renderWithProviders(<ForecastPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Session 1')).toBeInTheDocument()
+    })
+
+    // No tfoot in any table
+    const tables = screen.getAllByRole('table')
+    for (const table of tables) {
+      const tfoot = table.querySelector('tfoot')
+      expect(tfoot).toBeNull()
+    }
+  })
+
+  // ---------- grand total ----------
+
+  it('shows grand total when 2+ sections visible', async () => {
+    const campSession = session({
+      session_cm_id: 1001,
+      session_name: 'Session 1',
+      session_type: 'main',
+      enrolled: 80,
+    })
+    const questSession = session({
+      session_cm_id: 2001,
+      session_name: 'Teen Quests',
+      session_type: 'quest',
+      enrolled: 20,
+    })
+    setupMockFetch(mockResponse([campSession, questSession], { enrolled: 100 }))
+
+    renderWithProviders(<ForecastPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Session 1')).toBeInTheDocument()
+      expect(screen.getByText('Teen Quests')).toBeInTheDocument()
+    })
+
+    // Grand Total label from the backend grand_total should appear
+    expect(screen.getByText('Grand Total')).toBeInTheDocument()
+  })
+
+  it('hides grand total when only 1 section visible', async () => {
+    const s1 = session({
+      session_cm_id: 1001,
+      session_name: 'Session 1',
+      session_type: 'main',
+      enrolled: 50,
+    })
+    const s2 = session({
+      session_cm_id: 1002,
+      session_name: 'Session 2',
+      session_type: 'main',
+      enrolled: 80,
+    })
+    setupMockFetch(mockResponse([s1, s2], { enrolled: 130 }))
+
+    renderWithProviders(<ForecastPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Session 1')).toBeInTheDocument()
+      expect(screen.getByText('Session 2')).toBeInTheDocument()
+    })
+
+    expect(screen.queryByText('Grand Total')).not.toBeInTheDocument()
+  })
+
+  it('hides grand total when single session is selected even with 2 sections', async () => {
+    mockUseMetricsSession.mockReturnValue({
+      ...defaultMetricsSession(),
+      selectedSessionCmId: 1001,
+    })
+
+    const campSession = session({
+      session_cm_id: 1001,
+      session_name: 'Session 1',
+      session_type: 'main',
+    })
+    const questSession = session({
+      session_cm_id: 2001,
+      session_name: 'Teen Quests',
+      session_type: 'quest',
+    })
+    setupMockFetch(mockResponse([campSession, questSession]))
+
+    renderWithProviders(<ForecastPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Session 1')).toBeInTheDocument()
+    })
+
+    expect(screen.queryByText('Grand Total')).not.toBeInTheDocument()
+  })
+
+  // ---------- summary cards ----------
+
+  it('renders summary cards with grand total data', async () => {
+    const s1 = session({ session_cm_id: 1001, session_name: 'Session 1', session_type: 'main' })
+    setupMockFetch(
+      mockResponse([s1], {
+        enrolled: 80,
+        participant_goal: 100,
+        pct_of_goal: 80.0,
+        capacity: 120,
+        utilization_pct: 66.7,
+      })
+    )
+
+    renderWithProviders(<ForecastPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Total Enrolled vs Goal')).toBeInTheDocument()
+      expect(screen.getByText('Overall % of Goal')).toBeInTheDocument()
+      expect(screen.getByText('Total Capacity')).toBeInTheDocument()
+      expect(screen.getByText('Overall Utilization')).toBeInTheDocument()
+    })
+  })
+})

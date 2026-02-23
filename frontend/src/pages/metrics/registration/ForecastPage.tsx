@@ -10,6 +10,7 @@ import {
   sortSessionDataByCampThenQuest,
 } from '../../../utils/sessionUtils'
 import { shortenSessionName } from '../../../utils/sessionDisplay'
+import { buildForecastSections } from '../../../utils/forecastUtils'
 import type { SessionForecast } from '../../../types/forecast'
 
 function pctColor(pct: number | null): string {
@@ -192,6 +193,11 @@ export default function ForecastPage() {
 
   const { grand_total } = data
 
+  const sections = buildForecastSections(campSessions, questSessions)
+  const isSingleSession = selectedSessionCmId !== null
+  const showSectionHeadings = sections.length >= 2
+  const showGrandTotal = sections.length >= 2 && !isSingleSession
+
   return (
     <div className="space-y-6">
       <div>
@@ -245,36 +251,44 @@ export default function ForecastPage() {
         />
       </div>
 
-      {/* Camp sessions table (main + embedded + AG) */}
-      <div className="border-border overflow-x-auto rounded-xl border">
-        <table className="w-full border-collapse">
-          <ForecastTableHeader />
-          <tbody>
-            {campSessions.map((session) => (
-              <SessionRow key={session.session_cm_id} session={session} />
-            ))}
-          </tbody>
-          <tfoot>
-            <SessionRow session={grand_total} isTotal />
-          </tfoot>
-        </table>
-      </div>
-
-      {/* Quest sessions table */}
-      {questSessions.length > 0 && (
-        <>
-          <h3 className="text-muted-foreground text-sm font-semibold uppercase">Quests</h3>
-          <div className="border-border overflow-x-auto rounded-xl border">
-            <table className="w-full border-collapse">
-              <ForecastTableHeader />
-              <tbody>
-                {questSessions.map((session) => (
-                  <SessionRow key={session.session_cm_id} session={session} />
-                ))}
-              </tbody>
-            </table>
+      {/* Section tables */}
+      {sections.map((section) => {
+        const showSectionTotal = section.sessions.length >= 2 && !isSingleSession
+        return (
+          <div key={section.key}>
+            {showSectionHeadings && (
+              <h3 className="text-muted-foreground mb-2 text-sm font-semibold uppercase">
+                {section.label}
+              </h3>
+            )}
+            <div className="border-border overflow-x-auto rounded-xl border">
+              <table className="w-full border-collapse">
+                <ForecastTableHeader />
+                <tbody>
+                  {section.sessions.map((s) => (
+                    <SessionRow key={s.session_cm_id} session={s} />
+                  ))}
+                </tbody>
+                {showSectionTotal && (
+                  <tfoot>
+                    <SessionRow session={section.total} isTotal />
+                  </tfoot>
+                )}
+              </table>
+            </div>
           </div>
-        </>
+        )
+      })}
+
+      {/* Grand total (standalone row when 2+ sections visible) */}
+      {showGrandTotal && (
+        <div className="border-border overflow-x-auto rounded-xl border">
+          <table className="w-full border-collapse">
+            <tbody>
+              <SessionRow session={grand_total} isTotal />
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   )
