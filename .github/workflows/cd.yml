@@ -606,7 +606,7 @@ jobs:
     # === Security Scan (run before push) ===
     - name: Run Trivy vulnerability scanner
       if: steps.check.outputs.build == 'true'
-      uses: aquasecurity/trivy-action@0.34.0
+      uses: aquasecurity/trivy-action@0.34.1
       with:
         image-ref: ${{ env.REGISTRY }}/${{ env.USERNAME }}/${{ matrix.image }}:test
         version: 'v0.68.2'
