@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { pb } from '../../lib/pocketbase'
 import { formatGradeOrdinal } from '../../utils/gradeUtils'
 import { useCurrentYear } from '../../hooks/useCurrentYear'
+import { useAdminSessions } from '../../hooks/useAdminSessions'
 import { queryKeys, userDataOptions } from '../../utils/queryKeys'
 import type { ConfigRecord } from '../../types/pocketbase-types'
 
@@ -26,23 +27,6 @@ const DEFAULT_CONFIG: SessionConfig = {
   min_grade: null,
   max_grade: null,
   capacity_override: null,
-}
-
-const SUMMER_TYPES = ['main', 'embedded', 'ag', 'quest']
-
-function useSessions(year: number) {
-  return useQuery({
-    queryKey: ['grade-eligibility-sessions', year],
-    queryFn: async () => {
-      const typeFilter = SUMMER_TYPES.map((t) => `session_type = "${t}"`).join(' || ')
-      return await pb.collection('camp_sessions').getFullList({
-        filter: `year = ${year} && (${typeFilter})`,
-        sort: 'start_date',
-      })
-    },
-    enabled: year > 0,
-    ...userDataOptions,
-  })
 }
 
 function useGradeEligibilityConfig(year: number) {
@@ -73,7 +57,7 @@ function useThresholdConfig(year: number) {
 export function GradeEligibilityConfig() {
   const { currentYear } = useCurrentYear()
   const queryClient = useQueryClient()
-  const { data: sessions, isLoading: sessionsLoading } = useSessions(currentYear)
+  const { data: sessions, isLoading: sessionsLoading } = useAdminSessions(currentYear)
   const { data: configRecords, isLoading: configLoading } = useGradeEligibilityConfig(currentYear)
   const { data: thresholdRecords, isLoading: thresholdLoading } = useThresholdConfig(currentYear)
 
