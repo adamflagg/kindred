@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Grid2x2, Loader2, Save } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { pb } from '../../lib/pocketbase'
+import { formatGradeOrdinal } from '../../utils/gradeUtils'
 import { useCurrentYear } from '../../hooks/useCurrentYear'
 import { queryKeys, userDataOptions } from '../../utils/queryKeys'
 import type { ConfigRecord } from '../../types/pocketbase-types'
@@ -215,24 +216,32 @@ export function GradeEligibilityConfig() {
     <tr key={row.cm_id} className="border-border border-b">
       <td className="py-2 pr-4 font-medium">{row.name}</td>
       <td className="px-2 py-2">
-        <input
-          type="number"
-          min={0}
-          max={12}
+        <select
           value={row.config.min_grade ?? ''}
           onChange={(e) => handleChange(row.cm_id, 'min_grade', e.target.value)}
-          className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
-        />
+          className="bg-muted/30 dark:bg-muted/50 border-border w-20 rounded border px-1 py-1 text-center text-sm"
+        >
+          <option value="" />
+          {Array.from({ length: 11 }, (_, i) => i + 2).map((g) => (
+            <option key={g} value={g}>
+              {formatGradeOrdinal(g)}
+            </option>
+          ))}
+        </select>
       </td>
       <td className="px-2 py-2">
-        <input
-          type="number"
-          min={0}
-          max={12}
+        <select
           value={row.config.max_grade ?? ''}
           onChange={(e) => handleChange(row.cm_id, 'max_grade', e.target.value)}
-          className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
-        />
+          className="bg-muted/30 dark:bg-muted/50 border-border w-20 rounded border px-1 py-1 text-center text-sm"
+        >
+          <option value="" />
+          {Array.from({ length: 11 }, (_, i) => i + 2).map((g) => (
+            <option key={g} value={g}>
+              {formatGradeOrdinal(g)}
+            </option>
+          ))}
+        </select>
       </td>
       <td className="px-2 py-2">
         <input

@@ -130,7 +130,7 @@ describe('GradeEligibilityConfig', () => {
     expect(screen.getByText(/ag sessions/i)).toBeInTheDocument()
   })
 
-  it('populates inputs from existing config', async () => {
+  it('populates grade selects from existing config', async () => {
     mockGetFullList
       .mockResolvedValueOnce(mockSessions)
       .mockResolvedValueOnce(mockConfigRecords)
@@ -142,13 +142,39 @@ describe('GradeEligibilityConfig', () => {
       expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
     })
 
+    // Grade fields are now <select> elements (combobox role)
+    const selects = screen.getAllByRole('combobox')
     // The Taste of Camp row has config with min_grade=2, max_grade=6
-    const inputs = screen.getAllByRole('spinbutton')
-    // Find an input with value "2" for the configured session
-    const hasValue2 = inputs.some((input) => (input as HTMLInputElement).value === '2')
-    const hasValue6 = inputs.some((input) => (input as HTMLInputElement).value === '6')
+    const hasValue2 = selects.some((s) => (s as HTMLSelectElement).value === '2')
+    const hasValue6 = selects.some((s) => (s as HTMLSelectElement).value === '6')
     expect(hasValue2).toBe(true)
     expect(hasValue6).toBe(true)
+  })
+
+  it('grade selects have options for grades 2-12 with ordinal labels', async () => {
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+
+    renderWithProviders(<GradeEligibilityConfig />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
+    })
+
+    const selects = screen.getAllByRole('combobox')
+    const firstSelect = selects[0] as HTMLSelectElement
+    const options = Array.from(firstSelect.options)
+
+    // First option is the empty "unset" option
+    expect(options[0]!.value).toBe('')
+    // Grades 2-12 should follow
+    expect(options).toHaveLength(12) // 1 empty + 11 grades (2-12)
+    expect(options[1]!.value).toBe('2')
+    expect(options[1]!.textContent).toBe('2nd')
+    expect(options[11]!.value).toBe('12')
+    expect(options[11]!.textContent).toBe('12th')
   })
 
   it('shows save button only when changes are made', async () => {
@@ -167,10 +193,9 @@ describe('GradeEligibilityConfig', () => {
     // Save button should not be visible initially
     expect(screen.queryByText(/save/i)).not.toBeInTheDocument()
 
-    // Change a value
-    const inputs = screen.getAllByRole('spinbutton')
-    await user.clear(inputs[0]!)
-    await user.type(inputs[0]!, '3')
+    // Change a grade select value
+    const selects = screen.getAllByRole('combobox')
+    await user.selectOptions(selects[0]!, '3')
 
     // Save button should appear
     expect(screen.getByText(/save/i)).toBeInTheDocument()
@@ -192,10 +217,9 @@ describe('GradeEligibilityConfig', () => {
       expect(screen.getByText('Taste of Camp')).toBeInTheDocument()
     })
 
-    // Make a change
-    const inputs = screen.getAllByRole('spinbutton')
-    await user.clear(inputs[0]!)
-    await user.type(inputs[0]!, '3')
+    // Make a change via grade select
+    const selects = screen.getAllByRole('combobox')
+    await user.selectOptions(selects[0]!, '3')
 
     // Click save
     const saveButton = screen.getByText(/save/i)
