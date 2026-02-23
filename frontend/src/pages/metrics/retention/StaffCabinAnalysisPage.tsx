@@ -157,11 +157,11 @@ export default function StaffCabinAnalysisPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-foreground flex items-center gap-2 text-2xl font-bold">
-            <Users className="text-primary h-6 w-6" />
+          <h2 className="text-foreground flex items-center gap-2 text-lg font-semibold">
+            <Users className="text-primary h-5 w-5" />
             Staff Cabin Analysis ({priorYear})
-          </h1>
-          <p className="text-muted-foreground mt-1">
+          </h2>
+          <p className="text-muted-foreground mt-1 text-sm">
             Retention rates by staff member across their cabin assignments
           </p>
         </div>
@@ -184,7 +184,7 @@ export default function StaffCabinAnalysisPage() {
         {() => (
           <div className="card-lodge p-4" data-tour="retention-staff-table">
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-xs" role="table">
+              <table className="w-full border-separate border-spacing-0 text-xs" role="table">
                 <thead>
                   <tr>
                     <th
@@ -234,7 +234,7 @@ export default function StaffCabinAnalysisPage() {
                           return (
                             <td
                               key={session}
-                              className="bg-muted/30 text-muted-foreground px-2 py-2 text-center"
+                              className="bg-muted/30 text-muted-foreground border-border/50 min-w-[2.5rem] border px-2 py-2 text-center"
                             >
                               ---
                             </td>
@@ -244,7 +244,7 @@ export default function StaffCabinAnalysisPage() {
                         return (
                           <td
                             key={session}
-                            className={`cursor-help px-2 py-2 text-center ${getRetentionCellColor(data.retentionRate)}`}
+                            className={`border-border/50 min-w-[2.5rem] cursor-help border px-2 py-2 text-center ${getRetentionCellColor(data.retentionRate)}`}
                             onMouseEnter={(e) =>
                               handleMouseEnter(e, row.personId, session, data.bunkName)
                             }
@@ -259,7 +259,7 @@ export default function StaffCabinAnalysisPage() {
                         )
                       })}
                       <td
-                        className={`sticky right-0 z-10 cursor-help px-3 py-2 text-center font-bold ${getRetentionCellColor(row.overallRetention)}`}
+                        className={`border-border/50 sticky right-0 z-10 cursor-help border px-3 py-2 text-center font-bold ${getRetentionCellColor(row.overallRetention)}`}
                         onMouseEnter={(e) =>
                           handleMouseEnter(e, row.personId, '__overall__', 'Overall')
                         }
