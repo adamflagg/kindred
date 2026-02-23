@@ -491,4 +491,84 @@ describe('PopulateFromPreviousYear', () => {
       expect(toCreateText).toBeInTheDocument()
     })
   })
+
+  it('shows previous session name for alias-matched sessions', async () => {
+    // Previous year has "Taste of Camp" (cm_id 5001)
+    // Current year has "Taste of Camp 1" (cm_id 3001) — alias match
+    const prevSessions = [
+      { cm_id: 5001, name: 'Taste of Camp', session_type: 'main', year: 2025, start_date: '2025-06-10' },
+    ]
+    const curSessions = [
+      { cm_id: 3001, name: 'Taste of Camp 1', session_type: 'main', year: 2026, start_date: '2026-06-10' },
+    ]
+    const prevGradeConfig = [
+      {
+        id: 'prev_grade_toc',
+        category: 'session_availability',
+        subcategory: '2025',
+        config_key: '5001',
+        value: { min_grade: 2, max_grade: 5, capacity_override: null },
+      },
+    ]
+
+    setupMocks({ prevSessions, curSessions, prevGradeConfig, prevRegDates: [], prevBudgetConfig: [] })
+    const user = userEvent.setup()
+
+    const Component = await getComponent()
+    render(<Component />, { wrapper: createWrapper() })
+
+    await waitFor(() => {
+      expect(screen.getByText(/populate from 2025/i)).toBeInTheDocument()
+    })
+
+    const previewButton = screen.getByRole('button', { name: /preview/i })
+    await user.click(previewButton)
+
+    // Should show the previous session name in parens
+    await waitFor(() => {
+      expect(screen.getByText(/was Taste of Camp\b/)).toBeInTheDocument()
+    })
+  })
+
+  it('treats current config with all-null values as populatable', async () => {
+    // Current year has grade config records but all values are null
+    const curGradeConfig = [
+      {
+        id: 'cur_grade1',
+        category: 'session_availability',
+        subcategory: '2026',
+        config_key: '1001',
+        value: { min_grade: null, max_grade: null, capacity_override: null },
+      },
+      {
+        id: 'cur_grade2',
+        category: 'session_availability',
+        subcategory: '2026',
+        config_key: '1002',
+        value: { min_grade: null, max_grade: null, capacity_override: null },
+      },
+    ]
+
+    setupMocks({ curGradeConfig })
+    const user = userEvent.setup()
+
+    const Component = await getComponent()
+    render(<Component />, { wrapper: createWrapper() })
+
+    await waitFor(() => {
+      expect(screen.getByText(/populate from 2025/i)).toBeInTheDocument()
+    })
+
+    const previewButton = screen.getByRole('button', { name: /preview/i })
+    await user.click(previewButton)
+
+    // Grade items should show as "new" (populatable), not "already set"
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /session grade config/i })).toBeInTheDocument()
+    })
+
+    // All grade items should be marked "new" not "already set"
+    const newBadges = screen.getAllByText('new')
+    expect(newBadges.length).toBeGreaterThanOrEqual(2) // both sessions
+  })
 })

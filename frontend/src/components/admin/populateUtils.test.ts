@@ -13,6 +13,7 @@ import {
   matchSessions,
   shiftDateByOneYear,
   buildPreview,
+  isEmptyValue,
   type SessionMatch,
   type SessionData,
   type ConfigRecordLike,
@@ -355,5 +356,110 @@ describe('buildPreview', () => {
 
     // Empty date values should be skipped
     expect(result.registrationDates).toHaveLength(0)
+  })
+
+  it('treats existing config with all-null values as non-existing (populatable)', () => {
+    const prevGradeConfig = [
+      makeConfig('session_availability', '2025', '1001', { min_grade: 3, max_grade: 6 }),
+    ]
+    // Current year has a record but all values are null — should be treated as empty
+    const curGradeConfig = [
+      makeConfig('session_availability', '2026', '1001', {
+        min_grade: null,
+        max_grade: null,
+        capacity_override: null,
+      }),
+    ]
+
+    const result = buildPreview(matches, [], prevGradeConfig, [], [], curGradeConfig, [], 2026)
+
+    expect(result.gradeItems).toHaveLength(1)
+    expect(result.gradeItems[0]!.existingValue).toBeNull() // treated as non-existing
+    expect(result.summary.toCreate).toBe(1)
+    expect(result.summary.alreadySet).toBe(0)
+  })
+
+  it('skips previous config with all-null values (nothing meaningful to copy)', () => {
+    const prevGradeConfig = [
+      makeConfig('session_availability', '2025', '1001', {
+        min_grade: null,
+        max_grade: null,
+        capacity_override: null,
+      }),
+    ]
+
+    const result = buildPreview(matches, [], prevGradeConfig, [], [], [], [], 2026)
+
+    // All-null prev config should be skipped entirely
+    expect(result.gradeItems).toHaveLength(0)
+  })
+
+  it('populates previousSessionName on matched items', () => {
+    const aliasMatches: SessionMatch[] = [
+      {
+        currentSession: makeSession(3001, 'Taste of Camp 1', 'main', 2026),
+        previousSession: makeSession(5001, 'Taste of Camp', 'main', 2025),
+        matchType: 'alias',
+      },
+    ]
+    const prevGradeConfig = [
+      makeConfig('session_availability', '2025', '5001', { min_grade: 2, max_grade: 5 }),
+    ]
+
+    const result = buildPreview(aliasMatches, [], prevGradeConfig, [], [], [], [], 2026)
+
+    expect(result.gradeItems).toHaveLength(1)
+    expect(result.gradeItems[0]!.previousSessionName).toBe('Taste of Camp')
+  })
+
+  it('sets previousSessionName to null for cm_id matches', () => {
+    const prevGradeConfig = [
+      makeConfig('session_availability', '2025', '1001', { min_grade: 3, max_grade: 6 }),
+    ]
+
+    const result = buildPreview(matches, [], prevGradeConfig, [], [], [], [], 2026)
+
+    expect(result.gradeItems).toHaveLength(1)
+    expect(result.gradeItems[0]!.previousSessionName).toBeNull()
+  })
+})
+
+// ── isEmptyValue ──────────────────────────────────────────────────────
+
+describe('isEmptyValue', () => {
+  it('returns true for null', () => {
+    expect(isEmptyValue(null)).toBe(true)
+  })
+
+  it('returns true for undefined', () => {
+    expect(isEmptyValue(undefined)).toBe(true)
+  })
+
+  it('returns true for empty string', () => {
+    expect(isEmptyValue('')).toBe(true)
+  })
+
+  it('returns true for object with all null properties', () => {
+    expect(isEmptyValue({ min_grade: null, max_grade: null, capacity_override: null })).toBe(true)
+  })
+
+  it('returns true for object with all undefined properties', () => {
+    expect(isEmptyValue({ min_grade: undefined, max_grade: undefined })).toBe(true)
+  })
+
+  it('returns false for object with at least one non-null property', () => {
+    expect(isEmptyValue({ min_grade: 3, max_grade: null })).toBe(false)
+  })
+
+  it('returns false for non-empty string', () => {
+    expect(isEmptyValue('2025-01-01')).toBe(false)
+  })
+
+  it('returns false for number', () => {
+    expect(isEmptyValue(42)).toBe(false)
+  })
+
+  it('returns false for zero', () => {
+    expect(isEmptyValue(0)).toBe(false)
   })
 })
