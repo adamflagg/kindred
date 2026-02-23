@@ -831,6 +831,31 @@ class TestInitializedMarker:
         assert marker.exists()
 
 
+class TestWalCleanup:
+    """Test that WAL and SHM files are removed after checkpoint."""
+
+    def test_removes_wal_and_shm_files(self, tmp_project: Path, seed_module) -> None:
+        db_path = tmp_project / "pocketbase" / "pb_data" / "data.db"
+        wal_path = db_path.with_name("data.db-wal")
+        shm_path = db_path.with_name("data.db-shm")
+
+        # Create fake WAL/SHM files (as if copied from prod)
+        wal_path.write_bytes(b"\x00" * 100)
+        shm_path.write_bytes(b"\x00" * 32)
+
+        env = _env_vars()
+        with patch.dict(os.environ, env, clear=False):
+            seed_module.seed_from_prod(
+                data_db=str(db_path),
+                project_root=str(tmp_project),
+                dry_run=False,
+            )
+
+        assert not wal_path.exists()
+        assert not shm_path.exists()
+        assert db_path.exists()  # data.db itself still exists
+
+
 class TestReturnValue:
     """Test the return value / summary from seed_from_prod."""
 

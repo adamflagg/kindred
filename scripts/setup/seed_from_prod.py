@@ -227,10 +227,20 @@ def seed_from_prod(
     # Get migration files on disk for stale migration / ghost table detection
     migration_files = _get_migration_files_on_disk(project_root)
 
-    # WAL checkpoint — consolidate WAL into main db before modifying
+    # WAL checkpoint — consolidate WAL into main db, then switch to DELETE
+    # journal mode so SQLite won't recreate the WAL/SHM files.
     conn = sqlite3.connect(data_db)
     conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    conn.execute("PRAGMA journal_mode=DELETE")
     conn.close()
+
+    # Remove leftover WAL/SHM files
+    db = Path(data_db)
+    for suffix in ("-wal", "-shm"):
+        f = db.with_name(db.name + suffix)
+        if f.exists():
+            f.unlink()
+            print(f"Removed {f.name}")
 
     # Reopen for patching
     conn = sqlite3.connect(data_db)
