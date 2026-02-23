@@ -234,7 +234,7 @@ export default function StaffCabinAnalysisPage() {
                           return (
                             <td
                               key={session}
-                              className="bg-muted/30 text-muted-foreground px-2 py-2 text-center"
+                              className="bg-muted/30 text-muted-foreground min-w-[2.5rem] px-2 py-2 text-center"
                             >
                               ---
                             </td>
@@ -244,7 +244,7 @@ export default function StaffCabinAnalysisPage() {
                         return (
                           <td
                             key={session}
-                            className={`cursor-help px-2 py-2 text-center ${getRetentionCellColor(data.retentionRate)}`}
+                            className={`min-w-[2.5rem] cursor-help px-2 py-2 text-center ${getRetentionCellColor(data.retentionRate)}`}
                             onMouseEnter={(e) =>
                               handleMouseEnter(e, row.personId, session, data.bunkName)
                             }

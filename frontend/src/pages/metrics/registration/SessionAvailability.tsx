@@ -45,14 +45,14 @@ function CellContent({ status }: { status: Status }) {
 }
 
 function cellClass(status: Status): string {
-  const base = 'h-8 w-8 border border-border/50'
+  const base = 'min-w-[2.5rem] px-2 py-2 text-center border border-border/50'
   switch (status) {
     case 'open':
       return `${base} bg-emerald-100 dark:bg-emerald-900/40`
     case 'limited':
       return `${base} bg-amber-200 dark:bg-amber-800/50`
     case 'waitlist':
-      return `${base} bg-red-200 dark:bg-red-900/50 flex items-center justify-center`
+      return `${base} bg-red-200 dark:bg-red-900/50`
     case 'na':
       return `${base} bg-neutral-200 dark:bg-neutral-700`
   }
@@ -71,10 +71,8 @@ function SessionRow({
       {GRADES.map((grade) => {
         const status = statusForGrade(genderData, grade)
         return (
-          <td key={grade} className="p-0">
-            <div className={cellClass(status)}>
-              <CellContent status={status} />
-            </div>
+          <td key={grade} className={cellClass(status)}>
+            <CellContent status={status} />
           </td>
         )
       })}
@@ -91,10 +89,8 @@ function AGSessionRow({ session }: { session: AGSessionAvailabilityData }) {
           grade
         )
         return (
-          <td key={grade} className="p-0">
-            <div className={cellClass(status)}>
-              <CellContent status={status} />
-            </div>
+          <td key={grade} className={cellClass(status)}>
+            <CellContent status={status} />
           </td>
         )
       })}
@@ -104,7 +100,7 @@ function AGSessionRow({ session }: { session: AGSessionAvailabilityData }) {
 
 function Legend() {
   return (
-    <div className="flex flex-wrap items-center gap-4 text-sm">
+    <div className="mt-4 flex items-center gap-3 text-xs">
       <div className="flex items-center gap-2">
         <div className="border-border/50 h-5 w-5 rounded border bg-emerald-100 dark:bg-emerald-900/40" />
         <span>Open Space</span>
@@ -129,26 +125,26 @@ function Legend() {
 
 function SessionsTable({ sessions }: { sessions: SessionAvailabilityData[] }) {
   return (
-    <div className="border-border overflow-x-auto rounded-xl border">
-      <table className="w-auto border-collapse">
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-xs">
         <thead>
           <tr>
             <th
               rowSpan={2}
-              className="bg-muted/50 border-border sticky left-0 z-10 border-r border-b px-4 py-2 text-left text-sm font-semibold"
+              className="bg-muted/50 text-muted-foreground border-border sticky left-0 z-10 border-r border-b px-3 py-2 text-left font-medium"
             >
               Session
             </th>
             <th
               colSpan={GRADES.length}
-              className="border-border border-r border-b bg-pink-50 px-2 py-1.5 text-center text-sm font-semibold dark:bg-pink-950/30"
+              className="border-border border-r border-b bg-pink-50 px-2 py-2 text-center font-medium dark:bg-pink-950/30"
             >
               Girls' Availability
             </th>
             <th rowSpan={2} className="w-3 border-b" aria-hidden="true" />
             <th
               colSpan={GRADES.length}
-              className="border-border border-b bg-blue-50 px-2 py-1.5 text-center text-sm font-semibold dark:bg-blue-950/30"
+              className="border-border border-b bg-blue-50 px-2 py-2 text-center font-medium dark:bg-blue-950/30"
             >
               Boys' Availability
             </th>
@@ -157,7 +153,7 @@ function SessionsTable({ sessions }: { sessions: SessionAvailabilityData[] }) {
             {GRADES.map((g) => (
               <th
                 key={`g-${g}`}
-                className="border-border border-r border-b bg-pink-50/50 px-1 py-1 text-center text-xs font-medium dark:bg-pink-950/20"
+                className="text-muted-foreground border-border border-r border-b bg-pink-50/50 px-2 py-2 text-center font-medium dark:bg-pink-950/20"
               >
                 {gradeLabel(g)}
               </th>
@@ -165,7 +161,7 @@ function SessionsTable({ sessions }: { sessions: SessionAvailabilityData[] }) {
             {GRADES.map((g) => (
               <th
                 key={`b-${g}`}
-                className="border-border border-b bg-blue-50/50 px-1 py-1 text-center text-xs font-medium dark:bg-blue-950/20"
+                className="text-muted-foreground border-border border-b bg-blue-50/50 px-2 py-2 text-center font-medium dark:bg-blue-950/20"
               >
                 {gradeLabel(g)}
               </th>
@@ -175,7 +171,7 @@ function SessionsTable({ sessions }: { sessions: SessionAvailabilityData[] }) {
         <tbody>
           {sessions.map((session) => (
             <tr key={session.session_cm_id} className="border-border border-b last:border-b-0">
-              <td className="bg-card border-border sticky left-0 z-10 border-r px-4 py-2 text-sm font-medium whitespace-nowrap">
+              <td className="bg-muted/50 text-foreground border-border sticky left-0 z-10 border-r px-3 py-2 text-xs font-semibold whitespace-nowrap">
                 {session.session_name}
               </td>
               <SessionRow session={session} gender="girls" />
@@ -233,59 +229,63 @@ export default function SessionAvailability() {
         </p>
       </div>
 
-      <Legend />
+      <div className="card-lodge p-4">
+        <div className="space-y-6">
+          {/* Camp sessions matrix (main + embedded) */}
+          {campSessions.length > 0 && <SessionsTable sessions={campSessions} />}
 
-      {/* Camp sessions matrix (main + embedded) */}
-      {campSessions.length > 0 && <SessionsTable sessions={campSessions} />}
+          {/* AG Sessions */}
+          {ag_sessions.length > 0 && (
+            <div>
+              <h3 className="text-muted-foreground mb-3 text-sm font-semibold uppercase">
+                AG Sessions
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-xs">
+                  <thead>
+                    <tr>
+                      <th className="bg-muted/50 text-muted-foreground border-border sticky left-0 z-10 border-r border-b px-3 py-2 text-left font-medium">
+                        Session
+                      </th>
+                      {GRADES.map((g) => (
+                        <th
+                          key={g}
+                          className="text-muted-foreground border-border border-b bg-purple-50/50 px-2 py-2 text-center font-medium dark:bg-purple-950/20"
+                        >
+                          {gradeLabel(g)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ag_sessions.map((session) => (
+                      <tr
+                        key={session.session_cm_id}
+                        className="border-border border-b last:border-b-0"
+                      >
+                        <td className="bg-muted/50 text-foreground border-border sticky left-0 z-10 border-r px-3 py-2 text-xs font-semibold whitespace-nowrap">
+                          {session.session_name}
+                        </td>
+                        <AGSessionRow session={session} />
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
-      {/* AG Sessions */}
-      {ag_sessions.length > 0 && (
-        <div>
-          <h3 className="text-muted-foreground mb-3 text-sm font-semibold uppercase">
-            AG Sessions
-          </h3>
-          <div className="border-border overflow-x-auto rounded-xl border">
-            <table className="w-auto border-collapse">
-              <thead>
-                <tr>
-                  <th className="bg-muted/50 border-border sticky left-0 z-10 border-r border-b px-4 py-2 text-left text-sm font-semibold">
-                    Session
-                  </th>
-                  {GRADES.map((g) => (
-                    <th
-                      key={g}
-                      className="border-border border-b bg-purple-50/50 px-1 py-1 text-center text-xs font-medium dark:bg-purple-950/20"
-                    >
-                      {gradeLabel(g)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {ag_sessions.map((session) => (
-                  <tr
-                    key={session.session_cm_id}
-                    className="border-border border-b last:border-b-0"
-                  >
-                    <td className="bg-card border-border sticky left-0 z-10 border-r px-4 py-2 text-sm font-medium whitespace-nowrap">
-                      {session.session_name}
-                    </td>
-                    <AGSessionRow session={session} />
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {/* Quest sessions */}
+          {questSessions.length > 0 && (
+            <div>
+              <h3 className="text-muted-foreground mb-3 text-sm font-semibold uppercase">Quests</h3>
+              <SessionsTable sessions={questSessions} />
+            </div>
+          )}
         </div>
-      )}
 
-      {/* Quest sessions */}
-      {questSessions.length > 0 && (
-        <div>
-          <h3 className="text-muted-foreground mb-3 text-sm font-semibold uppercase">Quests</h3>
-          <SessionsTable sessions={questSessions} />
-        </div>
-      )}
+        <Legend />
+      </div>
     </div>
   )
 }

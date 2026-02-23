@@ -109,7 +109,7 @@ function BunkHeatmapTable({ title, sessions, bunks, lookup, bunkStaff }: BunkHea
                       <td
                         key={bunk}
                         role="cell"
-                        className="bg-muted/30 text-muted-foreground px-2 py-2 text-center"
+                        className="bg-muted/30 text-muted-foreground min-w-[2.5rem] px-2 py-2 text-center"
                       >
                         —
                       </td>
@@ -117,7 +117,7 @@ function BunkHeatmapTable({ title, sessions, bunks, lookup, bunkStaff }: BunkHea
                   }
                   const pct = Math.round(item.retention_rate * 100)
                   const cellClass = [
-                    'px-2 py-2 text-center font-medium',
+                    'min-w-[2.5rem] px-2 py-2 text-center font-medium',
                     getCellColor(item.retention_rate),
                     hasStaff ? 'cursor-help' : 'cursor-default',
                   ].join(' ')
