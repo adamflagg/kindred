@@ -4,6 +4,7 @@ import { DollarSign, Loader2, Save } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { pb } from '../../lib/pocketbase'
 import { useCurrentYear } from '../../hooks/useCurrentYear'
+import { useAdminSessions } from '../../hooks/useAdminSessions'
 import { queryKeys, userDataOptions } from '../../utils/queryKeys'
 import type { ConfigRecord } from '../../types/pocketbase-types'
 
@@ -19,23 +20,6 @@ interface SessionBudgetRow {
   configId: string | undefined
   participant_goal: number | null
   session_fee: number | null
-}
-
-const SUMMER_TYPES = ['main', 'embedded', 'ag', 'quest']
-
-function useSessions(year: number) {
-  return useQuery({
-    queryKey: ['session-budget-sessions', year],
-    queryFn: async () => {
-      const typeFilter = SUMMER_TYPES.map((t) => `session_type = "${t}"`).join(' || ')
-      return await pb.collection('camp_sessions').getFullList({
-        filter: `year = ${year} && (${typeFilter})`,
-        sort: 'start_date',
-      })
-    },
-    enabled: year > 0,
-    ...userDataOptions,
-  })
 }
 
 function useBudgetConfig(year: number) {
@@ -103,7 +87,7 @@ function SectionHeader({ label, colSpan }: { label: string; colSpan: number }) {
 export function SessionBudgetConfig() {
   const { currentYear } = useCurrentYear()
   const queryClient = useQueryClient()
-  const { data: sessions, isLoading: sessionsLoading } = useSessions(currentYear)
+  const { data: sessions, isLoading: sessionsLoading } = useAdminSessions(currentYear)
   const { data: configRecords, isLoading: configLoading } = useBudgetConfig(currentYear)
 
   const [rows, setRows] = useState<SessionBudgetRow[]>([])

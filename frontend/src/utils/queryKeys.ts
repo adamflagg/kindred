@@ -54,6 +54,7 @@ export const queryKeys = {
 
   // Admin/Config (Tier 2 - user data)
   adminSettings: () => ['admin-settings'] as const,
+  adminSessions: (year: number) => ['admin-sessions', year] as const,
   solverConfig: () => ['solver-config'] as const,
 
   // Debug (Tier 2 - frequently updated during testing)
