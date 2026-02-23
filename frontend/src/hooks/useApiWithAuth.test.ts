@@ -42,9 +42,7 @@ describe('fetchWithAuth 401 handling', () => {
 
   it('should clear auth and redirect on 401 response', async () => {
     // Mock fetch to return 401
-    global.fetch = vi.fn().mockResolvedValue(
-      new Response('Unauthorized', { status: 401 })
-    )
+    global.fetch = vi.fn().mockResolvedValue(new Response('Unauthorized', { status: 401 }))
 
     // fetchWithAuth wraps global.fetch and checks for 401
     // We verify the contract: 401 response => clear auth + redirect
@@ -59,9 +57,7 @@ describe('fetchWithAuth 401 handling', () => {
   it('should not redirect when already on login page', async () => {
     mockLocation.pathname = '/login'
 
-    global.fetch = vi.fn().mockResolvedValue(
-      new Response('Unauthorized', { status: 401 })
-    )
+    global.fetch = vi.fn().mockResolvedValue(new Response('Unauthorized', { status: 401 }))
 
     // The contract: when on /login, 401 should NOT trigger redirect
     const response = await global.fetch('/api/test')
@@ -70,9 +66,7 @@ describe('fetchWithAuth 401 handling', () => {
   })
 
   it('should pass through non-401 responses normally', async () => {
-    global.fetch = vi.fn().mockResolvedValue(
-      new Response('OK', { status: 200 })
-    )
+    global.fetch = vi.fn().mockResolvedValue(new Response('OK', { status: 200 }))
 
     const response = await global.fetch('/api/test')
     expect(response.status).toBe(200)

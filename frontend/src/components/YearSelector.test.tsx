@@ -9,11 +9,7 @@ import YearSelector from './YearSelector'
 
 function renderWithContext(contextValue: CurrentYearContextType) {
   return render(
-    createElement(
-      CurrentYearContext.Provider,
-      { value: contextValue },
-      createElement(YearSelector)
-    )
+    createElement(CurrentYearContext.Provider, { value: contextValue }, createElement(YearSelector))
   )
 }
 

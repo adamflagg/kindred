@@ -5,6 +5,7 @@ export interface CurrentYearContextType {
   setCurrentYear: (year: number) => void
   availableYears: number[]
   isTransitioning: boolean
+  isYearReady: boolean
 }
 
 export const CurrentYearContext = createContext<CurrentYearContextType | undefined>(undefined)

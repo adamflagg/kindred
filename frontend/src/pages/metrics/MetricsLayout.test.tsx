@@ -42,6 +42,7 @@ const renderWithRouter = (initialPath: string, childText = 'Child Content') => {
     setCurrentYear: vi.fn(),
     availableYears: [2026, 2025, 2024],
     isTransitioning: false,
+    isYearReady: true,
   }
 
   return render(

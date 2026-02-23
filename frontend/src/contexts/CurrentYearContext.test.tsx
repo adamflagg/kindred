@@ -61,10 +61,7 @@ describe('Year calculation logic', () => {
   })
 
   describe('URL year parsing with empty available years', () => {
-    function parseYearFromUrl(
-      urlYear: string | null,
-      availableYears: number[]
-    ): number | null {
+    function parseYearFromUrl(urlYear: string | null, availableYears: number[]): number | null {
       if (!urlYear) return null
       // When available years is empty (not ready), don't reject valid years
       if (availableYears.length === 0) return null

@@ -3,7 +3,22 @@ import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headless
 import { useCurrentYear } from '../hooks/useCurrentYear'
 
 export default function YearSelector() {
-  const { currentYear, setCurrentYear, availableYears, isTransitioning } = useCurrentYear()
+  const { currentYear, setCurrentYear, availableYears, isTransitioning, isYearReady } =
+    useCurrentYear()
+
+  // Show loading spinner while waiting for backend year config
+  if (!isYearReady || availableYears.length === 0) {
+    return (
+      <div className="relative">
+        <div className="flex items-center gap-2">
+          <Calendar className="text-primary h-4 w-4 flex-shrink-0" />
+          <div className="flex min-w-[80px] items-center justify-center py-1">
+            <Loader2 className="text-primary h-4 w-4 animate-spin" />
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="relative">
