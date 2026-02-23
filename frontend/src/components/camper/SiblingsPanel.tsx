@@ -43,7 +43,7 @@ export function SiblingsPanel({ siblings, isLoading, error }: SiblingsPanelProps
             {siblings.map((sibling) => (
               <Link
                 key={sibling.id}
-                to={`/summer/camper/${sibling.cm_id}`}
+                to={`/camper/${sibling.cm_id}`}
                 className="bg-muted/30 hover:bg-muted/50 hover:border-border group flex items-center gap-3 rounded-xl border border-transparent p-3 transition-all"
               >
                 {/* Sibling avatar */}

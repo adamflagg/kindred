@@ -44,7 +44,7 @@ export default function CamperLink({
   if (canLink) {
     return (
       <Link
-        to={`/summer/camper/${personCmId}`}
+        to={`/camper/${personCmId}`}
         className={clsx(
           'inline-flex items-center gap-1 font-medium',
           'text-foreground hover:text-primary hover:underline',

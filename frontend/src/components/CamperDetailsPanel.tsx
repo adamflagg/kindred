@@ -1019,7 +1019,7 @@ export default function CamperDetailsPanel({
                 {siblings.map((sibling) => (
                   <Link
                     key={sibling.id}
-                    to={`/summer/camper/${sibling.cm_id}`}
+                    to={`/camper/${sibling.cm_id}`}
                     onClick={handleClose}
                     className="bg-muted/30 hover:bg-muted/50 hover:border-border group flex items-center gap-2.5 rounded-xl border border-transparent p-2.5 transition-all"
                   >
@@ -1126,7 +1126,7 @@ export default function CamperDetailsPanel({
     >
       <div className="flex gap-2">
         <Link
-          to={`/summer/camper/${camper.person_cm_id}`}
+          to={`/camper/${camper.person_cm_id}`}
           target="_blank"
           rel="noopener noreferrer"
           className="btn-secondary flex flex-1 items-center justify-center gap-1.5 py-2 text-center text-sm"

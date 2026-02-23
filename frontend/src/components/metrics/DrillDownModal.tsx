@@ -558,7 +558,7 @@ export function DrillDownModal({
                       title={`${attendee.preferred_name || attendee.first_name} ${attendee.last_name}`}
                     >
                       <Link
-                        to={`/summer/camper/${attendee.person_id}`}
+                        to={`/camper/${attendee.person_id}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="hover:text-forest-700 dark:hover:text-forest-400 transition-colors"

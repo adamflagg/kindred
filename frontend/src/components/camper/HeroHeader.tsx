@@ -37,7 +37,7 @@ export function HeroHeader({
       {/* Back link */}
       <div className="px-6 pt-5">
         <Link
-          to="/summer/campers"
+          to="/campers"
           className="text-forest-200 inline-flex items-center gap-1.5 text-sm font-medium transition-colors hover:text-white"
         >
           <ArrowLeft className="h-4 w-4" />

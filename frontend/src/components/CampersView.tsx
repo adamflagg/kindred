@@ -365,7 +365,7 @@ export default function CampersView({
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <Link
-                            to={`/summer/camper/${camper.person_cm_id}`}
+                            to={`/camper/${camper.person_cm_id}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="dark:text-foreground hover:text-forest-700 dark:hover:text-forest-400 truncate text-base font-semibold text-stone-800 transition-colors"

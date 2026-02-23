@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { Settings, RefreshCw, AlertCircle, Sliders, FileSpreadsheet } from 'lucide-react'
+import { Settings, AlertCircle } from 'lucide-react'
 import { ErrorBoundary } from './ErrorBoundary'
 import { SyncTab } from './admin/SyncTab'
 import { ConfigTab } from './admin/ConfigTab'
 import { SheetsTab } from './admin/SheetsTab'
 import { useIsAdmin } from '../hooks/useIsAdmin'
+import { ADMIN_TABS, type AdminTabConfig } from '../config/adminTabs'
 
 /**
  * AdminConfig - Main admin control center container
@@ -12,14 +13,17 @@ import { useIsAdmin } from '../hooks/useIsAdmin'
  * This component provides the top-level layout and tab switching for:
  * - Sync Operations: Manage CampMinder data synchronization
  * - Configuration: Adjust optimizer and processing settings
+ * - Sheets: Google Sheets export (admin-only)
  *
- * The actual functionality is delegated to:
- * - SyncTab: Sync status grid, daily sync, historical imports
- * - ConfigTab: Categorized settings with search, scale context UI
+ * Tab visibility is driven by ADMIN_TABS config, filtered by permission.
  */
 function AdminConfigInner() {
-  const [activeTab, setActiveTab] = useState<'sync' | 'config' | 'sheets'>('sync')
+  const [activeTab, setActiveTab] = useState<AdminTabConfig['id']>('sync')
   const isAdmin = useIsAdmin()
+
+  const visibleTabs = ADMIN_TABS.filter(
+    (tab) => tab.requiredPermission === 'authenticated' || isAdmin
+  )
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -42,41 +46,23 @@ function AdminConfigInner() {
 
       {/* Tabs */}
       <div className="bg-muted/50 dark:bg-muted flex w-full gap-1.5 rounded-lg p-1.5 sm:w-fit">
-        <button
-          onClick={() => setActiveTab('sync')}
-          className={`flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-semibold transition-colors sm:flex-none sm:px-5 sm:text-base ${
-            activeTab === 'sync'
-              ? 'bg-card text-forest-800 dark:text-forest-200 shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          <RefreshCw className="h-4 w-4 sm:h-5 sm:w-5" />
-          <span className="hidden sm:inline">Sync </span>Operations
-        </button>
-        <button
-          onClick={() => setActiveTab('config')}
-          className={`flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-semibold transition-colors sm:flex-none sm:px-5 sm:text-base ${
-            activeTab === 'config'
-              ? 'bg-card text-forest-800 dark:text-forest-200 shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          <Sliders className="h-4 w-4 sm:h-5 sm:w-5" />
-          Configuration
-        </button>
-        {isAdmin && (
-          <button
-            onClick={() => setActiveTab('sheets')}
-            className={`flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-semibold transition-colors sm:flex-none sm:px-5 sm:text-base ${
-              activeTab === 'sheets'
-                ? 'bg-card text-forest-800 dark:text-forest-200 shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <FileSpreadsheet className="h-4 w-4 sm:h-5 sm:w-5" />
-            Sheets
-          </button>
-        )}
+        {visibleTabs.map((tab) => {
+          const Icon = tab.icon
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-semibold transition-colors sm:flex-none sm:px-5 sm:text-base ${
+                activeTab === tab.id
+                  ? 'bg-card text-forest-800 dark:text-forest-200 shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
+              {tab.label}
+            </button>
+          )
+        })}
       </div>
 
       {/* Tab Content */}
