@@ -26,7 +26,6 @@ from unittest.mock import patch
 import bcrypt
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers to build a minimal PocketBase-like SQLite database for testing
 # ---------------------------------------------------------------------------
@@ -102,8 +101,7 @@ def _create_test_db(db_path: str, *, include_ghost_table: bool = False) -> None:
         "fileToken": {"secret": "old_file_secret_eee", "duration": 180},
     }
     cur.execute(
-        "INSERT INTO _collections (id, system, type, name, options) "
-        "VALUES ('users_col_id', 1, 'auth', 'users', ?)",
+        "INSERT INTO _collections (id, system, type, name, options) VALUES ('users_col_id', 1, 'auth', 'users', ?)",
         (json.dumps(users_options),),
     )
     # Add a non-users collection to verify it's not modified
@@ -136,12 +134,8 @@ def _create_test_db(db_path: str, *, include_ghost_table: bool = False) -> None:
             updated TEXT DEFAULT ''
         )
     """)
-    cur.execute(
-        "INSERT INTO users (id, email, name) VALUES ('user1', 'alice@example.com', 'Alice')"
-    )
-    cur.execute(
-        "INSERT INTO users (id, email, name) VALUES ('user2', 'bob@example.com', 'Bob')"
-    )
+    cur.execute("INSERT INTO users (id, email, name) VALUES ('user1', 'alice@example.com', 'Alice')")
+    cur.execute("INSERT INTO users (id, email, name) VALUES ('user2', 'bob@example.com', 'Bob')")
 
     # _externalAuths
     cur.execute("""
@@ -188,8 +182,7 @@ def _create_test_db(db_path: str, *, include_ghost_table: bool = False) -> None:
         )
     """)
     cur.execute(
-        "INSERT INTO _mfas (id, collectionRef, recordRef, method) "
-        "VALUES ('mfa1', 'users_col_id', 'user1', 'totp')"
+        "INSERT INTO _mfas (id, collectionRef, recordRef, method) VALUES ('mfa1', 'users_col_id', 'user1', 'totp')"
     )
 
     # _otps
@@ -218,20 +211,12 @@ def _create_test_db(db_path: str, *, include_ghost_table: bool = False) -> None:
     """)
     # Insert some migration entries — some exist on disk, some stale
     cur.execute("INSERT INTO _migrations VALUES ('1640988000_init.go', 1)")
-    cur.execute(
-        "INSERT INTO _migrations VALUES ('1500000001_person_tag_defs.js', 1)"
-    )
-    cur.execute(
-        "INSERT INTO _migrations VALUES ('1500000015_persons.js', 1)"
-    )
+    cur.execute("INSERT INTO _migrations VALUES ('1500000001_person_tag_defs.js', 1)")
+    cur.execute("INSERT INTO _migrations VALUES ('1500000015_persons.js', 1)")
     # Stale: migration file removed from codebase
-    cur.execute(
-        "INSERT INTO _migrations VALUES ('1500000051_geo_aliases.js', 1)"
-    )
+    cur.execute("INSERT INTO _migrations VALUES ('1500000051_geo_aliases.js', 1)")
     # Another stale one
-    cur.execute(
-        "INSERT INTO _migrations VALUES ('9999999999_nonexistent.js', 1)"
-    )
+    cur.execute("INSERT INTO _migrations VALUES ('9999999999_nonexistent.js', 1)")
 
     conn.commit()
     conn.close()
@@ -383,9 +368,7 @@ class TestOAuth2CredentialReplacement:
             )
 
         conn = sqlite3.connect(db_path)
-        row = conn.execute(
-            "SELECT options FROM _collections WHERE name = 'users'"
-        ).fetchone()
+        row = conn.execute("SELECT options FROM _collections WHERE name = 'users'").fetchone()
         conn.close()
 
         options = json.loads(row[0])
@@ -406,9 +389,7 @@ class TestOAuth2CredentialReplacement:
             )
 
         conn = sqlite3.connect(db_path)
-        row = conn.execute(
-            "SELECT options FROM _collections WHERE name = 'users'"
-        ).fetchone()
+        row = conn.execute("SELECT options FROM _collections WHERE name = 'users'").fetchone()
         conn.close()
 
         options = json.loads(row[0])
@@ -429,9 +410,7 @@ class TestOAuth2CredentialReplacement:
             )
 
         conn = sqlite3.connect(db_path)
-        row = conn.execute(
-            "SELECT options FROM _collections WHERE name = 'persons'"
-        ).fetchone()
+        row = conn.execute("SELECT options FROM _collections WHERE name = 'persons'").fetchone()
         conn.close()
 
         assert row[0] == "{}"
@@ -452,9 +431,7 @@ class TestTokenSecretRegeneration:
             )
 
         conn = sqlite3.connect(db_path)
-        row = conn.execute(
-            "SELECT options FROM _collections WHERE name = 'users'"
-        ).fetchone()
+        row = conn.execute("SELECT options FROM _collections WHERE name = 'users'").fetchone()
         conn.close()
 
         options = json.loads(row[0])
@@ -482,9 +459,7 @@ class TestTokenSecretRegeneration:
             )
 
         conn = sqlite3.connect(db_path)
-        row = conn.execute(
-            "SELECT options FROM _collections WHERE name = 'users'"
-        ).fetchone()
+        row = conn.execute("SELECT options FROM _collections WHERE name = 'users'").fetchone()
         conn.close()
 
         options = json.loads(row[0])
@@ -592,9 +567,7 @@ class TestStaleMigrationCleanup:
             )
 
         conn = sqlite3.connect(db_path)
-        files = [
-            r[0] for r in conn.execute("SELECT file FROM _migrations").fetchall()
-        ]
+        files = [r[0] for r in conn.execute("SELECT file FROM _migrations").fetchall()]
         conn.close()
 
         # Stale JS migrations should be removed
@@ -613,9 +586,7 @@ class TestStaleMigrationCleanup:
             )
 
         conn = sqlite3.connect(db_path)
-        files = [
-            r[0] for r in conn.execute("SELECT file FROM _migrations").fetchall()
-        ]
+        files = [r[0] for r in conn.execute("SELECT file FROM _migrations").fetchall()]
         conn.close()
 
         assert "1500000001_person_tag_defs.js" in files
@@ -634,9 +605,7 @@ class TestStaleMigrationCleanup:
             )
 
         conn = sqlite3.connect(db_path)
-        files = [
-            r[0] for r in conn.execute("SELECT file FROM _migrations").fetchall()
-        ]
+        files = [r[0] for r in conn.execute("SELECT file FROM _migrations").fetchall()]
         conn.close()
 
         assert "1640988000_init.go" in files
@@ -645,12 +614,8 @@ class TestStaleMigrationCleanup:
 class TestGhostTableRemoval:
     """Test that ghost tables (in DB but no migration file) are removed."""
 
-    def test_drops_ghost_table_and_collection_entry(
-        self, tmp_project_with_ghost: Path, seed_module
-    ) -> None:
-        db_path = str(
-            tmp_project_with_ghost / "pocketbase" / "pb_data" / "data.db"
-        )
+    def test_drops_ghost_table_and_collection_entry(self, tmp_project_with_ghost: Path, seed_module) -> None:
+        db_path = str(tmp_project_with_ghost / "pocketbase" / "pb_data" / "data.db")
         env = _env_vars()
 
         with patch.dict(os.environ, env, clear=False):
@@ -663,29 +628,18 @@ class TestGhostTableRemoval:
         conn = sqlite3.connect(db_path)
 
         # _collections entry should be gone
-        count = conn.execute(
-            "SELECT COUNT(*) FROM _collections WHERE name = 'geo_aliases'"
-        ).fetchone()[0]
+        count = conn.execute("SELECT COUNT(*) FROM _collections WHERE name = 'geo_aliases'").fetchone()[0]
         assert count == 0
 
         # Actual table should be dropped
-        tables = [
-            r[0]
-            for r in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            ).fetchall()
-        ]
+        tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
         assert "geo_aliases" not in tables
 
         conn.close()
 
-    def test_does_not_remove_active_collections(
-        self, tmp_project_with_ghost: Path, seed_module
-    ) -> None:
+    def test_does_not_remove_active_collections(self, tmp_project_with_ghost: Path, seed_module) -> None:
         """Collections with matching migration files should NOT be removed."""
-        db_path = str(
-            tmp_project_with_ghost / "pocketbase" / "pb_data" / "data.db"
-        )
+        db_path = str(tmp_project_with_ghost / "pocketbase" / "pb_data" / "data.db")
         env = _env_vars()
 
         with patch.dict(os.environ, env, clear=False):
@@ -696,10 +650,7 @@ class TestGhostTableRemoval:
             )
 
         conn = sqlite3.connect(db_path)
-        names = [
-            r[0]
-            for r in conn.execute("SELECT name FROM _collections").fetchall()
-        ]
+        names = [r[0] for r in conn.execute("SELECT name FROM _collections").fetchall()]
         conn.close()
 
         assert "users" in names
@@ -709,9 +660,7 @@ class TestGhostTableRemoval:
 class TestDryRun:
     """Test that dry-run mode reports changes without modifying the database."""
 
-    def test_dry_run_does_not_modify_superusers(
-        self, tmp_project: Path, seed_module
-    ) -> None:
+    def test_dry_run_does_not_modify_superusers(self, tmp_project: Path, seed_module) -> None:
         db_path = str(tmp_project / "pocketbase" / "pb_data" / "data.db")
         env = _env_vars()
 
@@ -727,9 +676,7 @@ class TestDryRun:
         conn.close()
         assert row[0] == "adam@tawonga.camp"
 
-    def test_dry_run_does_not_delete_users(
-        self, tmp_project: Path, seed_module
-    ) -> None:
+    def test_dry_run_does_not_delete_users(self, tmp_project: Path, seed_module) -> None:
         db_path = str(tmp_project / "pocketbase" / "pb_data" / "data.db")
         env = _env_vars()
 
@@ -745,9 +692,7 @@ class TestDryRun:
         conn.close()
         assert count == 2
 
-    def test_dry_run_does_not_modify_oauth2(
-        self, tmp_project: Path, seed_module
-    ) -> None:
+    def test_dry_run_does_not_modify_oauth2(self, tmp_project: Path, seed_module) -> None:
         db_path = str(tmp_project / "pocketbase" / "pb_data" / "data.db")
         env = _env_vars()
 
@@ -759,17 +704,13 @@ class TestDryRun:
             )
 
         conn = sqlite3.connect(db_path)
-        row = conn.execute(
-            "SELECT options FROM _collections WHERE name = 'users'"
-        ).fetchone()
+        row = conn.execute("SELECT options FROM _collections WHERE name = 'users'").fetchone()
         conn.close()
 
         options = json.loads(row[0])
         assert options["oauth2"]["providers"][0]["clientId"] == "prod-client-id-999"
 
-    def test_dry_run_does_not_touch_initialized_marker(
-        self, tmp_project: Path, seed_module
-    ) -> None:
+    def test_dry_run_does_not_touch_initialized_marker(self, tmp_project: Path, seed_module) -> None:
         db_path = str(tmp_project / "pocketbase" / "pb_data" / "data.db")
         marker = tmp_project / "pocketbase" / "pb_data" / ".initialized"
         env = _env_vars()
@@ -796,9 +737,7 @@ class TestMissingEnvVars:
             "OIDC_CLIENT_SECRET",
         ],
     )
-    def test_raises_on_missing_env_var(
-        self, tmp_project: Path, seed_module, missing_var: str
-    ) -> None:
+    def test_raises_on_missing_env_var(self, tmp_project: Path, seed_module, missing_var: str) -> None:
         db_path = str(tmp_project / "pocketbase" / "pb_data" / "data.db")
         env = _env_vars()
         del env[missing_var]
