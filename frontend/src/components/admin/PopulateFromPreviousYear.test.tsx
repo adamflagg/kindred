@@ -496,10 +496,22 @@ describe('PopulateFromPreviousYear', () => {
     // Previous year has "Taste of Camp" (cm_id 5001)
     // Current year has "Taste of Camp 1" (cm_id 3001) — alias match
     const prevSessions = [
-      { cm_id: 5001, name: 'Taste of Camp', session_type: 'main', year: 2025, start_date: '2025-06-10' },
+      {
+        cm_id: 5001,
+        name: 'Taste of Camp',
+        session_type: 'main',
+        year: 2025,
+        start_date: '2025-06-10',
+      },
     ]
     const curSessions = [
-      { cm_id: 3001, name: 'Taste of Camp 1', session_type: 'main', year: 2026, start_date: '2026-06-10' },
+      {
+        cm_id: 3001,
+        name: 'Taste of Camp 1',
+        session_type: 'main',
+        year: 2026,
+        start_date: '2026-06-10',
+      },
     ]
     const prevGradeConfig = [
       {
@@ -511,7 +523,13 @@ describe('PopulateFromPreviousYear', () => {
       },
     ]
 
-    setupMocks({ prevSessions, curSessions, prevGradeConfig, prevRegDates: [], prevBudgetConfig: [] })
+    setupMocks({
+      prevSessions,
+      curSessions,
+      prevGradeConfig,
+      prevRegDates: [],
+      prevBudgetConfig: [],
+    })
     const user = userEvent.setup()
 
     const Component = await getComponent()
