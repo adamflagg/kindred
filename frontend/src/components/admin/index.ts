@@ -3,7 +3,7 @@
 
 export { SyncTab } from './SyncTab'
 export { SYNC_TYPES, YEAR_SYNC_TYPES, getYearSyncTypes } from './syncTypes'
-export { ConfigTab, CATEGORIES } from './ConfigTab'
+export { ConfigTab } from './ConfigTab'
 export { RegistrationDatesConfig } from './RegistrationDatesConfig'
 export { SessionBudgetConfig } from './SessionBudgetConfig'
 export { SectionCard, type SectionCardProps } from './SectionCard'

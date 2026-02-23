@@ -1,17 +1,6 @@
 import { useState, useMemo } from 'react'
-import {
-  AlertCircle,
-  Loader2,
-  Save,
-  RefreshCw,
-  RotateCcw,
-  Search,
-  X,
-  Sliders,
-  Database,
-  Workflow,
-  CalendarDays,
-} from 'lucide-react'
+import { Link, useParams } from 'react-router'
+import { AlertCircle, Loader2, Save, RefreshCw, RotateCcw, Search, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useSolverConfig, type ConfigSection } from '../../hooks/useSolverConfig'
 import { useUpdateSolverConfig, useResetSolverConfig } from '../../hooks/useSolverConfigMutation'
@@ -21,45 +10,10 @@ import { RegistrationDatesConfig } from './RegistrationDatesConfig'
 import { GradeEligibilityConfig } from './GradeEligibilityConfig'
 import { SessionBudgetConfig } from './SessionBudgetConfig'
 import { PopulateFromPreviousYear } from './PopulateFromPreviousYear'
-
-// Category definitions - these IDs match the business_category values in config metadata
-interface CategoryDef {
-  id: string
-  name: string
-  icon: React.ComponentType<{ className?: string }>
-  description: string
-}
-
-// eslint-disable-next-line react-refresh/only-export-components -- Config constant for category navigation
-export const CATEGORIES: CategoryDef[] = [
-  {
-    id: 'solver',
-    name: 'Bunk Optimizer',
-    icon: Sliders,
-    description: 'Cabin assignment rules',
-  },
-  {
-    id: 'processing',
-    name: 'Request Processing',
-    icon: Workflow,
-    description: 'AI-powered request pipeline',
-  },
-  {
-    id: 'history',
-    name: 'Data & History',
-    icon: Database,
-    description: 'Historical context & tracking',
-  },
-  {
-    id: 'registration',
-    name: 'Registration',
-    icon: CalendarDays,
-    description: 'Registration dates & budgets',
-  },
-]
+import { CONFIG_CATEGORIES } from '../../config/adminTabs'
 
 export function ConfigTab() {
-  const [activeCategory, setActiveCategory] = useState<string>('solver')
+  const { category: activeCategory = 'solver' } = useParams<{ category: string }>()
   const [searchTerm, setSearchTerm] = useState('')
   const [editedValues, setEditedValues] = useState<Record<string, string>>({})
 
@@ -183,15 +137,15 @@ export function ConfigTab() {
       {/* Mobile Category Tabs */}
       <div className="lg:hidden">
         <div className="scrollbar-none -mx-1 flex gap-2 overflow-x-auto px-1 pb-2">
-          {CATEGORIES.map((category) => {
+          {CONFIG_CATEGORIES.map((category) => {
             const Icon = category.icon
             const isActive = activeCategory === category.id
             const sectionCount = categorizedSections[category.id]?.length || 0
 
             return (
-              <button
+              <Link
                 key={category.id}
-                onClick={() => setActiveCategory(category.id)}
+                to={category.path}
                 className={`flex flex-shrink-0 items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold whitespace-nowrap transition-colors ${
                   isActive
                     ? 'bg-forest-100 dark:bg-forest-900/40 text-forest-800 dark:text-forest-200'
@@ -201,7 +155,7 @@ export function ConfigTab() {
                 <Icon className="h-4 w-4" />
                 {category.name}
                 {sectionCount > 0 && <span className="text-sm opacity-60">({sectionCount})</span>}
-              </button>
+              </Link>
             )
           })}
         </div>
@@ -210,16 +164,16 @@ export function ConfigTab() {
       {/* Desktop Sidebar */}
       <div className="hidden w-56 flex-shrink-0 lg:block">
         <div className="sticky top-4 space-y-1.5">
-          {CATEGORIES.map((category) => {
+          {CONFIG_CATEGORIES.map((category) => {
             const Icon = category.icon
             const isActive = activeCategory === category.id
             const sectionCount = categorizedSections[category.id]?.length || 0
 
             return (
-              <button
+              <Link
                 key={category.id}
-                onClick={() => setActiveCategory(category.id)}
-                className={`w-full rounded-lg px-4 py-3.5 text-left transition-colors ${
+                to={category.path}
+                className={`block w-full rounded-lg px-4 py-3.5 text-left transition-colors ${
                   isActive
                     ? 'bg-forest-100 dark:bg-forest-900/40 text-forest-800 dark:text-forest-200'
                     : 'text-muted-foreground hover:bg-muted/50 dark:hover:bg-muted'
@@ -234,7 +188,7 @@ export function ConfigTab() {
                     </div>
                   </div>
                 </div>
-              </button>
+              </Link>
             )
           })}
 

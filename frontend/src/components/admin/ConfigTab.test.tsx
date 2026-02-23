@@ -82,69 +82,66 @@ const renderWithRouter = (category: string) => {
 }
 
 describe('ConfigTab', () => {
+  // Both mobile and desktop sidebars render links, so we use getAllByRole
   it('renders category sidebar with links', () => {
     renderWithRouter('solver')
 
-    // Category sidebar should use links, not buttons
-    expect(screen.getByRole('link', { name: /bunk optimizer/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /request processing/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /data & history/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /registration/i })).toBeInTheDocument()
+    // Each category appears twice (mobile + desktop), all as links
+    expect(screen.getAllByRole('link', { name: /bunk optimizer/i })).toHaveLength(2)
+    expect(screen.getAllByRole('link', { name: /request processing/i })).toHaveLength(2)
+    expect(screen.getAllByRole('link', { name: /data & history/i })).toHaveLength(2)
+    expect(screen.getAllByRole('link', { name: /registration/i })).toHaveLength(2)
   })
 
   it('category links point to correct paths', () => {
     renderWithRouter('solver')
 
-    expect(screen.getByRole('link', { name: /bunk optimizer/i })).toHaveAttribute(
-      'href',
-      '/admin/config/solver'
-    )
-    expect(screen.getByRole('link', { name: /request processing/i })).toHaveAttribute(
-      'href',
-      '/admin/config/processing'
-    )
-    expect(screen.getByRole('link', { name: /data & history/i })).toHaveAttribute(
-      'href',
-      '/admin/config/history'
-    )
-    expect(screen.getByRole('link', { name: /registration/i })).toHaveAttribute(
-      'href',
-      '/admin/config/registration'
-    )
+    // Check all instances point to correct paths
+    for (const link of screen.getAllByRole('link', { name: /bunk optimizer/i })) {
+      expect(link).toHaveAttribute('href', '/admin/config/solver')
+    }
+    for (const link of screen.getAllByRole('link', { name: /request processing/i })) {
+      expect(link).toHaveAttribute('href', '/admin/config/processing')
+    }
+    for (const link of screen.getAllByRole('link', { name: /data & history/i })) {
+      expect(link).toHaveAttribute('href', '/admin/config/history')
+    }
+    for (const link of screen.getAllByRole('link', { name: /registration/i })) {
+      expect(link).toHaveAttribute('href', '/admin/config/registration')
+    }
   })
 
   it('highlights active category from URL params - solver', () => {
     renderWithRouter('solver')
 
-    const solverLink = screen.getByRole('link', { name: /bunk optimizer/i })
-    const processingLink = screen.getByRole('link', { name: /request processing/i })
+    const solverLinks = screen.getAllByRole('link', { name: /bunk optimizer/i })
+    const processingLinks = screen.getAllByRole('link', { name: /request processing/i })
 
-    // Active category should have the active styling
-    expect(solverLink.className).toContain('text-forest-800')
-    expect(processingLink.className).not.toContain('text-forest-800')
+    // At least one solver link should have active styling
+    expect(solverLinks.some((link) => link.className.includes('text-forest-800'))).toBe(true)
+    // No processing link should have active styling
+    expect(processingLinks.every((link) => !link.className.includes('text-forest-800'))).toBe(true)
   })
 
   it('highlights active category from URL params - processing', () => {
     renderWithRouter('processing')
 
-    const solverLink = screen.getByRole('link', { name: /bunk optimizer/i })
-    const processingLink = screen.getByRole('link', { name: /request processing/i })
+    const solverLinks = screen.getAllByRole('link', { name: /bunk optimizer/i })
+    const processingLinks = screen.getAllByRole('link', { name: /request processing/i })
 
-    expect(processingLink.className).toContain('text-forest-800')
-    expect(solverLink.className).not.toContain('text-forest-800')
+    expect(processingLinks.some((link) => link.className.includes('text-forest-800'))).toBe(true)
+    expect(solverLinks.every((link) => !link.className.includes('text-forest-800'))).toBe(true)
   })
 
   it('shows config sections for the active category', () => {
     renderWithRouter('solver')
 
-    // Should show solver configs
     expect(screen.getByText('Test Setting')).toBeInTheDocument()
   })
 
   it('shows correct sections when navigating to processing', () => {
     renderWithRouter('processing')
 
-    // Should show processing configs
     expect(screen.getByText('Processing Setting')).toBeInTheDocument()
   })
 })
