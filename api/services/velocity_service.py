@@ -265,7 +265,11 @@ class VelocityService:
         session_weekly_cancellations: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
 
         for cancel in cancellations:
-            raw_sid = int(cancel.session_cm_id)
+            expand = getattr(cancel, "expand", {}) or {}
+            session = expand.get("session") if isinstance(expand, dict) else None
+            if not session:
+                continue
+            raw_sid = int(session.cm_id)
             effective_sid = ag_parent_map.get(raw_sid, raw_sid)
 
             dt = datetime.strptime(cancel.detected_at.split("T")[0].split(" ")[0], "%Y-%m-%d")

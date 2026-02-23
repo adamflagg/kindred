@@ -411,10 +411,13 @@ class MetricsRepository:
         )
 
     async def fetch_attendees_with_dates(self, year: int, session_cm_id: int | None = None) -> list[Any]:
-        """Fetch attendees that have enrollment_date set, for velocity reconstruction."""
+        """Fetch attendees that have enrollment_date set, for velocity reconstruction.
+
+        Note: session_cm_id param is accepted for interface consistency but filtering
+        happens in the service layer via expanded session relation (attendees table
+        has no session_cm_id column).
+        """
         filter_str = f"year = {year} && enrollment_date != ''"
-        if session_cm_id is not None:
-            filter_str += f" && session_cm_id = {session_cm_id}"
         return await asyncio.to_thread(
             self.pb.collection("attendees").get_full_list,
             query_params={"filter": filter_str, "expand": "session"},
@@ -426,7 +429,7 @@ class MetricsRepository:
         filter_str = f"year = {year} && ({status_filter})"
         return await asyncio.to_thread(
             self.pb.collection("attendee_status_history").get_full_list,
-            query_params={"filter": filter_str},
+            query_params={"filter": filter_str, "expand": "session"},
         )
 
     async def fetch_budget_config(self, year: int) -> dict[int, dict[str, Any]]:
