@@ -136,8 +136,16 @@ describe('ForecastPage', () => {
   // ---------- section headings ----------
 
   it('shows section headings when both camp and quest sessions present', async () => {
-    const campSession = session({ session_cm_id: 1001, session_name: 'Session 1', session_type: 'main' })
-    const questSession = session({ session_cm_id: 2001, session_name: 'Teen Quests', session_type: 'quest' })
+    const campSession = session({
+      session_cm_id: 1001,
+      session_name: 'Session 1',
+      session_type: 'main',
+    })
+    const questSession = session({
+      session_cm_id: 2001,
+      session_name: 'Teen Quests',
+      session_type: 'quest',
+    })
     setupMockFetch(mockResponse([campSession, questSession]))
 
     renderWithProviders(<ForecastPage />)
@@ -149,7 +157,11 @@ describe('ForecastPage', () => {
   })
 
   it('hides section headings when only camp sessions present', async () => {
-    const campSession = session({ session_cm_id: 1001, session_name: 'Session 1', session_type: 'main' })
+    const campSession = session({
+      session_cm_id: 1001,
+      session_name: 'Session 1',
+      session_type: 'main',
+    })
     setupMockFetch(mockResponse([campSession]))
 
     renderWithProviders(<ForecastPage />)
@@ -163,7 +175,11 @@ describe('ForecastPage', () => {
   })
 
   it('hides section headings when only quest sessions present', async () => {
-    const questSession = session({ session_cm_id: 2001, session_name: 'Teen Quests', session_type: 'quest' })
+    const questSession = session({
+      session_cm_id: 2001,
+      session_name: 'Teen Quests',
+      session_type: 'quest',
+    })
     setupMockFetch(mockResponse([questSession]))
 
     renderWithProviders(<ForecastPage />)
@@ -183,7 +199,11 @@ describe('ForecastPage', () => {
   // ---------- empty sections ----------
 
   it('does not render a table for an empty section', async () => {
-    const campSession = session({ session_cm_id: 1001, session_name: 'Session 1', session_type: 'main' })
+    const campSession = session({
+      session_cm_id: 1001,
+      session_name: 'Session 1',
+      session_type: 'main',
+    })
     setupMockFetch(mockResponse([campSession]))
 
     renderWithProviders(<ForecastPage />)
@@ -200,8 +220,18 @@ describe('ForecastPage', () => {
   // ---------- section totals ----------
 
   it('shows section total when section has 2+ rows', async () => {
-    const s1 = session({ session_cm_id: 1001, session_name: 'Session 1', session_type: 'main', enrolled: 50 })
-    const s2 = session({ session_cm_id: 1002, session_name: 'Session 2', session_type: 'main', enrolled: 80 })
+    const s1 = session({
+      session_cm_id: 1001,
+      session_name: 'Session 1',
+      session_type: 'main',
+      enrolled: 50,
+    })
+    const s2 = session({
+      session_cm_id: 1002,
+      session_name: 'Session 2',
+      session_type: 'main',
+      enrolled: 80,
+    })
     setupMockFetch(mockResponse([s1, s2]))
 
     renderWithProviders(<ForecastPage />)
@@ -262,8 +292,18 @@ describe('ForecastPage', () => {
   // ---------- grand total ----------
 
   it('shows grand total when 2+ sections visible', async () => {
-    const campSession = session({ session_cm_id: 1001, session_name: 'Session 1', session_type: 'main', enrolled: 80 })
-    const questSession = session({ session_cm_id: 2001, session_name: 'Teen Quests', session_type: 'quest', enrolled: 20 })
+    const campSession = session({
+      session_cm_id: 1001,
+      session_name: 'Session 1',
+      session_type: 'main',
+      enrolled: 80,
+    })
+    const questSession = session({
+      session_cm_id: 2001,
+      session_name: 'Teen Quests',
+      session_type: 'quest',
+      enrolled: 20,
+    })
     setupMockFetch(mockResponse([campSession, questSession], { enrolled: 100 }))
 
     renderWithProviders(<ForecastPage />)
@@ -278,8 +318,18 @@ describe('ForecastPage', () => {
   })
 
   it('hides grand total when only 1 section visible', async () => {
-    const s1 = session({ session_cm_id: 1001, session_name: 'Session 1', session_type: 'main', enrolled: 50 })
-    const s2 = session({ session_cm_id: 1002, session_name: 'Session 2', session_type: 'main', enrolled: 80 })
+    const s1 = session({
+      session_cm_id: 1001,
+      session_name: 'Session 1',
+      session_type: 'main',
+      enrolled: 50,
+    })
+    const s2 = session({
+      session_cm_id: 1002,
+      session_name: 'Session 2',
+      session_type: 'main',
+      enrolled: 80,
+    })
     setupMockFetch(mockResponse([s1, s2], { enrolled: 130 }))
 
     renderWithProviders(<ForecastPage />)
@@ -298,8 +348,16 @@ describe('ForecastPage', () => {
       selectedSessionCmId: 1001,
     })
 
-    const campSession = session({ session_cm_id: 1001, session_name: 'Session 1', session_type: 'main' })
-    const questSession = session({ session_cm_id: 2001, session_name: 'Teen Quests', session_type: 'quest' })
+    const campSession = session({
+      session_cm_id: 1001,
+      session_name: 'Session 1',
+      session_type: 'main',
+    })
+    const questSession = session({
+      session_cm_id: 2001,
+      session_name: 'Teen Quests',
+      session_type: 'quest',
+    })
     setupMockFetch(mockResponse([campSession, questSession]))
 
     renderWithProviders(<ForecastPage />)

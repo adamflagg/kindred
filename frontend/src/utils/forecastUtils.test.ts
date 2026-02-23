@@ -156,10 +156,7 @@ describe('computeSectionTotal', () => {
   })
 
   it('returns null for pct_of_goal when total goal is 0', () => {
-    const total = computeSectionTotal(
-      [session({ enrolled: 50, participant_goal: 0 })],
-      'Total'
-    )
+    const total = computeSectionTotal([session({ enrolled: 50, participant_goal: 0 })], 'Total')
     expect(total.pct_of_goal).toBeNull()
   })
 
@@ -170,10 +167,7 @@ describe('computeSectionTotal', () => {
 
   it('computes utilization_pct when capacity is available and > 0', () => {
     const total = computeSectionTotal(
-      [
-        session({ enrolled: 50, capacity: 60 }),
-        session({ enrolled: 40, capacity: 60 }),
-      ],
+      [session({ enrolled: 50, capacity: 60 }), session({ enrolled: 40, capacity: 60 })],
       'Total'
     )
     // 90 / 120 * 100 = 75.0
@@ -186,10 +180,7 @@ describe('computeSectionTotal', () => {
   })
 
   it('returns null for utilization_pct when total capacity is 0', () => {
-    const total = computeSectionTotal(
-      [session({ enrolled: 50, capacity: 0 })],
-      'Total'
-    )
+    const total = computeSectionTotal([session({ enrolled: 50, capacity: 0 })], 'Total')
     expect(total.utilization_pct).toBeNull()
   })
 

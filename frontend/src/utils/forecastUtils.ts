@@ -15,10 +15,7 @@ export interface ForecastSection {
  *   return null if ALL sessions have null, otherwise sum treating null as 0
  * - derived fields (percentages, deltas) are computed from the aggregated totals
  */
-export function computeSectionTotal(
-  sessions: SessionForecast[],
-  label: string
-): SessionForecast {
+export function computeSectionTotal(sessions: SessionForecast[], label: string): SessionForecast {
   const totalEnrolled = sessions.reduce((sum, s) => sum + s.enrolled, 0)
   const totalWaitlisted = sessions.reduce((sum, s) => sum + s.waitlisted, 0)
 
