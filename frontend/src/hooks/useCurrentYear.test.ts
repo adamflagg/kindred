@@ -29,6 +29,7 @@ describe('useCurrentYear', () => {
       setCurrentYear: vi.fn(),
       availableYears: [2024, 2025, 2026],
       isTransitioning: false,
+      isYearReady: true,
     }
 
     const wrapper = ({ children }: { children: React.ReactNode }) =>
@@ -39,7 +40,27 @@ describe('useCurrentYear', () => {
     expect(result.current.currentYear).toBe(2025)
     expect(result.current.availableYears).toEqual([2024, 2025, 2026])
     expect(result.current.isTransitioning).toBe(false)
+    expect(result.current.isYearReady).toBe(true)
     expect(typeof result.current.setCurrentYear).toBe('function')
+  })
+
+  it('should reflect not-ready state', () => {
+    const mockContext: CurrentYearContextType = {
+      currentYear: 0,
+      setCurrentYear: vi.fn(),
+      availableYears: [],
+      isTransitioning: false,
+      isYearReady: false,
+    }
+
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      createElement(CurrentYearContext.Provider, { value: mockContext }, children)
+
+    const { result } = renderHook(() => useCurrentYear(), { wrapper })
+
+    expect(result.current.currentYear).toBe(0)
+    expect(result.current.availableYears).toEqual([])
+    expect(result.current.isYearReady).toBe(false)
   })
 
   it('should reflect context changes', () => {
@@ -48,6 +69,7 @@ describe('useCurrentYear', () => {
       setCurrentYear: vi.fn(),
       availableYears: [2023, 2024],
       isTransitioning: true,
+      isYearReady: true,
     }
 
     const wrapper = ({ children }: { children: React.ReactNode }) =>
@@ -77,6 +99,7 @@ describe('useYear', () => {
       setCurrentYear: vi.fn(),
       availableYears: [2024, 2025],
       isTransitioning: false,
+      isYearReady: true,
     }
 
     const wrapper = ({ children }: { children: React.ReactNode }) =>
@@ -85,6 +108,23 @@ describe('useYear', () => {
     const { result } = renderHook(() => useYear(), { wrapper })
 
     expect(result.current).toBe(2025)
+  })
+
+  it('should return 0 when year is not ready', () => {
+    const mockContext: CurrentYearContextType = {
+      currentYear: 0,
+      setCurrentYear: vi.fn(),
+      availableYears: [],
+      isTransitioning: false,
+      isYearReady: false,
+    }
+
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      createElement(CurrentYearContext.Provider, { value: mockContext }, children)
+
+    const { result } = renderHook(() => useYear(), { wrapper })
+
+    expect(result.current).toBe(0)
   })
 
   it('should update when context year changes', () => {
@@ -98,6 +138,7 @@ describe('useYear', () => {
       },
       availableYears: [2024, 2025],
       isTransitioning: false,
+      isYearReady: true,
     }
 
     const wrapper = ({ children }: { children: React.ReactNode }) =>
