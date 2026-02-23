@@ -23,6 +23,7 @@ export function useForecast(
       }
       return response.json()
     },
+    enabled: year > 0,
     placeholderData: keepPreviousData,
     ...syncDataOptions,
   })

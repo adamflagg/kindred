@@ -28,7 +28,18 @@ export function useApiWithAuth() {
       credentials: 'include' as RequestCredentials,
     }
 
-    return fetch(url, finalOptions)
+    const response = await fetch(url, finalOptions)
+
+    // Handle 401 globally: clear auth and redirect to login
+    // This catches expired tokens on queries (not just mutations)
+    if (response.status === 401) {
+      pb.authStore.clear()
+      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+        window.location.href = `/login?from=${encodeURIComponent(window.location.pathname)}`
+      }
+    }
+
+    return response
   }, []) // pb.authStore.token is an outer scope value that doesn't trigger re-renders
 
   return { fetchWithAuth, isAuthenticated: !!user }

@@ -43,6 +43,7 @@ const createWrapper = (year = 2026) => {
     setCurrentYear: vi.fn(),
     availableYears: [2026, 2025, 2024],
     isTransitioning: false,
+    isYearReady: true,
   }
 
   return ({ children }: { children: React.ReactNode }) => (

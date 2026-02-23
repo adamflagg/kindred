@@ -36,6 +36,7 @@ const mockYearContext: CurrentYearContextType = {
   setCurrentYear: vi.fn(),
   availableYears: [2026, 2025],
   isTransitioning: false,
+  isYearReady: true,
 }
 
 function renderPage() {

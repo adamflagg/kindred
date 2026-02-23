@@ -1,98 +1,100 @@
 /**
  * Tests for CurrentYearContext - verifying backend year integration
+ * and the isYearReady flag that prevents premature query firing.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 
 // Test the year calculation logic without needing full React context
 describe('Year calculation logic', () => {
-  let originalDate: DateConstructor
-
-  beforeEach(() => {
-    originalDate = global.Date
-  })
-
-  afterEach(() => {
-    global.Date = originalDate
-  })
-
-  describe('getConfiguredYearFromBackend', () => {
-    // This tests the logic that will be implemented in CurrentYearContext
-    function getConfiguredYearFromBackend(
-      backendYear: number | undefined,
-      fallbackYear: number
-    ): number {
-      return backendYear ?? fallbackYear
+  describe('configuredYear without fallback', () => {
+    // When backend year is unavailable, currentYear should be 0 (not ready)
+    // No client-side fallback - we wait for the backend
+    function getConfiguredYear(backendYear: number | undefined): number {
+      return backendYear ?? 0
     }
 
     it('should use backend year when available', () => {
-      const result = getConfiguredYearFromBackend(2026, 2025)
-      expect(result).toBe(2026)
+      expect(getConfiguredYear(2026)).toBe(2026)
     })
 
-    it('should use fallback when backend year is undefined', () => {
-      const result = getConfiguredYearFromBackend(undefined, 2025)
-      expect(result).toBe(2025)
+    it('should return 0 when backend year is undefined (not ready)', () => {
+      expect(getConfiguredYear(undefined)).toBe(0)
     })
 
-    it('should handle edge case of 0 as backend year', () => {
-      // Backend would never return 0 in practice - env var would be a valid year
-      // But test that our function handles any edge case gracefully
-      const result = getConfiguredYearFromBackend(undefined, 2025)
-      expect(result).toBe(2025)
-      // Also verify that a valid year (not 0) would be used
-      const result2 = getConfiguredYearFromBackend(2026, 2025)
-      expect(result2).toBe(2026)
+    it('should handle any valid backend year', () => {
+      expect(getConfiguredYear(2025)).toBe(2025)
+      expect(getConfiguredYear(2024)).toBe(2024)
     })
   })
 
   describe('calculateAvailableYears', () => {
     function calculateAvailableYears(baseYear: number, count: number = 5): number[] {
+      if (baseYear === 0) return []
       return Array.from({ length: count }, (_, i) => baseYear - i)
     }
 
     it('should generate 5 years descending from base year', () => {
-      const years = calculateAvailableYears(2026)
-      expect(years).toEqual([2026, 2025, 2024, 2023, 2022])
+      expect(calculateAvailableYears(2026)).toEqual([2026, 2025, 2024, 2023, 2022])
     })
 
     it('should work with any base year', () => {
-      const years = calculateAvailableYears(2024, 3)
-      expect(years).toEqual([2024, 2023, 2022])
+      expect(calculateAvailableYears(2024, 3)).toEqual([2024, 2023, 2022])
+    })
+
+    it('should return empty array when base year is 0 (not ready)', () => {
+      expect(calculateAvailableYears(0)).toEqual([])
     })
   })
 
-  describe('calculateClientFallbackYear', () => {
-    function calculateClientFallbackYear(month: number, calendarYear: number): number {
-      // For summer camp: Jan-May (months 0-4) uses previous year (last summer)
-      // Jun-Dec (months 5-11) uses current year
-      return month < 5 ? calendarYear - 1 : calendarYear
+  describe('isYearReady flag', () => {
+    function computeIsYearReady(backendYear: number | undefined): boolean {
+      return backendYear !== undefined
     }
 
-    it('should return previous year in January', () => {
-      expect(calculateClientFallbackYear(0, 2026)).toBe(2025)
+    it('should be false when backend year is undefined', () => {
+      expect(computeIsYearReady(undefined)).toBe(false)
     })
 
-    it('should return previous year in May', () => {
-      expect(calculateClientFallbackYear(4, 2026)).toBe(2025)
+    it('should be true when backend year is available', () => {
+      expect(computeIsYearReady(2026)).toBe(true)
+    })
+  })
+
+  describe('URL year parsing with empty available years', () => {
+    function parseYearFromUrl(urlYear: string | null, availableYears: number[]): number | null {
+      if (!urlYear) return null
+      // When available years is empty (not ready), don't reject valid years
+      if (availableYears.length === 0) return null
+      const parsed = parseInt(urlYear, 10)
+      if (!isNaN(parsed) && availableYears.includes(parsed)) {
+        return parsed
+      }
+      return null
+    }
+
+    it('should return null when available years is empty (not ready)', () => {
+      expect(parseYearFromUrl('2026', [])).toBeNull()
     })
 
-    it('should return current year in June', () => {
-      expect(calculateClientFallbackYear(5, 2026)).toBe(2026)
+    it('should return parsed year when available years includes it', () => {
+      expect(parseYearFromUrl('2026', [2026, 2025, 2024])).toBe(2026)
     })
 
-    it('should return current year in December', () => {
-      expect(calculateClientFallbackYear(11, 2026)).toBe(2026)
+    it('should return null for invalid year not in available years', () => {
+      expect(parseYearFromUrl('2020', [2026, 2025, 2024])).toBeNull()
+    })
+
+    it('should return null when urlYear is null', () => {
+      expect(parseYearFromUrl(null, [2026, 2025])).toBeNull()
     })
   })
 })
 
 describe('SyncStatusResponse _configured_year field', () => {
-  // Type-level test: This will fail to compile if _configured_year is not in the type
   it('should be a valid field in the expected response shape', () => {
     interface ExpectedSyncStatusResponse {
       _configured_year?: number
       sessions: { status: string }
-      // ... other required fields
     }
 
     const mockResponse: ExpectedSyncStatusResponse = {

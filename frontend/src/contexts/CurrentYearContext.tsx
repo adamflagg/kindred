@@ -5,16 +5,9 @@ import { useSyncStatusAPI } from '../hooks/useSyncStatusAPI'
 
 const STORAGE_KEY = 'bunking-current-year'
 
-// Available years for the dropdown - most recent 5 years (descending)
-const currentCalendarYear = new Date().getFullYear()
-const currentMonth = new Date().getMonth() // 0-11
-
-// For summer camp: if we're in Jan-May (months 0-4), the most recent camp year
-// is the previous calendar year (last summer). Jun-Dec uses current year.
-const clientFallbackYear = currentMonth < 5 ? currentCalendarYear - 1 : currentCalendarYear
-
 // Calculate available years based on a base year
 function calculateAvailableYears(baseYear: number): number[] {
+  if (baseYear === 0) return []
   return Array.from({ length: 5 }, (_, i) => baseYear - i)
 }
 
@@ -46,40 +39,44 @@ export function CurrentYearProvider({ children }: { children: React.ReactNode })
   const [isTransitioning, setIsTransitioning] = useState(false)
 
   // Fetch configured year from backend sync status
-  const { data: syncStatus, isFetched } = useSyncStatusAPI()
+  const { data: syncStatus } = useSyncStatusAPI()
   const backendYear = syncStatus?._configured_year
-  const isConfigReady = isFetched || backendYear !== undefined
 
-  // Use backend year if available, otherwise fall back to client-side calculation
-  const configuredYear = backendYear ?? clientFallbackYear
+  // No client-side fallback: wait for backend to provide the year.
+  // This prevents queries from firing with wrong year before auth/config loads.
+  const isYearReady = backendYear !== undefined
+  const configuredYear = backendYear ?? 0
 
-  // Calculate available years based on configured year
+  // Calculate available years based on configured year (empty when not ready)
   const AVAILABLE_YEARS = useMemo(() => calculateAvailableYears(configuredYear), [configuredYear])
 
   // Get year from URL param, or fall back to stored/default
   const yearFromUrl = useMemo(() => {
     const urlYear = searchParams.get('year')
-    if (urlYear) {
-      const parsed = parseInt(urlYear, 10)
-      if (!isNaN(parsed) && AVAILABLE_YEARS.includes(parsed)) {
-        return parsed
-      }
+    if (!urlYear) return null
+    // When available years is empty (not ready), don't reject valid years
+    if (AVAILABLE_YEARS.length === 0) return null
+    const parsed = parseInt(urlYear, 10)
+    if (!isNaN(parsed) && AVAILABLE_YEARS.includes(parsed)) {
+      return parsed
     }
     return null
   }, [searchParams, AVAILABLE_YEARS])
 
-  // The effective current year: URL param takes priority, then localStorage/default
-  const currentYear = yearFromUrl ?? getDefaultYear(AVAILABLE_YEARS, configuredYear)
+  // The effective current year: 0 when not ready, otherwise URL > stored > default
+  const currentYear = isYearReady
+    ? (yearFromUrl ?? getDefaultYear(AVAILABLE_YEARS, configuredYear))
+    : 0
 
   // Persist to localStorage only when NOT coming from URL
   // (URL year is a "view override", not a preference change)
   useEffect(() => {
     // Only persist to localStorage after backend config is known
-    // This prevents the fallback year from overwriting the user's preference
-    if (!yearFromUrl && isConfigReady) {
+    // This prevents overwriting the user's preference before we know the valid years
+    if (!yearFromUrl && isYearReady && currentYear > 0) {
       localStorage.setItem(STORAGE_KEY, currentYear.toString())
     }
-  }, [currentYear, yearFromUrl, isConfigReady])
+  }, [currentYear, yearFromUrl, isYearReady])
 
   const setCurrentYear = useCallback(
     (year: number) => {
@@ -123,6 +120,7 @@ export function CurrentYearProvider({ children }: { children: React.ReactNode })
         setCurrentYear,
         availableYears: AVAILABLE_YEARS,
         isTransitioning,
+        isYearReady,
       }}
     >
       {children}

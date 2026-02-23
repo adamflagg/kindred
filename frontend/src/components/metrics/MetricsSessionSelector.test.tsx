@@ -57,6 +57,7 @@ function createWrapper(initialPath: string = '/metrics/registration') {
     setCurrentYear: vi.fn(),
     availableYears: [2026, 2025, 2024, 2023, 2022],
     isTransitioning: false,
+    isYearReady: true,
   }
 
   return function Wrapper({ children }: { children: React.ReactNode }) {
