@@ -153,32 +153,40 @@ def _clean_stale_migrations(cur: sqlite3.Cursor, migration_files_on_disk: set[st
     return len(stale)
 
 
-def _clean_ghost_tables(cur: sqlite3.Cursor, migration_files_on_disk: set[str]) -> list[str]:
-    """Drop tables that exist in _collections but have no migration file.
+def _find_stale_migration_names(cur: sqlite3.Cursor, migration_files_on_disk: set[str]) -> set[str]:
+    """Find migration names (suffix after numeric prefix) for stale JS entries.
 
-    Only considers non-system collections. System collections (users, _superusers,
-    etc.) are managed by PocketBase itself.
+    A stale migration is one recorded in _migrations but whose file no longer
+    exists on disk.
     """
-    # Get collection names that have corresponding migration files
-    migration_names = _get_collection_names_from_migrations(migration_files_on_disk)
+    rows = cur.execute("SELECT file FROM _migrations WHERE file LIKE '%.js'").fetchall()
+    stale_files = [r[0] for r in rows if r[0] not in migration_files_on_disk]
+    return _get_collection_names_from_migrations(set(stale_files))
+
+
+def _clean_ghost_tables(cur: sqlite3.Cursor, migration_files_on_disk: set[str]) -> list[str]:
+    """Drop non-system collections whose creating migration was removed.
+
+    A ghost table is a collection that still exists in _collections (and as a
+    real SQLite table) but whose migration file was deleted from the codebase.
+    We detect these by finding stale _migrations entries and checking if the
+    collection name extracted from the stale filename matches a _collections row.
+
+    Single migrations that create multiple tables (e.g., family_camp_derived_tables
+    creating family_camp_adults, family_camp_medical, family_camp_registrations)
+    are safe because the stale name ("geo_aliases") won't match unrelated tables.
+    """
+    stale_names = _find_stale_migration_names(cur, migration_files_on_disk)
 
     # Get non-system collection names from the database
     rows = cur.execute("SELECT name FROM _collections WHERE system = 0").fetchall()
     db_collections = {r[0] for r in rows}
 
-    # Ghost tables = in DB but no migration references them
-    # We check if the collection name appears as a substring in any migration name
-    ghosts = []
-    for col_name in db_collections:
-        # Check if any migration name contains this collection name
-        has_migration = any(col_name in mig_name for mig_name in migration_names)
-        if not has_migration:
-            ghosts.append(col_name)
+    # Ghost = collection name matches a stale migration name exactly
+    ghosts = sorted(db_collections & stale_names)
 
     for ghost in ghosts:
-        # Remove from _collections
         cur.execute("DELETE FROM _collections WHERE name = ?", (ghost,))
-        # Drop the actual table if it exists
         cur.execute(f"DROP TABLE IF EXISTS [{ghost}]")
 
     return ghosts
@@ -245,9 +253,9 @@ def seed_from_prod(
         summary["stale_migrations_removed"] = len(stale)
 
         # Count ghost tables
-        migration_names = _get_collection_names_from_migrations(migration_files)
+        stale_names = _find_stale_migration_names(cur, migration_files)
         db_cols = {r[0] for r in cur.execute("SELECT name FROM _collections WHERE system = 0").fetchall()}
-        ghosts = [c for c in db_cols if not any(c in mn for mn in migration_names)]
+        ghosts = sorted(db_cols & stale_names)
         summary["ghost_tables_removed"] = len(ghosts)
 
         conn.close()

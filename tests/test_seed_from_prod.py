@@ -656,6 +656,62 @@ class TestGhostTableRemoval:
         assert "users" in names
         assert "persons" in names
 
+    def test_multi_table_migration_not_flagged_as_ghost(self, tmp_path: Path, seed_module) -> None:
+        """Collections created by a multi-table migration should NOT be removed.
+
+        e.g., family_camp_derived_tables.js creates family_camp_adults,
+        family_camp_registrations, family_camp_medical — none of those names
+        match the migration filename, but they are NOT ghosts.
+        """
+        pb_data = tmp_path / "pocketbase" / "pb_data"
+        pb_data.mkdir(parents=True)
+        db_path = str(pb_data / "data.db")
+        _create_test_db(db_path)
+
+        # Add multi-table collections to the DB (like family_camp_derived)
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            "INSERT INTO _collections (id, system, type, name, options) "
+            "VALUES ('fc_adults', 0, 'base', 'family_camp_adults', '{}')"
+        )
+        conn.execute(
+            "INSERT INTO _collections (id, system, type, name, options) "
+            "VALUES ('fc_regs', 0, 'base', 'family_camp_registrations', '{}')"
+        )
+        conn.execute(
+            "INSERT INTO _collections (id, system, type, name, options) "
+            "VALUES ('fc_med', 0, 'base', 'family_camp_medical', '{}')"
+        )
+        # Record the migration as applied
+        conn.execute("INSERT INTO _migrations VALUES ('1500000035_family_camp_derived_tables.js', 1)")
+        conn.commit()
+        conn.close()
+
+        migrations_dir = tmp_path / "pocketbase" / "pb_migrations"
+        migrations_dir.mkdir(exist_ok=True)
+        (migrations_dir / "1500000001_person_tag_defs.js").write_text("// m")
+        (migrations_dir / "1500000015_persons.js").write_text("// m")
+        # The multi-table migration file exists on disk
+        (migrations_dir / "1500000035_family_camp_derived_tables.js").write_text("// m")
+
+        env = _env_vars()
+        with patch.dict(os.environ, env, clear=False):
+            result = seed_module.seed_from_prod(
+                data_db=db_path,
+                project_root=str(tmp_path),
+                dry_run=False,
+            )
+
+        assert result["ghost_tables_removed"] == 0
+
+        conn = sqlite3.connect(db_path)
+        names = [r[0] for r in conn.execute("SELECT name FROM _collections WHERE system = 0").fetchall()]
+        conn.close()
+
+        assert "family_camp_adults" in names
+        assert "family_camp_registrations" in names
+        assert "family_camp_medical" in names
+
 
 class TestDryRun:
     """Test that dry-run mode reports changes without modifying the database."""
