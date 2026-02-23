@@ -67,12 +67,21 @@ class ForecastService:
         )
 
         # Fetch prior year and two-year-prior data in parallel
-        prior_sessions, prior_attendees, two_year_sessions, two_year_attendees = await asyncio.gather(
-            self.repository.fetch_sessions(year - 1, session_types),
-            self.repository.fetch_attendees(year - 1),
-            self.repository.fetch_sessions(year - 2, session_types),
-            self.repository.fetch_attendees(year - 2),
-        )
+        # These are "nice to have" — failures degrade gracefully (show "---" instead)
+        try:
+            prior_sessions, prior_attendees, two_year_sessions, two_year_attendees = await asyncio.gather(
+                self.repository.fetch_sessions(year - 1, session_types),
+                self.repository.fetch_attendees(year - 1),
+                self.repository.fetch_sessions(year - 2, session_types),
+                self.repository.fetch_attendees(year - 2),
+            )
+        except Exception:
+            logger.warning(
+                "Failed to fetch prior year data, continuing without comparison",
+                exc_info=True,
+            )
+            prior_sessions, prior_attendees = {}, []
+            two_year_sessions, two_year_attendees = {}, []
 
         # Build name-to-count maps for prior years
         prior_counts = self._count_by_session_name(prior_sessions, prior_attendees)

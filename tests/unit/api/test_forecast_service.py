@@ -880,3 +880,83 @@ class TestForecastDeltaFields:
         # Total budget rev: 100*2500 + 80*3000 = 490000
         # Total actual rev: 50*2500 + 40*3000 = 245000
         assert gt.revenue_delta == -245000.0  # 245000 - 490000
+
+
+# ============================================================================
+# Prior Year Failure Graceful Degradation Tests
+# ============================================================================
+
+
+class TestForecastPriorYearFailure:
+    """Test that prior year fetch failures degrade gracefully."""
+
+    @pytest.mark.asyncio
+    async def test_prior_year_fetch_failure_returns_valid_forecast(self, service, mock_repository):
+        """When prior year data fetch fails, forecast should still return with null prior fields.
+
+        This handles intermittent PocketBase 400 errors from concurrent SQLite access.
+        Prior year data is "nice to have" — failures should not crash the endpoint.
+        """
+        sessions = {
+            1001: create_mock_session(1001, "Session 1"),
+            1002: create_mock_session(1002, "Session 2"),
+        }
+
+        enrolled = [
+            *[create_mock_attendee(i, 1001) for i in range(50)],
+            *[create_mock_attendee(i + 100, 1002) for i in range(40)],
+        ]
+
+        budget = dict(
+            [
+                create_mock_budget_config(1001, participant_goal=100, session_fee=2500.0),
+                create_mock_budget_config(1002, participant_goal=80, session_fee=3000.0),
+            ]
+        )
+
+        async def fetch_sessions_side_effect(year, session_types=None):
+            if year == 2026:
+                return sessions
+            # Prior year fetches fail
+            raise Exception("PocketBase 400: expand relation session not found")
+
+        async def fetch_attendees_side_effect(year, status_filter=None):
+            if status_filter == "waitlisted":
+                return []
+            if year == 2026:
+                return enrolled
+            # Prior year fetches fail
+            raise Exception("PocketBase 400: expand relation session not found")
+
+        mock_repository.fetch_sessions.side_effect = fetch_sessions_side_effect
+        mock_repository.fetch_attendees.side_effect = fetch_attendees_side_effect
+        mock_repository.fetch_budget_config.return_value = budget
+
+        result = await service.calculate_forecast(year=2026)
+
+        # Forecast should succeed with current year data
+        assert result.year == 2026
+        assert len(result.sessions) == 2
+
+        # Current year enrollment should be correct
+        s1 = next(s for s in result.sessions if s.session_cm_id == 1001)
+        assert s1.enrolled == 50
+        assert s1.participant_goal == 100
+        assert s1.pct_of_goal == 50.0
+
+        s2 = next(s for s in result.sessions if s.session_cm_id == 1002)
+        assert s2.enrolled == 40
+
+        # Prior year fields should be None (not available)
+        assert s1.prior_year_count is None
+        assert s1.two_year_prior_count is None
+        assert s1.participants_vs_prior_year is None
+
+        assert s2.prior_year_count is None
+        assert s2.two_year_prior_count is None
+        assert s2.participants_vs_prior_year is None
+
+        # Grand total prior fields should also be None
+        assert result.grand_total.prior_year_count is None
+        assert result.grand_total.two_year_prior_count is None
+        assert result.grand_total.participants_vs_prior_year is None

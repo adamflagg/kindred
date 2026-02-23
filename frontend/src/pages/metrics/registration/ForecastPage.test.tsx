@@ -266,7 +266,8 @@ describe('ForecastPage', () => {
 
   // ---------- single session selected ----------
 
-  it('hides all totals when single session is selected', async () => {
+  it('hides totals when single session selected returns 1 row', async () => {
+    // Single session, no AG child → 1 row → no section total needed
     mockUseMetricsSession.mockReturnValue({
       ...defaultMetricsSession(),
       selectedSessionCmId: 1001,
@@ -281,12 +282,46 @@ describe('ForecastPage', () => {
       expect(screen.getByText('Session 1')).toBeInTheDocument()
     })
 
-    // No tfoot in any table
+    // 1 row → no tfoot in any table
     const tables = screen.getAllByRole('table')
     for (const table of tables) {
       const tfoot = table.querySelector('tfoot')
       expect(tfoot).toBeNull()
     }
+  })
+
+  it('shows section total when single session selected with AG child', async () => {
+    // User selected Session 2; backend returns main + AG child → 2 rows → show total
+    mockUseMetricsSession.mockReturnValue({
+      ...defaultMetricsSession(),
+      selectedSessionCmId: 1002,
+    })
+
+    const mainSession = session({
+      session_cm_id: 1002,
+      session_name: 'Session 2',
+      session_type: 'main',
+      enrolled: 80,
+    })
+    const agSession = session({
+      session_cm_id: 2002,
+      session_name: 'AG Session 2',
+      session_type: 'ag',
+      enrolled: 15,
+    })
+    setupMockFetch(mockResponse([mainSession, agSession], { enrolled: 95 }))
+
+    renderWithProviders(<ForecastPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Session 2')).toBeInTheDocument()
+      // shortenSessionName("AG Session 2") → "AG 2"
+      expect(screen.getByText('AG 2')).toBeInTheDocument()
+    })
+
+    // 2 rows (main + AG) → section total should be present in tfoot
+    const tfoot = document.querySelector('tfoot')
+    expect(tfoot).not.toBeNull()
   })
 
   // ---------- grand total ----------
