@@ -1,29 +1,18 @@
-import { useState } from 'react'
+import { Link, Outlet, useLocation } from 'react-router'
 import { Settings, AlertCircle } from 'lucide-react'
 import { ErrorBoundary } from './ErrorBoundary'
-import { SyncTab } from './admin/SyncTab'
-import { ConfigTab } from './admin/ConfigTab'
-import { SheetsTab } from './admin/SheetsTab'
 import { useIsAdmin } from '../hooks/useIsAdmin'
 import { ADMIN_TABS, type AdminTabConfig } from '../config/adminTabs'
 
-/**
- * AdminConfig - Main admin control center container
- *
- * This component provides the top-level layout and tab switching for:
- * - Sync Operations: Manage CampMinder data synchronization
- * - Configuration: Adjust optimizer and processing settings
- * - Sheets: Google Sheets export (admin-only)
- *
- * Tab visibility is driven by ADMIN_TABS config, filtered by permission.
- */
-function AdminConfigInner() {
-  const [activeTab, setActiveTab] = useState<AdminTabConfig['id']>('sync')
+function AdminLayoutInner() {
+  const location = useLocation()
   const isAdmin = useIsAdmin()
 
   const visibleTabs = ADMIN_TABS.filter(
     (tab) => tab.requiredPermission === 'authenticated' || isAdmin
   )
+
+  const isTabActive = (tab: AdminTabConfig) => location.pathname.startsWith(tab.path)
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -49,31 +38,29 @@ function AdminConfigInner() {
         {visibleTabs.map((tab) => {
           const Icon = tab.icon
           return (
-            <button
+            <Link
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              to={tab.path}
               className={`flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-semibold transition-colors sm:flex-none sm:px-5 sm:text-base ${
-                activeTab === tab.id
+                isTabActive(tab)
                   ? 'bg-card text-forest-800 dark:text-forest-200 shadow-sm'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
               {tab.label}
-            </button>
+            </Link>
           )
         })}
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'sync' && <SyncTab />}
-      {activeTab === 'config' && <ConfigTab />}
-      {activeTab === 'sheets' && isAdmin && <SheetsTab />}
+      <Outlet />
     </div>
   )
 }
 
-export function AdminConfig() {
+export function AdminLayout() {
   return (
     <ErrorBoundary
       fallback={(error, reset) => (
@@ -98,7 +85,7 @@ export function AdminConfig() {
         </div>
       )}
     >
-      <AdminConfigInner />
+      <AdminLayoutInner />
     </ErrorBoundary>
   )
 }

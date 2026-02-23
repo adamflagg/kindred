@@ -26,8 +26,17 @@ const SessionView = lazy(() => import('./components/SessionView'))
 const SessionList = lazy(() => import('./components/SessionList'))
 const AllCampersView = lazy(() => import('./components/AllCampersView'))
 const CamperDetail = lazy(() => import('./components/CamperDetail'))
-const AdminConfig = lazy(() =>
-  import('./components/AdminConfig').then((m) => ({ default: m.AdminConfig }))
+const AdminLayout = lazy(() =>
+  import('./components/AdminLayout').then((m) => ({ default: m.AdminLayout }))
+)
+const SyncTab = lazy(() =>
+  import('./components/admin/SyncTab').then((m) => ({ default: m.SyncTab }))
+)
+const ConfigTab = lazy(() =>
+  import('./components/admin/ConfigTab').then((m) => ({ default: m.ConfigTab }))
+)
+const SheetsTab = lazy(() =>
+  import('./components/admin/SheetsTab').then((m) => ({ default: m.SheetsTab }))
 )
 const FamilyCampDashboard = lazy(() => import('./pages/FamilyCampDashboard'))
 const ScenarioComparisonPage = lazy(() => import('./pages/ScenarioComparisonPage'))
@@ -153,16 +162,57 @@ function App() {
                             />
                             <Route path="/users" element={<Users />} />
                             <Route path="/user" element={<User />} />
+                          </Route>
+
+                          {/* Admin routes - nested tab navigation */}
+                          <Route path="/admin" element={<AppLayout />}>
+                            <Route index element={<Navigate to="/admin/sync" replace />} />
                             <Route
-                              path="/admin"
                               element={
                                 <ErrorBoundary>
                                   <Suspense fallback={<PageSkeleton />}>
-                                    <AdminConfig />
+                                    <AdminLayout />
                                   </Suspense>
                                 </ErrorBoundary>
                               }
-                            />
+                            >
+                              <Route
+                                path="sync"
+                                element={
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <SyncTab />
+                                    </Suspense>
+                                  </ErrorBoundary>
+                                }
+                              />
+                              <Route
+                                path="config"
+                                element={<Navigate to="/admin/config/solver" replace />}
+                              />
+                              <Route
+                                path="config/:category"
+                                element={
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <ConfigTab />
+                                    </Suspense>
+                                  </ErrorBoundary>
+                                }
+                              />
+                              <Route
+                                path="sheets"
+                                element={
+                                  <AdminRoute>
+                                    <ErrorBoundary>
+                                      <Suspense fallback={<PageSkeleton />}>
+                                        <SheetsTab />
+                                      </Suspense>
+                                    </ErrorBoundary>
+                                  </AdminRoute>
+                                }
+                              />
+                            </Route>
                           </Route>
 
                           {/* Summer Camp routes - with app layout */}
