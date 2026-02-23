@@ -85,8 +85,18 @@ def _get_collection_names_from_migrations(migration_files: set[str]) -> set[str]
 
 
 def _patch_superuser(cur: sqlite3.Cursor, email: str, password: str) -> int:
-    """Delete prod superusers and insert a dev superuser."""
-    count: int = cur.execute("SELECT COUNT(*) FROM _superusers").fetchone()[0]
+    """Delete prod superusers and insert a dev superuser.
+
+    Idempotent: if a single superuser already exists with the correct email
+    and password, skips the replacement and returns 0.
+    """
+    rows = cur.execute("SELECT email, password FROM _superusers").fetchall()
+
+    # Check if already correct (single superuser, right email, right password)
+    if len(rows) == 1 and rows[0][0] == email and bcrypt.checkpw(password.encode(), rows[0][1].encode()):
+        return 0
+
+    count = len(rows)
     cur.execute("DELETE FROM _superusers")
 
     now = "2025-01-01 00:00:00.000Z"

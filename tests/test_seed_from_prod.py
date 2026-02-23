@@ -332,6 +332,42 @@ class TestSuperuserReplacement:
         assert row[3] != "prodTokenKey123"
         assert len(row[3]) > 10
 
+    def test_skips_superuser_on_rerun(self, tmp_project: Path, seed_module) -> None:
+        """Running twice should not replace a superuser that already matches."""
+        db_path = str(tmp_project / "pocketbase" / "pb_data" / "data.db")
+        env = _env_vars()
+
+        # First run — replaces prod superuser
+        with patch.dict(os.environ, env, clear=False):
+            result1 = seed_module.seed_from_prod(
+                data_db=db_path,
+                project_root=str(tmp_project),
+                dry_run=False,
+            )
+        assert result1["superusers_deleted"] == 1
+
+        # Grab the ID and tokenKey from first run
+        conn = sqlite3.connect(db_path)
+        first_id, first_token = conn.execute("SELECT id, tokenKey FROM _superusers").fetchone()
+        conn.close()
+
+        # Second run — should skip (already correct)
+        with patch.dict(os.environ, env, clear=False):
+            result2 = seed_module.seed_from_prod(
+                data_db=db_path,
+                project_root=str(tmp_project),
+                dry_run=False,
+            )
+        assert result2["superusers_deleted"] == 0
+
+        # ID and tokenKey should be unchanged
+        conn = sqlite3.connect(db_path)
+        second_id, second_token = conn.execute("SELECT id, tokenKey FROM _superusers").fetchone()
+        conn.close()
+
+        assert second_id == first_id
+        assert second_token == first_token
+
     def test_superuser_id_is_valid(self, tmp_project: Path, seed_module) -> None:
         """Superuser ID should be a valid PocketBase-style ID."""
         db_path = str(tmp_project / "pocketbase" / "pb_data" / "data.db")
