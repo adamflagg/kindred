@@ -194,9 +194,8 @@ export default function ForecastPage() {
   const { grand_total } = data
 
   const sections = buildForecastSections(campSessions, questSessions)
-  const isSingleSession = selectedSessionCmId !== null
   const showSectionHeadings = sections.length >= 2
-  const showGrandTotal = sections.length >= 2 && !isSingleSession
+  const showGrandTotal = sections.length >= 2 && selectedSessionCmId === null
 
   return (
     <div className="space-y-6">
@@ -253,7 +252,7 @@ export default function ForecastPage() {
 
       {/* Section tables */}
       {sections.map((section) => {
-        const showSectionTotal = section.sessions.length >= 2 && !isSingleSession
+        const showSectionTotal = section.sessions.length >= 2
         return (
           <div key={section.key}>
             {showSectionHeadings && (
