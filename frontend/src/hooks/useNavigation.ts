@@ -6,6 +6,9 @@ import {
   getCamperUrl,
   getAllCampersUrl,
   getSessionsListUrl,
+  getAdminUrl,
+  getUsersUrl,
+  getUserUrl,
   getSummerUrl,
   getFamilyUrl,
 } from '../utils/programUrls'
@@ -24,7 +27,9 @@ export function useNavigation() {
     ? 'summer'
     : location.pathname.startsWith('/family')
       ? 'family'
-      : currentProgram || 'summer'
+      : location.pathname.startsWith('/metrics')
+        ? 'metrics'
+        : currentProgram || 'summer'
 
   // Navigate to a session
   const navigateToSession = useCallback(
@@ -52,6 +57,21 @@ export function useNavigation() {
     navigate(getSessionsListUrl())
   }, [navigate])
 
+  // Navigate to admin
+  const navigateToAdmin = useCallback(() => {
+    navigate(getAdminUrl())
+  }, [navigate])
+
+  // Navigate to users
+  const navigateToUsers = useCallback(() => {
+    navigate(getUsersUrl())
+  }, [navigate])
+
+  // Navigate to user profile
+  const navigateToUser = useCallback(() => {
+    navigate(getUserUrl())
+  }, [navigate])
+
   // Navigate within current program
   const navigateInProgram = useCallback(
     (path: string) => {
@@ -66,11 +86,13 @@ export function useNavigation() {
 
   // Switch to a different program
   const switchProgram = useCallback(
-    (program: 'summer' | 'family') => {
+    (program: 'summer' | 'family' | 'metrics') => {
       if (program === 'summer') {
         navigate('/summer/sessions')
-      } else {
+      } else if (program === 'family') {
         navigate('/family/')
+      } else {
+        navigate('/metrics')
       }
     },
     [navigate]
@@ -81,6 +103,9 @@ export function useNavigation() {
     navigateToCamper,
     navigateToAllCampers,
     navigateToSessions,
+    navigateToAdmin,
+    navigateToUsers,
+    navigateToUser,
     navigateInProgram,
     switchProgram,
     activeProgram,
@@ -89,6 +114,9 @@ export function useNavigation() {
     getCamperUrl,
     getAllCampersUrl,
     getSessionsListUrl,
+    getAdminUrl,
+    getUsersUrl,
+    getUserUrl,
     getSummerUrl,
     getFamilyUrl,
   }

@@ -301,7 +301,7 @@ export function ParseAnalysisDetail({
           <h3 className="font-display text-foreground text-xl font-bold">
             {camperCmId ? (
               <a
-                href={`/summer/camper/${camperCmId}`}
+                href={`/camper/${camperCmId}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hover:text-forest-600 dark:hover:text-forest-400 transition-colors"

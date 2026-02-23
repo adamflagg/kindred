@@ -186,7 +186,7 @@ export default function CamperDetail() {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <Link
-                  to="/summer/campers"
+                  to="/campers"
                   className="text-muted-foreground hover:text-primary mb-2 inline-block text-sm font-medium"
                 >
                   ← Back to All Campers

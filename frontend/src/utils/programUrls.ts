@@ -8,7 +8,7 @@ export function getProgramUrl(path: string, program: Program): string {
   const cleanPath = path.startsWith('/') ? path.slice(1) : path
 
   // Don't add prefix for shared routes
-  const sharedRoutes = ['user', 'users']
+  const sharedRoutes = ['user', 'users', 'campers', 'camper', 'admin']
   if (sharedRoutes.some((route) => cleanPath.startsWith(route))) {
     return `/${cleanPath}`
   }
@@ -81,14 +81,35 @@ export function getSessionUrl(sessionId: string, tab?: string): string {
  * Generate URL for a camper detail view
  */
 export function getCamperUrl(camperId: string | number): string {
-  return `/summer/camper/${camperId}`
+  return `/camper/${camperId}`
 }
 
 /**
  * Generate URL for the all campers view
  */
 export function getAllCampersUrl(): string {
-  return '/summer/campers'
+  return '/campers'
+}
+
+/**
+ * Generate URL for the admin page
+ */
+export function getAdminUrl(): string {
+  return '/admin'
+}
+
+/**
+ * Generate URL for the users list
+ */
+export function getUsersUrl(): string {
+  return '/users'
+}
+
+/**
+ * Generate URL for the user profile
+ */
+export function getUserUrl(): string {
+  return '/user'
 }
 
 /**

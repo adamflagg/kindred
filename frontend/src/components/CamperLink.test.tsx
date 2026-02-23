@@ -17,7 +17,7 @@ describe('CamperLink', () => {
 
       const link = screen.getByRole('link', { name: /Sarah Johnson/i })
       expect(link).toBeInTheDocument()
-      expect(link).toHaveAttribute('href', '/summer/camper/12345')
+      expect(link).toHaveAttribute('href', '/camper/12345')
     })
 
     it('includes external link icon', () => {

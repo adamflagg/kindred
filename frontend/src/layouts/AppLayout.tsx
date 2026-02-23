@@ -116,11 +116,7 @@ export const AppLayout = () => {
   const isActiveRoute = (path: string) => {
     // Special case: Campers nav should NOT be active on session-level campers tab
     if (path === '/camper') {
-      // Match /summer/campers (all campers) or /summer/camper/ (camper detail)
-      // But NOT /summer/session/*/campers
-      return (
-        location.pathname === '/summer/campers' || location.pathname.includes('/summer/camper/')
-      )
+      return location.pathname === '/campers' || location.pathname.startsWith('/camper/')
     }
     return location.pathname.includes(path)
   }
@@ -144,11 +140,11 @@ export const AppLayout = () => {
               {/* Logo with subtle white outline for visibility on dark nav */}
               <Link
                 to={
-                  activeProgram === 'summer'
-                    ? '/summer/sessions'
+                  activeProgram === 'metrics'
+                    ? '/metrics'
                     : activeProgram === 'family'
                       ? '/family/'
-                      : '/'
+                      : '/summer/sessions'
                 }
                 className="flex flex-shrink-0 items-center"
               >
@@ -246,28 +242,32 @@ export const AppLayout = () => {
                     Sessions
                   </Link>
                 )}
-                {(activeProgram === 'summer' || activeProgram === 'metrics') && (
+                {activeProgram === 'metrics' && (
                   <Link
-                    to="/summer/campers"
-                    className={`nav-link-lodge ${activeProgram === 'summer' && isActiveRoute('/camper') ? 'active' : ''}`}
+                    to="/metrics"
+                    className={`nav-link-lodge ${isActiveRoute('/metrics') ? 'active' : ''}`}
                   >
-                    Campers
+                    Dashboard
                   </Link>
                 )}
                 <Link
-                  to={`/${activeProgram}/users`}
+                  to="/campers"
+                  className={`nav-link-lodge ${isActiveRoute('/camper') ? 'active' : ''}`}
+                >
+                  Campers
+                </Link>
+                <Link
+                  to="/users"
                   className={`nav-link-lodge ${isActiveRoute('/users') ? 'active' : ''}`}
                 >
                   Users
                 </Link>
-                {(activeProgram === 'summer' || activeProgram === 'metrics') && (
-                  <Link
-                    to="/summer/admin"
-                    className={`nav-link-lodge ${activeProgram === 'summer' && isActiveRoute('/admin') ? 'active' : ''}`}
-                  >
-                    Admin
-                  </Link>
-                )}
+                <Link
+                  to="/admin"
+                  className={`nav-link-lodge ${isActiveRoute('/admin') ? 'active' : ''}`}
+                >
+                  Admin
+                </Link>
                 {activeProgram === 'summer' && isAdmin && (
                   <Link
                     to="/summer/debug"
@@ -341,7 +341,7 @@ export const AppLayout = () => {
 
                       {/* Menu items */}
                       <Link
-                        to={`${location.pathname.startsWith('/family') ? '/family' : '/summer'}/user`}
+                        to="/user"
                         onClick={() => setIsUserMenuOpen(false)}
                         className="hover:bg-muted/50 text-foreground flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors"
                       >
@@ -425,7 +425,7 @@ export const AppLayout = () => {
               {isAuthenticated && user && (
                 <div className="border-border/50 border-t pt-4">
                   <Link
-                    to={`${location.pathname.startsWith('/family') ? '/family' : '/summer'}/user`}
+                    to="/user"
                     onClick={() => setIsMobileMenuOpen(false)}
                     className="bg-muted/30 hover:bg-muted/50 flex items-center gap-3 rounded-xl px-3 py-3 transition-colors"
                   >
@@ -466,21 +466,32 @@ export const AppLayout = () => {
                     Sessions
                   </Link>
                 )}
-                {(activeProgram === 'summer' || activeProgram === 'metrics') && (
+                {activeProgram === 'metrics' && (
                   <Link
-                    to="/summer/campers"
+                    to="/metrics"
                     className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
-                      activeProgram === 'summer' && isActiveRoute('/camper')
+                      isActiveRoute('/metrics')
                         ? 'bg-primary text-primary-foreground'
                         : 'text-foreground hover:bg-muted/50'
                     }`}
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
-                    Campers
+                    Dashboard
                   </Link>
                 )}
                 <Link
-                  to={`/${activeProgram}/users`}
+                  to="/campers"
+                  className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
+                    isActiveRoute('/camper')
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-foreground hover:bg-muted/50'
+                  }`}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  Campers
+                </Link>
+                <Link
+                  to="/users"
                   className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
                     isActiveRoute('/users')
                       ? 'bg-primary text-primary-foreground'
@@ -490,19 +501,17 @@ export const AppLayout = () => {
                 >
                   Users
                 </Link>
-                {(activeProgram === 'summer' || activeProgram === 'metrics') && (
-                  <Link
-                    to="/summer/admin"
-                    className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
-                      activeProgram === 'summer' && isActiveRoute('/admin')
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-foreground hover:bg-muted/50'
-                    }`}
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  >
-                    Admin
-                  </Link>
-                )}
+                <Link
+                  to="/admin"
+                  className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
+                    isActiveRoute('/admin')
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-foreground hover:bg-muted/50'
+                  }`}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  Admin
+                </Link>
                 {activeProgram === 'summer' && isAdmin && (
                   <Link
                     to="/summer/debug"

@@ -421,7 +421,7 @@ export default function AllCampersView() {
             )}
 
             <Link
-              to="/summer/admin"
+              to="/admin"
               className="text-forest-200 rounded-lg p-2 transition-colors hover:bg-white/10 hover:text-white"
               title="Admin Settings"
             >
@@ -538,7 +538,7 @@ export default function AllCampersView() {
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <Link
-                            to={`/summer/camper/${camper.person_cm_id}`}
+                            to={`/camper/${camper.person_cm_id}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="hover:text-forest-700 dark:hover:text-forest-400 truncate text-base font-semibold text-stone-800 transition-colors dark:text-stone-100"

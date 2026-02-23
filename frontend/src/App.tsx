@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router'
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'react-hot-toast'
 import { ThemeProvider } from './contexts/ThemeContext'
@@ -99,6 +99,12 @@ function RootRedirect() {
   return <ProgramLandingPage />
 }
 
+// Redirect helper for parameterized camper routes
+function CamperRedirect() {
+  const { camperId } = useParams()
+  return <Navigate to={`/camper/${camperId}`} replace />
+}
+
 function App() {
   // PocketBase auth is ready immediately since it's initialized synchronously
 
@@ -122,6 +128,42 @@ function App() {
                         <Route element={<ProtectedRoute />}>
                           {/* Program selection - with automatic redirect if already selected */}
                           <Route path="/" element={<RootRedirect />} />
+
+                          {/* Global routes — program context preserved via ProgramContext */}
+                          <Route element={<AppLayout />}>
+                            <Route
+                              path="/campers"
+                              element={
+                                <ErrorBoundary>
+                                  <Suspense fallback={<PageSkeleton />}>
+                                    <AllCampersView />
+                                  </Suspense>
+                                </ErrorBoundary>
+                              }
+                            />
+                            <Route
+                              path="/camper/:camperId"
+                              element={
+                                <ErrorBoundary>
+                                  <Suspense fallback={<PageSkeleton />}>
+                                    <CamperDetail />
+                                  </Suspense>
+                                </ErrorBoundary>
+                              }
+                            />
+                            <Route path="/users" element={<Users />} />
+                            <Route path="/user" element={<User />} />
+                            <Route
+                              path="/admin"
+                              element={
+                                <ErrorBoundary>
+                                  <Suspense fallback={<PageSkeleton />}>
+                                    <AdminConfig />
+                                  </Suspense>
+                                </ErrorBoundary>
+                              }
+                            />
+                          </Route>
 
                           {/* Summer Camp routes - with app layout */}
                           <Route path="/summer" element={<AppLayout />}>
@@ -156,38 +198,12 @@ function App() {
                                 </ErrorBoundary>
                               }
                             />
-                            <Route
-                              path="campers"
-                              element={
-                                <ErrorBoundary>
-                                  <Suspense fallback={<PageSkeleton />}>
-                                    <AllCampersView />
-                                  </Suspense>
-                                </ErrorBoundary>
-                              }
-                            />
-                            <Route
-                              path="camper/:camperId"
-                              element={
-                                <ErrorBoundary>
-                                  <Suspense fallback={<PageSkeleton />}>
-                                    <CamperDetail />
-                                  </Suspense>
-                                </ErrorBoundary>
-                              }
-                            />
-                            <Route path="user" element={<User />} />
-                            <Route path="users" element={<Users />} />
-                            <Route
-                              path="admin"
-                              element={
-                                <ErrorBoundary>
-                                  <Suspense fallback={<PageSkeleton />}>
-                                    <AdminConfig />
-                                  </Suspense>
-                                </ErrorBoundary>
-                              }
-                            />
+                            {/* Redirects for routes moved to global */}
+                            <Route path="campers" element={<Navigate to="/campers" replace />} />
+                            <Route path="camper/:camperId" element={<CamperRedirect />} />
+                            <Route path="user" element={<Navigate to="/user" replace />} />
+                            <Route path="users" element={<Navigate to="/users" replace />} />
+                            <Route path="admin" element={<Navigate to="/admin" replace />} />
                             <Route
                               path="debug"
                               element={
@@ -356,8 +372,9 @@ function App() {
                               />
                             </Route>
 
-                            <Route path="user" element={<User />} />
-                            <Route path="users" element={<Users />} />
+                            {/* Redirects for routes moved to global */}
+                            <Route path="user" element={<Navigate to="/user" replace />} />
+                            <Route path="users" element={<Navigate to="/users" replace />} />
                           </Route>
 
                           {/* Family Camp routes - with app layout */}
@@ -372,12 +389,10 @@ function App() {
                                 </ErrorBoundary>
                               }
                             />
-                            <Route path="user" element={<User />} />
-                            <Route path="users" element={<Users />} />
+                            {/* Redirects for routes moved to global */}
+                            <Route path="user" element={<Navigate to="/user" replace />} />
+                            <Route path="users" element={<Navigate to="/users" replace />} />
                           </Route>
-
-                          {/* Legacy redirect for old /user route */}
-                          <Route path="/user" element={<Navigate to="/summer/user" replace />} />
 
                           {/* Catch-all redirect */}
                           <Route path="*" element={<Navigate to="/" replace />} />
