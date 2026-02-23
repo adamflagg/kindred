@@ -171,15 +171,21 @@ export function PopulateFromPreviousYear() {
         created++
       }
 
-      // Create grade config
+      // Create or update grade config
       for (const item of preview.gradeItems) {
         if (item.existingValue !== null) continue
-        await pb.collection('config').create({
-          category: 'session_availability',
-          subcategory: String(currentYear),
-          config_key: item.newConfigKey,
-          value: item.previousValue,
-        })
+        if (item.existingRecordId) {
+          await pb.collection('config').update(item.existingRecordId, {
+            value: item.previousValue,
+          })
+        } else {
+          await pb.collection('config').create({
+            category: 'session_availability',
+            subcategory: String(currentYear),
+            config_key: item.newConfigKey,
+            value: item.previousValue,
+          })
+        }
         created++
       }
 
@@ -194,15 +200,21 @@ export function PopulateFromPreviousYear() {
         created++
       }
 
-      // Create budget config
+      // Create or update budget config
       for (const item of preview.budgetItems) {
         if (item.existingValue !== null) continue
-        await pb.collection('config').create({
-          category: 'budget',
-          subcategory: String(currentYear),
-          config_key: item.newConfigKey,
-          value: item.previousValue,
-        })
+        if (item.existingRecordId) {
+          await pb.collection('config').update(item.existingRecordId, {
+            value: item.previousValue,
+          })
+        } else {
+          await pb.collection('config').create({
+            category: 'budget',
+            subcategory: String(currentYear),
+            config_key: item.newConfigKey,
+            value: item.previousValue,
+          })
+        }
         created++
       }
 
@@ -356,6 +368,11 @@ export function PopulateFromPreviousYear() {
                 <span className="ml-3 text-amber-600 dark:text-amber-400">
                   {preview.summary.unmatchedSessions} unmatched session
                   {preview.summary.unmatchedSessions > 1 ? 's' : ''}
+                  {preview.summary.unmatchedSessionNames.length > 0 && (
+                    <span className="text-muted-foreground ml-1 text-xs">
+                      ({preview.summary.unmatchedSessionNames.join(', ')})
+                    </span>
+                  )}
                 </span>
               )}
             </div>

@@ -45,6 +45,7 @@ export interface PreviewSessionItem {
   previousValue: unknown
   newConfigKey: string
   existingValue: unknown | null
+  existingRecordId: string | null
 }
 
 export interface PreviewThreshold {
@@ -57,6 +58,7 @@ export interface PreviewSummary {
   toCreate: number
   alreadySet: number
   unmatchedSessions: number
+  unmatchedSessionNames: string[]
 }
 
 export interface PopulatePreview {
@@ -237,13 +239,16 @@ export function buildPreview(
     const newKey = String(match.currentSession.cm_id)
     const existing = curGradeConfig.find((c) => c.config_key === newKey)
 
+    const isEmpty = existing && isEmptyValue(existing.value)
+
     gradeItems.push({
       sessionName: match.currentSession.name,
       matchType: match.matchType as 'cm_id' | 'alias' | 'unmatched',
       previousSessionName: match.matchType === 'alias' ? match.previousSession.name : null,
       previousValue: prev.value,
       newConfigKey: newKey,
-      existingValue: existing && !isEmptyValue(existing.value) ? existing.value : null,
+      existingValue: existing && !isEmpty ? existing.value : null,
+      existingRecordId: isEmpty ? existing.id : null,
     })
   }
 
@@ -264,13 +269,16 @@ export function buildPreview(
     const newKey = `session_${match.currentSession.cm_id}`
     const existing = curBudgetConfig.find((c) => c.config_key === newKey)
 
+    const isEmpty = existing && isEmptyValue(existing.value)
+
     budgetItems.push({
       sessionName: match.currentSession.name,
       matchType: match.matchType as 'cm_id' | 'alias' | 'unmatched',
       previousSessionName: match.matchType === 'alias' ? match.previousSession.name : null,
       previousValue: prev.value,
       newConfigKey: newKey,
-      existingValue: existing && !isEmptyValue(existing.value) ? existing.value : null,
+      existingValue: existing && !isEmpty ? existing.value : null,
+      existingRecordId: isEmpty ? existing.id : null,
     })
   }
 
@@ -284,13 +292,15 @@ export function buildPreview(
 
   const toCreate = allItems.filter((i) => i.existing === null).length
   const alreadySet = allItems.filter((i) => i.existing !== null).length
-  const unmatchedSessions = matches.filter((m) => m.matchType === 'unmatched').length
+  const unmatchedMatches = matches.filter((m) => m.matchType === 'unmatched')
+  const unmatchedSessions = unmatchedMatches.length
+  const unmatchedSessionNames = unmatchedMatches.map((m) => m.currentSession.name)
 
   return {
     registrationDates,
     gradeItems,
     budgetItems,
     threshold,
-    summary: { toCreate, alreadySet, unmatchedSessions },
+    summary: { toCreate, alreadySet, unmatchedSessions, unmatchedSessionNames },
   }
 }
