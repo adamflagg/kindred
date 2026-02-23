@@ -79,12 +79,12 @@ function BunkHeatmapTable({ title, sessions, bunks, lookup, bunkStaff }: BunkHea
 
   return (
     <div data-section>
-      <h4 className="text-muted-foreground mb-2 text-sm font-semibold">{title}</h4>
+      <h4 className="text-muted-foreground mb-3 text-sm font-semibold">{title}</h4>
       <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-xs">
+        <table className="w-full border-separate border-spacing-0 text-xs">
           <thead>
             <tr>
-              <th className="bg-muted/50 text-muted-foreground sticky left-0 z-10 px-3 py-2 text-left font-medium" />
+              <th className="bg-muted text-muted-foreground sticky left-0 z-10 px-3 py-2 text-left font-medium" />
               {bunks.map((bunk) => (
                 <th key={bunk} className="text-muted-foreground px-2 py-2 text-center font-medium">
                   {bunk}
@@ -97,7 +97,7 @@ function BunkHeatmapTable({ title, sessions, bunks, lookup, bunkStaff }: BunkHea
               <tr key={session}>
                 <th
                   scope="row"
-                  className="bg-muted/50 text-foreground sticky left-0 z-10 px-3 py-2 text-left text-xs font-semibold whitespace-nowrap"
+                  className="bg-muted text-foreground border-border/50 sticky left-0 z-10 border px-3 py-2 text-left text-xs font-semibold whitespace-nowrap"
                 >
                   {session}
                 </th>
@@ -109,7 +109,7 @@ function BunkHeatmapTable({ title, sessions, bunks, lookup, bunkStaff }: BunkHea
                       <td
                         key={bunk}
                         role="cell"
-                        className="bg-muted/30 text-muted-foreground min-w-[2.5rem] px-2 py-2 text-center"
+                        className="bg-muted/30 text-muted-foreground border-border/50 min-w-[2.5rem] border px-2 py-2 text-center"
                       >
                         —
                       </td>
@@ -117,7 +117,7 @@ function BunkHeatmapTable({ title, sessions, bunks, lookup, bunkStaff }: BunkHea
                   }
                   const pct = Math.round(item.retention_rate * 100)
                   const cellClass = [
-                    'min-w-[2.5rem] px-2 py-2 text-center font-medium',
+                    'min-w-[2.5rem] border border-border/50 px-2 py-2 text-center font-medium',
                     getCellColor(item.retention_rate),
                     hasStaff ? 'cursor-help' : 'cursor-default',
                   ].join(' ')

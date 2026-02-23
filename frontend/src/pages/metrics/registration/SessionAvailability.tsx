@@ -101,24 +101,24 @@ function AGSessionRow({ session }: { session: AGSessionAvailabilityData }) {
 function Legend() {
   return (
     <div className="mt-4 flex items-center gap-3 text-xs">
-      <div className="flex items-center gap-2">
-        <div className="border-border/50 h-5 w-5 rounded border bg-emerald-100 dark:bg-emerald-900/40" />
-        <span>Open Space</span>
-      </div>
-      <div className="flex items-center gap-2">
-        <div className="border-border/50 h-5 w-5 rounded border bg-amber-200 dark:bg-amber-800/50" />
-        <span>Limited Space</span>
-      </div>
-      <div className="flex items-center gap-2">
-        <div className="border-border/50 flex h-5 w-5 items-center justify-center rounded border bg-red-200 text-[10px] font-bold dark:bg-red-900/50">
+      <span className="flex items-center gap-1">
+        <span className="border-border/50 h-5 w-5 rounded border bg-emerald-100 dark:bg-emerald-900/40" />
+        Open Space
+      </span>
+      <span className="flex items-center gap-1">
+        <span className="border-border/50 h-5 w-5 rounded border bg-amber-200 dark:bg-amber-800/50" />
+        Limited Space
+      </span>
+      <span className="flex items-center gap-1">
+        <span className="border-border/50 flex h-5 w-5 items-center justify-center rounded border bg-red-200 text-[10px] font-bold dark:bg-red-900/50">
           WL
-        </div>
-        <span>Waitlist</span>
-      </div>
-      <div className="flex items-center gap-2">
-        <div className="border-border/50 h-5 w-5 rounded border bg-neutral-200 dark:bg-neutral-700" />
-        <span>N/A</span>
-      </div>
+        </span>
+        Waitlist
+      </span>
+      <span className="flex items-center gap-1">
+        <span className="border-border/50 h-5 w-5 rounded border bg-neutral-200 dark:bg-neutral-700" />
+        N/A
+      </span>
     </div>
   )
 }
@@ -126,7 +126,7 @@ function Legend() {
 function SessionsTable({ sessions }: { sessions: SessionAvailabilityData[] }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-xs">
+      <table className="w-full border-separate border-spacing-0 text-xs">
         <thead>
           <tr>
             <th
@@ -170,7 +170,7 @@ function SessionsTable({ sessions }: { sessions: SessionAvailabilityData[] }) {
         </thead>
         <tbody>
           {sessions.map((session) => (
-            <tr key={session.session_cm_id} className="border-border border-b last:border-b-0">
+            <tr key={session.session_cm_id}>
               <td className="bg-muted/50 text-foreground border-border sticky left-0 z-10 border-r px-3 py-2 text-xs font-semibold whitespace-nowrap">
                 {session.session_name}
               </td>
@@ -223,7 +223,7 @@ export default function SessionAvailability() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">Session Availability</h2>
+        <h2 className="text-foreground text-lg font-semibold">Session Availability</h2>
         <p className="text-muted-foreground text-sm">
           Grade-level availability by session and gender for {currentYear}
         </p>
@@ -237,11 +237,9 @@ export default function SessionAvailability() {
           {/* AG Sessions */}
           {ag_sessions.length > 0 && (
             <div>
-              <h3 className="text-muted-foreground mb-3 text-sm font-semibold uppercase">
-                AG Sessions
-              </h3>
+              <h4 className="text-muted-foreground mb-3 text-sm font-semibold">AG Sessions</h4>
               <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-xs">
+                <table className="w-full border-separate border-spacing-0 text-xs">
                   <thead>
                     <tr>
                       <th className="bg-muted/50 text-muted-foreground border-border sticky left-0 z-10 border-r border-b px-3 py-2 text-left font-medium">
@@ -259,10 +257,7 @@ export default function SessionAvailability() {
                   </thead>
                   <tbody>
                     {ag_sessions.map((session) => (
-                      <tr
-                        key={session.session_cm_id}
-                        className="border-border border-b last:border-b-0"
-                      >
+                      <tr key={session.session_cm_id}>
                         <td className="bg-muted/50 text-foreground border-border sticky left-0 z-10 border-r px-3 py-2 text-xs font-semibold whitespace-nowrap">
                           {session.session_name}
                         </td>
@@ -278,7 +273,7 @@ export default function SessionAvailability() {
           {/* Quest sessions */}
           {questSessions.length > 0 && (
             <div>
-              <h3 className="text-muted-foreground mb-3 text-sm font-semibold uppercase">Quests</h3>
+              <h4 className="text-muted-foreground mb-3 text-sm font-semibold">Quests</h4>
               <SessionsTable sessions={questSessions} />
             </div>
           )}

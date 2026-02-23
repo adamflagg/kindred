@@ -36,11 +36,11 @@ export default function BunkRetentionPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-foreground flex items-center gap-2 text-2xl font-bold">
-            <BedDouble className="text-primary h-6 w-6" />
+          <h2 className="text-foreground flex items-center gap-2 text-lg font-semibold">
+            <BedDouble className="text-primary h-5 w-5" />
             Returning Campers by {priorYear} Bunk
-          </h1>
-          <p className="text-muted-foreground mt-1">
+          </h2>
+          <p className="text-muted-foreground mt-1 text-sm">
             Percentage of campers from each bunk who returned to camp in any form
           </p>
         </div>
