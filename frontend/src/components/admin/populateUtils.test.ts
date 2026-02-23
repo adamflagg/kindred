@@ -422,6 +422,100 @@ describe('buildPreview', () => {
     expect(result.gradeItems).toHaveLength(1)
     expect(result.gradeItems[0]!.previousSessionName).toBeNull()
   })
+
+  it('sets existingRecordId when existing config has empty value', () => {
+    const prevGradeConfig = [
+      makeConfig('session_availability', '2025', '1001', { min_grade: 3, max_grade: 6 }),
+    ]
+    const curGradeConfig = [
+      makeConfig(
+        'session_availability',
+        '2026',
+        '1001',
+        { min_grade: null, max_grade: null, capacity_override: null },
+        'record_abc123'
+      ),
+    ]
+
+    const result = buildPreview(matches, [], prevGradeConfig, [], [], curGradeConfig, [], 2026)
+
+    expect(result.gradeItems).toHaveLength(1)
+    expect(result.gradeItems[0]!.existingValue).toBeNull() // populatable
+    expect(result.gradeItems[0]!.existingRecordId).toBe('record_abc123')
+  })
+
+  it('sets existingRecordId to null when no existing record', () => {
+    const prevGradeConfig = [
+      makeConfig('session_availability', '2025', '1001', { min_grade: 3, max_grade: 6 }),
+    ]
+
+    const result = buildPreview(matches, [], prevGradeConfig, [], [], [], [], 2026)
+
+    expect(result.gradeItems).toHaveLength(1)
+    expect(result.gradeItems[0]!.existingValue).toBeNull()
+    expect(result.gradeItems[0]!.existingRecordId).toBeNull()
+  })
+
+  it('sets existingRecordId for budget items with empty values', () => {
+    const prevBudgetConfig = [
+      makeConfig('budget', '2025', 'session_1001', { participant_goal: 150, session_fee: 3500 }),
+    ]
+    const curBudgetConfig = [
+      makeConfig(
+        'budget',
+        '2026',
+        'session_1001',
+        { participant_goal: null, session_fee: null },
+        'budget_rec_xyz'
+      ),
+    ]
+
+    const result = buildPreview(matches, [], [], prevBudgetConfig, [], [], curBudgetConfig, 2026)
+
+    expect(result.budgetItems).toHaveLength(1)
+    expect(result.budgetItems[0]!.existingValue).toBeNull()
+    expect(result.budgetItems[0]!.existingRecordId).toBe('budget_rec_xyz')
+  })
+
+  it('populates unmatchedSessionNames correctly', () => {
+    const multiMatches: SessionMatch[] = [
+      {
+        currentSession: makeSession(1001, 'Session 1', 'main', 2026),
+        previousSession: makeSession(1001, 'Session 1', 'main', 2025),
+        matchType: 'cm_id',
+      },
+      {
+        currentSession: makeSession(9001, 'Brand New Session', 'main', 2026),
+        previousSession: null,
+        matchType: 'unmatched',
+      },
+      {
+        currentSession: makeSession(9002, 'Quest Extended', 'quest', 2026),
+        previousSession: null,
+        matchType: 'unmatched',
+      },
+    ]
+
+    const result = buildPreview(multiMatches, [], [], [], [], [], [], 2026)
+
+    expect(result.summary.unmatchedSessions).toBe(2)
+    expect(result.summary.unmatchedSessionNames).toEqual(['Brand New Session', 'Quest Extended'])
+  })
+
+  it('returns empty unmatchedSessionNames when all sessions match', () => {
+    const allMatched: SessionMatch[] = [
+      {
+        currentSession: makeSession(1001, 'Session 1', 'main', 2026),
+        previousSession: makeSession(1001, 'Session 1', 'main', 2025),
+        matchType: 'cm_id',
+      },
+    ]
+
+    const result = buildPreview(allMatched, [], [], [], [], [], [], 2026)
+
+    expect(result.summary.unmatchedSessions).toBe(0)
+    expect(result.summary.unmatchedSessionNames).toEqual([])
+  })
 })
 
 // ── isEmptyValue ──────────────────────────────────────────────────────

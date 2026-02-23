@@ -14,6 +14,7 @@ import { CurrentYearContext, type CurrentYearContextType } from '../../hooks/use
 // Track which collection is being queried
 const mockGetFullList = vi.fn()
 const mockCreate = vi.fn()
+const mockUpdate = vi.fn()
 
 vi.mock('../../lib/pocketbase', () => ({
   pb: {
@@ -23,6 +24,7 @@ vi.mock('../../lib/pocketbase', () => ({
       return {
         getFullList: fn,
         create: mockCreate,
+        update: mockUpdate,
       }
     },
     autoCancellation: vi.fn(),
@@ -545,6 +547,97 @@ describe('PopulateFromPreviousYear', () => {
     // Should show the previous session name in parens
     await waitFor(() => {
       expect(screen.getByText(/was Taste of Camp\b/)).toBeInTheDocument()
+    })
+  })
+
+  it('uses update instead of create for items with existingRecordId', async () => {
+    // Current year has grade config records with all-null values (empty but existing)
+    const curGradeConfig = [
+      {
+        id: 'cur_grade1',
+        category: 'session_availability',
+        subcategory: '2026',
+        config_key: '1001',
+        value: { min_grade: null, max_grade: null, capacity_override: null },
+      },
+    ]
+
+    setupMocks({
+      curGradeConfig,
+      prevRegDates: [],
+      prevBudgetConfig: [],
+    })
+    mockCreate.mockResolvedValue({ id: 'new_rec' })
+    mockUpdate.mockResolvedValue({ id: 'cur_grade1' })
+    const user = userEvent.setup()
+
+    const Component = await getComponent()
+    render(<Component />, { wrapper: createWrapper() })
+
+    await waitFor(() => {
+      expect(screen.getByText(/populate from 2025/i)).toBeInTheDocument()
+    })
+
+    const previewButton = screen.getByRole('button', { name: /preview/i })
+    await user.click(previewButton)
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /session grade config/i })).toBeInTheDocument()
+    })
+
+    const applyButton = screen.getByRole('button', { name: /apply/i })
+    await user.click(applyButton)
+
+    await waitFor(() => {
+      // Should use update for the existing empty record, not create
+      expect(mockUpdate).toHaveBeenCalledWith('cur_grade1', expect.any(Object))
+    })
+
+    // Should NOT have called create for this item
+    const createCalls = mockCreate.mock.calls
+    const createdKeys = createCalls.map(
+      (call: unknown[]) => (call[0] as Record<string, unknown>)['config_key']
+    )
+    expect(createdKeys).not.toContain('1001')
+  })
+
+  it('displays unmatched session names in summary', async () => {
+    // Current year has sessions that don't exist in previous year
+    const curSessions = [
+      ...makeCurSessions(),
+      {
+        cm_id: 9001,
+        name: 'Brand New Session',
+        session_type: 'main',
+        year: 2026,
+        start_date: '2026-07-01',
+      },
+      {
+        cm_id: 9002,
+        name: 'Quest Extended',
+        session_type: 'quest',
+        year: 2026,
+        start_date: '2026-07-15',
+      },
+    ]
+
+    setupMocks({ curSessions })
+    const user = userEvent.setup()
+
+    const Component = await getComponent()
+    render(<Component />, { wrapper: createWrapper() })
+
+    await waitFor(() => {
+      expect(screen.getByText(/populate from 2025/i)).toBeInTheDocument()
+    })
+
+    const previewButton = screen.getByRole('button', { name: /preview/i })
+    await user.click(previewButton)
+
+    // Should show the unmatched session names
+    await waitFor(() => {
+      expect(screen.getByText(/Brand New Session/)).toBeInTheDocument()
+      expect(screen.getByText(/Quest Extended/)).toBeInTheDocument()
     })
   })
 
