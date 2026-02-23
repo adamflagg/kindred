@@ -14,19 +14,13 @@ import {
   shiftDateByOneYear,
   buildPreview,
   type SessionMatch,
-  type PopulatePreview,
   type SessionData,
   type ConfigRecordLike,
 } from './populateUtils'
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-function makeSession(
-  cm_id: number,
-  name: string,
-  session_type: string,
-  year: number
-): SessionData {
+function makeSession(cm_id: number, name: string, session_type: string, year: number): SessionData {
   return { cm_id, name, session_type, year }
 }
 
@@ -226,12 +220,8 @@ describe('buildPreview', () => {
   })
 
   it('marks registration dates as existing when current-year config exists', () => {
-    const prevRegDates = [
-      makeConfig('registration', '2025', 'priority_reg_date', '2024-11-10'),
-    ]
-    const curRegDates = [
-      makeConfig('registration', '2026', 'priority_reg_date', '2025-11-09'),
-    ]
+    const prevRegDates = [makeConfig('registration', '2025', 'priority_reg_date', '2024-11-10')]
+    const curRegDates = [makeConfig('registration', '2026', 'priority_reg_date', '2025-11-09')]
 
     const result = buildPreview(matches, prevRegDates, [], [], curRegDates, [], [], 2026)
 
@@ -271,9 +261,7 @@ describe('buildPreview', () => {
   })
 
   it('includes threshold in preview when present', () => {
-    const prevGradeConfig = [
-      makeConfig('session_availability', '2025', 'limited_threshold', 80),
-    ]
+    const prevGradeConfig = [makeConfig('session_availability', '2025', 'limited_threshold', 80)]
 
     const result = buildPreview(matches, [], prevGradeConfig, [], [], [], [], 2026)
 
@@ -282,12 +270,8 @@ describe('buildPreview', () => {
   })
 
   it('marks threshold as existing when current config has it', () => {
-    const prevGradeConfig = [
-      makeConfig('session_availability', '2025', 'limited_threshold', 80),
-    ]
-    const curGradeConfig = [
-      makeConfig('session_availability', '2026', 'limited_threshold', 75),
-    ]
+    const prevGradeConfig = [makeConfig('session_availability', '2025', 'limited_threshold', 80)]
+    const curGradeConfig = [makeConfig('session_availability', '2026', 'limited_threshold', 75)]
 
     const result = buildPreview(matches, [], prevGradeConfig, [], [], curGradeConfig, [], 2026)
 
@@ -317,9 +301,7 @@ describe('buildPreview', () => {
   })
 
   it('computes correct summary counts', () => {
-    const prevRegDates = [
-      makeConfig('registration', '2025', 'priority_reg_date', '2024-11-10'),
-    ]
+    const prevRegDates = [makeConfig('registration', '2025', 'priority_reg_date', '2024-11-10')]
     const prevGradeConfig = [
       makeConfig('session_availability', '2025', '1001', { min_grade: 3, max_grade: 6 }),
     ]
@@ -347,12 +329,8 @@ describe('buildPreview', () => {
   })
 
   it('counts already-set items in summary', () => {
-    const prevRegDates = [
-      makeConfig('registration', '2025', 'priority_reg_date', '2024-11-10'),
-    ]
-    const curRegDates = [
-      makeConfig('registration', '2026', 'priority_reg_date', '2025-11-09'),
-    ]
+    const prevRegDates = [makeConfig('registration', '2025', 'priority_reg_date', '2024-11-10')]
+    const curRegDates = [makeConfig('registration', '2026', 'priority_reg_date', '2025-11-09')]
 
     const result = buildPreview(matches, prevRegDates, [], [], curRegDates, [], [], 2026)
 
@@ -371,9 +349,7 @@ describe('buildPreview', () => {
   })
 
   it('handles empty previous registration dates gracefully', () => {
-    const prevRegDates = [
-      makeConfig('registration', '2025', 'priority_reg_date', ''),
-    ]
+    const prevRegDates = [makeConfig('registration', '2025', 'priority_reg_date', '')]
 
     const result = buildPreview(matches, prevRegDates, [], [], [], [], [], 2026)
 

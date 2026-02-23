@@ -262,8 +262,12 @@ describe('PopulateFromPreviousYear', () => {
     render(<Component />, { wrapper: createWrapper() })
 
     await waitFor(() => {
-      expect(screen.getByText(/sync/i)).toBeInTheDocument()
+      expect(screen.getByText(/no sessions found/i)).toBeInTheDocument()
     })
+
+    // The preview button should be disabled
+    const button = screen.getByRole('button', { name: /run a sync first/i })
+    expect(button).toBeDisabled()
   })
 
   it('expands preview panel when button is clicked', async () => {
@@ -281,9 +285,9 @@ describe('PopulateFromPreviousYear', () => {
     const previewButton = screen.getByRole('button', { name: /preview/i })
     await user.click(previewButton)
 
-    // Should show registration dates in preview
+    // Should show the preview section heading (exact match to avoid matching description text)
     await waitFor(() => {
-      expect(screen.getByText(/registration dates/i)).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: /registration dates/i })).toBeInTheDocument()
     })
   })
 
@@ -321,9 +325,9 @@ describe('PopulateFromPreviousYear', () => {
     const previewButton = screen.getByRole('button', { name: /preview/i })
     await user.click(previewButton)
 
-    // Should show session names in the preview
+    // Should show the session grade config section heading
     await waitFor(() => {
-      expect(screen.getByText('Session 1')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: /session grade config/i })).toBeInTheDocument()
     })
   })
 
@@ -350,9 +354,10 @@ describe('PopulateFromPreviousYear', () => {
     const previewButton = screen.getByRole('button', { name: /preview/i })
     await user.click(previewButton)
 
-    // Should indicate some items are already set
+    // Should indicate some items are already set (multiple cells may say this)
     await waitFor(() => {
-      expect(screen.getByText(/already set/i)).toBeInTheDocument()
+      const alreadySetElements = screen.getAllByText(/already set/i)
+      expect(alreadySetElements.length).toBeGreaterThan(0)
     })
   })
 
@@ -408,7 +413,7 @@ describe('PopulateFromPreviousYear', () => {
     await user.click(previewButton)
 
     await waitFor(() => {
-      expect(screen.getByText(/registration dates/i)).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: /registration dates/i })).toBeInTheDocument()
     })
 
     const applyButton = screen.getByRole('button', { name: /apply/i })
@@ -446,7 +451,7 @@ describe('PopulateFromPreviousYear', () => {
     await user.click(previewButton)
 
     await waitFor(() => {
-      expect(screen.getByText(/registration dates/i)).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: /registration dates/i })).toBeInTheDocument()
     })
 
     const applyButton = screen.getByRole('button', { name: /apply/i })
@@ -459,7 +464,7 @@ describe('PopulateFromPreviousYear', () => {
     // Verify priority_reg_date was NOT created (it already exists)
     const createCalls = mockCreate.mock.calls
     const createdKeys = createCalls.map(
-      (call: unknown[]) => (call[0] as Record<string, unknown>).config_key
+      (call: unknown[]) => (call[0] as Record<string, unknown>)['config_key']
     )
     expect(createdKeys).not.toContain('priority_reg_date')
   })

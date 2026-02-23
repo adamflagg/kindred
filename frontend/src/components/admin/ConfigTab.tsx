@@ -20,6 +20,7 @@ import { ScaleGuideSidebar } from './ScaleGuideSidebar'
 import { RegistrationDatesConfig } from './RegistrationDatesConfig'
 import { GradeEligibilityConfig } from './GradeEligibilityConfig'
 import { SessionBudgetConfig } from './SessionBudgetConfig'
+import { PopulateFromPreviousYear } from './PopulateFromPreviousYear'
 
 // Category definitions - these IDs match the business_category values in config metadata
 interface CategoryDef {
@@ -287,6 +288,7 @@ export function ConfigTab() {
         {/* Sections */}
         {activeCategory === 'registration' ? (
           <>
+            <PopulateFromPreviousYear />
             <RegistrationDatesConfig />
             <GradeEligibilityConfig />
             <SessionBudgetConfig />
