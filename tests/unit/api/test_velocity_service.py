@@ -100,11 +100,13 @@ def create_mock_status_transition(
     """Create a mock status transition record for cancellation tracking."""
     record = Mock()
     record.person_id = person_id
-    record.session_cm_id = session_cm_id
     record.detected_at = detected_at
     record.old_status = old_status
     record.new_status = new_status
     record.year = year
+    session = Mock()
+    session.cm_id = session_cm_id
+    record.expand = {"session": session}
     return record
 
 
