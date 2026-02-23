@@ -421,7 +421,14 @@ function SessionConfigRow({ item, type }: { item: PreviewSessionItem; type: 'gra
   const isExisting = item.existingValue !== null
   return (
     <tr className={`border-border border-b ${isExisting ? 'opacity-50' : ''}`}>
-      <td className="py-1.5 pr-4 font-medium">{item.sessionName}</td>
+      <td className="py-1.5 pr-4 font-medium">
+        {item.sessionName}
+        {item.matchType === 'alias' && item.previousSessionName && (
+          <span className="text-muted-foreground ml-1 text-xs font-normal">
+            (was {item.previousSessionName})
+          </span>
+        )}
+      </td>
       <td className="px-2 py-1.5">
         {item.matchType === 'alias' && (
           <span className="text-xs text-amber-600 dark:text-amber-400">

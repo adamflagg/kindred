@@ -41,6 +41,7 @@ export interface PreviewRegDateItem {
 export interface PreviewSessionItem {
   sessionName: string
   matchType: 'cm_id' | 'alias' | 'unmatched'
+  previousSessionName: string | null
   previousValue: unknown
   newConfigKey: string
   existingValue: unknown | null
@@ -64,6 +65,22 @@ export interface PopulatePreview {
   budgetItems: PreviewSessionItem[]
   threshold?: PreviewThreshold | undefined
   summary: PreviewSummary
+}
+
+// ── Value emptiness check ────────────────────────────────────────────
+
+/**
+ * Returns true if a config value is effectively empty:
+ * null, undefined, empty string, or an object where all properties are null/undefined.
+ */
+export function isEmptyValue(value: unknown): boolean {
+  if (value === null || value === undefined || value === '') return true
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    return Object.values(value as Record<string, unknown>).every(
+      (v) => v === null || v === undefined
+    )
+  }
+  return false
 }
 
 // ── Registration date field labels ───────────────────────────────────
@@ -214,15 +231,19 @@ export function buildPreview(
 
     if (!match || !match.previousSession) continue
 
+    // Skip previous config with all-null values — nothing meaningful to copy
+    if (isEmptyValue(prev.value)) continue
+
     const newKey = String(match.currentSession.cm_id)
     const existing = curGradeConfig.find((c) => c.config_key === newKey)
 
     gradeItems.push({
       sessionName: match.currentSession.name,
       matchType: match.matchType as 'cm_id' | 'alias' | 'unmatched',
+      previousSessionName: match.matchType === 'alias' ? match.previousSession.name : null,
       previousValue: prev.value,
       newConfigKey: newKey,
-      existingValue: existing ? existing.value : null,
+      existingValue: existing && !isEmptyValue(existing.value) ? existing.value : null,
     })
   }
 
@@ -237,15 +258,19 @@ export function buildPreview(
 
     if (!match || !match.previousSession) continue
 
+    // Skip previous config with all-null values
+    if (isEmptyValue(prev.value)) continue
+
     const newKey = `session_${match.currentSession.cm_id}`
     const existing = curBudgetConfig.find((c) => c.config_key === newKey)
 
     budgetItems.push({
       sessionName: match.currentSession.name,
       matchType: match.matchType as 'cm_id' | 'alias' | 'unmatched',
+      previousSessionName: match.matchType === 'alias' ? match.previousSession.name : null,
       previousValue: prev.value,
       newConfigKey: newKey,
-      existingValue: existing ? existing.value : null,
+      existingValue: existing && !isEmptyValue(existing.value) ? existing.value : null,
     })
   }
 
