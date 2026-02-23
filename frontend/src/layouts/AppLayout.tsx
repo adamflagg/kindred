@@ -242,6 +242,14 @@ export const AppLayout = () => {
                     Sessions
                   </Link>
                 )}
+                {activeProgram === 'metrics' && (
+                  <Link
+                    to="/metrics"
+                    className={`nav-link-lodge ${isActiveRoute('/metrics') ? 'active' : ''}`}
+                  >
+                    Dashboard
+                  </Link>
+                )}
                 <Link
                   to="/campers"
                   className={`nav-link-lodge ${isActiveRoute('/camper') ? 'active' : ''}`}
@@ -456,6 +464,19 @@ export const AppLayout = () => {
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
                     Sessions
+                  </Link>
+                )}
+                {activeProgram === 'metrics' && (
+                  <Link
+                    to="/metrics"
+                    className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
+                      isActiveRoute('/metrics')
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-foreground hover:bg-muted/50'
+                    }`}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    Dashboard
                   </Link>
                 )}
                 <Link
