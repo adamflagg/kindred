@@ -98,7 +98,7 @@ export default function MetricsTypeTabs() {
                   availableYears={availableYears}
                 />
               )}
-            {activeTab === 'trends' && (
+            {activeTab === 'trends' && !location.pathname.includes('/velocity') && (
               <label className="flex cursor-pointer items-center gap-1.5 text-sm">
                 <input
                   type="checkbox"

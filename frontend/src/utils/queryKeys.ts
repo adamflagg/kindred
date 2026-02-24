@@ -188,8 +188,14 @@ export const queryKeys = {
       : (['normalized-mappings', year, category] as const),
 
   // Velocity (Tier 1 - sync data, historical analysis)
-  velocity: (year: number, sessionCmId?: number, compareYears?: string, sessionTypes?: string) =>
-    ['metrics', 'velocity', year, sessionCmId, compareYears, sessionTypes] as const,
+  velocity: (
+    year: number,
+    sessionCmId?: number,
+    compareYears?: string,
+    sessionTypes?: string,
+    splitByGender?: boolean
+  ) =>
+    ['metrics', 'velocity', year, sessionCmId, compareYears, sessionTypes, splitByGender] as const,
 }
 
 /**
