@@ -429,8 +429,8 @@ class YearMetrics(BaseModel):
     by_first_year: list[FirstYearBreakdown] = Field(
         default_factory=list, description="Enrollment by first year attended"
     )
-    total_cancelled: int = Field(0, description="Total cancelled campers for this year")
-    cancellation_rate: float = Field(0.0, description="Cancelled / (enrolled + cancelled)")
+    total_cancelled: int = Field(default=0, description="Total cancelled campers for this year")
+    cancellation_rate: float = Field(default=0.0, description="Cancelled / (enrolled + cancelled)")
 
 
 class HistoricalTrendsResponse(BaseModel):
