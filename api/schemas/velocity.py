@@ -5,14 +5,14 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 
-class WeeklyDataPoint(BaseModel):
-    week_start: str = Field(description="ISO date (YYYY-MM-DD)")
-    week_label: str = Field(description="Human-readable label like 'Jan 6'")
+class VelocityDataPoint(BaseModel):
+    date: str = Field(description="ISO date (YYYY-MM-DD)")
+    label: str = Field(description="Human-readable label like 'Jan 6'")
     enrolled: int = Field(description="Cumulative enrolled count")
     waitlisted: int = Field(description="Cumulative waitlisted count")
-    delta: int = Field(description="Change in enrolled from prior week")
+    delta: int = Field(description="Change in enrolled from prior data point")
     data_source: str = Field(description="'snapshot' or 'reconstructed'")
-    week_number: int = Field(description="0-based week offset from season start Monday")
+    day_number: int = Field(description="0-based day offset from season start (Nov 1)")
 
 
 class VelocityCurve(BaseModel):
@@ -20,13 +20,14 @@ class VelocityCurve(BaseModel):
     session_cm_id: int | None = Field(None, description="None = combined across sessions")
     session_name: str | None = None
     gender: str | None = Field(None, description="None=all, 'M'=boys, 'F'=girls")
-    weekly: list[WeeklyDataPoint]
+    data: list[VelocityDataPoint]
 
 
 class PhaseMarker(BaseModel):
     phase: str = Field(description="Registration phase: priority, early, open")
     date: str = Field(description="ISO date")
     label: str = Field(description="Display label")
+    day_number: int = Field(description="0-based day offset from season start for X-axis alignment")
 
 
 class SessionGenderBreakdown(BaseModel):
