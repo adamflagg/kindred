@@ -98,4 +98,10 @@ export const TRENDS_SUB_NAV: SubNavItem[] = [
     icon: Zap,
     path: '/metrics/trends/velocity',
   },
+  {
+    id: 'cancellations',
+    label: 'Cancellations',
+    icon: XCircle,
+    path: '/metrics/trends/cancellations',
+  },
 ]

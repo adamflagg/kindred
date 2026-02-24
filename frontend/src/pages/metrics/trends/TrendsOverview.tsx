@@ -190,6 +190,12 @@ export default function TrendsOverview() {
                 <th className="text-muted-foreground px-4 py-3 text-right font-medium">New %</th>
                 <th className="text-muted-foreground px-4 py-3 text-right font-medium">Male</th>
                 <th className="text-muted-foreground px-4 py-3 text-right font-medium">Female</th>
+                <th className="text-muted-foreground px-4 py-3 text-right font-medium">
+                  Cancelled
+                </th>
+                <th className="text-muted-foreground px-4 py-3 text-right font-medium">
+                  Cancel %
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -220,6 +226,12 @@ export default function TrendsOverview() {
                     <td className="text-foreground px-4 py-3 text-right">
                       {femaleCount.toLocaleString()}
                     </td>
+                    <td className="text-foreground px-4 py-3 text-right">
+                      {(year.total_cancelled ?? 0).toLocaleString()}
+                    </td>
+                    <td className="text-muted-foreground px-4 py-3 text-right">
+                      {(year.cancellation_rate ?? 0).toFixed(1)}%
+                    </td>
                   </tr>
                 )
               })}
@@ -233,6 +245,16 @@ export default function TrendsOverview() {
         <RetentionRateLine
           data={retentionYears}
           title="Overall Retention Rate Trend"
+          height={250}
+        />
+      )}
+
+      {/* Cancellation Rate Trend */}
+      {data.years.some((y) => (y.total_cancelled ?? 0) > 0) && (
+        <TrendLineChart
+          title="Cancellation Rate Over Time"
+          data={data.years}
+          metric="cancellation_rate"
           height={250}
         />
       )}

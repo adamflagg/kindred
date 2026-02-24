@@ -32,6 +32,20 @@ export interface SessionGenderBreakdown {
   girls_enrolled: number
 }
 
+export interface PriorYearCancelledSummary {
+  year: number
+  cancelled_at_current_week: number | null
+  cancelled_final: number
+}
+
+export interface PriorYearSessionSummary {
+  year: number
+  session_name: string | null
+  session_cm_id: number | null
+  enrolled_at_current_week: number | null
+  final_enrolled: number
+}
+
 export interface VelocityResponse {
   year: number
   season_start: string
@@ -42,4 +56,7 @@ export interface VelocityResponse {
   prior_year_by_gender: VelocityCurve[]
   phase_markers: PhaseMarker[]
   session_gender_breakdown: SessionGenderBreakdown[]
+  cancelled_to_date: number | null
+  prior_year_cancelled_to_date: PriorYearCancelledSummary[]
+  prior_year_session_summaries: PriorYearSessionSummary[]
 }
