@@ -927,9 +927,7 @@ class TestGenderSplitVelocity:
 
         mock_repository.fetch_attendees_with_dates.side_effect = mock_fetch_attendees
 
-        result = await service.get_velocity(
-            year=2026, compare_years=[2025], split_by_gender=True
-        )
+        result = await service.get_velocity(year=2026, compare_years=[2025], split_by_gender=True)
 
         # Prior year should have gender curves too
         assert len(result.prior_year_by_gender) >= 1
@@ -982,9 +980,7 @@ class TestVelocityBugFixes:
 
         weeks = result.combined.weekly
         for w in weeks:
-            assert w.week_start < "2027-01-01", (
-                f"Data past Dec 31 should be clipped: {w.week_start}"
-            )
+            assert w.week_start < "2027-01-01", f"Data past Dec 31 should be clipped: {w.week_start}"
         # Should still have data from 2026
         assert len(weeks) >= 2
 
