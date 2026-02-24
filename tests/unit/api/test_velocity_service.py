@@ -25,6 +25,18 @@ os.environ["SKIP_PB_AUTH"] = "true"
 
 from api.services.velocity_service import VelocityService, _monday_of_week, _season_start, _week_number
 
+# Forward-compatible imports: daily granularity renames
+# These will fail until the backend migration is done
+try:
+    from api.schemas.velocity import VelocityDataPoint
+except ImportError:
+    VelocityDataPoint = None
+
+try:
+    from api.services.velocity_service import _day_number
+except ImportError:
+    _day_number = None
+
 # ============================================================================
 # Test Data Factories
 # ============================================================================
@@ -1042,3 +1054,173 @@ class TestVelocityBugFixes:
 
         # Combined should only include session 1001 (20 enrolled, not 30)
         assert result.combined.weekly[0].enrolled == 20
+
+
+# ============================================================================
+# Daily Granularity Tests (Commit 10 - TDD Red Phase)
+# ============================================================================
+
+
+class TestDailyGranularity:
+    """Test that velocity data uses daily granularity instead of weekly.
+
+    These tests verify the migration from weekly to daily data points:
+    - Each date produces a separate data point (no Monday-bucketing)
+    - day_number computed as offset from season start date
+    - Deltas are day-over-day
+    - Schema renames: VelocityDataPoint, .data, .date, .label, .day_number
+    """
+
+    @pytest.mark.asyncio
+    async def test_snapshot_daily_granularity(self, service, mock_repository, sample_sessions):
+        """Snapshots on consecutive days within the same week should each
+        produce a separate data point (not collapse into 1 weekly point).
+
+        Mon Jan 5, Tue Jan 6, Wed Jan 7 are all in the same ISO week.
+        With daily granularity, we expect 3 points, not 1.
+        """
+        mock_repository.fetch_sessions.return_value = {
+            1001: sample_sessions[1001],
+        }
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=10),  # Monday
+            create_mock_snapshot("2026-01-06", 1001, 2026, enrolled=12),  # Tuesday
+            create_mock_snapshot("2026-01-07", 1001, 2026, enrolled=15),  # Wednesday
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        # With daily granularity, should have 3 separate data points
+        assert len(result.combined.data) == 3
+        assert result.combined.data[0].date == "2026-01-05"
+        assert result.combined.data[0].enrolled == 10
+        assert result.combined.data[1].date == "2026-01-06"
+        assert result.combined.data[1].enrolled == 12
+        assert result.combined.data[2].date == "2026-01-07"
+        assert result.combined.data[2].enrolled == 15
+
+    @pytest.mark.asyncio
+    async def test_reconstruction_daily_granularity(self, service, mock_repository, sample_sessions):
+        """Attendees enrolled on consecutive days should produce separate
+        daily cumulative data points (not bucketed to Monday)."""
+        mock_repository.fetch_sessions.return_value = {
+            1001: sample_sessions[1001],
+        }
+        mock_repository.fetch_enrollment_snapshots.return_value = []
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2026-01-05"),  # Monday
+            create_mock_attendee_with_date(102, 1001, "2026-01-06"),  # Tuesday
+            create_mock_attendee_with_date(103, 1001, "2026-01-07"),  # Wednesday
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        # With daily granularity, each date is a separate point
+        assert len(result.combined.data) == 3
+        assert result.combined.data[0].date == "2026-01-05"
+        assert result.combined.data[0].enrolled == 1  # cumulative: 1
+        assert result.combined.data[1].date == "2026-01-06"
+        assert result.combined.data[1].enrolled == 2  # cumulative: 2
+        assert result.combined.data[2].date == "2026-01-07"
+        assert result.combined.data[2].enrolled == 3  # cumulative: 3
+
+    def test_day_number_alignment(self):
+        """day_number should be (date - season_start).days for cross-year alignment.
+
+        For year=2026, season_start=2025-11-01.
+        Dec 1, 2025 should have day_number=30 (30 days after Nov 1).
+        """
+        assert _day_number is not None, "_day_number helper not yet implemented"
+
+        season_start = _season_start(2026)  # 2025-11-01
+        dec_1 = datetime(2025, 12, 1)
+        assert _day_number(dec_1, season_start) == 30
+
+        # Nov 1 itself should be day 0
+        assert _day_number(datetime(2025, 11, 1), season_start) == 0
+
+        # Jan 5 should be day 65 (Nov has 30 days + Dec has 31 + 4 days in Jan)
+        jan_5 = datetime(2026, 1, 5)
+        assert _day_number(jan_5, season_start) == 65
+
+    @pytest.mark.asyncio
+    async def test_daily_delta_is_day_over_day(self, service, mock_repository, sample_sessions):
+        """Deltas should be computed between consecutive daily points,
+        not weekly."""
+        mock_repository.fetch_sessions.return_value = {
+            1001: sample_sessions[1001],
+        }
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=10),
+            create_mock_snapshot("2026-01-06", 1001, 2026, enrolled=12),
+            create_mock_snapshot("2026-01-07", 1001, 2026, enrolled=15),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        points = result.combined.data
+        assert len(points) == 3
+        # First point: delta = enrolled itself
+        assert points[0].delta == 10
+        # Second point: delta = 12 - 10 = 2
+        assert points[1].delta == 2
+        # Third point: delta = 15 - 12 = 3
+        assert points[2].delta == 3
+
+    @pytest.mark.asyncio
+    async def test_daily_points_have_day_number(self, service, mock_repository, sample_sessions):
+        """Each daily data point should include day_number as offset from season start."""
+        mock_repository.fetch_sessions.return_value = {
+            1001: sample_sessions[1001],
+        }
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2025-11-01", 1001, 2026, enrolled=5),   # day 0
+            create_mock_snapshot("2025-12-01", 1001, 2026, enrolled=15),  # day 30
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=30),  # day 65
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        points = result.combined.data
+        assert len(points) == 3
+        assert points[0].day_number == 0
+        assert points[1].day_number == 30
+        assert points[2].day_number == 65
+
+    @pytest.mark.asyncio
+    async def test_phase_markers_have_day_number(self, service, mock_repository):
+        """Phase markers should include day_number for frontend X-axis alignment."""
+        sessions = {1001: create_mock_session(1001, "Session 1", year=2026)}
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=10),
+        ]
+        # Nov 15, 2025 is 14 days after season start (Nov 1, 2025)
+        mock_repository.fetch_registration_dates.return_value = {
+            "priority_reg_date": "2025-11-15",
+        }
+
+        result = await service.get_velocity(year=2026)
+
+        assert len(result.phase_markers) == 1
+        marker = result.phase_markers[0]
+        assert hasattr(marker, "day_number")
+        assert marker.day_number == 14  # Nov 15 is 14 days from Nov 1
+
+    @pytest.mark.asyncio
+    async def test_velocity_curve_uses_data_field(self, service, mock_repository, sample_sessions):
+        """VelocityCurve should use .data instead of .weekly for the data points list."""
+        mock_repository.fetch_sessions.return_value = {
+            1001: sample_sessions[1001],
+        }
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=10),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        # .data should exist and contain the data points
+        assert hasattr(result.combined, "data")
+        assert len(result.combined.data) == 1
+        # .weekly should NOT exist (renamed to .data)
+        assert not hasattr(result.combined, "weekly")
