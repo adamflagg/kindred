@@ -415,8 +415,9 @@ async def get_velocity(
     session_cm_id: int | None = Query(None, description="Filter to specific session"),
     session_types: str | None = Query("main,embedded,ag", description="Session types"),
     split_by_gender: bool = Query(False, description="Split enrollment by gender (M/F)"),
+    metric: str = Query("enrollment", description="'enrollment' or 'cancellation'"),
 ) -> VelocityResponse:
-    """Get registration velocity curves with week-over-week enrollment data."""
+    """Get registration velocity curves with week-over-week data."""
     from api.services.metrics_repository import MetricsRepository
     from api.services.velocity_service import VelocityService
 
@@ -432,6 +433,7 @@ async def get_velocity(
             compare_years=compare_year_list,
             session_types=type_filter,
             split_by_gender=split_by_gender,
+            metric=metric,
         )
     except Exception as e:
         logger.error(f"Error calculating velocity: {e}", exc_info=True)

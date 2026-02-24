@@ -1370,13 +1370,13 @@ class TestHistoricalCancellationMetrics:
     @pytest.mark.asyncio
     async def test_year_metrics_include_cancellation_fields(self):
         """YearMetrics should include total_cancelled and cancellation_rate."""
-        from api.schemas.metrics import YearMetrics
+        from api.schemas.metrics import NewVsReturning, YearMetrics
 
         ym = YearMetrics(
             year=2026,
             total_enrolled=100,
             by_gender=[],
-            new_vs_returning=Mock(
+            new_vs_returning=NewVsReturning(
                 new_count=30,
                 returning_count=70,
                 new_percentage=30.0,
@@ -1391,13 +1391,13 @@ class TestHistoricalCancellationMetrics:
     @pytest.mark.asyncio
     async def test_year_metrics_defaults_to_zero_cancelled(self):
         """YearMetrics total_cancelled should default to 0."""
-        from api.schemas.metrics import YearMetrics
+        from api.schemas.metrics import NewVsReturning, YearMetrics
 
         ym = YearMetrics(
             year=2026,
             total_enrolled=100,
             by_gender=[],
-            new_vs_returning=Mock(
+            new_vs_returning=NewVsReturning(
                 new_count=30,
                 returning_count=70,
                 new_percentage=30.0,
