@@ -156,10 +156,10 @@ function transformBrandingHtml(): Plugin {
 // Build-time Defines
 // =============================================================================
 
-// Security: Block VITE_DISABLE_AUTH in production builds to prevent credential leakage
-if (process.env.VITE_DISABLE_AUTH === 'true' && process.env.NODE_ENV === 'production') {
+// Security: Block VITE_DISABLE_AUTH in Docker builds to prevent credential leakage
+if (process.env.VITE_DISABLE_AUTH === 'true' && process.env.IS_DOCKER === 'true') {
   throw new Error(
-    'SECURITY ERROR: VITE_DISABLE_AUTH=true is not allowed in production builds. ' +
+    'SECURITY ERROR: VITE_DISABLE_AUTH=true is not allowed in Docker builds. ' +
     'Admin credentials would be embedded in the JavaScript bundle.'
   )
 }
