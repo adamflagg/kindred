@@ -67,17 +67,19 @@ class HistoricalService:
         if session_cm_id is not None:
             session_name = await self._get_session_name_for_filtering(session_cm_id, years, session_types)
 
-        # Fetch camper history for all years in parallel
+        # Fetch camper history and cancellation counts for all years in parallel
         history_futures = [
             self.repo.fetch_camper_history(y, session_types=session_types, session_name=session_name) for y in years
         ]
+        cancel_futures = [self._fetch_cancellation_count(y) for y in years]
         all_history = await asyncio.gather(*history_futures)
+        all_cancel_counts = await asyncio.gather(*cancel_futures)
 
         # Compute metrics for each year
         year_metrics_list: list[YearMetrics] = []
 
-        for year, history in zip(years, all_history, strict=True):
-            year_metric = self._compute_year_metrics(year, history)
+        for year, history, cancel_count in zip(years, all_history, all_cancel_counts, strict=True):
+            year_metric = self._compute_year_metrics(year, history, cancel_count)
             year_metrics_list.append(year_metric)
 
         return HistoricalTrendsResponse(years=year_metrics_list)
@@ -113,12 +115,29 @@ class HistoricalService:
 
         return None
 
-    def _compute_year_metrics(self, year: int, history: list[Any]) -> YearMetrics:
+    async def _fetch_cancellation_count(self, year: int) -> int:
+        """Fetch total cancellation count for a year.
+
+        Uses fetch_cancellation_count if available on the repo, otherwise
+        falls back to counting status transitions.
+        """
+        if hasattr(self.repo, "fetch_cancellation_count"):
+            result: int = await self.repo.fetch_cancellation_count(year)
+            return result
+        # Fallback: count status transitions
+        try:
+            transitions = await self.repo.fetch_status_transitions(year, ["cancelled", "withdrawn", "dismissed"])
+            return len(transitions)
+        except Exception:
+            return 0
+
+    def _compute_year_metrics(self, year: int, history: list[Any], total_cancelled: int = 0) -> YearMetrics:
         """Compute metrics for a single year.
 
         Args:
             year: The year.
             history: List of camper_history records.
+            total_cancelled: Number of cancellations for this year.
 
         Returns:
             YearMetrics with all breakdowns.
@@ -160,10 +179,16 @@ class HistoricalService:
             for fy, c in sorted(first_year_counts.items())
         ]
 
+        # Cancellation rate: cancelled / (enrolled + cancelled)
+        denominator = total_enrolled + total_cancelled
+        cancellation_rate = round((total_cancelled / denominator) * 100, 2) if denominator > 0 else 0.0
+
         return YearMetrics(
             year=year,
             total_enrolled=total_enrolled,
             by_gender=by_gender,
             new_vs_returning=new_vs_returning,
             by_first_year=by_first_year,
+            total_cancelled=total_cancelled,
+            cancellation_rate=cancellation_rate,
         )

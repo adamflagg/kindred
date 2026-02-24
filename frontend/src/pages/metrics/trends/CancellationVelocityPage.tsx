@@ -1,16 +1,12 @@
 /**
- * VelocityPage - Registration velocity curves with week-over-week enrollment data.
+ * CancellationVelocityPage - Cancellation velocity curves with week-over-week data.
  *
- * Shows:
- * - Cumulative enrollment line chart (current year + optional prior year overlays)
- * - Optional gender split (boys/girls lines instead of combined)
- * - Brush zoom/scrub for inspecting specific time periods
- * - Week-range dropdown selectors synced with brush
- * - Vertical phase markers for priority/early/open registration dates
- * - Color-coded phase marker legend below chart title
- * - Summary comparison cards (current vs prior year enrollment + cancellations)
- * - Per-session breakdown table with prior-year comparison columns
- * - Week-over-week delta table with prior-year columns
+ * Mirrors VelocityPage structure but with cancellation-specific theming:
+ * - Red/coral color scheme for current year line
+ * - Y-axis label: "Cumulative Cancelled"
+ * - Same controls: prior year checkboxes, gender split, Brush zoom
+ * - Per-session cancellation breakdown + week-over-week delta tables
+ * - Summary cards: cancelled to date, prior year comparison
  */
 
 import { useMemo, useState } from 'react'
@@ -31,7 +27,6 @@ import { useVelocity } from '../../../hooks/useVelocity'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import type { WeeklyDataPoint } from '../../../types/velocity'
-import { resolveSessionAlias } from '../../../utils/sessionAliases'
 import {
   sortSessionDataByCampThenQuest,
   buildSessionDateLookup,
@@ -57,7 +52,7 @@ const PHASE_COLORS: Record<string, string> = {
   open: 'hsl(140, 60%, 40%)',
 }
 
-export default function VelocityPage() {
+export default function CancellationVelocityPage() {
   const { selectedSessionCmId, sessionTypesParam, sessions } = useMetricsSession()
   const { currentYear, availableYears } = useCurrentYear()
   const [selectedPriorYears, setSelectedPriorYears] = useState<number[]>([])
@@ -74,27 +69,24 @@ export default function VelocityPage() {
     compareYears: selectedPriorYears,
     sessionTypes: sessionTypesParam,
     splitByGender,
+    metric: 'cancellation',
   })
 
   // Build unified chart data aligned by week_number
   const chartData = useMemo(() => {
     if (!data?.combined?.weekly?.length) return []
 
-    // Build week_number -> data maps for current year
     const currentMap = new Map(data.combined.weekly.map((d) => [d.week_number, d]))
 
-    // Build week_number -> data maps for each prior year
     const priorMaps = data.prior_years.map(
       (py) => new Map(py.weekly.map((d) => [d.week_number, d]))
     )
 
-    // Build gender maps
     const mCurve = data.by_gender?.find((c) => c.gender === 'M')
     const fCurve = data.by_gender?.find((c) => c.gender === 'F')
     const mMap = mCurve ? new Map(mCurve.weekly.map((d) => [d.week_number, d])) : new Map()
     const fMap = fCurve ? new Map(fCurve.weekly.map((d) => [d.week_number, d])) : new Map()
 
-    // Build prior year gender maps
     const priorMGender = data.prior_year_by_gender?.filter((c) => c.gender === 'M') ?? []
     const priorFGender = data.prior_year_by_gender?.filter((c) => c.gender === 'F') ?? []
     const priorMGenderMaps = priorMGender.map((c) => ({
@@ -106,7 +98,6 @@ export default function VelocityPage() {
       map: new Map(c.weekly.map((d) => [d.week_number, d])),
     }))
 
-    // Collect all week_numbers across all years and gender curves
     const allWeekNumbers = new Set<number>()
     for (const wn of currentMap.keys()) allWeekNumbers.add(wn)
     for (const pm of priorMaps) {
@@ -127,7 +118,6 @@ export default function VelocityPage() {
       const current = currentMap.get(wn)
       let weekLabel = current?.week_label ?? ''
 
-      // Fill label from prior year if current year doesn't have it
       if (!weekLabel) {
         for (const pm of priorMaps) {
           const pd = pm.get(wn)
@@ -143,27 +133,24 @@ export default function VelocityPage() {
         week_number: wn,
         label: weekLabel,
         week_start: current?.week_start ?? '',
-        enrolled: current?.enrolled ?? null,
-        waitlisted: current?.waitlisted ?? null,
+        cancelled: current?.enrolled ?? null, // enrolled field repurposed for cancelled count
         delta: current?.delta ?? null,
       }
 
-      // Prior year combined lines
       data.prior_years.forEach((py, i) => {
         const pyPoint = priorMaps[i]?.get(wn)
-        row[`enrolled_${py.year}`] = pyPoint?.enrolled ?? null
+        row[`cancelled_${py.year}`] = pyPoint?.enrolled ?? null
       })
 
-      // Gender lines
       if (splitByGender) {
-        row['enrolled_boys'] = mMap.get(wn)?.enrolled ?? null
-        row['enrolled_girls'] = fMap.get(wn)?.enrolled ?? null
+        row['cancelled_boys'] = mMap.get(wn)?.enrolled ?? null
+        row['cancelled_girls'] = fMap.get(wn)?.enrolled ?? null
 
         for (const { year, map } of priorMGenderMaps) {
-          row[`enrolled_boys_${year}`] = map.get(wn)?.enrolled ?? null
+          row[`cancelled_boys_${year}`] = map.get(wn)?.enrolled ?? null
         }
         for (const { year, map } of priorFGenderMaps) {
-          row[`enrolled_girls_${year}`] = map.get(wn)?.enrolled ?? null
+          row[`cancelled_girls_${year}`] = map.get(wn)?.enrolled ?? null
         }
       }
 
@@ -171,8 +158,6 @@ export default function VelocityPage() {
     })
   }, [data, splitByGender])
 
-  // Sort by-session table using camp-then-quest ordering
-  // Must be before early returns to satisfy React hooks rules
   const sortedBySession = useMemo(() => {
     if (!data?.by_session?.length || !sessions.length) return data?.by_session ?? []
 
@@ -189,7 +174,6 @@ export default function VelocityPage() {
     return sortSessionDataByCampThenQuest(withNames, dateLookup, typeLookup)
   }, [data?.by_session, sessions])
 
-  // Build week_number -> label lookup for XAxis tick formatting
   const weekLabelMap = useMemo(() => {
     const map = new Map<number, string>()
     for (const pt of chartData) {
@@ -200,7 +184,6 @@ export default function VelocityPage() {
     return map
   }, [chartData])
 
-  // Phase lines with week_number for X-axis positioning
   const phaseLines = useMemo(() => {
     if (!data?.phase_markers) return []
     return data.phase_markers
@@ -211,26 +194,7 @@ export default function VelocityPage() {
       }))
   }, [data?.phase_markers])
 
-  // Build prior year session summary map keyed by canonical session name
-  const priorSessionMap = useMemo(() => {
-    const map = new Map<
-      string,
-      { enrolled_at_current_week: number | null; final_enrolled: number; year: number }
-    >()
-    for (const summary of data?.prior_year_session_summaries ?? []) {
-      if (summary.session_name) {
-        const canonical = resolveSessionAlias(summary.session_name)
-        map.set(canonical, {
-          enrolled_at_current_week: summary.enrolled_at_current_week,
-          final_enrolled: summary.final_enrolled,
-          year: summary.year,
-        })
-      }
-    }
-    return map
-  }, [data?.prior_year_session_summaries])
-
-  // Build prior year week map for delta table
+  // Prior year week map for delta table
   const priorWeekMap = useMemo(() => {
     if (!data?.prior_years?.length) return null
     const py = data.prior_years[0]
@@ -246,8 +210,7 @@ export default function VelocityPage() {
 
     const currentLatest = currentWeekly[currentWeekly.length - 1]
     if (!currentLatest) return null
-    const currentMaxWeek = currentLatest.week_number
-    const currentEnrolled = currentLatest.enrolled
+    const currentCancelled = currentLatest.enrolled // repurposed for cancellation count
 
     let priorAtWeek: number | null = null
     let priorFinal: number | null = null
@@ -258,28 +221,18 @@ export default function VelocityPage() {
       if (py) {
         priorYear = py.year
         const pyMap = new Map(py.weekly.map((d) => [d.week_number, d]))
-        priorAtWeek = pyMap.get(currentMaxWeek)?.enrolled ?? null
+        priorAtWeek = pyMap.get(currentLatest.week_number)?.enrolled ?? null
         const pyLast = py.weekly[py.weekly.length - 1]
         priorFinal = pyLast?.enrolled ?? null
       }
     }
 
-    const delta = priorAtWeek != null ? currentEnrolled - priorAtWeek : null
-
-    const cancelledToDate = data.cancelled_to_date
-    const priorCancelled =
-      data.prior_year_cancelled_to_date?.length > 0 ? data.prior_year_cancelled_to_date[0] : null
-
     return {
-      currentEnrolled,
-      currentWeekNumber: currentMaxWeek,
+      currentCancelled,
+      currentWeekNumber: currentLatest.week_number,
       priorAtWeek,
       priorFinal,
       priorYear,
-      delta,
-      cancelledToDate,
-      priorCancelledAtWeek: priorCancelled?.cancelled_at_current_week ?? null,
-      priorCancelledFinal: priorCancelled?.cancelled_final ?? null,
     }
   }, [data])
 
@@ -287,7 +240,7 @@ export default function VelocityPage() {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="text-primary h-8 w-8 animate-spin" />
-        <span className="text-muted-foreground ml-2">Loading velocity data...</span>
+        <span className="text-muted-foreground ml-2">Loading cancellation data...</span>
       </div>
     )
   }
@@ -296,7 +249,7 @@ export default function VelocityPage() {
     return (
       <div className="flex items-center justify-center py-12 text-red-600 dark:text-red-400">
         <AlertCircle className="mr-2 h-6 w-6" />
-        <span>Failed to load velocity data: {error.message}</span>
+        <span>Failed to load cancellation data: {error.message}</span>
       </div>
     )
   }
@@ -304,14 +257,13 @@ export default function VelocityPage() {
   if (!data || data.combined.weekly.length === 0) {
     return (
       <div className="text-muted-foreground flex items-center justify-center py-12">
-        No velocity data available. Enrollment snapshots or attendee dates are needed.
+        No cancellation velocity data available. Status history or enrollment snapshots are needed.
       </div>
     )
   }
 
   const togglePriorYear = (year: number) => {
     if (splitByGender) {
-      // When gender split is on, only allow 1 prior year
       setSelectedPriorYears((prev) => (prev.includes(year) ? [] : [year]))
     } else {
       setSelectedPriorYears((prev) =>
@@ -322,25 +274,18 @@ export default function VelocityPage() {
 
   const handleGenderToggle = (enabled: boolean) => {
     setSplitByGender(enabled)
-    // When enabling gender, limit prior years to max 1
     if (enabled && selectedPriorYears.length > 1) {
       setSelectedPriorYears(selectedPriorYears.slice(0, 1))
     }
   }
 
-  // Build gender breakdown lookup for session table
-  const genderBreakdownMap = new Map(
-    (data.session_gender_breakdown ?? []).map((b) => [b.session_cm_id, b])
-  )
-
   const hasPriorYear = selectedPriorYears.length > 0
 
   return (
     <div className="space-y-6">
-      {/* Controls: Prior year checkboxes + Gender toggle */}
+      {/* Controls */}
       <div className="card-lodge p-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          {/* Prior year checkboxes */}
           {priorYearOptions.length > 0 && (
             <div>
               <h3 className="text-foreground mb-2 text-sm font-medium">Compare with prior years</h3>
@@ -375,7 +320,6 @@ export default function VelocityPage() {
             </div>
           )}
 
-          {/* Gender split toggle */}
           <label className="flex cursor-pointer items-center gap-2 text-sm">
             <input
               type="checkbox"
@@ -388,15 +332,15 @@ export default function VelocityPage() {
         </div>
       </div>
 
-      {/* Summary Comparison Cards */}
+      {/* Summary Cards */}
       {summaryCards && hasPriorYear && (
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           <div className="card-lodge p-3">
             <p className="text-muted-foreground text-xs font-medium">
-              Enrolled ({currentYear}, Wk {summaryCards.currentWeekNumber})
+              Cancelled ({currentYear}, Wk {summaryCards.currentWeekNumber})
             </p>
-            <p className="text-foreground text-xl font-bold">
-              {summaryCards.currentEnrolled.toLocaleString()}
+            <p className="text-xl font-bold text-red-600 dark:text-red-400">
+              {summaryCards.currentCancelled.toLocaleString()}
             </p>
           </div>
           <div className="card-lodge p-3">
@@ -408,53 +352,22 @@ export default function VelocityPage() {
             </p>
           </div>
           <div className="card-lodge p-3">
-            <p className="text-muted-foreground text-xs font-medium">vs {summaryCards.priorYear}</p>
-            <p
-              className={`text-xl font-bold ${
-                summaryCards.delta != null && summaryCards.delta > 0
-                  ? 'text-green-600 dark:text-green-400'
-                  : summaryCards.delta != null && summaryCards.delta < 0
-                    ? 'text-red-600 dark:text-red-400'
-                    : 'text-foreground'
-              }`}
-            >
-              {summaryCards.delta != null
-                ? `${summaryCards.delta > 0 ? '+' : ''}${summaryCards.delta}`
-                : '-'}
-            </p>
-          </div>
-          <div className="card-lodge p-3">
             <p className="text-muted-foreground text-xs font-medium">
-              {summaryCards.priorYear} Final
+              {summaryCards.priorYear} Final Cancelled
             </p>
             <p className="text-foreground text-xl font-bold">
               {summaryCards.priorFinal?.toLocaleString() ?? '-'}
             </p>
           </div>
-          <div className="card-lodge p-3">
-            <p className="text-muted-foreground text-xs font-medium">Cancelled to Date</p>
-            <p className="text-foreground text-xl font-bold">
-              {summaryCards.cancelledToDate?.toLocaleString() ?? '-'}
-            </p>
-          </div>
-          <div className="card-lodge p-3">
-            <p className="text-muted-foreground text-xs font-medium">
-              {summaryCards.priorYear} Cancelled at Wk {summaryCards.currentWeekNumber}
-            </p>
-            <p className="text-foreground text-xl font-bold">
-              {summaryCards.priorCancelledAtWeek?.toLocaleString() ?? '-'}
-            </p>
-          </div>
         </div>
       )}
 
-      {/* Enrollment Velocity Chart */}
+      {/* Cancellation Velocity Chart */}
       <div className="card-lodge p-4">
         <h3 className="text-foreground mb-2 text-base font-semibold">
-          Enrollment Velocity - {currentYear}
+          Cancellation Velocity - {currentYear}
         </h3>
 
-        {/* Phase marker legend */}
         {phaseLines.length > 0 && (
           <div className="mb-4 flex flex-wrap gap-4 text-xs">
             {phaseLines.map((phase) => (
@@ -533,7 +446,7 @@ export default function VelocityPage() {
               className="text-xs"
               tick={{ fill: 'hsl(var(--muted-foreground))' }}
               label={{
-                value: 'Cumulative Enrolled',
+                value: 'Cumulative Cancelled',
                 angle: -90,
                 position: 'insideLeft',
                 style: { fill: 'hsl(var(--muted-foreground))', fontSize: 12 },
@@ -559,7 +472,6 @@ export default function VelocityPage() {
             />
             <Legend />
 
-            {/* Brush for zoom/scrub */}
             <Brush
               dataKey="week_number"
               height={20}
@@ -568,7 +480,6 @@ export default function VelocityPage() {
               tickFormatter={(wn: number) => weekLabelMap.get(wn) ?? `Wk${wn}`}
             />
 
-            {/* Phase marker vertical lines (no inline labels) */}
             {phaseLines.map((phase) => (
               <ReferenceLine
                 key={phase.phase}
@@ -581,10 +492,9 @@ export default function VelocityPage() {
 
             {splitByGender ? (
               <>
-                {/* Gender split: boys + girls lines */}
                 <Line
                   type="monotone"
-                  dataKey="enrolled_boys"
+                  dataKey="cancelled_boys"
                   name={`Boys ${currentYear}`}
                   stroke={GENDER_COLORS.boys}
                   strokeWidth={3}
@@ -594,7 +504,7 @@ export default function VelocityPage() {
                 />
                 <Line
                   type="monotone"
-                  dataKey="enrolled_girls"
+                  dataKey="cancelled_girls"
                   name={`Girls ${currentYear}`}
                   stroke={GENDER_COLORS.girls}
                   strokeWidth={3}
@@ -602,13 +512,12 @@ export default function VelocityPage() {
                   activeDot={{ r: 4 }}
                   connectNulls={false}
                 />
-                {/* Prior year gender lines (dashed) */}
                 {selectedPriorYears.slice(0, 1).map((year) => (
                   <>
                     <Line
                       key={`boys_${year}`}
                       type="monotone"
-                      dataKey={`enrolled_boys_${year}`}
+                      dataKey={`cancelled_boys_${year}`}
                       name={`Boys ${year}`}
                       stroke={GENDER_COLORS.boys}
                       strokeWidth={2}
@@ -620,7 +529,7 @@ export default function VelocityPage() {
                     <Line
                       key={`girls_${year}`}
                       type="monotone"
-                      dataKey={`enrolled_girls_${year}`}
+                      dataKey={`cancelled_girls_${year}`}
                       name={`Girls ${year}`}
                       stroke={GENDER_COLORS.girls}
                       strokeWidth={2}
@@ -634,23 +543,21 @@ export default function VelocityPage() {
               </>
             ) : (
               <>
-                {/* Combined: single enrollment line */}
                 <Line
                   type="monotone"
-                  dataKey="enrolled"
+                  dataKey="cancelled"
                   name={String(currentYear)}
-                  stroke="hsl(160, 100%, 35%)"
+                  stroke="hsl(0, 75%, 50%)"
                   strokeWidth={3}
                   dot={false}
                   activeDot={{ r: 5 }}
                   connectNulls={false}
                 />
-                {/* Prior year lines */}
                 {data.prior_years.map((py, i) => (
                   <Line
                     key={py.year}
                     type="monotone"
-                    dataKey={`enrolled_${py.year}`}
+                    dataKey={`cancelled_${py.year}`}
                     name={String(py.year)}
                     stroke={PRIOR_YEAR_COLORS[i % PRIOR_YEAR_COLORS.length] ?? 'hsl(220, 60%, 65%)'}
                     strokeWidth={2}
@@ -666,41 +573,18 @@ export default function VelocityPage() {
         </ResponsiveContainer>
       </div>
 
-      {/* Per-Session Breakdown */}
+      {/* Per-Session Cancellation Breakdown */}
       {sortedBySession.length > 1 && (
         <div className="card-lodge p-4">
-          <h3 className="text-foreground mb-4 text-base font-semibold">By Session</h3>
+          <h3 className="text-foreground mb-4 text-base font-semibold">Cancellations by Session</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-border bg-muted/30 border-b">
                   <th className="text-muted-foreground px-4 py-3 text-left font-medium">Session</th>
-                  {splitByGender && (
-                    <>
-                      <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                        Boys
-                      </th>
-                      <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                        Girls
-                      </th>
-                    </>
-                  )}
                   <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                    {splitByGender ? 'Total' : 'Latest Enrolled'}
+                    Total Cancelled
                   </th>
-                  {hasPriorYear && (
-                    <>
-                      <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                        Prior Yr{summaryCards ? ` (Wk ${summaryCards.currentWeekNumber})` : ''}
-                      </th>
-                      <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                        Prior Yr Final
-                      </th>
-                      <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                        vs Prior
-                      </th>
-                    </>
-                  )}
                   <th className="text-muted-foreground px-4 py-3 text-right font-medium">
                     Weeks Tracked
                   </th>
@@ -709,20 +593,6 @@ export default function VelocityPage() {
               <tbody>
                 {sortedBySession.map((session) => {
                   const lastPoint = session.weekly[session.weekly.length - 1]
-                  const genderData = session.session_cm_id
-                    ? genderBreakdownMap.get(session.session_cm_id)
-                    : undefined
-                  const currentEnrolled = lastPoint?.enrolled ?? 0
-
-                  // Prior year session lookup
-                  const canonical = session.session_name
-                    ? resolveSessionAlias(session.session_name)
-                    : null
-                  const priorSession = canonical ? priorSessionMap.get(canonical) : null
-
-                  const vsPrior =
-                    priorSession != null ? currentEnrolled - priorSession.final_enrolled : null
-
                   return (
                     <tr
                       key={session.session_cm_id}
@@ -731,48 +601,9 @@ export default function VelocityPage() {
                       <td className="text-foreground px-4 py-3 font-medium">
                         {session.session_name ?? `Session ${session.session_cm_id}`}
                       </td>
-                      {splitByGender && (
-                        <>
-                          <td
-                            className="px-4 py-3 text-right"
-                            style={{ color: GENDER_COLORS.boys }}
-                          >
-                            {genderData?.boys_enrolled?.toLocaleString() ?? '-'}
-                          </td>
-                          <td
-                            className="px-4 py-3 text-right"
-                            style={{ color: GENDER_COLORS.girls }}
-                          >
-                            {genderData?.girls_enrolled?.toLocaleString() ?? '-'}
-                          </td>
-                        </>
-                      )}
-                      <td className="text-foreground px-4 py-3 text-right">
-                        {currentEnrolled.toLocaleString()}
+                      <td className="px-4 py-3 text-right text-red-600 dark:text-red-400">
+                        {lastPoint?.enrolled?.toLocaleString() ?? 0}
                       </td>
-                      {hasPriorYear && (
-                        <>
-                          <td className="text-muted-foreground px-4 py-3 text-right">
-                            {priorSession?.enrolled_at_current_week?.toLocaleString() ?? '-'}
-                          </td>
-                          <td className="text-muted-foreground px-4 py-3 text-right">
-                            {priorSession?.final_enrolled?.toLocaleString() ?? '-'}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <span
-                              className={
-                                vsPrior != null && vsPrior > 0
-                                  ? 'text-green-600 dark:text-green-400'
-                                  : vsPrior != null && vsPrior < 0
-                                    ? 'text-red-600 dark:text-red-400'
-                                    : 'text-muted-foreground'
-                              }
-                            >
-                              {vsPrior != null ? `${vsPrior > 0 ? '+' : ''}${vsPrior}` : '-'}
-                            </span>
-                          </td>
-                        </>
-                      )}
                       <td className="text-muted-foreground px-4 py-3 text-right">
                         {session.weekly.length}
                       </td>
@@ -785,11 +616,11 @@ export default function VelocityPage() {
         </div>
       )}
 
-      {/* Week-over-Week Delta Table */}
+      {/* Week-over-Week Cancellation Delta Table */}
       <div className="card-lodge overflow-hidden">
         <div className="border-border border-b px-4 py-3">
           <h3 className="text-foreground text-base font-semibold">
-            Week-over-Week Enrollment Changes
+            Week-over-Week Cancellation Changes
           </h3>
         </div>
         <div className="overflow-x-auto">
@@ -827,16 +658,14 @@ export default function VelocityPage() {
                       <span
                         className={
                           week.delta > 0
-                            ? 'text-green-600 dark:text-green-400'
-                            : week.delta < 0
-                              ? 'text-red-600 dark:text-red-400'
-                              : 'text-muted-foreground'
+                            ? 'text-red-600 dark:text-red-400'
+                            : 'text-muted-foreground'
                         }
                       >
                         {week.delta > 0 ? `+${week.delta}` : week.delta}
                       </span>
                     </td>
-                    <td className="text-foreground px-4 py-3 text-right">
+                    <td className="px-4 py-3 text-right text-red-600 dark:text-red-400">
                       {week.enrolled.toLocaleString()}
                     </td>
                     {hasPriorYear && priorWeekMap && (
@@ -844,22 +673,12 @@ export default function VelocityPage() {
                         <td className="text-muted-foreground px-4 py-3 text-right">
                           {priorPoint?.enrolled?.toLocaleString() ?? '-'}
                         </td>
-                        <td className="px-4 py-3 text-right">
-                          <span
-                            className={
-                              priorPoint && priorPoint.delta > 0
-                                ? 'text-green-600 dark:text-green-400'
-                                : priorPoint && priorPoint.delta < 0
-                                  ? 'text-red-600 dark:text-red-400'
-                                  : 'text-muted-foreground'
-                            }
-                          >
-                            {priorPoint
-                              ? priorPoint.delta > 0
-                                ? `+${priorPoint.delta}`
-                                : priorPoint.delta
-                              : '-'}
-                          </span>
+                        <td className="text-muted-foreground px-4 py-3 text-right">
+                          {priorPoint
+                            ? priorPoint.delta > 0
+                              ? `+${priorPoint.delta}`
+                              : priorPoint.delta
+                            : '-'}
                         </td>
                       </>
                     )}

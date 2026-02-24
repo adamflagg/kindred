@@ -37,6 +37,24 @@ class SessionGenderBreakdown(BaseModel):
     girls_enrolled: int
 
 
+class PriorYearCancelledSummary(BaseModel):
+    year: int
+    cancelled_at_current_week: int | None = Field(
+        None, description="Cancelled count at same week as current year's latest"
+    )
+    cancelled_final: int = Field(description="Total cancelled for that year")
+
+
+class PriorYearSessionSummary(BaseModel):
+    year: int
+    session_name: str | None = None
+    session_cm_id: int | None = None
+    enrolled_at_current_week: int | None = Field(
+        None, description="Prior year enrollment at same week_number as current"
+    )
+    final_enrolled: int = Field(description="Last enrollment value for this session in prior year")
+
+
 class VelocityResponse(BaseModel):
     year: int
     season_start: str = Field(description="ISO date of season start (priority_reg - 7 days, or Nov 1 fallback)")
@@ -47,3 +65,6 @@ class VelocityResponse(BaseModel):
     prior_year_by_gender: list[VelocityCurve] = Field(default_factory=list, description="Prior year gender curves")
     phase_markers: list[PhaseMarker]
     session_gender_breakdown: list[SessionGenderBreakdown] = Field(default_factory=list)
+    cancelled_to_date: int | None = Field(None, description="Total cancellations for current year through latest week")
+    prior_year_cancelled_to_date: list[PriorYearCancelledSummary] = Field(default_factory=list)
+    prior_year_session_summaries: list[PriorYearSessionSummary] = Field(default_factory=list)

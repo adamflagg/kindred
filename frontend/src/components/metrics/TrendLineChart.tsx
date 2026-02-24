@@ -21,12 +21,14 @@ const COLORS = {
   returning: 'hsl(42, 92%, 50%)', // Gold
   male: 'hsl(200, 70%, 50%)', // Blue
   female: 'hsl(350, 70%, 50%)', // Red/Pink
+  cancelled: 'hsl(0, 70%, 50%)', // Red
+  cancellation_rate: 'hsl(0, 70%, 50%)', // Red
 }
 
 interface TrendLineChartProps {
   data: YearMetrics[]
   title: string
-  metric: 'total' | 'new_vs_returning' | 'gender'
+  metric: 'total' | 'new_vs_returning' | 'gender' | 'cancellation_rate'
   height?: number
   className?: string
 }
@@ -72,6 +74,14 @@ export function TrendLineChart({
         ...base,
         male: maleData?.count ?? 0,
         female: femaleData?.count ?? 0,
+      }
+    }
+
+    if (metric === 'cancellation_rate') {
+      return {
+        ...base,
+        cancelled: yearData.total_cancelled ?? 0,
+        cancellation_rate: yearData.cancellation_rate ?? 0,
       }
     }
 
@@ -227,6 +237,28 @@ export function TrendLineChart({
                 />
               </Line>
             </>
+          )}
+
+          {metric === 'cancellation_rate' && (
+            <Line
+              type="monotone"
+              dataKey="cancellation_rate"
+              name="Cancellation Rate %"
+              stroke={COLORS.cancellation_rate}
+              strokeWidth={2}
+              dot={{ fill: COLORS.cancellation_rate, strokeWidth: 2 }}
+              activeDot={{ r: 6 }}
+            >
+              <LabelList
+                dataKey="cancellation_rate"
+                position="top"
+                className="text-xs"
+                fill="hsl(var(--muted-foreground))"
+                formatter={(value) =>
+                  typeof value === 'number' ? `${value.toFixed(1)}%` : String(value ?? '')
+                }
+              />
+            </Line>
           )}
         </LineChart>
       </ResponsiveContainer>

@@ -278,6 +278,8 @@ export interface YearMetrics {
   by_gender: GenderBreakdown[]
   new_vs_returning: NewVsReturning
   by_first_year?: FirstYearBreakdown[]
+  total_cancelled?: number
+  cancellation_rate?: number
 }
 
 export interface HistoricalTrendsResponse {

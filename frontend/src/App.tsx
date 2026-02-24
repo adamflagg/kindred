@@ -57,6 +57,9 @@ const StaffCabinAnalysisPage = lazy(
 )
 const TrendsOverview = lazy(() => import('./pages/metrics/trends/TrendsOverview'))
 const VelocityPage = lazy(() => import('./pages/metrics/trends/VelocityPage'))
+const CancellationVelocityPage = lazy(
+  () => import('./pages/metrics/trends/CancellationVelocityPage')
+)
 
 // Loading skeleton component for route transitions
 function PageSkeleton() {
@@ -416,6 +419,16 @@ function App() {
                                   <ErrorBoundary>
                                     <Suspense fallback={<PageSkeleton />}>
                                       <VelocityPage />
+                                    </Suspense>
+                                  </ErrorBoundary>
+                                }
+                              />
+                              <Route
+                                path="trends/cancellations"
+                                element={
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <CancellationVelocityPage />
                                     </Suspense>
                                   </ErrorBoundary>
                                 }
