@@ -619,6 +619,121 @@ class TestJWTValidatorLogLevels:
                     assert "No signing key found" not in str(call)
 
 
+class TestJWTAlgorithmRestriction:
+    """Tests for JWT algorithm restriction (security hardening).
+
+    The JWTValidator should only accept RS256 tokens, not HS256.
+    Accepting HS256 alongside RS256 opens an algorithm confusion attack
+    where an attacker could sign a token with the RSA public key as an
+    HMAC secret.
+    """
+
+    def test_validate_token_only_accepts_rs256(
+        self, mock_oidc_discovery: dict[str, Any], mock_jwks: dict[str, Any]
+    ) -> None:
+        """Test that jwt.decode is called with only RS256, not HS256."""
+        with patch("httpx.get") as mock_get:
+            discovery_response = MagicMock()
+            discovery_response.json.return_value = mock_oidc_discovery
+            discovery_response.raise_for_status = MagicMock()
+
+            jwks_response = MagicMock()
+            jwks_response.json.return_value = mock_jwks
+            jwks_response.raise_for_status = MagicMock()
+
+            mock_get.side_effect = [discovery_response, jwks_response]
+
+            validator = JWTValidator("https://auth.example.com")
+
+            payload = {"sub": "user-123", "iss": "https://auth.example.com"}
+            token = create_mock_token(payload)
+
+            with patch("bunking.jwt_auth.jwt.decode") as mock_decode:
+                mock_decode.return_value = payload
+                validator.validate_token(token)
+
+                # Verify algorithms parameter only includes RS256
+                call_kwargs = mock_decode.call_args
+                algorithms = call_kwargs.kwargs.get("algorithms") or call_kwargs[1].get("algorithms")
+                assert algorithms == ["RS256"], f"Expected only RS256, got {algorithms}"
+                assert "HS256" not in algorithms
+
+
+class TestJWTAudienceVerification:
+    """Tests for JWT audience verification (security hardening).
+
+    The JWTValidator should verify the audience claim to prevent
+    cross-app token reuse from the same OIDC provider.
+    """
+
+    def test_validate_token_verifies_audience(
+        self, mock_oidc_discovery: dict[str, Any], mock_jwks: dict[str, Any]
+    ) -> None:
+        """Test that jwt.decode is called with verify_aud=True."""
+        with patch("httpx.get") as mock_get:
+            discovery_response = MagicMock()
+            discovery_response.json.return_value = mock_oidc_discovery
+            discovery_response.raise_for_status = MagicMock()
+
+            jwks_response = MagicMock()
+            jwks_response.json.return_value = mock_jwks
+            jwks_response.raise_for_status = MagicMock()
+
+            mock_get.side_effect = [discovery_response, jwks_response]
+
+            validator = JWTValidator("https://auth.example.com", audience="my-client-id")
+
+            payload = {
+                "sub": "user-123",
+                "iss": "https://auth.example.com",
+                "aud": "my-client-id",
+            }
+            token = create_mock_token(payload)
+
+            with patch("bunking.jwt_auth.jwt.decode") as mock_decode:
+                mock_decode.return_value = payload
+                validator.validate_token(token)
+
+                # Verify audience verification is enabled
+                call_kwargs = mock_decode.call_args
+                options = call_kwargs.kwargs.get("options") or call_kwargs[1].get("options")
+                assert options["verify_aud"] is True
+
+                # Verify audience is passed
+                audience = call_kwargs.kwargs.get("audience") or call_kwargs[1].get("audience")
+                assert audience == "my-client-id"
+
+    def test_validate_token_skips_audience_when_not_configured(
+        self, mock_oidc_discovery: dict[str, Any], mock_jwks: dict[str, Any]
+    ) -> None:
+        """Test that audience verification is disabled when no audience configured."""
+        with patch("httpx.get") as mock_get:
+            discovery_response = MagicMock()
+            discovery_response.json.return_value = mock_oidc_discovery
+            discovery_response.raise_for_status = MagicMock()
+
+            jwks_response = MagicMock()
+            jwks_response.json.return_value = mock_jwks
+            jwks_response.raise_for_status = MagicMock()
+
+            mock_get.side_effect = [discovery_response, jwks_response]
+
+            # No audience configured
+            validator = JWTValidator("https://auth.example.com")
+
+            payload = {"sub": "user-123", "iss": "https://auth.example.com"}
+            token = create_mock_token(payload)
+
+            with patch("bunking.jwt_auth.jwt.decode") as mock_decode:
+                mock_decode.return_value = payload
+                validator.validate_token(token)
+
+                # Verify audience verification is disabled when no audience set
+                call_kwargs = mock_decode.call_args
+                options = call_kwargs.kwargs.get("options") or call_kwargs[1].get("options")
+                assert options["verify_aud"] is False
+
+
 class TestPocketBaseTokenValidator:
     """Tests for PocketBaseTokenValidator class."""
 

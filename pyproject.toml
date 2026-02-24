@@ -57,7 +57,7 @@ dependencies = [
     "croniter>=2.0.0",
     # File processing
     "openpyxl>=3.1.0",
-    "PyPDF2>=3.0.0",
+    "pypdf>=4.0.0",
     # System
     "psutil>=5.9.0",
     "rapidfuzz>=3.14.3",

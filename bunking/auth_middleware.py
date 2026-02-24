@@ -10,6 +10,7 @@ import os
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import aiohttp
 from fastapi import Depends, HTTPException, Request
@@ -103,15 +104,18 @@ class AuthMiddleware(BaseHTTPMiddleware):
             issuer = os.getenv("OIDC_ISSUER")
             if not issuer:
                 raise ValueError("OIDC_ISSUER must be set in production mode")
-            self.jwt_validator = JWTValidator(issuer)
+            audience = os.getenv("OIDC_CLIENT_ID")
+            self.jwt_validator = JWTValidator(issuer, audience=audience)
 
             # Initialize PocketBase token validator as fallback
             # This handles tokens issued by PocketBase (not OIDC directly)
             pocketbase_url = os.getenv("POCKETBASE_URL", "http://127.0.0.1:8090")
 
             # Security: Validate POCKETBASE_URL is on trusted network
-            allowed_prefixes = ("http://127.0.0.1", "http://localhost", "http://pocketbase")
-            if not pocketbase_url.startswith(allowed_prefixes):
+            # Use urlparse to prevent prefix-spoofing (e.g. http://127.0.0.1.evil.com)
+            parsed = urlparse(pocketbase_url)
+            allowed_hostnames = {"127.0.0.1", "localhost", "pocketbase"}
+            if parsed.hostname not in allowed_hostnames:
                 raise ValueError(f"POCKETBASE_URL must be on trusted network, got: {pocketbase_url}")
 
             self.pb_token_validator = PocketBaseTokenValidator(pocketbase_url)
@@ -169,7 +173,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return None
 
         # Debug logging for claims before userinfo
-        logger.info(
+        logger.debug(
             f"JWT claims before userinfo: {json.dumps({k: v for k, v in claims.items() if k != '_pb_record'}, indent=2)}"
         )
 
@@ -177,7 +181,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         claims = await self._fetch_userinfo_if_needed(token, claims)
 
         # Debug logging for claims after userinfo
-        logger.info(f"Final claims after userinfo: {json.dumps(claims, indent=2)}")
+        logger.debug(f"Final claims after userinfo: {json.dumps(claims, indent=2)}")
 
         # Extract user info from claims
         username = claims.get("preferred_username") or claims.get("sub", "")

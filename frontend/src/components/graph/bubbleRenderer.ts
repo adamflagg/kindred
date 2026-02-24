@@ -198,18 +198,19 @@ export function drawBunkBubbles(
     labelEl.className = 'bunk-label-popper'
     labelEl.style.position = 'absolute'
     labelEl.style.zIndex = '1000'
-    labelEl.innerHTML = `
-      <div style="
-        background-color: ${bunkColor};
-        color: white;
-        padding: 4px 12px;
-        border-radius: 16px;
-        font-size: 12px;
-        font-weight: 600;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-        white-space: nowrap;
-      ">${bunkName}</div>
-    `
+    const innerDiv = document.createElement('div')
+    Object.assign(innerDiv.style, {
+      backgroundColor: bunkColor,
+      color: 'white',
+      padding: '4px 12px',
+      borderRadius: '16px',
+      fontSize: '12px',
+      fontWeight: '600',
+      boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+      whiteSpace: 'nowrap',
+    })
+    innerDiv.textContent = bunkName
+    labelEl.appendChild(innerDiv)
     document.body.appendChild(labelEl)
 
     // Create virtual element for Popper that tracks the node position
