@@ -601,7 +601,7 @@ export const AppLayout = () => {
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-3">
                 <span className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
-                  Year
+                  Season
                 </span>
                 <YearSelector />
                 <TourReplayButton tourId={tourId} onReplay={replay} />

@@ -24,8 +24,19 @@ import { useVelocity } from '../../../hooks/useVelocity'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import type { WeeklyDataPoint } from '../../../types/velocity'
+import {
+  sortSessionDataByCampThenQuest,
+  buildSessionDateLookup,
+  buildSessionTypeLookup,
+} from '../../../utils/sessionUtils'
 
-const PRIOR_YEAR_COLORS = ['hsl(220, 60%, 65%)', 'hsl(280, 50%, 60%)', 'hsl(35, 70%, 55%)']
+const PRIOR_YEAR_COLORS = [
+  'hsl(220, 60%, 65%)',
+  'hsl(280, 50%, 60%)',
+  'hsl(35, 70%, 55%)',
+  'hsl(340, 55%, 60%)',
+  'hsl(180, 50%, 45%)',
+]
 
 const PHASE_COLORS: Record<string, string> = {
   priority: 'hsl(270, 60%, 55%)',
@@ -33,8 +44,15 @@ const PHASE_COLORS: Record<string, string> = {
   open: 'hsl(140, 60%, 40%)',
 }
 
+const PHASE_LABEL_POSITIONS: Array<'top' | 'insideTopRight' | 'insideTop' | 'insideTopLeft'> = [
+  'top',
+  'insideTopRight',
+  'insideTop',
+  'insideTopLeft',
+]
+
 export default function VelocityPage() {
-  const { selectedSessionCmId, sessionTypesParam } = useMetricsSession()
+  const { selectedSessionCmId, sessionTypesParam, sessions } = useMetricsSession()
   const { currentYear, availableYears } = useCurrentYear()
   const [selectedPriorYears, setSelectedPriorYears] = useState<number[]>([])
 
@@ -49,33 +67,79 @@ export default function VelocityPage() {
     sessionTypes: sessionTypesParam,
   })
 
-  // Build unified chart data with all years aligned by week index
+  // Build unified chart data aligned by week_number (not index)
   const chartData = useMemo(() => {
     if (!data?.combined?.weekly?.length) return []
 
-    const maxWeeks = Math.max(
-      data.combined.weekly.length,
-      ...data.prior_years.map((py) => py.weekly.length)
+    // Build week_number -> data maps for current year
+    const currentMap = new Map(data.combined.weekly.map((w) => [w.week_number, w]))
+
+    // Build week_number -> data maps for each prior year
+    const priorMaps = data.prior_years.map(
+      (py) => new Map(py.weekly.map((w) => [w.week_number, w]))
     )
 
-    return Array.from({ length: maxWeeks }, (_, i) => {
-      const current = data.combined.weekly[i]
-      const row: Record<string, string | number> = {
-        week_label: current?.week_label ?? `Week ${i + 1}`,
-        week_start: current?.week_start ?? '',
-        enrolled: current?.enrolled ?? 0,
-        waitlisted: current?.waitlisted ?? 0,
-        delta: current?.delta ?? 0,
+    // Collect all week_numbers across all years
+    const allWeekNumbers = new Set<number>()
+    for (const wn of currentMap.keys()) allWeekNumbers.add(wn)
+    for (const pm of priorMaps) {
+      for (const wn of pm.keys()) allWeekNumbers.add(wn)
+    }
+
+    const sorted = [...allWeekNumbers].sort((a, b) => a - b)
+
+    return sorted.map((wn) => {
+      const current = currentMap.get(wn)
+      let weekLabel = current?.week_label ?? ''
+      const weekStart = current?.week_start ?? ''
+
+      // Fill week_label from prior year if current year doesn't have it
+      if (!weekLabel) {
+        for (const pm of priorMaps) {
+          const pw = pm.get(wn)
+          if (pw?.week_label) {
+            weekLabel = pw.week_label
+            break
+          }
+        }
+      }
+      if (!weekLabel) weekLabel = `Week ${wn}`
+
+      const row: Record<string, string | number | null> = {
+        week_number: wn,
+        week_label: weekLabel,
+        week_start: weekStart,
+        enrolled: current?.enrolled ?? null,
+        waitlisted: current?.waitlisted ?? null,
+        delta: current?.delta ?? null,
       }
 
-      data.prior_years.forEach((py) => {
-        const pyWeek = py.weekly[i]
-        row[`enrolled_${py.year}`] = pyWeek?.enrolled ?? 0
+      data.prior_years.forEach((py, i) => {
+        const pyWeek = priorMaps[i]?.get(wn)
+        row[`enrolled_${py.year}`] = pyWeek?.enrolled ?? null
       })
 
       return row
     })
   }, [data])
+
+  // Sort by-session table using camp-then-quest ordering
+  // Must be before early returns to satisfy React hooks rules
+  const sortedBySession = useMemo(() => {
+    if (!data?.by_session?.length || !sessions.length) return data?.by_session ?? []
+
+    const dateLookup = buildSessionDateLookup(sessions)
+    const typeLookup = buildSessionTypeLookup(sessions)
+
+    const withNames = data.by_session
+      .filter((s) => s.session_name != null)
+      .map((s) => ({
+        ...s,
+        session_name: s.session_name as string,
+      }))
+
+    return sortSessionDataByCampThenQuest(withNames, dateLookup, typeLookup)
+  }, [data?.by_session, sessions])
 
   if (isLoading) {
     return (
@@ -109,14 +173,13 @@ export default function VelocityPage() {
     )
   }
 
-  // Find phase marker x-axis positions (match to nearest week_start)
+  // Find phase marker x-axis positions (exact match on week_start since backend snaps to Monday)
   const phaseLines = data.phase_markers
-    .map((marker) => {
-      const weekIdx = data.combined.weekly.findIndex((w) => w.week_start >= marker.date)
-      if (weekIdx < 0) return null
-      const week = data.combined.weekly[weekIdx]
-      if (!week) return null
-      return { ...marker, weekLabel: week.week_label }
+    .map((marker, idx) => {
+      const match = chartData.find((pt) => pt['week_start'] === marker.date)
+      const weekLabel = match ? String(match['week_label']) : null
+      if (!weekLabel) return null
+      return { ...marker, weekLabel, labelIdx: idx }
     })
     .filter(Boolean)
 
@@ -127,7 +190,7 @@ export default function VelocityPage() {
         <div className="card-lodge p-4">
           <h3 className="text-foreground mb-2 text-sm font-medium">Compare with prior years</h3>
           <div className="flex flex-wrap gap-3">
-            {priorYearOptions.slice(0, 4).map((year) => (
+            {priorYearOptions.slice(0, 5).map((year) => (
               <label key={year} className="flex cursor-pointer items-center gap-2 text-sm">
                 <input
                   type="checkbox"
@@ -169,10 +232,12 @@ export default function VelocityPage() {
             <Tooltip
               content={({ active, payload, label }) => {
                 if (!active || !payload?.length) return null
+                const validPayload = payload.filter((entry) => entry.value != null)
+                if (!validPayload.length) return null
                 return (
                   <div className="bg-card border-border rounded-lg border p-3 shadow-lg">
                     <p className="text-foreground mb-1 font-medium">{label}</p>
-                    {payload.map((entry) => (
+                    {validPayload.map((entry) => (
                       <p key={entry.name} className="text-sm" style={{ color: entry.color }}>
                         {entry.name}: {Number(entry.value).toLocaleString()}
                       </p>
@@ -195,7 +260,7 @@ export default function VelocityPage() {
                     strokeWidth={2}
                     label={{
                       value: phase.label,
-                      position: 'top',
+                      position: PHASE_LABEL_POSITIONS[phase.labelIdx % PHASE_LABEL_POSITIONS.length] ?? 'top',
                       style: {
                         fill: PHASE_COLORS[phase.phase] ?? 'hsl(var(--muted-foreground))',
                         fontSize: 11,
@@ -214,6 +279,7 @@ export default function VelocityPage() {
               strokeWidth={3}
               dot={{ fill: 'hsl(160, 100%, 35%)', r: 4 }}
               activeDot={{ r: 6 }}
+              connectNulls={false}
             />
 
             {/* Prior year lines */}
@@ -228,6 +294,7 @@ export default function VelocityPage() {
                 strokeDasharray="5 5"
                 dot={false}
                 opacity={0.7}
+                connectNulls={false}
               />
             ))}
           </LineChart>
@@ -235,7 +302,7 @@ export default function VelocityPage() {
       </div>
 
       {/* Per-Session Breakdown */}
-      {data.by_session.length > 1 && (
+      {sortedBySession.length > 1 && (
         <div className="card-lodge p-4">
           <h3 className="text-foreground mb-4 text-base font-semibold">By Session</h3>
           <div className="overflow-x-auto">
@@ -252,7 +319,7 @@ export default function VelocityPage() {
                 </tr>
               </thead>
               <tbody>
-                {data.by_session.map((session) => {
+                {sortedBySession.map((session) => {
                   const lastWeek = session.weekly[session.weekly.length - 1]
                   return (
                     <tr
@@ -290,9 +357,8 @@ export default function VelocityPage() {
               <tr className="border-border bg-muted/30 border-b">
                 <th className="text-muted-foreground px-4 py-3 text-left font-medium">Week</th>
                 <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                  New Enrolled
+                  Change
                 </th>
-                <th className="text-muted-foreground px-4 py-3 text-right font-medium">Delta</th>
                 <th className="text-muted-foreground px-4 py-3 text-right font-medium">
                   Cumulative
                 </th>
@@ -306,9 +372,6 @@ export default function VelocityPage() {
                   className="border-border hover:bg-muted/20 border-b transition-colors last:border-0"
                 >
                   <td className="text-foreground px-4 py-3 font-medium">{week.week_label}</td>
-                  <td className="text-foreground px-4 py-3 text-right">
-                    {week.delta > 0 ? `+${week.delta}` : week.delta}
-                  </td>
                   <td className="px-4 py-3 text-right">
                     <span
                       className={

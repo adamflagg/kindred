@@ -7,6 +7,7 @@ export interface WeeklyDataPoint {
   waitlisted: number
   delta: number
   data_source: 'snapshot' | 'reconstructed'
+  week_number: number
 }
 
 export interface VelocityCurve {
@@ -24,6 +25,7 @@ export interface PhaseMarker {
 
 export interface VelocityResponse {
   year: number
+  season_start: string
   combined: VelocityCurve
   by_session: VelocityCurve[]
   prior_years: VelocityCurve[]
