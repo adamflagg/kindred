@@ -525,3 +525,92 @@ class TestPocketBaseUrlValidation:
                 finally:
                     if env_backup:
                         os.environ["POCKETBASE_URL"] = env_backup
+
+    def test_init_production_rejects_prefix_spoofed_pocketbase_url(self):
+        """Test that a URL like http://127.0.0.1.evil.com is rejected.
+
+        Simple prefix matching with startswith() would accept this URL.
+        The validation must parse the hostname properly.
+        """
+        app = MagicMock()
+
+        with patch("bunking.auth_middleware._is_docker_environment", return_value=False):
+            with patch.dict(
+                "os.environ",
+                {
+                    "OIDC_ISSUER": "https://auth.example.com",
+                    "POCKETBASE_URL": "http://127.0.0.1.evil.com:8090",
+                },
+            ):
+                with patch("bunking.auth_middleware.JWTValidator"):
+                    with pytest.raises(ValueError, match="POCKETBASE_URL must be on trusted network"):
+                        AuthMiddleware(app, "production", "admin")
+
+    def test_init_production_rejects_localhost_prefix_spoofed_url(self):
+        """Test that a URL like http://localhost.evil.com is rejected."""
+        app = MagicMock()
+
+        with patch("bunking.auth_middleware._is_docker_environment", return_value=False):
+            with patch.dict(
+                "os.environ",
+                {
+                    "OIDC_ISSUER": "https://auth.example.com",
+                    "POCKETBASE_URL": "http://localhost.evil.com:8090",
+                },
+            ):
+                with patch("bunking.auth_middleware.JWTValidator"):
+                    with pytest.raises(ValueError, match="POCKETBASE_URL must be on trusted network"):
+                        AuthMiddleware(app, "production", "admin")
+
+
+class TestClaimsLoggingLevel:
+    """Tests for JWT claims logging at appropriate levels.
+
+    JWT claims contain PII (email, username, groups). They should be
+    logged at DEBUG level, not INFO, to avoid PII in production logs.
+    """
+
+    @pytest.mark.asyncio
+    async def test_jwt_claims_logged_at_debug_not_info(self):
+        """Test that JWT claims are logged at DEBUG, not INFO level."""
+        app = MagicMock()
+
+        with patch("bunking.auth_middleware._is_docker_environment", return_value=False):
+            with patch.dict("os.environ", {"OIDC_ISSUER": "https://auth.example.com"}):
+                with patch("bunking.auth_middleware.JWTValidator") as mock_jwt:
+                    with patch("bunking.auth_middleware.PocketBaseTokenValidator") as mock_pb:
+                        mock_jwt.return_value.issuer = "https://auth.example.com"
+                        mock_jwt.return_value.validate_token.return_value = {
+                            "sub": "user-123",
+                            "email": "user@example.com",
+                            "preferred_username": "testuser",
+                            "name": "Test User",
+                            "groups": ["admin"],
+                        }
+                        mock_pb.return_value.validate_token.return_value = None
+                        middleware = AuthMiddleware(app, "production", "admin")
+
+        request = MagicMock()
+        request.headers = {"Authorization": "Bearer valid-token"}
+
+        with patch("bunking.auth_middleware.logger") as mock_logger:
+            # Mock userinfo fetch to be a no-op
+            middleware._fetch_userinfo_if_needed = AsyncMock(  # type: ignore[method-assign]
+                return_value={
+                    "sub": "user-123",
+                    "email": "user@example.com",
+                    "preferred_username": "testuser",
+                    "name": "Test User",
+                    "groups": ["admin"],
+                }
+            )
+
+            await middleware._extract_user_from_jwt(request)
+
+            # Claims should NOT be logged at INFO level
+            for call in mock_logger.info.call_args_list:
+                log_message = str(call)
+                assert "JWT claims" not in log_message, f"JWT claims should be logged at DEBUG, not INFO: {log_message}"
+                assert "Final claims" not in log_message, (
+                    f"Final claims should be logged at DEBUG, not INFO: {log_message}"
+                )
