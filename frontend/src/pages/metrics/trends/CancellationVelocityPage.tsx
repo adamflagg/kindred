@@ -227,7 +227,13 @@ export default function CancellationVelocityPage() {
       }
     }
 
-    return { currentCancelled, currentWeekNumber: currentLatest.week_number, priorAtWeek, priorFinal, priorYear }
+    return {
+      currentCancelled,
+      currentWeekNumber: currentLatest.week_number,
+      priorAtWeek,
+      priorFinal,
+      priorYear,
+    }
   }, [data])
 
   if (isLoading) {
@@ -570,16 +576,12 @@ export default function CancellationVelocityPage() {
       {/* Per-Session Cancellation Breakdown */}
       {sortedBySession.length > 1 && (
         <div className="card-lodge p-4">
-          <h3 className="text-foreground mb-4 text-base font-semibold">
-            Cancellations by Session
-          </h3>
+          <h3 className="text-foreground mb-4 text-base font-semibold">Cancellations by Session</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-border bg-muted/30 border-b">
-                  <th className="text-muted-foreground px-4 py-3 text-left font-medium">
-                    Session
-                  </th>
+                  <th className="text-muted-foreground px-4 py-3 text-left font-medium">Session</th>
                   <th className="text-muted-foreground px-4 py-3 text-right font-medium">
                     Total Cancelled
                   </th>

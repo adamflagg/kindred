@@ -268,9 +268,7 @@ export default function VelocityPage() {
 
     const cancelledToDate = data.cancelled_to_date
     const priorCancelled =
-      data.prior_year_cancelled_to_date?.length > 0
-        ? data.prior_year_cancelled_to_date[0]
-        : null
+      data.prior_year_cancelled_to_date?.length > 0 ? data.prior_year_cancelled_to_date[0] : null
 
     return {
       currentEnrolled,
@@ -770,9 +768,7 @@ export default function VelocityPage() {
                                     : 'text-muted-foreground'
                               }
                             >
-                              {vsPrior != null
-                                ? `${vsPrior > 0 ? '+' : ''}${vsPrior}`
-                                : '-'}
+                              {vsPrior != null ? `${vsPrior > 0 ? '+' : ''}${vsPrior}` : '-'}
                             </span>
                           </td>
                         </>

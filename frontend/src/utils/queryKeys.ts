@@ -196,7 +196,16 @@ export const queryKeys = {
     splitByGender?: boolean,
     metric?: string
   ) =>
-    ['metrics', 'velocity', year, sessionCmId, compareYears, sessionTypes, splitByGender, metric] as const,
+    [
+      'metrics',
+      'velocity',
+      year,
+      sessionCmId,
+      compareYears,
+      sessionTypes,
+      splitByGender,
+      metric,
+    ] as const,
 }
 
 /**

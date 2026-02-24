@@ -193,9 +193,7 @@ export default function TrendsOverview() {
                 <th className="text-muted-foreground px-4 py-3 text-right font-medium">
                   Cancelled
                 </th>
-                <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                  Cancel %
-                </th>
+                <th className="text-muted-foreground px-4 py-3 text-right font-medium">Cancel %</th>
               </tr>
             </thead>
             <tbody>
