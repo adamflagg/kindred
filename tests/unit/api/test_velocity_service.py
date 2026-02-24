@@ -10,6 +10,9 @@ Tests verify the enrollment velocity curve computation:
 - Weekly delta calculations
 - Data source labeling (snapshot vs reconstructed)
 - Dynamic season start from priority registration date
+- Cancelled-to-date summary fields
+- Prior year session summaries for enhanced tables
+- Cancellation velocity curves (metric='cancellation')
 """
 
 from __future__ import annotations
@@ -1034,3 +1037,410 @@ class TestDynamicSeasonStart:
         # Both should be within 1 week of each other (both near week 1)
         assert abs(current_first_wn - prior_first_wn) <= 1
         assert current_first_wn <= 2  # Near the start
+
+
+# ============================================================================
+# Phase 1: Cancelled-to-Date Summary Tests
+# ============================================================================
+
+
+class TestCancelledToDateSummary:
+    """Test cancelled_to_date and prior_year_cancelled_to_date in VelocityResponse."""
+
+    @pytest.mark.asyncio
+    async def test_cancelled_to_date_from_snapshots(self, service, mock_repository, sample_sessions):
+        """When snapshots include cancelled_count, cancelled_to_date should reflect
+        the latest snapshot's total cancellations."""
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20, cancelled=2),
+            create_mock_snapshot("2026-01-12", 1001, 2026, enrolled=30, cancelled=5),
+            create_mock_snapshot("2026-01-05", 1002, 2026, enrolled=15, cancelled=1),
+            create_mock_snapshot("2026-01-12", 1002, 2026, enrolled=25, cancelled=3),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        assert result.cancelled_to_date is not None
+        # Latest week: session 1001 cancelled=5, session 1002 cancelled=3 → total=8
+        assert result.cancelled_to_date == 8
+
+    @pytest.mark.asyncio
+    async def test_cancelled_to_date_from_reconstruction(self, service, mock_repository, sample_sessions):
+        """When using reconstruction, cancelled_to_date should count status transitions."""
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+        mock_repository.fetch_enrollment_snapshots.return_value = []
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2026-01-03"),
+            create_mock_attendee_with_date(102, 1001, "2026-01-04"),
+            create_mock_attendee_with_date(103, 1001, "2026-01-10"),
+        ]
+        mock_repository.fetch_status_transitions.return_value = [
+            create_mock_status_transition(102, 1001, "2026-01-12"),
+            create_mock_status_transition(103, 1001, "2026-01-15"),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        assert result.cancelled_to_date is not None
+        assert result.cancelled_to_date == 2
+
+    @pytest.mark.asyncio
+    async def test_cancelled_to_date_zero_when_no_cancellations(self, service, mock_repository, sample_sessions):
+        """When no cancellations, cancelled_to_date should be 0."""
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20, cancelled=0),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        assert result.cancelled_to_date == 0
+
+    @pytest.mark.asyncio
+    async def test_prior_year_cancelled_to_date(self, service, mock_repository):
+        """When compare_years provided, prior_year_cancelled_to_date should include
+        each prior year's cancellation data at the equivalent week."""
+        sessions_2026 = {1001: create_mock_session(1001, "Session 1", year=2026)}
+        sessions_2025 = {901: create_mock_session(901, "Session 1", year=2025)}
+
+        async def mock_fetch_sessions(year, **kwargs):
+            return sessions_2026 if year == 2026 else sessions_2025
+
+        mock_repository.fetch_sessions.side_effect = mock_fetch_sessions
+
+        async def mock_fetch_snapshots(year, **kwargs):
+            if year == 2026:
+                return [
+                    create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20, cancelled=3),
+                    create_mock_snapshot("2026-01-12", 1001, 2026, enrolled=30, cancelled=5),
+                ]
+            return [
+                create_mock_snapshot("2025-01-06", 901, 2025, enrolled=18, cancelled=2),
+                create_mock_snapshot("2025-01-13", 901, 2025, enrolled=28, cancelled=7),
+                create_mock_snapshot("2025-02-03", 901, 2025, enrolled=35, cancelled=10),
+            ]
+
+        mock_repository.fetch_enrollment_snapshots.side_effect = mock_fetch_snapshots
+
+        result = await service.get_velocity(year=2026, compare_years=[2025])
+
+        assert len(result.prior_year_cancelled_to_date) == 1
+        prior_summary = result.prior_year_cancelled_to_date[0]
+        assert prior_summary.year == 2025
+        # Final cancelled for prior year (last snapshot)
+        assert prior_summary.cancelled_final == 10
+
+    @pytest.mark.asyncio
+    async def test_prior_year_cancelled_empty_when_no_compare(self, service, mock_repository, sample_sessions):
+        """When no compare_years, prior_year_cancelled_to_date should be empty."""
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20, cancelled=3),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        assert result.prior_year_cancelled_to_date == []
+
+
+# ============================================================================
+# Phase 2: Prior Year Session Summaries Tests
+# ============================================================================
+
+
+class TestPriorYearSessionSummaries:
+    """Test prior_year_session_summaries for enhanced table columns."""
+
+    @pytest.mark.asyncio
+    async def test_prior_year_session_summaries_populated(self, service, mock_repository):
+        """When compare_years provided, should include per-session prior year data."""
+        sessions_2026 = {
+            1001: create_mock_session(1001, "Session 1", year=2026),
+            1002: create_mock_session(1002, "Session 2", year=2026),
+        }
+        sessions_2025 = {
+            901: create_mock_session(901, "Session 1", year=2025),
+            902: create_mock_session(902, "Session 2", year=2025),
+        }
+
+        async def mock_fetch_sessions(year, **kwargs):
+            return sessions_2026 if year == 2026 else sessions_2025
+
+        mock_repository.fetch_sessions.side_effect = mock_fetch_sessions
+
+        async def mock_fetch_snapshots(year, **kwargs):
+            if year == 2026:
+                return [
+                    create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20),
+                    create_mock_snapshot("2026-01-05", 1002, 2026, enrolled=15),
+                ]
+            return [
+                create_mock_snapshot("2025-01-06", 901, 2025, enrolled=18),
+                create_mock_snapshot("2025-01-06", 902, 2025, enrolled=12),
+                create_mock_snapshot("2025-02-03", 901, 2025, enrolled=25),
+                create_mock_snapshot("2025-02-03", 902, 2025, enrolled=20),
+            ]
+
+        mock_repository.fetch_enrollment_snapshots.side_effect = mock_fetch_snapshots
+
+        result = await service.get_velocity(year=2026, compare_years=[2025])
+
+        assert len(result.prior_year_session_summaries) > 0
+        # Should have entries for each prior year session
+        summaries_by_name = {s.session_name: s for s in result.prior_year_session_summaries}
+        assert "Session 1" in summaries_by_name
+        assert "Session 2" in summaries_by_name
+        # Final enrolled for Session 1 in 2025
+        assert summaries_by_name["Session 1"].final_enrolled == 25
+        assert summaries_by_name["Session 2"].final_enrolled == 20
+
+    @pytest.mark.asyncio
+    async def test_prior_year_session_summaries_enrolled_at_current_week(self, service, mock_repository):
+        """enrolled_at_current_week should match prior year enrollment at
+        the same week_number as current year's latest data."""
+        sessions_2026 = {1001: create_mock_session(1001, "Session 1", year=2026)}
+        sessions_2025 = {901: create_mock_session(901, "Session 1", year=2025)}
+
+        async def mock_fetch_sessions(year, **kwargs):
+            return sessions_2026 if year == 2026 else sessions_2025
+
+        mock_repository.fetch_sessions.side_effect = mock_fetch_sessions
+
+        async def mock_fetch_snapshots(year, **kwargs):
+            if year == 2026:
+                return [
+                    create_mock_snapshot("2025-11-03", 1001, 2026, enrolled=10),
+                    create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=30),
+                ]
+            return [
+                create_mock_snapshot("2024-11-04", 901, 2025, enrolled=8),
+                create_mock_snapshot("2025-01-06", 901, 2025, enrolled=28),
+                create_mock_snapshot("2025-03-03", 901, 2025, enrolled=45),
+            ]
+
+        mock_repository.fetch_enrollment_snapshots.side_effect = mock_fetch_snapshots
+
+        result = await service.get_velocity(year=2026, compare_years=[2025])
+
+        # Current year's latest week_number should be used to look up prior year
+        assert len(result.prior_year_session_summaries) > 0
+        s1_summary = result.prior_year_session_summaries[0]
+        assert s1_summary.year == 2025
+        # enrolled_at_current_week should be the prior year's enrollment at the matching week
+        assert s1_summary.enrolled_at_current_week is not None
+        # Final enrolled should be the last point
+        assert s1_summary.final_enrolled == 45
+
+    @pytest.mark.asyncio
+    async def test_prior_year_session_summaries_empty_without_compare(self, service, mock_repository, sample_sessions):
+        """Without compare_years, prior_year_session_summaries should be empty."""
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        assert result.prior_year_session_summaries == []
+
+
+# ============================================================================
+# Phase 3: Cancellation Velocity Curve Tests
+# ============================================================================
+
+
+class TestCancellationVelocityCurves:
+    """Test cancellation velocity curves via metric='cancellation' parameter."""
+
+    @pytest.mark.asyncio
+    async def test_cancellation_metric_returns_cancellation_curves(self, service, mock_repository, sample_sessions):
+        """When metric='cancellation', should return cumulative cancellation curves."""
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=50, cancelled=2),
+            create_mock_snapshot("2026-01-12", 1001, 2026, enrolled=55, cancelled=5),
+            create_mock_snapshot("2026-01-19", 1001, 2026, enrolled=58, cancelled=8),
+        ]
+
+        result = await service.get_velocity(year=2026, metric="cancellation")
+
+        assert result.combined is not None
+        assert len(result.combined.weekly) > 0
+        # Cancellation curves should show cumulative cancelled counts
+        points = result.combined.weekly
+        assert points[0].enrolled == 2  # "enrolled" field repurposed for cancelled count
+        assert points[1].enrolled == 5
+        assert points[2].enrolled == 8
+
+    @pytest.mark.asyncio
+    async def test_cancellation_metric_from_reconstruction(self, service, mock_repository, sample_sessions):
+        """When no snapshots, cancellation metric should use status_transitions."""
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+        mock_repository.fetch_enrollment_snapshots.return_value = []
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2026-01-03"),
+            create_mock_attendee_with_date(102, 1001, "2026-01-04"),
+        ]
+        mock_repository.fetch_status_transitions.return_value = [
+            create_mock_status_transition(101, 1001, "2026-01-12"),
+            create_mock_status_transition(102, 1001, "2026-01-20"),
+        ]
+
+        result = await service.get_velocity(year=2026, metric="cancellation")
+
+        assert result.combined is not None
+        assert len(result.combined.weekly) > 0
+        # Final point should show 2 cancellations
+        last_point = result.combined.weekly[-1]
+        assert last_point.enrolled == 2
+
+    @pytest.mark.asyncio
+    async def test_cancellation_metric_with_prior_year(self, service, mock_repository):
+        """Cancellation curves should support prior year overlay."""
+        sessions_2026 = {1001: create_mock_session(1001, "Session 1", year=2026)}
+        sessions_2025 = {901: create_mock_session(901, "Session 1", year=2025)}
+
+        async def mock_fetch_sessions(year, **kwargs):
+            return sessions_2026 if year == 2026 else sessions_2025
+
+        mock_repository.fetch_sessions.side_effect = mock_fetch_sessions
+
+        async def mock_fetch_snapshots(year, **kwargs):
+            if year == 2026:
+                return [
+                    create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=50, cancelled=3),
+                    create_mock_snapshot("2026-01-12", 1001, 2026, enrolled=55, cancelled=6),
+                ]
+            return [
+                create_mock_snapshot("2025-01-06", 901, 2025, enrolled=48, cancelled=2),
+                create_mock_snapshot("2025-01-13", 901, 2025, enrolled=52, cancelled=5),
+            ]
+
+        mock_repository.fetch_enrollment_snapshots.side_effect = mock_fetch_snapshots
+
+        result = await service.get_velocity(year=2026, compare_years=[2025], metric="cancellation")
+
+        assert len(result.prior_years) >= 1
+        prior = result.prior_years[0]
+        assert prior.year == 2025
+        assert len(prior.weekly) > 0
+        # Prior year cancellation counts
+        assert prior.weekly[-1].enrolled == 5
+
+    @pytest.mark.asyncio
+    async def test_cancellation_metric_per_session_breakdown(self, service, mock_repository, sample_sessions):
+        """Cancellation metric should produce per-session breakdown."""
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=50, cancelled=3),
+            create_mock_snapshot("2026-01-05", 1002, 2026, enrolled=40, cancelled=1),
+            create_mock_snapshot("2026-01-12", 1001, 2026, enrolled=55, cancelled=6),
+            create_mock_snapshot("2026-01-12", 1002, 2026, enrolled=45, cancelled=4),
+        ]
+
+        result = await service.get_velocity(year=2026, metric="cancellation")
+
+        assert len(result.by_session) == 2
+        # Combined should sum cancellations
+        assert result.combined.weekly[-1].enrolled == 10  # 6 + 4
+
+    @pytest.mark.asyncio
+    async def test_default_metric_is_enrollment(self, service, mock_repository, sample_sessions):
+        """Without metric parameter, should return enrollment curves (existing behavior)."""
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20, cancelled=2),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        # Default: enrollment curves, not cancellation
+        assert result.combined.weekly[0].enrolled == 20
+
+
+# ============================================================================
+# Phase 4: Historical Cancellation Metrics Tests
+# ============================================================================
+
+
+class TestHistoricalCancellationMetrics:
+    """Test cancellation counts in historical trends response."""
+
+    @pytest.mark.asyncio
+    async def test_year_metrics_include_cancellation_fields(self):
+        """YearMetrics should include total_cancelled and cancellation_rate."""
+        from api.schemas.metrics import YearMetrics
+
+        ym = YearMetrics(
+            year=2026,
+            total_enrolled=100,
+            by_gender=[],
+            new_vs_returning=Mock(
+                new_count=30,
+                returning_count=70,
+                new_percentage=30.0,
+                returning_percentage=70.0,
+            ),
+            total_cancelled=15,
+            cancellation_rate=13.04,
+        )
+        assert ym.total_cancelled == 15
+        assert ym.cancellation_rate == 13.04
+
+    @pytest.mark.asyncio
+    async def test_year_metrics_defaults_to_zero_cancelled(self):
+        """YearMetrics total_cancelled should default to 0."""
+        from api.schemas.metrics import YearMetrics
+
+        ym = YearMetrics(
+            year=2026,
+            total_enrolled=100,
+            by_gender=[],
+            new_vs_returning=Mock(
+                new_count=30,
+                returning_count=70,
+                new_percentage=30.0,
+                returning_percentage=70.0,
+            ),
+        )
+        assert ym.total_cancelled == 0
+        assert ym.cancellation_rate == 0.0
+
+    @pytest.mark.asyncio
+    async def test_historical_service_includes_cancellations(self):
+        """HistoricalService should populate cancellation fields per year."""
+        from api.services.historical_service import HistoricalService
+
+        mock_repo = AsyncMock()
+
+        # Mock camper_history for 2 years
+        mock_history_2025 = [
+            Mock(gender="M", years_at_camp=1, first_year_attended=2025),
+            Mock(gender="F", years_at_camp=2, first_year_attended=2024),
+        ]
+        mock_history_2026 = [
+            Mock(gender="M", years_at_camp=2, first_year_attended=2025),
+            Mock(gender="F", years_at_camp=1, first_year_attended=2026),
+            Mock(gender="M", years_at_camp=3, first_year_attended=2024),
+        ]
+
+        async def mock_fetch_history(year, **kwargs):
+            return mock_history_2025 if year == 2025 else mock_history_2026
+
+        mock_repo.fetch_camper_history.side_effect = mock_fetch_history
+
+        # Mock cancellation count
+        async def mock_fetch_cancellation_count(year, **kwargs):
+            return 5 if year == 2025 else 8
+
+        mock_repo.fetch_cancellation_count = mock_fetch_cancellation_count
+
+        svc = HistoricalService(mock_repo)
+        result = await svc.calculate_historical_trends(years=[2025, 2026])
+
+        assert len(result.years) == 2
+        # Each year should have cancellation data
+        for ym in result.years:
+            assert hasattr(ym, "total_cancelled")
+            assert hasattr(ym, "cancellation_rate")
