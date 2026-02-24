@@ -1,13 +1,13 @@
 /** Types for registration velocity API response */
 
-export interface VelocityDataPoint {
-  date: string
-  label: string
+export interface WeeklyDataPoint {
+  week_start: string
+  week_label: string
+  week_number: number
   enrolled: number
   waitlisted: number
   delta: number
   data_source: 'snapshot' | 'reconstructed'
-  day_number: number
 }
 
 export interface VelocityCurve {
@@ -15,14 +15,14 @@ export interface VelocityCurve {
   session_cm_id: number | null
   session_name: string | null
   gender: string | null
-  data: VelocityDataPoint[]
+  weekly: WeeklyDataPoint[]
 }
 
 export interface PhaseMarker {
   phase: string
   date: string
   label: string
-  day_number: number
+  week_number: number
 }
 
 export interface SessionGenderBreakdown {
