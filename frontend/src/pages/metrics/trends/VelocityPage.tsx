@@ -274,6 +274,7 @@ export default function VelocityPage() {
 
     return {
       currentEnrolled,
+      currentWeekNumber: currentMaxWeek,
       priorAtWeek,
       priorFinal,
       priorYear,
@@ -393,21 +394,23 @@ export default function VelocityPage() {
       {summaryCards && hasPriorYear && (
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
           <div className="card-lodge p-3">
-            <p className="text-muted-foreground text-xs font-medium">Enrolled ({currentYear})</p>
+            <p className="text-muted-foreground text-xs font-medium">
+              Enrolled ({currentYear}, Wk {summaryCards.currentWeekNumber})
+            </p>
             <p className="text-foreground text-xl font-bold">
               {summaryCards.currentEnrolled.toLocaleString()}
             </p>
           </div>
           <div className="card-lodge p-3">
             <p className="text-muted-foreground text-xs font-medium">
-              At This Week ({summaryCards.priorYear})
+              {summaryCards.priorYear} at Wk {summaryCards.currentWeekNumber}
             </p>
             <p className="text-foreground text-xl font-bold">
               {summaryCards.priorAtWeek?.toLocaleString() ?? '-'}
             </p>
           </div>
           <div className="card-lodge p-3">
-            <p className="text-muted-foreground text-xs font-medium">vs Last Year</p>
+            <p className="text-muted-foreground text-xs font-medium">vs {summaryCards.priorYear}</p>
             <p
               className={`text-xl font-bold ${
                 summaryCards.delta != null && summaryCards.delta > 0
@@ -438,7 +441,7 @@ export default function VelocityPage() {
           </div>
           <div className="card-lodge p-3">
             <p className="text-muted-foreground text-xs font-medium">
-              {summaryCards.priorYear} Cancelled
+              {summaryCards.priorYear} Cancelled at Wk {summaryCards.currentWeekNumber}
             </p>
             <p className="text-foreground text-xl font-bold">
               {summaryCards.priorCancelledAtWeek?.toLocaleString() ?? '-'}
@@ -690,7 +693,7 @@ export default function VelocityPage() {
                   {hasPriorYear && (
                     <>
                       <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                        Prior Yr (this week)
+                        Prior Yr{summaryCards ? ` (Wk ${summaryCards.currentWeekNumber})` : ''}
                       </th>
                       <th className="text-muted-foreground px-4 py-3 text-right font-medium">
                         Prior Yr Final

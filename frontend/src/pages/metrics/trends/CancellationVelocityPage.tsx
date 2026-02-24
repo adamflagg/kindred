@@ -227,7 +227,7 @@ export default function CancellationVelocityPage() {
       }
     }
 
-    return { currentCancelled, priorAtWeek, priorFinal, priorYear }
+    return { currentCancelled, currentWeekNumber: currentLatest.week_number, priorAtWeek, priorFinal, priorYear }
   }, [data])
 
   if (isLoading) {
@@ -331,7 +331,7 @@ export default function CancellationVelocityPage() {
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           <div className="card-lodge p-3">
             <p className="text-muted-foreground text-xs font-medium">
-              Cancelled to Date ({currentYear})
+              Cancelled ({currentYear}, Wk {summaryCards.currentWeekNumber})
             </p>
             <p className="text-xl font-bold text-red-600 dark:text-red-400">
               {summaryCards.currentCancelled.toLocaleString()}
@@ -339,7 +339,7 @@ export default function CancellationVelocityPage() {
           </div>
           <div className="card-lodge p-3">
             <p className="text-muted-foreground text-xs font-medium">
-              At This Week ({summaryCards.priorYear})
+              {summaryCards.priorYear} at Wk {summaryCards.currentWeekNumber}
             </p>
             <p className="text-foreground text-xl font-bold">
               {summaryCards.priorAtWeek?.toLocaleString() ?? '-'}
