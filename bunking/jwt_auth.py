@@ -116,8 +116,9 @@ class PocketBaseTokenValidator:
 class JWTValidator:
     """Validates JWT tokens against OIDC provider JWKS."""
 
-    def __init__(self, issuer: str):
+    def __init__(self, issuer: str, audience: str | None = None):
         self.issuer = issuer.rstrip("/")
+        self.audience = audience
         self.jwks_uri: str | None = None
         self.jwks_cache: dict[str, Any] | None = None
         self.jwks_cache_time: float = 0
@@ -219,21 +220,22 @@ class JWTValidator:
 
             # Validate token
             logger.debug(f"Validating token with issuer: {self.issuer}")
+            decode_kwargs: dict[str, Any] = {
+                "algorithms": ["RS256"],
+                "issuer": self.issuer,
+                "options": {
+                    "verify_exp": True,
+                    "verify_iat": True,
+                    "verify_nbf": True,
+                    "verify_iss": True,
+                    "verify_aud": self.audience is not None,
+                },
+            }
+            if self.audience is not None:
+                decode_kwargs["audience"] = self.audience
             claims = cast(
                 dict[str, Any],
-                jwt.decode(
-                    token,
-                    signing_key,
-                    algorithms=["RS256", "HS256"],
-                    issuer=self.issuer,
-                    options={
-                        "verify_exp": True,
-                        "verify_iat": True,
-                        "verify_nbf": True,
-                        "verify_iss": True,
-                        "verify_aud": False,  # Not all OIDC providers set audience
-                    },
-                ),
+                jwt.decode(token, signing_key, **decode_kwargs),
             )
             logger.debug(f"Token validated successfully, sub: {claims.get('sub')}")
 

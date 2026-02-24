@@ -156,6 +156,14 @@ function transformBrandingHtml(): Plugin {
 // Build-time Defines
 // =============================================================================
 
+// Security: Block VITE_DISABLE_AUTH in production builds to prevent credential leakage
+if (process.env.VITE_DISABLE_AUTH === 'true' && process.env.NODE_ENV === 'production') {
+  throw new Error(
+    'SECURITY ERROR: VITE_DISABLE_AUTH=true is not allowed in production builds. ' +
+    'Admin credentials would be embedded in the JavaScript bundle.'
+  )
+}
+
 // Expose PocketBase admin credentials when VITE_DISABLE_AUTH is set (for Playwright testing)
 const testAuthDefines = process.env.VITE_DISABLE_AUTH === 'true' ? {
   'import.meta.env.VITE_ADMIN_EMAIL': JSON.stringify(process.env.POCKETBASE_ADMIN_EMAIL || ''),

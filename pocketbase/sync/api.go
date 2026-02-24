@@ -561,10 +561,17 @@ func readCSVFromMultipart(form *multipart.Reader) (*csvUploadResult, error) {
 
 		if part.FormName() == "file" {
 			result.filename = part.FileName()
-			result.data, err = io.ReadAll(part)
+			// Limit CSV upload to 50MB to prevent OOM from oversized uploads
+			const maxCSVSize = 50 * 1024 * 1024
+			limitedReader := io.LimitReader(part, maxCSVSize+1)
+			result.data, err = io.ReadAll(limitedReader)
 			if err != nil {
 				_ = part.Close()
 				return nil, fmt.Errorf("error reading CSV file")
+			}
+			if len(result.data) > maxCSVSize {
+				_ = part.Close()
+				return nil, fmt.Errorf("CSV file exceeds maximum size of 50MB")
 			}
 		}
 		if err := part.Close(); err != nil {
