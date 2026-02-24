@@ -158,11 +158,6 @@ export default function CancellationVelocityPage() {
     })
   }, [data, splitByGender])
 
-  const visibleData = useMemo(() => {
-    if (!zoomRange) return chartData
-    return chartData.slice(zoomRange[0], zoomRange[1] + 1)
-  }, [chartData, zoomRange])
-
   const sortedBySession = useMemo(() => {
     if (!data?.by_session?.length || !sessions.length) return data?.by_session ?? []
 
@@ -430,7 +425,7 @@ export default function CancellationVelocityPage() {
         )}
 
         <ResponsiveContainer width="100%" height={380}>
-          <LineChart data={visibleData} margin={{ top: 20, right: 30, left: 20, bottom: 35 }}>
+          <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 35 }}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
             <XAxis
               dataKey="week_number"
@@ -476,11 +471,6 @@ export default function CancellationVelocityPage() {
               height={20}
               stroke="hsl(var(--primary))"
               {...(zoomRange ? { startIndex: zoomRange[0], endIndex: zoomRange[1] } : {})}
-              onChange={({ startIndex, endIndex }) => {
-                if (startIndex != null && endIndex != null) {
-                  setZoomRange([startIndex, endIndex])
-                }
-              }}
               tickFormatter={(wn: number) => weekLabelMap.get(wn) ?? `Wk${wn}`}
             />
 
