@@ -1,12 +1,13 @@
 /**
- * VelocityPage - Registration velocity curves with week-over-week enrollment data.
+ * VelocityPage - Registration velocity curves with day-over-day enrollment data.
  *
  * Shows:
  * - Cumulative enrollment line chart (current year + optional prior year overlays)
  * - Optional gender split (boys/girls lines instead of combined)
  * - Vertical phase markers for priority/early/open registration dates
+ * - Color-coded phase marker legend below chart title
  * - Per-session breakdown table with optional gender columns
- * - Week-over-week delta table
+ * - Week-over-week delta table (daily data re-aggregated to weekly)
  */
 
 import { useMemo, useState } from 'react'
@@ -25,7 +26,7 @@ import { Loader2, AlertCircle } from 'lucide-react'
 import { useVelocity } from '../../../hooks/useVelocity'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
-import type { WeeklyDataPoint } from '../../../types/velocity'
+import type { VelocityDataPoint } from '../../../types/velocity'
 import {
   sortSessionDataByCampThenQuest,
   buildSessionDateLookup,
@@ -51,12 +52,46 @@ const PHASE_COLORS: Record<string, string> = {
   open: 'hsl(140, 60%, 40%)',
 }
 
-const PHASE_LABEL_POSITIONS: Array<'top' | 'insideTopRight' | 'insideTop' | 'insideTopLeft'> = [
-  'top',
-  'insideTopRight',
-  'insideTop',
-  'insideTopLeft',
-]
+/** Re-aggregate daily data into weekly summaries for the delta table. */
+function aggregateDailyToWeekly(data: VelocityDataPoint[]): VelocityDataPoint[] {
+  if (!data.length) return []
+
+  // Group by week index (7-day buckets from day_number)
+  const weekGroups = new Map<number, VelocityDataPoint[]>()
+  for (const point of data) {
+    const weekIdx = Math.floor(point.day_number / 7)
+    const group = weekGroups.get(weekIdx)
+    if (group) {
+      group.push(point)
+    } else {
+      weekGroups.set(weekIdx, [point])
+    }
+  }
+
+  // Take last point of each week, compute week-over-week delta
+  const weeks: VelocityDataPoint[] = []
+  let prevEnrolled = 0
+
+  for (const weekIdx of [...weekGroups.keys()].sort((a, b) => a - b)) {
+    const group = weekGroups.get(weekIdx)
+    if (!group?.length) continue
+    const lastPoint = group[group.length - 1]
+    if (!lastPoint) continue
+    const delta = lastPoint.enrolled - prevEnrolled
+    weeks.push({
+      date: lastPoint.date,
+      label: lastPoint.label,
+      enrolled: lastPoint.enrolled,
+      waitlisted: lastPoint.waitlisted,
+      data_source: lastPoint.data_source,
+      day_number: lastPoint.day_number,
+      delta,
+    })
+    prevEnrolled = lastPoint.enrolled
+  }
+
+  return weeks
+}
 
 export default function VelocityPage() {
   const { selectedSessionCmId, sessionTypesParam, sessions } = useMetricsSession()
@@ -76,72 +111,71 @@ export default function VelocityPage() {
     splitByGender,
   })
 
-  // Build unified chart data aligned by week_number (not index)
+  // Build unified chart data aligned by day_number (not index)
   const chartData = useMemo(() => {
-    if (!data?.combined?.weekly?.length) return []
+    if (!data?.combined?.data?.length) return []
 
-    // Build week_number -> data maps for current year
-    const currentMap = new Map(data.combined.weekly.map((w) => [w.week_number, w]))
+    // Build day_number -> data maps for current year
+    const currentMap = new Map(data.combined.data.map((d) => [d.day_number, d]))
 
-    // Build week_number -> data maps for each prior year
+    // Build day_number -> data maps for each prior year
     const priorMaps = data.prior_years.map(
-      (py) => new Map(py.weekly.map((w) => [w.week_number, w]))
+      (py) => new Map(py.data.map((d) => [d.day_number, d]))
     )
 
     // Build gender maps
     const mCurve = data.by_gender?.find((c) => c.gender === 'M')
     const fCurve = data.by_gender?.find((c) => c.gender === 'F')
-    const mMap = mCurve ? new Map(mCurve.weekly.map((w) => [w.week_number, w])) : new Map()
-    const fMap = fCurve ? new Map(fCurve.weekly.map((w) => [w.week_number, w])) : new Map()
+    const mMap = mCurve ? new Map(mCurve.data.map((d) => [d.day_number, d])) : new Map()
+    const fMap = fCurve ? new Map(fCurve.data.map((d) => [d.day_number, d])) : new Map()
 
     // Build prior year gender maps
     const priorMGender = data.prior_year_by_gender?.filter((c) => c.gender === 'M') ?? []
     const priorFGender = data.prior_year_by_gender?.filter((c) => c.gender === 'F') ?? []
     const priorMGenderMaps = priorMGender.map(
-      (c) => ({ year: c.year, map: new Map(c.weekly.map((w) => [w.week_number, w])) })
+      (c) => ({ year: c.year, map: new Map(c.data.map((d) => [d.day_number, d])) })
     )
     const priorFGenderMaps = priorFGender.map(
-      (c) => ({ year: c.year, map: new Map(c.weekly.map((w) => [w.week_number, w])) })
+      (c) => ({ year: c.year, map: new Map(c.data.map((d) => [d.day_number, d])) })
     )
 
-    // Collect all week_numbers across all years and gender curves
-    const allWeekNumbers = new Set<number>()
-    for (const wn of currentMap.keys()) allWeekNumbers.add(wn)
+    // Collect all day_numbers across all years and gender curves
+    const allDayNumbers = new Set<number>()
+    for (const dn of currentMap.keys()) allDayNumbers.add(dn)
     for (const pm of priorMaps) {
-      for (const wn of pm.keys()) allWeekNumbers.add(wn)
+      for (const dn of pm.keys()) allDayNumbers.add(dn)
     }
-    for (const wn of mMap.keys()) allWeekNumbers.add(wn)
-    for (const wn of fMap.keys()) allWeekNumbers.add(wn)
+    for (const dn of mMap.keys()) allDayNumbers.add(dn)
+    for (const dn of fMap.keys()) allDayNumbers.add(dn)
     for (const { map } of priorMGenderMaps) {
-      for (const wn of map.keys()) allWeekNumbers.add(wn)
+      for (const dn of map.keys()) allDayNumbers.add(dn)
     }
     for (const { map } of priorFGenderMaps) {
-      for (const wn of map.keys()) allWeekNumbers.add(wn)
+      for (const dn of map.keys()) allDayNumbers.add(dn)
     }
 
-    const sorted = [...allWeekNumbers].sort((a, b) => a - b)
+    const sorted = [...allDayNumbers].sort((a, b) => a - b)
 
-    return sorted.map((wn) => {
-      const current = currentMap.get(wn)
-      let weekLabel = current?.week_label ?? ''
-      const weekStart = current?.week_start ?? ''
+    return sorted.map((dn) => {
+      const current = currentMap.get(dn)
+      let dateLabel = current?.label ?? ''
 
-      // Fill week_label from prior year if current year doesn't have it
-      if (!weekLabel) {
+      // Fill label from prior year if current year doesn't have it
+      if (!dateLabel) {
         for (const pm of priorMaps) {
-          const pw = pm.get(wn)
-          if (pw?.week_label) {
-            weekLabel = pw.week_label
+          const pd = pm.get(dn)
+          if (pd?.label) {
+            dateLabel = pd.label
             break
           }
         }
       }
-      if (!weekLabel) weekLabel = `Week ${wn}`
+      if (!dateLabel) dateLabel = `Day ${dn}`
 
       const row: Record<string, string | number | null> = {
-        week_number: wn,
-        week_label: weekLabel,
-        week_start: weekStart,
+        day_number: dn,
+        label: dateLabel,
+        date: current?.date ?? '',
         enrolled: current?.enrolled ?? null,
         waitlisted: current?.waitlisted ?? null,
         delta: current?.delta ?? null,
@@ -149,20 +183,20 @@ export default function VelocityPage() {
 
       // Prior year combined lines
       data.prior_years.forEach((py, i) => {
-        const pyWeek = priorMaps[i]?.get(wn)
-        row[`enrolled_${py.year}`] = pyWeek?.enrolled ?? null
+        const pyPoint = priorMaps[i]?.get(dn)
+        row[`enrolled_${py.year}`] = pyPoint?.enrolled ?? null
       })
 
       // Gender lines
       if (splitByGender) {
-        row['enrolled_boys'] = mMap.get(wn)?.enrolled ?? null
-        row['enrolled_girls'] = fMap.get(wn)?.enrolled ?? null
+        row['enrolled_boys'] = mMap.get(dn)?.enrolled ?? null
+        row['enrolled_girls'] = fMap.get(dn)?.enrolled ?? null
 
         for (const { year, map } of priorMGenderMaps) {
-          row[`enrolled_boys_${year}`] = map.get(wn)?.enrolled ?? null
+          row[`enrolled_boys_${year}`] = map.get(dn)?.enrolled ?? null
         }
         for (const { year, map } of priorFGenderMaps) {
-          row[`enrolled_girls_${year}`] = map.get(wn)?.enrolled ?? null
+          row[`enrolled_girls_${year}`] = map.get(dn)?.enrolled ?? null
         }
       }
 
@@ -188,16 +222,33 @@ export default function VelocityPage() {
     return sortSessionDataByCampThenQuest(withNames, dateLookup, typeLookup)
   }, [data?.by_session, sessions])
 
-  // Build week_number -> week_label lookup for XAxis tick formatting
-  const weekLabelMap = useMemo(() => {
+  // Build day_number -> label lookup for XAxis tick formatting
+  const dayLabelMap = useMemo(() => {
     const map = new Map<number, string>()
     for (const pt of chartData) {
-      const wn = pt['week_number'] as number
-      const label = pt['week_label'] as string
-      if (label) map.set(wn, label)
+      const dn = pt['day_number'] as number
+      const label = pt['label'] as string
+      if (label) map.set(dn, label)
     }
     return map
   }, [chartData])
+
+  // Re-aggregate daily data to weekly for the delta table
+  const weeklyDeltaData = useMemo(() => {
+    if (!data?.combined?.data?.length) return []
+    return aggregateDailyToWeekly(data.combined.data)
+  }, [data?.combined?.data])
+
+  // Phase lines with day_number for X-axis positioning
+  const phaseLines = useMemo(() => {
+    if (!data?.phase_markers) return []
+    return data.phase_markers
+      .filter((marker) => marker.day_number != null)
+      .map((marker) => ({
+        ...marker,
+        dayNumber: marker.day_number,
+      }))
+  }, [data?.phase_markers])
 
   if (isLoading) {
     return (
@@ -217,7 +268,7 @@ export default function VelocityPage() {
     )
   }
 
-  if (!data || data.combined.weekly.length === 0) {
+  if (!data || data.combined.data.length === 0) {
     return (
       <div className="text-muted-foreground flex items-center justify-center py-12">
         No velocity data available. Enrollment snapshots or attendee dates are needed.
@@ -245,15 +296,6 @@ export default function VelocityPage() {
       setSelectedPriorYears(selectedPriorYears.slice(0, 1))
     }
   }
-
-  // Find phase marker x-axis positions by week_number
-  const phaseLines = data.phase_markers
-    .map((marker, idx) => {
-      const match = chartData.find((pt) => pt['week_start'] === marker.date)
-      if (!match) return null
-      return { ...marker, weekNumber: match['week_number'] as number, labelIdx: idx }
-    })
-    .filter(Boolean)
 
   // Build gender breakdown lookup for session table
   const genderBreakdownMap = new Map(
@@ -315,19 +357,35 @@ export default function VelocityPage() {
 
       {/* Enrollment Velocity Chart */}
       <div className="card-lodge p-4">
-        <h3 className="text-foreground mb-4 text-base font-semibold">
+        <h3 className="text-foreground mb-2 text-base font-semibold">
           Enrollment Velocity - {currentYear}
         </h3>
+
+        {/* Phase marker legend */}
+        {phaseLines.length > 0 && (
+          <div className="mb-4 flex flex-wrap gap-4 text-xs">
+            {phaseLines.map((phase) => (
+              <div key={phase.phase} className="flex items-center gap-1.5">
+                <span
+                  className="inline-block w-5 border-t-2 border-dashed"
+                  style={{ borderColor: PHASE_COLORS[phase.phase] ?? 'hsl(var(--muted-foreground))' }}
+                />
+                <span className="text-muted-foreground">{phase.label}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
         <ResponsiveContainer width="100%" height={350}>
           <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
             <XAxis
-              dataKey="week_number"
+              dataKey="day_number"
               type="number"
               domain={['dataMin', 'dataMax']}
               className="text-xs"
               tick={{ fill: 'hsl(var(--muted-foreground))' }}
-              tickFormatter={(wn: number) => weekLabelMap.get(wn) ?? `W${wn}`}
+              tickFormatter={(dn: number) => dayLabelMap.get(dn) ?? `D${dn}`}
               interval="preserveStartEnd"
             />
             <YAxis
@@ -345,7 +403,7 @@ export default function VelocityPage() {
                 if (!active || !payload?.length) return null
                 const validPayload = payload.filter((entry) => entry.value != null)
                 if (!validPayload.length) return null
-                const displayLabel = weekLabelMap.get(label as number) ?? `Week ${label}`
+                const displayLabel = dayLabelMap.get(label as number) ?? `Day ${label}`
                 return (
                   <div className="bg-card border-border rounded-lg border p-3 shadow-lg">
                     <p className="text-foreground mb-1 font-medium">{displayLabel}</p>
@@ -360,27 +418,16 @@ export default function VelocityPage() {
             />
             <Legend />
 
-            {/* Phase marker vertical lines */}
-            {phaseLines.map(
-              (phase) =>
-                phase && (
-                  <ReferenceLine
-                    key={phase.phase}
-                    x={phase.weekNumber}
-                    stroke={PHASE_COLORS[phase.phase] ?? 'hsl(var(--muted-foreground))'}
-                    strokeDasharray="5 5"
-                    strokeWidth={2}
-                    label={{
-                      value: phase.label,
-                      position: PHASE_LABEL_POSITIONS[phase.labelIdx % PHASE_LABEL_POSITIONS.length] ?? 'top',
-                      style: {
-                        fill: PHASE_COLORS[phase.phase] ?? 'hsl(var(--muted-foreground))',
-                        fontSize: 11,
-                      },
-                    }}
-                  />
-                )
-            )}
+            {/* Phase marker vertical lines (no inline labels) */}
+            {phaseLines.map((phase) => (
+              <ReferenceLine
+                key={phase.phase}
+                x={phase.dayNumber}
+                stroke={PHASE_COLORS[phase.phase] ?? 'hsl(var(--muted-foreground))'}
+                strokeDasharray="5 5"
+                strokeWidth={2}
+              />
+            ))}
 
             {splitByGender ? (
               <>
@@ -391,8 +438,8 @@ export default function VelocityPage() {
                   name={`Boys ${currentYear}`}
                   stroke={GENDER_COLORS.boys}
                   strokeWidth={3}
-                  dot={{ fill: GENDER_COLORS.boys, r: 3 }}
-                  activeDot={{ r: 5 }}
+                  dot={false}
+                  activeDot={{ r: 4 }}
                   connectNulls={false}
                 />
                 <Line
@@ -401,8 +448,8 @@ export default function VelocityPage() {
                   name={`Girls ${currentYear}`}
                   stroke={GENDER_COLORS.girls}
                   strokeWidth={3}
-                  dot={{ fill: GENDER_COLORS.girls, r: 3 }}
-                  activeDot={{ r: 5 }}
+                  dot={false}
+                  activeDot={{ r: 4 }}
                   connectNulls={false}
                 />
                 {/* Prior year gender lines (dashed) */}
@@ -444,8 +491,8 @@ export default function VelocityPage() {
                   name={String(currentYear)}
                   stroke="hsl(160, 100%, 35%)"
                   strokeWidth={3}
-                  dot={{ fill: 'hsl(160, 100%, 35%)', r: 4 }}
-                  activeDot={{ r: 6 }}
+                  dot={false}
+                  activeDot={{ r: 5 }}
                   connectNulls={false}
                 />
                 {/* Prior year lines */}
@@ -492,13 +539,13 @@ export default function VelocityPage() {
                     {splitByGender ? 'Total' : 'Latest Enrolled'}
                   </th>
                   <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                    Weeks Tracked
+                    Days Tracked
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {sortedBySession.map((session) => {
-                  const lastWeek = session.weekly[session.weekly.length - 1]
+                  const lastPoint = session.data[session.data.length - 1]
                   const genderData = session.session_cm_id
                     ? genderBreakdownMap.get(session.session_cm_id)
                     : undefined
@@ -521,10 +568,10 @@ export default function VelocityPage() {
                         </>
                       )}
                       <td className="text-foreground px-4 py-3 text-right">
-                        {lastWeek?.enrolled?.toLocaleString() ?? 0}
+                        {lastPoint?.enrolled?.toLocaleString() ?? 0}
                       </td>
                       <td className="text-muted-foreground px-4 py-3 text-right">
-                        {session.weekly.length}
+                        {session.data.length}
                       </td>
                     </tr>
                   )
@@ -535,7 +582,7 @@ export default function VelocityPage() {
         </div>
       )}
 
-      {/* Week-over-Week Delta Table */}
+      {/* Week-over-Week Delta Table (daily data re-aggregated to weekly) */}
       <div className="card-lodge overflow-hidden">
         <div className="border-border border-b px-4 py-3">
           <h3 className="text-foreground text-base font-semibold">
@@ -557,12 +604,12 @@ export default function VelocityPage() {
               </tr>
             </thead>
             <tbody>
-              {data.combined.weekly.map((week: WeeklyDataPoint) => (
+              {weeklyDeltaData.map((week: VelocityDataPoint) => (
                 <tr
-                  key={week.week_start}
+                  key={week.date}
                   className="border-border hover:bg-muted/20 border-b transition-colors last:border-0"
                 >
-                  <td className="text-foreground px-4 py-3 font-medium">{week.week_label}</td>
+                  <td className="text-foreground px-4 py-3 font-medium">{week.label}</td>
                   <td className="px-4 py-3 text-right">
                     <span
                       className={
