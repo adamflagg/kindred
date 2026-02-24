@@ -40,6 +40,16 @@ def _week_label(d: datetime) -> str:
     return d.strftime("%b %-d")
 
 
+def _season_start(year: int) -> datetime:
+    """Return the season start date: Nov 1 of year-1."""
+    return datetime(year - 1, 11, 1)
+
+
+def _week_number(monday: datetime, season_start_monday: datetime) -> int:
+    """Compute 0-based week offset from season start Monday."""
+    return (monday - season_start_monday).days // 7
+
+
 class VelocityService:
     """Business logic for registration velocity curves."""
 
@@ -54,21 +64,31 @@ class VelocityService:
         session_types: list[str] | None = None,
     ) -> VelocityResponse:
         """Get registration velocity curves with week-over-week enrollment data."""
+        season_start_dt = _season_start(year)
+        season_start_monday = _monday_of_week(season_start_dt)
+
         # Fetch sessions for the year
         sessions = await self.repo.fetch_sessions(year, session_types=session_types)
         ag_parent_map = build_ag_parent_map(sessions)
 
         # Build curves for the primary year
-        combined, by_session = await self._build_curves(year, sessions, ag_parent_map, session_cm_id)
+        combined, by_session = await self._build_curves(
+            year, sessions, ag_parent_map, session_cm_id, season_start_monday
+        )
 
         # Build prior year curves
         prior_years: list[VelocityCurve] = []
         if compare_years:
             for prior_year in compare_years:
+                prior_season_start_monday = _monday_of_week(_season_start(prior_year))
                 prior_sessions = await self.repo.fetch_sessions(prior_year, session_types=session_types)
                 prior_ag_map = build_ag_parent_map(prior_sessions)
                 prior_combined, _ = await self._build_curves(
-                    prior_year, prior_sessions, prior_ag_map, session_cm_id=None
+                    prior_year,
+                    prior_sessions,
+                    prior_ag_map,
+                    session_cm_id=None,
+                    season_start_monday=prior_season_start_monday,
                 )
                 prior_years.append(prior_combined)
 
@@ -77,6 +97,7 @@ class VelocityService:
 
         return VelocityResponse(
             year=year,
+            season_start=season_start_dt.strftime("%Y-%m-%d"),
             combined=combined,
             by_session=by_session,
             prior_years=prior_years,
@@ -89,14 +110,17 @@ class VelocityService:
         sessions: dict[int, Any],
         ag_parent_map: dict[int, int],
         session_cm_id: int | None,
+        season_start_monday: datetime,
     ) -> tuple[VelocityCurve, list[VelocityCurve]]:
         """Build combined and per-session velocity curves for a year."""
         snapshots = await self.repo.fetch_enrollment_snapshots(year, session_cm_id=session_cm_id)
 
         if snapshots:
-            return self._curves_from_snapshots(year, snapshots, sessions, ag_parent_map, session_cm_id)
+            return self._curves_from_snapshots(
+                year, snapshots, sessions, ag_parent_map, session_cm_id, season_start_monday
+            )
 
-        return await self._curves_from_reconstruction(year, sessions, ag_parent_map, session_cm_id)
+        return await self._curves_from_reconstruction(year, sessions, ag_parent_map, session_cm_id, season_start_monday)
 
     def _curves_from_snapshots(
         self,
@@ -105,6 +129,7 @@ class VelocityService:
         sessions: dict[int, Any],
         ag_parent_map: dict[int, int],
         session_cm_id: int | None,
+        season_start_monday: datetime,
     ) -> tuple[VelocityCurve, list[VelocityCurve]]:
         """Build curves from enrollment snapshots (fast path)."""
         # Group snapshots by session, merging AG into parent
@@ -129,7 +154,7 @@ class VelocityService:
         per_session_weekly: dict[int, list[WeeklyDataPoint]] = {}
 
         for sid, date_data in session_date_data.items():
-            weekly = self._aggregate_snapshots_to_weekly(date_data)
+            weekly = self._aggregate_snapshots_to_weekly(date_data, season_start_monday)
             per_session_weekly[sid] = weekly
 
         # Build combined curve by summing across sessions per week
@@ -154,14 +179,21 @@ class VelocityService:
 
         return combined, by_session
 
-    def _aggregate_snapshots_to_weekly(self, date_data: dict[str, dict[str, int]]) -> list[WeeklyDataPoint]:
-        """Aggregate daily snapshot data to weekly, taking last snapshot per week."""
+    def _aggregate_snapshots_to_weekly(
+        self, date_data: dict[str, dict[str, int]], season_start_monday: datetime
+    ) -> list[WeeklyDataPoint]:
+        """Aggregate daily snapshot data to weekly, taking last snapshot per week.
+
+        Filters out data before season_start_monday and tags each point with week_number.
+        """
         # Group by week (Monday boundary)
         weekly_data: dict[str, dict[str, int]] = {}
 
         for date_str, counts in sorted(date_data.items()):
             dt = datetime.strptime(date_str.split("T")[0].split(" ")[0], "%Y-%m-%d")
             monday = _monday_of_week(dt)
+            if monday < season_start_monday:
+                continue
             week_key = monday.strftime("%Y-%m-%d")
             # Last snapshot of the week wins (data is sorted by date)
             weekly_data[week_key] = counts
@@ -177,6 +209,7 @@ class VelocityService:
             delta = enrolled - prev_enrolled
 
             monday = datetime.strptime(week_key, "%Y-%m-%d")
+            wn = _week_number(monday, season_start_monday)
             points.append(
                 WeeklyDataPoint(
                     week_start=week_key,
@@ -185,6 +218,7 @@ class VelocityService:
                     waitlisted=waitlisted,
                     delta=delta,
                     data_source="snapshot",
+                    week_number=wn,
                 )
             )
             prev_enrolled = enrolled
@@ -197,6 +231,7 @@ class VelocityService:
         week_totals: dict[str, dict[str, int]] = defaultdict(lambda: {"enrolled": 0, "waitlisted": 0})
         week_labels: dict[str, str] = {}
         data_sources: dict[str, str] = {}
+        week_numbers: dict[str, int] = {}
 
         for weekly in per_session_weekly.values():
             for point in weekly:
@@ -204,6 +239,7 @@ class VelocityService:
                 week_totals[point.week_start]["waitlisted"] += point.waitlisted
                 week_labels[point.week_start] = point.week_label
                 data_sources[point.week_start] = point.data_source
+                week_numbers[point.week_start] = point.week_number
 
         # Build combined points with deltas
         points: list[WeeklyDataPoint] = []
@@ -222,6 +258,7 @@ class VelocityService:
                     waitlisted=totals["waitlisted"],
                     delta=delta,
                     data_source=data_sources.get(week_key, "snapshot"),
+                    week_number=week_numbers.get(week_key, 0),
                 )
             )
             prev_enrolled = enrolled
@@ -234,6 +271,7 @@ class VelocityService:
         sessions: dict[int, Any],
         ag_parent_map: dict[int, int],
         session_cm_id: int | None,
+        season_start_monday: datetime,
     ) -> tuple[VelocityCurve, list[VelocityCurve]]:
         """Build curves by reconstructing from enrollment dates (fallback)."""
         attendees = await self.repo.fetch_attendees_with_dates(year, session_cm_id=session_cm_id)
@@ -258,6 +296,8 @@ class VelocityService:
 
             dt = datetime.strptime(att.enrollment_date.split("T")[0].split(" ")[0], "%Y-%m-%d")
             monday = _monday_of_week(dt)
+            if monday < season_start_monday:
+                continue
             week_key = monday.strftime("%Y-%m-%d")
             session_weekly_enrollments[effective_sid][week_key] += 1
 
@@ -274,6 +314,8 @@ class VelocityService:
 
             dt = datetime.strptime(cancel.detected_at.split("T")[0].split(" ")[0], "%Y-%m-%d")
             monday = _monday_of_week(dt)
+            if monday < season_start_monday:
+                continue
             week_key = monday.strftime("%Y-%m-%d")
             session_weekly_cancellations[effective_sid][week_key] += 1
 
@@ -299,10 +341,11 @@ class VelocityService:
                 new_enrolled = weekly_enrollments.get(week_key, 0)
                 cancelled = session_weekly_cancellations.get(sid, {}).get(week_key, 0)
                 cumulative += new_enrolled - cancelled
-                prev_enrolled = points[-1].enrolled if points else 0
-                delta = cumulative - prev_enrolled
+                prev_enrolled_val = points[-1].enrolled if points else 0
+                delta = cumulative - prev_enrolled_val
 
                 monday = datetime.strptime(week_key, "%Y-%m-%d")
+                wn = _week_number(monday, season_start_monday)
                 points.append(
                     WeeklyDataPoint(
                         week_start=week_key,
@@ -311,6 +354,7 @@ class VelocityService:
                         waitlisted=0,
                         delta=delta,
                         data_source="reconstructed",
+                        week_number=wn,
                     )
                 )
 
@@ -338,13 +382,18 @@ class VelocityService:
         return combined, by_session
 
     async def _build_phase_markers(self, year: int) -> list[PhaseMarker]:
-        """Build registration phase markers from config."""
+        """Build registration phase markers from config.
+
+        Snaps each date to the containing Monday so markers align with weekly data.
+        """
         reg_dates = await self.repo.fetch_registration_dates(year)
 
         markers: list[PhaseMarker] = []
         for config_key, (phase, label) in PHASE_KEY_MAP.items():
             date_str = reg_dates.get(config_key)
             if date_str:
-                markers.append(PhaseMarker(phase=phase, date=date_str, label=label))
+                dt = datetime.strptime(date_str.split("T")[0].split(" ")[0], "%Y-%m-%d")
+                monday = _monday_of_week(dt)
+                markers.append(PhaseMarker(phase=phase, date=monday.strftime("%Y-%m-%d"), label=label))
 
         return markers

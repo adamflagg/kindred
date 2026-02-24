@@ -12,6 +12,7 @@ class WeeklyDataPoint(BaseModel):
     waitlisted: int = Field(description="Cumulative waitlisted count")
     delta: int = Field(description="Change in enrolled from prior week")
     data_source: str = Field(description="'snapshot' or 'reconstructed'")
+    week_number: int = Field(description="0-based week offset from season start Monday")
 
 
 class VelocityCurve(BaseModel):
@@ -29,6 +30,7 @@ class PhaseMarker(BaseModel):
 
 class VelocityResponse(BaseModel):
     year: int
+    season_start: str = Field(description="ISO date of season start (Nov 1 of year-1)")
     combined: VelocityCurve
     by_session: list[VelocityCurve]
     prior_years: list[VelocityCurve]

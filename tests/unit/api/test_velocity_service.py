@@ -23,13 +23,7 @@ import pytest
 os.environ["AUTH_MODE"] = "bypass"
 os.environ["SKIP_PB_AUTH"] = "true"
 
-from api.services.velocity_service import VelocityService, _monday_of_week
-
-try:
-    from api.services.velocity_service import _season_start, _week_number
-except ImportError:
-    _season_start = None  # type: ignore[assignment]
-    _week_number = None  # type: ignore[assignment]
+from api.services.velocity_service import VelocityService, _monday_of_week, _season_start, _week_number
 
 # ============================================================================
 # Test Data Factories
@@ -366,11 +360,14 @@ class TestVelocityPhaseMarkers:
 
         phases = {m.phase: m for m in result.phase_markers}
         assert "priority" in phases
-        assert phases["priority"].date == "2025-10-01"
+        # Oct 1, 2025 is a Wednesday -> snaps to Monday Sep 29
+        assert phases["priority"].date == "2025-09-29"
         assert "early" in phases
-        assert phases["early"].date == "2025-11-01"
+        # Nov 1, 2025 is a Saturday -> snaps to Monday Oct 27
+        assert phases["early"].date == "2025-10-27"
         assert "open" in phases
-        assert phases["open"].date == "2026-01-15"
+        # Jan 15, 2026 is a Thursday -> snaps to Monday Jan 12
+        assert phases["open"].date == "2026-01-12"
 
 
 # ============================================================================
@@ -501,7 +498,6 @@ class TestVelocityEdgeCases:
 # ============================================================================
 
 
-@pytest.mark.skipif(_season_start is None, reason="Awaiting _season_start implementation")
 class TestSeasonWindowHelpers:
     """Test _season_start and _week_number helper functions."""
 
