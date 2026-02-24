@@ -75,8 +75,13 @@ def create_mock_attendee_with_date(
     enrollment_date: str,
     year: int = 2026,
     status: str = "enrolled",
+    gender: str | None = None,
 ) -> Mock:
-    """Create a mock attendee with enrollment date for reconstruction."""
+    """Create a mock attendee with enrollment date for reconstruction.
+
+    When gender is provided, the expand dict includes a person object with gender,
+    simulating the expand=session,person API call used for gender split.
+    """
     att = Mock()
     att.person_id = person_id
     att.year = year
@@ -86,7 +91,12 @@ def create_mock_attendee_with_date(
     att.status_id = 2 if status == "enrolled" else 0
     session = Mock()
     session.cm_id = session_cm_id
-    att.expand = {"session": session}
+    expand: dict = {"session": session}
+    if gender is not None:
+        person = Mock()
+        person.gender = gender
+        expand["person"] = person
+    att.expand = expand
     return att
 
 
@@ -785,3 +795,161 @@ class TestPhaseMarkerMondaySnapping:
         assert len(result.phase_markers) == 1
         # Sunday Jan 11 → Monday Jan 5
         assert result.phase_markers[0].date == "2026-01-05"
+
+
+# ============================================================================
+# Gender Split Velocity Tests
+# ============================================================================
+
+
+class TestGenderSplitVelocity:
+    """Test gender-split enrollment velocity curves."""
+
+    @pytest.mark.asyncio
+    async def test_gender_split_returns_by_gender_curves(self, service, mock_repository):
+        """When split_by_gender=True, response includes by_gender list with M and F curves."""
+        sessions = {1001: create_mock_session(1001, "Session 1", year=2026)}
+        mock_repository.fetch_sessions.return_value = sessions
+        # No snapshots → reconstruction path (gender requires person expansion)
+        mock_repository.fetch_enrollment_snapshots.return_value = []
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2025-11-03", gender="M"),
+            create_mock_attendee_with_date(102, 1001, "2025-11-03", gender="M"),
+            create_mock_attendee_with_date(103, 1001, "2025-11-03", gender="F"),
+            create_mock_attendee_with_date(104, 1001, "2025-11-10", gender="F"),
+            create_mock_attendee_with_date(105, 1001, "2025-11-10", gender="M"),
+        ]
+
+        result = await service.get_velocity(year=2026, split_by_gender=True)
+
+        assert len(result.by_gender) == 2
+        genders = {c.gender for c in result.by_gender}
+        assert genders == {"M", "F"}
+
+        # Check M curve
+        m_curve = next(c for c in result.by_gender if c.gender == "M")
+        assert m_curve.weekly[-1].enrolled == 3  # 3 boys total
+
+        # Check F curve
+        f_curve = next(c for c in result.by_gender if c.gender == "F")
+        assert f_curve.weekly[-1].enrolled == 2  # 2 girls total
+
+    @pytest.mark.asyncio
+    async def test_gender_split_curves_have_week_numbers(self, service, mock_repository):
+        """Gender curves should include proper week_number values."""
+        sessions = {1001: create_mock_session(1001, "Session 1", year=2026)}
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = []
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2025-11-03", gender="M"),
+            create_mock_attendee_with_date(102, 1001, "2025-12-01", gender="F"),
+        ]
+
+        result = await service.get_velocity(year=2026, split_by_gender=True)
+
+        for curve in result.by_gender:
+            for w in curve.weekly:
+                assert hasattr(w, "week_number")
+                assert isinstance(w.week_number, int)
+                assert w.week_number >= 0
+
+    @pytest.mark.asyncio
+    async def test_gender_split_combined_still_total(self, service, mock_repository):
+        """Combined curve should still show overall total regardless of gender split."""
+        sessions = {1001: create_mock_session(1001, "Session 1", year=2026)}
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = []
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2025-11-03", gender="M"),
+            create_mock_attendee_with_date(102, 1001, "2025-11-03", gender="F"),
+            create_mock_attendee_with_date(103, 1001, "2025-11-10", gender="M"),
+        ]
+
+        result = await service.get_velocity(year=2026, split_by_gender=True)
+
+        # Combined should reflect all 3 campers regardless of gender
+        last_week = result.combined.weekly[-1]
+        assert last_week.enrolled == 3
+
+    @pytest.mark.asyncio
+    async def test_gender_split_session_breakdown(self, service, mock_repository):
+        """session_gender_breakdown should show per-session gender totals."""
+        sessions = {
+            1001: create_mock_session(1001, "Session 1", year=2026),
+            1002: create_mock_session(1002, "Session 2", year=2026),
+        }
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = []
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2025-11-03", gender="M"),
+            create_mock_attendee_with_date(102, 1001, "2025-11-03", gender="M"),
+            create_mock_attendee_with_date(103, 1001, "2025-11-03", gender="F"),
+            create_mock_attendee_with_date(104, 1002, "2025-11-03", gender="F"),
+            create_mock_attendee_with_date(105, 1002, "2025-11-03", gender="F"),
+            create_mock_attendee_with_date(106, 1002, "2025-11-10", gender="M"),
+        ]
+
+        result = await service.get_velocity(year=2026, split_by_gender=True)
+
+        assert len(result.session_gender_breakdown) == 2
+
+        s1 = next(b for b in result.session_gender_breakdown if b.session_cm_id == 1001)
+        assert s1.boys_enrolled == 2
+        assert s1.girls_enrolled == 1
+
+        s2 = next(b for b in result.session_gender_breakdown if b.session_cm_id == 1002)
+        assert s2.boys_enrolled == 1
+        assert s2.girls_enrolled == 2
+
+    @pytest.mark.asyncio
+    async def test_gender_split_prior_year(self, service, mock_repository):
+        """Prior year curves should also include by_gender when split requested."""
+        sessions_2026 = {1001: create_mock_session(1001, "Session 1", year=2026)}
+        sessions_2025 = {901: create_mock_session(901, "Session 1", year=2025)}
+
+        async def mock_fetch_sessions(year, **kwargs):
+            return sessions_2026 if year == 2026 else sessions_2025
+
+        mock_repository.fetch_sessions.side_effect = mock_fetch_sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = []
+
+        async def mock_fetch_attendees(year, **kwargs):
+            if year == 2026:
+                return [
+                    create_mock_attendee_with_date(101, 1001, "2025-11-03", year=2026, gender="M"),
+                    create_mock_attendee_with_date(102, 1001, "2025-11-03", year=2026, gender="F"),
+                ]
+            return [
+                create_mock_attendee_with_date(201, 901, "2024-11-04", year=2025, gender="M"),
+                create_mock_attendee_with_date(202, 901, "2024-11-04", year=2025, gender="M"),
+                create_mock_attendee_with_date(203, 901, "2024-11-04", year=2025, gender="F"),
+            ]
+
+        mock_repository.fetch_attendees_with_dates.side_effect = mock_fetch_attendees
+
+        result = await service.get_velocity(
+            year=2026, compare_years=[2025], split_by_gender=True
+        )
+
+        # Prior year should have gender curves too
+        assert len(result.prior_year_by_gender) >= 1
+        prior_gender_curves = result.prior_year_by_gender
+        # Should have M and F curves for 2025
+        prior_genders = {c.gender for c in prior_gender_curves if c.year == 2025}
+        assert "M" in prior_genders
+        assert "F" in prior_genders
+
+    @pytest.mark.asyncio
+    async def test_no_gender_split_has_no_by_gender(self, service, mock_repository):
+        """Default (no split) should return empty by_gender and session_gender_breakdown."""
+        sessions = {1001: create_mock_session(1001, "Session 1", year=2026)}
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = []
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2025-11-03", gender="M"),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        assert result.by_gender == []
+        assert result.session_gender_breakdown == []
