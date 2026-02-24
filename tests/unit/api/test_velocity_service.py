@@ -42,6 +42,7 @@ def create_mock_session(
     year: int = 2026,
     session_type: str = "main",
     start_date: str = "2026-06-15",
+    end_date: str = "2026-08-15",
     parent_id: int | None = None,
 ) -> Mock:
     """Create a mock session record."""
@@ -52,6 +53,7 @@ def create_mock_session(
     session.year = year
     session.session_type = session_type
     session.start_date = start_date
+    session.end_date = end_date
     session.parent_id = parent_id
     return session
 
@@ -636,19 +638,167 @@ class TestSeasonWindowClipping:
             assert p.week_start >= "2025-11-01"
 
     @pytest.mark.asyncio
-    async def test_season_end_extends_past_october_with_data(self, service, mock_repository):
-        """If data extends past Oct 31 but within Dec 31, it should be included."""
-        sessions = {1001: create_mock_session(1001, "Session 1", year=2026)}
+    async def test_data_past_session_end_is_excluded(self, service, mock_repository):
+        """Data past the session end_date should be excluded, even if within
+        the calendar year."""
+        sessions = {1001: create_mock_session(1001, "Session 1", year=2026, end_date="2026-08-15")}
         mock_repository.fetch_sessions.return_value = sessions
         mock_repository.fetch_enrollment_snapshots.return_value = [
             create_mock_snapshot("2025-11-03", 1001, 2026, enrolled=15),
-            create_mock_snapshot("2026-11-10", 1001, 2026, enrolled=100),  # Nov of season year
+            create_mock_snapshot("2026-11-10", 1001, 2026, enrolled=100),  # Past session end
         ]
 
         result = await service.get_velocity(year=2026)
 
-        # Data within the season year (up to Dec 31) should be included
+        # Nov 2026 data should be EXCLUDED (past session end of Aug 15)
         points = result.combined.weekly
+        assert not any(p.week_start >= "2026-09-01" for p in points)
+        assert len(points) == 1
+
+
+# ============================================================================
+# Session End Date Clipping Tests
+# ============================================================================
+
+
+class TestSessionEndClipping:
+    """Test that velocity data is clipped at session end dates instead of Dec 31."""
+
+    @pytest.mark.asyncio
+    async def test_data_clipped_at_session_end(self, service, mock_repository):
+        """Snapshots past the session's end_date should be excluded."""
+        sessions = {
+            1001: create_mock_session(1001, "Session 1", year=2026, end_date="2026-08-15"),
+        }
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20),
+            create_mock_snapshot("2026-09-01", 1001, 2026, enrolled=25),  # Past session end
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        points = result.combined.weekly
+        assert len(points) == 1
+        assert points[0].enrolled == 20
+        assert not any(p.week_start >= "2026-09-01" for p in points)
+
+    @pytest.mark.asyncio
+    async def test_session_end_snaps_to_next_monday(self, service, mock_repository):
+        """Session ending on Wednesday should clip at the following Monday."""
+        # Aug 12, 2026 is Wednesday -> clip at Aug 17 (Monday)
+        sessions = {
+            1001: create_mock_session(1001, "Session 1", year=2026, end_date="2026-08-12"),
+        }
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20),
+            create_mock_snapshot("2026-08-14", 1001, 2026, enrolled=30),  # Fri, within clip
+            create_mock_snapshot("2026-08-21", 1001, 2026, enrolled=35),  # Past clip
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        points = result.combined.weekly
+        assert len(points) == 2  # Jan 5 and Aug 10 (Monday of Aug 14's week)
+        assert not any(p.week_start >= "2026-08-18" for p in points)
+
+    @pytest.mark.asyncio
+    async def test_session_end_on_monday_stays(self, service, mock_repository):
+        """Session ending on a Monday should clip at that Monday (no advance)."""
+        # Aug 17, 2026 is Monday -> clip stays at Aug 17
+        sessions = {
+            1001: create_mock_session(1001, "Session 1", year=2026, end_date="2026-08-17"),
+        }
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20),
+            create_mock_snapshot("2026-08-14", 1001, 2026, enrolled=30),  # Within clip
+            create_mock_snapshot("2026-08-21", 1001, 2026, enrolled=35),  # Past clip
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        points = result.combined.weekly
+        assert len(points) == 2
+        assert not any(p.week_start >= "2026-08-18" for p in points)
+
+    @pytest.mark.asyncio
+    async def test_single_session_filter_uses_that_sessions_end(self, service, mock_repository):
+        """Selecting a specific session should clip at that session's end_date,
+        not the latest across all sessions."""
+        sessions = {
+            1001: create_mock_session(1001, "Session 1", year=2026, end_date="2026-08-15"),
+            1002: create_mock_session(1002, "Session 2", year=2026, end_date="2026-07-04"),
+        }
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1002, 2026, enrolled=10),
+            create_mock_snapshot("2026-06-29", 1002, 2026, enrolled=15),  # Before Jul 4 end
+            create_mock_snapshot("2026-07-13", 1002, 2026, enrolled=18),  # Past Session 2 end
+        ]
+
+        # Filter to Session 2 only
+        result = await service.get_velocity(year=2026, session_cm_id=1002)
+
+        points = result.combined.weekly
+        assert len(points) == 2  # Jan and Jun data only
+        # Jul 13 should be excluded (past Session 2's Jul 4 end -> clip Jul 6)
+        assert not any(p.week_start >= "2026-07-07" for p in points)
+
+    @pytest.mark.asyncio
+    async def test_prior_year_clips_at_its_session_end(self, service, mock_repository):
+        """Prior year data should clip at that year's session end dates."""
+        sessions_2026 = {
+            1001: create_mock_session(1001, "Session 1", year=2026, end_date="2026-08-15"),
+        }
+        sessions_2025 = {
+            901: create_mock_session(
+                901, "Session 1", year=2025, start_date="2025-06-15", end_date="2025-08-10"
+            ),
+        }
+
+        async def mock_fetch_sessions(year, **kwargs):
+            return sessions_2026 if year == 2026 else sessions_2025
+
+        mock_repository.fetch_sessions.side_effect = mock_fetch_sessions
+
+        async def mock_fetch_snapshots(year, **kwargs):
+            if year == 2026:
+                return [
+                    create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20),
+                ]
+            return [
+                create_mock_snapshot("2025-01-06", 901, 2025, enrolled=15),
+                create_mock_snapshot("2025-09-15", 901, 2025, enrolled=20),  # Past 2025 end
+            ]
+
+        mock_repository.fetch_enrollment_snapshots.side_effect = mock_fetch_snapshots
+
+        result = await service.get_velocity(year=2026, compare_years=[2025])
+
+        # Prior year should exclude Sep data (past Aug 10 session end)
+        prior = result.prior_years[0]
+        assert len(prior.weekly) == 1
+        assert not any(p.week_start >= "2025-09-01" for p in prior.weekly)
+
+    @pytest.mark.asyncio
+    async def test_fallback_to_dec_31_when_no_end_dates(self, service, mock_repository):
+        """If sessions have no end_date, should fall back to Dec 31."""
+        session = create_mock_session(1001, "Session 1", year=2026)
+        session.end_date = None  # No end_date available
+        sessions = {1001: session}
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20),
+            create_mock_snapshot("2026-11-10", 1001, 2026, enrolled=30),  # Within Dec 31 fallback
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        # With fallback, Nov data should still be included
+        points = result.combined.weekly
+        assert len(points) == 2
         assert any(p.week_start >= "2026-11-01" for p in points)
 
 
