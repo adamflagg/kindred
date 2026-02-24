@@ -99,7 +99,7 @@ def create_mock_attendee_with_date(
     att.status_id = 2 if status == "enrolled" else 0
     session = Mock()
     session.cm_id = session_cm_id
-    expand: dict = {"session": session}
+    expand: dict[str, Mock] = {"session": session}
     if gender is not None:
         person = Mock()
         person.gender = gender

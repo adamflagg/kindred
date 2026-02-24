@@ -91,12 +91,14 @@ export default function VelocityPage() {
     // Build prior year gender maps
     const priorMGender = data.prior_year_by_gender?.filter((c) => c.gender === 'M') ?? []
     const priorFGender = data.prior_year_by_gender?.filter((c) => c.gender === 'F') ?? []
-    const priorMGenderMaps = priorMGender.map(
-      (c) => ({ year: c.year, map: new Map(c.weekly.map((d) => [d.week_number, d])) })
-    )
-    const priorFGenderMaps = priorFGender.map(
-      (c) => ({ year: c.year, map: new Map(c.weekly.map((d) => [d.week_number, d])) })
-    )
+    const priorMGenderMaps = priorMGender.map((c) => ({
+      year: c.year,
+      map: new Map(c.weekly.map((d) => [d.week_number, d])),
+    }))
+    const priorFGenderMaps = priorFGender.map((c) => ({
+      year: c.year,
+      map: new Map(c.weekly.map((d) => [d.week_number, d])),
+    }))
 
     // Collect all week_numbers across all years and gender curves
     const allWeekNumbers = new Set<number>()
@@ -232,9 +234,7 @@ export default function VelocityPage() {
   const togglePriorYear = (year: number) => {
     if (splitByGender) {
       // When gender split is on, only allow 1 prior year
-      setSelectedPriorYears((prev) =>
-        prev.includes(year) ? [] : [year]
-      )
+      setSelectedPriorYears((prev) => (prev.includes(year) ? [] : [year]))
     } else {
       setSelectedPriorYears((prev) =>
         prev.includes(year) ? prev.filter((y) => y !== year) : [...prev, year]
@@ -321,7 +321,9 @@ export default function VelocityPage() {
               <div key={phase.phase} className="flex items-center gap-1.5">
                 <span
                   className="inline-block w-5 border-t-2 border-dashed"
-                  style={{ borderColor: PHASE_COLORS[phase.phase] ?? 'hsl(var(--muted-foreground))' }}
+                  style={{
+                    borderColor: PHASE_COLORS[phase.phase] ?? 'hsl(var(--muted-foreground))',
+                  }}
                 />
                 <span className="text-muted-foreground">{phase.label}</span>
               </div>
@@ -512,10 +514,16 @@ export default function VelocityPage() {
                       </td>
                       {splitByGender && (
                         <>
-                          <td className="px-4 py-3 text-right" style={{ color: GENDER_COLORS.boys }}>
+                          <td
+                            className="px-4 py-3 text-right"
+                            style={{ color: GENDER_COLORS.boys }}
+                          >
                             {genderData?.boys_enrolled?.toLocaleString() ?? '-'}
                           </td>
-                          <td className="px-4 py-3 text-right" style={{ color: GENDER_COLORS.girls }}>
+                          <td
+                            className="px-4 py-3 text-right"
+                            style={{ color: GENDER_COLORS.girls }}
+                          >
                             {genderData?.girls_enrolled?.toLocaleString() ?? '-'}
                           </td>
                         </>
@@ -547,9 +555,7 @@ export default function VelocityPage() {
             <thead>
               <tr className="border-border bg-muted/30 border-b">
                 <th className="text-muted-foreground px-4 py-3 text-left font-medium">Week</th>
-                <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                  Change
-                </th>
+                <th className="text-muted-foreground px-4 py-3 text-right font-medium">Change</th>
                 <th className="text-muted-foreground px-4 py-3 text-right font-medium">
                   Cumulative
                 </th>
