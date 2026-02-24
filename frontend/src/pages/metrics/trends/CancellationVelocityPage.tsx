@@ -6,7 +6,8 @@
  * - Y-axis label: "Cumulative Cancelled"
  * - Same controls: prior year checkboxes, gender split, Brush zoom
  * - Per-session cancellation breakdown + week-over-week delta tables
- * - Summary cards: cancelled to date, prior year comparison
+ * - Summary cards: cancelled to date, prior year comparison, delta
+ * - Inverted color semantics: more cancellations = red (bad), fewer = green (good)
  */
 
 import { useMemo, useState } from 'react'
@@ -27,6 +28,7 @@ import { useVelocity } from '../../../hooks/useVelocity'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import type { WeeklyDataPoint } from '../../../types/velocity'
+import { resolveSessionAlias } from '../../../utils/sessionAliases'
 import {
   sortSessionDataByCampThenQuest,
   buildSessionDateLookup,
@@ -194,6 +196,25 @@ export default function CancellationVelocityPage() {
       }))
   }, [data?.phase_markers])
 
+  // Build prior year session summary map keyed by canonical session name
+  const priorSessionMap = useMemo(() => {
+    const map = new Map<
+      string,
+      { enrolled_at_current_week: number | null; final_enrolled: number; year: number }
+    >()
+    for (const summary of data?.prior_year_session_summaries ?? []) {
+      if (summary.session_name) {
+        const canonical = resolveSessionAlias(summary.session_name)
+        map.set(canonical, {
+          enrolled_at_current_week: summary.enrolled_at_current_week,
+          final_enrolled: summary.final_enrolled,
+          year: summary.year,
+        })
+      }
+    }
+    return map
+  }, [data?.prior_year_session_summaries])
+
   // Prior year week map for delta table
   const priorWeekMap = useMemo(() => {
     if (!data?.prior_years?.length) return null
@@ -216,16 +237,30 @@ export default function CancellationVelocityPage() {
     let priorFinal: number | null = null
     let priorYear: number | null = null
 
+    // Use backend cancelled_at_current_week when available (more accurate with fallback)
+    const priorCancelledSummary =
+      data.prior_year_cancelled_to_date?.length > 0 ? data.prior_year_cancelled_to_date[0] : null
+
     if (data.prior_years.length > 0) {
       const py = data.prior_years[0]
       if (py) {
         priorYear = py.year
-        const pyMap = new Map(py.weekly.map((d) => [d.week_number, d]))
-        priorAtWeek = pyMap.get(currentLatest.week_number)?.enrolled ?? null
-        const pyLast = py.weekly[py.weekly.length - 1]
-        priorFinal = pyLast?.enrolled ?? null
+        priorAtWeek = priorCancelledSummary?.cancelled_at_current_week ?? null
+        // Fallback to manual week lookup if backend didn't provide it
+        if (priorAtWeek == null) {
+          const pyMap = new Map(py.weekly.map((d) => [d.week_number, d]))
+          priorAtWeek = pyMap.get(currentLatest.week_number)?.enrolled ?? null
+        }
+        priorFinal = priorCancelledSummary?.cancelled_final ?? null
+        if (priorFinal == null) {
+          const pyLast = py.weekly[py.weekly.length - 1]
+          priorFinal = pyLast?.enrolled ?? null
+        }
       }
     }
+
+    // Inverted delta: positive = more cancellations = bad
+    const delta = priorAtWeek != null ? currentCancelled - priorAtWeek : null
 
     return {
       currentCancelled,
@@ -233,6 +268,7 @@ export default function CancellationVelocityPage() {
       priorAtWeek,
       priorFinal,
       priorYear,
+      delta,
     }
   }, [data])
 
@@ -278,6 +314,11 @@ export default function CancellationVelocityPage() {
       setSelectedPriorYears(selectedPriorYears.slice(0, 1))
     }
   }
+
+  // Build gender breakdown lookup for session table
+  const genderBreakdownMap = new Map(
+    (data.session_gender_breakdown ?? []).map((b) => [b.session_cm_id, b])
+  )
 
   const hasPriorYear = selectedPriorYears.length > 0
 
@@ -334,7 +375,7 @@ export default function CancellationVelocityPage() {
 
       {/* Summary Cards */}
       {summaryCards && hasPriorYear && (
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <div className="card-lodge p-3">
             <p className="text-muted-foreground text-xs font-medium">
               Cancelled ({currentYear}, Wk {summaryCards.currentWeekNumber})
@@ -349,6 +390,22 @@ export default function CancellationVelocityPage() {
             </p>
             <p className="text-foreground text-xl font-bold">
               {summaryCards.priorAtWeek?.toLocaleString() ?? '-'}
+            </p>
+          </div>
+          <div className="card-lodge p-3">
+            <p className="text-muted-foreground text-xs font-medium">vs {summaryCards.priorYear}</p>
+            <p
+              className={`text-xl font-bold ${
+                summaryCards.delta != null && summaryCards.delta > 0
+                  ? 'text-red-600 dark:text-red-400'
+                  : summaryCards.delta != null && summaryCards.delta < 0
+                    ? 'text-green-600 dark:text-green-400'
+                    : 'text-foreground'
+              }`}
+            >
+              {summaryCards.delta != null
+                ? `${summaryCards.delta > 0 ? '+' : ''}${summaryCards.delta}`
+                : '-'}
             </p>
           </div>
           <div className="card-lodge p-3">
@@ -582,9 +639,32 @@ export default function CancellationVelocityPage() {
               <thead>
                 <tr className="border-border bg-muted/30 border-b">
                   <th className="text-muted-foreground px-4 py-3 text-left font-medium">Session</th>
+                  {splitByGender && (
+                    <>
+                      <th className="text-muted-foreground px-4 py-3 text-right font-medium">
+                        Boys
+                      </th>
+                      <th className="text-muted-foreground px-4 py-3 text-right font-medium">
+                        Girls
+                      </th>
+                    </>
+                  )}
                   <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                    Total Cancelled
+                    {splitByGender ? 'Total' : 'Total Cancelled'}
                   </th>
+                  {hasPriorYear && (
+                    <>
+                      <th className="text-muted-foreground px-4 py-3 text-right font-medium">
+                        Prior Yr{summaryCards ? ` (Wk ${summaryCards.currentWeekNumber})` : ''}
+                      </th>
+                      <th className="text-muted-foreground px-4 py-3 text-right font-medium">
+                        Prior Yr Final
+                      </th>
+                      <th className="text-muted-foreground px-4 py-3 text-right font-medium">
+                        vs Prior
+                      </th>
+                    </>
+                  )}
                   <th className="text-muted-foreground px-4 py-3 text-right font-medium">
                     Weeks Tracked
                   </th>
@@ -593,6 +673,21 @@ export default function CancellationVelocityPage() {
               <tbody>
                 {sortedBySession.map((session) => {
                   const lastPoint = session.weekly[session.weekly.length - 1]
+                  const genderData = session.session_cm_id
+                    ? genderBreakdownMap.get(session.session_cm_id)
+                    : undefined
+                  const currentCancelled = lastPoint?.enrolled ?? 0
+
+                  // Prior year session lookup
+                  const canonical = session.session_name
+                    ? resolveSessionAlias(session.session_name)
+                    : null
+                  const priorSession = canonical ? priorSessionMap.get(canonical) : null
+
+                  // Inverted: positive vsPrior = more cancellations = bad
+                  const vsPrior =
+                    priorSession != null ? currentCancelled - priorSession.final_enrolled : null
+
                   return (
                     <tr
                       key={session.session_cm_id}
@@ -601,9 +696,48 @@ export default function CancellationVelocityPage() {
                       <td className="text-foreground px-4 py-3 font-medium">
                         {session.session_name ?? `Session ${session.session_cm_id}`}
                       </td>
+                      {splitByGender && (
+                        <>
+                          <td
+                            className="px-4 py-3 text-right"
+                            style={{ color: GENDER_COLORS.boys }}
+                          >
+                            {genderData?.boys_enrolled?.toLocaleString() ?? '-'}
+                          </td>
+                          <td
+                            className="px-4 py-3 text-right"
+                            style={{ color: GENDER_COLORS.girls }}
+                          >
+                            {genderData?.girls_enrolled?.toLocaleString() ?? '-'}
+                          </td>
+                        </>
+                      )}
                       <td className="px-4 py-3 text-right text-red-600 dark:text-red-400">
-                        {lastPoint?.enrolled?.toLocaleString() ?? 0}
+                        {currentCancelled.toLocaleString()}
                       </td>
+                      {hasPriorYear && (
+                        <>
+                          <td className="text-muted-foreground px-4 py-3 text-right">
+                            {priorSession?.enrolled_at_current_week?.toLocaleString() ?? '-'}
+                          </td>
+                          <td className="text-muted-foreground px-4 py-3 text-right">
+                            {priorSession?.final_enrolled?.toLocaleString() ?? '-'}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <span
+                              className={
+                                vsPrior != null && vsPrior > 0
+                                  ? 'text-red-600 dark:text-red-400'
+                                  : vsPrior != null && vsPrior < 0
+                                    ? 'text-green-600 dark:text-green-400'
+                                    : 'text-muted-foreground'
+                              }
+                            >
+                              {vsPrior != null ? `${vsPrior > 0 ? '+' : ''}${vsPrior}` : '-'}
+                            </span>
+                          </td>
+                        </>
+                      )}
                       <td className="text-muted-foreground px-4 py-3 text-right">
                         {session.weekly.length}
                       </td>
