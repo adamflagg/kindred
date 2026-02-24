@@ -3,7 +3,9 @@
  *
  * Shows:
  * - Cumulative enrollment line chart (current year + optional prior year overlays)
+ * - Optional gender split (boys/girls lines instead of combined)
  * - Vertical phase markers for priority/early/open registration dates
+ * - Per-session breakdown table with optional gender columns
  * - Week-over-week delta table
  */
 
@@ -38,6 +40,11 @@ const PRIOR_YEAR_COLORS = [
   'hsl(180, 50%, 45%)',
 ]
 
+const GENDER_COLORS = {
+  boys: 'hsl(210, 70%, 55%)',
+  girls: 'hsl(340, 65%, 55%)',
+}
+
 const PHASE_COLORS: Record<string, string> = {
   priority: 'hsl(270, 60%, 55%)',
   early: 'hsl(200, 70%, 50%)',
@@ -55,6 +62,7 @@ export default function VelocityPage() {
   const { selectedSessionCmId, sessionTypesParam, sessions } = useMetricsSession()
   const { currentYear, availableYears } = useCurrentYear()
   const [selectedPriorYears, setSelectedPriorYears] = useState<number[]>([])
+  const [splitByGender, setSplitByGender] = useState(false)
 
   const priorYearOptions = useMemo(
     () => availableYears.filter((y) => y < currentYear).sort((a, b) => b - a),
@@ -65,6 +73,7 @@ export default function VelocityPage() {
     sessionCmId: selectedSessionCmId,
     compareYears: selectedPriorYears,
     sessionTypes: sessionTypesParam,
+    splitByGender,
   })
 
   // Build unified chart data aligned by week_number (not index)
@@ -79,11 +88,35 @@ export default function VelocityPage() {
       (py) => new Map(py.weekly.map((w) => [w.week_number, w]))
     )
 
-    // Collect all week_numbers across all years
+    // Build gender maps
+    const mCurve = data.by_gender?.find((c) => c.gender === 'M')
+    const fCurve = data.by_gender?.find((c) => c.gender === 'F')
+    const mMap = mCurve ? new Map(mCurve.weekly.map((w) => [w.week_number, w])) : new Map()
+    const fMap = fCurve ? new Map(fCurve.weekly.map((w) => [w.week_number, w])) : new Map()
+
+    // Build prior year gender maps
+    const priorMGender = data.prior_year_by_gender?.filter((c) => c.gender === 'M') ?? []
+    const priorFGender = data.prior_year_by_gender?.filter((c) => c.gender === 'F') ?? []
+    const priorMGenderMaps = priorMGender.map(
+      (c) => ({ year: c.year, map: new Map(c.weekly.map((w) => [w.week_number, w])) })
+    )
+    const priorFGenderMaps = priorFGender.map(
+      (c) => ({ year: c.year, map: new Map(c.weekly.map((w) => [w.week_number, w])) })
+    )
+
+    // Collect all week_numbers across all years and gender curves
     const allWeekNumbers = new Set<number>()
     for (const wn of currentMap.keys()) allWeekNumbers.add(wn)
     for (const pm of priorMaps) {
       for (const wn of pm.keys()) allWeekNumbers.add(wn)
+    }
+    for (const wn of mMap.keys()) allWeekNumbers.add(wn)
+    for (const wn of fMap.keys()) allWeekNumbers.add(wn)
+    for (const { map } of priorMGenderMaps) {
+      for (const wn of map.keys()) allWeekNumbers.add(wn)
+    }
+    for (const { map } of priorFGenderMaps) {
+      for (const wn of map.keys()) allWeekNumbers.add(wn)
     }
 
     const sorted = [...allWeekNumbers].sort((a, b) => a - b)
@@ -114,14 +147,28 @@ export default function VelocityPage() {
         delta: current?.delta ?? null,
       }
 
+      // Prior year combined lines
       data.prior_years.forEach((py, i) => {
         const pyWeek = priorMaps[i]?.get(wn)
         row[`enrolled_${py.year}`] = pyWeek?.enrolled ?? null
       })
 
+      // Gender lines
+      if (splitByGender) {
+        row['enrolled_boys'] = mMap.get(wn)?.enrolled ?? null
+        row['enrolled_girls'] = fMap.get(wn)?.enrolled ?? null
+
+        for (const { year, map } of priorMGenderMaps) {
+          row[`enrolled_boys_${year}`] = map.get(wn)?.enrolled ?? null
+        }
+        for (const { year, map } of priorFGenderMaps) {
+          row[`enrolled_girls_${year}`] = map.get(wn)?.enrolled ?? null
+        }
+      }
+
       return row
     })
-  }, [data])
+  }, [data, splitByGender])
 
   // Sort by-session table using camp-then-quest ordering
   // Must be before early returns to satisfy React hooks rules
@@ -179,9 +226,24 @@ export default function VelocityPage() {
   }
 
   const togglePriorYear = (year: number) => {
-    setSelectedPriorYears((prev) =>
-      prev.includes(year) ? prev.filter((y) => y !== year) : [...prev, year]
-    )
+    if (splitByGender) {
+      // When gender split is on, only allow 1 prior year
+      setSelectedPriorYears((prev) =>
+        prev.includes(year) ? [] : [year]
+      )
+    } else {
+      setSelectedPriorYears((prev) =>
+        prev.includes(year) ? prev.filter((y) => y !== year) : [...prev, year]
+      )
+    }
+  }
+
+  const handleGenderToggle = (enabled: boolean) => {
+    setSplitByGender(enabled)
+    // When enabling gender, limit prior years to max 1
+    if (enabled && selectedPriorYears.length > 1) {
+      setSelectedPriorYears(selectedPriorYears.slice(0, 1))
+    }
   }
 
   // Find phase marker x-axis positions by week_number
@@ -193,27 +255,63 @@ export default function VelocityPage() {
     })
     .filter(Boolean)
 
+  // Build gender breakdown lookup for session table
+  const genderBreakdownMap = new Map(
+    (data.session_gender_breakdown ?? []).map((b) => [b.session_cm_id, b])
+  )
+
   return (
     <div className="space-y-6">
-      {/* Year Overlay Checkboxes */}
-      {priorYearOptions.length > 0 && (
-        <div className="card-lodge p-4">
-          <h3 className="text-foreground mb-2 text-sm font-medium">Compare with prior years</h3>
-          <div className="flex flex-wrap gap-3">
-            {priorYearOptions.slice(0, 5).map((year) => (
-              <label key={year} className="flex cursor-pointer items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={selectedPriorYears.includes(year)}
-                  onChange={() => togglePriorYear(year)}
-                  className="accent-primary h-4 w-4 rounded"
-                />
-                <span className="text-foreground">{year}</span>
-              </label>
-            ))}
-          </div>
+      {/* Controls: Prior year checkboxes + Gender toggle */}
+      <div className="card-lodge p-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          {/* Prior year checkboxes */}
+          {priorYearOptions.length > 0 && (
+            <div>
+              <h3 className="text-foreground mb-2 text-sm font-medium">Compare with prior years</h3>
+              <div className="flex flex-wrap gap-3">
+                {priorYearOptions.slice(0, 5).map((year) => {
+                  const disabled =
+                    splitByGender &&
+                    !selectedPriorYears.includes(year) &&
+                    selectedPriorYears.length >= 1
+                  return (
+                    <label
+                      key={year}
+                      className={`flex items-center gap-2 text-sm ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedPriorYears.includes(year)}
+                        onChange={() => togglePriorYear(year)}
+                        disabled={disabled}
+                        className="accent-primary h-4 w-4 rounded"
+                      />
+                      <span className="text-foreground">{year}</span>
+                    </label>
+                  )
+                })}
+              </div>
+              {splitByGender && (
+                <p className="text-muted-foreground mt-1 text-xs">
+                  Limited to 1 prior year when gender split is on
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Gender split toggle */}
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={splitByGender}
+              onChange={(e) => handleGenderToggle(e.target.checked)}
+              className="accent-primary h-4 w-4 rounded"
+            />
+            <span className="text-foreground">Split by gender</span>
+          </label>
         </div>
-      )}
+      </div>
 
       {/* Enrollment Velocity Chart */}
       <div className="card-lodge p-4">
@@ -284,33 +382,89 @@ export default function VelocityPage() {
                 )
             )}
 
-            {/* Current year line */}
-            <Line
-              type="monotone"
-              dataKey="enrolled"
-              name={String(currentYear)}
-              stroke="hsl(160, 100%, 35%)"
-              strokeWidth={3}
-              dot={{ fill: 'hsl(160, 100%, 35%)', r: 4 }}
-              activeDot={{ r: 6 }}
-              connectNulls={false}
-            />
-
-            {/* Prior year lines */}
-            {data.prior_years.map((py, i) => (
-              <Line
-                key={py.year}
-                type="monotone"
-                dataKey={`enrolled_${py.year}`}
-                name={String(py.year)}
-                stroke={PRIOR_YEAR_COLORS[i % PRIOR_YEAR_COLORS.length] ?? 'hsl(220, 60%, 65%)'}
-                strokeWidth={2}
-                strokeDasharray="5 5"
-                dot={false}
-                opacity={0.7}
-                connectNulls={false}
-              />
-            ))}
+            {splitByGender ? (
+              <>
+                {/* Gender split: boys + girls lines */}
+                <Line
+                  type="monotone"
+                  dataKey="enrolled_boys"
+                  name={`Boys ${currentYear}`}
+                  stroke={GENDER_COLORS.boys}
+                  strokeWidth={3}
+                  dot={{ fill: GENDER_COLORS.boys, r: 3 }}
+                  activeDot={{ r: 5 }}
+                  connectNulls={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="enrolled_girls"
+                  name={`Girls ${currentYear}`}
+                  stroke={GENDER_COLORS.girls}
+                  strokeWidth={3}
+                  dot={{ fill: GENDER_COLORS.girls, r: 3 }}
+                  activeDot={{ r: 5 }}
+                  connectNulls={false}
+                />
+                {/* Prior year gender lines (dashed) */}
+                {selectedPriorYears.slice(0, 1).map((year) => (
+                  <>
+                    <Line
+                      key={`boys_${year}`}
+                      type="monotone"
+                      dataKey={`enrolled_boys_${year}`}
+                      name={`Boys ${year}`}
+                      stroke={GENDER_COLORS.boys}
+                      strokeWidth={2}
+                      strokeDasharray="5 5"
+                      dot={false}
+                      opacity={0.6}
+                      connectNulls={false}
+                    />
+                    <Line
+                      key={`girls_${year}`}
+                      type="monotone"
+                      dataKey={`enrolled_girls_${year}`}
+                      name={`Girls ${year}`}
+                      stroke={GENDER_COLORS.girls}
+                      strokeWidth={2}
+                      strokeDasharray="5 5"
+                      dot={false}
+                      opacity={0.6}
+                      connectNulls={false}
+                    />
+                  </>
+                ))}
+              </>
+            ) : (
+              <>
+                {/* Combined: single enrollment line */}
+                <Line
+                  type="monotone"
+                  dataKey="enrolled"
+                  name={String(currentYear)}
+                  stroke="hsl(160, 100%, 35%)"
+                  strokeWidth={3}
+                  dot={{ fill: 'hsl(160, 100%, 35%)', r: 4 }}
+                  activeDot={{ r: 6 }}
+                  connectNulls={false}
+                />
+                {/* Prior year lines */}
+                {data.prior_years.map((py, i) => (
+                  <Line
+                    key={py.year}
+                    type="monotone"
+                    dataKey={`enrolled_${py.year}`}
+                    name={String(py.year)}
+                    stroke={PRIOR_YEAR_COLORS[i % PRIOR_YEAR_COLORS.length] ?? 'hsl(220, 60%, 65%)'}
+                    strokeWidth={2}
+                    strokeDasharray="5 5"
+                    dot={false}
+                    opacity={0.7}
+                    connectNulls={false}
+                  />
+                ))}
+              </>
+            )}
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -324,8 +478,18 @@ export default function VelocityPage() {
               <thead>
                 <tr className="border-border bg-muted/30 border-b">
                   <th className="text-muted-foreground px-4 py-3 text-left font-medium">Session</th>
+                  {splitByGender && (
+                    <>
+                      <th className="text-muted-foreground px-4 py-3 text-right font-medium">
+                        Boys
+                      </th>
+                      <th className="text-muted-foreground px-4 py-3 text-right font-medium">
+                        Girls
+                      </th>
+                    </>
+                  )}
                   <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                    Latest Enrolled
+                    {splitByGender ? 'Total' : 'Latest Enrolled'}
                   </th>
                   <th className="text-muted-foreground px-4 py-3 text-right font-medium">
                     Weeks Tracked
@@ -335,6 +499,9 @@ export default function VelocityPage() {
               <tbody>
                 {sortedBySession.map((session) => {
                   const lastWeek = session.weekly[session.weekly.length - 1]
+                  const genderData = session.session_cm_id
+                    ? genderBreakdownMap.get(session.session_cm_id)
+                    : undefined
                   return (
                     <tr
                       key={session.session_cm_id}
@@ -343,6 +510,16 @@ export default function VelocityPage() {
                       <td className="text-foreground px-4 py-3 font-medium">
                         {session.session_name ?? `Session ${session.session_cm_id}`}
                       </td>
+                      {splitByGender && (
+                        <>
+                          <td className="px-4 py-3 text-right" style={{ color: GENDER_COLORS.boys }}>
+                            {genderData?.boys_enrolled?.toLocaleString() ?? '-'}
+                          </td>
+                          <td className="px-4 py-3 text-right" style={{ color: GENDER_COLORS.girls }}>
+                            {genderData?.girls_enrolled?.toLocaleString() ?? '-'}
+                          </td>
+                        </>
+                      )}
                       <td className="text-foreground px-4 py-3 text-right">
                         {lastWeek?.enrolled?.toLocaleString() ?? 0}
                       </td>

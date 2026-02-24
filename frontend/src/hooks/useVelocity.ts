@@ -13,6 +13,7 @@ export function useVelocity(
     sessionCmId?: number | null
     compareYears?: number[]
     sessionTypes?: string
+    splitByGender?: boolean
   } = {}
 ) {
   const { fetchWithAuth } = useApiWithAuth()
@@ -21,13 +22,15 @@ export function useVelocity(
   if (params.sessionCmId) searchParams.set('session_cm_id', String(params.sessionCmId))
   if (params.compareYears?.length) searchParams.set('compare_years', params.compareYears.join(','))
   if (params.sessionTypes) searchParams.set('session_types', params.sessionTypes)
+  if (params.splitByGender) searchParams.set('split_by_gender', 'true')
 
   return useQuery({
     queryKey: queryKeys.velocity(
       year,
       params.sessionCmId ?? undefined,
       params.compareYears?.join(','),
-      params.sessionTypes
+      params.sessionTypes,
+      params.splitByGender
     ),
     queryFn: async (): Promise<VelocityResponse> => {
       const response = await fetchWithAuth(`/api/metrics/velocity?${searchParams}`)
