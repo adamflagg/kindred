@@ -53,9 +53,40 @@ def _compute_season_start(priority_reg_date_str: str | None, year: int) -> datet
     return datetime(year - 1, 11, 1)
 
 
-def _season_end(year: int) -> datetime:
-    """Return the season end date: Dec 31 of the season year."""
-    return datetime(year, 12, 31)
+def _compute_season_end(sessions: dict[int, Any], session_cm_id: int | None) -> datetime:
+    """Compute season end from the latest session end_date.
+
+    If session_cm_id is specified, use only that session's end_date.
+    Otherwise, use the max end_date across all sessions.
+    Snap to next Monday if end_date doesn't fall on a Monday.
+    Fallback: Dec 31 of the latest session's year.
+    """
+    candidates: list[Any] = list(sessions.values())
+    if session_cm_id is not None:
+        candidates = [s for s in candidates if int(s.cm_id) == session_cm_id]
+
+    max_end: datetime | None = None
+    fallback_year = datetime.now().year
+
+    for s in candidates:
+        end_str = getattr(s, "end_date", None)
+        if end_str:
+            dt = datetime.strptime(str(end_str).split("T")[0].split(" ")[0], "%Y-%m-%d")
+            if max_end is None or dt > max_end:
+                max_end = dt
+        yr = getattr(s, "year", None)
+        if yr and int(yr) > fallback_year:
+            fallback_year = int(yr)
+
+    if max_end is None:
+        return datetime(fallback_year, 12, 31)
+
+    # Snap to next Monday if not already Monday
+    weekday = max_end.weekday()
+    if weekday != 0:
+        max_end = max_end + timedelta(days=7 - weekday)
+
+    return max_end
 
 
 def _week_number(monday: datetime, season_start_monday: datetime) -> int:
@@ -82,10 +113,9 @@ class VelocityService:
         reg_dates = await self.repo.fetch_registration_dates(year)
         season_start_dt = _compute_season_start(reg_dates.get("priority_reg_date"), year)
         season_start_monday = _monday_of_week(season_start_dt)
-        season_end_dt = _season_end(year)
-
         # Fetch sessions for the year
         sessions = await self.repo.fetch_sessions(year, session_types=session_types)
+        season_end_dt = _compute_season_end(sessions, session_cm_id)
         ag_parent_map = build_ag_parent_map(sessions)
 
         # Build curves for the primary year
@@ -109,8 +139,8 @@ class VelocityService:
                 prior_reg_dates = await self.repo.fetch_registration_dates(prior_year)
                 prior_season_start = _compute_season_start(prior_reg_dates.get("priority_reg_date"), prior_year)
                 prior_season_start_monday = _monday_of_week(prior_season_start)
-                prior_season_end = _season_end(prior_year)
                 prior_sessions = await self.repo.fetch_sessions(prior_year, session_types=session_types)
+                prior_season_end = _compute_season_end(prior_sessions, None)
                 prior_ag_map = build_ag_parent_map(prior_sessions)
                 prior_combined, _ = await self._build_curves(
                     prior_year,
