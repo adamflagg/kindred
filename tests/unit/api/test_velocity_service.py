@@ -953,3 +953,96 @@ class TestGenderSplitVelocity:
 
         assert result.by_gender == []
         assert result.session_gender_breakdown == []
+
+
+# ============================================================================
+# Bug Fix Tests: Season-End Clipping & Session Type Filtering
+# ============================================================================
+
+
+class TestVelocityBugFixes:
+    """Tests for velocity trend bug fixes: season-end clipping and session type filtering."""
+
+    @pytest.mark.asyncio
+    async def test_season_end_clips_data_after_december(self, service, mock_repository):
+        """Data past Dec 31 of the season year should be excluded from curves."""
+        sessions = {1001: create_mock_session(1001, "Session 1", year=2026)}
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = []
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            # Inside season window
+            create_mock_attendee_with_date(101, 1001, "2026-06-01"),
+            create_mock_attendee_with_date(102, 1001, "2026-12-15"),
+            # Past season end (Jan/Feb 2027)
+            create_mock_attendee_with_date(103, 1001, "2027-01-15"),
+            create_mock_attendee_with_date(104, 1001, "2027-02-10"),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        weeks = result.combined.weekly
+        for w in weeks:
+            assert w.week_start < "2027-01-01", (
+                f"Data past Dec 31 should be clipped: {w.week_start}"
+            )
+        # Should still have data from 2026
+        assert len(weeks) >= 2
+
+    @pytest.mark.asyncio
+    async def test_season_end_includes_december(self, service, mock_repository):
+        """Data on Dec 29 of the season year should be included (not over-clipped)."""
+        sessions = {1001: create_mock_session(1001, "Session 1", year=2026)}
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = []
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2026-12-29"),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        weeks = result.combined.weekly
+        assert len(weeks) >= 1
+        # Dec 29, 2026 is a Tuesday -> Monday is Dec 28
+        assert any(w.week_start == "2026-12-28" for w in weeks)
+
+    @pytest.mark.asyncio
+    async def test_non_matching_session_types_excluded(self, service, mock_repository):
+        """Sessions not in the filtered sessions dict should not appear in by_session."""
+        sessions = {
+            1001: create_mock_session(1001, "Session 1", session_type="main"),
+            1002: create_mock_session(1002, "Session 2", session_type="main"),
+        }
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20),
+            create_mock_snapshot("2026-01-05", 1002, 2026, enrolled=15),
+            # Non-summer sessions (not in sessions dict)
+            create_mock_snapshot("2026-01-05", 9001, 2026, enrolled=10),
+            create_mock_snapshot("2026-01-05", 9002, 2026, enrolled=8),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        session_ids = {c.session_cm_id for c in result.by_session}
+        assert session_ids == {1001, 1002}
+        # No "Session XXXX" fallback names
+        for curve in result.by_session:
+            assert not curve.session_name.startswith("Session 9")
+
+    @pytest.mark.asyncio
+    async def test_non_matching_sessions_excluded_from_combined(self, service, mock_repository):
+        """Combined curve totals should only count sessions in the filtered set."""
+        sessions = {
+            1001: create_mock_session(1001, "Session 1", session_type="main"),
+        }
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20),
+            # Non-summer session (not in sessions dict)
+            create_mock_snapshot("2026-01-05", 9001, 2026, enrolled=10),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        # Combined should only include session 1001 (20 enrolled, not 30)
+        assert result.combined.weekly[0].enrolled == 20
