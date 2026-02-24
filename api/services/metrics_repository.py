@@ -428,13 +428,19 @@ class MetricsRepository:
             query_params={"filter": filter_str, "expand": expand},
         )
 
-    async def fetch_status_transitions(self, year: int, to_statuses: list[str]) -> list[Any]:
-        """Fetch status history entries where status changed TO specific statuses."""
+    async def fetch_status_transitions(
+        self, year: int, to_statuses: list[str], expand_person: bool = False
+    ) -> list[Any]:
+        """Fetch status history entries where status changed TO specific statuses.
+
+        When expand_person=True, also expands the person relation to get gender.
+        """
         status_filter = " || ".join(f'new_status = "{s}"' for s in to_statuses)
         filter_str = f"year = {year} && ({status_filter})"
+        expand = "session,person" if expand_person else "session"
         return await asyncio.to_thread(
             self.pb.collection("attendee_status_history").get_full_list,
-            query_params={"filter": filter_str, "expand": "session"},
+            query_params={"filter": filter_str, "expand": expand},
         )
 
     async def fetch_budget_config(self, year: int) -> dict[int, dict[str, Any]]:

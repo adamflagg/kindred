@@ -133,10 +133,15 @@ class VelocityService:
         # Build gender-split curves if requested
         by_gender: list[VelocityCurve] = []
         session_gender_breakdown: list[SessionGenderBreakdown] = []
-        if split_by_gender and metric == "enrollment":
-            by_gender, session_gender_breakdown = await self._build_gender_curves(
-                year, sessions, ag_parent_map, session_cm_id, season_start_dt, season_start_monday, season_end_dt
-            )
+        if split_by_gender:
+            if metric == "cancellation":
+                by_gender, session_gender_breakdown = await self._build_cancellation_gender_curves(
+                    year, sessions, ag_parent_map, session_cm_id, season_start_dt, season_start_monday, season_end_dt
+                )
+            else:
+                by_gender, session_gender_breakdown = await self._build_gender_curves(
+                    year, sessions, ag_parent_map, session_cm_id, season_start_dt, season_start_monday, season_end_dt
+                )
 
         # Build prior year curves
         prior_years: list[VelocityCurve] = []
@@ -184,6 +189,7 @@ class VelocityService:
                         prior_year,
                         prior_result,
                         current_max_wn,
+                        metric=metric,
                     )
                 )
 
@@ -196,16 +202,27 @@ class VelocityService:
                     )
                 )
 
-                if split_by_gender and metric == "enrollment":
-                    prior_gender_curves, _ = await self._build_gender_curves(
-                        prior_year,
-                        prior_sessions,
-                        prior_ag_map,
-                        session_cm_id=None,
-                        season_start=prior_season_start,
-                        season_start_monday=prior_season_start_monday,
-                        season_end=prior_season_end,
-                    )
+                if split_by_gender:
+                    if metric == "cancellation":
+                        prior_gender_curves, _ = await self._build_cancellation_gender_curves(
+                            prior_year,
+                            prior_sessions,
+                            prior_ag_map,
+                            session_cm_id=None,
+                            season_start=prior_season_start,
+                            season_start_monday=prior_season_start_monday,
+                            season_end=prior_season_end,
+                        )
+                    else:
+                        prior_gender_curves, _ = await self._build_gender_curves(
+                            prior_year,
+                            prior_sessions,
+                            prior_ag_map,
+                            session_cm_id=None,
+                            season_start=prior_season_start,
+                            season_start_monday=prior_season_start_monday,
+                            season_end=prior_season_end,
+                        )
                     prior_year_by_gender.extend(prior_gender_curves)
 
         # Fetch phase markers (pass reg_dates to avoid double fetch)
@@ -898,18 +915,156 @@ class VelocityService:
 
         return _CurveResult(combined=combined, by_session=by_session, cancelled_to_date=total_count)
 
+    async def _build_cancellation_gender_curves(
+        self,
+        year: int,
+        sessions: dict[int, Any],
+        ag_parent_map: dict[int, int],
+        session_cm_id: int | None,
+        season_start: datetime,
+        season_start_monday: datetime,
+        season_end: datetime,
+    ) -> tuple[list[VelocityCurve], list[SessionGenderBreakdown]]:
+        """Build gender-split cancellation velocity curves from status transitions.
+
+        Returns (gender_curves, session_gender_breakdown).
+        """
+        cancellations = await self.repo.fetch_status_transitions(
+            year, ["cancelled", "withdrawn", "dismissed"], expand_person=True
+        )
+
+        if not cancellations:
+            return [], []
+
+        # Group cancellations by gender -> session -> date
+        gender_session_daily: dict[str, dict[int, dict[str, int]]] = defaultdict(
+            lambda: defaultdict(lambda: defaultdict(int))
+        )
+        session_gender_totals: dict[int, dict[str, int]] = defaultdict(lambda: {"M": 0, "F": 0})
+
+        for cancel in cancellations:
+            expand = getattr(cancel, "expand", {}) or {}
+            session = expand.get("session") if isinstance(expand, dict) else None
+            if not session:
+                continue
+
+            raw_sid = int(session.cm_id)
+            effective_sid = ag_parent_map.get(raw_sid, raw_sid)
+            if effective_sid not in sessions:
+                continue
+            if session_cm_id is not None and effective_sid != session_cm_id:
+                continue
+
+            person = expand.get("person") if isinstance(expand, dict) else None
+            gender = extract_gender(person) if person else "Unknown"
+            if gender not in ("M", "F"):
+                continue
+
+            dt = datetime.strptime(cancel.detected_at.split("T")[0].split(" ")[0], "%Y-%m-%d")
+            if dt.date() < season_start.date() or dt.date() > season_end.date():
+                continue
+            date_key = dt.strftime("%Y-%m-%d")
+            gender_session_daily[gender][effective_sid][date_key] += 1
+            session_gender_totals[effective_sid][gender] += 1
+
+        # Filter out sessions not in sessions dict
+        for gender in ("M", "F"):
+            gender_session_daily[gender] = {
+                sid: w for sid, w in gender_session_daily.get(gender, {}).items() if sid in sessions
+            }
+        session_gender_totals = {sid: t for sid, t in session_gender_totals.items() if sid in sessions}
+
+        # Build curves per gender
+        gender_curves: list[VelocityCurve] = []
+
+        for gender in ("M", "F"):
+            session_daily = gender_session_daily.get(gender, {})
+
+            per_session_data: dict[int, list[WeeklyDataPoint]] = {}
+
+            for sid, daily_cancellations in session_daily.items():
+                weekly_counts: dict[str, int] = defaultdict(int)
+                for date_key in daily_cancellations:
+                    dt = datetime.strptime(date_key, "%Y-%m-%d")
+                    monday = _monday_of_week(dt)
+                    monday_key = monday.strftime("%Y-%m-%d")
+                    weekly_counts[monday_key] += daily_cancellations[date_key]
+
+                cumulative = 0
+                points: list[WeeklyDataPoint] = []
+
+                for monday_key in sorted(weekly_counts.keys()):
+                    new_cancelled = weekly_counts[monday_key]
+                    cumulative += new_cancelled
+                    prev_val = points[-1].enrolled if points else 0
+                    delta = cumulative - prev_val
+
+                    monday_dt = datetime.strptime(monday_key, "%Y-%m-%d")
+                    wn = _week_number(monday_dt, season_start_monday)
+                    points.append(
+                        WeeklyDataPoint(
+                            week_start=monday_key,
+                            week_label=_week_label(monday_dt),
+                            week_number=wn,
+                            enrolled=cumulative,
+                            waitlisted=0,
+                            delta=delta,
+                            data_source="reconstructed",
+                        )
+                    )
+
+                per_session_data[sid] = points
+
+            combined_data = self._combine_weekly_curves(per_session_data)
+
+            gender_curves.append(
+                VelocityCurve(
+                    year=year,
+                    session_cm_id=session_cm_id,
+                    gender=gender,
+                    weekly=combined_data,
+                )
+            )
+
+        # Build session gender breakdown
+        breakdown: list[SessionGenderBreakdown] = []
+        for sid in sorted(session_gender_totals.keys()):
+            totals = session_gender_totals[sid]
+            breakdown.append(
+                SessionGenderBreakdown(
+                    session_cm_id=sid,
+                    session_name=getattr(sessions.get(sid), "name", f"Session {sid}"),
+                    boys_enrolled=totals["M"],
+                    girls_enrolled=totals["F"],
+                )
+            )
+
+        return gender_curves, breakdown
+
     def _build_prior_cancelled_summary(
         self,
         prior_year: int,
         prior_result: _CurveResult,
         current_max_wn: int | None,
+        metric: str = "enrollment",
     ) -> PriorYearCancelledSummary:
         """Build cancelled summary for a prior year."""
         cancelled_final = prior_result.cancelled_to_date
 
-        # Find cancelled_at_current_week from snapshot cancelled data
-        # For simplicity, we can approximate from the curve data if available
         cancelled_at_current_week: int | None = None
+        if metric == "cancellation" and current_max_wn is not None and prior_result.combined.weekly:
+            # Look up cumulative cancelled at the current week_number
+            # (.enrolled holds cumulative cancelled for cancellation metric)
+            wn_map = {p.week_number: p.enrolled for p in prior_result.combined.weekly}
+            cancelled_at_current_week = wn_map.get(current_max_wn)
+            # Fallback to closest prior week if exact match not found
+            if cancelled_at_current_week is None:
+                closest_wn = None
+                for wn in sorted(wn_map.keys()):
+                    if wn <= current_max_wn:
+                        closest_wn = wn
+                if closest_wn is not None:
+                    cancelled_at_current_week = wn_map[closest_wn]
 
         return PriorYearCancelledSummary(
             year=prior_year,

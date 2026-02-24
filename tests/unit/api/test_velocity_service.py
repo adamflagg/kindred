@@ -118,8 +118,13 @@ def create_mock_status_transition(
     old_status: str = "enrolled",
     new_status: str = "cancelled",
     year: int = 2026,
+    gender: str | None = None,
 ) -> Mock:
-    """Create a mock status transition record for cancellation tracking."""
+    """Create a mock status transition record for cancellation tracking.
+
+    When gender is provided, the expand dict includes a person object with gender,
+    simulating the expand=session,person API call used for gender split.
+    """
     record = Mock()
     record.person_id = person_id
     record.detected_at = detected_at
@@ -128,7 +133,12 @@ def create_mock_status_transition(
     record.year = year
     session = Mock()
     session.cm_id = session_cm_id
-    record.expand = {"session": session}
+    expand: dict[str, Mock] = {"session": session}
+    if gender is not None:
+        person = Mock()
+        person.gender = gender
+        expand["person"] = person
+    record.expand = expand
     return record
 
 
@@ -1444,3 +1454,179 @@ class TestHistoricalCancellationMetrics:
         for ym in result.years:
             assert hasattr(ym, "total_cancelled")
             assert hasattr(ym, "cancellation_rate")
+
+
+# ============================================================================
+# Phase 5: Cancellation Velocity Parity Tests
+# ============================================================================
+
+
+class TestCancelledAtCurrentWeek:
+    """Test cancelled_at_current_week population in prior year cancelled summary."""
+
+    @pytest.mark.asyncio
+    async def test_cancelled_at_current_week_populated_for_cancellation_metric(self, service, mock_repository):
+        """cancelled_at_current_week should be populated when metric='cancellation'
+        and compare_years is provided, looking up the prior year's cumulative cancelled
+        at the current year's latest week_number."""
+        sessions_2026 = {1001: create_mock_session(1001, "Session 1", year=2026)}
+        sessions_2025 = {901: create_mock_session(901, "Session 1", year=2025)}
+
+        async def mock_fetch_sessions(year, **kwargs):
+            return sessions_2026 if year == 2026 else sessions_2025
+
+        mock_repository.fetch_sessions.side_effect = mock_fetch_sessions
+
+        async def mock_fetch_snapshots(year, **kwargs):
+            if year == 2026:
+                return [
+                    create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=50, cancelled=3),
+                    create_mock_snapshot("2026-01-12", 1001, 2026, enrolled=55, cancelled=6),
+                ]
+            return [
+                create_mock_snapshot("2025-01-06", 901, 2025, enrolled=48, cancelled=2),
+                create_mock_snapshot("2025-01-13", 901, 2025, enrolled=52, cancelled=5),
+                create_mock_snapshot("2025-03-03", 901, 2025, enrolled=60, cancelled=12),
+            ]
+
+        mock_repository.fetch_enrollment_snapshots.side_effect = mock_fetch_snapshots
+
+        result = await service.get_velocity(year=2026, compare_years=[2025], metric="cancellation")
+
+        assert len(result.prior_year_cancelled_to_date) == 1
+        prior_summary = result.prior_year_cancelled_to_date[0]
+        assert prior_summary.year == 2025
+        # cancelled_at_current_week should NOT be None
+        assert prior_summary.cancelled_at_current_week is not None
+        # It should match the prior year's cumulative cancelled at the same week_number
+        # Current year latest week_number is ~week 10 (Jan 12 relative to Nov season start)
+        # Prior year should have data at that week
+        assert prior_summary.cancelled_at_current_week > 0
+        assert prior_summary.cancelled_final == 12
+
+    @pytest.mark.asyncio
+    async def test_cancelled_at_current_week_closest_week_fallback(self, service, mock_repository):
+        """When exact week_number doesn't exist in prior year data,
+        should fallback to closest prior week."""
+        sessions_2026 = {1001: create_mock_session(1001, "Session 1", year=2026)}
+        sessions_2025 = {901: create_mock_session(901, "Session 1", year=2025)}
+
+        async def mock_fetch_sessions(year, **kwargs):
+            return sessions_2026 if year == 2026 else sessions_2025
+
+        mock_repository.fetch_sessions.side_effect = mock_fetch_sessions
+
+        async def mock_fetch_snapshots(year, **kwargs):
+            if year == 2026:
+                # Current year ends at week ~10
+                return [
+                    create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=50, cancelled=3),
+                    create_mock_snapshot("2026-01-12", 1001, 2026, enrolled=55, cancelled=6),
+                ]
+            # Prior year has data at week ~1 and week ~20, but NOT at week ~10
+            return [
+                create_mock_snapshot("2025-01-06", 901, 2025, enrolled=48, cancelled=2),
+                create_mock_snapshot("2025-05-05", 901, 2025, enrolled=60, cancelled=15),
+            ]
+
+        mock_repository.fetch_enrollment_snapshots.side_effect = mock_fetch_snapshots
+
+        result = await service.get_velocity(year=2026, compare_years=[2025], metric="cancellation")
+
+        prior_summary = result.prior_year_cancelled_to_date[0]
+        # Should fallback to closest prior week's value (week ~1 → cancelled=2)
+        assert prior_summary.cancelled_at_current_week is not None
+        assert prior_summary.cancelled_at_current_week == 2
+        assert prior_summary.cancelled_final == 15
+
+
+class TestCancellationGenderSplit:
+    """Test gender-split curves for cancellation metric."""
+
+    @pytest.mark.asyncio
+    async def test_cancellation_gender_curves_from_reconstruction(self, service, mock_repository, sample_sessions):
+        """When metric='cancellation' and split_by_gender=True,
+        by_gender should have M/F curves with correct cumulative counts."""
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+        mock_repository.fetch_enrollment_snapshots.return_value = []
+
+        # Status transitions with gender data
+        mock_repository.fetch_status_transitions.return_value = [
+            create_mock_status_transition(101, 1001, "2026-01-12", gender="M"),
+            create_mock_status_transition(102, 1001, "2026-01-12", gender="F"),
+            create_mock_status_transition(103, 1001, "2026-01-19", gender="M"),
+            create_mock_status_transition(104, 1001, "2026-01-19", gender="M"),
+            create_mock_status_transition(105, 1001, "2026-01-19", gender="F"),
+        ]
+
+        result = await service.get_velocity(year=2026, metric="cancellation", split_by_gender=True)
+
+        assert len(result.by_gender) == 2
+        m_curve = next(c for c in result.by_gender if c.gender == "M")
+        f_curve = next(c for c in result.by_gender if c.gender == "F")
+
+        # M: week1=1, week2=3 (cumulative)
+        assert m_curve.weekly[-1].enrolled == 3
+        # F: week1=1, week2=2 (cumulative)
+        assert f_curve.weekly[-1].enrolled == 2
+
+    @pytest.mark.asyncio
+    async def test_cancellation_gender_breakdown_populated(self, service, mock_repository, sample_sessions):
+        """session_gender_breakdown should be populated for cancellation metric
+        when split_by_gender=True."""
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = []
+
+        mock_repository.fetch_status_transitions.return_value = [
+            create_mock_status_transition(101, 1001, "2026-01-12", gender="M"),
+            create_mock_status_transition(102, 1001, "2026-01-12", gender="F"),
+            create_mock_status_transition(103, 1002, "2026-01-12", gender="M"),
+            create_mock_status_transition(104, 1002, "2026-01-12", gender="M"),
+        ]
+
+        result = await service.get_velocity(year=2026, metric="cancellation", split_by_gender=True)
+
+        assert len(result.session_gender_breakdown) == 2
+        breakdown_map = {b.session_cm_id: b for b in result.session_gender_breakdown}
+        assert breakdown_map[1001].boys_enrolled == 1  # boys_enrolled repurposed for M cancelled
+        assert breakdown_map[1001].girls_enrolled == 1
+        assert breakdown_map[1002].boys_enrolled == 2
+        assert breakdown_map[1002].girls_enrolled == 0
+
+    @pytest.mark.asyncio
+    async def test_cancellation_gender_with_prior_year(self, service, mock_repository):
+        """prior_year_by_gender should be populated for cancellation metric."""
+        sessions_2026 = {1001: create_mock_session(1001, "Session 1", year=2026)}
+        sessions_2025 = {901: create_mock_session(901, "Session 1", year=2025)}
+
+        async def mock_fetch_sessions(year, **kwargs):
+            return sessions_2026 if year == 2026 else sessions_2025
+
+        mock_repository.fetch_sessions.side_effect = mock_fetch_sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = []
+
+        async def mock_fetch_transitions(year, to_statuses, **kwargs):
+            if year == 2026:
+                return [
+                    create_mock_status_transition(101, 1001, "2026-01-12", gender="M"),
+                    create_mock_status_transition(102, 1001, "2026-01-12", gender="F"),
+                ]
+            return [
+                create_mock_status_transition(201, 901, "2025-01-13", gender="M", year=2025),
+                create_mock_status_transition(202, 901, "2025-01-13", gender="F", year=2025),
+                create_mock_status_transition(203, 901, "2025-01-20", gender="F", year=2025),
+            ]
+
+        mock_repository.fetch_status_transitions.side_effect = mock_fetch_transitions
+
+        result = await service.get_velocity(
+            year=2026, compare_years=[2025], metric="cancellation", split_by_gender=True
+        )
+
+        assert len(result.prior_year_by_gender) >= 2
+        prior_m = [c for c in result.prior_year_by_gender if c.gender == "M"]
+        prior_f = [c for c in result.prior_year_by_gender if c.gender == "F"]
+        assert len(prior_m) == 1
+        assert len(prior_f) == 1
+        assert prior_m[0].weekly[-1].enrolled == 1  # 1 male cancelled in 2025
+        assert prior_f[0].weekly[-1].enrolled == 2  # 2 female cancelled in 2025
