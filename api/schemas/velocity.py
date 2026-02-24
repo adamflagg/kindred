@@ -5,14 +5,14 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 
-class VelocityDataPoint(BaseModel):
-    date: str = Field(description="ISO date (YYYY-MM-DD)")
-    label: str = Field(description="Human-readable label like 'Jan 6'")
+class WeeklyDataPoint(BaseModel):
+    week_start: str = Field(description="ISO date of the Monday starting this week (YYYY-MM-DD)")
+    week_label: str = Field(description="Human-readable label like 'Jan 6'")
+    week_number: int = Field(description="0-based week offset from season start Monday")
     enrolled: int = Field(description="Cumulative enrolled count")
     waitlisted: int = Field(description="Cumulative waitlisted count")
-    delta: int = Field(description="Change in enrolled from prior data point")
+    delta: int = Field(description="Change in enrolled from prior week")
     data_source: str = Field(description="'snapshot' or 'reconstructed'")
-    day_number: int = Field(description="0-based day offset from season start (Nov 1)")
 
 
 class VelocityCurve(BaseModel):
@@ -20,14 +20,14 @@ class VelocityCurve(BaseModel):
     session_cm_id: int | None = Field(None, description="None = combined across sessions")
     session_name: str | None = None
     gender: str | None = Field(None, description="None=all, 'M'=boys, 'F'=girls")
-    data: list[VelocityDataPoint]
+    weekly: list[WeeklyDataPoint]
 
 
 class PhaseMarker(BaseModel):
     phase: str = Field(description="Registration phase: priority, early, open")
     date: str = Field(description="ISO date")
     label: str = Field(description="Display label")
-    day_number: int = Field(description="0-based day offset from season start for X-axis alignment")
+    week_number: int = Field(description="0-based week offset from season start Monday for X-axis alignment")
 
 
 class SessionGenderBreakdown(BaseModel):
@@ -39,7 +39,7 @@ class SessionGenderBreakdown(BaseModel):
 
 class VelocityResponse(BaseModel):
     year: int
-    season_start: str = Field(description="ISO date of season start (Nov 1 of year-1)")
+    season_start: str = Field(description="ISO date of season start (priority_reg - 7 days, or Nov 1 fallback)")
     combined: VelocityCurve
     by_session: list[VelocityCurve]
     by_gender: list[VelocityCurve] = Field(default_factory=list, description="Empty when not split, [M, F] when split")
