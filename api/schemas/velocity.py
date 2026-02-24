@@ -19,6 +19,7 @@ class VelocityCurve(BaseModel):
     year: int
     session_cm_id: int | None = Field(None, description="None = combined across sessions")
     session_name: str | None = None
+    gender: str | None = Field(None, description="None=all, 'M'=boys, 'F'=girls")
     weekly: list[WeeklyDataPoint]
 
 
@@ -28,10 +29,20 @@ class PhaseMarker(BaseModel):
     label: str = Field(description="Display label")
 
 
+class SessionGenderBreakdown(BaseModel):
+    session_cm_id: int
+    session_name: str | None = None
+    boys_enrolled: int
+    girls_enrolled: int
+
+
 class VelocityResponse(BaseModel):
     year: int
     season_start: str = Field(description="ISO date of season start (Nov 1 of year-1)")
     combined: VelocityCurve
     by_session: list[VelocityCurve]
+    by_gender: list[VelocityCurve] = Field(default_factory=list, description="Empty when not split, [M, F] when split")
     prior_years: list[VelocityCurve]
+    prior_year_by_gender: list[VelocityCurve] = Field(default_factory=list, description="Prior year gender curves")
     phase_markers: list[PhaseMarker]
+    session_gender_breakdown: list[SessionGenderBreakdown] = Field(default_factory=list)

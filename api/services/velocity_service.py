@@ -12,10 +12,12 @@ from typing import TYPE_CHECKING, Any
 
 from api.schemas.velocity import (
     PhaseMarker,
+    SessionGenderBreakdown,
     VelocityCurve,
     VelocityResponse,
     WeeklyDataPoint,
 )
+from api.services.extractors import extract_gender
 from api.utils.session_metrics import build_ag_parent_map
 
 if TYPE_CHECKING:
@@ -62,6 +64,7 @@ class VelocityService:
         session_cm_id: int | None = None,
         compare_years: list[int] | None = None,
         session_types: list[str] | None = None,
+        split_by_gender: bool = False,
     ) -> VelocityResponse:
         """Get registration velocity curves with week-over-week enrollment data."""
         season_start_dt = _season_start(year)
@@ -76,8 +79,17 @@ class VelocityService:
             year, sessions, ag_parent_map, session_cm_id, season_start_monday
         )
 
+        # Build gender-split curves if requested
+        by_gender: list[VelocityCurve] = []
+        session_gender_breakdown: list[SessionGenderBreakdown] = []
+        if split_by_gender:
+            by_gender, session_gender_breakdown = await self._build_gender_curves(
+                year, sessions, ag_parent_map, session_cm_id, season_start_monday
+            )
+
         # Build prior year curves
         prior_years: list[VelocityCurve] = []
+        prior_year_by_gender: list[VelocityCurve] = []
         if compare_years:
             for prior_year in compare_years:
                 prior_season_start_monday = _monday_of_week(_season_start(prior_year))
@@ -92,6 +104,16 @@ class VelocityService:
                 )
                 prior_years.append(prior_combined)
 
+                if split_by_gender:
+                    prior_gender_curves, _ = await self._build_gender_curves(
+                        prior_year,
+                        prior_sessions,
+                        prior_ag_map,
+                        session_cm_id=None,
+                        season_start_monday=prior_season_start_monday,
+                    )
+                    prior_year_by_gender.extend(prior_gender_curves)
+
         # Fetch phase markers
         phase_markers = await self._build_phase_markers(year)
 
@@ -100,8 +122,11 @@ class VelocityService:
             season_start=season_start_dt.strftime("%Y-%m-%d"),
             combined=combined,
             by_session=by_session,
+            by_gender=by_gender,
             prior_years=prior_years,
+            prior_year_by_gender=prior_year_by_gender,
             phase_markers=phase_markers,
+            session_gender_breakdown=session_gender_breakdown,
         )
 
     async def _build_curves(
@@ -380,6 +405,121 @@ class VelocityService:
         ]
 
         return combined, by_session
+
+    async def _build_gender_curves(
+        self,
+        year: int,
+        sessions: dict[int, Any],
+        ag_parent_map: dict[int, int],
+        session_cm_id: int | None,
+        season_start_monday: datetime,
+    ) -> tuple[list[VelocityCurve], list[SessionGenderBreakdown]]:
+        """Build gender-split velocity curves from attendee reconstruction.
+
+        Gender split always uses reconstruction (enrollment snapshots have no gender).
+        Returns (gender_curves, session_gender_breakdown).
+        """
+        attendees = await self.repo.fetch_attendees_with_dates(year, session_cm_id=session_cm_id, expand_person=True)
+
+        if not attendees:
+            return [], []
+
+        # Group enrollments by gender -> session -> week
+        gender_session_weekly: dict[str, dict[int, dict[str, int]]] = defaultdict(
+            lambda: defaultdict(lambda: defaultdict(int))
+        )
+        # Track per-session gender totals for breakdown
+        session_gender_totals: dict[int, dict[str, int]] = defaultdict(lambda: {"M": 0, "F": 0})
+
+        for att in attendees:
+            expand = getattr(att, "expand", {}) or {}
+            session = expand.get("session") if isinstance(expand, dict) else None
+            if not session:
+                continue
+
+            raw_sid = int(session.cm_id)
+            effective_sid = ag_parent_map.get(raw_sid, raw_sid)
+
+            person = expand.get("person") if isinstance(expand, dict) else None
+            gender = extract_gender(person) if person else "Unknown"
+            if gender not in ("M", "F"):
+                continue  # Skip unknown gender for split curves
+
+            dt = datetime.strptime(att.enrollment_date.split("T")[0].split(" ")[0], "%Y-%m-%d")
+            monday = _monday_of_week(dt)
+            if monday < season_start_monday:
+                continue
+            week_key = monday.strftime("%Y-%m-%d")
+            gender_session_weekly[gender][effective_sid][week_key] += 1
+            session_gender_totals[effective_sid][gender] += 1
+
+        # Build cancellation map (not gender-split — apply proportionally or skip)
+        # For simplicity, gender cancellations are not tracked separately
+        # since status_transitions don't have person expansion
+
+        # Build curves per gender
+        gender_curves: list[VelocityCurve] = []
+
+        for gender in ("M", "F"):
+            session_weekly = gender_session_weekly.get(gender, {})
+            if session_cm_id is not None:
+                session_weekly = {sid: weeks for sid, weeks in session_weekly.items() if sid == session_cm_id}
+
+            # Build per-session cumulative curves
+            per_session_weekly: dict[int, list[WeeklyDataPoint]] = {}
+
+            for sid, weekly_enrollments in session_weekly.items():
+                cumulative = 0
+                points: list[WeeklyDataPoint] = []
+
+                for week_key in sorted(weekly_enrollments.keys()):
+                    new_enrolled = weekly_enrollments[week_key]
+                    cumulative += new_enrolled
+                    prev_enrolled_val = points[-1].enrolled if points else 0
+                    delta = cumulative - prev_enrolled_val
+
+                    monday = datetime.strptime(week_key, "%Y-%m-%d")
+                    wn = _week_number(monday, season_start_monday)
+                    points.append(
+                        WeeklyDataPoint(
+                            week_start=week_key,
+                            week_label=_week_label(monday),
+                            enrolled=cumulative,
+                            waitlisted=0,
+                            delta=delta,
+                            data_source="reconstructed",
+                            week_number=wn,
+                        )
+                    )
+
+                per_session_weekly[sid] = points
+
+            # Combine across sessions for this gender
+            combined_weekly = self._combine_weekly_curves(per_session_weekly)
+
+            gender_curves.append(
+                VelocityCurve(
+                    year=year,
+                    session_cm_id=session_cm_id,
+                    gender=gender,
+                    weekly=combined_weekly,
+                )
+            )
+
+        # Build session gender breakdown
+        breakdown: list[SessionGenderBreakdown] = []
+        for sid in sorted(session_gender_totals.keys()):
+            totals = session_gender_totals[sid]
+            breakdown.append(
+                SessionGenderBreakdown(
+                    session_cm_id=sid,
+                    session_name=getattr(sessions.get(sid), "name", f"Session {sid}"),
+                    boys_enrolled=totals["M"],
+                    girls_enrolled=totals["F"],
+                )
+            )
+
+        return gender_curves, breakdown
 
     async def _build_phase_markers(self, year: int) -> list[PhaseMarker]:
         """Build registration phase markers from config.

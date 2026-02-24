@@ -410,17 +410,22 @@ class MetricsRepository:
             query_params={"filter": filter_str, "sort": "snapshot_date"},
         )
 
-    async def fetch_attendees_with_dates(self, year: int, session_cm_id: int | None = None) -> list[Any]:
+    async def fetch_attendees_with_dates(
+        self, year: int, session_cm_id: int | None = None, expand_person: bool = False
+    ) -> list[Any]:
         """Fetch attendees that have enrollment_date set, for velocity reconstruction.
 
         Note: session_cm_id param is accepted for interface consistency but filtering
         happens in the service layer via expanded session relation (attendees table
         has no session_cm_id column).
+
+        When expand_person=True, also expands the person relation to get gender.
         """
         filter_str = f"year = {year} && enrollment_date != ''"
+        expand = "session,person" if expand_person else "session"
         return await asyncio.to_thread(
             self.pb.collection("attendees").get_full_list,
-            query_params={"filter": filter_str, "expand": "session"},
+            query_params={"filter": filter_str, "expand": expand},
         )
 
     async def fetch_status_transitions(self, year: int, to_statuses: list[str]) -> list[Any]:
