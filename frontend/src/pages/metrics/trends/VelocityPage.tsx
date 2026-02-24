@@ -141,6 +141,17 @@ export default function VelocityPage() {
     return sortSessionDataByCampThenQuest(withNames, dateLookup, typeLookup)
   }, [data?.by_session, sessions])
 
+  // Build week_number -> week_label lookup for XAxis tick formatting
+  const weekLabelMap = useMemo(() => {
+    const map = new Map<number, string>()
+    for (const pt of chartData) {
+      const wn = pt['week_number'] as number
+      const label = pt['week_label'] as string
+      if (label) map.set(wn, label)
+    }
+    return map
+  }, [chartData])
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -173,13 +184,12 @@ export default function VelocityPage() {
     )
   }
 
-  // Find phase marker x-axis positions (exact match on week_start since backend snaps to Monday)
+  // Find phase marker x-axis positions by week_number
   const phaseLines = data.phase_markers
     .map((marker, idx) => {
       const match = chartData.find((pt) => pt['week_start'] === marker.date)
-      const weekLabel = match ? String(match['week_label']) : null
-      if (!weekLabel) return null
-      return { ...marker, weekLabel, labelIdx: idx }
+      if (!match) return null
+      return { ...marker, weekNumber: match['week_number'] as number, labelIdx: idx }
     })
     .filter(Boolean)
 
@@ -214,9 +224,12 @@ export default function VelocityPage() {
           <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
             <XAxis
-              dataKey="week_label"
+              dataKey="week_number"
+              type="number"
+              domain={['dataMin', 'dataMax']}
               className="text-xs"
               tick={{ fill: 'hsl(var(--muted-foreground))' }}
+              tickFormatter={(wn: number) => weekLabelMap.get(wn) ?? `W${wn}`}
               interval="preserveStartEnd"
             />
             <YAxis
@@ -234,9 +247,10 @@ export default function VelocityPage() {
                 if (!active || !payload?.length) return null
                 const validPayload = payload.filter((entry) => entry.value != null)
                 if (!validPayload.length) return null
+                const displayLabel = weekLabelMap.get(label as number) ?? `Week ${label}`
                 return (
                   <div className="bg-card border-border rounded-lg border p-3 shadow-lg">
-                    <p className="text-foreground mb-1 font-medium">{label}</p>
+                    <p className="text-foreground mb-1 font-medium">{displayLabel}</p>
                     {validPayload.map((entry) => (
                       <p key={entry.name} className="text-sm" style={{ color: entry.color }}>
                         {entry.name}: {Number(entry.value).toLocaleString()}
@@ -254,7 +268,7 @@ export default function VelocityPage() {
                 phase && (
                   <ReferenceLine
                     key={phase.phase}
-                    x={phase.weekLabel}
+                    x={phase.weekNumber}
                     stroke={PHASE_COLORS[phase.phase] ?? 'hsl(var(--muted-foreground))'}
                     strokeDasharray="5 5"
                     strokeWidth={2}
