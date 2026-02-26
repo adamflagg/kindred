@@ -338,7 +338,8 @@ class VelocityService:
         per_session_data: dict[int, list[WeeklyDataPoint]] = {}
 
         for sid, date_data in session_date_data.items():
-            weekly = self._aggregate_snapshots_to_weekly(date_data, season_start, season_end)
+            cancelled_data = session_date_cancelled.get(sid, {})
+            weekly = self._aggregate_snapshots_to_weekly(date_data, cancelled_data, season_start, season_end)
             per_session_data[sid] = weekly
 
         # Build combined curve by summing across sessions per week
@@ -368,6 +369,7 @@ class VelocityService:
     def _aggregate_snapshots_to_weekly(
         self,
         date_data: dict[str, dict[str, int]],
+        cancelled_data: dict[str, int],
         season_start: datetime,
         season_end: datetime,
     ) -> list[WeeklyDataPoint]:
@@ -377,6 +379,7 @@ class VelocityService:
         """
         # Bucket by 7-day periods anchored to season_start (= priority_reg_date)
         weekly_data: dict[str, dict[str, int]] = {}
+        weekly_cancelled: dict[str, int] = {}
 
         for date_str, counts in sorted(date_data.items()):
             dt = datetime.strptime(date_str.split("T")[0].split(" ")[0], "%Y-%m-%d")
@@ -388,16 +391,21 @@ class VelocityService:
             bucket_key = bucket.strftime("%Y-%m-%d")
             # Last snapshot of the week wins (data is sorted by date)
             weekly_data[bucket_key] = counts
+            weekly_cancelled[bucket_key] = cancelled_data.get(date_str, 0)
 
         # Build weekly data points with deltas
         points: list[WeeklyDataPoint] = []
         prev_enrolled = 0
+        prev_gross = 0
+        prev_cancelled = 0
 
         for bucket_key in sorted(weekly_data.keys()):
             counts = weekly_data[bucket_key]
             enrolled = counts["enrolled"]
             waitlisted = counts["waitlisted"]
             delta = enrolled - prev_enrolled
+            cancelled = weekly_cancelled.get(bucket_key, 0)
+            gross = enrolled + cancelled
 
             bucket_dt = datetime.strptime(bucket_key, "%Y-%m-%d")
             wn = _week_number(bucket_dt, season_start)
@@ -410,15 +418,22 @@ class VelocityService:
                     waitlisted=waitlisted,
                     delta=delta,
                     data_source="snapshot",
+                    gross_enrolled=gross,
+                    weekly_new=gross - prev_gross,
+                    weekly_cancelled=cancelled - prev_cancelled,
                 )
             )
             prev_enrolled = enrolled
+            prev_gross = gross
+            prev_cancelled = cancelled
 
         return points
 
     def _combine_weekly_curves(self, per_session_data: dict[int, list[WeeklyDataPoint]]) -> list[WeeklyDataPoint]:
         """Combine per-session weekly curves into a single combined curve."""
-        week_totals: dict[str, dict[str, int]] = defaultdict(lambda: {"enrolled": 0, "waitlisted": 0})
+        week_totals: dict[str, dict[str, int]] = defaultdict(
+            lambda: {"enrolled": 0, "waitlisted": 0, "gross_enrolled": 0, "weekly_new": 0, "weekly_cancelled": 0}
+        )
         week_labels: dict[str, str] = {}
         data_sources: dict[str, str] = {}
         week_numbers: dict[str, int] = {}
@@ -427,6 +442,9 @@ class VelocityService:
             for point in data:
                 week_totals[point.week_start]["enrolled"] += point.enrolled
                 week_totals[point.week_start]["waitlisted"] += point.waitlisted
+                week_totals[point.week_start]["gross_enrolled"] += point.gross_enrolled
+                week_totals[point.week_start]["weekly_new"] += point.weekly_new
+                week_totals[point.week_start]["weekly_cancelled"] += point.weekly_cancelled
                 week_labels[point.week_start] = point.week_label
                 data_sources[point.week_start] = point.data_source
                 week_numbers[point.week_start] = point.week_number
@@ -449,6 +467,9 @@ class VelocityService:
                     waitlisted=totals["waitlisted"],
                     delta=delta,
                     data_source=data_sources.get(week_key, "snapshot"),
+                    gross_enrolled=totals["gross_enrolled"],
+                    weekly_new=totals["weekly_new"],
+                    weekly_cancelled=totals["weekly_cancelled"],
                 )
             )
             prev_enrolled = enrolled
@@ -531,24 +552,32 @@ class VelocityService:
             if sid in session_daily_cancellations:
                 all_dates |= set(session_daily_cancellations[sid].keys())
 
-            # Bucket net changes by 7-day periods anchored to season_start
-            weekly_net: dict[str, int] = defaultdict(int)
+            # Bucket enrollments and cancellations separately by 7-day periods
+            weekly_enrollments: dict[str, int] = defaultdict(int)
+            weekly_cancellations: dict[str, int] = defaultdict(int)
             for date_key in all_dates:
                 new_enrolled = daily_enrollments.get(date_key, 0)
                 cancelled = session_daily_cancellations.get(sid, {}).get(date_key, 0)
                 dt = datetime.strptime(date_key, "%Y-%m-%d")
                 bucket = _week_start(dt, season_start)
                 bucket_key = bucket.strftime("%Y-%m-%d")
-                weekly_net[bucket_key] += new_enrolled - cancelled
+                weekly_enrollments[bucket_key] += new_enrolled
+                weekly_cancellations[bucket_key] += cancelled
 
             # Build cumulative weekly points
-            cumulative = 0
+            gross_cumulative = 0
+            cancel_cumulative = 0
             points: list[WeeklyDataPoint] = []
 
-            for bucket_key in sorted(weekly_net.keys()):
-                cumulative += weekly_net[bucket_key]
+            all_bucket_keys = sorted(set(weekly_enrollments.keys()) | set(weekly_cancellations.keys()))
+            for bucket_key in all_bucket_keys:
+                week_new = weekly_enrollments.get(bucket_key, 0)
+                week_cancel = weekly_cancellations.get(bucket_key, 0)
+                gross_cumulative += week_new
+                cancel_cumulative += week_cancel
+                net = gross_cumulative - cancel_cumulative
                 prev_enrolled_val = points[-1].enrolled if points else 0
-                delta = cumulative - prev_enrolled_val
+                delta = net - prev_enrolled_val
 
                 bucket_dt = datetime.strptime(bucket_key, "%Y-%m-%d")
                 wn = _week_number(bucket_dt, season_start)
@@ -557,10 +586,13 @@ class VelocityService:
                         week_start=bucket_key,
                         week_label=_week_label(bucket_dt),
                         week_number=wn,
-                        enrolled=cumulative,
+                        enrolled=net,
                         waitlisted=0,
                         delta=delta,
                         data_source="reconstructed",
+                        gross_enrolled=gross_cumulative,
+                        weekly_new=week_new,
+                        weekly_cancelled=week_cancel,
                     )
                 )
 
@@ -689,6 +721,9 @@ class VelocityService:
                             waitlisted=0,
                             delta=delta,
                             data_source="reconstructed",
+                            gross_enrolled=cumulative,
+                            weekly_new=new_enrolled,
+                            weekly_cancelled=0,
                         )
                     )
 
