@@ -405,7 +405,7 @@ export default function VelocityPage() {
 
           <div className="flex items-center gap-4">
             {/* View mode toggle */}
-            <div className="flex rounded-lg border border-border overflow-hidden">
+            <div className="border-border flex overflow-hidden rounded-lg border">
               {(['gross', 'net', 'delta'] as VelocityViewMode[]).map((mode) => (
                 <button
                   key={mode}
@@ -605,9 +605,9 @@ export default function VelocityPage() {
                   const validPayload = payload.filter((entry) => entry.value != null)
                   if (!validPayload.length) return null
                   const displayLabel = weekLabelMap.get(label as number) ?? `Week ${label}`
-                  const weekStart = chartData.find(
-                    (d) => d['week_number'] === label
-                  )?.['week_start']
+                  const weekStart = chartData.find((d) => d['week_number'] === label)?.[
+                    'week_start'
+                  ]
                   return (
                     <div className="bg-card border-border rounded-lg border p-3 shadow-lg">
                       <p className="text-foreground mb-1 font-medium">{displayLabel}</p>
@@ -701,9 +701,9 @@ export default function VelocityPage() {
                   const validPayload = payload.filter((entry) => entry.value != null)
                   if (!validPayload.length) return null
                   const displayLabel = weekLabelMap.get(label as number) ?? `Week ${label}`
-                  const weekStart = chartData.find(
-                    (d) => d['week_number'] === label
-                  )?.['week_start']
+                  const weekStart = chartData.find((d) => d['week_number'] === label)?.[
+                    'week_start'
+                  ]
                   return (
                     <div className="bg-card border-border rounded-lg border p-3 shadow-lg">
                       <p className="text-foreground mb-1 font-medium">{displayLabel}</p>
@@ -821,9 +821,7 @@ export default function VelocityPage() {
                       key={py.year}
                       type="monotone"
                       dataKey={
-                        viewMode === 'gross'
-                          ? `gross_enrolled_${py.year}`
-                          : `enrolled_${py.year}`
+                        viewMode === 'gross' ? `gross_enrolled_${py.year}` : `enrolled_${py.year}`
                       }
                       name={String(py.year)}
                       stroke={
