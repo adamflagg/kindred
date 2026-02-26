@@ -72,6 +72,72 @@ def _week_number(d: datetime, priority_reg_date: datetime) -> int:
     return (d - priority_reg_date).days // 7
 
 
+def _value_at_week(weekly: list[WeeklyDataPoint], target_wn: int) -> int | None:
+    """Look up enrolled value at target week, falling back to closest prior week."""
+    wn_map = {p.week_number: p.enrolled for p in weekly}
+    value = wn_map.get(target_wn)
+    if value is not None:
+        return value
+    closest_wn = None
+    for wn in sorted(wn_map.keys()):
+        if wn <= target_wn:
+            closest_wn = wn
+    if closest_wn is not None:
+        return wn_map[closest_wn]
+    return None
+
+
+def _daily_counts_to_weekly_points(
+    daily_counts: dict[str, int],
+    season_start: datetime,
+    *,
+    track_gross: bool = False,
+) -> list[WeeklyDataPoint]:
+    """Bucket daily counts into weekly periods and build cumulative WeeklyDataPoints.
+
+    Args:
+        daily_counts: date_key -> count mapping.
+        season_start: priority_reg_date for bucketing.
+        track_gross: If True, set gross_enrolled/weekly_new from the count
+                     (used for enrollment). If False, leave them at 0
+                     (used for cancellation curves).
+    """
+    weekly_counts: dict[str, int] = defaultdict(int)
+    for date_key, count in daily_counts.items():
+        dt = datetime.strptime(date_key, "%Y-%m-%d")
+        bucket = _week_start(dt, season_start)
+        bucket_key = bucket.strftime("%Y-%m-%d")
+        weekly_counts[bucket_key] += count
+
+    cumulative = 0
+    points: list[WeeklyDataPoint] = []
+
+    for bucket_key in sorted(weekly_counts.keys()):
+        new_count = weekly_counts[bucket_key]
+        cumulative += new_count
+        prev_val = points[-1].enrolled if points else 0
+        delta = cumulative - prev_val
+
+        bucket_dt = datetime.strptime(bucket_key, "%Y-%m-%d")
+        wn = _week_number(bucket_dt, season_start)
+        points.append(
+            WeeklyDataPoint(
+                week_start=bucket_key,
+                week_label=_week_label(bucket_dt),
+                week_number=wn,
+                enrolled=cumulative,
+                waitlisted=0,
+                delta=delta,
+                data_source="reconstructed",
+                gross_enrolled=cumulative if track_gross else 0,
+                weekly_new=new_count if track_gross else 0,
+                weekly_cancelled=0,
+            )
+        )
+
+    return points
+
+
 class _CurveResult:
     """Internal result from curve building, includes extra metadata."""
 
@@ -93,6 +159,40 @@ class VelocityService:
 
     def __init__(self, repository: MetricsRepository) -> None:
         self.repo = repository
+
+    @staticmethod
+    def _build_gender_breakdown(
+        sessions: dict[int, Any],
+        session_gender_totals: dict[int, dict[str, int]],
+    ) -> list[SessionGenderBreakdown]:
+        """Build per-session gender breakdown from accumulated totals."""
+        return [
+            SessionGenderBreakdown(
+                session_cm_id=sid,
+                session_name=getattr(sessions.get(sid), "name", f"Session {sid}"),
+                boys_enrolled=totals["M"],
+                girls_enrolled=totals["F"],
+            )
+            for sid, totals in sorted(session_gender_totals.items())
+        ]
+
+    @staticmethod
+    def _build_session_curves(
+        year: int,
+        sessions: dict[int, Any],
+        per_session_data: dict[int, list[WeeklyDataPoint]],
+    ) -> list[VelocityCurve]:
+        """Build per-session VelocityCurves from per_session_data."""
+        return [
+            VelocityCurve(
+                year=year,
+                session_cm_id=sid,
+                session_name=getattr(sessions.get(sid), "name", f"Session {sid}"),
+                gender=None,
+                weekly=data,
+            )
+            for sid, data in sorted(per_session_data.items())
+        ]
 
     async def get_velocity(
         self,
@@ -354,16 +454,7 @@ class VelocityService:
             weekly=combined_data,
         )
 
-        by_session = [
-            VelocityCurve(
-                year=year,
-                session_cm_id=sid,
-                session_name=getattr(sessions.get(sid), "name", f"Session {sid}"),
-                gender=None,
-                weekly=data,
-            )
-            for sid, data in sorted(per_session_data.items())
-        ]
+        by_session = self._build_session_curves(year, sessions, per_session_data)
 
         return _CurveResult(combined=combined, by_session=by_session, cancelled_to_date=cancelled_to_date)
 
@@ -609,16 +700,7 @@ class VelocityService:
             weekly=combined_data,
         )
 
-        by_session = [
-            VelocityCurve(
-                year=year,
-                session_cm_id=sid,
-                session_name=getattr(sessions.get(sid), "name", f"Session {sid}"),
-                gender=None,
-                weekly=data,
-            )
-            for sid, data in sorted(per_session_data.items())
-        ]
+        by_session = self._build_session_curves(year, sessions, per_session_data)
 
         return _CurveResult(
             combined=combined,
@@ -690,47 +772,11 @@ class VelocityService:
             if session_cm_id is not None:
                 session_daily = {sid: dates for sid, dates in session_daily.items() if sid == session_cm_id}
 
-            # Build per-session cumulative curves (bucket by Monday)
-            per_session_data: dict[int, list[WeeklyDataPoint]] = {}
+            per_session_data: dict[int, list[WeeklyDataPoint]] = {
+                sid: _daily_counts_to_weekly_points(daily, season_start, track_gross=True)
+                for sid, daily in session_daily.items()
+            }
 
-            for sid, daily_enrollments in session_daily.items():
-                # Bucket by 7-day periods anchored to season_start
-                weekly_counts: dict[str, int] = defaultdict(int)
-                for date_key in daily_enrollments:
-                    dt = datetime.strptime(date_key, "%Y-%m-%d")
-                    bucket = _week_start(dt, season_start)
-                    bucket_key = bucket.strftime("%Y-%m-%d")
-                    weekly_counts[bucket_key] += daily_enrollments[date_key]
-
-                cumulative = 0
-                points: list[WeeklyDataPoint] = []
-
-                for bucket_key in sorted(weekly_counts.keys()):
-                    new_enrolled = weekly_counts[bucket_key]
-                    cumulative += new_enrolled
-                    prev_enrolled_val = points[-1].enrolled if points else 0
-                    delta = cumulative - prev_enrolled_val
-
-                    bucket_dt = datetime.strptime(bucket_key, "%Y-%m-%d")
-                    wn = _week_number(bucket_dt, season_start)
-                    points.append(
-                        WeeklyDataPoint(
-                            week_start=bucket_key,
-                            week_label=_week_label(bucket_dt),
-                            week_number=wn,
-                            enrolled=cumulative,
-                            waitlisted=0,
-                            delta=delta,
-                            data_source="reconstructed",
-                            gross_enrolled=cumulative,
-                            weekly_new=new_enrolled,
-                            weekly_cancelled=0,
-                        )
-                    )
-
-                per_session_data[sid] = points
-
-            # Combine across sessions for this gender
             combined_data = self._combine_weekly_curves(per_session_data)
 
             gender_curves.append(
@@ -742,18 +788,7 @@ class VelocityService:
                 )
             )
 
-        # Build session gender breakdown
-        breakdown: list[SessionGenderBreakdown] = []
-        for sid in sorted(session_gender_totals.keys()):
-            totals = session_gender_totals[sid]
-            breakdown.append(
-                SessionGenderBreakdown(
-                    session_cm_id=sid,
-                    session_name=getattr(sessions.get(sid), "name", f"Session {sid}"),
-                    boys_enrolled=totals["M"],
-                    girls_enrolled=totals["F"],
-                )
-            )
+        breakdown = self._build_gender_breakdown(sessions, session_gender_totals)
 
         return gender_curves, breakdown
 
@@ -863,16 +898,7 @@ class VelocityService:
         # cancelled_to_date = final combined cancelled count
         cancelled_to_date = combined_data[-1].enrolled if combined_data else 0
 
-        by_session = [
-            VelocityCurve(
-                year=year,
-                session_cm_id=sid,
-                session_name=getattr(sessions.get(sid), "name", f"Session {sid}"),
-                gender=None,
-                weekly=data,
-            )
-            for sid, data in sorted(per_session_data.items())
-        ]
+        by_session = self._build_session_curves(year, sessions, per_session_data)
 
         return _CurveResult(combined=combined, by_session=by_session, cancelled_to_date=cancelled_to_date)
 
@@ -947,16 +973,7 @@ class VelocityService:
         combined_data = self._combine_weekly_curves(per_session_data)
         combined = VelocityCurve(year=year, session_cm_id=session_cm_id, gender=None, weekly=combined_data)
 
-        by_session = [
-            VelocityCurve(
-                year=year,
-                session_cm_id=sid,
-                session_name=getattr(sessions.get(sid), "name", f"Session {sid}"),
-                gender=None,
-                weekly=data,
-            )
-            for sid, data in sorted(per_session_data.items())
-        ]
+        by_session = self._build_session_curves(year, sessions, per_session_data)
 
         return _CurveResult(combined=combined, by_session=by_session, cancelled_to_date=total_count)
 
@@ -1024,43 +1041,9 @@ class VelocityService:
         for gender in ("M", "F"):
             session_daily = gender_session_daily.get(gender, {})
 
-            per_session_data: dict[int, list[WeeklyDataPoint]] = {}
-
-            for sid, daily_cancellations in session_daily.items():
-                weekly_counts: dict[str, int] = defaultdict(int)
-                for date_key in daily_cancellations:
-                    dt = datetime.strptime(date_key, "%Y-%m-%d")
-                    bucket = _week_start(dt, season_start)
-                    bucket_key = bucket.strftime("%Y-%m-%d")
-                    weekly_counts[bucket_key] += daily_cancellations[date_key]
-
-                cumulative = 0
-                points: list[WeeklyDataPoint] = []
-
-                for bucket_key in sorted(weekly_counts.keys()):
-                    new_cancelled = weekly_counts[bucket_key]
-                    cumulative += new_cancelled
-                    prev_val = points[-1].enrolled if points else 0
-                    delta = cumulative - prev_val
-
-                    bucket_dt = datetime.strptime(bucket_key, "%Y-%m-%d")
-                    wn = _week_number(bucket_dt, season_start)
-                    points.append(
-                        WeeklyDataPoint(
-                            week_start=bucket_key,
-                            week_label=_week_label(bucket_dt),
-                            week_number=wn,
-                            enrolled=cumulative,
-                            waitlisted=0,
-                            delta=delta,
-                            data_source="reconstructed",
-                            gross_enrolled=0,
-                            weekly_new=0,
-                            weekly_cancelled=0,
-                        )
-                    )
-
-                per_session_data[sid] = points
+            per_session_data: dict[int, list[WeeklyDataPoint]] = {
+                sid: _daily_counts_to_weekly_points(daily, season_start) for sid, daily in session_daily.items()
+            }
 
             combined_data = self._combine_weekly_curves(per_session_data)
 
@@ -1073,18 +1056,7 @@ class VelocityService:
                 )
             )
 
-        # Build session gender breakdown
-        breakdown: list[SessionGenderBreakdown] = []
-        for sid in sorted(session_gender_totals.keys()):
-            totals = session_gender_totals[sid]
-            breakdown.append(
-                SessionGenderBreakdown(
-                    session_cm_id=sid,
-                    session_name=getattr(sessions.get(sid), "name", f"Session {sid}"),
-                    boys_enrolled=totals["M"],
-                    girls_enrolled=totals["F"],
-                )
-            )
+        breakdown = self._build_gender_breakdown(sessions, session_gender_totals)
 
         return gender_curves, breakdown
 
@@ -1100,18 +1072,7 @@ class VelocityService:
 
         cancelled_at_current_week: int | None = None
         if metric == "cancellation" and current_max_wn is not None and prior_result.combined.weekly:
-            # Look up cumulative cancelled at the current week_number
-            # (.enrolled holds cumulative cancelled for cancellation metric)
-            wn_map = {p.week_number: p.enrolled for p in prior_result.combined.weekly}
-            cancelled_at_current_week = wn_map.get(current_max_wn)
-            # Fallback to closest prior week if exact match not found
-            if cancelled_at_current_week is None:
-                closest_wn = None
-                for wn in sorted(wn_map.keys()):
-                    if wn <= current_max_wn:
-                        closest_wn = wn
-                if closest_wn is not None:
-                    cancelled_at_current_week = wn_map[closest_wn]
+            cancelled_at_current_week = _value_at_week(prior_result.combined.weekly, current_max_wn)
 
         return PriorYearCancelledSummary(
             year=prior_year,
@@ -1134,19 +1095,9 @@ class VelocityService:
 
             final_enrolled = curve.weekly[-1].enrolled
 
-            # Find enrolled_at_current_week
             enrolled_at_current_week: int | None = None
             if current_max_wn is not None:
-                wn_map = {p.week_number: p.enrolled for p in curve.weekly}
-                enrolled_at_current_week = wn_map.get(current_max_wn)
-                # If exact match not found, use closest prior week
-                if enrolled_at_current_week is None:
-                    closest_wn = None
-                    for wn in sorted(wn_map.keys()):
-                        if wn <= current_max_wn:
-                            closest_wn = wn
-                    if closest_wn is not None:
-                        enrolled_at_current_week = wn_map[closest_wn]
+                enrolled_at_current_week = _value_at_week(curve.weekly, current_max_wn)
 
             summaries.append(
                 PriorYearSessionSummary(

@@ -73,6 +73,17 @@ const PHASE_COLORS: Record<string, string> = {
   open: 'hsl(140, 60%, 40%)',
 }
 
+function formatDeltaValue(value: number): string {
+  if (value > 0) return `+${value}`
+  return String(value)
+}
+
+function deltaColorClass(value: number | null): string {
+  if (value != null && value > 0) return 'text-green-600 dark:text-green-400'
+  if (value != null && value < 0) return 'text-red-600 dark:text-red-400'
+  return 'text-muted-foreground'
+}
+
 export default function VelocityPage() {
   const { selectedSessionCmId, sessionTypesParam, sessions } = useMetricsSession()
   const { currentYear, availableYears } = useCurrentYear()
@@ -468,18 +479,8 @@ export default function VelocityPage() {
           </div>
           <div className="card-lodge p-3">
             <p className="text-muted-foreground text-xs font-medium">vs {summaryCards.priorYear}</p>
-            <p
-              className={`text-xl font-bold ${
-                summaryCards.delta != null && summaryCards.delta > 0
-                  ? 'text-green-600 dark:text-green-400'
-                  : summaryCards.delta != null && summaryCards.delta < 0
-                    ? 'text-red-600 dark:text-red-400'
-                    : 'text-foreground'
-              }`}
-            >
-              {summaryCards.delta != null
-                ? `${summaryCards.delta > 0 ? '+' : ''}${summaryCards.delta}`
-                : '-'}
+            <p className={`text-xl font-bold ${deltaColorClass(summaryCards.delta)}`}>
+              {summaryCards.delta != null ? formatDeltaValue(summaryCards.delta) : '-'}
             </p>
           </div>
           <div className="card-lodge p-3">
@@ -930,16 +931,8 @@ export default function VelocityPage() {
                             {priorSession?.final_enrolled?.toLocaleString() ?? '-'}
                           </td>
                           <td className="px-4 py-3 text-right">
-                            <span
-                              className={
-                                vsPrior != null && vsPrior > 0
-                                  ? 'text-green-600 dark:text-green-400'
-                                  : vsPrior != null && vsPrior < 0
-                                    ? 'text-red-600 dark:text-red-400'
-                                    : 'text-muted-foreground'
-                              }
-                            >
-                              {vsPrior != null ? `${vsPrior > 0 ? '+' : ''}${vsPrior}` : '-'}
+                            <span className={deltaColorClass(vsPrior)}>
+                              {vsPrior != null ? formatDeltaValue(vsPrior) : '-'}
                             </span>
                           </td>
                         </>
@@ -1010,16 +1003,8 @@ export default function VelocityPage() {
                       {week.weekly_cancelled > 0 ? `-${week.weekly_cancelled}` : 0}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <span
-                        className={
-                          week.delta > 0
-                            ? 'text-green-600 dark:text-green-400'
-                            : week.delta < 0
-                              ? 'text-red-600 dark:text-red-400'
-                              : 'text-muted-foreground'
-                        }
-                      >
-                        {week.delta > 0 ? `+${week.delta}` : week.delta}
+                      <span className={deltaColorClass(week.delta)}>
+                        {formatDeltaValue(week.delta)}
                       </span>
                     </td>
                     <td className="text-foreground px-4 py-3 text-right">
@@ -1034,20 +1019,8 @@ export default function VelocityPage() {
                           {priorPoint?.enrolled?.toLocaleString() ?? '-'}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <span
-                            className={
-                              priorPoint && priorPoint.delta > 0
-                                ? 'text-green-600 dark:text-green-400'
-                                : priorPoint && priorPoint.delta < 0
-                                  ? 'text-red-600 dark:text-red-400'
-                                  : 'text-muted-foreground'
-                            }
-                          >
-                            {priorPoint
-                              ? priorPoint.delta > 0
-                                ? `+${priorPoint.delta}`
-                                : priorPoint.delta
-                              : '-'}
+                          <span className={deltaColorClass(priorPoint?.delta ?? null)}>
+                            {priorPoint ? formatDeltaValue(priorPoint.delta) : '-'}
                           </span>
                         </td>
                       </>
