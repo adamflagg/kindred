@@ -12,12 +12,16 @@ MetricsCache to avoid redundant computation:
 from __future__ import annotations
 
 import os
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from api.services.metrics_cache import MetricsCache
+
+if TYPE_CHECKING:
+    from api.schemas.metrics import RegistrationMetricsResponse, RetentionMetricsResponse
 
 
 @pytest.fixture
@@ -194,7 +198,10 @@ class TestCacheStatsEndpoint:
 # ============================================================================
 
 
-def _make_retention_response(base_year: int = 2025, compare_year: int = 2026):
+def _make_retention_response(
+    base_year: int = 2025,
+    compare_year: int = 2026,
+) -> RetentionMetricsResponse:
     """Create a minimal RetentionMetricsResponse with required fields."""
     from api.schemas.metrics import RetentionMetricsResponse
 
@@ -209,10 +216,11 @@ def _make_retention_response(base_year: int = 2025, compare_year: int = 2026):
         by_grade=[],
         by_session=[],
         by_years_at_camp=[],
+        aged_out_count=0,
     )
 
 
-def _make_registration_response(year: int = 2026):
+def _make_registration_response(year: int = 2026) -> RegistrationMetricsResponse:
     """Create a minimal RegistrationMetricsResponse with required fields."""
     from api.schemas.metrics import NewVsReturning, RegistrationMetricsResponse
 

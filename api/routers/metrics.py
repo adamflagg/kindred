@@ -59,7 +59,7 @@ async def get_retention_metrics(
             session_types=session_types,
             session_cm_id=session_cm_id,
         )
-        cached = metrics_cache.get("retention", **cache_params)
+        cached: RetentionMetricsResponse | None = metrics_cache.get("retention", **cache_params)
         if cached is not None:
             return cached
 
@@ -120,7 +120,7 @@ async def get_registration_metrics(
             statuses=statuses,
             session_cm_id=session_cm_id,
         )
-        cached = metrics_cache.get("registration", **cache_params)
+        cached: RegistrationMetricsResponse | None = metrics_cache.get("registration", **cache_params)
         if cached is not None:
             return cached
 
@@ -161,7 +161,7 @@ async def get_comparison_metrics(
 
     try:
         cache_params = dict(year_a=year_a, year_b=year_b, session_types=session_types)
-        cached = metrics_cache.get("comparison", **cache_params)
+        cached: ComparisonMetricsResponse | None = metrics_cache.get("comparison", **cache_params)
         if cached is not None:
             return cached
 
@@ -209,7 +209,7 @@ async def get_historical_trends(
 
     try:
         cache_params = dict(years=years, session_types=session_types, session_cm_id=session_cm_id)
-        cached = metrics_cache.get("historical", **cache_params)
+        cached: HistoricalTrendsResponse | None = metrics_cache.get("historical", **cache_params)
         if cached is not None:
             return cached
 
@@ -269,7 +269,7 @@ async def get_retention_trends(
             session_types=session_types,
             session_cm_id=session_cm_id,
         )
-        cached = metrics_cache.get("retention_trends", **cache_params)
+        cached: RetentionTrendsResponse | None = metrics_cache.get("retention_trends", **cache_params)
         if cached is not None:
             return cached
 
@@ -320,7 +320,7 @@ async def get_waitlist_metrics(
 
     try:
         cache_params = dict(year=year, session_types=session_types, session_cm_id=session_cm_id)
-        cached = metrics_cache.get("waitlist", **cache_params)
+        cached: WaitlistMetricsResponse | None = metrics_cache.get("waitlist", **cache_params)
         if cached is not None:
             return cached
 
@@ -369,7 +369,7 @@ async def get_cancellation_metrics(
 
     try:
         cache_params = dict(year=year, session_types=session_types, session_cm_id=session_cm_id)
-        cached = metrics_cache.get("cancellations", **cache_params)
+        cached: CancellationMetricsResponse | None = metrics_cache.get("cancellations", **cache_params)
         if cached is not None:
             return cached
 
@@ -481,7 +481,7 @@ async def get_velocity(
             split_by_gender=split_by_gender,
             metric=metric,
         )
-        cached = metrics_cache.get("velocity", **cache_params)
+        cached: VelocityResponse | None = metrics_cache.get("velocity", **cache_params)
         if cached is not None:
             return cached
 
@@ -522,7 +522,7 @@ async def get_forecast(
 
     try:
         cache_params = dict(year=year, session_types=session_types, session_cm_id=session_cm_id)
-        cached = metrics_cache.get("forecast", **cache_params)
+        cached: ForecastResponse | None = metrics_cache.get("forecast", **cache_params)
         if cached is not None:
             return cached
 
@@ -548,7 +548,7 @@ async def get_forecast(
 
 
 @router.post("/cache/invalidate")
-async def invalidate_metrics_cache() -> dict:
+async def invalidate_metrics_cache() -> dict[str, int]:
     """Invalidate all cached metrics responses.
 
     Called by Go sync orchestrator after sync completion, or manually.
@@ -558,6 +558,6 @@ async def invalidate_metrics_cache() -> dict:
 
 
 @router.get("/cache/stats")
-async def get_cache_stats() -> dict:
+async def get_cache_stats() -> dict[str, int | float]:
     """Get metrics cache statistics (hit rate, size, etc.)."""
     return metrics_cache.get_stats()
