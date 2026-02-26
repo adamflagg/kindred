@@ -69,6 +69,12 @@ def create_mock_snapshot(
     enrolled: int,
     waitlisted: int = 0,
     cancelled: int = 0,
+    enrolled_male: int | None = None,
+    enrolled_female: int | None = None,
+    waitlisted_male: int | None = None,
+    waitlisted_female: int | None = None,
+    cancelled_male: int | None = None,
+    cancelled_female: int | None = None,
 ) -> Mock:
     """Create a mock enrollment snapshot record."""
     snap = Mock()
@@ -78,6 +84,12 @@ def create_mock_snapshot(
     snap.enrolled_count = enrolled
     snap.waitlisted_count = waitlisted
     snap.cancelled_count = cancelled
+    snap.enrolled_male_count = enrolled_male
+    snap.enrolled_female_count = enrolled_female
+    snap.waitlisted_male_count = waitlisted_male
+    snap.waitlisted_female_count = waitlisted_female
+    snap.cancelled_male_count = cancelled_male
+    snap.cancelled_female_count = cancelled_female
     return snap
 
 
@@ -2260,3 +2272,277 @@ class TestGrossNetDeltaCombinedCurves:
         assert points[0].weekly_new == 55
         # Combined weekly_cancelled = 3 + 2 = 5
         assert points[0].weekly_cancelled == 5
+
+
+# ============================================================================
+# Enrollment Gender From Snapshots (Fast Path)
+# ============================================================================
+
+
+class TestEnrollmentGenderFromSnapshots:
+    """Test gender-split velocity curves built from snapshot gender fields.
+
+    When snapshots have non-None gender counts, _build_gender_curves should
+    use the snapshot fast path instead of reconstructing from attendees.
+    """
+
+    @pytest.mark.asyncio
+    async def test_gender_curves_from_snapshots(self, service, mock_repository, sample_sessions):
+        """When snapshots have gender data, produce M/F curves without fetching attendees."""
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot(
+                "2026-01-05",
+                1001,
+                2026,
+                enrolled=20,
+                enrolled_male=12,
+                enrolled_female=8,
+                waitlisted_male=0,
+                waitlisted_female=0,
+                cancelled_male=0,
+                cancelled_female=0,
+            ),
+            create_mock_snapshot(
+                "2026-01-12",
+                1001,
+                2026,
+                enrolled=30,
+                enrolled_male=18,
+                enrolled_female=12,
+                waitlisted_male=0,
+                waitlisted_female=0,
+                cancelled_male=0,
+                cancelled_female=0,
+            ),
+        ]
+
+        result = await service.get_velocity(year=2026, split_by_gender=True)
+
+        assert len(result.by_gender) == 2
+        m_curve = next(c for c in result.by_gender if c.gender == "M")
+        f_curve = next(c for c in result.by_gender if c.gender == "F")
+
+        # Week 2 (latest) should reflect snapshot counts
+        assert m_curve.weekly[-1].enrolled == 18
+        assert f_curve.weekly[-1].enrolled == 12
+
+        # Should NOT have called fetch_attendees_with_dates (fast path used)
+        mock_repository.fetch_attendees_with_dates.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_gender_breakdown_from_snapshots(self, service, mock_repository, sample_sessions):
+        """session_gender_breakdown should be built from latest snapshot per session."""
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot(
+                "2026-01-05",
+                1001,
+                2026,
+                enrolled=20,
+                enrolled_male=10,
+                enrolled_female=10,
+                waitlisted_male=0,
+                waitlisted_female=0,
+                cancelled_male=0,
+                cancelled_female=0,
+            ),
+            create_mock_snapshot(
+                "2026-01-12",
+                1001,
+                2026,
+                enrolled=25,
+                enrolled_male=15,
+                enrolled_female=10,
+                waitlisted_male=0,
+                waitlisted_female=0,
+                cancelled_male=0,
+                cancelled_female=0,
+            ),
+            create_mock_snapshot(
+                "2026-01-05",
+                1002,
+                2026,
+                enrolled=18,
+                enrolled_male=8,
+                enrolled_female=10,
+                waitlisted_male=0,
+                waitlisted_female=0,
+                cancelled_male=0,
+                cancelled_female=0,
+            ),
+        ]
+
+        result = await service.get_velocity(year=2026, split_by_gender=True)
+
+        assert len(result.session_gender_breakdown) == 2
+        breakdown_map = {b.session_cm_id: b for b in result.session_gender_breakdown}
+        # Latest snapshot for session 1001: male=15, female=10
+        assert breakdown_map[1001].boys_enrolled == 15
+        assert breakdown_map[1001].girls_enrolled == 10
+        # Only one snapshot for 1002: male=8, female=10
+        assert breakdown_map[1002].boys_enrolled == 8
+        assert breakdown_map[1002].girls_enrolled == 10
+
+    @pytest.mark.asyncio
+    async def test_fallback_when_no_gender_data(self, service, mock_repository, sample_sessions):
+        """Old snapshots without gender fields should fall back to reconstruction."""
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+        # Snapshots without gender fields (all None)
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20),
+        ]
+        # Provide attendees for reconstruction fallback
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2026-01-05", gender="M"),
+            create_mock_attendee_with_date(102, 1001, "2026-01-05", gender="F"),
+        ]
+
+        result = await service.get_velocity(year=2026, split_by_gender=True)
+
+        # Should have fallen back to reconstruction
+        mock_repository.fetch_attendees_with_dates.assert_called()
+        assert len(result.by_gender) == 2
+
+    @pytest.mark.asyncio
+    async def test_ag_session_merging(self, service, mock_repository):
+        """AG sessions should merge into parent for gender snapshot curves."""
+        parent = create_mock_session(1001, "Session 1", session_type="main")
+        ag = create_mock_session(2001, "Session 1 AG", session_type="ag", parent_id=1001)
+
+        mock_repository.fetch_sessions.return_value = {1001: parent, 2001: ag}
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot(
+                "2026-01-05",
+                1001,
+                2026,
+                enrolled=20,
+                enrolled_male=10,
+                enrolled_female=10,
+                waitlisted_male=0,
+                waitlisted_female=0,
+                cancelled_male=0,
+                cancelled_female=0,
+            ),
+            create_mock_snapshot(
+                "2026-01-05",
+                2001,
+                2026,
+                enrolled=5,
+                enrolled_male=3,
+                enrolled_female=2,
+                waitlisted_male=0,
+                waitlisted_female=0,
+                cancelled_male=0,
+                cancelled_female=0,
+            ),
+        ]
+
+        result = await service.get_velocity(year=2026, split_by_gender=True)
+
+        assert len(result.by_gender) == 2
+        m_curve = next(c for c in result.by_gender if c.gender == "M")
+        f_curve = next(c for c in result.by_gender if c.gender == "F")
+
+        # AG merges into parent: male=10+3=13, female=10+2=12
+        assert m_curve.weekly[-1].enrolled == 13
+        assert f_curve.weekly[-1].enrolled == 12
+
+    @pytest.mark.asyncio
+    async def test_multi_week_gender_curves(self, service, mock_repository, sample_sessions):
+        """Gender curves should track week-over-week progression."""
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot(
+                "2026-01-05",
+                1001,
+                2026,
+                enrolled=10,
+                enrolled_male=6,
+                enrolled_female=4,
+                waitlisted_male=0,
+                waitlisted_female=0,
+                cancelled_male=0,
+                cancelled_female=0,
+            ),
+            create_mock_snapshot(
+                "2026-01-12",
+                1001,
+                2026,
+                enrolled=20,
+                enrolled_male=12,
+                enrolled_female=8,
+                waitlisted_male=0,
+                waitlisted_female=0,
+                cancelled_male=0,
+                cancelled_female=0,
+            ),
+            create_mock_snapshot(
+                "2026-01-19",
+                1001,
+                2026,
+                enrolled=30,
+                enrolled_male=18,
+                enrolled_female=12,
+                waitlisted_male=0,
+                waitlisted_female=0,
+                cancelled_male=0,
+                cancelled_female=0,
+            ),
+        ]
+
+        result = await service.get_velocity(year=2026, split_by_gender=True)
+
+        m_curve = next(c for c in result.by_gender if c.gender == "M")
+        f_curve = next(c for c in result.by_gender if c.gender == "F")
+
+        # Check progression
+        assert len(m_curve.weekly) == 3
+        assert m_curve.weekly[0].enrolled == 6
+        assert m_curve.weekly[1].enrolled == 12
+        assert m_curve.weekly[2].enrolled == 18
+
+        assert len(f_curve.weekly) == 3
+        assert f_curve.weekly[0].enrolled == 4
+        assert f_curve.weekly[1].enrolled == 8
+        assert f_curve.weekly[2].enrolled == 12
+
+    @pytest.mark.asyncio
+    async def test_single_session_filter_with_gender(self, service, mock_repository, sample_sessions):
+        """session_cm_id filter should work with gender snapshot curves."""
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot(
+                "2026-01-05",
+                1001,
+                2026,
+                enrolled=20,
+                enrolled_male=12,
+                enrolled_female=8,
+                waitlisted_male=0,
+                waitlisted_female=0,
+                cancelled_male=0,
+                cancelled_female=0,
+            ),
+            create_mock_snapshot(
+                "2026-01-05",
+                1002,
+                2026,
+                enrolled=15,
+                enrolled_male=7,
+                enrolled_female=8,
+                waitlisted_male=0,
+                waitlisted_female=0,
+                cancelled_male=0,
+                cancelled_female=0,
+            ),
+        ]
+
+        result = await service.get_velocity(year=2026, session_cm_id=1001, split_by_gender=True)
+
+        m_curve = next(c for c in result.by_gender if c.gender == "M")
+        f_curve = next(c for c in result.by_gender if c.gender == "F")
+
+        # Only session 1001 counts
+        assert m_curve.weekly[-1].enrolled == 12
+        assert f_curve.weekly[-1].enrolled == 8
