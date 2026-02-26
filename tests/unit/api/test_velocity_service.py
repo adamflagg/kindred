@@ -31,9 +31,9 @@ from api.services.velocity_service import (
     SEASON_WEEKS,
     VelocityService,
     _compute_season_start,
-    _monday_of_week,
     _season_end,
     _week_number,
+    _week_start,
 )
 from api.schemas.velocity import VelocityCurve, VelocityResponse, WeeklyDataPoint
 
@@ -561,7 +561,7 @@ class TestVelocityEdgeCases:
 
 
 class TestSeasonStartHelpers:
-    """Test _compute_season_start, _week_number, and _monday_of_week helper functions."""
+    """Test _compute_season_start, _week_number, _week_start, and _season_end helper functions."""
 
     def test_season_start_from_priority_reg(self):
         """_compute_season_start with priority_reg=2025-11-12 should return 2025-11-12
@@ -589,27 +589,57 @@ class TestSeasonStartHelpers:
         assert _compute_season_start(None, 2025) is None
         assert _compute_season_start(None, 2024) is None
 
-    def test_week_number_at_season_start(self):
-        """Week containing season start should be week 0."""
-        season_start = datetime(2025, 11, 1)
-        season_start_monday = _monday_of_week(season_start)
-        result = _week_number(season_start_monday, season_start_monday)
-        assert result == 0
+    def test_week_number_at_priority_reg_date(self):
+        """Priority reg date itself should be week 0."""
+        priority_reg = datetime(2025, 12, 3)  # Wednesday
+        assert _week_number(priority_reg, priority_reg) == 0
 
-    def test_week_number_one_week_later(self):
-        """One week after season start Monday should be week 1."""
-        season_start = datetime(2025, 11, 1)
-        season_start_monday = _monday_of_week(season_start)
-        one_week_later = datetime(2025, 11, 3)  # Next Monday
-        assert _week_number(_monday_of_week(one_week_later), season_start_monday) == 1
+    def test_week_number_day_6_still_week_0(self):
+        """Day 6 after priority_reg is still week 0."""
+        priority_reg = datetime(2025, 12, 3)  # Wednesday
+        day6 = datetime(2025, 12, 9)  # Tuesday (6 days later)
+        assert _week_number(day6, priority_reg) == 0
+
+    def test_week_number_day_7_is_week_1(self):
+        """Day 7 after priority_reg is week 1."""
+        priority_reg = datetime(2025, 12, 3)  # Wednesday
+        day7 = datetime(2025, 12, 10)  # Wednesday (7 days later)
+        assert _week_number(day7, priority_reg) == 1
 
     def test_week_number_mid_season(self):
-        """January data should be ~9-10 weeks into the season."""
-        season_start = datetime(2025, 11, 1)
-        season_start_monday = _monday_of_week(season_start)
-        jan_5 = datetime(2026, 1, 5)  # Monday
-        wn = _week_number(jan_5, season_start_monday)
-        assert wn == 10  # 10 weeks from Oct 27 to Jan 5
+        """January data should be correct weeks from priority_reg_date."""
+        priority_reg = datetime(2025, 12, 3)
+        jan_5 = datetime(2026, 1, 5)
+        # Days from Dec 3 to Jan 5 = 33 days, 33//7 = 4
+        assert _week_number(jan_5, priority_reg) == 4
+
+    def test_week_start_at_priority_reg(self):
+        """_week_start at priority_reg date should return priority_reg date."""
+        priority_reg = datetime(2025, 12, 3)  # Wednesday
+        assert _week_start(priority_reg, priority_reg) == priority_reg
+
+    def test_week_start_day_6(self):
+        """_week_start 6 days after priority_reg should still return priority_reg."""
+        priority_reg = datetime(2025, 12, 3)
+        day6 = datetime(2025, 12, 9)
+        assert _week_start(day6, priority_reg) == priority_reg
+
+    def test_week_start_day_7(self):
+        """_week_start 7 days after priority_reg should return priority_reg + 7."""
+        from datetime import timedelta
+
+        priority_reg = datetime(2025, 12, 3)
+        day7 = datetime(2025, 12, 10)
+        assert _week_start(day7, priority_reg) == priority_reg + timedelta(days=7)
+
+    def test_season_end_from_priority_reg(self):
+        """_season_end should return priority_reg_date + SEASON_WEEKS * 7 days."""
+        from datetime import timedelta
+
+        priority_reg = datetime(2025, 12, 3)  # Wednesday (not a Monday!)
+        result = _season_end(priority_reg)
+        expected = priority_reg + timedelta(days=SEASON_WEEKS * 7)
+        assert result == expected
 
 
 # ============================================================================
@@ -666,9 +696,8 @@ class TestSeasonWindowClipping:
     @pytest.mark.asyncio
     async def test_data_past_season_end_excluded(self, service, mock_repository):
         """Data past the 41-week season window should be excluded."""
-        # Default season start: Nov 1 2025 (no priority_reg_date configured)
-        # Season start Monday: Oct 27 2025
-        # 41 weeks later: Aug 3 2026
+        # Default priority_reg_date: Nov 1 2025
+        # Season end: Nov 1 + 41*7 = Aug 15 2026
         # Nov 2026 is well past the 41-week window
         sessions = {1001: create_mock_session(1001, "Session 1", year=2026)}
         mock_repository.fetch_sessions.return_value = sessions
@@ -679,7 +708,7 @@ class TestSeasonWindowClipping:
 
         result = await service.get_velocity(year=2026)
 
-        # Nov 2026 data should be EXCLUDED (past 41-week window from ~Oct 27)
+        # Nov 2026 data should be EXCLUDED (past 41-week window from Nov 1 2025)
         points = result.combined.weekly
         assert not any(p.week_start >= "2026-09-01" for p in points)
         assert len(points) == 1
@@ -694,10 +723,12 @@ class TestSeasonEndClipping:
     """Test that velocity data is clipped at SEASON_WEEKS (41) from season start."""
 
     def test_season_end_is_41_weeks_from_start(self):
-        """_season_end should return exactly SEASON_WEEKS weeks after season start Monday."""
-        season_start_monday = datetime(2025, 10, 27)  # Monday
-        result = _season_end(season_start_monday)
-        expected = datetime(2026, 8, 10)  # 41 weeks later
+        """_season_end should return exactly SEASON_WEEKS * 7 days after priority_reg_date."""
+        from datetime import timedelta
+
+        priority_reg = datetime(2025, 12, 3)  # Wednesday (not a Monday!)
+        result = _season_end(priority_reg)
+        expected = priority_reg + timedelta(days=SEASON_WEEKS * 7)
         assert result == expected
 
     def test_season_weeks_constant_is_41(self):
@@ -707,14 +738,13 @@ class TestSeasonEndClipping:
     @pytest.mark.asyncio
     async def test_data_past_41_weeks_excluded(self, service, mock_repository):
         """Snapshots past the 41-week window should be excluded."""
-        # Default: no priority_reg_date -> season start = Nov 1 2025
-        # Season start Monday = Oct 27 2025
-        # 41 weeks = Aug 3 2026
+        # Default priority_reg_date = Nov 1 2025
+        # Season end = Nov 1 + 41*7 = Aug 15 2026
         sessions = {1001: create_mock_session(1001, "Session 1", year=2026)}
         mock_repository.fetch_sessions.return_value = sessions
         mock_repository.fetch_enrollment_snapshots.return_value = [
             create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20),
-            # Week 43 from Oct 27 -> ~Sep 7 2026, past 41-week window
+            # Sep 7 2026 is past Aug 15 season end
             create_mock_snapshot("2026-09-07", 1001, 2026, enrolled=25),
         ]
 
@@ -728,13 +758,13 @@ class TestSeasonEndClipping:
     @pytest.mark.asyncio
     async def test_data_within_41_weeks_included(self, service, mock_repository):
         """Snapshots within the 41-week window should be included."""
-        # Season start Monday = Oct 27 2025, 41 weeks = Aug 3 2026
-        # Week 40 from Oct 27 -> ~Jul 27 2026, within window
+        # Default priority_reg_date = Nov 1 2025
+        # Season end = Aug 15 2026; Jul 27 is within window
         sessions = {1001: create_mock_session(1001, "Session 1", year=2026)}
         mock_repository.fetch_sessions.return_value = sessions
         mock_repository.fetch_enrollment_snapshots.return_value = [
             create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20),
-            create_mock_snapshot("2026-07-27", 1001, 2026, enrolled=30),  # Week ~40, within window
+            create_mock_snapshot("2026-07-27", 1001, 2026, enrolled=30),  # Within window
         ]
 
         result = await service.get_velocity(year=2026)
@@ -754,9 +784,8 @@ class TestSeasonEndClipping:
 
         mock_repository.fetch_sessions.side_effect = mock_fetch_sessions
 
-        # 2025 season start: no priority_reg_date -> Nov 1 2024
-        # Season start Monday: Oct 28 2024
-        # 41 weeks later: Aug 4 2025
+        # 2025: priority_reg_date = Nov 1 2024 (from fixture)
+        # Season end = Nov 1 2024 + 41*7 = Aug 18 2025
         async def mock_fetch_snapshots(year, **kwargs):
             if year == 2026:
                 return [create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20)]
@@ -769,7 +798,7 @@ class TestSeasonEndClipping:
 
         result = await service.get_velocity(year=2026, compare_years=[2025])
 
-        # Prior year should exclude Sep data (past 41-week window from Oct 28 2024)
+        # Prior year should exclude Sep data (past 41-week window from Nov 1 2024)
         prior = result.prior_years[0]
         assert len(prior.weekly) == 1
         assert not any(p.week_start >= "2025-09-01" for p in prior.weekly)
@@ -833,8 +862,10 @@ class TestWeekNumberInDataPoints:
         point = result.combined.weekly[0]
         assert hasattr(point, "week_start")
         assert hasattr(point, "week_label")
-        # week_start should be a Monday ISO date
-        assert point.week_start == "2026-01-05"  # Jan 5, 2026 is a Monday
+        # week_start is the 7-day bucket start anchored to priority_reg_date.
+        # Default priority_reg = Nov 1, 2025 (Saturday).
+        # Jan 5 is 65 days later: 65//7=9, bucket start = Nov 1 + 63 = Jan 3 (Saturday)
+        assert point.week_start == "2026-01-03"
 
     @pytest.mark.asyncio
     async def test_prior_year_week_numbers_align(self, service, mock_repository):
@@ -945,8 +976,9 @@ class TestPhaseMarkerWeekNumber:
         assert marker.date == "2025-11-12"
 
     @pytest.mark.asyncio
-    async def test_phase_marker_week_number_snapped_to_monday(self, service, mock_repository):
-        """Phase markers should snap to Monday for week_number computation."""
+    async def test_phase_marker_week_number_anchored_to_priority_reg(self, service, mock_repository):
+        """Phase markers should compute week_number directly from priority_reg_date,
+        without snapping to Monday."""
         mock_repository.fetch_sessions.return_value = {
             1001: create_mock_session(1001, "Session 1"),
         }
@@ -968,10 +1000,9 @@ class TestPhaseMarkerWeekNumber:
         marker = open_markers[0]
         # Date stays as-is
         assert marker.date == "2026-01-07"
-        # week_number should be same as Jan 5 Monday
-        # season_start = Nov 1, season_start_monday = Oct 27
-        # Jan 5 is the Monday of that week → (Jan 5 - Oct 27) / 7 = 70/7 = 10
-        assert marker.week_number == 10
+        # week_number = (Jan 7 - Nov 1).days // 7 = 67 // 7 = 9
+        # (no Monday snapping — anchored directly to priority_reg_date)
+        assert marker.week_number == 9
 
 
 # ============================================================================
