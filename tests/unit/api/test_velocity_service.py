@@ -1860,3 +1860,133 @@ class TestNoFallbackStartDate:
         assert len(result.prior_years) == 0
         # Warning about missing prior year config
         assert any("2025" in w and "no priority registration date" in w for w in result.warnings)
+
+
+# ============================================================================
+# Step 4: Gross/Net/Delta Field Population Tests
+# ============================================================================
+
+
+class TestGrossNetDeltaFromSnapshots:
+    """Test gross_enrolled, weekly_new, weekly_cancelled population from snapshots."""
+
+    @pytest.mark.asyncio
+    async def test_snapshot_gross_enrolled(self, service, mock_repository, sample_sessions):
+        """Snapshot gross_enrolled = enrolled + cancelled (since enrolled is net)."""
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=50, cancelled=5),
+            create_mock_snapshot("2026-01-12", 1001, 2026, enrolled=55, cancelled=8),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        points = result.combined.weekly
+        assert len(points) == 2
+        # gross = enrolled + cancelled
+        assert points[0].gross_enrolled == 55  # 50 + 5
+        assert points[1].gross_enrolled == 63  # 55 + 8
+        # net enrolled unchanged
+        assert points[0].enrolled == 50
+        assert points[1].enrolled == 55
+
+    @pytest.mark.asyncio
+    async def test_snapshot_weekly_new_and_cancelled(self, service, mock_repository, sample_sessions):
+        """weekly_new = delta of gross, weekly_cancelled = delta of cancelled."""
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=50, cancelled=5),
+            create_mock_snapshot("2026-01-12", 1001, 2026, enrolled=55, cancelled=8),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        points = result.combined.weekly
+        # First week: weekly_new = gross, weekly_cancelled = cancelled
+        assert points[0].weekly_new == 55  # gross_enrolled (first week)
+        assert points[0].weekly_cancelled == 5  # cancelled_count (first week)
+        # Second week: delta of gross and delta of cancelled
+        assert points[1].weekly_new == 8  # 63 - 55
+        assert points[1].weekly_cancelled == 3  # 8 - 5
+
+    @pytest.mark.asyncio
+    async def test_snapshot_gross_never_decreases(self, service, mock_repository, sample_sessions):
+        """gross_enrolled should never decrease (monotonically increasing)."""
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=50, cancelled=5),
+            # Net drops but gross should still increase
+            create_mock_snapshot("2026-01-12", 1001, 2026, enrolled=48, cancelled=10),
+            create_mock_snapshot("2026-01-19", 1001, 2026, enrolled=52, cancelled=12),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        points = result.combined.weekly
+        gross_values = [p.gross_enrolled for p in points]
+        # gross = enrolled + cancelled: 55, 58, 64
+        assert gross_values == [55, 58, 64]
+        # Each value >= previous
+        for i in range(1, len(gross_values)):
+            assert gross_values[i] >= gross_values[i - 1]
+
+
+class TestGrossNetDeltaFromReconstruction:
+    """Test gross_enrolled, weekly_new, weekly_cancelled from reconstruction path."""
+
+    @pytest.mark.asyncio
+    async def test_reconstruction_gross_and_net(self, service, mock_repository, sample_sessions):
+        """Reconstruction should populate gross_enrolled and net enrolled separately."""
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+        mock_repository.fetch_enrollment_snapshots.return_value = []
+        # 10 enrollments in week 1, 5 in week 2
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            *[create_mock_attendee_with_date(100 + i, 1001, "2026-01-03") for i in range(10)],
+            *[create_mock_attendee_with_date(200 + i, 1001, "2026-01-10") for i in range(5)],
+        ]
+        # 3 cancellations in week 1, 1 in week 2
+        mock_repository.fetch_status_transitions.return_value = [
+            create_mock_status_transition(101, 1001, "2026-01-04"),
+            create_mock_status_transition(102, 1001, "2026-01-05"),
+            create_mock_status_transition(103, 1001, "2026-01-06"),
+            create_mock_status_transition(201, 1001, "2026-01-12"),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        points = result.combined.weekly
+        assert len(points) == 2
+        # Week 1: gross=10, cancelled=3, net=7
+        assert points[0].gross_enrolled == 10
+        assert points[0].enrolled == 7
+        assert points[0].weekly_new == 10
+        assert points[0].weekly_cancelled == 3
+        # Week 2: gross=15, cancelled=4, net=11
+        assert points[1].gross_enrolled == 15
+        assert points[1].enrolled == 11
+        assert points[1].weekly_new == 5
+        assert points[1].weekly_cancelled == 1
+
+
+class TestGrossNetDeltaCombinedCurves:
+    """Test that _combine_weekly_curves sums new fields across sessions."""
+
+    @pytest.mark.asyncio
+    async def test_combined_sums_gross_fields(self, service, mock_repository, sample_sessions):
+        """Combined curve should sum gross_enrolled, weekly_new, weekly_cancelled."""
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=30, cancelled=3),
+            create_mock_snapshot("2026-01-05", 1002, 2026, enrolled=20, cancelled=2),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        points = result.combined.weekly
+        assert len(points) == 1
+        # Combined gross = (30+3) + (20+2) = 55
+        assert points[0].gross_enrolled == 55
+        # Combined weekly_new = 33 + 22 = 55 (first week)
+        assert points[0].weekly_new == 55
+        # Combined weekly_cancelled = 3 + 2 = 5
+        assert points[0].weekly_cancelled == 5
