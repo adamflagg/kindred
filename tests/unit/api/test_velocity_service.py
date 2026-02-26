@@ -1716,6 +1716,9 @@ class TestSchemaNewFields:
             waitlisted=0,
             delta=10,
             data_source="snapshot",
+            gross_enrolled=0,
+            weekly_new=0,
+            weekly_cancelled=0,
         )
         assert point.gross_enrolled == 0
 
@@ -1730,6 +1733,9 @@ class TestSchemaNewFields:
             waitlisted=0,
             delta=10,
             data_source="snapshot",
+            gross_enrolled=0,
+            weekly_new=0,
+            weekly_cancelled=0,
         )
         assert point.weekly_new == 0
 
@@ -1744,6 +1750,9 @@ class TestSchemaNewFields:
             waitlisted=0,
             delta=10,
             data_source="snapshot",
+            gross_enrolled=0,
+            weekly_new=0,
+            weekly_cancelled=0,
         )
         assert point.weekly_cancelled == 0
 
@@ -1772,10 +1781,11 @@ class TestSchemaNewFields:
         response = VelocityResponse(
             year=2026,
             season_start="2025-12-03",
-            combined=VelocityCurve(year=2026, weekly=[]),
+            combined=VelocityCurve(year=2026, session_cm_id=None, gender=None, weekly=[]),
             by_session=[],
             prior_years=[],
             phase_markers=[],
+            cancelled_to_date=None,
         )
         assert response.warnings == []
 
@@ -1785,10 +1795,11 @@ class TestSchemaNewFields:
         response = VelocityResponse(
             year=2026,
             season_start="2025-12-03",
-            combined=VelocityCurve(year=2026, weekly=[]),
+            combined=VelocityCurve(year=2026, session_cm_id=None, gender=None, weekly=[]),
             by_session=[],
             prior_years=[],
             phase_markers=[],
+            cancelled_to_date=None,
             warnings=["Year 2026 has no priority registration date configured"],
         )
         assert len(response.warnings) == 1

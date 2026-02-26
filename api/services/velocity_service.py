@@ -125,6 +125,7 @@ class VelocityService:
                 prior_years=[],
                 phase_markers=[],
                 warnings=warnings,
+                cancelled_to_date=None,
             )
 
         season_end_dt = _season_end(season_start_dt)
@@ -848,6 +849,9 @@ class VelocityService:
                         waitlisted=0,
                         delta=delta,
                         data_source="snapshot",
+                        gross_enrolled=0,
+                        weekly_new=0,
+                        weekly_cancelled=0,
                     )
                 )
                 prev_val = val
@@ -933,6 +937,9 @@ class VelocityService:
                         waitlisted=0,
                         delta=delta,
                         data_source="reconstructed",
+                        gross_enrolled=0,
+                        weekly_new=0,
+                        weekly_cancelled=0,
                     )
                 )
             per_session_data[sid] = points
@@ -1047,6 +1054,9 @@ class VelocityService:
                             waitlisted=0,
                             delta=delta,
                             data_source="reconstructed",
+                            gross_enrolled=0,
+                            weekly_new=0,
+                            weekly_cancelled=0,
                         )
                     )
 
