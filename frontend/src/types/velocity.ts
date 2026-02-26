@@ -8,6 +8,9 @@ export interface WeeklyDataPoint {
   waitlisted: number
   delta: number
   data_source: 'snapshot' | 'reconstructed'
+  gross_enrolled: number
+  weekly_new: number
+  weekly_cancelled: number
 }
 
 export interface VelocityCurve {
@@ -59,4 +62,5 @@ export interface VelocityResponse {
   cancelled_to_date: number | null
   prior_year_cancelled_to_date: PriorYearCancelledSummary[]
   prior_year_session_summaries: PriorYearSessionSummary[]
+  warnings: string[]
 }

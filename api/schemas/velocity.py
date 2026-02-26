@@ -6,13 +6,16 @@ from pydantic import BaseModel, Field
 
 
 class WeeklyDataPoint(BaseModel):
-    week_start: str = Field(description="ISO date of the Monday starting this week (YYYY-MM-DD)")
+    week_start: str = Field(description="ISO date of the start of this week bucket (YYYY-MM-DD)")
     week_label: str = Field(description="Human-readable label like 'Jan 6'")
-    week_number: int = Field(description="0-based week offset from season start Monday")
-    enrolled: int = Field(description="Cumulative enrolled count")
+    week_number: int = Field(description="0-based week offset from season start")
+    enrolled: int = Field(description="Cumulative net enrolled count (enrolled minus cancellations)")
     waitlisted: int = Field(description="Cumulative waitlisted count")
     delta: int = Field(description="Change in enrolled from prior week")
     data_source: str = Field(description="'snapshot' or 'reconstructed'")
+    gross_enrolled: int = Field(0, description="Cumulative gross enrollments (never decreases)")
+    weekly_new: int = Field(0, description="New enrollments this week")
+    weekly_cancelled: int = Field(0, description="Cancellations this week")
 
 
 class VelocityCurve(BaseModel):
@@ -57,13 +60,14 @@ class PriorYearSessionSummary(BaseModel):
 
 class VelocityResponse(BaseModel):
     year: int
-    season_start: str = Field(description="ISO date of season start (priority_reg - 7 days, or Nov 1 fallback)")
+    season_start: str = Field(description="ISO date of season start (priority registration date)")
     combined: VelocityCurve
     by_session: list[VelocityCurve]
     by_gender: list[VelocityCurve] = Field(default_factory=list, description="Empty when not split, [M, F] when split")
     prior_years: list[VelocityCurve]
     prior_year_by_gender: list[VelocityCurve] = Field(default_factory=list, description="Prior year gender curves")
     phase_markers: list[PhaseMarker]
+    warnings: list[str] = Field(default_factory=list)
     session_gender_breakdown: list[SessionGenderBreakdown] = Field(default_factory=list)
     cancelled_to_date: int | None = Field(None, description="Total cancellations for current year through latest week")
     prior_year_cancelled_to_date: list[PriorYearCancelledSummary] = Field(default_factory=list)

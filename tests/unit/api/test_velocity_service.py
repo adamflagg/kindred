@@ -27,13 +27,14 @@ import pytest
 os.environ["AUTH_MODE"] = "bypass"
 os.environ["SKIP_PB_AUTH"] = "true"
 
+from api.schemas.velocity import VelocityCurve, VelocityResponse, WeeklyDataPoint
 from api.services.velocity_service import (
     SEASON_WEEKS,
     VelocityService,
     _compute_season_start,
-    _monday_of_week,
     _season_end,
     _week_number,
+    _week_start,
 )
 
 # ============================================================================
@@ -155,7 +156,13 @@ def mock_repository():
     repo.fetch_sessions = AsyncMock(return_value={})
     repo.fetch_attendees_with_dates = AsyncMock(return_value=[])
     repo.fetch_status_transitions = AsyncMock(return_value=[])
-    repo.fetch_registration_dates = AsyncMock(return_value={})
+
+    # Provide a default priority_reg_date per year (mimics old Nov 1 fallback behavior).
+    # Tests that need specific dates or missing dates override this.
+    async def _default_reg_dates(year):
+        return {"priority_reg_date": f"{year - 1}-11-01"}
+
+    repo.fetch_registration_dates = AsyncMock(side_effect=_default_reg_dates)
     return repo
 
 
@@ -400,6 +407,7 @@ class TestVelocityPhaseMarkers:
         mock_repository.fetch_enrollment_snapshots.return_value = [
             create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=10),
         ]
+        mock_repository.fetch_registration_dates.side_effect = None
         mock_repository.fetch_registration_dates.return_value = {
             "priority_reg_date": "2025-10-01",
             "early_reg_date": "2025-11-01",
@@ -553,50 +561,85 @@ class TestVelocityEdgeCases:
 
 
 class TestSeasonStartHelpers:
-    """Test _compute_season_start, _week_number, and _monday_of_week helper functions."""
+    """Test _compute_season_start, _week_number, _week_start, and _season_end helper functions."""
 
     def test_season_start_from_priority_reg(self):
-        """_compute_season_start with priority_reg=2025-11-12 should return 2025-11-05
-        (priority_reg - 7 days)."""
+        """_compute_season_start with priority_reg=2025-11-12 should return 2025-11-12
+        (exact date, no offset)."""
         result = _compute_season_start("2025-11-12", 2026)
-        assert result == datetime(2025, 11, 5)
+        assert result == datetime(2025, 11, 12)
 
-    def test_season_start_fallback_no_config(self):
-        """_compute_season_start with no priority_reg should fall back to Nov 1 of year-1."""
+    def test_season_start_returns_exact_date(self):
+        """_compute_season_start should return the exact priority_reg_date."""
+        result = _compute_season_start("2025-12-03", 2026)
+        assert result == datetime(2025, 12, 3)
+
+    def test_season_start_none_when_no_config(self):
+        """_compute_season_start with no priority_reg should return None."""
         result = _compute_season_start(None, 2026)
-        assert result == datetime(2025, 11, 1)
+        assert result is None
 
-    def test_season_start_empty_string_fallback(self):
-        """_compute_season_start with empty string should fall back to Nov 1."""
+    def test_season_start_none_when_empty_string(self):
+        """_compute_season_start with empty string should return None."""
         result = _compute_season_start("", 2026)
-        assert result == datetime(2025, 11, 1)
+        assert result is None
 
-    def test_season_start_2025(self):
-        """_compute_season_start fallback for 2025 should return Nov 1, 2024."""
-        result = _compute_season_start(None, 2025)
-        assert result == datetime(2024, 11, 1)
+    def test_season_start_none_for_any_year(self):
+        """_compute_season_start with None returns None regardless of year."""
+        assert _compute_season_start(None, 2025) is None
+        assert _compute_season_start(None, 2024) is None
 
-    def test_week_number_at_season_start(self):
-        """Week containing season start should be week 0."""
-        season_start = datetime(2025, 11, 1)
-        season_start_monday = _monday_of_week(season_start)
-        result = _week_number(season_start_monday, season_start_monday)
-        assert result == 0
+    def test_week_number_at_priority_reg_date(self):
+        """Priority reg date itself should be week 0."""
+        priority_reg = datetime(2025, 12, 3)  # Wednesday
+        assert _week_number(priority_reg, priority_reg) == 0
 
-    def test_week_number_one_week_later(self):
-        """One week after season start Monday should be week 1."""
-        season_start = datetime(2025, 11, 1)
-        season_start_monday = _monday_of_week(season_start)
-        one_week_later = datetime(2025, 11, 3)  # Next Monday
-        assert _week_number(_monday_of_week(one_week_later), season_start_monday) == 1
+    def test_week_number_day_6_still_week_0(self):
+        """Day 6 after priority_reg is still week 0."""
+        priority_reg = datetime(2025, 12, 3)  # Wednesday
+        day6 = datetime(2025, 12, 9)  # Tuesday (6 days later)
+        assert _week_number(day6, priority_reg) == 0
+
+    def test_week_number_day_7_is_week_1(self):
+        """Day 7 after priority_reg is week 1."""
+        priority_reg = datetime(2025, 12, 3)  # Wednesday
+        day7 = datetime(2025, 12, 10)  # Wednesday (7 days later)
+        assert _week_number(day7, priority_reg) == 1
 
     def test_week_number_mid_season(self):
-        """January data should be ~9-10 weeks into the season."""
-        season_start = datetime(2025, 11, 1)
-        season_start_monday = _monday_of_week(season_start)
-        jan_5 = datetime(2026, 1, 5)  # Monday
-        wn = _week_number(jan_5, season_start_monday)
-        assert wn == 10  # 10 weeks from Oct 27 to Jan 5
+        """January data should be correct weeks from priority_reg_date."""
+        priority_reg = datetime(2025, 12, 3)
+        jan_5 = datetime(2026, 1, 5)
+        # Days from Dec 3 to Jan 5 = 33 days, 33//7 = 4
+        assert _week_number(jan_5, priority_reg) == 4
+
+    def test_week_start_at_priority_reg(self):
+        """_week_start at priority_reg date should return priority_reg date."""
+        priority_reg = datetime(2025, 12, 3)  # Wednesday
+        assert _week_start(priority_reg, priority_reg) == priority_reg
+
+    def test_week_start_day_6(self):
+        """_week_start 6 days after priority_reg should still return priority_reg."""
+        priority_reg = datetime(2025, 12, 3)
+        day6 = datetime(2025, 12, 9)
+        assert _week_start(day6, priority_reg) == priority_reg
+
+    def test_week_start_day_7(self):
+        """_week_start 7 days after priority_reg should return priority_reg + 7."""
+        from datetime import timedelta
+
+        priority_reg = datetime(2025, 12, 3)
+        day7 = datetime(2025, 12, 10)
+        assert _week_start(day7, priority_reg) == priority_reg + timedelta(days=7)
+
+    def test_season_end_from_priority_reg(self):
+        """_season_end should return priority_reg_date + SEASON_WEEKS * 7 days."""
+        from datetime import timedelta
+
+        priority_reg = datetime(2025, 12, 3)  # Wednesday (not a Monday!)
+        result = _season_end(priority_reg)
+        expected = priority_reg + timedelta(days=SEASON_WEEKS * 7)
+        assert result == expected
 
 
 # ============================================================================
@@ -653,9 +696,8 @@ class TestSeasonWindowClipping:
     @pytest.mark.asyncio
     async def test_data_past_season_end_excluded(self, service, mock_repository):
         """Data past the 41-week season window should be excluded."""
-        # Default season start: Nov 1 2025 (no priority_reg_date configured)
-        # Season start Monday: Oct 27 2025
-        # 41 weeks later: Aug 3 2026
+        # Default priority_reg_date: Nov 1 2025
+        # Season end: Nov 1 + 41*7 = Aug 15 2026
         # Nov 2026 is well past the 41-week window
         sessions = {1001: create_mock_session(1001, "Session 1", year=2026)}
         mock_repository.fetch_sessions.return_value = sessions
@@ -666,7 +708,7 @@ class TestSeasonWindowClipping:
 
         result = await service.get_velocity(year=2026)
 
-        # Nov 2026 data should be EXCLUDED (past 41-week window from ~Oct 27)
+        # Nov 2026 data should be EXCLUDED (past 41-week window from Nov 1 2025)
         points = result.combined.weekly
         assert not any(p.week_start >= "2026-09-01" for p in points)
         assert len(points) == 1
@@ -681,10 +723,12 @@ class TestSeasonEndClipping:
     """Test that velocity data is clipped at SEASON_WEEKS (41) from season start."""
 
     def test_season_end_is_41_weeks_from_start(self):
-        """_season_end should return exactly SEASON_WEEKS weeks after season start Monday."""
-        season_start_monday = datetime(2025, 10, 27)  # Monday
-        result = _season_end(season_start_monday)
-        expected = datetime(2026, 8, 10)  # 41 weeks later
+        """_season_end should return exactly SEASON_WEEKS * 7 days after priority_reg_date."""
+        from datetime import timedelta
+
+        priority_reg = datetime(2025, 12, 3)  # Wednesday (not a Monday!)
+        result = _season_end(priority_reg)
+        expected = priority_reg + timedelta(days=SEASON_WEEKS * 7)
         assert result == expected
 
     def test_season_weeks_constant_is_41(self):
@@ -694,14 +738,13 @@ class TestSeasonEndClipping:
     @pytest.mark.asyncio
     async def test_data_past_41_weeks_excluded(self, service, mock_repository):
         """Snapshots past the 41-week window should be excluded."""
-        # Default: no priority_reg_date -> season start = Nov 1 2025
-        # Season start Monday = Oct 27 2025
-        # 41 weeks = Aug 3 2026
+        # Default priority_reg_date = Nov 1 2025
+        # Season end = Nov 1 + 41*7 = Aug 15 2026
         sessions = {1001: create_mock_session(1001, "Session 1", year=2026)}
         mock_repository.fetch_sessions.return_value = sessions
         mock_repository.fetch_enrollment_snapshots.return_value = [
             create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20),
-            # Week 43 from Oct 27 -> ~Sep 7 2026, past 41-week window
+            # Sep 7 2026 is past Aug 15 season end
             create_mock_snapshot("2026-09-07", 1001, 2026, enrolled=25),
         ]
 
@@ -715,13 +758,13 @@ class TestSeasonEndClipping:
     @pytest.mark.asyncio
     async def test_data_within_41_weeks_included(self, service, mock_repository):
         """Snapshots within the 41-week window should be included."""
-        # Season start Monday = Oct 27 2025, 41 weeks = Aug 3 2026
-        # Week 40 from Oct 27 -> ~Jul 27 2026, within window
+        # Default priority_reg_date = Nov 1 2025
+        # Season end = Aug 15 2026; Jul 27 is within window
         sessions = {1001: create_mock_session(1001, "Session 1", year=2026)}
         mock_repository.fetch_sessions.return_value = sessions
         mock_repository.fetch_enrollment_snapshots.return_value = [
             create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20),
-            create_mock_snapshot("2026-07-27", 1001, 2026, enrolled=30),  # Week ~40, within window
+            create_mock_snapshot("2026-07-27", 1001, 2026, enrolled=30),  # Within window
         ]
 
         result = await service.get_velocity(year=2026)
@@ -741,9 +784,8 @@ class TestSeasonEndClipping:
 
         mock_repository.fetch_sessions.side_effect = mock_fetch_sessions
 
-        # 2025 season start: no priority_reg_date -> Nov 1 2024
-        # Season start Monday: Oct 28 2024
-        # 41 weeks later: Aug 4 2025
+        # 2025: priority_reg_date = Nov 1 2024 (from fixture)
+        # Season end = Nov 1 2024 + 41*7 = Aug 18 2025
         async def mock_fetch_snapshots(year, **kwargs):
             if year == 2026:
                 return [create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20)]
@@ -756,7 +798,7 @@ class TestSeasonEndClipping:
 
         result = await service.get_velocity(year=2026, compare_years=[2025])
 
-        # Prior year should exclude Sep data (past 41-week window from Oct 28 2024)
+        # Prior year should exclude Sep data (past 41-week window from Nov 1 2024)
         prior = result.prior_years[0]
         assert len(prior.weekly) == 1
         assert not any(p.week_start >= "2025-09-01" for p in prior.weekly)
@@ -820,8 +862,10 @@ class TestWeekNumberInDataPoints:
         point = result.combined.weekly[0]
         assert hasattr(point, "week_start")
         assert hasattr(point, "week_label")
-        # week_start should be a Monday ISO date
-        assert point.week_start == "2026-01-05"  # Jan 5, 2026 is a Monday
+        # week_start is the 7-day bucket start anchored to priority_reg_date.
+        # Default priority_reg = Nov 1, 2025 (Saturday).
+        # Jan 5 is 65 days later: 65//7=9, bucket start = Nov 1 + 63 = Jan 3 (Saturday)
+        assert point.week_start == "2026-01-03"
 
     @pytest.mark.asyncio
     async def test_prior_year_week_numbers_align(self, service, mock_repository):
@@ -884,20 +928,20 @@ class TestSeasonStartInResponse:
 
     @pytest.mark.asyncio
     async def test_response_season_start_with_priority_reg(self, service, mock_repository):
-        """When priority_reg_date is configured, season_start should be priority - 7 days."""
+        """When priority_reg_date is configured, season_start should be that exact date."""
         sessions = {1001: create_mock_session(1001, "Session 1", year=2026)}
         mock_repository.fetch_sessions.return_value = sessions
         mock_repository.fetch_enrollment_snapshots.return_value = [
-            create_mock_snapshot("2025-11-10", 1001, 2026, enrolled=10),
+            create_mock_snapshot("2025-11-12", 1001, 2026, enrolled=10),
         ]
+        mock_repository.fetch_registration_dates.side_effect = None
         mock_repository.fetch_registration_dates.return_value = {
             "priority_reg_date": "2025-11-12",
         }
 
         result = await service.get_velocity(year=2026)
 
-        # priority_reg - 7 days = 2025-11-05
-        assert result.season_start == "2025-11-05"
+        assert result.season_start == "2025-11-12"
 
 
 # ============================================================================
@@ -917,6 +961,7 @@ class TestPhaseMarkerWeekNumber:
         mock_repository.fetch_enrollment_snapshots.return_value = [
             create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=10),
         ]
+        mock_repository.fetch_registration_dates.side_effect = None
         mock_repository.fetch_registration_dates.return_value = {
             "priority_reg_date": "2025-11-12",
         }
@@ -931,29 +976,33 @@ class TestPhaseMarkerWeekNumber:
         assert marker.date == "2025-11-12"
 
     @pytest.mark.asyncio
-    async def test_phase_marker_week_number_snapped_to_monday(self, service, mock_repository):
-        """Phase markers should snap to Monday for week_number computation."""
+    async def test_phase_marker_week_number_anchored_to_priority_reg(self, service, mock_repository):
+        """Phase markers should compute week_number directly from priority_reg_date,
+        without snapping to Monday."""
         mock_repository.fetch_sessions.return_value = {
             1001: create_mock_session(1001, "Session 1"),
         }
         mock_repository.fetch_enrollment_snapshots.return_value = [
             create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=10),
         ]
-        # Jan 5 and Jan 7 are in the same ISO week (Jan 5 is Monday)
+        # Need priority_reg_date for season start, plus open_reg_date for the marker
+        mock_repository.fetch_registration_dates.side_effect = None
         mock_repository.fetch_registration_dates.return_value = {
+            "priority_reg_date": "2025-11-01",
             "open_reg_date": "2026-01-07",  # Wednesday
         }
 
         result = await service.get_velocity(year=2026)
 
-        assert len(result.phase_markers) == 1
-        marker = result.phase_markers[0]
+        # Should have both priority and open markers
+        open_markers = [m for m in result.phase_markers if m.phase == "open"]
+        assert len(open_markers) == 1
+        marker = open_markers[0]
         # Date stays as-is
         assert marker.date == "2026-01-07"
-        # But week_number should be same as Jan 5 Monday
-        # Compute expected: season_start_monday for fallback Nov 1 2025 = Oct 27 (Monday)
-        # Jan 5 is the Monday of that week → (Jan 5 - Oct 27) / 7 = 70/7 = 10
-        assert marker.week_number == 10
+        # week_number = (Jan 7 - Nov 1).days // 7 = 67 // 7 = 9
+        # (no Monday snapping — anchored directly to priority_reg_date)
+        assert marker.week_number == 9
 
 
 # ============================================================================
@@ -978,19 +1027,19 @@ class TestDynamicSeasonStart:
         # Each year has its own priority_reg_date
         async def mock_fetch_reg_dates(year):
             if year == 2026:
-                return {"priority_reg_date": "2025-11-15"}  # season_start = Nov 8
-            return {"priority_reg_date": "2024-11-10"}  # season_start = Nov 3
+                return {"priority_reg_date": "2025-11-15"}  # season_start = Nov 15
+            return {"priority_reg_date": "2024-11-10"}  # season_start = Nov 10
 
         mock_repository.fetch_registration_dates.side_effect = mock_fetch_reg_dates
 
         async def mock_fetch_snapshots(year, **kwargs):
             if year == 2026:
                 return [
-                    create_mock_snapshot("2025-11-10", 1001, 2026, enrolled=10),
+                    create_mock_snapshot("2025-11-17", 1001, 2026, enrolled=10),
                     create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=30),
                 ]
             return [
-                create_mock_snapshot("2024-11-04", 901, 2025, enrolled=8),
+                create_mock_snapshot("2024-11-11", 901, 2025, enrolled=8),
                 create_mock_snapshot("2025-01-06", 901, 2025, enrolled=28),
             ]
 
@@ -1001,8 +1050,8 @@ class TestDynamicSeasonStart:
         # Registration dates fetched for both years
         assert mock_repository.fetch_registration_dates.call_count >= 2
 
-        # Season start for primary year: 2025-11-15 - 7 = 2025-11-08
-        assert result.season_start == "2025-11-08"
+        # Season start for primary year: exact priority_reg_date
+        assert result.season_start == "2025-11-15"
 
     @pytest.mark.asyncio
     async def test_week_numbers_align_across_years(self, service, mock_repository):
@@ -1646,3 +1695,303 @@ class TestCancellationGenderSplit:
         assert len(prior_f) == 1
         assert prior_m[0].weekly[-1].enrolled == 1  # 1 male cancelled in 2025
         assert prior_f[0].weekly[-1].enrolled == 2  # 2 female cancelled in 2025
+
+
+# ============================================================================
+# Step 1: Schema New Fields Tests
+# ============================================================================
+
+
+class TestSchemaNewFields:
+    """Test that new schema fields exist with correct defaults."""
+
+    def test_weekly_data_point_has_gross_enrolled(self):
+        """WeeklyDataPoint should accept gross_enrolled with default 0."""
+
+        point = WeeklyDataPoint(
+            week_start="2026-01-05",
+            week_label="Jan 5",
+            week_number=0,
+            enrolled=10,
+            waitlisted=0,
+            delta=10,
+            data_source="snapshot",
+            gross_enrolled=0,
+            weekly_new=0,
+            weekly_cancelled=0,
+        )
+        assert point.gross_enrolled == 0
+
+    def test_weekly_data_point_has_weekly_new(self):
+        """WeeklyDataPoint should accept weekly_new with default 0."""
+
+        point = WeeklyDataPoint(
+            week_start="2026-01-05",
+            week_label="Jan 5",
+            week_number=0,
+            enrolled=10,
+            waitlisted=0,
+            delta=10,
+            data_source="snapshot",
+            gross_enrolled=0,
+            weekly_new=0,
+            weekly_cancelled=0,
+        )
+        assert point.weekly_new == 0
+
+    def test_weekly_data_point_has_weekly_cancelled(self):
+        """WeeklyDataPoint should accept weekly_cancelled with default 0."""
+
+        point = WeeklyDataPoint(
+            week_start="2026-01-05",
+            week_label="Jan 5",
+            week_number=0,
+            enrolled=10,
+            waitlisted=0,
+            delta=10,
+            data_source="snapshot",
+            gross_enrolled=0,
+            weekly_new=0,
+            weekly_cancelled=0,
+        )
+        assert point.weekly_cancelled == 0
+
+    def test_weekly_data_point_explicit_new_fields(self):
+        """WeeklyDataPoint should accept explicit values for new fields."""
+
+        point = WeeklyDataPoint(
+            week_start="2026-01-05",
+            week_label="Jan 5",
+            week_number=0,
+            enrolled=45,
+            waitlisted=0,
+            delta=10,
+            data_source="snapshot",
+            gross_enrolled=50,
+            weekly_new=8,
+            weekly_cancelled=3,
+        )
+        assert point.gross_enrolled == 50
+        assert point.weekly_new == 8
+        assert point.weekly_cancelled == 3
+
+    def test_velocity_response_has_warnings(self):
+        """VelocityResponse should have warnings field defaulting to empty list."""
+
+        response = VelocityResponse(
+            year=2026,
+            season_start="2025-12-03",
+            combined=VelocityCurve(year=2026, session_cm_id=None, gender=None, weekly=[]),
+            by_session=[],
+            prior_years=[],
+            phase_markers=[],
+            cancelled_to_date=None,
+        )
+        assert response.warnings == []
+
+    def test_velocity_response_with_warnings(self):
+        """VelocityResponse should accept explicit warnings."""
+
+        response = VelocityResponse(
+            year=2026,
+            season_start="2025-12-03",
+            combined=VelocityCurve(year=2026, session_cm_id=None, gender=None, weekly=[]),
+            by_session=[],
+            prior_years=[],
+            phase_markers=[],
+            cancelled_to_date=None,
+            warnings=["Year 2026 has no priority registration date configured"],
+        )
+        assert len(response.warnings) == 1
+        assert "no priority registration date" in response.warnings[0]
+
+
+# ============================================================================
+# Step 2: No Fallback Start Date Tests
+# ============================================================================
+
+
+class TestNoFallbackStartDate:
+    """Test behavior when priority_reg_date is missing (no Nov 1 fallback)."""
+
+    @pytest.mark.asyncio
+    async def test_no_priority_reg_returns_empty_curves_with_warning(self, service, mock_repository):
+        """get_velocity with no priority_reg_date should return empty curves + warning."""
+        sessions = {1001: create_mock_session(1001, "Session 1", year=2026)}
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20),
+        ]
+        # Override fixture default: no priority_reg_date
+        mock_repository.fetch_registration_dates = AsyncMock(return_value={})
+
+        result = await service.get_velocity(year=2026)
+
+        assert result.combined.weekly == []
+        assert result.by_session == []
+        assert len(result.warnings) == 1
+        assert "Year 2026 has no priority registration date configured" in result.warnings[0]
+
+    @pytest.mark.asyncio
+    async def test_prior_year_missing_priority_reg_skipped_with_warning(self, service, mock_repository):
+        """Prior year without priority_reg_date should be skipped with a warning."""
+        sessions_2026 = {1001: create_mock_session(1001, "Session 1", year=2026)}
+        sessions_2025 = {901: create_mock_session(901, "Session 1", year=2025)}
+
+        async def mock_fetch_sessions(year, **kwargs):
+            return sessions_2026 if year == 2026 else sessions_2025
+
+        mock_repository.fetch_sessions.side_effect = mock_fetch_sessions
+
+        async def mock_fetch_reg_dates(year):
+            if year == 2026:
+                return {"priority_reg_date": "2025-11-01"}
+            return {}  # 2025 has no priority_reg_date
+
+        mock_repository.fetch_registration_dates.side_effect = mock_fetch_reg_dates
+
+        async def mock_fetch_snapshots(year, **kwargs):
+            if year == 2026:
+                return [create_mock_snapshot("2025-11-03", 1001, 2026, enrolled=20)]
+            return [create_mock_snapshot("2025-01-06", 901, 2025, enrolled=15)]
+
+        mock_repository.fetch_enrollment_snapshots.side_effect = mock_fetch_snapshots
+
+        result = await service.get_velocity(year=2026, compare_years=[2025])
+
+        # Current year should have data
+        assert len(result.combined.weekly) > 0
+        # Prior year should be skipped (no line)
+        assert len(result.prior_years) == 0
+        # Warning about missing prior year config
+        assert any("2025" in w and "no priority registration date" in w for w in result.warnings)
+
+
+# ============================================================================
+# Step 4: Gross/Net/Delta Field Population Tests
+# ============================================================================
+
+
+class TestGrossNetDeltaFromSnapshots:
+    """Test gross_enrolled, weekly_new, weekly_cancelled population from snapshots."""
+
+    @pytest.mark.asyncio
+    async def test_snapshot_gross_enrolled(self, service, mock_repository, sample_sessions):
+        """Snapshot gross_enrolled = enrolled + cancelled (since enrolled is net)."""
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=50, cancelled=5),
+            create_mock_snapshot("2026-01-12", 1001, 2026, enrolled=55, cancelled=8),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        points = result.combined.weekly
+        assert len(points) == 2
+        # gross = enrolled + cancelled
+        assert points[0].gross_enrolled == 55  # 50 + 5
+        assert points[1].gross_enrolled == 63  # 55 + 8
+        # net enrolled unchanged
+        assert points[0].enrolled == 50
+        assert points[1].enrolled == 55
+
+    @pytest.mark.asyncio
+    async def test_snapshot_weekly_new_and_cancelled(self, service, mock_repository, sample_sessions):
+        """weekly_new = delta of gross, weekly_cancelled = delta of cancelled."""
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=50, cancelled=5),
+            create_mock_snapshot("2026-01-12", 1001, 2026, enrolled=55, cancelled=8),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        points = result.combined.weekly
+        # First week: weekly_new = gross, weekly_cancelled = cancelled
+        assert points[0].weekly_new == 55  # gross_enrolled (first week)
+        assert points[0].weekly_cancelled == 5  # cancelled_count (first week)
+        # Second week: delta of gross and delta of cancelled
+        assert points[1].weekly_new == 8  # 63 - 55
+        assert points[1].weekly_cancelled == 3  # 8 - 5
+
+    @pytest.mark.asyncio
+    async def test_snapshot_gross_never_decreases(self, service, mock_repository, sample_sessions):
+        """gross_enrolled should never decrease (monotonically increasing)."""
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=50, cancelled=5),
+            # Net drops but gross should still increase
+            create_mock_snapshot("2026-01-12", 1001, 2026, enrolled=48, cancelled=10),
+            create_mock_snapshot("2026-01-19", 1001, 2026, enrolled=52, cancelled=12),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        points = result.combined.weekly
+        gross_values = [p.gross_enrolled for p in points]
+        # gross = enrolled + cancelled: 55, 58, 64
+        assert gross_values == [55, 58, 64]
+        # Each value >= previous
+        for i in range(1, len(gross_values)):
+            assert gross_values[i] >= gross_values[i - 1]
+
+
+class TestGrossNetDeltaFromReconstruction:
+    """Test gross_enrolled, weekly_new, weekly_cancelled from reconstruction path."""
+
+    @pytest.mark.asyncio
+    async def test_reconstruction_gross_and_net(self, service, mock_repository, sample_sessions):
+        """Reconstruction should populate gross_enrolled and net enrolled separately."""
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+        mock_repository.fetch_enrollment_snapshots.return_value = []
+        # 10 enrollments in week 1, 5 in week 2
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            *[create_mock_attendee_with_date(100 + i, 1001, "2026-01-03") for i in range(10)],
+            *[create_mock_attendee_with_date(200 + i, 1001, "2026-01-10") for i in range(5)],
+        ]
+        # 3 cancellations in week 1, 1 in week 2
+        mock_repository.fetch_status_transitions.return_value = [
+            create_mock_status_transition(101, 1001, "2026-01-04"),
+            create_mock_status_transition(102, 1001, "2026-01-05"),
+            create_mock_status_transition(103, 1001, "2026-01-06"),
+            create_mock_status_transition(201, 1001, "2026-01-12"),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        points = result.combined.weekly
+        assert len(points) == 2
+        # Week 1: gross=10, cancelled=3, net=7
+        assert points[0].gross_enrolled == 10
+        assert points[0].enrolled == 7
+        assert points[0].weekly_new == 10
+        assert points[0].weekly_cancelled == 3
+        # Week 2: gross=15, cancelled=4, net=11
+        assert points[1].gross_enrolled == 15
+        assert points[1].enrolled == 11
+        assert points[1].weekly_new == 5
+        assert points[1].weekly_cancelled == 1
+
+
+class TestGrossNetDeltaCombinedCurves:
+    """Test that _combine_weekly_curves sums new fields across sessions."""
+
+    @pytest.mark.asyncio
+    async def test_combined_sums_gross_fields(self, service, mock_repository, sample_sessions):
+        """Combined curve should sum gross_enrolled, weekly_new, weekly_cancelled."""
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=30, cancelled=3),
+            create_mock_snapshot("2026-01-05", 1002, 2026, enrolled=20, cancelled=2),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        points = result.combined.weekly
+        assert len(points) == 1
+        # Combined gross = (30+3) + (20+2) = 55
+        assert points[0].gross_enrolled == 55
+        # Combined weekly_new = 33 + 22 = 55 (first week)
+        assert points[0].weekly_new == 55
+        # Combined weekly_cancelled = 3 + 2 = 5
+        assert points[0].weekly_cancelled == 5
