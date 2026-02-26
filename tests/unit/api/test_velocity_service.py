@@ -1732,6 +1732,8 @@ class TestSchemaNewFields:
             gross_enrolled=0,
             weekly_new=0,
             weekly_cancelled=0,
+            is_partial=False,
+            days_in_week=7,
         )
         assert point.gross_enrolled == 0
 
@@ -1749,6 +1751,8 @@ class TestSchemaNewFields:
             gross_enrolled=0,
             weekly_new=0,
             weekly_cancelled=0,
+            is_partial=False,
+            days_in_week=7,
         )
         assert point.weekly_new == 0
 
@@ -1766,6 +1770,8 @@ class TestSchemaNewFields:
             gross_enrolled=0,
             weekly_new=0,
             weekly_cancelled=0,
+            is_partial=False,
+            days_in_week=7,
         )
         assert point.weekly_cancelled == 0
 
@@ -1783,6 +1789,8 @@ class TestSchemaNewFields:
             gross_enrolled=50,
             weekly_new=8,
             weekly_cancelled=3,
+            is_partial=False,
+            days_in_week=7,
         )
         assert point.gross_enrolled == 50
         assert point.weekly_new == 8
@@ -3010,6 +3018,11 @@ class TestPartialWeekSchemaDefaults:
             waitlisted=10,
             delta=100,
             data_source="snapshot",
+            gross_enrolled=0,
+            weekly_new=0,
+            weekly_cancelled=0,
+            is_partial=False,
+            days_in_week=7,
         )
         assert point.is_partial is False
         assert point.days_in_week == 7
@@ -3024,6 +3037,9 @@ class TestPartialWeekSchemaDefaults:
             waitlisted=10,
             delta=100,
             data_source="snapshot",
+            gross_enrolled=0,
+            weekly_new=0,
+            weekly_cancelled=0,
             is_partial=True,
             days_in_week=4,
         )

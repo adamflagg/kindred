@@ -524,6 +524,8 @@ class VelocityService:
                         gross_enrolled=0,
                         weekly_new=0,
                         weekly_cancelled=0,
+                        is_partial=p.is_partial,
+                        days_in_week=p.days_in_week,
                     )
                 )
             else:
@@ -541,6 +543,8 @@ class VelocityService:
                         gross_enrolled=p.gross_enrolled,
                         weekly_new=weekly_new,
                         weekly_cancelled=weekly_cancelled,
+                        is_partial=p.is_partial,
+                        days_in_week=p.days_in_week,
                     )
                 )
                 prev_gross = p.gross_enrolled
