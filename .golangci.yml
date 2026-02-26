@@ -43,6 +43,9 @@ linters:
       min-occurrences: 3
     misspell:
       locale: US
+      extra-words:
+        - typo: "cancelled"
+          correction: "cancelled"
     lll:
       line-length: 120
     nakedret:

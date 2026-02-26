@@ -199,6 +199,7 @@ Format: `2026-01-06T14:05:52Z [source] LEVEL message key=value...`
 18. **Git hooks** - Run `./scripts/setup-git-hooks.sh` once; validates commits, blocks if behind origin
 19. **Python line length** - 120 chars (configured in `ruff.toml`), enforced by ruff format
 20. **Frontend tests** - Vitest (not Jest); `npm run test` for watch mode, `npx vitest run` for one-shot
+21. **Spelling: "cancelled"** - PocketBase fields use British spelling (`cancelled_count`). Go linter allows it via `.golangci.yml` extra-words. Use `cancelled` consistently, not `canceled`
 
 ## Session Types and Bunking Structure
 
