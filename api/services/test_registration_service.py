@@ -80,7 +80,7 @@ class TestRegistrationServiceCalculate:
         mock_repo.fetch_sessions.return_value = {
             1000: MockSession(cm_id=1000, name="Session 1", session_type="main"),
         }
-        mock_repo.fetch_camper_history.return_value = []
+
         mock_repo.fetch_summer_enrollment_history.return_value = []
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
@@ -118,7 +118,7 @@ class TestRegistrationServiceCalculate:
         mock_repo.fetch_sessions.return_value = {
             1000: MockSession(cm_id=1000, name="S1", session_type="main"),
         }
-        mock_repo.fetch_camper_history.return_value = []
+
         mock_repo.fetch_summer_enrollment_history.return_value = []
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
@@ -150,7 +150,7 @@ class TestRegistrationServiceCalculate:
         mock_repo.fetch_sessions.return_value = {
             1000: MockSession(cm_id=1000, name="S1", session_type="main"),
         }
-        mock_repo.fetch_camper_history.return_value = []
+
         mock_repo.fetch_summer_enrollment_history.return_value = []
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
@@ -189,7 +189,7 @@ class TestRegistrationServiceCalculate:
             2000: MockSession(cm_id=2000, name="S2", session_type="embedded"),
             3000: MockSession(cm_id=3000, name="Family", session_type="family"),
         }
-        mock_repo.fetch_camper_history.return_value = []
+
         mock_repo.fetch_summer_enrollment_history.return_value = []
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
@@ -219,7 +219,7 @@ class TestRegistrationServiceCalculate:
             1000: MockSession(cm_id=1000, name="S1", session_type="main"),
             2000: MockSession(cm_id=2000, name="S2", session_type="main"),
         }
-        mock_repo.fetch_camper_history.return_value = []
+
         mock_repo.fetch_summer_enrollment_history.return_value = []
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
@@ -251,7 +251,7 @@ class TestRegistrationServiceCalculate:
             1000: MockSession(cm_id=1000, name="S1", session_type="main"),
             1001: MockSession(cm_id=1001, name="AG-S1", session_type="ag", parent_id=1000),
         }
-        mock_repo.fetch_camper_history.return_value = []
+
         mock_repo.fetch_summer_enrollment_history.return_value = []
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
@@ -282,7 +282,7 @@ class TestRegistrationServiceCalculate:
         mock_repo.fetch_sessions.return_value = {
             1000: MockSession(cm_id=1000, name="S1", session_type="main"),
         }
-        mock_repo.fetch_camper_history.return_value = []
+
         mock_repo.fetch_summer_enrollment_history.return_value = []
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
@@ -319,7 +319,7 @@ class TestRegistrationServiceCalculate:
             1000: MockSession(cm_id=1000, name="S1", session_type="main"),
             1001: MockSession(cm_id=1001, name="AG-S1", session_type="ag", parent_id=1000),
         }
-        mock_repo.fetch_camper_history.return_value = []
+
         mock_repo.fetch_summer_enrollment_history.return_value = []
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
@@ -355,7 +355,7 @@ class TestRegistrationServiceCalculate:
             1000: MockSession(cm_id=1000, name="S1", session_type="main"),
             2000: MockSession(cm_id=2000, name="S2", session_type="main"),
         }
-        mock_repo.fetch_camper_history.return_value = []
+
         mock_repo.fetch_summer_enrollment_history.return_value = []
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
@@ -414,7 +414,7 @@ class TestRegistrationServiceStatusCategories:
         mock_repo.fetch_sessions.return_value = {
             1000: MockSession(cm_id=1000, name="S1", session_type="main"),
         }
-        mock_repo.fetch_camper_history.return_value = []
+
         mock_repo.fetch_summer_enrollment_history.return_value = []
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
@@ -456,7 +456,7 @@ class TestRegistrationServiceDemographics:
         mock_repo.fetch_sessions.return_value = {
             1000: MockSession(cm_id=1000, name="S1", session_type="main"),
         }
-        mock_repo.fetch_camper_history.return_value = []
+
         mock_repo.fetch_summer_enrollment_history.return_value = []
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
@@ -492,7 +492,7 @@ class TestRegistrationServiceDemographics:
         mock_repo.fetch_sessions.return_value = {
             1000: MockSession(cm_id=1000, name="S1", session_type="main"),
         }
-        mock_repo.fetch_camper_history.return_value = []
+
         mock_repo.fetch_summer_enrollment_history.return_value = []
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
@@ -526,7 +526,7 @@ class TestRegistrationServiceDemographics:
         mock_repo.fetch_sessions.return_value = {
             1000: MockSession(cm_id=1000, name="S1", session_type="main"),
         }
-        mock_repo.fetch_camper_history.return_value = []
+
         mock_repo.fetch_summer_enrollment_history.return_value = []
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
@@ -566,7 +566,7 @@ class TestRegistrationServiceSummerMetrics:
         mock_repo.fetch_sessions.return_value = {
             1000: MockSession(cm_id=1000, name="S1", session_type="main"),
         }
-        mock_repo.fetch_camper_history.return_value = []
+
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
         mock_repo.fetch_synagogue_by_household.return_value = {}
@@ -608,7 +608,7 @@ class TestRegistrationServiceSummerMetrics:
         mock_repo.fetch_sessions.return_value = {
             1000: MockSession(cm_id=1000, name="S1", session_type="main"),
         }
-        mock_repo.fetch_camper_history.return_value = []
+
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
         mock_repo.fetch_synagogue_by_household.return_value = {}
@@ -653,7 +653,7 @@ class TestRegistrationServiceGenderByGrade:
         mock_repo.fetch_sessions.return_value = {
             1000: MockSession(cm_id=1000, name="S1", session_type="main"),
         }
-        mock_repo.fetch_camper_history.return_value = []
+
         mock_repo.fetch_summer_enrollment_history.return_value = []
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12

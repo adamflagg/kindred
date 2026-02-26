@@ -240,63 +240,6 @@ class TestMetricsRepositoryFetchSessions:
         mock_pb.collection.assert_called_with("camp_sessions")
 
 
-class TestMetricsRepositoryFetchCamperHistory:
-    """Tests for fetch_camper_history method."""
-
-    @pytest.mark.asyncio
-    async def test_fetch_camper_history_filters_by_year(self) -> None:
-        """fetch_camper_history filters by year."""
-        from api.services.metrics_repository import MetricsRepository
-
-        mock_pb = MagicMock()
-        mock_collection = MagicMock()
-        mock_pb.collection.return_value = mock_collection
-        mock_collection.get_full_list.return_value = []
-
-        repo = MetricsRepository(mock_pb)
-        await repo.fetch_camper_history(2025)
-
-        mock_pb.collection.assert_called_with("camper_history")
-        call_args = mock_collection.get_full_list.call_args
-        filter_str = call_args.kwargs["query_params"]["filter"]
-        assert "year = 2025" in filter_str
-
-    @pytest.mark.asyncio
-    async def test_fetch_camper_history_returns_list(self) -> None:
-        """fetch_camper_history returns list of records."""
-        from api.services.metrics_repository import MetricsRepository
-
-        mock_pb = MagicMock()
-        mock_collection = MagicMock()
-        mock_pb.collection.return_value = mock_collection
-        mock_collection.get_full_list.return_value = [
-            MockRecord(id="1", cm_id=1, person_id=100),
-            MockRecord(id="2", cm_id=2, person_id=200),
-        ]
-
-        repo = MetricsRepository(mock_pb)
-        result = await repo.fetch_camper_history(2025)
-
-        assert isinstance(result, list)
-        assert len(result) == 2
-
-    @pytest.mark.asyncio
-    async def test_fetch_camper_history_handles_collection_error(self) -> None:
-        """fetch_camper_history returns empty list on error."""
-        from api.services.metrics_repository import MetricsRepository
-
-        mock_pb = MagicMock()
-        mock_collection = MagicMock()
-        mock_pb.collection.return_value = mock_collection
-        mock_collection.get_full_list.side_effect = Exception("Collection not found")
-
-        repo = MetricsRepository(mock_pb)
-        result = await repo.fetch_camper_history(2025)
-
-        # Should return empty list, not raise
-        assert result == []
-
-
 class TestMetricsRepositoryFetchSummerHistory:
     """Tests for fetch_summer_enrollment_history method."""
 
@@ -347,50 +290,6 @@ class TestMetricsRepositoryFetchSummerHistory:
 
         call_args = mock_collection.get_full_list.call_args
         assert call_args.kwargs["query_params"]["expand"] == "session"
-
-
-class TestMetricsRepositoryBuildHistoryByPerson:
-    """Tests for build_history_by_person method."""
-
-    def test_build_history_by_person_indexes_correctly(self) -> None:
-        """build_history_by_person indexes records by person_id."""
-        from api.services.metrics_repository import MetricsRepository
-
-        mock_pb = MagicMock()
-        repo = MetricsRepository(mock_pb)
-
-        records = [
-            MockRecord(id="1", cm_id=1, person_id=100),
-            MockRecord(id="2", cm_id=2, person_id=200),
-            MockRecord(id="3", cm_id=3, person_id=100),  # Duplicate person
-        ]
-
-        result = repo.build_history_by_person(records)
-
-        # Should have 2 keys (100 and 200)
-        assert len(result) == 2
-        assert 100 in result
-        assert 200 in result
-        # First record for person 100 should be stored (keeps first found)
-        assert result[100].cm_id == 1
-
-    def test_build_history_by_person_skips_none_person_id(self) -> None:
-        """build_history_by_person skips records with None person_id."""
-        from api.services.metrics_repository import MetricsRepository
-
-        mock_pb = MagicMock()
-        repo = MetricsRepository(mock_pb)
-
-        records = [
-            MockRecord(id="1", cm_id=1, person_id=100),
-            MockRecord(id="2", cm_id=2, person_id=None),  # Should be skipped
-        ]
-
-        result = repo.build_history_by_person(records)
-
-        assert len(result) == 1
-        assert 100 in result
-        assert None not in result
 
 
 class TestMetricsRepositoryFetchAttendeesWithPersons:

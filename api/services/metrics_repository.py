@@ -132,51 +132,6 @@ class MetricsRepository:
             query_params={"filter": f"year = {year}", "expand": "person,session,bunk"},
         )
 
-    async def fetch_camper_history(
-        self,
-        year: int,
-        session_types: list[str] | None = None,
-        session_name: str | None = None,
-    ) -> list[Any]:
-        """Fetch camper_history records for a given year.
-
-        V2: Uses direct PocketBase filtering on session_type (select field).
-        Each record has a single session_type, no comma-separated parsing needed.
-
-        Args:
-            year: The year to fetch records for.
-            session_types: Optional list of session types to filter.
-            session_name: Optional session name to filter by. Used for
-                cross-year filtering where the same session name appears
-                across multiple years with different cm_ids.
-
-        Returns:
-            List of camper_history records. Returns empty list on error.
-        """
-        try:
-            filter_str = f"year = {year}"
-
-            # V2: Direct filter on session_type select field (no string parsing)
-            if session_types:
-                type_filter = " || ".join(f'session_type = "{t}"' for t in session_types)
-                filter_str = f"({filter_str}) && ({type_filter})"
-
-            # Filter by session name for cross-year filtering
-            if session_name:
-                # Escape quotes in session name for PocketBase filter
-                escaped_name = session_name.replace('"', '\\"')
-                filter_str = f'({filter_str}) && session_name = "{escaped_name}"'
-
-            records = await asyncio.to_thread(
-                self.pb.collection("camper_history").get_full_list,
-                query_params={"filter": filter_str},
-            )
-
-            return records
-        except Exception as e:
-            logger.warning(f"Could not fetch camper_history for year {year}: {e}")
-            return []
-
     async def fetch_summer_enrollment_history(
         self,
         person_ids: set[int],
@@ -212,33 +167,6 @@ class MetricsRepository:
             all_results.extend(batch_results)
 
         return all_results
-
-    def build_history_by_person(self, records: list[Any]) -> dict[int, Any]:
-        """Build a dictionary mapping person_id to ONE camper_history record.
-
-        V2 Note: With per-session records, one person may have multiple records.
-        This method returns just one record per person (the first found), which is
-        sufficient for person-level demographics (school, city, gender, etc.) that
-        are the same across all sessions for a person.
-
-        For session-specific data (session_name, bunk_name), iterate over the full
-        records list instead of using this method.
-
-        Args:
-            records: List of camper_history records.
-
-        Returns:
-            Dictionary mapping person_id (int) to one record (first found).
-        """
-        result: dict[int, Any] = {}
-        for record in records:
-            person_id = getattr(record, "person_id", None)
-            if person_id is not None:
-                pid = int(person_id)
-                # Keep first record found (demographics are same across sessions)
-                if pid not in result:
-                    result[pid] = record
-        return result
 
     async def fetch_bunk_plans(
         self,

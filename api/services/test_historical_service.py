@@ -210,8 +210,8 @@ class TestHistoricalServiceFromAttendees:
         service = HistoricalService(mock_repository)
         await service.calculate_historical_trends(years=[2025])
 
-        # fetch_camper_history should never be called
-        mock_repository.fetch_camper_history.assert_not_called()
+        # fetch_camper_history has been removed from the repository entirely
+        assert not hasattr(mock_repository, "fetch_camper_history")
 
     @pytest.mark.asyncio
     async def test_session_type_filtering(self, mock_repository: MagicMock) -> None:
@@ -293,7 +293,7 @@ class TestHistoricalServiceBasic:
             assert hasattr(year_metric, "total_enrolled")
             assert hasattr(year_metric, "by_gender")
             assert hasattr(year_metric, "new_vs_returning")
-            assert hasattr(year_metric, "by_first_year")
+            assert hasattr(year_metric, "total_cancelled")
 
     @pytest.mark.asyncio
     async def test_total_enrollment_per_year(self, mock_repository: MagicMock) -> None:
@@ -394,8 +394,8 @@ class TestHistoricalServiceBreakdowns:
         assert abs(year_metric.new_vs_returning.returning_percentage - 70.0) < 0.001
 
     @pytest.mark.asyncio
-    async def test_by_first_year_is_empty(self, mock_repository: MagicMock) -> None:
-        """by_first_year should be empty (dead field, not used by frontend)."""
+    async def test_by_first_year_field_removed(self, mock_repository: MagicMock) -> None:
+        """by_first_year field should not exist on YearMetrics (dead field removed)."""
         from api.services.historical_service import HistoricalService
 
         attendees = [make_mock_attendee(1001, 5001)]
@@ -410,7 +410,7 @@ class TestHistoricalServiceBreakdowns:
         result = await service.calculate_historical_trends(years=[2024])
 
         year_metric = result.years[0]
-        assert year_metric.by_first_year == []
+        assert not hasattr(year_metric, "by_first_year")
 
 
 # ============================================================================

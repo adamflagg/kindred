@@ -1436,33 +1436,6 @@ class TestComparisonEndpointSessionTypes:
         assert "session_types" in param_names, "session_types parameter should be added to get_comparison_metrics"
 
 
-class TestFetchCamperHistoryNoStatusFilter:
-    """Tests for fetch_camper_history_for_year function.
-
-    The function should NOT filter by status - status filtering happens
-    at the attendees level, not at the demographics level.
-    """
-
-    def test_fetch_camper_history_has_no_status_parameter(self) -> None:
-        """Verify MetricsRepository.fetch_camper_history signature has no status_filter.
-
-        The method should only accept year and session_types parameters.
-        Status filtering is wrong at this level because demographics
-        should include everyone associated with summer sessions.
-        """
-        import inspect
-
-        from api.services.metrics_repository import MetricsRepository
-
-        sig = inspect.signature(MetricsRepository.fetch_camper_history)
-        param_names = list(sig.parameters.keys())
-
-        # Should have year and session_types, but NOT status_filter
-        assert "year" in param_names
-        assert "session_types" in param_names
-        assert "status_filter" not in param_names, "status_filter parameter should be removed from fetch_camper_history"
-
-
 # ============================================================================
 # TDD Tests for Dynamic Status Fetching (Phase 6)
 # ============================================================================
