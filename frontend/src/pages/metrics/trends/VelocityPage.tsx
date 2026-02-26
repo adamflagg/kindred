@@ -13,7 +13,7 @@
  * - Week-over-week delta table with prior-year columns
  */
 
-import { useMemo, useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import {
   LineChart,
   Line,
@@ -530,8 +530,8 @@ export default function VelocityPage() {
           </div>
         )}
 
-        {/* Week-range selectors */}
-        {chartData.length > 0 && (
+        {/* Week-range selectors (not applicable for delta bar chart) */}
+        {chartData.length > 0 && viewMode !== 'delta' && (
           <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
             <label className="text-muted-foreground text-xs font-medium">Zoom:</label>
             <select
@@ -653,9 +653,8 @@ export default function VelocityPage() {
 
               {/* Prior year bars */}
               {data.prior_years.map((py) => (
-                <>
+                <React.Fragment key={py.year}>
                   <Bar
-                    key={`new_${py.year}`}
                     dataKey={`weekly_new_${py.year}`}
                     name={`New ${py.year}`}
                     fill="hsl(150, 40%, 65%)"
@@ -663,14 +662,13 @@ export default function VelocityPage() {
                     opacity={0.6}
                   />
                   <Bar
-                    key={`cancel_${py.year}`}
                     dataKey={`weekly_cancelled_${py.year}`}
                     name={`Cancelled ${py.year}`}
                     fill="hsl(0, 40%, 70%)"
                     stackId={`prior_${py.year}`}
                     opacity={0.6}
                   />
-                </>
+                </React.Fragment>
               ))}
             </BarChart>
           ) : (
@@ -766,9 +764,8 @@ export default function VelocityPage() {
                   />
                   {/* Prior year gender lines (dashed) */}
                   {selectedPriorYears.slice(0, 1).map((year) => (
-                    <>
+                    <React.Fragment key={year}>
                       <Line
-                        key={`boys_${year}`}
                         type="monotone"
                         dataKey={
                           viewMode === 'gross'
@@ -784,7 +781,6 @@ export default function VelocityPage() {
                         connectNulls={false}
                       />
                       <Line
-                        key={`girls_${year}`}
                         type="monotone"
                         dataKey={
                           viewMode === 'gross'
@@ -799,7 +795,7 @@ export default function VelocityPage() {
                         opacity={0.6}
                         connectNulls={false}
                       />
-                    </>
+                    </React.Fragment>
                   ))}
                 </>
               ) : (
