@@ -80,7 +80,10 @@ describe('useMetricsPrefetch', () => {
     vi.clearAllMocks()
     // Make fetchWithAuth return a successful response by default
     mockFetchWithAuth.mockResolvedValue(
-      new Response(JSON.stringify({}), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
     )
   })
 

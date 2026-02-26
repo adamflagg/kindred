@@ -30,6 +30,14 @@ vi.mock('../../hooks/useMetricsSessions', () => ({
   })),
 }))
 
+// Mock useApiWithAuth for useMetricsPrefetch
+vi.mock('../../hooks/useApiWithAuth', () => ({
+  useApiWithAuth: () => ({
+    fetchWithAuth: vi.fn().mockResolvedValue(new Response('{}', { status: 200 })),
+    isAuthenticated: true,
+  }),
+}))
+
 const TestChild = ({ text }: { text: string }) => <div data-testid="child">{text}</div>
 
 const renderWithRouter = (initialPath: string, childText = 'Child Content') => {
