@@ -113,9 +113,6 @@ solver_runs: dict[str, dict[str, Any]] = {}
 # ID Translation Cache
 # ========================================
 
-# IDLookupCache is imported at the top from .services.id_cache
-# and re-exported here for backward compatibility
-
 __all__ = [
     "pb",
     "pb_url",
