@@ -11,6 +11,8 @@ export interface WeeklyDataPoint {
   gross_enrolled: number
   weekly_new: number
   weekly_cancelled: number
+  is_partial: boolean
+  days_in_week: number
 }
 
 export interface VelocityCurve {

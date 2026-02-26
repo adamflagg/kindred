@@ -32,6 +32,7 @@ from api.services.velocity_service import (
     SEASON_WEEKS,
     VelocityService,
     _compute_season_start,
+    _partial_week_info,
     _season_end,
     _week_number,
     _week_start,
@@ -1731,6 +1732,8 @@ class TestSchemaNewFields:
             gross_enrolled=0,
             weekly_new=0,
             weekly_cancelled=0,
+            is_partial=False,
+            days_in_week=7,
         )
         assert point.gross_enrolled == 0
 
@@ -1748,6 +1751,8 @@ class TestSchemaNewFields:
             gross_enrolled=0,
             weekly_new=0,
             weekly_cancelled=0,
+            is_partial=False,
+            days_in_week=7,
         )
         assert point.weekly_new == 0
 
@@ -1765,6 +1770,8 @@ class TestSchemaNewFields:
             gross_enrolled=0,
             weekly_new=0,
             weekly_cancelled=0,
+            is_partial=False,
+            days_in_week=7,
         )
         assert point.weekly_cancelled == 0
 
@@ -1782,6 +1789,8 @@ class TestSchemaNewFields:
             gross_enrolled=50,
             weekly_new=8,
             weekly_cancelled=3,
+            is_partial=False,
+            days_in_week=7,
         )
         assert point.gross_enrolled == 50
         assert point.weekly_new == 8
@@ -2697,3 +2706,342 @@ class TestEnrollmentGenderFromSnapshots:
 
         # Should NOT have fetched attendees (pure snapshot fast path)
         mock_repository.fetch_attendees_with_dates.assert_not_called()
+
+
+# ============================================================================
+# Partial Week Indicator Tests
+# ============================================================================
+
+
+class TestPartialWeekInfo:
+    """Tests for the _partial_week_info helper that detects incomplete week buckets."""
+
+    def test_mid_week_is_partial(self):
+        """A week_start that contains today should be marked partial."""
+        from datetime import date
+
+        # week_start is Monday Jan 5 2026, today is Thursday Jan 8 2026 (day 4 of 7)
+        is_partial, days = _partial_week_info("2026-01-05", 2026, today=date(2026, 1, 8))
+        assert is_partial is True
+        assert days == 4  # Mon=1, Tue=2, Wed=3, Thu=4
+
+    def test_first_day_of_week_is_partial(self):
+        """Today being the first day of the week means only 1 day of data."""
+        from datetime import date
+
+        is_partial, days = _partial_week_info("2026-01-05", 2026, today=date(2026, 1, 5))
+        assert is_partial is True
+        assert days == 1
+
+    def test_last_day_of_week_is_partial(self):
+        """Today being the last day (day 7) still means partial — the day isn't over."""
+        from datetime import date
+
+        # week_start is Jan 5, day 7 is Jan 11
+        is_partial, days = _partial_week_info("2026-01-05", 2026, today=date(2026, 1, 11))
+        assert is_partial is True
+        assert days == 7
+
+    def test_completed_week_not_partial(self):
+        """A week that ended before today is not partial."""
+        from datetime import date
+
+        # week_start is Jan 5, week ends Jan 12. Today is Jan 12 (next week).
+        is_partial, days = _partial_week_info("2026-01-05", 2026, today=date(2026, 1, 12))
+        assert is_partial is False
+        assert days == 7
+
+    def test_future_week_not_partial(self):
+        """A week starting after today is not partial (shouldn't happen, but safe)."""
+        from datetime import date
+
+        is_partial, days = _partial_week_info("2026-01-12", 2026, today=date(2026, 1, 5))
+        assert is_partial is False
+        assert days == 7
+
+    def test_prior_year_never_partial(self):
+        """Prior year data should never be marked partial, even if dates match."""
+        from datetime import date
+
+        # 2025 data with today in 2026 — should not be partial
+        is_partial, days = _partial_week_info("2025-01-06", 2025, today=date(2026, 1, 8))
+        assert is_partial is False
+        assert days == 7
+
+    def test_same_year_different_week_not_partial(self):
+        """A completed week in the current year should not be partial."""
+        from datetime import date
+
+        # week_start is Jan 5 2026, today is Jan 20 2026 (well past that week)
+        is_partial, days = _partial_week_info("2026-01-05", 2026, today=date(2026, 1, 20))
+        assert is_partial is False
+        assert days == 7
+
+
+class TestPartialWeekInSnapshots:
+    """Verify that snapshot-based curves mark the last week as partial for current year."""
+
+    @pytest.fixture()
+    def service(self):
+        repo = AsyncMock()
+        repo.fetch_registration_dates = AsyncMock(
+            return_value={
+                "priority_reg_date": "2026-01-05",
+            }
+        )
+        repo.fetch_sessions = AsyncMock(
+            return_value={
+                1001: create_mock_session(1001, "Session 1", year=2026, start_date="2026-06-15"),
+            }
+        )
+        repo.fetch_enrollment_snapshots = AsyncMock(return_value=[])
+        repo.fetch_attendees_with_dates = AsyncMock(return_value=[])
+        repo.fetch_status_transitions = AsyncMock(return_value=[])
+        return VelocityService(repo)
+
+    @pytest.mark.asyncio
+    async def test_last_week_marked_partial_in_snapshots(self, service):
+        """The most recent week in current year snapshot data should be marked partial."""
+        from datetime import date
+
+        service.repo.fetch_enrollment_snapshots.return_value = [
+            # Week 0: Jan 5-11 (complete)
+            create_mock_snapshot("2026-01-07", 1001, 2026, enrolled=50, waitlisted=5),
+            # Week 1: Jan 12-18 (complete)
+            create_mock_snapshot("2026-01-14", 1001, 2026, enrolled=80, waitlisted=8),
+            # Week 2: Jan 19-25 — today is Jan 22 (Thu), so only 4 days
+            create_mock_snapshot("2026-01-21", 1001, 2026, enrolled=100, waitlisted=10),
+        ]
+
+        result = await service.get_velocity(year=2026, today=date(2026, 1, 22))
+
+        points = result.combined.weekly
+        assert len(points) == 3
+
+        # First two weeks should be complete
+        assert points[0].is_partial is False
+        assert points[0].days_in_week == 7
+        assert points[1].is_partial is False
+        assert points[1].days_in_week == 7
+
+        # Last week should be partial
+        assert points[2].is_partial is True
+        assert points[2].days_in_week == 4  # Jan 19 to Jan 22 inclusive
+
+    @pytest.mark.asyncio
+    async def test_prior_year_snapshots_never_partial(self, service):
+        """Prior year snapshot data should never have partial weeks."""
+        from datetime import date
+
+        # Set up for 2025 as a prior year
+        service.repo.fetch_registration_dates = AsyncMock(
+            return_value={
+                "priority_reg_date": "2025-01-06",
+            }
+        )
+        service.repo.fetch_sessions = AsyncMock(
+            return_value={
+                1001: create_mock_session(1001, "Session 1", year=2025, start_date="2025-06-15"),
+            }
+        )
+        service.repo.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2025-01-08", 1001, 2025, enrolled=50, waitlisted=5),
+            create_mock_snapshot("2025-01-15", 1001, 2025, enrolled=80, waitlisted=8),
+        ]
+
+        # Even with today in the middle of a 2025 week, nothing is partial
+        result = await service.get_velocity(year=2025, today=date(2026, 1, 22))
+
+        for point in result.combined.weekly:
+            assert point.is_partial is False
+            assert point.days_in_week == 7
+
+
+class TestPartialWeekInReconstruction:
+    """Verify that reconstruction-based curves mark the last week as partial."""
+
+    @pytest.fixture()
+    def service(self):
+        repo = AsyncMock()
+        repo.fetch_registration_dates = AsyncMock(
+            return_value={
+                "priority_reg_date": "2026-01-05",
+            }
+        )
+        repo.fetch_sessions = AsyncMock(
+            return_value={
+                1001: create_mock_session(1001, "Session 1", year=2026, start_date="2026-06-15"),
+            }
+        )
+        repo.fetch_enrollment_snapshots = AsyncMock(return_value=[])
+        repo.fetch_attendees_with_dates = AsyncMock(return_value=[])
+        repo.fetch_status_transitions = AsyncMock(return_value=[])
+        return VelocityService(repo)
+
+    @pytest.mark.asyncio
+    async def test_reconstruction_marks_last_week_partial(self, service):
+        """Reconstruction path should also mark the current partial week."""
+        from datetime import date
+
+        service.repo.fetch_attendees_with_dates.return_value = [
+            # Week 0
+            create_mock_attendee_with_date(1, 1001, "2026-01-06"),
+            create_mock_attendee_with_date(2, 1001, "2026-01-07"),
+            # Week 1 (current, partial)
+            create_mock_attendee_with_date(3, 1001, "2026-01-13"),
+        ]
+
+        result = await service.get_velocity(year=2026, today=date(2026, 1, 15))
+
+        points = result.combined.weekly
+        assert len(points) == 2
+
+        assert points[0].is_partial is False
+        assert points[0].days_in_week == 7
+
+        assert points[1].is_partial is True
+        assert points[1].days_in_week == 4  # Jan 12 to Jan 15 inclusive
+
+
+class TestPartialWeekInCombinedCurves:
+    """Verify partial week info propagates through _combine_weekly_curves."""
+
+    @pytest.fixture()
+    def service(self):
+        repo = AsyncMock()
+        repo.fetch_registration_dates = AsyncMock(
+            return_value={
+                "priority_reg_date": "2026-01-05",
+            }
+        )
+        repo.fetch_sessions = AsyncMock(
+            return_value={
+                1001: create_mock_session(1001, "Session 1", year=2026, start_date="2026-06-15"),
+                1002: create_mock_session(1002, "Session 2", year=2026, start_date="2026-07-01"),
+            }
+        )
+        repo.fetch_enrollment_snapshots = AsyncMock(return_value=[])
+        repo.fetch_attendees_with_dates = AsyncMock(return_value=[])
+        repo.fetch_status_transitions = AsyncMock(return_value=[])
+        return VelocityService(repo)
+
+    @pytest.mark.asyncio
+    async def test_combined_curve_propagates_partial(self, service):
+        """When combining multi-session data, partial status should propagate."""
+        from datetime import date
+
+        service.repo.fetch_enrollment_snapshots.return_value = [
+            # Session 1
+            create_mock_snapshot("2026-01-07", 1001, 2026, enrolled=30),
+            create_mock_snapshot("2026-01-14", 1001, 2026, enrolled=50),
+            # Session 2
+            create_mock_snapshot("2026-01-07", 1002, 2026, enrolled=20),
+            create_mock_snapshot("2026-01-14", 1002, 2026, enrolled=40),
+        ]
+
+        result = await service.get_velocity(year=2026, today=date(2026, 1, 16))
+
+        combined = result.combined.weekly
+        assert len(combined) == 2
+
+        # First week complete
+        assert combined[0].is_partial is False
+        assert combined[0].days_in_week == 7
+
+        # Second week partial (Jan 12 to Jan 16 = 5 days)
+        assert combined[1].is_partial is True
+        assert combined[1].days_in_week == 5
+
+
+class TestPartialWeekInGenderCurves:
+    """Verify partial week info works in gender-split curves."""
+
+    @pytest.fixture()
+    def service(self):
+        repo = AsyncMock()
+        repo.fetch_registration_dates = AsyncMock(
+            return_value={
+                "priority_reg_date": "2026-01-05",
+            }
+        )
+        repo.fetch_sessions = AsyncMock(
+            return_value={
+                1001: create_mock_session(1001, "Session 1", year=2026, start_date="2026-06-15"),
+            }
+        )
+        repo.fetch_enrollment_snapshots = AsyncMock(return_value=[])
+        repo.fetch_attendees_with_dates = AsyncMock(return_value=[])
+        repo.fetch_status_transitions = AsyncMock(return_value=[])
+        return VelocityService(repo)
+
+    @pytest.mark.asyncio
+    async def test_gender_curves_mark_partial(self, service):
+        """Gender-split curves should also mark the last week as partial."""
+        from datetime import date
+
+        # Main fetch for combined
+        service.repo.fetch_attendees_with_dates.side_effect = [
+            # First call (combined): attendees without gender
+            [
+                create_mock_attendee_with_date(1, 1001, "2026-01-06"),
+                create_mock_attendee_with_date(2, 1001, "2026-01-13"),
+            ],
+            # Second call (gender split): attendees with gender
+            [
+                create_mock_attendee_with_date(1, 1001, "2026-01-06", gender="M"),
+                create_mock_attendee_with_date(2, 1001, "2026-01-13", gender="F"),
+            ],
+        ]
+
+        result = await service.get_velocity(year=2026, split_by_gender=True, today=date(2026, 1, 15))
+
+        # Check gender curves
+        assert len(result.by_gender) == 2  # M and F
+        for curve in result.by_gender:
+            if curve.weekly:
+                last_point = curve.weekly[-1]
+                if last_point.week_start == "2026-01-12":
+                    assert last_point.is_partial is True
+                    assert last_point.days_in_week == 4
+
+
+class TestPartialWeekSchemaDefaults:
+    """Verify WeeklyDataPoint schema defaults for partial week fields."""
+
+    def test_default_values(self):
+        """New fields should default to non-partial."""
+        point = WeeklyDataPoint(
+            week_start="2026-01-05",
+            week_label="Jan 5",
+            week_number=0,
+            enrolled=100,
+            waitlisted=10,
+            delta=100,
+            data_source="snapshot",
+            gross_enrolled=0,
+            weekly_new=0,
+            weekly_cancelled=0,
+            is_partial=False,
+            days_in_week=7,
+        )
+        assert point.is_partial is False
+        assert point.days_in_week == 7
+
+    def test_explicit_partial(self):
+        """Fields can be explicitly set."""
+        point = WeeklyDataPoint(
+            week_start="2026-01-05",
+            week_label="Jan 5",
+            week_number=0,
+            enrolled=100,
+            waitlisted=10,
+            delta=100,
+            data_source="snapshot",
+            gross_enrolled=0,
+            weekly_new=0,
+            weekly_cancelled=0,
+            is_partial=True,
+            days_in_week=4,
+        )
+        assert point.is_partial is True
+        assert point.days_in_week == 4
