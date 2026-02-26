@@ -35,6 +35,7 @@ from api.services.velocity_service import (
     _season_end,
     _week_number,
 )
+from api.schemas.velocity import VelocityCurve, VelocityResponse, WeeklyDataPoint
 
 # ============================================================================
 # Test Data Factories
@@ -155,7 +156,13 @@ def mock_repository():
     repo.fetch_sessions = AsyncMock(return_value={})
     repo.fetch_attendees_with_dates = AsyncMock(return_value=[])
     repo.fetch_status_transitions = AsyncMock(return_value=[])
-    repo.fetch_registration_dates = AsyncMock(return_value={})
+
+    # Provide a default priority_reg_date per year (mimics old Nov 1 fallback behavior).
+    # Tests that need specific dates or missing dates override this.
+    async def _default_reg_dates(year):
+        return {"priority_reg_date": f"{year - 1}-11-01"}
+
+    repo.fetch_registration_dates = AsyncMock(side_effect=_default_reg_dates)
     return repo
 
 
@@ -556,25 +563,30 @@ class TestSeasonStartHelpers:
     """Test _compute_season_start, _week_number, and _monday_of_week helper functions."""
 
     def test_season_start_from_priority_reg(self):
-        """_compute_season_start with priority_reg=2025-11-12 should return 2025-11-05
-        (priority_reg - 7 days)."""
+        """_compute_season_start with priority_reg=2025-11-12 should return 2025-11-12
+        (exact date, no offset)."""
         result = _compute_season_start("2025-11-12", 2026)
-        assert result == datetime(2025, 11, 5)
+        assert result == datetime(2025, 11, 12)
 
-    def test_season_start_fallback_no_config(self):
-        """_compute_season_start with no priority_reg should fall back to Nov 1 of year-1."""
+    def test_season_start_returns_exact_date(self):
+        """_compute_season_start should return the exact priority_reg_date."""
+        result = _compute_season_start("2025-12-03", 2026)
+        assert result == datetime(2025, 12, 3)
+
+    def test_season_start_none_when_no_config(self):
+        """_compute_season_start with no priority_reg should return None."""
         result = _compute_season_start(None, 2026)
-        assert result == datetime(2025, 11, 1)
+        assert result is None
 
-    def test_season_start_empty_string_fallback(self):
-        """_compute_season_start with empty string should fall back to Nov 1."""
+    def test_season_start_none_when_empty_string(self):
+        """_compute_season_start with empty string should return None."""
         result = _compute_season_start("", 2026)
-        assert result == datetime(2025, 11, 1)
+        assert result is None
 
-    def test_season_start_2025(self):
-        """_compute_season_start fallback for 2025 should return Nov 1, 2024."""
-        result = _compute_season_start(None, 2025)
-        assert result == datetime(2024, 11, 1)
+    def test_season_start_none_for_any_year(self):
+        """_compute_season_start with None returns None regardless of year."""
+        assert _compute_season_start(None, 2025) is None
+        assert _compute_season_start(None, 2024) is None
 
     def test_week_number_at_season_start(self):
         """Week containing season start should be week 0."""
@@ -884,11 +896,11 @@ class TestSeasonStartInResponse:
 
     @pytest.mark.asyncio
     async def test_response_season_start_with_priority_reg(self, service, mock_repository):
-        """When priority_reg_date is configured, season_start should be priority - 7 days."""
+        """When priority_reg_date is configured, season_start should be that exact date."""
         sessions = {1001: create_mock_session(1001, "Session 1", year=2026)}
         mock_repository.fetch_sessions.return_value = sessions
         mock_repository.fetch_enrollment_snapshots.return_value = [
-            create_mock_snapshot("2025-11-10", 1001, 2026, enrolled=10),
+            create_mock_snapshot("2025-11-12", 1001, 2026, enrolled=10),
         ]
         mock_repository.fetch_registration_dates.return_value = {
             "priority_reg_date": "2025-11-12",
@@ -896,8 +908,7 @@ class TestSeasonStartInResponse:
 
         result = await service.get_velocity(year=2026)
 
-        # priority_reg - 7 days = 2025-11-05
-        assert result.season_start == "2025-11-05"
+        assert result.season_start == "2025-11-12"
 
 
 # ============================================================================
@@ -978,19 +989,19 @@ class TestDynamicSeasonStart:
         # Each year has its own priority_reg_date
         async def mock_fetch_reg_dates(year):
             if year == 2026:
-                return {"priority_reg_date": "2025-11-15"}  # season_start = Nov 8
-            return {"priority_reg_date": "2024-11-10"}  # season_start = Nov 3
+                return {"priority_reg_date": "2025-11-15"}  # season_start = Nov 15
+            return {"priority_reg_date": "2024-11-10"}  # season_start = Nov 10
 
         mock_repository.fetch_registration_dates.side_effect = mock_fetch_reg_dates
 
         async def mock_fetch_snapshots(year, **kwargs):
             if year == 2026:
                 return [
-                    create_mock_snapshot("2025-11-10", 1001, 2026, enrolled=10),
+                    create_mock_snapshot("2025-11-17", 1001, 2026, enrolled=10),
                     create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=30),
                 ]
             return [
-                create_mock_snapshot("2024-11-04", 901, 2025, enrolled=8),
+                create_mock_snapshot("2024-11-11", 901, 2025, enrolled=8),
                 create_mock_snapshot("2025-01-06", 901, 2025, enrolled=28),
             ]
 
@@ -1001,8 +1012,8 @@ class TestDynamicSeasonStart:
         # Registration dates fetched for both years
         assert mock_repository.fetch_registration_dates.call_count >= 2
 
-        # Season start for primary year: 2025-11-15 - 7 = 2025-11-08
-        assert result.season_start == "2025-11-08"
+        # Season start for primary year: exact priority_reg_date
+        assert result.season_start == "2025-11-15"
 
     @pytest.mark.asyncio
     async def test_week_numbers_align_across_years(self, service, mock_repository):
@@ -1750,3 +1761,64 @@ class TestSchemaNewFields:
         )
         assert len(response.warnings) == 1
         assert "no priority registration date" in response.warnings[0]
+
+
+# ============================================================================
+# Step 2: No Fallback Start Date Tests
+# ============================================================================
+
+
+class TestNoFallbackStartDate:
+    """Test behavior when priority_reg_date is missing (no Nov 1 fallback)."""
+
+    @pytest.mark.asyncio
+    async def test_no_priority_reg_returns_empty_curves_with_warning(self, service, mock_repository):
+        """get_velocity with no priority_reg_date should return empty curves + warning."""
+        sessions = {1001: create_mock_session(1001, "Session 1", year=2026)}
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20),
+        ]
+        # Override fixture default: no priority_reg_date
+        mock_repository.fetch_registration_dates = AsyncMock(return_value={})
+
+        result = await service.get_velocity(year=2026)
+
+        assert result.combined.weekly == []
+        assert result.by_session == []
+        assert len(result.warnings) == 1
+        assert "Year 2026 has no priority registration date configured" in result.warnings[0]
+
+    @pytest.mark.asyncio
+    async def test_prior_year_missing_priority_reg_skipped_with_warning(self, service, mock_repository):
+        """Prior year without priority_reg_date should be skipped with a warning."""
+        sessions_2026 = {1001: create_mock_session(1001, "Session 1", year=2026)}
+        sessions_2025 = {901: create_mock_session(901, "Session 1", year=2025)}
+
+        async def mock_fetch_sessions(year, **kwargs):
+            return sessions_2026 if year == 2026 else sessions_2025
+
+        mock_repository.fetch_sessions.side_effect = mock_fetch_sessions
+
+        async def mock_fetch_reg_dates(year):
+            if year == 2026:
+                return {"priority_reg_date": "2025-11-01"}
+            return {}  # 2025 has no priority_reg_date
+
+        mock_repository.fetch_registration_dates.side_effect = mock_fetch_reg_dates
+
+        async def mock_fetch_snapshots(year, **kwargs):
+            if year == 2026:
+                return [create_mock_snapshot("2025-11-03", 1001, 2026, enrolled=20)]
+            return [create_mock_snapshot("2025-01-06", 901, 2025, enrolled=15)]
+
+        mock_repository.fetch_enrollment_snapshots.side_effect = mock_fetch_snapshots
+
+        result = await service.get_velocity(year=2026, compare_years=[2025])
+
+        # Current year should have data
+        assert len(result.combined.weekly) > 0
+        # Prior year should be skipped (no line)
+        assert len(result.prior_years) == 0
+        # Warning about missing prior year config
+        assert any("2025" in w and "no priority registration date" in w for w in result.warnings)
