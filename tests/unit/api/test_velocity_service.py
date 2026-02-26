@@ -27,6 +27,7 @@ import pytest
 os.environ["AUTH_MODE"] = "bypass"
 os.environ["SKIP_PB_AUTH"] = "true"
 
+from api.schemas.velocity import VelocityCurve, VelocityResponse, WeeklyDataPoint
 from api.services.velocity_service import (
     SEASON_WEEKS,
     VelocityService,
@@ -35,7 +36,6 @@ from api.services.velocity_service import (
     _week_number,
     _week_start,
 )
-from api.schemas.velocity import VelocityCurve, VelocityResponse, WeeklyDataPoint
 
 # ============================================================================
 # Test Data Factories
@@ -1707,7 +1707,6 @@ class TestSchemaNewFields:
 
     def test_weekly_data_point_has_gross_enrolled(self):
         """WeeklyDataPoint should accept gross_enrolled with default 0."""
-        from api.schemas.velocity import WeeklyDataPoint
 
         point = WeeklyDataPoint(
             week_start="2026-01-05",
@@ -1722,7 +1721,6 @@ class TestSchemaNewFields:
 
     def test_weekly_data_point_has_weekly_new(self):
         """WeeklyDataPoint should accept weekly_new with default 0."""
-        from api.schemas.velocity import WeeklyDataPoint
 
         point = WeeklyDataPoint(
             week_start="2026-01-05",
@@ -1737,7 +1735,6 @@ class TestSchemaNewFields:
 
     def test_weekly_data_point_has_weekly_cancelled(self):
         """WeeklyDataPoint should accept weekly_cancelled with default 0."""
-        from api.schemas.velocity import WeeklyDataPoint
 
         point = WeeklyDataPoint(
             week_start="2026-01-05",
@@ -1752,7 +1749,6 @@ class TestSchemaNewFields:
 
     def test_weekly_data_point_explicit_new_fields(self):
         """WeeklyDataPoint should accept explicit values for new fields."""
-        from api.schemas.velocity import WeeklyDataPoint
 
         point = WeeklyDataPoint(
             week_start="2026-01-05",
@@ -1772,7 +1768,6 @@ class TestSchemaNewFields:
 
     def test_velocity_response_has_warnings(self):
         """VelocityResponse should have warnings field defaulting to empty list."""
-        from api.schemas.velocity import VelocityCurve, VelocityResponse
 
         response = VelocityResponse(
             year=2026,
@@ -1786,7 +1781,6 @@ class TestSchemaNewFields:
 
     def test_velocity_response_with_warnings(self):
         """VelocityResponse should accept explicit warnings."""
-        from api.schemas.velocity import VelocityCurve, VelocityResponse
 
         response = VelocityResponse(
             year=2026,
