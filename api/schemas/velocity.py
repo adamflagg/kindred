@@ -16,6 +16,8 @@ class WeeklyDataPoint(BaseModel):
     gross_enrolled: int = Field(0, description="Cumulative gross enrollments (never decreases)")
     weekly_new: int = Field(0, description="New enrollments this week")
     weekly_cancelled: int = Field(0, description="Cancellations this week")
+    is_partial: bool = Field(False, description="True if this week bucket is incomplete (less than 7 days of data)")
+    days_in_week: int = Field(7, description="Number of days elapsed in this week bucket (1-7)")
 
 
 class VelocityCurve(BaseModel):

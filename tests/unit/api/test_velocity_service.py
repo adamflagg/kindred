@@ -2776,12 +2776,19 @@ class TestPartialWeekInSnapshots:
     @pytest.fixture()
     def service(self):
         repo = AsyncMock()
-        repo.fetch_config.return_value = {
-            "priority_reg_date": "2026-01-05",
-        }
-        repo.fetch_sessions.return_value = [
-            create_mock_session(1001, "Session 1", year=2026, start_date="2026-06-15"),
-        ]
+        repo.fetch_registration_dates = AsyncMock(
+            return_value={
+                "priority_reg_date": "2026-01-05",
+            }
+        )
+        repo.fetch_sessions = AsyncMock(
+            return_value={
+                1001: create_mock_session(1001, "Session 1", year=2026, start_date="2026-06-15"),
+            }
+        )
+        repo.fetch_enrollment_snapshots = AsyncMock(return_value=[])
+        repo.fetch_attendees_with_dates = AsyncMock(return_value=[])
+        repo.fetch_status_transitions = AsyncMock(return_value=[])
         return VelocityService(repo)
 
     @pytest.mark.asyncio
@@ -2819,12 +2826,16 @@ class TestPartialWeekInSnapshots:
         from datetime import date
 
         # Set up for 2025 as a prior year
-        service.repo.fetch_config.return_value = {
-            "priority_reg_date": "2025-01-06",
-        }
-        service.repo.fetch_sessions.return_value = [
-            create_mock_session(1001, "Session 1", year=2025, start_date="2025-06-15"),
-        ]
+        service.repo.fetch_registration_dates = AsyncMock(
+            return_value={
+                "priority_reg_date": "2025-01-06",
+            }
+        )
+        service.repo.fetch_sessions = AsyncMock(
+            return_value={
+                1001: create_mock_session(1001, "Session 1", year=2025, start_date="2025-06-15"),
+            }
+        )
         service.repo.fetch_enrollment_snapshots.return_value = [
             create_mock_snapshot("2025-01-08", 1001, 2025, enrolled=50, waitlisted=5),
             create_mock_snapshot("2025-01-15", 1001, 2025, enrolled=80, waitlisted=8),
@@ -2844,15 +2855,19 @@ class TestPartialWeekInReconstruction:
     @pytest.fixture()
     def service(self):
         repo = AsyncMock()
-        repo.fetch_config.return_value = {
-            "priority_reg_date": "2026-01-05",
-        }
-        repo.fetch_sessions.return_value = [
-            create_mock_session(1001, "Session 1", year=2026, start_date="2026-06-15"),
-        ]
-        # No snapshots -> falls back to reconstruction
-        repo.fetch_enrollment_snapshots.return_value = []
-        repo.fetch_status_transitions.return_value = []
+        repo.fetch_registration_dates = AsyncMock(
+            return_value={
+                "priority_reg_date": "2026-01-05",
+            }
+        )
+        repo.fetch_sessions = AsyncMock(
+            return_value={
+                1001: create_mock_session(1001, "Session 1", year=2026, start_date="2026-06-15"),
+            }
+        )
+        repo.fetch_enrollment_snapshots = AsyncMock(return_value=[])
+        repo.fetch_attendees_with_dates = AsyncMock(return_value=[])
+        repo.fetch_status_transitions = AsyncMock(return_value=[])
         return VelocityService(repo)
 
     @pytest.mark.asyncio
@@ -2877,7 +2892,7 @@ class TestPartialWeekInReconstruction:
         assert points[0].days_in_week == 7
 
         assert points[1].is_partial is True
-        assert points[1].days_in_week == 3  # Jan 12 to Jan 15 inclusive
+        assert points[1].days_in_week == 4  # Jan 12 to Jan 15 inclusive
 
 
 class TestPartialWeekInCombinedCurves:
@@ -2886,13 +2901,20 @@ class TestPartialWeekInCombinedCurves:
     @pytest.fixture()
     def service(self):
         repo = AsyncMock()
-        repo.fetch_config.return_value = {
-            "priority_reg_date": "2026-01-05",
-        }
-        repo.fetch_sessions.return_value = [
-            create_mock_session(1001, "Session 1", year=2026, start_date="2026-06-15"),
-            create_mock_session(1002, "Session 2", year=2026, start_date="2026-07-01"),
-        ]
+        repo.fetch_registration_dates = AsyncMock(
+            return_value={
+                "priority_reg_date": "2026-01-05",
+            }
+        )
+        repo.fetch_sessions = AsyncMock(
+            return_value={
+                1001: create_mock_session(1001, "Session 1", year=2026, start_date="2026-06-15"),
+                1002: create_mock_session(1002, "Session 2", year=2026, start_date="2026-07-01"),
+            }
+        )
+        repo.fetch_enrollment_snapshots = AsyncMock(return_value=[])
+        repo.fetch_attendees_with_dates = AsyncMock(return_value=[])
+        repo.fetch_status_transitions = AsyncMock(return_value=[])
         return VelocityService(repo)
 
     @pytest.mark.asyncio
@@ -2929,15 +2951,19 @@ class TestPartialWeekInGenderCurves:
     @pytest.fixture()
     def service(self):
         repo = AsyncMock()
-        repo.fetch_config.return_value = {
-            "priority_reg_date": "2026-01-05",
-        }
-        repo.fetch_sessions.return_value = [
-            create_mock_session(1001, "Session 1", year=2026, start_date="2026-06-15"),
-        ]
-        # No snapshots -> reconstruction for gender too
-        repo.fetch_enrollment_snapshots.return_value = []
-        repo.fetch_status_transitions.return_value = []
+        repo.fetch_registration_dates = AsyncMock(
+            return_value={
+                "priority_reg_date": "2026-01-05",
+            }
+        )
+        repo.fetch_sessions = AsyncMock(
+            return_value={
+                1001: create_mock_session(1001, "Session 1", year=2026, start_date="2026-06-15"),
+            }
+        )
+        repo.fetch_enrollment_snapshots = AsyncMock(return_value=[])
+        repo.fetch_attendees_with_dates = AsyncMock(return_value=[])
+        repo.fetch_status_transitions = AsyncMock(return_value=[])
         return VelocityService(repo)
 
     @pytest.mark.asyncio
