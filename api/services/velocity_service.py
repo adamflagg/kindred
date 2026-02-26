@@ -359,6 +359,111 @@ class VelocityService:
             warnings=warnings,
         )
 
+    @staticmethod
+    def _find_earliest_snapshot_date(snapshots: list[Any], season_start: datetime) -> datetime | None:
+        """Find the earliest snapshot_date >= season_start across all snapshots."""
+        earliest: datetime | None = None
+        for snap in snapshots:
+            dt = datetime.strptime(snap.snapshot_date.split("T")[0].split(" ")[0], "%Y-%m-%d")
+            if dt.date() < season_start.date():
+                continue
+            if earliest is None or dt < earliest:
+                earliest = dt
+        return earliest
+
+    @staticmethod
+    def _recompute_deltas(points: list[WeeklyDataPoint]) -> list[WeeklyDataPoint]:
+        """Recompute delta, weekly_new, weekly_cancelled across a concatenated sequence.
+
+        Handles both enrollment mode (has gross_enrolled) and cancellation mode
+        (gross_enrolled=0, enrolled tracks cumulative cancelled count).
+        """
+        result: list[WeeklyDataPoint] = []
+        prev_enrolled = 0
+        prev_gross = 0
+        prev_cancelled_cum = 0
+
+        for p in points:
+            delta = p.enrolled - prev_enrolled
+            # For cancellation mode (gross_enrolled=0), keep weekly_new/weekly_cancelled as-is
+            if p.gross_enrolled == 0:
+                result.append(
+                    WeeklyDataPoint(
+                        week_start=p.week_start,
+                        week_label=p.week_label,
+                        week_number=p.week_number,
+                        enrolled=p.enrolled,
+                        waitlisted=p.waitlisted,
+                        delta=delta,
+                        data_source=p.data_source,
+                        gross_enrolled=0,
+                        weekly_new=0,
+                        weekly_cancelled=0,
+                    )
+                )
+            else:
+                weekly_new = p.gross_enrolled - prev_gross
+                weekly_cancelled = (p.gross_enrolled - p.enrolled) - prev_cancelled_cum
+                result.append(
+                    WeeklyDataPoint(
+                        week_start=p.week_start,
+                        week_label=p.week_label,
+                        week_number=p.week_number,
+                        enrolled=p.enrolled,
+                        waitlisted=p.waitlisted,
+                        delta=delta,
+                        data_source=p.data_source,
+                        gross_enrolled=p.gross_enrolled,
+                        weekly_new=weekly_new,
+                        weekly_cancelled=weekly_cancelled,
+                    )
+                )
+                prev_gross = p.gross_enrolled
+                prev_cancelled_cum = p.gross_enrolled - p.enrolled
+            prev_enrolled = p.enrolled
+
+        return result
+
+    def _merge_hybrid_curves(
+        self,
+        recon_by_session: dict[int, list[WeeklyDataPoint]],
+        snap_by_session: dict[int, list[WeeklyDataPoint]],
+        season_start: datetime,
+    ) -> dict[int, list[WeeklyDataPoint]]:
+        """Per-session merge: reconstructed points before first snapshot, then snapshot points.
+
+        For each session, find that session's first snapshot week, take reconstructed points
+        before it, append all snapshot points, and recompute deltas across the boundary.
+        Sessions in only one source use that source as-is.
+        """
+        all_sids = set(recon_by_session.keys()) | set(snap_by_session.keys())
+        merged: dict[int, list[WeeklyDataPoint]] = {}
+
+        for sid in all_sids:
+            recon_points = recon_by_session.get(sid, [])
+            snap_points = snap_by_session.get(sid, [])
+
+            if not snap_points:
+                merged[sid] = recon_points
+                continue
+            if not recon_points:
+                merged[sid] = snap_points
+                continue
+
+            # Find this session's first snapshot week
+            first_snap_week = _week_start(
+                datetime.strptime(snap_points[0].week_start, "%Y-%m-%d"), season_start
+            ).strftime("%Y-%m-%d")
+
+            # Take reconstructed points strictly before first snapshot week
+            pre_snap = [p for p in recon_points if p.week_start < first_snap_week]
+
+            # Concatenate and recompute deltas
+            combined = pre_snap + snap_points
+            merged[sid] = self._recompute_deltas(combined)
+
+        return merged
+
     async def _build_curves(
         self,
         year: int,
@@ -368,27 +473,52 @@ class VelocityService:
         season_start: datetime,
         season_end: datetime,
     ) -> _CurveResult:
-        """Build combined and per-session velocity curves for a year."""
+        """Build combined and per-session velocity curves for a year.
+
+        Uses hybrid mode when snapshots don't cover the full season: reconstruction
+        fills pre-snapshot weeks, snapshots cover the rest.
+        """
         snapshots = await self.repo.fetch_enrollment_snapshots(year, session_cm_id=session_cm_id)
 
-        if snapshots:
-            return self._curves_from_snapshots(
-                year,
-                snapshots,
-                sessions,
-                ag_parent_map,
-                session_cm_id,
-                season_start,
-                season_end,
+        if not snapshots:
+            return await self._curves_from_reconstruction(
+                year, sessions, ag_parent_map, session_cm_id, season_start, season_end
             )
 
-        return await self._curves_from_reconstruction(
-            year,
-            sessions,
-            ag_parent_map,
-            session_cm_id,
-            season_start,
-            season_end,
+        snap_result = self._curves_from_snapshots(
+            year, snapshots, sessions, ag_parent_map, session_cm_id, season_start, season_end
+        )
+
+        # Determine if we need hybrid mode
+        earliest = self._find_earliest_snapshot_date(snapshots, season_start)
+        if earliest is None:
+            return snap_result
+
+        first_snapshot_week = _week_start(earliest, season_start)
+        if first_snapshot_week <= season_start:
+            # Snapshots cover from the start — pure snapshot path
+            return snap_result
+
+        # Hybrid: need reconstruction for pre-snapshot weeks
+        recon_result = await self._curves_from_reconstruction(
+            year, sessions, ag_parent_map, session_cm_id, season_start, season_end
+        )
+
+        # Build per-session data maps from the curve results
+        snap_by_session = {c.session_cm_id: c.weekly for c in snap_result.by_session if c.session_cm_id}
+        recon_by_session = {c.session_cm_id: c.weekly for c in recon_result.by_session if c.session_cm_id}
+
+        merged_by_session = self._merge_hybrid_curves(recon_by_session, snap_by_session, season_start)
+        combined_data = self._combine_weekly_curves(merged_by_session)
+        combined = VelocityCurve(
+            year=year, session_cm_id=session_cm_id, session_name=None, gender=None, weekly=combined_data
+        )
+        by_session = self._build_session_curves(year, sessions, merged_by_session)
+
+        return _CurveResult(
+            combined=combined,
+            by_session=by_session,
+            cancelled_to_date=snap_result.cancelled_to_date,
         )
 
     def _curves_from_snapshots(
@@ -803,28 +933,48 @@ class VelocityService:
     ) -> _CurveResult:
         """Build cancellation velocity curves (cumulative cancelled count over time).
 
-        Uses snapshot cancelled_count when available, falls back to status transitions.
+        Uses hybrid mode when snapshots don't cover the full season: reconstruction
+        fills pre-snapshot weeks, snapshots cover the rest.
         """
         snapshots = await self.repo.fetch_enrollment_snapshots(year, session_cm_id=session_cm_id)
 
-        if snapshots:
-            return self._cancellation_curves_from_snapshots(
-                year,
-                snapshots,
-                sessions,
-                ag_parent_map,
-                session_cm_id,
-                season_start,
-                season_end,
+        if not snapshots:
+            return await self._cancellation_curves_from_reconstruction(
+                year, sessions, ag_parent_map, session_cm_id, season_start, season_end
             )
 
-        return await self._cancellation_curves_from_reconstruction(
-            year,
-            sessions,
-            ag_parent_map,
-            session_cm_id,
-            season_start,
-            season_end,
+        snap_result = self._cancellation_curves_from_snapshots(
+            year, snapshots, sessions, ag_parent_map, session_cm_id, season_start, season_end
+        )
+
+        # Determine if we need hybrid mode
+        earliest = self._find_earliest_snapshot_date(snapshots, season_start)
+        if earliest is None:
+            return snap_result
+
+        first_snapshot_week = _week_start(earliest, season_start)
+        if first_snapshot_week <= season_start:
+            return snap_result
+
+        # Hybrid: need reconstruction for pre-snapshot weeks
+        recon_result = await self._cancellation_curves_from_reconstruction(
+            year, sessions, ag_parent_map, session_cm_id, season_start, season_end
+        )
+
+        snap_by_session = {c.session_cm_id: c.weekly for c in snap_result.by_session if c.session_cm_id}
+        recon_by_session = {c.session_cm_id: c.weekly for c in recon_result.by_session if c.session_cm_id}
+
+        merged_by_session = self._merge_hybrid_curves(recon_by_session, snap_by_session, season_start)
+        combined_data = self._combine_weekly_curves(merged_by_session)
+        combined = VelocityCurve(year=year, session_cm_id=session_cm_id, gender=None, weekly=combined_data)
+        by_session = self._build_session_curves(year, sessions, merged_by_session)
+
+        cancelled_to_date = combined_data[-1].enrolled if combined_data else 0
+
+        return _CurveResult(
+            combined=combined,
+            by_session=by_session,
+            cancelled_to_date=cancelled_to_date,
         )
 
     def _cancellation_curves_from_snapshots(
