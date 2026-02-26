@@ -164,8 +164,8 @@ class TestMetricsCacheInvalidation:
         cache = MetricsCache(ttl_seconds=300, max_size=100)
         assert cache.invalidate_all() == 0
 
-    def test_invalidate_all_resets_stats(self) -> None:
-        """After invalidation, cache should start fresh - no stale hits."""
+    def test_invalidate_all_clears_entries(self) -> None:
+        """After invalidation, previously cached keys should miss."""
         cache = MetricsCache(ttl_seconds=300, max_size=100)
         cache.set("retention", {"a": 1}, year=2025)
         cache.get("retention", year=2025)  # hit

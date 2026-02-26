@@ -97,7 +97,7 @@ graph_cache = GraphCacheManager(ttl_seconds=900, max_cache_size=50)
 # ========================================
 
 # Caches computed metrics endpoint responses in-memory.
-# TTL 2 hours (fallback); primary invalidation via sync completion signal.
+# TTL 2 hours (fallback); primary invalidation via frontend sync-completion callback.
 metrics_cache = MetricsCache(ttl_seconds=7200, max_size=200)
 
 

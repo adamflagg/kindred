@@ -62,9 +62,10 @@ class MetricsCache:
             self._access_times[key] = time.time()
 
     def invalidate_all(self) -> int:
-        """Clear all cached entries. Called when sync completes.
+        """Clear all cached entries. Called via frontend on sync completion.
 
-        Returns number of entries cleared.
+        Returns number of entries cleared. Hit/miss counters are preserved
+        for cumulative monitoring.
         """
         with self._lock:
             count = len(self._cache)

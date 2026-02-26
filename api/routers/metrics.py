@@ -551,7 +551,7 @@ async def get_forecast(
 async def invalidate_metrics_cache() -> dict[str, int]:
     """Invalidate all cached metrics responses.
 
-    Called by Go sync orchestrator after sync completion, or manually.
+    Called by frontend on sync completion (via invalidateSyncData) or manual cache clear.
     """
     cleared = metrics_cache.invalidate_all()
     return {"cleared": cleared}
