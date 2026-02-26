@@ -17,6 +17,8 @@ import { useMemo, useState } from 'react'
 import {
   LineChart,
   Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -26,7 +28,7 @@ import {
   ReferenceLine,
   Brush,
 } from 'recharts'
-import { Loader2, AlertCircle } from 'lucide-react'
+import { Loader2, AlertCircle, AlertTriangle } from 'lucide-react'
 import { useVelocity } from '../../../hooks/useVelocity'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
@@ -37,6 +39,20 @@ import {
   buildSessionDateLookup,
   buildSessionTypeLookup,
 } from '../../../utils/sessionUtils'
+
+type VelocityViewMode = 'gross' | 'net' | 'delta'
+
+const VIEW_MODE_LABELS: Record<VelocityViewMode, string> = {
+  gross: 'Gross Cumulative',
+  net: 'Net Cumulative',
+  delta: 'Weekly Delta',
+}
+
+const Y_AXIS_LABELS: Record<VelocityViewMode, string> = {
+  gross: 'Gross Enrollment',
+  net: 'Net Enrollment',
+  delta: 'Weekly Change',
+}
 
 const PRIOR_YEAR_COLORS = [
   'hsl(220, 60%, 65%)',
@@ -62,6 +78,7 @@ export default function VelocityPage() {
   const { currentYear, availableYears } = useCurrentYear()
   const [selectedPriorYears, setSelectedPriorYears] = useState<number[]>([])
   const [splitByGender, setSplitByGender] = useState(false)
+  const [viewMode, setViewMode] = useState<VelocityViewMode>('net')
   const [zoomRange, setZoomRange] = useState<[number, number] | null>(null)
 
   const priorYearOptions = useMemo(
@@ -146,24 +163,35 @@ export default function VelocityPage() {
         enrolled: current?.enrolled ?? null,
         waitlisted: current?.waitlisted ?? null,
         delta: current?.delta ?? null,
+        gross_enrolled: current?.gross_enrolled ?? null,
+        weekly_new: current?.weekly_new ?? null,
+        weekly_cancelled: current?.weekly_cancelled != null ? -current.weekly_cancelled : null,
       }
 
       // Prior year combined lines
       data.prior_years.forEach((py, i) => {
         const pyPoint = priorMaps[i]?.get(wn)
         row[`enrolled_${py.year}`] = pyPoint?.enrolled ?? null
+        row[`gross_enrolled_${py.year}`] = pyPoint?.gross_enrolled ?? null
+        row[`weekly_new_${py.year}`] = pyPoint?.weekly_new ?? null
+        row[`weekly_cancelled_${py.year}`] =
+          pyPoint?.weekly_cancelled != null ? -pyPoint.weekly_cancelled : null
       })
 
       // Gender lines
       if (splitByGender) {
         row['enrolled_boys'] = mMap.get(wn)?.enrolled ?? null
         row['enrolled_girls'] = fMap.get(wn)?.enrolled ?? null
+        row['gross_enrolled_boys'] = mMap.get(wn)?.gross_enrolled ?? null
+        row['gross_enrolled_girls'] = fMap.get(wn)?.gross_enrolled ?? null
 
         for (const { year, map } of priorMGenderMaps) {
           row[`enrolled_boys_${year}`] = map.get(wn)?.enrolled ?? null
+          row[`gross_enrolled_boys_${year}`] = map.get(wn)?.gross_enrolled ?? null
         }
         for (const { year, map } of priorFGenderMaps) {
           row[`enrolled_girls_${year}`] = map.get(wn)?.enrolled ?? null
+          row[`gross_enrolled_girls_${year}`] = map.get(wn)?.gross_enrolled ?? null
         }
       }
 
@@ -375,18 +403,49 @@ export default function VelocityPage() {
             </div>
           )}
 
-          {/* Gender split toggle */}
-          <label className="flex cursor-pointer items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={splitByGender}
-              onChange={(e) => handleGenderToggle(e.target.checked)}
-              className="accent-primary h-4 w-4 rounded"
-            />
-            <span className="text-foreground">Split by gender</span>
-          </label>
+          <div className="flex items-center gap-4">
+            {/* View mode toggle */}
+            <div className="flex rounded-lg border border-border overflow-hidden">
+              {(['gross', 'net', 'delta'] as VelocityViewMode[]).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => setViewMode(mode)}
+                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                    viewMode === mode
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-card text-muted-foreground hover:bg-muted/50'
+                  }`}
+                >
+                  {VIEW_MODE_LABELS[mode]}
+                </button>
+              ))}
+            </div>
+
+            {/* Gender split toggle */}
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={splitByGender}
+                onChange={(e) => handleGenderToggle(e.target.checked)}
+                className="accent-primary h-4 w-4 rounded"
+              />
+              <span className="text-foreground">Split by gender</span>
+            </label>
+          </div>
         </div>
       </div>
+
+      {/* Warnings banner */}
+      {data?.warnings && data.warnings.length > 0 && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-700 dark:bg-amber-950/30">
+          <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-400" />
+          <div className="text-sm text-amber-800 dark:text-amber-300">
+            {data.warnings.map((w, i) => (
+              <p key={i}>{w}</p>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Summary Comparison Cards */}
       {summaryCards && hasPriorYear && (
@@ -451,7 +510,7 @@ export default function VelocityPage() {
       {/* Enrollment Velocity Chart */}
       <div className="card-lodge p-4">
         <h3 className="text-foreground mb-2 text-base font-semibold">
-          Enrollment Velocity - {currentYear}
+          {VIEW_MODE_LABELS[viewMode]} Enrollment - {currentYear}
         </h3>
 
         {/* Phase marker legend */}
@@ -518,151 +577,269 @@ export default function VelocityPage() {
         )}
 
         <ResponsiveContainer width="100%" height={380}>
-          <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 35 }}>
-            <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-            <XAxis
-              dataKey="week_number"
-              type="number"
-              domain={['dataMin', 'dataMax']}
-              className="text-xs"
-              tick={{ fill: 'hsl(var(--muted-foreground))' }}
-              tickFormatter={(wn: number) => weekLabelMap.get(wn) ?? `Wk${wn}`}
-              interval="preserveStartEnd"
-            />
-            <YAxis
-              className="text-xs"
-              tick={{ fill: 'hsl(var(--muted-foreground))' }}
-              label={{
-                value: 'Cumulative Enrolled',
-                angle: -90,
-                position: 'insideLeft',
-                style: { fill: 'hsl(var(--muted-foreground))', fontSize: 12 },
-              }}
-            />
-            <Tooltip
-              content={({ active, payload, label }) => {
-                if (!active || !payload?.length) return null
-                const validPayload = payload.filter((entry) => entry.value != null)
-                if (!validPayload.length) return null
-                const displayLabel = weekLabelMap.get(label as number) ?? `Week ${label}`
-                return (
-                  <div className="bg-card border-border rounded-lg border p-3 shadow-lg">
-                    <p className="text-foreground mb-1 font-medium">{displayLabel}</p>
-                    {validPayload.map((entry) => (
-                      <p key={entry.name} className="text-sm" style={{ color: entry.color }}>
-                        {entry.name}: {Number(entry.value).toLocaleString()}
-                      </p>
-                    ))}
-                  </div>
-                )
-              }}
-            />
-            <Legend />
-
-            {/* Brush for zoom/scrub */}
-            <Brush
-              dataKey="week_number"
-              height={20}
-              stroke="hsl(var(--primary))"
-              {...(zoomRange ? { startIndex: zoomRange[0], endIndex: zoomRange[1] } : {})}
-              tickFormatter={(wn: number) => weekLabelMap.get(wn) ?? `Wk${wn}`}
-            />
-
-            {/* Phase marker vertical lines (no inline labels) */}
-            {phaseLines.map((phase) => (
-              <ReferenceLine
-                key={phase.phase}
-                x={phase.weekNumber}
-                stroke={PHASE_COLORS[phase.phase] ?? 'hsl(var(--muted-foreground))'}
-                strokeDasharray="5 5"
-                strokeWidth={2}
+          {viewMode === 'delta' ? (
+            <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 35 }}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+              <XAxis
+                dataKey="week_number"
+                type="number"
+                domain={['dataMin', 'dataMax']}
+                className="text-xs"
+                tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                tickFormatter={(wn: number) => weekLabelMap.get(wn) ?? `Wk${wn}`}
+                interval="preserveStartEnd"
               />
-            ))}
+              <YAxis
+                className="text-xs"
+                tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                label={{
+                  value: Y_AXIS_LABELS[viewMode],
+                  angle: -90,
+                  position: 'insideLeft',
+                  style: { fill: 'hsl(var(--muted-foreground))', fontSize: 12 },
+                }}
+              />
+              <Tooltip
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null
+                  const validPayload = payload.filter((entry) => entry.value != null)
+                  if (!validPayload.length) return null
+                  const displayLabel = weekLabelMap.get(label as number) ?? `Week ${label}`
+                  const weekStart = chartData.find(
+                    (d) => d['week_number'] === label
+                  )?.['week_start']
+                  return (
+                    <div className="bg-card border-border rounded-lg border p-3 shadow-lg">
+                      <p className="text-foreground mb-1 font-medium">{displayLabel}</p>
+                      {weekStart && (
+                        <p className="text-muted-foreground mb-1 text-xs">{weekStart as string}</p>
+                      )}
+                      {validPayload.map((entry) => (
+                        <p key={entry.name} className="text-sm" style={{ color: entry.color }}>
+                          {entry.name}: {Math.abs(Number(entry.value)).toLocaleString()}
+                        </p>
+                      ))}
+                    </div>
+                  )
+                }}
+              />
+              <Legend />
+              <ReferenceLine y={0} stroke="hsl(var(--border))" />
 
-            {splitByGender ? (
-              <>
-                {/* Gender split: boys + girls lines */}
-                <Line
-                  type="monotone"
-                  dataKey="enrolled_boys"
-                  name={`Boys ${currentYear}`}
-                  stroke={GENDER_COLORS.boys}
-                  strokeWidth={3}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                  connectNulls={false}
+              {/* Phase marker vertical lines */}
+              {phaseLines.map((phase) => (
+                <ReferenceLine
+                  key={phase.phase}
+                  x={phase.weekNumber}
+                  stroke={PHASE_COLORS[phase.phase] ?? 'hsl(var(--muted-foreground))'}
+                  strokeDasharray="5 5"
+                  strokeWidth={2}
                 />
-                <Line
-                  type="monotone"
-                  dataKey="enrolled_girls"
-                  name={`Girls ${currentYear}`}
-                  stroke={GENDER_COLORS.girls}
-                  strokeWidth={3}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                  connectNulls={false}
+              ))}
+
+              {/* Current year bars */}
+              <Bar
+                dataKey="weekly_new"
+                name={`New ${currentYear}`}
+                fill="hsl(150, 60%, 45%)"
+                stackId="current"
+              />
+              <Bar
+                dataKey="weekly_cancelled"
+                name={`Cancelled ${currentYear}`}
+                fill="hsl(0, 65%, 55%)"
+                stackId="current"
+              />
+
+              {/* Prior year bars */}
+              {data.prior_years.map((py) => (
+                <>
+                  <Bar
+                    key={`new_${py.year}`}
+                    dataKey={`weekly_new_${py.year}`}
+                    name={`New ${py.year}`}
+                    fill="hsl(150, 40%, 65%)"
+                    stackId={`prior_${py.year}`}
+                    opacity={0.6}
+                  />
+                  <Bar
+                    key={`cancel_${py.year}`}
+                    dataKey={`weekly_cancelled_${py.year}`}
+                    name={`Cancelled ${py.year}`}
+                    fill="hsl(0, 40%, 70%)"
+                    stackId={`prior_${py.year}`}
+                    opacity={0.6}
+                  />
+                </>
+              ))}
+            </BarChart>
+          ) : (
+            <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 35 }}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+              <XAxis
+                dataKey="week_number"
+                type="number"
+                domain={['dataMin', 'dataMax']}
+                className="text-xs"
+                tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                tickFormatter={(wn: number) => weekLabelMap.get(wn) ?? `Wk${wn}`}
+                interval="preserveStartEnd"
+              />
+              <YAxis
+                className="text-xs"
+                tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                label={{
+                  value: Y_AXIS_LABELS[viewMode],
+                  angle: -90,
+                  position: 'insideLeft',
+                  style: { fill: 'hsl(var(--muted-foreground))', fontSize: 12 },
+                }}
+              />
+              <Tooltip
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null
+                  const validPayload = payload.filter((entry) => entry.value != null)
+                  if (!validPayload.length) return null
+                  const displayLabel = weekLabelMap.get(label as number) ?? `Week ${label}`
+                  const weekStart = chartData.find(
+                    (d) => d['week_number'] === label
+                  )?.['week_start']
+                  return (
+                    <div className="bg-card border-border rounded-lg border p-3 shadow-lg">
+                      <p className="text-foreground mb-1 font-medium">{displayLabel}</p>
+                      {weekStart && (
+                        <p className="text-muted-foreground mb-1 text-xs">{weekStart as string}</p>
+                      )}
+                      {validPayload.map((entry) => (
+                        <p key={entry.name} className="text-sm" style={{ color: entry.color }}>
+                          {entry.name}: {Number(entry.value).toLocaleString()}
+                        </p>
+                      ))}
+                    </div>
+                  )
+                }}
+              />
+              <Legend />
+
+              {/* Brush for zoom/scrub */}
+              <Brush
+                dataKey="week_number"
+                height={20}
+                stroke="hsl(var(--primary))"
+                {...(zoomRange ? { startIndex: zoomRange[0], endIndex: zoomRange[1] } : {})}
+                tickFormatter={(wn: number) => weekLabelMap.get(wn) ?? `Wk${wn}`}
+              />
+
+              {/* Phase marker vertical lines (no inline labels) */}
+              {phaseLines.map((phase) => (
+                <ReferenceLine
+                  key={phase.phase}
+                  x={phase.weekNumber}
+                  stroke={PHASE_COLORS[phase.phase] ?? 'hsl(var(--muted-foreground))'}
+                  strokeDasharray="5 5"
+                  strokeWidth={2}
                 />
-                {/* Prior year gender lines (dashed) */}
-                {selectedPriorYears.slice(0, 1).map((year) => (
-                  <>
-                    <Line
-                      key={`boys_${year}`}
-                      type="monotone"
-                      dataKey={`enrolled_boys_${year}`}
-                      name={`Boys ${year}`}
-                      stroke={GENDER_COLORS.boys}
-                      strokeWidth={2}
-                      strokeDasharray="5 5"
-                      dot={false}
-                      opacity={0.6}
-                      connectNulls={false}
-                    />
-                    <Line
-                      key={`girls_${year}`}
-                      type="monotone"
-                      dataKey={`enrolled_girls_${year}`}
-                      name={`Girls ${year}`}
-                      stroke={GENDER_COLORS.girls}
-                      strokeWidth={2}
-                      strokeDasharray="5 5"
-                      dot={false}
-                      opacity={0.6}
-                      connectNulls={false}
-                    />
-                  </>
-                ))}
-              </>
-            ) : (
-              <>
-                {/* Combined: single enrollment line */}
-                <Line
-                  type="monotone"
-                  dataKey="enrolled"
-                  name={String(currentYear)}
-                  stroke="hsl(160, 100%, 35%)"
-                  strokeWidth={3}
-                  dot={false}
-                  activeDot={{ r: 5 }}
-                  connectNulls={false}
-                />
-                {/* Prior year lines */}
-                {data.prior_years.map((py, i) => (
+              ))}
+
+              {splitByGender ? (
+                <>
+                  {/* Gender split: boys + girls lines */}
                   <Line
-                    key={py.year}
                     type="monotone"
-                    dataKey={`enrolled_${py.year}`}
-                    name={String(py.year)}
-                    stroke={PRIOR_YEAR_COLORS[i % PRIOR_YEAR_COLORS.length] ?? 'hsl(220, 60%, 65%)'}
-                    strokeWidth={2}
-                    strokeDasharray="5 5"
+                    dataKey={viewMode === 'gross' ? 'gross_enrolled_boys' : 'enrolled_boys'}
+                    name={`Boys ${currentYear}`}
+                    stroke={GENDER_COLORS.boys}
+                    strokeWidth={3}
                     dot={false}
-                    opacity={0.7}
+                    activeDot={{ r: 4 }}
                     connectNulls={false}
                   />
-                ))}
-              </>
-            )}
-          </LineChart>
+                  <Line
+                    type="monotone"
+                    dataKey={viewMode === 'gross' ? 'gross_enrolled_girls' : 'enrolled_girls'}
+                    name={`Girls ${currentYear}`}
+                    stroke={GENDER_COLORS.girls}
+                    strokeWidth={3}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                    connectNulls={false}
+                  />
+                  {/* Prior year gender lines (dashed) */}
+                  {selectedPriorYears.slice(0, 1).map((year) => (
+                    <>
+                      <Line
+                        key={`boys_${year}`}
+                        type="monotone"
+                        dataKey={
+                          viewMode === 'gross'
+                            ? `gross_enrolled_boys_${year}`
+                            : `enrolled_boys_${year}`
+                        }
+                        name={`Boys ${year}`}
+                        stroke={GENDER_COLORS.boys}
+                        strokeWidth={2}
+                        strokeDasharray="5 5"
+                        dot={false}
+                        opacity={0.6}
+                        connectNulls={false}
+                      />
+                      <Line
+                        key={`girls_${year}`}
+                        type="monotone"
+                        dataKey={
+                          viewMode === 'gross'
+                            ? `gross_enrolled_girls_${year}`
+                            : `enrolled_girls_${year}`
+                        }
+                        name={`Girls ${year}`}
+                        stroke={GENDER_COLORS.girls}
+                        strokeWidth={2}
+                        strokeDasharray="5 5"
+                        dot={false}
+                        opacity={0.6}
+                        connectNulls={false}
+                      />
+                    </>
+                  ))}
+                </>
+              ) : (
+                <>
+                  {/* Combined: single enrollment line */}
+                  <Line
+                    type="monotone"
+                    dataKey={viewMode === 'gross' ? 'gross_enrolled' : 'enrolled'}
+                    name={String(currentYear)}
+                    stroke="hsl(160, 100%, 35%)"
+                    strokeWidth={3}
+                    dot={false}
+                    activeDot={{ r: 5 }}
+                    connectNulls={false}
+                  />
+                  {/* Prior year lines */}
+                  {data.prior_years.map((py, i) => (
+                    <Line
+                      key={py.year}
+                      type="monotone"
+                      dataKey={
+                        viewMode === 'gross'
+                          ? `gross_enrolled_${py.year}`
+                          : `enrolled_${py.year}`
+                      }
+                      name={String(py.year)}
+                      stroke={
+                        PRIOR_YEAR_COLORS[i % PRIOR_YEAR_COLORS.length] ?? 'hsl(220, 60%, 65%)'
+                      }
+                      strokeWidth={2}
+                      strokeDasharray="5 5"
+                      dot={false}
+                      opacity={0.7}
+                      connectNulls={false}
+                    />
+                  ))}
+                </>
+              )}
+            </LineChart>
+          )}
         </ResponsiveContainer>
       </div>
 
@@ -797,9 +974,18 @@ export default function VelocityPage() {
             <thead>
               <tr className="border-border bg-muted/30 border-b">
                 <th className="text-muted-foreground px-4 py-3 text-left font-medium">Week</th>
-                <th className="text-muted-foreground px-4 py-3 text-right font-medium">Change</th>
+                <th className="text-muted-foreground px-4 py-3 text-right font-medium">New</th>
                 <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                  Cumulative
+                  Cancelled
+                </th>
+                <th className="text-muted-foreground px-4 py-3 text-right font-medium">
+                  Net Change
+                </th>
+                <th className="text-muted-foreground px-4 py-3 text-right font-medium">
+                  Net Cumulative
+                </th>
+                <th className="text-muted-foreground px-4 py-3 text-right font-medium">
+                  Gross Cumulative
                 </th>
                 {hasPriorYear && priorWeekMap && (
                   <>
@@ -823,6 +1009,12 @@ export default function VelocityPage() {
                     className="border-border hover:bg-muted/20 border-b transition-colors last:border-0"
                   >
                     <td className="text-foreground px-4 py-3 font-medium">{week.week_label}</td>
+                    <td className="px-4 py-3 text-right text-green-600 dark:text-green-400">
+                      {week.weekly_new > 0 ? `+${week.weekly_new}` : week.weekly_new}
+                    </td>
+                    <td className="px-4 py-3 text-right text-red-600 dark:text-red-400">
+                      {week.weekly_cancelled > 0 ? `-${week.weekly_cancelled}` : 0}
+                    </td>
                     <td className="px-4 py-3 text-right">
                       <span
                         className={
@@ -838,6 +1030,9 @@ export default function VelocityPage() {
                     </td>
                     <td className="text-foreground px-4 py-3 text-right">
                       {week.enrolled.toLocaleString()}
+                    </td>
+                    <td className="text-foreground px-4 py-3 text-right">
+                      {week.gross_enrolled.toLocaleString()}
                     </td>
                     {hasPriorYear && priorWeekMap && (
                       <>
