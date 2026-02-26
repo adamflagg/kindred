@@ -51,6 +51,51 @@ func (s *EnrollmentSnapshotsSync) SetYear(year int) {
 	s.Year = year
 }
 
+// countByGender counts male and female attendees using a person gender map.
+// Persons with gender other than "M" or "F" (or missing from the map) are excluded.
+func countByGender(records []*core.Record, personGenderMap map[int]string) (male, female int) {
+	for _, r := range records {
+		pid := 0
+		if v, ok := r.Get("person_id").(float64); ok {
+			pid = int(v)
+		}
+		if pid == 0 {
+			continue
+		}
+		switch personGenderMap[pid] {
+		case "M":
+			male++
+		case "F":
+			female++
+		}
+	}
+	return male, female
+}
+
+// buildPersonGenderMap queries all persons for the year and returns a map of cm_id → gender.
+func buildPersonGenderMap(app core.App, year int) (map[int]string, error) {
+	filter := fmt.Sprintf("year = %d", year)
+	persons, err := app.FindRecordsByFilter("persons", filter, "", 0, 0)
+	if err != nil {
+		return nil, fmt.Errorf("loading persons for gender map: %w", err)
+	}
+
+	genderMap := make(map[int]string, len(persons))
+	for _, p := range persons {
+		cmID := 0
+		if v, ok := p.Get("cm_id").(float64); ok {
+			cmID = int(v)
+		}
+		if cmID == 0 {
+			continue
+		}
+		if g := p.GetString("gender"); g != "" {
+			genderMap[cmID] = g
+		}
+	}
+	return genderMap, nil
+}
+
 // Sync executes the enrollment snapshot capture
 func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 	s.Stats = Stats{}
@@ -93,6 +138,13 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 	}
 
 	slog.Info("Found sessions for enrollment snapshots", "count", len(sessions), "year", year)
+
+	// Build person gender map for gender counting
+	personGenderMap, err := buildPersonGenderMap(s.App, year)
+	if err != nil {
+		slog.Warn("Could not build person gender map, gender counts will be zero", "error", err)
+		personGenderMap = make(map[int]string)
+	}
 
 	// Get the enrollment_snapshots collection
 	col, err := s.App.FindCollectionByNameOrId("enrollment_snapshots")
@@ -146,12 +198,19 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 		}
 		canceledCount := len(canceledRecords)
 
+		// Count by gender using already-fetched record slices
+		enrolledMale, enrolledFemale := countByGender(enrolledRecords, personGenderMap)
+		waitlistedMale, waitlistedFemale := countByGender(waitlistedRecords, personGenderMap)
+		cancelledMale, cancelledFemale := countByGender(canceledRecords, personGenderMap)
+
 		if s.Debug {
 			slog.Info("Enrollment counts",
 				"session_cm_id", sessionCMID,
 				"enrolled", enrolledCount,
 				"waitlisted", waitlistedCount,
 				"canceled", canceledCount,
+				"enrolled_m", enrolledMale,
+				"enrolled_f", enrolledFemale,
 			)
 		}
 
@@ -172,10 +231,22 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 			existingEnrolled, _ := existing.Get("enrolled_count").(float64)
 			existingWaitlisted, _ := existing.Get("waitlisted_count").(float64)
 			existingCancelled, _ := existing.Get("cancelled_count").(float64)
+			existingEnrolledMale, _ := existing.Get("enrolled_male_count").(float64)
+			existingEnrolledFemale, _ := existing.Get("enrolled_female_count").(float64)
+			existingWaitlistedMale, _ := existing.Get("waitlisted_male_count").(float64)
+			existingWaitlistedFemale, _ := existing.Get("waitlisted_female_count").(float64)
+			existingCancelledMale, _ := existing.Get("cancelled_male_count").(float64)
+			existingCancelledFemale, _ := existing.Get("cancelled_female_count").(float64)
 
 			if int(existingEnrolled) == enrolledCount &&
 				int(existingWaitlisted) == waitlistedCount &&
-				int(existingCancelled) == canceledCount {
+				int(existingCancelled) == canceledCount &&
+				int(existingEnrolledMale) == enrolledMale &&
+				int(existingEnrolledFemale) == enrolledFemale &&
+				int(existingWaitlistedMale) == waitlistedMale &&
+				int(existingWaitlistedFemale) == waitlistedFemale &&
+				int(existingCancelledMale) == cancelledMale &&
+				int(existingCancelledFemale) == cancelledFemale {
 				s.Stats.Skipped++
 				continue
 			}
@@ -184,6 +255,12 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 			existing.Set("enrolled_count", enrolledCount)
 			existing.Set("waitlisted_count", waitlistedCount)
 			existing.Set("cancelled_count", canceledCount)
+			existing.Set("enrolled_male_count", enrolledMale)
+			existing.Set("enrolled_female_count", enrolledFemale)
+			existing.Set("waitlisted_male_count", waitlistedMale)
+			existing.Set("waitlisted_female_count", waitlistedFemale)
+			existing.Set("cancelled_male_count", cancelledMale)
+			existing.Set("cancelled_female_count", cancelledFemale)
 			existing.Set("session", sessionPBID)
 
 			if err := s.App.Save(existing); err != nil {
@@ -205,6 +282,12 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 			record.Set("enrolled_count", enrolledCount)
 			record.Set("waitlisted_count", waitlistedCount)
 			record.Set("cancelled_count", canceledCount)
+			record.Set("enrolled_male_count", enrolledMale)
+			record.Set("enrolled_female_count", enrolledFemale)
+			record.Set("waitlisted_male_count", waitlistedMale)
+			record.Set("waitlisted_female_count", waitlistedFemale)
+			record.Set("cancelled_male_count", cancelledMale)
+			record.Set("cancelled_female_count", cancelledFemale)
 
 			if err := s.App.Save(record); err != nil {
 				slog.Error("Error creating enrollment snapshot",
