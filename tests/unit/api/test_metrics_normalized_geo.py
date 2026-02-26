@@ -439,7 +439,6 @@ class TestRegistrationServiceNormalizedFlow:
         mock_repo.fetch_attendees = AsyncMock(return_value=[])
         mock_repo.fetch_persons = AsyncMock(return_value={})
         mock_repo.fetch_sessions = AsyncMock(return_value={})
-        mock_repo.fetch_camper_history = AsyncMock(return_value=[])
         mock_repo.fetch_bunk_plans = AsyncMock(return_value=[])
         mock_repo.fetch_capacity_config = AsyncMock(return_value=12)
         mock_repo.fetch_synagogue_by_household = AsyncMock(return_value={})

@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Any, cast
 from api.schemas.metrics import (
     CityBreakdown,
     FirstSummerYearBreakdown,
-    FirstYearBreakdown,
     GenderBreakdown,
     GenderByGradeBreakdown,
     GradeBreakdown,
@@ -19,7 +18,6 @@ from api.schemas.metrics import (
     RegistrationMetricsResponse,
     SchoolBreakdown,
     SessionBreakdown,
-    SessionBunkBreakdown,
     SessionInLengthCategory,
     SessionLengthBreakdown,
     SessionLengthBySessionBreakdown,
@@ -95,7 +93,6 @@ class RegistrationService:
             self.repo.fetch_attendees(year, "waitlisted"),
             self.repo.fetch_attendees(year, "cancelled"),
             self.repo.fetch_persons(year),
-            self.repo.fetch_camper_history(year, session_types=session_types),
             self.repo.fetch_bunk_plans(year),
             self.repo.fetch_capacity_config(),
         )
@@ -105,9 +102,8 @@ class RegistrationService:
         waitlisted_attendees = cast(list[Any], results[2])
         cancelled_attendees = cast(list[Any], results[3])
         persons = cast(dict[int, Any], results[4])
-        camper_history = cast(list[Any], results[5])
-        bunk_plans = cast(list[Any], results[6])
-        default_capacity = cast(int, results[7])
+        bunk_plans = cast(list[Any], results[5])
+        default_capacity = cast(int, results[6])
 
         # Filter attendees by session
         combined_attendees = filter_attendees_by_session(
@@ -144,10 +140,6 @@ class RegistrationService:
         by_school = self._compute_school_breakdown_from_persons(enrolled_person_ids, persons, total_enrolled)
         by_city = self._compute_city_breakdown_from_persons(enrolled_person_ids, persons, total_enrolled)
         by_synagogue = self._compute_synagogue_breakdown_from_persons(enrolled_person_ids, persons, total_enrolled)
-        # First year and session_bunk still use camper_history (historical data)
-        total_history = len(camper_history)
-        by_first_year = self._compute_first_year_breakdown(camper_history, total_history)
-        by_session_bunk = self._compute_session_bunk_breakdown(camper_history)
 
         # Gender by grade cross-tabulation
         by_gender_grade = self._compute_gender_by_grade(enrolled_person_ids, persons)
@@ -175,8 +167,6 @@ class RegistrationService:
             by_school=by_school,
             by_city=by_city,
             by_synagogue=by_synagogue,
-            by_first_year=by_first_year,
-            by_session_bunk=by_session_bunk,
             by_gender_grade=by_gender_grade,
             by_session_length_by_session=by_session_length_by_session,
             by_summer_years=by_summer_years,
@@ -504,47 +494,6 @@ class RegistrationService:
         return [
             SynagogueBreakdown(synagogue=s, count=st.count, percentage=calculate_percentage(st.count, total))
             for s, st in sorted(((k, v) for k, v in stats.items() if k), key=lambda x: -x[1].count)
-        ]
-
-    def _compute_first_year_breakdown(self, camper_history: list[Any], total: int) -> list[FirstYearBreakdown]:
-        """Compute first year attended breakdown."""
-        first_year_counts: dict[int, int] = {}
-        for record in camper_history:
-            first_year = getattr(record, "first_year_attended", None)
-            if first_year:
-                first_year_counts[first_year] = first_year_counts.get(first_year, 0) + 1
-
-        return [
-            FirstYearBreakdown(
-                first_year=fy,
-                count=c,
-                percentage=calculate_percentage(c, total),
-            )
-            for fy, c in sorted(first_year_counts.items())
-        ]
-
-    def _compute_session_bunk_breakdown(self, camper_history: list[Any]) -> list[SessionBunkBreakdown]:
-        """Compute session+bunk breakdown (top 10).
-
-        V2: Each record has single session_name and bunk_name (no comma parsing needed).
-        """
-        session_bunk_counts: dict[tuple[str, str], int] = {}
-        for record in camper_history:
-            # V2: Direct field access (single values per record)
-            session = getattr(record, "session_name", "") or ""
-            bunk = getattr(record, "bunk_name", "") or ""
-
-            if session and bunk:
-                key = (session, bunk)
-                session_bunk_counts[key] = session_bunk_counts.get(key, 0) + 1
-
-        return [
-            SessionBunkBreakdown(
-                session=sess,
-                bunk=bunk,
-                count=c,
-            )
-            for (sess, bunk), c in sorted(session_bunk_counts.items(), key=lambda x: -x[1])[:10]
         ]
 
     def _compute_gender_by_grade(self, person_ids: set[int], persons: dict[int, Any]) -> list[GenderByGradeBreakdown]:

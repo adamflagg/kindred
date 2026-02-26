@@ -1424,21 +1424,37 @@ class TestHistoricalCancellationMetrics:
 
         mock_repo = AsyncMock()
 
-        # Mock camper_history for 2 years
-        mock_history_2025 = [
-            Mock(gender="M", years_at_camp=1, first_year_attended=2025),
-            Mock(gender="F", years_at_camp=2, first_year_attended=2024),
-        ]
-        mock_history_2026 = [
-            Mock(gender="M", years_at_camp=2, first_year_attended=2025),
-            Mock(gender="F", years_at_camp=1, first_year_attended=2026),
-            Mock(gender="M", years_at_camp=3, first_year_attended=2024),
-        ]
+        # Mock attendees+persons for 2 years
+        mock_session = Mock(cm_id=5001, name="Session 1", session_type="main")
 
-        async def mock_fetch_history(year, **kwargs):
-            return mock_history_2025 if year == 2025 else mock_history_2026
+        def make_attendee(pid: int) -> Mock:
+            a = Mock()
+            a.person_id = pid
+            a.expand = {"session": mock_session}
+            return a
 
-        mock_repo.fetch_camper_history.side_effect = mock_fetch_history
+        def make_person(pid: int, gender: str, years: int) -> Mock:
+            p = Mock()
+            p.cm_id = pid
+            p.gender = gender
+            p.years_at_camp = years
+            return p
+
+        attendees_2025 = [make_attendee(1), make_attendee(2)]
+        attendees_2026 = [make_attendee(3), make_attendee(4), make_attendee(5)]
+        persons_2025 = {1: make_person(1, "M", 1), 2: make_person(2, "F", 2)}
+        persons_2026 = {3: make_person(3, "M", 2), 4: make_person(4, "F", 1), 5: make_person(5, "M", 3)}
+        sessions_both = {5001: mock_session}
+
+        async def mock_fetch_attendees(year, **kwargs):
+            return attendees_2025 if year == 2025 else attendees_2026
+
+        async def mock_fetch_persons(year, **kwargs):
+            return persons_2025 if year == 2025 else persons_2026
+
+        mock_repo.fetch_attendees.side_effect = mock_fetch_attendees
+        mock_repo.fetch_persons.side_effect = mock_fetch_persons
+        mock_repo.fetch_sessions = AsyncMock(return_value=sessions_both)
 
         # Mock cancellation count
         async def mock_fetch_cancellation_count(year, **kwargs):

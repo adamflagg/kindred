@@ -96,22 +96,6 @@ class SynagogueBreakdown(BaseModel):
     percentage: float = Field(description="Percentage of total")
 
 
-class FirstYearBreakdown(BaseModel):
-    """Breakdown of metrics by first year attended."""
-
-    first_year: int = Field(description="Year camper first attended camp")
-    count: int = Field(description="Number of campers")
-    percentage: float = Field(description="Percentage of total")
-
-
-class SessionBunkBreakdown(BaseModel):
-    """Breakdown of metrics by session+bunk combination."""
-
-    session: str = Field(description="Session name")
-    bunk: str = Field(description="Bunk name")
-    count: int = Field(description="Number of campers")
-
-
 class GenderByGradeBreakdown(BaseModel):
     """Gender breakdown for a specific grade.
 
@@ -364,12 +348,6 @@ class RegistrationMetricsResponse(BaseModel):
     by_school: list[SchoolBreakdown] = Field(default_factory=list, description="Enrollment by school")
     by_city: list[CityBreakdown] = Field(default_factory=list, description="Enrollment by city")
     by_synagogue: list[SynagogueBreakdown] = Field(default_factory=list, description="Enrollment by synagogue")
-    by_first_year: list[FirstYearBreakdown] = Field(
-        default_factory=list, description="Enrollment by first year attended"
-    )
-    by_session_bunk: list[SessionBunkBreakdown] = Field(
-        default_factory=list, description="Top session+bunk combinations"
-    )
     # New breakdowns for registration tab redesign
     by_gender_grade: list[GenderByGradeBreakdown] = Field(
         default_factory=list, description="Gender breakdown by grade (for stacked bar chart)"
@@ -426,9 +404,6 @@ class YearMetrics(BaseModel):
     total_enrolled: int = Field(description="Total enrolled campers")
     by_gender: list[GenderBreakdown] = Field(description="Enrollment by gender")
     new_vs_returning: NewVsReturning = Field(description="New vs returning breakdown")
-    by_first_year: list[FirstYearBreakdown] = Field(
-        default_factory=list, description="Enrollment by first year attended"
-    )
     total_cancelled: int = Field(default=0, description="Total cancelled campers for this year")
     cancellation_rate: float = Field(default=0.0, description="Cancelled / (enrolled + cancelled)")
 

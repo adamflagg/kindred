@@ -83,18 +83,6 @@ export interface SynagogueBreakdown {
   percentage: number
 }
 
-export interface FirstYearBreakdown {
-  first_year: number
-  count: number
-  percentage: number
-}
-
-export interface SessionBunkBreakdown {
-  session: string
-  bunk: string
-  count: number
-}
-
 // New registration breakdown types for registration tab redesign
 export interface GenderByGradeBreakdown {
   grade: number | null
@@ -240,12 +228,10 @@ export interface RegistrationMetrics {
   by_session_length: SessionLengthBreakdown[]
   by_years_at_camp: YearsAtCampBreakdown[]
   new_vs_returning: NewVsReturning
-  // New demographic breakdowns (from camper_history)
+  // Demographic breakdowns
   by_school?: SchoolBreakdown[]
   by_city?: CityBreakdown[]
   by_synagogue?: SynagogueBreakdown[]
-  by_first_year?: FirstYearBreakdown[]
-  by_session_bunk?: SessionBunkBreakdown[]
   // New breakdowns for registration tab redesign
   by_gender_grade?: GenderByGradeBreakdown[]
   by_session_length_by_session?: SessionLengthBySessionBreakdown[]
@@ -277,7 +263,6 @@ export interface YearMetrics {
   total_enrolled: number
   by_gender: GenderBreakdown[]
   new_vs_returning: NewVsReturning
-  by_first_year?: FirstYearBreakdown[]
   total_cancelled?: number
   cancellation_rate?: number
 }
