@@ -166,7 +166,8 @@ migrate((app) => {
 | Hardcoded collection IDs | `app.findCollectionByNameOrId("name").id` | Breaks on fresh DB |
 | `for...of` on fields | Index-based `for` loop | "object is not iterable" error |
 | `return app.save()` | `app.save()` (no return needed) | May cause issues |
-| `min: null, max: null` | `min: 0, max: 0` (0 = unlimited) | Unpredictable behavior |
+| `min: null, max: null` for text | `min: 0, max: 0` (0 = unlimited for text) | N/A — both work for text fields |
+| `min: 0, max: 0` for number | `min: null, max: null` (null = no limit for number) | `max: 0` enforced as literal maximum of 0, rejects all positive values |
 
 ## Migration Checklist
 
