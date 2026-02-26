@@ -1646,3 +1646,107 @@ class TestCancellationGenderSplit:
         assert len(prior_f) == 1
         assert prior_m[0].weekly[-1].enrolled == 1  # 1 male cancelled in 2025
         assert prior_f[0].weekly[-1].enrolled == 2  # 2 female cancelled in 2025
+
+
+# ============================================================================
+# Step 1: Schema New Fields Tests
+# ============================================================================
+
+
+class TestSchemaNewFields:
+    """Test that new schema fields exist with correct defaults."""
+
+    def test_weekly_data_point_has_gross_enrolled(self):
+        """WeeklyDataPoint should accept gross_enrolled with default 0."""
+        from api.schemas.velocity import WeeklyDataPoint
+
+        point = WeeklyDataPoint(
+            week_start="2026-01-05",
+            week_label="Jan 5",
+            week_number=0,
+            enrolled=10,
+            waitlisted=0,
+            delta=10,
+            data_source="snapshot",
+        )
+        assert point.gross_enrolled == 0
+
+    def test_weekly_data_point_has_weekly_new(self):
+        """WeeklyDataPoint should accept weekly_new with default 0."""
+        from api.schemas.velocity import WeeklyDataPoint
+
+        point = WeeklyDataPoint(
+            week_start="2026-01-05",
+            week_label="Jan 5",
+            week_number=0,
+            enrolled=10,
+            waitlisted=0,
+            delta=10,
+            data_source="snapshot",
+        )
+        assert point.weekly_new == 0
+
+    def test_weekly_data_point_has_weekly_cancelled(self):
+        """WeeklyDataPoint should accept weekly_cancelled with default 0."""
+        from api.schemas.velocity import WeeklyDataPoint
+
+        point = WeeklyDataPoint(
+            week_start="2026-01-05",
+            week_label="Jan 5",
+            week_number=0,
+            enrolled=10,
+            waitlisted=0,
+            delta=10,
+            data_source="snapshot",
+        )
+        assert point.weekly_cancelled == 0
+
+    def test_weekly_data_point_explicit_new_fields(self):
+        """WeeklyDataPoint should accept explicit values for new fields."""
+        from api.schemas.velocity import WeeklyDataPoint
+
+        point = WeeklyDataPoint(
+            week_start="2026-01-05",
+            week_label="Jan 5",
+            week_number=0,
+            enrolled=45,
+            waitlisted=0,
+            delta=10,
+            data_source="snapshot",
+            gross_enrolled=50,
+            weekly_new=8,
+            weekly_cancelled=3,
+        )
+        assert point.gross_enrolled == 50
+        assert point.weekly_new == 8
+        assert point.weekly_cancelled == 3
+
+    def test_velocity_response_has_warnings(self):
+        """VelocityResponse should have warnings field defaulting to empty list."""
+        from api.schemas.velocity import VelocityCurve, VelocityResponse
+
+        response = VelocityResponse(
+            year=2026,
+            season_start="2025-12-03",
+            combined=VelocityCurve(year=2026, weekly=[]),
+            by_session=[],
+            prior_years=[],
+            phase_markers=[],
+        )
+        assert response.warnings == []
+
+    def test_velocity_response_with_warnings(self):
+        """VelocityResponse should accept explicit warnings."""
+        from api.schemas.velocity import VelocityCurve, VelocityResponse
+
+        response = VelocityResponse(
+            year=2026,
+            season_start="2025-12-03",
+            combined=VelocityCurve(year=2026, weekly=[]),
+            by_session=[],
+            prior_years=[],
+            phase_markers=[],
+            warnings=["Year 2026 has no priority registration date configured"],
+        )
+        assert len(response.warnings) == 1
+        assert "no priority registration date" in response.warnings[0]
