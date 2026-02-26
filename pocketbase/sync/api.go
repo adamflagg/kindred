@@ -819,6 +819,7 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 		"staff_applications",         // Derived: staff applications extraction
 		"staff_vehicle_info",         // Derived: staff vehicle info extraction
 		"normalize_geographic",       // Derived: normalize state/country names
+		"enrollment_snapshots",       // Derived: daily enrollment snapshot capture
 		"bunk_requests",
 		"process_requests",
 		"multi_workbook_export",

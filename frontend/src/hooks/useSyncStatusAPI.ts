@@ -66,6 +66,21 @@ export interface SyncStatusResponse {
   staff_lookups: SyncStatus
   financial_lookups: SyncStatus
   google_sheets_export: SyncStatus
+  // Transform phase (derived tables)
+  camper_history: SyncStatus
+  family_camp_derived: SyncStatus
+  staff_skills: SyncStatus
+  financial_aid_applications: SyncStatus
+  household_demographics: SyncStatus
+  camper_dietary: SyncStatus
+  camper_transportation: SyncStatus
+  quest_registrations: SyncStatus
+  staff_applications: SyncStatus
+  staff_vehicle_info: SyncStatus
+  normalize_geographic: SyncStatus
+  enrollment_snapshots: SyncStatus
+  // Export phase
+  multi_workbook_export: SyncStatus
   // On-demand custom value syncs (expensive, 1 API call per entity)
   person_custom_values: SyncStatus
   household_custom_values: SyncStatus

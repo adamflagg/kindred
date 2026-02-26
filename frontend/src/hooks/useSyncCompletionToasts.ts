@@ -28,6 +28,21 @@ const SYNC_DISPLAY_NAMES: Record<string, string> = {
   financial_transactions: 'Financial Transactions',
   bunk_requests: 'Intake Requests',
   process_requests: 'Process Requests',
+  // Transform phase (derived tables)
+  camper_history: 'Camper History',
+  family_camp_derived: 'Family Camp',
+  staff_skills: 'Staff Skills',
+  financial_aid_applications: 'FA Applications',
+  household_demographics: 'Demographics',
+  camper_dietary: 'Dietary',
+  camper_transportation: 'Transportation',
+  quest_registrations: 'Quest Registrations',
+  staff_applications: 'Staff Applications',
+  staff_vehicle_info: 'Staff Vehicles',
+  normalize_geographic: 'Normalize Geo',
+  enrollment_snapshots: 'Enrollment Snapshots',
+  // Export phase
+  multi_workbook_export: 'Sheets Export',
   // On-demand sync types
   person_custom_values: 'Person Custom Values',
   household_custom_values: 'Household Custom Values',

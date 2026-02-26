@@ -171,7 +171,7 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 			// Update existing record
 			existing.Set("enrolled_count", enrolledCount)
 			existing.Set("waitlisted_count", waitlistedCount)
-			existing.Set("canceled_count", canceledCount)
+			existing.Set("cancelled_count", canceledCount)
 			existing.Set("session", sessionPBID)
 
 			if err := s.App.Save(existing); err != nil {
@@ -192,7 +192,7 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 			record.Set("session", sessionPBID)
 			record.Set("enrolled_count", enrolledCount)
 			record.Set("waitlisted_count", waitlistedCount)
-			record.Set("canceled_count", canceledCount)
+			record.Set("cancelled_count", canceledCount)
 
 			if err := s.App.Save(record); err != nil {
 				slog.Error("Error creating enrollment snapshot",
