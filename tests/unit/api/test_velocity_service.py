@@ -2546,3 +2546,152 @@ class TestEnrollmentGenderFromSnapshots:
         # Only session 1001 counts
         assert m_curve.weekly[-1].enrolled == 12
         assert f_curve.weekly[-1].enrolled == 8
+
+    @pytest.mark.asyncio
+    async def test_hybrid_gender_reconstruction_before_snapshots(self, service, mock_repository, sample_sessions):
+        """When snapshots with gender data start Feb but attendees enrolled Nov,
+        both time periods should appear in gender curves."""
+        mock_repository.fetch_registration_dates.return_value = {"priority_reg_date": "2025-11-01"}
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+
+        # Snapshots with gender data starting Feb 2026
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot(
+                "2026-02-07",
+                1001,
+                2026,
+                enrolled=50,
+                waitlisted=2,
+                enrolled_male=30,
+                enrolled_female=20,
+                waitlisted_male=1,
+                waitlisted_female=1,
+                cancelled_male=0,
+                cancelled_female=0,
+            ),
+            create_mock_snapshot(
+                "2026-02-14",
+                1001,
+                2026,
+                enrolled=60,
+                waitlisted=3,
+                enrolled_male=35,
+                enrolled_female=25,
+                waitlisted_male=1,
+                waitlisted_female=2,
+                cancelled_male=0,
+                cancelled_female=0,
+            ),
+        ]
+
+        # Attendees enrolled starting Nov 2025 (for reconstruction of pre-snapshot gap)
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2025-11-03", gender="M"),
+            create_mock_attendee_with_date(102, 1001, "2025-11-10", gender="F"),
+            create_mock_attendee_with_date(103, 1001, "2025-12-01", gender="M"),
+            create_mock_attendee_with_date(104, 1001, "2025-12-15", gender="F"),
+            create_mock_attendee_with_date(105, 1001, "2026-01-05", gender="M"),
+        ]
+
+        result = await service.get_velocity(year=2026, split_by_gender=True)
+
+        m_curve = next(c for c in result.by_gender if c.gender == "M")
+        f_curve = next(c for c in result.by_gender if c.gender == "F")
+
+        # Should have data from both Nov 2025 (reconstruction) and Feb 2026 (snapshots)
+        assert len(m_curve.weekly) > 2, "Should have more than just the 2 snapshot weeks"
+
+        # First points should be from pre-snapshot period (Nov timeframe)
+        assert m_curve.weekly[0].week_start < "2026-02-07"
+
+        # Last points should reflect snapshot data (Feb timeframe)
+        assert m_curve.weekly[-1].enrolled == 35
+        assert f_curve.weekly[-1].enrolled == 25
+
+    @pytest.mark.asyncio
+    async def test_hybrid_gender_data_source_labels(self, service, mock_repository, sample_sessions):
+        """In hybrid gender mode, reconstructed points should be labeled 'reconstructed',
+        snapshot points should be labeled 'snapshot'."""
+        mock_repository.fetch_registration_dates.return_value = {"priority_reg_date": "2025-11-01"}
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+
+        # Snapshots with gender data starting Feb 2026
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot(
+                "2026-02-07",
+                1001,
+                2026,
+                enrolled=50,
+                enrolled_male=30,
+                enrolled_female=20,
+                waitlisted_male=0,
+                waitlisted_female=0,
+                cancelled_male=0,
+                cancelled_female=0,
+            ),
+        ]
+
+        # Attendees from Nov 2025
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2025-11-03", gender="M"),
+            create_mock_attendee_with_date(102, 1001, "2025-11-03", gender="F"),
+        ]
+
+        result = await service.get_velocity(year=2026, split_by_gender=True)
+
+        m_curve = next(c for c in result.by_gender if c.gender == "M")
+
+        recon_points = [p for p in m_curve.weekly if p.data_source == "reconstructed"]
+        snap_points = [p for p in m_curve.weekly if p.data_source == "snapshot"]
+
+        assert len(recon_points) > 0, "Should have reconstructed points before snapshot date"
+        assert len(snap_points) > 0, "Should have snapshot points"
+
+        # All reconstructed points should be chronologically before snapshot points
+        max_recon_week = max(p.week_start for p in recon_points)
+        min_snap_week = min(p.week_start for p in snap_points)
+        assert max_recon_week < min_snap_week
+
+    @pytest.mark.asyncio
+    async def test_hybrid_gender_full_coverage_no_reconstruction(self, service, mock_repository, sample_sessions):
+        """When gender snapshots cover from season start, no reconstruction should be used."""
+        mock_repository.fetch_registration_dates.return_value = {"priority_reg_date": "2025-11-01"}
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+
+        # Snapshots starting from season start (Nov 1)
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot(
+                "2025-11-01",
+                1001,
+                2026,
+                enrolled=10,
+                enrolled_male=6,
+                enrolled_female=4,
+                waitlisted_male=0,
+                waitlisted_female=0,
+                cancelled_male=0,
+                cancelled_female=0,
+            ),
+            create_mock_snapshot(
+                "2025-11-08",
+                1001,
+                2026,
+                enrolled=20,
+                enrolled_male=12,
+                enrolled_female=8,
+                waitlisted_male=0,
+                waitlisted_female=0,
+                cancelled_male=0,
+                cancelled_female=0,
+            ),
+        ]
+
+        result = await service.get_velocity(year=2026, split_by_gender=True)
+
+        m_curve = next(c for c in result.by_gender if c.gender == "M")
+
+        # All points should be from snapshots (no reconstruction needed)
+        assert all(p.data_source == "snapshot" for p in m_curve.weekly)
+
+        # Should NOT have fetched attendees (pure snapshot fast path)
+        mock_repository.fetch_attendees_with_dates.assert_not_called()
