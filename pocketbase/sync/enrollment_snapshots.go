@@ -168,6 +168,18 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 		existing, _ := s.App.FindFirstRecordByFilter("enrollment_snapshots", existingFilter)
 
 		if existing != nil {
+			// Check if anything actually changed
+			existingEnrolled, _ := existing.Get("enrolled_count").(float64)
+			existingWaitlisted, _ := existing.Get("waitlisted_count").(float64)
+			existingCancelled, _ := existing.Get("cancelled_count").(float64)
+
+			if int(existingEnrolled) == enrolledCount &&
+				int(existingWaitlisted) == waitlistedCount &&
+				int(existingCancelled) == canceledCount {
+				s.Stats.Skipped++
+				continue
+			}
+
 			// Update existing record
 			existing.Set("enrolled_count", enrolledCount)
 			existing.Set("waitlisted_count", waitlistedCount)
@@ -210,6 +222,7 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 		"year", year,
 		"created", s.Stats.Created,
 		"updated", s.Stats.Updated,
+		"skipped", s.Stats.Skipped,
 		"errors", s.Stats.Errors,
 	)
 
