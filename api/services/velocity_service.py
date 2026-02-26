@@ -34,9 +34,10 @@ PHASE_KEY_MAP: dict[str, tuple[str, str]] = {
 }
 
 
-def _monday_of_week(d: datetime) -> datetime:
-    """Return the Monday of the ISO week containing the given date."""
-    return d - timedelta(days=d.weekday())
+def _week_start(d: datetime, priority_reg_date: datetime) -> datetime:
+    """Start of 7-day bucket containing d, anchored to priority_reg_date."""
+    days_since = (d - priority_reg_date).days
+    return priority_reg_date + timedelta(days=(days_since // 7) * 7)
 
 
 def _week_label(d: datetime) -> str:
@@ -61,14 +62,14 @@ def _compute_season_start(priority_reg_date_str: str | None, year: int) -> datet
 SEASON_WEEKS = 41
 
 
-def _season_end(season_start_monday: datetime) -> datetime:
-    """Return the season end: season_start_monday + SEASON_WEEKS weeks."""
-    return season_start_monday + timedelta(weeks=SEASON_WEEKS)
+def _season_end(priority_reg_date: datetime) -> datetime:
+    """Return the season end: priority_reg_date + SEASON_WEEKS * 7 days."""
+    return priority_reg_date + timedelta(days=SEASON_WEEKS * 7)
 
 
-def _week_number(monday: datetime, season_start_monday: datetime) -> int:
-    """Compute 0-based week offset from season start Monday."""
-    return (monday - season_start_monday).days // 7
+def _week_number(d: datetime, priority_reg_date: datetime) -> int:
+    """Compute 0-based week offset from priority_reg_date."""
+    return (d - priority_reg_date).days // 7
 
 
 class _CurveResult:
@@ -126,8 +127,7 @@ class VelocityService:
                 warnings=warnings,
             )
 
-        season_start_monday = _monday_of_week(season_start_dt)
-        season_end_dt = _season_end(season_start_monday)
+        season_end_dt = _season_end(season_start_dt)
         # Fetch sessions for the year
         sessions = await self.repo.fetch_sessions(year, session_types=session_types)
         ag_parent_map = build_ag_parent_map(sessions)
@@ -135,11 +135,11 @@ class VelocityService:
         # Build curves for the primary year (dispatch by metric type)
         if metric == "cancellation":
             result = await self._build_cancellation_curves(
-                year, sessions, ag_parent_map, session_cm_id, season_start_dt, season_start_monday, season_end_dt
+                year, sessions, ag_parent_map, session_cm_id, season_start_dt, season_end_dt
             )
         else:
             result = await self._build_curves(
-                year, sessions, ag_parent_map, session_cm_id, season_start_dt, season_start_monday, season_end_dt
+                year, sessions, ag_parent_map, session_cm_id, season_start_dt, season_end_dt
             )
 
         combined = result.combined
@@ -152,11 +152,11 @@ class VelocityService:
         if split_by_gender:
             if metric == "cancellation":
                 by_gender, session_gender_breakdown = await self._build_cancellation_gender_curves(
-                    year, sessions, ag_parent_map, session_cm_id, season_start_dt, season_start_monday, season_end_dt
+                    year, sessions, ag_parent_map, session_cm_id, season_start_dt, season_end_dt
                 )
             else:
                 by_gender, session_gender_breakdown = await self._build_gender_curves(
-                    year, sessions, ag_parent_map, session_cm_id, season_start_dt, season_start_monday, season_end_dt
+                    year, sessions, ag_parent_map, session_cm_id, season_start_dt, season_end_dt
                 )
 
         # Build prior year curves
@@ -175,8 +175,7 @@ class VelocityService:
                 if prior_season_start is None:
                     warnings.append(f"Year {prior_year} has no priority registration date configured")
                     continue
-                prior_season_start_monday = _monday_of_week(prior_season_start)
-                prior_season_end = _season_end(prior_season_start_monday)
+                prior_season_end = _season_end(prior_season_start)
                 prior_sessions = await self.repo.fetch_sessions(prior_year, session_types=session_types)
                 prior_ag_map = build_ag_parent_map(prior_sessions)
 
@@ -187,7 +186,6 @@ class VelocityService:
                         prior_ag_map,
                         session_cm_id=None,
                         season_start=prior_season_start,
-                        season_start_monday=prior_season_start_monday,
                         season_end=prior_season_end,
                     )
                 else:
@@ -197,7 +195,6 @@ class VelocityService:
                         prior_ag_map,
                         session_cm_id=None,
                         season_start=prior_season_start,
-                        season_start_monday=prior_season_start_monday,
                         season_end=prior_season_end,
                     )
                 prior_years.append(prior_result.combined)
@@ -229,7 +226,6 @@ class VelocityService:
                             prior_ag_map,
                             session_cm_id=None,
                             season_start=prior_season_start,
-                            season_start_monday=prior_season_start_monday,
                             season_end=prior_season_end,
                         )
                     else:
@@ -239,13 +235,12 @@ class VelocityService:
                             prior_ag_map,
                             session_cm_id=None,
                             season_start=prior_season_start,
-                            season_start_monday=prior_season_start_monday,
                             season_end=prior_season_end,
                         )
                     prior_year_by_gender.extend(prior_gender_curves)
 
         # Fetch phase markers (pass reg_dates to avoid double fetch)
-        phase_markers = self._build_phase_markers(reg_dates, season_start_monday)
+        phase_markers = self._build_phase_markers(reg_dates, season_start_dt)
 
         return VelocityResponse(
             year=year,
@@ -270,7 +265,6 @@ class VelocityService:
         ag_parent_map: dict[int, int],
         session_cm_id: int | None,
         season_start: datetime,
-        season_start_monday: datetime,
         season_end: datetime,
     ) -> _CurveResult:
         """Build combined and per-session velocity curves for a year."""
@@ -284,7 +278,6 @@ class VelocityService:
                 ag_parent_map,
                 session_cm_id,
                 season_start,
-                season_start_monday,
                 season_end,
             )
 
@@ -294,7 +287,6 @@ class VelocityService:
             ag_parent_map,
             session_cm_id,
             season_start,
-            season_start_monday,
             season_end,
         )
 
@@ -306,7 +298,6 @@ class VelocityService:
         ag_parent_map: dict[int, int],
         session_cm_id: int | None,
         season_start: datetime,
-        season_start_monday: datetime,
         season_end: datetime,
     ) -> _CurveResult:
         """Build curves from enrollment snapshots (fast path)."""
@@ -347,7 +338,7 @@ class VelocityService:
         per_session_data: dict[int, list[WeeklyDataPoint]] = {}
 
         for sid, date_data in session_date_data.items():
-            weekly = self._aggregate_snapshots_to_weekly(date_data, season_start, season_start_monday, season_end)
+            weekly = self._aggregate_snapshots_to_weekly(date_data, season_start, season_end)
             per_session_data[sid] = weekly
 
         # Build combined curve by summing across sessions per week
@@ -378,14 +369,13 @@ class VelocityService:
         self,
         date_data: dict[str, dict[str, int]],
         season_start: datetime,
-        season_start_monday: datetime,
         season_end: datetime,
     ) -> list[WeeklyDataPoint]:
-        """Aggregate snapshot data to weekly points (Monday bucketing, last snapshot per week wins).
+        """Aggregate snapshot data to weekly points (priority_reg_date bucketing, last snapshot per week wins).
 
         Filters out data before season_start or after season_end.
         """
-        # Bucket by Monday
+        # Bucket by 7-day periods anchored to season_start (= priority_reg_date)
         weekly_data: dict[str, dict[str, int]] = {}
 
         for date_str, counts in sorted(date_data.items()):
@@ -394,27 +384,27 @@ class VelocityService:
                 continue
             if dt.date() > season_end.date():
                 continue
-            monday = _monday_of_week(dt)
-            monday_key = monday.strftime("%Y-%m-%d")
+            bucket = _week_start(dt, season_start)
+            bucket_key = bucket.strftime("%Y-%m-%d")
             # Last snapshot of the week wins (data is sorted by date)
-            weekly_data[monday_key] = counts
+            weekly_data[bucket_key] = counts
 
         # Build weekly data points with deltas
         points: list[WeeklyDataPoint] = []
         prev_enrolled = 0
 
-        for monday_key in sorted(weekly_data.keys()):
-            counts = weekly_data[monday_key]
+        for bucket_key in sorted(weekly_data.keys()):
+            counts = weekly_data[bucket_key]
             enrolled = counts["enrolled"]
             waitlisted = counts["waitlisted"]
             delta = enrolled - prev_enrolled
 
-            monday_dt = datetime.strptime(monday_key, "%Y-%m-%d")
-            wn = _week_number(monday_dt, season_start_monday)
+            bucket_dt = datetime.strptime(bucket_key, "%Y-%m-%d")
+            wn = _week_number(bucket_dt, season_start)
             points.append(
                 WeeklyDataPoint(
-                    week_start=monday_key,
-                    week_label=_week_label(monday_dt),
+                    week_start=bucket_key,
+                    week_label=_week_label(bucket_dt),
                     week_number=wn,
                     enrolled=enrolled,
                     waitlisted=waitlisted,
@@ -472,7 +462,6 @@ class VelocityService:
         ag_parent_map: dict[int, int],
         session_cm_id: int | None,
         season_start: datetime,
-        season_start_monday: datetime,
         season_end: datetime,
     ) -> _CurveResult:
         """Build curves by reconstructing from enrollment dates (fallback)."""
@@ -542,31 +531,31 @@ class VelocityService:
             if sid in session_daily_cancellations:
                 all_dates |= set(session_daily_cancellations[sid].keys())
 
-            # Bucket net changes by Monday
+            # Bucket net changes by 7-day periods anchored to season_start
             weekly_net: dict[str, int] = defaultdict(int)
             for date_key in all_dates:
                 new_enrolled = daily_enrollments.get(date_key, 0)
                 cancelled = session_daily_cancellations.get(sid, {}).get(date_key, 0)
                 dt = datetime.strptime(date_key, "%Y-%m-%d")
-                monday = _monday_of_week(dt)
-                monday_key = monday.strftime("%Y-%m-%d")
-                weekly_net[monday_key] += new_enrolled - cancelled
+                bucket = _week_start(dt, season_start)
+                bucket_key = bucket.strftime("%Y-%m-%d")
+                weekly_net[bucket_key] += new_enrolled - cancelled
 
             # Build cumulative weekly points
             cumulative = 0
             points: list[WeeklyDataPoint] = []
 
-            for monday_key in sorted(weekly_net.keys()):
-                cumulative += weekly_net[monday_key]
+            for bucket_key in sorted(weekly_net.keys()):
+                cumulative += weekly_net[bucket_key]
                 prev_enrolled_val = points[-1].enrolled if points else 0
                 delta = cumulative - prev_enrolled_val
 
-                monday_dt = datetime.strptime(monday_key, "%Y-%m-%d")
-                wn = _week_number(monday_dt, season_start_monday)
+                bucket_dt = datetime.strptime(bucket_key, "%Y-%m-%d")
+                wn = _week_number(bucket_dt, season_start)
                 points.append(
                     WeeklyDataPoint(
-                        week_start=monday_key,
-                        week_label=_week_label(monday_dt),
+                        week_start=bucket_key,
+                        week_label=_week_label(bucket_dt),
                         week_number=wn,
                         enrolled=cumulative,
                         waitlisted=0,
@@ -611,7 +600,6 @@ class VelocityService:
         ag_parent_map: dict[int, int],
         session_cm_id: int | None,
         season_start: datetime,
-        season_start_monday: datetime,
         season_end: datetime,
     ) -> tuple[list[VelocityCurve], list[SessionGenderBreakdown]]:
         """Build gender-split velocity curves from attendee reconstruction.
@@ -673,29 +661,29 @@ class VelocityService:
             per_session_data: dict[int, list[WeeklyDataPoint]] = {}
 
             for sid, daily_enrollments in session_daily.items():
-                # Bucket by Monday
+                # Bucket by 7-day periods anchored to season_start
                 weekly_counts: dict[str, int] = defaultdict(int)
                 for date_key in daily_enrollments:
                     dt = datetime.strptime(date_key, "%Y-%m-%d")
-                    monday = _monday_of_week(dt)
-                    monday_key = monday.strftime("%Y-%m-%d")
-                    weekly_counts[monday_key] += daily_enrollments[date_key]
+                    bucket = _week_start(dt, season_start)
+                    bucket_key = bucket.strftime("%Y-%m-%d")
+                    weekly_counts[bucket_key] += daily_enrollments[date_key]
 
                 cumulative = 0
                 points: list[WeeklyDataPoint] = []
 
-                for monday_key in sorted(weekly_counts.keys()):
-                    new_enrolled = weekly_counts[monday_key]
+                for bucket_key in sorted(weekly_counts.keys()):
+                    new_enrolled = weekly_counts[bucket_key]
                     cumulative += new_enrolled
                     prev_enrolled_val = points[-1].enrolled if points else 0
                     delta = cumulative - prev_enrolled_val
 
-                    monday_dt = datetime.strptime(monday_key, "%Y-%m-%d")
-                    wn = _week_number(monday_dt, season_start_monday)
+                    bucket_dt = datetime.strptime(bucket_key, "%Y-%m-%d")
+                    wn = _week_number(bucket_dt, season_start)
                     points.append(
                         WeeklyDataPoint(
-                            week_start=monday_key,
-                            week_label=_week_label(monday_dt),
+                            week_start=bucket_key,
+                            week_label=_week_label(bucket_dt),
                             week_number=wn,
                             enrolled=cumulative,
                             waitlisted=0,
@@ -740,7 +728,6 @@ class VelocityService:
         ag_parent_map: dict[int, int],
         session_cm_id: int | None,
         season_start: datetime,
-        season_start_monday: datetime,
         season_end: datetime,
     ) -> _CurveResult:
         """Build cancellation velocity curves (cumulative cancelled count over time).
@@ -757,7 +744,6 @@ class VelocityService:
                 ag_parent_map,
                 session_cm_id,
                 season_start,
-                season_start_monday,
                 season_end,
             )
 
@@ -767,7 +753,6 @@ class VelocityService:
             ag_parent_map,
             session_cm_id,
             season_start,
-            season_start_monday,
             season_end,
         )
 
@@ -779,7 +764,6 @@ class VelocityService:
         ag_parent_map: dict[int, int],
         session_cm_id: int | None,
         season_start: datetime,
-        season_start_monday: datetime,
         season_end: datetime,
     ) -> _CurveResult:
         """Build cancellation curves from snapshot cancelled_count field."""
@@ -809,21 +793,21 @@ class VelocityService:
                 dt = datetime.strptime(date_str.split("T")[0].split(" ")[0], "%Y-%m-%d")
                 if dt.date() < season_start.date() or dt.date() > season_end.date():
                     continue
-                monday = _monday_of_week(dt)
-                monday_key = monday.strftime("%Y-%m-%d")
-                weekly_data[monday_key] = cancelled  # Last wins
+                bucket = _week_start(dt, season_start)
+                bucket_key = bucket.strftime("%Y-%m-%d")
+                weekly_data[bucket_key] = cancelled  # Last wins
 
             points: list[WeeklyDataPoint] = []
             prev_val = 0
-            for monday_key in sorted(weekly_data.keys()):
-                val = weekly_data[monday_key]
+            for bucket_key in sorted(weekly_data.keys()):
+                val = weekly_data[bucket_key]
                 delta = val - prev_val
-                monday_dt = datetime.strptime(monday_key, "%Y-%m-%d")
-                wn = _week_number(monday_dt, season_start_monday)
+                bucket_dt = datetime.strptime(bucket_key, "%Y-%m-%d")
+                wn = _week_number(bucket_dt, season_start)
                 points.append(
                     WeeklyDataPoint(
-                        week_start=monday_key,
-                        week_label=_week_label(monday_dt),
+                        week_start=bucket_key,
+                        week_label=_week_label(bucket_dt),
                         week_number=wn,
                         enrolled=val,
                         waitlisted=0,
@@ -860,7 +844,6 @@ class VelocityService:
         ag_parent_map: dict[int, int],
         session_cm_id: int | None,
         season_start: datetime,
-        season_start_monday: datetime,
         season_end: datetime,
     ) -> _CurveResult:
         """Build cancellation curves from status_transitions (reconstruction fallback)."""
@@ -889,9 +872,9 @@ class VelocityService:
             dt = datetime.strptime(cancel.detected_at.split("T")[0].split(" ")[0], "%Y-%m-%d")
             if dt.date() < season_start.date() or dt.date() > season_end.date():
                 continue
-            monday = _monday_of_week(dt)
-            monday_key = monday.strftime("%Y-%m-%d")
-            session_weekly_cancels[effective_sid][monday_key] += 1
+            bucket = _week_start(dt, season_start)
+            bucket_key = bucket.strftime("%Y-%m-%d")
+            session_weekly_cancels[effective_sid][bucket_key] += 1
             total_count += 1
 
         # Build cumulative curves per session
@@ -900,16 +883,16 @@ class VelocityService:
         for sid, weekly_counts in session_weekly_cancels.items():
             cumulative = 0
             points: list[WeeklyDataPoint] = []
-            for monday_key in sorted(weekly_counts.keys()):
-                cumulative += weekly_counts[monday_key]
+            for bucket_key in sorted(weekly_counts.keys()):
+                cumulative += weekly_counts[bucket_key]
                 prev_val = points[-1].enrolled if points else 0
                 delta = cumulative - prev_val
-                monday_dt = datetime.strptime(monday_key, "%Y-%m-%d")
-                wn = _week_number(monday_dt, season_start_monday)
+                bucket_dt = datetime.strptime(bucket_key, "%Y-%m-%d")
+                wn = _week_number(bucket_dt, season_start)
                 points.append(
                     WeeklyDataPoint(
-                        week_start=monday_key,
-                        week_label=_week_label(monday_dt),
+                        week_start=bucket_key,
+                        week_label=_week_label(bucket_dt),
                         week_number=wn,
                         enrolled=cumulative,
                         waitlisted=0,
@@ -942,7 +925,6 @@ class VelocityService:
         ag_parent_map: dict[int, int],
         session_cm_id: int | None,
         season_start: datetime,
-        season_start_monday: datetime,
         season_end: datetime,
     ) -> tuple[list[VelocityCurve], list[SessionGenderBreakdown]]:
         """Build gender-split cancellation velocity curves from status transitions.
@@ -1006,25 +988,25 @@ class VelocityService:
                 weekly_counts: dict[str, int] = defaultdict(int)
                 for date_key in daily_cancellations:
                     dt = datetime.strptime(date_key, "%Y-%m-%d")
-                    monday = _monday_of_week(dt)
-                    monday_key = monday.strftime("%Y-%m-%d")
-                    weekly_counts[monday_key] += daily_cancellations[date_key]
+                    bucket = _week_start(dt, season_start)
+                    bucket_key = bucket.strftime("%Y-%m-%d")
+                    weekly_counts[bucket_key] += daily_cancellations[date_key]
 
                 cumulative = 0
                 points: list[WeeklyDataPoint] = []
 
-                for monday_key in sorted(weekly_counts.keys()):
-                    new_cancelled = weekly_counts[monday_key]
+                for bucket_key in sorted(weekly_counts.keys()):
+                    new_cancelled = weekly_counts[bucket_key]
                     cumulative += new_cancelled
                     prev_val = points[-1].enrolled if points else 0
                     delta = cumulative - prev_val
 
-                    monday_dt = datetime.strptime(monday_key, "%Y-%m-%d")
-                    wn = _week_number(monday_dt, season_start_monday)
+                    bucket_dt = datetime.strptime(bucket_key, "%Y-%m-%d")
+                    wn = _week_number(bucket_dt, season_start)
                     points.append(
                         WeeklyDataPoint(
-                            week_start=monday_key,
-                            week_label=_week_label(monday_dt),
+                            week_start=bucket_key,
+                            week_label=_week_label(bucket_dt),
                             week_number=wn,
                             enrolled=cumulative,
                             waitlisted=0,
@@ -1133,18 +1115,17 @@ class VelocityService:
 
         return summaries
 
-    def _build_phase_markers(self, reg_dates: dict[str, str], season_start_monday: datetime) -> list[PhaseMarker]:
+    def _build_phase_markers(self, reg_dates: dict[str, str], season_start: datetime) -> list[PhaseMarker]:
         """Build registration phase markers from config.
 
-        Snaps phase dates to Monday for week_number computation.
+        week_number is computed directly from priority_reg_date (no Monday snapping).
         """
         markers: list[PhaseMarker] = []
         for config_key, (phase, label) in PHASE_KEY_MAP.items():
             date_str = reg_dates.get(config_key)
             if date_str:
                 dt = datetime.strptime(date_str.split("T")[0].split(" ")[0], "%Y-%m-%d")
-                monday = _monday_of_week(dt)
-                wn = _week_number(monday, season_start_monday)
+                wn = _week_number(dt, season_start)
                 markers.append(PhaseMarker(phase=phase, date=dt.strftime("%Y-%m-%d"), label=label, week_number=wn))
 
         return markers
