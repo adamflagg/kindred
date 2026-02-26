@@ -407,6 +407,7 @@ class TestVelocityPhaseMarkers:
         mock_repository.fetch_enrollment_snapshots.return_value = [
             create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=10),
         ]
+        mock_repository.fetch_registration_dates.side_effect = None
         mock_repository.fetch_registration_dates.return_value = {
             "priority_reg_date": "2025-10-01",
             "early_reg_date": "2025-11-01",
@@ -902,6 +903,7 @@ class TestSeasonStartInResponse:
         mock_repository.fetch_enrollment_snapshots.return_value = [
             create_mock_snapshot("2025-11-12", 1001, 2026, enrolled=10),
         ]
+        mock_repository.fetch_registration_dates.side_effect = None
         mock_repository.fetch_registration_dates.return_value = {
             "priority_reg_date": "2025-11-12",
         }
@@ -928,6 +930,7 @@ class TestPhaseMarkerWeekNumber:
         mock_repository.fetch_enrollment_snapshots.return_value = [
             create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=10),
         ]
+        mock_repository.fetch_registration_dates.side_effect = None
         mock_repository.fetch_registration_dates.return_value = {
             "priority_reg_date": "2025-11-12",
         }
@@ -950,19 +953,23 @@ class TestPhaseMarkerWeekNumber:
         mock_repository.fetch_enrollment_snapshots.return_value = [
             create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=10),
         ]
-        # Jan 5 and Jan 7 are in the same ISO week (Jan 5 is Monday)
+        # Need priority_reg_date for season start, plus open_reg_date for the marker
+        mock_repository.fetch_registration_dates.side_effect = None
         mock_repository.fetch_registration_dates.return_value = {
+            "priority_reg_date": "2025-11-01",
             "open_reg_date": "2026-01-07",  # Wednesday
         }
 
         result = await service.get_velocity(year=2026)
 
-        assert len(result.phase_markers) == 1
-        marker = result.phase_markers[0]
+        # Should have both priority and open markers
+        open_markers = [m for m in result.phase_markers if m.phase == "open"]
+        assert len(open_markers) == 1
+        marker = open_markers[0]
         # Date stays as-is
         assert marker.date == "2026-01-07"
-        # But week_number should be same as Jan 5 Monday
-        # Compute expected: season_start_monday for fallback Nov 1 2025 = Oct 27 (Monday)
+        # week_number should be same as Jan 5 Monday
+        # season_start = Nov 1, season_start_monday = Oct 27
         # Jan 5 is the Monday of that week → (Jan 5 - Oct 27) / 7 = 70/7 = 10
         assert marker.week_number == 10
 
