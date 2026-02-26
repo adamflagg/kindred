@@ -187,20 +187,20 @@ class VelocityService:
             return False
         return getattr(snapshots[0], "enrolled_male_count", None) is not None
 
-    def _gender_curves_from_snapshots(
+    def _gender_data_from_snapshots(
         self,
-        year: int,
         snapshots: list[Any],
         sessions: dict[int, Any],
         ag_parent_map: dict[int, int],
         session_cm_id: int | None,
         season_start: datetime,
         season_end: datetime,
-    ) -> tuple[list[VelocityCurve], list[SessionGenderBreakdown]]:
-        """Build gender-split velocity curves from snapshot gender counts (fast path).
+    ) -> tuple[dict[str, dict[int, list[WeeklyDataPoint]]], dict[int, dict[str, int]]]:
+        """Extract per-gender per-session weekly data from snapshot gender counts.
 
-        Same aggregation pattern as _curves_from_snapshots but produces per-gender
-        curves. Handles AG session merging via ag_parent_map.
+        Returns (gender_per_session, session_gender_totals) where:
+        - gender_per_session["M"][sid] = list of WeeklyDataPoint
+        - session_gender_totals[sid] = {"M": count, "F": count}
         """
         # Group snapshots by gender -> session -> date with enrolled counts
         gender_session_date: dict[str, dict[int, dict[str, int]]] = {
@@ -251,35 +251,23 @@ class VelocityService:
             }
         session_latest = {sid: v for sid, v in session_latest.items() if sid in sessions}
 
-        # Build curves per gender using snapshot aggregation
-        gender_curves: list[VelocityCurve] = []
+        # Build per-session weekly data per gender
+        gender_per_session: dict[str, dict[int, list[WeeklyDataPoint]]] = {}
         for gender in ("M", "F"):
             per_session_data: dict[int, list[WeeklyDataPoint]] = {}
             for sid, date_counts in gender_session_date[gender].items():
-                # Convert to the format expected by _aggregate_snapshots_to_weekly
                 date_data: dict[str, dict[str, int]] = {
                     d: {"enrolled": c, "waitlisted": 0} for d, c in date_counts.items()
                 }
                 weekly = self._aggregate_snapshots_to_weekly(date_data, {}, season_start, season_end)
                 per_session_data[sid] = weekly
+            gender_per_session[gender] = per_session_data
 
-            combined_data = self._combine_weekly_curves(per_session_data)
-            gender_curves.append(
-                VelocityCurve(
-                    year=year,
-                    session_cm_id=session_cm_id,
-                    gender=gender,
-                    weekly=combined_data,
-                )
-            )
-
-        # Build breakdown from latest snapshot per session
         session_gender_totals: dict[int, dict[str, int]] = {
             sid: {"M": vals[1], "F": vals[2]} for sid, vals in session_latest.items()
         }
-        breakdown = self._build_gender_breakdown(sessions, session_gender_totals)
 
-        return gender_curves, breakdown
+        return gender_per_session, session_gender_totals
 
     @staticmethod
     def _build_session_curves(
@@ -943,7 +931,7 @@ class VelocityService:
             cancelled_to_date=total_cancellation_count,
         )
 
-    async def _build_gender_curves(
+    async def _gender_data_from_reconstruction(
         self,
         year: int,
         sessions: dict[int, Any],
@@ -951,32 +939,24 @@ class VelocityService:
         session_cm_id: int | None,
         season_start: datetime,
         season_end: datetime,
-    ) -> tuple[list[VelocityCurve], list[SessionGenderBreakdown]]:
-        """Build gender-split velocity curves.
+    ) -> tuple[dict[str, dict[int, list[WeeklyDataPoint]]], dict[int, dict[str, int]]]:
+        """Extract per-gender per-session weekly data by reconstructing from attendees.
 
-        Tries snapshot fast path first when gender data is available,
-        falls back to attendee reconstruction for old snapshots.
-        Returns (gender_curves, session_gender_breakdown).
+        Returns (gender_per_session, session_gender_totals) — same shape as
+        _gender_data_from_snapshots for hybrid merging.
         """
-        # Try snapshot fast path
-        snapshots = await self.repo.fetch_enrollment_snapshots(year, session_cm_id=session_cm_id)
-        if snapshots and self._snapshots_have_gender_data(snapshots):
-            return self._gender_curves_from_snapshots(
-                year, snapshots, sessions, ag_parent_map, session_cm_id, season_start, season_end
-            )
-
-        # Fallback: reconstruct from attendees
         attendees = await self.repo.fetch_attendees_with_dates(year, session_cm_id=session_cm_id, expand_person=True)
 
+        gender_per_session: dict[str, dict[int, list[WeeklyDataPoint]]] = {"M": {}, "F": {}}
+        session_gender_totals: dict[int, dict[str, int]] = defaultdict(lambda: {"M": 0, "F": 0})
+
         if not attendees:
-            return [], []
+            return gender_per_session, dict(session_gender_totals)
 
         # Group enrollments by gender -> session -> date
         gender_session_daily: dict[str, dict[int, dict[str, int]]] = defaultdict(
             lambda: defaultdict(lambda: defaultdict(int))
         )
-        # Track per-session gender totals for breakdown
-        session_gender_totals: dict[int, dict[str, int]] = defaultdict(lambda: {"M": 0, "F": 0})
 
         for att in attendees:
             expand = getattr(att, "expand", {}) or {}
@@ -990,7 +970,7 @@ class VelocityService:
             person = expand.get("person") if isinstance(expand, dict) else None
             gender = extract_gender(person) if person else "Unknown"
             if gender not in ("M", "F"):
-                continue  # Skip unknown gender for split curves
+                continue
 
             dt = datetime.strptime(att.enrollment_date.split("T")[0].split(" ")[0], "%Y-%m-%d")
             if dt.date() < season_start.date():
@@ -1001,40 +981,90 @@ class VelocityService:
             gender_session_daily[gender][effective_sid][date_key] += 1
             session_gender_totals[effective_sid][gender] += 1
 
-        # Filter out sessions not in the sessions dict (excludes non-summer types)
+        # Filter out sessions not in the sessions dict
         for gender in ("M", "F"):
             gender_session_daily[gender] = {
                 sid: w for sid, w in gender_session_daily.get(gender, {}).items() if sid in sessions
             }
         session_gender_totals = {sid: t for sid, t in session_gender_totals.items() if sid in sessions}
 
-        # Build curves per gender
-        gender_curves: list[VelocityCurve] = []
-
+        # Build per-session weekly data per gender
         for gender in ("M", "F"):
             session_daily = gender_session_daily.get(gender, {})
             if session_cm_id is not None:
                 session_daily = {sid: dates for sid, dates in session_daily.items() if sid == session_cm_id}
 
-            per_session_data: dict[int, list[WeeklyDataPoint]] = {
+            gender_per_session[gender] = {
                 sid: _daily_counts_to_weekly_points(daily, season_start, track_gross=True)
                 for sid, daily in session_daily.items()
             }
 
-            combined_data = self._combine_weekly_curves(per_session_data)
+        return gender_per_session, dict(session_gender_totals)
 
-            gender_curves.append(
-                VelocityCurve(
-                    year=year,
-                    session_cm_id=session_cm_id,
-                    gender=gender,
-                    weekly=combined_data,
-                )
+    def _assemble_gender_curves(
+        self,
+        year: int,
+        session_cm_id: int | None,
+        sessions: dict[int, Any],
+        gender_per_session: dict[str, dict[int, list[WeeklyDataPoint]]],
+        session_gender_totals: dict[int, dict[str, int]],
+    ) -> tuple[list[VelocityCurve], list[SessionGenderBreakdown]]:
+        """Assemble final gender curves and breakdown from intermediate per-session data."""
+        curves: list[VelocityCurve] = []
+        for gender in ("M", "F"):
+            combined = self._combine_weekly_curves(gender_per_session.get(gender, {}))
+            curves.append(VelocityCurve(year=year, session_cm_id=session_cm_id, gender=gender, weekly=combined))
+        breakdown = self._build_gender_breakdown(sessions, session_gender_totals)
+        return curves, breakdown
+
+    async def _build_gender_curves(
+        self,
+        year: int,
+        sessions: dict[int, Any],
+        ag_parent_map: dict[int, int],
+        session_cm_id: int | None,
+        season_start: datetime,
+        season_end: datetime,
+    ) -> tuple[list[VelocityCurve], list[SessionGenderBreakdown]]:
+        """Build gender-split velocity curves with hybrid snapshot/reconstruction support.
+
+        Three-way dispatch matching _build_curves:
+        1. No gender data in snapshots → pure reconstruction
+        2. Snapshots cover full season → pure snapshot fast path
+        3. Snapshots start mid-season → hybrid (reconstruction pre-snapshot + snapshots post)
+        """
+        snapshots = await self.repo.fetch_enrollment_snapshots(year, session_cm_id=session_cm_id)
+
+        if not snapshots or not self._snapshots_have_gender_data(snapshots):
+            # No gender data → pure reconstruction
+            gps, totals = await self._gender_data_from_reconstruction(
+                year, sessions, ag_parent_map, session_cm_id, season_start, season_end
+            )
+            return self._assemble_gender_curves(year, session_cm_id, sessions, gps, totals)
+
+        snap_gps, snap_totals = self._gender_data_from_snapshots(
+            snapshots, sessions, ag_parent_map, session_cm_id, season_start, season_end
+        )
+
+        # Check if hybrid needed
+        earliest = self._find_earliest_snapshot_date(snapshots, season_start)
+        if earliest is None or _week_start(earliest, season_start) <= season_start:
+            # Snapshots cover full season → pure snapshot fast path
+            return self._assemble_gender_curves(year, session_cm_id, sessions, snap_gps, snap_totals)
+
+        # Hybrid: reconstruction pre-snapshot + snapshots post
+        recon_gps, recon_totals = await self._gender_data_from_reconstruction(
+            year, sessions, ag_parent_map, session_cm_id, season_start, season_end
+        )
+
+        merged_gps: dict[str, dict[int, list[WeeklyDataPoint]]] = {}
+        for gender in ("M", "F"):
+            merged_gps[gender] = self._merge_hybrid_curves(
+                recon_gps.get(gender, {}), snap_gps.get(gender, {}), season_start
             )
 
-        breakdown = self._build_gender_breakdown(sessions, session_gender_totals)
-
-        return gender_curves, breakdown
+        # Use snapshot totals for breakdown (latest actual counts)
+        return self._assemble_gender_curves(year, session_cm_id, sessions, merged_gps, snap_totals)
 
     async def _build_cancellation_curves(
         self,

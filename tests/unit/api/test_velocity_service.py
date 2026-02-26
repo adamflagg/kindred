@@ -2288,7 +2288,9 @@ class TestEnrollmentGenderFromSnapshots:
 
     @pytest.mark.asyncio
     async def test_gender_curves_from_snapshots(self, service, mock_repository, sample_sessions):
-        """When snapshots have gender data, produce M/F curves without fetching attendees."""
+        """When snapshots have gender data covering full season, produce M/F curves without fetching attendees."""
+        mock_repository.fetch_registration_dates.side_effect = None
+        mock_repository.fetch_registration_dates.return_value = {"priority_reg_date": "2026-01-05"}
         mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
         mock_repository.fetch_enrollment_snapshots.return_value = [
             create_mock_snapshot(
