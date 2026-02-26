@@ -18,6 +18,7 @@ from bunking.graph.graph_cache_manager import GraphCacheManager
 from pocketbase import PocketBase
 
 from .services.id_cache import IDLookupCache
+from .services.metrics_cache import MetricsCache
 from .settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -92,6 +93,15 @@ graph_cache = GraphCacheManager(ttl_seconds=900, max_cache_size=50)
 
 
 # ========================================
+# Metrics Response Cache
+# ========================================
+
+# Caches computed metrics endpoint responses in-memory.
+# TTL 2 hours (fallback); primary invalidation via frontend sync-completion callback.
+metrics_cache = MetricsCache(ttl_seconds=7200, max_size=200)
+
+
+# ========================================
 # Solver Runs Storage
 # ========================================
 
@@ -103,9 +113,6 @@ solver_runs: dict[str, dict[str, Any]] = {}
 # ID Translation Cache
 # ========================================
 
-# IDLookupCache is imported at the top from .services.id_cache
-# and re-exported here for backward compatibility
-
 __all__ = [
     "pb",
     "pb_url",
@@ -115,6 +122,7 @@ __all__ = [
     "create_task_pb_client",
     "authenticate_task_pb",
     "graph_cache",
+    "metrics_cache",
     "solver_runs",
     "IDLookupCache",
 ]
