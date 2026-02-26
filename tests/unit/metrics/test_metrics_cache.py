@@ -13,10 +13,6 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Any
-from unittest.mock import patch
-
-import pytest
 
 from api.services.metrics_cache import MetricsCache
 

@@ -68,6 +68,8 @@ export const invalidateCache = () => {
 export const clearCache = () => {
   queryClient.clear()
   localStorage.removeItem('bunking-query-cache')
+  // Also invalidate server-side metrics cache (fire-and-forget)
+  fetch('/api/metrics/cache/invalidate', { method: 'POST' }).catch(() => {})
 }
 
 /**
@@ -76,6 +78,9 @@ export const clearCache = () => {
  * This invalidates Tier 1 (sync data) queries that may have changed.
  */
 export const invalidateSyncData = () => {
+  // Invalidate server-side metrics cache (fire-and-forget)
+  fetch('/api/metrics/cache/invalidate', { method: 'POST' }).catch(() => {})
+
   // Sessions
   queryClient.invalidateQueries({ queryKey: ['sessions'] })
   queryClient.invalidateQueries({ queryKey: ['all-sessions'] })

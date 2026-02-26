@@ -11,7 +11,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Query
 
-from ..dependencies import pb
+from ..dependencies import metrics_cache, pb
 from ..schemas.forecast import ForecastResponse
 from ..schemas.metrics import (
     CancellationMetricsResponse,
@@ -53,19 +53,27 @@ async def get_retention_metrics(
     from api.services.retention_service import RetentionService
 
     try:
-        # Parse session types filter
-        type_filter = session_types.split(",") if session_types else None
+        cache_params = dict(
+            base_year=base_year,
+            compare_year=compare_year,
+            session_types=session_types,
+            session_cm_id=session_cm_id,
+        )
+        cached = metrics_cache.get("retention", **cache_params)
+        if cached is not None:
+            return cached
 
-        # Use service layer for business logic
+        type_filter = session_types.split(",") if session_types else None
         repository = MetricsRepository(pb)
         service = RetentionService(repository)
-
-        return await service.calculate_retention(
+        result = await service.calculate_retention(
             base_year=base_year,
             compare_year=compare_year,
             session_types=type_filter,
             session_cm_id=session_cm_id,
         )
+        metrics_cache.set("retention", result, **cache_params)
+        return result
 
     except Exception as e:
         logger.error(f"Error calculating retention metrics: {e}", exc_info=True)
@@ -106,12 +114,23 @@ async def get_registration_metrics(
     from api.services.registration_service import RegistrationService
 
     try:
+        cache_params = dict(
+            year=year,
+            session_types=session_types,
+            statuses=statuses,
+            session_cm_id=session_cm_id,
+        )
+        cached = metrics_cache.get("registration", **cache_params)
+        if cached is not None:
+            return cached
+
         type_filter = session_types.split(",") if session_types else None
         status_filter = [s.strip() for s in (statuses or "enrolled").split(",")]
-
         repository = MetricsRepository(pb)
         service = RegistrationService(repository)
-        return await service.calculate_registration(year, type_filter, status_filter, session_cm_id)
+        result = await service.calculate_registration(year, type_filter, status_filter, session_cm_id)
+        metrics_cache.set("registration", result, **cache_params)
+        return result
 
     except Exception as e:
         logger.error(f"Error calculating registration metrics: {e}", exc_info=True)
@@ -141,15 +160,21 @@ async def get_comparison_metrics(
     from api.services.metrics_repository import MetricsRepository
 
     try:
-        type_filter = session_types.split(",") if session_types else None
+        cache_params = dict(year_a=year_a, year_b=year_b, session_types=session_types)
+        cached = metrics_cache.get("comparison", **cache_params)
+        if cached is not None:
+            return cached
 
+        type_filter = session_types.split(",") if session_types else None
         repository = MetricsRepository(pb)
         service = ComparisonService(repository)
-        return await service.calculate_comparison(
+        result = await service.calculate_comparison(
             year_a=year_a,
             year_b=year_b,
             session_types=type_filter,
         )
+        metrics_cache.set("comparison", result, **cache_params)
+        return result
 
     except Exception as e:
         logger.error(f"Error calculating comparison metrics: {e}", exc_info=True)
@@ -183,19 +208,22 @@ async def get_historical_trends(
     from api.services.metrics_repository import MetricsRepository
 
     try:
-        # Parse years
+        cache_params = dict(years=years, session_types=session_types, session_cm_id=session_cm_id)
+        cached = metrics_cache.get("historical", **cache_params)
+        if cached is not None:
+            return cached
+
         year_list = [int(y.strip()) for y in years.split(",")] if years else None
-
-        # Parse session types filter
         type_filter = session_types.split(",") if session_types else None
-
         repository = MetricsRepository(pb)
         service = HistoricalService(repository)
-        return await service.calculate_historical_trends(
+        result = await service.calculate_historical_trends(
             years=year_list,
             session_types=type_filter,
             session_cm_id=session_cm_id,
         )
+        metrics_cache.set("historical", result, **cache_params)
+        return result
 
     except Exception as e:
         logger.error(f"Error calculating historical trends: {e}", exc_info=True)
@@ -235,16 +263,27 @@ async def get_retention_trends(
     from api.services.retention_trends_service import RetentionTrendsService
 
     try:
-        type_filter = session_types.split(",") if session_types else None
+        cache_params = dict(
+            current_year=current_year,
+            num_years=num_years,
+            session_types=session_types,
+            session_cm_id=session_cm_id,
+        )
+        cached = metrics_cache.get("retention_trends", **cache_params)
+        if cached is not None:
+            return cached
 
+        type_filter = session_types.split(",") if session_types else None
         repository = MetricsRepository(pb)
         service = RetentionTrendsService(repository)
-        return await service.calculate_retention_trends(
+        result = await service.calculate_retention_trends(
             current_year=current_year,
             num_years=num_years,
             session_types=type_filter,
             session_cm_id=session_cm_id,
         )
+        metrics_cache.set("retention_trends", result, **cache_params)
+        return result
 
     except Exception as e:
         logger.error(f"Error calculating retention trends: {e}", exc_info=True)
@@ -280,15 +319,21 @@ async def get_waitlist_metrics(
     from api.services.waitlist_service import WaitlistService
 
     try:
-        type_filter = session_types.split(",") if session_types else None
+        cache_params = dict(year=year, session_types=session_types, session_cm_id=session_cm_id)
+        cached = metrics_cache.get("waitlist", **cache_params)
+        if cached is not None:
+            return cached
 
+        type_filter = session_types.split(",") if session_types else None
         repository = MetricsRepository(pb)
         service = WaitlistService(repository)
-        return await service.calculate_waitlist(
+        result = await service.calculate_waitlist(
             year=year,
             session_types=type_filter,
             session_cm_id=session_cm_id,
         )
+        metrics_cache.set("waitlist", result, **cache_params)
+        return result
 
     except Exception as e:
         logger.error(f"Error calculating waitlist metrics: {e}", exc_info=True)
@@ -323,15 +368,21 @@ async def get_cancellation_metrics(
     from api.services.metrics_repository import MetricsRepository
 
     try:
-        type_filter = session_types.split(",") if session_types else None
+        cache_params = dict(year=year, session_types=session_types, session_cm_id=session_cm_id)
+        cached = metrics_cache.get("cancellations", **cache_params)
+        if cached is not None:
+            return cached
 
+        type_filter = session_types.split(",") if session_types else None
         repository = MetricsRepository(pb)
         service = CancellationService(repository)
-        return await service.calculate_cancellations(
+        result = await service.calculate_cancellations(
             year=year,
             session_types=type_filter,
             session_cm_id=session_cm_id,
         )
+        metrics_cache.set("cancellations", result, **cache_params)
+        return result
 
     except Exception as e:
         logger.error(f"Error calculating cancellation metrics: {e}", exc_info=True)
@@ -422,12 +473,23 @@ async def get_velocity(
     from api.services.velocity_service import VelocityService
 
     try:
+        cache_params = dict(
+            year=year,
+            compare_years=compare_years,
+            session_cm_id=session_cm_id,
+            session_types=session_types,
+            split_by_gender=split_by_gender,
+            metric=metric,
+        )
+        cached = metrics_cache.get("velocity", **cache_params)
+        if cached is not None:
+            return cached
+
         compare_year_list = [int(y.strip()) for y in compare_years.split(",")] if compare_years else None
         type_filter = session_types.split(",") if session_types else None
-
         repository = MetricsRepository(pb)
         service = VelocityService(repository)
-        return await service.get_velocity(
+        result = await service.get_velocity(
             year=year,
             session_cm_id=session_cm_id,
             compare_years=compare_year_list,
@@ -435,6 +497,9 @@ async def get_velocity(
             split_by_gender=split_by_gender,
             metric=metric,
         )
+        metrics_cache.set("velocity", result, **cache_params)
+        return result
+
     except Exception as e:
         logger.error(f"Error calculating velocity: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error calculating velocity: {str(e)}")
@@ -456,10 +521,43 @@ async def get_forecast(
     from api.services.metrics_repository import MetricsRepository
 
     try:
+        cache_params = dict(year=year, session_types=session_types, session_cm_id=session_cm_id)
+        cached = metrics_cache.get("forecast", **cache_params)
+        if cached is not None:
+            return cached
+
         type_filter = session_types.split(",") if session_types else None
         repository = MetricsRepository(pb)
         service = ForecastService(repository)
-        return await service.calculate_forecast(year=year, session_types=type_filter, session_cm_id=session_cm_id)
+        result = await service.calculate_forecast(
+            year=year,
+            session_types=type_filter,
+            session_cm_id=session_cm_id,
+        )
+        metrics_cache.set("forecast", result, **cache_params)
+        return result
+
     except Exception as e:
         logger.error(f"Error calculating forecast: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error calculating forecast: {str(e)}")
+
+
+# ============================================================================
+# Cache Management Endpoints
+# ============================================================================
+
+
+@router.post("/cache/invalidate")
+async def invalidate_metrics_cache() -> dict:
+    """Invalidate all cached metrics responses.
+
+    Called by Go sync orchestrator after sync completion, or manually.
+    """
+    cleared = metrics_cache.invalidate_all()
+    return {"cleared": cleared}
+
+
+@router.get("/cache/stats")
+async def get_cache_stats() -> dict:
+    """Get metrics cache statistics (hit rate, size, etc.)."""
+    return metrics_cache.get_stats()

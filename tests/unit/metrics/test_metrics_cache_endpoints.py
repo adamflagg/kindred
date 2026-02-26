@@ -28,11 +28,16 @@ def fresh_cache():
 
 @pytest.fixture
 def test_client(fresh_cache):
-    """Create test client with mocked PB auth and injected cache."""
+    """Create test client with injected cache.
+
+    Patches metrics_cache at the router level (where it's imported via
+    ``from ..dependencies import metrics_cache``). This ensures the
+    endpoint functions see our fresh_cache instance.
+    """
     os.environ["AUTH_MODE"] = "bypass"
     os.environ["SKIP_PB_AUTH"] = "true"
 
-    with patch("api.dependencies.metrics_cache", fresh_cache):
+    with patch("api.routers.metrics.metrics_cache", fresh_cache):
         from api.main import create_app
 
         app = create_app()
@@ -43,135 +48,109 @@ def test_client(fresh_cache):
     os.environ.pop("SKIP_PB_AUTH", None)
 
 
-# Minimal mock response that satisfies RetentionMetricsResponse schema
-MOCK_RETENTION_RESPONSE = AsyncMock(
-    return_value=AsyncMock(
-        model_dump=lambda: {
-            "base_year": 2025,
-            "compare_year": 2026,
-            "total_base": 100,
-            "total_returned": 80,
-            "retention_rate": 0.8,
-        }
-    )
-)
-
-
 class TestRetentionEndpointCaching:
     """Test that the retention endpoint uses the cache."""
 
-    @pytest.mark.asyncio
     def test_second_request_uses_cache(self, test_client, fresh_cache):
         """Second identical request should hit cache, not recompute."""
         mock_service = AsyncMock()
-        mock_service.calculate_retention = AsyncMock(
-            return_value=_make_retention_response()
-        )
+        mock_service.calculate_retention = AsyncMock(return_value=_make_retention_response())
 
-        with patch("api.routers.metrics.RetentionService", return_value=mock_service):
-            with patch("api.routers.metrics.MetricsRepository"):
-                # First request - cache miss, calls service
-                resp1 = test_client.get(
-                    "/api/metrics/retention",
-                    params={"base_year": 2025, "compare_year": 2026},
-                )
-                assert resp1.status_code == 200
+        with (
+            patch("api.services.retention_service.RetentionService", return_value=mock_service),
+            patch("api.services.metrics_repository.MetricsRepository"),
+        ):
+            resp1 = test_client.get(
+                "/api/metrics/retention",
+                params={"base_year": 2025, "compare_year": 2026},
+            )
+            assert resp1.status_code == 200
 
-                # Second request - should use cache, NOT call service again
-                resp2 = test_client.get(
-                    "/api/metrics/retention",
-                    params={"base_year": 2025, "compare_year": 2026},
-                )
-                assert resp2.status_code == 200
+            resp2 = test_client.get(
+                "/api/metrics/retention",
+                params={"base_year": 2025, "compare_year": 2026},
+            )
+            assert resp2.status_code == 200
 
-                # Service should only be called once
-                assert mock_service.calculate_retention.call_count == 1
+            # Service should only be called once (second request used cache)
+            assert mock_service.calculate_retention.call_count == 1
+            assert resp1.json() == resp2.json()
 
-                # Responses should be identical
-                assert resp1.json() == resp2.json()
-
-    @pytest.mark.asyncio
     def test_different_params_cache_separately(self, test_client, fresh_cache):
         """Different query params should result in separate cache entries."""
-        call_count = 0
-
-        async def track_calls(**kwargs):
-            nonlocal call_count
-            call_count += 1
-            return _make_retention_response(
-                base_year=kwargs.get("base_year", 2025),
-                compare_year=kwargs.get("compare_year", 2026),
-            )
-
         mock_service = AsyncMock()
-        mock_service.calculate_retention = AsyncMock(side_effect=track_calls)
+        mock_service.calculate_retention = AsyncMock(
+            side_effect=[
+                _make_retention_response(base_year=2025, compare_year=2026),
+                _make_retention_response(base_year=2024, compare_year=2025),
+            ]
+        )
 
-        with patch("api.routers.metrics.RetentionService", return_value=mock_service):
-            with patch("api.routers.metrics.MetricsRepository"):
-                test_client.get(
-                    "/api/metrics/retention",
-                    params={"base_year": 2025, "compare_year": 2026},
-                )
-                test_client.get(
-                    "/api/metrics/retention",
-                    params={"base_year": 2024, "compare_year": 2025},
-                )
-                # Both should call service (different params)
-                assert call_count == 2
+        with (
+            patch("api.services.retention_service.RetentionService", return_value=mock_service),
+            patch("api.services.metrics_repository.MetricsRepository"),
+        ):
+            test_client.get(
+                "/api/metrics/retention",
+                params={"base_year": 2025, "compare_year": 2026},
+            )
+            test_client.get(
+                "/api/metrics/retention",
+                params={"base_year": 2024, "compare_year": 2025},
+            )
+            # Both should call service (different params)
+            assert mock_service.calculate_retention.call_count == 2
 
-    @pytest.mark.asyncio
     def test_cache_invalidation_forces_recompute(self, test_client, fresh_cache):
         """After invalidation, the same request should recompute."""
         mock_service = AsyncMock()
-        mock_service.calculate_retention = AsyncMock(
-            return_value=_make_retention_response()
-        )
+        mock_service.calculate_retention = AsyncMock(return_value=_make_retention_response())
 
-        with patch("api.routers.metrics.RetentionService", return_value=mock_service):
-            with patch("api.routers.metrics.MetricsRepository"):
-                # First request
-                test_client.get(
-                    "/api/metrics/retention",
-                    params={"base_year": 2025, "compare_year": 2026},
-                )
-                assert mock_service.calculate_retention.call_count == 1
+        with (
+            patch("api.services.retention_service.RetentionService", return_value=mock_service),
+            patch("api.services.metrics_repository.MetricsRepository"),
+        ):
+            test_client.get(
+                "/api/metrics/retention",
+                params={"base_year": 2025, "compare_year": 2026},
+            )
+            assert mock_service.calculate_retention.call_count == 1
 
-                # Invalidate cache
-                fresh_cache.invalidate_all()
+            # Invalidate cache
+            fresh_cache.invalidate_all()
 
-                # Same request should recompute
-                test_client.get(
-                    "/api/metrics/retention",
-                    params={"base_year": 2025, "compare_year": 2026},
-                )
-                assert mock_service.calculate_retention.call_count == 2
+            # Same request should recompute
+            test_client.get(
+                "/api/metrics/retention",
+                params={"base_year": 2025, "compare_year": 2026},
+            )
+            assert mock_service.calculate_retention.call_count == 2
 
 
 class TestRegistrationEndpointCaching:
     """Test that the registration endpoint uses the cache."""
 
-    @pytest.mark.asyncio
     def test_second_request_uses_cache(self, test_client, fresh_cache):
         mock_service = AsyncMock()
-        mock_service.calculate_registration = AsyncMock(
-            return_value=_make_registration_response()
-        )
+        mock_service.calculate_registration = AsyncMock(return_value=_make_registration_response())
 
-        with patch("api.routers.metrics.RegistrationService", return_value=mock_service):
-            with patch("api.routers.metrics.MetricsRepository"):
-                resp1 = test_client.get(
-                    "/api/metrics/registration",
-                    params={"year": 2026},
-                )
-                assert resp1.status_code == 200
+        with (
+            patch("api.services.registration_service.RegistrationService", return_value=mock_service),
+            patch("api.services.metrics_repository.MetricsRepository"),
+        ):
+            resp1 = test_client.get(
+                "/api/metrics/registration",
+                params={"year": 2026},
+            )
+            assert resp1.status_code == 200
 
-                resp2 = test_client.get(
-                    "/api/metrics/registration",
-                    params={"year": 2026},
-                )
-                assert resp2.status_code == 200
+            resp2 = test_client.get(
+                "/api/metrics/registration",
+                params={"year": 2026},
+            )
+            assert resp2.status_code == 200
 
-                assert mock_service.calculate_registration.call_count == 1
+            assert mock_service.calculate_registration.call_count == 1
 
 
 class TestCacheInvalidationEndpoint:
@@ -179,7 +158,6 @@ class TestCacheInvalidationEndpoint:
 
     def test_invalidation_endpoint_clears_cache(self, test_client, fresh_cache):
         """POST to invalidation endpoint should clear the cache."""
-        # Populate cache
         fresh_cache.set("retention", {"data": True}, year=2026)
         fresh_cache.set("registration", {"data": True}, year=2026)
         assert fresh_cache.get_stats()["cache_size"] == 2
@@ -217,44 +195,41 @@ class TestCacheStatsEndpoint:
 
 
 def _make_retention_response(base_year: int = 2025, compare_year: int = 2026):
-    """Create a minimal mock that acts like RetentionMetricsResponse."""
+    """Create a minimal RetentionMetricsResponse with required fields."""
     from api.schemas.metrics import RetentionMetricsResponse
 
     return RetentionMetricsResponse(
         base_year=base_year,
         compare_year=compare_year,
-        total_base=100,
-        total_returned=80,
-        retention_rate=0.8,
+        base_year_total=100,
+        compare_year_total=120,
+        returned_count=80,
+        overall_retention_rate=0.8,
         by_gender=[],
         by_grade=[],
         by_session=[],
         by_years_at_camp=[],
-        by_school=[],
-        by_city=[],
-        by_synagogue=[],
-        by_prior_session=[],
-        by_session_bunk=[],
-        session_flow=[],
-        by_summer_years=[],
-        by_first_summer_year=[],
     )
 
 
 def _make_registration_response(year: int = 2026):
-    """Create a minimal mock that acts like RegistrationMetricsResponse."""
-    from api.schemas.metrics import RegistrationMetricsResponse
+    """Create a minimal RegistrationMetricsResponse with required fields."""
+    from api.schemas.metrics import NewVsReturning, RegistrationMetricsResponse
 
     return RegistrationMetricsResponse(
         year=year,
         total_enrolled=200,
+        total_waitlisted=10,
+        total_cancelled=5,
         by_gender=[],
         by_grade=[],
         by_session=[],
-        by_years_at_camp=[],
-        by_new_returning=[],
         by_session_length=[],
-        by_school=[],
-        by_city=[],
-        by_synagogue=[],
+        by_years_at_camp=[],
+        new_vs_returning=NewVsReturning(
+            new_count=50,
+            returning_count=150,
+            new_percentage=0.25,
+            returning_percentage=0.75,
+        ),
     )
