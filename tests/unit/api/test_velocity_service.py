@@ -1973,6 +1973,271 @@ class TestGrossNetDeltaFromReconstruction:
         assert points[1].weekly_cancelled == 1
 
 
+# ============================================================================
+# Hybrid Snapshot/Reconstruction Tests
+# ============================================================================
+
+
+class TestHybridSnapshotReconstruction:
+    """Test hybrid mode: reconstruction for pre-snapshot weeks, snapshots for later weeks.
+
+    When snapshots start mid-season (e.g., February) but enrollment activity began
+    earlier (e.g., November priority registration), the system should use reconstruction
+    for the gap period and snapshots once they begin.
+    """
+
+    @pytest.mark.asyncio
+    async def test_hybrid_reconstruction_before_snapshots(self, service, mock_repository, sample_sessions):
+        """When enrollment started in Nov but snapshots began in Feb,
+        both reconstructed and snapshot data should appear in the combined curve."""
+        # Season starts Nov 1 2025 (priority_reg_date)
+        mock_repository.fetch_registration_dates.return_value = {"priority_reg_date": "2025-11-01"}
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+
+        # Snapshots only start in February 2026
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-02-07", 1001, 2026, enrolled=50, waitlisted=2, cancelled=3),
+            create_mock_snapshot("2026-02-14", 1001, 2026, enrolled=60, waitlisted=3, cancelled=4),
+        ]
+
+        # Attendees enrolled starting Nov 2025 (for reconstruction)
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2025-11-03"),
+            create_mock_attendee_with_date(102, 1001, "2025-11-10"),
+            create_mock_attendee_with_date(103, 1001, "2025-12-01"),
+            create_mock_attendee_with_date(104, 1001, "2025-12-15"),
+            create_mock_attendee_with_date(105, 1001, "2026-01-05"),
+        ]
+        mock_repository.fetch_status_transitions.return_value = []
+
+        result = await service.get_velocity(year=2026)
+
+        # Should have data from both Nov 2025 and Feb 2026
+        points = result.combined.weekly
+        assert len(points) > 2, "Should have more than just the 2 snapshot weeks"
+
+        # First points should be from reconstruction (Nov timeframe)
+        first_point = points[0]
+        assert first_point.week_start < "2026-02-07"
+
+        # Last points should be from snapshots (Feb timeframe)
+        last_point = points[-1]
+        assert last_point.enrolled == 60
+
+    @pytest.mark.asyncio
+    async def test_hybrid_data_source_labels(self, service, mock_repository, sample_sessions):
+        """Reconstructed points should be labeled 'reconstructed',
+        snapshot points should be labeled 'snapshot'."""
+        mock_repository.fetch_registration_dates.return_value = {"priority_reg_date": "2025-11-01"}
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+
+        # Snapshots starting Feb 2026
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-02-07", 1001, 2026, enrolled=50, cancelled=2),
+        ]
+
+        # Attendees from Nov 2025
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2025-11-03"),
+            create_mock_attendee_with_date(102, 1001, "2025-11-10"),
+        ]
+        mock_repository.fetch_status_transitions.return_value = []
+
+        result = await service.get_velocity(year=2026)
+
+        points = result.combined.weekly
+        recon_points = [p for p in points if p.data_source == "reconstructed"]
+        snap_points = [p for p in points if p.data_source == "snapshot"]
+
+        assert len(recon_points) > 0, "Should have reconstructed points before snapshot date"
+        assert len(snap_points) > 0, "Should have snapshot points"
+
+        # All reconstructed points should be before snapshot points
+        max_recon_week = max(p.week_start for p in recon_points)
+        min_snap_week = min(p.week_start for p in snap_points)
+        assert max_recon_week < min_snap_week
+
+    @pytest.mark.asyncio
+    async def test_hybrid_deltas_at_boundary(self, service, mock_repository, sample_sessions):
+        """Delta at the first snapshot week should be correct relative
+        to the last reconstructed week's enrolled count."""
+        mock_repository.fetch_registration_dates.return_value = {"priority_reg_date": "2025-11-01"}
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+
+        # Snapshots starting Feb 7 with 50 enrolled
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-02-07", 1001, 2026, enrolled=50, cancelled=3),
+        ]
+
+        # 5 attendees enrolled before snapshots
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2025-11-03"),
+            create_mock_attendee_with_date(102, 1001, "2025-11-03"),
+            create_mock_attendee_with_date(103, 1001, "2025-12-01"),
+            create_mock_attendee_with_date(104, 1001, "2025-12-01"),
+            create_mock_attendee_with_date(105, 1001, "2026-01-05"),
+        ]
+        mock_repository.fetch_status_transitions.return_value = []
+
+        result = await service.get_velocity(year=2026)
+
+        points = result.combined.weekly
+        # Find the boundary: last reconstructed and first snapshot point
+        recon_points = [p for p in points if p.data_source == "reconstructed"]
+        snap_points = [p for p in points if p.data_source == "snapshot"]
+        assert len(recon_points) > 0
+        assert len(snap_points) > 0
+
+        last_recon = recon_points[-1]
+        first_snap = snap_points[0]
+
+        # Delta at first snapshot should be snapshot enrolled minus last reconstructed enrolled
+        assert first_snap.delta == first_snap.enrolled - last_recon.enrolled
+
+    @pytest.mark.asyncio
+    async def test_no_snapshots_pure_reconstruction(self, service, mock_repository, sample_sessions):
+        """When no snapshots exist, should use pure reconstruction (existing behavior)."""
+        mock_repository.fetch_registration_dates.return_value = {"priority_reg_date": "2025-11-01"}
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+
+        mock_repository.fetch_enrollment_snapshots.return_value = []
+
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2025-11-03"),
+            create_mock_attendee_with_date(102, 1001, "2025-11-10"),
+            create_mock_attendee_with_date(103, 1001, "2025-12-01"),
+        ]
+        mock_repository.fetch_status_transitions.return_value = []
+
+        result = await service.get_velocity(year=2026)
+
+        points = result.combined.weekly
+        assert all(p.data_source == "reconstructed" for p in points)
+        assert points[-1].enrolled == 3
+
+    @pytest.mark.asyncio
+    async def test_full_coverage_snapshots_no_reconstruction(self, service, mock_repository, sample_sessions):
+        """When snapshots start from week 0 (season start), no reconstruction should be used."""
+        mock_repository.fetch_registration_dates.return_value = {"priority_reg_date": "2025-11-01"}
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+
+        # Snapshot on Nov 1 — same as season start
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2025-11-01", 1001, 2026, enrolled=10, cancelled=1),
+            create_mock_snapshot("2025-11-08", 1001, 2026, enrolled=20, cancelled=2),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        points = result.combined.weekly
+        assert all(p.data_source == "snapshot" for p in points)
+        # Should NOT call reconstruction
+        mock_repository.fetch_attendees_with_dates.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_hybrid_per_session_independent(self, service, mock_repository, sample_sessions):
+        """Each session should be stitched based on its own first snapshot date,
+        not a global first snapshot date."""
+        mock_repository.fetch_registration_dates.return_value = {"priority_reg_date": "2025-11-01"}
+        mock_repository.fetch_sessions.return_value = sample_sessions  # sessions 1001 and 1002
+
+        # Session 1001 has snapshots from Jan, Session 1002 from Feb
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=30, cancelled=2),
+            create_mock_snapshot("2026-02-07", 1002, 2026, enrolled=20, cancelled=1),
+        ]
+
+        # Reconstruction data for both sessions starting Nov
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2025-11-03"),
+            create_mock_attendee_with_date(102, 1001, "2025-12-01"),
+            create_mock_attendee_with_date(201, 1002, "2025-11-05"),
+            create_mock_attendee_with_date(202, 1002, "2025-12-10"),
+            create_mock_attendee_with_date(203, 1002, "2026-01-10"),
+        ]
+        mock_repository.fetch_status_transitions.return_value = []
+
+        result = await service.get_velocity(year=2026)
+
+        # Find per-session curves
+        s1_curve = next(c for c in result.by_session if c.session_cm_id == 1001)
+        s2_curve = next(c for c in result.by_session if c.session_cm_id == 1002)
+
+        # Session 1001: reconstruction Nov-Dec, snapshot from Jan
+        s1_snap_points = [p for p in s1_curve.weekly if p.data_source == "snapshot"]
+        s1_recon_points = [p for p in s1_curve.weekly if p.data_source == "reconstructed"]
+        assert len(s1_snap_points) > 0
+        assert len(s1_recon_points) > 0
+
+        # Session 1002: reconstruction Nov-Jan, snapshot from Feb
+        s2_snap_points = [p for p in s2_curve.weekly if p.data_source == "snapshot"]
+        s2_recon_points = [p for p in s2_curve.weekly if p.data_source == "reconstructed"]
+        assert len(s2_snap_points) > 0
+        assert len(s2_recon_points) > 0
+
+        # Session 1002 should have more reconstructed weeks than session 1001
+        # because its snapshots start later
+        assert len(s2_recon_points) > len(s1_recon_points)
+
+    @pytest.mark.asyncio
+    async def test_hybrid_cancellation_metric(self, service, mock_repository, sample_sessions):
+        """Hybrid logic should also apply to cancellation velocity curves."""
+        mock_repository.fetch_registration_dates.return_value = {"priority_reg_date": "2025-11-01"}
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+
+        # Snapshots with cancelled_count starting Feb 2026
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-02-07", 1001, 2026, enrolled=50, cancelled=8),
+            create_mock_snapshot("2026-02-14", 1001, 2026, enrolled=55, cancelled=10),
+        ]
+
+        # Cancellations from status_transitions before snapshots
+        mock_repository.fetch_status_transitions.return_value = [
+            create_mock_status_transition(101, 1001, "2025-12-01"),
+            create_mock_status_transition(102, 1001, "2025-12-15"),
+            create_mock_status_transition(103, 1001, "2026-01-10"),
+        ]
+
+        result = await service.get_velocity(year=2026, metric="cancellation")
+
+        points = result.combined.weekly
+        recon_points = [p for p in points if p.data_source == "reconstructed"]
+        snap_points = [p for p in points if p.data_source == "snapshot"]
+
+        assert len(recon_points) > 0, "Should have reconstructed cancellation points"
+        assert len(snap_points) > 0, "Should have snapshot cancellation points"
+
+        # Final snapshot point should have the snapshot's cancelled count
+        assert snap_points[-1].enrolled == 10
+
+    @pytest.mark.asyncio
+    async def test_hybrid_combined_curve_sums_correctly(self, service, mock_repository, sample_sessions):
+        """Combined curve should correctly aggregate hybrid per-session curves."""
+        mock_repository.fetch_registration_dates.return_value = {"priority_reg_date": "2025-11-01"}
+        mock_repository.fetch_sessions.return_value = sample_sessions  # 1001 and 1002
+
+        # Both sessions have snapshots from the same date
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-02-07", 1001, 2026, enrolled=50, cancelled=3),
+            create_mock_snapshot("2026-02-07", 1002, 2026, enrolled=30, cancelled=2),
+        ]
+
+        # Reconstruction for pre-snapshot period
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2025-11-03"),
+            create_mock_attendee_with_date(102, 1001, "2025-12-01"),
+            create_mock_attendee_with_date(201, 1002, "2025-11-05"),
+        ]
+        mock_repository.fetch_status_transitions.return_value = []
+
+        result = await service.get_velocity(year=2026)
+
+        # The combined snapshot week should sum both sessions
+        snap_points = [p for p in result.combined.weekly if p.data_source == "snapshot"]
+        assert len(snap_points) > 0
+        assert snap_points[0].enrolled == 80  # 50 + 30
+
+
 class TestGrossNetDeltaCombinedCurves:
     """Test that _combine_weekly_curves sums new fields across sessions."""
 
