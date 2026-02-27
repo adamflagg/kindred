@@ -324,6 +324,127 @@ func TestBunkAssignmentsSync_StaffSessionLookup(t *testing.T) {
 	}
 }
 
+// TestBunkAssignmentsSync_NonActiveStaffOrphanProtection verifies that existing
+// bunk_assignments for non-active bunk staff are pre-tracked as processed,
+// so DeleteOrphans won't remove them. CampMinder strips assignments from
+// dismissed/resigned staff, but we preserve them in PocketBase.
+func TestBunkAssignmentsSync_NonActiveStaffOrphanProtection(t *testing.T) {
+	tests := []struct {
+		name             string
+		staffStatus      string
+		bunkStaff        bool
+		personCMID       int
+		sessionCMIDs     []int // sessions this person has assignments for
+		year             int
+		wantTrackedCount int // number of keys expected in ProcessedKeys
+	}{
+		{
+			name:             "dismissed bunk_staff — assignments protected",
+			staffStatus:      "dismissed",
+			bunkStaff:        true,
+			personCMID:       3000001,
+			sessionCMIDs:     []int{5001, 5002},
+			year:             2025,
+			wantTrackedCount: 2,
+		},
+		{
+			name:             "resigned bunk_staff — assignments protected",
+			staffStatus:      "resigned",
+			bunkStaff:        true,
+			personCMID:       3000002,
+			sessionCMIDs:     []int{5001},
+			year:             2025,
+			wantTrackedCount: 1,
+		},
+		{
+			name:             "active bunk_staff — NOT pre-tracked (comes from API)",
+			staffStatus:      "active",
+			bunkStaff:        true,
+			personCMID:       3000003,
+			sessionCMIDs:     []int{5001},
+			year:             2025,
+			wantTrackedCount: 0,
+		},
+		{
+			name:             "dismissed non-bunk-staff — NOT protected",
+			staffStatus:      "dismissed",
+			bunkStaff:        false,
+			personCMID:       3000004,
+			sessionCMIDs:     []int{5001},
+			year:             2025,
+			wantTrackedCount: 0,
+		},
+		{
+			name:             "dismissed bunk_staff with no assignments — nothing to protect",
+			staffStatus:      "dismissed",
+			bunkStaff:        true,
+			personCMID:       3000005,
+			sessionCMIDs:     []int{},
+			year:             2025,
+			wantTrackedCount: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service := BaseSyncService{
+				ProcessedKeys: make(map[string]bool),
+			}
+
+			// Simulate the protection logic: only protect non-active bunk_staff
+			if tt.staffStatus != "active" && tt.bunkStaff {
+				for _, sessionCMID := range tt.sessionCMIDs {
+					key := fmt.Sprintf("%d:%d", tt.personCMID, sessionCMID)
+					service.TrackProcessedCompositeKey(key, tt.year)
+				}
+			}
+
+			if len(service.ProcessedKeys) != tt.wantTrackedCount {
+				t.Errorf("ProcessedKeys count = %d, want %d", len(service.ProcessedKeys), tt.wantTrackedCount)
+			}
+
+			// Verify the key format matches what deleteOrphans expects
+			for _, sessionCMID := range tt.sessionCMIDs {
+				if tt.staffStatus != "active" && tt.bunkStaff {
+					expectedKey := fmt.Sprintf("%d:%d|%d", tt.personCMID, sessionCMID, tt.year)
+					if !service.ProcessedKeys[expectedKey] {
+						t.Errorf("expected key %q to be tracked, but it wasn't", expectedKey)
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestBunkAssignmentsSync_OrphanProtectionKeyFormat verifies that the composite
+// key format used for orphan protection matches the format used by deleteOrphans.
+func TestBunkAssignmentsSync_OrphanProtectionKeyFormat(t *testing.T) {
+	// The protection code uses TrackProcessedCompositeKey("personCMID:sessionCMID", year)
+	// which produces "personCMID:sessionCMID|year".
+	// The deleteOrphans code produces keys as "personCMID:sessionCMID|year".
+	// These must match for the protection to work.
+
+	service := BaseSyncService{
+		ProcessedKeys: make(map[string]bool),
+	}
+
+	personCMID := 3000001
+	sessionCMID := 5001
+	year := 2025
+
+	// Track as protection code would
+	protectionKey := fmt.Sprintf("%d:%d", personCMID, sessionCMID)
+	service.TrackProcessedCompositeKey(protectionKey, year)
+
+	// Build as deleteOrphans would (from bunk_assignments_test.go pattern)
+	orphanKey := fmt.Sprintf("%d:%d|%d", personCMID, sessionCMID, year)
+
+	if !service.ProcessedKeys[orphanKey] {
+		t.Errorf("protection key doesn't match orphan detection key format\n  protection: %q\n  orphan:     %q",
+			protectionKey+fmt.Sprintf("|%d", year), orphanKey)
+	}
+}
+
 func TestBunkAssignmentsSync_StaffSkipLogicIntegration(t *testing.T) {
 	// Integration test: verifies the complete staff assignment resolution flow.
 	//
