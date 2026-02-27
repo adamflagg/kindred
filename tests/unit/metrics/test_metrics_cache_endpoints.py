@@ -40,6 +40,7 @@ def test_client(fresh_cache):
     """
     os.environ["AUTH_MODE"] = "bypass"
     os.environ["SKIP_PB_AUTH"] = "true"
+    os.environ["METRICS_SQL_ENABLED"] = "false"
 
     with patch("api.routers.metrics.metrics_cache", fresh_cache):
         from api.main import create_app
@@ -50,6 +51,7 @@ def test_client(fresh_cache):
 
     os.environ.pop("AUTH_MODE", None)
     os.environ.pop("SKIP_PB_AUTH", None)
+    os.environ.pop("METRICS_SQL_ENABLED", None)
 
 
 class TestRetentionEndpointCaching:

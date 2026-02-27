@@ -7,6 +7,9 @@ retention rates, and year-over-year comparisons.
 
 from __future__ import annotations
 
+import os
+from typing import Any
+
 from fastapi import APIRouter, Query
 
 from ..dependencies import metrics_cache, pb
@@ -24,6 +27,21 @@ from ..schemas.metrics import (
 from ..schemas.velocity import VelocityResponse
 
 router = APIRouter(prefix="/api/metrics", tags=["metrics"])
+
+
+def _create_repository() -> Any:
+    """Create the appropriate metrics repository based on configuration.
+
+    Uses direct SQLite by default (METRICS_SQL_ENABLED=true) for performance.
+    Falls back to PocketBase HTTP API when disabled.
+    """
+    if os.environ.get("METRICS_SQL_ENABLED", "true").lower() == "true":
+        from api.services.metrics_sql_repository import MetricsSQLRepository
+
+        return MetricsSQLRepository()
+    from api.services.metrics_repository import MetricsRepository
+
+    return MetricsRepository(pb)
 
 
 # ============================================================================
@@ -45,7 +63,6 @@ async def get_retention_metrics(
     Calculates what percentage of campers from base_year returned in compare_year,
     broken down by gender, grade, session, and years at camp.
     """
-    from api.services.metrics_repository import MetricsRepository
     from api.services.retention_service import RetentionService
 
     cache_params = dict(
@@ -59,7 +76,7 @@ async def get_retention_metrics(
         return cached
 
     type_filter = session_types.split(",") if session_types else None
-    repository = MetricsRepository(pb)
+    repository = _create_repository()
     service = RetentionService(repository)
     result = await service.calculate_retention(
         base_year=base_year,
@@ -101,7 +118,7 @@ async def get_registration_metrics(
     in the enrollment counts and breakdowns. Multiple statuses can be combined
     for flexible dashboard views.
     """
-    from api.services.metrics_repository import MetricsRepository
+
     from api.services.registration_service import RegistrationService
 
     cache_params = dict(
@@ -116,7 +133,7 @@ async def get_registration_metrics(
 
     type_filter = session_types.split(",") if session_types else None
     status_filter = [s.strip() for s in (statuses or "enrolled").split(",")]
-    repository = MetricsRepository(pb)
+    repository = _create_repository()
     service = RegistrationService(repository)
     result = await service.calculate_registration(year, type_filter, status_filter, session_cm_id)
     metrics_cache.set("registration", result, **cache_params)
@@ -143,7 +160,6 @@ async def get_comparison_metrics(
     between two years. Filters to summer camp sessions by default.
     """
     from api.services.comparison_service import ComparisonService
-    from api.services.metrics_repository import MetricsRepository
 
     cache_params = dict(year_a=year_a, year_b=year_b, session_types=session_types)
     cached: ComparisonMetricsResponse | None = metrics_cache.get("comparison", **cache_params)
@@ -151,7 +167,7 @@ async def get_comparison_metrics(
         return cached
 
     type_filter = session_types.split(",") if session_types else None
-    repository = MetricsRepository(pb)
+    repository = _create_repository()
     service = ComparisonService(repository)
     result = await service.calculate_comparison(
         year_a=year_a,
@@ -186,7 +202,6 @@ async def get_historical_trends(
     (e.g., "Session 2a" → "Taste of Camp 2"), so name-matching handles both cases.
     """
     from api.services.historical_service import HistoricalService
-    from api.services.metrics_repository import MetricsRepository
 
     cache_params = dict(years=years, session_types=session_types, session_cm_id=session_cm_id)
     cached: HistoricalTrendsResponse | None = metrics_cache.get("historical", **cache_params)
@@ -195,7 +210,7 @@ async def get_historical_trends(
 
     year_list = [int(y.strip()) for y in years.split(",")] if years else None
     type_filter = session_types.split(",") if session_types else None
-    repository = MetricsRepository(pb)
+    repository = _create_repository()
     service = HistoricalService(repository)
     result = await service.calculate_historical_trends(
         years=year_list,
@@ -235,7 +250,7 @@ async def get_retention_trends(
     This enables line charts for overall retention and grouped bar charts
     for breakdown categories.
     """
-    from api.services.metrics_repository import MetricsRepository
+
     from api.services.retention_trends_service import RetentionTrendsService
 
     cache_params = dict(
@@ -249,7 +264,7 @@ async def get_retention_trends(
         return cached
 
     type_filter = session_types.split(",") if session_types else None
-    repository = MetricsRepository(pb)
+    repository = _create_repository()
     service = RetentionTrendsService(repository)
     result = await service.calculate_retention_trends(
         current_year=current_year,
@@ -286,7 +301,7 @@ async def get_waitlist_metrics(
     - Previously waitlisted, now accepted (enrolled)
     - Previously waitlisted, declined (cancelled/withdrawn/dismissed)
     """
-    from api.services.metrics_repository import MetricsRepository
+
     from api.services.waitlist_service import WaitlistService
 
     cache_params = dict(year=year, session_types=session_types, session_cm_id=session_cm_id)
@@ -295,7 +310,7 @@ async def get_waitlist_metrics(
         return cached
 
     type_filter = session_types.split(",") if session_types else None
-    repository = MetricsRepository(pb)
+    repository = _create_repository()
     service = WaitlistService(repository)
     result = await service.calculate_waitlist(
         year=year,
@@ -331,7 +346,6 @@ async def get_cancellation_metrics(
     - Re-enrolled (cancelled then returned)
     """
     from api.services.cancellation_service import CancellationService
-    from api.services.metrics_repository import MetricsRepository
 
     cache_params = dict(year=year, session_types=session_types, session_cm_id=session_cm_id)
     cached: CancellationMetricsResponse | None = metrics_cache.get("cancellations", **cache_params)
@@ -339,7 +353,7 @@ async def get_cancellation_metrics(
         return cached
 
     type_filter = session_types.split(",") if session_types else None
-    repository = MetricsRepository(pb)
+    repository = _create_repository()
     service = CancellationService(repository)
     result = await service.calculate_cancellations(
         year=year,
@@ -391,12 +405,11 @@ async def get_drilldown_attendees(
     Returns individual attendee records with person details for modal display.
     """
     from api.services.drilldown_service import DrilldownService
-    from api.services.metrics_repository import MetricsRepository
 
     session_types_list = session_types.split(",") if session_types else None
     status_list = status_filter.split(",") if status_filter else None
 
-    repository = MetricsRepository(pb)
+    repository = _create_repository()
     service = DrilldownService(repository)
 
     return await service.get_attendees_for_breakdown(
@@ -425,7 +438,7 @@ async def get_velocity(
     metric: str = Query("enrollment", description="'enrollment' or 'cancellation'"),
 ) -> VelocityResponse:
     """Get registration velocity curves with week-over-week data."""
-    from api.services.metrics_repository import MetricsRepository
+
     from api.services.velocity_service import VelocityService
 
     cache_params = dict(
@@ -442,7 +455,7 @@ async def get_velocity(
 
     compare_year_list = [int(y.strip()) for y in compare_years.split(",")] if compare_years else None
     type_filter = session_types.split(",") if session_types else None
-    repository = MetricsRepository(pb)
+    repository = _create_repository()
     service = VelocityService(repository)
     result = await service.get_velocity(
         year=year,
@@ -469,7 +482,6 @@ async def get_forecast(
 ) -> ForecastResponse:
     """Get registration forecast with budget goals, capacity, and revenue projections."""
     from api.services.forecast_service import ForecastService
-    from api.services.metrics_repository import MetricsRepository
 
     cache_params = dict(year=year, session_types=session_types, session_cm_id=session_cm_id)
     cached: ForecastResponse | None = metrics_cache.get("forecast", **cache_params)
@@ -477,7 +489,7 @@ async def get_forecast(
         return cached
 
     type_filter = session_types.split(",") if session_types else None
-    repository = MetricsRepository(pb)
+    repository = _create_repository()
     service = ForecastService(repository)
     result = await service.calculate_forecast(
         year=year,
