@@ -34,7 +34,11 @@ function getEnrolledDisplay(a: DrilldownAttendee): string {
 /** Format a date string as short locale date (e.g. "Nov 10, 2025"). */
 function formatDate(dateStr: string | undefined | null): string {
   if (!dateStr) return '—'
-  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  return new Date(dateStr).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
 }
 
 /** Get the best registration date: effective_date if available, fallback to enrollment_date. */

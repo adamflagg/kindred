@@ -10,7 +10,15 @@
  */
 
 import { useMemo } from 'react'
-import { XCircle, Users, UserMinus, AlertTriangle, Clock, ArrowLeftRight, CalendarDays } from 'lucide-react'
+import {
+  XCircle,
+  Users,
+  UserMinus,
+  AlertTriangle,
+  Clock,
+  ArrowLeftRight,
+  CalendarDays,
+} from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useDrilldown } from '../../../hooks/useDrilldown'
@@ -199,7 +207,9 @@ export default function CancellationAnalysis() {
                       <ArrowLeftRight className="h-3.5 w-3.5" />
                       Session Swaps
                     </div>
-                    <div className="text-foreground text-2xl font-bold">{data.session_swap_count}</div>
+                    <div className="text-foreground text-2xl font-bold">
+                      {data.session_swap_count}
+                    </div>
                     <p className="text-muted-foreground mt-1 text-xs">
                       Cancelled one session, enrolled in another
                     </p>
@@ -211,10 +221,10 @@ export default function CancellationAnalysis() {
                       <UserMinus className="h-3.5 w-3.5" />
                       True Departures
                     </div>
-                    <div className="text-foreground text-2xl font-bold">{data.true_departure_count}</div>
-                    <p className="text-muted-foreground mt-1 text-xs">
-                      Left camp entirely
-                    </p>
+                    <div className="text-foreground text-2xl font-bold">
+                      {data.true_departure_count}
+                    </div>
+                    <p className="text-muted-foreground mt-1 text-xs">Left camp entirely</p>
                   </div>
                 )}
                 {data.avg_days_to_cancellation != null && (
@@ -223,7 +233,9 @@ export default function CancellationAnalysis() {
                       <Clock className="h-3.5 w-3.5" />
                       Avg Time to Cancel
                     </div>
-                    <div className="text-foreground text-2xl font-bold">{Math.round(data.avg_days_to_cancellation)} days</div>
+                    <div className="text-foreground text-2xl font-bold">
+                      {Math.round(data.avg_days_to_cancellation)} days
+                    </div>
                     <p className="text-muted-foreground mt-1 text-xs">
                       From registration to cancellation
                     </p>
@@ -235,7 +247,9 @@ export default function CancellationAnalysis() {
                       <CalendarDays className="h-3.5 w-3.5" />
                       Median Time to Cancel
                     </div>
-                    <div className="text-foreground text-2xl font-bold">{Math.round(data.median_days_to_cancellation)} days</div>
+                    <div className="text-foreground text-2xl font-bold">
+                      {Math.round(data.median_days_to_cancellation)} days
+                    </div>
                     <p className="text-muted-foreground mt-1 text-xs">
                       Middle value, less affected by outliers
                     </p>
@@ -247,7 +261,9 @@ export default function CancellationAnalysis() {
             {/* Time-to-Cancellation Distribution */}
             {data.time_to_cancellation_buckets && data.time_to_cancellation_buckets.length > 0 && (
               <div className="border-border bg-card rounded-lg border p-4">
-                <h3 className="text-foreground mb-3 text-sm font-semibold">Time to Cancellation Distribution</h3>
+                <h3 className="text-foreground mb-3 text-sm font-semibold">
+                  Time to Cancellation Distribution
+                </h3>
                 <div className="space-y-2">
                   {data.time_to_cancellation_buckets.map((bucket) => (
                     <div key={bucket.label} className="flex items-center gap-3">
@@ -270,7 +286,9 @@ export default function CancellationAnalysis() {
             {/* Registration Month Breakdown */}
             {data.by_registration_month && data.by_registration_month.length > 0 && (
               <div className="border-border bg-card rounded-lg border p-4">
-                <h3 className="text-foreground mb-3 text-sm font-semibold">Cancellations by Registration Month</h3>
+                <h3 className="text-foreground mb-3 text-sm font-semibold">
+                  Cancellations by Registration Month
+                </h3>
                 <div className="space-y-2">
                   {data.by_registration_month.map((item) => (
                     <div key={item.month} className="flex items-center gap-3">
