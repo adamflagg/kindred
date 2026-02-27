@@ -188,27 +188,27 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 		}
 		waitlistedCount := len(waitlistedRecords)
 
-		// Count canceled
-		canceledFilter := fmt.Sprintf("year = %d && session = '%s' && status = 'canceled'", year, sessionPBID)
-		canceledRecords, err := s.App.FindRecordsByFilter("attendees", canceledFilter, "", 0, 0)
+		// Count cancelled
+		cancelledFilter := fmt.Sprintf("year = %d && session = '%s' && status = 'cancelled'", year, sessionPBID)
+		cancelledRecords, err := s.App.FindRecordsByFilter("attendees", cancelledFilter, "", 0, 0)
 		if err != nil {
-			slog.Error("Error counting canceled attendees", "session", sessionCMID, "error", err)
+			slog.Error("Error counting cancelled attendees", "session", sessionCMID, "error", err)
 			s.Stats.Errors++
 			continue
 		}
-		canceledCount := len(canceledRecords)
+		cancelledCount := len(cancelledRecords)
 
 		// Count by gender using already-fetched record slices
 		enrolledMale, enrolledFemale := countByGender(enrolledRecords, personGenderMap)
 		waitlistedMale, waitlistedFemale := countByGender(waitlistedRecords, personGenderMap)
-		cancelledMale, cancelledFemale := countByGender(canceledRecords, personGenderMap)
+		cancelledMale, cancelledFemale := countByGender(cancelledRecords, personGenderMap)
 
 		if s.Debug {
 			slog.Info("Enrollment counts",
 				"session_cm_id", sessionCMID,
 				"enrolled", enrolledCount,
 				"waitlisted", waitlistedCount,
-				"canceled", canceledCount,
+				"cancelled", cancelledCount,
 				"enrolled_m", enrolledMale,
 				"enrolled_f", enrolledFemale,
 			)
@@ -240,7 +240,7 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 
 			if int(existingEnrolled) == enrolledCount &&
 				int(existingWaitlisted) == waitlistedCount &&
-				int(existingCancelled) == canceledCount &&
+				int(existingCancelled) == cancelledCount &&
 				int(existingEnrolledMale) == enrolledMale &&
 				int(existingEnrolledFemale) == enrolledFemale &&
 				int(existingWaitlistedMale) == waitlistedMale &&
@@ -254,7 +254,7 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 			// Update existing record
 			existing.Set("enrolled_count", enrolledCount)
 			existing.Set("waitlisted_count", waitlistedCount)
-			existing.Set("cancelled_count", canceledCount)
+			existing.Set("cancelled_count", cancelledCount)
 			existing.Set("enrolled_male_count", enrolledMale)
 			existing.Set("enrolled_female_count", enrolledFemale)
 			existing.Set("waitlisted_male_count", waitlistedMale)
@@ -281,7 +281,7 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 			record.Set("session", sessionPBID)
 			record.Set("enrolled_count", enrolledCount)
 			record.Set("waitlisted_count", waitlistedCount)
-			record.Set("cancelled_count", canceledCount)
+			record.Set("cancelled_count", cancelledCount)
 			record.Set("enrolled_male_count", enrolledMale)
 			record.Set("enrolled_female_count", enrolledFemale)
 			record.Set("waitlisted_male_count", waitlistedMale)
