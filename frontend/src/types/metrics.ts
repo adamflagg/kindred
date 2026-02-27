@@ -462,6 +462,18 @@ export interface WaitlistMetrics {
 }
 
 // Cancellation analysis types
+export interface TimeBucket {
+  label: string
+  count: number
+  percentage: number
+}
+
+export interface RegistrationMonthBreakdown {
+  month: string
+  count: number
+  percentage: number
+}
+
 export interface CancellationSessionBreakdown {
   session_cm_id: number
   session_name: string
@@ -472,6 +484,7 @@ export interface CancellationSessionBreakdown {
   other_prior_status: number
   has_other_sessions: number
   no_other_sessions: number
+  session_swap_count?: number
 }
 
 export interface CancellationMetrics {
@@ -484,6 +497,12 @@ export interface CancellationMetrics {
   has_other_sessions: number
   no_other_sessions: number
   total_re_enrolled: number
+  session_swap_count?: number
+  true_departure_count?: number
+  avg_days_to_cancellation?: number | null
+  median_days_to_cancellation?: number | null
+  time_to_cancellation_buckets?: TimeBucket[]
+  by_registration_month?: RegistrationMonthBreakdown[]
   by_session: CancellationSessionBreakdown[]
   by_grade: GradeBreakdown[]
   by_gender: GenderBreakdown[]
