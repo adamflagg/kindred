@@ -896,18 +896,24 @@ class VelocityService:
         return None
 
     @staticmethod
+    def _parse_date_only(value: str) -> str:
+        """Extract YYYY-MM-DD from a datetime string that may include time/timezone."""
+        return value.split("T")[0].split(" ")[0]
+
+    @staticmethod
     def _get_enrollment_date(att: Any) -> str | None:
         """Get the enrollment date for an attendee, preferring effective_date over enrollment_date."""
         ed = getattr(att, "effective_date", "") or ""
         if ed:
-            return ed.split("T")[0].split(" ")[0]
+            return VelocityService._parse_date_only(ed)
         fallback = getattr(att, "enrollment_date", "") or ""
         if fallback:
-            return fallback.split("T")[0].split(" ")[0]
+            return VelocityService._parse_date_only(fallback)
         return None
 
     # Statuses that count as enrollments in velocity curves
     _ENROLLMENT_STATUSES = {2, 32, 256}  # enrolled, cancelled, withdrawn
+    _CANCELLATION_STATUSES = {32, 256}  # cancelled, withdrawn
 
     async def _curves_from_reconstruction(
         self,
@@ -958,13 +964,13 @@ class VelocityService:
                     session_daily_enrollments[effective_sid][date_key] += 1
 
             # Cancellation event: for cancelled/withdrawn, use enrollment_date (PostDate = cancel date)
-            if status_id in (32, 256):
-                cancel_date_str = getattr(att, "enrollment_date", "") or ""
-                if cancel_date_str:
-                    cancel_dt = datetime.strptime(cancel_date_str.split("T")[0].split(" ")[0], "%Y-%m-%d")
+            if status_id in self._CANCELLATION_STATUSES:
+                cancel_date_raw = getattr(att, "enrollment_date", "") or ""
+                if cancel_date_raw:
+                    cancel_date_str = self._parse_date_only(cancel_date_raw)
+                    cancel_dt = datetime.strptime(cancel_date_str, "%Y-%m-%d")
                     if season_start.date() <= cancel_dt.date() <= season_end.date():
-                        cancel_key = cancel_dt.strftime("%Y-%m-%d")
-                        session_daily_cancellations[effective_sid][cancel_key] += 1
+                        session_daily_cancellations[effective_sid][cancel_date_str] += 1
                         total_cancellation_count += 1
 
         # Filter by session if specified
@@ -1108,9 +1114,7 @@ class VelocityService:
             if not enroll_date_str:
                 continue
             dt = datetime.strptime(enroll_date_str, "%Y-%m-%d")
-            if dt.date() < season_start.date():
-                continue
-            if dt.date() > season_end.date():
+            if not (season_start.date() <= dt.date() <= season_end.date()):
                 continue
             date_key = dt.strftime("%Y-%m-%d")
             gender_session_daily[gender][effective_sid][date_key] += 1

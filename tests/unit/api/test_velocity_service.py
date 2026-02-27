@@ -108,6 +108,38 @@ _STATUS_ID_MAP = {
 }
 
 
+def make_weekly_point(
+    week_start: str,
+    week_label: str,
+    week_number: int,
+    enrolled: int,
+    *,
+    waitlisted: int = 0,
+    delta: int = 0,
+    data_source: str = "reconstructed",
+    gross_enrolled: int | None = None,
+    weekly_new: int = 0,
+    weekly_cancelled: int = 0,
+    is_partial: bool = False,
+    days_in_week: int = 7,
+) -> WeeklyDataPoint:
+    """Create a WeeklyDataPoint with sensible defaults for testing."""
+    return WeeklyDataPoint(
+        week_start=week_start,
+        week_label=week_label,
+        week_number=week_number,
+        enrolled=enrolled,
+        waitlisted=waitlisted,
+        delta=delta,
+        data_source=data_source,
+        gross_enrolled=gross_enrolled if gross_enrolled is not None else enrolled,
+        weekly_new=weekly_new,
+        weekly_cancelled=weekly_cancelled,
+        is_partial=is_partial,
+        days_in_week=days_in_week,
+    )
+
+
 def create_mock_attendee_with_date(
     person_id: int,
     session_cm_id: int,
@@ -3093,54 +3125,14 @@ class TestCombineCarryForward:
     def test_combine_carries_forward_sparse_session_values(self, service):
         """Session A has week 1+2, Session B only week 1. In week 2, Session B should carry forward."""
         session_a = [
-            WeeklyDataPoint(
-                week_start="2026-01-05",
-                week_label="Jan 5",
-                week_number=1,
-                enrolled=10,
-                waitlisted=0,
-                delta=10,
-                data_source="reconstructed",
-                gross_enrolled=10,
-                weekly_new=10,
-                weekly_cancelled=0,
-                is_partial=False,
-                days_in_week=7,
-            ),
-            WeeklyDataPoint(
-                week_start="2026-01-12",
-                week_label="Jan 12",
-                week_number=2,
-                enrolled=15,
-                waitlisted=0,
-                delta=5,
-                data_source="reconstructed",
-                gross_enrolled=15,
-                weekly_new=5,
-                weekly_cancelled=0,
-                is_partial=False,
-                days_in_week=7,
-            ),
+            make_weekly_point("2026-01-05", "Jan 5", 1, enrolled=10, delta=10, weekly_new=10),
+            make_weekly_point("2026-01-12", "Jan 12", 2, enrolled=15, delta=5, weekly_new=5),
         ]
         session_b = [
-            WeeklyDataPoint(
-                week_start="2026-01-05",
-                week_label="Jan 5",
-                week_number=1,
-                enrolled=20,
-                waitlisted=0,
-                delta=20,
-                data_source="reconstructed",
-                gross_enrolled=20,
-                weekly_new=20,
-                weekly_cancelled=0,
-                is_partial=False,
-                days_in_week=7,
-            ),
+            make_weekly_point("2026-01-05", "Jan 5", 1, enrolled=20, delta=20, weekly_new=20),
             # No data for week 2 — Session B should carry forward enrolled=20
         ]
-        per_session_data = {1001: session_a, 1002: session_b}
-        result = service._combine_weekly_curves(per_session_data)
+        result = service._combine_weekly_curves({1001: session_a, 1002: session_b})
 
         assert len(result) == 2
         # Week 1: 10 + 20 = 30
@@ -3153,54 +3145,14 @@ class TestCombineCarryForward:
     def test_combine_no_carry_forward_before_first_point(self, service):
         """Session B starts in week 2 — should NOT carry back into week 1."""
         session_a = [
-            WeeklyDataPoint(
-                week_start="2026-01-05",
-                week_label="Jan 5",
-                week_number=1,
-                enrolled=10,
-                waitlisted=0,
-                delta=10,
-                data_source="reconstructed",
-                gross_enrolled=10,
-                weekly_new=10,
-                weekly_cancelled=0,
-                is_partial=False,
-                days_in_week=7,
-            ),
-            WeeklyDataPoint(
-                week_start="2026-01-12",
-                week_label="Jan 12",
-                week_number=2,
-                enrolled=15,
-                waitlisted=0,
-                delta=5,
-                data_source="reconstructed",
-                gross_enrolled=15,
-                weekly_new=5,
-                weekly_cancelled=0,
-                is_partial=False,
-                days_in_week=7,
-            ),
+            make_weekly_point("2026-01-05", "Jan 5", 1, enrolled=10, delta=10, weekly_new=10),
+            make_weekly_point("2026-01-12", "Jan 12", 2, enrolled=15, delta=5, weekly_new=5),
         ]
         session_b = [
             # Session B only starts in week 2
-            WeeklyDataPoint(
-                week_start="2026-01-12",
-                week_label="Jan 12",
-                week_number=2,
-                enrolled=20,
-                waitlisted=0,
-                delta=20,
-                data_source="reconstructed",
-                gross_enrolled=20,
-                weekly_new=20,
-                weekly_cancelled=0,
-                is_partial=False,
-                days_in_week=7,
-            ),
+            make_weekly_point("2026-01-12", "Jan 12", 2, enrolled=20, delta=20, weekly_new=20),
         ]
-        per_session_data = {1001: session_a, 1002: session_b}
-        result = service._combine_weekly_curves(per_session_data)
+        result = service._combine_weekly_curves({1001: session_a, 1002: session_b})
 
         assert len(result) == 2
         # Week 1: Only Session A contributes (10)
@@ -3211,67 +3163,14 @@ class TestCombineCarryForward:
     def test_combine_dense_curves_unchanged(self, service):
         """When all sessions have data for all weeks, carry-forward doesn't change results."""
         session_a = [
-            WeeklyDataPoint(
-                week_start="2026-01-05",
-                week_label="Jan 5",
-                week_number=1,
-                enrolled=10,
-                waitlisted=0,
-                delta=10,
-                data_source="snapshot",
-                gross_enrolled=10,
-                weekly_new=10,
-                weekly_cancelled=0,
-                is_partial=False,
-                days_in_week=7,
-            ),
-            WeeklyDataPoint(
-                week_start="2026-01-12",
-                week_label="Jan 12",
-                week_number=2,
-                enrolled=15,
-                waitlisted=0,
-                delta=5,
-                data_source="snapshot",
-                gross_enrolled=15,
-                weekly_new=5,
-                weekly_cancelled=0,
-                is_partial=False,
-                days_in_week=7,
-            ),
+            make_weekly_point("2026-01-05", "Jan 5", 1, enrolled=10, delta=10, data_source="snapshot", weekly_new=10),
+            make_weekly_point("2026-01-12", "Jan 12", 2, enrolled=15, delta=5, data_source="snapshot", weekly_new=5),
         ]
         session_b = [
-            WeeklyDataPoint(
-                week_start="2026-01-05",
-                week_label="Jan 5",
-                week_number=1,
-                enrolled=20,
-                waitlisted=0,
-                delta=20,
-                data_source="snapshot",
-                gross_enrolled=20,
-                weekly_new=20,
-                weekly_cancelled=0,
-                is_partial=False,
-                days_in_week=7,
-            ),
-            WeeklyDataPoint(
-                week_start="2026-01-12",
-                week_label="Jan 12",
-                week_number=2,
-                enrolled=25,
-                waitlisted=0,
-                delta=5,
-                data_source="snapshot",
-                gross_enrolled=25,
-                weekly_new=5,
-                weekly_cancelled=0,
-                is_partial=False,
-                days_in_week=7,
-            ),
+            make_weekly_point("2026-01-05", "Jan 5", 1, enrolled=20, delta=20, data_source="snapshot", weekly_new=20),
+            make_weekly_point("2026-01-12", "Jan 12", 2, enrolled=25, delta=5, data_source="snapshot", weekly_new=5),
         ]
-        per_session_data = {1001: session_a, 1002: session_b}
-        result = service._combine_weekly_curves(per_session_data)
+        result = service._combine_weekly_curves({1001: session_a, 1002: session_b})
 
         assert len(result) == 2
         assert result[0].enrolled == 30  # 10 + 20
@@ -3280,54 +3179,23 @@ class TestCombineCarryForward:
     def test_combine_weekly_new_zero_for_carried_forward(self, service):
         """Carried-forward weeks should contribute 0 for weekly_new and weekly_cancelled."""
         session_a = [
-            WeeklyDataPoint(
-                week_start="2026-01-05",
-                week_label="Jan 5",
-                week_number=1,
-                enrolled=10,
-                waitlisted=0,
-                delta=10,
-                data_source="reconstructed",
-                gross_enrolled=10,
-                weekly_new=10,
-                weekly_cancelled=0,
-                is_partial=False,
-                days_in_week=7,
-            ),
-            WeeklyDataPoint(
-                week_start="2026-01-12",
-                week_label="Jan 12",
-                week_number=2,
-                enrolled=15,
-                waitlisted=0,
-                delta=5,
-                data_source="reconstructed",
-                gross_enrolled=15,
-                weekly_new=5,
-                weekly_cancelled=0,
-                is_partial=False,
-                days_in_week=7,
-            ),
+            make_weekly_point("2026-01-05", "Jan 5", 1, enrolled=10, delta=10, weekly_new=10),
+            make_weekly_point("2026-01-12", "Jan 12", 2, enrolled=15, delta=5, weekly_new=5),
         ]
         session_b = [
-            WeeklyDataPoint(
-                week_start="2026-01-05",
-                week_label="Jan 5",
-                week_number=1,
+            make_weekly_point(
+                "2026-01-05",
+                "Jan 5",
+                1,
                 enrolled=8,
-                waitlisted=0,
                 delta=8,
-                data_source="reconstructed",
                 gross_enrolled=10,
                 weekly_new=10,
                 weekly_cancelled=2,
-                is_partial=False,
-                days_in_week=7,
             ),
             # Gap in week 2 — carry forward enrolled=8, but weekly_new and weekly_cancelled should be 0
         ]
-        per_session_data = {1001: session_a, 1002: session_b}
-        result = service._combine_weekly_curves(per_session_data)
+        result = service._combine_weekly_curves({1001: session_a, 1002: session_b})
 
         # Week 2: weekly_new should only come from Session A (5), not Session B (carried = 0)
         assert result[1].weekly_new == 5
