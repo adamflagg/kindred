@@ -582,6 +582,18 @@ class WaitlistMetricsResponse(BaseModel):
     waitlisted_has_enrollment: int = Field(description="Waitlisted but enrolled in other sessions (UC2)")
     total_accepted: int = Field(description="Previously waitlisted, now enrolled (UC3)")
     total_declined: int = Field(description="Previously waitlisted, declined placement (UC4)")
+    avg_days_to_acceptance: float | None = Field(
+        default=None, description="Avg days from waitlist application to acceptance"
+    )
+    median_days_to_acceptance: float | None = Field(
+        default=None, description="Median days from waitlist application to acceptance"
+    )
+    avg_days_to_decline: float | None = Field(
+        default=None, description="Avg days from waitlist application to decline"
+    )
+    median_days_to_decline: float | None = Field(
+        default=None, description="Median days from waitlist application to decline"
+    )
     by_session: list[WaitlistSessionBreakdown] = Field(
         default_factory=list, description="Per-session waitlist breakdown"
     )

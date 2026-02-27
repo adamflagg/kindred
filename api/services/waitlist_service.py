@@ -170,6 +170,18 @@ class WaitlistService:
             if session_cmid:
                 waitlisted_by_session[session_cmid]["declined"] += 1
 
+        # --- Waitlist duration tracking ---
+        # Build attendee lookup by person_id for date access
+        all_fetched_attendees = waitlisted_attendees + enrolled_attendees
+        attendee_by_person: dict[int, Any] = {}
+        for att in all_fetched_attendees:
+            pid = getattr(att, "person_id", None)
+            if pid is not None:
+                attendee_by_person[int(pid)] = att
+
+        acceptance_duration = self._compute_waitlist_duration(accepted_persons, attendee_by_person)
+        decline_duration = self._compute_waitlist_duration(declined_persons, attendee_by_person)
+
         # --- Merge AG session counts into parent main sessions ---
         ag_parent_map = build_ag_parent_map(filtered_sessions)
         merged_by_session: dict[int, dict[str, int]] = {}
@@ -240,6 +252,10 @@ class WaitlistService:
             waitlisted_has_enrollment=len(waitlisted_has_enrollment),
             total_accepted=len(accepted_persons),
             total_declined=len(declined_persons),
+            avg_days_to_acceptance=acceptance_duration["avg"],
+            median_days_to_acceptance=acceptance_duration["median"],
+            avg_days_to_decline=decline_duration["avg"],
+            median_days_to_decline=decline_duration["median"],
             by_session=by_session,
             by_grade=by_grade,
             by_gender=by_gender,
@@ -318,3 +334,49 @@ class WaitlistService:
         ]
 
         return by_grade, by_gender
+
+    @staticmethod
+    def _compute_waitlist_duration(
+        person_ids: set[int],
+        attendee_by_person: dict[int, Any],
+    ) -> dict[str, float | None]:
+        """Compute avg/median days between effective_date and enrollment_date for a set of persons.
+
+        Returns dict with 'avg' and 'median' keys, both None if no valid records found.
+        """
+        from datetime import datetime
+
+        days_list: list[int] = []
+
+        for pid in person_ids:
+            att = attendee_by_person.get(pid)
+            if att is None:
+                continue
+
+            eff_str = getattr(att, "effective_date", None)
+            enr_str = getattr(att, "enrollment_date", None)
+            if not eff_str or not enr_str:
+                continue
+
+            try:
+                eff_date = datetime.strptime(str(eff_str)[:10], "%Y-%m-%d")
+                enr_date = datetime.strptime(str(enr_str)[:10], "%Y-%m-%d")
+                days = (enr_date - eff_date).days
+                if days >= 0:
+                    days_list.append(days)
+            except (ValueError, IndexError):
+                continue
+
+        if not days_list:
+            return {"avg": None, "median": None}
+
+        avg_days = sum(days_list) / len(days_list)
+        sorted_days = sorted(days_list)
+        n = len(sorted_days)
+        median_days = (
+            sorted_days[n // 2]
+            if n % 2 == 1
+            else (sorted_days[n // 2 - 1] + sorted_days[n // 2]) / 2.0
+        )
+
+        return {"avg": round(avg_days, 1), "median": round(median_days, 1)}
