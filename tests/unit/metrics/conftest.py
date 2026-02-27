@@ -112,14 +112,14 @@ def _create_schema(conn: sqlite3.Connection) -> None:
             cancelled_female_count INTEGER DEFAULT 0
         );
 
-        CREATE TABLE field_definitions (
+        CREATE TABLE custom_field_defs (
             id TEXT PRIMARY KEY,
             name TEXT
         );
 
         CREATE TABLE household_custom_values (
             id TEXT PRIMARY KEY,
-            field TEXT,
+            field_definition TEXT,
             household TEXT,
             year INTEGER NOT NULL,
             value TEXT
@@ -312,7 +312,7 @@ def _seed_data(conn: sqlite3.Connection) -> None:
     conn.executemany(
         "INSERT INTO config VALUES (?,?,?,?,?)",
         [
-            ("cfg_cap", "constraint", "cabin_capacity", "default", "12"),
+            ("cfg_cap", "constraint", "cabin_capacity", "default", json.dumps(12)),
             (
                 "cfg_bud1",
                 "budget",
@@ -327,9 +327,9 @@ def _seed_data(conn: sqlite3.Connection) -> None:
                 "session_1000002",
                 json.dumps({"participant_goal": 120, "session_fee": 4500}),
             ),
-            ("cfg_reg1", "registration", "2025", "priority_reg_date", "2025-01-01"),
-            ("cfg_reg2", "registration", "2025", "early_reg_date", "2025-01-15"),
-            ("cfg_reg3", "registration", "2025", "open_reg_date", "2025-02-01"),
+            ("cfg_reg1", "registration", "2025", "priority_reg_date", json.dumps("2025-01-01")),
+            ("cfg_reg2", "registration", "2025", "early_reg_date", json.dumps("2025-01-15")),
+            ("cfg_reg3", "registration", "2025", "open_reg_date", json.dumps("2025-02-01")),
         ],
     )
 
@@ -365,7 +365,7 @@ def _seed_data(conn: sqlite3.Connection) -> None:
 
     # -- Field Definitions --
     conn.execute(
-        "INSERT INTO field_definitions VALUES (?,?)",
+        "INSERT INTO custom_field_defs VALUES (?,?)",
         ("fd_syn", "Synagogue"),
     )
 
