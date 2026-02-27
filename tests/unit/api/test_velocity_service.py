@@ -1871,6 +1871,7 @@ class TestSchemaNewFields:
             prior_years=[],
             phase_markers=[],
             cancelled_to_date=None,
+            session_swap_count=0,
         )
         assert response.warnings == []
 
@@ -1885,6 +1886,7 @@ class TestSchemaNewFields:
             prior_years=[],
             phase_markers=[],
             cancelled_to_date=None,
+            session_swap_count=0,
             warnings=["Year 2026 has no priority registration date configured"],
         )
         assert len(response.warnings) == 1
