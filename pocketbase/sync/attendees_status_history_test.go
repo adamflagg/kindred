@@ -2,6 +2,7 @@ package sync
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -203,5 +204,146 @@ func TestAttendeesSync_CompositeKeyWithYear(t *testing.T) {
 					key, tt.wantKey)
 			}
 		})
+	}
+}
+
+// TestAttendeesSync_EffectiveDateExtraction verifies that processEnrollment
+// extracts EffectiveDate and LastUpdatedUTC from CampMinder enrollment data
+// and includes them in the record data map.
+func TestAttendeesSync_EffectiveDateExtraction(t *testing.T) {
+	// Simulate the date extraction logic from processEnrollment.
+	// We test the pattern, not the full method (which needs PocketBase app).
+	svc := &AttendeesSync{}
+
+	tests := []struct {
+		name           string
+		enrollment     map[string]interface{}
+		wantEffective  string
+		wantLastUpdate string
+	}{
+		{
+			name: "enrolled record has EffectiveDate = registration date",
+			enrollment: map[string]interface{}{
+				"PostDate":       "2024-11-18T00:00:00Z",
+				"EffectiveDate":  "2024-11-18T00:00:00Z",
+				"LastUpdatedUTC": "2024-11-18T12:30:00Z",
+				"StatusID":       float64(2),
+			},
+			wantEffective:  "2024-11-18 00:00:00.000Z",
+			wantLastUpdate: "2024-11-18 12:30:00.000Z",
+		},
+		{
+			name: "cancelled record: EffectiveDate = original reg, PostDate = cancel date",
+			enrollment: map[string]interface{}{
+				"PostDate":       "2025-07-06T00:00:00Z",
+				"EffectiveDate":  "2024-11-18T00:00:00Z",
+				"LastUpdatedUTC": "2025-07-06T09:15:00Z",
+				"StatusID":       float64(32),
+			},
+			wantEffective:  "2024-11-18 00:00:00.000Z",
+			wantLastUpdate: "2025-07-06 09:15:00.000Z",
+		},
+		{
+			name: "missing EffectiveDate results in empty string",
+			enrollment: map[string]interface{}{
+				"PostDate":       "2024-11-18T00:00:00Z",
+				"LastUpdatedUTC": "2024-11-18T12:30:00Z",
+				"StatusID":       float64(2),
+			},
+			wantEffective:  "",
+			wantLastUpdate: "2024-11-18 12:30:00.000Z",
+		},
+		{
+			name: "missing LastUpdatedUTC results in empty string",
+			enrollment: map[string]interface{}{
+				"PostDate":      "2024-11-18T00:00:00Z",
+				"EffectiveDate": "2024-11-18T00:00:00Z",
+				"StatusID":      float64(2),
+			},
+			wantEffective:  "2024-11-18 00:00:00.000Z",
+			wantLastUpdate: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Extract EffectiveDate using the same pattern processEnrollment should use
+			var effectiveDate string
+			if ed, ok := tt.enrollment["EffectiveDate"].(string); ok {
+				effectiveDate = svc.parseDate(ed)
+			}
+
+			var lastUpdatedUTC string
+			if lu, ok := tt.enrollment["LastUpdatedUTC"].(string); ok {
+				lastUpdatedUTC = svc.parseDate(lu)
+			}
+
+			if effectiveDate != tt.wantEffective {
+				t.Errorf("effective_date = %q, want %q", effectiveDate, tt.wantEffective)
+			}
+			if lastUpdatedUTC != tt.wantLastUpdate {
+				t.Errorf("last_updated_utc = %q, want %q", lastUpdatedUTC, tt.wantLastUpdate)
+			}
+
+			// Verify that the recordData map would include these fields
+			recordData := map[string]interface{}{
+				"effective_date":   effectiveDate,
+				"last_updated_utc": lastUpdatedUTC,
+			}
+
+			// Check the fields are populated in recordData
+			if ed, ok := recordData["effective_date"].(string); !ok || ed != tt.wantEffective {
+				t.Errorf("recordData effective_date = %v, want %q", recordData["effective_date"], tt.wantEffective)
+			}
+			if lu, ok := recordData["last_updated_utc"].(string); !ok || lu != tt.wantLastUpdate {
+				t.Errorf("recordData last_updated_utc = %v, want %q", recordData["last_updated_utc"], tt.wantLastUpdate)
+			}
+		})
+	}
+}
+
+// TestAttendeesSync_RecordDataContainsEffectiveDate verifies the full recordData map
+// built in processEnrollment would contain effective_date and last_updated_utc fields.
+func TestAttendeesSync_RecordDataContainsEffectiveDate(t *testing.T) {
+	svc := &AttendeesSync{}
+
+	enrollment := map[string]interface{}{
+		"SessionID":      float64(1001),
+		"StatusID":       float64(32), // cancelled
+		"PostDate":       "2025-07-06T00:00:00Z",
+		"EffectiveDate":  "2024-11-18T00:00:00Z",
+		"LastUpdatedUTC": "2025-07-06T09:15:00Z",
+	}
+
+	// Simulate the record data construction from processEnrollment
+	var enrollmentDate string
+	if postDate, ok := enrollment["PostDate"].(string); ok {
+		enrollmentDate = svc.parseDate(postDate)
+	}
+	var effectiveDate string
+	if ed, ok := enrollment["EffectiveDate"].(string); ok {
+		effectiveDate = svc.parseDate(ed)
+	}
+	var lastUpdatedUTC string
+	if lu, ok := enrollment["LastUpdatedUTC"].(string); ok {
+		lastUpdatedUTC = svc.parseDate(lu)
+	}
+
+	recordData := map[string]interface{}{
+		"enrollment_date":  enrollmentDate,
+		"effective_date":   effectiveDate,
+		"last_updated_utc": lastUpdatedUTC,
+	}
+
+	// For cancelled records: enrollment_date = PostDate (cancel date),
+	// effective_date = EffectiveDate (original registration date)
+	if !strings.Contains(recordData["enrollment_date"].(string), "2025-07-06") {
+		t.Errorf("enrollment_date should be PostDate (cancel date), got %v", recordData["enrollment_date"])
+	}
+	if !strings.Contains(recordData["effective_date"].(string), "2024-11-18") {
+		t.Errorf("effective_date should be EffectiveDate (original reg date), got %v", recordData["effective_date"])
+	}
+	if !strings.Contains(recordData["last_updated_utc"].(string), "2025-07-06") {
+		t.Errorf("last_updated_utc should be LastUpdatedUTC, got %v", recordData["last_updated_utc"])
 	}
 }

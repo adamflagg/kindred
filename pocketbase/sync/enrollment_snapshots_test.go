@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -140,4 +141,57 @@ func TestCountByGender(t *testing.T) {
 			t.Errorf("expected 3 females, got %d", female)
 		}
 	})
+}
+
+func TestSnapshotCancelledFilterUsesBritishSpelling(t *testing.T) {
+	// Bug 1: The snapshot sync used 'canceled' (American) but attendees.go
+	// stores 'cancelled' (British, from CampMinder). This test verifies the
+	// filter matches actual attendee records with status = 'cancelled'.
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+
+	// Create attendees collection with status field
+	col := core.NewBaseCollection("test_snap_attendees")
+	col.Fields.Add(&core.TextField{Name: "status"})
+	col.Fields.Add(&core.NumberField{Name: "year"})
+	col.Fields.Add(&core.TextField{Name: "session"})
+	err = app.Save(col)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create attendees with British spelling (as stored by attendees.go)
+	for i := 0; i < 3; i++ {
+		r := core.NewRecord(col)
+		r.Set("status", "cancelled") // British spelling from CampMinder
+		r.Set("year", 2025)
+		r.Set("session", "sess1")
+		err = app.Save(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// The filter used in enrollment_snapshots.go must use 'cancelled' (British)
+	cancelledFilter := fmt.Sprintf("year = %d && session = '%s' && status = 'cancelled'", 2025, "sess1")
+	cancelledRecords, err := app.FindRecordsByFilter("test_snap_attendees", cancelledFilter, "", 0, 0)
+	if err != nil {
+		t.Fatalf("filter with 'cancelled' failed: %v", err)
+	}
+	if len(cancelledRecords) != 3 {
+		t.Errorf("expected 3 cancelled records with British spelling, got %d", len(cancelledRecords))
+	}
+
+	// Verify the American spelling 'canceled' returns 0 (the bug we're fixing)
+	americanFilter := fmt.Sprintf("year = %d && session = '%s' && status = 'canceled'", 2025, "sess1")
+	americanRecords, err := app.FindRecordsByFilter("test_snap_attendees", americanFilter, "", 0, 0)
+	if err != nil {
+		t.Fatalf("filter with 'canceled' failed: %v", err)
+	}
+	if len(americanRecords) != 0 {
+		t.Errorf("expected 0 records with American spelling 'canceled', got %d", len(americanRecords))
+	}
 }

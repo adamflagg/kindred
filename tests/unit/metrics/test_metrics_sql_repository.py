@@ -566,11 +566,11 @@ class TestFetchAttendeesWithDates:
 
     @pytest.mark.asyncio
     async def test_only_returns_dated_records(self, sql_db: sqlite3.Connection) -> None:
-        """Only returns attendees with non-empty enrollment_date."""
+        """Only returns attendees with non-empty enrollment_date or effective_date."""
         repo = _make_repo(sql_db)
         result = await repo.fetch_attendees_with_dates(2025)
         for a in result:
-            assert a.enrollment_date  # Non-empty
+            assert a.enrollment_date or a.effective_date  # At least one date set
 
     @pytest.mark.asyncio
     async def test_session_expand(self, sql_db: sqlite3.Connection) -> None:
