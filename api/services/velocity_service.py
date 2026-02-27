@@ -790,36 +790,68 @@ class VelocityService:
         return points
 
     def _combine_weekly_curves(self, per_session_data: dict[int, list[WeeklyDataPoint]]) -> list[WeeklyDataPoint]:
-        """Combine per-session weekly curves into a single combined curve."""
-        week_totals: dict[str, dict[str, int]] = defaultdict(
-            lambda: {"enrolled": 0, "waitlisted": 0, "gross_enrolled": 0, "weekly_new": 0, "weekly_cancelled": 0}
-        )
+        """Combine per-session weekly curves into a single combined curve.
+
+        For sparse curves (sessions with data only in some weeks), carries
+        forward the last known cumulative values for gap weeks. This prevents
+        combined totals from dropping when a session has no new activity.
+        """
+        # Collect all week keys across all sessions
+        all_weeks: set[str] = set()
+        session_point_map: dict[int, dict[str, WeeklyDataPoint]] = {}
+        for sid, data in per_session_data.items():
+            point_map: dict[str, WeeklyDataPoint] = {}
+            for point in data:
+                all_weeks.add(point.week_start)
+                point_map[point.week_start] = point
+            session_point_map[sid] = point_map
+
+        sorted_weeks = sorted(all_weeks)
+        if not sorted_weeks:
+            return []
+
+        # Aggregate with carry-forward per session
+        week_totals: dict[str, dict[str, int]] = {}
         week_labels: dict[str, str] = {}
         data_sources: dict[str, str] = {}
         week_numbers: dict[str, int] = {}
         week_partial: dict[str, bool] = {}
         week_days: dict[str, int] = {}
 
-        for data in per_session_data.values():
-            for point in data:
-                week_totals[point.week_start]["enrolled"] += point.enrolled
-                week_totals[point.week_start]["waitlisted"] += point.waitlisted
-                week_totals[point.week_start]["gross_enrolled"] += point.gross_enrolled
-                week_totals[point.week_start]["weekly_new"] += point.weekly_new
-                week_totals[point.week_start]["weekly_cancelled"] += point.weekly_cancelled
-                week_labels[point.week_start] = point.week_label
-                data_sources[point.week_start] = point.data_source
-                week_numbers[point.week_start] = point.week_number
-                # Propagate partial status (any session marking it partial wins)
-                if point.is_partial:
-                    week_partial[point.week_start] = True
-                    week_days[point.week_start] = point.days_in_week
+        for week_key in sorted_weeks:
+            totals = {"enrolled": 0, "waitlisted": 0, "gross_enrolled": 0, "weekly_new": 0, "weekly_cancelled": 0}
+
+            for sid, point_map in session_point_map.items():
+                if week_key in point_map:
+                    # Session has data for this week — use actual values
+                    point = point_map[week_key]
+                    totals["enrolled"] += point.enrolled
+                    totals["waitlisted"] += point.waitlisted
+                    totals["gross_enrolled"] += point.gross_enrolled
+                    totals["weekly_new"] += point.weekly_new
+                    totals["weekly_cancelled"] += point.weekly_cancelled
+                    week_labels[week_key] = point.week_label
+                    data_sources[week_key] = point.data_source
+                    week_numbers[week_key] = point.week_number
+                    if point.is_partial:
+                        week_partial[week_key] = True
+                        week_days[week_key] = point.days_in_week
+                else:
+                    # Session has no data — carry forward cumulative values if session has started
+                    last_point = self._find_last_point_before(point_map, week_key, sorted_weeks)
+                    if last_point is not None:
+                        totals["enrolled"] += last_point.enrolled
+                        totals["waitlisted"] += last_point.waitlisted
+                        totals["gross_enrolled"] += last_point.gross_enrolled
+                        # weekly_new and weekly_cancelled are 0 for carried-forward weeks
+
+            week_totals[week_key] = totals
 
         # Build combined points with deltas
         points: list[WeeklyDataPoint] = []
         prev_enrolled = 0
 
-        for week_key in sorted(week_totals.keys()):
+        for week_key in sorted_weeks:
             totals = week_totals[week_key]
             enrolled = totals["enrolled"]
             delta = enrolled - prev_enrolled
@@ -827,7 +859,7 @@ class VelocityService:
             points.append(
                 WeeklyDataPoint(
                     week_start=week_key,
-                    week_label=week_labels[week_key],
+                    week_label=week_labels.get(week_key, week_key),
                     week_number=week_numbers.get(week_key, 0),
                     enrolled=enrolled,
                     waitlisted=totals["waitlisted"],
@@ -843,6 +875,18 @@ class VelocityService:
             prev_enrolled = enrolled
 
         return points
+
+    @staticmethod
+    def _find_last_point_before(
+        point_map: dict[str, WeeklyDataPoint], week_key: str, sorted_weeks: list[str]
+    ) -> WeeklyDataPoint | None:
+        """Find the most recent data point for a session before the given week."""
+        for prev_week in reversed(sorted_weeks):
+            if prev_week >= week_key:
+                continue
+            if prev_week in point_map:
+                return point_map[prev_week]
+        return None
 
     async def _curves_from_reconstruction(
         self,
