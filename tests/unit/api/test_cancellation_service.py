@@ -444,3 +444,40 @@ class TestRegistrationMonthBreakdown:
         month_map = {m.month: m.count for m in result.by_registration_month}
         assert month_map.get("Nov 2025") == 2
         assert month_map.get("Dec 2025") == 1
+
+    @pytest.mark.asyncio
+    async def test_registration_month_chronological_sort(
+        self, cancellation_service, mock_repository, sample_sessions, sample_persons
+    ):
+        """Registration months must be in chronological order, not alphabetical."""
+        session1 = sample_sessions[1001]
+
+        cancelled = [
+            # Mar 2025 registration
+            create_mock_attendee(
+                101, session1, status="cancelled", enrollment_date="2026-06-15", effective_date="2025-03-10"
+            ),
+            # Jan 2026 registration
+            create_mock_attendee(
+                102, session1, status="cancelled", enrollment_date="2026-06-20", effective_date="2026-01-05"
+            ),
+            # Nov 2025 registration
+            create_mock_attendee(
+                103, session1, status="cancelled", enrollment_date="2026-06-25", effective_date="2025-11-15"
+            ),
+        ]
+
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: cancelled
+            if status_filter == ["cancelled", "withdrawn", "dismissed"]
+            else []
+        )
+        mock_repository.fetch_status_history = AsyncMock(return_value=[])
+
+        result = await cancellation_service.calculate_cancellations(year=2026)
+
+        # Months must be chronologically ordered: Mar 2025 → Nov 2025 → Jan 2026
+        months = [m.month for m in result.by_registration_month]
+        assert months == ["Mar 2025", "Nov 2025", "Jan 2026"]

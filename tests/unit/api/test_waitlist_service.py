@@ -1426,7 +1426,11 @@ class TestWaitlistDuration:
 
     @pytest.mark.asyncio
     async def test_declined_waitlist_duration(self, waitlist_service, mock_repository, sample_sessions, sample_persons):
-        """UC4: effective_date=Nov 20, enrollment_date=Mar 10 → 110 days."""
+        """UC4: effective_date=Nov 20, enrollment_date=Mar 10 → 110 days.
+
+        Declined persons have status cancelled/withdrawn/dismissed, so the attendee
+        must be returned via the cancelled status_filter fetch, not the enrolled fetch.
+        """
         session1 = sample_sessions[1001]
 
         attendee = create_mock_attendee_with_dates(
@@ -1442,7 +1446,11 @@ class TestWaitlistDuration:
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
         mock_repository.fetch_attendees = AsyncMock(
-            side_effect=lambda year, status_filter=None: ([attendee] if status_filter == "enrolled" else [])
+            side_effect=lambda year, status_filter=None: (
+                [attendee]
+                if isinstance(status_filter, list) and "cancelled" in status_filter
+                else []
+            )
         )
         mock_repository.fetch_status_history = AsyncMock(
             side_effect=lambda year, old_status=None, new_statuses=None: (
