@@ -343,7 +343,18 @@ class WaitlistService:
         return by_grade, by_gender
 
     @staticmethod
+    def _parse_date(value: Any) -> datetime | None:
+        """Parse a date string to datetime, returning None on failure."""
+        if not value:
+            return None
+        try:
+            return datetime.strptime(str(value)[:10], "%Y-%m-%d")
+        except (ValueError, IndexError):
+            return None
+
+    @classmethod
     def _compute_waitlist_duration(
+        cls,
         person_ids: set[int],
         attendee_by_person: dict[int, Any],
     ) -> dict[str, float | None]:
@@ -358,19 +369,14 @@ class WaitlistService:
             if att is None:
                 continue
 
-            eff_str = getattr(att, "effective_date", None)
-            enr_str = getattr(att, "enrollment_date", None)
-            if not eff_str or not enr_str:
+            eff_date = cls._parse_date(getattr(att, "effective_date", None))
+            enr_date = cls._parse_date(getattr(att, "enrollment_date", None))
+            if not eff_date or not enr_date:
                 continue
 
-            try:
-                eff_date = datetime.strptime(str(eff_str)[:10], "%Y-%m-%d")
-                enr_date = datetime.strptime(str(enr_str)[:10], "%Y-%m-%d")
-                days = (enr_date - eff_date).days
-                if days >= 0:
-                    days_list.append(days)
-            except (ValueError, IndexError):
-                continue
+            days = (enr_date - eff_date).days
+            if days >= 0:
+                days_list.append(days)
 
         if not days_list:
             return {"avg": None, "median": None}

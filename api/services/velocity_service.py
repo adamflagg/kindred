@@ -488,13 +488,11 @@ class VelocityService:
             swap_pids = detect_session_swaps(cancelled_atts, enrolled_atts)
             if session_cm_id is not None:
                 # Filter swap_pids to those with cancellations in the viewed session
-                scoped_cancelled = [
-                    a
-                    for a in cancelled_atts
-                    if get_session_from_expand(a)
-                    and int(getattr(get_session_from_expand(a), "cm_id", 0)) == session_cm_id
-                ]
-                scoped_pids = {int(getattr(a, "person_id", 0)) for a in scoped_cancelled}
+                scoped_pids: set[int] = set()
+                for a in cancelled_atts:
+                    session_info = get_session_from_expand(a)
+                    if session_info and int(getattr(session_info, "cm_id", 0)) == session_cm_id:
+                        scoped_pids.add(int(getattr(a, "person_id", 0)))
                 swap_pids = swap_pids & scoped_pids
             session_swap_count = len(swap_pids)
 

@@ -356,7 +356,26 @@ class CancellationService:
         return by_grade, by_gender
 
     @staticmethod
+    def _parse_date(value: Any) -> datetime | None:
+        """Parse a date string to datetime, returning None on failure."""
+        if not value:
+            return None
+        try:
+            return datetime.strptime(str(value)[:10], "%Y-%m-%d")
+        except (ValueError, IndexError):
+            return None
+
+    @staticmethod
+    def _compute_median(sorted_values: list[int]) -> float:
+        """Compute median of a pre-sorted list of integers."""
+        n = len(sorted_values)
+        if n % 2 == 1:
+            return float(sorted_values[n // 2])
+        return (sorted_values[n // 2 - 1] + sorted_values[n // 2]) / 2.0
+
+    @classmethod
     def _compute_timing_stats(
+        cls,
         cancelled_attendees: list[Any],
         seen_for_summary: set[int],
         swap_pids: set[int],
@@ -374,33 +393,27 @@ class CancellationService:
                 continue
             seen.add(pid)
 
-            eff_str = getattr(att, "effective_date", None)
-            enr_str = getattr(att, "enrollment_date", None)
-            if not eff_str or not enr_str:
+            eff_date = cls._parse_date(getattr(att, "effective_date", None))
+            enr_date = cls._parse_date(getattr(att, "enrollment_date", None))
+            if not eff_date or not enr_date:
                 continue
 
-            try:
-                eff_date = datetime.strptime(str(eff_str)[:10], "%Y-%m-%d")
-                enr_date = datetime.strptime(str(enr_str)[:10], "%Y-%m-%d")
-                days = (enr_date - eff_date).days
-                if days >= 0:
-                    days_list.append(days)
-            except (ValueError, IndexError):
-                continue
+            days = (enr_date - eff_date).days
+            if days >= 0:
+                days_list.append(days)
 
         if not days_list:
             return {"avg": None, "median": None, "buckets": []}
 
         avg_days = sum(days_list) / len(days_list)
         sorted_days = sorted(days_list)
-        n = len(sorted_days)
-        median_days = sorted_days[n // 2] if n % 2 == 1 else (sorted_days[n // 2 - 1] + sorted_days[n // 2]) / 2.0
+        median_days = cls._compute_median(sorted_days)
 
         # Bucket distribution
         bucket_defs = [
             ("< 30 days", 0, 30),
-            ("30–90 days", 30, 90),
-            ("90–180 days", 90, 180),
+            ("30\u201390 days", 30, 90),
+            ("90\u2013180 days", 90, 180),
             ("180+ days", 180, 999999),
         ]
         total = len(days_list)
@@ -417,8 +430,9 @@ class CancellationService:
 
         return {"avg": round(avg_days, 1), "median": round(median_days, 1), "buckets": buckets}
 
-    @staticmethod
+    @classmethod
     def _compute_registration_month_breakdown(
+        cls,
         cancelled_attendees: list[Any],
         seen_for_summary: set[int],
     ) -> list[RegistrationMonthBreakdown]:
@@ -432,16 +446,12 @@ class CancellationService:
                 continue
             seen.add(pid)
 
-            eff_str = getattr(att, "effective_date", None)
-            if not eff_str:
+            eff_date = cls._parse_date(getattr(att, "effective_date", None))
+            if not eff_date:
                 continue
 
-            try:
-                eff_date = datetime.strptime(str(eff_str)[:10], "%Y-%m-%d")
-                month_key = eff_date.strftime("%b %Y")
-                month_counts[month_key] = month_counts.get(month_key, 0) + 1
-            except (ValueError, IndexError):
-                continue
+            month_key = eff_date.strftime("%b %Y")
+            month_counts[month_key] = month_counts.get(month_key, 0) + 1
 
         total = sum(month_counts.values())
         return [
