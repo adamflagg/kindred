@@ -1462,6 +1462,26 @@ class TestCancellationVelocityCurves:
         assert result.combined.weekly[-1].enrolled == 10  # 6 + 4
 
     @pytest.mark.asyncio
+    async def test_cancellation_velocity_includes_session_swap_count(self, service, mock_repository, sample_sessions):
+        """When metric='cancellation', response should include session_swap_count."""
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001], 1002: sample_sessions[1002]}
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=50, cancelled=3),
+            create_mock_snapshot("2026-01-12", 1001, 2026, enrolled=55, cancelled=6),
+        ]
+        # Person 101 cancelled from Session 1 and enrolled in Session 2 same day → session swap
+        # Person 102 cancelled from Session 1, no other enrollment → true departure
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2026-01-10", status="cancelled"),
+            create_mock_attendee_with_date(101, 1002, "2026-01-10", status="enrolled"),
+            create_mock_attendee_with_date(102, 1001, "2026-01-11", status="cancelled"),
+        ]
+
+        result = await service.get_velocity(year=2026, metric="cancellation")
+
+        assert result.session_swap_count == 1
+
+    @pytest.mark.asyncio
     async def test_default_metric_is_enrollment(self, service, mock_repository, sample_sessions):
         """Without metric parameter, should return enrollment curves (existing behavior)."""
         mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
