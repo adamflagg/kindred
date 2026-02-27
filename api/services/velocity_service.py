@@ -972,6 +972,12 @@ class VelocityService:
             session_daily_enrollments = {
                 sid: dates for sid, dates in session_daily_enrollments.items() if sid == session_cm_id
             }
+            session_daily_cancellations = {
+                sid: dates for sid, dates in session_daily_cancellations.items() if sid == session_cm_id
+            }
+            total_cancellation_count = sum(
+                count for dates in session_daily_cancellations.values() for count in dates.values()
+            )
 
         # Filter out sessions not in the sessions dict (excludes non-summer types)
         session_daily_enrollments = {sid: w for sid, w in session_daily_enrollments.items() if sid in sessions}
@@ -1108,7 +1114,9 @@ class VelocityService:
                 continue
             date_key = dt.strftime("%Y-%m-%d")
             gender_session_daily[gender][effective_sid][date_key] += 1
-            session_gender_totals[effective_sid][gender] += 1
+            # Only count currently enrolled for totals (match snapshot behavior)
+            if status_id == 2:
+                session_gender_totals[effective_sid][gender] += 1
 
         # Filter out sessions not in the sessions dict
         for gender in ("M", "F"):

@@ -22,6 +22,8 @@ migrate((app) => {
     name: "effective_date",
     required: false,
     presentable: false,
+    min: "",
+    max: "",
   }));
 
   collection.fields.add(new Field({
@@ -29,6 +31,8 @@ migrate((app) => {
     name: "last_updated_utc",
     required: false,
     presentable: false,
+    min: "",
+    max: "",
   }));
 
   app.save(collection);
