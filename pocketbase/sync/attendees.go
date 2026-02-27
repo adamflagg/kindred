@@ -252,22 +252,36 @@ func (s *AttendeesSync) processEnrollment(
 	// Only StatusID = 2 is truly enrolled
 	isActive := statusID == 2
 
-	// Parse enrollment date
+	// Parse enrollment date (PostDate = current status date)
 	var enrollmentDate string
 	if postDate, ok := enrollment["PostDate"].(string); ok {
 		enrollmentDate = s.parseDate(postDate)
+	}
+
+	// Parse EffectiveDate (original registration/application date, never overwritten)
+	var effectiveDate string
+	if ed, ok := enrollment["EffectiveDate"].(string); ok {
+		effectiveDate = s.parseDate(ed)
+	}
+
+	// Parse LastUpdatedUTC (last modification timestamp)
+	var lastUpdatedUTC string
+	if lu, ok := enrollment["LastUpdatedUTC"].(string); ok {
+		lastUpdatedUTC = s.parseDate(lu)
 	}
 
 	// Note: CampMinder attendee ID exists in enrollment["ID"] but we don't need it in PocketBase
 
 	// Prepare record data
 	recordData := map[string]interface{}{
-		"person_id":       personCMID,
-		"status":          status,
-		"status_id":       statusID,
-		"enrollment_date": enrollmentDate,
-		"is_active":       isActive,
-		"year":            s.Client.GetSeasonID(),
+		"person_id":        personCMID,
+		"status":           status,
+		"status_id":        statusID,
+		"enrollment_date":  enrollmentDate,
+		"effective_date":   effectiveDate,
+		"last_updated_utc": lastUpdatedUTC,
+		"is_active":        isActive,
+		"year":             s.Client.GetSeasonID(),
 	}
 
 	// Populate session and person relations
