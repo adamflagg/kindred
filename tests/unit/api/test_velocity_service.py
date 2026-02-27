@@ -1160,12 +1160,8 @@ class TestCancelledToDateSummary:
         mock_repository.fetch_enrollment_snapshots.return_value = []
         mock_repository.fetch_attendees_with_dates.return_value = [
             create_mock_attendee_with_date(101, 1001, "2026-01-03", effective_date="2026-01-03"),
-            create_mock_attendee_with_date(
-                102, 1001, "2026-01-12", effective_date="2026-01-04", status="cancelled"
-            ),
-            create_mock_attendee_with_date(
-                103, 1001, "2026-01-15", effective_date="2026-01-10", status="cancelled"
-            ),
+            create_mock_attendee_with_date(102, 1001, "2026-01-12", effective_date="2026-01-04", status="cancelled"),
+            create_mock_attendee_with_date(103, 1001, "2026-01-15", effective_date="2026-01-10", status="cancelled"),
         ]
 
         result = await service.get_velocity(year=2026)
@@ -2004,9 +2000,7 @@ class TestGrossNetDeltaFromReconstruction:
                 for i in range(4)
             ],
             # 1 cancelled: enrolled in week 2, cancelled in week 2
-            create_mock_attendee_with_date(
-                210, 1001, "2026-01-12", effective_date="2026-01-10", status="cancelled"
-            ),
+            create_mock_attendee_with_date(210, 1001, "2026-01-12", effective_date="2026-01-10", status="cancelled"),
         ]
 
         result = await service.get_velocity(year=2026)
@@ -3100,21 +3094,48 @@ class TestCombineCarryForward:
         """Session A has week 1+2, Session B only week 1. In week 2, Session B should carry forward."""
         session_a = [
             WeeklyDataPoint(
-                week_start="2026-01-05", week_label="Jan 5", week_number=1,
-                enrolled=10, waitlisted=0, delta=10, data_source="reconstructed",
-                gross_enrolled=10, weekly_new=10, weekly_cancelled=0,
+                week_start="2026-01-05",
+                week_label="Jan 5",
+                week_number=1,
+                enrolled=10,
+                waitlisted=0,
+                delta=10,
+                data_source="reconstructed",
+                gross_enrolled=10,
+                weekly_new=10,
+                weekly_cancelled=0,
+                is_partial=False,
+                days_in_week=7,
             ),
             WeeklyDataPoint(
-                week_start="2026-01-12", week_label="Jan 12", week_number=2,
-                enrolled=15, waitlisted=0, delta=5, data_source="reconstructed",
-                gross_enrolled=15, weekly_new=5, weekly_cancelled=0,
+                week_start="2026-01-12",
+                week_label="Jan 12",
+                week_number=2,
+                enrolled=15,
+                waitlisted=0,
+                delta=5,
+                data_source="reconstructed",
+                gross_enrolled=15,
+                weekly_new=5,
+                weekly_cancelled=0,
+                is_partial=False,
+                days_in_week=7,
             ),
         ]
         session_b = [
             WeeklyDataPoint(
-                week_start="2026-01-05", week_label="Jan 5", week_number=1,
-                enrolled=20, waitlisted=0, delta=20, data_source="reconstructed",
-                gross_enrolled=20, weekly_new=20, weekly_cancelled=0,
+                week_start="2026-01-05",
+                week_label="Jan 5",
+                week_number=1,
+                enrolled=20,
+                waitlisted=0,
+                delta=20,
+                data_source="reconstructed",
+                gross_enrolled=20,
+                weekly_new=20,
+                weekly_cancelled=0,
+                is_partial=False,
+                days_in_week=7,
             ),
             # No data for week 2 — Session B should carry forward enrolled=20
         ]
@@ -3133,22 +3154,49 @@ class TestCombineCarryForward:
         """Session B starts in week 2 — should NOT carry back into week 1."""
         session_a = [
             WeeklyDataPoint(
-                week_start="2026-01-05", week_label="Jan 5", week_number=1,
-                enrolled=10, waitlisted=0, delta=10, data_source="reconstructed",
-                gross_enrolled=10, weekly_new=10, weekly_cancelled=0,
+                week_start="2026-01-05",
+                week_label="Jan 5",
+                week_number=1,
+                enrolled=10,
+                waitlisted=0,
+                delta=10,
+                data_source="reconstructed",
+                gross_enrolled=10,
+                weekly_new=10,
+                weekly_cancelled=0,
+                is_partial=False,
+                days_in_week=7,
             ),
             WeeklyDataPoint(
-                week_start="2026-01-12", week_label="Jan 12", week_number=2,
-                enrolled=15, waitlisted=0, delta=5, data_source="reconstructed",
-                gross_enrolled=15, weekly_new=5, weekly_cancelled=0,
+                week_start="2026-01-12",
+                week_label="Jan 12",
+                week_number=2,
+                enrolled=15,
+                waitlisted=0,
+                delta=5,
+                data_source="reconstructed",
+                gross_enrolled=15,
+                weekly_new=5,
+                weekly_cancelled=0,
+                is_partial=False,
+                days_in_week=7,
             ),
         ]
         session_b = [
             # Session B only starts in week 2
             WeeklyDataPoint(
-                week_start="2026-01-12", week_label="Jan 12", week_number=2,
-                enrolled=20, waitlisted=0, delta=20, data_source="reconstructed",
-                gross_enrolled=20, weekly_new=20, weekly_cancelled=0,
+                week_start="2026-01-12",
+                week_label="Jan 12",
+                week_number=2,
+                enrolled=20,
+                waitlisted=0,
+                delta=20,
+                data_source="reconstructed",
+                gross_enrolled=20,
+                weekly_new=20,
+                weekly_cancelled=0,
+                is_partial=False,
+                days_in_week=7,
             ),
         ]
         per_session_data = {1001: session_a, 1002: session_b}
@@ -3164,26 +3212,62 @@ class TestCombineCarryForward:
         """When all sessions have data for all weeks, carry-forward doesn't change results."""
         session_a = [
             WeeklyDataPoint(
-                week_start="2026-01-05", week_label="Jan 5", week_number=1,
-                enrolled=10, waitlisted=0, delta=10, data_source="snapshot",
-                gross_enrolled=10, weekly_new=10, weekly_cancelled=0,
+                week_start="2026-01-05",
+                week_label="Jan 5",
+                week_number=1,
+                enrolled=10,
+                waitlisted=0,
+                delta=10,
+                data_source="snapshot",
+                gross_enrolled=10,
+                weekly_new=10,
+                weekly_cancelled=0,
+                is_partial=False,
+                days_in_week=7,
             ),
             WeeklyDataPoint(
-                week_start="2026-01-12", week_label="Jan 12", week_number=2,
-                enrolled=15, waitlisted=0, delta=5, data_source="snapshot",
-                gross_enrolled=15, weekly_new=5, weekly_cancelled=0,
+                week_start="2026-01-12",
+                week_label="Jan 12",
+                week_number=2,
+                enrolled=15,
+                waitlisted=0,
+                delta=5,
+                data_source="snapshot",
+                gross_enrolled=15,
+                weekly_new=5,
+                weekly_cancelled=0,
+                is_partial=False,
+                days_in_week=7,
             ),
         ]
         session_b = [
             WeeklyDataPoint(
-                week_start="2026-01-05", week_label="Jan 5", week_number=1,
-                enrolled=20, waitlisted=0, delta=20, data_source="snapshot",
-                gross_enrolled=20, weekly_new=20, weekly_cancelled=0,
+                week_start="2026-01-05",
+                week_label="Jan 5",
+                week_number=1,
+                enrolled=20,
+                waitlisted=0,
+                delta=20,
+                data_source="snapshot",
+                gross_enrolled=20,
+                weekly_new=20,
+                weekly_cancelled=0,
+                is_partial=False,
+                days_in_week=7,
             ),
             WeeklyDataPoint(
-                week_start="2026-01-12", week_label="Jan 12", week_number=2,
-                enrolled=25, waitlisted=0, delta=5, data_source="snapshot",
-                gross_enrolled=25, weekly_new=5, weekly_cancelled=0,
+                week_start="2026-01-12",
+                week_label="Jan 12",
+                week_number=2,
+                enrolled=25,
+                waitlisted=0,
+                delta=5,
+                data_source="snapshot",
+                gross_enrolled=25,
+                weekly_new=5,
+                weekly_cancelled=0,
+                is_partial=False,
+                days_in_week=7,
             ),
         ]
         per_session_data = {1001: session_a, 1002: session_b}
@@ -3197,21 +3281,48 @@ class TestCombineCarryForward:
         """Carried-forward weeks should contribute 0 for weekly_new and weekly_cancelled."""
         session_a = [
             WeeklyDataPoint(
-                week_start="2026-01-05", week_label="Jan 5", week_number=1,
-                enrolled=10, waitlisted=0, delta=10, data_source="reconstructed",
-                gross_enrolled=10, weekly_new=10, weekly_cancelled=0,
+                week_start="2026-01-05",
+                week_label="Jan 5",
+                week_number=1,
+                enrolled=10,
+                waitlisted=0,
+                delta=10,
+                data_source="reconstructed",
+                gross_enrolled=10,
+                weekly_new=10,
+                weekly_cancelled=0,
+                is_partial=False,
+                days_in_week=7,
             ),
             WeeklyDataPoint(
-                week_start="2026-01-12", week_label="Jan 12", week_number=2,
-                enrolled=15, waitlisted=0, delta=5, data_source="reconstructed",
-                gross_enrolled=15, weekly_new=5, weekly_cancelled=0,
+                week_start="2026-01-12",
+                week_label="Jan 12",
+                week_number=2,
+                enrolled=15,
+                waitlisted=0,
+                delta=5,
+                data_source="reconstructed",
+                gross_enrolled=15,
+                weekly_new=5,
+                weekly_cancelled=0,
+                is_partial=False,
+                days_in_week=7,
             ),
         ]
         session_b = [
             WeeklyDataPoint(
-                week_start="2026-01-05", week_label="Jan 5", week_number=1,
-                enrolled=8, waitlisted=0, delta=8, data_source="reconstructed",
-                gross_enrolled=10, weekly_new=10, weekly_cancelled=2,
+                week_start="2026-01-05",
+                week_label="Jan 5",
+                week_number=1,
+                enrolled=8,
+                waitlisted=0,
+                delta=8,
+                data_source="reconstructed",
+                gross_enrolled=10,
+                weekly_new=10,
+                weekly_cancelled=2,
+                is_partial=False,
+                days_in_week=7,
             ),
             # Gap in week 2 — carry forward enrolled=8, but weekly_new and weekly_cancelled should be 0
         ]
@@ -3222,6 +3333,46 @@ class TestCombineCarryForward:
         assert result[1].weekly_new == 5
         # Week 2: weekly_cancelled should be 0 from both (A has 0, B carried = 0)
         assert result[1].weekly_cancelled == 0
+
+
+# ============================================================================
+# Reconstruction Warning
+# ============================================================================
+
+
+class TestReconstructionWarning:
+    """Phase 4: Warning when reconstruction is used."""
+
+    @pytest.mark.asyncio
+    async def test_hybrid_includes_reconstruction_warning(self, service, mock_repository, sample_sessions):
+        """When reconstruction is used (no snapshots), response includes a warning."""
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+        mock_repository.fetch_enrollment_snapshots.return_value = []
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(
+                person_id=1,
+                session_cm_id=1001,
+                enrollment_date="2026-01-05",
+                effective_date="2026-01-05",
+            ),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        assert len(result.warnings) >= 1
+        assert any("Reconstruction" in w for w in result.warnings)
+
+    @pytest.mark.asyncio
+    async def test_snapshot_only_no_reconstruction_warning(self, service, mock_repository, sample_sessions):
+        """When only snapshots are used, no reconstruction warning."""
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=10),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        assert not any("Reconstruction" in w for w in result.warnings)
 
 
 # ============================================================================
@@ -3237,9 +3388,7 @@ class TestReconstructionEffectiveDate:
     @pytest.fixture()
     def service(self):
         repo = AsyncMock()
-        repo.fetch_registration_dates = AsyncMock(
-            return_value={"priority_reg_date": "2026-01-05"}
-        )
+        repo.fetch_registration_dates = AsyncMock(return_value={"priority_reg_date": "2026-01-05"})
         repo.fetch_sessions = AsyncMock(
             return_value={
                 1001: create_mock_session(1001, "Session 1", year=2026, start_date="2026-06-15"),
@@ -3254,9 +3403,10 @@ class TestReconstructionEffectiveDate:
         """Enrolled attendee's enrollment date should come from effective_date, not enrollment_date."""
         service.repo.fetch_attendees_with_dates.return_value = [
             create_mock_attendee_with_date(
-                person_id=1, session_cm_id=1001,
+                person_id=1,
+                session_cm_id=1001,
                 enrollment_date="2026-01-12",  # PostDate
-                effective_date="2026-01-05",    # EffectiveDate — the real registration date
+                effective_date="2026-01-05",  # EffectiveDate — the real registration date
                 status="enrolled",
             ),
         ]
@@ -3272,9 +3422,10 @@ class TestReconstructionEffectiveDate:
         """Cancelled attendee: +1 at effective_date, -1 at enrollment_date (PostDate = cancel date)."""
         service.repo.fetch_attendees_with_dates.return_value = [
             create_mock_attendee_with_date(
-                person_id=1, session_cm_id=1001,
-                enrollment_date="2026-03-01",   # PostDate = cancellation date
-                effective_date="2026-01-05",     # EffectiveDate = original registration
+                person_id=1,
+                session_cm_id=1001,
+                enrollment_date="2026-03-01",  # PostDate = cancellation date
+                effective_date="2026-01-05",  # EffectiveDate = original registration
                 status="cancelled",
             ),
         ]
@@ -3301,9 +3452,10 @@ class TestReconstructionEffectiveDate:
         """Withdrawn attendee: same as cancelled — +1 at effective_date, -1 at enrollment_date."""
         service.repo.fetch_attendees_with_dates.return_value = [
             create_mock_attendee_with_date(
-                person_id=1, session_cm_id=1001,
-                enrollment_date="2026-02-15",   # PostDate = withdrawal date
-                effective_date="2026-01-05",     # EffectiveDate = original registration
+                person_id=1,
+                session_cm_id=1001,
+                enrollment_date="2026-02-15",  # PostDate = withdrawal date
+                effective_date="2026-01-05",  # EffectiveDate = original registration
                 status="withdrawn",
             ),
         ]
@@ -3320,7 +3472,8 @@ class TestReconstructionEffectiveDate:
         """Waitlisted attendees should NOT be counted in enrollment curves."""
         service.repo.fetch_attendees_with_dates.return_value = [
             create_mock_attendee_with_date(
-                person_id=1, session_cm_id=1001,
+                person_id=1,
+                session_cm_id=1001,
                 enrollment_date="2026-01-05",
                 effective_date="2026-01-05",
                 status="waitlisted",
@@ -3336,7 +3489,8 @@ class TestReconstructionEffectiveDate:
         """Incomplete attendees should NOT be counted in enrollment curves."""
         service.repo.fetch_attendees_with_dates.return_value = [
             create_mock_attendee_with_date(
-                person_id=1, session_cm_id=1001,
+                person_id=1,
+                session_cm_id=1001,
                 enrollment_date="2026-01-05",
                 effective_date="2026-01-05",
                 status="incomplete",
@@ -3351,7 +3505,8 @@ class TestReconstructionEffectiveDate:
         """None status attendees should NOT be counted in enrollment curves."""
         service.repo.fetch_attendees_with_dates.return_value = [
             create_mock_attendee_with_date(
-                person_id=1, session_cm_id=1001,
+                person_id=1,
+                session_cm_id=1001,
                 enrollment_date="2026-01-05",
                 effective_date="2026-01-05",
                 status="none",
@@ -3371,16 +3526,18 @@ class TestReconstructionEffectiveDate:
         service.repo.fetch_attendees_with_dates.return_value = [
             # Cancelled from Session 1 (registered Nov, cancelled Feb 15)
             create_mock_attendee_with_date(
-                person_id=1, session_cm_id=1001,
-                enrollment_date="2026-02-15",   # PostDate = cancel date
-                effective_date="2026-01-05",     # EffectiveDate = original reg
+                person_id=1,
+                session_cm_id=1001,
+                enrollment_date="2026-02-15",  # PostDate = cancel date
+                effective_date="2026-01-05",  # EffectiveDate = original reg
                 status="cancelled",
             ),
             # Enrolled in Session 2 (same day)
             create_mock_attendee_with_date(
-                person_id=1, session_cm_id=1002,
-                enrollment_date="2026-02-15",   # PostDate = new enrollment date
-                effective_date="2026-02-15",     # EffectiveDate = this enrollment
+                person_id=1,
+                session_cm_id=1002,
+                enrollment_date="2026-02-15",  # PostDate = new enrollment date
+                effective_date="2026-02-15",  # EffectiveDate = this enrollment
                 status="enrolled",
             ),
         ]
@@ -3395,7 +3552,8 @@ class TestReconstructionEffectiveDate:
         """When effective_date is empty, falls back to enrollment_date."""
         service.repo.fetch_attendees_with_dates.return_value = [
             create_mock_attendee_with_date(
-                person_id=1, session_cm_id=1001,
+                person_id=1,
+                session_cm_id=1001,
                 enrollment_date="2026-01-12",
                 effective_date="",  # No effective_date — use enrollment_date
                 status="enrolled",
@@ -3413,22 +3571,32 @@ class TestReconstructionEffectiveDate:
         service.repo.fetch_attendees_with_dates.return_value = [
             # 3 enrolled
             create_mock_attendee_with_date(
-                person_id=1, session_cm_id=1001,
-                enrollment_date="2026-01-05", effective_date="2026-01-05", status="enrolled",
+                person_id=1,
+                session_cm_id=1001,
+                enrollment_date="2026-01-05",
+                effective_date="2026-01-05",
+                status="enrolled",
             ),
             create_mock_attendee_with_date(
-                person_id=2, session_cm_id=1001,
-                enrollment_date="2026-01-05", effective_date="2026-01-05", status="enrolled",
+                person_id=2,
+                session_cm_id=1001,
+                enrollment_date="2026-01-05",
+                effective_date="2026-01-05",
+                status="enrolled",
             ),
             create_mock_attendee_with_date(
-                person_id=3, session_cm_id=1001,
-                enrollment_date="2026-01-05", effective_date="2026-01-05", status="enrolled",
+                person_id=3,
+                session_cm_id=1001,
+                enrollment_date="2026-01-05",
+                effective_date="2026-01-05",
+                status="enrolled",
             ),
             # 1 cancelled (registered same week, cancelled 2 weeks later)
             create_mock_attendee_with_date(
-                person_id=4, session_cm_id=1001,
-                enrollment_date="2026-01-19",   # PostDate = cancel date
-                effective_date="2026-01-05",     # EffectiveDate = original reg
+                person_id=4,
+                session_cm_id=1001,
+                enrollment_date="2026-01-19",  # PostDate = cancel date
+                effective_date="2026-01-05",  # EffectiveDate = original reg
                 status="cancelled",
             ),
         ]

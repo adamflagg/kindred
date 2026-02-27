@@ -465,6 +465,13 @@ class VelocityService:
                         )
                     prior_year_by_gender.extend(prior_gender_curves)
 
+        # Add warning when reconstruction is used (pre-effective_date data has approximate timing)
+        if any(p.data_source == "reconstructed" for p in combined.weekly):
+            warnings.append(
+                "Reconstruction used for some weeks: cancellation timing may be approximate "
+                "for records synced before effective_date was stored."
+            )
+
         # Fetch phase markers (pass reg_dates to avoid double fetch)
         phase_markers = self._build_phase_markers(reg_dates, season_start_dt)
 

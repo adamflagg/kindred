@@ -158,7 +158,8 @@ func TestSnapshotCancelledFilterUsesBritishSpelling(t *testing.T) {
 	col.Fields.Add(&core.TextField{Name: "status"})
 	col.Fields.Add(&core.NumberField{Name: "year"})
 	col.Fields.Add(&core.TextField{Name: "session"})
-	if err := app.Save(col); err != nil {
+	err = app.Save(col)
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -168,7 +169,8 @@ func TestSnapshotCancelledFilterUsesBritishSpelling(t *testing.T) {
 		r.Set("status", "cancelled") // British spelling from CampMinder
 		r.Set("year", 2025)
 		r.Set("session", "sess1")
-		if err := app.Save(r); err != nil {
+		err = app.Save(r)
+		if err != nil {
 			t.Fatal(err)
 		}
 	}
