@@ -24,6 +24,7 @@ export interface StaffSessionData {
 export interface StaffRetentionRow {
   personId: string
   name: string
+  status?: string
   sessionData: Map<string, StaffSessionData> // sessionName -> data
   overallRetention: number // weighted avg by base_count
   totalBaseCount: number
@@ -56,7 +57,11 @@ export function buildStaffRetentionData(
   // Invert: staffPerson -> [{sessionName, bunkName, retentionData}]
   const staffEntries = new Map<
     string,
-    { name: string; entries: Array<{ sessionName: string; retention: RetentionBySessionBunk }> }
+    {
+      name: string
+      status?: string
+      entries: Array<{ sessionName: string; retention: RetentionBySessionBunk }>
+    }
   >()
 
   for (const [key, staffList] of bunkStaff) {
@@ -79,7 +84,7 @@ export function buildStaffRetentionData(
     for (const staff of staffList) {
       let entry = staffEntries.get(staff.personId)
       if (!entry) {
-        entry = { name: staff.name, entries: [] }
+        entry = { name: staff.name, ...(staff.status ? { status: staff.status } : {}), entries: [] }
         staffEntries.set(staff.personId, entry)
       }
       entry.entries.push({ sessionName, retention: retentionItem })
@@ -90,7 +95,7 @@ export function buildStaffRetentionData(
   const sessionsSet = new Set<string>()
   const staffRows: StaffRetentionRow[] = []
 
-  for (const [personId, { name, entries }] of staffEntries) {
+  for (const [personId, { name, status, entries }] of staffEntries) {
     const sessionData = new Map<string, StaffSessionData>()
     let totalBase = 0
     let totalReturned = 0
@@ -110,6 +115,7 @@ export function buildStaffRetentionData(
     staffRows.push({
       personId,
       name,
+      ...(status ? { status } : {}),
       sessionData,
       overallRetention: totalBase > 0 ? totalReturned / totalBase : 0,
       totalBaseCount: totalBase,

@@ -83,11 +83,21 @@ export function BunkCellTooltip({
             {staffLabel}
           </p>
           <ul className="space-y-0.5">
-            {staff.map((s) => (
-              <li key={s.personId} className="text-muted-foreground text-xs">
-                {s.name}
-              </li>
-            ))}
+            {staff.map((s) => {
+              const isNonActive = s.status && s.status !== 'active'
+              return (
+                <li key={s.personId} className="text-muted-foreground text-xs">
+                  {isNonActive ? (
+                    <>
+                      <span className="line-through">{s.name}</span>{' '}
+                      <span className="text-muted-foreground/60 text-[10px]">({s.status})</span>
+                    </>
+                  ) : (
+                    s.name
+                  )}
+                </li>
+              )
+            })}
           </ul>
         </>
       )}

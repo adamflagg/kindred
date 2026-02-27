@@ -226,7 +226,16 @@ export default function StaffCabinAnalysisPage() {
                         scope="row"
                         className="bg-muted/50 text-foreground sticky left-0 z-10 px-3 py-2 text-left text-xs font-semibold whitespace-nowrap"
                       >
-                        {row.name}
+                        {row.status && row.status !== 'active' ? (
+                          <>
+                            <span className="line-through opacity-60">{row.name}</span>{' '}
+                            <span className="text-muted-foreground text-[10px] font-normal">
+                              ({row.status})
+                            </span>
+                          </>
+                        ) : (
+                          row.name
+                        )}
                       </th>
                       {sortedSessions.map((session) => {
                         const data = row.sessionData.get(session)
