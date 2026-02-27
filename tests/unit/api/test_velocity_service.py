@@ -94,6 +94,20 @@ def create_mock_snapshot(
     return snap
 
 
+_STATUS_ID_MAP = {
+    "none": 1,
+    "enrolled": 2,
+    "applied": 4,
+    "waitlisted": 8,
+    "left_early": 16,
+    "cancelled": 32,
+    "dismissed": 64,
+    "inquiry": 128,
+    "withdrawn": 256,
+    "incomplete": 512,
+}
+
+
 def create_mock_attendee_with_date(
     person_id: int,
     session_cm_id: int,
@@ -101,6 +115,7 @@ def create_mock_attendee_with_date(
     year: int = 2026,
     status: str = "enrolled",
     gender: str | None = None,
+    effective_date: str = "",
 ) -> Mock:
     """Create a mock attendee with enrollment date for reconstruction.
 
@@ -112,8 +127,9 @@ def create_mock_attendee_with_date(
     att.year = year
     att.status = status
     att.enrollment_date = enrollment_date
+    att.effective_date = effective_date
     att.is_active = 1 if status == "enrolled" else 0
-    att.status_id = 2 if status == "enrolled" else 0
+    att.status_id = _STATUS_ID_MAP.get(status, 0)
     session = Mock()
     session.cm_id = session_cm_id
     expand: dict[str, Mock] = {"session": session}
@@ -3191,3 +3207,219 @@ class TestCombineCarryForward:
         assert result[1].weekly_new == 5
         # Week 2: weekly_cancelled should be 0 from both (A has 0, B carried = 0)
         assert result[1].weekly_cancelled == 0
+
+
+# ============================================================================
+# Reconstruction with EffectiveDate + Status-Aware Logic
+# ============================================================================
+
+
+class TestReconstructionEffectiveDate:
+    """Bug 4: Reconstruction should use effective_date for enrollment and
+    enrollment_date (PostDate) for cancellation events. Only enrolled,
+    cancelled, and withdrawn statuses contribute to velocity curves."""
+
+    @pytest.fixture()
+    def service(self):
+        repo = AsyncMock()
+        repo.fetch_registration_dates = AsyncMock(
+            return_value={"priority_reg_date": "2026-01-05"}
+        )
+        repo.fetch_sessions = AsyncMock(
+            return_value={
+                1001: create_mock_session(1001, "Session 1", year=2026, start_date="2026-06-15"),
+            }
+        )
+        repo.fetch_enrollment_snapshots = AsyncMock(return_value=[])
+        repo.fetch_status_transitions = AsyncMock(return_value=[])
+        return VelocityService(repo)
+
+    @pytest.mark.asyncio
+    async def test_reconstruction_uses_effective_date_for_enrollment(self, service):
+        """Enrolled attendee's enrollment date should come from effective_date, not enrollment_date."""
+        service.repo.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(
+                person_id=1, session_cm_id=1001,
+                enrollment_date="2026-01-12",  # PostDate
+                effective_date="2026-01-05",    # EffectiveDate — the real registration date
+                status="enrolled",
+            ),
+        ]
+        result = await service.get_velocity(year=2026)
+        points = result.combined.weekly
+        assert len(points) >= 1
+        # Should appear in the week of effective_date (Jan 5), not enrollment_date (Jan 12)
+        assert points[0].week_start == "2026-01-05"
+        assert points[0].enrolled == 1
+
+    @pytest.mark.asyncio
+    async def test_reconstruction_cancelled_enrolled_then_subtracted(self, service):
+        """Cancelled attendee: +1 at effective_date, -1 at enrollment_date (PostDate = cancel date)."""
+        service.repo.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(
+                person_id=1, session_cm_id=1001,
+                enrollment_date="2026-03-01",   # PostDate = cancellation date
+                effective_date="2026-01-05",     # EffectiveDate = original registration
+                status="cancelled",
+            ),
+        ]
+        result = await service.get_velocity(year=2026)
+        points = result.combined.weekly
+        # Should have at least 2 points: enrollment week and cancellation week
+        week_starts = [p.week_start for p in points]
+        assert "2026-01-05" in week_starts  # enrollment week
+        # Find enrollment point
+        enroll_point = next(p for p in points if p.week_start == "2026-01-05")
+        assert enroll_point.gross_enrolled == 1
+        # Net at enrollment week should be 1 (not yet cancelled)
+        assert enroll_point.enrolled == 1
+
+        # Find cancellation week
+        cancel_week = [p for p in points if p.week_start >= "2026-02-23"]
+        assert len(cancel_week) >= 1
+        # After cancellation, net should be 0 (enrolled 1 - cancelled 1)
+        last_point = points[-1]
+        assert last_point.enrolled == 0
+
+    @pytest.mark.asyncio
+    async def test_reconstruction_withdrawn_enrolled_then_subtracted(self, service):
+        """Withdrawn attendee: same as cancelled — +1 at effective_date, -1 at enrollment_date."""
+        service.repo.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(
+                person_id=1, session_cm_id=1001,
+                enrollment_date="2026-02-15",   # PostDate = withdrawal date
+                effective_date="2026-01-05",     # EffectiveDate = original registration
+                status="withdrawn",
+            ),
+        ]
+        result = await service.get_velocity(year=2026)
+        points = result.combined.weekly
+        last_point = points[-1]
+        # After withdrawal, net should be 0
+        assert last_point.enrolled == 0
+        # But gross should be 1 (was enrolled once)
+        assert last_point.gross_enrolled == 1
+
+    @pytest.mark.asyncio
+    async def test_reconstruction_waitlisted_excluded(self, service):
+        """Waitlisted attendees should NOT be counted in enrollment curves."""
+        service.repo.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(
+                person_id=1, session_cm_id=1001,
+                enrollment_date="2026-01-05",
+                effective_date="2026-01-05",
+                status="waitlisted",
+            ),
+        ]
+        result = await service.get_velocity(year=2026)
+        points = result.combined.weekly
+        # No enrollment points — waitlisted doesn't count
+        assert len(points) == 0 or all(p.enrolled == 0 for p in points)
+
+    @pytest.mark.asyncio
+    async def test_reconstruction_incomplete_excluded(self, service):
+        """Incomplete attendees should NOT be counted in enrollment curves."""
+        service.repo.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(
+                person_id=1, session_cm_id=1001,
+                enrollment_date="2026-01-05",
+                effective_date="2026-01-05",
+                status="incomplete",
+            ),
+        ]
+        result = await service.get_velocity(year=2026)
+        points = result.combined.weekly
+        assert len(points) == 0 or all(p.enrolled == 0 for p in points)
+
+    @pytest.mark.asyncio
+    async def test_reconstruction_none_excluded(self, service):
+        """None status attendees should NOT be counted in enrollment curves."""
+        service.repo.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(
+                person_id=1, session_cm_id=1001,
+                enrollment_date="2026-01-05",
+                effective_date="2026-01-05",
+                status="none",
+            ),
+        ]
+        result = await service.get_velocity(year=2026)
+        points = result.combined.weekly
+        assert len(points) == 0 or all(p.enrolled == 0 for p in points)
+
+    @pytest.mark.asyncio
+    async def test_reconstruction_session_swap_nets_to_zero(self, service):
+        """Person cancels Session A and enrolls Session B same day = net 0 change on that day."""
+        service.repo.fetch_sessions.return_value = {
+            1001: create_mock_session(1001, "Session 1"),
+            1002: create_mock_session(1002, "Session 2"),
+        }
+        service.repo.fetch_attendees_with_dates.return_value = [
+            # Cancelled from Session 1 (registered Nov, cancelled Feb 15)
+            create_mock_attendee_with_date(
+                person_id=1, session_cm_id=1001,
+                enrollment_date="2026-02-15",   # PostDate = cancel date
+                effective_date="2026-01-05",     # EffectiveDate = original reg
+                status="cancelled",
+            ),
+            # Enrolled in Session 2 (same day)
+            create_mock_attendee_with_date(
+                person_id=1, session_cm_id=1002,
+                enrollment_date="2026-02-15",   # PostDate = new enrollment date
+                effective_date="2026-02-15",     # EffectiveDate = this enrollment
+                status="enrolled",
+            ),
+        ]
+        result = await service.get_velocity(year=2026)
+        # Net effect: originally registered in Jan (1001), then swapped to 1002 in Feb
+        # After swap week: total enrolled should still be 1
+        last_point = result.combined.weekly[-1]
+        assert last_point.enrolled == 1
+
+    @pytest.mark.asyncio
+    async def test_reconstruction_fallback_to_enrollment_date(self, service):
+        """When effective_date is empty, falls back to enrollment_date."""
+        service.repo.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(
+                person_id=1, session_cm_id=1001,
+                enrollment_date="2026-01-12",
+                effective_date="",  # No effective_date — use enrollment_date
+                status="enrolled",
+            ),
+        ]
+        result = await service.get_velocity(year=2026)
+        points = result.combined.weekly
+        assert len(points) >= 1
+        assert points[0].week_start == "2026-01-12"
+        assert points[0].enrolled == 1
+
+    @pytest.mark.asyncio
+    async def test_reconstruction_gross_vs_net_diverge(self, service):
+        """Gross counts enrollments only, net = gross - cancellations."""
+        service.repo.fetch_attendees_with_dates.return_value = [
+            # 3 enrolled
+            create_mock_attendee_with_date(
+                person_id=1, session_cm_id=1001,
+                enrollment_date="2026-01-05", effective_date="2026-01-05", status="enrolled",
+            ),
+            create_mock_attendee_with_date(
+                person_id=2, session_cm_id=1001,
+                enrollment_date="2026-01-05", effective_date="2026-01-05", status="enrolled",
+            ),
+            create_mock_attendee_with_date(
+                person_id=3, session_cm_id=1001,
+                enrollment_date="2026-01-05", effective_date="2026-01-05", status="enrolled",
+            ),
+            # 1 cancelled (registered same week, cancelled 2 weeks later)
+            create_mock_attendee_with_date(
+                person_id=4, session_cm_id=1001,
+                enrollment_date="2026-01-19",   # PostDate = cancel date
+                effective_date="2026-01-05",     # EffectiveDate = original reg
+                status="cancelled",
+            ),
+        ]
+        result = await service.get_velocity(year=2026)
+        last_point = result.combined.weekly[-1]
+        # Gross: 4 people enrolled at some point
+        assert last_point.gross_enrolled == 4
+        # Net: 4 - 1 cancellation = 3
+        assert last_point.enrolled == 3
