@@ -345,8 +345,10 @@ class MetricsSQLRepository:
         )
         if rows and rows[0]["value"]:
             try:
-                return int(rows[0]["value"])
-            except (ValueError, TypeError):
+                raw = rows[0]["value"]
+                parsed = json.loads(raw) if isinstance(raw, str) else raw
+                return int(parsed)
+            except (ValueError, TypeError, json.JSONDecodeError):
                 pass
         return 12
 
@@ -536,7 +538,7 @@ class MetricsSQLRepository:
         rows = self._query(
             """SELECT h.cm_id AS household_cm_id, hcv.value
                FROM household_custom_values hcv
-               JOIN field_definitions fd ON hcv.field = fd.id
+               JOIN custom_field_defs fd ON hcv.field_definition = fd.id
                JOIN households h ON hcv.household = h.id
                WHERE fd.name = 'Synagogue' AND hcv.year = ?
                  AND hcv.value IS NOT NULL AND hcv.value != ''""",
@@ -684,4 +686,4 @@ class MetricsSQLRepository:
                WHERE category = 'registration' AND subcategory = ?""",
             (str(year),),
         )
-        return {r["config_key"]: r["value"] for r in rows}
+        return {r["config_key"]: json.loads(r["value"]) if r["value"] else "" for r in rows}
