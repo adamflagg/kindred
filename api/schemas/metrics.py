@@ -594,6 +594,22 @@ class WaitlistMetricsResponse(BaseModel):
 # ============================================================================
 
 
+class TimeBucket(BaseModel):
+    """A time distribution bucket."""
+
+    label: str = Field(description="Bucket label (e.g. '< 30 days')")
+    count: int = Field(description="Number of records in this bucket")
+    percentage: float = Field(description="Percentage of total")
+
+
+class RegistrationMonthBreakdown(BaseModel):
+    """Breakdown by registration month."""
+
+    month: str = Field(description="Month label (e.g. 'Nov 2025')")
+    count: int = Field(description="Number of cancellations from this registration month")
+    percentage: float = Field(description="Percentage of total")
+
+
 class CancellationSessionBreakdown(BaseModel):
     """Per-session cancellation breakdown."""
 
@@ -608,6 +624,7 @@ class CancellationSessionBreakdown(BaseModel):
     )
     has_other_sessions: int = Field(default=0, description="Cancelled but enrolled in other session")
     no_other_sessions: int = Field(default=0, description="Cancelled with no remaining enrollment")
+    session_swap_count: int = Field(default=0, description="Session swaps (cancelled and enrolled in another)")
 
 
 class CancellationMetricsResponse(BaseModel):
@@ -624,6 +641,20 @@ class CancellationMetricsResponse(BaseModel):
     has_other_sessions: int = Field(description="Cancelled but enrolled in other session")
     no_other_sessions: int = Field(description="Cancelled with no remaining enrollment")
     total_re_enrolled: int = Field(default=0, description="Cancelled then later re-enrolled (recovery)")
+    session_swap_count: int = Field(default=0, description="Cancellations that are session swaps")
+    true_departure_count: int = Field(default=0, description="True departures (not session swaps)")
+    avg_days_to_cancellation: float | None = Field(
+        default=None, description="Avg days between registration and cancellation (non-swaps)"
+    )
+    median_days_to_cancellation: float | None = Field(
+        default=None, description="Median days between registration and cancellation (non-swaps)"
+    )
+    time_to_cancellation_buckets: list[TimeBucket] = Field(
+        default_factory=list, description="Time-to-cancellation distribution"
+    )
+    by_registration_month: list[RegistrationMonthBreakdown] = Field(
+        default_factory=list, description="Cancellations grouped by registration month"
+    )
     by_session: list[CancellationSessionBreakdown] = Field(
         default_factory=list, description="Per-session cancellation breakdown"
     )
