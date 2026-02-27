@@ -1412,23 +1412,25 @@ func (s *PersonsSync) deleteHouseholdOrphans(year int, processedIDs map[int]bool
 func (s *PersonsSync) getPersonIDsFromStaff() ([]int, error) {
 	slog.Debug("Fetching staff person IDs from CampMinder")
 
-	page := 1
 	pageSize := 500
 	var allStaffRecords []map[string]interface{}
 
-	// Fetch all staff pages (status=1 for active staff)
-	for {
-		staffRecords, hasMore, err := s.Client.GetStaffPage(1, page, pageSize)
-		if err != nil {
-			return nil, fmt.Errorf("fetching staff page %d: %w", page, err)
-		}
+	// Fetch staff across all statuses (active, resigned, dismissed, cancelled)
+	for _, status := range allStaffStatuses {
+		page := 1
+		for {
+			staffRecords, hasMore, err := s.Client.GetStaffPage(status, page, pageSize)
+			if err != nil {
+				return nil, fmt.Errorf("fetching staff page %d (status %d): %w", page, status, err)
+			}
 
-		allStaffRecords = append(allStaffRecords, staffRecords...)
+			allStaffRecords = append(allStaffRecords, staffRecords...)
 
-		if !hasMore {
-			break
+			if !hasMore {
+				break
+			}
+			page++
 		}
-		page++
 	}
 
 	personIDs := s.extractPersonIDsFromStaffRecords(allStaffRecords)

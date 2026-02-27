@@ -2,6 +2,7 @@ package sync
 
 import (
 	"fmt"
+	"reflect"
 	"testing"
 )
 
@@ -111,6 +112,84 @@ func testTransformStaffPersonID(data map[string]interface{}, personMap map[int]s
 	pbData["person_id"] = personID
 
 	return pbData, nil
+}
+
+// TestAllStaffStatuses verifies the allStaffStatuses constant includes all 4 CampMinder statuses
+func TestAllStaffStatuses(t *testing.T) {
+	expected := []int{1, 2, 3, 4} // Active, Resigned, Dismissed, Cancelled
+	if !reflect.DeepEqual(allStaffStatuses, expected) {
+		t.Errorf("allStaffStatuses = %v, want %v", allStaffStatuses, expected)
+	}
+}
+
+// TestSetStatusFields_AllStatuses verifies setStatusFields handles all 4 CampMinder staff statuses
+func TestSetStatusFields_AllStatuses(t *testing.T) {
+	s := &StaffSync{}
+
+	tests := []struct {
+		name       string
+		statusID   float64
+		statusName string
+		wantID     int
+		wantStatus string
+	}{
+		{
+			name:       "active staff",
+			statusID:   1,
+			statusName: "Active",
+			wantID:     1,
+			wantStatus: "active",
+		},
+		{
+			name:       "resigned staff",
+			statusID:   2,
+			statusName: "Resigned",
+			wantID:     2,
+			wantStatus: "resigned",
+		},
+		{
+			name:       "dismissed staff",
+			statusID:   3,
+			statusName: "Dismissed",
+			wantID:     3,
+			wantStatus: "dismissed",
+		},
+		{
+			name:       "cancelled staff",
+			statusID:   4,
+			statusName: "Cancelled",
+			wantID:     4,
+			wantStatus: "cancelled",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pbData := make(map[string]interface{})
+			data := map[string]interface{}{
+				"StatusID":   tt.statusID,
+				"StatusName": tt.statusName,
+			}
+
+			s.setStatusFields(pbData, data)
+
+			gotID, hasID := pbData["status_id"]
+			if !hasID {
+				t.Fatal("status_id missing from pbData")
+			}
+			if gotID != tt.wantID {
+				t.Errorf("status_id = %v, want %d", gotID, tt.wantID)
+			}
+
+			gotStatus, hasStatus := pbData["status"]
+			if !hasStatus {
+				t.Fatal("status missing from pbData")
+			}
+			if gotStatus != tt.wantStatus {
+				t.Errorf("status = %v, want %q", gotStatus, tt.wantStatus)
+			}
+		})
+	}
 }
 
 // TestTransformStaffToPB_MissingPersonID tests error handling for missing PersonID
