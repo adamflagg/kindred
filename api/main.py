@@ -56,7 +56,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     yield
 
-    # Shutdown (no cleanup needed - Go scheduler handles sync scheduling)
+    # Shutdown
+    from api.services.metrics_sql_connection import close_connection
+
+    close_connection()
 
 
 def create_app() -> FastAPI:

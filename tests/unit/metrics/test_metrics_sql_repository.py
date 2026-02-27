@@ -12,16 +12,19 @@ Test data uses fictional names per CLAUDE.md conventions:
 from __future__ import annotations
 
 import sqlite3
+from typing import TYPE_CHECKING
 
 import pytest
 
+if TYPE_CHECKING:
+    from api.services.metrics_sql_repository import MetricsSQLRepository
 
 # ============================================================================
 # Helper to import the repository (deferred so tests fail cleanly if missing)
 # ============================================================================
 
 
-def _make_repo(conn: sqlite3.Connection):
+def _make_repo(conn: sqlite3.Connection) -> MetricsSQLRepository:
     """Create a MetricsSQLRepository with a test connection."""
     from api.services.metrics_sql_repository import MetricsSQLRepository
 
@@ -44,7 +47,7 @@ class TestFetchAttendees:
         # att_1 (Emma/S1), att_2 (Liam/S1), att_3 (Olivia/S2) are enrolled
         # att_4 (Emma/S2 waitlisted) and att_5 (Liam/S2 cancelled) excluded
         assert len(result) == 3
-        person_ids = {getattr(a, "person_id") for a in result}
+        person_ids = {a.person_id for a in result}
         assert person_ids == {1001, 1002, 1003}
 
     @pytest.mark.asyncio
@@ -53,7 +56,7 @@ class TestFetchAttendees:
         repo = _make_repo(sql_db)
         result = await repo.fetch_attendees(2025, status_filter="waitlisted")
         assert len(result) == 1
-        assert getattr(result[0], "person_id") == 1001
+        assert result[0].person_id == 1001
 
     @pytest.mark.asyncio
     async def test_list_status_filter(self, sql_db: sqlite3.Connection) -> None:
@@ -61,7 +64,7 @@ class TestFetchAttendees:
         repo = _make_repo(sql_db)
         result = await repo.fetch_attendees(2025, status_filter=["waitlisted", "cancelled"])
         assert len(result) == 2
-        statuses = {getattr(a, "status") for a in result}
+        statuses = {a.status for a in result}
         assert statuses == {"waitlisted", "cancelled"}
 
     @pytest.mark.asyncio
@@ -70,13 +73,13 @@ class TestFetchAttendees:
         repo = _make_repo(sql_db)
         result = await repo.fetch_attendees(2025)
         for a in result:
-            expand = getattr(a, "expand")
+            expand = a.expand
             assert isinstance(expand, dict)
             session = expand["session"]
             # Verify session has all expected attributes
-            assert getattr(session, "cm_id") is not None
-            assert getattr(session, "name") is not None
-            assert getattr(session, "session_type") is not None
+            assert session.cm_id is not None
+            assert session.name is not None
+            assert session.session_type is not None
             assert hasattr(session, "parent_id")
             assert hasattr(session, "start_date")
             assert hasattr(session, "end_date")
@@ -129,17 +132,17 @@ class TestFetchPersons:
         repo = _make_repo(sql_db)
         result = await repo.fetch_persons(2025)
         emma = result[1001]
-        assert getattr(emma, "first_name") == "Emma"
-        assert getattr(emma, "last_name") == "Johnson"
-        assert getattr(emma, "gender") == "F"
-        assert getattr(emma, "grade") == 5
-        assert getattr(emma, "school") == "Riverside Elementary"
-        assert getattr(emma, "normalized_school") == "Riverside Elementary"
-        assert getattr(emma, "address_city") == "San Francisco"
-        assert getattr(emma, "normalized_city") == "San Francisco"
-        assert getattr(emma, "normalized_congregation") == "Temple Beth El"
-        assert getattr(emma, "years_at_camp") == 3
-        assert getattr(emma, "household_id") == 2001
+        assert emma.first_name == "Emma"
+        assert emma.last_name == "Johnson"
+        assert emma.gender == "F"
+        assert emma.grade == 5
+        assert emma.school == "Riverside Elementary"
+        assert emma.normalized_school == "Riverside Elementary"
+        assert emma.address_city == "San Francisco"
+        assert emma.normalized_city == "San Francisco"
+        assert emma.normalized_congregation == "Temple Beth El"
+        assert emma.years_at_camp == 3
+        assert emma.household_id == 2001
 
 
 # ============================================================================
@@ -168,7 +171,7 @@ class TestFetchSessions:
         result = await repo.fetch_sessions(2025, session_types=["main"])
         assert len(result) == 2
         for s in result.values():
-            assert getattr(s, "session_type") == "main"
+            assert s.session_type == "main"
 
     @pytest.mark.asyncio
     async def test_includes_pb_id(self, sql_db: sqlite3.Connection) -> None:
@@ -176,7 +179,7 @@ class TestFetchSessions:
         repo = _make_repo(sql_db)
         result = await repo.fetch_sessions(2025)
         s1 = result[1000001]
-        assert getattr(s1, "id") == "ses_s1"
+        assert s1.id == "ses_s1"
 
     @pytest.mark.asyncio
     async def test_int_keys(self, sql_db: sqlite3.Connection) -> None:
@@ -202,7 +205,7 @@ class TestFetchBunkAssignments:
         result = await repo.fetch_bunk_assignments(2025)
         assert len(result) == 2
         for ba in result:
-            expand = getattr(ba, "expand")
+            expand = ba.expand
             assert isinstance(expand, dict)
             assert "person" in expand
             assert "session" in expand
@@ -213,7 +216,7 @@ class TestFetchBunkAssignments:
         """Person in expand has cm_id."""
         repo = _make_repo(sql_db)
         result = await repo.fetch_bunk_assignments(2025)
-        person_cm_ids = {getattr(ba.expand["person"], "cm_id") for ba in result}
+        person_cm_ids = {ba.expand["person"].cm_id for ba in result}
         assert person_cm_ids == {1001, 1002}
 
     @pytest.mark.asyncio
@@ -223,16 +226,16 @@ class TestFetchBunkAssignments:
         result = await repo.fetch_bunk_assignments(2025)
         for ba in result:
             session = ba.expand["session"]
-            assert getattr(session, "cm_id") == 1000001  # Both in S1
-            assert getattr(session, "name") == "Session 1"
-            assert getattr(session, "session_type") == "main"
+            assert session.cm_id == 1000001  # Both in S1
+            assert session.name == "Session 1"
+            assert session.session_type == "main"
 
     @pytest.mark.asyncio
     async def test_bunk_expand_attributes(self, sql_db: sqlite3.Connection) -> None:
         """Bunk in expand has name and gender."""
         repo = _make_repo(sql_db)
         result = await repo.fetch_bunk_assignments(2025)
-        bunk_names = {getattr(ba.expand["bunk"], "name") for ba in result}
+        bunk_names = {ba.expand["bunk"].name for ba in result}
         assert bunk_names == {"B-1", "G-1"}
 
 
@@ -251,7 +254,7 @@ class TestFetchSummerEnrollmentHistory:
         result = await repo.fetch_summer_enrollment_history({1001, 1002}, max_year=2025)
         # Emma: 2024 S1 + 2025 S1 = 2 records (enrolled only)
         # Liam: 2024 S2 + 2025 S1 = 2 records (enrolled only, cancelled excluded)
-        person_ids = {getattr(r, "person_id") for r in result}
+        person_ids = {r.person_id for r in result}
         assert person_ids == {1001, 1002}
         assert len(result) == 4  # 2 per person
 
@@ -275,10 +278,10 @@ class TestFetchSummerEnrollmentHistory:
         repo = _make_repo(sql_db)
         result = await repo.fetch_summer_enrollment_history({1001}, max_year=2025)
         for r in result:
-            expand = getattr(r, "expand")
+            expand = r.expand
             session = expand["session"]
-            assert getattr(session, "session_type") is not None
-            assert getattr(session, "start_date") is not None
+            assert session.session_type is not None
+            assert session.start_date is not None
 
 
 # ============================================================================
@@ -296,7 +299,7 @@ class TestFetchBunkPlans:
         result = await repo.fetch_bunk_plans(2025)
         assert len(result) == 3  # B-1/S1, G-1/S1, AG-1/AG-S1
         for bp in result:
-            expand = getattr(bp, "expand")
+            expand = bp.expand
             assert "bunk" in expand
             bunk = expand["bunk"]
             assert hasattr(bunk, "name")
@@ -307,7 +310,7 @@ class TestFetchBunkPlans:
         """The session field is the PocketBase ID string."""
         repo = _make_repo(sql_db)
         result = await repo.fetch_bunk_plans(2025)
-        session_ids = {getattr(bp, "session") for bp in result}
+        session_ids = {bp.session for bp in result}
         assert "ses_s1" in session_ids
         assert "ses_ag1" in session_ids
 
@@ -359,8 +362,8 @@ class TestFetchStatusTransitions:
         repo = _make_repo(sql_db)
         result = await repo.fetch_status_transitions(2025, to_statuses=["enrolled"])
         assert len(result) == 1
-        assert getattr(result[0], "new_status") == "enrolled"
-        assert getattr(result[0], "person_id") == 1001
+        assert result[0].new_status == "enrolled"
+        assert result[0].person_id == 1001
 
     @pytest.mark.asyncio
     async def test_session_expand(self, sql_db: sqlite3.Connection) -> None:
@@ -368,31 +371,27 @@ class TestFetchStatusTransitions:
         repo = _make_repo(sql_db)
         result = await repo.fetch_status_transitions(2025, to_statuses=["cancelled"])
         assert len(result) == 1
-        expand = getattr(result[0], "expand")
+        expand = result[0].expand
         session = expand["session"]
-        assert getattr(session, "cm_id") == 1000001
+        assert session.cm_id == 1000001
 
     @pytest.mark.asyncio
     async def test_person_expand(self, sql_db: sqlite3.Connection) -> None:
         """When expand_person=True, person is in expand."""
         repo = _make_repo(sql_db)
-        result = await repo.fetch_status_transitions(
-            2025, to_statuses=["enrolled"], expand_person=True
-        )
+        result = await repo.fetch_status_transitions(2025, to_statuses=["enrolled"], expand_person=True)
         assert len(result) == 1
-        expand = getattr(result[0], "expand")
+        expand = result[0].expand
         assert "person" in expand
         person = expand["person"]
-        assert getattr(person, "gender") is not None
+        assert person.gender is not None
 
     @pytest.mark.asyncio
     async def test_no_person_expand_by_default(self, sql_db: sqlite3.Connection) -> None:
         """When expand_person=False, person is not in expand."""
         repo = _make_repo(sql_db)
-        result = await repo.fetch_status_transitions(
-            2025, to_statuses=["enrolled"], expand_person=False
-        )
-        expand = getattr(result[0], "expand")
+        result = await repo.fetch_status_transitions(2025, to_statuses=["enrolled"], expand_person=False)
+        expand = result[0].expand
         assert "person" not in expand
 
 
@@ -411,7 +410,7 @@ class TestFetchAttendeesWithPersons:
         result = await repo.fetch_attendees_with_persons(2025)
         assert len(result) == 3  # Default: enrolled
         for a in result:
-            expand = getattr(a, "expand")
+            expand = a.expand
             assert "person" in expand
             assert "session" in expand
 
@@ -420,22 +419,20 @@ class TestFetchAttendeesWithPersons:
         """Person in expand has demographic fields."""
         repo = _make_repo(sql_db)
         result = await repo.fetch_attendees_with_persons(2025)
-        emma_records = [a for a in result if getattr(a, "person_id") == 1001]
+        emma_records = [a for a in result if a.person_id == 1001]
         assert len(emma_records) == 1
         person = emma_records[0].expand["person"]
-        assert getattr(person, "first_name") == "Emma"
-        assert getattr(person, "gender") == "F"
-        assert getattr(person, "school") == "Riverside Elementary"
+        assert person.first_name == "Emma"
+        assert person.gender == "F"
+        assert person.school == "Riverside Elementary"
 
     @pytest.mark.asyncio
     async def test_status_filter(self, sql_db: sqlite3.Connection) -> None:
         """Status filter works with double expand."""
         repo = _make_repo(sql_db)
-        result = await repo.fetch_attendees_with_persons(
-            2025, status_filter="waitlisted"
-        )
+        result = await repo.fetch_attendees_with_persons(2025, status_filter="waitlisted")
         assert len(result) == 1
-        assert getattr(result[0], "person_id") == 1001
+        assert result[0].person_id == 1001
 
 
 # ============================================================================
@@ -459,7 +456,7 @@ class TestFetchStatusHistory:
         repo = _make_repo(sql_db)
         result = await repo.fetch_status_history(2025, old_status="waitlisted")
         assert len(result) == 1
-        assert getattr(result[0], "new_status") == "enrolled"
+        assert result[0].new_status == "enrolled"
 
     @pytest.mark.asyncio
     async def test_filter_by_new_statuses(self, sql_db: sqlite3.Connection) -> None:
@@ -467,7 +464,7 @@ class TestFetchStatusHistory:
         repo = _make_repo(sql_db)
         result = await repo.fetch_status_history(2025, new_statuses=["cancelled"])
         assert len(result) == 1
-        assert getattr(result[0], "person_id") == 1002
+        assert result[0].person_id == 1002
 
     @pytest.mark.asyncio
     async def test_expand_shape(self, sql_db: sqlite3.Connection) -> None:
@@ -475,7 +472,7 @@ class TestFetchStatusHistory:
         repo = _make_repo(sql_db)
         result = await repo.fetch_status_history(2025)
         for r in result:
-            expand = getattr(r, "expand")
+            expand = r.expand
             assert "session" in expand
             assert "person" in expand
             person = expand["person"]
@@ -531,7 +528,7 @@ class TestFetchEnrollmentSnapshots:
         repo = _make_repo(sql_db)
         result = await repo.fetch_enrollment_snapshots(2025)
         assert len(result) == 3
-        dates = [getattr(r, "snapshot_date") for r in result]
+        dates = [r.snapshot_date for r in result]
         assert dates == sorted(dates)
 
     @pytest.mark.asyncio
@@ -540,7 +537,7 @@ class TestFetchEnrollmentSnapshots:
         repo = _make_repo(sql_db)
         result = await repo.fetch_enrollment_snapshots(2025, session_cm_id=1000002)
         assert len(result) == 1
-        assert getattr(result[0], "session_cm_id") == 1000002
+        assert result[0].session_cm_id == 1000002
 
     @pytest.mark.asyncio
     async def test_gender_count_fields(self, sql_db: sqlite3.Connection) -> None:
@@ -573,7 +570,7 @@ class TestFetchAttendeesWithDates:
         repo = _make_repo(sql_db)
         result = await repo.fetch_attendees_with_dates(2025)
         for a in result:
-            assert getattr(a, "enrollment_date")  # Non-empty
+            assert a.enrollment_date  # Non-empty
 
     @pytest.mark.asyncio
     async def test_session_expand(self, sql_db: sqlite3.Connection) -> None:
@@ -581,7 +578,7 @@ class TestFetchAttendeesWithDates:
         repo = _make_repo(sql_db)
         result = await repo.fetch_attendees_with_dates(2025)
         for a in result:
-            expand = getattr(a, "expand")
+            expand = a.expand
             assert "session" in expand
 
     @pytest.mark.asyncio
@@ -591,9 +588,9 @@ class TestFetchAttendeesWithDates:
         result_without = await repo.fetch_attendees_with_dates(2025, expand_person=False)
         result_with = await repo.fetch_attendees_with_dates(2025, expand_person=True)
         for a in result_without:
-            assert "person" not in getattr(a, "expand")
+            assert "person" not in a.expand
         for a in result_with:
-            assert "person" in getattr(a, "expand")
+            assert "person" in a.expand
 
 
 # ============================================================================
@@ -734,7 +731,7 @@ class TestObjectCompatibility:
         for a in attendees:
             session = get_session_from_expand(a)
             assert session is not None
-            assert getattr(session, "cm_id") is not None
+            assert session.cm_id is not None
 
     @pytest.mark.asyncio
     async def test_compute_summer_metrics(self, sql_db: sqlite3.Connection) -> None:
