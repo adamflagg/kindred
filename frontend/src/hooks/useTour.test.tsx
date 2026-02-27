@@ -1,9 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useTour, useTourHints } from './useTour'
-import * as tourStorage from '../tours/tourStorage'
+import { useTour } from './useTour'
 import * as tourRegistry from '../tours/tourRegistry'
-import type { TourDefinition, HintDefinition } from '../tours/types'
+import type { TourDefinition } from '../tours/types'
 
 // Mock the modules
 vi.mock('../tours/tourStorage')
@@ -55,8 +54,6 @@ describe('useTour', () => {
     vi.useFakeTimers()
     vi.mocked(tourRegistry.getTourIdForRoute).mockReturnValue('debug')
     vi.mocked(tourRegistry.loadTourDefinition).mockResolvedValue(mockTourDefinition)
-    vi.mocked(tourStorage.isTourCompleted).mockReturnValue(false)
-    vi.mocked(tourStorage.markTourCompleted).mockImplementation(() => {})
     mockDrive.mockClear()
     mockDestroy.mockClear()
   })
@@ -83,20 +80,7 @@ describe('useTour', () => {
     expect(result.current.tourId).toBeNull()
   })
 
-  it('auto-starts tour when not yet completed', async () => {
-    vi.mocked(tourStorage.isTourCompleted).mockReturnValue(false)
-
-    renderHook(() => useTour())
-
-    // Flush promise resolution + advance past all delays
-    await flushAndAdvance(1000)
-
-    expect(mockDrive).toHaveBeenCalled()
-  })
-
-  it('does not auto-start tour when already completed', async () => {
-    vi.mocked(tourStorage.isTourCompleted).mockReturnValue(true)
-
+  it('does not auto-start tour on route change', async () => {
     renderHook(() => useTour())
 
     await flushAndAdvance(1000)
@@ -104,15 +88,13 @@ describe('useTour', () => {
     expect(mockDrive).not.toHaveBeenCalled()
   })
 
-  it('provides a replay function that starts the tour regardless of completion', async () => {
-    vi.mocked(tourStorage.isTourCompleted).mockReturnValue(true)
-
+  it('provides a replay function that starts the tour', async () => {
     const { result } = renderHook(() => useTour())
 
     // Let the definition load
     await flushAndAdvance(1000)
 
-    // Tour should NOT have auto-started (completed)
+    // Tour should NOT have auto-started
     expect(mockDrive).not.toHaveBeenCalled()
 
     // Now replay
@@ -132,9 +114,15 @@ describe('useTour', () => {
     }
     vi.mocked(tourRegistry.loadTourDefinition).mockResolvedValue(neverReadyDef)
 
-    renderHook(() => useTour())
+    const { result } = renderHook(() => useTour())
 
-    // Advance well past the maximum retry window (~5.3s with 25 retries × 200ms + 300ms delay)
+    await flushAndAdvance(1000)
+
+    // Trigger replay and wait for retry exhaustion
+    act(() => {
+      result.current.replay()
+    })
+
     await flushAndAdvance(6000)
 
     expect(mockDrive).not.toHaveBeenCalled()
@@ -147,7 +135,13 @@ describe('useTour', () => {
     }
     vi.mocked(tourRegistry.loadTourDefinition).mockResolvedValue(neverReadyDef)
 
-    renderHook(() => useTour())
+    const { result } = renderHook(() => useTour())
+
+    await flushAndAdvance(1000)
+
+    act(() => {
+      result.current.replay()
+    })
 
     await flushAndAdvance(6000)
 
@@ -155,90 +149,18 @@ describe('useTour', () => {
   })
 
   it('cleans up driver instance on unmount', async () => {
-    const { unmount } = renderHook(() => useTour())
+    const { result, unmount } = renderHook(() => useTour())
 
-    // Let tour auto-start so driver instance is created
+    await flushAndAdvance(1000)
+
+    // Trigger replay so driver instance is created
+    act(() => {
+      result.current.replay()
+    })
     await flushAndAdvance(1000)
 
     unmount()
 
     expect(mockDestroy).toHaveBeenCalled()
-  })
-
-  it('does not auto-start when no route has a tour', async () => {
-    vi.mocked(tourRegistry.getTourIdForRoute).mockReturnValue(null)
-
-    renderHook(() => useTour())
-
-    await flushAndAdvance(1000)
-
-    expect(mockDrive).not.toHaveBeenCalled()
-  })
-
-  it('returns empty hints array when definition has no hints', async () => {
-    const { result } = renderHook(() => useTour())
-
-    await flushAndAdvance(1000)
-
-    expect(result.current.hints).toEqual([])
-  })
-
-  it('returns hints from tour definition when available', async () => {
-    const mockHints: HintDefinition[] = [
-      { element: '[data-tour="test"]', title: 'Test Hint', description: 'A hint' },
-    ]
-    const defWithHints: TourDefinition = {
-      ...mockTourDefinition,
-      hints: mockHints,
-    }
-    vi.mocked(tourRegistry.loadTourDefinition).mockResolvedValue(defWithHints)
-
-    const { result } = renderHook(() => useTour())
-
-    await flushAndAdvance(1000)
-
-    expect(result.current.hints).toEqual(mockHints)
-  })
-})
-
-describe('useTourHints', () => {
-  beforeEach(() => {
-    vi.useFakeTimers()
-    vi.mocked(tourRegistry.getTourIdForRoute).mockReturnValue('debug')
-    vi.mocked(tourRegistry.loadTourDefinition).mockResolvedValue(mockTourDefinition)
-    vi.mocked(tourStorage.isTourCompleted).mockReturnValue(false)
-    mockDrive.mockClear()
-    mockDestroy.mockClear()
-  })
-
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
-  it('returns hints without auto-starting tour', async () => {
-    const mockHints: HintDefinition[] = [
-      { element: '[data-tour="test"]', title: 'Test', description: 'desc' },
-    ]
-    vi.mocked(tourRegistry.loadTourDefinition).mockResolvedValue({
-      ...mockTourDefinition,
-      hints: mockHints,
-    })
-
-    const { result } = renderHook(() => useTourHints())
-
-    await flushAndAdvance(1000)
-
-    expect(result.current).toEqual(mockHints)
-    expect(mockDrive).not.toHaveBeenCalled()
-  })
-
-  it('returns empty array when no tour exists for route', async () => {
-    vi.mocked(tourRegistry.getTourIdForRoute).mockReturnValue(null)
-
-    const { result } = renderHook(() => useTourHints())
-
-    await flushAndAdvance(0)
-
-    expect(result.current).toEqual([])
   })
 })

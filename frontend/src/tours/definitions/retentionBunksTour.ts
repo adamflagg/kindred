@@ -30,13 +30,6 @@ const retentionBunksTour: TourDefinition = {
       },
     },
   ],
-  hints: [
-    {
-      element: '[data-tour="retention-bunks-heatmap"]',
-      title: 'Hover for Details',
-      description: 'Hover any cell to see exact numbers and staff assigned to that bunk.',
-    },
-  ],
   isReady: () => {
     return document.querySelector('[data-tour="retention-bunks-heatmap"]') !== null
   },
