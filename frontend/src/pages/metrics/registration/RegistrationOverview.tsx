@@ -23,6 +23,8 @@ import { ComparisonSummaryTable } from '../../../components/metrics/ComparisonSu
 import { MetricCard } from '../../../components/metrics/MetricCard'
 import { BreakdownChart } from '../../../components/metrics/BreakdownChart'
 import { GenderByGradeChart } from '../../../components/metrics/GenderByGradeChart'
+import { CssHorizontalBarChart } from '../../../components/metrics/CssHorizontalBarChart'
+import { CssVerticalStackedBarChart } from '../../../components/metrics/CssVerticalStackedBarChart'
 import { SessionLengthBySessionChart } from '../../../components/metrics/SessionLengthBySessionChart'
 import { getSessionChartLabel } from '../../../utils/sessionDisplay'
 import { SESSION_NAME_ALIASES, resolveSessionAlias } from '../../../utils/sessionAliases'
@@ -260,23 +262,42 @@ export default function RegistrationOverview() {
           </div>
         </>
       ) : (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <BreakdownChart
-            title="Enrollment by Gender"
-            data={genderChartData}
-            type="pie"
-            showPercentage
-            height={250}
-            breakdownType="gender"
-            onSegmentClick={setFilter}
-          />
-          <GenderByGradeChart
-            data={data.by_gender_grade ?? []}
-            title="Gender by Grade"
-            height={250}
-            onBarClick={setFilter}
-          />
-        </div>
+        <>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <BreakdownChart
+              title="Enrollment by Gender"
+              data={genderChartData}
+              type="pie"
+              showPercentage
+              height={250}
+              breakdownType="gender"
+              onSegmentClick={setFilter}
+            />
+            <GenderByGradeChart
+              data={data.by_gender_grade ?? []}
+              title="Gender by Grade"
+              height={250}
+              onBarClick={setFilter}
+            />
+          </div>
+
+          {/* CSS Chart Prototype Row — for comparison */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <CssHorizontalBarChart
+              title="Enrollment by Grade (CSS)"
+              data={gradeChartData}
+              height={300}
+              breakdownType="grade"
+              onBarClick={setFilter}
+            />
+            <CssVerticalStackedBarChart
+              title="Gender by Grade (CSS)"
+              data={data.by_gender_grade ?? []}
+              height={250}
+              onBarClick={setFilter}
+            />
+          </div>
+        </>
       )}
 
       {/* Charts Row 2: New vs Returning + Grade */}
@@ -369,7 +390,7 @@ export default function RegistrationOverview() {
                   title={`${currentYear} Session`}
                   data={sessionChartData}
                   type="bar"
-                  height={350}
+                  height={300}
                   breakdownType="session"
                   onSegmentClick={setFilter}
                 />
@@ -381,7 +402,7 @@ export default function RegistrationOverview() {
                     sessionTypeLookup
                   )}
                   type="bar"
-                  height={350}
+                  height={300}
                 />
               </div>
               <ComparisonSummaryTable
@@ -401,7 +422,7 @@ export default function RegistrationOverview() {
                 <SessionLengthBySessionChart
                   data={data.by_session_length_by_session ?? []}
                   title={`${currentYear} Session Length`}
-                  height={350}
+                  height={300}
                   sessionDateLookup={sessionDateLookup}
                   sessionTypeLookup={sessionTypeLookup}
                   onCategoryClick={(lengthCategory) =>
@@ -415,7 +436,7 @@ export default function RegistrationOverview() {
                 <SessionLengthBySessionChart
                   data={compData.by_session_length_by_session ?? []}
                   title={`${compareYear} Session Length`}
-                  height={350}
+                  height={300}
                   sessionDateLookup={sessionDateLookup}
                   sessionTypeLookup={sessionTypeLookup}
                 />
@@ -427,14 +448,14 @@ export default function RegistrationOverview() {
                 title="Enrollment by Session"
                 data={sessionChartData}
                 type="bar"
-                height={350}
+                height={300}
                 breakdownType="session"
                 onSegmentClick={setFilter}
               />
               <SessionLengthBySessionChart
                 data={data.by_session_length_by_session ?? []}
                 title="Enrollment by Session Length"
-                height={350}
+                height={300}
                 sessionDateLookup={sessionDateLookup}
                 sessionTypeLookup={sessionTypeLookup}
                 onCategoryClick={(lengthCategory) =>
