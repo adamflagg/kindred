@@ -21,6 +21,7 @@ from api.schemas.velocity import (
 )
 from api.services.extractors import extract_gender
 from api.utils.session_metrics import build_ag_parent_map
+from api.utils.session_swap import detect_session_swaps
 
 if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository
@@ -475,6 +476,15 @@ class VelocityService:
         # Fetch phase markers (pass reg_dates to avoid double fetch)
         phase_markers = self._build_phase_markers(reg_dates, season_start_dt)
 
+        # Detect session swaps for cancellation metric
+        session_swap_count = 0
+        if metric == "cancellation":
+            all_attendees = await self.repo.fetch_attendees_with_dates(year, session_cm_id=session_cm_id)
+            cancelled_atts = [a for a in all_attendees if getattr(a, "status", "") == "cancelled"]
+            enrolled_atts = [a for a in all_attendees if getattr(a, "status", "") == "enrolled"]
+            swap_pids = detect_session_swaps(cancelled_atts, enrolled_atts)
+            session_swap_count = len(swap_pids)
+
         return VelocityResponse(
             year=year,
             season_start=season_start_dt.strftime("%Y-%m-%d"),
@@ -488,6 +498,7 @@ class VelocityService:
             cancelled_to_date=cancelled_to_date,
             prior_year_cancelled_to_date=prior_year_cancelled_to_date,
             prior_year_session_summaries=prior_year_session_summaries,
+            session_swap_count=session_swap_count,
             warnings=warnings,
         )
 
