@@ -34,13 +34,6 @@ const retentionOverviewTour: TourDefinition = {
       },
     },
   ],
-  hints: [
-    {
-      element: '[data-tour="retention-session-selector"]',
-      title: 'Session Filter',
-      description: 'Filter all charts by a specific session.',
-    },
-  ],
   isReady: () => {
     return document.querySelector('[data-tour="retention-summary-cards"]') !== null
   },

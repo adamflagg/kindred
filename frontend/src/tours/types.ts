@@ -27,16 +27,6 @@ export interface TourStep extends DriveStep {
   }
 }
 
-/** A persistent hint dot placed inline next to an interactive element */
-export interface HintDefinition {
-  /** CSS selector for the element to highlight (should match a data-tour attribute) */
-  element: string
-  /** Popover title shown when hint is clicked */
-  title: string
-  /** Popover description shown when hint is clicked */
-  description: string
-}
-
 /** Definition for a single page tour */
 export interface TourDefinition {
   id: TourId
@@ -44,6 +34,4 @@ export interface TourDefinition {
   steps: TourStep[]
   /** Check if the page is ready for the tour (key elements rendered) */
   isReady: () => boolean
-  /** Persistent contextual hints shown inline next to interactive elements */
-  hints?: HintDefinition[]
 }

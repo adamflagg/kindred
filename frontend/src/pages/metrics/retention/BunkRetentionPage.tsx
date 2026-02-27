@@ -15,13 +15,9 @@ import { useBunkStaff } from '../../../hooks/useBunkStaff'
 import { buildSessionDateLookup } from '../../../utils/sessionUtils'
 import { SessionBunkHeatmap } from '../../../components/metrics/SessionBunkHeatmap'
 import { MetricsQueryGuard } from '../../../components/metrics/MetricsQueryGuard'
-import { useTourHints } from '../../../hooks/useTour'
-import { HintDot } from '../../../components/tour'
-
 export default function BunkRetentionPage() {
   const { currentYear } = useCurrentYear()
   const { campSessions } = useMetricsSession()
-  const hints = useTourHints()
 
   const priorYear = currentYear - 1
 
@@ -43,13 +39,6 @@ export default function BunkRetentionPage() {
           <p className="text-muted-foreground mt-1 text-sm">
             Percentage of campers from each bunk who returned to camp in any form
           </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {hints
-            .filter((h) => h.element === '[data-tour="retention-bunks-heatmap"]')
-            .map((h) => (
-              <HintDot key={h.element} hint={h} />
-            ))}
         </div>
       </div>
 

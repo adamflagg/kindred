@@ -10,8 +10,6 @@ import { BarChart3, Users, TrendingUp, type LucideIcon } from 'lucide-react'
 import { MetricsSessionSelector } from './MetricsSessionSelector'
 import { CompareYearSelector } from './CompareYearSelector'
 import { useMetricsSession } from '../../hooks/useMetricsSession'
-import { useTourHints } from '../../hooks/useTour'
-import { HintDot } from '../tour'
 import { useCurrentYear } from '../../hooks/useCurrentYear'
 import { RETENTION_SUB_NAV } from '../../pages/metrics/metricsNav'
 
@@ -42,7 +40,6 @@ export default function MetricsTypeTabs() {
   const location = useLocation()
   const { expandedRetention, setExpandedRetention, compareYear, setCompareYear } =
     useMetricsSession()
-  const hints = useTourHints()
   const { currentYear, availableYears } = useCurrentYear()
 
   // Determine active tab based on current path
@@ -110,11 +107,6 @@ export default function MetricsTypeTabs() {
               </label>
             )}
             <MetricsSessionSelector />
-            {hints
-              .filter((h) => h.element === '[data-tour="retention-session-selector"]')
-              .map((h) => (
-                <HintDot key={h.element} hint={h} />
-              ))}
           </div>
         )}
       </div>

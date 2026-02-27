@@ -22,13 +22,6 @@ const retentionFlowTour: TourDefinition = {
       },
     },
   ],
-  hints: [
-    {
-      element: '[data-tour="retention-session-selector"]',
-      title: 'Session Filter',
-      description: 'Filter the flow diagram by a specific session.',
-    },
-  ],
   isReady: () => {
     return document.querySelector('[data-tour="retention-flow-sankey"]') !== null
   },

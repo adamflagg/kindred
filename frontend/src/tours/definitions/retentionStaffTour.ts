@@ -33,18 +33,6 @@ const retentionStaffTour: TourDefinition = {
       },
     },
   ],
-  hints: [
-    {
-      element: '[data-tour="retention-staff-sort-overall"]',
-      title: 'Sort by Retention',
-      description: 'Click to sort by retention rate.',
-    },
-    {
-      element: '[data-tour="retention-staff-table"]',
-      title: 'Co-Staff Details',
-      description: 'Hover any cell to see co-staff for that cabin.',
-    },
-  ],
   isReady: () => {
     return document.querySelector('[data-tour="retention-staff-table"]') !== null
   },

@@ -18,22 +18,11 @@ describe('retentionBunksTour', () => {
     expect(retentionBunksTour.steps).toHaveLength(3)
   })
 
-  it('has hints defined', () => {
-    expect(retentionBunksTour.hints).toBeDefined()
-    expect(retentionBunksTour.hints!.length).toBe(1)
-  })
-
   it('uses data-tour selectors in steps', () => {
     for (const step of retentionBunksTour.steps) {
       if (step.element) {
         expect(step.element).toMatch(/\[data-tour=/)
       }
-    }
-  })
-
-  it('uses data-tour selectors in hints', () => {
-    for (const hint of retentionBunksTour.hints!) {
-      expect(hint.element).toMatch(/\[data-tour=/)
     }
   })
 
