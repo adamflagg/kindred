@@ -677,6 +677,7 @@ class DrilldownService:
                     state=state,
                     years_at_camp=years_at_camp,
                     enrollment_date=_get_str_attr(a, "enrollment_date"),
+                    effective_date=_get_str_attr(a, "effective_date"),
                     session_name=session_name,
                     session_cm_id=session_cm_id,
                     status=getattr(a, "status", "enrolled"),
@@ -753,15 +754,22 @@ class DrilldownService:
             self.repo.fetch_attendees(year, all_relevant_statuses),
         )
 
-        # Build person_id -> earliest enrollment_date lookup
+        # Build person_id -> earliest enrollment_date and effective_date lookups
         enrollment_date_lookup: dict[int, str] = {}
+        effective_date_lookup: dict[int, str] = {}
         for att in all_attendees:
             pid = getattr(att, "person_id", None)
+            if pid is None:
+                continue
+            pid_int = int(pid)
             edate = _get_str_attr(att, "enrollment_date")
-            if pid is not None and edate:
-                pid_int = int(pid)
+            if edate:
                 if pid_int not in enrollment_date_lookup or edate < enrollment_date_lookup[pid_int]:
                     enrollment_date_lookup[pid_int] = edate
+            eff_date = _get_str_attr(att, "effective_date")
+            if eff_date:
+                if pid_int not in effective_date_lookup or eff_date < effective_date_lookup[pid_int]:
+                    effective_date_lookup[pid_int] = eff_date
 
         # Build enrolled groups for enrolled_sessions population
         enrolled_attendee_groups: dict[int, list[Any]] = {}
@@ -831,6 +839,7 @@ class DrilldownService:
                     state=state,
                     years_at_camp=years_at_camp,
                     enrollment_date=enrollment_date_lookup.get(pid),
+                    effective_date=effective_date_lookup.get(pid),
                     session_name=session_name,
                     session_cm_id=session_cmid,
                     status=getattr(record, "new_status", "unknown"),

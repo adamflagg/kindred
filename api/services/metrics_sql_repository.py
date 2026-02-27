@@ -99,6 +99,7 @@ class MetricsSQLRepository:
         base = """
             SELECT a.person_id, a.year, a.status, a.status_id, a.is_active,
                    a.enrollment_date,
+                   a.effective_date,
                    cs.cm_id  AS _session_cm_id,
                    cs.name   AS _session_name,
                    cs.session_type AS _session_type,
@@ -130,6 +131,7 @@ class MetricsSQLRepository:
                 status_id=r["status_id"],
                 is_active=r["is_active"],
                 enrollment_date=r["enrollment_date"],
+                effective_date=r["effective_date"],
                 expand={"session": self._session_ns(r)},
             )
             for r in rows

@@ -31,6 +31,21 @@ function getEnrolledDisplay(a: DrilldownAttendee): string {
   return '—'
 }
 
+/** Format a date string as short locale date (e.g. "Nov 10, 2025"). */
+function formatDate(dateStr: string | undefined | null): string {
+  if (!dateStr) return '—'
+  return new Date(dateStr).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
+
+/** Get the best registration date: effective_date if available, fallback to enrollment_date. */
+function getRegistrationDate(a: DrilldownAttendee): string | undefined {
+  return a.effective_date || a.enrollment_date
+}
+
 interface DrillDownModalProps {
   year: number
   filter: DrilldownFilter | null
@@ -51,6 +66,7 @@ type SortField =
   | 'enrolled'
   | 'enrolled_current'
   | 'registration'
+  | 'cancelled'
 type SortDirection = 'asc' | 'desc'
 
 export function DrillDownModal({
@@ -171,13 +187,17 @@ export function DrillDownModal({
           bVal = getEnrolledDisplay(b).toLowerCase()
           break
         case 'registration':
+          aVal = getRegistrationDate(a) ?? ''
+          bVal = getRegistrationDate(b) ?? ''
+          break
+        case 'cancelled':
           aVal = a.enrollment_date ?? ''
           bVal = b.enrollment_date ?? ''
           break
       }
 
-      // Nulls/empty last for registration sort
-      if (sortField === 'registration') {
+      // Nulls/empty last for date sorts
+      if (sortField === 'registration' || sortField === 'cancelled') {
         if (!aVal && bVal) return 1
         if (aVal && !bVal) return -1
       }
@@ -211,7 +231,7 @@ export function DrillDownModal({
           'State',
           'Waitlisted For',
           'Enrolled In',
-          'Registered',
+          'Applied',
           'Years at Camp',
           'Status',
           'Returning',
@@ -244,6 +264,8 @@ export function DrillDownModal({
               'State',
               'Cancelled Session',
               'Current Session',
+              'Registered',
+              'Cancelled',
               'Years at Camp',
               'Status',
               'Returning',
@@ -258,6 +280,7 @@ export function DrillDownModal({
               'City',
               'State',
               'Session',
+              'Registered',
               'Years at Camp',
               'Status',
               'Returning',
@@ -276,7 +299,7 @@ export function DrillDownModal({
             a.state ?? '',
             getSessionDisplay(a),
             getEnrolledDisplay(a),
-            a.enrollment_date ? new Date(a.enrollment_date).toLocaleDateString() : '',
+            formatDate(getRegistrationDate(a)),
             a.years_at_camp ?? '',
             a.status,
             a.is_returning ? 'Yes' : 'No',
@@ -309,6 +332,8 @@ export function DrillDownModal({
                 a.state ?? '',
                 getSessionDisplay(a),
                 getEnrolledDisplay(a),
+                formatDate(a.effective_date),
+                formatDate(a.enrollment_date),
                 a.years_at_camp ?? '',
                 a.status,
                 a.is_returning ? 'Yes' : 'No',
@@ -323,6 +348,7 @@ export function DrillDownModal({
                 a.city ?? '',
                 a.state ?? '',
                 getSessionDisplay(a),
+                formatDate(getRegistrationDate(a)),
                 a.years_at_camp ?? '',
                 a.status,
                 a.is_returning ? 'Yes' : 'No',
@@ -491,7 +517,7 @@ export function DrillDownModal({
                     className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
                   >
                     <div className="flex items-center gap-1">
-                      Registered <SortIcon field="registration" />
+                      Applied <SortIcon field="registration" />
                     </div>
                   </th>
                 )}
@@ -506,12 +532,40 @@ export function DrillDownModal({
                   </th>
                 )}
                 {isCancellationSpecial && (
+                  <>
+                    <th
+                      onClick={() => handleSort('enrolled')}
+                      className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
+                    >
+                      <div className="flex items-center gap-1">
+                        Current Session <SortIcon field="enrolled" />
+                      </div>
+                    </th>
+                    <th
+                      onClick={() => handleSort('registration')}
+                      className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
+                    >
+                      <div className="flex items-center gap-1">
+                        Registered <SortIcon field="registration" />
+                      </div>
+                    </th>
+                    <th
+                      onClick={() => handleSort('cancelled')}
+                      className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
+                    >
+                      <div className="flex items-center gap-1">
+                        Cancelled <SortIcon field="cancelled" />
+                      </div>
+                    </th>
+                  </>
+                )}
+                {!isWaitlistDrilldown && !isRetentionDrilldown && !isCancellationSpecial && (
                   <th
-                    onClick={() => handleSort('enrolled')}
+                    onClick={() => handleSort('registration')}
                     className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
                   >
                     <div className="flex items-center gap-1">
-                      Current Session <SortIcon field="enrolled" />
+                      Registered <SortIcon field="registration" />
                     </div>
                   </th>
                 )}
@@ -614,9 +668,7 @@ export function DrillDownModal({
                     )}
                     {isWaitlistDrilldown && (
                       <td className="text-foreground px-4 py-3 whitespace-nowrap">
-                        {attendee.enrollment_date
-                          ? new Date(attendee.enrollment_date).toLocaleDateString()
-                          : '—'}
+                        {formatDate(getRegistrationDate(attendee))}
                       </td>
                     )}
                     {isRetentionDrilldown && (
@@ -630,11 +682,24 @@ export function DrillDownModal({
                       </td>
                     )}
                     {isCancellationSpecial && (
-                      <td
-                        className="text-foreground max-w-[180px] truncate px-4 py-3"
-                        title={getEnrolledDisplay(attendee)}
-                      >
-                        {getEnrolledDisplay(attendee)}
+                      <>
+                        <td
+                          className="text-foreground max-w-[180px] truncate px-4 py-3"
+                          title={getEnrolledDisplay(attendee)}
+                        >
+                          {getEnrolledDisplay(attendee)}
+                        </td>
+                        <td className="text-foreground px-4 py-3 whitespace-nowrap">
+                          {formatDate(attendee.effective_date)}
+                        </td>
+                        <td className="text-foreground px-4 py-3 whitespace-nowrap">
+                          {formatDate(attendee.enrollment_date)}
+                        </td>
+                      </>
+                    )}
+                    {!isWaitlistDrilldown && !isRetentionDrilldown && !isCancellationSpecial && (
+                      <td className="text-foreground px-4 py-3 whitespace-nowrap">
+                        {formatDate(getRegistrationDate(attendee))}
                       </td>
                     )}
                     <td className="text-foreground px-4 py-3 text-center whitespace-nowrap">

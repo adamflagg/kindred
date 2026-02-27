@@ -4125,3 +4125,104 @@ class TestCancellationReEnrolledDrilldown:
         assert len(result) == 1
         assert result[0].person_id == 101
         assert len(result[0].sessions) == 2
+
+
+# ============================================================================
+# Tests for effective_date population in drilldown responses
+# ============================================================================
+
+
+class TestDrilldownEffectiveDate:
+    """Tests for effective_date field in DrilldownAttendee responses.
+
+    The effective_date field captures the original registration date from
+    CampMinder, which differs from enrollment_date (PostDate). For cancelled
+    records, enrollment_date shows cancellation date, while effective_date
+    shows when they originally registered.
+    """
+
+    @pytest.mark.asyncio
+    async def test_drilldown_includes_effective_date(
+        self,
+        drilldown_service,
+        mock_repository,
+        sample_sessions,
+        sample_persons,
+    ):
+        """DrilldownAttendee has effective_date populated from attendee record."""
+        session = sample_sessions[1003]
+        attendee = create_mock_attendee(101, session, 2026, status="enrolled")
+        attendee.enrollment_date = "2025-11-15 10:30:00.000Z"
+        attendee.effective_date = "2025-11-10 08:00:00.000Z"
+
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_attendees.return_value = [attendee]
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="gender",
+            breakdown_value="F",
+        )
+
+        assert len(result) >= 1
+        match = [r for r in result if r.person_id == 101]
+        assert len(match) == 1
+        assert match[0].effective_date == "2025-11-10 08:00:00.000Z"
+
+    @pytest.mark.asyncio
+    async def test_drilldown_cancelled_has_both_dates(
+        self,
+        drilldown_service,
+        mock_repository,
+        sample_sessions,
+        sample_persons,
+    ):
+        """Cancelled attendee has both effective_date and enrollment_date."""
+        session = sample_sessions[1003]
+        attendee = create_mock_attendee(101, session, 2026, status="cancelled")
+        attendee.enrollment_date = "2026-07-01 12:00:00.000Z"  # cancellation date
+        attendee.effective_date = "2025-11-10 08:00:00.000Z"  # original registration
+
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_attendees.return_value = [attendee]
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="status",
+            breakdown_value="cancelled",
+            status_filter=["cancelled"],
+        )
+
+        assert len(result) == 1
+        assert result[0].enrollment_date == "2026-07-01 12:00:00.000Z"
+        assert result[0].effective_date == "2025-11-10 08:00:00.000Z"
+
+    @pytest.mark.asyncio
+    async def test_drilldown_effective_date_none_when_missing(
+        self,
+        drilldown_service,
+        mock_repository,
+        sample_sessions,
+        sample_persons,
+    ):
+        """effective_date is None when field is absent on attendee record."""
+        session = sample_sessions[1003]
+        attendee = create_mock_attendee(101, session, 2026, status="enrolled")
+        attendee.enrollment_date = "2025-11-15 10:30:00.000Z"
+        # No effective_date attribute set
+
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_attendees.return_value = [attendee]
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="gender",
+            breakdown_value="F",
+        )
+
+        match = [r for r in result if r.person_id == 101]
+        assert len(match) == 1
+        assert match[0].effective_date is None

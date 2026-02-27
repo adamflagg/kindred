@@ -10,7 +10,15 @@
  */
 
 import { useMemo } from 'react'
-import { XCircle, Users, UserMinus, AlertTriangle, Clock } from 'lucide-react'
+import {
+  XCircle,
+  Users,
+  UserMinus,
+  AlertTriangle,
+  Clock,
+  ArrowLeftRight,
+  CalendarDays,
+} from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useDrilldown } from '../../../hooks/useDrilldown'
@@ -189,6 +197,116 @@ export default function CancellationAnalysis() {
                 }
               />
             </div>
+
+            {/* Cancellation Timing Insights */}
+            {(data.session_swap_count != null || data.avg_days_to_cancellation != null) && (
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                {data.session_swap_count != null && data.session_swap_count > 0 && (
+                  <div className="border-border bg-card rounded-lg border p-4">
+                    <div className="text-muted-foreground mb-1 flex items-center gap-1.5 text-xs font-medium">
+                      <ArrowLeftRight className="h-3.5 w-3.5" />
+                      Session Swaps
+                    </div>
+                    <div className="text-foreground text-2xl font-bold">
+                      {data.session_swap_count}
+                    </div>
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      Cancelled one session, enrolled in another
+                    </p>
+                  </div>
+                )}
+                {data.true_departure_count != null && data.true_departure_count > 0 && (
+                  <div className="border-border bg-card rounded-lg border p-4">
+                    <div className="text-muted-foreground mb-1 flex items-center gap-1.5 text-xs font-medium">
+                      <UserMinus className="h-3.5 w-3.5" />
+                      True Departures
+                    </div>
+                    <div className="text-foreground text-2xl font-bold">
+                      {data.true_departure_count}
+                    </div>
+                    <p className="text-muted-foreground mt-1 text-xs">Left camp entirely</p>
+                  </div>
+                )}
+                {data.avg_days_to_cancellation != null && (
+                  <div className="border-border bg-card rounded-lg border p-4">
+                    <div className="text-muted-foreground mb-1 flex items-center gap-1.5 text-xs font-medium">
+                      <Clock className="h-3.5 w-3.5" />
+                      Avg Time to Cancel
+                    </div>
+                    <div className="text-foreground text-2xl font-bold">
+                      {Math.round(data.avg_days_to_cancellation)} days
+                    </div>
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      From registration to cancellation
+                    </p>
+                  </div>
+                )}
+                {data.median_days_to_cancellation != null && (
+                  <div className="border-border bg-card rounded-lg border p-4">
+                    <div className="text-muted-foreground mb-1 flex items-center gap-1.5 text-xs font-medium">
+                      <CalendarDays className="h-3.5 w-3.5" />
+                      Median Time to Cancel
+                    </div>
+                    <div className="text-foreground text-2xl font-bold">
+                      {Math.round(data.median_days_to_cancellation)} days
+                    </div>
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      Middle value, less affected by outliers
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Time-to-Cancellation Distribution */}
+            {data.time_to_cancellation_buckets && data.time_to_cancellation_buckets.length > 0 && (
+              <div className="border-border bg-card rounded-lg border p-4">
+                <h3 className="text-foreground mb-3 text-sm font-semibold">
+                  Time to Cancellation Distribution
+                </h3>
+                <div className="space-y-2">
+                  {data.time_to_cancellation_buckets.map((bucket) => (
+                    <div key={bucket.label} className="flex items-center gap-3">
+                      <span className="text-muted-foreground w-24 text-xs">{bucket.label}</span>
+                      <div className="bg-muted h-5 flex-1 overflow-hidden rounded">
+                        <div
+                          className="h-full rounded bg-red-400 dark:bg-red-600"
+                          style={{ width: `${bucket.percentage}%` }}
+                        />
+                      </div>
+                      <span className="text-foreground w-16 text-right text-xs font-medium">
+                        {bucket.count} ({bucket.percentage}%)
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Registration Month Breakdown */}
+            {data.by_registration_month && data.by_registration_month.length > 0 && (
+              <div className="border-border bg-card rounded-lg border p-4">
+                <h3 className="text-foreground mb-3 text-sm font-semibold">
+                  Cancellations by Registration Month
+                </h3>
+                <div className="space-y-2">
+                  {data.by_registration_month.map((item) => (
+                    <div key={item.month} className="flex items-center gap-3">
+                      <span className="text-muted-foreground w-24 text-xs">{item.month}</span>
+                      <div className="bg-muted h-5 flex-1 overflow-hidden rounded">
+                        <div
+                          className="h-full rounded bg-amber-400 dark:bg-amber-600"
+                          style={{ width: `${item.percentage}%` }}
+                        />
+                      </div>
+                      <span className="text-foreground w-16 text-right text-xs font-medium">
+                        {item.count} ({item.percentage}%)
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Session Chart */}
             {data.by_session.length > 0 && (

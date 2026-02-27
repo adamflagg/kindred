@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from api.schemas.metrics import (
@@ -170,6 +171,24 @@ class WaitlistService:
             if session_cmid:
                 waitlisted_by_session[session_cmid]["declined"] += 1
 
+        # --- Waitlist duration tracking ---
+        # Fetch cancelled attendees so declined persons appear in duration lookup
+        cancelled_attendees = await self.repository.fetch_attendees(
+            year, status_filter=["cancelled", "withdrawn", "dismissed"]
+        )
+        cancelled_attendees = self._filter_to_sessions(cancelled_attendees, set(all_sessions.keys()))
+
+        # Build attendee lookup by person_id for date access
+        all_fetched_attendees = waitlisted_attendees + enrolled_attendees + cancelled_attendees
+        attendee_by_person: dict[int, Any] = {}
+        for att in all_fetched_attendees:
+            pid = getattr(att, "person_id", None)
+            if pid is not None:
+                attendee_by_person[int(pid)] = att
+
+        acceptance_duration = self._compute_waitlist_duration(accepted_persons, attendee_by_person)
+        decline_duration = self._compute_waitlist_duration(declined_persons, attendee_by_person)
+
         # --- Merge AG session counts into parent main sessions ---
         ag_parent_map = build_ag_parent_map(filtered_sessions)
         merged_by_session: dict[int, dict[str, int]] = {}
@@ -240,6 +259,10 @@ class WaitlistService:
             waitlisted_has_enrollment=len(waitlisted_has_enrollment),
             total_accepted=len(accepted_persons),
             total_declined=len(declined_persons),
+            avg_days_to_acceptance=acceptance_duration["avg"],
+            median_days_to_acceptance=acceptance_duration["median"],
+            avg_days_to_decline=decline_duration["avg"],
+            median_days_to_decline=decline_duration["median"],
             by_session=by_session,
             by_grade=by_grade,
             by_gender=by_gender,
@@ -318,3 +341,49 @@ class WaitlistService:
         ]
 
         return by_grade, by_gender
+
+    @staticmethod
+    def _parse_date(value: Any) -> datetime | None:
+        """Parse a date string to datetime, returning None on failure."""
+        if not value:
+            return None
+        try:
+            return datetime.strptime(str(value)[:10], "%Y-%m-%d")
+        except (ValueError, IndexError):
+            return None
+
+    @classmethod
+    def _compute_waitlist_duration(
+        cls,
+        person_ids: set[int],
+        attendee_by_person: dict[int, Any],
+    ) -> dict[str, float | None]:
+        """Compute avg/median days between effective_date and enrollment_date for a set of persons.
+
+        Returns dict with 'avg' and 'median' keys, both None if no valid records found.
+        """
+        days_list: list[int] = []
+
+        for pid in person_ids:
+            att = attendee_by_person.get(pid)
+            if att is None:
+                continue
+
+            eff_date = cls._parse_date(getattr(att, "effective_date", None))
+            enr_date = cls._parse_date(getattr(att, "enrollment_date", None))
+            if not eff_date or not enr_date:
+                continue
+
+            days = (enr_date - eff_date).days
+            if days >= 0:
+                days_list.append(days)
+
+        if not days_list:
+            return {"avg": None, "median": None}
+
+        avg_days = sum(days_list) / len(days_list)
+        sorted_days = sorted(days_list)
+        n = len(sorted_days)
+        median_days = sorted_days[n // 2] if n % 2 == 1 else (sorted_days[n // 2 - 1] + sorted_days[n // 2]) / 2.0
+
+        return {"avg": round(avg_days, 1), "median": round(median_days, 1)}

@@ -74,3 +74,4 @@ class VelocityResponse(BaseModel):
     cancelled_to_date: int | None = Field(None, description="Total cancellations for current year through latest week")
     prior_year_cancelled_to_date: list[PriorYearCancelledSummary] = Field(default_factory=list)
     prior_year_session_summaries: list[PriorYearSessionSummary] = Field(default_factory=list)
+    session_swap_count: int = Field(0, description="Cancellations that are session changes, not true departures")

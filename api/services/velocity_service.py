@@ -20,7 +20,8 @@ from api.schemas.velocity import (
     WeeklyDataPoint,
 )
 from api.services.extractors import extract_gender
-from api.utils.session_metrics import build_ag_parent_map
+from api.utils.session_metrics import build_ag_parent_map, get_session_from_expand
+from api.utils.session_swap import detect_session_swaps
 
 if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository
@@ -347,6 +348,7 @@ class VelocityService:
                 phase_markers=[],
                 warnings=warnings,
                 cancelled_to_date=None,
+                session_swap_count=0,
             )
 
         season_end_dt = _season_end(season_start_dt)
@@ -475,6 +477,25 @@ class VelocityService:
         # Fetch phase markers (pass reg_dates to avoid double fetch)
         phase_markers = self._build_phase_markers(reg_dates, season_start_dt)
 
+        # Detect session swaps for cancellation metric
+        session_swap_count = 0
+        if metric == "cancellation":
+            all_attendees = await self.repo.fetch_attendees_with_dates(year, session_cm_id=session_cm_id)
+            cancelled_atts = [
+                a for a in all_attendees if getattr(a, "status", "") in ("cancelled", "withdrawn", "dismissed")
+            ]
+            enrolled_atts = [a for a in all_attendees if getattr(a, "status", "") == "enrolled"]
+            swap_pids = detect_session_swaps(cancelled_atts, enrolled_atts)
+            if session_cm_id is not None:
+                # Filter swap_pids to those with cancellations in the viewed session
+                scoped_pids: set[int] = set()
+                for a in cancelled_atts:
+                    session_info = get_session_from_expand(a)
+                    if session_info and int(getattr(session_info, "cm_id", 0)) == session_cm_id:
+                        scoped_pids.add(int(getattr(a, "person_id", 0)))
+                swap_pids = swap_pids & scoped_pids
+            session_swap_count = len(swap_pids)
+
         return VelocityResponse(
             year=year,
             season_start=season_start_dt.strftime("%Y-%m-%d"),
@@ -488,6 +509,7 @@ class VelocityService:
             cancelled_to_date=cancelled_to_date,
             prior_year_cancelled_to_date=prior_year_cancelled_to_date,
             prior_year_session_summaries=prior_year_session_summaries,
+            session_swap_count=session_swap_count,
             warnings=warnings,
         )
 

@@ -439,6 +439,24 @@ export default function CancellationVelocityPage() {
         </div>
       )}
 
+      {/* Session Swap Annotation */}
+      {data.session_swap_count != null &&
+        data.session_swap_count > 0 &&
+        data.cancelled_to_date != null &&
+        data.cancelled_to_date > 0 && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50/50 px-4 py-3 text-sm dark:border-amber-800 dark:bg-amber-950/30">
+            <span className="font-medium text-amber-800 dark:text-amber-300">
+              {data.session_swap_count} of {data.cancelled_to_date} cancellations (
+              {Math.round((data.session_swap_count / data.cancelled_to_date) * 100)}%) are session
+              swaps
+            </span>
+            <span className="text-muted-foreground">
+              {' '}
+              — cancelled one session and enrolled in another within the same day
+            </span>
+          </div>
+        )}
+
       {/* Cancellation Velocity Chart */}
       <div className="card-lodge p-4">
         <h3 className="text-foreground mb-2 text-base font-semibold">

@@ -1,0 +1,483 @@
+"""
+Unit tests for cancellation timing and session swap detection.
+
+Tests verify:
+- Session swap detection (cancel Session A, enroll in Session B within 1 day)
+- True departure detection (cancel with no other enrollment)
+- Time-to-cancellation calculation (days between effective_date and enrollment_date)
+- Time-to-cancellation distribution buckets
+- Registration month breakdown (cancellations grouped by effective_date month)
+"""
+
+from __future__ import annotations
+
+import os
+from unittest.mock import AsyncMock, Mock
+
+import pytest
+
+# Set AUTH_MODE before any imports that might load settings
+os.environ["AUTH_MODE"] = "bypass"
+os.environ["SKIP_PB_AUTH"] = "true"
+
+from api.services.cancellation_service import CancellationService
+
+# ============================================================================
+# Test Data Factories
+# ============================================================================
+
+
+def create_mock_person(
+    cm_id: int,
+    first_name: str,
+    last_name: str,
+    gender: str = "M",
+    grade: int = 6,
+    years_at_camp: int = 2,
+    year: int = 2026,
+    school: str = "Riverside Elementary",
+    address_city: str = "Springfield",
+    address_state: str = "IL",
+) -> Mock:
+    """Create a mock person record."""
+    person = Mock()
+    person.cm_id = cm_id
+    person.first_name = first_name
+    person.last_name = last_name
+    person.gender = gender
+    person.grade = grade
+    person.years_at_camp = years_at_camp
+    person.year = year
+    person.school = school
+    person.address_city = address_city
+    person.address_state = address_state
+    person.preferred_name = None
+    person.age = 12
+    person.normalized_school = None
+    person.normalized_city = None
+    person.normalized_congregation = None
+    return person
+
+
+def create_mock_session(
+    cm_id: int,
+    name: str,
+    year: int = 2026,
+    session_type: str = "main",
+    start_date: str = "2026-06-15",
+    end_date: str = "2026-07-05",
+    parent_id: int | None = None,
+) -> Mock:
+    """Create a mock session record."""
+    session = Mock()
+    session.cm_id = cm_id
+    session.name = name
+    session.year = year
+    session.session_type = session_type
+    session.start_date = start_date
+    session.end_date = end_date
+    session.parent_id = parent_id
+    return session
+
+
+def create_mock_attendee(
+    person_id: int,
+    session: Mock,
+    year: int = 2026,
+    status: str = "enrolled",
+    status_id: int = 2,
+    is_active: bool = True,
+    enrollment_date: str | None = None,
+    effective_date: str | None = None,
+) -> Mock:
+    """Create a mock attendee record with embedded session."""
+    attendee = Mock()
+    attendee.person_id = person_id
+    attendee.year = year
+    attendee.status = status
+    attendee.status_id = status_id
+    attendee.is_active = is_active
+    attendee.enrollment_date = enrollment_date
+    attendee.effective_date = effective_date
+    attendee.expand = {"session": session}
+    return attendee
+
+
+def create_mock_status_history(
+    person_id: int,
+    session: Mock,
+    person: Mock | None,
+    old_status: str,
+    new_status: str,
+    detected_at: str = "2026-01-15 10:00:00.000Z",
+    year: int = 2026,
+) -> Mock:
+    """Create a mock attendee_status_history record."""
+    record = Mock()
+    record.person_id = person_id
+    record.old_status = old_status
+    record.new_status = new_status
+    record.detected_at = detected_at
+    record.year = year
+    record.expand = {"session": session}
+    if person:
+        record.expand["person"] = person
+    return record
+
+
+# ============================================================================
+# Fixtures
+# ============================================================================
+
+
+@pytest.fixture
+def mock_repository():
+    """Create a mock MetricsRepository."""
+    repo = Mock()
+    repo.fetch_attendees = AsyncMock(return_value=[])
+    repo.fetch_persons = AsyncMock(return_value={})
+    repo.fetch_sessions = AsyncMock(return_value={})
+    repo.fetch_status_history = AsyncMock(return_value=[])
+    return repo
+
+
+@pytest.fixture
+def cancellation_service(mock_repository):
+    """Create a CancellationService with mock repository."""
+    return CancellationService(mock_repository)
+
+
+@pytest.fixture
+def sample_sessions() -> dict[int, Mock]:
+    """Sample sessions for 2026."""
+    return {
+        1001: create_mock_session(1001, "Session 1", 2026, "main", "2026-06-15", "2026-07-05"),
+        1002: create_mock_session(1002, "Session 2", 2026, "main", "2026-07-06", "2026-07-26"),
+        1003: create_mock_session(1003, "Session 3", 2026, "main", "2026-07-27", "2026-08-16"),
+    }
+
+
+@pytest.fixture
+def sample_persons() -> dict[int, Mock]:
+    """Sample persons."""
+    return {
+        101: create_mock_person(101, "Emma", "Johnson", "F", 5, years_at_camp=1),
+        102: create_mock_person(102, "Liam", "Garcia", "M", 6, years_at_camp=3),
+        103: create_mock_person(103, "Olivia", "Chen", "F", 7, years_at_camp=2),
+        104: create_mock_person(104, "Noah", "Williams", "M", 5, years_at_camp=1),
+        105: create_mock_person(105, "Ava", "Brown", "F", 6, years_at_camp=2),
+    }
+
+
+# ============================================================================
+# Session Swap Detection Tests
+# ============================================================================
+
+
+class TestSessionSwapDetection:
+    """Tests for session swap detection in cancellation metrics."""
+
+    @pytest.mark.asyncio
+    async def test_session_swap_detection_same_day(
+        self, cancellation_service, mock_repository, sample_sessions, sample_persons
+    ):
+        """Cancel from Session 1, enroll in Session 2 same PostDate → flagged as session swap."""
+        session1 = sample_sessions[1001]
+        session2 = sample_sessions[1002]
+
+        # Emma cancelled from Session 1 and enrolled in Session 2 same day
+        cancelled = [
+            create_mock_attendee(
+                101, session1, status="cancelled", enrollment_date="2026-02-15", effective_date="2025-11-10"
+            ),
+        ]
+        enrolled = [
+            create_mock_attendee(
+                101, session2, status="enrolled", enrollment_date="2026-02-15", effective_date="2025-11-10"
+            ),
+        ]
+
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (
+                cancelled if status_filter == ["cancelled", "withdrawn", "dismissed"] else enrolled
+            )
+        )
+        # No status transitions for prior status — just need the main flow
+        mock_repository.fetch_status_history = AsyncMock(return_value=[])
+
+        result = await cancellation_service.calculate_cancellations(year=2026)
+
+        assert result.session_swap_count == 1
+        assert result.true_departure_count == 0
+
+    @pytest.mark.asyncio
+    async def test_session_swap_detection_one_day_offset(
+        self, cancellation_service, mock_repository, sample_sessions, sample_persons
+    ):
+        """1-day window between cancel and enroll still flagged as session swap."""
+        session1 = sample_sessions[1001]
+        session2 = sample_sessions[1002]
+
+        cancelled = [
+            create_mock_attendee(
+                101, session1, status="cancelled", enrollment_date="2026-02-15", effective_date="2025-11-10"
+            ),
+        ]
+        enrolled = [
+            create_mock_attendee(
+                101, session2, status="enrolled", enrollment_date="2026-02-16", effective_date="2025-11-10"
+            ),
+        ]
+
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (
+                cancelled if status_filter == ["cancelled", "withdrawn", "dismissed"] else enrolled
+            )
+        )
+        mock_repository.fetch_status_history = AsyncMock(return_value=[])
+
+        result = await cancellation_service.calculate_cancellations(year=2026)
+
+        assert result.session_swap_count == 1
+        assert result.true_departure_count == 0
+
+    @pytest.mark.asyncio
+    async def test_session_swap_vs_true_departure(
+        self, cancellation_service, mock_repository, sample_sessions, sample_persons
+    ):
+        """No enrolled records for a cancelled person → true departure."""
+        session1 = sample_sessions[1001]
+
+        cancelled = [
+            create_mock_attendee(
+                101, session1, status="cancelled", enrollment_date="2026-02-15", effective_date="2025-11-10"
+            ),
+        ]
+        # No enrolled attendees at all
+        enrolled: list[Mock] = []
+
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (
+                cancelled if status_filter == ["cancelled", "withdrawn", "dismissed"] else enrolled
+            )
+        )
+        mock_repository.fetch_status_history = AsyncMock(return_value=[])
+
+        result = await cancellation_service.calculate_cancellations(year=2026)
+
+        assert result.session_swap_count == 0
+        assert result.true_departure_count == 1
+
+
+# ============================================================================
+# Time-to-Cancellation Tests
+# ============================================================================
+
+
+class TestTimeToCancellation:
+    """Tests for time-to-cancellation calculation."""
+
+    @pytest.mark.asyncio
+    async def test_time_to_cancellation_calculation(
+        self, cancellation_service, mock_repository, sample_sessions, sample_persons
+    ):
+        """Avg/median days between effective_date (registration) and enrollment_date (cancellation)."""
+        session1 = sample_sessions[1001]
+
+        # Emma: registered Nov 10, cancelled Feb 15 → 97 days
+        # Liam: registered Nov 15, cancelled Mar 10 → 115 days
+        cancelled = [
+            create_mock_attendee(
+                101, session1, status="cancelled", enrollment_date="2026-02-15", effective_date="2025-11-10"
+            ),
+            create_mock_attendee(
+                102, session1, status="cancelled", enrollment_date="2026-03-10", effective_date="2025-11-15"
+            ),
+        ]
+
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: cancelled
+            if status_filter == ["cancelled", "withdrawn", "dismissed"]
+            else []
+        )
+        mock_repository.fetch_status_history = AsyncMock(return_value=[])
+
+        result = await cancellation_service.calculate_cancellations(year=2026)
+
+        # avg of 97 and 115 = 106
+        assert result.avg_days_to_cancellation == pytest.approx(106.0, abs=1)
+        # median of [97, 115] = 106
+        assert result.median_days_to_cancellation == pytest.approx(106.0, abs=1)
+
+    @pytest.mark.asyncio
+    async def test_time_to_cancellation_distribution_buckets(
+        self, cancellation_service, mock_repository, sample_sessions, sample_persons
+    ):
+        """Time-to-cancellation bucketed into <30d, 30-90d, 90-180d, 180d+."""
+        session1 = sample_sessions[1001]
+
+        cancelled = [
+            # 20 days → <30d bucket
+            create_mock_attendee(
+                101, session1, status="cancelled", enrollment_date="2025-12-01", effective_date="2025-11-11"
+            ),
+            # 60 days → 30-90d bucket
+            create_mock_attendee(
+                102, session1, status="cancelled", enrollment_date="2026-01-10", effective_date="2025-11-11"
+            ),
+            # 120 days → 90-180d bucket
+            create_mock_attendee(
+                103, session1, status="cancelled", enrollment_date="2026-03-11", effective_date="2025-11-11"
+            ),
+            # 200 days → 180d+ bucket
+            create_mock_attendee(
+                104, session1, status="cancelled", enrollment_date="2026-05-30", effective_date="2025-11-11"
+            ),
+        ]
+
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: cancelled
+            if status_filter == ["cancelled", "withdrawn", "dismissed"]
+            else []
+        )
+        mock_repository.fetch_status_history = AsyncMock(return_value=[])
+
+        result = await cancellation_service.calculate_cancellations(year=2026)
+
+        bucket_map = {b.label: b.count for b in result.time_to_cancellation_buckets}
+        assert bucket_map.get("< 30 days") == 1
+        assert bucket_map.get("30–90 days") == 1
+        assert bucket_map.get("90–180 days") == 1
+        assert bucket_map.get("180+ days") == 1
+
+    @pytest.mark.asyncio
+    async def test_session_swap_excluded_from_timing(
+        self, cancellation_service, mock_repository, sample_sessions, sample_persons
+    ):
+        """Session swaps are excluded from time-to-cancellation stats."""
+        session1 = sample_sessions[1001]
+        session2 = sample_sessions[1002]
+
+        # Emma: session swap (cancel + enroll same day)
+        # Liam: true departure (90 days)
+        cancelled = [
+            create_mock_attendee(
+                101, session1, status="cancelled", enrollment_date="2026-02-15", effective_date="2025-11-10"
+            ),
+            create_mock_attendee(
+                102, session1, status="cancelled", enrollment_date="2026-02-10", effective_date="2025-11-12"
+            ),
+        ]
+        enrolled = [
+            # Emma enrolled in Session 2 same day as cancel → swap
+            create_mock_attendee(
+                101, session2, status="enrolled", enrollment_date="2026-02-15", effective_date="2025-11-10"
+            ),
+        ]
+
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (
+                cancelled if status_filter == ["cancelled", "withdrawn", "dismissed"] else enrolled
+            )
+        )
+        mock_repository.fetch_status_history = AsyncMock(return_value=[])
+
+        result = await cancellation_service.calculate_cancellations(year=2026)
+
+        # Only Liam's timing included (90 days), not Emma's swap
+        assert result.avg_days_to_cancellation == pytest.approx(90.0, abs=1)
+        assert result.median_days_to_cancellation == pytest.approx(90.0, abs=1)
+
+
+# ============================================================================
+# Registration Month Breakdown Tests
+# ============================================================================
+
+
+class TestRegistrationMonthBreakdown:
+    """Tests for registration month breakdown of cancellations."""
+
+    @pytest.mark.asyncio
+    async def test_registration_month_breakdown(
+        self, cancellation_service, mock_repository, sample_sessions, sample_persons
+    ):
+        """Cancellations grouped by effective_date month."""
+        session1 = sample_sessions[1001]
+
+        cancelled = [
+            # 2 from November registration
+            create_mock_attendee(
+                101, session1, status="cancelled", enrollment_date="2026-02-15", effective_date="2025-11-10"
+            ),
+            create_mock_attendee(
+                102, session1, status="cancelled", enrollment_date="2026-03-10", effective_date="2025-11-20"
+            ),
+            # 1 from December registration
+            create_mock_attendee(
+                103, session1, status="cancelled", enrollment_date="2026-04-01", effective_date="2025-12-05"
+            ),
+        ]
+
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: cancelled
+            if status_filter == ["cancelled", "withdrawn", "dismissed"]
+            else []
+        )
+        mock_repository.fetch_status_history = AsyncMock(return_value=[])
+
+        result = await cancellation_service.calculate_cancellations(year=2026)
+
+        month_map = {m.month: m.count for m in result.by_registration_month}
+        assert month_map.get("Nov 2025") == 2
+        assert month_map.get("Dec 2025") == 1
+
+    @pytest.mark.asyncio
+    async def test_registration_month_chronological_sort(
+        self, cancellation_service, mock_repository, sample_sessions, sample_persons
+    ):
+        """Registration months must be in chronological order, not alphabetical."""
+        session1 = sample_sessions[1001]
+
+        cancelled = [
+            # Mar 2025 registration
+            create_mock_attendee(
+                101, session1, status="cancelled", enrollment_date="2026-06-15", effective_date="2025-03-10"
+            ),
+            # Jan 2026 registration
+            create_mock_attendee(
+                102, session1, status="cancelled", enrollment_date="2026-06-20", effective_date="2026-01-05"
+            ),
+            # Nov 2025 registration
+            create_mock_attendee(
+                103, session1, status="cancelled", enrollment_date="2026-06-25", effective_date="2025-11-15"
+            ),
+        ]
+
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: cancelled
+            if status_filter == ["cancelled", "withdrawn", "dismissed"]
+            else []
+        )
+        mock_repository.fetch_status_history = AsyncMock(return_value=[])
+
+        result = await cancellation_service.calculate_cancellations(year=2026)
+
+        # Months must be chronologically ordered: Mar 2025 → Nov 2025 → Jan 2026
+        months = [m.month for m in result.by_registration_month]
+        assert months == ["Mar 2025", "Nov 2025", "Jan 2026"]

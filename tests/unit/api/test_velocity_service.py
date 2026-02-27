@@ -1462,6 +1462,56 @@ class TestCancellationVelocityCurves:
         assert result.combined.weekly[-1].enrolled == 10  # 6 + 4
 
     @pytest.mark.asyncio
+    async def test_cancellation_velocity_includes_session_swap_count(self, service, mock_repository, sample_sessions):
+        """When metric='cancellation', response should include session_swap_count.
+
+        Tests that:
+        - cancelled + enrolled same day = session swap
+        - withdrawn (not just cancelled) is counted for swaps
+        - session_cm_id scoping filters swap count to viewed session
+        """
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001], 1002: sample_sessions[1002]}
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=50, cancelled=3),
+            create_mock_snapshot("2026-01-12", 1001, 2026, enrolled=55, cancelled=6),
+        ]
+        # Person 101 cancelled from Session 1 and enrolled in Session 2 same day → session swap
+        # Person 102 withdrawn from Session 1, enrolled in Session 2 → also swap
+        # Person 103 cancelled from Session 1, no other enrollment → true departure
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2026-01-10", status="cancelled"),
+            create_mock_attendee_with_date(101, 1002, "2026-01-10", status="enrolled"),
+            create_mock_attendee_with_date(102, 1001, "2026-01-10", status="withdrawn"),
+            create_mock_attendee_with_date(102, 1002, "2026-01-10", status="enrolled"),
+            create_mock_attendee_with_date(103, 1001, "2026-01-11", status="cancelled"),
+        ]
+
+        result = await service.get_velocity(year=2026, metric="cancellation")
+
+        assert result.session_swap_count == 2
+
+    @pytest.mark.asyncio
+    async def test_cancellation_velocity_swap_scoped_to_session(self, service, mock_repository, sample_sessions):
+        """When session_cm_id is set, swap count only includes swaps from that session."""
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001], 1002: sample_sessions[1002]}
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=50, cancelled=3),
+        ]
+        # Person 101 swapped from Session 1 → Session 2
+        # Person 102 swapped from Session 2 → Session 1
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2026-01-10", status="cancelled"),
+            create_mock_attendee_with_date(101, 1002, "2026-01-10", status="enrolled"),
+            create_mock_attendee_with_date(102, 1002, "2026-01-10", status="cancelled"),
+            create_mock_attendee_with_date(102, 1001, "2026-01-10", status="enrolled"),
+        ]
+
+        # Scoped to Session 1 — only person 101 has a cancellation in Session 1
+        result = await service.get_velocity(year=2026, metric="cancellation", session_cm_id=1001)
+
+        assert result.session_swap_count == 1
+
+    @pytest.mark.asyncio
     async def test_default_metric_is_enrollment(self, service, mock_repository, sample_sessions):
         """Without metric parameter, should return enrollment curves (existing behavior)."""
         mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
@@ -1851,6 +1901,7 @@ class TestSchemaNewFields:
             prior_years=[],
             phase_markers=[],
             cancelled_to_date=None,
+            session_swap_count=0,
         )
         assert response.warnings == []
 
@@ -1865,6 +1916,7 @@ class TestSchemaNewFields:
             prior_years=[],
             phase_markers=[],
             cancelled_to_date=None,
+            session_swap_count=0,
             warnings=["Year 2026 has no priority registration date configured"],
         )
         assert len(response.warnings) == 1
