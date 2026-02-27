@@ -8,22 +8,10 @@ import MetricsTypeTabs from '../../components/metrics/MetricsTypeTabs'
 import MetricsSubNav from '../../components/metrics/MetricsSubNav'
 import type { SubNavItem } from '../../components/metrics/MetricsSubNav'
 import { MetricsSessionProvider } from '../../contexts/MetricsSessionContext'
-import { useMetricsPrefetch } from '../../hooks/useMetricsPrefetch'
 import { RETENTION_SUB_NAV, REGISTRATION_SUB_NAV, TRENDS_SUB_NAV } from './metricsNav'
 
 export default function MetricsLayout() {
-  return (
-    <MetricsSessionProvider>
-      <MetricsLayoutContent />
-    </MetricsSessionProvider>
-  )
-}
-
-function MetricsLayoutContent() {
   const location = useLocation()
-
-  // Prefetch primary tab datasets so tab switches are instant
-  useMetricsPrefetch()
 
   // Determine which sub-nav to show based on current section
   const getSubNavItems = (): SubNavItem[] => {
@@ -60,25 +48,27 @@ function MetricsLayoutContent() {
   const header = getHeader()
 
   return (
-    <div className="bg-background min-h-screen">
-      <div className="mx-auto max-w-7xl px-4 pt-4 pb-8 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-foreground text-2xl font-bold">{header.title}</h1>
-          <p className="text-muted-foreground mt-1">{header.subtitle}</p>
-        </div>
+    <MetricsSessionProvider>
+      <div className="bg-background min-h-screen">
+        <div className="mx-auto max-w-7xl px-4 pt-4 pb-8 sm:px-6 lg:px-8">
+          {/* Header */}
+          <div className="mb-6">
+            <h1 className="text-foreground text-2xl font-bold">{header.title}</h1>
+            <p className="text-muted-foreground mt-1">{header.subtitle}</p>
+          </div>
 
-        {/* Sticky Navigation */}
-        <div className="bg-background/95 sticky top-0 z-10 backdrop-blur-sm">
-          <MetricsTypeTabs />
-          {subNavItems.length > 0 && <MetricsSubNav items={subNavItems} />}
-        </div>
+          {/* Sticky Navigation */}
+          <div className="bg-background/95 sticky top-0 z-10 backdrop-blur-sm">
+            <MetricsTypeTabs />
+            {subNavItems.length > 0 && <MetricsSubNav items={subNavItems} />}
+          </div>
 
-        {/* Page Content */}
-        <div className="mt-6">
-          <Outlet />
+          {/* Page Content */}
+          <div className="mt-6">
+            <Outlet />
+          </div>
         </div>
       </div>
-    </div>
+    </MetricsSessionProvider>
   )
 }
