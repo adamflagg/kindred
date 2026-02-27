@@ -422,6 +422,7 @@ export interface DrilldownAttendee {
   state?: string
   years_at_camp?: number
   enrollment_date?: string
+  effective_date?: string
   session_name: string
   session_cm_id: number
   status: string
