@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from api.schemas.metrics import (
@@ -171,8 +172,14 @@ class WaitlistService:
                 waitlisted_by_session[session_cmid]["declined"] += 1
 
         # --- Waitlist duration tracking ---
+        # Fetch cancelled attendees so declined persons appear in duration lookup
+        cancelled_attendees = await self.repository.fetch_attendees(
+            year, status_filter=["cancelled", "withdrawn", "dismissed"]
+        )
+        cancelled_attendees = self._filter_to_sessions(cancelled_attendees, set(all_sessions.keys()))
+
         # Build attendee lookup by person_id for date access
-        all_fetched_attendees = waitlisted_attendees + enrolled_attendees
+        all_fetched_attendees = waitlisted_attendees + enrolled_attendees + cancelled_attendees
         attendee_by_person: dict[int, Any] = {}
         for att in all_fetched_attendees:
             pid = getattr(att, "person_id", None)
@@ -344,8 +351,6 @@ class WaitlistService:
 
         Returns dict with 'avg' and 'median' keys, both None if no valid records found.
         """
-        from datetime import datetime
-
         days_list: list[int] = []
 
         for pid in person_ids:

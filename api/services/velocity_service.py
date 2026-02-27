@@ -20,7 +20,7 @@ from api.schemas.velocity import (
     WeeklyDataPoint,
 )
 from api.services.extractors import extract_gender
-from api.utils.session_metrics import build_ag_parent_map
+from api.utils.session_metrics import build_ag_parent_map, get_session_from_expand
 from api.utils.session_swap import detect_session_swaps
 
 if TYPE_CHECKING:
@@ -481,9 +481,21 @@ class VelocityService:
         session_swap_count = 0
         if metric == "cancellation":
             all_attendees = await self.repo.fetch_attendees_with_dates(year, session_cm_id=session_cm_id)
-            cancelled_atts = [a for a in all_attendees if getattr(a, "status", "") == "cancelled"]
+            cancelled_atts = [
+                a for a in all_attendees if getattr(a, "status", "") in ("cancelled", "withdrawn", "dismissed")
+            ]
             enrolled_atts = [a for a in all_attendees if getattr(a, "status", "") == "enrolled"]
             swap_pids = detect_session_swaps(cancelled_atts, enrolled_atts)
+            if session_cm_id is not None:
+                # Filter swap_pids to those with cancellations in the viewed session
+                scoped_cancelled = [
+                    a
+                    for a in cancelled_atts
+                    if get_session_from_expand(a)
+                    and int(getattr(get_session_from_expand(a), "cm_id", 0)) == session_cm_id
+                ]
+                scoped_pids = {int(getattr(a, "person_id", 0)) for a in scoped_cancelled}
+                swap_pids = swap_pids & scoped_pids
             session_swap_count = len(swap_pids)
 
         return VelocityResponse(

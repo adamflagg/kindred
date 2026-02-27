@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from api.schemas.metrics import (
@@ -364,8 +365,6 @@ class CancellationService:
 
         Returns dict with 'avg', 'median', and 'buckets' keys.
         """
-        from datetime import datetime
-
         days_list: list[int] = []
         seen: set[int] = set()
 
@@ -424,8 +423,6 @@ class CancellationService:
         seen_for_summary: set[int],
     ) -> list[RegistrationMonthBreakdown]:
         """Group cancellations by effective_date month."""
-        from datetime import datetime
-
         month_counts: dict[str, int] = {}
         seen: set[int] = set()
 
@@ -453,5 +450,5 @@ class CancellationService:
                 count=count,
                 percentage=round(count / total * 100, 1) if total else 0,
             )
-            for month, count in sorted(month_counts.items())
+            for month, count in sorted(month_counts.items(), key=lambda x: datetime.strptime(x[0], "%b %Y"))
         ]

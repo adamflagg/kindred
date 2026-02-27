@@ -1447,9 +1447,7 @@ class TestWaitlistDuration:
         mock_repository.fetch_persons.return_value = sample_persons
         mock_repository.fetch_attendees = AsyncMock(
             side_effect=lambda year, status_filter=None: (
-                [attendee]
-                if isinstance(status_filter, list) and "cancelled" in status_filter
-                else []
+                [attendee] if isinstance(status_filter, list) and "cancelled" in status_filter else []
             )
         )
         mock_repository.fetch_status_history = AsyncMock(
