@@ -242,9 +242,7 @@ class CancellationService:
         timing_data = self._compute_timing_stats(cancelled_attendees, seen_for_summary, swap_pids)
 
         # --- Registration month breakdown ---
-        by_registration_month = self._compute_registration_month_breakdown(
-            cancelled_attendees, seen_for_summary
-        )
+        by_registration_month = self._compute_registration_month_breakdown(cancelled_attendees, seen_for_summary)
 
         return CancellationMetricsResponse(
             year=year,
@@ -397,11 +395,7 @@ class CancellationService:
         avg_days = sum(days_list) / len(days_list)
         sorted_days = sorted(days_list)
         n = len(sorted_days)
-        median_days = (
-            sorted_days[n // 2]
-            if n % 2 == 1
-            else (sorted_days[n // 2 - 1] + sorted_days[n // 2]) / 2.0
-        )
+        median_days = sorted_days[n // 2] if n % 2 == 1 else (sorted_days[n // 2 - 1] + sorted_days[n // 2]) / 2.0
 
         # Bucket distribution
         bucket_defs = [

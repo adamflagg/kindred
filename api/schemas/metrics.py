@@ -588,9 +588,7 @@ class WaitlistMetricsResponse(BaseModel):
     median_days_to_acceptance: float | None = Field(
         default=None, description="Median days from waitlist application to acceptance"
     )
-    avg_days_to_decline: float | None = Field(
-        default=None, description="Avg days from waitlist application to decline"
-    )
+    avg_days_to_decline: float | None = Field(default=None, description="Avg days from waitlist application to decline")
     median_days_to_decline: float | None = Field(
         default=None, description="Median days from waitlist application to decline"
     )

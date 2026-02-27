@@ -456,6 +456,10 @@ export interface WaitlistMetrics {
   waitlisted_has_enrollment: number
   total_accepted: number
   total_declined: number
+  avg_days_to_acceptance?: number | null
+  median_days_to_acceptance?: number | null
+  avg_days_to_decline?: number | null
+  median_days_to_decline?: number | null
   by_session: WaitlistSessionBreakdown[]
   by_grade: GradeBreakdown[]
   by_gender: GenderBreakdown[]

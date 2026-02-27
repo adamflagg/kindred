@@ -22,7 +22,6 @@ os.environ["SKIP_PB_AUTH"] = "true"
 
 from api.services.cancellation_service import CancellationService
 
-
 # ============================================================================
 # Test Data Factories
 # ============================================================================
@@ -305,9 +304,9 @@ class TestTimeToCancellation:
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
         mock_repository.fetch_attendees = AsyncMock(
-            side_effect=lambda year, status_filter=None: cancelled if status_filter == [
-                "cancelled", "withdrawn", "dismissed"
-            ] else []
+            side_effect=lambda year, status_filter=None: cancelled
+            if status_filter == ["cancelled", "withdrawn", "dismissed"]
+            else []
         )
         mock_repository.fetch_status_history = AsyncMock(return_value=[])
 
@@ -347,9 +346,9 @@ class TestTimeToCancellation:
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
         mock_repository.fetch_attendees = AsyncMock(
-            side_effect=lambda year, status_filter=None: cancelled if status_filter == [
-                "cancelled", "withdrawn", "dismissed"
-            ] else []
+            side_effect=lambda year, status_filter=None: cancelled
+            if status_filter == ["cancelled", "withdrawn", "dismissed"]
+            else []
         )
         mock_repository.fetch_status_history = AsyncMock(return_value=[])
 
@@ -434,9 +433,9 @@ class TestRegistrationMonthBreakdown:
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
         mock_repository.fetch_attendees = AsyncMock(
-            side_effect=lambda year, status_filter=None: cancelled if status_filter == [
-                "cancelled", "withdrawn", "dismissed"
-            ] else []
+            side_effect=lambda year, status_filter=None: cancelled
+            if status_filter == ["cancelled", "withdrawn", "dismissed"]
+            else []
         )
         mock_repository.fetch_status_history = AsyncMock(return_value=[])
 

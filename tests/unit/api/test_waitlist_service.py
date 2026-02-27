@@ -1392,23 +1392,19 @@ class TestWaitlistDuration:
     """Tests for waitlist duration tracking (time between apply and accept/decline)."""
 
     @pytest.mark.asyncio
-    async def test_accepted_waitlist_duration(
-        self, waitlist_service, mock_repository, sample_sessions, sample_persons
-    ):
+    async def test_accepted_waitlist_duration(self, waitlist_service, mock_repository, sample_sessions, sample_persons):
         """UC3: effective_date=Nov 18, enrollment_date=Feb 15 → 89 days."""
         session1 = sample_sessions[1001]
 
         # Person 101 was waitlisted, then accepted
         # effective_date = when they applied, enrollment_date = when accepted
         attendee = create_mock_attendee_with_dates(
-            101, session1, status="enrolled",
-            enrollment_date="2026-02-15", effective_date="2025-11-18"
+            101, session1, status="enrolled", enrollment_date="2026-02-15", effective_date="2025-11-18"
         )
 
         history = [
             create_mock_status_history(
-                101, session1, sample_persons[101],
-                old_status="waitlisted", new_status="enrolled"
+                101, session1, sample_persons[101], old_status="waitlisted", new_status="enrolled"
             ),
         ]
 
@@ -1429,30 +1425,24 @@ class TestWaitlistDuration:
         assert result.median_days_to_acceptance == pytest.approx(89.0, abs=1)
 
     @pytest.mark.asyncio
-    async def test_declined_waitlist_duration(
-        self, waitlist_service, mock_repository, sample_sessions, sample_persons
-    ):
+    async def test_declined_waitlist_duration(self, waitlist_service, mock_repository, sample_sessions, sample_persons):
         """UC4: effective_date=Nov 20, enrollment_date=Mar 10 → 110 days."""
         session1 = sample_sessions[1001]
 
         attendee = create_mock_attendee_with_dates(
-            102, session1, status="cancelled",
-            enrollment_date="2026-03-10", effective_date="2025-11-20"
+            102, session1, status="cancelled", enrollment_date="2026-03-10", effective_date="2025-11-20"
         )
 
         history = [
             create_mock_status_history(
-                102, session1, sample_persons[102],
-                old_status="waitlisted", new_status="cancelled"
+                102, session1, sample_persons[102], old_status="waitlisted", new_status="cancelled"
             ),
         ]
 
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
         mock_repository.fetch_attendees = AsyncMock(
-            side_effect=lambda year, status_filter=None: (
-                [attendee] if status_filter == "enrolled" else []
-            )
+            side_effect=lambda year, status_filter=None: ([attendee] if status_filter == "enrolled" else [])
         )
         mock_repository.fetch_status_history = AsyncMock(
             side_effect=lambda year, old_status=None, new_statuses=None: (
@@ -1474,14 +1464,12 @@ class TestWaitlistDuration:
 
         # No effective_date set
         attendee = create_mock_attendee_with_dates(
-            101, session1, status="enrolled",
-            enrollment_date="2026-02-15", effective_date=None
+            101, session1, status="enrolled", enrollment_date="2026-02-15", effective_date=None
         )
 
         history = [
             create_mock_status_history(
-                101, session1, sample_persons[101],
-                old_status="waitlisted", new_status="enrolled"
+                101, session1, sample_persons[101], old_status="waitlisted", new_status="enrolled"
             ),
         ]
 
@@ -1502,39 +1490,39 @@ class TestWaitlistDuration:
         assert result.median_days_to_acceptance is None
 
     @pytest.mark.asyncio
-    async def test_waitlist_duration_stats(
-        self, waitlist_service, mock_repository, sample_sessions, sample_persons
-    ):
+    async def test_waitlist_duration_stats(self, waitlist_service, mock_repository, sample_sessions, sample_persons):
         """Avg/median computed correctly with multiple accepted records."""
         session1 = sample_sessions[1001]
 
         # Two accepted: 89 days and 120 days
         att1 = create_mock_attendee_with_dates(
-            101, session1, status="enrolled",
-            enrollment_date="2026-02-15", effective_date="2025-11-18"  # 89 days
+            101,
+            session1,
+            status="enrolled",
+            enrollment_date="2026-02-15",
+            effective_date="2025-11-18",  # 89 days
         )
         att2 = create_mock_attendee_with_dates(
-            102, session1, status="enrolled",
-            enrollment_date="2026-03-18", effective_date="2025-11-18"  # 120 days
+            102,
+            session1,
+            status="enrolled",
+            enrollment_date="2026-03-18",
+            effective_date="2025-11-18",  # 120 days
         )
 
         history = [
             create_mock_status_history(
-                101, session1, sample_persons[101],
-                old_status="waitlisted", new_status="enrolled"
+                101, session1, sample_persons[101], old_status="waitlisted", new_status="enrolled"
             ),
             create_mock_status_history(
-                102, session1, sample_persons[102],
-                old_status="waitlisted", new_status="enrolled"
+                102, session1, sample_persons[102], old_status="waitlisted", new_status="enrolled"
             ),
         ]
 
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
         mock_repository.fetch_attendees = AsyncMock(
-            side_effect=lambda year, status_filter=None: (
-                [att1, att2] if status_filter == "enrolled" else []
-            )
+            side_effect=lambda year, status_filter=None: ([att1, att2] if status_filter == "enrolled" else [])
         )
         mock_repository.fetch_status_history = AsyncMock(
             side_effect=lambda year, old_status=None, new_statuses=None: (

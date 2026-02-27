@@ -373,10 +373,6 @@ class WaitlistService:
         avg_days = sum(days_list) / len(days_list)
         sorted_days = sorted(days_list)
         n = len(sorted_days)
-        median_days = (
-            sorted_days[n // 2]
-            if n % 2 == 1
-            else (sorted_days[n // 2 - 1] + sorted_days[n // 2]) / 2.0
-        )
+        median_days = sorted_days[n // 2] if n % 2 == 1 else (sorted_days[n // 2 - 1] + sorted_days[n // 2]) / 2.0
 
         return {"avg": round(avg_days, 1), "median": round(median_days, 1)}

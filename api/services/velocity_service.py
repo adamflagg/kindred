@@ -348,6 +348,7 @@ class VelocityService:
                 phase_markers=[],
                 warnings=warnings,
                 cancelled_to_date=None,
+                session_swap_count=0,
             )
 
         season_end_dt = _season_end(season_start_dt)
