@@ -64,5 +64,6 @@ export interface VelocityResponse {
   cancelled_to_date: number | null
   prior_year_cancelled_to_date: PriorYearCancelledSummary[]
   prior_year_session_summaries: PriorYearSessionSummary[]
+  session_swap_count?: number
   warnings: string[]
 }
