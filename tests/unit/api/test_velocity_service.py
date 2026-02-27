@@ -1155,17 +1155,17 @@ class TestCancelledToDateSummary:
 
     @pytest.mark.asyncio
     async def test_cancelled_to_date_from_reconstruction(self, service, mock_repository, sample_sessions):
-        """When using reconstruction, cancelled_to_date should count status transitions."""
+        """When using reconstruction, cancelled_to_date should count cancelled/withdrawn attendees."""
         mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
         mock_repository.fetch_enrollment_snapshots.return_value = []
         mock_repository.fetch_attendees_with_dates.return_value = [
-            create_mock_attendee_with_date(101, 1001, "2026-01-03"),
-            create_mock_attendee_with_date(102, 1001, "2026-01-04"),
-            create_mock_attendee_with_date(103, 1001, "2026-01-10"),
-        ]
-        mock_repository.fetch_status_transitions.return_value = [
-            create_mock_status_transition(102, 1001, "2026-01-12"),
-            create_mock_status_transition(103, 1001, "2026-01-15"),
+            create_mock_attendee_with_date(101, 1001, "2026-01-03", effective_date="2026-01-03"),
+            create_mock_attendee_with_date(
+                102, 1001, "2026-01-12", effective_date="2026-01-04", status="cancelled"
+            ),
+            create_mock_attendee_with_date(
+                103, 1001, "2026-01-15", effective_date="2026-01-10", status="cancelled"
+            ),
         ]
 
         result = await service.get_velocity(year=2026)
@@ -1978,32 +1978,47 @@ class TestGrossNetDeltaFromReconstruction:
 
     @pytest.mark.asyncio
     async def test_reconstruction_gross_and_net(self, service, mock_repository, sample_sessions):
-        """Reconstruction should populate gross_enrolled and net enrolled separately."""
+        """Reconstruction should populate gross_enrolled and net enrolled separately.
+
+        Now uses status-aware logic: cancelled attendees contribute +1 at effective_date
+        and -1 at enrollment_date (PostDate = cancel date).
+        """
         mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
         mock_repository.fetch_enrollment_snapshots.return_value = []
-        # 10 enrollments in week 1, 5 in week 2
+        # 7 still-enrolled in week 1, 5 still-enrolled in week 2
+        # Plus 3 cancelled (registered week 1, cancelled week 1) and 1 cancelled (registered week 2, cancelled week 2)
         mock_repository.fetch_attendees_with_dates.return_value = [
-            *[create_mock_attendee_with_date(100 + i, 1001, "2026-01-03") for i in range(10)],
-            *[create_mock_attendee_with_date(200 + i, 1001, "2026-01-10") for i in range(5)],
-        ]
-        # 3 cancellations in week 1, 1 in week 2
-        mock_repository.fetch_status_transitions.return_value = [
-            create_mock_status_transition(101, 1001, "2026-01-04"),
-            create_mock_status_transition(102, 1001, "2026-01-05"),
-            create_mock_status_transition(103, 1001, "2026-01-06"),
-            create_mock_status_transition(201, 1001, "2026-01-12"),
+            *[
+                create_mock_attendee_with_date(100 + i, 1001, "2026-01-03", effective_date="2026-01-03")
+                for i in range(7)
+            ],
+            # 3 cancelled: enrolled in week 1, cancelled in week 1
+            *[
+                create_mock_attendee_with_date(
+                    110 + i, 1001, "2026-01-04", effective_date="2026-01-03", status="cancelled"
+                )
+                for i in range(3)
+            ],
+            *[
+                create_mock_attendee_with_date(200 + i, 1001, "2026-01-10", effective_date="2026-01-10")
+                for i in range(4)
+            ],
+            # 1 cancelled: enrolled in week 2, cancelled in week 2
+            create_mock_attendee_with_date(
+                210, 1001, "2026-01-12", effective_date="2026-01-10", status="cancelled"
+            ),
         ]
 
         result = await service.get_velocity(year=2026)
 
         points = result.combined.weekly
         assert len(points) == 2
-        # Week 1: gross=10, cancelled=3, net=7
+        # Week 1: gross=10 (7 enrolled + 3 cancelled), cancelled=3, net=7
         assert points[0].gross_enrolled == 10
         assert points[0].enrolled == 7
         assert points[0].weekly_new == 10
         assert points[0].weekly_cancelled == 3
-        # Week 2: gross=15, cancelled=4, net=11
+        # Week 2: gross=15 (10 + 4 enrolled + 1 cancelled), cancelled=4, net=11
         assert points[1].gross_enrolled == 15
         assert points[1].enrolled == 11
         assert points[1].weekly_new == 5

@@ -888,6 +888,20 @@ class VelocityService:
                 return point_map[prev_week]
         return None
 
+    @staticmethod
+    def _get_enrollment_date(att: Any) -> str | None:
+        """Get the enrollment date for an attendee, preferring effective_date over enrollment_date."""
+        ed = getattr(att, "effective_date", "") or ""
+        if ed:
+            return ed.split("T")[0].split(" ")[0]
+        fallback = getattr(att, "enrollment_date", "") or ""
+        if fallback:
+            return fallback.split("T")[0].split(" ")[0]
+        return None
+
+    # Statuses that count as enrollments in velocity curves
+    _ENROLLMENT_STATUSES = {2, 32, 256}  # enrolled, cancelled, withdrawn
+
     async def _curves_from_reconstruction(
         self,
         year: int,
@@ -898,16 +912,22 @@ class VelocityService:
         season_end: datetime,
         today: date | None = None,
     ) -> _CurveResult:
-        """Build curves by reconstructing from enrollment dates (fallback)."""
+        """Build curves by reconstructing from attendee records.
+
+        Uses effective_date (original registration) for enrollment events and
+        enrollment_date (PostDate = status change date) for cancellation events.
+        Only enrolled (2), cancelled (32), and withdrawn (256) statuses contribute.
+        """
         attendees = await self.repo.fetch_attendees_with_dates(year, session_cm_id=session_cm_id)
-        cancellations = await self.repo.fetch_status_transitions(year, ["cancelled", "withdrawn"])
 
         if not attendees:
             empty_combined = VelocityCurve(year=year, session_cm_id=None, gender=None, weekly=[])
             return _CurveResult(combined=empty_combined, by_session=[], cancelled_to_date=0)
 
-        # Group enrollments by session (date -> count), merging AG
+        # Group enrollments and cancellations by session (date -> count), merging AG
         session_daily_enrollments: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        session_daily_cancellations: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        total_cancellation_count = 0
 
         for att in attendees:
             expand = getattr(att, "expand", {}) or {}
@@ -915,37 +935,30 @@ class VelocityService:
             if not session:
                 continue
 
+            status_id = getattr(att, "status_id", 0) or 0
+            if status_id not in self._ENROLLMENT_STATUSES:
+                continue
+
             raw_sid = int(session.cm_id)
             effective_sid = ag_parent_map.get(raw_sid, raw_sid)
 
-            dt = datetime.strptime(att.enrollment_date.split("T")[0].split(" ")[0], "%Y-%m-%d")
-            if dt.date() < season_start.date():
-                continue
-            if dt.date() > season_end.date():
-                continue
-            date_key = dt.strftime("%Y-%m-%d")
-            session_daily_enrollments[effective_sid][date_key] += 1
+            # Enrollment event: use effective_date (original registration date)
+            enroll_date_str = self._get_enrollment_date(att)
+            if enroll_date_str:
+                dt = datetime.strptime(enroll_date_str, "%Y-%m-%d")
+                if season_start.date() <= dt.date() <= season_end.date():
+                    date_key = dt.strftime("%Y-%m-%d")
+                    session_daily_enrollments[effective_sid][date_key] += 1
 
-        # Group cancellations by session and date
-        session_daily_cancellations: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-        total_cancellation_count = 0
-
-        for cancel in cancellations:
-            expand = getattr(cancel, "expand", {}) or {}
-            session = expand.get("session") if isinstance(expand, dict) else None
-            if not session:
-                continue
-            raw_sid = int(session.cm_id)
-            effective_sid = ag_parent_map.get(raw_sid, raw_sid)
-
-            dt = datetime.strptime(cancel.detected_at.split("T")[0].split(" ")[0], "%Y-%m-%d")
-            if dt.date() < season_start.date():
-                continue
-            if dt.date() > season_end.date():
-                continue
-            date_key = dt.strftime("%Y-%m-%d")
-            session_daily_cancellations[effective_sid][date_key] += 1
-            total_cancellation_count += 1
+            # Cancellation event: for cancelled/withdrawn, use enrollment_date (PostDate = cancel date)
+            if status_id in (32, 256):
+                cancel_date_str = getattr(att, "enrollment_date", "") or ""
+                if cancel_date_str:
+                    cancel_dt = datetime.strptime(cancel_date_str.split("T")[0].split(" ")[0], "%Y-%m-%d")
+                    if season_start.date() <= cancel_dt.date() <= season_end.date():
+                        cancel_key = cancel_dt.strftime("%Y-%m-%d")
+                        session_daily_cancellations[effective_sid][cancel_key] += 1
+                        total_cancellation_count += 1
 
         # Filter by session if specified
         if session_cm_id is not None:
@@ -1066,6 +1079,10 @@ class VelocityService:
             if not session:
                 continue
 
+            status_id = getattr(att, "status_id", 0) or 0
+            if status_id not in self._ENROLLMENT_STATUSES:
+                continue
+
             raw_sid = int(session.cm_id)
             effective_sid = ag_parent_map.get(raw_sid, raw_sid)
 
@@ -1074,7 +1091,10 @@ class VelocityService:
             if gender not in ("M", "F"):
                 continue
 
-            dt = datetime.strptime(att.enrollment_date.split("T")[0].split(" ")[0], "%Y-%m-%d")
+            enroll_date_str = self._get_enrollment_date(att)
+            if not enroll_date_str:
+                continue
+            dt = datetime.strptime(enroll_date_str, "%Y-%m-%d")
             if dt.date() < season_start.date():
                 continue
             if dt.date() > season_end.date():

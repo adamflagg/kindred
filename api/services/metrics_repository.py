@@ -349,7 +349,7 @@ class MetricsRepository:
 
         When expand_person=True, also expands the person relation to get gender.
         """
-        filter_str = f"year = {year} && enrollment_date != ''"
+        filter_str = f"year = {year} && (enrollment_date != '' || effective_date != '')"
         expand = "session,person" if expand_person else "session"
         return await asyncio.to_thread(
             self.pb.collection("attendees").get_full_list,
