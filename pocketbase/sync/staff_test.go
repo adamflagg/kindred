@@ -192,6 +192,149 @@ func TestSetStatusFields_AllStatuses(t *testing.T) {
 	}
 }
 
+// TestShouldPreserveBunkData tests the logic for preserving bunk data on non-active staff.
+// CampMinder clears BunkAssignments from dismissed/resigned staff API responses,
+// but we want to keep the last-known bunk assignments in PocketBase.
+func TestShouldPreserveBunkData(t *testing.T) {
+	tests := []struct {
+		name              string
+		statusID          int
+		existingBunkStaff bool
+		existingBunks     []string
+		wantPreserve      bool
+	}{
+		{
+			name:              "dismissed staff with existing bunk data — preserve",
+			statusID:          3, // dismissed
+			existingBunkStaff: true,
+			existingBunks:     []string{"bunk_pb_1", "bunk_pb_2"},
+			wantPreserve:      true,
+		},
+		{
+			name:              "resigned staff with existing bunk data — preserve",
+			statusID:          4, // resigned
+			existingBunkStaff: true,
+			existingBunks:     []string{"bunk_pb_1"},
+			wantPreserve:      true,
+		},
+		{
+			name:              "active staff — do not preserve (let API data through)",
+			statusID:          1, // active
+			existingBunkStaff: true,
+			existingBunks:     []string{"bunk_pb_1"},
+			wantPreserve:      false,
+		},
+		{
+			name:              "non-active staff without bunk_staff flag — do not preserve",
+			statusID:          3,
+			existingBunkStaff: false,
+			existingBunks:     []string{"bunk_pb_1"},
+			wantPreserve:      false,
+		},
+		{
+			name:              "non-active bunk_staff with empty bunks — do not preserve",
+			statusID:          3,
+			existingBunkStaff: true,
+			existingBunks:     []string{},
+			wantPreserve:      false,
+		},
+		{
+			name:              "non-active bunk_staff with nil bunks — do not preserve",
+			statusID:          3,
+			existingBunkStaff: true,
+			existingBunks:     nil,
+			wantPreserve:      false,
+		},
+		{
+			name:              "status_id 2 (inactive) with bunk data — preserve",
+			statusID:          2, // inactive
+			existingBunkStaff: true,
+			existingBunks:     []string{"bunk_pb_1"},
+			wantPreserve:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := shouldPreserveBunkData(tt.statusID, tt.existingBunkStaff, tt.existingBunks)
+			if got != tt.wantPreserve {
+				t.Errorf("shouldPreserveBunkData(%d, %v, %v) = %v, want %v",
+					tt.statusID, tt.existingBunkStaff, tt.existingBunks, got, tt.wantPreserve)
+			}
+		})
+	}
+}
+
+// TestPreserveBunkDataDeletesFields verifies that when bunk data should be preserved,
+// the bunks and bunk_staff fields are removed from pbData so ProcessSimpleRecord
+// skips comparing them (preserving the existing values).
+func TestPreserveBunkDataDeletesFields(t *testing.T) {
+	tests := []struct {
+		name           string
+		statusID       int
+		hasBunkStaff   bool
+		existingBunks  []string
+		wantHasBunks   bool
+		wantHasBkStaff bool
+	}{
+		{
+			name:           "dismissed bunk_staff with bunks — fields removed",
+			statusID:       3,
+			hasBunkStaff:   true,
+			existingBunks:  []string{"bunk_pb_1"},
+			wantHasBunks:   false,
+			wantHasBkStaff: false,
+		},
+		{
+			name:           "active bunk_staff — fields kept",
+			statusID:       1,
+			hasBunkStaff:   true,
+			existingBunks:  []string{"bunk_pb_1"},
+			wantHasBunks:   true,
+			wantHasBkStaff: true,
+		},
+		{
+			name:           "dismissed non-bunk-staff — fields kept",
+			statusID:       3,
+			hasBunkStaff:   false,
+			existingBunks:  []string{},
+			wantHasBunks:   true,
+			wantHasBkStaff: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pbData := map[string]interface{}{
+				"status_id":  tt.statusID,
+				"bunks":      []string{"new_bunk_1"},
+				"bunk_staff": true,
+				"person":     "pb_person_1",
+			}
+
+			if shouldPreserveBunkData(tt.statusID, tt.hasBunkStaff, tt.existingBunks) {
+				delete(pbData, "bunks")
+				delete(pbData, "bunk_staff")
+			}
+
+			_, hasBunks := pbData["bunks"]
+			_, hasBkStaff := pbData["bunk_staff"]
+
+			if hasBunks != tt.wantHasBunks {
+				t.Errorf("bunks present = %v, want %v", hasBunks, tt.wantHasBunks)
+			}
+			if hasBkStaff != tt.wantHasBkStaff {
+				t.Errorf("bunk_staff present = %v, want %v", hasBkStaff, tt.wantHasBkStaff)
+			}
+
+			// Other fields should be untouched
+			if _, ok := pbData["person"]; !ok {
+				t.Error("person field should not be affected")
+			}
+		})
+	}
+}
+
 // TestTransformStaffToPB_MissingPersonID tests error handling for missing PersonID
 func TestTransformStaffToPB_MissingPersonID(t *testing.T) {
 	tests := []struct {

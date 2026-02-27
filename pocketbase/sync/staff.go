@@ -138,6 +138,17 @@ func (s *StaffSync) syncStaff(ctx context.Context) error {
 
 				s.TrackProcessedKey(personPBID, year)
 
+				// Preserve bunk data for non-active staff — CampMinder clears
+				// BunkAssignments on dismissal, but we keep last-known assignments.
+				if existing, hasExisting := existingRecords[CompositeKey(personPBID, year)]; hasExisting {
+					statusID, _ := pbData["status_id"].(int)
+					existingBunks := existing.GetStringSlice("bunks")
+					if shouldPreserveBunkData(statusID, existing.GetBool("bunk_staff"), existingBunks) {
+						delete(pbData, "bunks")
+						delete(pbData, "bunk_staff")
+					}
+				}
+
 				compareFields := []string{
 					"year", "status_id", "status",
 					"organizational_category", "position1", "position2", "division",
@@ -370,6 +381,14 @@ func (s *StaffSync) setStaffFloatField(pbData, data map[string]interface{}, srcK
 	if val, ok := data[srcKey].(float64); ok {
 		pbData[dstKey] = val
 	}
+}
+
+// shouldPreserveBunkData returns true when existing bunk data should be kept
+// instead of being overwritten by (empty) API data. CampMinder strips
+// BunkAssignments from dismissed/resigned staff responses, so we preserve
+// the last-known assignments for non-active bunk staff who had bunks.
+func shouldPreserveBunkData(statusID int, existingBunkStaff bool, existingBunks []string) bool {
+	return statusID != 1 && existingBunkStaff && len(existingBunks) > 0
 }
 
 // parseDate converts CampMinder date format to PocketBase format
