@@ -32,6 +32,7 @@ from .dependencies import (
     auth_state,
     authenticate_pb,
     pb,
+    start_pb_token_refresh,
 )
 from .settings import get_settings
 
@@ -47,8 +48,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
 
     # Startup
+    refresh_task = None
     if not settings.skip_pb_auth:
         await authenticate_pb()
+        refresh_task = await start_pb_token_refresh()
         logger.info("Config initialization handled by PocketBase on startup")
     else:
         logger.warning("Skipping PocketBase authentication (SKIP_PB_AUTH=true)")
@@ -57,6 +60,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
     # Shutdown
+    if refresh_task:
+        refresh_task.cancel()
     from api.services.metrics_sql_connection import close_connection
 
     close_connection()
