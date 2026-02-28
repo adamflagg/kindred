@@ -6,8 +6,9 @@
  * Supports drill-down: click a bar to show matching campers.
  */
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback } from 'react'
 import type { DrilldownFilter } from '../../types/metrics'
+import { getNiceTicks, useChartTooltip, calculateBarSizing } from './cssChartUtils'
 
 interface ChartDataItem {
   name: string
@@ -21,32 +22,13 @@ interface CssHorizontalBarChartProps {
   title?: string
   color?: string
   height?: number
+  /** Width of the row label column in pixels (default: 80) */
+  labelWidth?: number
+  /** Width of the value column in pixels (default: 40) */
+  valueWidth?: number
   breakdownType?: DrilldownFilter['type']
   onBarClick?: (filter: DrilldownFilter) => void
   className?: string
-}
-
-interface TooltipState {
-  visible: boolean
-  x: number
-  y: number
-  item: ChartDataItem | null
-}
-
-function getNiceTicks(max: number, count = 4): number[] {
-  if (max <= 0) return [0]
-  const rawInterval = max / count
-  const magnitude = Math.pow(10, Math.floor(Math.log10(rawInterval)))
-  const residual = rawInterval / magnitude
-  const niceResidual = residual <= 1.5 ? 1 : residual <= 3 ? 2 : residual <= 7 ? 5 : 10
-  const interval = niceResidual * magnitude
-  const ticks: number[] = []
-  for (let v = 0; v <= max; v += interval) {
-    ticks.push(Math.round(v))
-  }
-  const last = ticks[ticks.length - 1]
-  if (last !== undefined && last < max) ticks.push(Math.ceil(max / interval) * interval)
-  return ticks
 }
 
 export function CssHorizontalBarChart({
@@ -54,22 +36,20 @@ export function CssHorizontalBarChart({
   title,
   color = 'hsl(160, 100%, 35%)',
   height = 300,
+  labelWidth = 80,
+  valueWidth = 40,
   breakdownType,
   onBarClick,
   className = '',
 }: CssHorizontalBarChartProps) {
-  const tooltipRef = useRef<HTMLDivElement>(null)
-  const [tooltip, setTooltip] = useState<TooltipState>({
-    visible: false,
-    x: 0,
-    y: 0,
-    item: null,
-  })
+  const { tooltip, tooltipRef, handleMouseMove, handleMouseLeave } =
+    useChartTooltip<ChartDataItem>()
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const isClickable = !!onBarClick && !!breakdownType
   const maxValue = Math.max(...data.map((d) => d.value), 1)
   const ticks = getNiceTicks(maxValue)
   const axisMax = ticks[ticks.length - 1] ?? maxValue
+  const { isDense, barHeight, rowGap } = calculateBarSizing(height, data.length)
 
   const handleClick = useCallback(
     (item: ChartDataItem) => {
@@ -84,26 +64,6 @@ export function CssHorizontalBarChart({
     },
     [onBarClick, breakdownType]
   )
-
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent, item: ChartDataItem) => {
-      let x = e.clientX + 12
-      let y = e.clientY - 12
-      const tt = tooltipRef.current
-      if (tt) {
-        const { width, height } = tt.getBoundingClientRect()
-        if (x + width > window.innerWidth - 8) x = e.clientX - width - 12
-        if (y - height / 2 < 8) y = height / 2 + 8
-        if (y + height / 2 > window.innerHeight - 8) y = window.innerHeight - height / 2 - 8
-      }
-      setTooltip({ visible: true, x, y, item })
-    },
-    []
-  )
-
-  const handleMouseLeave = useCallback(() => {
-    setTooltip((prev) => ({ ...prev, visible: false }))
-  }, [])
 
   if (data.length === 0) {
     return (
@@ -120,31 +80,25 @@ export function CssHorizontalBarChart({
     <div className={`card-lodge p-4 ${className}`}>
       {title && <h3 className="text-foreground mb-4 text-base font-semibold">{title}</h3>}
 
-      <div className="relative flex flex-col justify-center" style={{ height }}>
+      <div className="relative flex flex-col" style={{ height }}>
+        {/* Bars area - vertically centered when not filling card */}
+        <div className={`flex min-h-0 flex-1 flex-col overflow-hidden ${isDense ? '' : 'justify-center'}`} style={{ gap: rowGap }}>
         {data.map((item, index) => (
           <div
             key={index}
-            className={`flex items-center gap-3 rounded py-0.5 transition-colors ${hoveredIndex === index ? 'bg-foreground/10' : ''} ${isClickable ? 'cursor-pointer' : ''}`}
+            className={`flex items-center ${isDense ? 'gap-2' : 'gap-3'} rounded transition-colors ${hoveredIndex === index ? 'bg-foreground/10' : ''} ${isClickable ? 'cursor-pointer' : ''}`}
             onClick={() => isClickable && handleClick(item)}
             onMouseEnter={() => setHoveredIndex(index)}
             onMouseMove={(e) => handleMouseMove(e, item)}
             onMouseLeave={() => { setHoveredIndex(null); handleMouseLeave() }}
           >
             {/* Label */}
-            <span className="text-muted-foreground w-20 shrink-0 truncate text-right text-sm">
+            <span className="text-muted-foreground shrink-0 truncate text-right text-sm" style={{ width: labelWidth }}>
               {item.name}
             </span>
 
-            {/* Bar track with gridlines */}
-            <div className="relative flex-1 overflow-hidden rounded" style={{ height: `${Math.max(24, Math.floor((height - 48) / data.length) - 4)}px` }}>
-              {/* Gridlines */}
-              {ticks.slice(1).map((tick) => (
-                <div
-                  key={tick}
-                  className="border-border/50 absolute top-0 h-full border-l border-dashed"
-                  style={{ left: `${(tick / axisMax) * 100}%` }}
-                />
-              ))}
+            {/* Bar track */}
+            <div className="relative flex-1 overflow-hidden rounded" style={{ height: barHeight }}>
               {/* Background track */}
               <div className="bg-muted absolute inset-0 rounded" />
               {/* Bar fill */}
@@ -159,16 +113,17 @@ export function CssHorizontalBarChart({
             </div>
 
             {/* Value label */}
-            <span className="text-muted-foreground w-10 shrink-0 text-right text-sm tabular-nums">
+            <span className="text-muted-foreground shrink-0 text-right text-sm tabular-nums" style={{ width: valueWidth }}>
               {item.value}
             </span>
           </div>
         ))}
+        </div>
 
-        {/* X-axis tick labels */}
-        <div className="mt-2 flex items-center gap-3">
-          <span className="w-20 shrink-0" />
-          <div className="relative h-5 flex-1">
+        {/* X-axis line + tick labels */}
+        <div className={`${isDense ? 'mt-1' : 'mt-2'} flex shrink-0 items-center ${isDense ? 'gap-2' : 'gap-3'}`}>
+          <span className="shrink-0" style={{ width: labelWidth }} />
+          <div className="border-foreground/40 relative h-5 flex-1 border-t pt-1">
             {ticks.map((tick) => (
               <span
                 key={tick}
@@ -182,7 +137,7 @@ export function CssHorizontalBarChart({
               </span>
             ))}
           </div>
-          <span className="w-10 shrink-0" />
+          <span className="shrink-0" style={{ width: valueWidth }} />
         </div>
 
         {/* Tooltip — fixed position, follows cursor with viewport clamping */}

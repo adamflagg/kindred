@@ -202,7 +202,7 @@ describe('WaitlistAnalysis', () => {
       renderWithClient()
 
       // Should show grade distribution section header
-      expect(screen.getByText(/grade distribution/i)).toBeInTheDocument()
+      expect(screen.getAllByText(/grade distribution/i).length).toBeGreaterThanOrEqual(1)
     })
 
     it('renders gender distribution chart', () => {
@@ -346,7 +346,7 @@ describe('WaitlistAnalysis', () => {
       renderWithClient()
 
       // The WaitlistBySessionChart renders the "Waitlist by Session" heading
-      expect(screen.getByText(/waitlist by session/i)).toBeInTheDocument()
+      expect(screen.getAllByText(/waitlist by session/i).length).toBeGreaterThanOrEqual(1)
     })
   })
 })

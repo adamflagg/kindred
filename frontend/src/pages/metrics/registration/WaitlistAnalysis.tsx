@@ -18,6 +18,10 @@ import { MetricCard } from '../../../components/metrics/MetricCard'
 import { WaitlistBySessionChart } from '../../../components/metrics/WaitlistBySessionChart'
 import { WaitlistGradeChart } from '../../../components/metrics/WaitlistGradeChart'
 import { WaitlistGenderChart } from '../../../components/metrics/WaitlistGenderChart'
+import {
+  CssStackedHorizontalBarChart,
+  type StackedBarDataItem,
+} from '../../../components/metrics/CssStackedHorizontalBarChart'
 import { transformGenderData } from '../../../utils/metricsTransforms'
 import { SESSION_NAME_ALIASES, resolveSessionAlias } from '../../../utils/sessionAliases'
 import { ComparisonSummaryTable } from '../../../components/metrics/ComparisonSummaryTable'
@@ -249,16 +253,83 @@ export default function WaitlistAnalysis() {
                     />
                   </>
                 ) : (
-                  <WaitlistBySessionChart
-                    data={sortSessionDataByCampThenQuest(
-                      data.by_session,
-                      sessionDateLookup,
-                      sessionTypeLookup
-                    )}
-                    onBarClick={setFilter}
-                    sessionDateLookup={sessionDateLookup}
-                    sessionTypeLookup={sessionTypeLookup}
-                  />
+                  <>
+                    <WaitlistBySessionChart
+                      data={sortSessionDataByCampThenQuest(
+                        data.by_session,
+                        sessionDateLookup,
+                        sessionTypeLookup
+                      )}
+                      onBarClick={setFilter}
+                      sessionDateLookup={sessionDateLookup}
+                      sessionTypeLookup={sessionTypeLookup}
+                    />
+                    {/* CSS prototype — Waitlist by Session (directly after original) */}
+                    {(() => {
+                      const sorted = sortSessionDataByCampThenQuest(
+                        data.by_session,
+                        sessionDateLookup,
+                        sessionTypeLookup
+                      )
+                      const enrolledSessions = new Map<number, string>()
+                      for (const item of sorted) {
+                        for (const enrolled of item.enrolled_in || []) {
+                          enrolledSessions.set(enrolled.session_cm_id, enrolled.session_name)
+                        }
+                      }
+                      const SESSION_COLORS = [
+                        'hsl(160, 100%, 35%)',
+                        'hsl(42, 92%, 50%)',
+                        'hsl(200, 70%, 50%)',
+                        'hsl(280, 60%, 50%)',
+                        'hsl(100, 60%, 45%)',
+                        'hsl(30, 80%, 50%)',
+                        'hsl(180, 60%, 45%)',
+                        'hsl(350, 70%, 50%)',
+                      ]
+                      const enrolledList = Array.from(enrolledSessions.entries())
+                      const segments = [
+                        { key: 'no_enrollment', label: 'No Enrollment', color: 'hsl(0, 70%, 50%)' },
+                        ...enrolledList.map(([id, name], i) => ({
+                          key: `session_${id}`,
+                          label: name,
+                          color: SESSION_COLORS[i % SESSION_COLORS.length] ?? 'hsl(160, 100%, 35%)',
+                        })),
+                      ]
+                      const cssData: StackedBarDataItem[] = sorted.map((item) => {
+                        const point: StackedBarDataItem = {
+                          name: item.session_name,
+                          total: item.no_enrollment + item.has_enrollment,
+                          no_enrollment: item.no_enrollment,
+                        }
+                        for (const [sessionId] of enrolledList) {
+                          const enrolled = (item.enrolled_in || []).find(
+                            (e) => e.session_cm_id === sessionId
+                          )
+                          point[`session_${sessionId}`] = enrolled?.count || 0
+                        }
+                        return point
+                      })
+                      return (
+                        <CssStackedHorizontalBarChart
+                          data={cssData}
+                          segments={segments}
+                          title="Waitlist by Session (CSS)"
+                          labelWidth={140}
+                          height={340}
+                          onBarClick={(item) =>
+                            setFilter({
+                              type: 'waitlist_total',
+                              value: String(
+                                sorted.find((s) => s.session_name === item.name)?.session_cm_id ?? ''
+                              ),
+                              label: item.name,
+                            })
+                          }
+                        />
+                      )
+                    })()}
+                  </>
                 )}
               </>
             )}
@@ -320,14 +391,46 @@ export default function WaitlistAnalysis() {
                     )}
                   </>
                 ) : (
-                  <div className="grid gap-6 lg:grid-cols-2">
-                    {(data.by_grade || []).length > 0 && (
-                      <WaitlistGradeChart data={data.by_grade} onBarClick={setFilter} />
-                    )}
+                  <>
+                    <div className="grid gap-6 lg:grid-cols-2">
+                      {(data.by_grade || []).length > 0 && (
+                        <WaitlistGradeChart data={data.by_grade} onBarClick={setFilter} />
+                      )}
+                      {/* CSS prototype — Waitlist Grade (next to original) */}
+                      {(data.by_grade || []).length > 0 && (
+                        <CssStackedHorizontalBarChart
+                          data={(data.by_grade || []).map((item) => ({
+                            name: item.grade !== null ? `Grade ${item.grade}` : 'Unknown',
+                            total: item.count,
+                            no_enrollment: item.no_enrollment ?? 0,
+                            has_enrollment: item.has_enrollment ?? 0,
+                          }))}
+                          segments={[
+                            { key: 'no_enrollment', label: 'No Other Sessions', color: 'hsl(0, 70%, 50%)' },
+                            { key: 'has_enrollment', label: 'Has Other Sessions', color: 'hsl(160, 100%, 35%)' },
+                          ]}
+                          title="Grade Distribution (CSS)"
+                          onBarClick={(item) => {
+                            const grade = data.by_grade?.find(
+                              (g) => (g.grade !== null ? `Grade ${g.grade}` : 'Unknown') === item.name
+                            )
+                            if (grade) {
+                              setFilter({
+                                type: 'grade',
+                                value: grade.grade !== null ? String(grade.grade) : 'null',
+                                label: item.name,
+                                statusOverride: ['waitlisted'],
+                                waitlistContext: true,
+                              })
+                            }
+                          }}
+                        />
+                      )}
+                    </div>
                     {(data.by_gender || []).length > 0 && (
                       <WaitlistGenderChart data={data.by_gender} onSegmentClick={setFilter} />
                     )}
-                  </div>
+                  </>
                 )}
               </>
             )}

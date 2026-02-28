@@ -17,6 +17,8 @@ import {
   RetentionRateBarChart,
   type RetentionRateBarItem,
 } from '../../../components/metrics/RetentionRateBarChart'
+import { CssRetentionBarChart } from '../../../components/metrics/CssRetentionBarChart'
+import { CssVerticalRetentionBarChart } from '../../../components/metrics/CssVerticalRetentionBarChart'
 import { RetentionRateLineChart } from '../../../components/metrics/RetentionRateLineChart'
 import {
   genderToBarData,
@@ -213,15 +215,25 @@ export default function RetentionOverview() {
             }
           />
         )}
-        {gradeBars.length > 0 && (
-          <RetentionRateLineChart
-            data={gradeBars}
-            title="Retention by Grade"
-            tooltipLabelPrefix="Grade "
-            onDotClick={(item) => setFilter(makeRetentionFilter('grade', item, 'Grade '))}
+        {/* CSS prototype — Gender retention (next to original) */}
+        {genderBars.length > 0 && (
+          <CssRetentionBarChart
+            data={genderBars}
+            title="Retention by Gender (CSS)"
+            onBarClick={(item) =>
+              setFilter({ ...makeRetentionFilter('gender', item), titleFormat: 'adjective' })
+            }
           />
         )}
       </div>
+      {gradeBars.length > 0 && (
+        <RetentionRateLineChart
+          data={gradeBars}
+          title="Retention by Grade"
+          tooltipLabelPrefix="Grade "
+          onDotClick={(item) => setFilter(makeRetentionFilter('grade', item, 'Grade '))}
+        />
+      )}
 
       {/* Row 2: Session charts side by side */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -264,68 +276,126 @@ export default function RetentionOverview() {
 
       {/* Row 5: City chart + outliers */}
       {cityBars.length > 0 && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3" data-tour="retention-geographic">
-          <div className={cityOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
-            <RetentionRateBarChart
-              data={cityBars}
-              title="Retention by City (Top 15)"
-              topN={15}
-              sortBy="count"
-              layout="vertical"
-              onBarClick={(item) => setFilter(makeRetentionFilter('city', item))}
-            />
+        <>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3" data-tour="retention-geographic">
+            <div className={cityOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
+              <RetentionRateBarChart
+                data={cityBars}
+                title="Retention by City (Top 15)"
+                topN={15}
+                sortBy="count"
+                layout="vertical"
+                onBarClick={(item) => setFilter(makeRetentionFilter('city', item))}
+              />
+            </div>
+            <OutlierSection outliers={cityOutliers} max={5} />
           </div>
-          <OutlierSection outliers={cityOutliers} max={5} />
-        </div>
+          {/* CSS prototype — City retention */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div className={cityOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
+              <CssVerticalRetentionBarChart
+                data={cityBars}
+                title="Retention by City (Top 15) (CSS)"
+                topN={15}
+                sortBy="count"
+                onBarClick={(item) => setFilter(makeRetentionFilter('city', item))}
+              />
+            </div>
+            <OutlierSection outliers={cityOutliers} max={5} />
+          </div>
+        </>
       )}
 
       {/* Row 6: School chart + outliers */}
       {schoolBars.length > 0 && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <div className={schoolOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
-            <RetentionRateBarChart
-              data={schoolBars}
-              title="Retention by School (Top 15)"
-              topN={15}
-              sortBy="count"
-              layout="vertical"
-              onBarClick={(item) => setFilter(makeRetentionFilter('school', item))}
-            />
+        <>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div className={schoolOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
+              <RetentionRateBarChart
+                data={schoolBars}
+                title="Retention by School (Top 15)"
+                topN={15}
+                sortBy="count"
+                layout="vertical"
+                onBarClick={(item) => setFilter(makeRetentionFilter('school', item))}
+              />
+            </div>
+            <OutlierSection outliers={schoolOutliers} max={5} />
           </div>
-          <OutlierSection outliers={schoolOutliers} max={5} />
-        </div>
+          {/* CSS prototype — School retention */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div className={schoolOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
+              <CssVerticalRetentionBarChart
+                data={schoolBars}
+                title="Retention by School (Top 15) (CSS)"
+                topN={15}
+                sortBy="count"
+                onBarClick={(item) => setFilter(makeRetentionFilter('school', item))}
+              />
+            </div>
+            <OutlierSection outliers={schoolOutliers} max={5} />
+          </div>
+        </>
       )}
 
       {/* Row 7: Synagogue chart + outliers */}
       {synagogueBars.length > 0 && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <div className={synagogueOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
-            <RetentionRateBarChart
-              data={synagogueBars}
-              title="Retention by Synagogue (Top 15)"
-              topN={15}
-              sortBy="count"
-              layout="vertical"
-              onBarClick={(item) => setFilter(makeRetentionFilter('synagogue', item))}
-            />
+        <>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div className={synagogueOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
+              <RetentionRateBarChart
+                data={synagogueBars}
+                title="Retention by Synagogue (Top 15)"
+                topN={15}
+                sortBy="count"
+                layout="vertical"
+                onBarClick={(item) => setFilter(makeRetentionFilter('synagogue', item))}
+              />
+            </div>
+            <OutlierSection outliers={synagogueOutliers} max={5} />
           </div>
-          <OutlierSection outliers={synagogueOutliers} max={5} />
-        </div>
+          {/* CSS prototype — Synagogue retention */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div className={synagogueOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
+              <CssVerticalRetentionBarChart
+                data={synagogueBars}
+                title="Retention by Synagogue (Top 15) (CSS)"
+                topN={15}
+                sortBy="count"
+                onBarClick={(item) => setFilter(makeRetentionFilter('synagogue', item))}
+              />
+            </div>
+            <OutlierSection outliers={synagogueOutliers} max={5} />
+          </div>
+        </>
       )}
 
       {/* Row 8: Region chart + outliers */}
       {regionBars.length > 0 && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <div className={regionOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
-            <RetentionRateBarChart
-              data={regionBars}
-              title="Retention by Region"
-              sortBy="count"
-              layout="vertical"
-            />
+        <>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div className={regionOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
+              <RetentionRateBarChart
+                data={regionBars}
+                title="Retention by Region"
+                sortBy="count"
+                layout="vertical"
+              />
+            </div>
+            <OutlierSection outliers={regionOutliers} max={5} />
           </div>
-          <OutlierSection outliers={regionOutliers} max={5} />
-        </div>
+          {/* CSS prototype — Region retention */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div className={regionOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
+              <CssVerticalRetentionBarChart
+                data={regionBars}
+                title="Retention by Region (CSS)"
+                sortBy="count"
+              />
+            </div>
+            <OutlierSection outliers={regionOutliers} max={5} />
+          </div>
+        </>
       )}
 
       {/* Drilldown Modal */}
