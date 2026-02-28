@@ -65,6 +65,21 @@ async def authenticate_pb() -> None:
         raise
 
 
+async def start_pb_token_refresh(interval_seconds: int | float = 3600) -> asyncio.Task[None]:
+    """Start background task to periodically refresh PocketBase auth token."""
+
+    async def _refresh_loop() -> None:
+        while True:
+            await asyncio.sleep(interval_seconds)
+            try:
+                await authenticate_pb()
+                logger.info("Refreshed PocketBase auth token")
+            except Exception:
+                logger.exception("Failed to refresh PocketBase auth token, will retry")
+
+    return asyncio.create_task(_refresh_loop())
+
+
 async def get_pb_client() -> PocketBase:
     """FastAPI dependency to get authenticated PocketBase client."""
     return pb
@@ -118,6 +133,7 @@ __all__ = [
     "pb_url",
     "auth_state",
     "authenticate_pb",
+    "start_pb_token_refresh",
     "get_pb_client",
     "create_task_pb_client",
     "authenticate_task_pb",
