@@ -76,6 +76,29 @@ updates:
           - "patch"
     open-pull-requests-limit: 5
 
+  # PocketBase npm dependencies (JS migrations)
+  - package-ecosystem: "npm"
+    directory: "/pocketbase"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/New_York"
+    commit-message:
+      prefix: "fix(pb)"
+      prefix-development: "chore(pb)"
+    labels:
+      - "dependencies"
+      - "javascript"
+    groups:
+      pb-npm:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    open-pull-requests-limit: 3
+
   # Frontend npm dependencies
   - package-ecosystem: "npm"
     directory: "/frontend"
