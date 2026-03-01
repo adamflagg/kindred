@@ -7,7 +7,7 @@
     "lint": "eslint pb_migrations pb_hooks"
   },
   "devDependencies": {
-    "@eslint/js": "^9.0.0",
+    "@eslint/js": "^10.0.1",
     "eslint": "^10.0.2"
   }
 }
