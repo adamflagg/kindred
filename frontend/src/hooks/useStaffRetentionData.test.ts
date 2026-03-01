@@ -342,6 +342,37 @@ describe('buildStaffRetentionData', () => {
     })
   })
 
+  describe('staff status propagation', () => {
+    it('should propagate status from BunkStaffInfo to StaffRetentionRow', () => {
+      const bunkStaff = new Map<string, BunkStaffInfo[]>([
+        [
+          'Session 1|B-1',
+          [
+            { name: 'Emma Johnson', personId: '101', status: 'active' },
+            { name: 'Liam Garcia', personId: '102', status: 'dismissed' },
+          ],
+        ],
+      ])
+      const retention: RetentionBySessionBunk[] = [
+        {
+          session: 'Session 1',
+          bunk: 'B-1',
+          base_count: 10,
+          returned_count: 7,
+          retention_rate: 0.7,
+        },
+      ]
+
+      const result = buildStaffRetentionData(bunkStaff, retention)
+
+      expect(result.staffRows).toHaveLength(2)
+      const emma = result.staffRows.find((r) => r.personId === '101')
+      const liam = result.staffRows.find((r) => r.personId === '102')
+      expect(emma?.status).toBe('active')
+      expect(liam?.status).toBe('dismissed')
+    })
+  })
+
   describe('staff without matching retention data', () => {
     it('should exclude staff entries that have no matching retention data', () => {
       const bunkStaff = new Map<string, BunkStaffInfo[]>([
@@ -396,17 +427,41 @@ describe('module exports', () => {
     expect(typeof module.useStaffRetentionData).toBe('function')
   })
 
-  it('should export StaffRetentionRow type', async () => {
+  it('should export StaffRetentionRow type with optional status', async () => {
     // Type-level assertion - if this compiles, the type exists
-    const _typeCheck: StaffRetentionRow = {
+    const activeRow: StaffRetentionRow = {
       personId: '1',
-      name: 'Test',
+      name: 'Emma Johnson',
+      sessionData: new Map<string, StaffSessionData>(),
+      overallRetention: 0,
+      totalBaseCount: 0,
+      totalReturnedCount: 0,
+      status: 'active',
+    }
+    expect(activeRow).toBeDefined()
+    expect(activeRow.status).toBe('active')
+
+    const dismissedRow: StaffRetentionRow = {
+      personId: '2',
+      name: 'Liam Garcia',
+      sessionData: new Map<string, StaffSessionData>(),
+      overallRetention: 0,
+      totalBaseCount: 0,
+      totalReturnedCount: 0,
+      status: 'dismissed',
+    }
+    expect(dismissedRow.status).toBe('dismissed')
+
+    // Status is optional - backwards compatible
+    const noStatusRow: StaffRetentionRow = {
+      personId: '3',
+      name: 'Olivia Chen',
       sessionData: new Map<string, StaffSessionData>(),
       overallRetention: 0,
       totalBaseCount: 0,
       totalReturnedCount: 0,
     }
-    expect(_typeCheck).toBeDefined()
+    expect(noStatusRow.status).toBeUndefined()
   })
 
   it('should export StaffSessionData type', async () => {

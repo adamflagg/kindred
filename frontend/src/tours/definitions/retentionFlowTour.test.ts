@@ -18,27 +18,11 @@ describe('retentionFlowTour', () => {
     expect(retentionFlowTour.steps).toHaveLength(2)
   })
 
-  it('has hints defined', () => {
-    expect(retentionFlowTour.hints).toBeDefined()
-    expect(retentionFlowTour.hints!.length).toBe(1)
-  })
-
-  it('has session-selector hint (not duplicating tour steps)', () => {
-    const hints = retentionFlowTour.hints!
-    expect(hints[0]?.element).toBe('[data-tour="retention-session-selector"]')
-  })
-
   it('uses data-tour selectors in steps', () => {
     for (const step of retentionFlowTour.steps) {
       if (step.element) {
         expect(step.element).toMatch(/\[data-tour=/)
       }
-    }
-  })
-
-  it('uses data-tour selectors in hints', () => {
-    for (const hint of retentionFlowTour.hints!) {
-      expect(hint.element).toMatch(/\[data-tour=/)
     }
   })
 

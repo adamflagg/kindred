@@ -582,6 +582,16 @@ class WaitlistMetricsResponse(BaseModel):
     waitlisted_has_enrollment: int = Field(description="Waitlisted but enrolled in other sessions (UC2)")
     total_accepted: int = Field(description="Previously waitlisted, now enrolled (UC3)")
     total_declined: int = Field(description="Previously waitlisted, declined placement (UC4)")
+    avg_days_to_acceptance: float | None = Field(
+        default=None, description="Avg days from waitlist application to acceptance"
+    )
+    median_days_to_acceptance: float | None = Field(
+        default=None, description="Median days from waitlist application to acceptance"
+    )
+    avg_days_to_decline: float | None = Field(default=None, description="Avg days from waitlist application to decline")
+    median_days_to_decline: float | None = Field(
+        default=None, description="Median days from waitlist application to decline"
+    )
     by_session: list[WaitlistSessionBreakdown] = Field(
         default_factory=list, description="Per-session waitlist breakdown"
     )
@@ -592,6 +602,22 @@ class WaitlistMetricsResponse(BaseModel):
 # ============================================================================
 # Cancellation Analysis
 # ============================================================================
+
+
+class TimeBucket(BaseModel):
+    """A time distribution bucket."""
+
+    label: str = Field(description="Bucket label (e.g. '< 30 days')")
+    count: int = Field(description="Number of records in this bucket")
+    percentage: float = Field(description="Percentage of total")
+
+
+class RegistrationMonthBreakdown(BaseModel):
+    """Breakdown by registration month."""
+
+    month: str = Field(description="Month label (e.g. 'Nov 2025')")
+    count: int = Field(description="Number of cancellations from this registration month")
+    percentage: float = Field(description="Percentage of total")
 
 
 class CancellationSessionBreakdown(BaseModel):
@@ -608,6 +634,7 @@ class CancellationSessionBreakdown(BaseModel):
     )
     has_other_sessions: int = Field(default=0, description="Cancelled but enrolled in other session")
     no_other_sessions: int = Field(default=0, description="Cancelled with no remaining enrollment")
+    session_swap_count: int = Field(default=0, description="Session swaps (cancelled and enrolled in another)")
 
 
 class CancellationMetricsResponse(BaseModel):
@@ -624,6 +651,20 @@ class CancellationMetricsResponse(BaseModel):
     has_other_sessions: int = Field(description="Cancelled but enrolled in other session")
     no_other_sessions: int = Field(description="Cancelled with no remaining enrollment")
     total_re_enrolled: int = Field(default=0, description="Cancelled then later re-enrolled (recovery)")
+    session_swap_count: int = Field(default=0, description="Cancellations that are session swaps")
+    true_departure_count: int = Field(default=0, description="True departures (not session swaps)")
+    avg_days_to_cancellation: float | None = Field(
+        default=None, description="Avg days between registration and cancellation (non-swaps)"
+    )
+    median_days_to_cancellation: float | None = Field(
+        default=None, description="Median days between registration and cancellation (non-swaps)"
+    )
+    time_to_cancellation_buckets: list[TimeBucket] = Field(
+        default_factory=list, description="Time-to-cancellation distribution"
+    )
+    by_registration_month: list[RegistrationMonthBreakdown] = Field(
+        default_factory=list, description="Cancellations grouped by registration month"
+    )
     by_session: list[CancellationSessionBreakdown] = Field(
         default_factory=list, description="Per-session cancellation breakdown"
     )
@@ -662,6 +703,7 @@ class DrilldownAttendee(BaseModel):
     state: str | None = Field(None, description="State abbreviation (parsed from address)")
     years_at_camp: int | None = Field(None, description="Years at camp")
     enrollment_date: str | None = Field(None, description="Enrollment date for waitlist ordering")
+    effective_date: str | None = Field(None, description="Original registration date (EffectiveDate from CampMinder)")
     session_name: str = Field(description="Session name")
     session_cm_id: int = Field(description="Session CampMinder ID")
     status: str = Field(description="Enrollment status")

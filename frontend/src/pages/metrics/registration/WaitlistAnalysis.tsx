@@ -143,6 +143,59 @@ export default function WaitlistAnalysis() {
               />
             </div>
 
+            {/* Waitlist Duration Insights */}
+            {(data.avg_days_to_acceptance != null ||
+              data.median_days_to_acceptance != null ||
+              data.avg_days_to_decline != null ||
+              data.median_days_to_decline != null) && (
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                {data.avg_days_to_acceptance != null && (
+                  <div className="rounded-lg border border-green-200 bg-green-50/50 p-4 dark:border-green-800 dark:bg-green-950/30">
+                    <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                      <Clock className="h-4 w-4" />
+                      Avg Wait to Accept
+                    </div>
+                    <div className="mt-1 text-2xl font-bold text-green-700 dark:text-green-400">
+                      {Math.round(data.avg_days_to_acceptance)} days
+                    </div>
+                  </div>
+                )}
+                {data.median_days_to_acceptance != null && (
+                  <div className="rounded-lg border border-green-200 bg-green-50/50 p-4 dark:border-green-800 dark:bg-green-950/30">
+                    <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                      <Clock className="h-4 w-4" />
+                      Median Wait to Accept
+                    </div>
+                    <div className="mt-1 text-2xl font-bold text-green-700 dark:text-green-400">
+                      {Math.round(data.median_days_to_acceptance)} days
+                    </div>
+                  </div>
+                )}
+                {data.avg_days_to_decline != null && (
+                  <div className="rounded-lg border border-red-200 bg-red-50/50 p-4 dark:border-red-800 dark:bg-red-950/30">
+                    <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                      <Clock className="h-4 w-4" />
+                      Avg Time to Decline
+                    </div>
+                    <div className="mt-1 text-2xl font-bold text-red-700 dark:text-red-400">
+                      {Math.round(data.avg_days_to_decline)} days
+                    </div>
+                  </div>
+                )}
+                {data.median_days_to_decline != null && (
+                  <div className="rounded-lg border border-red-200 bg-red-50/50 p-4 dark:border-red-800 dark:bg-red-950/30">
+                    <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                      <Clock className="h-4 w-4" />
+                      Median Time to Decline
+                    </div>
+                    <div className="mt-1 text-2xl font-bold text-red-700 dark:text-red-400">
+                      {Math.round(data.median_days_to_decline)} days
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Session Chart */}
             {data.by_session.length > 0 && (
               <>

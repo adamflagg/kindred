@@ -54,6 +54,24 @@ const PHASE_COLORS: Record<string, string> = {
   open: 'hsl(140, 60%, 40%)',
 }
 
+/** Custom dot renderer that shows a hollow dashed circle on partial week data points. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function PartialWeekDot(props: any) {
+  const { cx, cy, payload, stroke } = props
+  if (!payload?.is_partial) return null
+  return (
+    <circle
+      cx={cx}
+      cy={cy}
+      r={5}
+      fill="white"
+      stroke={stroke}
+      strokeWidth={2}
+      strokeDasharray="3 3"
+    />
+  )
+}
+
 export default function CancellationVelocityPage() {
   const { selectedSessionCmId, sessionTypesParam, sessions } = useMetricsSession()
   const { currentYear, availableYears } = useCurrentYear()
@@ -131,12 +149,14 @@ export default function CancellationVelocityPage() {
       }
       if (!weekLabel) weekLabel = `Wk ${wn}`
 
-      const row: Record<string, string | number | null> = {
+      const row: Record<string, string | number | boolean | null> = {
         week_number: wn,
         label: weekLabel,
         week_start: current?.week_start ?? '',
         cancelled: current?.enrolled ?? null, // enrolled field repurposed for cancelled count
         delta: current?.delta ?? null,
+        is_partial: current?.is_partial ?? false,
+        days_in_week: current?.days_in_week ?? 7,
       }
 
       data.prior_years.forEach((py, i) => {
@@ -419,6 +439,24 @@ export default function CancellationVelocityPage() {
         </div>
       )}
 
+      {/* Session Swap Annotation */}
+      {data.session_swap_count != null &&
+        data.session_swap_count > 0 &&
+        data.cancelled_to_date != null &&
+        data.cancelled_to_date > 0 && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50/50 px-4 py-3 text-sm dark:border-amber-800 dark:bg-amber-950/30">
+            <span className="font-medium text-amber-800 dark:text-amber-300">
+              {data.session_swap_count} of {data.cancelled_to_date} cancellations (
+              {Math.round((data.session_swap_count / data.cancelled_to_date) * 100)}%) are session
+              swaps
+            </span>
+            <span className="text-muted-foreground">
+              {' '}
+              — cancelled one session and enrolled in another within the same day
+            </span>
+          </div>
+        )}
+
       {/* Cancellation Velocity Chart */}
       <div className="card-lodge p-4">
         <h3 className="text-foreground mb-2 text-base font-semibold">
@@ -515,9 +553,17 @@ export default function CancellationVelocityPage() {
                 const validPayload = payload.filter((entry) => entry.value != null)
                 if (!validPayload.length) return null
                 const displayLabel = weekLabelMap.get(label as number) ?? `Week ${label}`
+                const row = chartData.find((d) => d['week_number'] === label)
+                const isPartial = row?.['is_partial'] as boolean
+                const daysInWeek = row?.['days_in_week'] as number
                 return (
                   <div className="bg-card border-border rounded-lg border p-3 shadow-lg">
                     <p className="text-foreground mb-1 font-medium">{displayLabel}</p>
+                    {isPartial && (
+                      <p className="mb-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+                        Partial week ({daysInWeek}/7 days)
+                      </p>
+                    )}
                     {validPayload.map((entry) => (
                       <p key={entry.name} className="text-sm" style={{ color: entry.color }}>
                         {entry.name}: {Number(entry.value).toLocaleString()}
@@ -555,7 +601,7 @@ export default function CancellationVelocityPage() {
                   name={`Boys ${currentYear}`}
                   stroke={GENDER_COLORS.boys}
                   strokeWidth={3}
-                  dot={false}
+                  dot={<PartialWeekDot />}
                   activeDot={{ r: 4 }}
                   connectNulls={false}
                 />
@@ -565,7 +611,7 @@ export default function CancellationVelocityPage() {
                   name={`Girls ${currentYear}`}
                   stroke={GENDER_COLORS.girls}
                   strokeWidth={3}
-                  dot={false}
+                  dot={<PartialWeekDot />}
                   activeDot={{ r: 4 }}
                   connectNulls={false}
                 />
@@ -606,7 +652,7 @@ export default function CancellationVelocityPage() {
                   name={String(currentYear)}
                   stroke="hsl(0, 75%, 50%)"
                   strokeWidth={3}
-                  dot={false}
+                  dot={<PartialWeekDot />}
                   activeDot={{ r: 5 }}
                   connectNulls={false}
                 />
@@ -785,9 +831,16 @@ export default function CancellationVelocityPage() {
                 return (
                   <tr
                     key={week.week_start}
-                    className="border-border hover:bg-muted/20 border-b transition-colors last:border-0"
+                    className={`border-border hover:bg-muted/20 border-b transition-colors last:border-0 ${week.is_partial ? 'bg-amber-50/50 dark:bg-amber-950/20' : ''}`}
                   >
-                    <td className="text-foreground px-4 py-3 font-medium">{week.week_label}</td>
+                    <td className="text-foreground px-4 py-3 font-medium">
+                      {week.week_label}
+                      {week.is_partial && (
+                        <span className="ml-1.5 text-xs font-normal text-amber-600 dark:text-amber-400">
+                          ({week.days_in_week}/7 days)
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-right">
                       <span
                         className={

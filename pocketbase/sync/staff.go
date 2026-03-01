@@ -14,6 +14,10 @@ import (
 // Service name constant
 const serviceNameStaff = "staff"
 
+// allStaffStatuses defines all CampMinder staff statuses to sync.
+// 1=Active, 2=Resigned, 3=Dismissed, 4=Cancelled
+var allStaffStatuses = []int{1, 2, 3, 4}
+
 // StaffSync handles syncing year-scoped staff records from CampMinder
 // This syncs the main staff table which depends on:
 // - staff_lookups (positions, org_categories, program_areas) - run first via weekly sync
@@ -82,80 +86,96 @@ func (s *StaffSync) syncStaff(ctx context.Context) error {
 
 	s.ClearProcessedKeys()
 
-	// Fetch staff from CampMinder with pagination
-	// Status 1 = Active (most common query)
-	page := 1
+	// Fetch staff from CampMinder across all statuses with pagination
 	pageSize := 500
 	totalProcessed := 0
+	statusCounts := make(map[int]int)
 
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
+	for _, status := range allStaffStatuses {
+		page := 1
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
 
-		staffRecords, hasMore, err := s.Client.GetStaffPage(1, page, pageSize)
-		if err != nil {
-			return fmt.Errorf("fetching staff page %d: %w", page, err)
-		}
-
-		if len(staffRecords) == 0 {
-			break
-		}
-
-		slog.Debug("Processing staff page", "page", page, "count", len(staffRecords))
-
-		for _, data := range staffRecords {
-			pbData, err := s.transformStaffToPB(data, year, orgCategoryMap, positionMap, divisionMap, bunkMap, personMap)
+			staffRecords, hasMore, err := s.Client.GetStaffPage(status, page, pageSize)
 			if err != nil {
-				slog.Error("Error transforming staff record", "error", err)
-				s.Stats.Errors++
-				continue
+				return fmt.Errorf("fetching staff page %d (status %d): %w", page, status, err)
 			}
 
-			// Get person PocketBase ID (the relation field value)
-			personPBID, _ := pbData["person"].(string)
-			if personPBID == "" {
-				// Staff member doesn't have a matching person record - skip
-				cmPersonID, _ := data["PersonID"].(float64)
-				slog.Warn("Staff record has no matching person in persons table, skipping",
-					"cm_person_id", int(cmPersonID))
-				s.Stats.Skipped++
-				continue
+			if len(staffRecords) == 0 {
+				break
 			}
 
-			// Skip duplicates (same person appearing multiple times in API response)
-			if s.IsKeyProcessed(personPBID, year) {
-				slog.Debug("Skipping duplicate staff record in API response", "person_pb_id", personPBID)
-				continue
+			slog.Debug("Processing staff page", "status", status, "page", page, "count", len(staffRecords))
+
+			for _, data := range staffRecords {
+				pbData, err := s.transformStaffToPB(data, year, orgCategoryMap, positionMap, divisionMap, bunkMap, personMap)
+				if err != nil {
+					slog.Error("Error transforming staff record", "error", err)
+					s.Stats.Errors++
+					continue
+				}
+
+				// Get person PocketBase ID (the relation field value)
+				personPBID, _ := pbData["person"].(string)
+				if personPBID == "" {
+					// Staff member doesn't have a matching person record - skip
+					cmPersonID, _ := data["PersonID"].(float64)
+					slog.Warn("Staff record has no matching person in persons table, skipping",
+						"cm_person_id", int(cmPersonID))
+					s.Stats.Skipped++
+					continue
+				}
+
+				// Skip duplicates (same person appearing multiple times across statuses)
+				if s.IsKeyProcessed(personPBID, year) {
+					slog.Debug("Skipping duplicate staff record in API response", "person_pb_id", personPBID)
+					continue
+				}
+
+				s.TrackProcessedKey(personPBID, year)
+
+				// Preserve bunk data for non-active staff — CampMinder clears
+				// BunkAssignments on dismissal, but we keep last-known assignments.
+				if existing, hasExisting := existingRecords[CompositeKey(personPBID, year)]; hasExisting {
+					statusID, _ := pbData["status_id"].(int)
+					existingBunks := existing.GetStringSlice("bunks")
+					if shouldPreserveBunkData(statusID, existing.GetBool("bunk_staff"), existingBunks) {
+						delete(pbData, "bunks")
+						delete(pbData, "bunk_staff")
+					}
+				}
+
+				compareFields := []string{
+					"year", "status_id", "status",
+					"organizational_category", "position1", "position2", "division",
+					"bunks", "bunk_staff",
+					"hire_date", "employment_start_date", "employment_end_date",
+					"contract_in_date", "contract_out_date", "contract_due_date",
+					"international", "years", "salary",
+				}
+				if err := s.ProcessSimpleRecord("staff", personPBID, pbData, existingRecords, compareFields); err != nil {
+					slog.Error("Error processing staff record", "person_pb_id", personPBID, "error", err)
+					s.Stats.Errors++
+				}
+
+				statusCounts[status]++
+				totalProcessed++
 			}
 
-			s.TrackProcessedKey(personPBID, year)
-
-			compareFields := []string{
-				"year", "status_id", "status",
-				"organizational_category", "position1", "position2", "division",
-				"bunks", "bunk_staff",
-				"hire_date", "employment_start_date", "employment_end_date",
-				"contract_in_date", "contract_out_date", "contract_due_date",
-				"international", "years", "salary",
+			if !hasMore {
+				break
 			}
-			if err := s.ProcessSimpleRecord("staff", personPBID, pbData, existingRecords, compareFields); err != nil {
-				slog.Error("Error processing staff record", "person_pb_id", personPBID, "error", err)
-				s.Stats.Errors++
-			}
-
-			totalProcessed++
+			page++
 		}
-
-		if !hasMore {
-			break
-		}
-		page++
 	}
 
-	slog.Info("Processed staff records", "total", totalProcessed)
+	slog.Info("Processed staff records", "total", totalProcessed,
+		"active", statusCounts[1], "resigned", statusCounts[2],
+		"dismissed", statusCounts[3], "cancelled", statusCounts[4])
 
 	// Mark sync as successful before orphan deletion (DeleteOrphans checks this flag)
 	s.SyncSuccessful = true
@@ -361,6 +381,14 @@ func (s *StaffSync) setStaffFloatField(pbData, data map[string]interface{}, srcK
 	if val, ok := data[srcKey].(float64); ok {
 		pbData[dstKey] = val
 	}
+}
+
+// shouldPreserveBunkData returns true when existing bunk data should be kept
+// instead of being overwritten by (empty) API data. CampMinder strips
+// BunkAssignments from dismissed/resigned staff responses, so we preserve
+// the last-known assignments for non-active bunk staff who had bunks.
+func shouldPreserveBunkData(statusID int, existingBunkStaff bool, existingBunks []string) bool {
+	return statusID != 1 && existingBunkStaff && len(existingBunks) > 0
 }
 
 // parseDate converts CampMinder date format to PocketBase format

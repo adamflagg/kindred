@@ -60,6 +60,13 @@ describe('useBunkStaff', () => {
       expect(source).toContain('year')
       expect(source).toContain('filter')
     })
+
+    it('should read staff status from record', async () => {
+      const sourceContent = await import('./useBunkStaff?raw')
+      const source = sourceContent.default
+
+      expect(source).toContain('status')
+    })
   })
 
   describe('query key structure', () => {
@@ -130,6 +137,27 @@ describe('useBunkStaff', () => {
 
       expect(Object.keys(expectedShape)).toContain('name')
       expect(Object.keys(expectedShape)).toContain('personId')
+    })
+
+    it('BunkStaffInfo should support optional status field', () => {
+      const activeStaff = {
+        name: 'Emma Johnson',
+        personId: '12345',
+        status: 'active',
+      }
+      const dismissedStaff = {
+        name: 'Liam Garcia',
+        personId: '67890',
+        status: 'dismissed',
+      }
+      const noStatusStaff = {
+        name: 'Olivia Chen',
+        personId: '11111',
+      }
+
+      expect(activeStaff.status).toBe('active')
+      expect(dismissedStaff.status).toBe('dismissed')
+      expect('status' in noStatusStaff).toBe(false)
     })
 
     it('should return Map<string, BunkStaffInfo[]> keyed by session|bunk', () => {

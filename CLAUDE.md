@@ -52,6 +52,7 @@ Format: `type(scope): description` — Breaking changes: `feat(api)!: descriptio
 | `google` | Google Sheets/Drive API |
 | `scripts` | Dev/utility scripts |
 | `deps` | Dependencies |
+| `deps-dev` | Dev dependency updates |
 | `docs` | Documentation |
 | `security` | Security hardening, CVE fixes |
 | `metrics` | Analytics, dashboards, statistics |

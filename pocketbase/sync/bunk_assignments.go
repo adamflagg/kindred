@@ -222,6 +222,10 @@ func (s *BunkAssignmentsSync) Sync(ctx context.Context) error {
 
 	slog.Info("Fetched bunk assignments from CampMinder", "count", totalAssignments)
 
+	// Protect bunk_assignments for non-active staff from orphan deletion.
+	// CampMinder removes assignments on dismissal, but we preserve them.
+	s.protectNonActiveStaffAssignments(year)
+
 	// Delete orphaned assignments
 	if err := s.deleteOrphans(); err != nil {
 		slog.Error("Error deleting orphans", "error", err)
@@ -485,6 +489,55 @@ func (s *BunkAssignmentsSync) processAssignment(
 
 	// Use ProcessCompositeRecord utility
 	return s.ProcessCompositeRecord("bunk_assignments", key, recordData, existingAssignments, []string{"year"})
+}
+
+// protectNonActiveStaffAssignments marks existing bunk_assignments for non-active
+// bunk staff as processed so DeleteOrphans won't remove them. CampMinder strips
+// assignments from dismissed/resigned staff API responses, but we preserve them.
+func (s *BunkAssignmentsSync) protectNonActiveStaffAssignments(year int) {
+	nonActiveFilter := fmt.Sprintf("status != 'active' && bunk_staff = true && year = %d", year)
+	protectedCount := 0
+
+	if err := s.PaginateRecords("staff", nonActiveFilter, func(staffRecord *core.Record) error {
+		personID, ok := staffRecord.Get("person_id").(float64)
+		if !ok || personID <= 0 {
+			return nil
+		}
+		personCMID := int(personID)
+
+		// Find this person's existing bunk_assignments and mark as processed
+		baFilter := fmt.Sprintf("year = %d && person_id = %d", year, personCMID)
+		bas, err := s.App.FindRecordsByFilter("bunk_assignments", baFilter, "", 0, 0)
+		if err != nil || len(bas) == 0 {
+			return nil
+		}
+
+		for _, ba := range bas {
+			sessionPBID := ba.GetString("session")
+			if sessionPBID == "" {
+				continue
+			}
+			sessions, err := s.App.FindRecordsByFilter("camp_sessions", fmt.Sprintf("id = '%s'", sessionPBID), "", 1, 0)
+			if err != nil || len(sessions) == 0 {
+				continue
+			}
+			sessionCMID, ok := sessions[0].Get("cm_id").(float64)
+			if !ok {
+				continue
+			}
+			key := fmt.Sprintf("%d:%d", personCMID, int(sessionCMID))
+			s.TrackProcessedCompositeKey(key, year)
+			protectedCount++
+		}
+
+		return nil
+	}); err != nil {
+		slog.Warn("Error loading non-active staff for bunk assignment protection", "error", err)
+	}
+
+	if protectedCount > 0 {
+		slog.Info("Protected bunk assignments for non-active staff", "count", protectedCount)
+	}
 }
 
 // deleteOrphans deletes assignments that exist in PocketBase but weren't in CampMinder

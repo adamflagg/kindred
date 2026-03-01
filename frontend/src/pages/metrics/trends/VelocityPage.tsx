@@ -84,6 +84,24 @@ function deltaColorClass(value: number | null): string {
   return 'text-muted-foreground'
 }
 
+/** Custom dot renderer that shows a hollow dashed circle on partial week data points. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function PartialWeekDot(props: any) {
+  const { cx, cy, payload, stroke } = props
+  if (!payload?.is_partial) return null
+  return (
+    <circle
+      cx={cx}
+      cy={cy}
+      r={5}
+      fill="white"
+      stroke={stroke}
+      strokeWidth={2}
+      strokeDasharray="3 3"
+    />
+  )
+}
+
 export default function VelocityPage() {
   const { selectedSessionCmId, sessionTypesParam, sessions } = useMetricsSession()
   const { currentYear, availableYears } = useCurrentYear()
@@ -167,7 +185,7 @@ export default function VelocityPage() {
       }
       if (!weekLabel) weekLabel = `Wk ${wn}`
 
-      const row: Record<string, string | number | null> = {
+      const row: Record<string, string | number | boolean | null> = {
         week_number: wn,
         label: weekLabel,
         week_start: current?.week_start ?? '',
@@ -177,6 +195,8 @@ export default function VelocityPage() {
         gross_enrolled: current?.gross_enrolled ?? null,
         weekly_new: current?.weekly_new ?? null,
         weekly_cancelled: current?.weekly_cancelled != null ? -current.weekly_cancelled : null,
+        is_partial: current?.is_partial ?? false,
+        days_in_week: current?.days_in_week ?? 7,
       }
 
       // Prior year combined lines
@@ -606,14 +626,20 @@ export default function VelocityPage() {
                   const validPayload = payload.filter((entry) => entry.value != null)
                   if (!validPayload.length) return null
                   const displayLabel = weekLabelMap.get(label as number) ?? `Week ${label}`
-                  const weekStart = chartData.find((d) => d['week_number'] === label)?.[
-                    'week_start'
-                  ]
+                  const row = chartData.find((d) => d['week_number'] === label)
+                  const weekStart = row?.['week_start']
+                  const isPartial = row?.['is_partial'] as boolean
+                  const daysInWeek = row?.['days_in_week'] as number
                   return (
                     <div className="bg-card border-border rounded-lg border p-3 shadow-lg">
                       <p className="text-foreground mb-1 font-medium">{displayLabel}</p>
                       {weekStart && (
                         <p className="text-muted-foreground mb-1 text-xs">{weekStart as string}</p>
+                      )}
+                      {isPartial && (
+                        <p className="mb-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+                          Partial week ({daysInWeek}/7 days)
+                        </p>
                       )}
                       {validPayload.map((entry) => (
                         <p key={entry.name} className="text-sm" style={{ color: entry.color }}>
@@ -638,18 +664,28 @@ export default function VelocityPage() {
                 />
               ))}
 
-              {/* Current year bars */}
+              {/* Current year bars — faded on partial week */}
               <Bar
                 dataKey="weekly_new"
                 name={`New ${currentYear}`}
                 fill="hsl(150, 60%, 45%)"
                 stackId="current"
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                shape={(props: any) => {
+                  const opacity = props.payload?.is_partial ? 0.4 : 1
+                  return <rect {...props} fillOpacity={opacity} />
+                }}
               />
               <Bar
                 dataKey="weekly_cancelled"
                 name={`Cancelled ${currentYear}`}
                 fill="hsl(0, 65%, 55%)"
                 stackId="current"
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                shape={(props: any) => {
+                  const opacity = props.payload?.is_partial ? 0.4 : 1
+                  return <rect {...props} fillOpacity={opacity} />
+                }}
               />
 
               {/* Prior year bars */}
@@ -700,14 +736,20 @@ export default function VelocityPage() {
                   const validPayload = payload.filter((entry) => entry.value != null)
                   if (!validPayload.length) return null
                   const displayLabel = weekLabelMap.get(label as number) ?? `Week ${label}`
-                  const weekStart = chartData.find((d) => d['week_number'] === label)?.[
-                    'week_start'
-                  ]
+                  const row = chartData.find((d) => d['week_number'] === label)
+                  const weekStart = row?.['week_start']
+                  const isPartial = row?.['is_partial'] as boolean
+                  const daysInWeek = row?.['days_in_week'] as number
                   return (
                     <div className="bg-card border-border rounded-lg border p-3 shadow-lg">
                       <p className="text-foreground mb-1 font-medium">{displayLabel}</p>
                       {weekStart && (
                         <p className="text-muted-foreground mb-1 text-xs">{weekStart as string}</p>
+                      )}
+                      {isPartial && (
+                        <p className="mb-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+                          Partial week ({daysInWeek}/7 days)
+                        </p>
                       )}
                       {validPayload.map((entry) => (
                         <p key={entry.name} className="text-sm" style={{ color: entry.color }}>
@@ -749,7 +791,7 @@ export default function VelocityPage() {
                     name={`Boys ${currentYear}`}
                     stroke={GENDER_COLORS.boys}
                     strokeWidth={3}
-                    dot={false}
+                    dot={<PartialWeekDot />}
                     activeDot={{ r: 4 }}
                     connectNulls={false}
                   />
@@ -759,7 +801,7 @@ export default function VelocityPage() {
                     name={`Girls ${currentYear}`}
                     stroke={GENDER_COLORS.girls}
                     strokeWidth={3}
-                    dot={false}
+                    dot={<PartialWeekDot />}
                     activeDot={{ r: 4 }}
                     connectNulls={false}
                   />
@@ -808,7 +850,7 @@ export default function VelocityPage() {
                     name={String(currentYear)}
                     stroke="hsl(160, 100%, 35%)"
                     strokeWidth={3}
-                    dot={false}
+                    dot={<PartialWeekDot />}
                     activeDot={{ r: 5 }}
                     connectNulls={false}
                   />
@@ -993,9 +1035,16 @@ export default function VelocityPage() {
                 return (
                   <tr
                     key={week.week_start}
-                    className="border-border hover:bg-muted/20 border-b transition-colors last:border-0"
+                    className={`border-border hover:bg-muted/20 border-b transition-colors last:border-0 ${week.is_partial ? 'bg-amber-50/50 dark:bg-amber-950/20' : ''}`}
                   >
-                    <td className="text-foreground px-4 py-3 font-medium">{week.week_label}</td>
+                    <td className="text-foreground px-4 py-3 font-medium">
+                      {week.week_label}
+                      {week.is_partial && (
+                        <span className="ml-1.5 text-xs font-normal text-amber-600 dark:text-amber-400">
+                          ({week.days_in_week}/7 days)
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-right text-green-600 dark:text-green-400">
                       {week.weekly_new > 0 ? `+${week.weekly_new}` : week.weekly_new}
                     </td>

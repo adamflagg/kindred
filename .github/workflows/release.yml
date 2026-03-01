@@ -10,6 +10,8 @@ on:
 
 permissions:
   contents: write
+  checks: read
+  actions: write
 
 jobs:
   release:
@@ -73,6 +75,56 @@ jobs:
         echo '```' >> "$GITHUB_STEP_SUMMARY"
         cat RELEASE_NOTES.md >> "$GITHUB_STEP_SUMMARY"
         echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Ensure CI passed on HEAD
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        HEAD_SHA=$(git rev-parse HEAD)
+        echo "Checking CI Summary for $HEAD_SHA..."
+
+        # Check if CI Summary already passed
+        EXISTING=$(gh api repos/${{ github.repository }}/commits/${HEAD_SHA}/check-runs \
+          --jq '.check_runs[] | select(.name == "CI Summary" and .conclusion == "success") | .id' | head -1 || echo "")
+
+        if [ -n "$EXISTING" ]; then
+          echo "✅ CI Summary already passed"
+          exit 0
+        fi
+
+        # CI hasn't run on this commit — dispatch it
+        echo "⚠️ CI Summary not found, dispatching CI..."
+        gh workflow run ci.yml --ref main
+
+        # Poll for CI Summary (up to ~5 min)
+        for i in {1..20}; do
+          sleep 15
+          RESULT=$(gh api repos/${{ github.repository }}/commits/${HEAD_SHA}/check-runs \
+            --jq '.check_runs[] | select(.name == "CI Summary") | {status: .status, conclusion: .conclusion}' 2>/dev/null | head -1 || echo "")
+
+          if [ -z "$RESULT" ]; then
+            echo "  Attempt $i/20: CI not started yet..."
+            continue
+          fi
+
+          STATUS=$(echo "$RESULT" | jq -r '.status')
+          CONCLUSION=$(echo "$RESULT" | jq -r '.conclusion')
+
+          if [ "$STATUS" = "completed" ]; then
+            if [ "$CONCLUSION" = "success" ]; then
+              echo "✅ CI Summary passed"
+              exit 0
+            else
+              echo "❌ CI Summary failed (conclusion: $CONCLUSION)"
+              exit 1
+            fi
+          fi
+
+          echo "  Attempt $i/20: CI in progress..."
+        done
+
+        echo "❌ CI did not complete within 5 minutes"
+        exit 1
 
     - name: Create tag and release
       env:

@@ -22,6 +22,7 @@ import type {
 export interface BunkStaffInfo {
   name: string
   personId: string
+  status?: string
 }
 
 export function useBunkStaff(year: number) {
@@ -36,8 +37,8 @@ export function useBunkStaff(year: number) {
           expand: 'person',
         })
 
-      // Build person PB ID → display name + CM ID
-      const personPBIDToInfo = new Map<string, { name: string; cmId: string }>()
+      // Build person PB ID → display name + CM ID + status
+      const personPBIDToInfo = new Map<string, { name: string; cmId: string; status?: string }>()
       const staffPersonPBIDs: string[] = []
 
       for (const record of staffRecords) {
@@ -54,6 +55,7 @@ export function useBunkStaff(year: number) {
         personPBIDToInfo.set(personPBID, {
           name: displayName,
           cmId: String(person.cm_id ?? record.id),
+          status: record.status || undefined,
         })
       }
 
@@ -91,6 +93,7 @@ export function useBunkStaff(year: number) {
         const staffInfo: BunkStaffInfo = {
           name: info.name,
           personId: info.cmId,
+          ...(info.status ? { status: info.status } : {}),
         }
 
         const existing = bunkStaffMap.get(key)

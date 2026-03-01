@@ -19,8 +19,6 @@ import { BunkCellTooltip } from '../../../components/metrics/BunkStaffTooltip'
 import type { BunkStaffInfo } from '../../../hooks/useBunkStaff'
 import { getRetentionCellColor } from '../../../utils/retentionColors'
 import { buildSessionDateLookup, compareByDateThenName } from '../../../utils/sessionUtils'
-import { useTourHints } from '../../../hooks/useTour'
-import { HintDot } from '../../../components/tour'
 
 type SortField = 'name' | 'overall'
 type SortDir = 'asc' | 'desc'
@@ -52,8 +50,6 @@ export default function StaffCabinAnalysisPage() {
     currentYear
   )
   const { campSessions } = useMetricsSession()
-  const hints = useTourHints()
-
   const [sortField, setSortField] = useState<SortField>('name')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [hoveredCell, setHoveredCell] = useState<HoveredCell | null>(null)
@@ -165,13 +161,6 @@ export default function StaffCabinAnalysisPage() {
             Retention rates by staff member across their cabin assignments
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          {hints
-            .filter((h) => h.element === '[data-tour="retention-staff-table"]')
-            .map((h) => (
-              <HintDot key={h.element} hint={h} />
-            ))}
-        </div>
       </div>
 
       <MetricsQueryGuard
@@ -211,11 +200,6 @@ export default function StaffCabinAnalysisPage() {
                       data-tour="retention-staff-sort-overall"
                     >
                       Overall <SortIcon field="overall" />
-                      {hints
-                        .filter((h) => h.element === '[data-tour="retention-staff-sort-overall"]')
-                        .map((h) => (
-                          <HintDot key={h.element} hint={h} className="ml-1" />
-                        ))}
                     </th>
                   </tr>
                 </thead>
@@ -226,7 +210,16 @@ export default function StaffCabinAnalysisPage() {
                         scope="row"
                         className="bg-muted/50 text-foreground sticky left-0 z-10 px-3 py-2 text-left text-xs font-semibold whitespace-nowrap"
                       >
-                        {row.name}
+                        {row.status && row.status !== 'active' ? (
+                          <>
+                            <span className="line-through opacity-60">{row.name}</span>{' '}
+                            <span className="text-muted-foreground text-[10px] font-normal">
+                              ({row.status})
+                            </span>
+                          </>
+                        ) : (
+                          row.name
+                        )}
                       </th>
                       {sortedSessions.map((session) => {
                         const data = row.sessionData.get(session)

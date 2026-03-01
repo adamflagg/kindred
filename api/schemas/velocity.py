@@ -16,6 +16,8 @@ class WeeklyDataPoint(BaseModel):
     gross_enrolled: int = Field(0, description="Cumulative gross enrollments (never decreases)")
     weekly_new: int = Field(0, description="New enrollments this week")
     weekly_cancelled: int = Field(0, description="Cancellations this week")
+    is_partial: bool = Field(False, description="True if this week bucket is incomplete (less than 7 days of data)")
+    days_in_week: int = Field(7, description="Number of days elapsed in this week bucket (1-7)")
 
 
 class VelocityCurve(BaseModel):
@@ -72,3 +74,4 @@ class VelocityResponse(BaseModel):
     cancelled_to_date: int | None = Field(None, description="Total cancellations for current year through latest week")
     prior_year_cancelled_to_date: list[PriorYearCancelledSummary] = Field(default_factory=list)
     prior_year_session_summaries: list[PriorYearSessionSummary] = Field(default_factory=list)
+    session_swap_count: int = Field(0, description="Cancellations that are session changes, not true departures")

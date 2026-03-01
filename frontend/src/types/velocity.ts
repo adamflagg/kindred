@@ -11,6 +11,8 @@ export interface WeeklyDataPoint {
   gross_enrolled: number
   weekly_new: number
   weekly_cancelled: number
+  is_partial: boolean
+  days_in_week: number
 }
 
 export interface VelocityCurve {
@@ -62,5 +64,6 @@ export interface VelocityResponse {
   cancelled_to_date: number | null
   prior_year_cancelled_to_date: PriorYearCancelledSummary[]
   prior_year_session_summaries: PriorYearSessionSummary[]
+  session_swap_count?: number
   warnings: string[]
 }

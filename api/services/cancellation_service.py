@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from api.schemas.metrics import (
@@ -18,10 +19,13 @@ from api.schemas.metrics import (
     CancellationSessionBreakdown,
     GenderBreakdown,
     GradeBreakdown,
+    RegistrationMonthBreakdown,
+    TimeBucket,
 )
 from api.services.breakdown_calculator import calculate_percentage, compute_registration_breakdown
 from api.services.extractors import extract_gender, extract_grade
 from api.utils.session_metrics import build_ag_parent_map, get_session_from_expand
+from api.utils.session_swap import detect_session_swaps
 
 if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository
@@ -228,6 +232,19 @@ class CancellationService:
         summary_was_applied = len(prior_status_persons["applied"] & seen_for_summary)
         summary_other_prior = len(prior_status_persons["other"] & seen_for_summary)
 
+        # --- Session swap detection ---
+        swap_pids = detect_session_swaps(cancelled_attendees, enrolled_attendees)
+        # Only count swaps that are in our summary set
+        swap_pids = swap_pids & seen_for_summary
+        session_swap_count = len(swap_pids)
+        true_departure_count = len(seen_for_summary) - session_swap_count
+
+        # --- Time-to-cancellation (non-swap records with both dates) ---
+        timing_data = self._compute_timing_stats(cancelled_attendees, seen_for_summary, swap_pids)
+
+        # --- Registration month breakdown ---
+        by_registration_month = self._compute_registration_month_breakdown(cancelled_attendees, seen_for_summary)
+
         return CancellationMetricsResponse(
             year=year,
             total_cancelled=len(seen_for_summary),
@@ -238,6 +255,12 @@ class CancellationService:
             has_other_sessions=summary_has_other,
             no_other_sessions=summary_no_other,
             total_re_enrolled=len(re_enrolled_persons),
+            session_swap_count=session_swap_count,
+            true_departure_count=true_departure_count,
+            avg_days_to_cancellation=timing_data["avg"],
+            median_days_to_cancellation=timing_data["median"],
+            time_to_cancellation_buckets=timing_data["buckets"],
+            by_registration_month=by_registration_month,
             by_session=by_session,
             by_grade=by_grade,
             by_gender=by_gender,
@@ -331,3 +354,111 @@ class CancellationService:
         ]
 
         return by_grade, by_gender
+
+    @staticmethod
+    def _parse_date(value: Any) -> datetime | None:
+        """Parse a date string to datetime, returning None on failure."""
+        if not value:
+            return None
+        try:
+            return datetime.strptime(str(value)[:10], "%Y-%m-%d")
+        except (ValueError, IndexError):
+            return None
+
+    @staticmethod
+    def _compute_median(sorted_values: list[int]) -> float:
+        """Compute median of a pre-sorted list of integers."""
+        n = len(sorted_values)
+        if n % 2 == 1:
+            return float(sorted_values[n // 2])
+        return (sorted_values[n // 2 - 1] + sorted_values[n // 2]) / 2.0
+
+    @classmethod
+    def _compute_timing_stats(
+        cls,
+        cancelled_attendees: list[Any],
+        seen_for_summary: set[int],
+        swap_pids: set[int],
+    ) -> dict[str, Any]:
+        """Compute time-to-cancellation statistics for non-swap cancelled records.
+
+        Returns dict with 'avg', 'median', and 'buckets' keys.
+        """
+        days_list: list[int] = []
+        seen: set[int] = set()
+
+        for att in cancelled_attendees:
+            pid = int(getattr(att, "person_id", 0))
+            if not pid or pid not in seen_for_summary or pid in swap_pids or pid in seen:
+                continue
+            seen.add(pid)
+
+            eff_date = cls._parse_date(getattr(att, "effective_date", None))
+            enr_date = cls._parse_date(getattr(att, "enrollment_date", None))
+            if not eff_date or not enr_date:
+                continue
+
+            days = (enr_date - eff_date).days
+            if days >= 0:
+                days_list.append(days)
+
+        if not days_list:
+            return {"avg": None, "median": None, "buckets": []}
+
+        avg_days = sum(days_list) / len(days_list)
+        sorted_days = sorted(days_list)
+        median_days = cls._compute_median(sorted_days)
+
+        # Bucket distribution
+        bucket_defs = [
+            ("< 30 days", 0, 30),
+            ("30\u201390 days", 30, 90),
+            ("90\u2013180 days", 90, 180),
+            ("180+ days", 180, 999999),
+        ]
+        total = len(days_list)
+        buckets: list[TimeBucket] = []
+        for label, lo, hi in bucket_defs:
+            count = sum(1 for d in days_list if lo <= d < hi)
+            buckets.append(
+                TimeBucket(
+                    label=label,
+                    count=count,
+                    percentage=round(count / total * 100, 1) if total else 0,
+                )
+            )
+
+        return {"avg": round(avg_days, 1), "median": round(median_days, 1), "buckets": buckets}
+
+    @classmethod
+    def _compute_registration_month_breakdown(
+        cls,
+        cancelled_attendees: list[Any],
+        seen_for_summary: set[int],
+    ) -> list[RegistrationMonthBreakdown]:
+        """Group cancellations by effective_date month."""
+        month_counts: dict[str, int] = {}
+        seen: set[int] = set()
+
+        for att in cancelled_attendees:
+            pid = int(getattr(att, "person_id", 0))
+            if not pid or pid not in seen_for_summary or pid in seen:
+                continue
+            seen.add(pid)
+
+            eff_date = cls._parse_date(getattr(att, "effective_date", None))
+            if not eff_date:
+                continue
+
+            month_key = eff_date.strftime("%b %Y")
+            month_counts[month_key] = month_counts.get(month_key, 0) + 1
+
+        total = sum(month_counts.values())
+        return [
+            RegistrationMonthBreakdown(
+                month=month,
+                count=count,
+                percentage=round(count / total * 100, 1) if total else 0,
+            )
+            for month, count in sorted(month_counts.items(), key=lambda x: datetime.strptime(x[0], "%b %Y"))
+        ]

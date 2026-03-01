@@ -26,6 +26,7 @@ module.exports = {
       'release',   // Release scripts, versioning
       'config',    // Configuration files (not code)
       'deps',      // Dependency updates
+      'deps-dev',  // Dev dependency updates (Dependabot fallback)
       'tests',     // Test infrastructure (not test: type)
       'scripts',   // Development and utility scripts
       'docs',      // Documentation files in docs/
