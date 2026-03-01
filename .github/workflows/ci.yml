@@ -102,6 +102,7 @@ jobs:
           release
           config
           deps
+          deps-dev
           tests
           scripts
           docs
