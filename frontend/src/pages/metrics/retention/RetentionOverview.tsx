@@ -13,15 +13,12 @@ import { useRetentionMetrics } from '../../../hooks/useMetrics'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useDrilldown } from '../../../hooks/useDrilldown'
 import { MetricCard } from '../../../components/metrics/MetricCard'
-import {
-  RetentionRateBarChart,
-  type RetentionRateBarItem,
-} from '../../../components/metrics/RetentionRateBarChart'
-import { CssRetentionBarChart } from '../../../components/metrics/CssRetentionBarChart'
+import { RetentionRateBarChart, type RetentionRateBarItem } from '../../../components/metrics/RetentionRateBarChart'
+import { BreakdownChart } from '../../../components/metrics/BreakdownChart'
 import { CssVerticalRetentionBarChart } from '../../../components/metrics/CssVerticalRetentionBarChart'
 import { RetentionRateLineChart } from '../../../components/metrics/RetentionRateLineChart'
 import {
-  genderToBarData,
+  genderToPieData,
   gradeToBarData,
   sessionToBarData,
   priorSessionToBarData,
@@ -118,7 +115,7 @@ export default function RetentionOverview() {
   const didNotReturn = data.base_year_total - data.returned_count
 
   // Pre-sort session data chronologically before converting to bar data
-  const genderBars = genderToBarData(data.by_gender)
+  const genderPieData = genderToPieData(data.by_gender)
   const gradeBars = gradeToBarData(data.by_grade)
   const sessionBars = sessionToBarData(
     sortSessionDataByDate(data.by_session ?? [], sessionDateLookup)
@@ -206,34 +203,28 @@ export default function RetentionOverview() {
 
       {/* Row 1: Gender + Grade side by side */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2" data-tour="retention-demographics">
-        {genderBars.length > 0 && (
-          <RetentionRateBarChart
-            data={genderBars}
+        {genderPieData.length > 0 && (
+          <BreakdownChart
+            data={genderPieData}
             title="Retention by Gender"
-            onBarClick={(item) =>
-              setFilter({ ...makeRetentionFilter('gender', item), titleFormat: 'adjective' })
+            type="pie"
+            showPercentage
+            height={250}
+            breakdownType="gender"
+            onSegmentClick={(filter) =>
+              setFilter({ ...filter, retentionContext: { baseYear: priorYear, compareYear: currentYear } })
             }
           />
         )}
-        {/* CSS prototype — Gender retention (next to original) */}
-        {genderBars.length > 0 && (
-          <CssRetentionBarChart
-            data={genderBars}
-            title="Retention by Gender (CSS)"
-            onBarClick={(item) =>
-              setFilter({ ...makeRetentionFilter('gender', item), titleFormat: 'adjective' })
-            }
+        {gradeBars.length > 0 && (
+          <RetentionRateLineChart
+            data={gradeBars}
+            title="Retention by Grade"
+            tooltipLabelPrefix="Grade "
+            onDotClick={(item) => setFilter(makeRetentionFilter('grade', item, 'Grade '))}
           />
         )}
       </div>
-      {gradeBars.length > 0 && (
-        <RetentionRateLineChart
-          data={gradeBars}
-          title="Retention by Grade"
-          tooltipLabelPrefix="Grade "
-          onDotClick={(item) => setFilter(makeRetentionFilter('grade', item, 'Grade '))}
-        />
-      )}
 
       {/* Row 2: Session charts side by side */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

@@ -82,15 +82,18 @@ export function CssHorizontalBarChart({
 
       <div className="relative flex flex-col" style={{ height }}>
         {/* Bars area - vertically centered when not filling card */}
-        <div className={`flex min-h-0 flex-1 flex-col overflow-hidden ${isDense ? '' : 'justify-center'}`} style={{ gap: rowGap }}>
+        <div
+          className={`flex min-h-0 flex-1 flex-col overflow-hidden ${isDense ? '' : 'justify-center'}`}
+          style={{ gap: rowGap }}
+          onMouseLeave={() => { setHoveredIndex(null); handleMouseLeave() }}
+        >
         {data.map((item, index) => (
           <div
             key={index}
-            className={`flex items-center ${isDense ? 'gap-2' : 'gap-3'} rounded transition-colors ${hoveredIndex === index ? 'bg-foreground/10' : ''} ${isClickable ? 'cursor-pointer' : ''}`}
+            className={`flex items-center ${isDense ? 'gap-2' : 'gap-3'} rounded ${isClickable ? 'cursor-pointer' : ''}`}
             onClick={() => isClickable && handleClick(item)}
             onMouseEnter={() => setHoveredIndex(index)}
             onMouseMove={(e) => handleMouseMove(e, item)}
-            onMouseLeave={() => { setHoveredIndex(null); handleMouseLeave() }}
           >
             {/* Label */}
             <span className="text-muted-foreground shrink-0 truncate text-right text-sm" style={{ width: labelWidth }}>
@@ -100,7 +103,7 @@ export function CssHorizontalBarChart({
             {/* Bar track */}
             <div className="relative flex-1 overflow-hidden rounded" style={{ height: barHeight }}>
               {/* Background track */}
-              <div className="bg-muted absolute inset-0 rounded" />
+              <div className={`absolute inset-0 rounded transition-colors ${hoveredIndex === index ? 'bg-foreground/20' : 'bg-muted'}`} />
               {/* Bar fill */}
               <div
                 className="relative h-full rounded transition-all duration-300"
@@ -113,7 +116,7 @@ export function CssHorizontalBarChart({
             </div>
 
             {/* Value label */}
-            <span className="text-muted-foreground shrink-0 text-right text-sm tabular-nums" style={{ width: valueWidth }}>
+            <span className="text-muted-foreground shrink-0 text-center text-sm tabular-nums" style={{ width: valueWidth }}>
               {item.value}
             </span>
           </div>

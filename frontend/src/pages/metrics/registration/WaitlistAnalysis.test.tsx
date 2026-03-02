@@ -345,7 +345,7 @@ describe('WaitlistAnalysis', () => {
     it('renders stacked session chart instead of simple bar chart', () => {
       renderWithClient()
 
-      // The WaitlistBySessionChart renders the "Waitlist by Session" heading
+      // The session chart renders the "Waitlist by Session" heading
       expect(screen.getAllByText(/waitlist by session/i).length).toBeGreaterThanOrEqual(1)
     })
   })

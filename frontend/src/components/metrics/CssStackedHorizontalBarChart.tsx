@@ -2,10 +2,10 @@
  * CssStackedHorizontalBarChart - Pure CSS stacked horizontal bar chart.
  *
  * Generic component handling all stacked horizontal bar patterns:
- * - WaitlistGradeChart (2 segments)
- * - WaitlistBySessionChart (dynamic segments)
- * - CancellationGradeChart (5 segments)
- * - CancellationBySessionChart (5 segments)
+ * - Waitlist grade (2 segments: no enrollment / has enrollment)
+ * - Waitlist by session (dynamic enrolled-in segments)
+ * - Cancellation grade (5 segments: prior status breakdown)
+ * - Cancellation by session (5 segments: prior status breakdown)
  *
  * Configured via `segments` prop that defines the stacked layers.
  */
@@ -54,6 +54,14 @@ export function CssStackedHorizontalBarChart({
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const isClickable = !!onBarClick
 
+  const handleClick = useCallback(
+    (item: StackedBarDataItem) => {
+      if (!onBarClick) return
+      onBarClick(item)
+    },
+    [onBarClick]
+  )
+
   if (data.length === 0) {
     return (
       <div className={`card-lodge p-4 ${className}`}>
@@ -75,33 +83,25 @@ export function CssStackedHorizontalBarChart({
   const axisMax = ticks[ticks.length - 1] ?? maxTotal
   const { isDense, barHeight, rowGap } = calculateBarSizing(height, data.length)
 
-  const handleClick = useCallback(
-    (item: StackedBarDataItem) => {
-      if (!onBarClick) return
-      onBarClick(item)
-    },
-    [onBarClick]
-  )
-
   return (
     <div className={`card-lodge p-4 ${className}`}>
       {title && <h3 className="text-foreground mb-4 text-base font-semibold">{title}</h3>}
 
       <div className="relative flex flex-col" style={{ height }}>
         {/* Bars area - vertically centered when not filling card */}
-        <div className={`flex min-h-0 flex-1 flex-col overflow-hidden ${isDense ? '' : 'justify-center'}`} style={{ gap: rowGap }}>
+        <div
+          className={`flex min-h-0 flex-1 flex-col overflow-hidden ${isDense ? '' : 'justify-center'}`}
+          style={{ gap: rowGap }}
+          onMouseLeave={() => { setHoveredIndex(null); handleMouseLeave() }}
+        >
         {data.map((item, index) => {
           return (
             <div
               key={index}
-              className={`flex items-center ${isDense ? 'gap-2' : 'gap-3'} rounded transition-colors ${hoveredIndex === index ? 'bg-foreground/10' : ''} ${isClickable ? 'cursor-pointer' : ''}`}
+              className={`flex items-center ${isDense ? 'gap-2' : 'gap-3'} rounded ${isClickable ? 'cursor-pointer' : ''}`}
               onClick={() => isClickable && handleClick(item)}
               onMouseEnter={() => setHoveredIndex(index)}
               onMouseMove={(e) => handleMouseMove(e, item)}
-              onMouseLeave={() => {
-                setHoveredIndex(null)
-                handleMouseLeave()
-              }}
             >
               {/* Label */}
               <span className="text-muted-foreground shrink-0 truncate text-right text-sm" style={{ width: labelWidth }}>
@@ -114,7 +114,7 @@ export function CssStackedHorizontalBarChart({
                 style={{ height: barHeight }}
               >
                 {/* Background track */}
-                <div className="bg-muted absolute inset-0 rounded" />
+                <div className={`absolute inset-0 rounded transition-colors ${hoveredIndex === index ? 'bg-foreground/20' : 'bg-muted'}`} />
                 {/* Stacked segments */}
                 <div
                   className="relative flex h-full overflow-hidden rounded"
@@ -140,7 +140,7 @@ export function CssStackedHorizontalBarChart({
               </div>
 
               {/* Total label */}
-              <span className="text-muted-foreground shrink-0 text-right text-sm tabular-nums" style={{ width: valueWidth }}>
+              <span className="text-muted-foreground shrink-0 text-center text-sm tabular-nums" style={{ width: valueWidth }}>
                 {item.total}
               </span>
             </div>

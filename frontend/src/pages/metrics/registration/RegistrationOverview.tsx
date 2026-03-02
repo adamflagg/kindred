@@ -22,7 +22,6 @@ import { useDrilldown } from '../../../hooks/useDrilldown'
 import { ComparisonSummaryTable } from '../../../components/metrics/ComparisonSummaryTable'
 import { MetricCard } from '../../../components/metrics/MetricCard'
 import { BreakdownChart } from '../../../components/metrics/BreakdownChart'
-import { GenderByGradeChart } from '../../../components/metrics/GenderByGradeChart'
 import { CssHorizontalBarChart } from '../../../components/metrics/CssHorizontalBarChart'
 import { CssVerticalStackedBarChart } from '../../../components/metrics/CssVerticalStackedBarChart'
 import { SessionLengthBySessionChart } from '../../../components/metrics/SessionLengthBySessionChart'
@@ -268,21 +267,22 @@ export default function RegistrationOverview() {
             compareData={transformGenderData(compData.by_gender)}
           />
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <GenderByGradeChart
-              data={data.by_gender_grade ?? []}
+            <CssVerticalStackedBarChart
+              key={`gender-grade-${selectedSessionCmId ?? 'all'}`}
               title={`${currentYear} Gender by Grade`}
+              data={data.by_gender_grade ?? []}
               height={250}
               onBarClick={setFilter}
             />
-            <GenderByGradeChart
-              data={compData.by_gender_grade ?? []}
+            <CssVerticalStackedBarChart
               title={`${compareYear} Gender by Grade`}
+              data={compData.by_gender_grade ?? []}
               height={250}
             />
           </div>
         </>
       ) : (
-        <>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <BreakdownChart
             title="Enrollment by Gender"
             data={genderChartData}
@@ -292,23 +292,14 @@ export default function RegistrationOverview() {
             breakdownType="gender"
             onSegmentClick={setFilter}
           />
-          {/* CSS Vertical Stacked Bar prototype — side-by-side with Recharts for comparison */}
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <GenderByGradeChart
-              data={data.by_gender_grade ?? []}
-              title="Gender by Grade"
-              height={250}
-              onBarClick={setFilter}
-            />
-            <CssVerticalStackedBarChart
-              key={`gender-grade-${selectedSessionCmId ?? 'all'}`}
-              title="Gender by Grade (CSS)"
-              data={data.by_gender_grade ?? []}
-              height={250}
-              onBarClick={setFilter}
-            />
-          </div>
-        </>
+          <CssVerticalStackedBarChart
+            key={`gender-grade-${selectedSessionCmId ?? 'all'}`}
+            title="Gender by Grade"
+            data={data.by_gender_grade ?? []}
+            height={250}
+            onBarClick={setFilter}
+          />
+        </div>
       )}
 
       {/* Charts Row 2: New vs Returning + Grade */}

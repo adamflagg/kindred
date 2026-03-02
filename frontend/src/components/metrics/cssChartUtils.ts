@@ -2,7 +2,7 @@
  * Shared utilities for CSS chart components.
  *
  * Extracted from CssHorizontalBarChart to avoid duplication across
- * CssRetentionBarChart and CssStackedHorizontalBarChart.
+ * CssStackedHorizontalBarChart and CssVerticalRetentionBarChart.
  */
 
 import { useState, useCallback, useRef } from 'react'
@@ -52,7 +52,7 @@ export interface BarSizing {
 
 /**
  * Calculate bar sizing for horizontal CSS bar charts.
- * Shared across CssHorizontalBarChart, CssStackedHorizontalBarChart, and CssRetentionBarChart.
+ * Shared across CssHorizontalBarChart and CssStackedHorizontalBarChart.
  */
 export function calculateBarSizing(containerHeight: number, itemCount: number): BarSizing {
   const AXIS_TICKS = 24 // h-5 (20px) + pt-1 (4px)
