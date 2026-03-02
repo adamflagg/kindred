@@ -84,8 +84,8 @@ jobs:
         echo "Checking CI Summary for $HEAD_SHA..."
 
         # Check if CI Summary already passed
-        EXISTING=$(gh api repos/${{ github.repository }}/commits/${HEAD_SHA}/check-runs \
-          --jq '.check_runs[] | select(.name == "CI Summary" and .conclusion == "success") | .id' | head -1 || echo "")
+        EXISTING=$(gh api "repos/${{ github.repository }}/commits/${HEAD_SHA}/check-runs" \
+          --jq '[.check_runs[] | select(.name == "CI Summary" and .conclusion == "success")] | sort_by(.started_at) | last | .id' 2>/dev/null || echo "")
 
         if [ -n "$EXISTING" ]; then
           echo "✅ CI Summary already passed"
@@ -99,8 +99,8 @@ jobs:
         # Poll for CI Summary (up to ~5 min)
         for i in {1..20}; do
           sleep 15
-          RESULT=$(gh api repos/${{ github.repository }}/commits/${HEAD_SHA}/check-runs \
-            --jq '.check_runs[] | select(.name == "CI Summary") | {status: .status, conclusion: .conclusion}' 2>/dev/null | head -1 || echo "")
+          RESULT=$(gh api "repos/${{ github.repository }}/commits/${HEAD_SHA}/check-runs" \
+            --jq '[.check_runs[] | select(.name == "CI Summary")] | sort_by(.started_at) | last | {status: .status, conclusion: .conclusion}' 2>/dev/null || echo "")
 
           if [ -z "$RESULT" ]; then
             echo "  Attempt $i/20: CI not started yet..."
