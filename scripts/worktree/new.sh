@@ -98,24 +98,21 @@ Each subdirectory is an isolated working copy with its own:
 EOF
 fi
 
-# Create branch if it doesn't exist
+# Fetch latest origin/main (safe — never touches working tree or other branches)
 cd "$MAIN_REPO"
+echo -e "${BLUE}Fetching origin/main...${NC}"
+git fetch origin main
+
+# Create branch if it doesn't exist (based on origin/main, not local HEAD)
 if git rev-parse --verify "$BRANCH_NAME" >/dev/null 2>&1; then
     echo -e "${BLUE}Using existing branch: $BRANCH_NAME${NC}"
 else
-    echo -e "${BLUE}Creating branch: $BRANCH_NAME${NC}"
-    git branch "$BRANCH_NAME"
-fi
-
-# Stash any uncommitted changes in main (worktree gets committed state only)
-STASHED=false
-if ! git diff --quiet || ! git diff --cached --quiet; then
-    echo -e "${BLUE}Stashing uncommitted changes in main...${NC}"
-    git stash push -m "worktree-setup: $FEATURE_NAME" --quiet
-    STASHED=true
+    echo -e "${BLUE}Creating branch: $BRANCH_NAME (from origin/main)${NC}"
+    git branch "$BRANCH_NAME" origin/main
 fi
 
 # Create worktree WITHOUT checkout first (need to setup git-crypt symlink)
+# Note: --no-checkout is safe with dirty working trees — no stash needed
 echo -e "${BLUE}Creating worktree...${NC}"
 git worktree add --no-checkout "$WORKTREE_DIR" "$BRANCH_NAME"
 
@@ -131,15 +128,6 @@ fi
 cd "$WORKTREE_DIR"
 echo -e "${BLUE}Checking out files...${NC}"
 git checkout "$BRANCH_NAME"
-
-# Restore stashed changes in main
-cd "$MAIN_REPO"
-if [ "$STASHED" = true ]; then
-    echo -e "${BLUE}Restoring uncommitted changes in main...${NC}"
-    git stash pop --quiet
-fi
-
-cd "$WORKTREE_DIR"
 
 # Copy .env with port overrides
 echo -e "${BLUE}Configuring environment...${NC}"
