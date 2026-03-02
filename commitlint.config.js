@@ -4,7 +4,11 @@
 module.exports = {
   extends: ['@commitlint/config-conventional'],
   // GitHub's auto-generated revert format ("Revert ...") has no scope — skip linting for those
-  ignores: [(message) => message.startsWith('Revert ')],
+  ignores: [
+    (message) => message.startsWith('Revert '),
+    // Dependabot bump messages have unpredictable length (package names, dirs, groups)
+    (message) => /^(fix|chore)\(.+\): bump .+ from .+ to .+/.test(message),
+  ],
   rules: {
     // Require a scope for all commits
     'scope-empty': [2, 'never'],
@@ -61,7 +65,7 @@ module.exports = {
     'subject-full-stop': [2, 'never', '.'],
 
     // Reasonable length limits
-    'header-max-length': [2, 'always', 100],
+    'header-max-length': [2, 'always', 120],
     'body-max-line-length': [1, 'always', 200],
   },
 };

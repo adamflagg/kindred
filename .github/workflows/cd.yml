@@ -152,18 +152,27 @@ jobs:
           echo "Checking check runs for $CHECK_SHA..."
         fi
 
-        # Helper to get check status by name
-        get_check_status() {
+        # Helper: returns a JSON summary for a named check
+        # Always returns valid JSON: {"total":N, "success":N, "failed":N, "pending":N}
+        get_check_summary() {
           local check_name="$1"
-          gh api repos/${{ github.repository }}/commits/${CHECK_SHA}/check-runs \
-            --jq ".check_runs[] | select(.name == \"$check_name\") | {status: .status, conclusion: .conclusion}"
+          gh api "repos/${{ github.repository }}/commits/${CHECK_SHA}/check-runs" \
+            --jq "
+              [.check_runs[] | select(.name == \"$check_name\")] |
+              {
+                total: length,
+                success: [.[] | select(.status == \"completed\" and .conclusion == \"success\")] | length,
+                failed: [.[] | select(.status == \"completed\" and .conclusion != \"success\")] | length,
+                pending: [.[] | select(.status != \"completed\")] | length
+              }
+            "
         }
 
         # For tag pushes, check if CI already passed (commit was tested on branch)
         # This saves ~1-5 minutes when tagging a commit that already passed CI
         if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-          EXISTING_SUCCESS=$(gh api repos/${{ github.repository }}/commits/${CHECK_SHA}/check-runs \
-            --jq '.check_runs[] | select(.name == "CI Summary" and .conclusion == "success") | .id' | head -1 || echo "")
+          EXISTING_SUCCESS=$(gh api "repos/${{ github.repository }}/commits/${CHECK_SHA}/check-runs" \
+            --jq '[.check_runs[] | select(.name == "CI Summary" and .conclusion == "success")] | sort_by(.started_at) | last | .id' 2>/dev/null || echo "")
           if [ -n "$EXISTING_SUCCESS" ]; then
             echo "✅ CI Summary already passed for this commit - skipping wait"
             exit 0
@@ -172,27 +181,29 @@ jobs:
 
         # Wait for CI Summary (required)
         echo "=== Verifying CI Summary ==="
+        CI_PASSED=false
         for i in {1..20}; do
-          CI_RESULTS=$(get_check_status "CI Summary")
-          SUCCESS_COUNT=$(echo "$CI_RESULTS" | jq -s '[.[] | select(.status == "completed" and .conclusion == "success")] | length')
-          FAILED_COUNT=$(echo "$CI_RESULTS" | jq -s '[.[] | select(.status == "completed" and .conclusion != "success")] | length')
-          PENDING_COUNT=$(echo "$CI_RESULTS" | jq -s '[.[] | select(.status != "completed")] | length')
-          TOTAL_COUNT=$(echo "$CI_RESULTS" | jq -s 'length')
+          SUMMARY=$(get_check_summary "CI Summary")
+          TOTAL=$(echo "$SUMMARY" | jq -r '.total')
+          SUCCESS=$(echo "$SUMMARY" | jq -r '.success')
+          FAILED=$(echo "$SUMMARY" | jq -r '.failed')
+          PENDING=$(echo "$SUMMARY" | jq -r '.pending')
 
-          echo "  Attempt $i/20: CI runs: $TOTAL_COUNT (Success: $SUCCESS_COUNT, Failed: $FAILED_COUNT, Pending: $PENDING_COUNT)"
+          echo "  Attempt $i/20: CI runs: $TOTAL (Success: $SUCCESS, Failed: $FAILED, Pending: $PENDING)"
 
-          if [ "$TOTAL_COUNT" -eq 0 ]; then
+          if [ "$TOTAL" -eq 0 ]; then
             echo "  No CI Summary checks found yet, waiting..."
             sleep 30
             continue
           fi
 
-          if [ "$SUCCESS_COUNT" -gt 0 ]; then
+          if [ "$SUCCESS" -gt 0 ]; then
             echo "✅ CI Summary passed"
+            CI_PASSED=true
             break
           fi
 
-          if [ "$PENDING_COUNT" -eq 0 ] && [ "$SUCCESS_COUNT" -eq 0 ]; then
+          if [ "$FAILED" -gt 0 ]; then
             echo "❌ CI Summary failed"
             exit 1
           fi
@@ -200,7 +211,7 @@ jobs:
           sleep 30
         done
 
-        if [ "$SUCCESS_COUNT" -eq 0 ]; then
+        if [ "$CI_PASSED" != "true" ]; then
           echo "❌ CI timed out after 10 minutes"
           exit 1
         fi
@@ -208,14 +219,14 @@ jobs:
         # Check docs if Documentation Linting check exists (means docs were changed)
         echo ""
         echo "=== Checking Documentation Linting (if applicable) ==="
-        DOCS_RESULTS=$(get_check_status "Documentation Linting")
-        DOCS_COUNT=$(echo "$DOCS_RESULTS" | jq -s 'length')
+        DOCS_SUMMARY=$(get_check_summary "Documentation Linting")
+        DOCS_TOTAL=$(echo "$DOCS_SUMMARY" | jq -r '.total')
 
-        if [ "$DOCS_COUNT" -eq 0 ]; then
+        if [ "$DOCS_TOTAL" -eq 0 ]; then
           echo "ℹ️  No docs check found (no doc changes in this commit)"
         else
-          DOCS_SUCCESS=$(echo "$DOCS_RESULTS" | jq -s '[.[] | select(.status == "completed" and .conclusion == "success")] | length')
-          DOCS_FAILED=$(echo "$DOCS_RESULTS" | jq -s '[.[] | select(.status == "completed" and .conclusion != "success")] | length')
+          DOCS_SUCCESS=$(echo "$DOCS_SUMMARY" | jq -r '.success')
+          DOCS_FAILED=$(echo "$DOCS_SUMMARY" | jq -r '.failed')
 
           if [ "$DOCS_SUCCESS" -gt 0 ]; then
             echo "✅ Documentation Linting passed"
@@ -226,11 +237,16 @@ jobs:
             echo "⏳ Documentation Linting still running, waiting..."
             for j in {1..10}; do
               sleep 15
-              DOCS_RESULTS=$(get_check_status "Documentation Linting")
-              DOCS_SUCCESS=$(echo "$DOCS_RESULTS" | jq -s '[.[] | select(.status == "completed" and .conclusion == "success")] | length')
+              DOCS_SUMMARY=$(get_check_summary "Documentation Linting")
+              DOCS_SUCCESS=$(echo "$DOCS_SUMMARY" | jq -r '.success')
+              DOCS_FAILED=$(echo "$DOCS_SUMMARY" | jq -r '.failed')
               if [ "$DOCS_SUCCESS" -gt 0 ]; then
                 echo "✅ Documentation Linting passed"
                 break
+              fi
+              if [ "$DOCS_FAILED" -gt 0 ]; then
+                echo "❌ Documentation Linting failed"
+                exit 1
               fi
             done
             if [ "$DOCS_SUCCESS" -eq 0 ]; then
