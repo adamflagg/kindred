@@ -1,14 +1,8 @@
 import { QueryClient } from '@tanstack/react-query'
-import { persistQueryClient } from '@tanstack/react-query-persist-client'
-import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister'
 import { pb } from '../lib/pocketbase'
 
-// Create a sync storage persister
-const persister = createSyncStoragePersister({
-  storage: window.localStorage,
-  key: 'bunking-query-cache',
-  throttleTime: 1000,
-})
+// Clean up legacy localStorage persistence (removed in this version)
+localStorage.removeItem('bunking-query-cache')
 
 // Create query client with simplified caching strategy
 // Most data uses 30/60 min defaults; user-editable data overrides at query level
@@ -52,22 +46,14 @@ export const queryClient = new QueryClient({
   },
 })
 
-// Enable persistence to survive page refreshes
-persistQueryClient({
-  queryClient,
-  persister,
-  maxAge: 24 * 60 * 60 * 1000, // 24 hours
-})
-
 // Helper to manually invalidate cache (e.g., after sync)
 export const invalidateCache = () => {
   queryClient.invalidateQueries()
 }
 
-// Helper to clear all cache including localStorage persistence
+// Helper to clear all cache
 export const clearCache = () => {
   queryClient.clear()
-  localStorage.removeItem('bunking-query-cache')
   // Also invalidate server-side metrics cache (fire-and-forget)
   fetch('/api/metrics/cache/invalidate', { method: 'POST' }).catch(() => {})
 }

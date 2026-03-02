@@ -43,7 +43,9 @@
 
 	# FastAPI catch-all for /api/* (solver, scenarios, validation, social-graph, config, etc.)
 	handle /api/* {
-		reverse_proxy 127.0.0.1:8000
+		reverse_proxy 127.0.0.1:8000 {
+			header_down Cache-Control no-store
+		}
 	}
 
 	# Frontend static files (served by PocketBase from /pb_public)
