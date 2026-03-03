@@ -403,11 +403,12 @@ describe('CssVerticalGroupedBarChart column sizing', () => {
     const { container } = render(
       <CssVerticalGroupedBarChart data={sparseData} series={series} />
     )
-    const columns = container.querySelectorAll('[style*="max-width: 80px"]')
+    const barsArea = container.querySelector('.border-l') as HTMLElement
+    const columns = barsArea.querySelectorAll(':scope > [style*="max-width: 120px"]')
     expect(columns.length).toBe(sparseData.length)
   })
 
-  it('should apply gap to bars container in sparse mode', () => {
+  it('should use zero gap in sparse mode (padding provides spacing)', () => {
     const sparseData = [
       { name: 'A', male: 10, female: 8 },
       { name: 'B', male: 15, female: 12 },
@@ -415,8 +416,8 @@ describe('CssVerticalGroupedBarChart column sizing', () => {
     const { container } = render(
       <CssVerticalGroupedBarChart data={sparseData} series={series} />
     )
-    const barsArea = container.querySelector('[style*="gap: 16px"]')
-    expect(barsArea).toBeInTheDocument()
+    const barsArea = container.querySelector('.border-l') as HTMLElement
+    expect(barsArea.style.gap).toBe('0px')
   })
 
   it('should not apply maxWidth in normal mode (5-9 items)', () => {
@@ -428,7 +429,7 @@ describe('CssVerticalGroupedBarChart column sizing', () => {
     const { container } = render(
       <CssVerticalGroupedBarChart data={normalData} series={series} />
     )
-    const columnsWithMaxWidth = container.querySelectorAll('[style*="max-width: 80px"]')
+    const columnsWithMaxWidth = container.querySelectorAll('[style*="max-width: 120px"]')
     expect(columnsWithMaxWidth.length).toBe(0)
   })
 

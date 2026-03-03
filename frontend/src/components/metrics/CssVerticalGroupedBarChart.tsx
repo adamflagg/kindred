@@ -115,13 +115,13 @@ export function CssVerticalGroupedBarChart({
           {/* Bars area */}
           <div
             ref={chartRef}
-            className={`border-foreground/30 relative flex flex-1 items-end border-l ${columnSizing.mode === 'sparse' ? 'justify-center' : ''}`}
+            className={`border-foreground/40 relative flex flex-1 items-end border-l ${columnSizing.mode === 'sparse' ? 'justify-center' : ''}`}
             style={{ height: barsHeight, gap: `${columnSizing.gap}px` }}
           >
             {data.map((item, index) => (
               <div
                 key={index}
-                className={`relative flex h-full flex-col items-center justify-end ${columnSizing.maxWidth ? '' : 'flex-1'} ${isClickable ? 'cursor-pointer' : ''}`}
+                className={`relative flex h-full flex-col items-center justify-end ${columnSizing.maxWidth ? '' : 'flex-1'} ${isClickable ? 'cursor-pointer' : ''} ${columnSizing.mode === 'sparse' ? `rounded transition-colors duration-150 ${hoveredIndex === index ? 'bg-foreground/[0.06]' : ''}` : ''}`}
                 style={{
                   ...(columnSizing.maxWidth ? { maxWidth: `${columnSizing.maxWidth}px`, width: '100%' } : {}),
                   paddingLeft: `${columnSizing.columnPadding}px`,
@@ -175,6 +175,7 @@ export function CssVerticalGroupedBarChart({
           labels={data.map((d) => d.name)}
           rotated={shouldRotate}
           marginLeft={yAxisMarginLeft}
+          columnSizing={columnSizing}
         />
 
         {/* Tooltip */}

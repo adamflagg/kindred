@@ -64,7 +64,7 @@ export interface ColumnSizing {
  */
 export function calculateColumnSizing(columnCount: number): ColumnSizing {
   if (columnCount <= 4) {
-    return { mode: 'sparse', maxWidth: 80, gap: 16, columnPadding: 4 }
+    return { mode: 'sparse', maxWidth: 120, gap: 0, columnPadding: 20 }
   }
   if (columnCount <= 9) {
     return { mode: 'normal', maxWidth: null, gap: 4, columnPadding: 4 }
