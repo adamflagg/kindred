@@ -138,9 +138,9 @@ describe('CssVerticalBarChart bar rendering', () => {
     )
     const bars = container.querySelectorAll('.rounded-t') as NodeListOf<HTMLElement>
     // Alpha: 40 => green, Beta: 70 => red, Gamma: 100 => red
-    expect(bars[0].style.backgroundColor).toBe('green')
-    expect(bars[1].style.backgroundColor).toBe('red')
-    expect(bars[2].style.backgroundColor).toBe('red')
+    expect(bars[0]!.style.backgroundColor).toBe('green')
+    expect(bars[1]!.style.backgroundColor).toBe('red')
+    expect(bars[2]!.style.backgroundColor).toBe('red')
   })
 
   it('should set minHeight 4px for non-zero values', () => {
@@ -340,8 +340,8 @@ describe('CssVerticalBarChart extra fields', () => {
       { name: 'Test', value: 80, retentionRate: 0.8, baseCount: 100 },
     ]
     // Compile-time check: extra fields are allowed via index signature
-    expect(dataWithExtras[0].retentionRate).toBe(0.8)
-    expect(dataWithExtras[0].baseCount).toBe(100)
+    expect(dataWithExtras[0]!['retentionRate']).toBe(0.8)
+    expect(dataWithExtras[0]!['baseCount']).toBe(100)
   })
 })
 
@@ -457,7 +457,7 @@ describe('CssVerticalRetentionBarChart wrapper', () => {
     fireEvent.click(column)
     expect(onClick).toHaveBeenCalledTimes(1)
     // The callback should receive the original RetentionRateBarItem
-    const arg = onClick.mock.calls[0][0]
+    const arg = onClick.mock.calls[0]![0]
     expect(arg.name).toBe('Click Me')
     expect(arg.retentionRate).toBe(0.6)
     expect(arg.baseCount).toBe(50)
