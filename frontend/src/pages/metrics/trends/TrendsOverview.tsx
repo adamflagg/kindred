@@ -23,8 +23,104 @@ import { RetentionRateLine } from '../../../components/metrics/RetentionRateLine
 import { GenderStackedChart } from '../../../components/metrics/GenderStackedChart'
 import { GradeEnrollmentChart } from '../../../components/metrics/GradeEnrollmentChart'
 import { MultiYearBreakdownChart } from '../../../components/metrics/MultiYearBreakdownChart'
+import { CssVerticalStackedBarChart } from '../../../components/metrics/CssVerticalStackedBarChart'
+import { CssVerticalGroupedBarChart } from '../../../components/metrics/CssVerticalGroupedBarChart'
 import { Loader2, AlertCircle } from 'lucide-react'
 import { aggregateCityEnrollmentByRegion, REGION_DISPLAY_NAMES } from '../../../utils/regionUtils'
+import { getYearColor, YEAR_PALETTE } from '../../../utils/yearColors'
+import type { YearEnrollment } from '../../../types/metrics'
+
+interface GroupedChartItem {
+  name: string
+  [key: string]: string | number | null
+}
+
+/**
+ * Build grouped bar chart data from YearEnrollment breakdown fields.
+ *
+ * Normal mode: categories on X-axis, years as grouped bars.
+ * Inverted mode: years on X-axis, categories as grouped bars.
+ */
+function buildGroupedChartData(
+  data: YearEnrollment[],
+  breakdownKey: string,
+  labelKey: string,
+  topN: number,
+  nameFormatter?: (key: string | number) => string,
+  invertAxes?: boolean
+): {
+  chartData: GroupedChartItem[]
+  series: Array<{ key: string; label: string; color: string }>
+} {
+  const years = data.map((y) => y.year).sort((a, b) => a - b)
+  const maxYear = Math.max(...years)
+
+  // Access breakdown arrays via unknown cast to avoid strict type narrowing
+  const getBreakdown = (yearData: YearEnrollment): Array<Record<string, unknown>> | undefined =>
+    (yearData as unknown as Record<string, unknown>)[breakdownKey] as
+      | Array<Record<string, unknown>>
+      | undefined
+
+  // Collect all categories and their totals
+  const categoryTotals = new Map<string, number>()
+  for (const yearData of data) {
+    const breakdown = getBreakdown(yearData)
+    if (!breakdown) continue
+    for (const item of breakdown) {
+      const rawKey = item[labelKey]
+      const key = rawKey != null ? String(rawKey) : ''
+      if (!key) continue
+      const count = (item['count'] as number) ?? 0
+      categoryTotals.set(key, (categoryTotals.get(key) ?? 0) + count)
+    }
+  }
+
+  const topCategories = Array.from(categoryTotals.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, topN)
+    .map(([key]) => key)
+
+  if (invertAxes) {
+    // Years on X-axis, categories as series
+    const categoryDisplayNames = topCategories.map((key) =>
+      nameFormatter ? nameFormatter(key) : key
+    )
+    const chartData: GroupedChartItem[] = years.map((year) => {
+      const yearData = data.find((y) => y.year === year)
+      const breakdown = yearData ? getBreakdown(yearData) : undefined
+      const item: GroupedChartItem = { name: String(year) }
+      topCategories.forEach((key, idx) => {
+        const match = breakdown?.find((b) => String(b[labelKey]) === key)
+        item[categoryDisplayNames[idx] ?? ''] = (match?.['count'] as number) ?? 0
+      })
+      return item
+    })
+    const categorySeries = categoryDisplayNames.map((name, i) => ({
+      key: name,
+      label: name,
+      color: (YEAR_PALETTE[i % YEAR_PALETTE.length] ?? 'hsl(0, 0%, 50%)') as string,
+    }))
+    return { chartData, series: categorySeries }
+  }
+
+  // Normal: categories on X-axis, years as series
+  const chartData: GroupedChartItem[] = topCategories.map((key) => {
+    const displayName = nameFormatter ? nameFormatter(key) : key
+    const item: GroupedChartItem = { name: displayName }
+    for (const yearData of data) {
+      const breakdown = getBreakdown(yearData)
+      const match = breakdown?.find((b) => String(b[labelKey]) === key)
+      item[String(yearData.year)] = (match?.['count'] as number) ?? 0
+    }
+    return item
+  })
+  const yearSeries = years.map((y) => ({
+    key: String(y),
+    label: String(y),
+    color: getYearColor(y, maxYear),
+  }))
+  return { chartData, series: yearSeries }
+}
 
 export default function TrendsOverview() {
   const { selectedSessionCmId, sessionTypesParam, expandedRetention } = useMetricsSession()
@@ -265,6 +361,22 @@ export default function TrendsOverview() {
           height={250}
         />
       )}
+      {enrollmentData.length > 0 && (
+        <CssVerticalStackedBarChart
+          data={enrollmentData.map((y) => {
+            const male = y.by_gender.find((g) => g.gender === 'M')?.count ?? 0
+            const female = y.by_gender.find((g) => g.gender === 'F')?.count ?? 0
+            return { name: String(y.year), total: male + female, male, female }
+          })}
+          segments={[
+            { key: 'female', label: 'Female', color: 'hsl(340, 70%, 50%)' },
+            { key: 'male', label: 'Male', color: 'hsl(200, 70%, 50%)' },
+          ]}
+          title={`Gender Composition (CSS) (${numYearsDisplay}-Year Comparison)`}
+          percentMode
+          height={250}
+        />
+      )}
 
       {/* Grade Enrollment */}
       {enrollmentData.length > 0 && (
@@ -274,6 +386,47 @@ export default function TrendsOverview() {
           height={300}
         />
       )}
+      {enrollmentData.length > 0 &&
+        (() => {
+          const gradeSet = new Set<number | null>()
+          for (const y of enrollmentData) {
+            for (const g of y.by_grade) gradeSet.add(g.grade)
+          }
+          const sortedGrades = Array.from(gradeSet).sort((a, b) => {
+            if (a === null) return 1
+            if (b === null) return -1
+            return a - b
+          })
+
+          const years = enrollmentData.map((y) => y.year).sort((a, b) => a - b)
+          const maxYear = Math.max(...years)
+
+          const gradeData: GroupedChartItem[] = sortedGrades.map((grade) => {
+            const item: GroupedChartItem = {
+              name: grade !== null ? `Grade ${grade}` : 'Unknown',
+            }
+            for (const yearData of enrollmentData) {
+              const gd = yearData.by_grade.find((g) => g.grade === grade)
+              item[String(yearData.year)] = gd?.count ?? 0
+            }
+            return item
+          })
+
+          const yearSeries = years.map((y) => ({
+            key: String(y),
+            label: String(y),
+            color: getYearColor(y, maxYear),
+          }))
+
+          return (
+            <CssVerticalGroupedBarChart
+              data={gradeData}
+              series={yearSeries}
+              title={`Enrollment by Grade (CSS) (${numYearsDisplay}-Year Comparison)`}
+              height={300}
+            />
+          )
+        })()}
 
       {/* Summers at Camp */}
       {enrollmentData.length > 0 && (
@@ -287,6 +440,26 @@ export default function TrendsOverview() {
           height={300}
         />
       )}
+      {enrollmentData.length > 0 &&
+        (() => {
+          const { chartData, series } = buildGroupedChartData(
+            enrollmentData,
+            'by_summer_years',
+            'summer_years',
+            15,
+            summerYearsFormatter,
+            true
+          )
+          if (chartData.length === 0) return null
+          return (
+            <CssVerticalGroupedBarChart
+              data={chartData}
+              series={series}
+              title={`Summers at Camp (CSS) (${numYearsDisplay}-Year Comparison)`}
+              height={300}
+            />
+          )
+        })()}
 
       {/* First Summer Year */}
       {enrollmentData.length > 0 && (
@@ -299,6 +472,26 @@ export default function TrendsOverview() {
           height={300}
         />
       )}
+      {enrollmentData.length > 0 &&
+        (() => {
+          const { chartData, series } = buildGroupedChartData(
+            enrollmentData,
+            'by_first_summer_year',
+            'first_summer_year',
+            15,
+            undefined,
+            true
+          )
+          if (chartData.length === 0) return null
+          return (
+            <CssVerticalGroupedBarChart
+              data={chartData}
+              series={series}
+              title={`First Summer Year (CSS) (${numYearsDisplay}-Year Comparison)`}
+              height={300}
+            />
+          )
+        })()}
 
       {/* City Distribution */}
       {enrollmentData.some((y) => (y.by_city?.length ?? 0) > 0) && (
@@ -311,6 +504,24 @@ export default function TrendsOverview() {
           height={350}
         />
       )}
+      {enrollmentData.some((y) => (y.by_city?.length ?? 0) > 0) &&
+        (() => {
+          const { chartData, series } = buildGroupedChartData(
+            enrollmentData,
+            'by_city',
+            'city',
+            15
+          )
+          if (chartData.length === 0) return null
+          return (
+            <CssVerticalGroupedBarChart
+              data={chartData}
+              series={series}
+              title={`City Distribution (CSS) (Top 15, ${numYearsDisplay}-Year Comparison)`}
+              height={350}
+            />
+          )
+        })()}
 
       {/* School Distribution */}
       {enrollmentData.some((y) => (y.by_school?.length ?? 0) > 0) && (
@@ -323,6 +534,24 @@ export default function TrendsOverview() {
           height={350}
         />
       )}
+      {enrollmentData.some((y) => (y.by_school?.length ?? 0) > 0) &&
+        (() => {
+          const { chartData, series } = buildGroupedChartData(
+            enrollmentData,
+            'by_school',
+            'school',
+            15
+          )
+          if (chartData.length === 0) return null
+          return (
+            <CssVerticalGroupedBarChart
+              data={chartData}
+              series={series}
+              title={`School Distribution (CSS) (Top 15, ${numYearsDisplay}-Year Comparison)`}
+              height={350}
+            />
+          )
+        })()}
 
       {/* Synagogue Distribution */}
       {enrollmentData.some((y) => (y.by_synagogue?.length ?? 0) > 0) && (
@@ -335,6 +564,24 @@ export default function TrendsOverview() {
           height={350}
         />
       )}
+      {enrollmentData.some((y) => (y.by_synagogue?.length ?? 0) > 0) &&
+        (() => {
+          const { chartData, series } = buildGroupedChartData(
+            enrollmentData,
+            'by_synagogue',
+            'synagogue',
+            15
+          )
+          if (chartData.length === 0) return null
+          return (
+            <CssVerticalGroupedBarChart
+              data={chartData}
+              series={series}
+              title={`Synagogue Distribution (CSS) (Top 15, ${numYearsDisplay}-Year Comparison)`}
+              height={350}
+            />
+          )
+        })()}
 
       {/* Region Distribution */}
       {enrollmentDataWithRegions.some((y) => (y.by_region?.length ?? 0) > 0) && (
@@ -347,6 +594,25 @@ export default function TrendsOverview() {
           height={350}
         />
       )}
+      {enrollmentDataWithRegions.some((y) => (y.by_region?.length ?? 0) > 0) &&
+        (() => {
+          const { chartData, series } = buildGroupedChartData(
+            enrollmentDataWithRegions,
+            'by_region',
+            'region',
+            15,
+            (key) => REGION_DISPLAY_NAMES[String(key)] ?? String(key)
+          )
+          if (chartData.length === 0) return null
+          return (
+            <CssVerticalGroupedBarChart
+              data={chartData}
+              series={series}
+              title={`Region Distribution (CSS) (${numYearsDisplay}-Year Comparison)`}
+              height={350}
+            />
+          )
+        })()}
     </div>
   )
 }

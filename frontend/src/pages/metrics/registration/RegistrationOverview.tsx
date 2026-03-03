@@ -31,6 +31,7 @@ import {
   buildSessionDateLookup,
   buildSessionTypeLookup,
   sortSessionDataByCampThenQuest,
+  compareByDateCampThenQuest,
 } from '../../../utils/sessionUtils'
 import {
   transformGenderData,
@@ -41,7 +42,71 @@ import {
   transformNewVsReturningData,
 } from '../../../utils/metricsTransforms'
 import { Loader2, AlertCircle } from 'lucide-react'
-import type { DrilldownFilter } from '../../../types/metrics'
+import type { DrilldownFilter, SessionLengthBySessionBreakdown } from '../../../types/metrics'
+import type { SessionDateLookup, SessionTypeLookup } from '../../../utils/sessionUtils'
+
+// Color palette for session length stacked bars (matches SessionLengthBySessionChart)
+const SESSION_COLORS = [
+  'hsl(160, 100%, 35%)',
+  'hsl(42, 92%, 50%)',
+  'hsl(200, 70%, 50%)',
+  'hsl(280, 60%, 50%)',
+  'hsl(350, 70%, 50%)',
+  'hsl(100, 60%, 45%)',
+  'hsl(30, 80%, 50%)',
+  'hsl(180, 60%, 45%)',
+]
+
+interface StackedChartItem {
+  name: string
+  total: number
+  [key: string]: string | number | null
+}
+
+/**
+ * Build CssVerticalStackedBarChart data from SessionLengthBySessionBreakdown.
+ */
+function buildSessionLengthCssData(
+  slsData: SessionLengthBySessionBreakdown[],
+  sessionDateLookup: SessionDateLookup,
+  sessionTypeLookup: SessionTypeLookup
+): {
+  chartData: StackedChartItem[]
+  segments: Array<{ key: string; label: string; color: string }>
+} | null {
+  if (slsData.length === 0) return null
+
+  // Collect all unique sessions, sorted camp-then-quest
+  const allSessions = new Map<number, string>()
+  for (const item of slsData) {
+    for (const s of item.sessions) {
+      allSessions.set(s.session_cm_id, s.session_name)
+    }
+  }
+  const sessionList = Array.from(allSessions.entries()).sort((a, b) =>
+    compareByDateCampThenQuest(a[1], b[1], sessionDateLookup, sessionTypeLookup)
+  )
+
+  const segments = sessionList.map(([id, name], i) => ({
+    key: `session_${id}`,
+    label: name,
+    color: SESSION_COLORS[i % SESSION_COLORS.length] ?? 'hsl(0, 0%, 50%)',
+  }))
+
+  const chartData: StackedChartItem[] = slsData.map((item) => {
+    const row: StackedChartItem = {
+      name: item.length_category,
+      total: item.total,
+    }
+    for (const [sessionId] of sessionList) {
+      const sessionData = item.sessions.find((s) => s.session_cm_id === sessionId)
+      row[`session_${sessionId}`] = sessionData?.count ?? 0
+    }
+    return row
+  })
+
+  return { chartData, segments }
+}
 
 export default function RegistrationOverview() {
   const { currentYear } = useCurrentYear()
@@ -475,33 +540,91 @@ export default function RegistrationOverview() {
                   sessionTypeLookup={sessionTypeLookup}
                 />
               </div>
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                {(() => {
+                  const result = buildSessionLengthCssData(
+                    data.by_session_length_by_session ?? [],
+                    sessionDateLookup,
+                    sessionTypeLookup
+                  )
+                  if (!result) return null
+                  return (
+                    <CssVerticalStackedBarChart
+                      data={result.chartData}
+                      segments={result.segments}
+                      title={`${currentYear} Session Length (CSS)`}
+                      showTotalLabel
+                      rotateLabels={result.chartData.length > 3}
+                      height={300}
+                    />
+                  )
+                })()}
+                {(() => {
+                  const result = buildSessionLengthCssData(
+                    compData.by_session_length_by_session ?? [],
+                    sessionDateLookup,
+                    sessionTypeLookup
+                  )
+                  if (!result) return null
+                  return (
+                    <CssVerticalStackedBarChart
+                      data={result.chartData}
+                      segments={result.segments}
+                      title={`${compareYear} Session Length (CSS)`}
+                      showTotalLabel
+                      rotateLabels={result.chartData.length > 3}
+                      height={300}
+                    />
+                  )
+                })()}
+              </div>
             </>
           ) : (
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-              <CssHorizontalBarChart
-                key={`session-${selectedSessionCmId ?? 'all'}`}
-                title="Enrollment by Session"
-                data={sessionChartData}
-                height={300}
-                labelWidth={140}
-                breakdownType="session"
-                onBarClick={setFilter}
-              />
-              <SessionLengthBySessionChart
-                data={data.by_session_length_by_session ?? []}
-                title="Enrollment by Session Length"
-                height={300}
-                sessionDateLookup={sessionDateLookup}
-                sessionTypeLookup={sessionTypeLookup}
-                onCategoryClick={(lengthCategory) =>
-                  setFilter({
-                    type: 'session_length',
-                    value: lengthCategory,
-                    label: `${lengthCategory} Sessions`,
-                  })
-                }
-              />
-            </div>
+            <>
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <CssHorizontalBarChart
+                  key={`session-${selectedSessionCmId ?? 'all'}`}
+                  title="Enrollment by Session"
+                  data={sessionChartData}
+                  height={300}
+                  labelWidth={140}
+                  breakdownType="session"
+                  onBarClick={setFilter}
+                />
+                <SessionLengthBySessionChart
+                  data={data.by_session_length_by_session ?? []}
+                  title="Enrollment by Session Length"
+                  height={300}
+                  sessionDateLookup={sessionDateLookup}
+                  sessionTypeLookup={sessionTypeLookup}
+                  onCategoryClick={(lengthCategory) =>
+                    setFilter({
+                      type: 'session_length',
+                      value: lengthCategory,
+                      label: `${lengthCategory} Sessions`,
+                    })
+                  }
+                />
+              </div>
+              {(() => {
+                const result = buildSessionLengthCssData(
+                  data.by_session_length_by_session ?? [],
+                  sessionDateLookup,
+                  sessionTypeLookup
+                )
+                if (!result) return null
+                return (
+                  <CssVerticalStackedBarChart
+                    data={result.chartData}
+                    segments={result.segments}
+                    title="Enrollment by Session Length (CSS)"
+                    showTotalLabel
+                    rotateLabels={result.chartData.length > 3}
+                    height={300}
+                  />
+                )
+              })()}
+            </>
           )}
         </>
       )}
