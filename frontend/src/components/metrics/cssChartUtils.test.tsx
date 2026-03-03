@@ -347,13 +347,13 @@ describe('VerticalXAxis', () => {
   it('should apply rotated styles when rotated=true', () => {
     const { container } = render(<VerticalXAxis labels={['Long Label']} rotated />)
     const wrapper = container.firstChild as HTMLElement
-    expect(wrapper).toHaveStyle({ height: '60px' })
+    expect(wrapper).toHaveStyle({ height: '80px' })
   })
 
   it('should apply transform rotate(-40deg) to rotated labels', () => {
     render(<VerticalXAxis labels={['Label']} rotated />)
     const label = screen.getByText('Label')
-    expect(label).toHaveStyle({ transform: 'rotate(-40deg) translateX(-50%)' })
+    expect(label).toHaveStyle({ transform: 'rotate(-40deg)' })
   })
 
   it('should apply whiteSpace and maxWidth to rotated labels', () => {
@@ -421,6 +421,36 @@ describe('VerticalXAxis', () => {
     const { container } = render(<VerticalXAxis labels={['A']} />)
     const wrapper = container.firstChild as HTMLElement
     expect(wrapper.className).toContain('border-foreground/40')
+  })
+
+  // --- Tick marks ---
+
+  it('should render tick marks for each rotated label', () => {
+    const { container } = render(<VerticalXAxis labels={['A', 'B', 'C']} rotated />)
+    // Each label cell should contain a tick div with border-l and height 6px
+    const ticks = container.querySelectorAll('[style*="height: 6px"]')
+    expect(ticks.length).toBe(3)
+    for (const tick of ticks) {
+      expect((tick as HTMLElement).className).toContain('border-l')
+    }
+  })
+
+  it('should not render tick marks for straight labels', () => {
+    const { container } = render(<VerticalXAxis labels={['A', 'B', 'C']} />)
+    // No tick divs with border-l + height 6px in straight mode
+    const ticks = container.querySelectorAll('[style*="height: 6px"]')
+    expect(ticks.length).toBe(0)
+  })
+
+  // --- Rotated label anchoring (text-end near tick) ---
+
+  it('should anchor rotated label text-end near tick', () => {
+    render(<VerticalXAxis labels={['Label']} rotated />)
+    const label = screen.getByText('Label')
+    // right: 50% positions text's right edge at column center
+    expect(label).toHaveStyle({ right: '50%' })
+    // transformOrigin: top right pivots from text end
+    expect(label).toHaveStyle({ transformOrigin: 'top right' })
   })
 })
 

@@ -327,7 +327,7 @@ describe('CssVerticalStackedBarChart X-axis', () => {
         rotateLabels
       />
     )
-    const xAxisWrapper = container.querySelector('[style*="height: 60px"]')
+    const xAxisWrapper = container.querySelector('[style*="height: 80px"]')
     expect(xAxisWrapper).toBeInTheDocument()
   })
 })
@@ -380,6 +380,38 @@ describe('CssVerticalStackedBarChart legend', () => {
     render(<CssVerticalStackedBarChart data={data} segments={threeSegments} />)
     expect(screen.getByText('Active')).toBeInTheDocument()
     expect(screen.getByText('Sparse')).toBeInTheDocument() // has data in Cat 2
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Legend spacing (rotated vs straight labels)
+// ---------------------------------------------------------------------------
+describe('CssVerticalStackedBarChart legend spacing', () => {
+  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalStackedBarChart')
+    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
+  })
+
+  it('should use mt-3 on legend when rotateLabels is true', () => {
+    render(
+      <CssVerticalStackedBarChart data={sampleData} segments={segments} rotateLabels />
+    )
+    // ChartLegend renders a flex wrapper — find it by the legend items
+    const femaleLabel = screen.getByText('Female')
+    // Walk up to the ChartLegend wrapper (parent with mt-3)
+    const legendWrapper = femaleLabel.closest('.mt-3')
+    expect(legendWrapper).toBeInTheDocument()
+  })
+
+  it('should use mt-1 on legend when rotateLabels is false', () => {
+    render(
+      <CssVerticalStackedBarChart data={sampleData} segments={segments} />
+    )
+    const femaleLabel = screen.getByText('Female')
+    const legendWrapper = femaleLabel.closest('.mt-1')
+    expect(legendWrapper).toBeInTheDocument()
   })
 })
 
