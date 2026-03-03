@@ -81,6 +81,9 @@ export function SessionLengthBySessionChart({
   const sessionList = Array.from(allSessions.entries()).sort((a, b) =>
     compareByDateCampThenQuest(a[1], b[1], sessionDateLookup, sessionTypeLookup)
   )
+  // Reversed for Recharts stacking: first <Bar> = bottom of stack.
+  // Quest first (bottom) → camp last (top) gives camp-on-top visual.
+  const reversedSessionList = [...sessionList].reverse()
 
   // Transform data for stacked bar chart
   const chartData: ChartDataItem[] = data.map((item) => {
@@ -119,8 +122,9 @@ export function SessionLengthBySessionChart({
     label?: string
   }) => {
     if (active && payload && payload.length) {
-      // Filter out zero values and sort by count descending
-      const nonZeroPayload = payload.filter((p) => p.value > 0).sort((a, b) => b.value - a.value)
+      // Filter out zero values and reverse to show camp-first order
+      // (Recharts passes payload in <Bar> order which is quest-first after reversal)
+      const nonZeroPayload = payload.filter((p) => p.value > 0).reverse()
 
       if (nonZeroPayload.length === 0) return null
 
@@ -145,9 +149,11 @@ export function SessionLengthBySessionChart({
     return null
   }
 
-  // Get the last session for adding LabelList
+  // Last rendered <Bar> = topmost bar = last in reversedSessionList = last camp session
   const lastSessionKey =
-    sessionList.length > 0 ? `session_${sessionList[sessionList.length - 1]?.[0]}` : null
+    reversedSessionList.length > 0
+      ? `session_${reversedSessionList[reversedSessionList.length - 1]?.[0]}`
+      : null
 
   const needsRotation = chartData.length > 3
   const isCompactLegend = sessionList.length > 6
@@ -188,9 +194,9 @@ export function SessionLengthBySessionChart({
           />
           <YAxis className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
           <Tooltip content={<CustomTooltip />} />
-          {sessionList.map(([sessionId, sessionName], index) => {
+          {reversedSessionList.map(([sessionId, sessionName], index) => {
             const dataKey = `session_${sessionId}`
-            const isLast = index === sessionList.length - 1
+            const isLast = index === reversedSessionList.length - 1
             return (
               <Bar
                 key={dataKey}

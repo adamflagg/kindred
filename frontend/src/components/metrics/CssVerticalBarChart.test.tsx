@@ -106,8 +106,8 @@ describe('CssVerticalBarChart bar rendering', () => {
 
   it('should render one column per data item', () => {
     const { container } = render(<CssVerticalBarChart data={sampleData} />)
-    // Each column is a flex-1 child of the bars area
-    const bars = container.querySelectorAll('.flex-1.flex-col')
+    // Each column is a flex-col child of the bars area
+    const bars = container.querySelectorAll('.flex-col.items-center')
     expect(bars.length).toBe(sampleData.length)
   })
 

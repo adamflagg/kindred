@@ -9,6 +9,7 @@
 import { useCallback, type ReactNode } from 'react'
 import {
   calculateVerticalLayout,
+  calculateColumnSizing,
   useVerticalColumnTooltip,
   getNiceTicks,
   VerticalYAxis,
@@ -59,6 +60,7 @@ export function CssVerticalStackedBarChart({
 }: CssVerticalStackedBarChartProps) {
   const xAxisHeight = rotateLabels ? 60 : 34
   const { barsHeight, drawingHeight } = calculateVerticalLayout(height, { xAxisHeight })
+  const columnSizing = calculateColumnSizing(data.length)
 
   const {
     hoveredIndex,
@@ -132,8 +134,8 @@ export function CssVerticalStackedBarChart({
           {/* Bars area */}
           <div
             ref={chartRef}
-            className="border-foreground/30 relative flex flex-1 items-end border-l"
-            style={{ height: barsHeight }}
+            className={`border-foreground/30 relative flex flex-1 items-end border-l ${columnSizing.mode === 'sparse' ? 'justify-center' : ''}`}
+            style={{ height: barsHeight, gap: `${columnSizing.gap}px` }}
           >
             {data.map((item, index) => {
               const barHeightPx = percentMode
@@ -144,7 +146,12 @@ export function CssVerticalStackedBarChart({
               return (
                 <div
                   key={index}
-                  className={`relative flex h-full flex-1 flex-col items-center justify-end px-1 ${isClickable ? 'cursor-pointer' : ''}`}
+                  className={`relative flex h-full flex-col items-center justify-end ${columnSizing.maxWidth ? '' : 'flex-1'} ${isClickable ? 'cursor-pointer' : ''}`}
+                  style={{
+                    ...(columnSizing.maxWidth ? { maxWidth: `${columnSizing.maxWidth}px`, width: '100%' } : {}),
+                    paddingLeft: `${columnSizing.columnPadding}px`,
+                    paddingRight: `${columnSizing.columnPadding}px`,
+                  }}
                   onMouseEnter={(e) =>
                     handleColumnEnter(index, e.currentTarget.getBoundingClientRect())
                   }
@@ -186,11 +193,13 @@ export function CssVerticalStackedBarChart({
               )
             })}
 
-            <ColumnHoverOverlay
-              itemCount={data.length}
-              hoveredIndex={hoveredIndex}
-              lastIndex={lastIndex}
-            />
+            {columnSizing.mode !== 'sparse' && (
+              <ColumnHoverOverlay
+                itemCount={data.length}
+                hoveredIndex={hoveredIndex}
+                lastIndex={lastIndex}
+              />
+            )}
           </div>
         </div>
 
@@ -217,19 +226,21 @@ export function CssVerticalStackedBarChart({
               ) : (
                 <>
                   <p className="text-foreground mb-2 font-medium">{ttItem.name}</p>
-                  {segments.map((s) => {
-                    const val = (ttItem[s.key] as number) ?? 0
-                    const pct =
-                      ttItem.total > 0 ? ((val / ttItem.total) * 100).toFixed(0) : '0'
-                    return (
-                      <p key={s.key} className="text-muted-foreground text-sm">
-                        <span style={{ color: s.color }}>{s.label}:</span>{' '}
-                        <span className="text-foreground font-semibold">
-                          {val} ({pct}%)
-                        </span>
-                      </p>
-                    )
-                  })}
+                  {segments
+                    .filter((s) => ((ttItem[s.key] as number) ?? 0) > 0)
+                    .map((s) => {
+                      const val = (ttItem[s.key] as number) ?? 0
+                      const pct =
+                        ttItem.total > 0 ? ((val / ttItem.total) * 100).toFixed(0) : '0'
+                      return (
+                        <p key={s.key} className="text-muted-foreground text-sm">
+                          <span style={{ color: s.color }}>{s.label}:</span>{' '}
+                          <span className="text-foreground font-semibold">
+                            {val} ({pct}%)
+                          </span>
+                        </p>
+                      )
+                    })}
                   <p className="text-muted-foreground border-border mt-1 border-t pt-1 text-sm">
                     Total:{' '}
                     <span className="text-foreground font-semibold">{ttItem.total}</span>

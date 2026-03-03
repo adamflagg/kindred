@@ -8,6 +8,7 @@
 import { useCallback, type ReactNode } from 'react'
 import {
   calculateVerticalLayout,
+  calculateColumnSizing,
   useVerticalColumnTooltip,
   getNiceTicks,
   VerticalYAxis,
@@ -52,6 +53,7 @@ export function CssVerticalGroupedBarChart({
   const shouldRotate = rotateLabels ?? data.length > 8
   const xAxisHeight = shouldRotate ? 60 : 34
   const { barsHeight, drawingHeight } = calculateVerticalLayout(height, { xAxisHeight })
+  const columnSizing = calculateColumnSizing(data.length)
 
   const {
     hoveredIndex,
@@ -113,13 +115,18 @@ export function CssVerticalGroupedBarChart({
           {/* Bars area */}
           <div
             ref={chartRef}
-            className="border-foreground/30 relative flex flex-1 items-end border-l"
-            style={{ height: barsHeight }}
+            className={`border-foreground/30 relative flex flex-1 items-end border-l ${columnSizing.mode === 'sparse' ? 'justify-center' : ''}`}
+            style={{ height: barsHeight, gap: `${columnSizing.gap}px` }}
           >
             {data.map((item, index) => (
               <div
                 key={index}
-                className={`relative flex h-full flex-1 flex-col items-center justify-end px-1 ${isClickable ? 'cursor-pointer' : ''}`}
+                className={`relative flex h-full flex-col items-center justify-end ${columnSizing.maxWidth ? '' : 'flex-1'} ${isClickable ? 'cursor-pointer' : ''}`}
+                style={{
+                  ...(columnSizing.maxWidth ? { maxWidth: `${columnSizing.maxWidth}px`, width: '100%' } : {}),
+                  paddingLeft: `${columnSizing.columnPadding}px`,
+                  paddingRight: `${columnSizing.columnPadding}px`,
+                }}
                 onMouseEnter={(e) =>
                   handleColumnEnter(index, e.currentTarget.getBoundingClientRect())
                 }
@@ -153,11 +160,13 @@ export function CssVerticalGroupedBarChart({
               </div>
             ))}
 
-            <ColumnHoverOverlay
-              itemCount={data.length}
-              hoveredIndex={hoveredIndex}
-              lastIndex={lastIndex}
-            />
+            {columnSizing.mode !== 'sparse' && (
+              <ColumnHoverOverlay
+                itemCount={data.length}
+                hoveredIndex={hoveredIndex}
+                lastIndex={lastIndex}
+              />
+            )}
           </div>
         </div>
 

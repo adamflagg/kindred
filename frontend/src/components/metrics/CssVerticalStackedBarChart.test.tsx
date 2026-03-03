@@ -124,8 +124,8 @@ describe('CssVerticalStackedBarChart bar rendering', () => {
     const { container } = render(
       <CssVerticalStackedBarChart data={sampleData} segments={segments} />
     )
-    // Each column container has flex-1 and flex-col classes
-    const columns = container.querySelectorAll('.flex-1.flex-col.items-center')
+    // Each column container has flex-col and items-center classes
+    const columns = container.querySelectorAll('.flex-col.items-center')
     expect(columns.length).toBe(sampleData.length)
   })
 
