@@ -270,13 +270,38 @@ export default function RegistrationOverview() {
             <CssVerticalStackedBarChart
               key={`gender-grade-${selectedSessionCmId ?? 'all'}`}
               title={`${currentYear} Gender by Grade`}
-              data={data.by_gender_grade ?? []}
+              data={(data.by_gender_grade ?? []).map((g) => ({
+                name: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
+                total: g.total,
+                male_count: g.male_count,
+                female_count: g.female_count,
+                grade: g.grade,
+              }))}
+              segments={[
+                { key: 'female_count', label: 'Female', color: 'hsl(350, 70%, 50%)' },
+                { key: 'male_count', label: 'Male', color: 'hsl(200, 70%, 50%)' },
+              ]}
               height={250}
-              onBarClick={setFilter}
+              onBarClick={(item) => {
+                const grade = item['grade']
+                const value = grade !== null ? String(grade) : 'null'
+                const label = grade !== null ? `Grade ${grade}` : 'Unknown'
+                setFilter({ type: 'grade', value, label })
+              }}
             />
             <CssVerticalStackedBarChart
               title={`${compareYear} Gender by Grade`}
-              data={compData.by_gender_grade ?? []}
+              data={(compData.by_gender_grade ?? []).map((g) => ({
+                name: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
+                total: g.total,
+                male_count: g.male_count,
+                female_count: g.female_count,
+                grade: g.grade,
+              }))}
+              segments={[
+                { key: 'female_count', label: 'Female', color: 'hsl(350, 70%, 50%)' },
+                { key: 'male_count', label: 'Male', color: 'hsl(200, 70%, 50%)' },
+              ]}
               height={250}
             />
           </div>
@@ -295,9 +320,24 @@ export default function RegistrationOverview() {
           <CssVerticalStackedBarChart
             key={`gender-grade-${selectedSessionCmId ?? 'all'}`}
             title="Gender by Grade"
-            data={data.by_gender_grade ?? []}
+            data={(data.by_gender_grade ?? []).map((g) => ({
+              name: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
+              total: g.total,
+              male_count: g.male_count,
+              female_count: g.female_count,
+              grade: g.grade,
+            }))}
+            segments={[
+              { key: 'female_count', label: 'Female', color: 'hsl(350, 70%, 50%)' },
+              { key: 'male_count', label: 'Male', color: 'hsl(200, 70%, 50%)' },
+            ]}
             height={250}
-            onBarClick={setFilter}
+            onBarClick={(item) => {
+              const grade = item['grade']
+              const value = grade !== null ? String(grade) : 'null'
+              const label = grade !== null ? `Grade ${grade}` : 'Unknown'
+              setFilter({ type: 'grade', value, label })
+            }}
           />
         </div>
       )}

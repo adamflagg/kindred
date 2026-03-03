@@ -396,7 +396,7 @@ describe('CssVerticalStackedBarChart click handling', () => {
     const column = container.querySelector('.cursor-pointer') as HTMLElement
     fireEvent.click(column)
     expect(onClick).toHaveBeenCalledTimes(1)
-    const arg = onClick.mock.calls[0][0]
+    const arg = onClick.mock.calls[0]![0]
     expect(arg['name']).toBe('Solo')
     expect(arg['total']).toBe(10)
     expect(arg['male_count']).toBe(6)
