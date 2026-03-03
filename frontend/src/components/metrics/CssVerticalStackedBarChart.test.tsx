@@ -482,7 +482,7 @@ describe('CssVerticalStackedBarChart column sizing', () => {
     const xAxisWrapper = container.querySelector('.border-t.justify-center')
     expect(xAxisWrapper).toBeInTheDocument()
     // X-axis labels should have maxWidth matching columns
-    const xAxisLabels = xAxisWrapper?.querySelectorAll('[style*="max-width: 80px"]')
+    const xAxisLabels = xAxisWrapper?.querySelectorAll('[style*="max-width: 120px"]')
     expect(xAxisLabels?.length).toBe(3)
   })
 
@@ -505,11 +505,11 @@ describe('CssVerticalStackedBarChart column sizing', () => {
     )
     // Sparse mode columns (in bars area, which has border-l) should have maxWidth style
     const barsArea = container.querySelector('.border-l') as HTMLElement
-    const columns = barsArea.querySelectorAll(':scope > [style*="max-width: 80px"]')
+    const columns = barsArea.querySelectorAll(':scope > [style*="max-width: 120px"]')
     expect(columns.length).toBe(sparseData.length)
   })
 
-  it('should apply gap to bars container', () => {
+  it('should use zero gap in sparse mode (padding provides spacing)', () => {
     const sparseData = [
       { name: 'A', total: 10, male_count: 6, female_count: 4 },
       { name: 'B', total: 15, male_count: 8, female_count: 7 },
@@ -517,9 +517,9 @@ describe('CssVerticalStackedBarChart column sizing', () => {
     const { container } = render(
       <CssVerticalStackedBarChart data={sparseData} segments={segments} />
     )
-    // Sparse mode gap is 16px
-    const barsArea = container.querySelector('[style*="gap: 16px"]')
-    expect(barsArea).toBeInTheDocument()
+    // Sparse mode uses padding instead of gap to avoid tooltip dead zones
+    const barsArea = container.querySelector('.border-l') as HTMLElement
+    expect(barsArea.style.gap).toBe('0px')
   })
 
   it('should not apply maxWidth in normal mode (5-9 items)', () => {
@@ -533,7 +533,7 @@ describe('CssVerticalStackedBarChart column sizing', () => {
       <CssVerticalStackedBarChart data={normalData} segments={segments} />
     )
     // Normal mode should NOT have maxWidth on columns
-    const columnsWithMaxWidth = container.querySelectorAll('[style*="max-width: 80px"]')
+    const columnsWithMaxWidth = container.querySelectorAll('[style*="max-width: 120px"]')
     expect(columnsWithMaxWidth.length).toBe(0)
   })
 
@@ -545,9 +545,26 @@ describe('CssVerticalStackedBarChart column sizing', () => {
     const { container } = render(
       <CssVerticalStackedBarChart data={sparseData} segments={segments} />
     )
-    // ColumnHoverOverlay has bg-foreground/[0.06] class — should not be present in sparse
-    const overlay = container.querySelector('.bg-foreground\\/\\[0\\.06\\]')
+    // ColumnHoverOverlay uses pointer-events-none absolute — should not be present in sparse
+    const overlay = container.querySelector('.pointer-events-none.absolute')
     expect(overlay).toBeNull()
+  })
+
+  it('should highlight column on hover in sparse mode', () => {
+    const sparseData = [
+      { name: 'A', total: 10, male_count: 6, female_count: 4 },
+      { name: 'B', total: 15, male_count: 8, female_count: 7 },
+    ]
+    const { container } = render(
+      <CssVerticalStackedBarChart data={sparseData} segments={segments} />
+    )
+    const barsArea = container.querySelector('.border-l') as HTMLElement
+    const columns = barsArea.querySelectorAll(':scope > [style*="max-width"]') as NodeListOf<HTMLElement>
+    // Hover over first column
+    fireEvent.mouseEnter(columns[0]!)
+    expect(columns[0]!.className).toContain('bg-foreground/[0.06]')
+    // Second column should not be highlighted
+    expect(columns[1]!.className).not.toContain('bg-foreground/[0.06]')
   })
 })
 

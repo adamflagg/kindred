@@ -351,18 +351,18 @@ describe('CssVerticalBarChart column sizing', () => {
     const { container } = render(<CssVerticalBarChart data={sparseData} />)
     // Scope to bars area (border-l) to exclude x-axis labels
     const barsArea = container.querySelector('.border-l') as HTMLElement
-    const columns = barsArea.querySelectorAll(':scope > [style*="max-width: 80px"]')
+    const columns = barsArea.querySelectorAll(':scope > [style*="max-width: 120px"]')
     expect(columns.length).toBe(sparseData.length)
   })
 
-  it('should apply gap to bars container in sparse mode', () => {
+  it('should use zero gap in sparse mode (padding provides spacing)', () => {
     const sparseData: CssVerticalBarItem[] = [
       { name: 'A', value: 10 },
       { name: 'B', value: 20 },
     ]
     const { container } = render(<CssVerticalBarChart data={sparseData} />)
-    const barsArea = container.querySelector('[style*="gap: 16px"]')
-    expect(barsArea).toBeInTheDocument()
+    const barsArea = container.querySelector('.border-l') as HTMLElement
+    expect(barsArea.style.gap).toBe('0px')
   })
 
   it('should not apply maxWidth in normal mode (5-9 items)', () => {
@@ -371,7 +371,7 @@ describe('CssVerticalBarChart column sizing', () => {
       value: 10 + i,
     }))
     const { container } = render(<CssVerticalBarChart data={normalData} />)
-    const columnsWithMaxWidth = container.querySelectorAll('[style*="max-width: 80px"]')
+    const columnsWithMaxWidth = container.querySelectorAll('[style*="max-width: 120px"]')
     expect(columnsWithMaxWidth.length).toBe(0)
   })
 
@@ -381,8 +381,22 @@ describe('CssVerticalBarChart column sizing', () => {
       { name: 'B', value: 20 },
     ]
     const { container } = render(<CssVerticalBarChart data={sparseData} />)
-    const overlay = container.querySelector('.bg-foreground\\/\\[0\\.06\\]')
+    // ColumnHoverOverlay uses pointer-events-none absolute — should not be present in sparse
+    const overlay = container.querySelector('.pointer-events-none.absolute')
     expect(overlay).toBeNull()
+  })
+
+  it('should highlight column on hover in sparse mode', () => {
+    const sparseData: CssVerticalBarItem[] = [
+      { name: 'A', value: 10 },
+      { name: 'B', value: 20 },
+    ]
+    const { container } = render(<CssVerticalBarChart data={sparseData} />)
+    const barsArea = container.querySelector('.border-l') as HTMLElement
+    const columns = barsArea.querySelectorAll(':scope > [style*="max-width"]') as NodeListOf<HTMLElement>
+    fireEvent.mouseEnter(columns[0]!)
+    expect(columns[0]!.className).toContain('bg-foreground/[0.06]')
+    expect(columns[1]!.className).not.toContain('bg-foreground/[0.06]')
   })
 })
 

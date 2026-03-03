@@ -32,17 +32,17 @@ describe('calculateColumnSizing', () => {
   it('should return sparse mode for 1 column', () => {
     const sizing = calculateColumnSizing(1)
     expect(sizing.mode).toBe('sparse')
-    expect(sizing.maxWidth).toBe(80)
-    expect(sizing.gap).toBe(16)
-    expect(sizing.columnPadding).toBe(4)
+    expect(sizing.maxWidth).toBe(120)
+    expect(sizing.gap).toBe(0)
+    expect(sizing.columnPadding).toBe(20)
   })
 
   it('should return sparse mode for 4 columns', () => {
     const sizing = calculateColumnSizing(4)
     expect(sizing.mode).toBe('sparse')
-    expect(sizing.maxWidth).toBe(80)
-    expect(sizing.gap).toBe(16)
-    expect(sizing.columnPadding).toBe(4)
+    expect(sizing.maxWidth).toBe(120)
+    expect(sizing.gap).toBe(0)
+    expect(sizing.columnPadding).toBe(20)
   })
 
   it('should return normal mode for 5 columns', () => {
