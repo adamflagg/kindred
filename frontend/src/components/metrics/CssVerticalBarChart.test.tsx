@@ -1,0 +1,481 @@
+/**
+ * TDD Tests for CssVerticalBarChart component.
+ *
+ * Tests written FIRST before implementation (TDD).
+ * Generic single-bar-per-column CSS chart.
+ */
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen, fireEvent } from '@testing-library/react'
+
+import type { CssVerticalBarItem } from './CssVerticalBarChart'
+
+// ---------------------------------------------------------------------------
+// Test data
+// ---------------------------------------------------------------------------
+const sampleData: CssVerticalBarItem[] = [
+  { name: 'Alpha', value: 40 },
+  { name: 'Beta', value: 70 },
+  { name: 'Gamma', value: 100 },
+]
+
+const singleItem: CssVerticalBarItem[] = [{ name: 'Solo', value: 50 }]
+
+// ---------------------------------------------------------------------------
+// Module export
+// ---------------------------------------------------------------------------
+describe('CssVerticalBarChart exports', () => {
+  it('should export CssVerticalBarChart as a named function', async () => {
+    const mod = await import('./CssVerticalBarChart')
+    expect(typeof mod.CssVerticalBarChart).toBe('function')
+  })
+
+  it('should export the CssVerticalBarItem type (compile-time check)', () => {
+    // If this file compiles, the type export works.
+    const item: CssVerticalBarItem = { name: 'Test', value: 42 }
+    expect(item.name).toBe('Test')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Rendering basics
+// ---------------------------------------------------------------------------
+describe('CssVerticalBarChart rendering', () => {
+  let CssVerticalBarChart: typeof import('./CssVerticalBarChart').CssVerticalBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalBarChart')
+    CssVerticalBarChart = mod.CssVerticalBarChart
+  })
+
+  it('should render the title when provided', () => {
+    render(<CssVerticalBarChart data={sampleData} title="My Chart" />)
+    expect(screen.getByText('My Chart')).toBeInTheDocument()
+  })
+
+  it('should render without a title when not provided', () => {
+    const { container } = render(<CssVerticalBarChart data={sampleData} />)
+    const headings = container.querySelectorAll('h3')
+    expect(headings.length).toBe(0)
+  })
+
+  it('should wrap in card-lodge class', () => {
+    const { container } = render(<CssVerticalBarChart data={sampleData} />)
+    expect(container.querySelector('.card-lodge')).toBeInTheDocument()
+  })
+
+  it('should apply custom className', () => {
+    const { container } = render(
+      <CssVerticalBarChart data={sampleData} className="my-custom" />
+    )
+    expect(container.querySelector('.my-custom')).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Empty state
+// ---------------------------------------------------------------------------
+describe('CssVerticalBarChart empty state', () => {
+  let CssVerticalBarChart: typeof import('./CssVerticalBarChart').CssVerticalBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalBarChart')
+    CssVerticalBarChart = mod.CssVerticalBarChart
+  })
+
+  it('should show "No data available" when data is empty', () => {
+    render(<CssVerticalBarChart data={[]} />)
+    expect(screen.getByText('No data available')).toBeInTheDocument()
+  })
+
+  it('should still wrap in card-lodge when empty', () => {
+    const { container } = render(<CssVerticalBarChart data={[]} />)
+    expect(container.querySelector('.card-lodge')).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Bar rendering
+// ---------------------------------------------------------------------------
+describe('CssVerticalBarChart bar rendering', () => {
+  let CssVerticalBarChart: typeof import('./CssVerticalBarChart').CssVerticalBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalBarChart')
+    CssVerticalBarChart = mod.CssVerticalBarChart
+  })
+
+  it('should render one column per data item', () => {
+    const { container } = render(<CssVerticalBarChart data={sampleData} />)
+    // Each column is a flex-1 child of the bars area
+    const bars = container.querySelectorAll('.flex-1.flex-col')
+    expect(bars.length).toBe(sampleData.length)
+  })
+
+  it('should render bars with rounded-t class', () => {
+    const { container } = render(<CssVerticalBarChart data={sampleData} />)
+    const roundedBars = container.querySelectorAll('.rounded-t')
+    expect(roundedBars.length).toBe(sampleData.length)
+  })
+
+  it('should render bars with transition-all duration-300', () => {
+    const { container } = render(<CssVerticalBarChart data={sampleData} />)
+    const transitionBars = container.querySelectorAll('.transition-all.duration-300')
+    expect(transitionBars.length).toBe(sampleData.length)
+  })
+
+  it('should apply default blue color when no colorFn provided', () => {
+    const { container } = render(<CssVerticalBarChart data={singleItem} />)
+    const bar = container.querySelector('.rounded-t') as HTMLElement
+    expect(bar.style.backgroundColor).toBe('hsl(200, 70%, 50%)')
+  })
+
+  it('should apply custom color from colorFn', () => {
+    const colorFn = (item: CssVerticalBarItem) =>
+      item.value > 50 ? 'red' : 'green'
+    const { container } = render(
+      <CssVerticalBarChart data={sampleData} colorFn={colorFn} />
+    )
+    const bars = container.querySelectorAll('.rounded-t') as NodeListOf<HTMLElement>
+    // Alpha: 40 => green, Beta: 70 => red, Gamma: 100 => red
+    expect(bars[0].style.backgroundColor).toBe('green')
+    expect(bars[1].style.backgroundColor).toBe('red')
+    expect(bars[2].style.backgroundColor).toBe('red')
+  })
+
+  it('should set minHeight 4px for non-zero values', () => {
+    const { container } = render(<CssVerticalBarChart data={singleItem} />)
+    const bar = container.querySelector('.rounded-t') as HTMLElement
+    expect(bar.style.minHeight).toBe('4px')
+  })
+
+  it('should set minHeight 0px for zero-value items', () => {
+    const zeroData: CssVerticalBarItem[] = [{ name: 'Zero', value: 0 }]
+    const { container } = render(<CssVerticalBarChart data={zeroData} />)
+    const bar = container.querySelector('.rounded-t') as HTMLElement
+    expect(bar.style.minHeight).toBe('0px')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Y-axis
+// ---------------------------------------------------------------------------
+describe('CssVerticalBarChart Y-axis', () => {
+  let CssVerticalBarChart: typeof import('./CssVerticalBarChart').CssVerticalBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalBarChart')
+    CssVerticalBarChart = mod.CssVerticalBarChart
+  })
+
+  it('should use fixed yAxisTicks when provided', () => {
+    render(
+      <CssVerticalBarChart
+        data={sampleData}
+        yAxisTicks={[0, 25, 50, 75, 100]}
+        yAxisFormat={(t) => `${t}%`}
+      />
+    )
+    expect(screen.getByText('0%')).toBeInTheDocument()
+    expect(screen.getByText('50%')).toBeInTheDocument()
+    expect(screen.getByText('100%')).toBeInTheDocument()
+  })
+
+  it('should auto-compute ticks via getNiceTicks when yAxisTicks not provided', () => {
+    // Data max is 100, so getNiceTicks(100) should produce ticks including 0
+    render(<CssVerticalBarChart data={sampleData} />)
+    expect(screen.getByText('0')).toBeInTheDocument()
+  })
+
+  it('should use default yAxisWidth w-8', () => {
+    const { container } = render(<CssVerticalBarChart data={sampleData} />)
+    const yAxis = container.querySelector('.w-8')
+    expect(yAxis).toBeInTheDocument()
+  })
+
+  it('should use custom yAxisWidth when provided', () => {
+    const { container } = render(
+      <CssVerticalBarChart data={sampleData} yAxisWidth="w-10" />
+    )
+    const yAxis = container.querySelector('.w-10')
+    expect(yAxis).toBeInTheDocument()
+  })
+
+  it('should use yAxisMax when provided to scale bars', () => {
+    // With yAxisMax=200, a value of 100 should be at half the drawing height
+    render(
+      <CssVerticalBarChart
+        data={[{ name: 'A', value: 100 }]}
+        yAxisMax={200}
+        yAxisTicks={[0, 100, 200]}
+      />
+    )
+    expect(screen.getByText('200')).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// X-axis labels
+// ---------------------------------------------------------------------------
+describe('CssVerticalBarChart X-axis', () => {
+  let CssVerticalBarChart: typeof import('./CssVerticalBarChart').CssVerticalBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalBarChart')
+    CssVerticalBarChart = mod.CssVerticalBarChart
+  })
+
+  it('should render X-axis labels from data names', () => {
+    render(<CssVerticalBarChart data={sampleData} />)
+    expect(screen.getByText('Alpha')).toBeInTheDocument()
+    expect(screen.getByText('Beta')).toBeInTheDocument()
+    expect(screen.getByText('Gamma')).toBeInTheDocument()
+  })
+
+  it('should rotate labels when rotateLabels is true', () => {
+    const { container } = render(
+      <CssVerticalBarChart data={sampleData} rotateLabels />
+    )
+    // Rotated mode sets height: 60px on the x-axis container
+    const xAxisWrapper = container.querySelector('[style*="height: 60px"]')
+    expect(xAxisWrapper).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Labels above bars
+// ---------------------------------------------------------------------------
+describe('CssVerticalBarChart label format', () => {
+  let CssVerticalBarChart: typeof import('./CssVerticalBarChart').CssVerticalBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalBarChart')
+    CssVerticalBarChart = mod.CssVerticalBarChart
+  })
+
+  it('should show value as default label above each bar', () => {
+    render(<CssVerticalBarChart data={singleItem} />)
+    // Default label: String(value)
+    expect(screen.getByText('50')).toBeInTheDocument()
+  })
+
+  it('should use custom labelFormat when provided', () => {
+    render(
+      <CssVerticalBarChart
+        data={singleItem}
+        labelFormat={(item) => `${item.value}%`}
+      />
+    )
+    expect(screen.getByText('50%')).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Tooltip
+// ---------------------------------------------------------------------------
+describe('CssVerticalBarChart tooltip', () => {
+  let CssVerticalBarChart: typeof import('./CssVerticalBarChart').CssVerticalBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalBarChart')
+    CssVerticalBarChart = mod.CssVerticalBarChart
+  })
+
+  it('should not render tooltip content initially', () => {
+    render(
+      <CssVerticalBarChart
+        data={sampleData}
+        renderTooltip={(item) => <span data-testid="tt">{item.name}</span>}
+      />
+    )
+    expect(screen.queryByTestId('tt')).not.toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Click handling
+// ---------------------------------------------------------------------------
+describe('CssVerticalBarChart click handling', () => {
+  let CssVerticalBarChart: typeof import('./CssVerticalBarChart').CssVerticalBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalBarChart')
+    CssVerticalBarChart = mod.CssVerticalBarChart
+  })
+
+  it('should add cursor-pointer class when onBarClick is provided', () => {
+    const onClick = vi.fn()
+    const { container } = render(
+      <CssVerticalBarChart data={singleItem} onBarClick={onClick} />
+    )
+    const column = container.querySelector('.cursor-pointer')
+    expect(column).toBeInTheDocument()
+  })
+
+  it('should not have cursor-pointer when onBarClick is not provided', () => {
+    const { container } = render(<CssVerticalBarChart data={singleItem} />)
+    const column = container.querySelector('.cursor-pointer')
+    expect(column).toBeNull()
+  })
+
+  it('should call onBarClick with the correct item when a column is clicked', () => {
+    const onClick = vi.fn()
+    const { container } = render(
+      <CssVerticalBarChart data={singleItem} onBarClick={onClick} />
+    )
+    const column = container.querySelector('.cursor-pointer') as HTMLElement
+    fireEvent.click(column)
+    expect(onClick).toHaveBeenCalledWith(singleItem[0])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Extra fields pass-through
+// ---------------------------------------------------------------------------
+describe('CssVerticalBarChart extra fields', () => {
+  it('should allow extra fields on CssVerticalBarItem for tooltip access', () => {
+    const dataWithExtras: CssVerticalBarItem[] = [
+      { name: 'Test', value: 80, retentionRate: 0.8, baseCount: 100 },
+    ]
+    // Compile-time check: extra fields are allowed via index signature
+    expect(dataWithExtras[0].retentionRate).toBe(0.8)
+    expect(dataWithExtras[0].baseCount).toBe(100)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// CssVerticalRetentionBarChart as thin wrapper
+// ---------------------------------------------------------------------------
+describe('CssVerticalRetentionBarChart wrapper', () => {
+  it('should still export CssVerticalRetentionBarChart', async () => {
+    const mod = await import('./CssVerticalRetentionBarChart')
+    expect(typeof mod.CssVerticalRetentionBarChart).toBe('function')
+  })
+
+  it('should render title for retention chart', async () => {
+    const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
+    const retentionData = [
+      { name: 'City A', retentionRate: 0.75, baseCount: 100, returnedCount: 75 },
+      { name: 'City B', retentionRate: 0.45, baseCount: 80, returnedCount: 36 },
+    ]
+    render(
+      <CssVerticalRetentionBarChart data={retentionData} title="Retention Test" />
+    )
+    expect(screen.getByText('Retention Test')).toBeInTheDocument()
+  })
+
+  it('should render empty state for retention chart', async () => {
+    const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
+    render(<CssVerticalRetentionBarChart data={[]} title="Empty Retention" />)
+    expect(screen.getByText('No data available')).toBeInTheDocument()
+  })
+
+  it('should apply green color for high retention rates', async () => {
+    const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
+    const data = [
+      { name: 'High', retentionRate: 0.8, baseCount: 100, returnedCount: 80 },
+    ]
+    const { container } = render(
+      <CssVerticalRetentionBarChart data={data} title="Colors" />
+    )
+    const bar = container.querySelector('.rounded-t') as HTMLElement
+    // Green for >= 0.6
+    expect(bar.style.backgroundColor).toBe('hsl(160, 100%, 35%)')
+  })
+
+  it('should apply amber color for medium retention rates', async () => {
+    const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
+    const data = [
+      { name: 'Medium', retentionRate: 0.5, baseCount: 100, returnedCount: 50 },
+    ]
+    const { container } = render(
+      <CssVerticalRetentionBarChart data={data} title="Colors" />
+    )
+    const bar = container.querySelector('.rounded-t') as HTMLElement
+    expect(bar.style.backgroundColor).toBe('hsl(42, 92%, 50%)')
+  })
+
+  it('should apply red color for low retention rates', async () => {
+    const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
+    const data = [
+      { name: 'Low', retentionRate: 0.3, baseCount: 100, returnedCount: 30 },
+    ]
+    const { container } = render(
+      <CssVerticalRetentionBarChart data={data} title="Colors" />
+    )
+    const bar = container.querySelector('.rounded-t') as HTMLElement
+    expect(bar.style.backgroundColor).toBe('hsl(350, 70%, 50%)')
+  })
+
+  it('should show percentage Y-axis labels', async () => {
+    const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
+    const data = [
+      { name: 'A', retentionRate: 0.5, baseCount: 100, returnedCount: 50 },
+    ]
+    render(<CssVerticalRetentionBarChart data={data} title="Y-Axis" />)
+    expect(screen.getByText('0%')).toBeInTheDocument()
+    expect(screen.getByText('50%')).toBeInTheDocument()
+    expect(screen.getByText('100%')).toBeInTheDocument()
+  })
+
+  it('should show rate label without counts by default', async () => {
+    const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
+    const data = [
+      { name: 'Test', retentionRate: 0.75, baseCount: 100, returnedCount: 75 },
+    ]
+    render(<CssVerticalRetentionBarChart data={data} title="Labels" />)
+    expect(screen.getByText('75%')).toBeInTheDocument()
+  })
+
+  it('should show rate label with counts when showCounts is true', async () => {
+    const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
+    const data = [
+      { name: 'Test', retentionRate: 0.75, baseCount: 100, returnedCount: 75 },
+    ]
+    render(
+      <CssVerticalRetentionBarChart data={data} title="Labels" showCounts />
+    )
+    expect(screen.getByText('75% (75/100)')).toBeInTheDocument()
+  })
+
+  it('should call onBarClick with the original RetentionRateBarItem', async () => {
+    const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
+    const onClick = vi.fn()
+    const data = [
+      { name: 'Click Me', retentionRate: 0.6, baseCount: 50, returnedCount: 30 },
+    ]
+    const { container } = render(
+      <CssVerticalRetentionBarChart data={data} title="Click" onBarClick={onClick} />
+    )
+    const column = container.querySelector('.cursor-pointer') as HTMLElement
+    fireEvent.click(column)
+    expect(onClick).toHaveBeenCalledTimes(1)
+    // The callback should receive the original RetentionRateBarItem
+    const arg = onClick.mock.calls[0][0]
+    expect(arg.name).toBe('Click Me')
+    expect(arg.retentionRate).toBe(0.6)
+    expect(arg.baseCount).toBe(50)
+    expect(arg.returnedCount).toBe(30)
+  })
+
+  it('should use w-10 yAxisWidth for percentage labels', async () => {
+    const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
+    const data = [
+      { name: 'A', retentionRate: 0.5, baseCount: 100, returnedCount: 50 },
+    ]
+    const { container } = render(
+      <CssVerticalRetentionBarChart data={data} title="Width" />
+    )
+    expect(container.querySelector('.w-10')).toBeInTheDocument()
+  })
+
+  it('should apply custom className', async () => {
+    const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
+    const data = [
+      { name: 'A', retentionRate: 0.5, baseCount: 100, returnedCount: 50 },
+    ]
+    const { container } = render(
+      <CssVerticalRetentionBarChart data={data} title="Class" className="extra-class" />
+    )
+    expect(container.querySelector('.extra-class')).toBeInTheDocument()
+  })
+})
