@@ -4,7 +4,7 @@
  * Tests written FIRST before implementation (TDD).
  * Generic single-bar-per-column CSS chart.
  */
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeAll } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 
 import type { CssVerticalBarItem } from './CssVerticalBarChart'
@@ -126,7 +126,8 @@ describe('CssVerticalBarChart bar rendering', () => {
   it('should apply default blue color when no colorFn provided', () => {
     const { container } = render(<CssVerticalBarChart data={singleItem} />)
     const bar = container.querySelector('.rounded-t') as HTMLElement
-    expect(bar.style.backgroundColor).toBe('hsl(200, 70%, 50%)')
+    // jsdom converts hsl(200, 70%, 50%) to rgb(38, 157, 217)
+    expect(bar.style.backgroundColor).toBe('rgb(38, 157, 217)')
   })
 
   it('should apply custom color from colorFn', () => {
@@ -253,9 +254,11 @@ describe('CssVerticalBarChart label format', () => {
   })
 
   it('should show value as default label above each bar', () => {
-    render(<CssVerticalBarChart data={singleItem} />)
+    // Use a value unlikely to appear in auto-computed Y-axis ticks
+    const data: CssVerticalBarItem[] = [{ name: 'Item', value: 37 }]
+    render(<CssVerticalBarChart data={data} />)
     // Default label: String(value)
-    expect(screen.getByText('50')).toBeInTheDocument()
+    expect(screen.getByText('37')).toBeInTheDocument()
   })
 
   it('should use custom labelFormat when provided', () => {
@@ -378,8 +381,8 @@ describe('CssVerticalRetentionBarChart wrapper', () => {
       <CssVerticalRetentionBarChart data={data} title="Colors" />
     )
     const bar = container.querySelector('.rounded-t') as HTMLElement
-    // Green for >= 0.6
-    expect(bar.style.backgroundColor).toBe('hsl(160, 100%, 35%)')
+    // Green hsl(160, 100%, 35%) -> rgb(0, 179, 119) in jsdom
+    expect(bar.style.backgroundColor).toBe('rgb(0, 179, 119)')
   })
 
   it('should apply amber color for medium retention rates', async () => {
@@ -391,7 +394,8 @@ describe('CssVerticalRetentionBarChart wrapper', () => {
       <CssVerticalRetentionBarChart data={data} title="Colors" />
     )
     const bar = container.querySelector('.rounded-t') as HTMLElement
-    expect(bar.style.backgroundColor).toBe('hsl(42, 92%, 50%)')
+    // Amber hsl(42, 92%, 50%) -> rgb(245, 174, 10) in jsdom
+    expect(bar.style.backgroundColor).toBe('rgb(245, 174, 10)')
   })
 
   it('should apply red color for low retention rates', async () => {
@@ -403,27 +407,30 @@ describe('CssVerticalRetentionBarChart wrapper', () => {
       <CssVerticalRetentionBarChart data={data} title="Colors" />
     )
     const bar = container.querySelector('.rounded-t') as HTMLElement
-    expect(bar.style.backgroundColor).toBe('hsl(350, 70%, 50%)')
+    // Red hsl(350, 70%, 50%) -> rgb(217, 38, 68) in jsdom
+    expect(bar.style.backgroundColor).toBe('rgb(217, 38, 68)')
   })
 
   it('should show percentage Y-axis labels', async () => {
     const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
+    // Use a rate that won't produce a label matching a Y-axis tick (e.g. 65%)
     const data = [
-      { name: 'A', retentionRate: 0.5, baseCount: 100, returnedCount: 50 },
+      { name: 'A', retentionRate: 0.65, baseCount: 100, returnedCount: 65 },
     ]
     render(<CssVerticalRetentionBarChart data={data} title="Y-Axis" />)
     expect(screen.getByText('0%')).toBeInTheDocument()
-    expect(screen.getByText('50%')).toBeInTheDocument()
+    expect(screen.getByText('25%')).toBeInTheDocument()
     expect(screen.getByText('100%')).toBeInTheDocument()
   })
 
   it('should show rate label without counts by default', async () => {
     const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
+    // Use a rate that doesn't collide with Y-axis ticks (0/25/50/75/100)
     const data = [
-      { name: 'Test', retentionRate: 0.75, baseCount: 100, returnedCount: 75 },
+      { name: 'Test', retentionRate: 0.83, baseCount: 100, returnedCount: 83 },
     ]
     render(<CssVerticalRetentionBarChart data={data} title="Labels" />)
-    expect(screen.getByText('75%')).toBeInTheDocument()
+    expect(screen.getByText('83%')).toBeInTheDocument()
   })
 
   it('should show rate label with counts when showCounts is true', async () => {

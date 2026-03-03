@@ -230,7 +230,7 @@ interface VerticalYAxisProps {
   /** Tailwind width class, e.g. 'w-8' or 'w-10'. Default: 'w-8'. */
   width?: string
   /** Custom tick formatter. Default: String(tick). */
-  formatTick?: (tick: number) => string
+  formatTick?: ((tick: number) => string) | undefined
 }
 
 /**
