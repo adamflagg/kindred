@@ -469,6 +469,31 @@ describe('CssVerticalStackedBarChart column sizing', () => {
     CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
   })
 
+  it('should pass column sizing to x-axis in sparse mode for alignment', () => {
+    const sparseData = [
+      { name: 'A', total: 10, male_count: 6, female_count: 4 },
+      { name: 'B', total: 15, male_count: 8, female_count: 7 },
+      { name: 'C', total: 12, male_count: 5, female_count: 7 },
+    ]
+    const { container } = render(
+      <CssVerticalStackedBarChart data={sparseData} segments={segments} />
+    )
+    // X-axis should use justify-center to match sparse bar layout
+    const xAxisWrapper = container.querySelector('.border-t.justify-center')
+    expect(xAxisWrapper).toBeInTheDocument()
+    // X-axis labels should have maxWidth matching columns
+    const xAxisLabels = xAxisWrapper?.querySelectorAll('[style*="max-width: 80px"]')
+    expect(xAxisLabels?.length).toBe(3)
+  })
+
+  it('should use border-foreground/40 for y-axis line', () => {
+    const { container } = render(
+      <CssVerticalStackedBarChart data={sampleData} segments={segments} />
+    )
+    const yAxis = container.querySelector('.border-foreground\\/40.border-l')
+    expect(yAxis).toBeInTheDocument()
+  })
+
   it('should apply maxWidth to columns in sparse mode (<=4 items)', () => {
     const sparseData = [
       { name: 'A', total: 10, male_count: 6, female_count: 4 },

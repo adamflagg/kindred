@@ -297,6 +297,8 @@ interface VerticalXAxisProps {
   marginLeft?: string
   /** Custom height for the axis container. Default: '60px' when rotated. */
   height?: string
+  /** Column sizing to match bar layout (sparse mode alignment). */
+  columnSizing?: ColumnSizing
 }
 
 /**

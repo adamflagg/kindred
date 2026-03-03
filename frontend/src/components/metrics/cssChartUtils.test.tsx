@@ -380,6 +380,48 @@ describe('VerticalXAxis', () => {
     // Straight labels should not have a height style attribute set
     expect(wrapper.style.height).toBe('')
   })
+
+  it('should apply sparse column sizing when provided', () => {
+    const sparseSizing: ColumnSizing = { mode: 'sparse', maxWidth: 80, gap: 16, columnPadding: 4 }
+    const { container } = render(<VerticalXAxis labels={['A', 'B', 'C']} columnSizing={sparseSizing} />)
+    const wrapper = container.firstChild as HTMLElement
+    expect(wrapper.className).toContain('justify-center')
+    expect(wrapper.style.gap).toBe('16px')
+  })
+
+  it('should apply maxWidth to each label in sparse mode', () => {
+    const sparseSizing: ColumnSizing = { mode: 'sparse', maxWidth: 80, gap: 16, columnPadding: 4 }
+    const { container } = render(<VerticalXAxis labels={['A', 'B']} columnSizing={sparseSizing} />)
+    const labelDivs = container.querySelectorAll('[style*="max-width"]')
+    expect(labelDivs.length).toBe(2)
+    for (const div of labelDivs) {
+      expect((div as HTMLElement).style.maxWidth).toBe('80px')
+    }
+  })
+
+  it('should not apply sparse layout in normal mode', () => {
+    const normalSizing: ColumnSizing = { mode: 'normal', maxWidth: null, gap: 4, columnPadding: 4 }
+    const { container } = render(<VerticalXAxis labels={['A', 'B', 'C', 'D', 'E']} columnSizing={normalSizing} />)
+    const wrapper = container.firstChild as HTMLElement
+    expect(wrapper.className).not.toContain('justify-center')
+    // Labels should still be flex-1
+    const flexLabels = container.querySelectorAll('.flex-1')
+    expect(flexLabels.length).toBe(5)
+  })
+
+  it('should apply sparse layout to rotated labels too', () => {
+    const sparseSizing: ColumnSizing = { mode: 'sparse', maxWidth: 80, gap: 16, columnPadding: 4 }
+    const { container } = render(<VerticalXAxis labels={['A', 'B']} rotated columnSizing={sparseSizing} />)
+    const wrapper = container.firstChild as HTMLElement
+    expect(wrapper.className).toContain('justify-center')
+    expect(wrapper.style.gap).toBe('16px')
+  })
+
+  it('should use border-foreground/40 for axis line', () => {
+    const { container } = render(<VerticalXAxis labels={['A']} />)
+    const wrapper = container.firstChild as HTMLElement
+    expect(wrapper.className).toContain('border-foreground/40')
+  })
 })
 
 // ---------------------------------------------------------------------------
