@@ -318,7 +318,7 @@ export function VerticalXAxis({ labels, rotated = false, marginLeft, height, col
         className: `border-foreground/40 flex border-t ${isSparse ? 'justify-center' : ''}`,
         style: {
           ...(marginLeft ? { marginLeft } : {}),
-          height: height ?? '60px',
+          height: height ?? '80px',
           ...(columnSizing ? { gap: `${columnSizing.gap}px` } : {}),
         },
       },
@@ -330,12 +330,20 @@ export function VerticalXAxis({ labels, rotated = false, marginLeft, height, col
             className: `relative ${isSparse ? '' : 'flex-1'}`,
             style: sparseStyle,
           },
+          // Tick mark: 6px vertical line from x-axis, centered on column
+          React.createElement('div', {
+            className: 'border-foreground/40 absolute left-1/2 top-0 border-l',
+            style: { height: '6px' },
+          }),
+          // Label: text-end anchored near the tick (matches Recharts textAnchor="end")
           React.createElement(
             'span',
             {
-              className: 'text-muted-foreground absolute left-1/2 top-1 origin-top-left text-xs',
+              className: 'text-muted-foreground absolute top-[6px] text-xs',
               style: {
-                transform: 'rotate(-40deg) translateX(-50%)',
+                right: '50%',
+                transform: 'rotate(-40deg)',
+                transformOrigin: 'top right',
                 whiteSpace: 'nowrap',
                 maxWidth: '100px',
                 overflow: 'hidden',

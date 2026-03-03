@@ -58,7 +58,7 @@ export function CssVerticalStackedBarChart({
   onBarClick,
   className = '',
 }: CssVerticalStackedBarChartProps) {
-  const xAxisHeight = rotateLabels ? 60 : 34
+  const xAxisHeight = rotateLabels ? 80 : 34
   const { barsHeight, drawingHeight } = calculateVerticalLayout(height, { xAxisHeight })
   const columnSizing = calculateColumnSizing(data.length)
 
@@ -257,7 +257,7 @@ export function CssVerticalStackedBarChart({
         items={segments
           .filter((s) => data.some((item) => ((item[s.key] as number) ?? 0) > 0))
           .map((s) => ({ label: s.label, color: s.color }))}
-        className="mt-1"
+        className={rotateLabels ? 'mt-3' : 'mt-1'}
       />
     </div>
   )
