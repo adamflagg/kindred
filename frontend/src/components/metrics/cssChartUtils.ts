@@ -305,21 +305,31 @@ interface VerticalXAxisProps {
  * X-axis labels for a vertical CSS bar chart.
  * Supports straight (centered) and rotated (-40deg) modes.
  */
-export function VerticalXAxis({ labels, rotated = false, marginLeft, height }: VerticalXAxisProps) {
+export function VerticalXAxis({ labels, rotated = false, marginLeft, height, columnSizing }: VerticalXAxisProps) {
+  const isSparse = columnSizing?.mode === 'sparse'
+  const sparseStyle = isSparse
+    ? { maxWidth: `${columnSizing.maxWidth}px`, width: '100%' }
+    : undefined
+
   if (rotated) {
     return React.createElement(
       'div',
       {
-        className: 'border-foreground/30 flex border-t',
+        className: `border-foreground/40 flex border-t ${isSparse ? 'justify-center' : ''}`,
         style: {
           ...(marginLeft ? { marginLeft } : {}),
           height: height ?? '60px',
+          ...(columnSizing ? { gap: `${columnSizing.gap}px` } : {}),
         },
       },
       labels.map((label, i) =>
         React.createElement(
           'div',
-          { key: i, className: 'relative flex-1' },
+          {
+            key: i,
+            className: `relative ${isSparse ? '' : 'flex-1'}`,
+            style: sparseStyle,
+          },
           React.createElement(
             'span',
             {
@@ -343,13 +353,20 @@ export function VerticalXAxis({ labels, rotated = false, marginLeft, height }: V
   return React.createElement(
     'div',
     {
-      className: 'border-foreground/30 flex border-t pt-1',
-      style: marginLeft ? { marginLeft } : undefined,
+      className: `border-foreground/40 flex border-t pt-1 ${isSparse ? 'justify-center' : ''}`,
+      style: {
+        ...(marginLeft ? { marginLeft } : {}),
+        ...(columnSizing ? { gap: `${columnSizing.gap}px` } : {}),
+      },
     },
     labels.map((label, i) =>
       React.createElement(
         'div',
-        { key: i, className: 'flex-1 text-center' },
+        {
+          key: i,
+          className: `text-center ${isSparse ? '' : 'flex-1'}`,
+          style: sparseStyle,
+        },
         React.createElement('span', { className: 'text-muted-foreground text-sm' }, label)
       )
     )

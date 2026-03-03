@@ -349,7 +349,9 @@ describe('CssVerticalBarChart column sizing', () => {
       { name: 'C', value: 15 },
     ]
     const { container } = render(<CssVerticalBarChart data={sparseData} />)
-    const columns = container.querySelectorAll('[style*="max-width: 80px"]')
+    // Scope to bars area (border-l) to exclude x-axis labels
+    const barsArea = container.querySelector('.border-l') as HTMLElement
+    const columns = barsArea.querySelectorAll(':scope > [style*="max-width: 80px"]')
     expect(columns.length).toBe(sparseData.length)
   })
 

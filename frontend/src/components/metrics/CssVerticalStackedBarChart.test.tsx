@@ -503,8 +503,9 @@ describe('CssVerticalStackedBarChart column sizing', () => {
     const { container } = render(
       <CssVerticalStackedBarChart data={sparseData} segments={segments} />
     )
-    // Sparse mode columns should have maxWidth style
-    const columns = container.querySelectorAll('[style*="max-width: 80px"]')
+    // Sparse mode columns (in bars area, which has border-l) should have maxWidth style
+    const barsArea = container.querySelector('.border-l') as HTMLElement
+    const columns = barsArea.querySelectorAll(':scope > [style*="max-width: 80px"]')
     expect(columns.length).toBe(sparseData.length)
   })
 

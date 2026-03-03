@@ -134,7 +134,7 @@ export function CssVerticalStackedBarChart({
           {/* Bars area */}
           <div
             ref={chartRef}
-            className={`border-foreground/30 relative flex flex-1 items-end border-l ${columnSizing.mode === 'sparse' ? 'justify-center' : ''}`}
+            className={`border-foreground/40 relative flex flex-1 items-end border-l ${columnSizing.mode === 'sparse' ? 'justify-center' : ''}`}
             style={{ height: barsHeight, gap: `${columnSizing.gap}px` }}
           >
             {data.map((item, index) => {
@@ -208,6 +208,7 @@ export function CssVerticalStackedBarChart({
           labels={data.map((d) => d.name)}
           rotated={rotateLabels}
           marginLeft={yAxisMarginLeft}
+          columnSizing={columnSizing}
         />
 
         {/* Tooltip */}
