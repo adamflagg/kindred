@@ -350,6 +350,37 @@ describe('CssVerticalStackedBarChart legend', () => {
     expect(screen.getByText('Female')).toBeInTheDocument()
     expect(screen.getByText('Male')).toBeInTheDocument()
   })
+
+  it('should not show legend entry for segments with zero values across all data items', () => {
+    const threeSegments: VerticalStackedSegment[] = [
+      { key: 'a', label: 'Active', color: 'green' },
+      { key: 'b', label: 'Inactive', color: 'red' },
+      { key: 'c', label: 'Empty', color: 'gray' },
+    ]
+    const data = [
+      { name: 'Cat 1', total: 10, a: 7, b: 3, c: 0 },
+      { name: 'Cat 2', total: 8, a: 5, b: 3, c: 0 },
+    ]
+    render(<CssVerticalStackedBarChart data={data} segments={threeSegments} />)
+    expect(screen.getByText('Active')).toBeInTheDocument()
+    expect(screen.getByText('Inactive')).toBeInTheDocument()
+    // 'Empty' has 0 across all items — should NOT appear in legend
+    expect(screen.queryByText('Empty')).not.toBeInTheDocument()
+  })
+
+  it('should show segment in legend if it has a non-zero value in any data item', () => {
+    const threeSegments: VerticalStackedSegment[] = [
+      { key: 'a', label: 'Active', color: 'green' },
+      { key: 'b', label: 'Sparse', color: 'blue' },
+    ]
+    const data = [
+      { name: 'Cat 1', total: 10, a: 10, b: 0 },
+      { name: 'Cat 2', total: 5, a: 2, b: 3 }, // b is non-zero here
+    ]
+    render(<CssVerticalStackedBarChart data={data} segments={threeSegments} />)
+    expect(screen.getByText('Active')).toBeInTheDocument()
+    expect(screen.getByText('Sparse')).toBeInTheDocument() // has data in Cat 2
+  })
 })
 
 // ---------------------------------------------------------------------------
