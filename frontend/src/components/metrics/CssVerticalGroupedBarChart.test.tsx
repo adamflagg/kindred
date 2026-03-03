@@ -384,6 +384,68 @@ describe('CssVerticalGroupedBarChart click handling', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Column sizing integration
+// ---------------------------------------------------------------------------
+describe('CssVerticalGroupedBarChart column sizing', () => {
+  let CssVerticalGroupedBarChart: typeof import('./CssVerticalGroupedBarChart').CssVerticalGroupedBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalGroupedBarChart')
+    CssVerticalGroupedBarChart = mod.CssVerticalGroupedBarChart
+  })
+
+  it('should apply maxWidth to columns in sparse mode (<=4 items)', () => {
+    const sparseData = [
+      { name: 'A', male: 10, female: 8 },
+      { name: 'B', male: 15, female: 12 },
+      { name: 'C', male: 12, female: 10 },
+    ]
+    const { container } = render(
+      <CssVerticalGroupedBarChart data={sparseData} series={series} />
+    )
+    const columns = container.querySelectorAll('[style*="max-width: 80px"]')
+    expect(columns.length).toBe(sparseData.length)
+  })
+
+  it('should apply gap to bars container in sparse mode', () => {
+    const sparseData = [
+      { name: 'A', male: 10, female: 8 },
+      { name: 'B', male: 15, female: 12 },
+    ]
+    const { container } = render(
+      <CssVerticalGroupedBarChart data={sparseData} series={series} />
+    )
+    const barsArea = container.querySelector('[style*="gap: 16px"]')
+    expect(barsArea).toBeInTheDocument()
+  })
+
+  it('should not apply maxWidth in normal mode (5-9 items)', () => {
+    const normalData = Array.from({ length: 6 }, (_, i) => ({
+      name: `Item ${i}`,
+      male: 10 + i,
+      female: 8 + i,
+    }))
+    const { container } = render(
+      <CssVerticalGroupedBarChart data={normalData} series={series} />
+    )
+    const columnsWithMaxWidth = container.querySelectorAll('[style*="max-width: 80px"]')
+    expect(columnsWithMaxWidth.length).toBe(0)
+  })
+
+  it('should not render ColumnHoverOverlay in sparse mode', () => {
+    const sparseData = [
+      { name: 'A', male: 10, female: 8 },
+      { name: 'B', male: 15, female: 12 },
+    ]
+    const { container } = render(
+      <CssVerticalGroupedBarChart data={sparseData} series={series} />
+    )
+    const overlay = container.querySelector('.bg-foreground\\/\\[0\\.06\\]')
+    expect(overlay).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Height prop
 // ---------------------------------------------------------------------------
 describe('CssVerticalGroupedBarChart height', () => {

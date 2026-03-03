@@ -51,6 +51,27 @@ export interface BarSizing {
   axisArea: number
 }
 
+export interface ColumnSizing {
+  mode: 'sparse' | 'normal' | 'dense'
+  maxWidth: number | null // null = unconstrained (flex-1)
+  gap: number // px gap between columns
+  columnPadding: number // px padding inside each column
+}
+
+/**
+ * Calculate column sizing for vertical CSS bar charts.
+ * Adapts gap, maxWidth, and padding based on column count.
+ */
+export function calculateColumnSizing(columnCount: number): ColumnSizing {
+  if (columnCount <= 4) {
+    return { mode: 'sparse', maxWidth: 80, gap: 16, columnPadding: 4 }
+  }
+  if (columnCount <= 9) {
+    return { mode: 'normal', maxWidth: null, gap: 4, columnPadding: 4 }
+  }
+  return { mode: 'dense', maxWidth: null, gap: 2, columnPadding: 1 }
+}
+
 /**
  * Calculate bar sizing for horizontal CSS bar charts.
  * Shared across CssHorizontalBarChart and CssStackedHorizontalBarChart.

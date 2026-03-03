@@ -332,6 +332,59 @@ describe('CssVerticalBarChart click handling', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Column sizing integration
+// ---------------------------------------------------------------------------
+describe('CssVerticalBarChart column sizing', () => {
+  let CssVerticalBarChart: typeof import('./CssVerticalBarChart').CssVerticalBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalBarChart')
+    CssVerticalBarChart = mod.CssVerticalBarChart
+  })
+
+  it('should apply maxWidth to columns in sparse mode (<=4 items)', () => {
+    const sparseData: CssVerticalBarItem[] = [
+      { name: 'A', value: 10 },
+      { name: 'B', value: 20 },
+      { name: 'C', value: 15 },
+    ]
+    const { container } = render(<CssVerticalBarChart data={sparseData} />)
+    const columns = container.querySelectorAll('[style*="max-width: 80px"]')
+    expect(columns.length).toBe(sparseData.length)
+  })
+
+  it('should apply gap to bars container in sparse mode', () => {
+    const sparseData: CssVerticalBarItem[] = [
+      { name: 'A', value: 10 },
+      { name: 'B', value: 20 },
+    ]
+    const { container } = render(<CssVerticalBarChart data={sparseData} />)
+    const barsArea = container.querySelector('[style*="gap: 16px"]')
+    expect(barsArea).toBeInTheDocument()
+  })
+
+  it('should not apply maxWidth in normal mode (5-9 items)', () => {
+    const normalData: CssVerticalBarItem[] = Array.from({ length: 6 }, (_, i) => ({
+      name: `Item ${i}`,
+      value: 10 + i,
+    }))
+    const { container } = render(<CssVerticalBarChart data={normalData} />)
+    const columnsWithMaxWidth = container.querySelectorAll('[style*="max-width: 80px"]')
+    expect(columnsWithMaxWidth.length).toBe(0)
+  })
+
+  it('should not render ColumnHoverOverlay in sparse mode', () => {
+    const sparseData: CssVerticalBarItem[] = [
+      { name: 'A', value: 10 },
+      { name: 'B', value: 20 },
+    ]
+    const { container } = render(<CssVerticalBarChart data={sparseData} />)
+    const overlay = container.querySelector('.bg-foreground\\/\\[0\\.06\\]')
+    expect(overlay).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Extra fields pass-through
 // ---------------------------------------------------------------------------
 describe('CssVerticalBarChart extra fields', () => {

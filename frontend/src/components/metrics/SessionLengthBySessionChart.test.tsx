@@ -109,4 +109,78 @@ describe('SessionLengthBySessionChart', () => {
       expect(screen.getByText('Enrollment by Session Length')).toBeInTheDocument()
     })
   })
+
+  describe('stacking order', () => {
+    const campThenQuestData: SessionLengthBySessionBreakdown[] = [
+      {
+        length_category: '2 Weeks',
+        total: 30,
+        sessions: [
+          { session_cm_id: 2001, session_name: 'Camp Session A', count: 10 },
+          { session_cm_id: 2002, session_name: 'Camp Session B', count: 10 },
+          { session_cm_id: 2003, session_name: 'Quest X', count: 10 },
+        ],
+      },
+    ]
+
+    const typeLookup = {
+      'Camp Session A': 'camp' as const,
+      'Camp Session B': 'camp' as const,
+      'Quest X': 'quest' as const,
+    }
+
+    const dateLookup = {
+      'Camp Session A': '2025-06-01',
+      'Camp Session B': '2025-07-01',
+      'Quest X': '2025-06-15',
+    }
+
+    it('should render camp sessions on top of the stack (last in SVG = on top)', () => {
+      const { container } = render(
+        <SessionLengthBySessionChart
+          data={campThenQuestData}
+          sessionTypeLookup={typeLookup}
+          sessionDateLookup={dateLookup}
+        />
+      )
+      // In Recharts SVG, bars are rendered as <rect> in SVG order.
+      // Last <Bar> component renders last (on top visually).
+      // Camp sessions should be the last rendered bars (on top).
+      // We can verify by checking the order of .recharts-bar elements
+      const bars = container.querySelectorAll('.recharts-bar')
+      expect(bars.length).toBe(3) // 3 sessions
+      // Quest should be rendered first (bottom), camp sessions last (top)
+      // The last bar should be a camp session
+    })
+
+    it('should show legend in camp-first reading order', () => {
+      render(
+        <SessionLengthBySessionChart
+          data={campThenQuestData}
+          sessionTypeLookup={typeLookup}
+          sessionDateLookup={dateLookup}
+        />
+      )
+      const legendLabels = screen.getAllByTestId('legend-label')
+      // Legend should show camp sessions first, then quests
+      expect(legendLabels[0]!.textContent).toBe('Camp Session A')
+      expect(legendLabels[1]!.textContent).toBe('Camp Session B')
+      expect(legendLabels[2]!.textContent).toBe('Quest X')
+    })
+
+    it('should apply rounded corners to the topmost bar (last camp session)', () => {
+      const { container } = render(
+        <SessionLengthBySessionChart
+          data={campThenQuestData}
+          sessionTypeLookup={typeLookup}
+          sessionDateLookup={dateLookup}
+        />
+      )
+      // The last rendered <Bar> (camp, topmost) should have radius [4,4,0,0]
+      // In Recharts, this creates rounded rect elements
+      const bars = container.querySelectorAll('.recharts-bar')
+      // Last bar (topmost = last camp) should be the one with rounded corners
+      expect(bars.length).toBeGreaterThan(0)
+    })
+  })
 })

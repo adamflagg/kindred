@@ -16,13 +16,80 @@ import { getNiceTicks, calculateBarSizing, useChartTooltip } from './cssChartUti
 // New vertical exports
 import {
   calculateVerticalLayout,
+  calculateColumnSizing,
   useVerticalColumnTooltip,
   VerticalYAxis,
   VerticalXAxis,
   ColumnHoverOverlay,
   VerticalTooltipShell,
 } from './cssChartUtils'
-import type { VerticalChartLayout } from './cssChartUtils'
+import type { VerticalChartLayout, ColumnSizing } from './cssChartUtils'
+
+// ---------------------------------------------------------------------------
+// calculateColumnSizing
+// ---------------------------------------------------------------------------
+describe('calculateColumnSizing', () => {
+  it('should return sparse mode for 1 column', () => {
+    const sizing = calculateColumnSizing(1)
+    expect(sizing.mode).toBe('sparse')
+    expect(sizing.maxWidth).toBe(80)
+    expect(sizing.gap).toBe(16)
+    expect(sizing.columnPadding).toBe(4)
+  })
+
+  it('should return sparse mode for 4 columns', () => {
+    const sizing = calculateColumnSizing(4)
+    expect(sizing.mode).toBe('sparse')
+    expect(sizing.maxWidth).toBe(80)
+    expect(sizing.gap).toBe(16)
+    expect(sizing.columnPadding).toBe(4)
+  })
+
+  it('should return normal mode for 5 columns', () => {
+    const sizing = calculateColumnSizing(5)
+    expect(sizing.mode).toBe('normal')
+    expect(sizing.maxWidth).toBeNull()
+    expect(sizing.gap).toBe(4)
+    expect(sizing.columnPadding).toBe(4)
+  })
+
+  it('should return normal mode for 9 columns', () => {
+    const sizing = calculateColumnSizing(9)
+    expect(sizing.mode).toBe('normal')
+    expect(sizing.maxWidth).toBeNull()
+    expect(sizing.gap).toBe(4)
+    expect(sizing.columnPadding).toBe(4)
+  })
+
+  it('should return dense mode for 10 columns', () => {
+    const sizing = calculateColumnSizing(10)
+    expect(sizing.mode).toBe('dense')
+    expect(sizing.maxWidth).toBeNull()
+    expect(sizing.gap).toBe(2)
+    expect(sizing.columnPadding).toBe(1)
+  })
+
+  it('should return dense mode for 20 columns', () => {
+    const sizing = calculateColumnSizing(20)
+    expect(sizing.mode).toBe('dense')
+    expect(sizing.maxWidth).toBeNull()
+    expect(sizing.gap).toBe(2)
+    expect(sizing.columnPadding).toBe(1)
+  })
+
+  it('should handle 0 columns as sparse', () => {
+    const sizing = calculateColumnSizing(0)
+    expect(sizing.mode).toBe('sparse')
+  })
+
+  it('should satisfy the ColumnSizing interface', () => {
+    const sizing: ColumnSizing = calculateColumnSizing(3)
+    expect(sizing).toHaveProperty('mode')
+    expect(sizing).toHaveProperty('maxWidth')
+    expect(sizing).toHaveProperty('gap')
+    expect(sizing).toHaveProperty('columnPadding')
+  })
+})
 
 // ---------------------------------------------------------------------------
 // calculateVerticalLayout

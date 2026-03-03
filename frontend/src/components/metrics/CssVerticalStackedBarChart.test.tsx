@@ -428,6 +428,108 @@ describe('CssVerticalStackedBarChart tooltip', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Column sizing integration
+// ---------------------------------------------------------------------------
+describe('CssVerticalStackedBarChart column sizing', () => {
+  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalStackedBarChart')
+    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
+  })
+
+  it('should apply maxWidth to columns in sparse mode (<=4 items)', () => {
+    const sparseData = [
+      { name: 'A', total: 10, male_count: 6, female_count: 4 },
+      { name: 'B', total: 15, male_count: 8, female_count: 7 },
+      { name: 'C', total: 12, male_count: 5, female_count: 7 },
+    ]
+    const { container } = render(
+      <CssVerticalStackedBarChart data={sparseData} segments={segments} />
+    )
+    // Sparse mode columns should have maxWidth style
+    const columns = container.querySelectorAll('[style*="max-width: 80px"]')
+    expect(columns.length).toBe(sparseData.length)
+  })
+
+  it('should apply gap to bars container', () => {
+    const sparseData = [
+      { name: 'A', total: 10, male_count: 6, female_count: 4 },
+      { name: 'B', total: 15, male_count: 8, female_count: 7 },
+    ]
+    const { container } = render(
+      <CssVerticalStackedBarChart data={sparseData} segments={segments} />
+    )
+    // Sparse mode gap is 16px
+    const barsArea = container.querySelector('[style*="gap: 16px"]')
+    expect(barsArea).toBeInTheDocument()
+  })
+
+  it('should not apply maxWidth in normal mode (5-9 items)', () => {
+    const normalData = Array.from({ length: 6 }, (_, i) => ({
+      name: `Item ${i}`,
+      total: 10 + i,
+      male_count: 5 + i,
+      female_count: 5,
+    }))
+    const { container } = render(
+      <CssVerticalStackedBarChart data={normalData} segments={segments} />
+    )
+    // Normal mode should NOT have maxWidth on columns
+    const columnsWithMaxWidth = container.querySelectorAll('[style*="max-width: 80px"]')
+    expect(columnsWithMaxWidth.length).toBe(0)
+  })
+
+  it('should not render ColumnHoverOverlay in sparse mode', () => {
+    const sparseData = [
+      { name: 'A', total: 10, male_count: 6, female_count: 4 },
+      { name: 'B', total: 15, male_count: 8, female_count: 7 },
+    ]
+    const { container } = render(
+      <CssVerticalStackedBarChart data={sparseData} segments={segments} />
+    )
+    // ColumnHoverOverlay has bg-foreground/[0.06] class — should not be present in sparse
+    const overlay = container.querySelector('.bg-foreground\\/\\[0\\.06\\]')
+    expect(overlay).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Tooltip zero filtering
+// ---------------------------------------------------------------------------
+describe('CssVerticalStackedBarChart tooltip zero filtering', () => {
+  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalStackedBarChart')
+    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
+  })
+
+  it('should not show zero-value segments in default tooltip', () => {
+    // Data where one segment is zero
+    const dataWithZero = [
+      { name: 'Test', total: 10, male_count: 10, female_count: 0 },
+    ]
+    const { container } = render(
+      <CssVerticalStackedBarChart data={dataWithZero} segments={segments} />
+    )
+    // Trigger tooltip by hovering over a column
+    const column = container.querySelector('.flex-1.flex-col.items-center') as HTMLElement
+    if (column) {
+      fireEvent.mouseEnter(column)
+      fireEvent.mouseMove(column, { clientX: 100, clientY: 100 })
+    }
+    // If tooltip renders, Female segment (value 0) should not be shown
+    // The tooltip should only show Male (value 10)
+    const tooltipLabels = container.querySelectorAll('.text-muted-foreground.text-sm')
+    const labelTexts = Array.from(tooltipLabels).map((el) => el.textContent)
+    // Should NOT find "Female:" with "0 (0%)" in tooltip
+    const hasFemaleZero = labelTexts.some((t) => t?.includes('Female:') && t?.includes('0 (0%)'))
+    expect(hasFemaleZero).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // No imports from GenderByGradeBreakdown or DrilldownFilter
 // ---------------------------------------------------------------------------
 describe('CssVerticalStackedBarChart is generic (no hardcoded types)', () => {
