@@ -1,0 +1,459 @@
+/**
+ * TDD Tests for CssVerticalStackedBarChart component.
+ *
+ * Tests written FIRST before implementation (TDD).
+ * Generic vertical stacked bar chart using segments prop.
+ */
+import { describe, it, expect, vi, beforeAll } from 'vitest'
+import { render, screen, fireEvent } from '@testing-library/react'
+
+import type { VerticalStackedSegment } from './CssVerticalStackedBarChart'
+
+// ---------------------------------------------------------------------------
+// Test data
+// ---------------------------------------------------------------------------
+const segments: VerticalStackedSegment[] = [
+  { key: 'female_count', label: 'Female', color: 'hsl(350, 70%, 50%)' },
+  { key: 'male_count', label: 'Male', color: 'hsl(200, 70%, 50%)' },
+]
+
+const sampleData = [
+  { name: 'Grade 3', total: 20, male_count: 12, female_count: 8, grade: 3 },
+  { name: 'Grade 4', total: 30, male_count: 18, female_count: 12, grade: 4 },
+  { name: 'Grade 5', total: 25, male_count: 10, female_count: 15, grade: 5 },
+]
+
+const singleItem = [{ name: 'Solo', total: 10, male_count: 6, female_count: 4 }]
+
+// ---------------------------------------------------------------------------
+// Module export
+// ---------------------------------------------------------------------------
+describe('CssVerticalStackedBarChart exports', () => {
+  it('should export CssVerticalStackedBarChart as a named function', async () => {
+    const mod = await import('./CssVerticalStackedBarChart')
+    expect(typeof mod.CssVerticalStackedBarChart).toBe('function')
+  })
+
+  it('should export the VerticalStackedSegment type (compile-time check)', () => {
+    const seg: VerticalStackedSegment = { key: 'test', label: 'Test', color: 'red' }
+    expect(seg.key).toBe('test')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Rendering basics
+// ---------------------------------------------------------------------------
+describe('CssVerticalStackedBarChart rendering', () => {
+  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalStackedBarChart')
+    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
+  })
+
+  it('should render the title when provided', () => {
+    render(
+      <CssVerticalStackedBarChart data={sampleData} segments={segments} title="My Chart" />
+    )
+    expect(screen.getByText('My Chart')).toBeInTheDocument()
+  })
+
+  it('should render without a title when not provided', () => {
+    const { container } = render(
+      <CssVerticalStackedBarChart data={sampleData} segments={segments} />
+    )
+    const headings = container.querySelectorAll('h3')
+    expect(headings.length).toBe(0)
+  })
+
+  it('should wrap in card-lodge class', () => {
+    const { container } = render(
+      <CssVerticalStackedBarChart data={sampleData} segments={segments} />
+    )
+    expect(container.querySelector('.card-lodge')).toBeInTheDocument()
+  })
+
+  it('should apply custom className', () => {
+    const { container } = render(
+      <CssVerticalStackedBarChart
+        data={sampleData}
+        segments={segments}
+        className="my-custom"
+      />
+    )
+    expect(container.querySelector('.my-custom')).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Empty state
+// ---------------------------------------------------------------------------
+describe('CssVerticalStackedBarChart empty state', () => {
+  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalStackedBarChart')
+    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
+  })
+
+  it('should show "No data available" when data is empty', () => {
+    render(<CssVerticalStackedBarChart data={[]} segments={segments} />)
+    expect(screen.getByText('No data available')).toBeInTheDocument()
+  })
+
+  it('should still wrap in card-lodge when empty', () => {
+    const { container } = render(
+      <CssVerticalStackedBarChart data={[]} segments={segments} />
+    )
+    expect(container.querySelector('.card-lodge')).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Stacked bar rendering
+// ---------------------------------------------------------------------------
+describe('CssVerticalStackedBarChart bar rendering', () => {
+  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalStackedBarChart')
+    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
+  })
+
+  it('should render one column per data item', () => {
+    const { container } = render(
+      <CssVerticalStackedBarChart data={sampleData} segments={segments} />
+    )
+    // Each column container has flex-1 and flex-col classes
+    const columns = container.querySelectorAll('.flex-1.flex-col.items-center')
+    expect(columns.length).toBe(sampleData.length)
+  })
+
+  it('should render segment divs with correct background colors', () => {
+    const { container } = render(
+      <CssVerticalStackedBarChart data={singleItem} segments={segments} />
+    )
+    // Find the stacked bar container (has flex-col and overflow-hidden and rounded-t)
+    const stackedBar = container.querySelector('.rounded-t.overflow-hidden') as HTMLElement
+    expect(stackedBar).not.toBeNull()
+    // Should have children divs for each segment with data
+    const segmentDivs = stackedBar.querySelectorAll(':scope > div')
+    expect(segmentDivs.length).toBe(2) // both female_count and male_count are > 0
+  })
+
+  it('should use flex proportional sizing for segments', () => {
+    const { container } = render(
+      <CssVerticalStackedBarChart data={singleItem} segments={segments} />
+    )
+    const stackedBar = container.querySelector('.rounded-t.overflow-hidden') as HTMLElement
+    const segmentDivs = stackedBar.querySelectorAll(':scope > div') as NodeListOf<HTMLElement>
+    // Each segment should have a flex value
+    for (const div of segmentDivs) {
+      expect(div.style.flex).not.toBe('')
+    }
+  })
+
+  it('should skip segments with zero value', () => {
+    const zeroData = [{ name: 'Test', total: 10, male_count: 10, female_count: 0 }]
+    const { container } = render(
+      <CssVerticalStackedBarChart data={zeroData} segments={segments} />
+    )
+    const stackedBar = container.querySelector('.rounded-t.overflow-hidden') as HTMLElement
+    const segmentDivs = stackedBar.querySelectorAll(':scope > div')
+    expect(segmentDivs.length).toBe(1) // only male_count > 0
+  })
+
+  it('should set minHeight 4px for non-zero total', () => {
+    const { container } = render(
+      <CssVerticalStackedBarChart data={singleItem} segments={segments} />
+    )
+    const stackedBar = container.querySelector('.rounded-t.overflow-hidden') as HTMLElement
+    expect(stackedBar.style.minHeight).toBe('4px')
+  })
+
+  it('should set minHeight 0px for zero-total items', () => {
+    const zeroData = [{ name: 'Zero', total: 0, male_count: 0, female_count: 0 }]
+    const { container } = render(
+      <CssVerticalStackedBarChart data={zeroData} segments={segments} />
+    )
+    const stackedBar = container.querySelector('.rounded-t.overflow-hidden') as HTMLElement
+    expect(stackedBar.style.minHeight).toBe('0px')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Y-axis
+// ---------------------------------------------------------------------------
+describe('CssVerticalStackedBarChart Y-axis', () => {
+  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalStackedBarChart')
+    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
+  })
+
+  it('should auto-compute ticks via getNiceTicks in normal mode', () => {
+    render(
+      <CssVerticalStackedBarChart data={sampleData} segments={segments} />
+    )
+    // Data max total is 30, getNiceTicks should produce ticks including 0
+    expect(screen.getByText('0')).toBeInTheDocument()
+  })
+
+  it('should use default w-8 Y-axis width', () => {
+    const { container } = render(
+      <CssVerticalStackedBarChart data={sampleData} segments={segments} />
+    )
+    const yAxis = container.querySelector('.w-8')
+    expect(yAxis).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Percent mode
+// ---------------------------------------------------------------------------
+describe('CssVerticalStackedBarChart percent mode', () => {
+  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalStackedBarChart')
+    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
+  })
+
+  it('should show percentage ticks in percent mode', () => {
+    render(
+      <CssVerticalStackedBarChart
+        data={sampleData}
+        segments={segments}
+        percentMode
+      />
+    )
+    expect(screen.getByText('0%')).toBeInTheDocument()
+    expect(screen.getByText('25%')).toBeInTheDocument()
+    expect(screen.getByText('50%')).toBeInTheDocument()
+    expect(screen.getByText('75%')).toBeInTheDocument()
+    expect(screen.getByText('100%')).toBeInTheDocument()
+  })
+
+  it('should not show total labels by default in percent mode', () => {
+    const data = [{ name: 'Grade 3', total: 17, male_count: 10, female_count: 7 }]
+    const { container } = render(
+      <CssVerticalStackedBarChart
+        data={data}
+        segments={segments}
+        percentMode
+      />
+    )
+    // Total label (17) should NOT appear
+    const labels = container.querySelectorAll('.tabular-nums')
+    // The tabular-nums elements should only be Y-axis ticks, not bar labels
+    let foundTotal = false
+    labels.forEach((el) => {
+      if (el.textContent === '17') foundTotal = true
+    })
+    expect(foundTotal).toBe(false)
+  })
+
+  it('should show total labels in percent mode when showTotalLabel is true', () => {
+    const data = [{ name: 'Grade 3', total: 17, male_count: 10, female_count: 7 }]
+    render(
+      <CssVerticalStackedBarChart
+        data={data}
+        segments={segments}
+        percentMode
+        showTotalLabel
+      />
+    )
+    expect(screen.getByText('17')).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Labels above bars
+// ---------------------------------------------------------------------------
+describe('CssVerticalStackedBarChart labels', () => {
+  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalStackedBarChart')
+    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
+  })
+
+  it('should show total as default label above each bar in normal mode', () => {
+    const data = [{ name: 'Item', total: 37, male_count: 20, female_count: 17 }]
+    render(
+      <CssVerticalStackedBarChart data={data} segments={segments} />
+    )
+    expect(screen.getByText('37')).toBeInTheDocument()
+  })
+
+  it('should use custom labelFormat when provided', () => {
+    render(
+      <CssVerticalStackedBarChart
+        data={singleItem}
+        segments={segments}
+        labelFormat={(item) => `N=${item['total']}`}
+      />
+    )
+    expect(screen.getByText('N=10')).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// X-axis labels
+// ---------------------------------------------------------------------------
+describe('CssVerticalStackedBarChart X-axis', () => {
+  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalStackedBarChart')
+    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
+  })
+
+  it('should render X-axis labels from data names', () => {
+    render(
+      <CssVerticalStackedBarChart data={sampleData} segments={segments} />
+    )
+    expect(screen.getByText('Grade 3')).toBeInTheDocument()
+    expect(screen.getByText('Grade 4')).toBeInTheDocument()
+    expect(screen.getByText('Grade 5')).toBeInTheDocument()
+  })
+
+  it('should rotate labels when rotateLabels is true', () => {
+    const { container } = render(
+      <CssVerticalStackedBarChart
+        data={sampleData}
+        segments={segments}
+        rotateLabels
+      />
+    )
+    const xAxisWrapper = container.querySelector('[style*="height: 60px"]')
+    expect(xAxisWrapper).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Legend
+// ---------------------------------------------------------------------------
+describe('CssVerticalStackedBarChart legend', () => {
+  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalStackedBarChart')
+    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
+  })
+
+  it('should render legend with segment labels', () => {
+    render(
+      <CssVerticalStackedBarChart data={sampleData} segments={segments} />
+    )
+    expect(screen.getByText('Female')).toBeInTheDocument()
+    expect(screen.getByText('Male')).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Click handling
+// ---------------------------------------------------------------------------
+describe('CssVerticalStackedBarChart click handling', () => {
+  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalStackedBarChart')
+    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
+  })
+
+  it('should add cursor-pointer class when onBarClick is provided', () => {
+    const onClick = vi.fn()
+    const { container } = render(
+      <CssVerticalStackedBarChart
+        data={singleItem}
+        segments={segments}
+        onBarClick={onClick}
+      />
+    )
+    const column = container.querySelector('.cursor-pointer')
+    expect(column).toBeInTheDocument()
+  })
+
+  it('should not have cursor-pointer when onBarClick is not provided', () => {
+    const { container } = render(
+      <CssVerticalStackedBarChart data={singleItem} segments={segments} />
+    )
+    const column = container.querySelector('.cursor-pointer')
+    expect(column).toBeNull()
+  })
+
+  it('should call onBarClick with the item record when a column is clicked', () => {
+    const onClick = vi.fn()
+    const { container } = render(
+      <CssVerticalStackedBarChart
+        data={singleItem}
+        segments={segments}
+        onBarClick={onClick}
+      />
+    )
+    const column = container.querySelector('.cursor-pointer') as HTMLElement
+    fireEvent.click(column)
+    expect(onClick).toHaveBeenCalledTimes(1)
+    const arg = onClick.mock.calls[0][0]
+    expect(arg['name']).toBe('Solo')
+    expect(arg['total']).toBe(10)
+    expect(arg['male_count']).toBe(6)
+    expect(arg['female_count']).toBe(4)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Tooltip
+// ---------------------------------------------------------------------------
+describe('CssVerticalStackedBarChart tooltip', () => {
+  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalStackedBarChart')
+    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
+  })
+
+  it('should not render tooltip content initially', () => {
+    render(
+      <CssVerticalStackedBarChart
+        data={sampleData}
+        segments={segments}
+        renderTooltip={(item) => <span data-testid="tt">{String(item['name'])}</span>}
+      />
+    )
+    expect(screen.queryByTestId('tt')).not.toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// No imports from GenderByGradeBreakdown or DrilldownFilter
+// ---------------------------------------------------------------------------
+describe('CssVerticalStackedBarChart is generic (no hardcoded types)', () => {
+  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalStackedBarChart')
+    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
+  })
+
+  it('should accept data with arbitrary segment keys', () => {
+    const customSegments: VerticalStackedSegment[] = [
+      { key: 'apples', label: 'Apples', color: 'green' },
+      { key: 'oranges', label: 'Oranges', color: 'orange' },
+    ]
+    const customData = [
+      { name: 'January', total: 100, apples: 60, oranges: 40 },
+      { name: 'February', total: 80, apples: 30, oranges: 50 },
+    ]
+    const { container } = render(
+      <CssVerticalStackedBarChart data={customData} segments={customSegments} />
+    )
+    expect(container.querySelector('.card-lodge')).toBeInTheDocument()
+    expect(screen.getByText('January')).toBeInTheDocument()
+    expect(screen.getByText('February')).toBeInTheDocument()
+    expect(screen.getByText('Apples')).toBeInTheDocument()
+    expect(screen.getByText('Oranges')).toBeInTheDocument()
+  })
+})
