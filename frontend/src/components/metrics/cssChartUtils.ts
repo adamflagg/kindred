@@ -2,10 +2,11 @@
  * Shared utilities for CSS chart components.
  *
  * Extracted from CssHorizontalBarChart to avoid duplication across
- * CssStackedHorizontalBarChart and CssVerticalRetentionBarChart.
+ * CssStackedHorizontalBarChart, CssVerticalRetentionBarChart, and
+ * other vertical/horizontal CSS charts.
  */
 
-import { useState, useCallback, useRef } from 'react'
+import React, { useState, useCallback, useRef, type ReactNode } from 'react'
 
 /**
  * Calculate nice tick values for a chart axis.
@@ -96,4 +97,285 @@ export function useChartTooltip<T>() {
   }, [])
 
   return { tooltip, tooltipRef, handleMouseMove, handleMouseLeave }
+}
+
+// ---------------------------------------------------------------------------
+// Vertical chart utilities
+// ---------------------------------------------------------------------------
+
+/**
+ * Layout dimensions for a vertical CSS bar chart.
+ */
+export interface VerticalChartLayout {
+  /** Available height for the bars area (height minus x-axis). */
+  barsHeight: number
+  /** Drawing height for bars (barsHeight minus top padding for labels). */
+  drawingHeight: number
+  /** Height reserved for the x-axis labels. */
+  xAxisHeight: number
+}
+
+/**
+ * Calculate the vertical layout dimensions for a CSS bar chart.
+ *
+ * Replaces the repeated `barsHeight = height - 34` / `drawingHeight = barsHeight - 16`
+ * pattern found in CssVerticalRetentionBarChart and CssVerticalStackedBarChart.
+ *
+ * @param height   - Total chart height in pixels.
+ * @param options  - Optional overrides for xAxisHeight (default 34) and topPadding (default 16).
+ */
+export function calculateVerticalLayout(
+  height: number,
+  options?: {
+    /** Height for x-axis labels: 34 for straight labels, 60 for rotated. */
+    xAxisHeight?: number
+    /** Space above bars for value labels. */
+    topPadding?: number
+  }
+): VerticalChartLayout {
+  const xAxisHeight = options?.xAxisHeight ?? 34
+  const topPadding = options?.topPadding ?? 16
+  const barsHeight = height - xAxisHeight
+  const drawingHeight = barsHeight - topPadding
+  return { barsHeight, drawingHeight, xAxisHeight }
+}
+
+/**
+ * Column-anchored tooltip hook for vertical CSS bar charts.
+ *
+ * Consolidates the identical state + handlers from CssVerticalRetentionBarChart
+ * and CssVerticalStackedBarChart: hoveredIndex, hoveredColRect, lastIndexRef,
+ * chartRef, tooltipRef, and the three mouse handlers.
+ *
+ * Tooltip positioning: anchor to right of column, flip left on overflow.
+ * Y follows cursor, clamped to chart area. Falls back to cursor-relative
+ * when chartRef or colRect is unavailable.
+ */
+export function useVerticalColumnTooltip<T>() {
+  const chartRef = useRef<HTMLDivElement>(null)
+  const tooltipRef = useRef<HTMLDivElement>(null)
+  const [tooltip, setTooltip] = useState<TooltipState<T>>({
+    visible: false,
+    x: 0,
+    y: 0,
+    item: null,
+  })
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+  const [hoveredColRect, setHoveredColRect] = useState<DOMRect | null>(null)
+  const lastIndexRef = useRef(0)
+  if (hoveredIndex !== null) lastIndexRef.current = hoveredIndex
+
+  const handleColumnEnter = useCallback((index: number, rect: DOMRect) => {
+    setHoveredIndex(index)
+    setHoveredColRect(rect)
+  }, [])
+
+  const handleColumnMove = useCallback(
+    (e: React.MouseEvent, item: T) => {
+      const chart = chartRef.current
+      const tt = tooltipRef.current
+      const colRect = hoveredColRect
+
+      if (chart && colRect) {
+        const chartRect = chart.getBoundingClientRect()
+        const ttWidth = tt?.offsetWidth ?? 160
+        const ttHeight = tt?.offsetHeight ?? 120
+
+        // X: anchor to right of column, flip left if it overflows
+        let x = colRect.right + 8
+        if (x + ttWidth > chartRect.right + 40) {
+          x = colRect.left - ttWidth - 8
+        }
+
+        // Y: follow cursor, clamped to chart area
+        const minY = chartRect.top + 8
+        const maxY = chartRect.bottom - ttHeight - 8
+        const y = Math.max(minY, Math.min(e.clientY - ttHeight / 2, maxY))
+
+        setTooltip({ visible: true, x, y, item })
+      } else {
+        setTooltip({ visible: true, x: e.clientX + 12, y: e.clientY - 12, item })
+      }
+    },
+    [hoveredColRect]
+  )
+
+  const handleColumnLeave = useCallback(() => {
+    setHoveredIndex(null)
+    setHoveredColRect(null)
+    setTooltip((prev) => ({ ...prev, visible: false }))
+  }, [])
+
+  return {
+    hoveredIndex,
+    lastIndex: lastIndexRef.current,
+    chartRef,
+    tooltipRef,
+    tooltip,
+    handleColumnEnter,
+    handleColumnMove,
+    handleColumnLeave,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Sub-components for vertical charts
+// ---------------------------------------------------------------------------
+
+interface VerticalYAxisProps {
+  ticks: number[]
+  axisMax: number
+  drawingHeight: number
+  barsHeight: number
+  /** Tailwind width class, e.g. 'w-8' or 'w-10'. Default: 'w-8'. */
+  width?: string
+  /** Custom tick formatter. Default: String(tick). */
+  formatTick?: (tick: number) => string
+}
+
+/**
+ * Y-axis tick labels for a vertical CSS bar chart.
+ * Each tick is absolutely positioned at `bottom: (tick/axisMax) * drawingHeight`.
+ */
+export function VerticalYAxis({
+  ticks,
+  axisMax,
+  drawingHeight,
+  barsHeight,
+  width = 'w-8',
+  formatTick = String,
+}: VerticalYAxisProps) {
+  return React.createElement(
+    'div',
+    {
+      className: `relative mr-2 ${width} shrink-0`,
+      style: { height: barsHeight },
+    },
+    ticks.map((tick) =>
+      React.createElement(
+        'span',
+        {
+          key: tick,
+          className: 'text-muted-foreground absolute right-0 text-xs font-semibold tabular-nums',
+          style: {
+            bottom: `${(tick / axisMax) * drawingHeight}px`,
+            transform: 'translateY(50%)',
+          },
+        },
+        formatTick(tick)
+      )
+    )
+  )
+}
+
+interface VerticalXAxisProps {
+  labels: string[]
+  /** Rotate labels -40deg for long text. */
+  rotated?: boolean
+  /** Custom margin-left (e.g. '3rem' or '2.5rem'). */
+  marginLeft?: string
+  /** Custom height for the axis container. Default: '60px' when rotated. */
+  height?: string
+}
+
+/**
+ * X-axis labels for a vertical CSS bar chart.
+ * Supports straight (centered) and rotated (-40deg) modes.
+ */
+export function VerticalXAxis({ labels, rotated = false, marginLeft, height }: VerticalXAxisProps) {
+  if (rotated) {
+    return React.createElement(
+      'div',
+      {
+        className: 'border-foreground/30 flex border-t',
+        style: {
+          ...(marginLeft ? { marginLeft } : {}),
+          height: height ?? '60px',
+        },
+      },
+      labels.map((label, i) =>
+        React.createElement(
+          'div',
+          { key: i, className: 'relative flex-1' },
+          React.createElement(
+            'span',
+            {
+              className: 'text-muted-foreground absolute left-1/2 top-1 origin-top-left text-xs',
+              style: {
+                transform: 'rotate(-40deg) translateX(-50%)',
+                whiteSpace: 'nowrap',
+                maxWidth: '100px',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              },
+            },
+            label
+          )
+        )
+      )
+    )
+  }
+
+  // Straight labels
+  return React.createElement(
+    'div',
+    {
+      className: 'border-foreground/30 flex border-t pt-1',
+      style: marginLeft ? { marginLeft } : undefined,
+    },
+    labels.map((label, i) =>
+      React.createElement(
+        'div',
+        { key: i, className: 'flex-1 text-center' },
+        React.createElement('span', { className: 'text-muted-foreground text-sm' }, label)
+      )
+    )
+  )
+}
+
+interface ColumnHoverOverlayProps {
+  itemCount: number
+  hoveredIndex: number | null
+  lastIndex: number
+}
+
+/**
+ * Sliding hover highlight overlay for vertical CSS bar chart columns.
+ * Width is 1/itemCount of the chart, slides to the hovered column.
+ */
+export function ColumnHoverOverlay({ itemCount, hoveredIndex, lastIndex }: ColumnHoverOverlayProps) {
+  return React.createElement('div', {
+    className:
+      'pointer-events-none absolute inset-y-0 left-0 z-0 rounded bg-foreground/[0.06] transition-[transform,opacity] duration-150',
+    style: {
+      width: `${100 / itemCount}%`,
+      transform: `translateX(${(hoveredIndex ?? lastIndex) * 100}%)`,
+      opacity: hoveredIndex !== null ? 1 : 0,
+    },
+  })
+}
+
+interface VerticalTooltipShellProps {
+  visible: boolean
+  x: number
+  y: number
+  tooltipRef: React.RefObject<HTMLDivElement | null>
+  children: ReactNode
+}
+
+/**
+ * Tooltip positioning/styling wrapper for vertical CSS bar charts.
+ * Renders when visible with fixed positioning at (x, y).
+ */
+export function VerticalTooltipShell({ visible, x, y, tooltipRef, children }: VerticalTooltipShellProps) {
+  if (!visible) return null
+  return React.createElement(
+    'div',
+    {
+      ref: tooltipRef,
+      className: 'bg-card border-border pointer-events-none fixed z-50 rounded-lg border p-3 shadow-lg',
+      style: { left: x, top: y },
+    },
+    children
+  )
 }

@@ -5,8 +5,8 @@
  * Covers: calculateVerticalLayout, useVerticalColumnTooltip,
  * VerticalYAxis, VerticalXAxis, ColumnHoverOverlay, VerticalTooltipShell.
  */
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent, act } from '@testing-library/react'
+import { describe, it, expect } from 'vitest'
+import { render, screen, act } from '@testing-library/react'
 import { renderHook } from '@testing-library/react'
 import React, { createRef } from 'react'
 
@@ -284,13 +284,13 @@ describe('VerticalXAxis', () => {
   })
 
   it('should apply transform rotate(-40deg) to rotated labels', () => {
-    const { container } = render(<VerticalXAxis labels={['Label']} rotated />)
+    render(<VerticalXAxis labels={['Label']} rotated />)
     const label = screen.getByText('Label')
     expect(label).toHaveStyle({ transform: 'rotate(-40deg) translateX(-50%)' })
   })
 
   it('should apply whiteSpace and maxWidth to rotated labels', () => {
-    const { container } = render(<VerticalXAxis labels={['Label']} rotated />)
+    render(<VerticalXAxis labels={['Label']} rotated />)
     const label = screen.getByText('Label')
     expect(label).toHaveStyle({ whiteSpace: 'nowrap', maxWidth: '100px' })
   })
@@ -380,7 +380,7 @@ describe('ColumnHoverOverlay', () => {
 describe('VerticalTooltipShell', () => {
   it('should not render children when visible is false', () => {
     const ref = createRef<HTMLDivElement>()
-    const { container } = render(
+    render(
       <VerticalTooltipShell visible={false} x={100} y={100} tooltipRef={ref}>
         <span>Tooltip Content</span>
       </VerticalTooltipShell>
