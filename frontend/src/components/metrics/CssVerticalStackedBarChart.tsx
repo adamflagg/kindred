@@ -253,7 +253,9 @@ export function CssVerticalStackedBarChart({
       </div>
 
       <ChartLegend
-        items={segments.map((s) => ({ label: s.label, color: s.color }))}
+        items={segments
+          .filter((s) => data.some((item) => ((item[s.key] as number) ?? 0) > 0))
+          .map((s) => ({ label: s.label, color: s.color }))}
         className="mt-1"
       />
     </div>
