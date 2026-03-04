@@ -71,7 +71,7 @@ export function ChartCard({
                 formatTick={yAxis.formatTick}
               />
               <div
-                className={`border-foreground/40 relative flex-1 border-l${xAxisEdgeAligned ? ' overflow-visible' : ''}`}
+                className={`border-foreground/40 relative flex-1 border-l ${xAxisEdgeAligned ? 'overflow-visible' : ''}`}
                 style={{ height: yAxis.barsHeight }}
               >
                 {children}
