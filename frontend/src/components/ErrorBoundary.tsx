@@ -25,7 +25,7 @@ export class ErrorBoundary extends Component<Props, State> {
     return { hasError: true, error }
   }
 
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     // Auto-reload for chunk load errors (stale deployment)
     if (isChunkLoadError(error)) {
       if (shouldAutoReload()) {
@@ -57,7 +57,7 @@ export class ErrorBoundary extends Component<Props, State> {
     window.location.reload()
   }
 
-  render() {
+  override render() {
     if (this.state.hasError) {
       // Use custom fallback if provided
       if (this.props.fallback && this.state.error) {
