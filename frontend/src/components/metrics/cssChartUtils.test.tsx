@@ -505,8 +505,8 @@ describe('ColumnHoverOverlay', () => {
     const { container } = render(<ColumnHoverOverlay itemCount={4} hoveredIndex={null} lastIndex={0} />)
     const overlay = container.firstChild as HTMLElement
     expect(overlay.className).toContain('absolute')
-    expect(overlay.className).toContain('inset-y-0')
     expect(overlay.className).toContain('left-0')
+    // Vertical positioning (top/bottom) is via inline styles, not inset-y-0 class
     expect(overlay.className).toContain('z-0')
     expect(overlay.className).toContain('rounded')
     expect(overlay.className).toContain('bg-foreground/[0.06]')
