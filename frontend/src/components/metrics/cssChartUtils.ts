@@ -320,7 +320,7 @@ export function VerticalXAxis({ labels, rotated = false, marginLeft, height, col
         className: `border-foreground/40 flex border-t ${isSparse ? 'justify-center' : ''}`,
         style: {
           ...(marginLeft ? { marginLeft } : {}),
-          height: height ?? '80px',
+          height: height ?? '60px',
           ...(columnSizing ? { gap: `${columnSizing.gap}px` } : {}),
           ...(alignBorderLeft ? { paddingLeft: '1px' } : {}),
         },

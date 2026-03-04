@@ -43,6 +43,8 @@ interface CssVerticalStackedBarChartProps {
   rotateLabels?: boolean
   onBarClick?: ((item: Record<string, unknown>) => void) | undefined
   className?: string
+  /** Override max column width (px). Useful when normal mode columns are too wide. */
+  maxColumnWidth?: number
 }
 
 export function CssVerticalStackedBarChart({
@@ -57,10 +59,14 @@ export function CssVerticalStackedBarChart({
   rotateLabels = false,
   onBarClick,
   className = '',
+  maxColumnWidth,
 }: CssVerticalStackedBarChartProps) {
   const xAxisHeight = rotateLabels ? 80 : 34
   const { barsHeight, drawingHeight } = calculateVerticalLayout(height, { xAxisHeight })
-  const columnSizing = calculateColumnSizing(data.length)
+  const baseColumnSizing = calculateColumnSizing(data.length)
+  const columnSizing = maxColumnWidth
+    ? { ...baseColumnSizing, maxWidth: maxColumnWidth }
+    : baseColumnSizing
 
   const {
     hoveredIndex,
@@ -161,14 +167,14 @@ export function CssVerticalStackedBarChart({
                 >
                   {/* Label above bar */}
                   {shouldShowLabel && (
-                    <span className="text-muted-foreground relative z-10 mb-1 text-sm tabular-nums">
+                    <span className="text-muted-foreground relative z-[1] mb-1 text-sm tabular-nums">
                       {label}
                     </span>
                   )}
 
                   {/* Stacked bar */}
                   <div
-                    className="relative z-10 flex w-full flex-col overflow-hidden rounded-t transition-all duration-300"
+                    className="relative z-[1] flex w-full flex-col overflow-hidden rounded-t transition-all duration-300"
                     style={{
                       height: `${barHeightPx}px`,
                       minHeight: item.total > 0 ? '4px' : '0px',

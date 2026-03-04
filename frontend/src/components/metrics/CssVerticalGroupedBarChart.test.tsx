@@ -238,7 +238,7 @@ describe('CssVerticalGroupedBarChart X-axis', () => {
     const { container } = render(
       <CssVerticalGroupedBarChart data={sampleData} series={series} rotateLabels />
     )
-    const xAxisWrapper = container.querySelector('[style*="height: 80px"]')
+    const xAxisWrapper = container.querySelector('[style*="height: 60px"]')
     expect(xAxisWrapper).toBeInTheDocument()
   })
 
@@ -251,8 +251,8 @@ describe('CssVerticalGroupedBarChart X-axis', () => {
     const { container } = render(
       <CssVerticalGroupedBarChart data={manyItems} series={series} />
     )
-    // Auto-rotate kicks in for >8 items — rotated axis has height: 80px
-    const xAxisWrapper = container.querySelector('[style*="height: 80px"]')
+    // Auto-rotate kicks in for >8 items — rotated axis has height: 60px
+    const xAxisWrapper = container.querySelector('[style*="height: 60px"]')
     expect(xAxisWrapper).toBeInTheDocument()
   })
 
@@ -261,7 +261,7 @@ describe('CssVerticalGroupedBarChart X-axis', () => {
       <CssVerticalGroupedBarChart data={sampleData} series={series} />
     )
     // 3 items < 8 — should NOT have rotated 80px axis
-    const xAxisWrapper = container.querySelector('[style*="height: 80px"]')
+    const xAxisWrapper = container.querySelector('[style*="height: 60px"]')
     expect(xAxisWrapper).toBeNull()
   })
 })

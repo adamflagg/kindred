@@ -236,8 +236,8 @@ describe('CssVerticalBarChart X-axis', () => {
     const { container } = render(
       <CssVerticalBarChart data={sampleData} rotateLabels />
     )
-    // Rotated mode sets height: 80px on the x-axis container
-    const xAxisWrapper = container.querySelector('[style*="height: 80px"]')
+    // Rotated mode sets height: 60px on the x-axis container
+    const xAxisWrapper = container.querySelector('[style*="height: 60px"]')
     expect(xAxisWrapper).toBeInTheDocument()
   })
 })

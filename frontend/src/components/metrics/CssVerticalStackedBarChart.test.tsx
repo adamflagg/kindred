@@ -327,7 +327,7 @@ describe('CssVerticalStackedBarChart X-axis', () => {
         rotateLabels
       />
     )
-    const xAxisWrapper = container.querySelector('[style*="height: 80px"]')
+    const xAxisWrapper = container.querySelector('[style*="height: 60px"]')
     expect(xAxisWrapper).toBeInTheDocument()
   })
 })
@@ -632,6 +632,49 @@ describe('CssVerticalStackedBarChart tooltip zero filtering', () => {
     // Should NOT find "Female:" with "0 (0%)" in tooltip
     const hasFemaleZero = labelTexts.some((t) => t?.includes('Female:') && t?.includes('0 (0%)'))
     expect(hasFemaleZero).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// maxColumnWidth prop
+// ---------------------------------------------------------------------------
+describe('CssVerticalStackedBarChart maxColumnWidth prop', () => {
+  let CssVerticalStackedBarChart: typeof import('./CssVerticalStackedBarChart').CssVerticalStackedBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalStackedBarChart')
+    CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
+  })
+
+  it('should constrain column width in normal mode when maxColumnWidth is provided', () => {
+    const normalData = Array.from({ length: 5 }, (_, i) => ({
+      name: `Y${i}`,
+      total: 10 + i,
+      male_count: 6 + i,
+      female_count: 4,
+    }))
+    const { container } = render(
+      <CssVerticalStackedBarChart data={normalData} segments={segments} maxColumnWidth={100} />
+    )
+    const barsArea = container.querySelector('.border-l') as HTMLElement
+    const columns = barsArea.querySelectorAll(':scope > [style*="max-width: 100px"]')
+    expect(columns.length).toBe(5)
+  })
+
+  it('should not constrain columns when maxColumnWidth is not provided', () => {
+    const normalData = Array.from({ length: 5 }, (_, i) => ({
+      name: `Y${i}`,
+      total: 10 + i,
+      male_count: 6 + i,
+      female_count: 4,
+    }))
+    const { container } = render(
+      <CssVerticalStackedBarChart data={normalData} segments={segments} />
+    )
+    const barsArea = container.querySelector('.border-l') as HTMLElement
+    const columns = barsArea.querySelectorAll(':scope > [style*="max-width"]')
+    // Normal mode (5 items) has no maxWidth by default
+    expect(columns.length).toBe(0)
   })
 })
 

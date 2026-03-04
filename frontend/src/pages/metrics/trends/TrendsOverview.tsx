@@ -334,49 +334,52 @@ export default function TrendsOverview() {
         </div>
       </div>
 
-      {/* Retention Rate Trend Line */}
-      {retentionYears.length > 0 && (
-        <RetentionRateLine
-          data={retentionYears}
-          title="Overall Retention Rate Trend"
-          height={250}
-        />
-      )}
+      {/* Retention Rate + Cancellation Rate side-by-side */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {retentionYears.length > 0 && (
+          <RetentionRateLine
+            data={retentionYears}
+            title="Overall Retention Rate Trend"
+            height={250}
+          />
+        )}
+        {data.years.some((y) => (y.total_cancelled ?? 0) > 0) && (
+          <TrendLineChart
+            title="Cancellation Rate Over Time"
+            data={data.years}
+            metric="cancellation_rate"
+            height={250}
+          />
+        )}
+      </div>
 
-      {/* Cancellation Rate Trend */}
-      {data.years.some((y) => (y.total_cancelled ?? 0) > 0) && (
-        <TrendLineChart
-          title="Cancellation Rate Over Time"
-          data={data.years}
-          metric="cancellation_rate"
-          height={250}
-        />
-      )}
-
-      {/* Gender Composition */}
-      {enrollmentData.length > 0 && (
-        <GenderStackedChart
-          data={enrollmentData}
-          title={`Gender Composition (${numYearsDisplay}-Year Comparison)`}
-          height={250}
-        />
-      )}
-      {enrollmentData.length > 0 && (
-        <CssVerticalStackedBarChart
-          data={enrollmentData.map((y) => {
-            const male = y.by_gender.find((g) => g.gender === 'M')?.count ?? 0
-            const female = y.by_gender.find((g) => g.gender === 'F')?.count ?? 0
-            return { name: String(y.year), total: male + female, male, female }
-          })}
-          segments={[
-            { key: 'female', label: 'Female', color: 'hsl(340, 70%, 50%)' },
-            { key: 'male', label: 'Male', color: 'hsl(200, 70%, 50%)' },
-          ]}
-          title={`Gender Composition (CSS) (${numYearsDisplay}-Year Comparison)`}
-          percentMode
-          height={250}
-        />
-      )}
+      {/* Gender Composition side-by-side */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {enrollmentData.length > 0 && (
+          <GenderStackedChart
+            data={enrollmentData}
+            title={`Gender Composition (${numYearsDisplay}-Year Comparison)`}
+            height={250}
+          />
+        )}
+        {enrollmentData.length > 0 && (
+          <CssVerticalStackedBarChart
+            data={enrollmentData.map((y) => {
+              const male = y.by_gender.find((g) => g.gender === 'M')?.count ?? 0
+              const female = y.by_gender.find((g) => g.gender === 'F')?.count ?? 0
+              return { name: String(y.year), total: male + female, male, female }
+            })}
+            segments={[
+              { key: 'female', label: 'Female', color: 'hsl(340, 70%, 50%)' },
+              { key: 'male', label: 'Male', color: 'hsl(200, 70%, 50%)' },
+            ]}
+            title={`Gender Composition (CSS) (${numYearsDisplay}-Year Comparison)`}
+            percentMode
+            height={250}
+            maxColumnWidth={120}
+          />
+        )}
+      </div>
 
       {/* Grade Enrollment */}
       {enrollmentData.length > 0 && (
@@ -424,6 +427,7 @@ export default function TrendsOverview() {
               series={yearSeries}
               title={`Enrollment by Grade (CSS) (${numYearsDisplay}-Year Comparison)`}
               height={300}
+              rotateLabels={false}
               groupGap={12}
               barWidthPercent={75}
             />
