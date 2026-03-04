@@ -8,19 +8,8 @@
 
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import type { GenderBreakdown, DrilldownFilter } from '../../types/metrics'
-
-// Gender colors matching GenderStackedChart and GenderByGradeChart
-const GENDER_COLORS: Record<string, string> = {
-  M: 'hsl(200, 70%, 50%)', // Blue
-  F: 'hsl(340, 70%, 50%)', // Pink
-  Unknown: 'hsl(0, 0%, 60%)', // Gray
-}
-
-const FALLBACK_COLOR = 'hsl(280, 60%, 50%)' // Purple
-
-function getGenderColor(gender: string): string {
-  return GENDER_COLORS[gender] ?? FALLBACK_COLOR
-}
+import { ChartCard } from './ChartCard'
+import { getGenderColor } from './genderColors'
 
 /** Darker variant for "No Other Sessions" */
 function getNoEnrollmentColor(gender: string): string {
@@ -64,17 +53,6 @@ export function WaitlistGenderChart({
   height = 300,
   onSegmentClick,
 }: WaitlistGenderChartProps) {
-  if (data.length === 0) {
-    return (
-      <div className="card-lodge p-4">
-        <h3 className="text-foreground mb-4 text-base font-semibold">{title}</h3>
-        <div className="text-muted-foreground flex h-[200px] items-center justify-center">
-          No data available
-        </div>
-      </div>
-    )
-  }
-
   // Inner ring: gender totals
   const innerData: InnerDatum[] = data.map((g) => ({
     name: g.gender,
@@ -169,9 +147,14 @@ export function WaitlistGenderChart({
     })
   }
 
+  const legendItems = [
+    ...data.map((g) => ({ label: g.gender, color: getGenderColor(g.gender) })),
+    { label: 'No Other Sessions', color: 'hsl(0, 0%, 40%)' },
+    { label: 'Has Other Sessions', color: 'hsl(0, 0%, 75%)' },
+  ]
+
   return (
-    <div className="card-lodge p-4">
-      <h3 className="text-foreground mb-4 text-base font-semibold">{title}</h3>
+    <ChartCard title={title} isEmpty={data.length === 0} legend={legendItems}>
       <ResponsiveContainer width="100%" height={height}>
         <PieChart>
           {/* Inner ring: gender totals */}
@@ -181,8 +164,8 @@ export function WaitlistGenderChart({
             nameKey="name"
             cx="50%"
             cy="50%"
-            innerRadius={40}
-            outerRadius={65}
+            innerRadius={55}
+            outerRadius={90}
             onClick={handleInnerClick}
             style={{ cursor: onSegmentClick ? 'pointer' : undefined }}
           >
@@ -197,8 +180,8 @@ export function WaitlistGenderChart({
             nameKey="name"
             cx="50%"
             cy="50%"
-            innerRadius={70}
-            outerRadius={95}
+            innerRadius={95}
+            outerRadius={125}
             onClick={handleOuterClick}
             style={{ cursor: onSegmentClick ? 'pointer' : undefined }}
           >
@@ -216,32 +199,6 @@ export function WaitlistGenderChart({
           <Tooltip content={<CustomTooltip />} />
         </PieChart>
       </ResponsiveContainer>
-      {/* Legend */}
-      <div className="mt-2 flex flex-wrap justify-center gap-4">
-        {data.map((g) => (
-          <div key={g.gender} className="flex items-center gap-1.5">
-            <div
-              className="h-3 w-3 flex-shrink-0 rounded-sm"
-              style={{ backgroundColor: getGenderColor(g.gender) }}
-            />
-            <span className="text-muted-foreground text-sm">{g.gender}</span>
-          </div>
-        ))}
-        <div className="flex items-center gap-1.5">
-          <div
-            className="h-3 w-3 flex-shrink-0 rounded-sm"
-            style={{ backgroundColor: 'hsl(0, 0%, 40%)' }}
-          />
-          <span className="text-muted-foreground text-sm">No Other Sessions</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div
-            className="h-3 w-3 flex-shrink-0 rounded-sm"
-            style={{ backgroundColor: 'hsl(0, 0%, 75%)' }}
-          />
-          <span className="text-muted-foreground text-sm">Has Other Sessions</span>
-        </div>
-      </div>
-    </div>
+    </ChartCard>
   )
 }

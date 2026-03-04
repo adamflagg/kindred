@@ -1,6 +1,6 @@
 /**
- * Transform functions converting RetentionBy* types to RetentionRateBarItem arrays
- * for use with the RetentionRateBarChart component.
+ * Transform functions for retention data.
+ * Converts RetentionBy* types to bar chart items or pie chart slices.
  */
 
 import type {
@@ -16,8 +16,8 @@ import type {
   RetentionBySessionBunk,
   RetentionByPriorSession,
   SessionFlowItem,
+  RetentionRateBarItem,
 } from '../types/metrics'
-import type { RetentionRateBarItem } from '../components/metrics/RetentionRateBarChart'
 
 export type RetentionSortBy = 'rate' | 'count' | 'name' | 'none'
 
@@ -61,13 +61,16 @@ export function getGenderDisplayName(raw: string): string {
   }
 }
 
-export function genderToBarData(data: RetentionByGender[] | undefined): RetentionRateBarItem[] {
+/** Convert retention gender data to pie chart format (returned counts with percentages). */
+export function genderToPieData(
+  data: RetentionByGender[] | undefined
+): { name: string; value: number; percentage: number; id: string }[] {
   if (!data?.length) return []
+  const total = data.reduce((sum, d) => sum + d.returned_count, 0)
   return data.map((d) => ({
     name: getGenderDisplayName(d.gender),
-    retentionRate: d.retention_rate,
-    baseCount: d.base_count,
-    returnedCount: d.returned_count,
+    value: d.returned_count,
+    percentage: total > 0 ? Math.round((d.returned_count / total) * 1000) / 10 : 0,
     id: d.gender,
   }))
 }
@@ -143,7 +146,7 @@ export function summerYearsToBarData(
 ): RetentionRateBarItem[] {
   if (!data?.length) return []
   return data.map((d) => ({
-    name: d.summer_years === 1 ? '1 summer' : `${d.summer_years} summers`,
+    name: String(d.summer_years),
     retentionRate: d.retention_rate,
     baseCount: d.base_count,
     returnedCount: d.returned_count,

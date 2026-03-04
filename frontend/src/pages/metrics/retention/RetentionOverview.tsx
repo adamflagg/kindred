@@ -13,13 +13,12 @@ import { useRetentionMetrics } from '../../../hooks/useMetrics'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useDrilldown } from '../../../hooks/useDrilldown'
 import { MetricCard } from '../../../components/metrics/MetricCard'
-import {
-  RetentionRateBarChart,
-  type RetentionRateBarItem,
-} from '../../../components/metrics/RetentionRateBarChart'
+import type { RetentionRateBarItem } from '../../../types/metrics'
+import { BreakdownChart } from '../../../components/metrics/BreakdownChart'
+import { CssVerticalRetentionBarChart } from '../../../components/metrics/CssVerticalRetentionBarChart'
 import { RetentionRateLineChart } from '../../../components/metrics/RetentionRateLineChart'
 import {
-  genderToBarData,
+  genderToPieData,
   gradeToBarData,
   sessionToBarData,
   priorSessionToBarData,
@@ -116,7 +115,7 @@ export default function RetentionOverview() {
   const didNotReturn = data.base_year_total - data.returned_count
 
   // Pre-sort session data chronologically before converting to bar data
-  const genderBars = genderToBarData(data.by_gender)
+  const genderPieData = genderToPieData(data.by_gender)
   const gradeBars = gradeToBarData(data.by_grade)
   const sessionBars = sessionToBarData(
     sortSessionDataByDate(data.by_session ?? [], sessionDateLookup)
@@ -204,12 +203,18 @@ export default function RetentionOverview() {
 
       {/* Row 1: Gender + Grade side by side */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2" data-tour="retention-demographics">
-        {genderBars.length > 0 && (
-          <RetentionRateBarChart
-            data={genderBars}
-            title="Retention by Gender"
-            onBarClick={(item) =>
-              setFilter({ ...makeRetentionFilter('gender', item), titleFormat: 'adjective' })
+        {genderPieData.length > 0 && (
+          <BreakdownChart
+            data={genderPieData}
+            title="Returning Campers by Gender"
+            showPercentage
+            height={200}
+            breakdownType="gender"
+            onSegmentClick={(filter) =>
+              setFilter({
+                ...filter,
+                retentionContext: { baseYear: priorYear, compareYear: currentYear },
+              })
             }
           />
         )}
@@ -226,20 +231,20 @@ export default function RetentionOverview() {
       {/* Row 2: Session charts side by side */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {sessionBars.length > 0 && (
-          <RetentionRateBarChart
+          <CssVerticalRetentionBarChart
             data={sessionBars}
             title={`Retention by ${currentYear} Session`}
             sortBy="none"
-            layout="vertical"
+            barWidthPercent={88}
             onBarClick={(item) => setFilter(makeRetentionFilter('retention_session', item))}
           />
         )}
         {priorSessionBars.length > 0 && (
-          <RetentionRateBarChart
+          <CssVerticalRetentionBarChart
             data={priorSessionBars}
             title={`Retention by ${priorYear} Session`}
             sortBy="none"
-            layout="vertical"
+            barWidthPercent={88}
           />
         )}
       </div>
@@ -266,12 +271,12 @@ export default function RetentionOverview() {
       {cityBars.length > 0 && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3" data-tour="retention-geographic">
           <div className={cityOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
-            <RetentionRateBarChart
+            <CssVerticalRetentionBarChart
               data={cityBars}
               title="Retention by City (Top 15)"
               topN={15}
               sortBy="count"
-              layout="vertical"
+              barWidthPercent={78}
               onBarClick={(item) => setFilter(makeRetentionFilter('city', item))}
             />
           </div>
@@ -283,12 +288,12 @@ export default function RetentionOverview() {
       {schoolBars.length > 0 && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <div className={schoolOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
-            <RetentionRateBarChart
+            <CssVerticalRetentionBarChart
               data={schoolBars}
               title="Retention by School (Top 15)"
               topN={15}
               sortBy="count"
-              layout="vertical"
+              barWidthPercent={78}
               onBarClick={(item) => setFilter(makeRetentionFilter('school', item))}
             />
           </div>
@@ -300,12 +305,12 @@ export default function RetentionOverview() {
       {synagogueBars.length > 0 && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <div className={synagogueOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
-            <RetentionRateBarChart
+            <CssVerticalRetentionBarChart
               data={synagogueBars}
               title="Retention by Synagogue (Top 15)"
               topN={15}
               sortBy="count"
-              layout="vertical"
+              barWidthPercent={78}
               onBarClick={(item) => setFilter(makeRetentionFilter('synagogue', item))}
             />
           </div>
@@ -317,11 +322,11 @@ export default function RetentionOverview() {
       {regionBars.length > 0 && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <div className={regionOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
-            <RetentionRateBarChart
+            <CssVerticalRetentionBarChart
               data={regionBars}
               title="Retention by Region"
               sortBy="count"
-              layout="vertical"
+              barWidthPercent={80}
             />
           </div>
           <OutlierSection outliers={regionOutliers} max={5} />

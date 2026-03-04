@@ -24,9 +24,12 @@ import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useDrilldown } from '../../../hooks/useDrilldown'
 import { useComparisonCancellationData } from '../../../hooks/useComparisonCancellationData'
 import { MetricCard } from '../../../components/metrics/MetricCard'
-import { CancellationBySessionChart } from '../../../components/metrics/CancellationBySessionChart'
-import { CancellationGradeChart } from '../../../components/metrics/CancellationGradeChart'
 import { CancellationGenderChart } from '../../../components/metrics/CancellationGenderChart'
+import {
+  CssStackedHorizontalBarChart,
+  type StackedBarDataItem,
+  type StackedSegment,
+} from '../../../components/metrics/CssStackedHorizontalBarChart'
 import { transformGenderData } from '../../../utils/metricsTransforms'
 import { SESSION_NAME_ALIASES, resolveSessionAlias } from '../../../utils/sessionAliases'
 import { ComparisonSummaryTable } from '../../../components/metrics/ComparisonSummaryTable'
@@ -37,6 +40,67 @@ import {
 } from '../../../utils/sessionUtils'
 import type { CancellationSessionBreakdown } from '../../../types/metrics'
 import { MetricsQueryGuard } from '../../../components/metrics/MetricsQueryGuard'
+
+const CANCEL_SEGMENTS: StackedSegment[] = [
+  { key: 'was_enrolled', label: 'Was Enrolled', color: 'hsl(200, 70%, 50%)' },
+  { key: 'was_waitlisted', label: 'Was Waitlisted', color: 'hsl(42, 92%, 50%)' },
+  { key: 'was_applied', label: 'Was Applied', color: 'hsl(280, 60%, 55%)' },
+  { key: 'other_prior_status', label: 'Other Prior Status', color: 'hsl(200, 15%, 55%)' },
+  { key: 'unknown', label: 'Unknown', color: 'hsl(0, 0%, 75%)' },
+]
+
+function transformCancelSessionData(
+  bySession: CancellationSessionBreakdown[],
+  sessionDateLookup: Record<string, string>,
+  sessionTypeLookup: Record<string, string>
+): { data: StackedBarDataItem[]; sorted: CancellationSessionBreakdown[] } {
+  const sorted = sortSessionDataByCampThenQuest(bySession, sessionDateLookup, sessionTypeLookup)
+  const data = sorted.map((item) => {
+    const known =
+      item.was_enrolled +
+      item.was_waitlisted +
+      (item.was_applied ?? 0) +
+      (item.other_prior_status ?? 0)
+    return {
+      name: item.session_name,
+      total: item.total_cancelled,
+      was_enrolled: item.was_enrolled,
+      was_waitlisted: item.was_waitlisted,
+      was_applied: item.was_applied ?? 0,
+      other_prior_status: item.other_prior_status ?? 0,
+      unknown: Math.max(0, item.total_cancelled - known),
+    }
+  })
+  return { data, sorted }
+}
+
+function transformCancelGradeData(
+  byGrade: {
+    grade: number | null
+    count: number
+    was_enrolled?: number
+    was_waitlisted?: number
+    was_applied?: number
+    other_prior_status?: number
+  }[]
+): StackedBarDataItem[] {
+  return byGrade.map((item) => {
+    const known =
+      (item.was_enrolled ?? 0) +
+      (item.was_waitlisted ?? 0) +
+      (item.was_applied ?? 0) +
+      (item.other_prior_status ?? 0)
+    return {
+      name: item.grade !== null ? `Grade ${item.grade}` : 'Unknown',
+      total: item.count,
+      was_enrolled: item.was_enrolled ?? 0,
+      was_waitlisted: item.was_waitlisted ?? 0,
+      was_applied: item.was_applied ?? 0,
+      other_prior_status: item.other_prior_status ?? 0,
+      unknown: Math.max(0, item.count - known),
+    }
+  })
+}
 
 export default function CancellationAnalysis() {
   const { currentYear } = useCurrentYear()
@@ -66,6 +130,30 @@ export default function CancellationAnalysis() {
     sessionTypes: [...activeSessionTypes],
     statusFilter: ['cancelled', 'withdrawn', 'dismissed'],
   })
+
+  const primarySession = useMemo(
+    () =>
+      data
+        ? transformCancelSessionData(data.by_session, sessionDateLookup, sessionTypeLookup)
+        : null,
+    [data, sessionDateLookup, sessionTypeLookup]
+  )
+  const compSessionData = useMemo(
+    () =>
+      compData
+        ? transformCancelSessionData(compData.by_session, sessionDateLookup, sessionTypeLookup)
+        : null,
+    [compData, sessionDateLookup, sessionTypeLookup]
+  )
+
+  const primaryGrade = useMemo(
+    () => (data ? transformCancelGradeData(data.by_grade || []) : []),
+    [data]
+  )
+  const compGrade = useMemo(
+    () => (compData ? transformCancelGradeData(compData.by_grade || []) : []),
+    [compData]
+  )
 
   return (
     <MetricsQueryGuard isLoading={isLoading} error={error} data={data} label="cancellations">
@@ -258,112 +346,111 @@ export default function CancellationAnalysis() {
               </div>
             )}
 
-            {/* Time-to-Cancellation Distribution */}
-            {data.time_to_cancellation_buckets && data.time_to_cancellation_buckets.length > 0 && (
-              <div className="border-border bg-card rounded-lg border p-4">
-                <h3 className="text-foreground mb-3 text-sm font-semibold">
-                  Time to Cancellation Distribution
-                </h3>
-                <div className="space-y-2">
-                  {data.time_to_cancellation_buckets.map((bucket) => (
-                    <div key={bucket.label} className="flex items-center gap-3">
-                      <span className="text-muted-foreground w-24 text-xs">{bucket.label}</span>
-                      <div className="bg-muted h-5 flex-1 overflow-hidden rounded">
-                        <div
-                          className="h-full rounded bg-red-400 dark:bg-red-600"
-                          style={{ width: `${bucket.percentage}%` }}
-                        />
+            {/* Time-to-Cancellation + Registration Month side by side */}
+            {(data.time_to_cancellation_buckets?.length ?? 0) > 0 ||
+            (data.by_registration_month?.length ?? 0) > 0 ? (
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                {data.time_to_cancellation_buckets &&
+                  data.time_to_cancellation_buckets.length > 0 && (
+                    <div className="border-border bg-card rounded-lg border p-4">
+                      <h3 className="text-foreground mb-3 text-sm font-semibold">
+                        Time to Cancellation Distribution
+                      </h3>
+                      <div className="space-y-2">
+                        {data.time_to_cancellation_buckets.map((bucket) => (
+                          <div key={bucket.label} className="flex items-center gap-3">
+                            <span className="text-muted-foreground w-24 text-xs">
+                              {bucket.label}
+                            </span>
+                            <div className="bg-muted h-5 flex-1 overflow-hidden rounded">
+                              <div
+                                className="h-full rounded bg-red-400 dark:bg-red-600"
+                                style={{ width: `${bucket.percentage}%` }}
+                              />
+                            </div>
+                            <span className="text-foreground w-16 text-right text-xs font-medium">
+                              {bucket.count} ({bucket.percentage}%)
+                            </span>
+                          </div>
+                        ))}
                       </div>
-                      <span className="text-foreground w-16 text-right text-xs font-medium">
-                        {bucket.count} ({bucket.percentage}%)
-                      </span>
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
+                  )}
 
-            {/* Registration Month Breakdown */}
-            {data.by_registration_month && data.by_registration_month.length > 0 && (
-              <div className="border-border bg-card rounded-lg border p-4">
-                <h3 className="text-foreground mb-3 text-sm font-semibold">
-                  Cancellations by Registration Month
-                </h3>
-                <div className="space-y-2">
-                  {data.by_registration_month.map((item) => (
-                    <div key={item.month} className="flex items-center gap-3">
-                      <span className="text-muted-foreground w-24 text-xs">{item.month}</span>
-                      <div className="bg-muted h-5 flex-1 overflow-hidden rounded">
-                        <div
-                          className="h-full rounded bg-amber-400 dark:bg-amber-600"
-                          style={{ width: `${item.percentage}%` }}
-                        />
-                      </div>
-                      <span className="text-foreground w-16 text-right text-xs font-medium">
-                        {item.count} ({item.percentage}%)
-                      </span>
+                {data.by_registration_month && data.by_registration_month.length > 0 && (
+                  <div className="border-border bg-card rounded-lg border p-4">
+                    <h3 className="text-foreground mb-3 text-sm font-semibold">
+                      Cancellations by Registration Month
+                    </h3>
+                    <div className="space-y-2">
+                      {data.by_registration_month.map((item) => (
+                        <div key={item.month} className="flex items-center gap-3">
+                          <span className="text-muted-foreground w-24 text-xs">{item.month}</span>
+                          <div className="bg-muted h-5 flex-1 overflow-hidden rounded">
+                            <div
+                              className="h-full rounded bg-amber-400 dark:bg-amber-600"
+                              style={{ width: `${item.percentage}%` }}
+                            />
+                          </div>
+                          <span className="text-foreground w-16 text-right text-xs font-medium">
+                            {item.count} ({item.percentage}%)
+                          </span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                )}
               </div>
-            )}
+            ) : null}
 
             {/* Session Chart */}
-            {data.by_session.length > 0 && (
+            {data.by_session.length > 0 && primarySession && (
               <>
-                {isComparing && compData ? (
-                  <>
-                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                      <CancellationBySessionChart
-                        data={sortSessionDataByCampThenQuest(
-                          data.by_session,
-                          sessionDateLookup,
-                          sessionTypeLookup
-                        )}
-                        onBarClick={setFilter}
-                        title={`${currentYear} Cancellations by Session`}
-                      />
-                      <CancellationBySessionChart
-                        data={sortSessionDataByCampThenQuest(
-                          compData.by_session,
-                          sessionDateLookup,
-                          sessionTypeLookup
-                        )}
-                        title={`${compareYear} Cancellations by Session`}
-                      />
-                    </div>
-                    <ComparisonSummaryTable
-                      title="Cancellations by Session Comparison"
-                      primaryYear={currentYear}
-                      compareYear={compareYear!}
-                      primaryData={sortSessionDataByCampThenQuest(
-                        data.by_session,
-                        sessionDateLookup,
-                        sessionTypeLookup
-                      ).map((s) => ({
-                        name: s.session_name,
-                        value: s.total_cancelled,
-                      }))}
-                      compareData={sortSessionDataByCampThenQuest(
-                        compData.by_session,
-                        sessionDateLookup,
-                        sessionTypeLookup
-                      ).map((s) => ({
-                        name: s.session_name,
-                        value: s.total_cancelled,
-                      }))}
-                      aliasMap={SESSION_NAME_ALIASES}
-                      categoryLabel="Session"
+                <div className={isComparing ? 'grid grid-cols-1 gap-6 lg:grid-cols-2' : ''}>
+                  <CssStackedHorizontalBarChart
+                    data={primarySession.data}
+                    segments={CANCEL_SEGMENTS}
+                    title={
+                      isComparing
+                        ? `${currentYear} Cancellations by Session`
+                        : 'Cancellations by Session'
+                    }
+                    onBarClick={(item) => {
+                      const session = primarySession.sorted.find(
+                        (s) => s.session_name === item.name
+                      )
+                      if (session) {
+                        setFilter({
+                          type: 'cancellation_total',
+                          value: String(session.session_cm_id),
+                          label: item.name,
+                        })
+                      }
+                    }}
+                  />
+                  {isComparing && compSessionData && (
+                    <CssStackedHorizontalBarChart
+                      data={compSessionData.data}
+                      segments={CANCEL_SEGMENTS}
+                      title={`${compareYear} Cancellations by Session`}
                     />
-                  </>
-                ) : (
-                  <CancellationBySessionChart
-                    data={sortSessionDataByCampThenQuest(
-                      data.by_session,
-                      sessionDateLookup,
-                      sessionTypeLookup
-                    )}
-                    onBarClick={setFilter}
+                  )}
+                </div>
+                {isComparing && compSessionData && (
+                  <ComparisonSummaryTable
+                    title="Cancellations by Session Comparison"
+                    primaryYear={currentYear}
+                    compareYear={compareYear!}
+                    primaryData={primarySession.sorted.map((s) => ({
+                      name: s.session_name,
+                      value: s.total_cancelled,
+                    }))}
+                    compareData={compSessionData.sorted.map((s) => ({
+                      name: s.session_name,
+                      value: s.total_cancelled,
+                    }))}
+                    aliasMap={SESSION_NAME_ALIASES}
+                    categoryLabel="Session"
                   />
                 )}
               </>
@@ -374,18 +461,35 @@ export default function CancellationAnalysis() {
               <>
                 {isComparing && compData ? (
                   <>
-                    {(data.by_grade || []).length > 0 && (
+                    {(data.by_grade || []).length > 0 && primaryGrade.length > 0 && (
                       <>
                         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                          <CancellationGradeChart
-                            data={data.by_grade}
-                            onBarClick={setFilter}
+                          <CssStackedHorizontalBarChart
+                            data={primaryGrade}
+                            segments={CANCEL_SEGMENTS}
                             title={`${currentYear} Grade Distribution`}
+                            onBarClick={(item) => {
+                              const grade = data.by_grade?.find(
+                                (g) =>
+                                  (g.grade !== null ? `Grade ${g.grade}` : 'Unknown') === item.name
+                              )
+                              if (grade) {
+                                setFilter({
+                                  type: 'grade',
+                                  value: grade.grade !== null ? String(grade.grade) : 'null',
+                                  label: item.name,
+                                  statusOverride: ['cancelled', 'withdrawn', 'dismissed'],
+                                })
+                              }
+                            }}
                           />
-                          <CancellationGradeChart
-                            data={compData.by_grade || []}
-                            title={`${compareYear} Grade Distribution`}
-                          />
+                          {compGrade.length > 0 && (
+                            <CssStackedHorizontalBarChart
+                              data={compGrade}
+                              segments={CANCEL_SEGMENTS}
+                              title={`${compareYear} Grade Distribution`}
+                            />
+                          )}
                         </div>
                         <ComparisonSummaryTable
                           title="Grade Distribution Comparison"
@@ -426,12 +530,33 @@ export default function CancellationAnalysis() {
                     )}
                   </>
                 ) : (
-                  <div className="grid gap-6 lg:grid-cols-2">
-                    {(data.by_grade || []).length > 0 && (
-                      <CancellationGradeChart data={data.by_grade} onBarClick={setFilter} />
+                  <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                    {(data.by_grade || []).length > 0 && primaryGrade.length > 0 && (
+                      <CssStackedHorizontalBarChart
+                        data={primaryGrade}
+                        segments={CANCEL_SEGMENTS}
+                        title="Grade Distribution"
+                        onBarClick={(item) => {
+                          const grade = data.by_grade?.find(
+                            (g) => (g.grade !== null ? `Grade ${g.grade}` : 'Unknown') === item.name
+                          )
+                          if (grade) {
+                            setFilter({
+                              type: 'grade',
+                              value: grade.grade !== null ? String(grade.grade) : 'null',
+                              label: item.name,
+                              statusOverride: ['cancelled', 'withdrawn', 'dismissed'],
+                            })
+                          }
+                        }}
+                      />
                     )}
                     {(data.by_gender || []).length > 0 && (
-                      <CancellationGenderChart data={data.by_gender} onSegmentClick={setFilter} />
+                      <CancellationGenderChart
+                        data={data.by_gender}
+                        onSegmentClick={setFilter}
+                        title="Gender Distribution"
+                      />
                     )}
                   </div>
                 )}

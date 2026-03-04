@@ -2,7 +2,7 @@ import type { TourDefinition } from '../types'
 
 const retentionOverviewTour: TourDefinition = {
   id: 'retention-overview',
-  version: 1,
+  version: 2,
   steps: [
     {
       element: '[data-tour="retention-summary-cards"]',
@@ -19,7 +19,7 @@ const retentionOverviewTour: TourDefinition = {
       popover: {
         title: 'Demographic Charts',
         description:
-          'Each chart breaks down retention differently. Click bars or data points to drill down.',
+          'Each chart breaks down retention differently. Click segments or data points to drill down.',
         side: 'top',
         align: 'start',
       },

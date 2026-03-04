@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest'
 import {
-  genderToBarData,
   getGenderDisplayName,
   gradeToBarData,
   sessionToBarData,
@@ -15,9 +14,8 @@ import {
   sortRetentionBarData,
   sessionFlowToSankeyData,
 } from '../retentionTransforms'
-import type { RetentionRateBarItem } from '../../components/metrics/RetentionRateBarChart'
 import type {
-  RetentionByGender,
+  RetentionRateBarItem,
   RetentionByGrade,
   RetentionBySession,
   RetentionByCity,
@@ -48,48 +46,6 @@ describe('getGenderDisplayName', () => {
 
   it('handles empty string', () => {
     expect(getGenderDisplayName('')).toBe('')
-  })
-})
-
-describe('genderToBarData', () => {
-  it('maps gender breakdown to bar data with display names', () => {
-    const input: RetentionByGender[] = [
-      { gender: 'M', base_count: 100, returned_count: 70, retention_rate: 0.7 },
-      { gender: 'F', base_count: 90, returned_count: 60, retention_rate: 0.667 },
-    ]
-    const result = genderToBarData(input)
-    expect(result).toHaveLength(2)
-    expect(result[0]).toEqual({
-      name: 'Male',
-      retentionRate: 0.7,
-      baseCount: 100,
-      returnedCount: 70,
-      id: 'M',
-    })
-    expect(result[1]).toEqual({
-      name: 'Female',
-      retentionRate: 0.667,
-      baseCount: 90,
-      returnedCount: 60,
-      id: 'F',
-    })
-  })
-
-  it('preserves raw gender value as id for API filtering', () => {
-    const input: RetentionByGender[] = [
-      { gender: 'F', base_count: 50, returned_count: 30, retention_rate: 0.6 },
-    ]
-    const result = genderToBarData(input)
-    expect(result[0]!.id).toBe('F')
-    expect(result[0]!.name).toBe('Female')
-  })
-
-  it('returns empty array for empty input', () => {
-    expect(genderToBarData([])).toEqual([])
-  })
-
-  it('returns empty array for undefined input', () => {
-    expect(genderToBarData(undefined)).toEqual([])
   })
 })
 
@@ -195,14 +151,14 @@ describe('yearsAtCampToBarData', () => {
 })
 
 describe('summerYearsToBarData', () => {
-  it('maps summer years breakdown with "X summers" labels', () => {
+  it('maps summer years breakdown with numeric labels', () => {
     const input: RetentionBySummerYears[] = [
       { summer_years: 1, base_count: 80, returned_count: 50, retention_rate: 0.625 },
       { summer_years: 4, base_count: 30, returned_count: 25, retention_rate: 0.833 },
     ]
     const result = summerYearsToBarData(input)
-    expect(result[0]!.name).toBe('1 summer')
-    expect(result[1]!.name).toBe('4 summers')
+    expect(result[0]!.name).toBe('1')
+    expect(result[1]!.name).toBe('4')
   })
 
   it('returns empty array for undefined', () => {

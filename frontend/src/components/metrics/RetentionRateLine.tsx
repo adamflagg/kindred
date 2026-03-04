@@ -2,6 +2,7 @@
  * RetentionRateLine - Line chart showing retention rate trend over multiple years.
  *
  * Displays overall retention rate trajectory across year transitions.
+ * Uses ChartCard for standardized HTML-rendered axes with Recharts SVG content.
  */
 
 import {
@@ -16,6 +17,8 @@ import {
   LabelList,
 } from 'recharts'
 import type { RetentionTrendYear } from '../../types/metrics'
+import { ChartCard } from './ChartCard'
+import { calculateVerticalLayout } from './cssChartUtils'
 
 interface RetentionRateLineProps {
   data: RetentionTrendYear[]
@@ -38,17 +41,6 @@ export function RetentionRateLine({
   height = 250,
   className = '',
 }: RetentionRateLineProps) {
-  if (data.length === 0) {
-    return (
-      <div className={`card-lodge p-4 ${className}`}>
-        <h3 className="text-foreground mb-4 text-base font-semibold">{title}</h3>
-        <div className="text-muted-foreground flex h-[200px] items-center justify-center">
-          No data available
-        </div>
-      </div>
-    )
-  }
-
   // Transform data for line chart - show base year on X-axis (tooltip shows full transition)
   const chartData: ChartDataItem[] = data.map((year) => ({
     name: year.from_year.toString(),
@@ -57,6 +49,10 @@ export function RetentionRateLine({
     baseCount: year.base_count,
     returnedCount: year.returned_count,
   }))
+
+  const { barsHeight, drawingHeight } = calculateVerticalLayout(height)
+  const ticks = [0, 20, 40, 60, 80, 100]
+  const axisMax = 100
 
   const CustomTooltip = ({
     active,
@@ -84,24 +80,25 @@ export function RetentionRateLine({
   }
 
   return (
-    <div className={`card-lodge p-4 ${className}`}>
-      <h3 className="text-foreground mb-4 text-base font-semibold">{title}</h3>
-      <ResponsiveContainer width="100%" height={height}>
-        <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+    <ChartCard
+      isEmpty={data.length === 0}
+      title={title}
+      className={className}
+      yAxis={{ ticks, axisMax, drawingHeight, barsHeight, formatTick: (v) => `${v}%` }}
+      xLabels={chartData.map((d) => d.name)}
+      xAxisEdgeAligned
+      xAxisRightPadding={20}
+    >
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart
+          data={chartData}
+          margin={{ top: 16, right: 20, left: 0, bottom: 0 }}
+          style={{ overflow: 'visible' }}
+        >
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-          <XAxis
-            dataKey="name"
-            className="text-xs"
-            tick={{ fill: 'hsl(var(--muted-foreground))' }}
-          />
-          <YAxis
-            domain={[0, 100]}
-            tickFormatter={(value) => `${value}%`}
-            className="text-xs"
-            tick={{ fill: 'hsl(var(--muted-foreground))' }}
-          />
+          <XAxis hide height={0} dataKey="name" />
+          <YAxis hide width={0} domain={[0, 100]} ticks={ticks} />
           <Tooltip content={<CustomTooltip />} />
-          {/* Reference line at 50% */}
           <ReferenceLine y={50} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
           <Line
             type="monotone"
@@ -121,6 +118,6 @@ export function RetentionRateLine({
           </Line>
         </LineChart>
       </ResponsiveContainer>
-    </div>
+    </ChartCard>
   )
 }
