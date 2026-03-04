@@ -1,6 +1,6 @@
 /**
- * Transform functions converting RetentionBy* types to RetentionRateBarItem arrays
- * for use with the RetentionRateBarChart component.
+ * Transform functions for retention data.
+ * Converts RetentionBy* types to bar chart items or pie chart slices.
  */
 
 import type {

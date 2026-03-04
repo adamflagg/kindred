@@ -206,7 +206,7 @@ export default function RetentionOverview() {
         {genderPieData.length > 0 && (
           <BreakdownChart
             data={genderPieData}
-            title="Retention by Gender"
+            title="Returning Campers by Gender"
             showPercentage
             height={200}
             breakdownType="gender"
