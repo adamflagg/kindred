@@ -184,6 +184,8 @@ export function CssVerticalGroupedBarChart({
                     <div className="flex w-full flex-row items-end justify-center gap-1">
                       {series.map((s) => {
                         const value = (item[s.key] as number) ?? 0
+                        // Intentionally skip zero-value bars so remaining bars center
+                        // naturally, rather than reserving a placeholder gap.
                         if (value === 0) return null
                         const barHeightPx = (value / axisMax) * drawingHeight
 
