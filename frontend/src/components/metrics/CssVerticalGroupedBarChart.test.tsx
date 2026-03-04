@@ -581,3 +581,28 @@ describe('CssVerticalGroupedBarChart barWidthPercent prop', () => {
     }
   })
 })
+
+// ---------------------------------------------------------------------------
+// X-axis alignment in sparse mode (Fix 4)
+// ---------------------------------------------------------------------------
+describe('CssVerticalGroupedBarChart x-axis alignment', () => {
+  let CssVerticalGroupedBarChart: typeof import('./CssVerticalGroupedBarChart').CssVerticalGroupedBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalGroupedBarChart')
+    CssVerticalGroupedBarChart = mod.CssVerticalGroupedBarChart
+  })
+
+  it('should add 1px left padding to x-axis to align with bars border-l', () => {
+    const sparseData = [
+      { name: '2024', male: 100, female: 80 },
+      { name: '2025', male: 110, female: 90 },
+      { name: '2026', male: 120, female: 95 },
+    ]
+    const { container } = render(
+      <CssVerticalGroupedBarChart data={sparseData} series={series} />
+    )
+    const xAxis = container.querySelector('.border-t') as HTMLElement
+    expect(xAxis.style.paddingLeft).toBeTruthy()
+  })
+})
