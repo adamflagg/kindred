@@ -8,6 +8,7 @@
 
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import type { GenderBreakdown, DrilldownFilter } from '../../types/metrics'
+import { ChartCard } from './ChartCard'
 
 // Gender colors matching GenderStackedChart and GenderByGradeChart
 const GENDER_COLORS: Record<string, string> = {
@@ -80,17 +81,6 @@ export function CancellationGenderChart({
   height = 300,
   onSegmentClick,
 }: CancellationGenderChartProps) {
-  if (data.length === 0) {
-    return (
-      <div className="card-lodge p-4">
-        <h3 className="text-foreground mb-4 text-base font-semibold">{title}</h3>
-        <div className="text-muted-foreground flex h-[200px] items-center justify-center">
-          No data available
-        </div>
-      </div>
-    )
-  }
-
   // Inner ring: gender totals
   const innerData: InnerDatum[] = data.map((g) => ({
     name: g.gender,
@@ -204,9 +194,13 @@ export function CancellationGenderChart({
     }
   }
 
+  const legendItems = [
+    ...data.map((g) => ({ label: g.gender, color: getGenderColor(g.gender) })),
+    ...priorStatusLegend,
+  ]
+
   return (
-    <div className="card-lodge p-4">
-      <h3 className="text-foreground mb-4 text-base font-semibold">{title}</h3>
+    <ChartCard title={title} isEmpty={data.length === 0} legend={legendItems}>
       <ResponsiveContainer width="100%" height={height}>
         <PieChart>
           {/* Inner ring: gender totals */}
@@ -244,27 +238,6 @@ export function CancellationGenderChart({
           <Tooltip content={<CustomTooltip />} />
         </PieChart>
       </ResponsiveContainer>
-      {/* Legend */}
-      <div className="mt-2 flex flex-wrap justify-center gap-4">
-        {data.map((g) => (
-          <div key={g.gender} className="flex items-center gap-1.5">
-            <div
-              className="h-3 w-3 flex-shrink-0 rounded-sm"
-              style={{ backgroundColor: getGenderColor(g.gender) }}
-            />
-            <span className="text-muted-foreground text-sm">{g.gender}</span>
-          </div>
-        ))}
-        {priorStatusLegend.map((item) => (
-          <div key={item.label} className="flex items-center gap-1.5">
-            <div
-              className="h-3 w-3 flex-shrink-0 rounded-sm"
-              style={{ backgroundColor: item.color }}
-            />
-            <span className="text-muted-foreground text-sm">{item.label}</span>
-          </div>
-        ))}
-      </div>
-    </div>
+    </ChartCard>
   )
 }

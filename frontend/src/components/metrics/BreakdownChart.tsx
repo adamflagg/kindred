@@ -15,11 +15,11 @@ import {
   PieChart,
   Pie,
   Cell,
-  Legend,
   LabelList,
 } from 'recharts'
 import type { PieLabelRenderProps } from 'recharts'
 import type { DrilldownFilter } from '../../types/metrics'
+import { ChartCard } from './ChartCard'
 
 const COLORS = [
   'hsl(160, 100%, 35%)', // Primary green
@@ -79,17 +79,6 @@ export function BreakdownChart({
       ...(breakdownType === 'gender' ? { titleFormat: 'adjective' as const } : {}),
     })
   }
-  if (data.length === 0) {
-    return (
-      <div className={`card-lodge p-4 ${className}`}>
-        <h3 className="text-foreground mb-4 text-base font-semibold">{title}</h3>
-        <div className="text-muted-foreground flex h-[200px] items-center justify-center">
-          No data available
-        </div>
-      </div>
-    )
-  }
-
   const CustomTooltip = ({
     active,
     payload,
@@ -117,11 +106,21 @@ export function BreakdownChart({
     return null
   }
 
-  return (
-    <div className={`card-lodge p-4 ${className}`}>
-      <h3 className="text-foreground mb-4 text-base font-semibold">{title}</h3>
-      <ResponsiveContainer width="100%" height={height}>
-        {type === 'pie' ? (
+  // Pie mode: use ChartCard for consistent card/legend styling
+  if (type === 'pie') {
+    const legendItems = data.map((d, i) => ({
+      label: d.name,
+      color: COLORS[i % COLORS.length] ?? '#00b36b',
+    }))
+
+    return (
+      <ChartCard
+        title={title}
+        className={className}
+        isEmpty={data.length === 0}
+        legend={legendItems}
+      >
+        <ResponsiveContainer width="100%" height={height}>
           <PieChart>
             <Pie
               data={data}
@@ -153,51 +152,69 @@ export function BreakdownChart({
               ))}
             </Pie>
             <Tooltip content={<CustomTooltip />} />
-            <Legend />
           </PieChart>
-        ) : (
-          <BarChart
-            data={data}
-            layout="vertical"
-            margin={{ top: 5, right: 30, left: 0, bottom: 5 }}
+        </ResponsiveContainer>
+      </ChartCard>
+    )
+  }
+
+  // Bar mode — unchanged
+  if (data.length === 0) {
+    return (
+      <div className={`card-lodge p-4 ${className}`}>
+        <h3 className="text-foreground mb-4 text-base font-semibold">{title}</h3>
+        <div className="text-muted-foreground flex h-[200px] items-center justify-center">
+          No data available
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className={`card-lodge p-4 ${className}`}>
+      <h3 className="text-foreground mb-4 text-base font-semibold">{title}</h3>
+      <ResponsiveContainer width="100%" height={height}>
+        <BarChart
+          data={data}
+          layout="vertical"
+          margin={{ top: 5, right: 30, left: 0, bottom: 5 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+          <XAxis type="number" className="text-xs" allowDecimals={false} />
+          <YAxis
+            type="category"
+            dataKey="name"
+            className="text-xs"
+            width={150}
+            interval={0}
+            tick={{
+              fill: 'hsl(var(--muted-foreground))',
+              style: { whiteSpace: 'nowrap' },
+            }}
+            tickFormatter={(value: string) =>
+              value.length > 18 ? `${value.slice(0, 16)}…` : value
+            }
+          />
+          <Tooltip content={<CustomTooltip />} />
+          <Bar
+            dataKey="value"
+            fill={COLORS[0]}
+            radius={[0, 4, 4, 0]}
+            onClick={(barData) => {
+              // barData contains the original data item properties
+              const item = barData as unknown as ChartData
+              if (item?.name) handleClick(item)
+            }}
+            style={{ cursor: isClickable ? 'pointer' : undefined }}
           >
-            <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-            <XAxis type="number" className="text-xs" allowDecimals={false} />
-            <YAxis
-              type="category"
-              dataKey="name"
-              className="text-xs"
-              width={150}
-              interval={0}
-              tick={{
-                fill: 'hsl(var(--muted-foreground))',
-                style: { whiteSpace: 'nowrap' },
-              }}
-              tickFormatter={(value: string) =>
-                value.length > 18 ? `${value.slice(0, 16)}…` : value
-              }
-            />
-            <Tooltip content={<CustomTooltip />} />
-            <Bar
+            <LabelList
               dataKey="value"
-              fill={COLORS[0]}
-              radius={[0, 4, 4, 0]}
-              onClick={(barData) => {
-                // barData contains the original data item properties
-                const item = barData as unknown as ChartData
-                if (item?.name) handleClick(item)
-              }}
-              style={{ cursor: isClickable ? 'pointer' : undefined }}
-            >
-              <LabelList
-                dataKey="value"
-                position="right"
-                className="text-xs"
-                fill="hsl(var(--muted-foreground))"
-              />
-            </Bar>
-          </BarChart>
-        )}
+              position="right"
+              className="text-xs"
+              fill="hsl(var(--muted-foreground))"
+            />
+          </Bar>
+        </BarChart>
       </ResponsiveContainer>
     </div>
   )
