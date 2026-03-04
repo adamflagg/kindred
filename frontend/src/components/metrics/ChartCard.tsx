@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react'
+import { VerticalYAxis, VerticalXAxis } from './cssChartUtils'
+import { ChartLegend } from './ChartLegend'
 
 export interface ChartCardYAxis {
   ticks: number[]
@@ -23,6 +25,70 @@ export interface ChartCardProps {
   children: ReactNode
 }
 
-export function ChartCard(_props: ChartCardProps): ReactNode {
-  return null
+export function ChartCard({
+  title,
+  className = '',
+  yAxis,
+  xLabels,
+  xAxisRotated,
+  xAxisMarginLeft,
+  legend,
+  isEmpty,
+  emptyMessage = 'No data available',
+  children,
+}: ChartCardProps) {
+  if (isEmpty) {
+    return (
+      <div className={`card-lodge p-4 ${className}`}>
+        {title && <h3 className="text-foreground mb-2 text-base font-semibold">{title}</h3>}
+        <div className="text-muted-foreground flex h-[200px] items-center justify-center">
+          {emptyMessage}
+        </div>
+      </div>
+    )
+  }
+
+  const yAxisMargin = xAxisMarginLeft ?? (yAxis?.width === 'w-10' ? '3rem' : '2.5rem')
+
+  return (
+    <div className={`card-lodge flex flex-col px-4 pt-4 pb-4 ${className}`}>
+      {title && <h3 className="text-foreground mb-2 text-base font-semibold">{title}</h3>}
+
+      <div className="relative flex-1">
+        {yAxis ? (
+          <>
+            <div className="flex">
+              <VerticalYAxis
+                ticks={yAxis.ticks}
+                axisMax={yAxis.axisMax}
+                drawingHeight={yAxis.drawingHeight}
+                barsHeight={yAxis.barsHeight}
+                width={yAxis.width ?? 'w-8'}
+                formatTick={yAxis.formatTick}
+              />
+              <div
+                className="border-foreground/40 relative flex-1 border-l"
+                style={{ height: yAxis.barsHeight }}
+              >
+                {children}
+              </div>
+            </div>
+            {xLabels && (
+              <VerticalXAxis
+                labels={xLabels}
+                {...(xAxisRotated !== undefined && { rotated: xAxisRotated })}
+                marginLeft={yAxisMargin}
+              />
+            )}
+          </>
+        ) : (
+          children
+        )}
+      </div>
+
+      {legend && legend.length > 0 && (
+        <ChartLegend items={legend} className="mt-3" />
+      )}
+    </div>
+  )
 }
