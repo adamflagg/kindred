@@ -440,6 +440,14 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
+    - name: Log in to Docker Hardened Images registry
+      if: steps.check.outputs.build == 'true'
+      uses: docker/login-action@v3
+      with:
+        registry: dhi.io
+        username: ${{ secrets.DHI_USERNAME }}
+        password: ${{ secrets.DHI_TOKEN }}
+
     - name: Determine tags
       if: steps.check.outputs.build == 'true'
       id: tags
