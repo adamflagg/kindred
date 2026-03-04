@@ -238,7 +238,7 @@ describe('CssVerticalGroupedBarChart X-axis', () => {
     const { container } = render(
       <CssVerticalGroupedBarChart data={sampleData} series={series} rotateLabels />
     )
-    const xAxisWrapper = container.querySelector('[style*="height: 60px"]')
+    const xAxisWrapper = container.querySelector('[style*="height: 80px"]')
     expect(xAxisWrapper).toBeInTheDocument()
   })
 
@@ -251,8 +251,8 @@ describe('CssVerticalGroupedBarChart X-axis', () => {
     const { container } = render(
       <CssVerticalGroupedBarChart data={manyItems} series={series} />
     )
-    // Auto-rotate kicks in for >8 items — rotated axis has height: 60px
-    const xAxisWrapper = container.querySelector('[style*="height: 60px"]')
+    // Auto-rotate kicks in for >8 items — rotated axis has height: 80px
+    const xAxisWrapper = container.querySelector('[style*="height: 80px"]')
     expect(xAxisWrapper).toBeInTheDocument()
   })
 
@@ -260,8 +260,8 @@ describe('CssVerticalGroupedBarChart X-axis', () => {
     const { container } = render(
       <CssVerticalGroupedBarChart data={sampleData} series={series} />
     )
-    // 3 items < 8 — should NOT have rotated 60px axis
-    const xAxisWrapper = container.querySelector('[style*="height: 60px"]')
+    // 3 items < 8 — should NOT have rotated 80px axis
+    const xAxisWrapper = container.querySelector('[style*="height: 80px"]')
     expect(xAxisWrapper).toBeNull()
   })
 })
@@ -473,5 +473,111 @@ describe('CssVerticalGroupedBarChart height', () => {
     // Custom height 400, barsHeight = 400 - 34 = 366
     const barsArea = container.querySelector('[style*="height: 366px"]')
     expect(barsArea).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Title spacing (Fix 1: title overlap with y-axis)
+// ---------------------------------------------------------------------------
+describe('CssVerticalGroupedBarChart title spacing', () => {
+  let CssVerticalGroupedBarChart: typeof import('./CssVerticalGroupedBarChart').CssVerticalGroupedBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalGroupedBarChart')
+    CssVerticalGroupedBarChart = mod.CssVerticalGroupedBarChart
+  })
+
+  it('should have mb-4 on title for adequate y-axis clearance', () => {
+    const { container } = render(
+      <CssVerticalGroupedBarChart data={sampleData} series={series} title="Test Title" />
+    )
+    const title = container.querySelector('h3')
+    expect(title).toBeInTheDocument()
+    expect(title!.className).toContain('mb-4')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// groupGap prop (Fix 3: inter-group spacing)
+// ---------------------------------------------------------------------------
+describe('CssVerticalGroupedBarChart groupGap prop', () => {
+  let CssVerticalGroupedBarChart: typeof import('./CssVerticalGroupedBarChart').CssVerticalGroupedBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalGroupedBarChart')
+    CssVerticalGroupedBarChart = mod.CssVerticalGroupedBarChart
+  })
+
+  it('should override default gap on the bars container when groupGap is provided', () => {
+    const sparseData = [
+      { name: '2024', male: 100, female: 80 },
+      { name: '2025', male: 110, female: 90 },
+      { name: '2026', male: 120, female: 95 },
+    ]
+    const { container } = render(
+      <CssVerticalGroupedBarChart data={sparseData} series={series} groupGap={16} />
+    )
+    const barsArea = container.querySelector('.border-l') as HTMLElement
+    expect(barsArea.style.gap).toBe('16px')
+  })
+
+  it('should use default gap from calculateColumnSizing when groupGap is not provided', () => {
+    const sparseData = [
+      { name: '2024', male: 100, female: 80 },
+      { name: '2025', male: 110, female: 90 },
+    ]
+    const { container } = render(
+      <CssVerticalGroupedBarChart data={sparseData} series={series} />
+    )
+    const barsArea = container.querySelector('.border-l') as HTMLElement
+    // Sparse mode default gap is 0
+    expect(barsArea.style.gap).toBe('0px')
+  })
+
+  it('should pass groupGap to the x-axis container as well', () => {
+    const sparseData = [
+      { name: '2024', male: 100, female: 80 },
+      { name: '2025', male: 110, female: 90 },
+      { name: '2026', male: 120, female: 95 },
+    ]
+    const { container } = render(
+      <CssVerticalGroupedBarChart data={sparseData} series={series} groupGap={16} />
+    )
+    // X-axis is the border-t div after the bars area
+    const xAxis = container.querySelector('.border-t') as HTMLElement
+    expect(xAxis.style.gap).toBe('16px')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// barWidthPercent prop (Fix 2: thinner bars)
+// ---------------------------------------------------------------------------
+describe('CssVerticalGroupedBarChart barWidthPercent prop', () => {
+  let CssVerticalGroupedBarChart: typeof import('./CssVerticalGroupedBarChart').CssVerticalGroupedBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalGroupedBarChart')
+    CssVerticalGroupedBarChart = mod.CssVerticalGroupedBarChart
+  })
+
+  it('should apply max-width percentage to each bar when barWidthPercent is provided', () => {
+    const { container } = render(
+      <CssVerticalGroupedBarChart data={sampleData} series={series} barWidthPercent={75} />
+    )
+    const bars = container.querySelectorAll('.rounded-t') as NodeListOf<HTMLElement>
+    // All bars should have maxWidth style
+    for (const bar of bars) {
+      expect(bar.style.maxWidth).toBe('75%')
+    }
+  })
+
+  it('should not apply max-width to bars when barWidthPercent is not provided', () => {
+    const { container } = render(
+      <CssVerticalGroupedBarChart data={sampleData} series={series} />
+    )
+    const bars = container.querySelectorAll('.rounded-t') as NodeListOf<HTMLElement>
+    for (const bar of bars) {
+      expect(bar.style.maxWidth).toBe('')
+    }
   })
 })

@@ -35,6 +35,10 @@ export interface CssVerticalGroupedBarChartProps {
   renderTooltip?: ((item: Record<string, unknown>, series: GroupedBarSeries[]) => ReactNode) | undefined
   onBarClick?: ((item: Record<string, unknown>, seriesKey: string) => void) | undefined
   className?: string
+  /** Override default inter-group gap (px) computed by calculateColumnSizing */
+  groupGap?: number
+  /** Constrain individual bar width as a percentage of the column (e.g. 75 for 75%) */
+  barWidthPercent?: number
 }
 
 export function CssVerticalGroupedBarChart({
@@ -142,7 +146,7 @@ export function CssVerticalGroupedBarChart({
                     return (
                       <div
                         key={s.key}
-                        className="relative z-10 flex-1 rounded-t transition-all duration-300"
+                        className="relative z-[1] flex-1 rounded-t transition-all duration-300"
                         style={{
                           height: `${barHeightPx}px`,
                           minHeight: value > 0 ? '4px' : '0px',
