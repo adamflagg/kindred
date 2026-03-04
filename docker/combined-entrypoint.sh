@@ -40,7 +40,7 @@ if [ ! -f "/pb_data/.initialized" ]; then
     # Wait for PocketBase to be ready
     log_info "Waiting for PocketBase to start..."
     for i in $(seq 1 30); do
-        if wget -q --spider http://127.0.0.1:8091/api/health 2>/dev/null; then
+        if curl -sf http://127.0.0.1:8091/api/health >/dev/null 2>&1; then
             log_info "PocketBase is ready"
             break
         fi
@@ -73,7 +73,7 @@ if [ ! -f "/pb_data/.initialized" ]; then
         DISCOVERY_URL="${OIDC_ISSUER%/}/.well-known/openid-configuration"
         log_info "Discovering OIDC endpoints from: $DISCOVERY_URL"
 
-        DISCOVERY_RESPONSE=$(wget -q -O - "$DISCOVERY_URL" 2>/dev/null || echo "")
+        DISCOVERY_RESPONSE=$(curl -sf "$DISCOVERY_URL" 2>/dev/null || echo "")
 
         if [ -z "$DISCOVERY_RESPONSE" ]; then
             log_error "Failed to fetch OIDC discovery document from $DISCOVERY_URL"
@@ -99,8 +99,9 @@ if [ ! -f "/pb_data/.initialized" ]; then
         log_info "Discovered OIDC endpoints: auth=${OIDC_AUTH_URL} token=${OIDC_TOKEN_URL} userinfo=${OIDC_USERINFO_URL}"
 
         # Login as admin to get token
-        AUTH_RESPONSE=$(wget -q -O - --post-data "{\"identity\":\"${POCKETBASE_ADMIN_EMAIL}\",\"password\":\"${POCKETBASE_ADMIN_PASSWORD}\"}" \
-            --header="Content-Type: application/json" \
+        AUTH_RESPONSE=$(curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"identity\":\"${POCKETBASE_ADMIN_EMAIL}\",\"password\":\"${POCKETBASE_ADMIN_PASSWORD}\"}" \
             "http://127.0.0.1:8091/api/collections/_superusers/auth-with-password" 2>/dev/null || echo "")
 
         TOKEN=$(echo "$AUTH_RESPONSE" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
@@ -109,7 +110,7 @@ if [ ! -f "/pb_data/.initialized" ]; then
             # Build OAuth2 config JSON with discovered endpoints
             OAUTH_CONFIG="{\"oauth2\":{\"enabled\":true,\"providers\":[{\"name\":\"oidc\",\"displayName\":\"Pocket ID\",\"clientId\":\"${OIDC_CLIENT_ID}\",\"clientSecret\":\"${OIDC_CLIENT_SECRET}\",\"authURL\":\"${OIDC_AUTH_URL}\",\"tokenURL\":\"${OIDC_TOKEN_URL}\",\"userURL\":\"${OIDC_USERINFO_URL}\",\"pkce\":true,\"enabled\":true,\"scopes\":[\"openid\",\"email\",\"profile\"]}]}}"
 
-            # Update users collection with OAuth2 config (curl required - BusyBox wget doesn't support PATCH)
+            # Update users collection with OAuth2 config
             HTTP_CODE=$(curl -s -o /tmp/oauth_response.txt -w "%{http_code}" \
                 -X PATCH \
                 -H "Authorization: $TOKEN" \
