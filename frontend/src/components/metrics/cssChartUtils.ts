@@ -48,10 +48,6 @@ export interface TooltipState<T> {
   item: T | null
 }
 
-/**
- * Hook encapsulating tooltip state, mouse tracking, and viewport clamping.
- * Returns tooltip state, a ref for the tooltip element, and mouse handlers.
- */
 export interface BarSizing {
   isDense: boolean
   barHeight: number
@@ -99,6 +95,10 @@ export function calculateBarSizing(containerHeight: number, itemCount: number): 
   return { isDense, barHeight, rowGap, axisArea }
 }
 
+/**
+ * Hook encapsulating tooltip state, mouse tracking, and viewport clamping.
+ * Returns tooltip state, a ref for the tooltip element, and mouse handlers.
+ */
 export function useChartTooltip<T>() {
   const tooltipRef = useRef<HTMLDivElement>(null)
   const [tooltip, setTooltip] = useState<TooltipState<T>>({
