@@ -64,8 +64,8 @@ export function CssVerticalStackedBarChart({
   const xAxisHeight = rotateLabels ? 80 : 34
   const { barsHeight, drawingHeight } = calculateVerticalLayout(height, { xAxisHeight })
   const baseColumnSizing = calculateColumnSizing(data.length)
-  const columnSizing = maxColumnWidth
-    ? { ...baseColumnSizing, maxWidth: maxColumnWidth }
+  const columnSizing = maxColumnWidth && baseColumnSizing.mode !== 'sparse'
+    ? { mode: 'sparse' as const, maxWidth: maxColumnWidth, gap: 16, columnPadding: baseColumnSizing.columnPadding }
     : baseColumnSizing
 
   const {

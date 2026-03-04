@@ -646,7 +646,7 @@ describe('CssVerticalStackedBarChart maxColumnWidth prop', () => {
     CssVerticalStackedBarChart = mod.CssVerticalStackedBarChart
   })
 
-  it('should constrain column width in normal mode when maxColumnWidth is provided', () => {
+  it('should constrain and center columns when maxColumnWidth is provided', () => {
     const normalData = Array.from({ length: 5 }, (_, i) => ({
       name: `Y${i}`,
       total: 10 + i,
@@ -657,8 +657,11 @@ describe('CssVerticalStackedBarChart maxColumnWidth prop', () => {
       <CssVerticalStackedBarChart data={normalData} segments={segments} maxColumnWidth={100} />
     )
     const barsArea = container.querySelector('.border-l') as HTMLElement
+    // Should have maxWidth on columns
     const columns = barsArea.querySelectorAll(':scope > [style*="max-width: 100px"]')
     expect(columns.length).toBe(5)
+    // Should center columns (sparse-like behavior)
+    expect(barsArea.className).toContain('justify-center')
   })
 
   it('should not constrain columns when maxColumnWidth is not provided', () => {

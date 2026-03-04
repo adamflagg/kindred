@@ -20,7 +20,6 @@ import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { TrendLineChart } from '../../../components/metrics/TrendLineChart'
 import { MetricCard } from '../../../components/metrics/MetricCard'
 import { RetentionRateLine } from '../../../components/metrics/RetentionRateLine'
-import { GenderStackedChart } from '../../../components/metrics/GenderStackedChart'
 import { GradeEnrollmentChart } from '../../../components/metrics/GradeEnrollmentChart'
 import { MultiYearBreakdownChart } from '../../../components/metrics/MultiYearBreakdownChart'
 import { CssVerticalStackedBarChart } from '../../../components/metrics/CssVerticalStackedBarChart'
@@ -259,13 +258,30 @@ export default function TrendsOverview() {
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-6">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <TrendLineChart
           title="Enrollment by Gender"
           data={data.years}
           metric="gender"
           height={300}
         />
+        {enrollmentData.length > 0 && (
+          <CssVerticalStackedBarChart
+            data={enrollmentData.map((y) => {
+              const male = y.by_gender.find((g) => g.gender === 'M')?.count ?? 0
+              const female = y.by_gender.find((g) => g.gender === 'F')?.count ?? 0
+              return { name: String(y.year), total: male + female, male, female }
+            })}
+            segments={[
+              { key: 'female', label: 'Female', color: 'hsl(340, 70%, 50%)' },
+              { key: 'male', label: 'Male', color: 'hsl(200, 70%, 50%)' },
+            ]}
+            title={`Gender Composition (${numYearsDisplay}-Year Comparison)`}
+            percentMode
+            height={300}
+            maxColumnWidth={60}
+          />
+        )}
       </div>
 
       {/* Data Table */}
@@ -353,33 +369,6 @@ export default function TrendsOverview() {
         )}
       </div>
 
-      {/* Gender Composition side-by-side */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {enrollmentData.length > 0 && (
-          <GenderStackedChart
-            data={enrollmentData}
-            title={`Gender Composition (${numYearsDisplay}-Year Comparison)`}
-            height={250}
-          />
-        )}
-        {enrollmentData.length > 0 && (
-          <CssVerticalStackedBarChart
-            data={enrollmentData.map((y) => {
-              const male = y.by_gender.find((g) => g.gender === 'M')?.count ?? 0
-              const female = y.by_gender.find((g) => g.gender === 'F')?.count ?? 0
-              return { name: String(y.year), total: male + female, male, female }
-            })}
-            segments={[
-              { key: 'female', label: 'Female', color: 'hsl(340, 70%, 50%)' },
-              { key: 'male', label: 'Male', color: 'hsl(200, 70%, 50%)' },
-            ]}
-            title={`Gender Composition (CSS) (${numYearsDisplay}-Year Comparison)`}
-            percentMode
-            height={250}
-            maxColumnWidth={120}
-          />
-        )}
-      </div>
 
       {/* Grade Enrollment */}
       {enrollmentData.length > 0 && (
