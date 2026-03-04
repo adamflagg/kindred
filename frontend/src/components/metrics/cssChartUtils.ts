@@ -336,13 +336,51 @@ interface VerticalXAxisProps {
   alignBorderLeft?: boolean
   /** Use justify-evenly instead of justify-center for sparse mode. */
   justifyEvenly?: boolean
+  /** Position labels at edge-to-edge positions (for line charts). */
+  edgeAligned?: boolean
+  /** Right padding in px to match Recharts right margin (used with edgeAligned). */
+  rightPadding?: number
 }
 
 /**
- * X-axis labels for a vertical CSS bar chart.
- * Supports straight (centered) and rotated (-40deg) modes.
+ * X-axis labels for a vertical CSS chart.
+ * Supports straight (centered), rotated (-40deg), and edge-aligned (line chart) modes.
  */
-export function VerticalXAxis({ labels, rotated = false, marginLeft, height, columnSizing, alignBorderLeft, justifyEvenly }: VerticalXAxisProps) {
+export function VerticalXAxis({ labels, rotated = false, marginLeft, height, columnSizing, alignBorderLeft, justifyEvenly, edgeAligned, rightPadding = 0 }: VerticalXAxisProps) {
+  // Edge-aligned mode: absolute-position labels at evenly-spaced points from edge to edge.
+  // Used for line charts where data points span 0% to 100% of the plot area.
+  if (edgeAligned && labels.length > 1) {
+    const n = labels.length
+    return React.createElement(
+      'div',
+      {
+        className: 'border-foreground/40 border-t pt-1',
+        style: { ...(marginLeft ? { marginLeft } : {}) },
+      },
+      React.createElement(
+        'div',
+        {
+          className: 'relative',
+          style: { marginRight: `${rightPadding}px`, height: '20px' },
+        },
+        labels.map((label, i) =>
+          React.createElement(
+            'span',
+            {
+              key: i,
+              className: 'text-muted-foreground absolute text-sm',
+              style: {
+                left: `${(i / (n - 1)) * 100}%`,
+                transform: 'translateX(-50%)',
+              },
+            },
+            label
+          )
+        )
+      )
+    )
+  }
+
   const isSparse = columnSizing?.mode === 'sparse'
   const justifyClass = isSparse ? (justifyEvenly ? 'justify-evenly' : 'justify-center') : ''
   const sparseStyle = isSparse

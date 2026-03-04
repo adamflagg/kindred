@@ -109,9 +109,11 @@ export function RetentionRateLineChart({
         formatTick: (v: number) => `${v}%`,
       }}
       xLabels={chartData.map((d) => d.name)}
+      xAxisEdgeAligned
+      xAxisRightPadding={20}
     >
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={chartData} margin={{ top: 16, right: 20, left: 0, bottom: 0 }}>
+        <LineChart data={chartData} margin={{ top: 16, right: 20, left: 0, bottom: 0 }} style={{ overflow: 'visible' }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis hide height={0} dataKey="name" />
           <YAxis hide width={0} domain={[0, 100]} ticks={ticks} />

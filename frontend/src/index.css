@@ -1337,3 +1337,16 @@
   pointer-events: none;
   border-radius: inherit;
 }
+
+/* Allow line chart dots at edges to render outside the SVG viewport */
+.overflow-visible .recharts-surface {
+  overflow: visible;
+}
+
+/* White halo behind data labels so they read cleanly over grid lines and axes */
+.recharts-label-list text {
+  paint-order: stroke;
+  stroke: hsl(var(--card));
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}

@@ -19,6 +19,8 @@ export interface ChartCardProps {
   xLabels?: string[]
   xAxisRotated?: boolean
   xAxisMarginLeft?: string
+  xAxisEdgeAligned?: boolean
+  xAxisRightPadding?: number
   legend?: Array<{ label: string; color: string }>
   isEmpty?: boolean
   emptyMessage?: string
@@ -32,6 +34,8 @@ export function ChartCard({
   xLabels,
   xAxisRotated,
   xAxisMarginLeft,
+  xAxisEdgeAligned,
+  xAxisRightPadding,
   legend,
   isEmpty,
   emptyMessage = 'No data available',
@@ -67,7 +71,7 @@ export function ChartCard({
                 formatTick={yAxis.formatTick}
               />
               <div
-                className="border-foreground/40 relative flex-1 border-l"
+                className={`border-foreground/40 relative flex-1 border-l${xAxisEdgeAligned ? ' overflow-visible' : ''}`}
                 style={{ height: yAxis.barsHeight }}
               >
                 {children}
@@ -78,6 +82,8 @@ export function ChartCard({
                 labels={xLabels}
                 {...(xAxisRotated !== undefined && { rotated: xAxisRotated })}
                 marginLeft={yAxisMargin}
+                {...(xAxisEdgeAligned && { edgeAligned: true })}
+                {...(xAxisRightPadding !== undefined && { rightPadding: xAxisRightPadding })}
               />
             )}
           </>

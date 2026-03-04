@@ -145,10 +145,12 @@ export function TrendLineChart({
         ...(metric === 'cancellation_rate' && { formatTick: (v: number) => `${v}%` }),
       }}
       xLabels={chartData.map((d) => String(d.year))}
+      xAxisEdgeAligned
+      xAxisRightPadding={20}
       {...(legendItems.length > 1 && { legend: legendItems })}
     >
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={chartData} margin={{ top: 16, right: 20, left: 0, bottom: 0 }}>
+        <LineChart data={chartData} margin={{ top: 16, right: 20, left: 0, bottom: 0 }} style={{ overflow: 'visible' }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis hide height={0} dataKey="year" />
           <YAxis hide width={0} domain={[0, axisMax]} ticks={ticks} />
