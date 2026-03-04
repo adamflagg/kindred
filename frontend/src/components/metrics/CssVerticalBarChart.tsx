@@ -86,8 +86,9 @@ export function CssVerticalBarChart({
 
   // Compute axis max and ticks
   const dataMax = data.length > 0 ? Math.max(...data.map((d) => d.value)) : 0
-  const axisMax = yAxisMax ?? (dataMax > 0 ? dataMax : 1)
+  let axisMax = yAxisMax ?? (dataMax > 0 ? dataMax : 1)
   const ticks = yAxisTicks ?? getNiceTicks(axisMax)
+  axisMax = ticks[ticks.length - 1] ?? axisMax
 
   // Y-axis margin-left string for x-axis alignment
   const yAxisMarginLeft = yAxisWidth === 'w-10' ? '3rem' : '2.5rem'
@@ -144,13 +145,13 @@ export function CssVerticalBarChart({
                   onClick={() => isClickable && handleClick(item)}
                 >
                   {/* Label above bar */}
-                  <span className="text-muted-foreground relative z-10 mb-1 text-xs tabular-nums">
+                  <span className="text-muted-foreground relative z-[1] mb-1 text-xs tabular-nums">
                     {label}
                   </span>
 
                   {/* Bar */}
                   <div
-                    className={`relative z-10 rounded-t transition-all duration-300 ${barWidthPercent ? '' : 'w-full'}`}
+                    className={`relative z-[1] rounded-t transition-all duration-300 ${barWidthPercent ? '' : 'w-full'}`}
                     style={{
                       height: `${barHeightPx}px`,
                       minHeight: item.value > 0 ? '4px' : '0px',

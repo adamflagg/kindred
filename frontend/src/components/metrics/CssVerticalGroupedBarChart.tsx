@@ -87,8 +87,9 @@ export function CssVerticalGroupedBarChart({
     data.length > 0
       ? Math.max(...data.flatMap((d) => series.map((s) => (d[s.key] as number) ?? 0)))
       : 0
-  const axisMax = yAxisMax ?? (dataMax > 0 ? dataMax : 1)
+  let axisMax = yAxisMax ?? (dataMax > 0 ? dataMax : 1)
   const ticks = getNiceTicks(axisMax)
+  axisMax = ticks[ticks.length - 1] ?? axisMax
 
   // Y-axis margin-left string for x-axis alignment
   const yAxisMarginLeft = '2.5rem'
