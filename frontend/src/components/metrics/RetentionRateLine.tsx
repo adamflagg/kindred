@@ -107,7 +107,7 @@ export function RetentionRateLine({
               position="top"
               className="text-xs"
               fill="hsl(var(--muted-foreground))"
-              formatter={(value: string | number | undefined) => `${value}%`}
+              formatter={(value) => `${value}%`}
             />
           </Line>
         </LineChart>

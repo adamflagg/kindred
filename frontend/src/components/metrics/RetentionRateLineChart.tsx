@@ -3,6 +3,7 @@
  *
  * Best for ordered numeric categories (grade, summers at camp, first summer year)
  * where the x-axis progression matters. Data is always sorted by name (natural order).
+ * Uses ChartCard for standardized HTML-rendered axes with Recharts SVG content.
  */
 
 import {
@@ -18,6 +19,8 @@ import {
 } from 'recharts'
 import { sortRetentionBarData } from '../../utils/retentionTransforms'
 import type { RetentionRateBarItem } from '../../types/metrics'
+import { ChartCard } from './ChartCard'
+import { calculateVerticalLayout } from './cssChartUtils'
 
 interface RetentionRateLineChartProps {
   data: RetentionRateBarItem[]
@@ -42,17 +45,6 @@ export function RetentionRateLineChart({
   tooltipLabelPrefix,
   onDotClick,
 }: RetentionRateLineChartProps) {
-  if (data.length === 0) {
-    return (
-      <div className="card-lodge p-4">
-        <h3 className="text-foreground mb-4 text-base font-semibold">{title}</h3>
-        <div className="text-muted-foreground flex h-[200px] items-center justify-center">
-          No data available
-        </div>
-      </div>
-    )
-  }
-
   // Always sort by name for line charts (x-axis must be ordered)
   const sorted = sortRetentionBarData(data, 'name')
 
@@ -63,6 +55,11 @@ export function RetentionRateLineChart({
     returnedCount: d.returnedCount,
     id: d.id,
   }))
+
+  // Compute layout for ChartCard
+  const { barsHeight, drawingHeight } = calculateVerticalLayout(height)
+  const ticks = [0, 20, 40, 60, 80, 100]
+  const axisMax = 100
 
   // Handle activeDot click: map chart item back to original RetentionRateBarItem
   const handleDotClick = onDotClick
@@ -101,23 +98,23 @@ export function RetentionRateLineChart({
   }
 
   return (
-    <div className="card-lodge p-4">
-      <h3 className="text-foreground mb-4 text-base font-semibold">{title}</h3>
-      <ResponsiveContainer width="100%" height={height}>
-        <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+    <ChartCard
+      title={title}
+      isEmpty={data.length === 0}
+      yAxis={{
+        ticks,
+        axisMax,
+        drawingHeight,
+        barsHeight,
+        formatTick: (v: number) => `${v}%`,
+      }}
+      xLabels={chartData.map((d) => d.name)}
+    >
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={chartData} margin={{ top: 16, right: 20, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-          <XAxis
-            dataKey="name"
-            className="text-xs"
-            tick={{ fill: 'hsl(var(--muted-foreground))' }}
-            interval={0}
-          />
-          <YAxis
-            domain={[0, 100]}
-            tickFormatter={(value) => `${value}%`}
-            className="text-xs"
-            tick={{ fill: 'hsl(var(--muted-foreground))' }}
-          />
+          <XAxis hide height={0} dataKey="name" />
+          <YAxis hide width={0} domain={[0, 100]} ticks={ticks} />
           <Tooltip content={<CustomTooltip />} />
           <ReferenceLine y={50} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
           <Line
@@ -142,6 +139,6 @@ export function RetentionRateLineChart({
           </Line>
         </LineChart>
       </ResponsiveContainer>
-    </div>
+    </ChartCard>
   )
 }
