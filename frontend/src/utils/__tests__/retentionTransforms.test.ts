@@ -152,14 +152,14 @@ describe('yearsAtCampToBarData', () => {
 })
 
 describe('summerYearsToBarData', () => {
-  it('maps summer years breakdown with "X summers" labels', () => {
+  it('maps summer years breakdown with numeric labels', () => {
     const input: RetentionBySummerYears[] = [
       { summer_years: 1, base_count: 80, returned_count: 50, retention_rate: 0.625 },
       { summer_years: 4, base_count: 30, returned_count: 25, retention_rate: 0.833 },
     ]
     const result = summerYearsToBarData(input)
-    expect(result[0]!.name).toBe('1 summer')
-    expect(result[1]!.name).toBe('4 summers')
+    expect(result[0]!.name).toBe('1')
+    expect(result[1]!.name).toBe('4')
   })
 
   it('returns empty array for undefined', () => {

@@ -147,7 +147,7 @@ export function summerYearsToBarData(
 ): RetentionRateBarItem[] {
   if (!data?.length) return []
   return data.map((d) => ({
-    name: d.summer_years === 1 ? '1 summer' : `${d.summer_years} summers`,
+    name: String(d.summer_years),
     retentionRate: d.retention_rate,
     baseCount: d.base_count,
     returnedCount: d.returned_count,
