@@ -2,7 +2,7 @@
  * SVG math utilities for CSS chart components.
  *
  * Pure functions for generating SVG path data — no React, no DOM.
- * Used by CssLineChart (monotone curves) and CssPieChart (arc segments).
+ * Pure functions for generating SVG path data — no React, no DOM.
  */
 
 /**
