@@ -14,6 +14,7 @@ import {
   VerticalYAxis,
   VerticalXAxis,
   ColumnHoverOverlay,
+  HorizontalGridlines,
   VerticalTooltipShell,
 } from './cssChartUtils'
 
@@ -63,6 +64,7 @@ export function CssVerticalBarChart({
   const xAxisHeight = rotateLabels ? 80 : 34
   const { barsHeight, drawingHeight } = calculateVerticalLayout(height, { xAxisHeight })
   const columnSizing = calculateColumnSizing(data.length)
+  const halfGap = columnSizing.gap / 2
 
   const {
     hoveredIndex,
@@ -124,8 +126,10 @@ export function CssVerticalBarChart({
           <div
             ref={chartRef}
             className={`border-foreground/40 relative flex flex-1 items-end border-l ${columnSizing.mode === 'sparse' ? 'justify-center' : ''}`}
-            style={{ height: barsHeight, gap: `${columnSizing.gap}px` }}
+            style={{ height: barsHeight }}
           >
+            <HorizontalGridlines ticks={ticks} axisMax={axisMax} drawingHeight={drawingHeight} />
+
             {data.map((item, index) => {
               const barHeightPx = (item.value / axisMax) * drawingHeight
               const label = labelFormat ? labelFormat(item) : String(item.value)
@@ -136,8 +140,8 @@ export function CssVerticalBarChart({
                   className={`relative flex h-full flex-col items-center justify-end ${columnSizing.maxWidth ? '' : 'flex-1'} ${isClickable ? 'cursor-pointer' : ''} ${columnSizing.mode === 'sparse' ? `rounded transition-colors duration-150 ${hoveredIndex === index ? 'bg-foreground/[0.06]' : ''}` : ''}`}
                   style={{
                     ...(columnSizing.maxWidth ? { maxWidth: `${columnSizing.maxWidth}px`, width: '100%' } : {}),
-                    paddingLeft: `${columnSizing.columnPadding}px`,
-                    paddingRight: `${columnSizing.columnPadding}px`,
+                    paddingLeft: `${columnSizing.columnPadding + halfGap}px`,
+                    paddingRight: `${columnSizing.columnPadding + halfGap}px`,
                   }}
                   onMouseEnter={(e) => handleColumnEnter(index, e.currentTarget.getBoundingClientRect())}
                   onMouseMove={(e) => handleColumnMove(e, item)}
@@ -168,6 +172,7 @@ export function CssVerticalBarChart({
                 itemCount={data.length}
                 hoveredIndex={hoveredIndex}
                 lastIndex={lastIndex}
+                height={drawingHeight}
               />
             )}
           </div>
@@ -178,7 +183,7 @@ export function CssVerticalBarChart({
           labels={data.map((d) => d.name)}
           rotated={rotateLabels}
           marginLeft={yAxisMarginLeft}
-          columnSizing={columnSizing}
+          columnSizing={{ ...columnSizing, gap: 0 }}
         />
 
         {/* Tooltip */}

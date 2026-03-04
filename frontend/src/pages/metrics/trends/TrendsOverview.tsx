@@ -20,8 +20,6 @@ import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { TrendLineChart } from '../../../components/metrics/TrendLineChart'
 import { MetricCard } from '../../../components/metrics/MetricCard'
 import { RetentionRateLine } from '../../../components/metrics/RetentionRateLine'
-import { GradeEnrollmentChart } from '../../../components/metrics/GradeEnrollmentChart'
-import { MultiYearBreakdownChart } from '../../../components/metrics/MultiYearBreakdownChart'
 import { CssVerticalStackedBarChart } from '../../../components/metrics/CssVerticalStackedBarChart'
 import { CssVerticalGroupedBarChart } from '../../../components/metrics/CssVerticalGroupedBarChart'
 import { Loader2, AlertCircle } from 'lucide-react'
@@ -46,7 +44,8 @@ function buildGroupedChartData(
   labelKey: string,
   topN: number,
   nameFormatter?: (key: string | number) => string,
-  invertAxes?: boolean
+  invertAxes?: boolean,
+  sortCategories?: 'asc' | 'desc'
 ): {
   chartData: GroupedChartItem[]
   series: Array<{ key: string; label: string; color: string }>
@@ -74,10 +73,15 @@ function buildGroupedChartData(
     }
   }
 
-  const topCategories = Array.from(categoryTotals.entries())
+  let topCategories = Array.from(categoryTotals.entries())
     .sort((a, b) => b[1] - a[1])
     .slice(0, topN)
     .map(([key]) => key)
+
+  if (sortCategories) {
+    const dir = sortCategories === 'asc' ? 1 : -1
+    topCategories = topCategories.sort((a, b) => dir * a.localeCompare(b, undefined, { numeric: true }))
+  }
 
   if (invertAxes) {
     // Years on X-axis, categories as series
@@ -371,13 +375,6 @@ export default function TrendsOverview() {
 
 
       {/* Grade Enrollment */}
-      {enrollmentData.length > 0 && (
-        <GradeEnrollmentChart
-          data={enrollmentData}
-          title={`Enrollment by Grade (${numYearsDisplay}-Year Comparison)`}
-          height={300}
-        />
-      )}
       {enrollmentData.length > 0 &&
         (() => {
           const gradeSet = new Set<number | null>()
@@ -414,27 +411,16 @@ export default function TrendsOverview() {
             <CssVerticalGroupedBarChart
               data={gradeData}
               series={yearSeries}
-              title={`Enrollment by Grade (CSS) (${numYearsDisplay}-Year Comparison)`}
+              title={`Enrollment by Grade (${numYearsDisplay}-Year Comparison)`}
               height={300}
               rotateLabels={false}
-              groupGap={12}
-              barWidthPercent={75}
+              groupGap={numYearsDisplay === 3 ? 24 : 20}
+              barWidthPercent={numYearsDisplay === 3 ? 30 : 55}
             />
           )
         })()}
 
       {/* Summers at Camp */}
-      {enrollmentData.length > 0 && (
-        <MultiYearBreakdownChart
-          data={enrollmentData}
-          breakdownKey="by_summer_years"
-          labelKey="summer_years"
-          title={`Summers at Camp (${numYearsDisplay}-Year Comparison)`}
-          nameFormatter={summerYearsFormatter}
-          invertAxes
-          height={300}
-        />
-      )}
       {enrollmentData.length > 0 &&
         (() => {
           const { chartData, series } = buildGroupedChartData(
@@ -450,25 +436,15 @@ export default function TrendsOverview() {
             <CssVerticalGroupedBarChart
               data={chartData}
               series={series}
-              title={`Summers at Camp (CSS) (${numYearsDisplay}-Year Comparison)`}
+              title={`Summers at Camp (${numYearsDisplay}-Year Comparison)`}
               height={300}
-              groupGap={12}
-              barWidthPercent={75}
+              maxColumnWidth={numYearsDisplay === 3 ? 300 : 160}
+              groupGap={numYearsDisplay === 3 ? 48 : 32}
             />
           )
         })()}
 
       {/* First Summer Year */}
-      {enrollmentData.length > 0 && (
-        <MultiYearBreakdownChart
-          data={enrollmentData}
-          breakdownKey="by_first_summer_year"
-          labelKey="first_summer_year"
-          title={`First Summer Year (${numYearsDisplay}-Year Comparison)`}
-          invertAxes
-          height={300}
-        />
-      )}
       {enrollmentData.length > 0 &&
         (() => {
           const { chartData, series } = buildGroupedChartData(
@@ -477,32 +453,23 @@ export default function TrendsOverview() {
             'first_summer_year',
             15,
             undefined,
-            true
+            true,
+            'asc'
           )
           if (chartData.length === 0) return null
           return (
             <CssVerticalGroupedBarChart
               data={chartData}
               series={series}
-              title={`First Summer Year (CSS) (${numYearsDisplay}-Year Comparison)`}
+              title={`First Summer Year (${numYearsDisplay}-Year Comparison)`}
               height={300}
-              groupGap={12}
-              barWidthPercent={75}
+              maxColumnWidth={numYearsDisplay === 3 ? 300 : 160}
+              groupGap={numYearsDisplay === 3 ? 48 : 32}
             />
           )
         })()}
 
       {/* City Distribution */}
-      {enrollmentData.some((y) => (y.by_city?.length ?? 0) > 0) && (
-        <MultiYearBreakdownChart
-          data={enrollmentData}
-          breakdownKey="by_city"
-          labelKey="city"
-          title={`City Distribution (Top 15, ${numYearsDisplay}-Year Comparison)`}
-          topN={15}
-          height={350}
-        />
-      )}
       {enrollmentData.some((y) => (y.by_city?.length ?? 0) > 0) &&
         (() => {
           const { chartData, series } = buildGroupedChartData(
@@ -516,25 +483,15 @@ export default function TrendsOverview() {
             <CssVerticalGroupedBarChart
               data={chartData}
               series={series}
-              title={`City Distribution (CSS) (Top 15, ${numYearsDisplay}-Year Comparison)`}
+              title={`City Distribution (Top 15, ${numYearsDisplay}-Year Comparison)`}
               height={350}
-              groupGap={12}
-              barWidthPercent={75}
+              groupGap={numYearsDisplay === 3 ? 24 : 20}
+              barWidthPercent={numYearsDisplay === 3 ? 30 : 55}
             />
           )
         })()}
 
       {/* School Distribution */}
-      {enrollmentData.some((y) => (y.by_school?.length ?? 0) > 0) && (
-        <MultiYearBreakdownChart
-          data={enrollmentData}
-          breakdownKey="by_school"
-          labelKey="school"
-          title={`School Distribution (Top 15, ${numYearsDisplay}-Year Comparison)`}
-          topN={15}
-          height={350}
-        />
-      )}
       {enrollmentData.some((y) => (y.by_school?.length ?? 0) > 0) &&
         (() => {
           const { chartData, series } = buildGroupedChartData(
@@ -548,25 +505,15 @@ export default function TrendsOverview() {
             <CssVerticalGroupedBarChart
               data={chartData}
               series={series}
-              title={`School Distribution (CSS) (Top 15, ${numYearsDisplay}-Year Comparison)`}
+              title={`School Distribution (Top 15, ${numYearsDisplay}-Year Comparison)`}
               height={350}
-              groupGap={12}
-              barWidthPercent={75}
+              groupGap={numYearsDisplay === 3 ? 24 : 20}
+              barWidthPercent={numYearsDisplay === 3 ? 30 : 55}
             />
           )
         })()}
 
       {/* Synagogue Distribution */}
-      {enrollmentData.some((y) => (y.by_synagogue?.length ?? 0) > 0) && (
-        <MultiYearBreakdownChart
-          data={enrollmentData}
-          breakdownKey="by_synagogue"
-          labelKey="synagogue"
-          title={`Synagogue Distribution (Top 15, ${numYearsDisplay}-Year Comparison)`}
-          topN={15}
-          height={350}
-        />
-      )}
       {enrollmentData.some((y) => (y.by_synagogue?.length ?? 0) > 0) &&
         (() => {
           const { chartData, series } = buildGroupedChartData(
@@ -580,25 +527,15 @@ export default function TrendsOverview() {
             <CssVerticalGroupedBarChart
               data={chartData}
               series={series}
-              title={`Synagogue Distribution (CSS) (Top 15, ${numYearsDisplay}-Year Comparison)`}
+              title={`Synagogue Distribution (Top 15, ${numYearsDisplay}-Year Comparison)`}
               height={350}
-              groupGap={12}
-              barWidthPercent={75}
+              groupGap={numYearsDisplay === 3 ? 24 : 20}
+              barWidthPercent={numYearsDisplay === 3 ? 30 : 55}
             />
           )
         })()}
 
       {/* Region Distribution */}
-      {enrollmentDataWithRegions.some((y) => (y.by_region?.length ?? 0) > 0) && (
-        <MultiYearBreakdownChart
-          data={enrollmentDataWithRegions}
-          breakdownKey="by_region"
-          labelKey="region"
-          title={`Region Distribution (${numYearsDisplay}-Year Comparison)`}
-          nameFormatter={(key) => REGION_DISPLAY_NAMES[String(key)] ?? String(key)}
-          height={350}
-        />
-      )}
       {enrollmentDataWithRegions.some((y) => (y.by_region?.length ?? 0) > 0) &&
         (() => {
           const { chartData, series } = buildGroupedChartData(
@@ -613,10 +550,10 @@ export default function TrendsOverview() {
             <CssVerticalGroupedBarChart
               data={chartData}
               series={series}
-              title={`Region Distribution (CSS) (${numYearsDisplay}-Year Comparison)`}
+              title={`Region Distribution (${numYearsDisplay}-Year Comparison)`}
               height={350}
-              groupGap={12}
-              barWidthPercent={75}
+              groupGap={numYearsDisplay === 3 ? 24 : 20}
+              barWidthPercent={numYearsDisplay === 3 ? 30 : 55}
             />
           )
         })()}

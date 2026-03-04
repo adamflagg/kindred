@@ -14,8 +14,8 @@ import {
   sortRetentionBarData,
   sessionFlowToSankeyData,
 } from '../retentionTransforms'
-import type { RetentionRateBarItem } from '../../components/metrics/RetentionRateBarChart'
 import type {
+  RetentionRateBarItem,
   RetentionByGrade,
   RetentionBySession,
   RetentionByCity,

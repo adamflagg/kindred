@@ -16,8 +16,8 @@ import type {
   RetentionBySessionBunk,
   RetentionByPriorSession,
   SessionFlowItem,
+  RetentionRateBarItem,
 } from '../types/metrics'
-import type { RetentionRateBarItem } from '../components/metrics/RetentionRateBarChart'
 
 export type RetentionSortBy = 'rate' | 'count' | 'name' | 'none'
 

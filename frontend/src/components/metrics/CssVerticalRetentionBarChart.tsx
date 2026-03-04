@@ -9,7 +9,7 @@
 import { useCallback } from 'react'
 import { CssVerticalBarChart, type CssVerticalBarItem } from './CssVerticalBarChart'
 import { sortRetentionBarData, type RetentionSortBy } from '../../utils/retentionTransforms'
-import type { RetentionRateBarItem } from './RetentionRateBarChart'
+import type { RetentionRateBarItem } from '../../types/metrics'
 
 interface CssVerticalRetentionBarChartProps {
   data: RetentionRateBarItem[]

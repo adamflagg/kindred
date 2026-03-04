@@ -236,8 +236,8 @@ describe('CssVerticalBarChart X-axis', () => {
     const { container } = render(
       <CssVerticalBarChart data={sampleData} rotateLabels />
     )
-    // Rotated mode sets height: 60px on the x-axis container
-    const xAxisWrapper = container.querySelector('[style*="height: 60px"]')
+    // Rotated mode sets height: 72px on the x-axis container
+    const xAxisWrapper = container.querySelector('[style*="height: 72px"]')
     expect(xAxisWrapper).toBeInTheDocument()
   })
 })
@@ -355,14 +355,34 @@ describe('CssVerticalBarChart column sizing', () => {
     expect(columns.length).toBe(sparseData.length)
   })
 
-  it('should use zero gap in sparse mode (padding provides spacing)', () => {
+  it('should have no flex gap in sparse mode (gap absorbed into column padding for contiguous hover)', () => {
     const sparseData: CssVerticalBarItem[] = [
       { name: 'A', value: 10 },
       { name: 'B', value: 20 },
     ]
     const { container } = render(<CssVerticalBarChart data={sparseData} />)
     const barsArea = container.querySelector('.border-l') as HTMLElement
-    expect(barsArea.style.gap).toBe('0px')
+    expect(barsArea.style.gap).toBe('')
+  })
+
+  it('should have no flex gap in normal mode (gap absorbed into column padding for contiguous hover)', () => {
+    const normalData: CssVerticalBarItem[] = Array.from({ length: 6 }, (_, i) => ({
+      name: `Item ${i}`,
+      value: 10 + i,
+    }))
+    const { container } = render(<CssVerticalBarChart data={normalData} />)
+    const barsArea = container.querySelector('.border-l') as HTMLElement
+    expect(barsArea.style.gap).toBe('')
+  })
+
+  it('should have no flex gap in dense mode (gap absorbed into column padding for contiguous hover)', () => {
+    const denseData: CssVerticalBarItem[] = Array.from({ length: 12 }, (_, i) => ({
+      name: `D${i}`,
+      value: 10 + i,
+    }))
+    const { container } = render(<CssVerticalBarChart data={denseData} />)
+    const barsArea = container.querySelector('.border-l') as HTMLElement
+    expect(barsArea.style.gap).toBe('')
   })
 
   it('should not apply maxWidth in normal mode (5-9 items)', () => {
@@ -381,8 +401,8 @@ describe('CssVerticalBarChart column sizing', () => {
       { name: 'B', value: 20 },
     ]
     const { container } = render(<CssVerticalBarChart data={sparseData} />)
-    // ColumnHoverOverlay uses pointer-events-none absolute — should not be present in sparse
-    const overlay = container.querySelector('.pointer-events-none.absolute')
+    // ColumnHoverOverlay uses bg-foreground/[0.06] — should not be present in sparse
+    const overlay = container.querySelector('.bg-foreground\\/\\[0\\.06\\]')
     expect(overlay).toBeNull()
   })
 

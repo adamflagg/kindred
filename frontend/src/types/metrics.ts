@@ -362,6 +362,15 @@ export interface RetentionTrendsResponse {
   enrollment_by_year?: YearEnrollment[]
 }
 
+// Retention bar chart item (used by CSS and line chart retention components)
+export interface RetentionRateBarItem {
+  name: string
+  retentionRate: number // 0-1
+  baseCount: number
+  returnedCount: number
+  id?: string | number // Optional identifier for drilldown (e.g., session_cm_id, grade number)
+}
+
 // Drilldown types (chart click-through)
 export interface DrilldownSession {
   session_name: string

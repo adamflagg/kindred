@@ -24,7 +24,6 @@ import { MetricCard } from '../../../components/metrics/MetricCard'
 import { BreakdownChart } from '../../../components/metrics/BreakdownChart'
 import { CssHorizontalBarChart } from '../../../components/metrics/CssHorizontalBarChart'
 import { CssVerticalStackedBarChart } from '../../../components/metrics/CssVerticalStackedBarChart'
-import { SessionLengthBySessionChart } from '../../../components/metrics/SessionLengthBySessionChart'
 import { getSessionChartLabel } from '../../../utils/sessionDisplay'
 import { SESSION_NAME_ALIASES, resolveSessionAlias } from '../../../utils/sessionAliases'
 import {
@@ -45,7 +44,7 @@ import { Loader2, AlertCircle } from 'lucide-react'
 import type { DrilldownFilter, SessionLengthBySessionBreakdown } from '../../../types/metrics'
 import type { SessionDateLookup, SessionTypeLookup } from '../../../utils/sessionUtils'
 
-// Color palette for session length stacked bars (matches SessionLengthBySessionChart)
+// Color palette for session length stacked bars
 const SESSION_COLORS = [
   'hsl(160, 100%, 35%)',
   'hsl(42, 92%, 50%)',
@@ -336,7 +335,7 @@ export default function RegistrationOverview() {
               key={`gender-grade-${selectedSessionCmId ?? 'all'}`}
               title={`${currentYear} Gender by Grade`}
               data={(data.by_gender_grade ?? []).map((g) => ({
-                name: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
+                name: g.grade !== null ? String(g.grade) : '?',
                 total: g.total,
                 male_count: g.male_count,
                 female_count: g.female_count,
@@ -357,7 +356,7 @@ export default function RegistrationOverview() {
             <CssVerticalStackedBarChart
               title={`${compareYear} Gender by Grade`}
               data={(compData.by_gender_grade ?? []).map((g) => ({
-                name: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
+                name: g.grade !== null ? String(g.grade) : '?',
                 total: g.total,
                 male_count: g.male_count,
                 female_count: g.female_count,
@@ -386,7 +385,7 @@ export default function RegistrationOverview() {
             key={`gender-grade-${selectedSessionCmId ?? 'all'}`}
             title="Gender by Grade"
             data={(data.by_gender_grade ?? []).map((g) => ({
-              name: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
+              name: g.grade !== null ? String(g.grade) : '?',
               total: g.total,
               male_count: g.male_count,
               female_count: g.female_count,
@@ -518,29 +517,6 @@ export default function RegistrationOverview() {
                 categoryLabel="Session"
               />
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                <SessionLengthBySessionChart
-                  data={data.by_session_length_by_session ?? []}
-                  title={`${currentYear} Session Length`}
-                  height={300}
-                  sessionDateLookup={sessionDateLookup}
-                  sessionTypeLookup={sessionTypeLookup}
-                  onCategoryClick={(lengthCategory) =>
-                    setFilter({
-                      type: 'session_length',
-                      value: lengthCategory,
-                      label: `${lengthCategory} Sessions`,
-                    })
-                  }
-                />
-                <SessionLengthBySessionChart
-                  data={compData.by_session_length_by_session ?? []}
-                  title={`${compareYear} Session Length`}
-                  height={300}
-                  sessionDateLookup={sessionDateLookup}
-                  sessionTypeLookup={sessionTypeLookup}
-                />
-              </div>
-              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 {(() => {
                   const result = buildSessionLengthCssData(
                     data.by_session_length_by_session ?? [],
@@ -552,10 +528,17 @@ export default function RegistrationOverview() {
                     <CssVerticalStackedBarChart
                       data={result.chartData}
                       segments={result.segments}
-                      title={`${currentYear} Session Length (CSS)`}
+                      title={`${currentYear} Session Length`}
                       showTotalLabel
                       rotateLabels={result.chartData.length > 3}
                       height={300}
+                      onBarClick={(item) =>
+                        setFilter({
+                          type: 'session_length',
+                          value: String(item['name'] ?? ''),
+                          label: `${item['name']} Sessions`,
+                        })
+                      }
                     />
                   )
                 })()}
@@ -570,7 +553,7 @@ export default function RegistrationOverview() {
                     <CssVerticalStackedBarChart
                       data={result.chartData}
                       segments={result.segments}
-                      title={`${compareYear} Session Length (CSS)`}
+                      title={`${compareYear} Session Length`}
                       showTotalLabel
                       rotateLabels={result.chartData.length > 3}
                       height={300}
@@ -580,32 +563,16 @@ export default function RegistrationOverview() {
               </div>
             </>
           ) : (
-            <>
-              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                <CssHorizontalBarChart
-                  key={`session-${selectedSessionCmId ?? 'all'}`}
-                  title="Enrollment by Session"
-                  data={sessionChartData}
-                  height={300}
-                  labelWidth={140}
-                  breakdownType="session"
-                  onBarClick={setFilter}
-                />
-                <SessionLengthBySessionChart
-                  data={data.by_session_length_by_session ?? []}
-                  title="Enrollment by Session Length"
-                  height={300}
-                  sessionDateLookup={sessionDateLookup}
-                  sessionTypeLookup={sessionTypeLookup}
-                  onCategoryClick={(lengthCategory) =>
-                    setFilter({
-                      type: 'session_length',
-                      value: lengthCategory,
-                      label: `${lengthCategory} Sessions`,
-                    })
-                  }
-                />
-              </div>
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <CssHorizontalBarChart
+                key={`session-${selectedSessionCmId ?? 'all'}`}
+                title="Enrollment by Session"
+                data={sessionChartData}
+                height={300}
+                labelWidth={140}
+                breakdownType="session"
+                onBarClick={setFilter}
+              />
               {(() => {
                 const result = buildSessionLengthCssData(
                   data.by_session_length_by_session ?? [],
@@ -617,14 +584,21 @@ export default function RegistrationOverview() {
                   <CssVerticalStackedBarChart
                     data={result.chartData}
                     segments={result.segments}
-                    title="Enrollment by Session Length (CSS)"
+                    title="Enrollment by Session Length"
                     showTotalLabel
                     rotateLabels={result.chartData.length > 3}
                     height={300}
+                    onBarClick={(item) =>
+                      setFilter({
+                        type: 'session_length',
+                        value: String(item['name'] ?? ''),
+                        label: `${item['name']} Sessions`,
+                      })
+                    }
                   />
                 )
               })()}
-            </>
+            </div>
           )}
         </>
       )}

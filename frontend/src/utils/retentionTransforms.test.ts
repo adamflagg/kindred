@@ -7,8 +7,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { computeRetentionOutliers, regionToBarData, genderToPieData } from './retentionTransforms'
-import type { RetentionRateBarItem } from '../components/metrics/RetentionRateBarChart'
-import type { RetentionByGender } from '../types/metrics'
+import type { RetentionRateBarItem, RetentionByGender } from '../types/metrics'
 
 const makeItem = (
   name: string,

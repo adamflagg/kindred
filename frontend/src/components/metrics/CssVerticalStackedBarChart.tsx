@@ -15,6 +15,7 @@ import {
   VerticalYAxis,
   VerticalXAxis,
   ColumnHoverOverlay,
+  HorizontalGridlines,
   VerticalTooltipShell,
 } from './cssChartUtils'
 import { ChartLegend } from './ChartLegend'
@@ -67,6 +68,7 @@ export function CssVerticalStackedBarChart({
   const columnSizing = maxColumnWidth && baseColumnSizing.mode !== 'sparse'
     ? { mode: 'sparse' as const, maxWidth: maxColumnWidth, gap: 16, columnPadding: baseColumnSizing.columnPadding }
     : baseColumnSizing
+  const halfGap = columnSizing.gap / 2
 
   const {
     hoveredIndex,
@@ -141,8 +143,10 @@ export function CssVerticalStackedBarChart({
           <div
             ref={chartRef}
             className={`border-foreground/40 relative flex flex-1 items-end border-l ${columnSizing.mode === 'sparse' ? 'justify-center' : ''}`}
-            style={{ height: barsHeight, gap: `${columnSizing.gap}px` }}
+            style={{ height: barsHeight }}
           >
+            <HorizontalGridlines ticks={ticks} axisMax={axisMax} drawingHeight={drawingHeight} />
+
             {data.map((item, index) => {
               const barHeightPx = percentMode
                 ? drawingHeight
@@ -155,8 +159,8 @@ export function CssVerticalStackedBarChart({
                   className={`relative flex h-full flex-col items-center justify-end ${columnSizing.maxWidth ? '' : 'flex-1'} ${isClickable ? 'cursor-pointer' : ''} ${columnSizing.mode === 'sparse' ? `rounded transition-colors duration-150 ${hoveredIndex === index ? 'bg-foreground/[0.06]' : ''}` : ''}`}
                   style={{
                     ...(columnSizing.maxWidth ? { maxWidth: `${columnSizing.maxWidth}px`, width: '100%' } : {}),
-                    paddingLeft: `${columnSizing.columnPadding}px`,
-                    paddingRight: `${columnSizing.columnPadding}px`,
+                    paddingLeft: `${columnSizing.columnPadding + halfGap}px`,
+                    paddingRight: `${columnSizing.columnPadding + halfGap}px`,
                   }}
                   onMouseEnter={(e) =>
                     handleColumnEnter(index, e.currentTarget.getBoundingClientRect())
@@ -204,6 +208,7 @@ export function CssVerticalStackedBarChart({
                 itemCount={data.length}
                 hoveredIndex={hoveredIndex}
                 lastIndex={lastIndex}
+                height={drawingHeight}
               />
             )}
           </div>
@@ -214,7 +219,7 @@ export function CssVerticalStackedBarChart({
           labels={data.map((d) => d.name)}
           rotated={rotateLabels}
           marginLeft={yAxisMarginLeft}
-          columnSizing={columnSizing}
+          columnSizing={{ ...columnSizing, gap: 0 }}
         />
 
         {/* Tooltip */}

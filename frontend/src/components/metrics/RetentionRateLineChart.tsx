@@ -17,7 +17,7 @@ import {
   LabelList,
 } from 'recharts'
 import { sortRetentionBarData } from '../../utils/retentionTransforms'
-import type { RetentionRateBarItem } from './RetentionRateBarChart'
+import type { RetentionRateBarItem } from '../../types/metrics'
 
 interface RetentionRateLineChartProps {
   data: RetentionRateBarItem[]

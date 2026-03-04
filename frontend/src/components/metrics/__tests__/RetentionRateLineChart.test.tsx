@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { RetentionRateLineChart } from '../RetentionRateLineChart'
-import type { RetentionRateBarItem } from '../RetentionRateBarChart'
+import type { RetentionRateBarItem } from '../../../types/metrics'
 
 // Capture activeDot click handler
 let capturedActiveDotClick: ((props: unknown) => void) | undefined

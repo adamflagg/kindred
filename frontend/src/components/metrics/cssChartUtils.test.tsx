@@ -347,7 +347,7 @@ describe('VerticalXAxis', () => {
   it('should apply rotated styles when rotated=true', () => {
     const { container } = render(<VerticalXAxis labels={['Long Label']} rotated />)
     const wrapper = container.firstChild as HTMLElement
-    expect(wrapper).toHaveStyle({ height: '80px' })
+    expect(wrapper).toHaveStyle({ height: '72px' })
   })
 
   it('should apply transform rotate(-40deg) to rotated labels', () => {
@@ -359,7 +359,7 @@ describe('VerticalXAxis', () => {
   it('should apply whiteSpace and maxWidth to rotated labels', () => {
     render(<VerticalXAxis labels={['Label']} rotated />)
     const label = screen.getByText('Label')
-    expect(label).toHaveStyle({ whiteSpace: 'nowrap', maxWidth: '100px' })
+    expect(label).toHaveStyle({ whiteSpace: 'nowrap', maxWidth: '80px' })
   })
 
   it('should accept custom marginLeft', () => {

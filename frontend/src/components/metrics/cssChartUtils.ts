@@ -12,7 +12,7 @@ import React, { useState, useCallback, useRef, type ReactNode } from 'react'
  * Calculate nice tick values for a chart axis.
  * Returns evenly spaced round numbers from 0 to at least `max`.
  */
-export function getNiceTicks(max: number, count = 4): number[] {
+export function getNiceTicks(max: number, count = 5): number[] {
   if (max <= 0) return [0]
   const rawInterval = max / count
   const magnitude = Math.pow(10, Math.floor(Math.log10(rawInterval)))
@@ -24,7 +24,11 @@ export function getNiceTicks(max: number, count = 4): number[] {
     ticks.push(Math.round(v))
   }
   const last = ticks[ticks.length - 1]
-  if (last !== undefined && last < max) ticks.push(Math.ceil(max / interval) * interval)
+  // Only add another tick if the data max meaningfully exceeds the last tick (>2% overshoot).
+  // Prevents wasted headroom when max barely exceeds a tick (e.g., 301 vs 300 → skip 350).
+  if (last !== undefined && last < max && (max - last) / interval > 0.02) {
+    ticks.push(Math.ceil(max / interval) * interval)
+  }
   return ticks
 }
 
@@ -243,6 +247,35 @@ export function useVerticalColumnTooltip<T>() {
 // Sub-components for vertical charts
 // ---------------------------------------------------------------------------
 
+interface HorizontalGridlinesProps {
+  ticks: number[]
+  axisMax: number
+  drawingHeight: number
+}
+
+/**
+ * Horizontal gridlines for vertical CSS bar charts.
+ * Renders a dashed line at each tick position (except 0) spanning the full width.
+ * Must be placed inside the bars container (position: relative).
+ */
+export function HorizontalGridlines({ ticks, axisMax, drawingHeight }: HorizontalGridlinesProps) {
+  return React.createElement(
+    React.Fragment,
+    null,
+    ticks
+      .filter((tick) => tick > 0)
+      .map((tick) =>
+        React.createElement('div', {
+          key: `grid-${tick}`,
+          className: 'pointer-events-none absolute left-0 right-0 z-0 border-t border-dashed border-foreground/10',
+          style: {
+            bottom: `${(tick / axisMax) * drawingHeight}px`,
+          },
+        })
+      )
+  )
+}
+
 interface VerticalYAxisProps {
   ticks: number[]
   axisMax: number
@@ -301,14 +334,17 @@ interface VerticalXAxisProps {
   columnSizing?: ColumnSizing
   /** Add 1px left padding to align with bars container border-l. */
   alignBorderLeft?: boolean
+  /** Use justify-evenly instead of justify-center for sparse mode. */
+  justifyEvenly?: boolean
 }
 
 /**
  * X-axis labels for a vertical CSS bar chart.
  * Supports straight (centered) and rotated (-40deg) modes.
  */
-export function VerticalXAxis({ labels, rotated = false, marginLeft, height, columnSizing, alignBorderLeft }: VerticalXAxisProps) {
+export function VerticalXAxis({ labels, rotated = false, marginLeft, height, columnSizing, alignBorderLeft, justifyEvenly }: VerticalXAxisProps) {
   const isSparse = columnSizing?.mode === 'sparse'
+  const justifyClass = isSparse ? (justifyEvenly ? 'justify-evenly' : 'justify-center') : ''
   const sparseStyle = isSparse
     ? { maxWidth: `${columnSizing.maxWidth}px`, width: '100%' }
     : undefined
@@ -317,10 +353,10 @@ export function VerticalXAxis({ labels, rotated = false, marginLeft, height, col
     return React.createElement(
       'div',
       {
-        className: `border-foreground/40 flex border-t ${isSparse ? 'justify-center' : ''}`,
+        className: `border-foreground/40 flex border-t ${justifyClass}`,
         style: {
           ...(marginLeft ? { marginLeft } : {}),
-          height: height ?? '60px',
+          height: height ?? '72px',
           ...(columnSizing ? { gap: `${columnSizing.gap}px` } : {}),
           ...(alignBorderLeft ? { paddingLeft: '1px' } : {}),
         },
@@ -348,7 +384,7 @@ export function VerticalXAxis({ labels, rotated = false, marginLeft, height, col
                 transform: 'rotate(-40deg)',
                 transformOrigin: 'top right',
                 whiteSpace: 'nowrap',
-                maxWidth: '100px',
+                maxWidth: '80px',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
               },
@@ -364,7 +400,7 @@ export function VerticalXAxis({ labels, rotated = false, marginLeft, height, col
   return React.createElement(
     'div',
     {
-      className: `border-foreground/40 flex border-t pt-1 ${isSparse ? 'justify-center' : ''}`,
+      className: `border-foreground/40 flex border-t pt-1 ${justifyClass}`,
       style: {
         ...(marginLeft ? { marginLeft } : {}),
         ...(columnSizing ? { gap: `${columnSizing.gap}px` } : {}),
@@ -389,19 +425,51 @@ interface ColumnHoverOverlayProps {
   itemCount: number
   hoveredIndex: number | null
   lastIndex: number
+  /** Gap in px between columns (matches the flex container gap). */
+  gap?: number
+  /** Constrain overlay height to the drawing area (px). Anchored to bottom. */
+  height?: number
 }
 
 /**
  * Sliding hover highlight overlay for vertical CSS bar chart columns.
- * Width is 1/itemCount of the chart, slides to the hovered column.
+ * Accounts for inter-column gap so the overlay aligns with flex items.
  */
-export function ColumnHoverOverlay({ itemCount, hoveredIndex, lastIndex }: ColumnHoverOverlayProps) {
+export function ColumnHoverOverlay({ itemCount, hoveredIndex, lastIndex, gap = 0, height }: ColumnHoverOverlayProps) {
+  const idx = hoveredIndex ?? lastIndex
+  const verticalStyle = height != null
+    ? { bottom: 0, height: `${height}px` }
+    : { top: 0, bottom: 0 }
+
+  if (gap === 0) {
+    // Simple case: no gap, columns divide evenly
+    return React.createElement('div', {
+      className:
+        'pointer-events-none absolute left-0 z-0 rounded bg-foreground/[0.06] transition-[transform,opacity] duration-150',
+      style: {
+        ...verticalStyle,
+        width: `${100 / itemCount}%`,
+        transform: `translateX(${idx * 100}%)`,
+        opacity: hoveredIndex !== null ? 1 : 0,
+      },
+    })
+  }
+
+  // Gap-aware: column width = (100% - totalGap) / N, offset = idx/N of container + idx gaps
+  const totalGap = (itemCount - 1) * gap
+  const colWidthPct = 100 / itemCount
+  // left = idx * (colWidth + gap) = idx/N * 100% + idx * gap - idx/N * totalGap
+  // Simplified: idx/N * (100% - totalGap) + idx * gap
+  const pctPart = (idx / itemCount) * 100
+  const pxPart = idx * gap - (idx / itemCount) * totalGap
+
   return React.createElement('div', {
     className:
-      'pointer-events-none absolute inset-y-0 left-0 z-0 rounded bg-foreground/[0.06] transition-[transform,opacity] duration-150',
+      'pointer-events-none absolute z-0 rounded bg-foreground/[0.06] transition-[left,opacity] duration-150',
     style: {
-      width: `${100 / itemCount}%`,
-      transform: `translateX(${(hoveredIndex ?? lastIndex) * 100}%)`,
+      ...verticalStyle,
+      width: `calc(${colWidthPct}% - ${totalGap / itemCount}px)`,
+      left: `calc(${pctPart}% + ${pxPart}px)`,
       opacity: hoveredIndex !== null ? 1 : 0,
     },
   })
