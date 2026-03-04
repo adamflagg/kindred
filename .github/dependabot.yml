@@ -76,7 +76,7 @@ updates:
           - "patch"
     open-pull-requests-limit: 5
 
-  # PocketBase npm dependencies (JS migrations)
+  # PocketBase npm dependencies (JS migrations + eslint)
   - package-ecosystem: "npm"
     directory: "/pocketbase"
     schedule:
@@ -94,10 +94,17 @@ updates:
       pb-npm:
         patterns:
           - "*"
+        exclude-patterns:
+          - "eslint"
+          - "@eslint/*"
         update-types:
           - "minor"
           - "patch"
-    open-pull-requests-limit: 3
+      pb-eslint:
+        patterns:
+          - "eslint"
+          - "@eslint/*"
+    open-pull-requests-limit: 5
 
   # Frontend npm dependencies
   - package-ecosystem: "npm"
@@ -143,26 +150,6 @@ updates:
         update-types:
           - "minor"
           - "patch"
-    open-pull-requests-limit: 3
-
-  # PocketBase JS linting dependencies
-  - package-ecosystem: "npm"
-    directory: "/pocketbase"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "06:00"
-      timezone: "America/New_York"
-    commit-message:
-      prefix: "chore(pb)"
-    labels:
-      - "dependencies"
-      - "go"
-    groups:
-      pb-eslint:
-        patterns:
-          - "eslint"
-          - "@eslint/*"
     open-pull-requests-limit: 3
 
   # Docker base images
