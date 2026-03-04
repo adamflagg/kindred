@@ -52,12 +52,15 @@ export function CssVerticalGroupedBarChart({
   renderTooltip,
   onBarClick,
   className = '',
+  groupGap,
+  barWidthPercent,
 }: CssVerticalGroupedBarChartProps) {
   // Auto-rotate when >8 categories and not explicitly set
   const shouldRotate = rotateLabels ?? data.length > 8
   const xAxisHeight = shouldRotate ? 60 : 34
   const { barsHeight, drawingHeight } = calculateVerticalLayout(height, { xAxisHeight })
   const columnSizing = calculateColumnSizing(data.length)
+  const effectiveGap = groupGap ?? columnSizing.gap
 
   const {
     hoveredIndex,
@@ -103,7 +106,7 @@ export function CssVerticalGroupedBarChart({
 
   return (
     <div className={`card-lodge flex flex-col px-4 pt-4 pb-4 ${className}`}>
-      {title && <h3 className="text-foreground mb-2 text-base font-semibold">{title}</h3>}
+      {title && <h3 className="text-foreground mb-4 text-base font-semibold">{title}</h3>}
 
       <div className="relative flex-1">
         {/* Chart area with Y-axis */}
@@ -120,7 +123,7 @@ export function CssVerticalGroupedBarChart({
           <div
             ref={chartRef}
             className={`border-foreground/40 relative flex flex-1 items-end border-l ${columnSizing.mode === 'sparse' ? 'justify-center' : ''}`}
-            style={{ height: barsHeight, gap: `${columnSizing.gap}px` }}
+            style={{ height: barsHeight, gap: `${effectiveGap}px` }}
           >
             {data.map((item, index) => (
               <div
@@ -146,11 +149,12 @@ export function CssVerticalGroupedBarChart({
                     return (
                       <div
                         key={s.key}
-                        className="relative z-[1] flex-1 rounded-t transition-all duration-300"
+                        className={`relative z-[1] ${barWidthPercent ? '' : 'flex-1'} rounded-t transition-all duration-300`}
                         style={{
                           height: `${barHeightPx}px`,
                           minHeight: value > 0 ? '4px' : '0px',
                           backgroundColor: s.color,
+                          ...(barWidthPercent ? { flex: '1 1 0%', maxWidth: `${barWidthPercent}%` } : {}),
                         }}
                         onClick={
                           isClickable
@@ -179,7 +183,7 @@ export function CssVerticalGroupedBarChart({
           labels={data.map((d) => d.name)}
           rotated={shouldRotate}
           marginLeft={yAxisMarginLeft}
-          columnSizing={columnSizing}
+          columnSizing={groupGap !== undefined ? { ...columnSizing, gap: effectiveGap } : columnSizing}
         />
 
         {/* Tooltip */}
