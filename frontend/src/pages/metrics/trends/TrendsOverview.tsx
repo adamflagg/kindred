@@ -22,6 +22,7 @@ import { MetricCard } from '../../../components/metrics/MetricCard'
 import { RetentionRateLine } from '../../../components/metrics/RetentionRateLine'
 import { CssVerticalStackedBarChart } from '../../../components/metrics/CssVerticalStackedBarChart'
 import { CssVerticalGroupedBarChart } from '../../../components/metrics/CssVerticalGroupedBarChart'
+import { CssLineChart } from '../../../components/metrics/CssLineChart'
 import { Loader2, AlertCircle } from 'lucide-react'
 import { aggregateCityEnrollmentByRegion, REGION_DISPLAY_NAMES } from '../../../utils/regionUtils'
 import { getYearColor, YEAR_PALETTE } from '../../../utils/yearColors'
@@ -262,11 +263,56 @@ export default function TrendsOverview() {
         />
       </div>
 
+      {/* CSS Line Charts (prototype comparison) */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <CssLineChart
+          data={data.years.map((y) => ({
+            year: String(y.year),
+            total_enrolled: y.total_enrolled,
+          }))}
+          xKey="year"
+          lines={[{ key: 'total_enrolled', label: 'Total Enrolled', color: 'hsl(160, 100%, 35%)' }]}
+          formatValue={(v) => v.toLocaleString()}
+          title="Total Enrollment Over Time (CSS)"
+          height={300}
+        />
+        <CssLineChart
+          data={data.years.map((y) => ({
+            year: String(y.year),
+            new_count: y.new_vs_returning.new_count,
+            returning_count: y.new_vs_returning.returning_count,
+          }))}
+          xKey="year"
+          lines={[
+            { key: 'new_count', label: 'New Campers', color: 'hsl(160, 100%, 35%)' },
+            { key: 'returning_count', label: 'Returning', color: 'hsl(200, 70%, 50%)' },
+          ]}
+          formatValue={(v) => v.toLocaleString()}
+          title="New vs Returning Campers (CSS)"
+          height={300}
+        />
+      </div>
+
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <TrendLineChart
           title="Enrollment by Gender"
           data={data.years}
           metric="gender"
+          height={300}
+        />
+        <CssLineChart
+          data={data.years.map((y) => ({
+            year: String(y.year),
+            male: y.by_gender.find((g) => g.gender === 'M')?.count ?? 0,
+            female: y.by_gender.find((g) => g.gender === 'F')?.count ?? 0,
+          }))}
+          xKey="year"
+          lines={[
+            { key: 'male', label: 'Male', color: 'hsl(200, 70%, 50%)' },
+            { key: 'female', label: 'Female', color: 'hsl(340, 70%, 50%)' },
+          ]}
+          formatValue={(v) => v.toLocaleString()}
+          title="Enrollment by Gender (CSS)"
           height={300}
         />
         {enrollmentData.length > 0 && (
@@ -368,6 +414,40 @@ export default function TrendsOverview() {
             title="Cancellation Rate Over Time"
             data={data.years}
             metric="cancellation_rate"
+            height={250}
+          />
+        )}
+      </div>
+
+      {/* CSS versions of retention + cancellation */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {retentionYears.length > 0 && (
+          <CssLineChart
+            data={retentionYears.map((y) => ({
+              year: `${y.from_year}-${String(y.to_year).slice(-2)}`,
+              rate: Math.round(y.retention_rate * 100),
+            }))}
+            xKey="year"
+            lines={[{ key: 'rate', label: 'Retention Rate', color: 'hsl(160, 100%, 35%)' }]}
+            yDomain={[0, 100]}
+            formatYTick={(v) => `${v}%`}
+            formatValue={(v) => `${v}%`}
+            referenceLines={[{ y: 50 }]}
+            title="Overall Retention Rate Trend (CSS)"
+            height={250}
+          />
+        )}
+        {data.years.some((y) => (y.total_cancelled ?? 0) > 0) && (
+          <CssLineChart
+            data={data.years.map((y) => ({
+              year: String(y.year),
+              rate: Math.round((y.cancellation_rate ?? 0) * 10) / 10,
+            }))}
+            xKey="year"
+            lines={[{ key: 'rate', label: 'Cancellation Rate', color: 'hsl(0, 70%, 50%)' }]}
+            formatYTick={(v) => `${v}%`}
+            formatValue={(v) => `${v}%`}
+            title="Cancellation Rate Over Time (CSS)"
             height={250}
           />
         )}
