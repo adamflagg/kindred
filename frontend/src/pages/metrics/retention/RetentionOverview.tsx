@@ -207,9 +207,8 @@ export default function RetentionOverview() {
           <BreakdownChart
             data={genderPieData}
             title="Retention by Gender"
-            type="pie"
             showPercentage
-            height={250}
+            height={200}
             breakdownType="gender"
             onSegmentClick={(filter) =>
               setFilter({ ...filter, retentionContext: { baseYear: priorYear, compareYear: currentYear } })

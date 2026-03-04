@@ -1,22 +1,10 @@
 /**
- * BreakdownChart - Recharts wrapper for displaying breakdown data.
+ * BreakdownChart - Pie chart for displaying breakdown data.
  *
- * Supports drill-down: click a bar/segment to show matching campers.
+ * Supports drill-down: click a segment to show matching campers.
  */
 
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  LabelList,
-} from 'recharts'
+import { Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import type { PieLabelRenderProps } from 'recharts'
 import type { DrilldownFilter } from '../../types/metrics'
 import { ChartCard } from './ChartCard'
@@ -44,20 +32,18 @@ interface ChartData {
 interface BreakdownChartProps {
   data: ChartData[]
   title: string
-  type?: 'bar' | 'pie'
   height?: number
   showPercentage?: boolean
   className?: string
   /** Type of breakdown for drill-down (e.g., 'gender', 'grade', 'session') */
   breakdownType?: DrilldownFilter['type']
-  /** Callback when a bar/segment is clicked */
+  /** Callback when a segment is clicked */
   onSegmentClick?: (filter: DrilldownFilter) => void
 }
 
 export function BreakdownChart({
   data,
   title,
-  type = 'bar',
   height = 300,
   showPercentage = false,
   className = '',
@@ -79,6 +65,7 @@ export function BreakdownChart({
       ...(breakdownType === 'gender' ? { titleFormat: 'adjective' as const } : {}),
     })
   }
+
   const CustomTooltip = ({
     active,
     payload,
@@ -106,116 +93,76 @@ export function BreakdownChart({
     return null
   }
 
-  // Pie mode: use ChartCard for consistent card/legend styling
-  if (type === 'pie') {
-    const legendItems = data.map((d, i) => ({
-      label: d.name,
-      color: COLORS[i % COLORS.length] ?? '#00b36b',
-    }))
-
-    return (
-      <ChartCard
-        title={title}
-        className={className}
-        isEmpty={data.length === 0}
-        legend={legendItems}
-      >
-        <ResponsiveContainer width="100%" height={height}>
-          <PieChart>
-            <Pie
-              data={data}
-              dataKey="value"
-              nameKey="name"
-              cx="50%"
-              cy="50%"
-              outerRadius={80}
-              label={(props: PieLabelRenderProps) => {
-                const item = props.payload as ChartData
-                const pct = item.percentage
-                const count = item.value
-                const labelName = props.name ?? ''
-                // Show count always, percentage conditionally
-                if (showPercentage && pct !== undefined) {
-                  return `${labelName}: ${count} (${pct.toFixed(0)}%)`
-                }
-                return `${labelName}: ${count}`
-              }}
-              labelLine={false}
-              onClick={(_, index) => {
-                const item = data[index]
-                if (item) handleClick(item)
-              }}
-              style={{ cursor: isClickable ? 'pointer' : undefined }}
-            >
-              {data.map((_, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length] ?? '#00b36b'} />
-              ))}
-            </Pie>
-            <Tooltip content={<CustomTooltip />} />
-          </PieChart>
-        </ResponsiveContainer>
-      </ChartCard>
-    )
-  }
-
-  // Bar mode — unchanged
-  if (data.length === 0) {
-    return (
-      <div className={`card-lodge p-4 ${className}`}>
-        <h3 className="text-foreground mb-4 text-base font-semibold">{title}</h3>
-        <div className="text-muted-foreground flex h-[200px] items-center justify-center">
-          No data available
-        </div>
-      </div>
-    )
-  }
+  const legendItems = data.map((d, i) => ({
+    label: d.name,
+    color: COLORS[i % COLORS.length] ?? '#00b36b',
+  }))
 
   return (
-    <div className={`card-lodge p-4 ${className}`}>
-      <h3 className="text-foreground mb-4 text-base font-semibold">{title}</h3>
+    <ChartCard
+      title={title}
+      className={className}
+      isEmpty={data.length === 0}
+      legend={legendItems}
+    >
       <ResponsiveContainer width="100%" height={height}>
-        <BarChart
-          data={data}
-          layout="vertical"
-          margin={{ top: 5, right: 30, left: 0, bottom: 5 }}
-        >
-          <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-          <XAxis type="number" className="text-xs" allowDecimals={false} />
-          <YAxis
-            type="category"
-            dataKey="name"
-            className="text-xs"
-            width={150}
-            interval={0}
-            tick={{
-              fill: 'hsl(var(--muted-foreground))',
-              style: { whiteSpace: 'nowrap' },
-            }}
-            tickFormatter={(value: string) =>
-              value.length > 18 ? `${value.slice(0, 16)}…` : value
-            }
-          />
-          <Tooltip content={<CustomTooltip />} />
-          <Bar
+        <PieChart>
+          <Pie
+            data={data}
             dataKey="value"
-            fill={COLORS[0]}
-            radius={[0, 4, 4, 0]}
-            onClick={(barData) => {
-              // barData contains the original data item properties
-              const item = barData as unknown as ChartData
-              if (item?.name) handleClick(item)
+            nameKey="name"
+            cx="50%"
+            cy="50%"
+            outerRadius={80}
+            startAngle={90}
+            endAngle={-270}
+            label={(props: PieLabelRenderProps) => {
+              const item = props.payload as ChartData
+              const pct = item.percentage
+              const count = item.value
+              const labelName = props.name ?? ''
+              let text = `${labelName}: ${count}`
+              if (showPercentage && pct !== undefined) {
+                text = `${labelName}: ${count} (${pct.toFixed(0)}%)`
+              }
+              // Position labels to the left/right of the pie, never above/below
+              const RADIAN = Math.PI / 180
+              const midAngle = Number(props.midAngle ?? 0)
+              const outerR = Number(props.outerRadius ?? 80)
+              const cx = Number(props.cx ?? 0)
+              const cy = Number(props.cy ?? 0)
+              const radius = outerR + 16
+              const x = cx + radius * Math.cos(-midAngle * RADIAN)
+              const y = cy + radius * Math.sin(-midAngle * RADIAN)
+              const isRight = Math.cos(-midAngle * RADIAN) >= 0
+
+              return (
+                <text
+                  x={x}
+                  y={y}
+                  textAnchor={isRight ? 'start' : 'end'}
+                  dominantBaseline="central"
+                  className="text-xs"
+                  fill="hsl(var(--foreground))"
+                >
+                  {text}
+                </text>
+              )
+            }}
+            labelLine={false}
+            onClick={(_, index) => {
+              const item = data[index]
+              if (item) handleClick(item)
             }}
             style={{ cursor: isClickable ? 'pointer' : undefined }}
           >
-            <LabelList
-              dataKey="value"
-              position="right"
-              className="text-xs"
-              fill="hsl(var(--muted-foreground))"
-            />
-          </Bar>
-        </BarChart>
+            {data.map((_, index) => (
+              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length] ?? '#00b36b'} />
+            ))}
+          </Pie>
+          <Tooltip content={<CustomTooltip />} />
+        </PieChart>
       </ResponsiveContainer>
-    </div>
+    </ChartCard>
   )
 }

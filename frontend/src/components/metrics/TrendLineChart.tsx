@@ -89,7 +89,11 @@ export function TrendLineChart({
       .map(([, v]) => Number(v) || 0),
   )
   const dataMax = allValues.length > 0 ? Math.max(...allValues) : 1
-  const ticks = metric === 'cancellation_rate' ? [0, 20, 40, 60, 80, 100] : getNiceTicks(dataMax)
+  // For cancellation_rate, cap axis at a sensible ceiling based on data
+  const ticks =
+    metric === 'cancellation_rate'
+      ? getNiceTicks(Math.max(Math.ceil(dataMax / 5) * 5, 5))
+      : getNiceTicks(dataMax)
   const axisMax = ticks[ticks.length - 1] ?? dataMax
 
   // Compute legend items based on metric

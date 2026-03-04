@@ -210,8 +210,8 @@ export function CancellationGenderChart({
             nameKey="name"
             cx="50%"
             cy="50%"
-            innerRadius={40}
-            outerRadius={65}
+            innerRadius={55}
+            outerRadius={90}
             onClick={(_, idx) => handleClick(_, idx, true)}
             style={{ cursor: onSegmentClick ? 'pointer' : undefined }}
           >
@@ -226,8 +226,8 @@ export function CancellationGenderChart({
             nameKey="name"
             cx="50%"
             cy="50%"
-            innerRadius={70}
-            outerRadius={95}
+            innerRadius={95}
+            outerRadius={125}
             onClick={(_, idx) => handleClick(_, idx, false)}
             style={{ cursor: onSegmentClick ? 'pointer' : undefined }}
           >
