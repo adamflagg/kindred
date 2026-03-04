@@ -73,8 +73,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 FROM dhi.io/python:3.14-dev
 
 # Single system-setup layer: user, packages, directories, ownership
+# DHI images are hardened Debian without groupadd/useradd — create user via /etc files
 # hadolint ignore=DL3008
-RUN groupadd -r -g 1000 kindred && useradd -r -g kindred -u 1000 kindred \
+RUN echo 'kindred:x:1000:1000:kindred:/app:/bin/sh' >> /etc/passwd \
+    && echo 'kindred:x:1000:' >> /etc/group \
     && apt-get update && apt-get install -y --no-install-recommends \
        curl supervisor \
     && rm -rf /var/lib/apt/lists/* \
@@ -89,7 +91,7 @@ COPY --link --from=python-builder /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
 ENV VIRTUAL_ENV="/app/.venv"
 
-COPY --link --from=dhi.io/caddy:2 --chmod=755 /usr/bin/caddy /usr/local/bin/caddy
+COPY --link --from=dhi.io/caddy:2 --chmod=755 /usr/local/bin/caddy /usr/local/bin/caddy
 COPY --link --from=go-builder --chmod=755 /build/pocketbase /usr/local/bin/pocketbase
 
 # Docker infrastructure (no --link or --chmod for system dirs: --chmod applies to
