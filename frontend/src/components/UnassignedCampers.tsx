@@ -1,4 +1,4 @@
-import React from 'react'
+import { useMemo } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import clsx from 'clsx'
@@ -25,7 +25,7 @@ export default function UnassignedCampers({
   const viewingYear = useYear()
 
   // Sort campers by age (youngest to oldest)
-  const sortedCampers = React.useMemo(() => {
+  const sortedCampers = useMemo(() => {
     return [...campers].sort(
       (a, b) =>
         (getDisplayAgeForYear(a, viewingYear) ?? 0) - (getDisplayAgeForYear(b, viewingYear) ?? 0)

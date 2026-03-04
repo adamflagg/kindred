@@ -1,4 +1,4 @@
-import React from 'react'
+import { type ReactNode, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
 import { useAuth } from '../contexts/AuthContext'
@@ -9,7 +9,7 @@ import { isAgePreferenceSatisfied } from '../utils/agePreferenceSatisfaction'
 
 interface BunkRequestProviderProps {
   sessionCmId: number
-  children: React.ReactNode
+  children: ReactNode
 }
 
 export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProviderProps) {
@@ -73,7 +73,7 @@ export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProvid
 
   // Cache bunk person sets to avoid recreating for each camper in the bunk
   // Key: bunkCmId, Value: Set of person CM IDs
-  const bunkPersonSetCache = React.useRef<Map<number, { set: Set<number>; size: number }>>(
+  const bunkPersonSetCache = useRef<Map<number, { set: Set<number>; size: number }>>(
     new Map()
   )
 

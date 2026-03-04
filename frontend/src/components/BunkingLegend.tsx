@@ -1,4 +1,4 @@
-import React from 'react'
+import { useState } from 'react'
 import { HelpCircle, X, Lock, AlertTriangle, Users, Home, Network, Layers } from 'lucide-react'
 
 interface BunkingLegendProps {
@@ -256,7 +256,7 @@ export default function BunkingLegend({ isOpen, onClose }: BunkingLegendProps) {
 }
 
 export function BunkingLegendButton() {
-  const [isOpen, setIsOpen] = React.useState(false)
+  const [isOpen, setIsOpen] = useState(false)
 
   return (
     <>

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import React, { useState, useEffect, useCallback, useMemo, useEffectEvent } from 'react'
+import { type FC, useState, useEffect, useCallback, useMemo, useEffectEvent } from 'react'
 import { ScenarioContext, type Scenario, type ScenarioContextType } from '../hooks/useScenario'
 import { useSavedScenarios } from '../hooks/useSavedScenarios'
 import { useCreateScenario, useDeleteScenario } from '../hooks/useSavedScenariosMutation'
@@ -27,7 +27,7 @@ function savedScenarioToScenario(saved: SavedScenario): Scenario {
   }
 }
 
-export const ScenarioProvider: React.FC<ScenarioProviderProps> = ({ children }) => {
+export const ScenarioProvider: FC<ScenarioProviderProps> = ({ children }) => {
   const [currentScenario, setCurrentScenario] = useState<Scenario | null>(null)
   const [currentSessionId, setCurrentSessionId] = useState<number | undefined>(undefined)
   const currentYear = useYear()

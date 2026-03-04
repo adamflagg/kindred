@@ -17,7 +17,7 @@ const renderedMarkers: Array<{
 
 // Mock react-leaflet components before imports
 vi.mock('react-leaflet', () => ({
-  MapContainer: ({ children }: { children: React.ReactNode }) => (
+  MapContainer: ({ children }: { children: ReactNode }) => (
     <div data-testid="map">{children}</div>
   ),
   TileLayer: () => null,
@@ -27,7 +27,7 @@ vi.mock('react-leaflet', () => ({
     pathOptions,
     pane,
   }: {
-    children: React.ReactNode
+    children: ReactNode
     eventHandlers?: { click?: () => void }
     pathOptions?: { fillOpacity?: number; fillColor?: string }
     pane?: string
@@ -43,7 +43,7 @@ vi.mock('react-leaflet', () => ({
       </div>
     )
   },
-  Tooltip: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  Tooltip: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   Polygon: () => <div data-testid="polygon" />,
   useMap: () => ({
     setView: vi.fn(),
@@ -58,7 +58,7 @@ vi.mock('./RegionOverlays', () => ({
     show ? <div data-testid="region-overlays" /> : null,
 }))
 
-import React from 'react'
+import type { ReactNode } from 'react'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { GeoMap } from './GeoMap'
 import type { GeoDataItem } from './GeoMap'

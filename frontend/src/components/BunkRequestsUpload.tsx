@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react'
+import { type ChangeEvent, useState, useRef } from 'react'
 import { Upload, Loader2, FileText, AlertCircle, CheckCircle } from 'lucide-react'
 import { useApiWithAuth } from '../hooks/useApiWithAuth'
 import { syncService, type UploadError } from '../services/sync'
@@ -65,7 +65,7 @@ export default function BunkRequestsUpload({ compact = false }: BunkRequestsUplo
     },
   })
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
       // Check file extension or MIME type

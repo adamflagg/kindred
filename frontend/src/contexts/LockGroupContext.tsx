@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useMemo } from 'react'
+import { type ReactNode, createContext, useContext, useState, useCallback, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
 import { pb } from '../lib/pocketbase'
@@ -80,7 +80,7 @@ export function useLockGroupContext() {
 }
 
 interface LockGroupProviderProps {
-  children: React.ReactNode
+  children: ReactNode
 }
 
 export function LockGroupProvider({ children }: LockGroupProviderProps) {

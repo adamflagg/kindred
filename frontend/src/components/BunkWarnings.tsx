@@ -1,4 +1,4 @@
-import React from 'react'
+import { memo } from 'react'
 
 interface BunkWarningsProps {
   isOverCapacity: boolean
@@ -9,7 +9,7 @@ interface BunkWarningsProps {
   isLocked?: boolean
 }
 
-export const BunkWarnings = React.memo(function BunkWarnings({
+export const BunkWarnings = memo(function BunkWarnings({
   isOverCapacity,
   ageGapWarning,
   gradeRatioWarning,
