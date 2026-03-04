@@ -424,6 +424,8 @@ export default function TrendsOverview() {
               series={yearSeries}
               title={`Enrollment by Grade (CSS) (${numYearsDisplay}-Year Comparison)`}
               height={300}
+              groupGap={12}
+              barWidthPercent={75}
             />
           )
         })()}
@@ -457,6 +459,8 @@ export default function TrendsOverview() {
               series={series}
               title={`Summers at Camp (CSS) (${numYearsDisplay}-Year Comparison)`}
               height={300}
+              groupGap={12}
+              barWidthPercent={75}
             />
           )
         })()}
@@ -489,6 +493,8 @@ export default function TrendsOverview() {
               series={series}
               title={`First Summer Year (CSS) (${numYearsDisplay}-Year Comparison)`}
               height={300}
+              groupGap={12}
+              barWidthPercent={75}
             />
           )
         })()}
@@ -519,6 +525,8 @@ export default function TrendsOverview() {
               series={series}
               title={`City Distribution (CSS) (Top 15, ${numYearsDisplay}-Year Comparison)`}
               height={350}
+              groupGap={12}
+              barWidthPercent={75}
             />
           )
         })()}
@@ -549,6 +557,8 @@ export default function TrendsOverview() {
               series={series}
               title={`School Distribution (CSS) (Top 15, ${numYearsDisplay}-Year Comparison)`}
               height={350}
+              groupGap={12}
+              barWidthPercent={75}
             />
           )
         })()}
@@ -579,6 +589,8 @@ export default function TrendsOverview() {
               series={series}
               title={`Synagogue Distribution (CSS) (Top 15, ${numYearsDisplay}-Year Comparison)`}
               height={350}
+              groupGap={12}
+              barWidthPercent={75}
             />
           )
         })()}
@@ -610,6 +622,8 @@ export default function TrendsOverview() {
               series={series}
               title={`Region Distribution (CSS) (${numYearsDisplay}-Year Comparison)`}
               height={350}
+              groupGap={12}
+              barWidthPercent={75}
             />
           )
         })()}
