@@ -184,6 +184,7 @@ export function CssVerticalGroupedBarChart({
           rotated={shouldRotate}
           marginLeft={yAxisMarginLeft}
           columnSizing={groupGap !== undefined ? { ...columnSizing, gap: effectiveGap } : columnSizing}
+          alignBorderLeft
         />
 
         {/* Tooltip */}

@@ -299,13 +299,15 @@ interface VerticalXAxisProps {
   height?: string
   /** Column sizing to match bar layout (sparse mode alignment). */
   columnSizing?: ColumnSizing
+  /** Add 1px left padding to align with bars container border-l. */
+  alignBorderLeft?: boolean
 }
 
 /**
  * X-axis labels for a vertical CSS bar chart.
  * Supports straight (centered) and rotated (-40deg) modes.
  */
-export function VerticalXAxis({ labels, rotated = false, marginLeft, height, columnSizing }: VerticalXAxisProps) {
+export function VerticalXAxis({ labels, rotated = false, marginLeft, height, columnSizing, alignBorderLeft }: VerticalXAxisProps) {
   const isSparse = columnSizing?.mode === 'sparse'
   const sparseStyle = isSparse
     ? { maxWidth: `${columnSizing.maxWidth}px`, width: '100%' }
@@ -320,6 +322,7 @@ export function VerticalXAxis({ labels, rotated = false, marginLeft, height, col
           ...(marginLeft ? { marginLeft } : {}),
           height: height ?? '80px',
           ...(columnSizing ? { gap: `${columnSizing.gap}px` } : {}),
+          ...(alignBorderLeft ? { paddingLeft: '1px' } : {}),
         },
       },
       labels.map((label, i) =>
@@ -365,6 +368,7 @@ export function VerticalXAxis({ labels, rotated = false, marginLeft, height, col
       style: {
         ...(marginLeft ? { marginLeft } : {}),
         ...(columnSizing ? { gap: `${columnSizing.gap}px` } : {}),
+        ...(alignBorderLeft ? { paddingLeft: '1px' } : {}),
       },
     },
     labels.map((label, i) =>
