@@ -583,6 +583,50 @@ describe('CssVerticalGroupedBarChart barWidthPercent prop', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Y-axis scaling: axisMax must match top tick to prevent overflow
+// ---------------------------------------------------------------------------
+describe('CssVerticalGroupedBarChart y-axis scaling', () => {
+  let CssVerticalGroupedBarChart: typeof import('./CssVerticalGroupedBarChart').CssVerticalGroupedBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalGroupedBarChart')
+    CssVerticalGroupedBarChart = mod.CssVerticalGroupedBarChart
+  })
+
+  it('should scale bars to nice tick max, not raw data max', () => {
+    // Data max is 210. getNiceTicks(210) → [0, 50, 100, 150, 200, 250].
+    // Bars should be scaled to 250, not 210, so the tallest bar is < drawingHeight.
+    const data = [
+      { name: 'A', male: 210, female: 190 },
+      { name: 'B', male: 180, female: 170 },
+    ]
+    const { container } = render(
+      <CssVerticalGroupedBarChart data={data} series={series} />
+    )
+    const bars = container.querySelectorAll('.rounded-t') as NodeListOf<HTMLElement>
+    const heights = Array.from(bars).map((b) => parseFloat(b.style.height))
+    const tallestBar = Math.max(...heights)
+    // height=300, xAxisHeight=34 (2 items, no rotation), topPadding=16
+    // drawingHeight = 300 - 34 - 16 = 250
+    // If scaled to 250 (correct): (210/250)*250 = 210px
+    // If scaled to 210 (bug): (210/210)*250 = 250px
+    expect(tallestBar).toBeLessThan(250)
+    // More precisely: 210/250 * 250 = 210
+    expect(tallestBar).toBeCloseTo(210, 0)
+  })
+
+  it('should show the nice tick max on the y-axis, not just the data max', () => {
+    const data = [
+      { name: 'A', male: 210, female: 190 },
+      { name: 'B', male: 180, female: 170 },
+    ]
+    render(<CssVerticalGroupedBarChart data={data} series={series} />)
+    // The y-axis should show 250 (the nice tick max), not just 200
+    expect(screen.getByText('250')).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
 // X-axis alignment in sparse mode (Fix 4)
 // ---------------------------------------------------------------------------
 describe('CssVerticalGroupedBarChart x-axis alignment', () => {
