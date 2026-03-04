@@ -76,7 +76,7 @@ FROM python:3.14-slim
 # hadolint ignore=DL3008
 RUN groupadd -r -g 1000 kindred && useradd -r -g kindred -u 1000 kindred \
     && apt-get update && apt-get install -y --no-install-recommends \
-       curl wget supervisor procps \
+       curl supervisor \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /pb_data/bunk_requests /app/logs /app/csv_history /config \
                /app/.config/caddy /app/.local/share/caddy \
