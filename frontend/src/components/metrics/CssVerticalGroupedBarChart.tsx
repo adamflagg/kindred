@@ -14,6 +14,7 @@ import {
   VerticalYAxis,
   VerticalXAxis,
   ColumnHoverOverlay,
+  HorizontalGridlines,
   VerticalTooltipShell,
 } from './cssChartUtils'
 import { ChartLegend } from './ChartLegend'
@@ -39,6 +40,8 @@ export interface CssVerticalGroupedBarChartProps {
   groupGap?: number
   /** Constrain individual bar width as a percentage of the column (e.g. 75 for 75%) */
   barWidthPercent?: number
+  /** Override the default maxWidth (px) for sparse-mode columns */
+  maxColumnWidth?: number
 }
 
 export function CssVerticalGroupedBarChart({
@@ -54,13 +57,22 @@ export function CssVerticalGroupedBarChart({
   className = '',
   groupGap,
   barWidthPercent,
+  maxColumnWidth,
 }: CssVerticalGroupedBarChartProps) {
   // Auto-rotate when >8 categories and not explicitly set
   const shouldRotate = rotateLabels ?? data.length > 8
-  const xAxisHeight = shouldRotate ? 60 : 34
+  const xAxisHeight = shouldRotate ? 72 : 34
   const { barsHeight, drawingHeight } = calculateVerticalLayout(height, { xAxisHeight })
-  const columnSizing = calculateColumnSizing(data.length)
+  const baseColumnSizing = calculateColumnSizing(data.length)
+  const columnSizing = maxColumnWidth
+    ? { ...baseColumnSizing, mode: 'sparse' as const, maxWidth: maxColumnWidth }
+    : baseColumnSizing
   const effectiveGap = groupGap ?? columnSizing.gap
+
+  // Scale barWidthPercent by series count so visual density stays consistent
+  const effectiveBarWidthPercent = barWidthPercent
+    ? Math.min(95, barWidthPercent * Math.max(1, series.length / 4))
+    : undefined
 
   const {
     hoveredIndex,
@@ -123,57 +135,80 @@ export function CssVerticalGroupedBarChart({
           {/* Bars area */}
           <div
             ref={chartRef}
-            className={`border-foreground/40 relative flex flex-1 items-end border-l ${columnSizing.mode === 'sparse' ? 'justify-center' : ''}`}
-            style={{ height: barsHeight, gap: `${effectiveGap}px` }}
+            className="border-foreground/40 relative flex flex-1 items-end border-l"
+            style={{ height: barsHeight }}
           >
-            {data.map((item, index) => (
-              <div
-                key={index}
-                className={`relative flex h-full flex-col items-center justify-end ${columnSizing.maxWidth ? '' : 'flex-1'} ${isClickable ? 'cursor-pointer' : ''} ${columnSizing.mode === 'sparse' ? `rounded transition-colors duration-150 ${hoveredIndex === index ? 'bg-foreground/[0.06]' : ''}` : ''}`}
-                style={{
-                  ...(columnSizing.maxWidth ? { maxWidth: `${columnSizing.maxWidth}px`, width: '100%' } : {}),
-                  paddingLeft: `${columnSizing.columnPadding}px`,
-                  paddingRight: `${columnSizing.columnPadding}px`,
-                }}
-                onMouseEnter={(e) =>
-                  handleColumnEnter(index, e.currentTarget.getBoundingClientRect())
-                }
-                onMouseMove={(e) => handleColumnMove(e, item as Record<string, unknown>)}
-                onMouseLeave={handleColumnLeave}
-              >
-                {/* Grouped bars side-by-side */}
-                <div className="flex w-full flex-row items-end gap-px">
-                  {series.map((s) => {
-                    const value = (item[s.key] as number) ?? 0
-                    const barHeightPx = (value / axisMax) * drawingHeight
+            <HorizontalGridlines ticks={ticks} axisMax={axisMax} drawingHeight={drawingHeight} />
 
-                    return (
-                      <div
-                        key={s.key}
-                        className={`relative z-[1] ${barWidthPercent ? '' : 'flex-1'} rounded-t transition-all duration-300`}
-                        style={{
-                          height: `${barHeightPx}px`,
-                          minHeight: value > 0 ? '4px' : '0px',
-                          backgroundColor: s.color,
-                          ...(barWidthPercent ? { flex: '1 1 0%', maxWidth: `${barWidthPercent}%` } : {}),
-                        }}
-                        onClick={
-                          isClickable
-                            ? () => handleBarClick(item as Record<string, unknown>, s.key)
-                            : undefined
-                        }
-                      />
-                    )
-                  })}
+            {data.map((item, index) => {
+              // Absorb inter-column gap into padding so hover areas are contiguous (no dead zones)
+              const halfGap = effectiveGap / 2
+              const padLeft = columnSizing.columnPadding + halfGap
+              const padRight = columnSizing.columnPadding + halfGap
+
+              return (
+                // Outer wrapper: always flex-1 for contiguous hover areas
+                <div
+                  key={index}
+                  className={`flex flex-1 items-center justify-center ${isClickable ? 'cursor-pointer' : ''}`}
+                  style={{ height: `${drawingHeight}px` }}
+                  onMouseEnter={(e) =>
+                    handleColumnEnter(index, e.currentTarget.getBoundingClientRect())
+                  }
+                  onMouseMove={(e) => handleColumnMove(e, item as Record<string, unknown>)}
+                  onMouseLeave={handleColumnLeave}
+                >
+                  {/* Inner visual: constrained width, hover highlight */}
+                  <div
+                    className={`flex h-full flex-col items-center justify-end ${columnSizing.mode === 'sparse' ? `rounded transition-colors duration-150 ${hoveredIndex === index ? 'bg-foreground/[0.06]' : ''}` : ''}`}
+                    style={{
+                      width: '100%',
+                      ...(columnSizing.maxWidth ? { maxWidth: `${columnSizing.maxWidth}px` } : {}),
+                      paddingLeft: `${padLeft}px`,
+                      paddingRight: `${padRight}px`,
+                    }}
+                  >
+                    {/* Grouped bars side-by-side */}
+                    <div className="flex w-full flex-row items-end justify-center gap-1">
+                      {series.map((s) => {
+                        const value = (item[s.key] as number) ?? 0
+                        if (value === 0) return null
+                        const barHeightPx = (value / axisMax) * drawingHeight
+
+                        return (
+                          <div
+                            key={s.key}
+                            className="relative z-[1] transition-all duration-300"
+                            style={{
+                              width: `${100 / series.length}%`,
+                              height: `${barHeightPx}px`,
+                              minHeight: '4px',
+                              backgroundColor: s.color,
+                              borderRadius: '3px 3px 0 0',
+                              ...(effectiveBarWidthPercent
+                                ? { maxWidth: `${effectiveBarWidthPercent}%` }
+                                : {}),
+                            }}
+                            onClick={
+                              isClickable
+                                ? () => handleBarClick(item as Record<string, unknown>, s.key)
+                                : undefined
+                            }
+                          />
+                        )
+                      })}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
 
             {columnSizing.mode !== 'sparse' && (
               <ColumnHoverOverlay
                 itemCount={data.length}
                 hoveredIndex={hoveredIndex}
                 lastIndex={lastIndex}
+                height={drawingHeight}
               />
             )}
           </div>
@@ -184,7 +219,7 @@ export function CssVerticalGroupedBarChart({
           labels={data.map((d) => d.name)}
           rotated={shouldRotate}
           marginLeft={yAxisMarginLeft}
-          columnSizing={groupGap !== undefined ? { ...columnSizing, gap: effectiveGap } : columnSizing}
+          columnSizing={{ ...columnSizing, gap: 0, maxWidth: null, mode: 'normal' as const }}
           alignBorderLeft
         />
 
@@ -203,14 +238,16 @@ export function CssVerticalGroupedBarChart({
                 <p className="text-foreground mb-2 font-medium">
                   {String(tooltip.item['name'] ?? '')}
                 </p>
-                {series.map((s) => (
-                  <p key={s.key} className="text-muted-foreground text-sm">
-                    <span style={{ color: s.color }}>{s.label}:</span>{' '}
-                    <span className="text-foreground font-semibold">
-                      {(tooltip.item?.[s.key] as number) ?? 0}
-                    </span>
-                  </p>
-                ))}
+                {series
+                  .filter((s) => ((tooltip.item?.[s.key] as number) ?? 0) > 0)
+                  .map((s) => (
+                    <p key={s.key} className="text-muted-foreground text-sm">
+                      <span style={{ color: s.color }}>{s.label}:</span>{' '}
+                      <span className="text-foreground font-semibold">
+                        {(tooltip.item?.[s.key] as number) ?? 0}
+                      </span>
+                    </p>
+                  ))}
               </>
             )}
           </VerticalTooltipShell>

@@ -158,14 +158,13 @@ describe('CssVerticalGroupedBarChart bar rendering', () => {
     expect(bars[1]!.style.minHeight).toBe('4px')
   })
 
-  it('should set minHeight 0px for zero-value bars', () => {
+  it('should not render bars for zero-value data', () => {
     const zeroData = [{ name: 'Zero', male: 0, female: 0 }]
     const { container } = render(
       <CssVerticalGroupedBarChart data={zeroData} series={series} />
     )
-    const bars = container.querySelectorAll('.z-\\[1\\].transition-all') as NodeListOf<HTMLElement>
-    expect(bars[0]!.style.minHeight).toBe('0px')
-    expect(bars[1]!.style.minHeight).toBe('0px')
+    const bars = container.querySelectorAll('.z-\\[1\\].transition-all')
+    expect(bars.length).toBe(0)
   })
 
   it('should arrange bars side-by-side with flex-row and items-end', () => {
