@@ -19,6 +19,8 @@ interface CssVerticalRetentionBarChartProps {
   sortBy?: RetentionSortBy
   showCounts?: boolean
   onBarClick?: (item: RetentionRateBarItem) => void
+  /** Bar width as percentage of column (1-100). Passed through to CssVerticalBarChart. */
+  barWidthPercent?: number
   className?: string
 }
 
@@ -36,6 +38,7 @@ export function CssVerticalRetentionBarChart({
   sortBy = 'rate',
   showCounts = false,
   onBarClick,
+  barWidthPercent,
   className = '',
 }: CssVerticalRetentionBarChartProps) {
   const sorted = sortRetentionBarData(data, sortBy, topN)
@@ -109,6 +112,7 @@ export function CssVerticalRetentionBarChart({
       renderTooltip={renderTooltip}
       rotateLabels={true}
       onBarClick={onBarClick ? handleBarClick : undefined}
+      barWidthPercent={barWidthPercent}
       className={className}
     />
   )

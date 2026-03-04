@@ -236,8 +236,8 @@ describe('CssVerticalBarChart X-axis', () => {
     const { container } = render(
       <CssVerticalBarChart data={sampleData} rotateLabels />
     )
-    // Rotated mode sets height: 60px on the x-axis container
-    const xAxisWrapper = container.querySelector('[style*="height: 60px"]')
+    // Rotated mode sets height: 80px on the x-axis container
+    const xAxisWrapper = container.querySelector('[style*="height: 80px"]')
     expect(xAxisWrapper).toBeInTheDocument()
   })
 })
@@ -401,6 +401,54 @@ describe('CssVerticalBarChart column sizing', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Bar width percent
+// ---------------------------------------------------------------------------
+describe('CssVerticalBarChart barWidthPercent', () => {
+  let CssVerticalBarChart: typeof import('./CssVerticalBarChart').CssVerticalBarChart
+
+  beforeAll(async () => {
+    const mod = await import('./CssVerticalBarChart')
+    CssVerticalBarChart = mod.CssVerticalBarChart
+  })
+
+  it('should default to 100% width (w-full) when barWidthPercent is not provided', () => {
+    const { container } = render(<CssVerticalBarChart data={singleItem} />)
+    const bar = container.querySelector('.rounded-t') as HTMLElement
+    expect(bar.classList.contains('w-full')).toBe(true)
+    expect(bar.style.width).toBe('')
+  })
+
+  it('should set bar width style when barWidthPercent is provided', () => {
+    const { container } = render(
+      <CssVerticalBarChart data={singleItem} barWidthPercent={60} />
+    )
+    const bar = container.querySelector('.rounded-t') as HTMLElement
+    expect(bar.style.width).toBe('60%')
+    expect(bar.classList.contains('w-full')).toBe(false)
+  })
+
+  it('should center bars within column when barWidthPercent is set', () => {
+    const { container } = render(
+      <CssVerticalBarChart data={singleItem} barWidthPercent={70} />
+    )
+    // The column should still have items-center for horizontal centering
+    const column = container.querySelector('.flex-col.items-center')
+    expect(column).toBeInTheDocument()
+  })
+
+  it('should apply barWidthPercent to all bars', () => {
+    const { container } = render(
+      <CssVerticalBarChart data={sampleData} barWidthPercent={55} />
+    )
+    const bars = container.querySelectorAll('.rounded-t') as NodeListOf<HTMLElement>
+    expect(bars.length).toBe(sampleData.length)
+    for (const bar of bars) {
+      expect(bar.style.width).toBe('55%')
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Extra fields pass-through
 // ---------------------------------------------------------------------------
 describe('CssVerticalBarChart extra fields', () => {
@@ -553,5 +601,32 @@ describe('CssVerticalRetentionBarChart wrapper', () => {
       <CssVerticalRetentionBarChart data={data} title="Class" className="extra-class" />
     )
     expect(container.querySelector('.extra-class')).toBeInTheDocument()
+  })
+
+  it('should pass barWidthPercent through to CssVerticalBarChart', async () => {
+    const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
+    const data = [
+      { name: 'A', retentionRate: 0.5, baseCount: 100, returnedCount: 50 },
+      { name: 'B', retentionRate: 0.7, baseCount: 80, returnedCount: 56 },
+    ]
+    const { container } = render(
+      <CssVerticalRetentionBarChart data={data} title="Thin" barWidthPercent={60} />
+    )
+    const bars = container.querySelectorAll('.rounded-t') as NodeListOf<HTMLElement>
+    for (const bar of bars) {
+      expect(bar.style.width).toBe('60%')
+    }
+  })
+
+  it('should default to full-width bars when barWidthPercent is not provided', async () => {
+    const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
+    const data = [
+      { name: 'A', retentionRate: 0.5, baseCount: 100, returnedCount: 50 },
+    ]
+    const { container } = render(
+      <CssVerticalRetentionBarChart data={data} title="Default" />
+    )
+    const bar = container.querySelector('.rounded-t') as HTMLElement
+    expect(bar.classList.contains('w-full')).toBe(true)
   })
 })

@@ -37,6 +37,8 @@ interface CssVerticalBarChartProps {
   rotateLabels?: boolean
   renderTooltip?: ((item: CssVerticalBarItem) => ReactNode) | undefined
   onBarClick?: ((item: CssVerticalBarItem) => void) | undefined
+  /** Bar width as percentage of column (1-100). Default: 100 (full width). */
+  barWidthPercent?: number | undefined
   className?: string
 }
 
@@ -55,9 +57,10 @@ export function CssVerticalBarChart({
   rotateLabels = false,
   renderTooltip,
   onBarClick,
+  barWidthPercent,
   className = '',
 }: CssVerticalBarChartProps) {
-  const xAxisHeight = rotateLabels ? 60 : 34
+  const xAxisHeight = rotateLabels ? 80 : 34
   const { barsHeight, drawingHeight } = calculateVerticalLayout(height, { xAxisHeight })
   const columnSizing = calculateColumnSizing(data.length)
 
@@ -147,11 +150,12 @@ export function CssVerticalBarChart({
 
                   {/* Bar */}
                   <div
-                    className="relative z-10 w-full rounded-t transition-all duration-300"
+                    className={`relative z-10 rounded-t transition-all duration-300 ${barWidthPercent ? '' : 'w-full'}`}
                     style={{
                       height: `${barHeightPx}px`,
                       minHeight: item.value > 0 ? '4px' : '0px',
                       backgroundColor: colorFn ? colorFn(item) : DEFAULT_COLOR,
+                      ...(barWidthPercent ? { width: `${barWidthPercent}%` } : {}),
                     }}
                   />
                 </div>
