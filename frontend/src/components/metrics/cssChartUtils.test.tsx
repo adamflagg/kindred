@@ -579,6 +579,35 @@ describe('VerticalTooltipShell', () => {
 })
 
 // ---------------------------------------------------------------------------
+// getNiceTicks
+// ---------------------------------------------------------------------------
+describe('getNiceTicks', () => {
+  it('produces unique ticks when max is 1', () => {
+    const ticks = getNiceTicks(1)
+    const unique = [...new Set(ticks)]
+    expect(ticks).toEqual(unique)
+    expect(ticks[0]).toBe(0)
+    expect(ticks[ticks.length - 1]).toBeGreaterThanOrEqual(1)
+  })
+
+  it('produces unique ticks when max is 2', () => {
+    const ticks = getNiceTicks(2)
+    const unique = [...new Set(ticks)]
+    expect(ticks).toEqual(unique)
+    expect(ticks[0]).toBe(0)
+    expect(ticks[ticks.length - 1]).toBeGreaterThanOrEqual(2)
+  })
+
+  it('produces unique ticks when max is 3', () => {
+    const ticks = getNiceTicks(3)
+    const unique = [...new Set(ticks)]
+    expect(ticks).toEqual(unique)
+    expect(ticks[0]).toBe(0)
+    expect(ticks[ticks.length - 1]).toBeGreaterThanOrEqual(3)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Existing exports (sanity check — ensure we didn't break them)
 // ---------------------------------------------------------------------------
 describe('existing exports sanity', () => {
