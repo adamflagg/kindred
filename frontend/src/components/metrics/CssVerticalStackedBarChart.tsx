@@ -6,12 +6,15 @@
  * Uses shared utilities from cssChartUtils for layout, tooltip, and axes.
  */
 
-import { useCallback, type ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import {
   calculateVerticalLayout,
   calculateColumnSizing,
   useVerticalColumnTooltip,
   getNiceTicks,
+  getYAxisMarginLeft,
+  X_AXIS_HEIGHT_STRAIGHT,
+  X_AXIS_HEIGHT_ROTATED,
   VerticalYAxis,
   VerticalXAxis,
   ColumnHoverOverlay,
@@ -64,7 +67,7 @@ export function CssVerticalStackedBarChart({
   className = '',
   maxColumnWidth,
 }: CssVerticalStackedBarChartProps) {
-  const xAxisHeight = rotateLabels ? 80 : 34
+  const xAxisHeight = rotateLabels ? X_AXIS_HEIGHT_ROTATED : X_AXIS_HEIGHT_STRAIGHT
   const { barsHeight, drawingHeight } = calculateVerticalLayout(height, { xAxisHeight })
   const baseColumnSizing = calculateColumnSizing(data.length)
   const columnSizing = maxColumnWidth && baseColumnSizing.mode !== 'sparse'
@@ -85,35 +88,36 @@ export function CssVerticalStackedBarChart({
 
   const isClickable = !!onBarClick
 
-  const handleClick = useCallback(
-    (item: DataItem) => {
-      if (onBarClick) onBarClick(item)
-    },
-    [onBarClick]
-  )
-
-  // Axis calculations
-  const maxTotal = data.length > 0 ? Math.max(...data.map((d) => d.total), 1) : 1
-
-  let ticks: number[]
-  let axisMax: number
-  let formatTick: ((tick: number) => string) | undefined
-
-  if (percentMode) {
-    axisMax = 100
-    ticks = [0, 25, 50, 75, 100]
-    formatTick = (t: number) => `${t}%`
-  } else {
-    ticks = getNiceTicks(maxTotal)
-    axisMax = ticks[ticks.length - 1] ?? maxTotal
-    formatTick = undefined
-  }
+  // Axis calculations (memoized to avoid recalculation on hover)
+  const { ticks, axisMax, formatTick } = useMemo(() => {
+    if (percentMode) {
+      return {
+        ticks: [0, 25, 50, 75, 100],
+        axisMax: 100,
+        formatTick: (t: number) => `${t}%`,
+      }
+    }
+    const maxTotal = data.length > 0 ? Math.max(...data.map((d) => d.total), 1) : 1
+    const t = getNiceTicks(maxTotal)
+    return {
+      ticks: t,
+      axisMax: t[t.length - 1] ?? maxTotal,
+      formatTick: undefined as ((tick: number) => string) | undefined,
+    }
+  }, [data, percentMode])
 
   // Determine whether to show total labels
   const shouldShowLabel = showTotalLabel ?? (percentMode ? false : true)
 
-  // Y-axis margin-left string for x-axis alignment
-  const yAxisMarginLeft = '2.5rem'
+  const yAxisMarginLeft = getYAxisMarginLeft()
+
+  const legendItems = useMemo(
+    () =>
+      segments
+        .filter((s) => data.some((item) => ((item[s.key] as number) ?? 0) > 0))
+        .map((s) => ({ label: s.label, color: s.color })),
+    [segments, data]
+  )
 
   if (data.length === 0) {
     return (
@@ -171,7 +175,7 @@ export function CssVerticalStackedBarChart({
                   }
                   onMouseMove={(e) => handleColumnMove(e, item)}
                   onMouseLeave={handleColumnLeave}
-                  onClick={() => isClickable && handleClick(item)}
+                  onClick={() => onBarClick?.(item)}
                 >
                   {/* Label above bar */}
                   {shouldShowLabel && (
@@ -266,12 +270,7 @@ export function CssVerticalStackedBarChart({
         })()}
       </div>
 
-      <ChartLegend
-        items={segments
-          .filter((s) => data.some((item) => ((item[s.key] as number) ?? 0) > 0))
-          .map((s) => ({ label: s.label, color: s.color }))}
-        className={rotateLabels ? 'mt-3' : 'mt-1'}
-      />
+      <ChartLegend items={legendItems} className={rotateLabels ? 'mt-3' : 'mt-1'} />
     </div>
   )
 }

@@ -8,6 +8,18 @@
 
 import React, { useState, useCallback, useRef, type ReactNode } from 'react'
 
+/** Height for straight x-axis labels (px). */
+export const X_AXIS_HEIGHT_STRAIGHT = 34
+/** Height for rotated x-axis labels (px). Matches the VerticalXAxis rotated container. */
+export const X_AXIS_HEIGHT_ROTATED = 72
+
+export type YAxisWidth = 'w-8' | 'w-10'
+
+/** Derive the x-axis margin-left from the y-axis Tailwind width class. */
+export function getYAxisMarginLeft(width: YAxisWidth = 'w-8'): string {
+  return width === 'w-10' ? '3rem' : '2.5rem'
+}
+
 /**
  * Calculate nice tick values for a chart axis.
  * Returns evenly spaced round numbers from 0 to at least `max`.
@@ -191,11 +203,11 @@ export function useVerticalColumnTooltip<T>() {
   })
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const [hoveredColRect, setHoveredColRect] = useState<DOMRect | null>(null)
-  const lastIndexRef = useRef(0)
-  if (hoveredIndex !== null) lastIndexRef.current = hoveredIndex
+  const [lastIndex, setLastIndex] = useState(0)
 
   const handleColumnEnter = useCallback((index: number, rect: DOMRect) => {
     setHoveredIndex(index)
+    setLastIndex(index)
     setHoveredColRect(rect)
   }, [])
 
@@ -237,7 +249,7 @@ export function useVerticalColumnTooltip<T>() {
 
   return {
     hoveredIndex,
-    lastIndex: lastIndexRef.current,
+    lastIndex,
     chartRef,
     tooltipRef,
     tooltip,

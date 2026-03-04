@@ -5,18 +5,22 @@
  * Uses shared utilities from cssChartUtils for layout, tooltip, and axis rendering.
  */
 
-import { useCallback, type ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import {
   calculateVerticalLayout,
   calculateColumnSizing,
   useVerticalColumnTooltip,
   getNiceTicks,
+  getYAxisMarginLeft,
+  X_AXIS_HEIGHT_STRAIGHT,
+  X_AXIS_HEIGHT_ROTATED,
   VerticalYAxis,
   VerticalXAxis,
   ColumnHoverOverlay,
   HorizontalGridlines,
   VerticalTooltipShell,
 } from './cssChartUtils'
+import type { YAxisWidth } from './cssChartUtils'
 
 export interface CssVerticalBarItem {
   name: string
@@ -29,7 +33,7 @@ interface CssVerticalBarChartProps {
   data: CssVerticalBarItem[]
   title?: string
   height?: number
-  yAxisWidth?: string
+  yAxisWidth?: YAxisWidth
   yAxisFormat?: ((tick: number) => string) | undefined
   yAxisMax?: number
   yAxisTicks?: number[]
@@ -61,7 +65,7 @@ export function CssVerticalBarChart({
   barWidthPercent,
   className = '',
 }: CssVerticalBarChartProps) {
-  const xAxisHeight = rotateLabels ? 80 : 34
+  const xAxisHeight = rotateLabels ? X_AXIS_HEIGHT_ROTATED : X_AXIS_HEIGHT_STRAIGHT
   const { barsHeight, drawingHeight } = calculateVerticalLayout(height, { xAxisHeight })
   const columnSizing = calculateColumnSizing(data.length)
   const halfGap = columnSizing.gap / 2
@@ -79,21 +83,16 @@ export function CssVerticalBarChart({
 
   const isClickable = !!onBarClick
 
-  const handleClick = useCallback(
-    (item: CssVerticalBarItem) => {
-      if (onBarClick) onBarClick(item)
-    },
-    [onBarClick]
-  )
+  // Compute axis max and ticks (memoized to avoid recalculation on hover)
+  const { axisMax, ticks } = useMemo(() => {
+    const dataMax = data.length > 0 ? Math.max(...data.map((d) => d.value)) : 0
+    let max = yAxisMax ?? (dataMax > 0 ? dataMax : 1)
+    const t = yAxisTicks ?? getNiceTicks(max)
+    max = t[t.length - 1] ?? max
+    return { axisMax: max, ticks: t }
+  }, [data, yAxisMax, yAxisTicks])
 
-  // Compute axis max and ticks
-  const dataMax = data.length > 0 ? Math.max(...data.map((d) => d.value)) : 0
-  let axisMax = yAxisMax ?? (dataMax > 0 ? dataMax : 1)
-  const ticks = yAxisTicks ?? getNiceTicks(axisMax)
-  axisMax = ticks[ticks.length - 1] ?? axisMax
-
-  // Y-axis margin-left string for x-axis alignment
-  const yAxisMarginLeft = yAxisWidth === 'w-10' ? '3rem' : '2.5rem'
+  const yAxisMarginLeft = getYAxisMarginLeft(yAxisWidth)
 
   if (data.length === 0) {
     return (
@@ -150,7 +149,7 @@ export function CssVerticalBarChart({
                   }
                   onMouseMove={(e) => handleColumnMove(e, item)}
                   onMouseLeave={handleColumnLeave}
-                  onClick={() => isClickable && handleClick(item)}
+                  onClick={() => onBarClick?.(item)}
                 >
                   {/* Label above bar */}
                   <span className="text-muted-foreground relative z-[1] mb-1 text-xs tabular-nums">

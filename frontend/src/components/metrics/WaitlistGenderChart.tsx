@@ -9,19 +9,7 @@
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import type { GenderBreakdown, DrilldownFilter } from '../../types/metrics'
 import { ChartCard } from './ChartCard'
-
-// Gender colors matching GenderStackedChart and GenderByGradeChart
-const GENDER_COLORS: Record<string, string> = {
-  M: 'hsl(200, 70%, 50%)', // Blue
-  F: 'hsl(340, 70%, 50%)', // Pink
-  Unknown: 'hsl(0, 0%, 60%)', // Gray
-}
-
-const FALLBACK_COLOR = 'hsl(280, 60%, 50%)' // Purple
-
-function getGenderColor(gender: string): string {
-  return GENDER_COLORS[gender] ?? FALLBACK_COLOR
-}
+import { getGenderColor } from './genderColors'
 
 /** Darker variant for "No Other Sessions" */
 function getNoEnrollmentColor(gender: string): string {

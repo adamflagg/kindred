@@ -14,6 +14,7 @@ import {
   ResponsiveContainer,
   LabelList,
 } from 'recharts'
+import { useMemo } from 'react'
 import type { YearMetrics } from '../../types/metrics'
 import { ChartCard } from './ChartCard'
 import { getNiceTicks, calculateVerticalLayout } from './cssChartUtils'
@@ -44,73 +45,81 @@ export function TrendLineChart({
   className = '',
 }: TrendLineChartProps) {
   // Transform data based on metric type
-  const chartData = data.map((yearData) => {
-    const base = { year: yearData.year }
+  const chartData = useMemo(
+    () =>
+      data.map((yearData) => {
+        const base = { year: yearData.year }
 
-    if (metric === 'total') {
-      return { ...base, total: yearData.total_enrolled }
-    }
+        if (metric === 'total') {
+          return { ...base, total: yearData.total_enrolled }
+        }
 
-    if (metric === 'new_vs_returning') {
-      return {
-        ...base,
-        new: yearData.new_vs_returning.new_count,
-        returning: yearData.new_vs_returning.returning_count,
-      }
-    }
+        if (metric === 'new_vs_returning') {
+          return {
+            ...base,
+            new: yearData.new_vs_returning.new_count,
+            returning: yearData.new_vs_returning.returning_count,
+          }
+        }
 
-    if (metric === 'gender') {
-      const maleData = yearData.by_gender.find((g) => g.gender === 'M')
-      const femaleData = yearData.by_gender.find((g) => g.gender === 'F')
-      return {
-        ...base,
-        male: maleData?.count ?? 0,
-        female: femaleData?.count ?? 0,
-      }
-    }
+        if (metric === 'gender') {
+          const maleData = yearData.by_gender.find((g) => g.gender === 'M')
+          const femaleData = yearData.by_gender.find((g) => g.gender === 'F')
+          return {
+            ...base,
+            male: maleData?.count ?? 0,
+            female: femaleData?.count ?? 0,
+          }
+        }
 
-    if (metric === 'cancellation_rate') {
-      return {
-        ...base,
-        cancelled: yearData.total_cancelled ?? 0,
-        cancellation_rate: yearData.cancellation_rate ?? 0,
-      }
-    }
+        if (metric === 'cancellation_rate') {
+          return {
+            ...base,
+            cancelled: yearData.total_cancelled ?? 0,
+            cancellation_rate: yearData.cancellation_rate ?? 0,
+          }
+        }
 
-    return base
-  })
+        return base
+      }),
+    [data, metric]
+  )
 
   // Compute ticks and layout for ChartCard
   const { barsHeight, drawingHeight } = calculateVerticalLayout(height)
 
-  const allValues = chartData.flatMap((d) =>
-    Object.entries(d)
-      .filter(([k]) => k !== 'year')
-      .map(([, v]) => Number(v) || 0)
-  )
-  const dataMax = allValues.length > 0 ? Math.max(...allValues) : 1
-  // For cancellation_rate, cap axis at a sensible ceiling based on data
-  const ticks =
-    metric === 'cancellation_rate'
-      ? getNiceTicks(Math.max(Math.ceil(dataMax / 5) * 5, 5))
-      : getNiceTicks(dataMax)
-  const axisMax = ticks[ticks.length - 1] ?? dataMax
+  const { ticks, axisMax } = useMemo(() => {
+    const allValues = chartData.flatMap((d) =>
+      Object.entries(d)
+        .filter(([k]) => k !== 'year')
+        .map(([, v]) => Number(v) || 0)
+    )
+    const dataMax = allValues.length > 0 ? Math.max(...allValues) : 1
+    const t =
+      metric === 'cancellation_rate'
+        ? getNiceTicks(Math.max(Math.ceil(dataMax / 5) * 5, 5))
+        : getNiceTicks(dataMax)
+    return { ticks: t, axisMax: t[t.length - 1] ?? dataMax }
+  }, [chartData, metric])
 
   // Compute legend items based on metric
-  const legendItems =
-    metric === 'total'
-      ? [{ label: 'Total Enrolled', color: COLORS.total }]
-      : metric === 'new_vs_returning'
-        ? [
-            { label: 'New Campers', color: COLORS.new },
-            { label: 'Returning Campers', color: COLORS.returning },
-          ]
-        : metric === 'gender'
+  const legendItems = useMemo(
+    () =>
+      metric === 'total'
+        ? [{ label: 'Total Enrolled', color: COLORS.total }]
+        : metric === 'new_vs_returning'
           ? [
-              { label: 'Male', color: COLORS.male },
-              { label: 'Female', color: COLORS.female },
+              { label: 'New Campers', color: COLORS.new },
+              { label: 'Returning Campers', color: COLORS.returning },
             ]
-          : [{ label: 'Cancellation Rate', color: COLORS.cancellation_rate }]
+          : metric === 'gender'
+            ? [
+                { label: 'Male', color: COLORS.male },
+                { label: 'Female', color: COLORS.female },
+              ]
+            : [{ label: 'Cancellation Rate', color: COLORS.cancellation_rate }],
+    [metric]
+  )
 
   const CustomTooltip = ({
     active,

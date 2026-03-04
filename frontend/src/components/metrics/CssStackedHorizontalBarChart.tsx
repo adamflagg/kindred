@@ -10,7 +10,7 @@
  * Configured via `segments` prop that defines the stacked layers.
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useMemo } from 'react'
 import { getNiceTicks, useChartTooltip, calculateBarSizing } from './cssChartUtils'
 import { ChartLegend } from './ChartLegend'
 
@@ -54,13 +54,19 @@ export function CssStackedHorizontalBarChart({
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const isClickable = !!onBarClick
 
-  const handleClick = useCallback(
-    (item: StackedBarDataItem) => {
-      if (!onBarClick) return
-      onBarClick(item)
-    },
-    [onBarClick]
+  // Filter to only segments that have data (memoized to avoid nested scan on re-render)
+  const activeSegments = useMemo(
+    () => segments.filter((seg) => data.some((d) => (d[seg.key] as number) > 0)),
+    [segments, data]
   )
+
+  const { axisMax, ticks, isDense, barHeight, rowGap } = useMemo(() => {
+    const max = Math.max(...data.map((d) => d.total), 1)
+    const t = getNiceTicks(max)
+    const am = t[t.length - 1] ?? max
+    const sizing = calculateBarSizing(height, data.length)
+    return { axisMax: am, ticks: t, ...sizing }
+  }, [data, height])
 
   if (data.length === 0) {
     return (
@@ -72,14 +78,6 @@ export function CssStackedHorizontalBarChart({
       </div>
     )
   }
-
-  // Filter to only segments that have data
-  const activeSegments = segments.filter((seg) => data.some((d) => (d[seg.key] as number) > 0))
-
-  const maxTotal = Math.max(...data.map((d) => d.total), 1)
-  const ticks = getNiceTicks(maxTotal)
-  const axisMax = ticks[ticks.length - 1] ?? maxTotal
-  const { isDense, barHeight, rowGap } = calculateBarSizing(height, data.length)
 
   return (
     <div className={`card-lodge p-4 ${className}`}>
@@ -100,7 +98,7 @@ export function CssStackedHorizontalBarChart({
               <div
                 key={index}
                 className={`flex items-center ${isDense ? 'gap-2' : 'gap-3'} rounded ${isClickable ? 'cursor-pointer' : ''}`}
-                onClick={() => isClickable && handleClick(item)}
+                onClick={() => onBarClick?.(item)}
                 onMouseEnter={() => setHoveredIndex(index)}
                 onMouseMove={(e) => handleMouseMove(e, item)}
               >

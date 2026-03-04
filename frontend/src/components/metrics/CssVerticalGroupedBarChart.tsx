@@ -5,12 +5,15 @@
  * from cssChartUtils for layout, tooltip, and axis rendering.
  */
 
-import { useCallback, type ReactNode } from 'react'
+import { useMemo, useCallback, type ReactNode } from 'react'
 import {
   calculateVerticalLayout,
   calculateColumnSizing,
   useVerticalColumnTooltip,
   getNiceTicks,
+  getYAxisMarginLeft,
+  X_AXIS_HEIGHT_STRAIGHT,
+  X_AXIS_HEIGHT_ROTATED,
   VerticalYAxis,
   VerticalXAxis,
   ColumnHoverOverlay,
@@ -63,7 +66,7 @@ export function CssVerticalGroupedBarChart({
 }: CssVerticalGroupedBarChartProps) {
   // Auto-rotate when >8 categories and not explicitly set
   const shouldRotate = rotateLabels ?? data.length > 8
-  const xAxisHeight = shouldRotate ? 72 : 34
+  const xAxisHeight = shouldRotate ? X_AXIS_HEIGHT_ROTATED : X_AXIS_HEIGHT_STRAIGHT
   const { barsHeight, drawingHeight } = calculateVerticalLayout(height, { xAxisHeight })
   const baseColumnSizing = calculateColumnSizing(data.length)
   const columnSizing = maxColumnWidth
@@ -96,17 +99,24 @@ export function CssVerticalGroupedBarChart({
     [onBarClick]
   )
 
-  // Compute axis max and ticks across all series
-  const dataMax =
-    data.length > 0
-      ? Math.max(...data.flatMap((d) => series.map((s) => (d[s.key] as number) ?? 0)))
-      : 0
-  let axisMax = yAxisMax ?? (dataMax > 0 ? dataMax : 1)
-  const ticks = getNiceTicks(axisMax)
-  axisMax = ticks[ticks.length - 1] ?? axisMax
+  // Compute axis max and ticks across all series (memoized to avoid recalculation on hover)
+  const { axisMax, ticks } = useMemo(() => {
+    const dataMax =
+      data.length > 0
+        ? Math.max(...data.flatMap((d) => series.map((s) => (d[s.key] as number) ?? 0)))
+        : 0
+    let max = yAxisMax ?? (dataMax > 0 ? dataMax : 1)
+    const t = getNiceTicks(max)
+    max = t[t.length - 1] ?? max
+    return { axisMax: max, ticks: t }
+  }, [data, series, yAxisMax])
 
-  // Y-axis margin-left string for x-axis alignment
-  const yAxisMarginLeft = '2.5rem'
+  const yAxisMarginLeft = getYAxisMarginLeft()
+
+  const legendItems = useMemo(
+    () => series.map((s) => ({ label: s.label, color: s.color })),
+    [series]
+  )
 
   if (data.length === 0) {
     return (
@@ -256,10 +266,7 @@ export function CssVerticalGroupedBarChart({
         )}
       </div>
 
-      <ChartLegend
-        items={series.map((s) => ({ label: s.label, color: s.color }))}
-        className="mt-1"
-      />
+      <ChartLegend items={legendItems} className="mt-1" />
     </div>
   )
 }

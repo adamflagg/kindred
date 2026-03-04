@@ -6,7 +6,7 @@
  * percentage labels, and a retention tooltip.
  */
 
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { CssVerticalBarChart, type CssVerticalBarItem } from './CssVerticalBarChart'
 import { sortRetentionBarData, type RetentionSortBy } from '../../utils/retentionTransforms'
 import type { RetentionRateBarItem } from '../../types/metrics'
@@ -41,14 +41,18 @@ export function CssVerticalRetentionBarChart({
   barWidthPercent,
   className = '',
 }: CssVerticalRetentionBarChartProps) {
-  const sorted = sortRetentionBarData(data, sortBy, topN)
+  const sorted = useMemo(() => sortRetentionBarData(data, sortBy, topN), [data, sortBy, topN])
 
   // Map RetentionRateBarItem[] to CssVerticalBarItem[]
-  const barData: CssVerticalBarItem[] = sorted.map((item) => ({
-    ...item,
-    name: item.name,
-    value: Math.round(item.retentionRate * 100),
-  }))
+  const barData: CssVerticalBarItem[] = useMemo(
+    () =>
+      sorted.map((item) => ({
+        ...item,
+        name: item.name,
+        value: Math.round(item.retentionRate * 100),
+      })),
+    [sorted]
+  )
 
   const colorFn = useCallback(
     (item: CssVerticalBarItem) => getBarColor(item['retentionRate'] as number),

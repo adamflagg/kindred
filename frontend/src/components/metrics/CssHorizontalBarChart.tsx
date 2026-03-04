@@ -6,7 +6,7 @@
  * Supports drill-down: click a bar to show matching campers.
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import type { DrilldownFilter } from '../../types/metrics'
 import { getNiceTicks, useChartTooltip, calculateBarSizing } from './cssChartUtils'
 
@@ -46,10 +46,13 @@ export function CssHorizontalBarChart({
     useChartTooltip<ChartDataItem>()
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const isClickable = !!onBarClick && !!breakdownType
-  const maxValue = Math.max(...data.map((d) => d.value), 1)
-  const ticks = getNiceTicks(maxValue)
-  const axisMax = ticks[ticks.length - 1] ?? maxValue
-  const { isDense, barHeight, rowGap } = calculateBarSizing(height, data.length)
+  const { axisMax, ticks, isDense, barHeight, rowGap } = useMemo(() => {
+    const max = Math.max(...data.map((d) => d.value), 1)
+    const t = getNiceTicks(max)
+    const am = t[t.length - 1] ?? max
+    const sizing = calculateBarSizing(height, data.length)
+    return { axisMax: am, ticks: t, ...sizing }
+  }, [data, height])
 
   const handleClick = useCallback(
     (item: ChartDataItem) => {
