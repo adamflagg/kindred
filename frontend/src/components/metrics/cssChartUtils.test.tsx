@@ -255,7 +255,14 @@ describe('useVerticalColumnTooltip', () => {
 // ---------------------------------------------------------------------------
 describe('VerticalYAxis', () => {
   it('should render tick labels', () => {
-    render(<VerticalYAxis ticks={[0, 25, 50, 75, 100]} axisMax={100} drawingHeight={250} barsHeight={266} />)
+    render(
+      <VerticalYAxis
+        ticks={[0, 25, 50, 75, 100]}
+        axisMax={100}
+        drawingHeight={250}
+        barsHeight={266}
+      />
+    )
     expect(screen.getByText('0')).toBeInTheDocument()
     expect(screen.getByText('25')).toBeInTheDocument()
     expect(screen.getByText('50')).toBeInTheDocument()
@@ -292,7 +299,13 @@ describe('VerticalYAxis', () => {
 
   it('should accept custom width class', () => {
     const { container } = render(
-      <VerticalYAxis ticks={[0, 100]} axisMax={100} drawingHeight={200} barsHeight={216} width="w-10" />
+      <VerticalYAxis
+        ticks={[0, 100]}
+        axisMax={100}
+        drawingHeight={200}
+        barsHeight={216}
+        width="w-10"
+      />
     )
     const wrapper = container.firstChild as HTMLElement
     expect(wrapper.className).toContain('w-10')
@@ -383,7 +396,9 @@ describe('VerticalXAxis', () => {
 
   it('should apply sparse column sizing when provided', () => {
     const sparseSizing: ColumnSizing = { mode: 'sparse', maxWidth: 80, gap: 16, columnPadding: 4 }
-    const { container } = render(<VerticalXAxis labels={['A', 'B', 'C']} columnSizing={sparseSizing} />)
+    const { container } = render(
+      <VerticalXAxis labels={['A', 'B', 'C']} columnSizing={sparseSizing} />
+    )
     const wrapper = container.firstChild as HTMLElement
     expect(wrapper.className).toContain('justify-center')
     expect(wrapper.style.gap).toBe('16px')
@@ -401,7 +416,9 @@ describe('VerticalXAxis', () => {
 
   it('should not apply sparse layout in normal mode', () => {
     const normalSizing: ColumnSizing = { mode: 'normal', maxWidth: null, gap: 4, columnPadding: 4 }
-    const { container } = render(<VerticalXAxis labels={['A', 'B', 'C', 'D', 'E']} columnSizing={normalSizing} />)
+    const { container } = render(
+      <VerticalXAxis labels={['A', 'B', 'C', 'D', 'E']} columnSizing={normalSizing} />
+    )
     const wrapper = container.firstChild as HTMLElement
     expect(wrapper.className).not.toContain('justify-center')
     // Labels should still be flex-1
@@ -411,7 +428,9 @@ describe('VerticalXAxis', () => {
 
   it('should apply sparse layout to rotated labels too', () => {
     const sparseSizing: ColumnSizing = { mode: 'sparse', maxWidth: 80, gap: 16, columnPadding: 4 }
-    const { container } = render(<VerticalXAxis labels={['A', 'B']} rotated columnSizing={sparseSizing} />)
+    const { container } = render(
+      <VerticalXAxis labels={['A', 'B']} rotated columnSizing={sparseSizing} />
+    )
     const wrapper = container.firstChild as HTMLElement
     expect(wrapper.className).toContain('justify-center')
     expect(wrapper.style.gap).toBe('16px')
@@ -459,50 +478,66 @@ describe('VerticalXAxis', () => {
 // ---------------------------------------------------------------------------
 describe('ColumnHoverOverlay', () => {
   it('should render a div with pointer-events-none', () => {
-    const { container } = render(<ColumnHoverOverlay itemCount={5} hoveredIndex={null} lastIndex={0} />)
+    const { container } = render(
+      <ColumnHoverOverlay itemCount={5} hoveredIndex={null} lastIndex={0} />
+    )
     const overlay = container.firstChild as HTMLElement
     expect(overlay.className).toContain('pointer-events-none')
   })
 
   it('should set width based on itemCount', () => {
-    const { container } = render(<ColumnHoverOverlay itemCount={4} hoveredIndex={null} lastIndex={0} />)
+    const { container } = render(
+      <ColumnHoverOverlay itemCount={4} hoveredIndex={null} lastIndex={0} />
+    )
     const overlay = container.firstChild as HTMLElement
     expect(overlay.style.width).toBe('25%') // 100/4
   })
 
   it('should set opacity to 0 when hoveredIndex is null', () => {
-    const { container } = render(<ColumnHoverOverlay itemCount={4} hoveredIndex={null} lastIndex={0} />)
+    const { container } = render(
+      <ColumnHoverOverlay itemCount={4} hoveredIndex={null} lastIndex={0} />
+    )
     const overlay = container.firstChild as HTMLElement
     expect(overlay.style.opacity).toBe('0')
   })
 
   it('should set opacity to 1 when hoveredIndex is set', () => {
-    const { container } = render(<ColumnHoverOverlay itemCount={4} hoveredIndex={2} lastIndex={2} />)
+    const { container } = render(
+      <ColumnHoverOverlay itemCount={4} hoveredIndex={2} lastIndex={2} />
+    )
     const overlay = container.firstChild as HTMLElement
     expect(overlay.style.opacity).toBe('1')
   })
 
   it('should position at hoveredIndex when hovered', () => {
-    const { container } = render(<ColumnHoverOverlay itemCount={4} hoveredIndex={2} lastIndex={2} />)
+    const { container } = render(
+      <ColumnHoverOverlay itemCount={4} hoveredIndex={2} lastIndex={2} />
+    )
     const overlay = container.firstChild as HTMLElement
     expect(overlay.style.transform).toBe('translateX(200%)') // 2 * 100%
   })
 
   it('should position at lastIndex when not hovered', () => {
-    const { container } = render(<ColumnHoverOverlay itemCount={4} hoveredIndex={null} lastIndex={3} />)
+    const { container } = render(
+      <ColumnHoverOverlay itemCount={4} hoveredIndex={null} lastIndex={3} />
+    )
     const overlay = container.firstChild as HTMLElement
     expect(overlay.style.transform).toBe('translateX(300%)') // 3 * 100%
   })
 
   it('should have transition classes for animation', () => {
-    const { container } = render(<ColumnHoverOverlay itemCount={4} hoveredIndex={null} lastIndex={0} />)
+    const { container } = render(
+      <ColumnHoverOverlay itemCount={4} hoveredIndex={null} lastIndex={0} />
+    )
     const overlay = container.firstChild as HTMLElement
     expect(overlay.className).toContain('transition-[transform,opacity]')
     expect(overlay.className).toContain('duration-150')
   })
 
   it('should have correct structural classes', () => {
-    const { container } = render(<ColumnHoverOverlay itemCount={4} hoveredIndex={null} lastIndex={0} />)
+    const { container } = render(
+      <ColumnHoverOverlay itemCount={4} hoveredIndex={null} lastIndex={0} />
+    )
     const overlay = container.firstChild as HTMLElement
     expect(overlay.className).toContain('absolute')
     expect(overlay.className).toContain('left-0')

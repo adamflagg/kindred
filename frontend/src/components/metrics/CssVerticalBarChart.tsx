@@ -139,11 +139,15 @@ export function CssVerticalBarChart({
                   key={index}
                   className={`relative flex h-full flex-col items-center justify-end ${columnSizing.maxWidth ? '' : 'flex-1'} ${isClickable ? 'cursor-pointer' : ''} ${columnSizing.mode === 'sparse' ? `rounded transition-colors duration-150 ${hoveredIndex === index ? 'bg-foreground/[0.06]' : ''}` : ''}`}
                   style={{
-                    ...(columnSizing.maxWidth ? { maxWidth: `${columnSizing.maxWidth}px`, width: '100%' } : {}),
+                    ...(columnSizing.maxWidth
+                      ? { maxWidth: `${columnSizing.maxWidth}px`, width: '100%' }
+                      : {}),
                     paddingLeft: `${columnSizing.columnPadding + halfGap}px`,
                     paddingRight: `${columnSizing.columnPadding + halfGap}px`,
                   }}
-                  onMouseEnter={(e) => handleColumnEnter(index, e.currentTarget.getBoundingClientRect())}
+                  onMouseEnter={(e) =>
+                    handleColumnEnter(index, e.currentTarget.getBoundingClientRect())
+                  }
                   onMouseMove={(e) => handleColumnMove(e, item)}
                   onMouseLeave={handleColumnLeave}
                   onClick={() => isClickable && handleClick(item)}

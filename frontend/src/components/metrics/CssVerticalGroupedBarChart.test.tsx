@@ -26,9 +26,7 @@ const sampleData: CssVerticalGroupedBarChartProps['data'] = [
   { name: 'Grade 5', male: 20, female: 18 },
 ]
 
-const singleItem: CssVerticalGroupedBarChartProps['data'] = [
-  { name: 'Solo', male: 30, female: 25 },
-]
+const singleItem: CssVerticalGroupedBarChartProps['data'] = [{ name: 'Solo', male: 30, female: 25 }]
 
 // ---------------------------------------------------------------------------
 // Module export
@@ -64,17 +62,13 @@ describe('CssVerticalGroupedBarChart rendering', () => {
   })
 
   it('should render without a title when not provided', () => {
-    const { container } = render(
-      <CssVerticalGroupedBarChart data={sampleData} series={series} />
-    )
+    const { container } = render(<CssVerticalGroupedBarChart data={sampleData} series={series} />)
     const headings = container.querySelectorAll('h3')
     expect(headings.length).toBe(0)
   })
 
   it('should wrap in card-lodge class', () => {
-    const { container } = render(
-      <CssVerticalGroupedBarChart data={sampleData} series={series} />
-    )
+    const { container } = render(<CssVerticalGroupedBarChart data={sampleData} series={series} />)
     expect(container.querySelector('.card-lodge')).toBeInTheDocument()
   })
 
@@ -103,9 +97,7 @@ describe('CssVerticalGroupedBarChart empty state', () => {
   })
 
   it('should still wrap in card-lodge when empty', () => {
-    const { container } = render(
-      <CssVerticalGroupedBarChart data={[]} series={series} />
-    )
+    const { container } = render(<CssVerticalGroupedBarChart data={[]} series={series} />)
     expect(container.querySelector('.card-lodge')).toBeInTheDocument()
   })
 })
@@ -122,26 +114,20 @@ describe('CssVerticalGroupedBarChart bar rendering', () => {
   })
 
   it('should render N bars per column (one per series)', () => {
-    const { container } = render(
-      <CssVerticalGroupedBarChart data={sampleData} series={series} />
-    )
+    const { container } = render(<CssVerticalGroupedBarChart data={sampleData} series={series} />)
     // Each bar has z-[1] class — N series * M data items
     const bars = container.querySelectorAll('.z-\\[1\\].transition-all')
     expect(bars.length).toBe(sampleData.length * series.length)
   })
 
   it('should render bars with transition-all duration-300', () => {
-    const { container } = render(
-      <CssVerticalGroupedBarChart data={sampleData} series={series} />
-    )
+    const { container } = render(<CssVerticalGroupedBarChart data={sampleData} series={series} />)
     const transitionBars = container.querySelectorAll('.transition-all.duration-300')
     expect(transitionBars.length).toBe(sampleData.length * series.length)
   })
 
   it('should apply series colors to bars', () => {
-    const { container } = render(
-      <CssVerticalGroupedBarChart data={singleItem} series={series} />
-    )
+    const { container } = render(<CssVerticalGroupedBarChart data={singleItem} series={series} />)
     const bars = container.querySelectorAll('.z-\\[1\\].transition-all') as NodeListOf<HTMLElement>
     // First bar: male color hsl(200, 70%, 50%) => rgb(38, 157, 217)
     expect(bars[0]!.style.backgroundColor).toBe('rgb(38, 157, 217)')
@@ -150,9 +136,7 @@ describe('CssVerticalGroupedBarChart bar rendering', () => {
   })
 
   it('should set minHeight 4px for non-zero values', () => {
-    const { container } = render(
-      <CssVerticalGroupedBarChart data={singleItem} series={series} />
-    )
+    const { container } = render(<CssVerticalGroupedBarChart data={singleItem} series={series} />)
     const bars = container.querySelectorAll('.z-\\[1\\].transition-all') as NodeListOf<HTMLElement>
     expect(bars[0]!.style.minHeight).toBe('4px')
     expect(bars[1]!.style.minHeight).toBe('4px')
@@ -160,17 +144,13 @@ describe('CssVerticalGroupedBarChart bar rendering', () => {
 
   it('should not render bars for zero-value data', () => {
     const zeroData = [{ name: 'Zero', male: 0, female: 0 }]
-    const { container } = render(
-      <CssVerticalGroupedBarChart data={zeroData} series={series} />
-    )
+    const { container } = render(<CssVerticalGroupedBarChart data={zeroData} series={series} />)
     const bars = container.querySelectorAll('.z-\\[1\\].transition-all')
     expect(bars.length).toBe(0)
   })
 
   it('should arrange bars side-by-side with flex-row and items-end', () => {
-    const { container } = render(
-      <CssVerticalGroupedBarChart data={sampleData} series={series} />
-    )
+    const { container } = render(<CssVerticalGroupedBarChart data={sampleData} series={series} />)
     // The bar group container should have flex, flex-row, items-end
     const barGroups = container.querySelectorAll('.flex.flex-row.items-end')
     expect(barGroups.length).toBe(sampleData.length)
@@ -247,18 +227,14 @@ describe('CssVerticalGroupedBarChart X-axis', () => {
       male: i * 2,
       female: i * 3,
     }))
-    const { container } = render(
-      <CssVerticalGroupedBarChart data={manyItems} series={series} />
-    )
+    const { container } = render(<CssVerticalGroupedBarChart data={manyItems} series={series} />)
     // Auto-rotate kicks in for >8 items — rotated axis has height: 72px
     const xAxisWrapper = container.querySelector('[style*="height: 72px"]')
     expect(xAxisWrapper).toBeInTheDocument()
   })
 
   it('should not auto-rotate labels when data has 8 or fewer items', () => {
-    const { container } = render(
-      <CssVerticalGroupedBarChart data={sampleData} series={series} />
-    )
+    const { container } = render(<CssVerticalGroupedBarChart data={sampleData} series={series} />)
     // 3 items < 8 — should NOT have rotated 80px axis
     const xAxisWrapper = container.querySelector('[style*="height: 60px"]')
     expect(xAxisWrapper).toBeNull()
@@ -299,7 +275,9 @@ describe('CssVerticalGroupedBarChart tooltip', () => {
       <CssVerticalGroupedBarChart
         data={sampleData}
         series={series}
-        renderTooltip={(item: Record<string, unknown>) => <span data-testid="tt">{String(item['name'])}</span>}
+        renderTooltip={(item: Record<string, unknown>) => (
+          <span data-testid="tt">{String(item['name'])}</span>
+        )}
       />
     )
     expect(screen.queryByTestId('tt')).not.toBeInTheDocument()
@@ -309,9 +287,7 @@ describe('CssVerticalGroupedBarChart tooltip', () => {
     // Default tooltip shows item.name and each series value
     // We can't easily trigger the full tooltip in jsdom, but we verify
     // the component renders without error when no renderTooltip is provided
-    const { container } = render(
-      <CssVerticalGroupedBarChart data={sampleData} series={series} />
-    )
+    const { container } = render(<CssVerticalGroupedBarChart data={sampleData} series={series} />)
     expect(container.querySelector('.card-lodge')).toBeInTheDocument()
   })
 })
@@ -330,20 +306,14 @@ describe('CssVerticalGroupedBarChart click handling', () => {
   it('should add cursor-pointer class when onBarClick is provided', () => {
     const onClick = vi.fn()
     const { container } = render(
-      <CssVerticalGroupedBarChart
-        data={singleItem}
-        series={series}
-        onBarClick={onClick}
-      />
+      <CssVerticalGroupedBarChart data={singleItem} series={series} onBarClick={onClick} />
     )
     const column = container.querySelector('.cursor-pointer')
     expect(column).toBeInTheDocument()
   })
 
   it('should not have cursor-pointer when onBarClick is not provided', () => {
-    const { container } = render(
-      <CssVerticalGroupedBarChart data={singleItem} series={series} />
-    )
+    const { container } = render(<CssVerticalGroupedBarChart data={singleItem} series={series} />)
     const column = container.querySelector('.cursor-pointer')
     expect(column).toBeNull()
   })
@@ -351,11 +321,7 @@ describe('CssVerticalGroupedBarChart click handling', () => {
   it('should call onBarClick with item and seriesKey when a bar is clicked', () => {
     const onClick = vi.fn()
     const { container } = render(
-      <CssVerticalGroupedBarChart
-        data={singleItem}
-        series={series}
-        onBarClick={onClick}
-      />
+      <CssVerticalGroupedBarChart data={singleItem} series={series} onBarClick={onClick} />
     )
     // Click the first individual bar (rounded-t)
     const bars = container.querySelectorAll('.z-\\[1\\].transition-all')
@@ -369,11 +335,7 @@ describe('CssVerticalGroupedBarChart click handling', () => {
   it('should pass the correct seriesKey for each bar', () => {
     const onClick = vi.fn()
     const { container } = render(
-      <CssVerticalGroupedBarChart
-        data={singleItem}
-        series={series}
-        onBarClick={onClick}
-      />
+      <CssVerticalGroupedBarChart data={singleItem} series={series} onBarClick={onClick} />
     )
     const bars = container.querySelectorAll('.z-\\[1\\].transition-all')
     // Click second bar (female)
@@ -399,9 +361,7 @@ describe('CssVerticalGroupedBarChart column sizing', () => {
       { name: 'B', male: 15, female: 12 },
       { name: 'C', male: 12, female: 10 },
     ]
-    const { container } = render(
-      <CssVerticalGroupedBarChart data={sparseData} series={series} />
-    )
+    const { container } = render(<CssVerticalGroupedBarChart data={sparseData} series={series} />)
     // maxWidth should be on inner visual div, not on the outer flex-1 wrapper
     const innerDivsWithMaxWidth = container.querySelectorAll('[style*="max-width: 120px"]')
     expect(innerDivsWithMaxWidth.length).toBe(sparseData.length)
@@ -416,9 +376,7 @@ describe('CssVerticalGroupedBarChart column sizing', () => {
       { name: 'A', male: 10, female: 8 },
       { name: 'B', male: 15, female: 12 },
     ]
-    const { container } = render(
-      <CssVerticalGroupedBarChart data={sparseData} series={series} />
-    )
+    const { container } = render(<CssVerticalGroupedBarChart data={sparseData} series={series} />)
     const barsArea = container.querySelector('.border-l') as HTMLElement
     expect(barsArea.style.gap).toBe('')
   })
@@ -429,9 +387,7 @@ describe('CssVerticalGroupedBarChart column sizing', () => {
       male: 10 + i,
       female: 8 + i,
     }))
-    const { container } = render(
-      <CssVerticalGroupedBarChart data={normalData} series={series} />
-    )
+    const { container } = render(<CssVerticalGroupedBarChart data={normalData} series={series} />)
     const columnsWithMaxWidth = container.querySelectorAll('[style*="max-width: 120px"]')
     expect(columnsWithMaxWidth.length).toBe(0)
   })
@@ -441,9 +397,7 @@ describe('CssVerticalGroupedBarChart column sizing', () => {
       { name: 'A', male: 10, female: 8 },
       { name: 'B', male: 15, female: 12 },
     ]
-    const { container } = render(
-      <CssVerticalGroupedBarChart data={sparseData} series={series} />
-    )
+    const { container } = render(<CssVerticalGroupedBarChart data={sparseData} series={series} />)
     const overlay = container.querySelector('.bg-foreground\\/\\[0\\.06\\]')
     expect(overlay).toBeNull()
   })
@@ -461,9 +415,7 @@ describe('CssVerticalGroupedBarChart height', () => {
   })
 
   it('should use default height of 300', () => {
-    const { container } = render(
-      <CssVerticalGroupedBarChart data={sampleData} series={series} />
-    )
+    const { container } = render(<CssVerticalGroupedBarChart data={sampleData} series={series} />)
     // Default height 300, barsHeight = 300 - 34 = 266
     const barsArea = container.querySelector('[style*="height: 266px"]')
     expect(barsArea).toBeInTheDocument()
@@ -563,9 +515,7 @@ describe('CssVerticalGroupedBarChart barWidthPercent prop', () => {
   })
 
   it('should not apply max-width to bars when barWidthPercent is not provided', () => {
-    const { container } = render(
-      <CssVerticalGroupedBarChart data={sampleData} series={series} />
-    )
+    const { container } = render(<CssVerticalGroupedBarChart data={sampleData} series={series} />)
     const bars = container.querySelectorAll('.z-\\[1\\].transition-all') as NodeListOf<HTMLElement>
     for (const bar of bars) {
       expect(bar.style.maxWidth).toBe('')
@@ -591,9 +541,7 @@ describe('CssVerticalGroupedBarChart y-axis scaling', () => {
       { name: 'A', male: 210, female: 190 },
       { name: 'B', male: 180, female: 170 },
     ]
-    const { container } = render(
-      <CssVerticalGroupedBarChart data={data} series={series} />
-    )
+    const { container } = render(<CssVerticalGroupedBarChart data={data} series={series} />)
     const bars = container.querySelectorAll('.z-\\[1\\].transition-all') as NodeListOf<HTMLElement>
     const heights = Array.from(bars).map((b) => parseFloat(b.style.height))
     const tallestBar = Math.max(...heights)
@@ -634,9 +582,7 @@ describe('CssVerticalGroupedBarChart contiguous hover areas', () => {
       { name: 'B', male: 15, female: 12 },
       { name: 'C', male: 12, female: 10 },
     ]
-    const { container } = render(
-      <CssVerticalGroupedBarChart data={sparseData} series={series} />
-    )
+    const { container } = render(<CssVerticalGroupedBarChart data={sparseData} series={series} />)
     const barsArea = container.querySelector('.border-l') as HTMLElement
     // Direct non-absolute children are column wrappers — all should be flex-1
     const columnWrappers = Array.from(barsArea.children).filter(
@@ -684,9 +630,7 @@ describe('CssVerticalGroupedBarChart contiguous hover areas', () => {
       { name: 'A', male: 10, female: 8 },
       { name: 'B', male: 15, female: 12 },
     ]
-    const { container } = render(
-      <CssVerticalGroupedBarChart data={sparseData} series={series} />
-    )
+    const { container } = render(<CssVerticalGroupedBarChart data={sparseData} series={series} />)
     const barsArea = container.querySelector('.border-l') as HTMLElement
     // Outer wrappers (direct children) should NOT have rounded/transition-colors
     const outerWrappers = Array.from(barsArea.children).filter(
@@ -711,9 +655,7 @@ describe('CssVerticalGroupedBarChart contiguous hover areas', () => {
       male: 10 + i,
       female: 8 + i,
     }))
-    const { container } = render(
-      <CssVerticalGroupedBarChart data={normalData} series={series} />
-    )
+    const { container } = render(<CssVerticalGroupedBarChart data={normalData} series={series} />)
     const barsArea = container.querySelector('.border-l') as HTMLElement
     const columnWrappers = Array.from(barsArea.children).filter(
       (el) => !el.classList.contains('pointer-events-none') && !el.classList.contains('absolute')
@@ -742,9 +684,7 @@ describe('CssVerticalGroupedBarChart x-axis alignment', () => {
       { name: '2025', male: 110, female: 90 },
       { name: '2026', male: 120, female: 95 },
     ]
-    const { container } = render(
-      <CssVerticalGroupedBarChart data={sparseData} series={series} />
-    )
+    const { container } = render(<CssVerticalGroupedBarChart data={sparseData} series={series} />)
     const xAxis = container.querySelector('.border-t:not(.border-dashed)') as HTMLElement
     expect(xAxis.style.paddingLeft).toBeTruthy()
   })

@@ -52,9 +52,7 @@ describe('CssVerticalStackedBarChart rendering', () => {
   })
 
   it('should render the title when provided', () => {
-    render(
-      <CssVerticalStackedBarChart data={sampleData} segments={segments} title="My Chart" />
-    )
+    render(<CssVerticalStackedBarChart data={sampleData} segments={segments} title="My Chart" />)
     expect(screen.getByText('My Chart')).toBeInTheDocument()
   })
 
@@ -75,11 +73,7 @@ describe('CssVerticalStackedBarChart rendering', () => {
 
   it('should apply custom className', () => {
     const { container } = render(
-      <CssVerticalStackedBarChart
-        data={sampleData}
-        segments={segments}
-        className="my-custom"
-      />
+      <CssVerticalStackedBarChart data={sampleData} segments={segments} className="my-custom" />
     )
     expect(container.querySelector('.my-custom')).toBeInTheDocument()
   })
@@ -102,9 +96,7 @@ describe('CssVerticalStackedBarChart empty state', () => {
   })
 
   it('should still wrap in card-lodge when empty', () => {
-    const { container } = render(
-      <CssVerticalStackedBarChart data={[]} segments={segments} />
-    )
+    const { container } = render(<CssVerticalStackedBarChart data={[]} segments={segments} />)
     expect(container.querySelector('.card-lodge')).toBeInTheDocument()
   })
 })
@@ -155,9 +147,7 @@ describe('CssVerticalStackedBarChart bar rendering', () => {
 
   it('should skip segments with zero value', () => {
     const zeroData = [{ name: 'Test', total: 10, male_count: 10, female_count: 0 }]
-    const { container } = render(
-      <CssVerticalStackedBarChart data={zeroData} segments={segments} />
-    )
+    const { container } = render(<CssVerticalStackedBarChart data={zeroData} segments={segments} />)
     const stackedBar = container.querySelector('.rounded-t.overflow-hidden') as HTMLElement
     const segmentDivs = stackedBar.querySelectorAll(':scope > div')
     expect(segmentDivs.length).toBe(1) // only male_count > 0
@@ -173,9 +163,7 @@ describe('CssVerticalStackedBarChart bar rendering', () => {
 
   it('should set minHeight 0px for zero-total items', () => {
     const zeroData = [{ name: 'Zero', total: 0, male_count: 0, female_count: 0 }]
-    const { container } = render(
-      <CssVerticalStackedBarChart data={zeroData} segments={segments} />
-    )
+    const { container } = render(<CssVerticalStackedBarChart data={zeroData} segments={segments} />)
     const stackedBar = container.querySelector('.rounded-t.overflow-hidden') as HTMLElement
     expect(stackedBar.style.minHeight).toBe('0px')
   })
@@ -193,9 +181,7 @@ describe('CssVerticalStackedBarChart Y-axis', () => {
   })
 
   it('should auto-compute ticks via getNiceTicks in normal mode', () => {
-    render(
-      <CssVerticalStackedBarChart data={sampleData} segments={segments} />
-    )
+    render(<CssVerticalStackedBarChart data={sampleData} segments={segments} />)
     // Data max total is 30, getNiceTicks should produce ticks including 0
     expect(screen.getByText('0')).toBeInTheDocument()
   })
@@ -221,13 +207,7 @@ describe('CssVerticalStackedBarChart percent mode', () => {
   })
 
   it('should show percentage ticks in percent mode', () => {
-    render(
-      <CssVerticalStackedBarChart
-        data={sampleData}
-        segments={segments}
-        percentMode
-      />
-    )
+    render(<CssVerticalStackedBarChart data={sampleData} segments={segments} percentMode />)
     expect(screen.getByText('0%')).toBeInTheDocument()
     expect(screen.getByText('25%')).toBeInTheDocument()
     expect(screen.getByText('50%')).toBeInTheDocument()
@@ -238,11 +218,7 @@ describe('CssVerticalStackedBarChart percent mode', () => {
   it('should not show total labels by default in percent mode', () => {
     const data = [{ name: 'Grade 3', total: 17, male_count: 10, female_count: 7 }]
     const { container } = render(
-      <CssVerticalStackedBarChart
-        data={data}
-        segments={segments}
-        percentMode
-      />
+      <CssVerticalStackedBarChart data={data} segments={segments} percentMode />
     )
     // Total label (17) should NOT appear
     const labels = container.querySelectorAll('.tabular-nums')
@@ -257,12 +233,7 @@ describe('CssVerticalStackedBarChart percent mode', () => {
   it('should show total labels in percent mode when showTotalLabel is true', () => {
     const data = [{ name: 'Grade 3', total: 17, male_count: 10, female_count: 7 }]
     render(
-      <CssVerticalStackedBarChart
-        data={data}
-        segments={segments}
-        percentMode
-        showTotalLabel
-      />
+      <CssVerticalStackedBarChart data={data} segments={segments} percentMode showTotalLabel />
     )
     expect(screen.getByText('17')).toBeInTheDocument()
   })
@@ -281,9 +252,7 @@ describe('CssVerticalStackedBarChart labels', () => {
 
   it('should show total as default label above each bar in normal mode', () => {
     const data = [{ name: 'Item', total: 37, male_count: 20, female_count: 17 }]
-    render(
-      <CssVerticalStackedBarChart data={data} segments={segments} />
-    )
+    render(<CssVerticalStackedBarChart data={data} segments={segments} />)
     expect(screen.getByText('37')).toBeInTheDocument()
   })
 
@@ -311,9 +280,7 @@ describe('CssVerticalStackedBarChart X-axis', () => {
   })
 
   it('should render X-axis labels from data names', () => {
-    render(
-      <CssVerticalStackedBarChart data={sampleData} segments={segments} />
-    )
+    render(<CssVerticalStackedBarChart data={sampleData} segments={segments} />)
     expect(screen.getByText('Grade 3')).toBeInTheDocument()
     expect(screen.getByText('Grade 4')).toBeInTheDocument()
     expect(screen.getByText('Grade 5')).toBeInTheDocument()
@@ -321,11 +288,7 @@ describe('CssVerticalStackedBarChart X-axis', () => {
 
   it('should rotate labels when rotateLabels is true', () => {
     const { container } = render(
-      <CssVerticalStackedBarChart
-        data={sampleData}
-        segments={segments}
-        rotateLabels
-      />
+      <CssVerticalStackedBarChart data={sampleData} segments={segments} rotateLabels />
     )
     const xAxisWrapper = container.querySelector('[style*="height: 72px"]')
     expect(xAxisWrapper).toBeInTheDocument()
@@ -344,9 +307,7 @@ describe('CssVerticalStackedBarChart legend', () => {
   })
 
   it('should render legend with segment labels', () => {
-    render(
-      <CssVerticalStackedBarChart data={sampleData} segments={segments} />
-    )
+    render(<CssVerticalStackedBarChart data={sampleData} segments={segments} />)
     expect(screen.getByText('Female')).toBeInTheDocument()
     expect(screen.getByText('Male')).toBeInTheDocument()
   })
@@ -395,9 +356,7 @@ describe('CssVerticalStackedBarChart legend spacing', () => {
   })
 
   it('should use mt-3 on legend when rotateLabels is true', () => {
-    render(
-      <CssVerticalStackedBarChart data={sampleData} segments={segments} rotateLabels />
-    )
+    render(<CssVerticalStackedBarChart data={sampleData} segments={segments} rotateLabels />)
     // ChartLegend renders a flex wrapper — find it by the legend items
     const femaleLabel = screen.getByText('Female')
     // Walk up to the ChartLegend wrapper (parent with mt-3)
@@ -406,9 +365,7 @@ describe('CssVerticalStackedBarChart legend spacing', () => {
   })
 
   it('should use mt-1 on legend when rotateLabels is false', () => {
-    render(
-      <CssVerticalStackedBarChart data={sampleData} segments={segments} />
-    )
+    render(<CssVerticalStackedBarChart data={sampleData} segments={segments} />)
     const femaleLabel = screen.getByText('Female')
     const legendWrapper = femaleLabel.closest('.mt-1')
     expect(legendWrapper).toBeInTheDocument()
@@ -429,11 +386,7 @@ describe('CssVerticalStackedBarChart click handling', () => {
   it('should add cursor-pointer class when onBarClick is provided', () => {
     const onClick = vi.fn()
     const { container } = render(
-      <CssVerticalStackedBarChart
-        data={singleItem}
-        segments={segments}
-        onBarClick={onClick}
-      />
+      <CssVerticalStackedBarChart data={singleItem} segments={segments} onBarClick={onClick} />
     )
     const column = container.querySelector('.cursor-pointer')
     expect(column).toBeInTheDocument()
@@ -450,11 +403,7 @@ describe('CssVerticalStackedBarChart click handling', () => {
   it('should call onBarClick with the item record when a column is clicked', () => {
     const onClick = vi.fn()
     const { container } = render(
-      <CssVerticalStackedBarChart
-        data={singleItem}
-        segments={segments}
-        onBarClick={onClick}
-      />
+      <CssVerticalStackedBarChart data={singleItem} segments={segments} onBarClick={onClick} />
     )
     const column = container.querySelector('.cursor-pointer') as HTMLElement
     fireEvent.click(column)
@@ -618,7 +567,9 @@ describe('CssVerticalStackedBarChart column sizing', () => {
       <CssVerticalStackedBarChart data={sparseData} segments={segments} />
     )
     const barsArea = container.querySelector('.border-l') as HTMLElement
-    const columns = barsArea.querySelectorAll(':scope > [style*="max-width"]') as NodeListOf<HTMLElement>
+    const columns = barsArea.querySelectorAll(
+      ':scope > [style*="max-width"]'
+    ) as NodeListOf<HTMLElement>
     // Hover over first column
     fireEvent.mouseEnter(columns[0]!)
     expect(columns[0]!.className).toContain('bg-foreground/[0.06]')
@@ -640,9 +591,7 @@ describe('CssVerticalStackedBarChart tooltip zero filtering', () => {
 
   it('should not show zero-value segments in default tooltip', () => {
     // Data where one segment is zero
-    const dataWithZero = [
-      { name: 'Test', total: 10, male_count: 10, female_count: 0 },
-    ]
+    const dataWithZero = [{ name: 'Test', total: 10, male_count: 10, female_count: 0 }]
     const { container } = render(
       <CssVerticalStackedBarChart data={dataWithZero} segments={segments} />
     )

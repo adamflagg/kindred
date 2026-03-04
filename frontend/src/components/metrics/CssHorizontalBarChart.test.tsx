@@ -64,9 +64,7 @@ describe('CssHorizontalBarChart rendering', () => {
   })
 
   it('should apply custom className', () => {
-    const { container } = render(
-      <CssHorizontalBarChart data={sampleData} className="extra" />
-    )
+    const { container } = render(<CssHorizontalBarChart data={sampleData} className="extra" />)
     expect(container.querySelector('.extra')).not.toBeNull()
   })
 })
@@ -119,12 +117,7 @@ describe('CssHorizontalBarChart click', () => {
     const onClick = vi.fn()
     const data = [{ name: 'Test City', value: 50, id: 'city-1' }]
     const { container } = render(
-      <CssHorizontalBarChart
-        data={data}
-        title="Click"
-        breakdownType="city"
-        onBarClick={onClick}
-      />
+      <CssHorizontalBarChart data={data} title="Click" breakdownType="city" onBarClick={onClick} />
     )
     const row = container.querySelector('.cursor-pointer') as HTMLElement
     fireEvent.click(row)
@@ -137,17 +130,13 @@ describe('CssHorizontalBarChart click', () => {
   })
 
   it('should not be clickable when onBarClick is missing', () => {
-    const { container } = render(
-      <CssHorizontalBarChart data={sampleData} breakdownType="city" />
-    )
+    const { container } = render(<CssHorizontalBarChart data={sampleData} breakdownType="city" />)
     expect(container.querySelector('.cursor-pointer')).toBeNull()
   })
 
   it('should not be clickable when breakdownType is missing', () => {
     const onClick = vi.fn()
-    const { container } = render(
-      <CssHorizontalBarChart data={sampleData} onBarClick={onClick} />
-    )
+    const { container } = render(<CssHorizontalBarChart data={sampleData} onBarClick={onClick} />)
     expect(container.querySelector('.cursor-pointer')).toBeNull()
   })
 

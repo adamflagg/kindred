@@ -75,7 +75,6 @@ export function genderToPieData(
   }))
 }
 
-
 export function gradeToBarData(data: RetentionByGrade[] | undefined): RetentionRateBarItem[] {
   if (!data?.length) return []
   return data.map((d) => ({

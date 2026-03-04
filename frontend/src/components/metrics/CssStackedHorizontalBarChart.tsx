@@ -74,9 +74,7 @@ export function CssStackedHorizontalBarChart({
   }
 
   // Filter to only segments that have data
-  const activeSegments = segments.filter((seg) =>
-    data.some((d) => (d[seg.key] as number) > 0)
-  )
+  const activeSegments = segments.filter((seg) => data.some((d) => (d[seg.key] as number) > 0))
 
   const maxTotal = Math.max(...data.map((d) => d.total), 1)
   const ticks = getNiceTicks(maxTotal)
@@ -92,64 +90,80 @@ export function CssStackedHorizontalBarChart({
         <div
           className={`flex min-h-0 flex-1 flex-col overflow-hidden ${isDense ? '' : 'justify-center'}`}
           style={{ gap: rowGap }}
-          onMouseLeave={() => { setHoveredIndex(null); handleMouseLeave() }}
+          onMouseLeave={() => {
+            setHoveredIndex(null)
+            handleMouseLeave()
+          }}
         >
-        {data.map((item, index) => {
-          return (
-            <div
-              key={index}
-              className={`flex items-center ${isDense ? 'gap-2' : 'gap-3'} rounded ${isClickable ? 'cursor-pointer' : ''}`}
-              onClick={() => isClickable && handleClick(item)}
-              onMouseEnter={() => setHoveredIndex(index)}
-              onMouseMove={(e) => handleMouseMove(e, item)}
-            >
-              {/* Label */}
-              <span className="text-muted-foreground shrink-0 truncate text-right text-sm" style={{ width: labelWidth }}>
-                {item.name}
-              </span>
-
-              {/* Stacked bar track */}
+          {data.map((item, index) => {
+            return (
               <div
-                className="relative flex-1 overflow-hidden rounded"
-                style={{ height: barHeight }}
+                key={index}
+                className={`flex items-center ${isDense ? 'gap-2' : 'gap-3'} rounded ${isClickable ? 'cursor-pointer' : ''}`}
+                onClick={() => isClickable && handleClick(item)}
+                onMouseEnter={() => setHoveredIndex(index)}
+                onMouseMove={(e) => handleMouseMove(e, item)}
               >
-                {/* Background track */}
-                <div className={`absolute inset-0 rounded transition-colors ${hoveredIndex === index ? 'bg-foreground/20' : 'bg-muted'}`} />
-                {/* Stacked segments */}
-                <div
-                  className="relative flex h-full overflow-hidden rounded"
-                  style={{ width: `${(item.total / axisMax) * 100}%`, minWidth: item.total > 0 ? '4px' : '0px' }}
+                {/* Label */}
+                <span
+                  className="text-muted-foreground shrink-0 truncate text-right text-sm"
+                  style={{ width: labelWidth }}
                 >
-                  {activeSegments.map((seg) => {
-                    const value = (item[seg.key] as number) || 0
-                    if (value <= 0) return null
-                    const pct = (value / item.total) * 100
-                    return (
-                      <div
-                        key={seg.key}
-                        className="h-full transition-all duration-300"
-                        style={{
-                          width: `${pct}%`,
-                          backgroundColor: seg.color,
-                          minWidth: '1px',
-                        }}
-                      />
-                    )
-                  })}
-                </div>
-              </div>
+                  {item.name}
+                </span>
 
-              {/* Total label */}
-              <span className="text-muted-foreground shrink-0 text-center text-sm tabular-nums" style={{ width: valueWidth }}>
-                {item.total}
-              </span>
-            </div>
-          )
-        })}
+                {/* Stacked bar track */}
+                <div
+                  className="relative flex-1 overflow-hidden rounded"
+                  style={{ height: barHeight }}
+                >
+                  {/* Background track */}
+                  <div
+                    className={`absolute inset-0 rounded transition-colors ${hoveredIndex === index ? 'bg-foreground/20' : 'bg-muted'}`}
+                  />
+                  {/* Stacked segments */}
+                  <div
+                    className="relative flex h-full overflow-hidden rounded"
+                    style={{
+                      width: `${(item.total / axisMax) * 100}%`,
+                      minWidth: item.total > 0 ? '4px' : '0px',
+                    }}
+                  >
+                    {activeSegments.map((seg) => {
+                      const value = (item[seg.key] as number) || 0
+                      if (value <= 0) return null
+                      const pct = (value / item.total) * 100
+                      return (
+                        <div
+                          key={seg.key}
+                          className="h-full transition-all duration-300"
+                          style={{
+                            width: `${pct}%`,
+                            backgroundColor: seg.color,
+                            minWidth: '1px',
+                          }}
+                        />
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Total label */}
+                <span
+                  className="text-muted-foreground shrink-0 text-center text-sm tabular-nums"
+                  style={{ width: valueWidth }}
+                >
+                  {item.total}
+                </span>
+              </div>
+            )
+          })}
         </div>
 
         {/* X-axis line + tick labels */}
-        <div className={`${isDense ? 'mt-1' : 'mt-2'} flex shrink-0 items-center ${isDense ? 'gap-2' : 'gap-3'}`}>
+        <div
+          className={`${isDense ? 'mt-1' : 'mt-2'} flex shrink-0 items-center ${isDense ? 'gap-2' : 'gap-3'}`}
+        >
           <span className="shrink-0" style={{ width: labelWidth }} />
           <div className="border-foreground/40 relative h-5 flex-1 border-t pt-1">
             {ticks.map((tick) => (
@@ -182,10 +196,14 @@ export function CssStackedHorizontalBarChart({
             <p className="text-foreground mb-2 font-medium">{tooltip.item.name}</p>
             {activeSegments
               .filter((seg) => ((tooltip.item![seg.key] as number) || 0) > 0)
-              .sort((a, b) => ((tooltip.item![b.key] as number) || 0) - ((tooltip.item![a.key] as number) || 0))
+              .sort(
+                (a, b) =>
+                  ((tooltip.item![b.key] as number) || 0) - ((tooltip.item![a.key] as number) || 0)
+              )
               .map((seg) => {
                 const value = (tooltip.item![seg.key] as number) || 0
-                const pct = tooltip.item!.total > 0 ? ((value / tooltip.item!.total) * 100).toFixed(0) : '0'
+                const pct =
+                  tooltip.item!.total > 0 ? ((value / tooltip.item!.total) * 100).toFixed(0) : '0'
                 return (
                   <p key={seg.key} className="text-muted-foreground text-sm">
                     <span style={{ color: seg.color }}>{seg.label}:</span>{' '}

@@ -86,7 +86,7 @@ export function TrendLineChart({
   const allValues = chartData.flatMap((d) =>
     Object.entries(d)
       .filter(([k]) => k !== 'year')
-      .map(([, v]) => Number(v) || 0),
+      .map(([, v]) => Number(v) || 0)
   )
   const dataMax = allValues.length > 0 ? Math.max(...allValues) : 1
   // For cancellation_rate, cap axis at a sensible ceiling based on data
@@ -154,7 +154,11 @@ export function TrendLineChart({
       {...(legendItems.length > 1 && { legend: legendItems })}
     >
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={chartData} margin={{ top: 16, right: 20, left: 0, bottom: 0 }} style={{ overflow: 'visible' }}>
+        <LineChart
+          data={chartData}
+          margin={{ top: 16, right: 20, left: 0, bottom: 0 }}
+          style={{ overflow: 'visible' }}
+        >
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis hide height={0} dataKey="year" />
           <YAxis hide width={0} domain={[0, axisMax]} ticks={ticks} />

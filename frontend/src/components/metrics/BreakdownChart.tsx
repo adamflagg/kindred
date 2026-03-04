@@ -99,12 +99,7 @@ export function BreakdownChart({
   }))
 
   return (
-    <ChartCard
-      title={title}
-      className={className}
-      isEmpty={data.length === 0}
-      legend={legendItems}
-    >
+    <ChartCard title={title} className={className} isEmpty={data.length === 0} legend={legendItems}>
       <ResponsiveContainer width="100%" height={height}>
         <PieChart>
           <Pie

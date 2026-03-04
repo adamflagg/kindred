@@ -68,25 +68,21 @@ export function CssVerticalRetentionBarChart({
     [showCounts]
   )
 
-  const renderTooltip = useCallback(
-    (item: CssVerticalBarItem) => {
-      const returned = item['returnedCount'] as number
-      const base = item['baseCount'] as number
-      return (
-        <>
-          <p className="text-foreground font-medium">{item.name}</p>
-          <p className="text-muted-foreground text-sm">
-            Retention:{' '}
-            <span className="text-foreground font-semibold">{item.value}%</span>
-          </p>
-          <p className="text-muted-foreground text-sm">
-            {returned} of {base} returned
-          </p>
-        </>
-      )
-    },
-    []
-  )
+  const renderTooltip = useCallback((item: CssVerticalBarItem) => {
+    const returned = item['returnedCount'] as number
+    const base = item['baseCount'] as number
+    return (
+      <>
+        <p className="text-foreground font-medium">{item.name}</p>
+        <p className="text-muted-foreground text-sm">
+          Retention: <span className="text-foreground font-semibold">{item.value}%</span>
+        </p>
+        <p className="text-muted-foreground text-sm">
+          {returned} of {base} returned
+        </p>
+      </>
+    )
+  }, [])
 
   const handleBarClick = useCallback(
     (item: CssVerticalBarItem) => {

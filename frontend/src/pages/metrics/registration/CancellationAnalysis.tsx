@@ -75,7 +75,14 @@ function transformCancelSessionData(
 }
 
 function transformCancelGradeData(
-  byGrade: { grade: number | null; count: number; was_enrolled?: number; was_waitlisted?: number; was_applied?: number; other_prior_status?: number }[]
+  byGrade: {
+    grade: number | null
+    count: number
+    was_enrolled?: number
+    was_waitlisted?: number
+    was_applied?: number
+    other_prior_status?: number
+  }[]
 ): StackedBarDataItem[] {
   return byGrade.map((item) => {
     const known =
@@ -343,29 +350,32 @@ export default function CancellationAnalysis() {
             {(data.time_to_cancellation_buckets?.length ?? 0) > 0 ||
             (data.by_registration_month?.length ?? 0) > 0 ? (
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                {data.time_to_cancellation_buckets && data.time_to_cancellation_buckets.length > 0 && (
-                  <div className="border-border bg-card rounded-lg border p-4">
-                    <h3 className="text-foreground mb-3 text-sm font-semibold">
-                      Time to Cancellation Distribution
-                    </h3>
-                    <div className="space-y-2">
-                      {data.time_to_cancellation_buckets.map((bucket) => (
-                        <div key={bucket.label} className="flex items-center gap-3">
-                          <span className="text-muted-foreground w-24 text-xs">{bucket.label}</span>
-                          <div className="bg-muted h-5 flex-1 overflow-hidden rounded">
-                            <div
-                              className="h-full rounded bg-red-400 dark:bg-red-600"
-                              style={{ width: `${bucket.percentage}%` }}
-                            />
+                {data.time_to_cancellation_buckets &&
+                  data.time_to_cancellation_buckets.length > 0 && (
+                    <div className="border-border bg-card rounded-lg border p-4">
+                      <h3 className="text-foreground mb-3 text-sm font-semibold">
+                        Time to Cancellation Distribution
+                      </h3>
+                      <div className="space-y-2">
+                        {data.time_to_cancellation_buckets.map((bucket) => (
+                          <div key={bucket.label} className="flex items-center gap-3">
+                            <span className="text-muted-foreground w-24 text-xs">
+                              {bucket.label}
+                            </span>
+                            <div className="bg-muted h-5 flex-1 overflow-hidden rounded">
+                              <div
+                                className="h-full rounded bg-red-400 dark:bg-red-600"
+                                style={{ width: `${bucket.percentage}%` }}
+                              />
+                            </div>
+                            <span className="text-foreground w-16 text-right text-xs font-medium">
+                              {bucket.count} ({bucket.percentage}%)
+                            </span>
                           </div>
-                          <span className="text-foreground w-16 text-right text-xs font-medium">
-                            {bucket.count} ({bucket.percentage}%)
-                          </span>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
                 {data.by_registration_month && data.by_registration_month.length > 0 && (
                   <div className="border-border bg-card rounded-lg border p-4">
@@ -528,8 +538,7 @@ export default function CancellationAnalysis() {
                         title="Grade Distribution"
                         onBarClick={(item) => {
                           const grade = data.by_grade?.find(
-                            (g) =>
-                              (g.grade !== null ? `Grade ${g.grade}` : 'Unknown') === item.name
+                            (g) => (g.grade !== null ? `Grade ${g.grade}` : 'Unknown') === item.name
                           )
                           if (grade) {
                             setFilter({

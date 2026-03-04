@@ -40,7 +40,9 @@ interface CssVerticalStackedBarChartProps {
   percentMode?: boolean
   showTotalLabel?: boolean
   labelFormat?: ((item: Record<string, unknown>) => string) | undefined
-  renderTooltip?: ((item: Record<string, unknown>, segments: VerticalStackedSegment[]) => ReactNode) | undefined
+  renderTooltip?:
+    | ((item: Record<string, unknown>, segments: VerticalStackedSegment[]) => ReactNode)
+    | undefined
   rotateLabels?: boolean
   onBarClick?: ((item: Record<string, unknown>) => void) | undefined
   className?: string
@@ -158,7 +160,9 @@ export function CssVerticalStackedBarChart({
                   key={index}
                   className={`relative flex h-full flex-col items-center justify-end ${columnSizing.maxWidth ? '' : 'flex-1'} ${isClickable ? 'cursor-pointer' : ''} ${columnSizing.mode === 'sparse' ? `rounded transition-colors duration-150 ${hoveredIndex === index ? 'bg-foreground/[0.06]' : ''}` : ''}`}
                   style={{
-                    ...(columnSizing.maxWidth ? { maxWidth: `${columnSizing.maxWidth}px`, width: '100%' } : {}),
+                    ...(columnSizing.maxWidth
+                      ? { maxWidth: `${columnSizing.maxWidth}px`, width: '100%' }
+                      : {}),
                     paddingLeft: `${columnSizing.columnPadding + halfGap}px`,
                     paddingRight: `${columnSizing.columnPadding + halfGap}px`,
                   }}
@@ -242,8 +246,7 @@ export function CssVerticalStackedBarChart({
                     .filter((s) => ((ttItem[s.key] as number) ?? 0) > 0)
                     .map((s) => {
                       const val = (ttItem[s.key] as number) ?? 0
-                      const pct =
-                        ttItem.total > 0 ? ((val / ttItem.total) * 100).toFixed(0) : '0'
+                      const pct = ttItem.total > 0 ? ((val / ttItem.total) * 100).toFixed(0) : '0'
                       return (
                         <p key={s.key} className="text-muted-foreground text-sm">
                           <span style={{ color: s.color }}>{s.label}:</span>{' '}
@@ -254,8 +257,7 @@ export function CssVerticalStackedBarChart({
                       )
                     })}
                   <p className="text-muted-foreground border-border mt-1 border-t pt-1 text-sm">
-                    Total:{' '}
-                    <span className="text-foreground font-semibold">{ttItem.total}</span>
+                    Total: <span className="text-foreground font-semibold">{ttItem.total}</span>
                   </p>
                 </>
               )}

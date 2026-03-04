@@ -211,7 +211,10 @@ export default function RetentionOverview() {
             height={200}
             breakdownType="gender"
             onSegmentClick={(filter) =>
-              setFilter({ ...filter, retentionContext: { baseYear: priorYear, compareYear: currentYear } })
+              setFilter({
+                ...filter,
+                retentionContext: { baseYear: priorYear, compareYear: currentYear },
+              })
             }
           />
         )}

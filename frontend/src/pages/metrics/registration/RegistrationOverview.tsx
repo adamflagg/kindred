@@ -309,7 +309,6 @@ export default function RegistrationOverview() {
             <BreakdownChart
               title={`${currentYear} Gender`}
               data={genderChartData}
-
               showPercentage
               height={250}
               breakdownType="gender"
@@ -318,7 +317,6 @@ export default function RegistrationOverview() {
             <BreakdownChart
               title={`${compareYear} Gender`}
               data={transformGenderData(compData.by_gender)}
-
               showPercentage
               height={250}
             />
@@ -375,7 +373,6 @@ export default function RegistrationOverview() {
           <BreakdownChart
             title="Enrollment by Gender"
             data={genderChartData}
-
             showPercentage
             height={250}
             breakdownType="gender"
@@ -413,7 +410,6 @@ export default function RegistrationOverview() {
             <BreakdownChart
               title={`${currentYear} New vs Returning`}
               data={newVsReturningData}
-
               showPercentage
               height={250}
               breakdownType="returning_status"
@@ -422,7 +418,6 @@ export default function RegistrationOverview() {
             <BreakdownChart
               title={`${compareYear} New vs Returning`}
               data={transformNewVsReturningData(compData.new_vs_returning)}
-
               showPercentage
               height={250}
             />
@@ -461,7 +456,6 @@ export default function RegistrationOverview() {
           <BreakdownChart
             title="New vs Returning Campers"
             data={newVsReturningData}
-
             showPercentage
             height={250}
             breakdownType="returning_status"

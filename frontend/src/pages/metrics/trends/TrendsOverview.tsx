@@ -80,7 +80,9 @@ function buildGroupedChartData(
 
   if (sortCategories) {
     const dir = sortCategories === 'asc' ? 1 : -1
-    topCategories = topCategories.sort((a, b) => dir * a.localeCompare(b, undefined, { numeric: true }))
+    topCategories = topCategories.sort(
+      (a, b) => dir * a.localeCompare(b, undefined, { numeric: true })
+    )
   }
 
   if (invertAxes) {
@@ -373,7 +375,6 @@ export default function TrendsOverview() {
         )}
       </div>
 
-
       {/* Grade Enrollment */}
       {enrollmentData.length > 0 &&
         (() => {
@@ -472,12 +473,7 @@ export default function TrendsOverview() {
       {/* City Distribution */}
       {enrollmentData.some((y) => (y.by_city?.length ?? 0) > 0) &&
         (() => {
-          const { chartData, series } = buildGroupedChartData(
-            enrollmentData,
-            'by_city',
-            'city',
-            15
-          )
+          const { chartData, series } = buildGroupedChartData(enrollmentData, 'by_city', 'city', 15)
           if (chartData.length === 0) return null
           return (
             <CssVerticalGroupedBarChart

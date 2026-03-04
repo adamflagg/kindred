@@ -64,9 +64,7 @@ describe('CssVerticalBarChart rendering', () => {
   })
 
   it('should apply custom className', () => {
-    const { container } = render(
-      <CssVerticalBarChart data={sampleData} className="my-custom" />
-    )
+    const { container } = render(<CssVerticalBarChart data={sampleData} className="my-custom" />)
     expect(container.querySelector('.my-custom')).toBeInTheDocument()
   })
 })
@@ -131,11 +129,8 @@ describe('CssVerticalBarChart bar rendering', () => {
   })
 
   it('should apply custom color from colorFn', () => {
-    const colorFn = (item: CssVerticalBarItem) =>
-      item.value > 50 ? 'red' : 'green'
-    const { container } = render(
-      <CssVerticalBarChart data={sampleData} colorFn={colorFn} />
-    )
+    const colorFn = (item: CssVerticalBarItem) => (item.value > 50 ? 'red' : 'green')
+    const { container } = render(<CssVerticalBarChart data={sampleData} colorFn={colorFn} />)
     const bars = container.querySelectorAll('.rounded-t') as NodeListOf<HTMLElement>
     // Alpha: 40 => green, Beta: 70 => red, Gamma: 100 => red
     expect(bars[0]!.style.backgroundColor).toBe('green')
@@ -194,9 +189,7 @@ describe('CssVerticalBarChart Y-axis', () => {
   })
 
   it('should use custom yAxisWidth when provided', () => {
-    const { container } = render(
-      <CssVerticalBarChart data={sampleData} yAxisWidth="w-10" />
-    )
+    const { container } = render(<CssVerticalBarChart data={sampleData} yAxisWidth="w-10" />)
     const yAxis = container.querySelector('.w-10')
     expect(yAxis).toBeInTheDocument()
   })
@@ -233,9 +226,7 @@ describe('CssVerticalBarChart X-axis', () => {
   })
 
   it('should rotate labels when rotateLabels is true', () => {
-    const { container } = render(
-      <CssVerticalBarChart data={sampleData} rotateLabels />
-    )
+    const { container } = render(<CssVerticalBarChart data={sampleData} rotateLabels />)
     // Rotated mode sets height: 72px on the x-axis container
     const xAxisWrapper = container.querySelector('[style*="height: 72px"]')
     expect(xAxisWrapper).toBeInTheDocument()
@@ -262,12 +253,7 @@ describe('CssVerticalBarChart label format', () => {
   })
 
   it('should use custom labelFormat when provided', () => {
-    render(
-      <CssVerticalBarChart
-        data={singleItem}
-        labelFormat={(item) => `${item.value}%`}
-      />
-    )
+    render(<CssVerticalBarChart data={singleItem} labelFormat={(item) => `${item.value}%`} />)
     expect(screen.getByText('50%')).toBeInTheDocument()
   })
 })
@@ -307,9 +293,7 @@ describe('CssVerticalBarChart click handling', () => {
 
   it('should add cursor-pointer class when onBarClick is provided', () => {
     const onClick = vi.fn()
-    const { container } = render(
-      <CssVerticalBarChart data={singleItem} onBarClick={onClick} />
-    )
+    const { container } = render(<CssVerticalBarChart data={singleItem} onBarClick={onClick} />)
     const column = container.querySelector('.cursor-pointer')
     expect(column).toBeInTheDocument()
   })
@@ -322,9 +306,7 @@ describe('CssVerticalBarChart click handling', () => {
 
   it('should call onBarClick with the correct item when a column is clicked', () => {
     const onClick = vi.fn()
-    const { container } = render(
-      <CssVerticalBarChart data={singleItem} onBarClick={onClick} />
-    )
+    const { container } = render(<CssVerticalBarChart data={singleItem} onBarClick={onClick} />)
     const column = container.querySelector('.cursor-pointer') as HTMLElement
     fireEvent.click(column)
     expect(onClick).toHaveBeenCalledWith(singleItem[0])
@@ -413,7 +395,9 @@ describe('CssVerticalBarChart column sizing', () => {
     ]
     const { container } = render(<CssVerticalBarChart data={sparseData} />)
     const barsArea = container.querySelector('.border-l') as HTMLElement
-    const columns = barsArea.querySelectorAll(':scope > [style*="max-width"]') as NodeListOf<HTMLElement>
+    const columns = barsArea.querySelectorAll(
+      ':scope > [style*="max-width"]'
+    ) as NodeListOf<HTMLElement>
     fireEvent.mouseEnter(columns[0]!)
     expect(columns[0]!.className).toContain('bg-foreground/[0.06]')
     expect(columns[1]!.className).not.toContain('bg-foreground/[0.06]')
@@ -439,27 +423,21 @@ describe('CssVerticalBarChart barWidthPercent', () => {
   })
 
   it('should set bar width style when barWidthPercent is provided', () => {
-    const { container } = render(
-      <CssVerticalBarChart data={singleItem} barWidthPercent={60} />
-    )
+    const { container } = render(<CssVerticalBarChart data={singleItem} barWidthPercent={60} />)
     const bar = container.querySelector('.rounded-t') as HTMLElement
     expect(bar.style.width).toBe('60%')
     expect(bar.classList.contains('w-full')).toBe(false)
   })
 
   it('should center bars within column when barWidthPercent is set', () => {
-    const { container } = render(
-      <CssVerticalBarChart data={singleItem} barWidthPercent={70} />
-    )
+    const { container } = render(<CssVerticalBarChart data={singleItem} barWidthPercent={70} />)
     // The column should still have items-center for horizontal centering
     const column = container.querySelector('.flex-col.items-center')
     expect(column).toBeInTheDocument()
   })
 
   it('should apply barWidthPercent to all bars', () => {
-    const { container } = render(
-      <CssVerticalBarChart data={sampleData} barWidthPercent={55} />
-    )
+    const { container } = render(<CssVerticalBarChart data={sampleData} barWidthPercent={55} />)
     const bars = container.querySelectorAll('.rounded-t') as NodeListOf<HTMLElement>
     expect(bars.length).toBe(sampleData.length)
     for (const bar of bars) {
@@ -497,9 +475,7 @@ describe('CssVerticalRetentionBarChart wrapper', () => {
       { name: 'City A', retentionRate: 0.75, baseCount: 100, returnedCount: 75 },
       { name: 'City B', retentionRate: 0.45, baseCount: 80, returnedCount: 36 },
     ]
-    render(
-      <CssVerticalRetentionBarChart data={retentionData} title="Retention Test" />
-    )
+    render(<CssVerticalRetentionBarChart data={retentionData} title="Retention Test" />)
     expect(screen.getByText('Retention Test')).toBeInTheDocument()
   })
 
@@ -511,12 +487,8 @@ describe('CssVerticalRetentionBarChart wrapper', () => {
 
   it('should apply green color for high retention rates', async () => {
     const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
-    const data = [
-      { name: 'High', retentionRate: 0.8, baseCount: 100, returnedCount: 80 },
-    ]
-    const { container } = render(
-      <CssVerticalRetentionBarChart data={data} title="Colors" />
-    )
+    const data = [{ name: 'High', retentionRate: 0.8, baseCount: 100, returnedCount: 80 }]
+    const { container } = render(<CssVerticalRetentionBarChart data={data} title="Colors" />)
     const bar = container.querySelector('.rounded-t') as HTMLElement
     // Green hsl(160, 100%, 35%) -> rgb(0, 179, 119) in jsdom
     expect(bar.style.backgroundColor).toBe('rgb(0, 179, 119)')
@@ -524,12 +496,8 @@ describe('CssVerticalRetentionBarChart wrapper', () => {
 
   it('should apply amber color for medium retention rates', async () => {
     const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
-    const data = [
-      { name: 'Medium', retentionRate: 0.5, baseCount: 100, returnedCount: 50 },
-    ]
-    const { container } = render(
-      <CssVerticalRetentionBarChart data={data} title="Colors" />
-    )
+    const data = [{ name: 'Medium', retentionRate: 0.5, baseCount: 100, returnedCount: 50 }]
+    const { container } = render(<CssVerticalRetentionBarChart data={data} title="Colors" />)
     const bar = container.querySelector('.rounded-t') as HTMLElement
     // Amber hsl(42, 92%, 50%) -> rgb(245, 174, 10) in jsdom
     expect(bar.style.backgroundColor).toBe('rgb(245, 174, 10)')
@@ -537,12 +505,8 @@ describe('CssVerticalRetentionBarChart wrapper', () => {
 
   it('should apply red color for low retention rates', async () => {
     const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
-    const data = [
-      { name: 'Low', retentionRate: 0.3, baseCount: 100, returnedCount: 30 },
-    ]
-    const { container } = render(
-      <CssVerticalRetentionBarChart data={data} title="Colors" />
-    )
+    const data = [{ name: 'Low', retentionRate: 0.3, baseCount: 100, returnedCount: 30 }]
+    const { container } = render(<CssVerticalRetentionBarChart data={data} title="Colors" />)
     const bar = container.querySelector('.rounded-t') as HTMLElement
     // Red hsl(350, 70%, 50%) -> rgb(217, 38, 68) in jsdom
     expect(bar.style.backgroundColor).toBe('rgb(217, 38, 68)')
@@ -551,9 +515,7 @@ describe('CssVerticalRetentionBarChart wrapper', () => {
   it('should show percentage Y-axis labels', async () => {
     const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
     // Use a rate that won't produce a label matching a Y-axis tick (e.g. 65%)
-    const data = [
-      { name: 'A', retentionRate: 0.65, baseCount: 100, returnedCount: 65 },
-    ]
+    const data = [{ name: 'A', retentionRate: 0.65, baseCount: 100, returnedCount: 65 }]
     render(<CssVerticalRetentionBarChart data={data} title="Y-Axis" />)
     expect(screen.getByText('0%')).toBeInTheDocument()
     expect(screen.getByText('25%')).toBeInTheDocument()
@@ -563,30 +525,22 @@ describe('CssVerticalRetentionBarChart wrapper', () => {
   it('should show rate label without counts by default', async () => {
     const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
     // Use a rate that doesn't collide with Y-axis ticks (0/25/50/75/100)
-    const data = [
-      { name: 'Test', retentionRate: 0.83, baseCount: 100, returnedCount: 83 },
-    ]
+    const data = [{ name: 'Test', retentionRate: 0.83, baseCount: 100, returnedCount: 83 }]
     render(<CssVerticalRetentionBarChart data={data} title="Labels" />)
     expect(screen.getByText('83%')).toBeInTheDocument()
   })
 
   it('should show rate label with counts when showCounts is true', async () => {
     const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
-    const data = [
-      { name: 'Test', retentionRate: 0.75, baseCount: 100, returnedCount: 75 },
-    ]
-    render(
-      <CssVerticalRetentionBarChart data={data} title="Labels" showCounts />
-    )
+    const data = [{ name: 'Test', retentionRate: 0.75, baseCount: 100, returnedCount: 75 }]
+    render(<CssVerticalRetentionBarChart data={data} title="Labels" showCounts />)
     expect(screen.getByText('75% (75/100)')).toBeInTheDocument()
   })
 
   it('should call onBarClick with the original RetentionRateBarItem', async () => {
     const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
     const onClick = vi.fn()
-    const data = [
-      { name: 'Click Me', retentionRate: 0.6, baseCount: 50, returnedCount: 30 },
-    ]
+    const data = [{ name: 'Click Me', retentionRate: 0.6, baseCount: 50, returnedCount: 30 }]
     const { container } = render(
       <CssVerticalRetentionBarChart data={data} title="Click" onBarClick={onClick} />
     )
@@ -603,20 +557,14 @@ describe('CssVerticalRetentionBarChart wrapper', () => {
 
   it('should use w-10 yAxisWidth for percentage labels', async () => {
     const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
-    const data = [
-      { name: 'A', retentionRate: 0.5, baseCount: 100, returnedCount: 50 },
-    ]
-    const { container } = render(
-      <CssVerticalRetentionBarChart data={data} title="Width" />
-    )
+    const data = [{ name: 'A', retentionRate: 0.5, baseCount: 100, returnedCount: 50 }]
+    const { container } = render(<CssVerticalRetentionBarChart data={data} title="Width" />)
     expect(container.querySelector('.w-10')).toBeInTheDocument()
   })
 
   it('should apply custom className', async () => {
     const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
-    const data = [
-      { name: 'A', retentionRate: 0.5, baseCount: 100, returnedCount: 50 },
-    ]
+    const data = [{ name: 'A', retentionRate: 0.5, baseCount: 100, returnedCount: 50 }]
     const { container } = render(
       <CssVerticalRetentionBarChart data={data} title="Class" className="extra-class" />
     )
@@ -640,12 +588,8 @@ describe('CssVerticalRetentionBarChart wrapper', () => {
 
   it('should default to full-width bars when barWidthPercent is not provided', async () => {
     const { CssVerticalRetentionBarChart } = await import('./CssVerticalRetentionBarChart')
-    const data = [
-      { name: 'A', retentionRate: 0.5, baseCount: 100, returnedCount: 50 },
-    ]
-    const { container } = render(
-      <CssVerticalRetentionBarChart data={data} title="Default" />
-    )
+    const data = [{ name: 'A', retentionRate: 0.5, baseCount: 100, returnedCount: 50 }]
+    const { container } = render(<CssVerticalRetentionBarChart data={data} title="Default" />)
     const bar = container.querySelector('.rounded-t') as HTMLElement
     expect(bar.classList.contains('w-full')).toBe(true)
   })

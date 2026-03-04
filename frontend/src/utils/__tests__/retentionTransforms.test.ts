@@ -49,7 +49,6 @@ describe('getGenderDisplayName', () => {
   })
 })
 
-
 describe('gradeToBarData', () => {
   it('maps grade breakdown to bar data with "Grade X" labels', () => {
     const input: RetentionByGrade[] = [

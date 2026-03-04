@@ -271,7 +271,8 @@ export function HorizontalGridlines({ ticks, axisMax, drawingHeight }: Horizonta
       .map((tick) =>
         React.createElement('div', {
           key: `grid-${tick}`,
-          className: 'pointer-events-none absolute left-0 right-0 z-0 border-t border-dashed border-foreground/10',
+          className:
+            'pointer-events-none absolute left-0 right-0 z-0 border-t border-dashed border-foreground/10',
           style: {
             bottom: `${(tick / axisMax) * drawingHeight}px`,
           },
@@ -350,7 +351,17 @@ interface VerticalXAxisProps {
  * X-axis labels for a vertical CSS chart.
  * Supports straight (centered), rotated (-40deg), and edge-aligned (line chart) modes.
  */
-export function VerticalXAxis({ labels, rotated = false, marginLeft, height, columnSizing, alignBorderLeft, justifyEvenly, edgeAligned, rightPadding = 0 }: VerticalXAxisProps) {
+export function VerticalXAxis({
+  labels,
+  rotated = false,
+  marginLeft,
+  height,
+  columnSizing,
+  alignBorderLeft,
+  justifyEvenly,
+  edgeAligned,
+  rightPadding = 0,
+}: VerticalXAxisProps) {
   // Edge-aligned mode: absolute-position labels at evenly-spaced points from edge to edge.
   // Used for line charts where data points span 0% to 100% of the plot area.
   if (edgeAligned && labels.length > 1) {
@@ -477,11 +488,16 @@ interface ColumnHoverOverlayProps {
  * Sliding hover highlight overlay for vertical CSS bar chart columns.
  * Accounts for inter-column gap so the overlay aligns with flex items.
  */
-export function ColumnHoverOverlay({ itemCount, hoveredIndex, lastIndex, gap = 0, height }: ColumnHoverOverlayProps) {
+export function ColumnHoverOverlay({
+  itemCount,
+  hoveredIndex,
+  lastIndex,
+  gap = 0,
+  height,
+}: ColumnHoverOverlayProps) {
   const idx = hoveredIndex ?? lastIndex
-  const verticalStyle = height != null
-    ? { bottom: 0, height: `${height}px` }
-    : { top: 0, bottom: 0 }
+  const verticalStyle =
+    height != null ? { bottom: 0, height: `${height}px` } : { top: 0, bottom: 0 }
 
   if (gap === 0) {
     // Simple case: no gap, columns divide evenly
@@ -529,13 +545,20 @@ interface VerticalTooltipShellProps {
  * Tooltip positioning/styling wrapper for vertical CSS bar charts.
  * Renders when visible with fixed positioning at (x, y).
  */
-export function VerticalTooltipShell({ visible, x, y, tooltipRef, children }: VerticalTooltipShellProps) {
+export function VerticalTooltipShell({
+  visible,
+  x,
+  y,
+  tooltipRef,
+  children,
+}: VerticalTooltipShellProps) {
   if (!visible) return null
   return React.createElement(
     'div',
     {
       ref: tooltipRef,
-      className: 'bg-card border-border pointer-events-none fixed z-50 rounded-lg border p-3 shadow-lg',
+      className:
+        'bg-card border-border pointer-events-none fixed z-50 rounded-lg border p-3 shadow-lg',
       style: { left: x, top: y },
     },
     children

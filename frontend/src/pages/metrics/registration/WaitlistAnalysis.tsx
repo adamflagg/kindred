@@ -85,7 +85,12 @@ function transformWaitlistSessionData(
 }
 
 function transformWaitlistGradeData(
-  byGrade: Array<{ grade: number | null; count: number; no_enrollment?: number; has_enrollment?: number }>
+  byGrade: Array<{
+    grade: number | null
+    count: number
+    no_enrollment?: number
+    has_enrollment?: number
+  }>
 ): StackedBarDataItem[] {
   return byGrade.map((item) => ({
     name: item.grade !== null ? `Grade ${item.grade}` : 'Unknown',
@@ -125,7 +130,10 @@ export default function WaitlistAnalysis() {
   })
 
   const primarySession = useMemo(
-    () => (data ? transformWaitlistSessionData(data.by_session, sessionDateLookup, sessionTypeLookup) : null),
+    () =>
+      data
+        ? transformWaitlistSessionData(data.by_session, sessionDateLookup, sessionTypeLookup)
+        : null,
     [data, sessionDateLookup, sessionTypeLookup]
   )
   const compSession = useMemo(
@@ -290,7 +298,9 @@ export default function WaitlistAnalysis() {
                   <CssStackedHorizontalBarChart
                     data={primarySession.data}
                     segments={primarySession.segments}
-                    title={isComparing ? `${currentYear} Waitlist by Session` : 'Waitlist by Session'}
+                    title={
+                      isComparing ? `${currentYear} Waitlist by Session` : 'Waitlist by Session'
+                    }
                     labelWidth={140}
                     height={340}
                     onBarClick={(item) =>
@@ -417,8 +427,7 @@ export default function WaitlistAnalysis() {
                         title="Grade Distribution"
                         onBarClick={(item) => {
                           const grade = data.by_grade?.find(
-                            (g) =>
-                              (g.grade !== null ? `Grade ${g.grade}` : 'Unknown') === item.name
+                            (g) => (g.grade !== null ? `Grade ${g.grade}` : 'Unknown') === item.name
                           )
                           if (grade) {
                             setFilter({

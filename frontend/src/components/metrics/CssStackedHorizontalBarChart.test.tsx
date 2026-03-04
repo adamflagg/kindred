@@ -52,9 +52,7 @@ describe('CssStackedHorizontalBarChart rendering', () => {
   })
 
   it('should render one row per data item', () => {
-    render(
-      <CssStackedHorizontalBarChart data={sampleData} segments={segments} title="Rows" />
-    )
+    render(<CssStackedHorizontalBarChart data={sampleData} segments={segments} title="Rows" />)
     expect(screen.getByText('Session A')).toBeInTheDocument()
     expect(screen.getByText('Session B')).toBeInTheDocument()
     expect(screen.getByText('Session C')).toBeInTheDocument()
@@ -72,9 +70,7 @@ describe('CssStackedHorizontalBarChart rendering', () => {
   })
 
   it('should show empty state when data is empty', () => {
-    render(
-      <CssStackedHorizontalBarChart data={[]} segments={segments} title="Empty" />
-    )
+    render(<CssStackedHorizontalBarChart data={[]} segments={segments} title="Empty" />)
     expect(screen.getByText('No data available')).toBeInTheDocument()
   })
 
@@ -98,9 +94,7 @@ describe('CssStackedHorizontalBarChart legend', () => {
   })
 
   it('should render legend items for active segments only', () => {
-    render(
-      <CssStackedHorizontalBarChart data={sampleData} segments={segments} />
-    )
+    render(<CssStackedHorizontalBarChart data={sampleData} segments={segments} />)
     expect(screen.getByText('Enrolled')).toBeInTheDocument()
     expect(screen.getByText('Waitlisted')).toBeInTheDocument()
   })
@@ -109,9 +103,7 @@ describe('CssStackedHorizontalBarChart legend', () => {
     const dataNoWaitlist: StackedBarDataItem[] = [
       { name: 'A', total: 10, enrolled: 10, waitlisted: 0 },
     ]
-    render(
-      <CssStackedHorizontalBarChart data={dataNoWaitlist} segments={segments} />
-    )
+    render(<CssStackedHorizontalBarChart data={dataNoWaitlist} segments={segments} />)
     expect(screen.getByText('Enrolled')).toBeInTheDocument()
     expect(screen.queryByText('Waitlisted')).toBeNull()
   })
@@ -134,11 +126,7 @@ describe('CssStackedHorizontalBarChart click', () => {
       { name: 'Click Me', total: 40, enrolled: 30, waitlisted: 10 },
     ]
     const { container } = render(
-      <CssStackedHorizontalBarChart
-        data={data}
-        segments={segments}
-        onBarClick={onClick}
-      />
+      <CssStackedHorizontalBarChart data={data} segments={segments} onBarClick={onClick} />
     )
     const row = container.querySelector('.cursor-pointer') as HTMLElement
     fireEvent.click(row)
@@ -169,19 +157,13 @@ describe('CssStackedHorizontalBarChart segments', () => {
   })
 
   it('should render colored segment divs within each bar', () => {
-    const data: StackedBarDataItem[] = [
-      { name: 'Mixed', total: 100, enrolled: 70, waitlisted: 30 },
-    ]
-    const { container } = render(
-      <CssStackedHorizontalBarChart data={data} segments={segments} />
-    )
+    const data: StackedBarDataItem[] = [{ name: 'Mixed', total: 100, enrolled: 70, waitlisted: 30 }]
+    const { container } = render(<CssStackedHorizontalBarChart data={data} segments={segments} />)
     const segDivs = container.querySelectorAll(
       '[style*="background-color"]'
     ) as NodeListOf<HTMLElement>
     // Should have at least the 2 segment divs (enrolled + waitlisted) + legend swatches
-    const barSegments = Array.from(segDivs).filter((el) =>
-      el.classList.contains('h-full')
-    )
+    const barSegments = Array.from(segDivs).filter((el) => el.classList.contains('h-full'))
     expect(barSegments.length).toBe(2)
   })
 
@@ -189,9 +171,7 @@ describe('CssStackedHorizontalBarChart segments', () => {
     const data: StackedBarDataItem[] = [
       { name: 'Only Enrolled', total: 50, enrolled: 50, waitlisted: 0 },
     ]
-    const { container } = render(
-      <CssStackedHorizontalBarChart data={data} segments={segments} />
-    )
+    const { container } = render(<CssStackedHorizontalBarChart data={data} segments={segments} />)
     const barSegments = Array.from(
       container.querySelectorAll('[style*="background-color"]') as NodeListOf<HTMLElement>
     ).filter((el) => el.classList.contains('h-full'))

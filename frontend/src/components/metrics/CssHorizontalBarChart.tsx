@@ -85,46 +85,62 @@ export function CssHorizontalBarChart({
         <div
           className={`flex min-h-0 flex-1 flex-col overflow-hidden ${isDense ? '' : 'justify-center'}`}
           style={{ gap: rowGap }}
-          onMouseLeave={() => { setHoveredIndex(null); handleMouseLeave() }}
+          onMouseLeave={() => {
+            setHoveredIndex(null)
+            handleMouseLeave()
+          }}
         >
-        {data.map((item, index) => (
-          <div
-            key={index}
-            className={`flex items-center ${isDense ? 'gap-2' : 'gap-3'} rounded ${isClickable ? 'cursor-pointer' : ''}`}
-            onClick={() => isClickable && handleClick(item)}
-            onMouseEnter={() => setHoveredIndex(index)}
-            onMouseMove={(e) => handleMouseMove(e, item)}
-          >
-            {/* Label */}
-            <span className="text-muted-foreground shrink-0 truncate text-right text-sm" style={{ width: labelWidth }}>
-              {item.name}
-            </span>
+          {data.map((item, index) => (
+            <div
+              key={index}
+              className={`flex items-center ${isDense ? 'gap-2' : 'gap-3'} rounded ${isClickable ? 'cursor-pointer' : ''}`}
+              onClick={() => isClickable && handleClick(item)}
+              onMouseEnter={() => setHoveredIndex(index)}
+              onMouseMove={(e) => handleMouseMove(e, item)}
+            >
+              {/* Label */}
+              <span
+                className="text-muted-foreground shrink-0 truncate text-right text-sm"
+                style={{ width: labelWidth }}
+              >
+                {item.name}
+              </span>
 
-            {/* Bar track */}
-            <div className="relative flex-1 overflow-hidden rounded" style={{ height: barHeight }}>
-              {/* Background track */}
-              <div className={`absolute inset-0 rounded transition-colors ${hoveredIndex === index ? 'bg-foreground/20' : 'bg-muted'}`} />
-              {/* Bar fill */}
+              {/* Bar track */}
               <div
-                className="relative h-full rounded transition-all duration-300"
-                style={{
-                  width: `${(item.value / axisMax) * 100}%`,
-                  backgroundColor: color,
-                  minWidth: item.value > 0 ? '4px' : '0px',
-                }}
-              />
-            </div>
+                className="relative flex-1 overflow-hidden rounded"
+                style={{ height: barHeight }}
+              >
+                {/* Background track */}
+                <div
+                  className={`absolute inset-0 rounded transition-colors ${hoveredIndex === index ? 'bg-foreground/20' : 'bg-muted'}`}
+                />
+                {/* Bar fill */}
+                <div
+                  className="relative h-full rounded transition-all duration-300"
+                  style={{
+                    width: `${(item.value / axisMax) * 100}%`,
+                    backgroundColor: color,
+                    minWidth: item.value > 0 ? '4px' : '0px',
+                  }}
+                />
+              </div>
 
-            {/* Value label */}
-            <span className="text-muted-foreground shrink-0 text-center text-sm tabular-nums" style={{ width: valueWidth }}>
-              {item.value}
-            </span>
-          </div>
-        ))}
+              {/* Value label */}
+              <span
+                className="text-muted-foreground shrink-0 text-center text-sm tabular-nums"
+                style={{ width: valueWidth }}
+              >
+                {item.value}
+              </span>
+            </div>
+          ))}
         </div>
 
         {/* X-axis line + tick labels */}
-        <div className={`${isDense ? 'mt-1' : 'mt-2'} flex shrink-0 items-center ${isDense ? 'gap-2' : 'gap-3'}`}>
+        <div
+          className={`${isDense ? 'mt-1' : 'mt-2'} flex shrink-0 items-center ${isDense ? 'gap-2' : 'gap-3'}`}
+        >
           <span className="shrink-0" style={{ width: labelWidth }} />
           <div className="border-foreground/40 relative h-5 flex-1 border-t pt-1">
             {ticks.map((tick) => (
