@@ -17,8 +17,6 @@ import { Fragment, useMemo, useState } from 'react'
 import {
   LineChart,
   Line,
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -572,7 +570,7 @@ export default function VelocityPage() {
         )}
 
         {/* Week-range selectors (not applicable for delta bar chart) */}
-        {chartData.length > 0 && viewMode !== 'delta' && (
+        {chartData.length > 0 && (
           <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
             <label className="text-muted-foreground text-xs font-medium">Zoom:</label>
             <select
@@ -619,7 +617,7 @@ export default function VelocityPage() {
 
         <ResponsiveContainer width="100%" height={380}>
           {viewMode === 'delta' ? (
-            <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 35 }}>
+            <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 35 }}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
               <XAxis
                 dataKey="week_number"
@@ -687,6 +685,15 @@ export default function VelocityPage() {
               <Legend />
               <ReferenceLine y={0} stroke="hsl(var(--border))" />
 
+              {/* Brush for zoom/scrub */}
+              <Brush
+                dataKey="week_number"
+                height={20}
+                stroke="hsl(var(--primary))"
+                {...(zoomRange ? { startIndex: zoomRange[0], endIndex: zoomRange[1] } : {})}
+                tickFormatter={(wn: number) => weekLabelMap.get(wn) ?? `Wk${wn}`}
+              />
+
               {/* Phase marker vertical lines */}
               {phaseLines.map((phase) => (
                 <ReferenceLine
@@ -698,50 +705,56 @@ export default function VelocityPage() {
                 />
               ))}
 
-              {/* Current year bars — faded on partial week */}
-              <Bar
+              {/* Current year lines */}
+              <Line
+                type="monotone"
                 dataKey="weekly_new"
                 name={`New ${currentYear}`}
-                fill="hsl(150, 60%, 45%)"
-                stackId="current"
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                shape={(props: any) => {
-                  const opacity = props.payload?.is_partial ? 0.4 : 1
-                  return <rect {...props} fillOpacity={opacity} />
-                }}
+                stroke="hsl(150, 60%, 45%)"
+                strokeWidth={3}
+                dot={<PartialWeekDot />}
+                activeDot={{ r: 5 }}
+                connectNulls={false}
               />
-              <Bar
+              <Line
+                type="monotone"
                 dataKey="weekly_cancelled"
                 name={`Cancelled ${currentYear}`}
-                fill="hsl(0, 65%, 55%)"
-                stackId="current"
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                shape={(props: any) => {
-                  const opacity = props.payload?.is_partial ? 0.4 : 1
-                  return <rect {...props} fillOpacity={opacity} />
-                }}
+                stroke="hsl(0, 65%, 55%)"
+                strokeWidth={3}
+                dot={<PartialWeekDot />}
+                activeDot={{ r: 5 }}
+                connectNulls={false}
               />
 
-              {/* Prior year bars */}
+              {/* Prior year lines (dashed) */}
               {data.prior_years.map((py) => (
                 <Fragment key={py.year}>
-                  <Bar
+                  <Line
+                    type="monotone"
                     dataKey={`weekly_new_${py.year}`}
                     name={`New ${py.year}`}
-                    fill="hsl(150, 40%, 65%)"
-                    stackId={`prior_${py.year}`}
-                    opacity={0.6}
+                    stroke="hsl(150, 40%, 65%)"
+                    strokeWidth={2}
+                    strokeDasharray="5 5"
+                    dot={false}
+                    opacity={0.7}
+                    connectNulls={false}
                   />
-                  <Bar
+                  <Line
+                    type="monotone"
                     dataKey={`weekly_cancelled_${py.year}`}
                     name={`Cancelled ${py.year}`}
-                    fill="hsl(0, 40%, 70%)"
-                    stackId={`prior_${py.year}`}
-                    opacity={0.6}
+                    stroke="hsl(0, 40%, 70%)"
+                    strokeWidth={2}
+                    strokeDasharray="5 5"
+                    dot={false}
+                    opacity={0.7}
+                    connectNulls={false}
                   />
                 </Fragment>
               ))}
-            </BarChart>
+            </LineChart>
           ) : (
             <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 35 }}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
