@@ -245,7 +245,9 @@ class GeoService:
             total_gaps=total_gaps,
         )
 
-    async def search_canonicals(self, category: str, query: str, year: int) -> CanonicalSearchResponse:
+    async def search_canonicals(
+        self, category: str, query: str, year: int, *, in_use_only: bool = False
+    ) -> CanonicalSearchResponse:
         """Search canonical entries by name, city, or state.
 
         Returns entries from both static lookup and geo_overrides.
@@ -313,15 +315,22 @@ class GeoService:
                 camper_count=camper_counts.get(ov.canonical_name, 0),
             )
 
+        # Filter by in_use_only (entries with camper data)
+        if in_use_only:
+            all_canonicals = {k: v for k, v in all_canonicals.items() if v.camper_count > 0}
+
         # Filter by query (case-insensitive substring)
         query_lower = query.lower()
-        results: list[CanonicalEntry] = [
-            entry
-            for entry in all_canonicals.values()
-            if query_lower in entry.canonical_name.lower()
-            or query_lower in entry.city.lower()
-            or query_lower in entry.state.lower()
-        ]
+        if query_lower:
+            results: list[CanonicalEntry] = [
+                entry
+                for entry in all_canonicals.values()
+                if query_lower in entry.canonical_name.lower()
+                or query_lower in entry.city.lower()
+                or query_lower in entry.state.lower()
+            ]
+        else:
+            results = list(all_canonicals.values())
 
         # Sort by camper_count descending, then name
         results.sort(key=lambda x: (-x.camper_count, x.canonical_name))

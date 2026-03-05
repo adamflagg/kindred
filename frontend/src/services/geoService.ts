@@ -118,6 +118,24 @@ export async function searchCanonicals(
 }
 
 /**
+ * Fetch all in-use canonical entries for a category and year.
+ * Returns only entries with camper_count > 0. Used for client-side filtering.
+ */
+export async function fetchAllCanonicals(
+  category: string,
+  year: number,
+  fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+): Promise<CanonicalSearchResponse> {
+  const params = new URLSearchParams({ category, year: String(year), in_use: 'true' })
+  const response = await fetchWithAuth(`${API_BASE}/canonicals?${params}`)
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch all canonicals')
+  }
+  return response.json()
+}
+
+/**
  * Get raw value variants that map to a canonical name.
  */
 export async function fetchSources(

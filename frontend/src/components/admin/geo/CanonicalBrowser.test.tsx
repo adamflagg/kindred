@@ -10,13 +10,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { CanonicalBrowser } from './CanonicalBrowser'
 import { CanonicalCard } from './CanonicalCard'
 import type { CanonicalEntry, SourcesResponse } from '../../../services/geoService'
-import { useCanonicalSearch, useCanonicalSources } from '../../../hooks/useGeoData'
+import { useAllCanonicals, useCanonicalSources } from '../../../hooks/useGeoData'
 
 // ---------------------------------------------------------------------------
 // Mock hooks
 // ---------------------------------------------------------------------------
 vi.mock('../../../hooks/useGeoData', () => ({
-  useCanonicalSearch: vi.fn(),
+  useAllCanonicals: vi.fn(),
   useCanonicalSources: vi.fn(),
   useCreateOverride: vi.fn(),
 }))
@@ -77,19 +77,19 @@ const riversideSources: SourcesResponse = {
 // Helpers
 // ---------------------------------------------------------------------------
 function setupSearchMock(entries: CanonicalEntry[]) {
-  vi.mocked(useCanonicalSearch).mockReturnValue({
+  vi.mocked(useAllCanonicals).mockReturnValue({
     data: { results: entries },
     isLoading: false,
     error: null,
-  } as unknown as ReturnType<typeof useCanonicalSearch>)
+  } as unknown as ReturnType<typeof useAllCanonicals>)
 }
 
 function setupEmptySearchMock() {
-  vi.mocked(useCanonicalSearch).mockReturnValue({
+  vi.mocked(useAllCanonicals).mockReturnValue({
     data: { results: [] as CanonicalEntry[] },
     isLoading: false,
     error: null,
-  } as unknown as ReturnType<typeof useCanonicalSearch>)
+  } as unknown as ReturnType<typeof useAllCanonicals>)
 }
 
 function setupSourcesMock(sources: SourcesResponse) {
@@ -124,12 +124,12 @@ describe('CanonicalBrowser search', () => {
     expect(screen.getByText('Hillcrest High')).toBeInTheDocument()
   })
 
-  it('shows empty state when search returns no results', () => {
+  it('shows empty state when no in-use entries exist', () => {
     setupEmptySearchMock()
 
     render(<CanonicalBrowser category="school" year={2025} />)
 
-    expect(screen.getByText(/no results/i)).toBeInTheDocument()
+    expect(screen.getByText(/no in-use entries/i)).toBeInTheDocument()
   })
 })
 

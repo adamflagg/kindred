@@ -5,7 +5,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { queryKeys, userDataOptions } from '../utils/queryKeys'
+import { queryKeys, userDataOptions, syncDataOptions } from '../utils/queryKeys'
 import { useApiWithAuth } from './useApiWithAuth'
 import * as geoService from '../services/geoService'
 import type { OverrideCreateData } from '../services/geoService'
@@ -16,6 +16,19 @@ export function useGeoGaps(category: string, year: number) {
     queryKey: queryKeys.geoGaps(category, year),
     queryFn: () => geoService.fetchGeoGaps(category, year, fetchWithAuth),
     ...userDataOptions,
+  })
+}
+
+/**
+ * Fetch all in-use canonicals for a category/year. Cached with syncDataOptions (1hr)
+ * since this data only changes on sync. Used for instant client-side search.
+ */
+export function useAllCanonicals(category: string, year: number) {
+  const { fetchWithAuth } = useApiWithAuth()
+  return useQuery({
+    queryKey: queryKeys.geoAllCanonicals(category, year),
+    queryFn: () => geoService.fetchAllCanonicals(category, year, fetchWithAuth),
+    ...syncDataOptions,
   })
 }
 
@@ -67,6 +80,7 @@ export function useCreateOverride(category: string, year: number) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.geoGaps(category, year) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.geoOverrides(category, year) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.geoAllCanonicals(category, year) })
     },
   })
 }
@@ -80,6 +94,7 @@ export function useUpdateOverride(category: string, year: number) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.geoGaps(category, year) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.geoOverrides(category, year) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.geoAllCanonicals(category, year) })
     },
   })
 }
@@ -93,6 +108,7 @@ export function useDeleteOverride(category: string, year: number) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.geoGaps(category, year) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.geoOverrides(category, year) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.geoAllCanonicals(category, year) })
     },
   })
 }

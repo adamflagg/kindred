@@ -59,13 +59,14 @@ async def get_gaps(
 @router.get("/canonicals", response_model=CanonicalSearchResponse)
 async def search_canonicals(
     category: str = Query(..., description="Category: city, school, or congregation"),
-    q: str = Query(..., description="Search query (case-insensitive substring match)"),
+    q: str = Query("", description="Search query (case-insensitive substring match). Empty returns in-use entries."),
     year: int = Query(..., description="Year scope (e.g. 2025)"),
+    in_use: bool = Query(False, description="If true, only return entries with camper_count > 0"),
     user: AuthUser = Depends(get_current_user),
 ) -> CanonicalSearchResponse:
     """Search canonical entries by name, city, or state."""
     service = _get_service()
-    return await service.search_canonicals(category, q, year)
+    return await service.search_canonicals(category, q, year, in_use_only=in_use)
 
 
 # ============================================================================
