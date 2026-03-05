@@ -459,6 +459,20 @@ func GetCustomValuesSyncJobs() []string {
 	}
 }
 
+// RunSyncSequence runs multiple sync services sequentially, waiting for each
+// to complete before starting the next. Unlike RunSyncWithOptions, this is
+// lightweight — no global table checks, no year override, no daily/historical
+// tracking. Used for targeted refreshes like bunking (bunks -> bunk_plans ->
+// bunk_assignments).
+func (o *Orchestrator) RunSyncSequence(ctx context.Context, services []string) error {
+	for _, svc := range services {
+		if err := o.runSyncAndWait(ctx, svc); err != nil {
+			return fmt.Errorf("sync sequence failed on %s: %w", svc, err)
+		}
+	}
+	return nil
+}
+
 // RunSingleSync runs a single sync service
 func (o *Orchestrator) RunSingleSync(parentCtx context.Context, syncType string) error {
 	// Check if service exists

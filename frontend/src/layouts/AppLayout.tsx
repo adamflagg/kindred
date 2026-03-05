@@ -557,7 +557,7 @@ export const AppLayout = () => {
                     <BunkRequestsUpload />
                     <button
                       onClick={() => {
-                        toast(`Refreshing bunking assignments for ${currentYear}...`, {
+                        toast(`Refreshing bunks & assignments for ${currentYear}...`, {
                           icon: '🔄',
                           duration: 2000,
                         })
@@ -641,7 +641,7 @@ export const AppLayout = () => {
                   <BunkRequestsUpload />
                   <button
                     onClick={() => {
-                      toast(`Refreshing bunking assignments for ${currentYear}...`, {
+                      toast(`Refreshing bunks & assignments for ${currentYear}...`, {
                         icon: '🔄',
                         duration: 2000,
                       })
@@ -649,7 +649,7 @@ export const AppLayout = () => {
                     }}
                     disabled={refreshBunkingMutation.isPending}
                     className="btn-primary nav-btn-icon-only px-4 py-2"
-                    title="Refresh bunking assignments from CampMinder"
+                    title="Refresh bunks, plans & assignments from CampMinder"
                   >
                     {refreshBunkingMutation.isPending ? (
                       <Loader2 className="h-4 w-4 flex-shrink-0 animate-spin" />
