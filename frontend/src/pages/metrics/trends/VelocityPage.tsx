@@ -102,6 +102,19 @@ function PartialWeekDot(props: any) {
   )
 }
 
+/** Compute the calendar date for a prior year at a given week offset from its season start. */
+function priorYearDateLabel(
+  seasonStarts: Record<number, string> | undefined,
+  year: number,
+  weekNum: number
+): string | null {
+  const seasonStart = seasonStarts?.[year]
+  if (!seasonStart) return null
+  const d = new Date(seasonStart + 'T00:00:00')
+  d.setDate(d.getDate() + weekNum * 7)
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
 export default function VelocityPage() {
   const { selectedSessionCmId, sessionTypesParam, sessions } = useMetricsSession()
   const { currentYear, availableYears } = useCurrentYear()
@@ -551,6 +564,13 @@ export default function VelocityPage() {
           </div>
         )}
 
+        {/* X-axis date context note when comparing years */}
+        {selectedPriorYears.length > 0 && (
+          <p className="text-muted-foreground mb-3 text-xs italic">
+            X-axis dates are for {currentYear}. Hover for prior year dates.
+          </p>
+        )}
+
         {/* Week-range selectors (not applicable for delta bar chart) */}
         {chartData.length > 0 && viewMode !== 'delta' && (
           <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
@@ -641,11 +661,25 @@ export default function VelocityPage() {
                           Partial week ({daysInWeek}/7 days)
                         </p>
                       )}
-                      {validPayload.map((entry) => (
-                        <p key={entry.name} className="text-sm" style={{ color: entry.color }}>
-                          {entry.name}: {Math.abs(Number(entry.value)).toLocaleString()}
-                        </p>
-                      ))}
+                      {validPayload.map((entry) => {
+                        const yearMatch = entry.name?.match(/\b(\d{4})\b/)
+                        const priorDate =
+                          yearMatch && label != null
+                            ? priorYearDateLabel(
+                                data?.prior_year_season_starts,
+                                Number(yearMatch[1]),
+                                label as number
+                              )
+                            : null
+                        return (
+                          <p key={entry.name} className="text-sm" style={{ color: entry.color }}>
+                            {entry.name}: {Math.abs(Number(entry.value)).toLocaleString()}
+                            {priorDate && (
+                              <span className="text-muted-foreground ml-1 text-xs">({priorDate})</span>
+                            )}
+                          </p>
+                        )
+                      })}
                     </div>
                   )
                 }}
@@ -751,11 +785,25 @@ export default function VelocityPage() {
                           Partial week ({daysInWeek}/7 days)
                         </p>
                       )}
-                      {validPayload.map((entry) => (
-                        <p key={entry.name} className="text-sm" style={{ color: entry.color }}>
-                          {entry.name}: {Number(entry.value).toLocaleString()}
-                        </p>
-                      ))}
+                      {validPayload.map((entry) => {
+                        const yearMatch = entry.name?.match(/\b(\d{4})\b/)
+                        const priorDate =
+                          yearMatch && label != null
+                            ? priorYearDateLabel(
+                                data?.prior_year_season_starts,
+                                Number(yearMatch[1]),
+                                label as number
+                              )
+                            : null
+                        return (
+                          <p key={entry.name} className="text-sm" style={{ color: entry.color }}>
+                            {entry.name}: {Number(entry.value).toLocaleString()}
+                            {priorDate && (
+                              <span className="text-muted-foreground ml-1 text-xs">({priorDate})</span>
+                            )}
+                          </p>
+                        )
+                      })}
                     </div>
                   )
                 }}
