@@ -1,14 +1,25 @@
 #!/bin/sh
 set -e
 
-# Logging function: outputs in unified format
-log_info() {
-    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [init] INFO $1"
-}
+# Logging functions: compact mode omits timestamp and source (Docker adds its own)
+# LOG_COMPACT defaults to true (same as Go/Python services)
+_LOG_COMPACT="${LOG_COMPACT:-true}"
 
-log_error() {
-    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [init] ERROR $1"
-}
+if [ "$_LOG_COMPACT" = "false" ] || [ "$_LOG_COMPACT" = "0" ]; then
+    log_info() {
+        echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [init] INFO $1"
+    }
+    log_error() {
+        echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [init] ERROR $1"
+    }
+else
+    log_info() {
+        echo "INFO $1"
+    }
+    log_error() {
+        echo "ERROR $1"
+    }
+fi
 
 PB_URL="${POCKETBASE_URL:-http://pocketbase:8090}"
 

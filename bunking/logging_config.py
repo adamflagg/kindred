@@ -9,6 +9,9 @@ Environment Variables:
                - INFO: Normal operation logs
                - DEBUG: Detailed diagnostic information
                - TRACE: Very verbose low-level diagnostics (API params, etc.)
+    LOG_COMPACT: Set to "true" (default) or "false"
+               - true: Omit timestamp and top-level source label (for Docker)
+               - false: Full format with timestamp and source (for local dev)
 
 Usage:
     from bunking.logging_config import configure_logging, get_logger
@@ -54,6 +57,7 @@ class ISO8601Formatter(logging.Formatter):
             source: Identifier shown in brackets (e.g., "api", "sync", "pocketbase")
         """
         self.source = source
+        self.compact = os.environ.get("LOG_COMPACT", "true").lower() not in ("false", "0")
         super().__init__()
 
     def format(self, record: logging.LogRecord) -> str:
@@ -76,6 +80,11 @@ class ISO8601Formatter(logging.Formatter):
         if record.exc_info:
             exception_text = self.formatException(record.exc_info)
             message = f"{message}\n{exception_text}"
+
+        if self.compact:
+            if "/" in self.source:
+                return f"[{self.source}] {level} {message}"
+            return f"{level} {message}"
 
         return f"{timestamp} [{self.source}] {level} {message}"
 

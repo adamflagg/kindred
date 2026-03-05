@@ -25,19 +25,23 @@ import (
 
 // ISO8601Handler implements slog.Handler with our custom format
 type ISO8601Handler struct {
-	source string
-	level  slog.Level
-	writer io.Writer
-	attrs  []slog.Attr
-	groups []string
+	source  string
+	level   slog.Level
+	writer  io.Writer
+	attrs   []slog.Attr
+	groups  []string
+	compact bool
 }
 
 // NewHandler creates a handler with our custom format
 func NewHandler(source string, w io.Writer, level slog.Level) *ISO8601Handler {
+	val := os.Getenv("LOG_COMPACT")
+	compact := val != "false" && val != "0"
 	return &ISO8601Handler{
-		source: source,
-		writer: w,
-		level:  level,
+		source:  source,
+		writer:  w,
+		level:   level,
+		compact: compact,
 	}
 }
 
@@ -61,10 +65,16 @@ func (h *ISO8601Handler) Handle(_ context.Context, r slog.Record) error {
 	level := r.Level.String()
 
 	var buf strings.Builder
-	buf.WriteString(timestamp)
-	buf.WriteString(" [")
-	buf.WriteString(h.source)
-	buf.WriteString("] ")
+	if !h.compact {
+		buf.WriteString(timestamp)
+		buf.WriteString(" [")
+		buf.WriteString(h.source)
+		buf.WriteString("] ")
+	} else if strings.Contains(h.source, "/") {
+		buf.WriteString("[")
+		buf.WriteString(h.source)
+		buf.WriteString("] ")
+	}
 	buf.WriteString(level)
 	buf.WriteString(" ")
 	buf.WriteString(r.Message)
@@ -101,11 +111,12 @@ func (h *ISO8601Handler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	copy(newAttrs, h.attrs)
 	copy(newAttrs[len(h.attrs):], attrs)
 	return &ISO8601Handler{
-		source: h.source,
-		writer: h.writer,
-		level:  h.level,
-		attrs:  newAttrs,
-		groups: h.groups,
+		source:  h.source,
+		writer:  h.writer,
+		level:   h.level,
+		attrs:   newAttrs,
+		groups:  h.groups,
+		compact: h.compact,
 	}
 }
 
@@ -115,11 +126,12 @@ func (h *ISO8601Handler) WithGroup(name string) slog.Handler {
 	copy(newGroups, h.groups)
 	newGroups[len(h.groups)] = name
 	return &ISO8601Handler{
-		source: h.source,
-		writer: h.writer,
-		level:  h.level,
-		attrs:  h.attrs,
-		groups: newGroups,
+		source:  h.source,
+		writer:  h.writer,
+		level:   h.level,
+		attrs:   h.attrs,
+		groups:  newGroups,
+		compact: h.compact,
 	}
 }
 
