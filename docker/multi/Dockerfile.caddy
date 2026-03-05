@@ -1,0 +1,53 @@
+# =============================================================================
+# Stage 1: Frontend build
+# =============================================================================
+FROM node:25-alpine AS frontend-builder
+
+ARG VERSION=dev
+ARG BUILD_DATE
+ARG ADMIN_USER
+ENV VITE_APP_VERSION=${VERSION}
+ENV VITE_APP_BUILD_DATE=${BUILD_DATE}
+ENV ADMIN_USER=${ADMIN_USER}
+
+WORKDIR /app
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/ ./
+# Copy branding config so Vite can inject it
+COPY config/branding*.json ../config/
+RUN npm run build
+
+# =============================================================================
+# Stage 2: Build healthcheck binary
+# =============================================================================
+FROM golang:1.26-alpine AS healthcheck-builder
+
+WORKDIR /build
+COPY docker/multi/healthcheck/ ./
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o healthcheck .
+
+# =============================================================================
+# Stage 3: Distroless runtime
+# =============================================================================
+FROM chainguard/static:latest
+
+COPY --from=dhi.io/caddy:2 /usr/local/bin/caddy /usr/local/bin/caddy
+COPY --from=healthcheck-builder /build/healthcheck /usr/local/bin/healthcheck
+COPY docker/multi/Caddyfile /etc/caddy/Caddyfile
+
+# Frontend static files
+COPY --from=frontend-builder /app/dist /pb_public
+COPY local/ /pb_public/local/
+
+USER nonroot
+
+EXPOSE 8080
+
+ENV HOME=/app
+ENV TZ=UTC
+
+HEALTHCHECK --interval=15s --timeout=10s --retries=5 --start-period=15s \
+    CMD ["/usr/local/bin/healthcheck", "http://127.0.0.1:8080/health"]
+
+ENTRYPOINT ["/usr/local/bin/caddy", "run", "--config", "/etc/caddy/Caddyfile"]
