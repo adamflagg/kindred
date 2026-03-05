@@ -35,10 +35,10 @@ PHASE_KEY_MAP: dict[str, tuple[str, str]] = {
 }
 
 
-def _week_start(d: datetime, priority_reg_date: datetime) -> datetime:
-    """Start of 7-day bucket containing d, anchored to priority_reg_date."""
-    days_since = (d - priority_reg_date).days
-    return priority_reg_date + timedelta(days=(days_since // 7) * 7)
+def _week_start(d: datetime, season_start: datetime) -> datetime:
+    """Start of 7-day bucket containing d, anchored to season_start."""
+    days_since = (d - season_start).days
+    return season_start + timedelta(days=(days_since // 7) * 7)
 
 
 def _week_label(d: datetime) -> str:
@@ -46,14 +46,16 @@ def _week_label(d: datetime) -> str:
     return d.strftime("%b %-d")
 
 
-def _compute_season_start(priority_reg_date_str: str | None, year: int) -> datetime | None:
-    """Compute the season start date from priority registration config.
+def _compute_season_start(reg_dates: dict[str, str], year: int) -> datetime | None:
+    """Compute season start from registration config.
 
-    Returns the exact priority_reg_date if configured, else None.
-    Years without a configured priority_reg_date simply don't get velocity data.
+    Tries priority_reg_date first (2021+), falls back to early_reg_date (pre-2021).
+    Returns None if neither is configured.
     """
-    if priority_reg_date_str:
-        return datetime.strptime(priority_reg_date_str.split("T")[0].split(" ")[0], "%Y-%m-%d")
+    for key in ("priority_reg_date", "early_reg_date"):
+        date_str = reg_dates.get(key)
+        if date_str:
+            return datetime.strptime(date_str.split("T")[0].split(" ")[0], "%Y-%m-%d")
     return None
 
 
@@ -332,13 +334,15 @@ class VelocityService:
         """
         # Pre-fetch reg dates for dynamic season start
         reg_dates = await self.repo.fetch_registration_dates(year)
-        season_start_dt = _compute_season_start(reg_dates.get("priority_reg_date"), year)
+        season_start_dt = _compute_season_start(reg_dates, year)
         warnings: list[str] = []
 
-        # If no priority_reg_date configured, return empty response with warning
+        # If no registration date configured, return empty response with warning
         if season_start_dt is None:
             empty_combined = VelocityCurve(year=year, session_cm_id=None, gender=None, weekly=[])
-            warnings.append(f"Year {year} has no priority registration date configured")
+            warnings.append(
+                f"Year {year} has no registration date configured (needs priority_reg_date or early_reg_date)"
+            )
             return VelocityResponse(
                 year=year,
                 season_start="",
@@ -388,6 +392,7 @@ class VelocityService:
         prior_year_by_gender: list[VelocityCurve] = []
         prior_year_cancelled_to_date: list[PriorYearCancelledSummary] = []
         prior_year_session_summaries: list[PriorYearSessionSummary] = []
+        prior_year_season_starts: dict[int, str] = {}
 
         # Get current year's latest week_number for prior year comparisons
         current_max_wn = combined.weekly[-1].week_number if combined.weekly else None
@@ -395,10 +400,14 @@ class VelocityService:
         if compare_years:
             for prior_year in compare_years:
                 prior_reg_dates = await self.repo.fetch_registration_dates(prior_year)
-                prior_season_start = _compute_season_start(prior_reg_dates.get("priority_reg_date"), prior_year)
+                prior_season_start = _compute_season_start(prior_reg_dates, prior_year)
                 if prior_season_start is None:
-                    warnings.append(f"Year {prior_year} has no priority registration date configured")
+                    warnings.append(
+                        f"Year {prior_year} has no registration date configured"
+                        " (needs priority_reg_date or early_reg_date)"
+                    )
                     continue
+                prior_year_season_starts[prior_year] = prior_season_start.strftime("%Y-%m-%d")
                 prior_season_end = _season_end(prior_season_start)
                 prior_sessions = await self.repo.fetch_sessions(prior_year, session_types=session_types)
                 prior_ag_map = build_ag_parent_map(prior_sessions)
@@ -509,6 +518,7 @@ class VelocityService:
             cancelled_to_date=cancelled_to_date,
             prior_year_cancelled_to_date=prior_year_cancelled_to_date,
             prior_year_session_summaries=prior_year_session_summaries,
+            prior_year_season_starts=prior_year_season_starts,
             session_swap_count=session_swap_count,
             warnings=warnings,
         )
@@ -1583,7 +1593,7 @@ class VelocityService:
     def _build_phase_markers(self, reg_dates: dict[str, str], season_start: datetime) -> list[PhaseMarker]:
         """Build registration phase markers from config.
 
-        week_number is computed directly from priority_reg_date (no Monday snapping).
+        week_number is computed directly from season start (no Monday snapping).
         """
         markers: list[PhaseMarker] = []
         for config_key, (phase, label) in PHASE_KEY_MAP.items():

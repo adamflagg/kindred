@@ -62,7 +62,7 @@ class PriorYearSessionSummary(BaseModel):
 
 class VelocityResponse(BaseModel):
     year: int
-    season_start: str = Field(description="ISO date of season start (priority registration date)")
+    season_start: str = Field(description="ISO date of season start (priority or early registration date)")
     combined: VelocityCurve
     by_session: list[VelocityCurve]
     by_gender: list[VelocityCurve] = Field(default_factory=list, description="Empty when not split, [M, F] when split")
@@ -74,4 +74,8 @@ class VelocityResponse(BaseModel):
     cancelled_to_date: int | None = Field(None, description="Total cancellations for current year through latest week")
     prior_year_cancelled_to_date: list[PriorYearCancelledSummary] = Field(default_factory=list)
     prior_year_session_summaries: list[PriorYearSessionSummary] = Field(default_factory=list)
+    prior_year_season_starts: dict[int, str] = Field(
+        default_factory=dict,
+        description="Season start date (ISO) for each prior year, for tooltip date computation",
+    )
     session_swap_count: int = Field(0, description="Cancellations that are session changes, not true departures")
