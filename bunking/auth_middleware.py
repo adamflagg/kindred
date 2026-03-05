@@ -113,9 +113,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
             # Security: Validate POCKETBASE_URL is on trusted network
             # Use urlparse to prevent prefix-spoofing (e.g. http://127.0.0.1.evil.com)
+            # Allow: localhost, 127.0.0.1, and any dotless hostname (Docker service names
+            # like "pocketbase" or "kindred-pocketbase" never contain dots, while public
+            # hostnames like "evil.example.com" always do)
             parsed = urlparse(pocketbase_url)
-            allowed_hostnames = {"127.0.0.1", "localhost", "pocketbase"}
-            if parsed.hostname not in allowed_hostnames:
+            hostname = parsed.hostname or ""
+            is_trusted = hostname in ("127.0.0.1", "localhost") or ("." not in hostname and hostname != "")
+            if not is_trusted:
                 raise ValueError(f"POCKETBASE_URL must be on trusted network, got: {pocketbase_url}")
 
             self.pb_token_validator = PocketBaseTokenValidator(pocketbase_url)

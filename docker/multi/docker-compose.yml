@@ -86,6 +86,7 @@ services:
       - POCKETBASE_URL=http://pocketbase:8090
       - POCKETBASE_ADMIN_EMAIL=${POCKETBASE_ADMIN_EMAIL}
       - POCKETBASE_ADMIN_PASSWORD=${POCKETBASE_ADMIN_PASSWORD}
+      - OIDC_ISSUER=${OIDC_ISSUER:-}
       - AI_PROVIDER=${AI_PROVIDER:-}
       - AI_API_KEY=${AI_API_KEY:-}
       - AI_MODEL=${AI_MODEL:-}
@@ -117,10 +118,13 @@ services:
         condition: service_healthy
       api:
         condition: service_healthy
+    environment:
+      - POCKETBASE_HOST=${POCKETBASE_HOST:-pocketbase}
+      - API_HOST=${API_HOST:-api}
     tmpfs:
       - /tmp:size=8m,uid=65532,gid=65532
-      - /data:size=8m,uid=65532,gid=65532
-      - /config:size=8m,uid=65532,gid=65532
+      - /app/.config/caddy:size=8m,uid=65532,gid=65532
+      - /app/.local/share/caddy:size=8m,uid=65532,gid=65532
     healthcheck:
       test: [CMD, /usr/local/bin/healthcheck, "http://127.0.0.1:8080/health"]
       interval: 15s
