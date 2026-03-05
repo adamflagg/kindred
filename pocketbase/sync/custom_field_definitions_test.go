@@ -38,27 +38,55 @@ func TestTransformCustomFieldDefinitionToPB(t *testing.T) {
 	}
 
 	// Verify fields
-	if got, want := pbData["cm_id"].(int), 12345; got != want {
-		t.Errorf("cm_id = %d, want %d", got, want)
+	gotCMID, ok := pbData["cm_id"].(int)
+	if !ok {
+		t.Fatal("cm_id type assertion failed")
 	}
-	if got, want := pbData["name"].(string), "Dietary Restrictions"; got != want {
-		t.Errorf("name = %q, want %q", got, want)
+	if gotCMID != 12345 {
+		t.Errorf("cm_id = %d, want %d", gotCMID, 12345)
 	}
-	if got, want := pbData["data_type"].(string), "String"; got != want {
-		t.Errorf("data_type = %q, want %q", got, want)
+	gotName, ok := pbData["name"].(string)
+	if !ok {
+		t.Fatal("name type assertion failed")
+	}
+	if gotName != "Dietary Restrictions" {
+		t.Errorf("name = %q, want %q", gotName, "Dietary Restrictions")
+	}
+	gotDataType, ok := pbData["data_type"].(string)
+	if !ok {
+		t.Fatal("data_type type assertion failed")
+	}
+	if gotDataType != "String" {
+		t.Errorf("data_type = %q, want %q", gotDataType, "String")
 	}
 	// Partition is now a []string (multi-select)
-	if got, want := pbData["partition"].([]string), []string{"Camper"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("partition = %v, want %v", got, want)
+	gotPartition, ok := pbData["partition"].([]string)
+	if !ok {
+		t.Fatal("partition type assertion failed")
 	}
-	if got, want := pbData["is_seasonal"].(bool), false; got != want {
-		t.Errorf("is_seasonal = %v, want %v", got, want)
+	if !reflect.DeepEqual(gotPartition, []string{"Camper"}) {
+		t.Errorf("partition = %v, want %v", gotPartition, []string{"Camper"})
 	}
-	if got, want := pbData["is_array"].(bool), true; got != want {
-		t.Errorf("is_array = %v, want %v", got, want)
+	gotSeasonal, ok := pbData["is_seasonal"].(bool)
+	if !ok {
+		t.Fatal("is_seasonal type assertion failed")
 	}
-	if got, want := pbData["is_active"].(bool), true; got != want {
-		t.Errorf("is_active = %v, want %v", got, want)
+	if gotSeasonal != false {
+		t.Errorf("is_seasonal = %v, want %v", gotSeasonal, false)
+	}
+	gotArray, ok := pbData["is_array"].(bool)
+	if !ok {
+		t.Fatal("is_array type assertion failed")
+	}
+	if gotArray != true {
+		t.Errorf("is_array = %v, want %v", gotArray, true)
+	}
+	gotActive, ok := pbData["is_active"].(bool)
+	if !ok {
+		t.Fatal("is_active type assertion failed")
+	}
+	if gotActive != true {
+		t.Errorf("is_active = %v, want %v", gotActive, true)
 	}
 	// Note: year field removed - custom field definitions are global (not year-specific)
 	if _, hasYear := pbData["year"]; hasYear {
@@ -82,11 +110,19 @@ func TestTransformCustomFieldDefinitionHandlesMissingFields(t *testing.T) {
 	}
 
 	// Required fields should be set
-	if got, want := pbData["cm_id"].(int), 12345; got != want {
-		t.Errorf("cm_id = %d, want %d", got, want)
+	gotCMID2, ok := pbData["cm_id"].(int)
+	if !ok {
+		t.Fatal("cm_id type assertion failed")
 	}
-	if got, want := pbData["name"].(string), "Test Field"; got != want {
-		t.Errorf("name = %q, want %q", got, want)
+	if gotCMID2 != 12345 {
+		t.Errorf("cm_id = %d, want %d", gotCMID2, 12345)
+	}
+	gotName2, ok := pbData["name"].(string)
+	if !ok {
+		t.Fatal("name type assertion failed")
+	}
+	if gotName2 != "Test Field" {
+		t.Errorf("name = %q, want %q", gotName2, "Test Field")
 	}
 
 	// Optional fields should have defaults
@@ -188,8 +224,13 @@ func TestTransformCustomFieldDefinitionValidDataTypes(t *testing.T) {
 			continue
 		}
 
-		if got := pbData["data_type"].(string); got != dt {
-			t.Errorf("data_type = %q, want %q", got, dt)
+		gotDT, ok := pbData["data_type"].(string)
+		if !ok {
+			t.Errorf("data_type type assertion failed for %q", dt)
+			continue
+		}
+		if gotDT != dt {
+			t.Errorf("data_type = %q, want %q", gotDT, dt)
 		}
 	}
 }
@@ -215,8 +256,13 @@ func TestTransformCustomFieldDefinitionValidPartitions(t *testing.T) {
 
 		// Partition is now a []string (multi-select)
 		want := []string{p}
-		if got := pbData["partition"].([]string); !reflect.DeepEqual(got, want) {
-			t.Errorf("partition = %v, want %v", got, want)
+		gotP, ok := pbData["partition"].([]string)
+		if !ok {
+			t.Errorf("partition type assertion failed for %q", p)
+			continue
+		}
+		if !reflect.DeepEqual(gotP, want) {
+			t.Errorf("partition = %v, want %v", gotP, want)
 		}
 	}
 }

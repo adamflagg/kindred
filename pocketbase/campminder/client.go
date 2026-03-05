@@ -3,6 +3,7 @@ package campminder
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -67,7 +68,7 @@ func (c *Client) authenticate() error {
 	authURL := fmt.Sprintf("%s/auth/apikey", baseURL)
 	slog.Debug("CampMinder authenticating", "clientID", c.clientID)
 
-	req, err := http.NewRequest("GET", authURL, http.NoBody)
+	req, err := http.NewRequestWithContext(context.Background(), "GET", authURL, http.NoBody)
 	if err != nil {
 		return fmt.Errorf("create auth request: %w", err)
 	}
@@ -172,7 +173,7 @@ func (c *Client) makeRequestWithURLRetry(method, fullURL string, retryCount int)
 		return nil, fmt.Errorf("authentication failed: %w", err)
 	}
 
-	req, err := http.NewRequest(method, fullURL, http.NoBody)
+	req, err := http.NewRequestWithContext(context.Background(), method, fullURL, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
@@ -238,12 +239,14 @@ func (c *Client) makeRequest(method, endpoint string, params map[string]string) 
 	var err error
 
 	if method == "GET" {
-		req, err = http.NewRequest(method, fullURL, http.NoBody)
+		req, err = http.NewRequestWithContext(context.Background(), method, fullURL, http.NoBody)
 	} else {
 		// For POST/PUT, send params as JSON body
 		jsonBody, _ := json.Marshal(params)
-		req, err = http.NewRequest(method, fullURL, bytes.NewBuffer(jsonBody))
-		req.Header.Set("Content-Type", "application/json")
+		req, err = http.NewRequestWithContext(context.Background(), method, fullURL, bytes.NewBuffer(jsonBody))
+		if err == nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
 	}
 
 	if err != nil {

@@ -1,7 +1,6 @@
 package sync
 
 import (
-	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -1095,20 +1094,12 @@ func TestBuildPythonNormalizerCommand(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Save and restore IS_DOCKER env var
-			origVal, origSet := os.LookupEnv("IS_DOCKER")
+			// t.Setenv handles save/restore automatically
 			if tt.isDocker != "" {
 				t.Setenv("IS_DOCKER", tt.isDocker)
-			} else if origSet {
+			} else {
 				t.Setenv("IS_DOCKER", "")
 			}
-			defer func() {
-				if origSet {
-					os.Setenv("IS_DOCKER", origVal)
-				} else {
-					os.Unsetenv("IS_DOCKER")
-				}
-			}()
 
 			program, args := buildPythonNormalizerCommand("city", `["Oakland","San Francisco"]`)
 

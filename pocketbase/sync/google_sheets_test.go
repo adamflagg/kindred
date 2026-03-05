@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"testing"
 )
 
@@ -409,7 +410,7 @@ func TestBatchUpdateTabProperties_ErrorHandling(t *testing.T) {
 	}
 
 	err := mock.BatchUpdateTabProperties(ctx, "test-spreadsheet", updates)
-	if err != context.DeadlineExceeded {
+	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("BatchUpdateTabProperties() error = %v, want context.DeadlineExceeded", err)
 	}
 }
@@ -542,7 +543,7 @@ func TestDeleteSheet_ErrorHandling(t *testing.T) {
 	ctx := context.Background()
 
 	err := mock.DeleteSheet(ctx, "test-spreadsheet", "Sheet1")
-	if err != context.DeadlineExceeded {
+	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("DeleteSheet() error = %v, want context.DeadlineExceeded", err)
 	}
 }

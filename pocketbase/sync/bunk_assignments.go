@@ -157,8 +157,19 @@ func (s *BunkAssignmentsSync) Sync(ctx context.Context) error {
 
 		// Process each result
 		for _, result := range assignments {
-			bunkID := int(result["BunkID"].(float64))
-			bunkPlanID := int(result["BunkPlanID"].(float64))
+			bunkIDFloat, ok := result["BunkID"].(float64)
+			if !ok {
+				slog.Warn("Missing or invalid BunkID in result")
+				continue
+			}
+			bunkID := int(bunkIDFloat)
+
+			bunkPlanIDFloat, ok := result["BunkPlanID"].(float64)
+			if !ok {
+				slog.Warn("Missing or invalid BunkPlanID in result")
+				continue
+			}
+			bunkPlanID := int(bunkPlanIDFloat)
 
 			// Get the assignments array from this result
 			assignmentsArray, ok := result["Assignments"].([]interface{})
@@ -176,7 +187,11 @@ func (s *BunkAssignmentsSync) Sync(ctx context.Context) error {
 
 			// Process each assignment in the array
 			for _, assignment := range assignmentsArray {
-				assignmentData := assignment.(map[string]interface{})
+				assignmentData, ok := assignment.(map[string]interface{})
+				if !ok {
+					slog.Warn("Invalid assignment data type")
+					continue
+				}
 
 				// Get the person ID to look up their enrollment
 				personID, ok := assignmentData["PersonID"].(float64)
@@ -508,7 +523,10 @@ func (s *BunkAssignmentsSync) protectNonActiveStaffAssignments(year int) {
 		// Find this person's existing bunk_assignments and mark as processed
 		baFilter := fmt.Sprintf("year = %d && person_id = %d", year, personCMID)
 		bas, err := s.App.FindRecordsByFilter("bunk_assignments", baFilter, "", 0, 0)
-		if err != nil || len(bas) == 0 {
+		if err != nil {
+			return fmt.Errorf("finding bunk assignments for person %d: %w", personCMID, err)
+		}
+		if len(bas) == 0 {
 			return nil
 		}
 

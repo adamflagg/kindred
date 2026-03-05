@@ -2,11 +2,15 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
 	"google.golang.org/api/sheets/v4"
 )
+
+// errSheetNotFound is returned when a sheet tab doesn't exist in the spreadsheet
+var errSheetNotFound = errors.New("sheet tab not found")
 
 // SheetInfo contains metadata about a sheet tab
 type SheetInfo struct {
@@ -281,7 +285,7 @@ func (w *RealSheetsWriter) getSheetID(ctx context.Context, spreadsheetID, sheetT
 		}
 	}
 
-	return 0, fmt.Errorf("sheet tab %q not found", sheetTab)
+	return 0, fmt.Errorf("sheet tab %q: %w", sheetTab, errSheetNotFound)
 }
 
 // DeleteSheet deletes a sheet tab from the spreadsheet (idempotent).
@@ -289,8 +293,11 @@ func (w *RealSheetsWriter) getSheetID(ctx context.Context, spreadsheetID, sheetT
 func (w *RealSheetsWriter) DeleteSheet(ctx context.Context, spreadsheetID, sheetTab string) error {
 	sheetID, err := w.getSheetID(ctx, spreadsheetID, sheetTab)
 	if err != nil {
-		// Sheet not found - idempotent success
-		return nil
+		if errors.Is(err, errSheetNotFound) {
+			// Sheet not found - idempotent success
+			return nil
+		}
+		return fmt.Errorf("looking up sheet %s: %w", sheetTab, err)
 	}
 
 	req := &sheets.BatchUpdateSpreadsheetRequest{

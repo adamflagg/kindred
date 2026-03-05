@@ -70,7 +70,11 @@ func TestBunkAssignmentsSync_processAssignment_ExtractsIsDeleted(t *testing.T) {
 			}
 
 			// Simulate building recordData as processAssignment would
-			assignmentCMID := int(tt.assignmentData["ID"].(float64))
+			idFloat, ok := tt.assignmentData["ID"].(float64)
+			if !ok {
+				t.Fatal("missing ID in test data")
+			}
+			assignmentCMID := int(idFloat)
 			recordData := map[string]interface{}{
 				"year":       2025,
 				"cm_id":      assignmentCMID,
