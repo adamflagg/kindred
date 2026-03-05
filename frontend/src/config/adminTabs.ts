@@ -1,8 +1,16 @@
 import type { LucideIcon } from 'lucide-react'
-import { RefreshCw, Sliders, FileSpreadsheet, Workflow, Database, CalendarDays } from 'lucide-react'
+import {
+  RefreshCw,
+  Sliders,
+  FileSpreadsheet,
+  Workflow,
+  Database,
+  CalendarDays,
+  MapPin,
+} from 'lucide-react'
 
 export interface AdminTabConfig {
-  id: 'sync' | 'config' | 'sheets'
+  id: 'sync' | 'config' | 'sheets' | 'geo'
   label: string
   path: string
   icon: LucideIcon
@@ -30,6 +38,13 @@ export const ADMIN_TABS: AdminTabConfig[] = [
     label: 'Sheets',
     path: '/admin/sheets',
     icon: FileSpreadsheet,
+    requiredPermission: 'admin',
+  },
+  {
+    id: 'geo',
+    label: 'Geo Data',
+    path: '/admin/geo',
+    icon: MapPin,
     requiredPermission: 'admin',
   },
 ]

@@ -38,6 +38,9 @@ const ConfigTab = lazy(() =>
 const SheetsTab = lazy(() =>
   import('./components/admin/SheetsTab').then((m) => ({ default: m.SheetsTab }))
 )
+const GeoDataTab = lazy(() =>
+  import('./components/admin/GeoDataTab').then((m) => ({ default: m.GeoDataTab }))
+)
 const FamilyCampDashboard = lazy(() => import('./pages/FamilyCampDashboard'))
 const ScenarioComparisonPage = lazy(() => import('./pages/ScenarioComparisonPage'))
 const DebugPage = lazy(() => import('./pages/summer/DebugPage'))
@@ -210,6 +213,18 @@ function App() {
                                     <ErrorBoundary>
                                       <Suspense fallback={<PageSkeleton />}>
                                         <SheetsTab />
+                                      </Suspense>
+                                    </ErrorBoundary>
+                                  </AdminRoute>
+                                }
+                              />
+                              <Route
+                                path="geo/*"
+                                element={
+                                  <AdminRoute>
+                                    <ErrorBoundary>
+                                      <Suspense fallback={<PageSkeleton />}>
+                                        <GeoDataTab />
                                       </Suspense>
                                     </ErrorBoundary>
                                   </AdminRoute>
