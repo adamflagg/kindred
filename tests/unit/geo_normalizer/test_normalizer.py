@@ -500,3 +500,48 @@ class TestCityAliases:
         result = normalize_cities(["millbrae blvd", "MILLBRAE BLVD"])
         assert result["millbrae blvd"]["canonical"] == "Millbrae"
         assert result["MILLBRAE BLVD"]["canonical"] == "Millbrae"
+
+
+class TestLocationMetadata:
+    """Tests for location metadata (city/state) in geo JSON files."""
+
+    def test_school_json_has_location_metadata(self) -> None:
+        """Verify schools.json includes city/state per canonical entry."""
+        import json
+        from importlib.resources import files
+
+        data_file = files("bunking.geo_normalizer.data").joinpath("schools.json")
+        data = json.loads(data_file.read_text())
+        assert "location" in data
+        assert len(data["location"]) > 0
+        # Spot check a known school
+        sample = next(iter(data["location"].values()))
+        assert "city" in sample
+        assert "state" in sample
+
+    def test_congregation_json_has_location_metadata(self) -> None:
+        """Verify congregations.json includes city/state per canonical entry."""
+        import json
+        from importlib.resources import files
+
+        data_file = files("bunking.geo_normalizer.data").joinpath("congregations.json")
+        data = json.loads(data_file.read_text())
+        assert "location" in data
+        assert len(data["location"]) > 0
+        # Spot check a known congregation
+        sample = next(iter(data["location"].values()))
+        assert "city" in sample
+        assert "state" in sample
+
+    def test_city_json_has_location_metadata(self) -> None:
+        """Verify us_cities.json includes state per canonical entry."""
+        import json
+        from importlib.resources import files
+
+        data_file = files("bunking.geo_normalizer.data").joinpath("us_cities.json")
+        data = json.loads(data_file.read_text())
+        assert "location" in data
+        assert len(data["location"]) > 0
+        # Spot check a known city
+        sample = next(iter(data["location"].values()))
+        assert "state" in sample
