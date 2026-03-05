@@ -37,6 +37,8 @@ import {
   buildSessionDateLookup,
   buildSessionTypeLookup,
 } from '../../../utils/sessionUtils'
+import { PHASE_COLORS } from './phaseColors'
+import { PhaseBadge } from './PhaseBadge'
 
 type VelocityViewMode = 'gross' | 'net' | 'delta'
 
@@ -63,12 +65,6 @@ const PRIOR_YEAR_COLORS = [
 const GENDER_COLORS = {
   boys: 'hsl(210, 70%, 55%)',
   girls: 'hsl(340, 65%, 55%)',
-}
-
-const PHASE_COLORS: Record<string, string> = {
-  priority: 'hsl(270, 60%, 55%)',
-  early: 'hsl(200, 70%, 50%)',
-  open: 'hsl(140, 60%, 40%)',
 }
 
 function formatDeltaValue(value: number): string {
@@ -280,6 +276,15 @@ export default function VelocityPage() {
         weekNumber: marker.week_number,
       }))
   }, [data?.phase_markers])
+
+  // Map week_number -> PhaseMarker for table badge lookup
+  const phaseByWeek = useMemo(() => {
+    const map = new Map<number, (typeof phaseLines)[0]>()
+    for (const phase of phaseLines) {
+      map.set(phase.weekNumber, phase)
+    }
+    return map
+  }, [phaseLines])
 
   // Build prior year session summary map keyed by canonical session name
   const priorSessionMap = useMemo(() => {
@@ -1104,6 +1109,12 @@ export default function VelocityPage() {
                   >
                     <td className="text-foreground px-4 py-3 font-medium">
                       {week.week_label}
+                      {(() => {
+                        const marker = phaseByWeek.get(week.week_number)
+                        return marker ? (
+                          <PhaseBadge phase={marker.phase} label={marker.label} />
+                        ) : null
+                      })()}
                       {week.is_partial && (
                         <span className="ml-1.5 text-xs font-normal text-amber-600 dark:text-amber-400">
                           ({week.days_in_week}/7 days)
