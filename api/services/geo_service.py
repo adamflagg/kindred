@@ -198,7 +198,7 @@ class GeoService:
             nv: str = m.normalized_value
             if nv not in groups:
                 groups[nv] = {"count": 0, "sources": set()}
-            groups[nv]["count"] += m.occurrence_count
+            groups[nv]["count"] += 1
             groups[nv]["sources"].add(m.original_value)
 
         # Classify each group
@@ -272,7 +272,7 @@ class GeoService:
         camper_counts: dict[str, int] = {}
         for m in mappings:
             nv: str = m.normalized_value
-            camper_counts[nv] = camper_counts.get(nv, 0) + m.occurrence_count
+            camper_counts[nv] = camper_counts.get(nv, 0) + 1
 
         # Collect all canonical names from lookup values
         all_canonicals: dict[str, CanonicalEntry] = {}
@@ -352,11 +352,11 @@ class GeoService:
             },
         )
 
-        # Build source items (each mapping row is already per original_value)
+        # Each mapping row = 1 person-session
         sources: list[SourceItem] = [
             SourceItem(
                 original_value=m.original_value,
-                count=m.occurrence_count,
+                count=1,
                 confidence=m.confidence,
             )
             for m in mappings
