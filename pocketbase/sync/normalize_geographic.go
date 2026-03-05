@@ -978,6 +978,23 @@ func (n *NormalizeGeographicSync) deleteOrphans(existingMappings map[string]*cor
 	return orphanCount
 }
 
+// computeConfidenceStatic returns confidence score based on how much the value changed.
+// Static version (no receiver) for use in resolveValue.
+func computeConfidenceStatic(original, normalized string) float64 {
+	if strings.EqualFold(original, normalized) {
+		return 1.0
+	}
+	return 0.9
+}
+
+// resolveValue checks alias overrides first, then fuzzy match, then merge redirects.
+// Returns the normalized value and confidence score.
+func resolveValue(rawValue string, category string, lookupMap map[string]string,
+	aliasOverrides, mergeOverrides map[string]map[string]string) (string, float64) {
+	// TODO: implement override integration
+	return "", 0
+}
+
 // forceWALCheckpoint forces a SQLite WAL checkpoint
 func (n *NormalizeGeographicSync) forceWALCheckpoint() error {
 	db := n.App.DB()
