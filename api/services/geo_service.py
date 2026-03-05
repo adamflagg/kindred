@@ -340,7 +340,7 @@ class GeoService:
     async def get_sources(self, category: str, canonical_name: str, year: int) -> SourcesResponse:
         """Get raw value variants that map to a canonical name.
 
-        Groups by original_value with occurrence counts and confidence scores.
+        Groups by original_value with row counts and confidence scores.
         """
         location = _load_static_location(category)
 
@@ -352,14 +352,18 @@ class GeoService:
             },
         )
 
-        # Each mapping row = 1 person-session
+        # Group by original_value, counting rows and tracking min confidence
+        source_groups: dict[str, dict[str, Any]] = {}
+        for m in mappings:
+            ov: str = m.original_value
+            if ov not in source_groups:
+                source_groups[ov] = {"count": 0, "confidence": m.confidence}
+            source_groups[ov]["count"] += 1
+            source_groups[ov]["confidence"] = min(source_groups[ov]["confidence"], m.confidence)
+
         sources: list[SourceItem] = [
-            SourceItem(
-                original_value=m.original_value,
-                count=1,
-                confidence=m.confidence,
-            )
-            for m in mappings
+            SourceItem(original_value=ov, count=g["count"], confidence=g["confidence"])
+            for ov, g in source_groups.items()
         ]
 
         # Sort by count descending
