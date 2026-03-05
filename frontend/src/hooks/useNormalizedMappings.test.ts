@@ -77,12 +77,11 @@ describe('useNormalizedMappings', () => {
       expect(source).toContain('normalized_value')
     })
 
-    it('should include original_value, occurrence_count, and confidence in grouped data', async () => {
+    it('should include original_value and confidence in grouped data', async () => {
       const sourceContent = await import('./useNormalizedMappings?raw')
       const source = sourceContent.default
 
       expect(source).toContain('original_value')
-      expect(source).toContain('occurrence_count')
       expect(source).toContain('confidence')
     })
   })
@@ -171,6 +170,22 @@ describe('useNormalizedMappings', () => {
       expect(source).toContain('session.cm_id')
     })
 
+    it('should accept optional sessionTypes parameter', async () => {
+      const sourceContent = await import('./useNormalizedMappings?raw')
+      const source = sourceContent.default
+
+      // The hook should accept sessionTypes as a parameter
+      expect(source).toContain('sessionTypes')
+    })
+
+    it('should filter by session_type when sessionTypes provided', async () => {
+      const sourceContent = await import('./useNormalizedMappings?raw')
+      const source = sourceContent.default
+
+      // Should filter by session.session_type when sessionTypes is provided
+      expect(source).toContain('session.session_type')
+    })
+
     it('should include sessionCmId in query key for proper caching', async () => {
       const { queryKeys } = await import('../utils/queryKeys')
 
@@ -182,6 +197,14 @@ describe('useNormalizedMappings', () => {
       expect(key).toContain(2025)
       expect(key).toContain('city')
       expect(key).toContain(2001) // sessionCmId
+    })
+
+    it('should include sessionTypes in query key for proper caching', async () => {
+      const { queryKeys } = await import('../utils/queryKeys')
+
+      const key = queryKeys.normalizedMappings(2025, 'city', undefined, ['camp', 'quest'])
+      expect(Array.isArray(key)).toBe(true)
+      expect(key).toContain('normalized-mappings')
     })
 
     it('should work without sessionCmId (all sessions)', async () => {

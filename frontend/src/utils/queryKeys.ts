@@ -182,10 +182,19 @@ export const queryKeys = {
   bunkStaff: (year: number) => ['bunk-staff', year] as const,
 
   // Normalized mappings for geographic source tracking
-  normalizedMappings: (year: number, category: string, sessionCmId?: number) =>
-    sessionCmId !== undefined
-      ? (['normalized-mappings', year, category, sessionCmId] as const)
-      : (['normalized-mappings', year, category] as const),
+  normalizedMappings: (
+    year: number,
+    category: string,
+    sessionCmId?: number,
+    sessionTypes?: readonly string[]
+  ) =>
+    [
+      'normalized-mappings',
+      year,
+      category,
+      sessionCmId,
+      sessionTypes ? [...sessionTypes] : undefined,
+    ] as const,
 
   // Geo Management (Tier 2 - user data)
   geoGaps: (category: string, year: number) => ['geo', 'gaps', category, year] as const,
