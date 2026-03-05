@@ -17,6 +17,18 @@ services:
     image: kindred:local
     container_name: kindred
     restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=64m,uid=65532,gid=65532
+      - /run:size=8m,uid=65532,gid=65532
+      - /app/logs:size=64m,uid=65532,gid=65532
+      - /app/csv_history:size=64m,uid=65532,gid=65532
+      - /app/.config/caddy:size=8m,uid=65532,gid=65532
+      - /app/.local/share/caddy:size=8m,uid=65532,gid=65532
     ports:
       - "8080:8080"
     volumes:

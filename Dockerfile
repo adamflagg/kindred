@@ -72,18 +72,16 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # =============================================================================
 FROM dhi.io/python:3.14-dev
 
-# Single system-setup layer: user, packages, directories, ownership
-# DHI images are hardened Debian without groupadd/useradd — create user via /etc files
+# Single system-setup layer: packages, directories, ownership
+# DHI images ship a nonroot user (uid 65532) — no need to create one
 # hadolint ignore=DL3008
-RUN echo 'kindred:x:1000:1000:kindred:/app:/bin/sh' >> /etc/passwd \
-    && echo 'kindred:x:1000:' >> /etc/group \
-    && apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends \
        curl supervisor \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /pb_data/bunk_requests /app/logs /app/csv_history /config \
                /app/.config/caddy /app/.local/share/caddy \
                /pb_public /pb_hooks /pb_migrations \
-    && chown -R kindred:kindred /pb_data /app /config /pb_public /pb_hooks /pb_migrations
+    && chown -R nonroot:nonroot /pb_data /app /config /pb_public /pb_hooks /pb_migrations
 WORKDIR /app
 
 # Stable binaries (--link = content-addressable, survives across code-only releases)
@@ -101,20 +99,20 @@ COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY --chmod=755 docker/combined-entrypoint.sh /entrypoint.sh
 
 # Application source (changes frequently, each independently cached via --link)
-COPY --link --chown=1000:1000 config/ ./config/
-COPY --link --chown=1000:1000 campminder/ ./campminder/
-COPY --link --chown=1000:1000 api/ ./api/
-COPY --link --chown=1000:1000 bunking/ ./bunking/
+COPY --link --chown=65532:65532 config/ ./config/
+COPY --link --chown=65532:65532 campminder/ ./campminder/
+COPY --link --chown=65532:65532 api/ ./api/
+COPY --link --chown=65532:65532 bunking/ ./bunking/
 
 # PocketBase assets
-COPY --link --chown=1000:1000 pocketbase/pb_hooks /pb_hooks
-COPY --link --chown=1000:1000 pocketbase/pb_migrations /pb_migrations
+COPY --link --chown=65532:65532 pocketbase/pb_hooks /pb_hooks
+COPY --link --chown=65532:65532 pocketbase/pb_migrations /pb_migrations
 
 # Frontend + local assets
-COPY --link --chown=1000:1000 --from=frontend-builder /app/dist /pb_public
-COPY --link --chown=1000:1000 local/ /pb_public/local/
+COPY --link --chown=65532:65532 --from=frontend-builder /app/dist /pb_public
+COPY --link --chown=65532:65532 local/ /pb_public/local/
 
-USER kindred
+USER nonroot
 
 EXPOSE 8080
 
