@@ -1,0 +1,151 @@
+# Kindred Multi-Container Production Docker Compose
+# 4 containers: caddy (proxy + frontend), pocketbase (db), api (FastAPI), init (one-shot setup)
+# Usage: docker compose -f docker/multi/docker-compose.yml up -d
+
+services:
+  pocketbase:
+    image: ghcr.io/adamflagg/kindred-pocketbase:${IMAGE_TAG:-latest}
+    container_name: kindred-pocketbase
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    volumes:
+      - ${APPDATA_DIR}/kindred/pocketbase:/pb_data
+      - ${APPDATA_DIR}/kindred/config:/config
+    tmpfs:
+      - /tmp:size=8m,uid=65532,gid=65532
+    environment:
+      - CAMPMINDER_API_KEY=${CAMPMINDER_API_KEY}
+      - CAMPMINDER_PRIMARY_KEY=${CAMPMINDER_PRIMARY_KEY}
+      - CAMPMINDER_CLIENT_ID=${CAMPMINDER_CLIENT_ID}
+      - CAMPMINDER_SEASON_ID=${CAMPMINDER_SEASON_ID}
+      - GOOGLE_SHEETS_ENABLED=${GOOGLE_SHEETS_ENABLED:-false}
+      - GOOGLE_DRIVE_FOLDER_ID=${GOOGLE_DRIVE_FOLDER_ID:-}
+      - GOOGLE_SERVICE_ACCOUNT_KEY_FILE=${GOOGLE_SERVICE_ACCOUNT_KEY_FILE:-/config/google_sheets.json}
+      - TZ=${TZ:-America/Los_Angeles}
+    healthcheck:
+      test: [CMD, /usr/local/bin/healthcheck, "http://127.0.0.1:8090/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - kindred-internal
+
+  init:
+    image: ghcr.io/adamflagg/kindred-init:${IMAGE_TAG:-latest}
+    container_name: kindred-init
+    restart: "no"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    depends_on:
+      pocketbase:
+        condition: service_healthy
+    volumes:
+      - ${APPDATA_DIR}/kindred/pocketbase:/pb_data
+    tmpfs:
+      - /tmp:size=8m,uid=65532,gid=65532
+    environment:
+      - POCKETBASE_URL=http://pocketbase:8090
+      - POCKETBASE_ADMIN_EMAIL=${POCKETBASE_ADMIN_EMAIL}
+      - POCKETBASE_ADMIN_PASSWORD=${POCKETBASE_ADMIN_PASSWORD}
+      - OIDC_ISSUER=${OIDC_ISSUER:-}
+      - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
+      - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
+    networks:
+      - kindred-internal
+
+  api:
+    image: ghcr.io/adamflagg/kindred-api:${IMAGE_TAG:-latest}
+    container_name: kindred-api
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    depends_on:
+      pocketbase:
+        condition: service_healthy
+    volumes:
+      - ${APPDATA_DIR}/kindred/pocketbase:/pb_data:ro
+      - ${APPDATA_DIR}/kindred/config:/config:ro
+    tmpfs:
+      - /tmp:size=64m,uid=65532,gid=65532
+      - /app/logs:size=64m,uid=65532,gid=65532
+      - /app/csv_history:size=64m,uid=65532,gid=65532
+    environment:
+      - POCKETBASE_URL=http://pocketbase:8090
+      - AI_PROVIDER=${AI_PROVIDER:-}
+      - AI_API_KEY=${AI_API_KEY:-}
+      - AI_MODEL=${AI_MODEL:-}
+      - GOOGLE_SHEETS_ENABLED=${GOOGLE_SHEETS_ENABLED:-false}
+      - GOOGLE_DRIVE_FOLDER_ID=${GOOGLE_DRIVE_FOLDER_ID:-}
+      - GOOGLE_SERVICE_ACCOUNT_KEY_FILE=${GOOGLE_SERVICE_ACCOUNT_KEY_FILE:-/config/google_sheets.json}
+      - TZ=${TZ:-America/Los_Angeles}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    healthcheck:
+      test: [CMD, curl, -f, "http://127.0.0.1:8000/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+    networks:
+      - kindred-internal
+
+  caddy:
+    image: ghcr.io/adamflagg/kindred-caddy:${IMAGE_TAG:-latest}
+    container_name: kindred-caddy
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    depends_on:
+      pocketbase:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    tmpfs:
+      - /tmp:size=8m,uid=65532,gid=65532
+      - /data:size=8m,uid=65532,gid=65532
+      - /config:size=8m,uid=65532,gid=65532
+    healthcheck:
+      test: [CMD, /usr/local/bin/healthcheck, "http://127.0.0.1:8080/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+    networks:
+      - kindred-internal
+      - ${PROXY_NETWORK:-web-proxy}
+    labels:
+      ## Traefik - Main router (public app, OAuth-protected)
+      traefik.enable: true
+      traefik.docker.network: ${PROXY_NETWORK:-web-proxy}
+      traefik.http.routers.kindred.entrypoints: https
+      traefik.http.routers.kindred.rule: Host(`${SUB_KINDRED:-${SUB_BUNKING}}.${DOMAIN_NAME}`)
+      traefik.http.routers.kindred.middlewares: chain-full@file
+      traefik.http.routers.kindred.service: kindred
+      ## Traefik - Admin router (PocketBase admin UI - IP restricted)
+      traefik.http.routers.kindred-admin.entrypoints: https
+      traefik.http.routers.kindred-admin.rule: Host(`${SUB_KINDRED:-${SUB_BUNKING}}.${DOMAIN_NAME}`) && PathPrefix(`/_/`)
+      traefik.http.routers.kindred-admin.middlewares: chain-full@file,private@file
+      traefik.http.routers.kindred-admin.service: kindred
+      traefik.http.routers.kindred-admin.priority: 100
+      ## Traefik - Service
+      traefik.http.services.kindred.loadbalancer.server.port: 8080
+
+networks:
+  kindred-internal:
+    driver: bridge
+  web-proxy:
+    name: ${PROXY_NETWORK:-web-proxy}
+    external: true
