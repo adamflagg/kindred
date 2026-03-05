@@ -2,19 +2,25 @@
 
 TDD tests - written BEFORE implementation.
 Target format: 2026-01-06T14:05:52Z [source] LEVEL message
+
+When LOG_COMPACT=true (default), omits timestamp and top-level source labels.
+Sub-labels (containing "/") are preserved even in compact mode.
 """
 
 from __future__ import annotations
 
 import io
 import logging
+import os
 import re
 from datetime import datetime
+from unittest.mock import patch
 
 
 class TestISO8601Formatter:
     """Test the custom ISO8601 formatter produces correct output."""
 
+    @patch.dict("os.environ", {"LOG_COMPACT": "false"})
     def test_format_matches_specification(self):
         """Verify output matches: 2026-01-06T14:05:52Z [source] LEVEL message"""
         from bunking.logging_config import ISO8601Formatter
@@ -36,6 +42,7 @@ class TestISO8601Formatter:
         pattern = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z \[test\] INFO Test message$"
         assert re.match(pattern, output), f"Output '{output}' doesn't match expected format"
 
+    @patch.dict("os.environ", {"LOG_COMPACT": "false"})
     def test_timestamp_is_utc(self):
         """Verify timestamp is in UTC (ends with Z)."""
         from bunking.logging_config import ISO8601Formatter
@@ -61,6 +68,7 @@ class TestISO8601Formatter:
         parsed = datetime.fromisoformat(timestamp_str)
         assert parsed is not None
 
+    @patch.dict("os.environ", {"LOG_COMPACT": "false"})
     def test_different_log_levels(self):
         """Verify all log levels are formatted correctly."""
         from bunking.logging_config import ISO8601Formatter
@@ -86,6 +94,7 @@ class TestISO8601Formatter:
             output = formatter.format(record)
             assert f"] {level_name} " in output, f"Level {level_name} not found in output"
 
+    @patch.dict("os.environ", {"LOG_COMPACT": "false"})
     def test_source_tag_in_brackets(self):
         """Verify source is wrapped in square brackets."""
         from bunking.logging_config import ISO8601Formatter
@@ -104,6 +113,7 @@ class TestISO8601Formatter:
         output = formatter.format(record)
         assert "[api]" in output, f"Source tag [api] not found in '{output}'"
 
+    @patch.dict("os.environ", {"LOG_COMPACT": "false"})
     def test_message_formatting_with_args(self):
         """Verify message formatting works with arguments."""
         from bunking.logging_config import ISO8601Formatter
@@ -241,6 +251,7 @@ class TestConfigureLogging:
 class TestDebugPrefixFormatting:
     """Test that DEBUG level logs get [DEBUG] prefix for consistency with Go output."""
 
+    @patch.dict("os.environ", {"LOG_COMPACT": "false"})
     def test_debug_level_message_has_debug_prefix(self):
         """DEBUG level messages should have [DEBUG] prefix in the message."""
         from bunking.logging_config import ISO8601Formatter
@@ -323,6 +334,7 @@ class TestDebugPrefixFormatting:
         # Should NOT contain [DEBUG] prefix
         assert "[DEBUG]" not in output, f"ERROR level output should NOT contain [DEBUG] prefix: {output}"
 
+    @patch.dict("os.environ", {"LOG_COMPACT": "false"})
     def test_debug_prefix_format_matches_go_style(self):
         """The [DEBUG] prefix should match Go's style: '[DEBUG] message'."""
         from bunking.logging_config import ISO8601Formatter
@@ -348,6 +360,7 @@ class TestDebugPrefixFormatting:
 class TestIntegration:
     """Integration tests for the logging system."""
 
+    @patch.dict("os.environ", {"LOG_COMPACT": "false"})
     def test_end_to_end_log_output(self):
         """Test complete logging flow produces expected output."""
         from bunking.logging_config import configure_logging, get_logger
@@ -375,3 +388,149 @@ class TestIntegration:
         output = stream.getvalue()
         pattern = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z \[integration_test\] INFO Test integration message\n$"
         assert re.match(pattern, output), f"Output '{output}' doesn't match expected format"
+
+
+class TestCompactMode:
+    """Test LOG_COMPACT mode for Docker log deduplication."""
+
+    @patch.dict("os.environ", {"LOG_COMPACT": "true"})
+    def test_compact_mode_omits_timestamp_and_source(self):
+        """Compact mode with top-level source should omit timestamp and source label."""
+        from bunking.logging_config import ISO8601Formatter
+
+        formatter = ISO8601Formatter(source="api")
+        record = logging.LogRecord(
+            name="test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="Server started",
+            args=(),
+            exc_info=None,
+        )
+
+        output = formatter.format(record)
+
+        # Should be just "INFO Server started" — no timestamp, no [api]
+        assert output == "INFO Server started", f"Compact output should be 'INFO Server started', got '{output}'"
+
+    @patch.dict("os.environ", {"LOG_COMPACT": "true"})
+    def test_compact_mode_keeps_sub_labels(self):
+        """Compact mode should preserve sub-labels like sync/sessions."""
+        from bunking.logging_config import ISO8601Formatter
+
+        formatter = ISO8601Formatter(source="sync/sessions")
+        record = logging.LogRecord(
+            name="test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="Starting session sync",
+            args=(),
+            exc_info=None,
+        )
+
+        output = formatter.format(record)
+
+        # Should keep the sub-label but no timestamp
+        assert output == "[sync/sessions] INFO Starting session sync", (
+            f"Compact sub-label output should be '[sync/sessions] INFO Starting session sync', got '{output}'"
+        )
+
+    @patch.dict("os.environ", {"LOG_COMPACT": "false"})
+    def test_compact_mode_disabled_shows_full_format(self):
+        """LOG_COMPACT=false should produce full format with timestamp and source."""
+        from bunking.logging_config import ISO8601Formatter
+
+        formatter = ISO8601Formatter(source="api")
+        record = logging.LogRecord(
+            name="test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="Server started",
+            args=(),
+            exc_info=None,
+        )
+
+        output = formatter.format(record)
+
+        # Should have full format: timestamp [source] LEVEL message
+        pattern = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z \[api\] INFO Server started$"
+        assert re.match(pattern, output), f"Full format output doesn't match: '{output}'"
+
+    def test_compact_mode_defaults_to_true(self):
+        """When LOG_COMPACT is unset, compact mode should default to true."""
+        from bunking.logging_config import ISO8601Formatter
+
+        # Remove LOG_COMPACT from env entirely
+        env = os.environ.copy()
+        env.pop("LOG_COMPACT", None)
+        with patch.dict("os.environ", env, clear=True):
+            formatter = ISO8601Formatter(source="api")
+            record = logging.LogRecord(
+                name="test",
+                level=logging.INFO,
+                pathname="",
+                lineno=0,
+                msg="Test",
+                args=(),
+                exc_info=None,
+            )
+
+            output = formatter.format(record)
+
+            # Default (unset) should be compact
+            assert output == "INFO Test", f"Default should be compact, got '{output}'"
+
+    @patch.dict("os.environ", {"LOG_COMPACT": "true"})
+    def test_compact_mode_preserves_debug_prefix(self):
+        """Compact mode should still add [DEBUG] prefix for DEBUG level."""
+        from bunking.logging_config import ISO8601Formatter
+
+        formatter = ISO8601Formatter(source="api")
+        record = logging.LogRecord(
+            name="test",
+            level=logging.DEBUG,
+            pathname="",
+            lineno=0,
+            msg="Some debug info",
+            args=(),
+            exc_info=None,
+        )
+
+        output = formatter.format(record)
+
+        assert output == "DEBUG [DEBUG] Some debug info", (
+            f"Compact DEBUG should be 'DEBUG [DEBUG] Some debug info', got '{output}'"
+        )
+
+    @patch.dict("os.environ", {"LOG_COMPACT": "true"})
+    def test_compact_mode_preserves_exception_info(self):
+        """Compact mode should still include exception traceback."""
+        from bunking.logging_config import ISO8601Formatter
+
+        formatter = ISO8601Formatter(source="api")
+
+        try:
+            raise ValueError("test error")
+        except ValueError:
+            import sys
+
+            exc_info = sys.exc_info()
+
+        record = logging.LogRecord(
+            name="test",
+            level=logging.ERROR,
+            pathname="",
+            lineno=0,
+            msg="Something failed",
+            args=(),
+            exc_info=exc_info,
+        )
+
+        output = formatter.format(record)
+
+        # Should start with compact format but include traceback
+        assert output.startswith("ERROR Something failed"), f"Should start with compact format: '{output}'"
+        assert "ValueError: test error" in output, f"Should include exception: '{output}'"
