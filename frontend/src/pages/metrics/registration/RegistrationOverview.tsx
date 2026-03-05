@@ -40,6 +40,7 @@ import {
   transformFirstSummerYearData,
   transformNewVsReturningData,
 } from '../../../utils/metricsTransforms'
+import { GENDER_COLORS } from '../../../components/metrics/genderColors'
 import { Loader2, AlertCircle } from 'lucide-react'
 import type { DrilldownFilter, SessionLengthBySessionBreakdown } from '../../../types/metrics'
 import type { SessionDateLookup, SessionTypeLookup } from '../../../utils/sessionUtils'
@@ -313,12 +314,14 @@ export default function RegistrationOverview() {
               height={250}
               breakdownType="gender"
               onSegmentClick={setFilter}
+              colorMap={GENDER_COLORS}
             />
             <BreakdownChart
               title={`${compareYear} Gender`}
               data={transformGenderData(compData.by_gender)}
               showPercentage
               height={250}
+              colorMap={GENDER_COLORS}
             />
           </div>
           <ComparisonSummaryTable
@@ -334,6 +337,7 @@ export default function RegistrationOverview() {
               title={`${currentYear} Gender by Grade`}
               data={(data.by_gender_grade ?? []).map((g) => ({
                 name: g.grade !== null ? String(g.grade) : '?',
+                tooltipLabel: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
                 total: g.total,
                 male_count: g.male_count,
                 female_count: g.female_count,
@@ -355,6 +359,7 @@ export default function RegistrationOverview() {
               title={`${compareYear} Gender by Grade`}
               data={(compData.by_gender_grade ?? []).map((g) => ({
                 name: g.grade !== null ? String(g.grade) : '?',
+                tooltipLabel: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
                 total: g.total,
                 male_count: g.male_count,
                 female_count: g.female_count,
@@ -377,12 +382,14 @@ export default function RegistrationOverview() {
             height={250}
             breakdownType="gender"
             onSegmentClick={setFilter}
+            colorMap={GENDER_COLORS}
           />
           <CssVerticalStackedBarChart
             key={`gender-grade-${selectedSessionCmId ?? 'all'}`}
             title="Gender by Grade"
             data={(data.by_gender_grade ?? []).map((g) => ({
               name: g.grade !== null ? String(g.grade) : '?',
+              tooltipLabel: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
               total: g.total,
               male_count: g.male_count,
               female_count: g.female_count,
@@ -485,6 +492,7 @@ export default function RegistrationOverview() {
                   labelWidth={140}
                   breakdownType="session"
                   onBarClick={setFilter}
+                  percentageLabel="Capacity"
                 />
                 <CssHorizontalBarChart
                   title={`${compareYear} Session`}
@@ -495,6 +503,7 @@ export default function RegistrationOverview() {
                   )}
                   height={300}
                   labelWidth={140}
+                  percentageLabel="Capacity"
                 />
               </div>
               <ComparisonSummaryTable
@@ -566,6 +575,7 @@ export default function RegistrationOverview() {
                 labelWidth={140}
                 breakdownType="session"
                 onBarClick={setFilter}
+                percentageLabel="Capacity"
               />
               {(() => {
                 const result = buildSessionLengthCssData(

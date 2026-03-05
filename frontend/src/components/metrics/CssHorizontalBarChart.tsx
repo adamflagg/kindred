@@ -29,6 +29,8 @@ interface CssHorizontalBarChartProps {
   breakdownType?: DrilldownFilter['type']
   onBarClick?: (filter: DrilldownFilter) => void
   className?: string
+  /** Label for the percentage line in the tooltip (default: "Percentage") */
+  percentageLabel?: string
 }
 
 export function CssHorizontalBarChart({
@@ -41,6 +43,7 @@ export function CssHorizontalBarChart({
   breakdownType,
   onBarClick,
   className = '',
+  percentageLabel = 'Percentage',
 }: CssHorizontalBarChartProps) {
   const { tooltip, tooltipRef, handleMouseMove, handleMouseLeave } =
     useChartTooltip<ChartDataItem>()
@@ -179,7 +182,7 @@ export function CssHorizontalBarChart({
             </p>
             {tooltip.item.percentage !== undefined && (
               <p className="text-muted-foreground text-sm">
-                Percentage:{' '}
+                {percentageLabel}:{' '}
                 <span className="text-foreground font-semibold">
                   {tooltip.item.percentage.toFixed(1)}%
                 </span>

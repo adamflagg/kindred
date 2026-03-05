@@ -253,7 +253,9 @@ export function CssVerticalStackedBarChart({
                 renderTooltip(ttItem, segments)
               ) : (
                 <>
-                  <p className="text-foreground mb-2 font-medium">{ttItem.name}</p>
+                  <p className="text-foreground mb-2 font-medium">
+                    {(ttItem['tooltipLabel'] as string) ?? ttItem.name}
+                  </p>
                   {segments
                     .filter((s) => ((ttItem[s.key] as number) ?? 0) > 0)
                     .map((s) => {

@@ -39,6 +39,8 @@ interface BreakdownChartProps {
   breakdownType?: DrilldownFilter['type']
   /** Callback when a segment is clicked */
   onSegmentClick?: (filter: DrilldownFilter) => void
+  /** Optional color map keyed by item name, overrides default palette */
+  colorMap?: Record<string, string>
 }
 
 export function BreakdownChart({
@@ -49,7 +51,11 @@ export function BreakdownChart({
   className = '',
   breakdownType,
   onSegmentClick,
+  colorMap,
 }: BreakdownChartProps) {
+  const getColor = (index: number, name?: string) =>
+    (name && colorMap?.[name]) ?? COLORS[index % COLORS.length] ?? '#00b36b'
+
   const isClickable = !!onSegmentClick && !!breakdownType
 
   const handleClick = (item: ChartData) => {
@@ -95,7 +101,7 @@ export function BreakdownChart({
 
   const legendItems = data.map((d, i) => ({
     label: d.name,
-    color: COLORS[i % COLORS.length] ?? '#00b36b',
+    color: getColor(i, d.name),
   }))
 
   return (
@@ -151,8 +157,8 @@ export function BreakdownChart({
             }}
             style={{ cursor: isClickable ? 'pointer' : undefined }}
           >
-            {data.map((_, index) => (
-              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length] ?? '#00b36b'} />
+            {data.map((d, index) => (
+              <Cell key={`cell-${index}`} fill={getColor(index, d.name)} />
             ))}
           </Pie>
           <Tooltip content={<CustomTooltip />} />

@@ -2,7 +2,9 @@
 
 export const GENDER_COLORS: Record<string, string> = {
   M: 'hsl(200, 70%, 50%)', // Blue
+  Male: 'hsl(200, 70%, 50%)', // Blue
   F: 'hsl(340, 70%, 50%)', // Pink
+  Female: 'hsl(340, 70%, 50%)', // Pink
   Unknown: 'hsl(0, 0%, 60%)', // Gray
 }
 
