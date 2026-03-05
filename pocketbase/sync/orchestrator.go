@@ -439,6 +439,17 @@ func GetWeeklySyncJobs() []string {
 	}
 }
 
+// GetRefreshBunkingJobs returns the services needed for a full bunking refresh.
+// Runs in order: bunks (fetch latest bunk list), bunk_plans (update plans),
+// then bunk_assignments (update assignments).
+func GetRefreshBunkingJobs() []string {
+	return []string{
+		"bunks",
+		"bunk_plans",
+		"bunk_assignments",
+	}
+}
+
 // GetCustomValuesSyncJobs returns the list of services that run in the custom values sync.
 // These are expensive syncs (1 API call per entity) that run weekly after the main weekly sync.
 func GetCustomValuesSyncJobs() []string {
