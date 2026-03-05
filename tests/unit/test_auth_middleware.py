@@ -502,6 +502,41 @@ class TestPocketBaseUrlValidation:
                         middleware = AuthMiddleware(app, "production", "admin")
                         assert middleware.pb_token_validator is not None
 
+    def test_init_production_accepts_custom_docker_hostname(self):
+        """Test that production mode accepts any dotless hostname (Docker service name)."""
+        app = MagicMock()
+
+        with patch("bunking.auth_middleware._is_docker_environment", return_value=False):
+            with patch.dict(
+                "os.environ",
+                {
+                    "OIDC_ISSUER": "https://auth.example.com",
+                    "POCKETBASE_URL": "http://kindred-pocketbase:8090",
+                },
+            ):
+                with patch("bunking.auth_middleware.JWTValidator"):
+                    with patch("bunking.auth_middleware.PocketBaseTokenValidator"):
+                        middleware = AuthMiddleware(app, "production", "admin")
+                        assert middleware.pb_token_validator is not None
+
+    def test_init_production_accepts_any_dotless_hostname(self):
+        """Test that any dotless hostname is treated as a trusted Docker internal name."""
+        app = MagicMock()
+
+        for hostname in ["my-custom-pb", "pb", "kindred-pocketbase", "svc-db"]:
+            with patch("bunking.auth_middleware._is_docker_environment", return_value=False):
+                with patch.dict(
+                    "os.environ",
+                    {
+                        "OIDC_ISSUER": "https://auth.example.com",
+                        "POCKETBASE_URL": f"http://{hostname}:8090",
+                    },
+                ):
+                    with patch("bunking.auth_middleware.JWTValidator"):
+                        with patch("bunking.auth_middleware.PocketBaseTokenValidator"):
+                            middleware = AuthMiddleware(app, "production", "admin")
+                            assert middleware.pb_token_validator is not None, f"Failed for hostname: {hostname}"
+
     def test_init_production_default_pocketbase_url_is_trusted(self):
         """Test that the default POCKETBASE_URL (127.0.0.1) is trusted."""
         app = MagicMock()
